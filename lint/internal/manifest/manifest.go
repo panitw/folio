@@ -6,6 +6,8 @@ package manifest
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -79,6 +81,207 @@ func Generate(repoRoot string) ([]Row, error) {
 		return rows[i].Module < rows[j].Module
 	})
 	return rows, nil
+}
+
+// fontExtensions are the binary font formats this scan recognises.
+var fontExtensions = []string{".ttf", ".otf", ".ttc"}
+
+// assetServesLabel derives AC25's manifest "Serves" label from an
+// asset's directory, relative to repoRoot (forward-slash form). Finding
+// 9 (QA review): the previous implementation scanned only a fixed,
+// two-entry directory list, so a font committed ANYWHERE else — a
+// typo'd path, a stray copy — was invisible to the accounting even
+// though AC25 reads "ANY committed font binary". This function still
+// gives the two known locations their specific, already-published
+// labels; anything else still gets accounted for (LICENSE*/NOTICE*
+// still required, still fails the build if missing), under a label
+// that names where it was actually found rather than silently matching
+// one of the two known locations.
+func assetServesLabel(relDir string) string {
+	switch {
+	case relDir == "folio-go/testdata/fonts" || strings.HasPrefix(relDir, "folio-go/testdata/fonts/"):
+		return "folio-go test fixture"
+	case relDir == "folio-go/fonts" || strings.HasPrefix(relDir, "folio-go/fonts/"):
+		return "folio-go shipped"
+	default:
+		return "committed asset (" + relDir + ")"
+	}
+}
+
+// AssetRow is one committed non-code redistributed asset (AD-26,
+// D-1.5.6, AC25): a font binary, the directory it was found in, and
+// (once resolvable) the licence and copyright line its accompanying
+// notice files carry.
+type AssetRow struct {
+	Path      string // relative to repo root
+	Licence   string
+	Copyright string
+	Serves    string
+}
+
+// ResolveAssets walks the WHOLE repository (Finding 9, QA review — a
+// fixed two-entry directory list missed a font committed anywhere else,
+// proved by construction: a font at folio-go/assets/Stray.ttf, or at
+// folio-go/testdata/fonts/extra/Second.ttf, both stayed green under the
+// old implementation) for committed font binaries and requires each
+// directory containing one to carry both a licence text file
+// (LICENSE*) and a notice file (NOTICE*) naming a copyright line
+// (AC25's binding property: "Any committed font binary — fixture or
+// shipped — travels with its licence text and copyright line"). A font
+// binary present without both is a build failure, not a silent gap —
+// mirroring AC18/AC19's "unresolved licence fails the build" treatment
+// of the Go-module half of this same rule (AD-26).
+//
+// The walk excludes ".git" (not a source tree) and
+// "*/testdata/lint/**" (lint's OWN guard fixtures — e.g. ScanEmbedFont's
+// evading-shape fixtures under folio-go/testdata/lint/embed-font/,
+// which deliberately carry .ttf-extensioned files with no real font
+// content and no LICENSE/NOTICE, because they exist to test detection,
+// not to be redistributed). Every other font-extensioned file in the
+// repository, at any depth, is in scope.
+func ResolveAssets(repoRoot string) ([]AssetRow, error) {
+	fontsByDir := map[string][]string{} // relative dir (slash form) -> font file basenames
+	var dirOrder []string
+
+	walkErr := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			if d.Name() == "lint" && filepath.Base(filepath.Dir(path)) == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		isFont := false
+		for _, fe := range fontExtensions {
+			if ext == fe {
+				isFont = true
+				break
+			}
+		}
+		if !isFont {
+			return nil
+		}
+		rel, rerr := filepath.Rel(repoRoot, path)
+		if rerr != nil {
+			return rerr
+		}
+		rel = filepath.ToSlash(rel)
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		if _, seen := fontsByDir[dir]; !seen {
+			dirOrder = append(dirOrder, dir)
+		}
+		fontsByDir[dir] = append(fontsByDir[dir], filepath.Base(rel))
+		return nil
+	})
+	if walkErr != nil {
+		return nil, fmt.Errorf("walk %s for redistributed font assets: %w", repoRoot, walkErr)
+	}
+
+	sort.Strings(dirOrder)
+
+	var rows []AssetRow
+	for _, dir := range dirOrder {
+		fontFiles := append([]string(nil), fontsByDir[dir]...)
+		sort.Strings(fontFiles)
+
+		absDir := filepath.Join(repoRoot, filepath.FromSlash(dir))
+		entries, err := os.ReadDir(absDir)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", absDir, err)
+		}
+
+		var licenceText, noticeText string
+		var haveLicence, haveNotice bool
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			if strings.HasPrefix(name, "LICENSE") {
+				b, rerr := os.ReadFile(filepath.Join(absDir, name))
+				if rerr != nil {
+					return nil, fmt.Errorf("read %s: %w", filepath.Join(absDir, name), rerr)
+				}
+				licenceText = string(b)
+				haveLicence = true
+			}
+			if strings.HasPrefix(name, "NOTICE") {
+				b, rerr := os.ReadFile(filepath.Join(absDir, name))
+				if rerr != nil {
+					return nil, fmt.Errorf("read %s: %w", filepath.Join(absDir, name), rerr)
+				}
+				noticeText = string(b)
+				haveNotice = true
+			}
+		}
+
+		if !haveLicence {
+			return nil, fmt.Errorf("%s: contains a committed font binary but no LICENSE* file (AC25, AD-26)", dir)
+		}
+		if !haveNotice {
+			return nil, fmt.Errorf("%s: contains a committed font binary but no NOTICE* file naming its copyright line (AC25, AD-26)", dir)
+		}
+
+		copyrightLine, ok := extractCopyrightLine(noticeText)
+		if !ok {
+			return nil, fmt.Errorf("%s: NOTICE file does not contain a line starting with \"Copyright\" (AC25, AD-26)", dir)
+		}
+
+		licenceLabel := "SEE NOTICE"
+		if _, spdx := licence.ClassifyLicenceText(licenceText); spdx != "" {
+			licenceLabel = spdx
+		}
+
+		serves := assetServesLabel(dir)
+		for _, ff := range fontFiles {
+			rows = append(rows, AssetRow{
+				Path:      dir + "/" + ff,
+				Licence:   licenceLabel,
+				Copyright: copyrightLine,
+				Serves:    serves,
+			})
+		}
+	}
+	return rows, nil
+}
+
+// extractCopyrightLine returns the first line of text that contains the
+// word "Copyright", trimmed of Markdown emphasis markers.
+func extractCopyrightLine(text string) (string, bool) {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "Copyright") {
+			return strings.Trim(strings.TrimSpace(line), "*"), true
+		}
+	}
+	return "", false
+}
+
+// RenderAssets formats AssetRows as a second Markdown table, appended
+// after the module-dependency table (AC25).
+func RenderAssets(rows []AssetRow) string {
+	var b strings.Builder
+	b.WriteString("\n## Redistributed non-code assets\n\n")
+	b.WriteString("AD-26, verbatim: \"Redistributed non-code assets keep their own terms and\n")
+	b.WriteString("their notices.\" Every committed font binary — fixture or shipped — appears\n")
+	b.WriteString("below with the licence and copyright line its accompanying LICENSE*/NOTICE*\n")
+	b.WriteString("files carry (AC25, D-1.5.6). A font binary committed without both files is a\n")
+	b.WriteString("build failure (`ResolveAssets`), not a silent gap.\n\n")
+	if len(rows) == 0 {
+		b.WriteString("_No redistributed non-code assets are committed at this commit._\n")
+		return b.String()
+	}
+	b.WriteString("| Path | Licence | Copyright | Serves |\n")
+	b.WriteString("|---|---|---|---|\n")
+	for _, r := range rows {
+		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", r.Path, r.Licence, r.Copyright, r.Serves)
+	}
+	return b.String()
 }
 
 // Render formats rows as the committed Markdown manifest (AC19: "a

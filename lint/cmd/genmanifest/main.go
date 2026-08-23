@@ -1,6 +1,9 @@
 // Command genmanifest regenerates lint/MANIFEST.md (AC19) from the live
-// module graphs of all three of the repo's Go modules. Run it from the
-// repo root: `go run ./lint/cmd/genmanifest`. TestManifestUpToDate in
+// module graphs of all three of the repo's Go modules. Run it from
+// inside lint/ (`lint` has its own go.mod; the repo root does not):
+// `cd lint && go run ./cmd/genmanifest` (Finding 16, QA review — the
+// previously-documented `go run ./lint/cmd/genmanifest` from the repo
+// root fails with "cannot find main module"). TestManifestUpToDate in
 // lint/internal/manifest asserts the committed file matches what this
 // command would produce, so a new dependency that changes the graph
 // must be regenerated and committed, not silently drift.
@@ -25,8 +28,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "genmanifest:", err)
 		os.Exit(1)
 	}
+	assetRows, err := manifest.ResolveAssets(repoRoot)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "genmanifest:", err)
+		os.Exit(1)
+	}
 	out := filepath.Join(repoRoot, "lint", "MANIFEST.md")
-	if err := os.WriteFile(out, []byte(manifest.Render(rows)), 0o644); err != nil {
+	content := manifest.Render(rows) + manifest.RenderAssets(assetRows)
+	if err := os.WriteFile(out, []byte(content), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, "genmanifest:", err)
 		os.Exit(1)
 	}

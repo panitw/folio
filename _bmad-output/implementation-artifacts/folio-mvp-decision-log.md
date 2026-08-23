@@ -2663,3 +2663,396 @@ After:
 
 **How we'd know it was wrong.** A `folio-format.md` clause quoted in this log that does not match the
 file at the head of this story's commit, byte for byte.
+
+## Epic 1 decisions — Story 1.5 (ruled before the story file was written)
+
+*First story under D-1.4.15's mechanism tagging: every named mechanism is marked
+`(mechanism: binding)` or `(mechanism: illustrative)`.*
+
+### D-1.5.1 — Replace the one-module count with an allowlist, plus an independent PDF-writer denylist
+**Orchestrator decision**, on the lead's ruling. Closes grounding-refresh **divergence (2)**, parked
+since the lead's first grounding pass.
+
+**Verdict.** Two assertions in `gomod_test.go`, not one.
+1. **Allowlist (primary).** `go list -m all` must equal **exactly** the expected set — after this
+   story `{github.com/panitw/folio/folio-go, github.com/boxesandglue/textshape}` — asserted by name,
+   with the difference printed both ways on failure. *(mechanism: binding)*
+2. **PDF-writer denylist (independent backstop).** No module path matching a known Go PDF writer
+   (`signintech/gopdf`, `boxesandglue/baseline-pdf`, `jung-kurt/gofpdf`, `pdfcpu/pdfcpu`,
+   `unidoc/unipdf`, `phpdave11/gofpdi`) at any depth. *(mechanism: binding for the property;
+   illustrative for the list, which must be extendable)*
+
+**This corrects the lead's own grounding note**, which said "a denylist of PDF writers plus the
+licence check". **A denylist alone is weaker than the count it replaces:** a PDF writer nobody listed
+passes silently, and lists rot. The count assertion's *spirit* was right — anything new must be a
+conscious act — and only its *form* was brittle.
+
+**Why an allowlist keeps the property the count had.** A developer meeting a red allowlist adds one
+line naming the module they just added, which is the correct act and a reviewable one-line diff that
+puts a human in the loop for every new dependency. That is what makes deletion unattractive — unlike
+an assertion whose entire content is `!= 1`, which invites deletion when it goes red. The denylist
+then catches what the allowlist cannot: someone updating the allowlist carelessly to unblock
+themselves. **Two independent checks with different failure modes** — the construction that has now
+held four times (D-1.4.10's independent printer, D-1.4.14's shared table, D-1.4.15's set equality,
+this).
+
+**Split with `lint/`.** The graph assertion **stays in `gomod_test.go`** — it is an **AD-6** property
+(no third-party PDF writer), cheap, and must fail in the fast per-story gate. The **AD-26 licence**
+half stays in `lint/`. Different invariants, different homes; do not merge them.
+
+**How we'd know it was wrong.** The allowlist being edited in the same commit that adds a dependency
+without the dependency being named in the commit message — i.e. the human-in-the-loop property
+lapsing into a formality.
+
+### D-1.5.2 — Validate `unitsPerEm` at the trust boundary in `internal/fontset`; `ScaleRound` gets no second variant
+**Orchestrator decision**, on the lead's ruling. Closes grounding-refresh **divergence (3)**.
+
+**Verdict.** `internal/fontset` validates `unitsPerEm` **before** any value derived from a
+caller-supplied font reaches `geom.ScaleRound`. Valid range **16–16384** (the OpenType
+`head.unitsPerEm` range); anything outside — including `0` — is a located load error naming the font
+and the value. At Story 1.5 that is a plain Go error (`internal/diag` is Story 3.6, same pattern as
+Story 1.4). *(mechanism: binding)*
+
+**No non-panicking `ScaleRound` variant.** AD-2 says *"Font scaling is **one** exported function with
+one documented rounding mode"*. A second entry point would be two scaling functions, and the two
+would drift in exactly the way AD-2 exists to prevent.
+
+**In simple terms.** The panics are correct as programmer-error guards; the fix is **layering, not a
+second door**. Untrusted bytes are validated at the boundary, after which the internal invariant
+genuinely holds — so the spine's *"nothing in `internal/` panics on malformed input"* is satisfied,
+because by the time bytes reach `ScaleRound` they are no longer malformed.
+
+**The guardrail that makes this by-construction rather than by-discipline** *(mechanism: binding)*:
+**the parsed-font type must not expose a raw, unvalidated `unitsPerEm`** that a caller can hand to
+`ScaleRound`. Validation happens in the constructor and the validated value is the **only** one
+reachable. A field that can be read before it is checked will eventually be read before it is checked.
+
+**Retained fixture, both polarities:** a font with `unitsPerEm = 0` produces a located error and
+**not a panic**; a valid font scales correctly; plus a negative case at `unitsPerEm > 16384`.
+
+### D-1.5.3 — `textshape` clears AD-26, measured; and it is the story that proves the licence check works
+**Orchestrator decision**, on the lead's ruling. **Verified independently by the orchestrator.**
+
+**Verdict.** Cleared. Measured at `v0.0.15`, twice, by both the lead and the orchestrator:
+
+| Check | Result |
+|---|---|
+| Licence | **MIT** (`LICENSE`, line 1) |
+| `go list -m all` in a scratch module | **the module alone** — zero transitive dependencies |
+| `"time"` imported in non-test code | **none** |
+
+AD-26's "at any depth" therefore has **no depth to check**, and D-1.3.9's copyleft escalation clause
+does not fire.
+
+**Still required in this story** *(mechanism: binding)*: the `lint/` licence check runs over
+`folio-go`'s now-**non-empty** graph, and the manifest records `textshape` as the **first shipped**
+dependency under D-1.3.9's shipped-vs-build-time labelling. **A check that has only ever run against
+an empty graph has never been exercised** — this is the story that proves it works, and the proof
+belongs in the Delivery Log with the actual manifest output.
+
+**A false alarm, pre-empted.** `textshape`'s own `go.mod` declares `go 1.23.0` and **`toolchain
+go1.24.0`**. Neither affects us: per D-1.1.a's addendum a `toolchain` directive binds **only the main
+module**, and its `go 1.23.0` is below our `1.25.0` floor so it imposes nothing. Expect someone to
+raise it as a toolchain-pin violation; **it is not one.**
+
+**On entering the graph before Story 2.3 justifies it** — anticipated at first grounding and fine:
+`subset/` is what 1.5 needs, `ot/` shaping is what 2.3 needs. Same module, two stories, one licence
+clearance.
+
+**Standing rule restated:** had it carried copyleft at any depth, that is an **owner escalation**
+under D-1.3.9 — not a lead call, not a developer workaround.
+
+### D-1.5.4 — The two-run timestamp comparison is vacuous by construction; assert the head table's bytes instead
+**Orchestrator decision**, on the lead's ruling. The sharpest finding in this bundle.
+
+**Verdict — reject two-run comparison as the proof of "no wall-clock timestamp".** *(mechanism:
+binding — the rejection)*
+
+**Why it is vacuous, not merely weak.** OpenType `head.created` and `head.modified` are
+**LONGDATETIME: seconds since 1904**. **Two renders in the same second produce identical bytes even
+if the subsetter stamps the clock on every call.** A same-second comparison *cannot fail* — so it
+would report "no timestamp" for a subsetter that timestamps every single time. That is the dominant
+defect class (D-000.9) appearing inside the test written to exclude it, and it is the tenth instance
+recorded in this run.
+
+**Required proof — byte-level and structural** *(mechanism: binding for the property; illustrative
+for the offsets)*: assert that in the embedded `FontFile2` stream the head table's `created` (offset
+20) and `modified` (offset 28) are **derived from the source font** — equal to the source's values,
+or zero — and never a value near the current time. A **single-run** assertion that fails immediately
+if a clock is ever introduced, including by a future dependency upgrade.
+
+**Supporting evidence, measured, but deliberately not a test:** `textshape` imports no `time` in
+non-test code, and `ot/metrics.go:27–28,59–60` only **reads** those fields as `int64` from offsets 20
+and 28. Record that in the Delivery Log as measured provenance. **Do not turn it into an assertion
+over the module cache** — that would bind the test to `GOMODCACHE` layout, whereas the behavioural
+assertion survives an upgrade and a source scan of a pinned version does not.
+
+**Subset tag and scope** *(mechanism: binding)*:
+- Six letters `A`–`Z` from a hash of the **sorted** glyph-id set (AD-7). **Sorting happens before
+  hashing**, and the glyph set will come from a map — so **Story 1.3's `ScanMapRange` guard is
+  load-bearing here** and must not be worked around.
+- Pass a **sorted, deduplicated** slice into `subset.Subset` / `CreatePlan`, so determinism is ours
+  **by construction** rather than an assumption about the library's internal ordering.
+- **One subset per font per document**, over the union of glyphs (AD-8, §Consistency Conventions).
+  The subsetting call happens **once, after all glyphs are collected** — never per page, never per
+  element. Asserted **behaviourally**: a two-page document using the same face embeds exactly one
+  `FontFile2`.
+- **An API-shape trap:** `subset.Subset(font *ot.Font, codepoints []rune)` takes **codepoints**,
+  while AD-7's tag is over **glyph ids**. Those are different sets and the mapping is a cmap lookup.
+  **AD-7 says glyph ids**, so the tag derivation needs the resolved glyph ids, not the input runes.
+
+### D-1.5.5 — `Render(t *Template, f FontSet)`; parameters take their final positions; the pinning test dies here
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict — signature after this story:** `func Render(t *Template, f FontSet) ([]byte, error)`.
+
+**The rule that settles argument order for every remaining story** *(mechanism: binding)*: parameters
+are always in the **final target order**, and each story **inserts** its parameter into its final
+position rather than appending. Target is `Render(t, d, p, f)`, so: **1.5 → `Render(t, f)`; 1.6 →
+`Render(t, d, f)`; 1.7 → `Render(t, d, p, f)`.** No call site is ever reordered, only extended.
+
+**The `Render(validTemplate) == Render(nil)` pinning test dies at 1.5, and its death is the AC being
+met.** Story 1.5's ACs require *"a document using a subset of a Latin face"* and *"the text renders
+correctly"*. Text has to come from somewhere, and **the template is the only source of text in the
+system** — Story 1.6 adds *data binding*, not text. So `t` starts mattering here. The test was built
+in Story 1.4 to fail and force its own deletion (D-1.4.16); **this is the story that does it, and the
+finisher deletes it rather than weakening it.** First self-retiring assertion in this run to reach its
+expiry as designed.
+
+**A new provisional that needs the same treatment** *(mechanism: illustrative)*: AD-24 makes element
+`x`/`y` **band-relative**, and bands are placed by `internal/layout`, which does not exist until
+Epic 2 (composition is Story 2.5). So 1.5 must adopt a provisional origin convention to place text at
+all. Whatever it picks must be documented as provisional **and pinned by an assertion that fails when
+band composition arrives** — otherwise the provisional convention quietly becomes the real one.
+
+### D-1.5.6 — `folio-go/fonts/` is a package as well as a directory; the shipped faces are Story 2.2's
+**Orchestrator decision**, on the lead's ruling. **The apparent conflict is not one.**
+
+**Verdict.** AD-8's Rule answers it directly: *"no package under `internal/` embeds font data… The
+repository holds font binaries in exactly one place, `folio-go/fonts/`; **the `folio/fonts` package**
+wraps them with `go:embed` for native callers."* So `folio-go/fonts/` is simultaneously the binary
+directory **and** a Go package, sitting at the **module root, not under `internal/`**. Both rules hold
+at once: the embed lives outside `internal/`, and `go:embed` reaches it because it is inside the
+module. The `FontSet` **type** is declared in package `folio` (spine §Source tree: *"`fontset.go` —
+FontSet as a public input"*); `internal/fontset` does resolution and subsetting against the value it
+is handed. `internal/` never embeds and never queries the host.
+
+**Scope call — Story 1.5 does NOT ship the production faces** *(mechanism: binding)*. Story 2.2 is
+"The shipped font set and its fallback chain"; that is where Noto Sans / Thai / SC land, and it is
+where the unresolved **AD-12 `ja` coverage question** comes due — flagged at grounding as potentially
+an **owner** call, because adding a face breaks Story 5.4's fixed "CJK 7.4 MB" payload numbers and the
+~9 MB budget. Pulling several megabytes of binaries **and that open question** into 1.5 would be scope
+creep in the wrong direction. **1.5 builds the `FontSet` type, the resolution seam and the subsetting
+path, and tests against one small Latin test face.**
+
+**AD-26 consequence for that test face** *(mechanism: binding)*: any font binary committed — fixture
+or shipped — travels with its **licence text and copyright line**. AD-26 is explicit: *"Redistributed
+non-code assets keep their own terms and their notices."* An OFL face in `fixtures/` needs its OFL
+text beside it, and the `lint/` manifest should account for it. **This is the first non-code
+redistributed asset in the repo and it sets the pattern for Story 2.2.**
+
+### D-1.5.7 — The sorted-input mechanism is withdrawn as inert; determinism is proved by repeat- and permutation-invariance
+**Orchestrator decision**, on the lead's ruling. **Withdraws a `(mechanism: binding)` clause of
+D-1.5.4.** Found by the Story 1.5 creator by compiled probe.
+
+**Verdict.** D-1.5.4's *"pass a sorted, deduplicated slice into `subset.Subset`/`CreatePlan`, so
+determinism is ours by construction"* is **withdrawn**. Two proofs replace it:
+
+1. **Repeat-invariance within a single process** *(mechanism: binding)*. Call the subsetting path
+   **N ≥ 16 times in one process** on the same glyph set; assert every output is byte-identical to
+   the first.
+2. **Permutation-invariance** *(mechanism: binding)*. Distinct input orders → identical bytes.
+   **Only meaningful if we do NOT sort first.**
+
+**Why the original was worse than vacuous — it was inert.** `Input.glyphs` is `map[GlyphID]bool`
+(`input.go:12`) and `AddGlyphs` writes into it, so **input order is destroyed at the door**. Measured
+by the creator: ascending vs reversed runes → **byte-identical, 6860 bytes both**;
+`AddGlyphs(70,5,40,5)` vs `AddGlyphs(5,40,70)` → **byte-identical, 2684 bytes both**. Determinism
+comes entirely from `createCompactMapping`'s `sort.Slice` at `plan.go:334–350` — **inside the
+dependency, where `ScanMapRange` cannot see**. Verified in source by the orchestrator.
+
+**The part most worth recording, in the lead's own words.** Sorting our input **makes the permutation
+test vacuous**, because permuted-then-sorted inputs are *the same input*. The "by construction" move
+**removed the ability to observe the property it claimed to guarantee.** New failure mode to watch:
+***a defensive normalisation upstream of a check can delete the check's discriminating power.***
+
+**Why proof (1) closes the gap that looked unbuildable.** Go randomises map iteration order **per
+`range` statement**, not once per process — the lead measured **8 distinct iteration orders** from
+ranging an 8-element map 200 times in one process. So if a future `textshape` upgrade removes its
+internal `sort.Slice`, this test reddens immediately and with overwhelming probability (coincidence
+over 8 glyphs is ~1/8!, driven to nothing by N repeats). It needs no knowledge of the dependency's
+internals, survives upgrades, and requires neither pinning nor vendoring. **Version pin plus
+permutation was not the honest limit.**
+
+**The precision the original ruling was missing — two call sites, opposite answers:**
+- **Subset input → do NOT sort.** Inert (the map eats it) and it makes proof (2) vacuous.
+- **Tag derivation → MUST sort.** AD-7 requires a hash over the *sorted* glyph-id set; here the
+  ordering is **ours**, reaches an output byte, and comes from a map range — so **`ScanMapRange` is
+  load-bearing at this site** and must not be worked around.
+
+Same word, two sites; the original ruling collapsed them.
+
+### D-1.5.8 — The subset tag hashes the closure set in SOURCE-font numbering, sorted ascending
+**Orchestrator decision**, on the lead's ruling. Answers the creator's DN-2.
+
+**Verdict** *(mechanism: binding)*. The tag derives from the glyphs **actually retained in the
+embedded program**, expressed in **source-font glyph numbering** — `Plan.GlyphSet()`, whose doc
+comment reads *"returns the set of **old** glyph IDs to retain"* (verified at `subset/plan.go:368`) —
+**sorted ascending**. Not the requested set, and **emphatically not the output numbering**.
+
+**Measured.** 3 requested glyph ids → `Plan.GlyphSet()` = **8**, `NumOutputGlyphs` = **8**
+(`.notdef`, composite components, GSUB closure). Requested ≠ embedded, and the two readings yield
+different tags, different PDF bytes, and a different golden hash — so this had to be ruled **before**
+the fixture is recorded, since a golden hash is permanent by design.
+
+**Why not the requested set.** ISO 32000-1 §9.6.4's tag exists so a consumer can tell two subsets of
+the same base font apart. If it is a function of what we *asked for*, two different embedded programs
+— same request, different closure after a `textshape` upgrade — carry **the same tag while differing
+in content**. The tag would lie in the one job it has. AD-22 already makes any subsetting change a
+versioned breaking change, so a tag that moves on a subsetter upgrade is a **correct signal**, not a
+defect.
+
+**Why not the output numbering — the trap, named explicitly because it is the most natural-sounding
+reading.** Verified in source: `createCompactMapping` sorts retained old GIDs ascending and does
+`for newGID, oldGID := range gids`, assigning `newGID = index`. **So the output glyph-id set is
+always `{0, 1, … n-1}`.** Hashing it produces a tag that is **a function of the glyph count alone** —
+two completely different 8-glyph subsets would receive **identical tags**. "The glyph ids in the
+embedded font" sounds like the obvious reading and is catastrophic.
+
+**The retained fixture that kills that reading permanently** *(mechanism: binding)*: **two documents
+whose glyph sets are different but the same size must produce different tags.** That single assertion
+is red under the output-numbering reading and green under the ruled one, and it is not vacuous.
+
+*(mechanism: illustrative)* for the encoding — a digest over the sorted big-endian GID sequence
+mapped into six `A`–`Z` letters. What **binds** is: closure set, source numbering, sorted, and the
+discrimination property.
+
+### D-1.5.9 — `minimal-rect` is rebound to the seam it actually pins; a new template-driven fixture ships beside it
+**Orchestrator decision**, on the lead's ruling. Answers the creator's F-8.
+
+**Verdict** *(mechanism: binding)*. `fixtures/minimal-rect/` is **retained unchanged** — hash, bytes,
+README and "do not regenerate" all stand — and is **reclassified** as pinning the **fontless
+PDF-emission path in `internal/pdf`**: AD-3 number emission, xref arithmetic, content-derived `/ID`.
+Its test calls **`pdf.Serialize()` directly** rather than going through `Render`. **`Render` may then
+require a non-nil template**, returning a located error on nil. Story 1.5 adds a **new**
+template-driven fixture beside it, with text and an embedded subset.
+
+**Why option (a) — authoring a `.folio` that reproduces the existing 547 bytes — is out on the
+merits, not on effort.** Story 1.1's bytes contain **no colour operator**; verified by the
+orchestrator, the content stream is exactly `72.5 100.25 200.125 50 re`. That was deliberate, relying
+on PDF's default black fill because *"adding `0 g` would be a number that is not a `geom.Length`"*.
+But a template-authored rectangle draws from `style.background`, and a background of `#000000` goes
+through D-1.1.b's colour rule — `c*1000/255`, round-half-to-even, decimal route — and **emits a
+colour operator**. So any `.folio` drawing that rectangle produces different bytes, unless the
+serializer grows a "background is black → emit nothing" special case, which would be an appalling
+thing to own forever.
+
+**Why (c) — re-recording — is out.** It discards the only artifact in the repository verified
+byte-identical on all four targets, and vacuity guard 4 makes a hash change a defect until proven an
+intended versioned change.
+
+**Why the bind dissolves rather than being traded away.** It existed **only because the fixture was
+bound to the public API**, which D-1.1.c designed to change every story. The fixture's actual subject
+was never the API — `Render(nil)` was a one-line passthrough to `pdf.Serialize()`. Rebinding it to
+the function it truly pins removes the conflict entirely, and incidentally improves the public API:
+an entry point whose documented behaviour is "ignores its argument" becomes one that rejects nil.
+
+**Consequence that must be handled in the same breath** *(mechanism: binding)*. If the subprocess
+seam switches to the font-embedding document, `minimal-rect` **loses its four-target verification** —
+the property that makes it the most valuable artifact in the repo. So **the seam renders both**:
+`FOLIO_SUBPROCESS_RENDER=1` keeps the fontless path, a second selector covers the template+font
+document, and **the matrix runs both**. Cheap, and it preserves cross-target coverage of the baseline
+while adding it for fonts.
+
+### D-1.5.10 — Three confirmations: the fontset seam, the head-table assertion, and the subprocess guard
+**Orchestrator decision**, on the lead's ruling.
+
+**The `internal/fontset` seam — within D-1.5.2's intent, adopted as its binding form**
+*(mechanism: binding)*. `ot.Head.UnitsPerEm` is an exported unchecked `uint16` and `Plan.Source()`
+hands back the raw font, so D-1.5.2's "must not expose a raw, unvalidated `unitsPerEm`" can only bind
+**our** wrapper. Therefore: **do not leak `*ot.Font`, `*ot.Head` or `*subset.Plan` out of
+`internal/fontset`.** A vendor type we cannot constrain must not become part of a seam we are relying
+on to be constrained.
+
+**The head-table "never near the current time" half is withdrawn — it was not merely weak, it was
+illegal.** Reading "near the current time" requires reading the clock, and **D-1.3.1 bans `time` in
+`_test.go` files under `internal/`**. It was unimplementable where it needed to run. **The binding
+assertion is equality only** *(mechanism: binding)*: the embedded head table's `created`/`modified`
+**equal the source face's values exactly**, compared byte-for-byte against the source font. No clock,
+no dependence on how old the committed face is, and it fails the instant anything starts stamping.
+D-1.5.4's original *"equal to source, **or zero**"* is also tightened — `subsetHead` does `copy` over
+the whole 54-byte table (verified: source `created=3304067374 modified=3573633780`, subset
+identical), so **equality is what actually happens**, and leaving "or zero" as an accepted
+alternative would mask a future change.
+
+**The subprocess vacuity guard — endorsed** *(mechanism: binding)*. Assert the child output contains
+a `FontFile2` **before** comparing. Without it, AC10 **and** AC15's four-target matrix pass on two
+identical **fontless** rectangles — "all clear indistinguishable from could-not-look" wearing a font
+story's clothes. **The matrix override for this story is only meaningful if the subprocess path
+actually embeds a font.**
+
+### D-1.5.10 (corrected) — the "never near the current time" withdrawal's STATED REASON was false; the conclusion survives on an independent argument
+**Finisher correction**, on the code-reviewer's Finding 10. The above entry's second paragraph
+asserts the head-timestamp test "must live" under `internal/`, where D-1.3.1's `time` ban applies.
+**Verified false**: the shipped test, `TestEmbeddedHeadTimestampsEqualSourceExactly`, ships at
+`folio-go/render_test.go` — package `folio`, the **module root**, not under `internal/`. D-1.3.1's
+ban never applied to it, and never constrained where this test could live.
+
+**The withdrawal's CONCLUSION still stands, on the independent argument that was always the
+stronger one and does not depend on the false premise**: the face-age trap. Roboto's committed
+`head.modified` measures `≈3.57e9` (LONGDATETIME, seconds since 1904) against `≈3.87e9` for the
+present (2026-08-23) — a fixed, aging gap that only widens. Asserting "not near the current time"
+against a value that will **never** be near the current time is not a weak assertion, it is a
+**meaningless** one: it cannot discriminate a subsetter that never timestamps from one that does,
+because the committed face is already permanently far from "now." The equality-only assertion this
+story shipped is strictly stronger regardless of which argument withdraws the alternative, so no
+code changes — only the withdrawal's stated REASON, which was wrong.
+
+**Also amend AC11a's second bullet in the story file** (*"never a value near the current time is
+withdrawn ... which is where this test must live"*): drop the false "must live under `internal/`"
+clause; the withdrawal rests on the face-age argument alone.
+
+**How this was found.** The code-reviewer, dispositioning the ruling table independently rather
+than trusting the developer's `applied-as-stated` line, checked WHERE the test actually ships
+before accepting the stated reason for why an alternative was ruled out — the same discipline
+D-000.9 asks of every check ("what would this have printed if the reasoning were simply asserted
+without verification?").
+
+### D-000.12 — Never verify bytes or hashes through the shell wrapper's pipes; use `rtk proxy` and a file
+**Orchestrator decision.** **Program-wide standing rule, effective immediately.** Found by the Story
+1.5 reviewer; reproduced by the orchestrator.
+
+**Verdict.** Any verification of **binary content or a hash** must run through `rtk proxy` **writing
+to a file**, never piped through the wrapped shell. Applies to every agent in this pipeline and to
+the orchestrator.
+
+**Measured, on the repository's own golden fixture:**
+
+```
+git show HEAD:fixtures/minimal-rect/expected.pdf | shasum -a 256   →  4d2a90cc…8466   WRONG
+rtk proxy git show HEAD:… > /tmp/gs.pdf ; shasum -a 256 /tmp/gs.pdf →  0f925e1b…4f7c   correct
+shasum -a 256 fixtures/minimal-rect/expected.pdf                    →  0f925e1b…4f7c   correct
+fixtures/minimal-rect/expected.json "sha256"                        →  0f925e1b…4f7c
+```
+
+**Why this is dangerous rather than merely annoying.** The wrong hash **reads exactly like the
+project's worst blocker**: "the byte-identity golden fixture has changed." D-1.5.9 makes
+`minimal-rect` untouchable and vacuity guard 4 makes a hash change a defect until proven an intended
+versioned change — so a false positive here would trigger a bisect, an owner escalation under
+D-1.2.2's divergence rule, and quite possibly a "fix" to an artifact that was never wrong. The
+reviewer hit it, recognised it as a tooling artifact rather than a defect, and verified by another
+route. **A less careful reader would have filed the blocker.**
+
+**This is the second false signal from the same wrapper.** D-000.11's discovery came from it printing
+`Go build: Success` over a non-zero exit — masking a real break. Now it corrupts binary through
+pipes, inventing a break that does not exist. **It fails in both directions**, which is the worst
+property a measuring instrument can have.
+
+**Consequences.** Every developer, reviewer and finisher prompt already carries "use `rtk proxy` or
+otherwise confirm raw exit codes" (D-000.11); it now also carries **"never pipe binary or hash
+verification through the wrapper — write to a file and hash the file."** When any agent reports a
+**hash mismatch on a committed fixture**, the orchestrator re-verifies by the file route **before**
+treating it as a divergence — a wrong hash is a tooling fault until proven otherwise.
+
+**How we'd know it was wrong.** A hash-mismatch report that disappears when re-measured by the file
+route — which is now the first thing to try, not the last.

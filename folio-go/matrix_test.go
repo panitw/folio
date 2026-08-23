@@ -361,6 +361,96 @@ func toolchainWitness(t *testing.T, target matrixTarget, binPath string) string 
 	return strings.TrimSpace(string(out))
 }
 
+// fatalReporter is the minimal *testing.T surface assertFixturesShareToolchain
+// needs. *testing.T satisfies it directly; TestAssertFixturesShareToolchainRedProof's
+// red-proof below uses a non-testing.T fake instead of a real subtest,
+// because a genuinely-failing t.Run subtest always marks its PARENT test
+// failed too (a stdlib testing property, not something a subtest's own
+// assertions can suppress) — which would make "prove this fails under a
+// mismatch" indistinguishable from "this test itself is broken".
+type fatalReporter interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
+
+// assertFixturesShareToolchain is Finding 15's fix (QA review): before
+// this fix, assertToolchainWitness was called ONLY against
+// matrixDocuments[0]'s fixture (minimal-rect) — fixtures/font-text/'s
+// own recorded goToolchain was loaded but never compared against
+// anything. Both currently record go1.26.0, so nothing diverged in
+// practice, but the font fixture's toolchain field was decorative: if
+// font-text were ever re-recorded under a different toolchain, the
+// matrix would silently accept a mismatched provenance claim for one of
+// the two documents — the exact AD-22/C6 property the toolchain gate
+// exists to enforce, unenforced for font-text. This asserts every
+// document's fixture records the SAME goToolchain, so a divergence
+// between the two fixtures' recorded toolchains fails loudly, before
+// assertToolchainWitness runs against a single one of them.
+func assertFixturesShareToolchain(t fatalReporter, fixtures map[string]expectedFixture) {
+	t.Helper()
+	if len(matrixDocuments) == 0 {
+		return
+	}
+	ref := fixtures[matrixDocuments[0].label]
+	for _, doc := range matrixDocuments[1:] {
+		f := fixtures[doc.label]
+		if f.GoToolchain != ref.GoToolchain {
+			t.Fatalf(
+				"fixture toolchain mismatch: %q records goToolchain=%q but %q records goToolchain=%q "+
+					"(AD-22, counter-metric C6, Finding 15) — every document's fixture must record the "+
+					"same toolchain, or the matrix's single-fixture toolchain gate silently stops "+
+					"covering the others",
+				matrixDocuments[0].label, ref.GoToolchain, doc.label, f.GoToolchain,
+			)
+		}
+	}
+}
+
+// fakeFatalReporter is a fatalReporter that RECORDS a Fatalf call
+// instead of failing the current test — see fatalReporter's doc comment
+// for why a real t.Run subtest cannot be used here.
+type fakeFatalReporter struct {
+	called bool
+	msg    string
+}
+
+func (f *fakeFatalReporter) Helper() {}
+func (f *fakeFatalReporter) Fatalf(format string, args ...any) {
+	f.called = true
+	f.msg = fmt.Sprintf(format, args...)
+}
+
+// TestAssertFixturesShareToolchainRedProof red-proofs Finding 15's fix
+// directly, without needing a full Docker/Node matrix run: it swaps
+// matrixDocuments for a two-entry scratch list (restored via defer) and
+// confirms assertFixturesShareToolchain does NOT report a failure for
+// matching toolchains and DOES for mismatched ones.
+func TestAssertFixturesShareToolchainRedProof(t *testing.T) {
+	orig := matrixDocuments
+	matrixDocuments = []matrixDocument{{label: "a"}, {label: "b"}}
+	defer func() { matrixDocuments = orig }()
+
+	matching := map[string]expectedFixture{
+		"a": {GoToolchain: "go1.26.0"},
+		"b": {GoToolchain: "go1.26.0"},
+	}
+	rep := &fakeFatalReporter{}
+	assertFixturesShareToolchain(rep, matching)
+	if rep.called {
+		t.Fatalf("matching-toolchain fixtures must not fail assertFixturesShareToolchain, got: %s", rep.msg)
+	}
+
+	mismatched := map[string]expectedFixture{
+		"a": {GoToolchain: "go1.26.0"},
+		"b": {GoToolchain: "go1.25.0"},
+	}
+	rep = &fakeFatalReporter{}
+	assertFixturesShareToolchain(rep, mismatched)
+	if !rep.called {
+		t.Fatal("mismatched-toolchain fixtures should have failed assertFixturesShareToolchain (Finding 15 red-proof)")
+	}
+}
+
 // assertToolchainWitness is AC3's per-target toolchain gate: it requires
 // binPath to report exactly matrixToolchain AND to equal the fixture's
 // recorded goToolchain, before any hash is compared, with no skip path.
@@ -396,10 +486,20 @@ func assertToolchainWitness(t *testing.T, target matrixTarget, binPath string, f
 }
 
 // captureRender runs binPath with FOLIO_SUBPROCESS_RENDER=1 (the seam
-// Story 1.1 already put in TestMain) and returns the rendered bytes.
+// Story 1.1 already put in TestMain) and returns the rendered bytes —
+// the FONTLESS document (AC10a: this selector keeps rendering
+// fixtures/minimal-rect/'s document, unchanged).
 func captureRender(t *testing.T, target matrixTarget, binPath string) []byte {
 	t.Helper()
 	return runOnTarget(t, target, binPath, map[string]string{subprocessEnvVar: "1"})
+}
+
+// captureFontRender runs binPath with FOLIO_SUBPROCESS_RENDER_FONT=1 —
+// AC10a's SECOND selector, rendering the template+font document
+// (fixtures/font-text/) through the public Render path.
+func captureFontRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessFontEnvVar: "1"})
 }
 
 // checkFixtureShape, loadExpectedFixture and TestFixtureShapeCheckRedProof
@@ -423,56 +523,126 @@ func renderTableRows(results []renderLegResult) []string {
 	return rows
 }
 
+// matrixDocument names one of AC15's two documents this story's matrix
+// runs: the fontless fixture (unchanged, AC10a) and the new template+font
+// fixture (AC10a's second selector). requireFontFile2 is AC10b's binding
+// vacuity guard, applied per document — only the font document must
+// contain one; asserting it on the fontless document would be wrong, not
+// merely redundant. slug is a filename-safe identifier (Finding 8, QA
+// review) used by BOTH TestTargetRenderHash and .github/workflows/matrix.yml
+// to name one hash artifact PER TARGET PER DOCUMENT — before this fix,
+// CI's per-target jobs published only the fontless hash
+// (TestTargetRenderHash captured only minimal-rect), so a textshape
+// upgrade that broke font cross-target byte-identity would pass CI even
+// though TestCrossTargetByteIdentity (the local, matrix-tagged gate)
+// would catch it.
+type matrixDocument struct {
+	label            string
+	slug             string
+	capture          func(t *testing.T, target matrixTarget, binPath string) []byte
+	fixtureRelPath   []string
+	requireFontFile2 bool
+}
+
+var matrixDocuments = []matrixDocument{
+	{
+		label:            "minimal-rect (fontless)",
+		slug:             "minimal-rect",
+		capture:          captureRender,
+		fixtureRelPath:   []string{"fixtures", "minimal-rect", "expected.json"},
+		requireFontFile2: false,
+	},
+	{
+		label:            "font-text (template+font)",
+		slug:             "font-text",
+		capture:          captureFontRender,
+		fixtureRelPath:   []string{"fixtures", "font-text", "expected.json"},
+		requireFontFile2: true,
+	},
+}
+
 // TestCrossTargetByteIdentity is AC1's single local entry point and AC7's
-// pairwise-plus-golden check, run all in one process. For every target it
-// builds the render/toolchain test binary, runs AC3's toolchain gate
-// before anything else, captures the render, validates it structurally
-// (AC6, on every leg's output — not one "reference" render), and hashes
-// it. It then implements AC17's two-case divergence report: all four
+// pairwise-plus-golden check, run all in one process, for BOTH documents
+// AC15 requires (AC10a, the D-000.4 override for this story). For every
+// target it builds ONE render/toolchain test binary (both selectors live
+// in the same binary — TestMain, render_test.go), runs AC3's toolchain
+// gate before anything else, then captures, structurally validates
+// (AC6) and hashes EACH document's render from that same binary. It then
+// implements AC17's two-case divergence report per document: all four
 // agreeing with each other but not the golden is a legitimate versioned
 // change under AD-22 to be investigated and re-recorded by a human; any
-// pairwise disagreement is NFR1 falsified. It never re-records the
+// pairwise disagreement is NFR1 falsified. It never re-records a
 // fixture, majority-votes, or auto-selects the host's value (D-1.2.2).
 func TestCrossTargetByteIdentity(t *testing.T) {
 	assertExactlyFourMatrixTargets(t)
 
 	root := repoRootFromTest(t)
 	buildDir := matrixBuildDir(t, root)
-	fixture := loadExpectedFixture(t, filepath.Join(root, "fixtures", "minimal-rect", "expected.json"))
 
-	var results []renderLegResult
+	fixtures := make(map[string]expectedFixture, len(matrixDocuments))
+	for _, doc := range matrixDocuments {
+		fixtures[doc.label] = loadExpectedFixture(t, filepath.Join(append([]string{root}, doc.fixtureRelPath...)...))
+	}
+	assertFixturesShareToolchain(t, fixtures)
+
+	resultsByDoc := map[string][]renderLegResult{}
 	toolchainLegs := 0
 	for _, target := range matrixTargets {
 		binPath := buildRenderTestBinary(t, root, target, buildDir)
 
-		// AC3: toolchain gate runs before any hash is compared, no skip.
-		assertToolchainWitness(t, target, binPath, fixture.GoToolchain)
+		// AC3: toolchain gate runs before any hash is compared, no skip —
+		// once per target binary, shared by both documents it renders.
+		assertToolchainWitness(t, target, binPath, fixtures[matrixDocuments[0].label].GoToolchain)
 		toolchainLegs++
 
-		raw := captureRender(t, target, binPath)
-		assertWellFormedPDF(t, target.name, raw) // AC6, every leg's own output
+		for _, doc := range matrixDocuments {
+			raw := doc.capture(t, target, binPath)
+			assertWellFormedPDF(t, target.name+" ("+doc.label+")", raw) // AC6, every leg's own output
 
-		sum := sha256.Sum256(raw)
-		hash := hex.EncodeToString(sum[:])
-		results = append(results, renderLegResult{target: target, hash: hash, bytes: raw})
+			if doc.requireFontFile2 && !containsFontFile2(raw) {
+				// AC10b: the font child's output must be confirmed to
+				// actually contain a FontFile2 BEFORE any byte
+				// comparison runs — without this, AC10/AC15 can pass on
+				// two identical fontless renders and certify nothing
+				// (F-6, D-000.9).
+				t.Fatalf(
+					"target %s (%s): rendered output does not contain a FontFile2 (AC10b vacuity guard) — "+
+						"the D-000.4 matrix override for this story is only meaningful if the subprocess "+
+						"font path actually embeds a font",
+					target.name, doc.label,
+				)
+			}
+
+			sum := sha256.Sum256(raw)
+			hash := hex.EncodeToString(sum[:])
+			resultsByDoc[doc.label] = append(resultsByDoc[doc.label], renderLegResult{target: target, hash: hash, bytes: raw})
+		}
 	}
 
-	// AC11: assert exactly four render legs AND exactly four toolchain
-	// legs, each against the literal wantMatrixLegs constant, never
-	// against len(matrixTargets) — that comparison is the loop's own
-	// output against its own input and cannot fail (Blocker 1). The
-	// toolchain-leg count is tracked independently rather than inferred
-	// from the render loop, per the same finding: there was previously
-	// no toolchain-leg count at all.
+	// AC11: assert exactly four toolchain legs, against the literal
+	// wantMatrixLegs constant, never against len(matrixTargets) — that
+	// comparison is the loop's own output against its own input and
+	// cannot fail (Blocker 1).
 	if toolchainLegs != wantMatrixLegs {
 		t.Fatalf("expected exactly %d toolchain legs, got %d (AC11)", wantMatrixLegs, toolchainLegs)
 	}
-	if len(results) != wantMatrixLegs {
-		t.Fatalf("expected exactly %d render legs, got %d (AC11)", wantMatrixLegs, len(results))
+
+	for _, doc := range matrixDocuments {
+		results := resultsByDoc[doc.label]
+		if len(results) != wantMatrixLegs {
+			t.Fatalf("%s: expected exactly %d render legs, got %d (AC11)", doc.label, wantMatrixLegs, len(results))
+		}
+		checkCrossTargetResults(t, buildDir, doc.label, results, fixtures[doc.label])
 	}
+}
+
+// checkCrossTargetResults implements AC17's two-case divergence report
+// for one document's four render legs.
+func checkCrossTargetResults(t *testing.T, buildDir, docLabel string, results []renderLegResult, fixture expectedFixture) {
+	t.Helper()
 
 	table := strings.Join(renderTableRows(results), "\n")
-	t.Logf("cross-target render matrix:\n%s", table)
+	t.Logf("cross-target render matrix (%s):\n%s", docLabel, table)
 
 	allAgreeWithEachOther := true
 	for _, r := range results[1:] {
@@ -493,7 +663,7 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 		return
 	}
 
-	diagDir := filepath.Join(buildDir, "diverged")
+	diagDir := filepath.Join(buildDir, "diverged", strings.ReplaceAll(docLabel, " ", "_"))
 	if err := os.MkdirAll(diagDir, 0o755); err != nil {
 		t.Fatalf("create diagnostic dir: %v", err)
 	}
@@ -508,14 +678,14 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 		// Case 1: a legitimate versioned change under AD-22 — never
 		// auto-fixed by this harness.
 		t.Fatalf(
-			"all four targets agree with EACH OTHER but NOT with the recorded golden "+
-				"(fixtures/minimal-rect/expected.json sha256=%s):\n%s\n\n"+
+			"%s: all four targets agree with EACH OTHER but NOT with the recorded golden "+
+				"(sha256=%s):\n%s\n\n"+
 				"This is a legitimate versioned change under AD-22 (e.g. a Go toolchain bump, or a "+
 				"deliberate, documented rendering-format change) to be investigated and "+
 				"deliberately re-recorded by a human — never auto-fixed by this harness. The "+
 				"harness never re-records the fixture, majority-votes, or auto-selects the host's "+
 				"value (D-1.2.2). Diverging bytes written under %s.",
-			fixture.SHA256, table, diagDir,
+			docLabel, fixture.SHA256, table, diagDir,
 		)
 	}
 
@@ -533,13 +703,13 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 		}
 	}
 	t.Fatalf(
-		"cross-target byte identity FAILED — targets disagree with EACH OTHER, not merely with "+
+		"%s: cross-target byte identity FAILED — targets disagree with EACH OTHER, not merely with "+
 			"the golden. This falsifies NFR1, the product's core claim:\n%s\n\n%s\n\n"+
 			"Diverging bytes written under %s. This harness never re-records the fixture, "+
 			"majority-votes three targets against one, or auto-selects the host's value (D-1.2.2). "+
 			"A real cross-target divergence is an owner decision, not one this harness or a "+
 			"developer resolves by choosing a value.",
-		table, strings.Join(diagLines, "\n"), diagDir,
+		docLabel, table, strings.Join(diagLines, "\n"), diagDir,
 	)
 }
 
@@ -547,11 +717,18 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 // call (AC1, AC13): it exercises the same code path as
 // TestCrossTargetByteIdentity's per-leg body — toolchain gate,
 // structural validation, golden comparison — for exactly the one target
-// named by FOLIO_MATRIX_TARGET, and writes its hash to a file the
-// workflow can publish as a build artifact. It contains no hash logic of
-// its own beyond what TestCrossTargetByteIdentity already has; the
-// workflow's compare job re-derives the pairwise property from the
-// published hash files rather than reimplementing hashing in YAML.
+// named by FOLIO_MATRIX_TARGET, and writes ONE HASH FILE PER DOCUMENT
+// (matrixDocuments, Finding 8, QA review) the workflow can publish as
+// build artifacts. Before this fix, this test captured ONLY
+// minimal-rect (the fontless document), so CI's per-target jobs never
+// regression-tested cross-target byte-identity for font-text — the
+// document whose determinism depends on textshape's internal glyph-map
+// ordering, "the first property in the project whose determinism
+// depends on a third-party module's internal ordering" (story header).
+// It contains no hash logic of its own beyond what
+// TestCrossTargetByteIdentity already has; the workflow's compare job
+// re-derives the pairwise property from the published hash files rather
+// than reimplementing hashing in YAML.
 //
 // When FOLIO_MATRIX_TARGET is unset this test intentionally does nothing
 // (it is CI's opt-in entry point, not one of the four counted legs
@@ -578,26 +755,45 @@ func TestTargetRenderHash(t *testing.T) {
 
 	root := repoRootFromTest(t)
 	buildDir := matrixBuildDir(t, root)
-	fixture := loadExpectedFixture(t, filepath.Join(root, "fixtures", "minimal-rect", "expected.json"))
+
+	fixtures := make(map[string]expectedFixture, len(matrixDocuments))
+	for _, doc := range matrixDocuments {
+		fixtures[doc.label] = loadExpectedFixture(t, filepath.Join(append([]string{root}, doc.fixtureRelPath...)...))
+	}
+	assertFixturesShareToolchain(t, fixtures)
 
 	binPath := buildRenderTestBinary(t, root, target, buildDir)
-	assertToolchainWitness(t, target, binPath, fixture.GoToolchain)
+	assertToolchainWitness(t, target, binPath, fixtures[matrixDocuments[0].label].GoToolchain)
 
-	raw := captureRender(t, target, binPath)
-	assertWellFormedPDF(t, target.name, raw)
+	for _, doc := range matrixDocuments {
+		raw := doc.capture(t, target, binPath)
+		assertWellFormedPDF(t, target.name+" ("+doc.label+")", raw)
 
-	sum := sha256.Sum256(raw)
-	hash := hex.EncodeToString(sum[:])
+		if doc.requireFontFile2 && !containsFontFile2(raw) {
+			// AC10b's vacuity guard, same reasoning as
+			// TestCrossTargetByteIdentity: a subprocess that silently
+			// fell back to the fontless path must not be laundered into
+			// a passing per-target CI job either.
+			t.Fatalf(
+				"target %s (%s): rendered output does not contain a FontFile2 (AC10b vacuity guard)",
+				target.name, doc.label,
+			)
+		}
 
-	hashOutPath := filepath.Join(buildDir, "hash."+target.goos+"-"+target.goarch+".txt")
-	if err := os.WriteFile(hashOutPath, []byte(hash+"\n"), 0o644); err != nil {
-		t.Fatalf("write hash output for %s: %v", target.name, err)
-	}
-	t.Logf("target %s: sha256=%s (%d bytes; written to %s)", target.name, hash, len(raw), hashOutPath)
+		sum := sha256.Sum256(raw)
+		hash := hex.EncodeToString(sum[:])
 
-	if hash != fixture.SHA256 {
-		t.Fatalf("target %s: sha256 %s does not match recorded golden %s (fixtures/minimal-rect/expected.json)",
-			target.name, hash, fixture.SHA256)
+		hashOutPath := filepath.Join(buildDir, "hash."+target.goos+"-"+target.goarch+"."+doc.slug+".txt")
+		if err := os.WriteFile(hashOutPath, []byte(hash+"\n"), 0o644); err != nil {
+			t.Fatalf("write hash output for %s (%s): %v", target.name, doc.label, err)
+		}
+		t.Logf("target %s (%s): sha256=%s (%d bytes; written to %s)", target.name, doc.label, hash, len(raw), hashOutPath)
+
+		fixture := fixtures[doc.label]
+		if hash != fixture.SHA256 {
+			t.Fatalf("target %s (%s): sha256 %s does not match recorded golden %s",
+				target.name, doc.label, hash, fixture.SHA256)
+		}
 	}
 }
 

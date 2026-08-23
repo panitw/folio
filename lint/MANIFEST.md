@@ -19,6 +19,7 @@ exists to prevent.
 
 | Module | Version | Licence | Serves | Shipped / build-time-only |
 |---|---|---|---|---|
+| github.com/boxesandglue/textshape | v0.0.15 | MIT | folio-go | shipped |
 | github.com/google/go-cmp | v0.6.0 | BSD-3-Clause | lint | build-time-only |
 | github.com/yuin/goldmark | v1.4.13 | MIT | lint | build-time-only |
 | golang.org/x/mod | v0.39.0 | BSD-3-Clause | lint | build-time-only |
@@ -27,3 +28,15 @@ exists to prevent.
 | golang.org/x/sys | v0.47.0 | BSD-3-Clause | lint | build-time-only |
 | golang.org/x/telemetry | v0.0.0-20260811182544-a038080d80e5 | BSD-3-Clause | lint | build-time-only |
 | golang.org/x/tools | v0.49.0 | BSD-3-Clause | lint | build-time-only |
+
+## Redistributed non-code assets
+
+AD-26, verbatim: "Redistributed non-code assets keep their own terms and
+their notices." Every committed font binary — fixture or shipped — appears
+below with the licence and copyright line its accompanying LICENSE*/NOTICE*
+files carry (AC25, D-1.5.6). A font binary committed without both files is a
+build failure (`ResolveAssets`), not a silent gap.
+
+| Path | Licence | Copyright | Serves |
+|---|---|---|---|
+| folio-go/testdata/fonts/Roboto-Regular.ttf | Apache-2.0 | Copyright 2011 Google Inc. All Rights Reserved. | folio-go test fixture |

@@ -3,11 +3,14 @@
 package folio
 
 import (
+	"errors"
 	"os"
 
-	"github.com/panitw/folio/folio-go/internal/pdf"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
+
+// errNilTemplate is AC14b's located error for Render(nil, f).
+var errNilTemplate = errors.New("folio: Render: template is nil (a document must be loaded via LoadTemplate/ParseTemplate first)")
 
 // Template is a parsed, canonicalised `.folio` document (AC1). It is a
 // type alias for internal/template.Document — the model, parser and
@@ -38,22 +41,28 @@ func ParseTemplate(b []byte) (*Template, error) {
 	return template.ParseDocument(b)
 }
 
-// Render produces the fixed, single-page PDF 1.7 document described by
-// Story 1.1: one filled rectangle on an A4 page, with no compression, no
-// /Info dictionary, and no /CreationDate or /ModDate.
+// Render produces a PDF 1.7 document from t, embedding every font the
+// document's text elements use as a subset (AC1, D-1.5.5): the f
+// parameter is inserted into its final target position, never appended
+// — target is Render(t, d, p, f), so 1.6 adds d before f, 1.7 adds p
+// before f (D-1.5.5, verbatim: "No call site is ever reordered, only
+// extended").
 //
-// PROVISIONAL — Story 1.1 through Story 1.7. Per D-1.1.c's
-// one-parameter-per-story convergence, this story (1.4) gives Render
-// its template parameter: func Render(t *Template) ([]byte, error).
-// The parameter is accepted and NOT YET consumed — internal/layout and
-// internal/pdf do not read a Template yet (neither package exists in a
-// template-consuming form; that lands with Story 1.5's layout engine).
-// Render still emits Story 1.1's fixed rectangle regardless of what t
-// contains. Story 1.6 gives it data and runtime parameters, and
-// Story 1.7 the RenderTo(w io.Writer, …) writer form — which arrives
-// without breaking this call, per the architecture spine's Deferred
-// row. Do not build against this signature as if it were final.
-func Render(t *Template) ([]byte, error) {
-	_ = t // not yet consumed — see the PROVISIONAL note above.
-	return pdf.Serialize(), nil
+// t must be non-nil (AC14b): Story 1.1's fixture document
+// (fixtures/minimal-rect/) predates the public API accepting a
+// template at all and is pinned via internal/pdf.Serialize() directly
+// (AC14a) — a public Render documented as silently ignoring its
+// argument is worse than a located error on nil (D-1.5.9).
+//
+// PROVISIONAL: text is placed using a provisional band-relative origin
+// convention (AC28) that stands in for AD-24's real placement until
+// internal/layout exists (Story 2.5); TestProvisionalBandOriginIsPinned
+// (render_test.go) fails the day that package exists, forcing this to
+// be revisited. Story 1.6 gives Render its data parameter and Story 1.7
+// its io.Writer form (D-1.1.c).
+func Render(t *Template, f FontSet) ([]byte, error) {
+	if t == nil {
+		return nil, errNilTemplate
+	}
+	return renderDocument(t, f)
 }

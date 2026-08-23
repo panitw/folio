@@ -1,7 +1,6 @@
 package folio
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,14 +104,14 @@ func TestHigherMajorVersionIsRejected(t *testing.T) {
 	}
 }
 
-// TestRenderAcceptsATemplate is AC2: Render's signature is
-// func Render(t *Template) ([]byte, error).
+// TestRenderAcceptsATemplate is AC1: Render's signature is
+// func Render(t *Template, f FontSet) ([]byte, error).
 func TestRenderAcceptsATemplate(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(minimalTemplateJSON))
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl)
+	b, err := Render(tpl, FontSet{})
 	if err != nil {
 		t.Fatalf("Render(tpl): %v", err)
 	}
@@ -121,31 +120,12 @@ func TestRenderAcceptsATemplate(t *testing.T) {
 	}
 }
 
-// TestRenderIgnoresItsArgumentToday is D-1.4.16's required pinning test
-// (this story's finisher review, Finding 7, Major): "documentation alone
-// decays into prose nobody re-reads" — Render's PROVISIONAL doc comment
-// (folio.go) states it accepts but does not yet consume its *Template
-// argument, and this test asserts the fact rather than only documenting
-// it. Render(tpl) and Render(nil) must produce byte-identical output
-// TODAY. THIS TEST IS DESIGNED TO FAIL AND BE DELETED: the moment
-// Story 1.5 or 1.6 makes Render read its argument (fonts, layout, real
-// data), Render(tpl) and Render(nil) will legitimately differ — that
-// failure is expected and is this test's own expiry notice, not a
-// regression to chase.
-func TestRenderIgnoresItsArgumentToday(t *testing.T) {
-	tpl, err := ParseTemplate([]byte(minimalTemplateJSON))
-	if err != nil {
-		t.Fatalf("ParseTemplate: %v", err)
-	}
-	withTemplate, err := Render(tpl)
-	if err != nil {
-		t.Fatalf("Render(tpl): %v", err)
-	}
-	withNil, err := Render(nil)
-	if err != nil {
-		t.Fatalf("Render(nil): %v", err)
-	}
-	if !bytes.Equal(withTemplate, withNil) {
-		t.Fatalf("Render(tpl) and Render(nil) differ — if this is because Story 1.5/1.6 made Render consume its argument, DELETE this test rather than fix it; that is what it exists to force")
-	}
-}
+// TestRenderIgnoresItsArgumentToday (Story 1.4's D-1.4.16 pinning test,
+// folio-go/template_test.go:129-150) is DELETED here, not weakened
+// (AC27, D-1.5.5): "The test was built in Story 1.4 to fail and force
+// its own deletion (D-1.4.16); this is the story that does it... First
+// self-retiring assertion in this run to reach its expiry as designed."
+// Render(tpl) and Render(nil) can no longer even be compared: Render now
+// requires a non-nil template (AC14b) and genuinely consumes it (text
+// elements, fonts) — the property this test existed to police is exactly
+// the one this story exists to make untrue.

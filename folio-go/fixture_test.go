@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/pdf"
 )
 
 // expectedFixture mirrors fixtures/minimal-rect/expected.json.
@@ -268,12 +270,21 @@ func TestRenderMatchesGoldenFixture(t *testing.T) {
 			"(AC16: never a per-target map, array, or object — see D-1.2.2)", fixture.SHA256)
 	}
 
-	// Render and validate structurally first, unconditionally — see the
-	// ordering note above (Major 5).
-	b, err := Render(nil)
-	if err != nil {
-		t.Fatalf("Render() error: %v", err)
-	}
+	// Serialize and validate structurally first, unconditionally — see
+	// the ordering note above (Major 5).
+	//
+	// AC14a, D-1.5.9: this fixture is RETAINED UNCHANGED and
+	// RECLASSIFIED as pinning internal/pdf's fontless emission path —
+	// AD-3 number emission, xref arithmetic, content-derived /ID — not
+	// the public Render API, which D-1.1.c designed to change every
+	// story and which now requires a non-nil template (AC14b). No
+	// `.folio` template can reproduce these exact 547 bytes (F-8: the
+	// golden's content stream has no colour operator, and any
+	// template-authored rectangle's style.background emits one via
+	// D-1.1.b's colour rule) — so this test calls internal/pdf.Serialize()
+	// directly, exactly as it did before Render accepted a template at
+	// all.
+	b := pdf.Serialize()
 	assertWellFormedPDF(t, "golden fixture render", b)
 
 	// expected.pdf is kept for human diffing, but nothing previously read
@@ -320,6 +331,113 @@ func TestRenderMatchesGoldenFixture(t *testing.T) {
 				"Under AD-21/AD-22 this is a defect until proven to be an intended, "+
 				"versioned change — see fixtures/minimal-rect/README.md. Do not "+
 				"regenerate the fixture to make this pass.",
+			gotHex, fixture.SHA256,
+		)
+	}
+}
+
+// TestRenderMatchesFontTextGoldenFixture is AC14: fixtures/font-text/,
+// the NEW golden fixture beside fixtures/minimal-rect/ (AC14a: that one
+// is retained unchanged, never replaced). Same shape and same rules as
+// TestRenderMatchesGoldenFixture above, applied to the font-embedding
+// path through the public Render API instead of internal/pdf.Serialize()
+// directly.
+func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
+	root := repoRootFromTest(t)
+	fixturePath := filepath.Join(root, "fixtures", "font-text", "expected.json")
+
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	var fixture expectedFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("parse fixture JSON: %v", err)
+	}
+
+	if fixture.FolioGoVersion == "" {
+		t.Fatal("fixture is missing folioGoVersion")
+	}
+	if fixture.GoToolchain == "" {
+		t.Fatal("fixture is missing goToolchain (RP-8: this must fail before the hash comparison runs)")
+	}
+	if fixture.SHA256 == "" {
+		t.Fatal("fixture is missing sha256")
+	}
+	if !isSHA256HexString(fixture.SHA256) {
+		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
+	}
+
+	// Finding 14 (QA review): fixtures/font-text/input.folio's own README
+	// stated it is "kept in sync by hand — the fixture is not read at
+	// test time", with nothing asserting that claim. AD-21 makes the
+	// fixture the normative record of what produced the hash; if
+	// fontTestTemplateJSON were edited and input.folio were not, the
+	// fixture would document a document that does not produce its own
+	// recorded hash — a silently lying artifact. This costs nothing new:
+	// the test already reads fixtures/ (out-of-module) under -count=1.
+	inputFolioPath := filepath.Join(root, "fixtures", "font-text", "input.folio")
+	inputFolioBytes, err := os.ReadFile(inputFolioPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", inputFolioPath, err)
+	}
+	if string(inputFolioBytes) != fontTestTemplateJSON {
+		t.Fatalf(
+			"%s has drifted from folio-go/fontTestTemplateJSON (render_test.go) — the two are "+
+				"supposed to be byte-identical (kept in sync by hand, per the fixture's own "+
+				"README); update input.folio to match, or this fixture no longer documents what "+
+				"actually produced its recorded hash",
+			inputFolioPath,
+		)
+	}
+
+	tpl := parseFontTestTemplate(t)
+	b, err := Render(tpl, testFontSet())
+	if err != nil {
+		t.Fatalf("Render() error: %v", err)
+	}
+	assertWellFormedPDF(t, "font-text golden fixture render", b)
+
+	// AC10b's vacuity guard, applied here too: confirm the render
+	// actually contains a FontFile2 before comparing any hash — a
+	// fontless render matching a fontless golden would prove nothing
+	// about font byte-stability (D-000.9).
+	if !containsFontFile2(b) {
+		t.Fatal("font-text golden fixture render does not contain a FontFile2 — the fixture would certify nothing (AC10b)")
+	}
+
+	expectedPDFPath := filepath.Join(root, "fixtures", "font-text", "expected.pdf")
+	expectedPDFBytes, err := os.ReadFile(expectedPDFPath)
+	if err != nil {
+		t.Fatalf("read expected.pdf: %v", err)
+	}
+	expectedPDFSum := sha256.Sum256(expectedPDFBytes)
+	expectedPDFHex := hex.EncodeToString(expectedPDFSum[:])
+	if expectedPDFHex != fixture.SHA256 {
+		t.Fatalf(
+			"fixtures/font-text/expected.pdf's own sha256 (%s) does not match "+
+				"expected.json's recorded sha256 (%s) — the fixture's two halves have drifted apart",
+			expectedPDFHex, fixture.SHA256,
+		)
+	}
+
+	if runtime.Version() != fixture.GoToolchain {
+		t.Fatalf(
+			"toolchain mismatch: running under %s, fixture was recorded under %s. "+
+				"A Go toolchain bump is a versioned breaking change under AD-22 — "+
+				"the golden hash must be re-measured deliberately (C6).",
+			runtime.Version(), fixture.GoToolchain,
+		)
+	}
+
+	sum := sha256.Sum256(b)
+	gotHex := hex.EncodeToString(sum[:])
+	if gotHex != fixture.SHA256 {
+		t.Fatalf(
+			"golden fixture mismatch: got sha256 %s, want %s (fixtures/font-text). "+
+				"Under AD-21/AD-22 this is a defect until proven to be an intended, "+
+				"versioned change — see fixtures/font-text/README.md.",
 			gotHex, fixture.SHA256,
 		)
 	}

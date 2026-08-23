@@ -1,0 +1,37 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "Hello, World!", "style": {"fontFamily": "body", "fontSize": 14}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [
+        {"id": "e2", "type": "text", "x": 0, "y": 0, "width": 400, "height": 16, "value": "Page footer 0123456789", "style": {"fontFamily": "body", "fontSize": 9}}
+      ],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {
+    "body": ["Roboto-Regular"]
+  },
+  "locale": "en",
+  "nextId": 3,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}

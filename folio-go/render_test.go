@@ -4,19 +4,186 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/fontset"
+	"github.com/panitw/folio/folio-go/internal/pdf"
 )
 
-// subprocessEnvVar, when set to "1", makes TestMain render the document
-// to stdout and exit instead of running the test suite. This is how the
-// determinism test in this file re-executes the test binary as a fresh OS
-// process rather than comparing two calls inside one process (a
+// subprocessEnvVar, when set to "1", makes TestMain render the FONTLESS
+// document to stdout and exit instead of running the test suite. This is
+// how the determinism test in this file re-executes the test binary as a
+// fresh OS process rather than comparing two calls inside one process (a
 // same-process comparison would pass on shared memoised state, which is
 // exactly what AC8 rules out).
+//
+// This selector keeps rendering Story 1.1's fixed rectangle via
+// internal/pdf.Serialize() directly, NOT via Render — Render now
+// requires a non-nil template (AC14b), and fixtures/minimal-rect/ is
+// reclassified (AC14a, D-1.5.9) as pinning internal/pdf's fontless
+// emission path specifically. AC10a: "the subprocess seam KEEPS the
+// fontless path" — so fixtures/minimal-rect/ does not lose its
+// four-target verification.
 const subprocessEnvVar = "FOLIO_SUBPROCESS_RENDER"
+
+// subprocessFontEnvVar is AC10a's SECOND selector: it renders the
+// template+font document (fontTestTemplateJSON, testRobotoFontBytes)
+// through the public Render path and writes the bytes to stdout. The
+// cross-target matrix (matrix_test.go) drives both selectors and
+// verifies AC10b's vacuity guard before comparing any hash: the child's
+// output must actually contain a FontFile2, or the whole exercise
+// certifies nothing (F-6).
+const subprocessFontEnvVar = "FOLIO_SUBPROCESS_RENDER_FONT"
+
+// fontTestTemplateJSON is a `.folio` document with one text element in
+// each of pageHeader, content and pageFooter, all resolving to the same
+// face via one fallback chain ("body" -> ["Roboto-Regular"]) — enough to
+// exercise AC9's "union of glyphs the whole document uses, collected
+// once" across more than one element and more than one band.
+const fontTestTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "Hello, World!", "style": {"fontFamily": "body", "fontSize": 14}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [
+        {"id": "e2", "type": "text", "x": 0, "y": 0, "width": 400, "height": 16, "value": "Page footer 0123456789", "style": {"fontFamily": "body", "fontSize": 9}}
+      ],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {
+    "body": ["Roboto-Regular"]
+  },
+  "locale": "en",
+  "nextId": 3,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// testFontSet returns a FontSet carrying Story 1.5's one small Latin
+// test face (AC26), keyed to match fontTestTemplateJSON's fonts chain.
+func testFontSet() FontSet {
+	return FontSet{"Roboto-Regular": testRobotoFontBytes}
+}
+
+// parseFontTestTemplate parses fontTestTemplateJSON, failing the test on
+// any parse error.
+func parseFontTestTemplate(t *testing.T) *Template {
+	t.Helper()
+	tpl, err := ParseTemplate([]byte(fontTestTemplateJSON))
+	if err != nil {
+		t.Fatalf("parse fontTestTemplateJSON: %v", err)
+	}
+	return tpl
+}
+
+// TestRenderSubsetsOneFacePerDocumentNotPerElement is Finding 6's fix
+// (QA review): AC9's "one subsetting call" half was previously asserted
+// only "via code review" in a synthetic textdoc_test.go fixture that
+// never reached renderDocument. This test exercises the REAL public
+// path — Render, on fontTestTemplateJSON, whose content and pageFooter
+// bands each carry a text element referencing the SAME face ("body" ->
+// "Roboto-Regular") — and asserts the property behaviourally two ways:
+//
+//  1. Exactly one /FontFile2 stream in the output, even though two
+//     elements in two different bands reference the face.
+//  2. The embedded subset's tag is the DOCUMENT-WIDE union closure's
+//     tag, not either element's own smaller, per-element closure — a
+//     regression that moved subsetting inside the per-run loop (the
+//     exact hazard AC9 names) would still embed exactly one FontFile2
+//     per RUN, so check 1 alone would not catch it; the tag comparison
+//     does, because a per-element subset's closure (and therefore its
+//     tag) differs from the union's.
+func TestRenderSubsetsOneFacePerDocumentNotPerElement(t *testing.T) {
+	tpl := parseFontTestTemplate(t)
+	fs := testFontSet()
+
+	out, err := Render(tpl, fs)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !containsFontFile2(out) {
+		t.Fatal("rendered document has no /FontFile2 — vacuity guard failed before this test's real assertions could mean anything (AC10b)")
+	}
+
+	n := bytes.Count(out, []byte("/FontFile2 "))
+	if n != 1 {
+		t.Fatalf("AC9: expected exactly one /FontFile2 reference for one face used by two elements in two bands, got %d", n)
+	}
+
+	font, ferr := fontset.New("Roboto-Regular", testRobotoFontBytes)
+	if ferr != nil {
+		t.Fatalf("fontset.New: %v", ferr)
+	}
+	elem1Sub, err := font.Subset([]rune("Hello, World!"))
+	if err != nil {
+		t.Fatalf("Subset(elem1 alone): %v", err)
+	}
+	elem2Sub, err := font.Subset([]rune("Page footer 0123456789"))
+	if err != nil {
+		t.Fatalf("Subset(elem2 alone): %v", err)
+	}
+	unionSub, err := font.Subset([]rune("Hello, World!Page footer 0123456789"))
+	if err != nil {
+		t.Fatalf("Subset(union): %v", err)
+	}
+	if elem1Sub.Tag == unionSub.Tag || elem2Sub.Tag == unionSub.Tag {
+		t.Fatalf(
+			"test fixture assumption violated: a per-element subset's tag must differ from the union's for this "+
+				"assertion to be discriminating (elem1=%q elem2=%q union=%q)",
+			elem1Sub.Tag, elem2Sub.Tag, unionSub.Tag,
+		)
+	}
+
+	baseFontUnion := "/BaseFont /" + unionSub.Tag + "+"
+	if !bytes.Contains(out, []byte(baseFontUnion)) {
+		t.Fatalf("rendered document's embedded /BaseFont does not carry the document-wide union tag %q — AC9's "+
+			"'one subsetting call per document, over the union of glyphs the whole document uses' is violated", unionSub.Tag)
+	}
+	for _, perElement := range []struct {
+		label string
+		sub   *fontset.Subset
+	}{{"elem1", elem1Sub}, {"elem2", elem2Sub}} {
+		needle := "/BaseFont /" + perElement.sub.Tag + "+"
+		if bytes.Contains(out, []byte(needle)) {
+			t.Fatalf("rendered document's embedded /BaseFont carries %s's OWN per-element tag %q instead of the "+
+				"document-wide union tag — subsetting is happening per element, not once per document (AC9)",
+				perElement.label, perElement.sub.Tag)
+		}
+	}
+}
+
+// containsFontFile2 is AC10b's binding vacuity guard, applied wherever
+// this file or matrix_test.go needs to confirm a rendered document
+// actually embeds a font before comparing any bytes: "the child render
+// on the font path must be asserted to actually contain a FontFile2
+// before any byte comparison runs... same output ⇒ instance" (D-000.9).
+func containsFontFile2(b []byte) bool {
+	return bytes.Contains(b, []byte("/FontFile2"))
+}
 
 // toolchainEnvVar, when set to "1", makes TestMain write the toolchain
 // that built this binary to stdout and exit, instead of running the test
@@ -36,28 +203,41 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if os.Getenv(subprocessEnvVar) == "1" {
-		b, err := Render(nil)
+		writeToStdoutOrDie(pdf.Serialize())
+	}
+	if os.Getenv(subprocessFontEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(fontTestTemplateJSON))
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		n, werr := os.Stdout.Write(b)
-		if werr != nil {
-			os.Stderr.WriteString("write to stdout: " + werr.Error())
+		b, err := Render(tpl, testFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		if n != len(b) {
-			// A short write here would otherwise be indistinguishable
-			// from a real determinism failure: the parent process would
-			// see truncated bytes and report a byte-offset divergence
-			// that points at the renderer, when the actual fault is this
-			// pipe (this story's QA review, Nit 25).
-			os.Stderr.WriteString("short write to stdout: wrote " + strconv.Itoa(n) + " of " + strconv.Itoa(len(b)) + " bytes")
-			os.Exit(1)
-		}
-		os.Exit(0)
+		writeToStdoutOrDie(b)
 	}
 	os.Exit(m.Run())
+}
+
+// writeToStdoutOrDie writes b to stdout in full and exits 0, or reports a
+// short/failed write and exits 1. A short write here would otherwise be
+// indistinguishable from a real determinism failure: the parent process
+// would see truncated bytes and report a byte-offset divergence that
+// points at the renderer, when the actual fault is this pipe (this
+// story's QA review, Nit 25).
+func writeToStdoutOrDie(b []byte) {
+	n, werr := os.Stdout.Write(b)
+	if werr != nil {
+		os.Stderr.WriteString("write to stdout: " + werr.Error())
+		os.Exit(1)
+	}
+	if n != len(b) {
+		os.Stderr.WriteString("short write to stdout: wrote " + strconv.Itoa(n) + " of " + strconv.Itoa(len(b)) + " bytes")
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 // assertWellFormedPDF performs toolchain-independent structural
@@ -386,7 +566,11 @@ func TestRenderIsByteIdenticalAcrossTwoProcesses(t *testing.T) {
 // is recorded in the Delivery Log rather than wired into this test, since
 // this module intentionally has no PDF-reading dependency (AC2).
 func TestRenderProducesAValidPDF(t *testing.T) {
-	b, err := Render(nil)
+	tpl, err := ParseTemplate([]byte(minimalTemplateJSON))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	b, err := Render(tpl, FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -402,24 +586,59 @@ func TestRenderProducesAValidPDF(t *testing.T) {
 // same AD-7 hazard AC9 exists to close, one key over — and /Filter is the
 // R4 compression risk this story's Dev Notes explicitly remove from the
 // variable set (this story's QA review, Minor 20).
+//
+// Finding 12 (QA review): the previous version swept ONLY the fontless
+// document (an empty FontSet). F-7 explicitly flagged /Filter as the
+// compression risk on the FONT path ("if this story compresses the
+// FontFile2, that assertion goes red") — but as wired, it could never
+// go red, because it never saw that path: the document with the large
+// binary stream, where a future /Filter or /Producer would actually be
+// tempting, had no metadata guard at all. This is now table-driven over
+// both documents.
 func TestRenderHasNoCreationOrModDate(t *testing.T) {
-	b, err := Render(nil)
-	if err != nil {
-		t.Fatalf("Render() error: %v", err)
-	}
 	forbidden := []string{"/CreationDate", "/ModDate", "/Info", "/Producer", "/Creator", "/Metadata", "/Filter"}
-	for _, key := range forbidden {
-		if bytes.Contains(b, []byte(key)) {
-			t.Errorf("output contains %s", key)
+
+	cases := []struct {
+		label string
+		tpl   *Template
+		fs    FontSet
+	}{
+		{label: "fontless", tpl: mustParseMinimalTemplate(t), fs: FontSet{}},
+		{label: "font-text", tpl: parseFontTestTemplate(t), fs: testFontSet()},
+	}
+	for _, c := range cases {
+		b, err := Render(c.tpl, c.fs)
+		if err != nil {
+			t.Fatalf("%s: Render() error: %v", c.label, err)
+		}
+		for _, key := range forbidden {
+			if bytes.Contains(b, []byte(key)) {
+				t.Errorf("%s: output contains %s", c.label, key)
+			}
 		}
 	}
+}
+
+// mustParseMinimalTemplate parses minimalTemplateJSON, failing the test
+// on any parse error — the fontless counterpart to parseFontTestTemplate.
+func mustParseMinimalTemplate(t *testing.T) *Template {
+	t.Helper()
+	tpl, err := ParseTemplate([]byte(minimalTemplateJSON))
+	if err != nil {
+		t.Fatalf("parse minimalTemplateJSON: %v", err)
+	}
+	return tpl
 }
 
 // TestRenderIDEntriesAreIdentical is AC10's identity half: both /ID array
 // entries are byte-identical to each other and 16 bytes each (32 hex
 // characters).
 func TestRenderIDEntriesAreIdentical(t *testing.T) {
-	b, err := Render(nil)
+	tpl, err := ParseTemplate([]byte(minimalTemplateJSON))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	b, err := Render(tpl, FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -459,4 +678,303 @@ func extractAngleBracketed(b []byte) (content string, rest []byte, ok bool) {
 		return "", b, false
 	}
 	return string(b[1:end]), b[end+1:], true
+}
+
+// letterSizeTemplateJSON is minimalTemplateJSON with "size": "Letter" —
+// a legally loadable value (internal/template's closedPageSizeNames
+// already accepts it, Story 1.4) that this story never built real
+// dimensions for. Finding 17 (QA review), retained fixture: Render must
+// return a located error, not silently substitute A4 (Story 1.3's
+// standing rule: a deliberately violating fixture proves it fires, and
+// the fixture is retained).
+const letterSizeTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": []
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 1,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "Letter"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// TestRenderUnrecognisedNamedPageSizeIsLocatedError is Finding 17's fix
+// (QA review): a document naming a page size other than "A4" (here,
+// the schema-legal but dimensionally-unimplemented "Letter") must fail
+// loudly rather than silently rendering as A4.
+func TestRenderUnrecognisedNamedPageSizeIsLocatedError(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(letterSizeTemplateJSON))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	_, err = Render(tpl, FontSet{})
+	if err == nil {
+		t.Fatal("expected a located error for page.size \"Letter\" (Finding 17), got nil")
+	}
+	if !strings.Contains(err.Error(), "Letter") {
+		t.Errorf("error does not name the unrecognised size: %v", err)
+	}
+}
+
+// TestRenderNilTemplateIsLocatedError is AC14b: Render(nil, f) returns a
+// located error, not silently ignoring its argument the way the
+// PROVISIONAL Story 1.1-1.4 signature did — "better than a public entry
+// point documented as ignoring its argument" (D-1.5.9).
+func TestRenderNilTemplateIsLocatedError(t *testing.T) {
+	_, err := Render(nil, FontSet{})
+	if err == nil {
+		t.Fatal("expected a located error for Render(nil, ...), got nil")
+	}
+}
+
+// TestRenderEmbedsSubsetFontAsType0Identity is AC5: a document using a
+// subset of a Latin face is embedded as a Type0/Identity-H composite
+// font carrying a FontFile2 stream and a ToUnicode CMap.
+func TestRenderEmbedsSubsetFontAsType0Identity(t *testing.T) {
+	tpl := parseFontTestTemplate(t)
+	b, err := Render(tpl, testFontSet())
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	assertWellFormedPDF(t, "font document", b)
+
+	for _, want := range []string{"/Subtype /Type0", "/Encoding /Identity-H", "/FontFile2", "/ToUnicode", "/Subtype /CIDFontType2"} {
+		if !bytes.Contains(b, []byte(want)) {
+			t.Errorf("output does not contain %q", want)
+		}
+	}
+	if !containsFontFile2(b) {
+		t.Fatal("output does not contain a FontFile2 (AC10b vacuity guard)")
+	}
+}
+
+// TestProvisionalBandOriginIsPinned is AC28: the provisional band-origin
+// convention must be revisited the day internal/layout exists (Story
+// 2.5) rather than quietly becoming permanent. This fails the moment
+// that package appears, forcing a human to look at this file again.
+//
+// Finding 13 (QA review): the previous failure message named only
+// internal/pdf/textdoc.go (buildTextContentStream) — which does hold a
+// provisional convention (the Y-flip into PDF user space) — but AC28's
+// actual subject, the BAND origin (pageHeader at 0, content below the
+// header band, pageFooter at usableHeight-footerHeight), is implemented
+// in folio-go/render.go's collectTextRuns, which the old message never
+// mentioned. Both sites must be named, or the band-origin half can be
+// missed — exactly the "provisional quietly becomes real" outcome AC28
+// exists to prevent, arriving through a stale pointer.
+func TestProvisionalBandOriginIsPinned(t *testing.T) {
+	if _, err := os.Stat(filepath.Join("internal", "layout")); err == nil {
+		t.Fatal(
+			"internal/layout now exists — AD-24's real band-relative placement has arrived. " +
+				"TWO provisional sites must be replaced, and this pinning test deleted " +
+				"(AC28, D-1.5.5's self-retiring-assertion pattern): " +
+				"(1) folio-go/render.go's collectTextRuns — the PROVISIONAL band-origin convention " +
+				"(pageHeader at y=0, content below the header band, pageFooter flush against the " +
+				"bottom margin); " +
+				"(2) folio-go/internal/pdf/textdoc.go's buildTextContentStream — the PROVISIONAL " +
+				"Y-flip into PDF's bottom-up user space.",
+		)
+	}
+}
+
+// TestRenderWithFontIsByteIdenticalAcrossTwoProcesses is the font-path
+// counterpart to TestRenderIsByteIdenticalAcrossTwoProcesses above,
+// exercised locally (not just in the matrix): two independent OS
+// processes rendering the same template+font document produce
+// byte-identical output, and — AC10b's vacuity guard, applied here too
+// — the output is confirmed to actually contain a FontFile2 before any
+// comparison runs.
+func TestRenderWithFontIsByteIdenticalAcrossTwoProcesses(t *testing.T) {
+	if runtime.GOOS == "js" {
+		t.Skip("js/wasm has no os/exec or pipes; covered by the cross-target matrix harness (folio-go/matrix_test.go)")
+	}
+	a := renderFontInSubprocess(t, "1")
+	b := renderFontInSubprocess(t, "4")
+
+	assertWellFormedPDF(t, "child A (GOMAXPROCS=1, font)", a)
+	assertWellFormedPDF(t, "child B (GOMAXPROCS=4, font)", b)
+
+	if !containsFontFile2(a) {
+		t.Fatal("child A output does not contain a FontFile2 (AC10b vacuity guard) — a match below would prove nothing")
+	}
+	if !containsFontFile2(b) {
+		t.Fatal("child B output does not contain a FontFile2 (AC10b vacuity guard) — a match below would prove nothing")
+	}
+
+	if !bytes.Equal(a, b) {
+		offset, window := firstDivergence(a, b)
+		t.Fatalf("subprocess font-document outputs differ (len a=%d, len b=%d); first divergence at byte offset %d; %s",
+			len(a), len(b), offset, window)
+	}
+}
+
+func renderFontInSubprocess(t *testing.T, gomaxprocs string) []byte {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(),
+		subprocessFontEnvVar+"=1",
+		"GOMAXPROCS="+gomaxprocs,
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("subprocess font render (GOMAXPROCS=%s) failed: %v\nstderr: %s", gomaxprocs, err, stderr.String())
+	}
+	return stdout.Bytes()
+}
+
+// TestEmbeddedHeadTimestampsEqualSourceExactly is AC11a: the embedded
+// FontFile2's head table created (offset 20) and modified (offset 28)
+// equal the SOURCE face's values exactly, byte-for-byte — equality
+// alone, no "or zero" latitude and no clock read (D-1.5.10 withdrew
+// both from D-1.5.4). F-5's measured values for the committed test face:
+// created=3304067374, modified=3573633780.
+func TestEmbeddedHeadTimestampsEqualSourceExactly(t *testing.T) {
+	tpl := parseFontTestTemplate(t)
+	b, err := Render(tpl, testFontSet())
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !containsFontFile2(b) {
+		t.Fatal("output does not contain a FontFile2 — cannot proceed (AC10b vacuity guard)")
+	}
+
+	embeddedProgram := extractFontFile2Program(t, b)
+	embCreated, embModified := headTimesFromSFNT(t, embeddedProgram)
+	srcCreated, srcModified := headTimesFromSFNT(t, testRobotoFontBytes)
+
+	if embCreated != srcCreated {
+		t.Errorf("embedded head.created = %d, want source's %d (F-5, AC11a)", embCreated, srcCreated)
+	}
+	if embModified != srcModified {
+		t.Errorf("embedded head.modified = %d, want source's %d (F-5, AC11a)", embModified, srcModified)
+	}
+	if srcCreated != 3304067374 {
+		t.Errorf("source head.created = %d, want the measured 3304067374 (F-5) — has testdata/fonts/Roboto-Regular.ttf changed?", srcCreated)
+	}
+	if srcModified != 3573633780 {
+		t.Errorf("source head.modified = %d, want the measured 3573633780 (F-5) — has testdata/fonts/Roboto-Regular.ttf changed?", srcModified)
+	}
+}
+
+// extractFontFile2Program locates the FIRST FontFile2 stream in a
+// rendered PDF and returns its raw program bytes, by locating the
+// object it references and reading exactly /Length1 bytes after
+// "stream\n". This is a minimal, purpose-built extractor — not a
+// general PDF parser — consistent with AC2/AC13: folio-go has no
+// PDF-reading dependency, so verification code that needs to read one
+// back is written by hand, the same way assertWellFormedPDF is.
+func extractFontFile2Program(t *testing.T, pdfBytes []byte) []byte {
+	t.Helper()
+	idx := bytes.Index(pdfBytes, []byte("/FontFile2 "))
+	if idx == -1 {
+		t.Fatal("no /FontFile2 key found")
+	}
+	rest := pdfBytes[idx+len("/FontFile2 "):]
+	sp := bytes.IndexByte(rest, ' ')
+	if sp == -1 {
+		t.Fatal("could not parse /FontFile2 object reference")
+	}
+	objNum, err := strconv.Atoi(string(rest[:sp]))
+	if err != nil {
+		t.Fatalf("could not parse /FontFile2 object number: %v", err)
+	}
+
+	marker := []byte(strconv.Itoa(objNum) + " 0 obj\n")
+	objIdx := bytes.Index(pdfBytes, marker)
+	if objIdx == -1 {
+		t.Fatalf("could not find object %d 0 obj", objNum)
+	}
+	objBody := pdfBytes[objIdx:]
+
+	const lenKW = "/Length1 "
+	lenIdx := bytes.Index(objBody, []byte(lenKW))
+	if lenIdx == -1 {
+		t.Fatal("FontFile2 object has no /Length1")
+	}
+	numStart := lenIdx + len(lenKW)
+	numEnd := numStart
+	for numEnd < len(objBody) && objBody[numEnd] >= '0' && objBody[numEnd] <= '9' {
+		numEnd++
+	}
+	length, err := strconv.Atoi(string(objBody[numStart:numEnd]))
+	if err != nil {
+		t.Fatalf("could not parse /Length1: %v", err)
+	}
+
+	const streamKW = "stream\n"
+	streamIdx := bytes.Index(objBody[numEnd:], []byte(streamKW))
+	if streamIdx == -1 {
+		t.Fatal("FontFile2 object has no stream keyword")
+	}
+	bodyStart := numEnd + streamIdx + len(streamKW)
+	if bodyStart+length > len(objBody) {
+		t.Fatal("FontFile2 stream overruns the document")
+	}
+	return objBody[bodyStart : bodyStart+length]
+}
+
+// headTimesFromSFNT reads an sfnt's head table created/modified fields
+// (offsets 20 and 28, LONGDATETIME) directly from its table directory —
+// the same technique fontset_test.go's patchUnitsPerEm helper uses, kept
+// as an independent, from-scratch read here rather than importing
+// internal/fontset (this test verifies the PUBLIC Render output, not
+// the internal seam).
+func headTimesFromSFNT(t *testing.T, data []byte) (created, modified int64) {
+	t.Helper()
+	if len(data) < 12 {
+		t.Fatal("sfnt data too short")
+	}
+	numTables := int(data[4])<<8 | int(data[5])
+	for i := 0; i < numTables; i++ {
+		recStart := 12 + i*16
+		if recStart+16 > len(data) {
+			t.Fatal("sfnt table directory overruns data")
+		}
+		rec := data[recStart : recStart+16]
+		if string(rec[0:4]) != "head" {
+			continue
+		}
+		off := int(rec[8])<<24 | int(rec[9])<<16 | int(rec[10])<<8 | int(rec[11])
+		if off+54 > len(data) {
+			t.Fatal("head table overruns data")
+		}
+		head := data[off : off+54]
+		created = beInt64(head[20:28])
+		modified = beInt64(head[28:36])
+		return created, modified
+	}
+	t.Fatal("sfnt has no head table")
+	return 0, 0
+}
+
+func beInt64(b []byte) int64 {
+	var v uint64
+	for _, c := range b {
+		v = v<<8 | uint64(c)
+	}
+	return int64(v)
 }

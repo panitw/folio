@@ -49,7 +49,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hash-darwin-arm64
-          path: folio-go/.matrix-build/hash.darwin-arm64.txt
+          path: |
+            folio-go/.matrix-build/hash.darwin-arm64.minimal-rect.txt
+            folio-go/.matrix-build/hash.darwin-arm64.font-text.txt
           if-no-files-found: error
 
   render-linux-amd64:
@@ -69,7 +71,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hash-linux-amd64
-          path: folio-go/.matrix-build/hash.linux-amd64.txt
+          path: |
+            folio-go/.matrix-build/hash.linux-amd64.minimal-rect.txt
+            folio-go/.matrix-build/hash.linux-amd64.font-text.txt
           if-no-files-found: error
 
   render-linux-arm64:
@@ -89,7 +93,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hash-linux-arm64
-          path: folio-go/.matrix-build/hash.linux-arm64.txt
+          path: |
+            folio-go/.matrix-build/hash.linux-arm64.minimal-rect.txt
+            folio-go/.matrix-build/hash.linux-arm64.font-text.txt
           if-no-files-found: error
 
   render-js-wasm:
@@ -109,7 +115,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hash-js-wasm
-          path: folio-go/.matrix-build/hash.js-wasm.txt
+          path: |
+            folio-go/.matrix-build/hash.js-wasm.minimal-rect.txt
+            folio-go/.matrix-build/hash.js-wasm.font-text.txt
           if-no-files-found: error
 
   compare-render-hashes:
@@ -125,7 +133,7 @@ jobs:
           pattern: hash-*
           path: hashes
           merge-multiple: true
-      - name: Assert all four render hashes are byte-identical (AC7)
+      - name: Assert all four render hashes are byte-identical, for BOTH documents (AC7, Finding 8)
         # Blocker 2 (QA review): this step used to glob `hashes/hash.*.txt`
         # with no count and no shape check, so a job that silently wrote no
         # hash (upload-artifact's default if-no-files-found: warn) still
@@ -133,46 +141,67 @@ jobs:
         # four empty files also compared equal. Every upload-artifact step
         # above now sets if-no-files-found: error, which prevents a
         # missing hash file from reaching this job at all — but this step
-        # additionally names the four expected files explicitly (never a
-        # glob) and asserts each one exists and is a well-formed 64-char
+        # additionally names the expected files explicitly (never a glob)
+        # and asserts each one exists and is a well-formed 64-char
         # lower-case hex string BEFORE any comparison, so absence or a
         # malformed value is a failure here too, defence in depth.
+        #
+        # Finding 8 (QA review): before this fix, this job — and
+        # TestTargetRenderHash, which produces its input files — covered
+        # ONLY minimal-rect (the fontless document). font-text (the
+        # document whose determinism depends on textshape's internal
+        # glyph-map ordering) was covered only by TestCrossTargetByteIdentity,
+        # which is //go:build matrix and runs locally/on demand, not in
+        # this CI workflow. A textshape upgrade that broke font
+        # cross-target byte-identity would have passed CI. This step now
+        # loops over both documents; each gets its own MISSING/MALFORMED/
+        # count/mismatch checks, exactly mirroring the single-document
+        # version this replaces.
         run: |
           set -euo pipefail
-          want_files="hashes/hash.darwin-arm64.txt hashes/hash.linux-amd64.txt hashes/hash.linux-arm64.txt hashes/hash.js-wasm.txt"
+          docs="minimal-rect font-text"
+          targets="darwin-arm64 linux-amd64 linux-arm64 js-wasm"
 
-          count=0
-          for f in $want_files; do
-            if [ ! -f "$f" ]; then
-              echo "MISSING artifact: $f — a matrix leg must fail, never silently vanish (AC11, Blocker 2)"
-              exit 1
+          overall_fail=0
+          for doc in $docs; do
+            echo "=== $doc ==="
+            count=0
+            for t in $targets; do
+              f="hashes/hash.$t.$doc.txt"
+              if [ ! -f "$f" ]; then
+                echo "MISSING artifact: $f — a matrix leg must fail, never silently vanish (AC11, Blocker 2, Finding 8)"
+                overall_fail=1
+                continue
+              fi
+              got="$(cat "$f")"
+              if ! printf '%s' "$got" | grep -Eq '^[0-9a-f]{64}$'; then
+                echo "MALFORMED hash in $f: \"$got\" (want exactly 64 lower-case hex characters)"
+                overall_fail=1
+                continue
+              fi
+              count=$((count + 1))
+              echo "  $f: $got"
+            done
+            if [ "$count" -ne 4 ]; then
+              echo "$doc: expected exactly 4 render hashes, got $count (AC11)"
+              overall_fail=1
+              continue
             fi
-            got="$(cat "$f")"
-            if ! printf '%s' "$got" | grep -Eq '^[0-9a-f]{64}$'; then
-              echo "MALFORMED hash in $f: \"$got\" (want exactly 64 lower-case hex characters)"
-              exit 1
-            fi
-            count=$((count + 1))
-            echo "  $f: $got"
+
+            ref="$(cat "hashes/hash.darwin-arm64.$doc.txt")"
+            for t in $targets; do
+              got="$(cat "hashes/hash.$t.$doc.txt")"
+              if [ "$got" != "$ref" ]; then
+                echo "MISMATCH ($doc): hash.$t.$doc.txt = $got, want $ref (NFR1 falsified — see D-1.2.2)"
+                overall_fail=1
+              fi
+            done
+            echo "$doc: all four targets agree: $ref"
           done
-          if [ "$count" -ne 4 ]; then
-            echo "expected exactly 4 render hashes, got $count (AC11)"
+
+          if [ "$overall_fail" -ne 0 ]; then
             exit 1
           fi
-
-          ref="$(cat hashes/hash.darwin-arm64.txt)"
-          fail=0
-          for f in $want_files; do
-            got="$(cat "$f")"
-            if [ "$got" != "$ref" ]; then
-              echo "MISMATCH: $f = $got, want $ref (NFR1 falsified — see D-1.2.2)"
-              fail=1
-            fi
-          done
-          if [ "$fail" -ne 0 ]; then
-            exit 1
-          fi
-          echo "All four targets agree: $ref"
 
   fma-probe-darwin-arm64:
     runs-on: macos-14

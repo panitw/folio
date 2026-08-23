@@ -16,3 +16,5 @@ go 1.25.0
 // through 1.26, and adopting 1.27 is a re-measurement exercise under AD-22,
 // not a routine upgrade. See D-1.1.a in folio-mvp-decision-log.md.
 toolchain go1.26.0
+
+require github.com/boxesandglue/textshape v0.0.15

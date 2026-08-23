@@ -32,7 +32,10 @@ func repoRootFromTest(t *testing.T) string {
 // committed lint/MANIFEST.md must match what Generate/Render produce
 // right now. A dependency added to any of the three module graphs
 // without regenerating and committing the manifest fails this test —
-// `go run ./lint/cmd/genmanifest` from the repo root regenerates it.
+// `cd lint && go run ./cmd/genmanifest` (lint has its own go.mod — run
+// from inside lint/, not the repo root) regenerates it (Finding 16, QA
+// review: the previously-documented command failed with "cannot find
+// main module").
 func TestManifestUpToDate(t *testing.T) {
 	root := repoRootFromTest(t)
 
@@ -40,15 +43,19 @@ func TestManifestUpToDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	want := Render(rows)
+	assetRows, err := ResolveAssets(root)
+	if err != nil {
+		t.Fatalf("ResolveAssets: %v", err)
+	}
+	want := Render(rows) + RenderAssets(assetRows)
 
 	committedPath := filepath.Join(root, "lint", "MANIFEST.md")
 	got, err := os.ReadFile(committedPath)
 	if err != nil {
-		t.Fatalf("read committed manifest %s: %v (run `go run ./lint/cmd/genmanifest`)", committedPath, err)
+		t.Fatalf("read committed manifest %s: %v (run `cd lint && go run ./cmd/genmanifest`)", committedPath, err)
 	}
 
 	if string(got) != want {
-		t.Fatalf("lint/MANIFEST.md is out of date — run `go run ./lint/cmd/genmanifest` from the repo root and commit the result")
+		t.Fatalf("lint/MANIFEST.md is out of date — run `cd lint && go run ./cmd/genmanifest` and commit the result")
 	}
 }
