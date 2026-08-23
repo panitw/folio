@@ -44,6 +44,21 @@ func repoRootFromTest(t *testing.T) string {
 	}
 }
 
+// isSHA256HexString reports whether s is exactly 64 lower-case hex
+// characters — the JSON-string shape AC16 requires of expected.json's
+// sha256 field.
+func isSHA256HexString(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func isRepoRootDir(dir string) bool {
 	folioGo, err1 := os.Stat(filepath.Join(dir, "folio-go"))
 	fixtures, err2 := os.Stat(filepath.Join(dir, "fixtures"))
@@ -97,6 +112,17 @@ func TestRenderMatchesGoldenFixture(t *testing.T) {
 	}
 	if fixture.SHA256 == "" {
 		t.Fatal("fixture is missing sha256")
+	}
+	// AC16: sha256 must be a JSON string of exactly 64 lower-case hex
+	// characters — never a map, array, or per-target object. A developer
+	// meeting a red matrix arm (Story 1.2) who starts "fixing" it by
+	// converting this field into a per-target map must hit a red here
+	// before they can reach a green (D-1.2.2's escalation rule: a real
+	// cross-target divergence is an owner decision, never a developer's
+	// to paper over by recording what each target produced).
+	if !isSHA256HexString(fixture.SHA256) {
+		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters "+
+			"(AC16: never a per-target map, array, or object — see D-1.2.2)", fixture.SHA256)
 	}
 
 	// Render and validate structurally first, unconditionally — see the

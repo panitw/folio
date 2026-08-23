@@ -49,6 +49,9 @@ vendor/
 go.work
 go.work.sum
 
+# ── Cross-target matrix harness build output (Story 1.2, AC12/F-7) ─
+folio-go/.matrix-build/
+
 # ── WASM build output ─────────────────────────────────────────────
 *.wasm
 wasm_exec.js

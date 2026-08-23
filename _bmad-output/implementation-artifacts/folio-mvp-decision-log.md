@@ -103,6 +103,152 @@ Invariants expected to do the most adjudicating work, in order:
    so every future SDK conforms against the same bytes." Go tests therefore reach it by relative
    path, not `go:embed`, which is what makes conflict 1 above (the lint's `_test.go` scope) load-bearing.
 
+### Refresh — 2026-08-23 (second session)
+
+*Filed by the orchestrator from the second engineering lead's re-grounding pass. This **appends to**
+the first session's grounding above; that text still holds. The lead read this log in full,
+`sprint-status.yaml`, the Story 1.1 file in full (ACs, red-proofs, Delivery Log, all 28 QA findings
+and every Finding Resolution), the entire shipped `folio-go/` tree and `fixtures/`, `epics.md`
+§Stories 1.2–1.8, and re-read spine AD-1, AD-3 (as amended), AD-7, AD-8, AD-9, AD-10, AD-21, AD-22,
+AD-23, AD-24, AD-26, §Consistency Conventions, §Stack and §Source tree. The predecessor's summary of
+the spine's shape was verified, not re-derived. UX docs remain deliberately unread until Epic 5.*
+
+#### What changed since the first grounding
+
+The first grounding was taken against an **empty repository** at `f2aa8c0`. There is now code:
+commit `048999b`, Story 1.1, `done`. Twenty-one new files, four Go packages, 23 top-level tests +
+19 subtests, all green. Re-verified live this session: `go build`, `go vet`, `gofmt -l` clean;
+`go test ./... -count=1` green in all four packages; golden hash
+`0f925e1b13702d34a30884bf85f3e3b2f2cb5312824267395871335fa6cb4f7c` reproduces.
+
+**One measurement worth having early.** The lead ran the suite under `GOOS=js GOARCH=wasm` with
+Go's own `go_js_wasm_exec` runner. `TestRenderMatchesGoldenFixture` **passes** — the recorded golden
+hash is already byte-identical between `darwin/arm64` and `js/wasm`. Two of AD-21's four targets
+agree today, before Story 1.2 has written a line. That is the single most encouraging fact
+available about R1.
+
+#### Shipped code vs. what this log says was decided — four divergences
+
+The shipped artifact is sound and the QA/finisher cycle was unusually thorough. But four things in
+the tree do not match what is written here, and all four fire on a story already in the queue.
+
+**(1) D-1.1.b's guardrail shipped at Story 1.1, not Story 1.3 — and wider than it was ruled.**
+D-1.1.b's Guardrail paragraph scopes the rule *"Within `internal/pdf`"* and says explicitly:
+*"A number formatted into a diagnostic message is not an output byte and is explicitly not
+covered."* AD-3's amended Rule repeats that carve-out verbatim.
+
+What shipped is `TestNumberFormattingIsConfinedToNumbersGo` in
+`folio-go/internal/pdf/emit_source_test.go`, enforcing **two** rules — the ruled one inside
+`internal/pdf`, plus a second over **every non-test `.go` file under `folio-go/`** banning
+`fmt.Errorf`, `fmt.Sprintf`, `strconv.Itoa` and the rest module-wide.
+
+- Fires at **Story 1.4**: its AC requires *"loading fails with an error naming the declared version
+  and the supported version"*. The idiomatic `fmt.Errorf` in `internal/template` is currently a
+  build-red.
+- Fires hard at **Story 3.6** (`internal/diag`, whose whole job is formatting values into message
+  text — the case AD-3 names as *not covered*) and **Story 3.7** (`cmd/folio`, a CLI that must print).
+- The reviewer's own Finding 15 flagged that the file comment overstated the guard's reach; the
+  finisher fixed the comment by *widening the guard to match it*, which is the wrong direction
+  relative to the ruling.
+
+The lead's read: a **scope defect, not a scope decision**, to be fixed before Story 1.4 opens.
+Related open point: D-1.1.b also requires the guard to ship *"with a retained violating fixture."*
+None exists — the finisher applied and reverted the mutation. A retained fixture cannot be a
+compiled `.go` file inside `internal/pdf`, because the guard scans `_test.go` there too; Story 1.3
+will need a `testdata/` non-compiled fixture the lint reads.
+
+**(2) `TestModuleGraphHasNoThirdPartyDependencies` asserts the module graph has exactly ONE module.**
+`folio-go/gomod_test.go` fails if `go list -m all` returns anything but the main module. AC2's
+stated intent is AD-6 — *no third-party PDF writer* — and its text enumerates the writers it means.
+The test generalised that to "no dependencies at all", true and cheap on day one. Spine §Stack
+schedules `boxesandglue/textshape` v0.0.15 for shaping and subsetting, so **Story 1.5 breaks this
+test by design.** It must become a denylist of PDF writers (plus Story 1.3's AD-26 licence check
+over the whole graph), not a count. Flagged now so the 1.5 developer does not meet a red suite and
+"fix" it by deleting the assertion — which would silently retire AD-6's only mechanical guard.
+
+**(3) `geom.ScaleRound` now panics — and Story 1.5 will feed it untrusted input.**
+The finisher's Blocker-3/Major-6 fix (correctly) added panics for `den == 0`, `den == math.MinInt64`,
+`v*num` overflow, and the `den == -1 && v*num == MinInt64` division overflow. Sound as
+programmer-error guards. But the spine's §Consistency Conventions state: *"Nothing in `internal/`
+panics on malformed input — untrusted font and template bytes return diagnostics."* AD-2 makes
+`ScaleRound` the module's only font-scaling function, and Story 1.5 scales by `unitsPerEm` read out
+of a **font file the caller supplied**. A font with `unitsPerEm == 0` would panic inside the render
+path. Not a defect today (nothing calls `ScaleRound` yet); it is a **guardrail for Story 1.5**,
+where `internal/fontset` must validate any font-derived denominator and return an AD-14 diagnostic
+*before* the call.
+
+**(4) Two Story 1.1 tests cannot pass on the `js/wasm` arm — measured, not predicted.**
+Under `GOOS=js GOARCH=wasm`: `TestModuleGraphHasNoThirdPartyDependencies` →
+`exec: "go": executable file not found in $PATH`; `TestRenderIsByteIdenticalAcrossTwoProcesses` →
+`pipe: not implemented on js`. Both compile fine (`go vet` for js/wasm is clean); they fail at
+runtime. Story 1.2's wasm leg therefore **cannot** be "run `go test ./...` on four targets".
+
+**Non-divergences confirmed.** D-1.1.a is implemented exactly, both literal lines asserted, reason
+left as a `go.mod` comment. D-1.1.b's three function names, signatures and the
+`appendIntPadded → appendInt` delegation are exact, and after the finisher's Finding 1/8 fixes
+**every** number in the output — including the MediaBox's lower-left corner and every
+object/generation number inside every indirect reference — genuinely routes through one of the
+three. D-1.1.c is honoured, `Render()` is doc-marked `PROVISIONAL`. D-000.6 was executed correctly
+on all three counts. The finisher's **DISMISS** of Finding 14's third instance — declining to edit
+this log's own Lead Grounding section, on the grounds that the log is append-only and D-000.6's
+scope is the spine plus the SPEC companions — is correct, and the lead endorses it as precedent:
+**D-000.6 does not authorise editing this log.**
+
+#### The immediate horizon — Stories 1.2 → 1.8
+
+**Story 1.2** — decisions the lead expects *before* code: how the `js/wasm` arm produces bytes to
+hash given divergence (4); whether the recorded hash stays **one** value all four targets must
+reproduce (strong lean: yes — a per-target map would quietly concede that targets may legitimately
+differ, gutting NFR1); where the retained FMA negative-test fixture lives, given it is in direct
+tension with both the AD-1 lint and `internal/arch_test.go`'s `float64` AST guard;
+`GOTOOLCHAIN=go1.26.0` on all four legs (non-optional, deferred here from D-1.1.a option (c)).
+**If any target's hash actually differs, that is not a lead call — it is an owner escalation**,
+because it falsifies the product's central promise.
+
+**Story 1.3** — the retained-fixture placement; whether the AD-1 lint is a Go test or a standalone
+`cmd/` tool (precedent leans test, but the licence check needs the whole module graph and
+`folio-designer/`'s lockfile, which does not exist until Epic 5); the map-iteration check's shape;
+D-000.5's recorded correction that the licence check targets **`folio-designer/`**, not `designer/`.
+Divergence (1) is 1.3's natural home if 1.4 has not already forced it.
+
+**Story 1.4** — the format schema freezes. D-1.4.1 is implemented verbatim, including the
+`folio-format.md` amendment in the same commit. Further decisions expected on: number
+round-tripping under AD-9 (`36` must not return as `36.0` — AD-23's `UseNumber` discipline arriving
+a story early); `nextId` derivation and persistence (AD-10 — monotonic, never reused, never
+renumbered on save); three-decimal-max enforcement on geometry; and the `+*Template` API step.
+Divergence (1) fires here if not already fixed.
+
+**Story 1.5** — the first dependency and the first untrusted input: divergence (2), divergence (3),
+and AD-26 clearing `boxesandglue/textshape` at every depth — it enters the graph here, *before*
+Story 2.3 gives shaping a story to justify it. Override story under D-000.4. The subset tag is six
+letters from a hash of the sorted glyph-id set (AD-7); one subset per font per **document**, never
+per page.
+
+**Story 1.6** — AD-23's decode discipline lands. AD-14's three pre-settled data cases must not be
+re-litigated: absent path = Error, explicit `null` = empty and *not* an error, wrong kind = Error
+and never a coercion. The AC's *"has read no wall clock, time zone, locale, environment variable,
+filesystem path, or network resource"* is exactly what Story 1.3's lint asserts — reuse it, do not
+write a second checker.
+
+**Story 1.7** — the API closes. Two things already ruled: the AC's four-argument shorthand loses to
+AD-8's `FontSet`, and the README must state the `toolchain`-binds-only-the-main-module caveat. This
+is where the medium-confidence argument-packaging question gets answered by writing the README.
+
+**Story 1.8** — AD-9's asset encoding and AD-24's fit-and-centre rule are fully specified; mostly
+mechanical. `/Width` and `/Height` are pixel counts → `appendInt`. Override story under D-000.4.
+
+#### Open questions the lead carries (none yet due)
+
+- **AD-12 lists `ja` as supported; no Japanese face is named** (spine §Stack ships Noto Sans, Noto
+  Sans Thai, Noto Sans SC). To be *verified, not assumed*, before Story 2.2. If a face must be added
+  it breaks Story 5.4's fixed "CJK 7.4 MB" payload numbers and the ~9 MB budget — **that combination
+  is an owner call**, with "drop `ja` from AD-12's closed set" as the cheap arm.
+- Sample-JSON path not persisted in `.folio`; template↔library compatibility = Story 1.4's
+  higher-MAJOR-is-a-load-error rule; missing-glyph discovery is a post-render diagnostic in MVP;
+  undo history dies on reload. All four ruled that way unless a story AC demands otherwise.
+- Story **4.8** (alternating row styling, named "first to be cut") remains an **owner** call if
+  capacity pressure ever reaches it.
+
 ---
 
 ## Standing decisions (set at run start, 2026-08-23)
@@ -651,3 +797,553 @@ notes the AC's shorthand rather than treating it as a contradiction.
 is the surface counter-metric C5 measures, and if writing the 1.7 README makes five positional
 arguments read as ceremony, an options struct is the alternative — swapping before the v0.1.0 tag
 costs nothing. The named-type and `[]byte` decisions are high confidence and should not move.
+
+---
+
+## Session 2 — 2026-08-23 (continuation)
+
+### D-000.7 — The four standing decisions carry forward unchanged into session 2
+**Owner decision.**
+
+**Verdict.** The run resumes at Story 1.2 and continues to 6.7 under exactly the settings set at
+run start: numeric build order driven explicitly by story number (D-000.1), owner answers at the
+**terminal** (D-000.2), continuous run pausing only at genuine design decisions (D-000.3), and
+heavy tests at each **epic boundary** with the per-story override for hash-shaped stories
+(D-000.4). Nothing was renegotiated.
+
+**Situation.** The first session ended after Story 1.1 was committed (`048999b`). Sub-agents do not
+survive their session, so the engineering lead that held the run's direction is gone and a new one
+was spawned. The standing decisions, by contrast, *are* durable — they live in this file. Re-asking
+them would have invited the owner to answer differently from the record, silently splitting the
+program's test evidence and build order across two regimes.
+
+**In simple terms.** A relay runner handing over the baton also hands over the race plan. The
+runner changes; the plan does not, unless the owner says it does. So the owner was asked one
+question — "do these four still hold?" — rather than four fresh ones, and confirmed all four.
+
+**Options considered.** (a) *Re-ask all four from scratch* — treats the log as advisory and risks a
+different answer to a question already settled, which would make Delivery Log test evidence
+incomparable across epics. (b) *Assume they hold and say nothing* — cheap, but the owner was
+demonstrably present at the terminal, and a silent assumption about the **answer channel**
+specifically would be unrecoverable if wrong (escalations would go somewhere unwatched).
+(c) *One confirmation question* — chosen.
+
+**Why this wins.** It costs one question and makes the carry-forward explicit in the record rather
+than implicit in my context. The accepted cost is one blocking prompt at the start of a run the
+owner asked to be continuous.
+
+**Consequences.** All 49 remaining stories are validated under the D-000.4 regime, so a Delivery
+Log entry naming per-epic deferral means the same thing in Epic 6 as it did in Epic 1. The new lead
+is bound by every ruling above this line as precedent, not as suggestion.
+
+### D-000.8 — The engineering lead re-grounds from this log, not from the spine
+**Orchestrator decision** (routine — the run-dev-cycle continuation rule dictates it; recorded
+because it changes what the lead is authoritative *about*).
+
+**Verdict.** The session-2 lead was told to read this decision log **in full** — the predecessor's
+`## Lead Grounding` section plus every ruling under it — the shipped Story 1.1 file, and the actual
+Story 1.1 code, and to consult the spine only to verify and to load invariant text it needs to
+cite. It appends a dated refresh to `## Lead Grounding` rather than rewriting it.
+
+**Situation.** The predecessor grounded on an **empty repository** — that was the state at run
+start. There is now shipped code, and code is where a decision and its implementation can quietly
+disagree. Re-deriving the program from the spine would reproduce the predecessor's reasoning at
+full cost while missing exactly the thing that has changed.
+
+**Options considered.** (a) *Full re-grounding from the spine and epics* — pays the whole cost
+again and, worse, produces a lead that rules from first principles while six Epic 1 decisions
+already constrain the answers, so its rulings could contradict shipped code. (b) *No grounding,
+rule on demand* — a lead that reads only what each decision touches never sees the invariants'
+interactions, which is the entire reason the role is run-scoped. (c) *Re-ground from the record,
+verify against the code* — chosen.
+
+**Why this wins.** The log is a better grounding text than the spine for a continuation, because it
+carries the spine's shape *plus* everything the run has since learned. The accepted cost is that
+the lead inherits any error in this log as precedent; the mitigation is that it was explicitly
+asked to hunt for divergence between what the log says was decided and what the code actually does,
+and to report divergences as its highest-value finding.
+
+**Consequences.** Rulings from here on cite `AD-N` + a SPEC clause or story AC, and must stay
+consistent with D-000.1 … D-1.1.c. If the lead reports a divergence between the log and the shipped
+code, that is logged as a correction here — the code is not silently treated as correct.
+
+**How we'd know it was wrong.** A session-2 ruling that contradicts a session-1 ruling without
+appending an explicit reversal.
+
+---
+
+## Epic 1 decisions (session 2)
+
+### D-1.2.1 — All four targets render through Story 1.1's existing test-binary-as-renderer; the gate is the harness, not a green test run
+**Orchestrator decision**, on the engineering lead's ruling. Measured before ruling, on this machine.
+
+**Verdict.** The harness builds `folio-go`'s package test binary once per target with `go test -c`,
+then runs it with `FOLIO_SUBPROCESS_RENDER=1` — the env-gated branch Story 1.1 already put in
+`TestMain`, which writes `Render()`'s bytes to stdout and exits before `m.Run()`. `darwin/arm64`
+builds and runs natively; `linux/amd64` and `linux/arm64` **cross-compile on the host** and execute
+as static binaries inside a container carrying **no Go toolchain and no repo mount**; `js/wasm`
+runs under Node via `$(go env GOROOT)/lib/wasm/go_js_wasm_exec`. No new `main` package, no `wasm/`
+directory, no `cmd/`. The harness — not `go test` — collects four byte streams, hashes each, and
+exits non-zero unless all four agree with each other **and** with the recorded golden.
+
+**Situation.** The obvious implementation is "run the suite on each of the four targets", and it is
+measurably wrong. Under `GOOS=js GOARCH=wasm`, two of Story 1.1's tests fail at *runtime* while
+compiling cleanly: `TestModuleGraphHasNoThirdPartyDependencies` dies on
+`exec: "go": executable file not found in $PATH`, and `TestRenderIsByteIdenticalAcrossTwoProcesses`
+on `pipe: not implemented on js`. A wasm leg defined as "the suite passes" can therefore never go
+green, and the natural repair — quietly narrowing what runs on that leg — is how a matrix ends up
+proving nothing.
+
+**In simple terms.** We need the same photograph taken by four different cameras, to check the
+cameras agree. Running the whole test suite on each target is like asking each camera to also pass
+its own factory self-test: informative, but not the comparison we want, and one of the cameras has
+no self-test port. What we actually need is for each camera to take the one photograph and hand it
+over. Story 1.1 already built that shutter release and used it for a different purpose, so we press
+the same button four times.
+
+**Options considered.** (a) *`//go:build js` split of the two offending tests* — **rejected**: a
+build tag hides the file from `gofmt`, `go vet` and Story 1.3's AD-1 lint on that target, so removed
+coverage becomes invisible rather than merely absent. A `SKIP` line with a reason is auditable; a
+missing file is not. (b) *Per-target `-run` allowlist* — rejected as (a)'s problem in a slower
+form: the allowlist is a second place the matrix's meaning can drift. (c) *A `wasm/` entry point
+that renders and prints a hash* — rejected on scope: the spine's §Source tree reserves `wasm/` for
+AD-15/AD-16's command channel, an Epic 5 concern, and creating it now is the empty-scaffold problem
+Story 1.1 was deliberate about avoiding; Epic 5 would arrive at a directory someone else shaped.
+(d) *Reuse the existing `FOLIO_SUBPROCESS_RENDER` seam* — chosen. The story creator and the lead
+arrived at it independently, both after measuring.
+
+**Why this wins.** It is the only option that adds no new surface at all: the seam already exists,
+is already load-bearing for AC8's two-process test, and already checks its own short write. The
+accepted cost is that the seam is now load-bearing for **two** things, so a change to its rendering
+behaviour moves both — stated as a guardrail rather than discovered later.
+
+**On cross-compiling rather than building inside each container** — this reads like a shortcut and
+is the opposite. AD-22 pins the toolchain, so toolchain variance is a *deliberately excluded*
+variable; AD-21's matrix exists to isolate **target codegen**, which is where FMA contraction lives.
+Building all four with one pinned compiler tests exactly the variable AD-21 cares about and removes
+container-Go-version drift as a confound. The harness must never fall back to `go run`, which would
+reintroduce a toolchain into the container.
+
+**Measured (lead, this session).** Native and wasm test binaries both emit **547 bytes** hashing to
+`0f925e1b13702d34a30884bf85f3e3b2f2cb5312824267395871335fa6cb4f7c`, clean stderr on both.
+Independently, the story creator measured **all four** targets producing that same hash. The
+positive matrix already passes at `048999b`, so any red leg in this story is a defect, never harness
+tuning.
+
+**Consequences.** Each captured stream is independently asserted non-empty, `%PDF-1.7`-prefixed,
+`%%EOF`-suffixed and page-count-1 **before** any comparison — lifting Story 1.1's
+`assertWellFormedPDF`, not re-deriving it — so two empty captures can never compare equal. The two
+wasm-incompatible tests take `if runtime.GOOS == "js" { t.Skip(...) }` with a message naming the
+harness as what covers the gap; the skip keys on `runtime.GOOS` **specifically** and never on "an
+exec call returned an error", or a genuine Linux-leg exec failure would silently pass. The
+harness's four-row `target → sha256 → byte-length` table is pasted into the Delivery Log.
+
+**How we'd know it was wrong.** A wasm leg that goes green while producing zero bytes, or a `SKIP`
+whose reason no longer names a live covering mechanism.
+
+### D-1.2.2 — One recorded hash for all four targets, never a per-target map; a real divergence is an owner escalation
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict.** `fixtures/minimal-rect/expected.json`'s `sha256` stays a **single 64-character
+lower-case hex string** — at Story 1.2 and permanently. It never becomes an object, array, or
+per-target map. All four targets reproduce that one value.
+
+**Situation.** The moment a matrix leg goes red, the cheapest-looking repair is to record what each
+target actually produced. That change is one line and it silently reverses the product's central
+claim.
+
+**In simple terms.** Four scales must all read the same weight. If one reads differently, you can
+either find out why, or you can write "on scale 3, this parcel weighs 2.1 kg" on the wall and move
+on. The second is faster, looks like documentation, and quietly means the parcel no longer has a
+weight.
+
+**Options considered.** (a) *Per-target hash map* — rejected: it encodes the proposition *targets
+may legitimately differ*, which is the precise negation of NFR1 and of the risk (R1, rated
+Critical) this story exists to retire. (b) *Majority vote — three targets outvote one* — rejected
+for the same reason plus a worse one: it makes the failure quieter the more targets we add.
+(c) *One golden, hard failure* — chosen.
+
+**Why this wins.** It keeps the fixture's meaning identical to the property being claimed. The
+accepted cost is that a legitimate output change (a deliberate format improvement) requires
+re-recording the golden by hand — which is the correct amount of friction for changing a
+reproducibility guarantee.
+
+**Consequences.** On divergence the harness exits non-zero, prints the four-row table, and
+distinguishes two diagnoses that look alike and are not: *all four agree but differ from the
+golden* is a legitimate versioned change under AD-22, whereas *targets disagree with each other* is
+NFR1 falsified. It writes each diverging target's raw bytes to a named file and reports the first
+differing byte offset with a hex window, reusing Story 1.1's mismatch reporter in `render_test.go`
+so every determinism failure in this project reads the same way. It **never** re-records the
+fixture, majority-votes, or auto-selects the host's value. The fixture-shape check additionally
+asserts `sha256` is a JSON string of exactly 64 lower-case hex characters — so a developer who
+starts converting the field to a map meets a red *before* they reach a green, which is the only
+reliable moment to stop them.
+
+**Escalation rule, binding.** An actual cross-target hash divergence is **an owner decision, not a
+lead call, and not a thing a developer resolves inside the story.** It falsifies the product's
+central promise, and every available response — investigate, narrow the supported profile, or accept
+a per-target reality — is a change of direction. If it happens the run stops and the owner is asked.
+
+**How we'd know it was wrong.** `expected.json` growing a second hash field, under any name.
+
+### D-1.2.3 — The retained FMA probe lives in a new repo-root module `hashmatrix/`, and its AC asserts the divergence *relation*, never recorded hash values
+**Orchestrator decision**, on the lead's ruling, overriding the story creator's original placement.
+This is the entry most likely to be re-litigated, so it is the most prescriptive.
+
+**Verdict.** A new, separate Go module at repo root — `hashmatrix/`,
+`module github.com/panitw/folio/hashmatrix`, zero dependencies, **no dependency on `folio-go`** (no
+`replace`, no `go.work`) — holds both the harness driver and the retained floating-point
+contraction probe. The probe computes `pos := x*scale + offset` in `float64`, takes its three
+inputs from **`os.Args`** via `strconv.ParseFloat`, and emits `math.Float64bits(pos)` as 8 raw
+big-endian bytes. The build fails if the four probe hashes are **all equal**, and specifically if
+`darwin/arm64` and `linux/arm64` do **not** differ from `js/wasm`.
+
+**Situation.** Story 1.2's third AC demands a *retained* deliberately-introduced floating-point
+multiply-add proving the matrix can detect contraction. Two existing guards make that hard on
+purpose: `internal/arch_test.go` parses every `.go` file under `folio-go/internal/` with `go/parser`
+and flags any `float64` identifier anywhere in the AST — including `_test.go`, and including files
+carrying `//go:build ignore`, because it parses rather than builds — and Story 1.3's AD-1 import
+lint lands next with the same reach. The fixture and the guards are in direct tension by design.
+
+**In simple terms.** The probe is the test strip you run through a smoke detector to prove the
+detector still works. It has to contain real smoke, which is exactly what every alarm in the
+building is built to reject. You do not solve that by teaching each alarm to ignore this one
+canister — you keep the canister in a shed the alarms were never wired into.
+
+**Options considered.** (a) *Under `internal/` with an exemption entry in each guard* — rejected:
+exemption lists rot. The first person to add a second entry does it to unblock a build, and the
+guard's meaning drifts from "no floats here" to "no floats except the ones we listed". (b)
+*`fixtures/fma-probe/` as a nested module* (the story creator's original, and reasonable — it adds
+no new top-level directory) — **rejected on what `fixtures/` means**: under AD-21 and D-000.5 that
+directory is the bytes every future SDK conforms against, read by relative path at test runtime. A
+future SDK vendoring `fixtures/` would pull in a module engineered to produce wrong answers. It also
+forces a special case the creator flagged itself — Story 1.3's lint having to *exclude* `fixtures/`
+— which is option (a)'s rot in a new location. (c) *A repo-root `hashmatrix/` module* — chosen.
+
+**Why this wins.** The probe is out of both guards' scope **by construction** rather than by
+maintained exemption, so there is nothing to erode; 1.3's guards bind `folio-go/internal/`
+positively and never mention it. It also keeps `folio-go`'s module graph at exactly one module, so
+the divergence recorded at Refresh item (2) does not bite a story early. The accepted cost is a new
+repo-root directory, which D-000.5 had fixed to the spine's Source Tree — hence the amendment below.
+
+**Two probe constraints that are not stylistic.** Inputs come from `os.Args` because with literal
+constants the compiler folds the expression at build time with exact arithmetic and **every target
+agrees** — the fixture would be silently vacuous, green forever, proving nothing. And the output is
+raw `Float64bits` rather than a formatted decimal because a decimal rendering can round two
+genuinely different values to the same text, masking the low-bit difference the probe exists to
+expose.
+
+**Assert the relation, not the values.** The four probe hashes are **not** recorded in any fixture.
+A probe hash is a property of today's toolchain; recording it would turn a legitimate Go bump into
+a spurious red on something that is not the product. The normative recorded value in this project
+remains the *render* hash alone. The probe's contract is the inequality — and if the probe ever
+stops diverging the build fails, reporting that the matrix's ability to detect contraction is now
+unproven. A silently converged probe is a dead detector behind a green dashboard, which is the worst
+outcome available here.
+
+**Measured, independently, twice.** The lead: args `0.1 0.2 -0.02` give `3c40a3d70a3d70a4` on
+`darwin/arm64` (fused, one rounding) and `3c50000000000000` on `js/wasm` (no FMA instruction, two
+roundings). The story creator, separately: the split is **by architecture, not OS** — fused
+`f77c0fc0acaa…d0df` on `darwin/arm64` + `linux/arm64`, unfused `049d6f48f044…caf8` on `linux/amd64`
++ `js/wasm` — and, decisively, rewriting the line as `float64(x*scale) + origin` (the explicit
+rounding Go's spec says forbids fusion) drops `darwin/arm64` to the *unfused* hash byte-for-byte.
+That control is what proves the divergence is contraction rather than platform detection, and it
+belongs in the story file.
+
+**Consequences.** A **D-000.6 amendment ships in Story 1.2's own commit**: the spine's §Source tree
+gains `hashmatrix/` with a one-line comment stating it is the cross-target harness plus the retained
+contraction probe, deliberately outside `folio-go` so the AD-1 lint and the `float64` guard exclude
+it by construction. Only the tree block changes; no invariant's Binds or Prevents line is touched.
+**Story 1.3 must be written knowing `hashmatrix/` exists by design** — a 1.3 developer who
+"helpfully" widens the AD-1 lint or the `float64` guard to the whole repo turns the retained fixture
+into a build break and will delete it. AD-26 still binds `hashmatrix/`: zero dependencies, and
+1.3's licence check covers its module graph too — an empty graph is trivially clean, which is the
+point.
+
+**Confidence, recorded honestly.** Placement and the assert-the-relation shape are high confidence.
+The specific input triple is **medium**: `0.1 / 0.2 / -0.02` diverges on this machine's toolchain
+and the developer must **re-measure rather than copy** it. If a future toolchain stops fusing that
+expression, the build fails and tells us so — that is the design working, not a defect.
+
+**How we'd know it was wrong.** The probe going green-and-converged, or either 1.3 guard growing an
+exemption entry naming `hashmatrix/` — which would mean the by-construction property was lost and
+we are back to maintaining a list.
+
+### D-1.2.4 — `GOTOOLCHAIN=go1.26.0` on all four legs, asserted from inside each binary before any hash is compared
+**Orchestrator decision**, on the lead's ruling. This is D-1.1.a option (c)'s deferred half landing
+exactly where D-1.1.a said it would.
+
+**Verdict.** The **harness script itself** exports `GOTOOLCHAIN=go1.26.0` and `CGO_ENABLED=0` — not
+only the workflow YAML. `folio-go`'s `TestMain` gains a second env-gated branch alongside the
+existing one: `FOLIO_SUBPROCESS_TOOLCHAIN=1` → write `runtime.Version()` to stdout, exit 0. The
+harness invokes all four binaries in that mode and requires each to report `go1.26.0` **and** to
+equal `expected.json`'s `goToolchain`. That assertion runs **before** the hash comparison and has no
+skip path.
+
+**Situation.** AD-22 pins an exact toolchain and says CI uses that version only; AD-21 records
+golden hashes against the exact toolchain version. Neither is self-enforcing: a container image or
+a CI runner can carry its own Go, and the resulting build looks entirely normal.
+
+**In simple terms.** The hash is only meaningful as "what *this* compiler produces". Comparing
+hashes from two different compilers is not a weaker test — it is a meaningless one, and it fails in
+the worst direction, because a green result from it actively tells you the thing is fine.
+
+**Options considered.** (a) *Set `GOTOOLCHAIN` in the workflow YAML only* — rejected: a local run
+would then be less pinned than a CI run, and D-000.4 makes the *local* run the epic-boundary gate,
+so the gate would be measuring an unpinned build. (b) *Witness the toolchain with the host's
+`go version`* — rejected: that reports what the host has, which equals what built the binary only
+if `GOTOOLCHAIN` actually took effect, and says nothing at all about a container carrying its own
+Go. Only the binary can report what built it. (c) *Assert from inside each binary, before hashing*
+— chosen.
+
+**Why this wins.** It closes the one gap that would make every other assertion in this story
+worthless, for four extra process invocations. The accepted cost is that, because D-1.2.1
+cross-compiles all four from one pinned host toolchain, the check is near-tautological in the happy
+path — kept anyway, because it is the only thing standing between us and a runner quietly
+substituting its own Go, which is precisely the failure D-1.1.a's "How we'd know it was wrong" line
+names.
+
+**Consequences.** Do **not** harmonise this with `TestRenderMatchesGoldenFixture`'s toolchain gate.
+That test's fatal is a *contributor-local affordance* the Story 1.1 finisher deliberately reordered
+(Finding 5) so structural checks still run on an off-toolchain machine. The harness has no such
+affordance: off-toolchain means fail, full stop. **The asymmetry is deliberate and is stated in the
+story file**, because someone will notice it and try to unify them.
+
+**How we'd know it was wrong.** A CI run whose reported Go version is not `go1.26.0`, or a harness
+that reaches its hash comparison on a machine where the toolchain assertion did not run.
+
+### D-1.1.b (lesson) — A story AC that paraphrases a ruling is where the ruling gets silently widened
+**Orchestrator observation**, verified in source, endorsed by the lead. Not a new ruling; the
+amendment itself is deferred to Story 1.3 or 1.4.
+
+**Finding.** D-1.1.b scoped its numeric-formatting guardrail *"Within `internal/pdf`"* and carved
+out diagnostics explicitly: *"A number formatted into a diagnostic message is not an output byte
+and is explicitly not covered."* AD-3's amended Rule repeats that carve-out verbatim. But **Story
+1.1's own AC6 text** restated the rule as covering everything *"nowhere under `folio-go/` outside
+`_test.go` files"* (story file lines 202, 327, 678), and
+`folio-go/internal/pdf/emit_source_test.go` faithfully implements the AC — its comment at line 107
+cites AC6's "broader wording" by name, and the walk at line 113 joins `root` + `"folio-go"`.
+Verified independently by the orchestrator before acting.
+
+**Why it matters.** This is **not** an implementation defect and nobody over-reached — the
+paraphrase did. It is a canonical document contradicting a ruling, which is D-000.6 territory, so
+the amendment must land on the **AC text** in `epics.md` and the story file, not merely on the
+guard. It goes red at Story **1.4** (whose AC requires an error naming the declared and supported
+versions — idiomatically `fmt.Errorf`), and hard at **3.6** (`internal/diag`, whose entire job is
+formatting values into message text — the case AD-3 names as *not covered*) and **3.7** (a CLI that
+must print).
+
+**The generalizable lesson, for every story creator from here on.** A ruling's scope words and
+carve-outs read like qualifiers, so a paraphrase drops them first — and the paraphrase is what gets
+implemented, because it is what the developer is handed. **Story files quote rulings verbatim and
+cite the decision ID; they do not restate them in their own words.**
+
+**Also outstanding from the same ruling.** D-1.1.b requires the guard to ship *"with a retained
+violating fixture: a second file in `internal/pdf` calling `strconv.Itoa` must fail the build."*
+None exists — the Story 1.1 finisher applied the mutation and reverted it. Such a fixture cannot be
+a compiled `.go` file inside `internal/pdf`, because the guard scans `_test.go` there too, so Story
+1.3 needs a `testdata/` non-compiled fixture the lint reads as data. Note the shape rhymes exactly
+with D-1.2.3 and should be ruled consistently with it.
+
+**How we'd know it was wrong.** Story 1.4 opening with a red build on `fmt.Errorf` — which is now
+predicted, dated, and owned rather than discovered.
+
+### D-000.6 amendment (Story 1.2) — `hashmatrix/` added to the spine's §Source tree
+**Ships in Story 1.2's own commit**, per D-000.6 and D-1.2.3's ruling that the cross-target harness
+and its retained FMA-contraction probe live in a new repo-root module. Only the tree block changes;
+no invariant's **Binds** or **Prevents** line is touched.
+
+**Before** (`ARCHITECTURE-SPINE.md` §Source tree):
+```text
+  fixtures/                           # golden templates, data, params, recorded hashes (AD-21).
+                                      #   Repo-level, not per-SDK: read at test runtime, so every
+                                      #   future SDK conforms against the same bytes.
+  folio-node/ · folio-java/ · …       # deferred SDKs, same fixtures, same namespace
+```
+
+**After:**
+```text
+  fixtures/                           # golden templates, data, params, recorded hashes (AD-21).
+                                      #   Repo-level, not per-SDK: read at test runtime, so every
+                                      #   future SDK conforms against the same bytes.
+  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — cross-target
+                                      #   render/toolchain harness + retained FMA contraction probe;
+                                      #   deliberately outside folio-go so AD-1 and the float64 AST
+                                      #   guard exclude it by construction (D-000.6, Story 1.2)
+  folio-node/ · folio-java/ · …       # deferred SDKs, same fixtures, same namespace
+```
+
+**How we'd know it was wrong.** A future story adding an exemption entry for `hashmatrix/` to the
+AD-1 lint or the `float64` AST guard — the whole point of this placement is that neither guard
+needs to know it exists.
+
+### D-1.2.3 (amended) — `hashmatrix/` holds the probe alone; the matrix driver stays in `folio-go/matrix_test.go`
+**Orchestrator decision**, on the engineering lead's ruling. **This amends D-1.2.3 above; that entry
+stays as written.** The log is append-only — the Story 1.1 finisher's Finding-14 DISMISS established
+that precedent, and it is honoured here, where it is the lead's own ruling being corrected.
+
+**Verdict.** `hashmatrix/` contains the retained FMA contraction probe **and nothing else**. The
+matrix driver stays at `folio-go/matrix_test.go` behind `//go:build matrix`. D-1.2.3's placement
+clause — "holds both the harness driver and the retained contraction probe" — is wrong and is
+withdrawn. **Every other clause of D-1.2.3 survives verbatim**, in particular: the **probe** never
+moves into `folio-go`, under any build tag, for any reason.
+
+**Where the original ruling went wrong.** D-1.2.3 bundled the driver into `hashmatrix/` for
+*cohesion* — "the harness and its probe live together". But the property actually being protected
+was narrower: **keeping a deliberate `float64` out of reach of guards that would flag it.** That
+property belongs to the probe and was never about the driver. The placement rule swallowed a
+component whose constraints had already been fixed elsewhere — in D-1.2.1 ("lift
+`assertWellFormedPDF` rather than re-derive it") and D-1.2.2 ("reuse Story 1.1's mismatch
+reporter"). Those two clauses and D-1.2.3's placement clause **cannot all be satisfied**: the driver
+cannot both live in a zero-dependency module with no dependency on `folio-go` and reuse that
+package's unexported test helpers.
+
+**In simple terms.** The quarantine room exists to hold one contaminated sample. The original rule
+also moved the technician who tests it into the room — which sounds tidier, until you notice the
+technician needs instruments that are bolted down in the main lab. The sample stays quarantined; the
+technician walks over. Nothing about the sample's isolation changes.
+
+**Verified by the lead before ratifying, not inferred.**
+
+| Claim | Result |
+|---|---|
+| The driver genuinely needs unexported `folio` test helpers | **True** — `repoRootFromTest` (4 sites), `assertWellFormedPDF` (line 447), `firstDivergence` (line 516), all unexported in `render_test.go`'s `package folio` scope |
+| `hashmatrix/`'s zero-dependency property survives | **Intact** — `probe/main.go` imports only `encoding/binary`, `math`, `os`, `strconv`; no `require`, `replace` or `go.work` |
+| The probe keeps by-construction guard exclusion | **Yes** — it is outside `folio-go` entirely; nothing changed for it |
+| The driver needs that exclusion at all | **No** — `grep -c 'float64\|float32' folio-go/matrix_test.go` gives **0 matches** |
+
+**Exposure check on the `matrix`-tagged file — all three guards checked individually, none fire.**
+`internal/arch_test.go` roots its walk at `folio-go/internal/`; `matrix_test.go` is at the module
+root, so it is not seen. `emit_source_test.go` walks all of `folio-go/` but returns early for any
+`_test.go` outside `internal/pdf`; `matrix_test.go` is exactly that, so it is not seen. Story 1.3's
+AD-1 lint binds `internal/` per AD-1's Rule ("every package under `internal/` is render path"); the
+module root is outside it.
+
+**Guardrail — the natural inference here is false, and Story 1.3's creator must be told.** The
+`//go:build matrix` tag does **no guard-evasion work whatsoever**. Its only job is AC12: keeping
+Docker and Node off the routine `go test ./...` path that runs every story under D-000.4. The safety
+comes entirely from the file's **location**, not its tag — because `internal/arch_test.go` *parses*
+rather than builds, so a build tag is invisible to it. Both of these would fire despite the tag: a
+`matrix`-tagged file placed under `folio-go/internal/`, or a `float64` added to `matrix_test.go` if
+it were ever moved under `internal/`. "The tag hides it" is the wrong mental model and it is the one
+a reader will form.
+
+**Options considered.** (a) *Amend the ruling, ratify what shipped* — chosen. (b) *Move the driver
+into `hashmatrix/` as originally ruled* — rejected on both available implementations. Duplicating
+`firstDivergence` creates a **second copy of the project's determinism diagnostic** — the one message
+shape D-1.2.2 ruled every future divergence must be diagnosed with — maintained in two modules that
+will drift, and drift *silently*, because both sides compile. Exporting the helpers instead is worse:
+it promotes test-only scaffolding into `folio-go`'s public API, the exact surface counter-metric C5
+measures and D-1.1.c deliberately fixed at four names. Neither is worth buying cohesion that was
+only ever wanted for tidiness.
+
+**Consequences.** A **D-000.6 amendment ships in this story's commit**: the spine's §Source tree
+comment at line 619 currently says the module holds "cross-target render/toolchain harness +
+retained FMA contraction probe" — the first half is now false, and only the comment changes.
+`hashmatrix/README.md`'s opening paragraph must lead with what the module *contains* (the probe),
+then say where the driver lives and why the split exists; its "why it is not inside `folio-go`"
+section is correct and stays.
+
+**How we'd know it was wrong.** The probe appearing anywhere under `folio-go/`, or either 1.3 guard
+growing an exemption entry naming `hashmatrix/`.
+
+### D-1.2.5 — A finding that disclaims measurement may not warrant shipped code
+**Orchestrator decision**, on the lead's ruling. Standing guardrail; applies to every story from here.
+
+**Verdict.** Story 1.2's `matrix_test.go:589` and `matrix.yml:15` justify two extra tests by stating
+"F-6 measured" that GitHub-hosted macOS runners lack Docker. **F-6 itself says "Not measured in this
+run… not load-bearing."** The two tests are kept — they are justified — but re-cited to **AC13** in
+both the code comment and the workflow comment. F-6's own text is left **unchanged**: it is accurate,
+and the fix is to stop citing it, not to retroactively promote it to a measurement.
+
+**Situation.** This is D-1.1.b's paraphrase lesson recurring **inside the very story that logged
+it** — the strongest available evidence that the lesson needs mechanical enforcement at review
+rather than a line in a document.
+
+**In simple terms, and this is the subtle part.** The underlying claim happens to be **true**:
+GitHub-hosted macOS runners really do ship without Docker. That is exactly what makes it dangerous.
+"True" and "measured in this run" are different claims, and a citation of the form "F-N measured"
+asserts the second. A story that upgrades an explicitly self-disclaiming finding into a measurement,
+in order to justify code that already shipped, has broken the property this project's culture rests
+on: **that reported numbers were observed.** Nothing else in the log is verifiable if that slips.
+
+**Consequences.** When code, a comment, or a workflow cites `F-N` or a Delivery Log measurement as
+its justification, the finisher **verifies that `F-N` actually claims to have been measured**. A
+finding that disclaims measurement may not warrant anything — the warrant must come from an AC, an
+invariant, or a ruling. If shipped code genuinely depends on such a fact, the fact is **measured or
+dropped**, never inherited from a finding that disclaims itself. Carried into Story 1.3's creator
+prompt: 1.3 is built almost entirely out of assertions about what fires and what does not, making it
+Epic 1's most exposed story to this failure.
+
+**How we'd know it was wrong.** Any "measured" claim in a Delivery Log that cannot be reproduced by
+running the command it names.
+
+### D-1.2.6 — A conflict between two rulings is surfaced, never arbitrated in the diff
+**Orchestrator decision**, on the lead's ruling. Standing process guardrail.
+
+**Verdict.** The Story 1.2 developer met a direct contradiction between D-1.2.3's placement clause
+and D-1.2.1/D-1.2.2's reuse clauses, and resolved it **silently in the code**. The resolution was
+correct. The silence was not. Every sub-agent in this pipeline surfaces a ruling conflict as
+`DECISION NEEDED` and parks; it never arbitrates one in the diff.
+
+**Why this is worth a standing entry rather than a note.** Story 1.1's creator hit AD-3's
+unimplementable clause and raised `DECISION NEEDED` — that reflex is the only reason D-1.1.b exists.
+A developer who quietly resolves a ruling conflict when they are **right** is the same developer who
+will quietly resolve one when they are **wrong**, and in that case nobody finds out. The cost of the
+reflex is one message; the cost of its absence is unbounded and silent.
+
+**Consequences.** Stated in every developer launch prompt from Story 1.3 onward, alongside the
+existing "do not guess, do not terminate the story to ask" instruction. Carried to the finisher for
+Story 1.2 as well, since the Delivery Log should record that the conflict existed and how it was
+resolved — a future reader of D-1.2.3 and D-1.2.3 (amended) needs to see why the code led the log.
+
+**How we'd know it was wrong.** A story whose diff satisfies one ruling and violates another, with
+nothing in the Delivery Log saying a choice was made.
+
+### D-1.2.7 — D-000.6 amendment 2 (Story 1.2 finisher): the spine's `hashmatrix/` comment corrected to match D-1.2.3 (amended)
+**Finisher decision**, applying D-1.2.3 (amended)'s own stated consequence. The log is append-only;
+D-1.2.3 and D-000.6 amendment (Story 1.2) above stay as written.
+
+**Verdict.** `ARCHITECTURE-SPINE.md` §Source tree's `hashmatrix/` comment claimed the module holds
+"cross-target render/toolchain harness + retained FMA contraction probe." The first half became false
+the moment D-1.2.3 (amended) moved the driver back into `folio-go/matrix_test.go`. Only the comment
+changes — no invariant's **Binds** or **Prevents** line is touched, matching D-000.6's amendment rule
+and the code-reviewer's Finding 5.
+
+**Before:**
+```text
+  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — cross-target
+                                      #   render/toolchain harness + retained FMA contraction probe;
+                                      #   deliberately outside folio-go so AD-1 and the float64 AST
+                                      #   guard exclude it by construction (D-000.6, Story 1.2)
+```
+
+**After:**
+```text
+  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — holds the
+                                      #   retained FMA contraction probe alone; the cross-target
+                                      #   matrix driver stays in folio-go/matrix_test.go (D-1.2.3
+                                      #   amended). Deliberately outside folio-go so AD-1 and the
+                                      #   float64 AST guard exclude the probe by construction
+                                      #   (D-000.6, Story 1.2)
+```
+
+`hashmatrix/README.md`'s opening paragraph was corrected the same way: it now leads with what the
+module *contains* (the probe, and nothing else), then states where the driver lives and why the split
+exists. Its "why it is not inside `folio-go`" section was already correct for the probe and is
+unchanged.
+
+**On the silent ruling conflict (D-1.2.6).** The Story 1.2 developer met a direct contradiction
+between D-1.2.3's original placement clause ("holds both the harness driver and the retained
+probe") and D-1.2.1/D-1.2.2's reuse clauses ("lift `assertWellFormedPDF` rather than re-derive it";
+"reuse Story 1.1's mismatch reporter") — the driver cannot simultaneously live in a
+zero-dependency module with no dependency on `folio-go` and call that package's unexported test
+helpers. The developer resolved it by shipping the driver in `folio-go/matrix_test.go` and the probe
+alone in `hashmatrix/`, which is the choice D-1.2.3 (amended) later ratified as correct. The developer
+did not raise `DECISION NEEDED`; the story file's own "DECISION NEEDED: None" section and Task 5's
+placement instruction show the conflict was resolved silently in the diff rather than surfaced. D-1.2.6
+records the standing rule this violates. This entry closes the loop D-1.2.6 asked the finisher to
+close: the code was right, the silence was not, and this is the record of why the code led the log.
+
+**How we'd know it was wrong.** The spine or `hashmatrix/README.md` again describing a harness the
+module doesn't contain.

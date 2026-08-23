@@ -616,6 +616,12 @@ folio/                                # github.com/panitw/folio — monorepo
   fixtures/                           # golden templates, data, params, recorded hashes (AD-21).
                                       #   Repo-level, not per-SDK: read at test runtime, so every
                                       #   future SDK conforms against the same bytes.
+  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — holds the
+                                      #   retained FMA contraction probe alone; the cross-target
+                                      #   matrix driver stays in folio-go/matrix_test.go (D-1.2.3
+                                      #   amended). Deliberately outside folio-go so AD-1 and the
+                                      #   float64 AST guard exclude the probe by construction
+                                      #   (D-000.6, Story 1.2)
   folio-node/ · folio-java/ · …       # deferred SDKs, same fixtures, same namespace
 ```
 

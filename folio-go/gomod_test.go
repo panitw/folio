@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -48,6 +49,20 @@ func TestGoModPinsToolchainExactly(t *testing.T) {
 // returns exactly the main module — no third-party PDF writer (or any
 // other dependency) anywhere in the resolved module graph.
 func TestModuleGraphHasNoThirdPartyDependencies(t *testing.T) {
+	if runtime.GOOS == "js" {
+		// js/wasm has no os/exec: `go` itself is not on $PATH inside the
+		// binary's own execution environment (measured, Story 1.2 F-3:
+		// "exec: \"go\": executable file not found in $PATH"). This is
+		// an environmental gap, not a module-graph defect — Story 1.2's
+		// cross-target matrix harness (folio-go/matrix_test.go,
+		// //go:build matrix) builds and runs every target from the host,
+		// where `go list -m all` is available, so the property this test
+		// checks is still exercised. The skip keys on
+		// runtime.GOOS == "js" specifically, never on "an exec call
+		// returned an error" — a genuine exec failure on a Linux leg
+		// must stay a failure (AC15).
+		t.Skip("js/wasm has no os/exec (\"go\" is not on $PATH); covered by the cross-target matrix harness (folio-go/matrix_test.go)")
+	}
 	cmd := exec.Command("go", "list", "-m", "all")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

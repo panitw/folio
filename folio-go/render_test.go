@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,7 +18,23 @@ import (
 // exactly what AC8 rules out).
 const subprocessEnvVar = "FOLIO_SUBPROCESS_RENDER"
 
+// toolchainEnvVar, when set to "1", makes TestMain write the toolchain
+// that built this binary to stdout and exit, instead of running the test
+// suite. Story 1.2's matrix harness (AC3, D-1.2.4) uses this to witness
+// each target binary's toolchain before comparing any hash: the host's
+// `go version` describes the machine, not the artifact, and in CI the
+// four legs are built on three different runners — only
+// runtime.Version() compiled into the binary itself is an honest
+// witness. Same seam as subprocessEnvVar, one more env-gated mode, both
+// exiting before m.Run() is ever reached so neither touches os/exec or
+// pipes — which is what keeps this branch wasm-safe.
+const toolchainEnvVar = "FOLIO_SUBPROCESS_TOOLCHAIN"
+
 func TestMain(m *testing.M) {
+	if os.Getenv(toolchainEnvVar) == "1" {
+		os.Stdout.WriteString(runtime.Version())
+		os.Exit(0)
+	}
 	if os.Getenv(subprocessEnvVar) == "1" {
 		b, err := Render()
 		if err != nil {
@@ -336,6 +353,20 @@ func hexOf(b []byte) string {
 // by concurrency (e.g. an accidental map iteration reaching an output
 // byte, NFR1.d).
 func TestRenderIsByteIdenticalAcrossTwoProcesses(t *testing.T) {
+	if runtime.GOOS == "js" {
+		// js/wasm has no os/exec and no pipes (measured, Story 1.2 F-3):
+		// exec.Command fails at build-select time and cmd.Run() would
+		// fail at "pipe: not implemented on js" regardless. This is not
+		// a determinism gap — Story 1.2's cross-target matrix harness
+		// (folio-go/matrix_test.go, //go:build matrix) covers the same
+		// property across all four targets, including js/wasm, via the
+		// FOLIO_SUBPROCESS_RENDER seam driven from outside the process
+		// rather than via os/exec inside it. The skip keys on
+		// runtime.GOOS == "js" specifically, never on "an exec call
+		// returned an error" — a genuine exec failure on a Linux leg
+		// must stay a failure (AC15).
+		t.Skip("js/wasm has no os/exec or pipes; covered by the cross-target matrix harness (folio-go/matrix_test.go)")
+	}
 	a := renderInSubprocess(t, "1")
 	b := renderInSubprocess(t, "4")
 

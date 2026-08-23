@@ -1,0 +1,328 @@
+name: Cross-target byte identity
+
+# Story 1.2 (AC13): four native per-target render jobs, a compare job that
+# fails if any pair differs, and four native per-target FMA-probe jobs plus
+# a job asserting AC9's divergence relation. Every job installs exactly
+# go-version 1.26.0 (never a 1.26.x range) and sets CGO_ENABLED=0 and
+# GOTOOLCHAIN=go1.26.0 — the harness itself also exports both (AC2), so
+# this is redundant defence, not the only pin.
+#
+# No job computes or compares a hash in YAML: each job calls
+# `go test -tags=matrix` in folio-go, the same code path AC1 requires the
+# local entry point to use, and the compare jobs below do plain file
+# equality checks over the harness's own output files, never hash logic.
+#
+# Every leg below runs on a native runner (AC13): darwin/arm64 on macos-14,
+# linux/amd64 and js/wasm on ubuntu-24.04, linux/arm64 on ubuntu-24.04-arm
+# (free on this public repo per D-000.5) — so the harness's Docker runner
+# path (needed only for the local single-machine run, F-6) is never
+# exercised here. (F-6 itself is widely documented to say GitHub-hosted
+# macOS runners provide no Docker daemon, but that claim was explicitly NOT
+# measured in this run and is NOT load-bearing — D-1.2.5. AC13 alone, not
+# that claim, is why this workflow is shaped as four native per-target jobs
+# rather than one job driving Docker from macOS.)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GO_VERSION: "1.26.0"
+
+jobs:
+  render-darwin-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: Render + hash (darwin/arm64)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: darwin/arm64
+        run: go test -tags=matrix -run TestTargetRenderHash -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hash-darwin-arm64
+          path: folio-go/.matrix-build/hash.darwin-arm64.txt
+          if-no-files-found: error
+
+  render-linux-amd64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: Render + hash (linux/amd64)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: linux/amd64
+        run: go test -tags=matrix -run TestTargetRenderHash -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hash-linux-amd64
+          path: folio-go/.matrix-build/hash.linux-amd64.txt
+          if-no-files-found: error
+
+  render-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: Render + hash (linux/arm64)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: linux/arm64
+        run: go test -tags=matrix -run TestTargetRenderHash -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hash-linux-arm64
+          path: folio-go/.matrix-build/hash.linux-arm64.txt
+          if-no-files-found: error
+
+  render-js-wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: Render + hash (js/wasm)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: js/wasm
+        run: go test -tags=matrix -run TestTargetRenderHash -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hash-js-wasm
+          path: folio-go/.matrix-build/hash.js-wasm.txt
+          if-no-files-found: error
+
+  compare-render-hashes:
+    needs:
+      - render-darwin-arm64
+      - render-linux-amd64
+      - render-linux-arm64
+      - render-js-wasm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hash-*
+          path: hashes
+          merge-multiple: true
+      - name: Assert all four render hashes are byte-identical (AC7)
+        # Blocker 2 (QA review): this step used to glob `hashes/hash.*.txt`
+        # with no count and no shape check, so a job that silently wrote no
+        # hash (upload-artifact's default if-no-files-found: warn) still
+        # let this step compare and report success over three files, and
+        # four empty files also compared equal. Every upload-artifact step
+        # above now sets if-no-files-found: error, which prevents a
+        # missing hash file from reaching this job at all — but this step
+        # additionally names the four expected files explicitly (never a
+        # glob) and asserts each one exists and is a well-formed 64-char
+        # lower-case hex string BEFORE any comparison, so absence or a
+        # malformed value is a failure here too, defence in depth.
+        run: |
+          set -euo pipefail
+          want_files="hashes/hash.darwin-arm64.txt hashes/hash.linux-amd64.txt hashes/hash.linux-arm64.txt hashes/hash.js-wasm.txt"
+
+          count=0
+          for f in $want_files; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING artifact: $f — a matrix leg must fail, never silently vanish (AC11, Blocker 2)"
+              exit 1
+            fi
+            got="$(cat "$f")"
+            if ! printf '%s' "$got" | grep -Eq '^[0-9a-f]{64}$'; then
+              echo "MALFORMED hash in $f: \"$got\" (want exactly 64 lower-case hex characters)"
+              exit 1
+            fi
+            count=$((count + 1))
+            echo "  $f: $got"
+          done
+          if [ "$count" -ne 4 ]; then
+            echo "expected exactly 4 render hashes, got $count (AC11)"
+            exit 1
+          fi
+
+          ref="$(cat hashes/hash.darwin-arm64.txt)"
+          fail=0
+          for f in $want_files; do
+            got="$(cat "$f")"
+            if [ "$got" != "$ref" ]; then
+              echo "MISMATCH: $f = $got, want $ref (NFR1 falsified — see D-1.2.2)"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All four targets agree: $ref"
+
+  fma-probe-darwin-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: FMA probe (darwin/arm64)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: darwin/arm64
+        run: go test -tags=matrix -run TestTargetProbeHex -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-darwin-arm64
+          path: folio-go/.matrix-build/probe.darwin-arm64.txt
+          if-no-files-found: error
+
+  fma-probe-linux-amd64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: FMA probe (linux/amd64)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: linux/amd64
+        run: go test -tags=matrix -run TestTargetProbeHex -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-linux-amd64
+          path: folio-go/.matrix-build/probe.linux-amd64.txt
+          if-no-files-found: error
+
+  fma-probe-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: FMA probe (linux/arm64)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: linux/arm64
+        run: go test -tags=matrix -run TestTargetProbeHex -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-linux-arm64
+          path: folio-go/.matrix-build/probe.linux-arm64.txt
+          if-no-files-found: error
+
+  fma-probe-js-wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - name: FMA probe (js/wasm)
+        working-directory: folio-go
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: go1.26.0
+          FOLIO_MATRIX_TARGET: js/wasm
+        run: go test -tags=matrix -run TestTargetProbeHex -v .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-js-wasm
+          path: folio-go/.matrix-build/probe.js-wasm.txt
+          if-no-files-found: error
+
+  assert-fma-probe-diverges:
+    needs:
+      - fma-probe-darwin-arm64
+      - fma-probe-linux-amd64
+      - fma-probe-linux-arm64
+      - fma-probe-js-wasm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: probe-*
+          path: probes
+          merge-multiple: true
+      # This job's shell logic mirrors TestFMAProbeDiverges's AC9 relation
+      # check in folio-go/matrix_test.go (allEqual /
+      # bothArm64DifferFromWasm). AC13 requires a job asserting AC9's
+      # partition, so re-deriving the relation here (rather than a hash
+      # comparison) is compliant, not a violation — but the two
+      # implementations are NOT pinned together mechanically: if the Go
+      # relation is ever strengthened, update this mirror in the same
+      # change, or CI would silently keep asserting the weaker one
+      # (Finding 8).
+      - name: Assert AC9's divergence relation
+        run: |
+          set -euo pipefail
+          want_files="probes/probe.darwin-arm64.txt probes/probe.linux-amd64.txt probes/probe.linux-arm64.txt probes/probe.js-wasm.txt"
+
+          count=0
+          for f in $want_files; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING artifact: $f — a matrix leg must fail, never silently vanish (AC11, Blocker 2 family)"
+              exit 1
+            fi
+            got="$(cat "$f")"
+            if ! printf '%s' "$got" | grep -Eq '^[0-9a-f]{16}$'; then
+              echo "MALFORMED probe output in $f: \"$got\" (want exactly 16 lower-case hex characters — 8 raw bytes, AC8)"
+              exit 1
+            fi
+            count=$((count + 1))
+          done
+          if [ "$count" -ne 4 ]; then
+            echo "expected exactly 4 probe outputs, got $count (AC11)"
+            exit 1
+          fi
+
+          darwin_arm64="$(cat probes/probe.darwin-arm64.txt)"
+          linux_amd64="$(cat probes/probe.linux-amd64.txt)"
+          linux_arm64="$(cat probes/probe.linux-arm64.txt)"
+          js_wasm="$(cat probes/probe.js-wasm.txt)"
+          echo "darwin/arm64  $darwin_arm64"
+          echo "linux/amd64   $linux_amd64"
+          echo "linux/arm64   $linux_arm64"
+          echo "js/wasm       $js_wasm"
+
+          all_equal=1
+          if [ "$darwin_arm64" != "$linux_amd64" ] || [ "$darwin_arm64" != "$linux_arm64" ] || [ "$darwin_arm64" != "$js_wasm" ]; then
+            all_equal=0
+          fi
+
+          both_arm64_differ_from_wasm=1
+          if [ "$darwin_arm64" = "$js_wasm" ] || [ "$linux_arm64" = "$js_wasm" ]; then
+            both_arm64_differ_from_wasm=0
+          fi
+
+          if [ "$all_equal" -eq 1 ] || [ "$both_arm64_differ_from_wasm" -eq 0 ]; then
+            echo "the contraction probe no longer diverges across targets; the matrix's ability to detect FMA contraction is unproven — investigate before trusting a green render matrix (AC9)"
+            exit 1
+          fi
+          echo "AC9 relation holds: not all equal, and both arm64 targets differ from wasm."
+
+  # Story 1.3 lands the unit-suite CI job; this workflow is scoped to the
+  # matrix per AC13 and does not duplicate it.
