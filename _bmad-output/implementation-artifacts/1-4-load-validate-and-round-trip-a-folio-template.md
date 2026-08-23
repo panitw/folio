@@ -1797,3 +1797,13 @@ promptly and correctly. The defect only appears once the *exponent itself* overf
 1.4 fixture reached. The lesson generalises: a bound tested only at values the downstream type can
 still reject does not test the bound.
 
+**Fixing commit:** `ce4285442c35cb6d2fe7121eed134b93258808a0` (Story 1.6's finisher commit on
+`main`, subject "Story 1.6: Bind scalar JSON values into text (finisher)"). Filled in by the story
+finisher once Story 1.6 was committed, per that story's own instruction (D-1.6.6, Task 2b) —
+appended here only, nothing above this line touched. Recorded as a small follow-up commit rather
+than folded into that commit itself: a commit's hash is a hash of its own content, so no commit can
+correctly name its own hash inside itself (amending after adding the line changes the hash the line
+names, which cannot converge). This line's own commit is therefore an exception to "one commit," made
+deliberately for this one self-referential field — the substantive fix and this story's own commit
+are otherwise exactly one commit.
+
