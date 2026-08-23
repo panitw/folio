@@ -68,6 +68,21 @@ var absenceChecks = []absenceCheck{
 		rule:    "absence-diag-package",
 		desc:    "folio-go/internal/diag/ must be absent until Story 3.6 mints TABLE_FOOTER_SOURCE_UNRESOLVED/TABLE_FOOTER_SOURCE_FORBIDDEN and AD-14's other diagnostic codes (DW-6, D-1.4.2)",
 	},
+	// Story 1.7's tripwire (AC25, D-1.7.7): registered AFTER re-
+	// confirming live that ScanAbsences' coverage witness (AbsencesStats
+	// .ChecksEvaluated, TestAbsencesProductionScan's hard failure on
+	// ChecksEvaluated == 0, TestAbsencesZeroWitnessIsCaught) is still
+	// wired — D-1.4.11's sequencing precondition. Keyed on the
+	// DIRECTORY, per DW-2's recorded correction. cmd/folio — the only
+	// component NFR1.f names as reading SOURCE_DATE_EPOCH — cannot be
+	// created without tripping this, which is exactly the mechanical
+	// trigger D-1.7.7 relies on to force AD-7's params-date wiring to
+	// be settled rather than remembered (DW-10, owner Story 3.7).
+	{
+		relPath: "folio-go/cmd",
+		rule:    "absence-cmd-dir",
+		desc:    "folio-go/cmd/ must be absent until Story 3.7 builds the CLI and settles AD-7's params-date wiring (DW-10)",
+	},
 }
 
 // AbsencesStats reports what ScanAbsences actually examined, from the

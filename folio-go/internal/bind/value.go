@@ -129,11 +129,33 @@ func (v Value) Lookup(path []string) (Value, Presence) {
 // conversion, which is exactly why Render takes Data ([]byte), never a
 // decoded value (AC24).
 func DecodeData(d []byte) (Value, error) {
+	return decodeJSON(d, "report data")
+}
+
+// DecodeParams parses p exactly as DecodeData parses d — through the
+// SAME json.NewDecoder/UseNumber call (AC20, D-1.7.5), never a second
+// one — but every error names "params", never "report data" (this
+// story's review, Finding 6, Minor): a malformed or trailing-garbage
+// Params document was previously reported through DecodeData directly
+// and read "folio: Render: params: bind: invalid JSON report data: …"
+// — self-contradictory, since M-6/AC16's whole point is that a value
+// sought in params was never sought in report data at all.
+func DecodeParams(p []byte) (Value, error) {
+	return decodeJSON(p, "params")
+}
+
+// decodeJSON is DecodeData's and DecodeParams' single shared
+// implementation (AC20: one json.NewDecoder/UseNumber call site, not
+// two — see internal/bind/decodeguard_test.go's guard). rootLabel
+// names what is being decoded ("report data" or "params") in error
+// text only, so a decode failure on one root is never reported as
+// belonging to the other.
+func decodeJSON(d []byte, rootLabel string) (Value, error) {
 	dec := json.NewDecoder(bytes.NewReader(d))
 	dec.UseNumber()
 	var v interface{}
 	if err := dec.Decode(&v); err != nil {
-		return Value{}, fmt.Errorf("bind: invalid JSON report data: %w", err)
+		return Value{}, fmt.Errorf("bind: invalid JSON %s: %w", rootLabel, err)
 	}
 	// QA Finding 4 (this story's review, Major): json.Decoder.Decode
 	// stops at the end of the first JSON value and silently discards
@@ -150,7 +172,7 @@ func DecodeData(d []byte) (Value, error) {
 		if err == nil {
 			err = fmt.Errorf("unexpected additional JSON content")
 		}
-		return Value{}, fmt.Errorf("bind: trailing data after the JSON report data's single top-level value: %w", err)
+		return Value{}, fmt.Errorf("bind: trailing data after the JSON %s's single top-level value: %w", rootLabel, err)
 	}
 	return valueFromAny(v), nil
 }

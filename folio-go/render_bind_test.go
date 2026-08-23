@@ -67,7 +67,7 @@ func TestRenderScopeFenceIgnoresTableBind(t *testing.T) {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
 	data := Data(`{"customer": {"name": "Ada Lovelace"}}`)
-	b, err := Render(tpl, data, testFontSet())
+	b, err := Render(tpl, data, nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render must succeed despite the table's expression-shaped bind fields: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestRenderBindsTextPlaceholder(t *testing.T) {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
 	data := Data(`{"customer": {"name": "Ada Lovelace"}}`)
-	b, err := Render(tpl, data, testFontSet())
+	b, err := Render(tpl, data, nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestRenderAbsentPathIsLocatedError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, err = Render(tpl, Data(`{}`), testFontSet())
+	_, err = Render(tpl, Data(`{}`), nil, testFontSet())
 	if err == nil {
 		t.Fatal("expected an Error for an absent data path")
 	}
@@ -114,7 +114,7 @@ func TestRenderNullPathRendersEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, err = Render(tpl, Data(`{"customer": {"name": null}}`), testFontSet())
+	_, err = Render(tpl, Data(`{"customer": {"name": null}}`), nil, testFontSet())
 	if err != nil {
 		t.Fatalf("explicit null must not be an error: %v", err)
 	}
@@ -128,9 +128,53 @@ func TestRenderWrongKindIsLocatedError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, err = Render(tpl, Data(`{"customer": {"name": 123}}`), testFontSet())
+	_, err = Render(tpl, Data(`{"customer": {"name": 123}}`), nil, testFontSet())
 	if err == nil {
 		t.Fatal("expected an Error for a JSON number bound into a text element")
+	}
+}
+
+// TestRenderMalformedParamsIsReportedAsParams is this story's review,
+// Finding 6 (Minor): a malformed Params document was previously
+// reported through the same message DecodeData produces for report
+// data, so the error read "…invalid JSON report data…" for a value
+// that was never sought in report data at all — M-6/AC16's exact
+// rationale, one layer up from where it was originally fixed.
+func TestRenderMalformedParamsIsReportedAsParams(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(minimalTemplateJSONWithText))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	_, err = Render(tpl, Data(`{"customer": {"name": "Ada"}}`), Params(`{oops`), testFontSet())
+	if err == nil {
+		t.Fatal("expected an Error for malformed params JSON")
+	}
+	if strings.Contains(err.Error(), "report data") {
+		t.Errorf("a malformed PARAMS document must not be reported as invalid report data, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "params") {
+		t.Errorf("error must name params, got: %v", err)
+	}
+}
+
+// TestRenderTrailingGarbageInParamsIsReportedAsParams is Finding 6's
+// second case: params inherit DecodeData's trailing-garbage rejection
+// (AC20), but until this fix the message named report data even
+// though the trailing garbage was in the params document.
+func TestRenderTrailingGarbageInParamsIsReportedAsParams(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(minimalTemplateJSONWithText))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	_, err = Render(tpl, Data(`{"customer": {"name": "Ada"}}`), Params(`{"a":1} junk`), testFontSet())
+	if err == nil {
+		t.Fatal("expected an Error for trailing garbage after the params document's single top-level value")
+	}
+	if strings.Contains(err.Error(), "report data") {
+		t.Errorf("trailing garbage in PARAMS must not be reported as invalid report data, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "params") {
+		t.Errorf("error must name params, got: %v", err)
 	}
 }
 
@@ -160,7 +204,7 @@ func TestRenderRejectsExpressionSyntaxInTextValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, err = Render(tpl, Data(`{}`), testFontSet())
+	_, err = Render(tpl, Data(`{}`), nil, testFontSet())
 	if err == nil {
 		t.Fatal("expected a located error naming the element id and Epic 3")
 	}
@@ -211,7 +255,7 @@ func TestRenderNullBoundTextStillValidatesFontChain(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := Render(tpl, Data(c.data), testFontSet())
+			_, err := Render(tpl, Data(c.data), nil, testFontSet())
 			if err == nil {
 				t.Fatalf("expected a located font-chain error even though the bound text is empty (data: %s)", c.data)
 			}
@@ -223,7 +267,7 @@ func TestRenderNullBoundTextStillValidatesFontChain(t *testing.T) {
 
 	// Control: a non-empty binding against the same broken template
 	// was already an error before this fix; confirm it still is.
-	if _, err := Render(tpl, Data(`{"customer": {"name": "Ada"}}`), testFontSet()); err == nil {
+	if _, err := Render(tpl, Data(`{"customer": {"name": "Ada"}}`), nil, testFontSet()); err == nil {
 		t.Fatal("control: a non-empty binding against an unresolvable chain must still be an error")
 	}
 }

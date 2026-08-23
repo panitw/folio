@@ -86,7 +86,7 @@ type textRunSource struct {
 // the canonical golden fixture's `columns[].bind` contains an
 // expression-shaped `{{formatNumber(...)}}` that is deliberately not
 // this story's business).
-func collectTextRuns(doc *Template, data bind.Value, fs FontSet) ([]textRunSource, error) {
+func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet) ([]textRunSource, error) {
 	_, height, err := pageDimensions(doc)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func collectTextRuns(doc *Template, data bind.Value, fs FontSet) ([]textRunSourc
 			if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
 				continue
 			}
-			boundText, berr := bind.BindText(el.Value.Value, data, string(el.ID))
+			boundText, berr := bind.BindText(el.Value.Value, data, params, string(el.ID))
 			if berr != nil {
 				return nil, fmt.Errorf("folio: Render: %w", berr)
 			}
@@ -194,8 +194,8 @@ func resolveFace(doc *Template, el template.Element, fs FontSet) (string, error)
 // (AC14b). It resolves every text element's face, subsets each distinct
 // face EXACTLY ONCE over the union of runes the whole document uses
 // (AC9), and hands the result to internal/pdf.SerializeTextDocument.
-func renderDocument(t *Template, data bind.Value, fs FontSet) ([]byte, error) {
-	runs, err := collectTextRuns(t, data, fs)
+func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, error) {
+	runs, err := collectTextRuns(t, data, params, fs)
 	if err != nil {
 		return nil, err
 	}

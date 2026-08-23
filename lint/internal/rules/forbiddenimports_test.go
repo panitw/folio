@@ -198,6 +198,19 @@ func TestForbiddenImportsMessageContent(t *testing.T) {
 // it at package granularity would either false-positive on folio.go or
 // require inventing a per-file exemption this story does not need.
 //
+// Story 1.7's AC9-AC11 (D-1.7.3): this guard now covers BOTH Render
+// and RenderTo (findRenderDeclaringFiles below returns every declaring
+// file, sorted). Its residual gap is RECORDED, not papered over —
+// measured, not merely predicted (M-5): a DELIBERATE cross-file route
+// (RenderTo staying in the clean file while calling an os.WriteFile
+// helper declared in folio.go) still builds and this guard still
+// passes. That is accepted: the guard is a CAPABILITY fence ("the file
+// that declares the render entry points imports none of the four
+// banned packages"), not a proof that no code path anywhere in the
+// package ever touches disk. A filesystem-snapshot check to close that
+// gap is deliberately not built — disproportionate, and it would test
+// the OS rather than this library.
+//
 // Vacuity guard (AC25/D-000.9, sharpened by D-000.13 — Finding 1):
 // findRenderDeclaringFiles itself fails the test if no file under
 // folio-go/ declares Render or RenderTo, so a run that finds nothing

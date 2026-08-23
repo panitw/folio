@@ -3379,3 +3379,219 @@ rather than left as an accident of which walker happens to be used.
 **This is the second time the canonical fixture has caught a scoping error before it shipped** — the
 first being `{{page}}`/`{{pages}}` under D-1.6.5. That is a strong argument for keeping it in the
 **default gate** rather than behind a build tag.
+
+## Epic 1 decisions — Story 1.7 (ruled before the story file was written)
+
+### D-1.7.1 — Five positional arguments survive; D-1.1.c's medium-confidence flag closes on AD-8
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict** *(mechanism: binding)*: `Render(t *Template, d Data, p Params, f FontSet) ([]byte, error)`
+and `RenderTo(w io.Writer, t *Template, d Data, p Params, f FontSet) error`. **No options struct.**
+D-1.1.c's medium-confidence flag on argument packaging is **resolved to high and marked closed**, so
+nobody reopens it at the `v0.1.0` tag.
+
+**The decisive argument is one D-1.1.c did not have.** An options struct makes `FontSet`
+**omittable at compile time**: `folio.Request{Template: t, Data: d}` would compile and carry a zero
+`FontSet`, turning an **AD-8 violation from a compile error into a runtime one**. AD-8 is explicit
+that the font set is part of the render's *identity* — *"the same template with a different chain is
+a different render, not a silent substitution."* Positional arguments force every caller to name it.
+That is not style; it is the mechanism by which AD-8 is enforced by the compiler rather than by
+discipline.
+
+The extensibility counter-argument is weak here: AD-8 and AD-23 fix the input set at exactly four,
+and the spine's Deferred list describes the REST service as *"another shell around the same core"* —
+it would not change this signature.
+
+**The `FontSet` shorthand — D-1.1.c still governs.** The AC writes `RenderTo(w, template, data,
+params)` and omits `FontSet`; **the spine governs, the AC is shorthand.** Carry the six-argument form.
+
+**But the ceremony question cannot be fairly judged at 1.7, and this needs saying.** AC4's test is the
+README — and **verified: there is no README anywhere in the repo; 1.7 writes the first.** The
+first-PDF example needs a `FontSet`, and **verified: `folio-go/fonts/` does not exist** — the shipped
+faces arrive at **Story 2.2**. So at 1.7 the example must show a caller assembling a font set from
+their own bytes, which *is* ceremony — **ceremony that 2.2 removes, not ceremony the signature
+causes.** Therefore: the packaging decision closes now on AD-8; **the AC4 ceremony judgement is
+re-tested at Story 2.2** (registered in `deferred-work.md`, owner 2.2) *(mechanism: binding)*. If the
+1.7 README author finds the example reads as ceremony **for reasons other than the missing font
+set**, that is a `DECISION NEEDED`, not a unilateral change.
+
+### D-1.7.2 — The `Render`/`RenderTo` identity test is vacuous as stated; assert delegation structurally and test what the writer path really gets wrong
+**Orchestrator decision**, on the lead's ruling.
+
+**Streaming is not available and must not be attempted** *(mechanism: binding)*. AD-7 makes `/ID` a
+SHA-256 **over the serialized body**, and the classic xref table carries **byte offsets**. Both need
+the complete document before the trailer can be written. So `RenderTo` **necessarily** builds the
+whole document in memory and writes it once. *"No buffering of the whole document"* is a property we
+**cannot have**, and asserting it would assert something false. **Put that reasoning in a code
+comment** — someone will eventually try to "optimise" `RenderTo` into a stream, and it would break
+AD-7 silently.
+
+**Verdict — three parts** *(binding for the properties; illustrative for the AST form)*:
+1. **One core produces the bytes.** `Render` returns them; `RenderTo` writes them. Two emitters would
+   be D-1.4.14's drift hazard, so a shared path is the **correct** design — which is exactly why the
+   behavioural identity assertion **cannot fail**.
+2. **Assert the delegation structurally, not behaviourally** — an AST assertion that exactly one
+   function produces the document bytes and both entry points route through it. Byte-identity then
+   holds as a **theorem** rather than as a test that cannot fail. **Delete the vacuous behavioural
+   comparison rather than keeping it for comfort — a green test nobody can fail reads as coverage.**
+3. **Test what the writer path genuinely gets wrong**, none of which the shared core guarantees: a
+   writer returning an **error mid-write** must surface it, not return `nil`; a **short write** must
+   be detected and reported (Story 1.1's `TestMain` learned this the hard way, Nit 25); the **exact
+   byte count** written equals the document length, via a counting writer; and **nothing extra** is
+   written — no trailing newline, no second call with a tail.
+
+That last set is where bugs in a writer API actually live, and every one of them can fail.
+
+### D-1.7.3 — The render-file guard locates by AST, and 1.7 is the story that proves it survived the move
+**Orchestrator decision**, on the lead's ruling. **States explicitly what Story 1.6's blocker showed
+could not be assumed.**
+
+**Verdict** *(mechanism: binding)*: D-1.6.3's rule must **locate by AST the file(s) declaring `Render`
+*and* `RenderTo`** — by declaration, **never by filename**. **Its red-proof is exactly the Story 1.6
+reviewer's mutation:** move `RenderTo` into `folio.go` (which imports `os`) and the guard must go red
+**with a named finding**. Together with Story 1.3's `internal/` lint, that discharges the AC.
+**Do not build a filesystem-snapshot check** — disproportionate, and it would test the OS rather than
+the library.
+
+**Why this needed restating rather than assuming.** Story 1.6's blocker was the same family one level
+down: the lead ruled the *property* ("the file declaring `Render`") and the implementation asserted a
+*name*. The reviewer moved `Render` into the `os`-importing file, left the empty file in place, and
+the guard **passed**. **1.7 is the very story that moves the entry point**, which is the sharpest
+possible demonstration that a property-shaped ruling must be restated as a requirement, not presumed
+to have carried.
+
+**The residual gap, stated rather than papered over** *(mechanism: illustrative)*: a file-scoped
+import rule makes the *obvious* violation impossible but does not stop a deliberate cross-file route —
+`RenderTo` calling a helper in `folio.go`, which legitimately imports `os`. **That is accepted.** The
+AC's intent is a **capability** claim ("you can serve a PDF without touching disk"), not a security
+boundary, and D-1.7.2's counting-writer assertions give the behavioural half. **Record the gap in the
+story so a later reader does not mistake the guard for a proof.**
+
+### D-1.7.4 — `params` is a resolution root, not a reserved token — deliberately a different layer from `page`/`pages`
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict — different mechanism, deliberately** *(mechanism: binding)*:
+- `page` / `pages` are **reserved whole tokens** that Story 1.6 passes through untouched for Story 2.7
+  to late-bind. AD-4 is explicit that **no `page` namespace exists**.
+- `params` is a **namespace** — a second resolution root resolved at bind time, alongside the data
+  root. `{{params.reportDate}}` is a dotted path into the supplied params document.
+
+**Do not implement `params` by extending the `page`/`pages` reservation list.** They are different
+things, and conflating them is how `page` eventually acquires a namespace — which AD-4 forbids
+forever.
+
+**Precedence** *(mechanism: binding)*: the first path segment `params` **always** selects the params
+document, never report data, regardless of what data contains. **Retained fixture, copying D-1.6.5's
+`page` fixture verbatim in shape: data containing a top-level `params` key must not change what
+`{{params.reportDate}}` resolves to.**
+
+**A top-level `params` key in data is not an error** *(mechanism: binding)*. It becomes unreachable by
+any binding, and that is documented — but rejecting it would refuse legitimate caller data over a
+name collision the caller may not control. **The caller's JSON shape is their business; only the
+binding namespace is ours.**
+
+**`{{params.x}}` with no params supplied → Error naming the path and element id** *(binding)*. This is
+AD-14's absent-path case applied to the params root, and the same code path as absent data. Rendering
+empty would **silently produce a statement missing its report date** — precisely the failure AD-14's
+first case exists to make loud. **`{{params}}` bare, no dot → located error** ("`params` is a
+namespace, not a value") *(illustrative for the wording)*.
+
+### D-1.7.5 — `Params` is a defined type sharing one decode path, with a compile-time swap proof
+**Orchestrator decision**, on the lead's ruling.
+
+**Verified:** `type Data []byte` at `render_entry.go:52` is a **defined type, not an alias**.
+`type Params []byte` must be the same *(mechanism: binding)*. **An alias (`type Params = []byte`)
+would make the two mutually assignable and destroy the entire point** — D-1.1.c's argument was that
+*"in a product whose acceptance fixture is a bank statement, that swap must be a compile error, not a
+support ticket."* **At 1.7 they become adjacent same-typed-looking arguments, which is the exact
+moment that reasoning was written for.**
+
+**Guardrail** *(mechanism: binding)*: a **compile-time proof that the swap is rejected** — a
+`//go:build ignore` or `go/types`-based assertion that `Render(t, params, data, f)` does **not**
+type-check. An assertion that the safety property holds, rather than a comment claiming it does.
+
+**One decode path, shared** *(mechanism: binding)*: params are decoded with the **same `UseNumber`
+discipline, the same single literal splitter (D-1.6.1), and the same `Decimal` type** as report data.
+A second decoder would be the drift hazard refused three times already — and worse here, since
+**params carry dates and amounts, where a divergence would be least visible and most expensive.**
+
+### D-1.7.6 — The README's toolchain caveat is due now
+**Orchestrator decision**, on the lead's ruling. D-1.1.a's addendum, landing at the README story.
+
+**Verdict** *(mechanism: binding)*: the README states that a **`toolchain` directive binds only the
+main module** — so an integrator compiling `folio-go` into their own binary builds with **their**
+toolchain and may get different bytes. That is AD-22's accepted position, **but it is invisible until
+it bites**, and **counter-metric C5's "first PDF in minutes" integrator is exactly the person who hits
+it.** It belongs **near the golden-hash discussion, not in a footnote**: someone recording Folio's
+hashes in their own test suite needs to know what pins them.
+
+### D-1.7.7 — AD-7's `/CreationDate` clause is already owned by Story 3.7; 1.7 re-scopes one test and adds one tripwire
+**Orchestrator decision**, on the lead's ruling. Answers the Story 1.7 creator's `DECISION NEEDED`.
+**Not a gap, not a contradiction, and not an owner escalation.**
+
+**Verdict.** Story 3.7 already owns the work, with acceptance criteria written. **Verified by the
+orchestrator at `epics.md:1074–1100`:** its user story reads *"…and to **pin document dates
+reproducibly**"*, its **Covers** line names **AD-7**, and it carries these criteria verbatim:
+
+> **Given** `SOURCE_DATE_EPOCH` set in the environment · **When** `cmd/folio render` runs · **Then**
+> the CLI reads it and passes it in as a parameter · **And** the library core still reads no
+> environment variable
+>
+> **Given** **no date supplied by any route** · **When** the PDF is produced · **Then**
+> `/CreationDate` and `/ModDate` are omitted
+
+**The lead's tell, and it is a good one:** *"no date supplied by **any route**"* is the **negative case
+of a positive case** — nobody writes that sentence unless a route exists. Story 3.7 is also the story
+that builds `cmd/folio`, the only component NFR1.f names as reading `SOURCE_DATE_EPOCH`.
+
+**On the orchestrator's proposed dissolution — the distinction is correct but does not dispose of the
+clause.** `acceptance.md:16`'s "generated date" is **footer text** (a `{{params.generatedDate}}`
+binding rendering as visible content, which 1.7 delivers); AD-7's clause governs the **metadata
+dictionary**. Genuinely different surfaces. But it does **not** follow that the metadata clause is a
+permission never exercised, because **NFR1.f is a stated requirement** (`prd.md:370`): the
+`SOURCE_DATE_EPOCH` convention *"is honoured… by Folio's own command-line tooling, which read it and
+pass the date in as a parameter (FR21)."* `SOURCE_DATE_EPOCH` exists for exactly one purpose, so a
+route that reads it and delivers it nowhere would leave NFR1.f **honoured in letter and void in
+effect.** Both surfaces are real; neither substitutes for the other.
+
+**Why 3.7 rather than 1.7** *(mechanism: illustrative)*: a PDF date is `D:YYYYMMDDHHmmSSOHH'mm'`, and
+date formatting matures at **Story 3.4**. Building a PDF date emitter at 1.7 — before any date type,
+before `internal/diag`, before the CLI that supplies the value — would be premature in three
+directions at once.
+
+**Two things Story 1.7 does, both small** *(mechanism: binding)*:
+1. **Re-scope the shipped test instead of leaving it accidentally right.**
+   `TestRenderHasNoCreationOrModDate` asserts absence **unconditionally**, and that is true today only
+   because nothing *can* supply a date. From 1.7 it becomes a statement about a render **whose params
+   carry no date** — which is precisely 3.7's fourth AC, and is testable now that `Params` exists.
+   Rename and re-scope it so it asserts the negative case **deliberately**. Left unconditional,
+   **3.7's developer meets a red test and the cheapest way out is to weaken it.**
+2. **Add an absence tripwire on `folio-go/cmd/`** alongside the existing `internal/expr` and
+   `internal/diag` rows. `cmd/folio` does not exist until 3.7, so **its creation is the exact moment
+   the `/CreationDate` wiring must be settled.** D-1.3.4's mechanism, one row in a table that already
+   exists.
+
+**De-risking note for 3.7** *(mechanism: illustrative)*: the "every golden hash moves" fear is smaller
+than it looks. **Only fixtures that supply a date would move**; a params-carrying render with no date
+is byte-identical to today. So 3.7's blast radius is new fixtures plus any existing one that opts in
+— not the corpus.
+
+### D-000.14 — When a count is load-bearing, count by AST; a text or filtered count measures the filter
+**Orchestrator decision**, on the lead's ruling. **Program-wide standing rule** *(mechanism: binding)*.
+
+**Verdict.** Whenever a count is load-bearing — call sites, guarded files, findings, fixtures — it is
+produced by an **AST-exact** count, never by text matching and never through a filtered pipe.
+
+**Measured, on one question, three ways.** The Story 1.7 creator counted `Render`/`RenderTo` **call
+expressions**: **19** by AST (all in tests, **zero production callers**); **36** by raw text matching;
+**8** through a piped `rtk` count. `matrix_test.go` mentions `Render(` in prose and contains no call
+expression at all.
+
+**Why this is D-000.12 generalised past hashing.** A filtered or text-matched count is **not a
+measurement of the property — it is a measurement of the filter.** D-000.12 established that the
+shell wrapper corrupts bytes through pipes; this extends the same caution to counts, where the wrong
+answer arrives looking exactly like the right one and **nothing announces the discrepancy**.
+
+**Pattern, not incident.** Story 1.6's equivalent claim was wrong **twice in the same way** ("thirteen
+call sites", corrected to 11). Three methods, three answers, and only one counts the thing anyone
+means.

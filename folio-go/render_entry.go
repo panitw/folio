@@ -35,6 +35,7 @@ package folio
 import (
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/panitw/folio/folio-go/internal/bind"
 )
@@ -51,16 +52,74 @@ import (
 // destroyed by encoding/json's default float64 conversion.
 type Data []byte
 
-// errNilTemplate is AC14b's located error for Render(nil, d, f).
+// Params is the caller's RUNTIME values — a statement date, say — as
+// raw JSON bytes (AC18-AC20, D-1.7.5). Deliberately a SECOND, separate
+// channel from Data (AC12-AC17, D-1.7.4): report data cannot reach
+// into "{{params.…}}", and a top-level "params" key inside Data is
+// legal, unreachable, ordinary caller JSON (AC15).
+//
+// A named, DEFINED type, never []byte and never a type alias (AC18,
+// D-1.7.5, verbatim): "An alias (type Params = []byte) would make the
+// two mutually assignable and destroy the entire point" — Data and
+// Params are adjacent, same-underlying-type arguments in Render's
+// signature, and in a product whose acceptance fixture is a bank
+// statement, swapping them must be a compile error, not a support
+// ticket (D-1.1.c). TestParamsDataSwapDoesNotTypeCheck (AC19) proves
+// this by construction rather than by comment (AC19a: Story 1.6
+// shipped Data's equivalent property as prose only — this is refused
+// here for both types).
+//
+// Decoded through the SAME path as Data (AC20): internal/bind.DecodeData,
+// the same UseNumber discipline, the same single literal splitter
+// (D-1.6.1), the same Decimal — no second decoder, because params
+// carry dates and amounts, where a silent divergence would be least
+// visible and most expensive (D-1.7.5). A nil or empty Params means no
+// runtime values were supplied — not a decode error — and is treated
+// as an empty params document: any "{{params.x}}" placeholder is then
+// simply absent (AC16), the same located-error shape as an absent data
+// path (AD-14).
+type Params []byte
+
+// errNilTemplate is AC14b's located error for Render(nil, d, p, f).
 var errNilTemplate = errors.New("folio: Render: template is nil (a document must be loaded via LoadTemplate/ParseTemplate first)")
 
+// errNilWriter is this story's review, Finding 4 (Major): w is a NEW
+// public argument RenderTo introduces, and a public entry point
+// documented as ignoring its argument is worse than a located error
+// (D-1.5.9) — the same reasoning Story 1.5 applied to Render(nil
+// template, ...), applied here to RenderTo(nil writer, ...).
+var errNilWriter = errors.New("folio: RenderTo: writer is nil")
+
+// decodeParams decodes p through internal/bind.DecodeParams — the SAME
+// decode path Data uses (AC20; DecodeData and DecodeParams share one
+// json.NewDecoder/UseNumber call, internal/bind/decodeguard_test.go's
+// guard), reporting errors as belonging to "params", never "report
+// data" (this story's review, Finding 6: DecodeData's messages named
+// the wrong root when reused verbatim for params) — with one narrow
+// exception: a nil or empty Params is "no runtime values supplied"
+// (AC16's premise), not malformed JSON, so it decodes to an empty
+// object without invoking the decoder at all. This does not add a
+// second decode path: it is a zero-length short-circuit before the one
+// decoder, never an alternative to it, so the AC20 guard (exactly one
+// json.NewDecoder/UseNumber site under internal/bind) is unaffected.
+func decodeParams(p Params) (bind.Value, error) {
+	if len(p) == 0 {
+		return bind.Value{Kind: bind.KindObject}, nil
+	}
+	v, err := bind.DecodeParams(p)
+	if err != nil {
+		return bind.Value{}, fmt.Errorf("folio: Render: %w", err)
+	}
+	return v, nil
+}
+
 // Render produces a PDF 1.7 document from t, resolving every
-// "{{…}}" placeholder in every text element's value against d
-// (AC1, AC15-AC21, D-1.6.5) and embedding every font the document's
-// text elements use as a subset (AC1, D-1.5.5): the f parameter is
+// "{{…}}" placeholder in every text element's value against d and p
+// (AC1, AC12-AC21, D-1.6.5, D-1.7.4) and embedding every font the
+// document's text elements use as a subset (AC1, D-1.5.5): p is
 // inserted into its final target position, never appended — target is
-// Render(t, d, p, f), so 1.6 adds d before f, 1.7 adds p before f
-// (D-1.5.5, verbatim: "No call site is ever reordered, only
+// Render(t, d, p, f), so 1.6 added d before f and 1.7 adds p between
+// them (D-1.5.5, verbatim: "No call site is ever reordered, only
 // extended").
 //
 // t must be non-nil (AC14b): Story 1.1's fixture document
@@ -73,15 +132,19 @@ var errNilTemplate = errors.New("folio: Render: template is nil (a document must
 // internal/bind.DecodeData (json.Decoder.UseNumber under the hood), so
 // every number literal a bound text placeholder resolves to keeps its
 // own author-written precision (AD-23) rather than being narrowed
-// through float64.
+// through float64. p is decoded through the same path (AC20); a nil
+// or empty p means no runtime values were supplied (decodeParams
+// above). A top-level "params" key inside d is legal caller JSON and
+// simply unreachable by any binding — the caller's JSON shape is their
+// business; only the binding namespace is ours (AC15, D-1.7.4).
 //
 // PROVISIONAL: text is placed using a provisional band-relative origin
 // convention (AC28) that stands in for AD-24's real placement until
 // internal/layout exists (Story 2.5); TestProvisionalBandOriginIsPinned
 // (render_test.go) fails the day that package exists, forcing this to
-// be revisited. Story 1.6 gives Render its data parameter and Story 1.7
-// its io.Writer form (D-1.1.c).
-func Render(t *Template, d Data, f FontSet) ([]byte, error) {
+// be revisited. Story 1.6 gave Render its data parameter and Story 1.7
+// its params parameter and its io.Writer form, RenderTo (D-1.1.c).
+func Render(t *Template, d Data, p Params, f FontSet) ([]byte, error) {
 	if t == nil {
 		return nil, errNilTemplate
 	}
@@ -89,5 +152,80 @@ func Render(t *Template, d Data, f FontSet) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("folio: Render: %w", err)
 	}
-	return renderDocument(t, data, f)
+	params, err := decodeParams(p)
+	if err != nil {
+		return nil, err
+	}
+	return renderDocument(t, data, params, f)
+}
+
+// RenderTo produces the same document as Render, but writes it to w
+// instead of returning it (AC1, D-1.7.1). It takes the same five
+// arguments in the same order — w is the sole addition, always first
+// — and no options struct wraps them: an options struct would make f
+// omittable at compile time (folio.Request{Template: t, Data: d} would
+// compile with a zero FontSet), turning an AD-8 violation from a
+// compile error into a runtime one (D-1.7.1, verbatim).
+//
+// RenderTo CANNOT stream, and this is not an oversight (AC3, D-1.7.2):
+// AD-7 requires /ID to be the first 16 bytes of a SHA-256 hash taken
+// over the serialized body up to the point /ID itself is written, and
+// the classic cross-reference table records each object's BYTE OFFSET
+// within the finished file — both facts require the complete document
+// to exist before the trailer, and therefore the first byte written to
+// w, can be produced. "'No buffering of the whole document' is a
+// property we cannot have, and asserting it would assert something
+// false" (D-1.7.2). Do not "optimise" this into an incremental writer:
+// doing so would silently break AD-7's content-derived /ID and the
+// xref table's offsets. RenderTo therefore builds the document once,
+// via the single shared core Render also uses (renderDocument, AC4),
+// then issues exactly one logical write of the result — never a
+// second call carrying a tail (AC8) — and turns every writer failure
+// into a located, non-nil error (AC5-AC8), INCLUDING w itself being
+// nil (this story's review, Finding 4: w is a new public argument this
+// story introduces, and D-1.5.9's "a public entry point documented as
+// ignoring its argument is worse than a located error" applies to it
+// exactly as it applies to a nil template):
+//
+//   - w == nil returns errNilWriter, never a panic;
+//   - a Write that returns a non-nil error is surfaced, never
+//     swallowed or replaced by an unrelated error (AC5);
+//   - a short write (n < len(b) with err == nil, which io.Writer
+//     permits) is itself reported as an error — never silently
+//     treated as success (AC6, the same failure mode Story 1.1's
+//     TestMain caught, Nit 25);
+//   - the number of bytes actually accepted by w is verified against
+//     len(b) via a counting write (AC7).
+//
+// This file (AC9, D-1.6.3/D-1.7.3) is located by lint's
+// findRenderDeclaringFiles — BY AST, never by filename — as the file
+// declaring Render and RenderTo, and is scanned for forbidden imports
+// (time/os/net/math/rand). AC11's residual gap, MEASURED not merely
+// asserted (M-5): that guard is a file-scoped import rule, so it
+// cannot stop a DELIBERATE cross-file route — RenderTo staying in this
+// clean file while calling an os.WriteFile helper declared in
+// folio.go (which legitimately imports "os" for LoadTemplate) still
+// builds and the guard still passes. Source AC1's "no temporary file"
+// is therefore a CAPABILITY claim ("you can serve a PDF without
+// touching disk"), not a security boundary the guard proves — AC7/AC8's
+// counting-writer assertions above are the behavioural half that
+// actually pins what this implementation does. A filesystem-snapshot
+// check to close this gap is deliberately NOT built (disproportionate,
+// and it would test the OS rather than this library).
+func RenderTo(w io.Writer, t *Template, d Data, p Params, f FontSet) error {
+	if w == nil {
+		return errNilWriter
+	}
+	b, err := Render(t, d, p, f)
+	if err != nil {
+		return err
+	}
+	n, err := w.Write(b)
+	if err != nil {
+		return fmt.Errorf("folio: RenderTo: write failed after %d of %d bytes: %w", n, len(b), err)
+	}
+	if n != len(b) {
+		return fmt.Errorf("folio: RenderTo: short write: wrote %d of %d bytes, writer reported no error", n, len(b))
+	}
+	return nil
 }

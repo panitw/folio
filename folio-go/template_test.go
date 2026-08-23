@@ -179,7 +179,7 @@ func TestRenderAcceptsATemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), FontSet{})
+	b, err := Render(tpl, Data("{}"), nil, FontSet{})
 	if err != nil {
 		t.Fatalf("Render(tpl): %v", err)
 	}

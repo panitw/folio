@@ -121,7 +121,7 @@ func TestRenderSubsetsOneFacePerDocumentNotPerElement(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
 	fs := testFontSet()
 
-	out, err := Render(tpl, Data("{}"), fs)
+	out, err := Render(tpl, Data("{}"), nil, fs)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), testFontSet())
+		b, err := Render(tpl, Data("{}"), nil, testFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
@@ -570,44 +570,66 @@ func TestRenderProducesAValidPDF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), FontSet{})
+	b, err := Render(tpl, Data("{}"), nil, FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
 	assertWellFormedPDF(t, "Render()", b)
 }
 
-// TestRenderHasNoCreationOrModDate is AC9: neither key appears anywhere in
-// the output, and no /Info dictionary is emitted at all. It also checks
-// the neighbouring metadata/compression keys the Dev Notes and fixture
-// README promise are absent but that nothing previously asserted:
-// /Producer, /Creator and /Metadata (XMP) are the next places a
-// timestamp, tool name or machine name could leak into the bytes — the
-// same AD-7 hazard AC9 exists to close, one key over — and /Filter is the
-// R4 compression risk this story's Dev Notes explicitly remove from the
-// variable set (this story's QA review, Minor 20).
+// TestRenderWithNoDateInParamsOmitsCreationAndModDate is AC9, RE-SCOPED
+// at Story 1.7 as AC24 (D-1.7.7) requires: neither key appears anywhere
+// in the output, and no /Info dictionary is emitted at all. It also
+// checks the neighbouring metadata/compression keys the Dev Notes and
+// fixture README promise are absent but that nothing previously
+// asserted: /Producer, /Creator and /Metadata (XMP) are the next places
+// a timestamp, tool name or machine name could leak into the bytes —
+// the same AD-7 hazard AC9 exists to close, one key over — and /Filter
+// is the R4 compression risk this story's Dev Notes explicitly remove
+// from the variable set (Story 1.6's QA review, Minor 20).
 //
-// Finding 12 (QA review): the previous version swept ONLY the fontless
-// document (an empty FontSet). F-7 explicitly flagged /Filter as the
-// compression risk on the FONT path ("if this story compresses the
-// FontFile2, that assertion goes red") — but as wired, it could never
-// go red, because it never saw that path: the document with the large
-// binary stream, where a future /Filter or /Producer would actually be
-// tempting, had no metadata guard at all. This is now table-driven over
-// both documents.
-func TestRenderHasNoCreationOrModDate(t *testing.T) {
+// Finding 12 (Story 1.6's QA review): the previous version swept ONLY
+// the fontless document (an empty FontSet). F-7 explicitly flagged
+// /Filter as the compression risk on the FONT path ("if this story
+// compresses the FontFile2, that assertion goes red") — but as wired,
+// it could never go red, because it never saw that path: the document
+// with the large binary stream, where a future /Filter or /Producer
+// would actually be tempting, had no metadata guard at all. This is
+// table-driven over both documents.
+//
+// AC24 (D-1.7.7, this story): before Params existed, this test's
+// "unconditional" absence assertion was true SOLELY because nothing
+// could supply a date — a comment about intent, not a statement the
+// test actually pinned. Now that Params exists, the property this test
+// asserts is precisely AD-7's negative case, verbatim from
+// epics.md:1098-1100 ("Given no date supplied by any route … Then
+// /CreationDate and /ModDate are omitted") — Story 3.7's fourth AC,
+// which owns the POSITIVE case (a date supplied through params DOES
+// appear). Left unconditional and unrenamed, 3.7's developer would meet
+// a red test whose cheapest fix is to weaken it — exactly the erosion
+// this run has spent six stories preventing (D-1.7.7, binding
+// rationale). The two new cases below cover both "no params at all"
+// and "params supplied, but no date key in them" — 1.7 emits no PDF
+// date and builds no date type; wiring an actual date through params
+// into /CreationDate is Story 3.7's, not this test's.
+func TestRenderWithNoDateInParamsOmitsCreationAndModDate(t *testing.T) {
 	forbidden := []string{"/CreationDate", "/ModDate", "/Info", "/Producer", "/Creator", "/Metadata", "/Filter"}
 
 	cases := []struct {
-		label string
-		tpl   *Template
-		fs    FontSet
+		label  string
+		tpl    *Template
+		fs     FontSet
+		params Params
 	}{
-		{label: "fontless", tpl: mustParseMinimalTemplate(t), fs: FontSet{}},
-		{label: "font-text", tpl: parseFontTestTemplate(t), fs: testFontSet()},
+		{label: "fontless, no params", tpl: mustParseMinimalTemplate(t), fs: FontSet{}, params: nil},
+		{label: "font-text, no params", tpl: parseFontTestTemplate(t), fs: testFontSet(), params: nil},
+		// AC24: params NON-EMPTY, but carrying no date key at all — a
+		// render whose params supply no date, deliberately, not merely
+		// a render with no params argument at all.
+		{label: "fontless, params present but no date key", tpl: mustParseMinimalTemplate(t), fs: FontSet{}, params: Params(`{"reportTitle": "Q3 Statement"}`)},
 	}
 	for _, c := range cases {
-		b, err := Render(c.tpl, Data("{}"), c.fs)
+		b, err := Render(c.tpl, Data("{}"), c.params, c.fs)
 		if err != nil {
 			t.Fatalf("%s: Render() error: %v", c.label, err)
 		}
@@ -638,7 +660,7 @@ func TestRenderIDEntriesAreIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), FontSet{})
+	b, err := Render(tpl, Data("{}"), nil, FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -729,7 +751,7 @@ func TestRenderUnrecognisedNamedPageSizeIsLocatedError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, err = Render(tpl, Data("{}"), FontSet{})
+	_, err = Render(tpl, Data("{}"), nil, FontSet{})
 	if err == nil {
 		t.Fatal("expected a located error for page.size \"Letter\" (Finding 17), got nil")
 	}
@@ -743,7 +765,7 @@ func TestRenderUnrecognisedNamedPageSizeIsLocatedError(t *testing.T) {
 // PROVISIONAL Story 1.1-1.4 signature did — "better than a public entry
 // point documented as ignoring its argument" (D-1.5.9).
 func TestRenderNilTemplateIsLocatedError(t *testing.T) {
-	_, err := Render(nil, Data("{}"), FontSet{})
+	_, err := Render(nil, Data("{}"), nil, FontSet{})
 	if err == nil {
 		t.Fatal("expected a located error for Render(nil, ...), got nil")
 	}
@@ -754,7 +776,7 @@ func TestRenderNilTemplateIsLocatedError(t *testing.T) {
 // font carrying a FontFile2 stream and a ToUnicode CMap.
 func TestRenderEmbedsSubsetFontAsType0Identity(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, Data("{}"), testFontSet())
+	b, err := Render(tpl, Data("{}"), nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -854,7 +876,7 @@ func renderFontInSubprocess(t *testing.T, gomaxprocs string) []byte {
 // created=3304067374, modified=3573633780.
 func TestEmbeddedHeadTimestampsEqualSourceExactly(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, Data("{}"), testFontSet())
+	b, err := Render(tpl, Data("{}"), nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}

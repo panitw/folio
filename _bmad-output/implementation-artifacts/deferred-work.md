@@ -161,3 +161,52 @@ Story 1.4 builds neither; nothing renders a table until Story 4.5.
 
 **How we'd know it was forgotten.** A second `Decimal` type anywhere in the module, or a dotted-path
 matcher surviving alongside the expression parser after 3.2.
+
+### DW-9 — Re-test AC4's "nothing ceremonial" claim once a shipped font set exists
+- **Deferred by:** Story 1.7 (ruling D-1.7.1)
+- **Owner:** **Story 2.2** — "The shipped font set and its fallback chain"
+
+Story 1.7's AC4 requires that producing a first PDF takes *"a load call and a render call, and nothing
+ceremonial"*, and D-1.1.c named the README as the test of whether five positional arguments read as
+ceremony. **That test cannot be run fairly at 1.7.** Verified: there is no README in the repo (1.7
+writes the first), and `folio-go/fonts/` does not exist — the shipped faces arrive at 2.2. So 1.7's
+first-PDF example must show a caller assembling a `FontSet` from their own bytes, **which is ceremony
+that Story 2.2 removes, not ceremony the signature causes.**
+
+**The packaging decision itself is closed** (D-1.7.1, on AD-8: an options struct would make `FontSet`
+omittable at compile time, turning an AD-8 violation from a compile error into a runtime one). What is
+deferred is only the **ceremony judgement** on the README example.
+
+**At 2.2:** rewrite the first-PDF example using the shipped default font set and re-read it. If it
+still reads as ceremony, that is a `DECISION NEEDED` — and it must be raised **before the
+`folio-go/v0.1.0` tag** (Epic 4 close, DW-3/DW-4), after which the signature is fixed.
+
+**How we'd know it was forgotten.** A `v0.1.0` tag cut without anyone re-reading the first-PDF example
+against a shipped font set.
+
+### DW-10 — `/CreationDate` and `/ModDate` wiring — **ALREADY OWNED, not newly deferred**
+- **Raised by:** Story 1.7's creator (the clause became reachable when `params` first existed)
+- **Owner:** **Story 3.7** — "Validate a template and render it from the command line"
+- **Status:** already scheduled with acceptance criteria written; this entry exists only so the state
+  *"`params` exists and nothing reads it for `/Info`"* is not silently forgotten.
+
+AD-7 (`ARCHITECTURE-SPINE.md:201`) says `/CreationDate` and `/ModDate` are *"omitted **unless a date
+arrives through `params`**"*. Until Story 1.7 `params` did not exist, so the condition was
+**unreachable**. Story 1.7 creates the trigger and deliberately does not wire it.
+
+**Story 3.7 already owns it** (`epics.md:1074–1100`): its user story says *"pin document dates
+reproducibly"*, its **Covers** line names **AD-7**, and it carries criteria for `SOURCE_DATE_EPOCH`
+being read by the CLI and passed in as a parameter — with the library core still reading no
+environment variable — plus the negative case (*"no date supplied by any route → omitted"*).
+
+**Forcing function:** Story 1.7 adds an **absence tripwire on `folio-go/cmd/`**, so the creation of
+`cmd/folio` at 3.7 reddens until this is settled. Story 1.7 also re-scopes
+`TestRenderHasNoCreationOrModDate` from an unconditional assertion to *"params carrying no date"*, so
+3.7's developer does not meet a red test whose cheapest resolution is to weaken it.
+
+**Blast radius, measured smaller than feared:** only fixtures that **supply a date** would move. A
+params-carrying render with **no** date is byte-identical to today, so 3.7's impact is new fixtures
+plus any existing fixture that opts in — **not the corpus**.
+
+**How we'd know it was forgotten.** `cmd/folio` existing while `/CreationDate` is still emitted
+unconditionally-absent with no params date path.

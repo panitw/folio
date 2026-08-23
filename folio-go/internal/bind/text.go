@@ -21,20 +21,33 @@ var reservedPlaceholders = map[string]bool{
 	"pages": true,
 }
 
-// BindText resolves every "{{…}}" placeholder in text against data
-// (AC15-AC21), scoped to one text element (elementID names it in every
-// error, AC8/AC16/AC17). "{{page}}" and "{{pages}}" pass through
-// unchanged (AC18). Anything else that is not a bare dotted path
-// ("{{" ws? ident ("." ident)* ws? "}}", AC15) is a located error
-// naming elementID and mentioning Epic 3 (AC17) — this is the
-// mechanism that keeps 1.6 from becoming a second, partial expression
-// implementation (AC16).
+// BindText resolves every "{{…}}" placeholder in text against data and
+// params (AC15-AC21, AC12-AC17, D-1.6.5, D-1.7.4), scoped to one text
+// element (elementID names it in every error, AC8/AC16/AC17). "{{page}}"
+// and "{{pages}}" pass through unchanged (AC18). Anything else that is
+// not a bare dotted path ("{{" ws? ident ("." ident)* ws? "}}", AC15) is
+// a located error naming elementID and mentioning Epic 3 (AC17) — this
+// is the mechanism that keeps 1.6 from becoming a second, partial
+// expression implementation (AC16).
 //
 // AD-14's three cases (D-1.6.2, AC8-AC11): an absent path is an error
 // naming both the data path and elementID; an explicit JSON null
 // renders as empty and is not an error; a value of the wrong kind for
 // a text binding (anything but a string) is an error, never coerced.
-func BindText(text string, data Value, elementID string) (string, error) {
+//
+// "params" is a SECOND resolution root, not a reserved token (Story
+// 1.7, AC12-AC17, D-1.7.4, verbatim): "params is a namespace — a
+// second resolution root resolved at bind time, alongside the data
+// root." A placeholder whose FIRST path segment is "params" ALWAYS
+// resolves against params, never against data (AC13) — regardless of
+// whether data itself happens to carry a top-level "params" key
+// (AC14/AC15): that key is ordinary, unreachable caller JSON. This is
+// deliberately NOT implemented by extending reservedPlaceholders below
+// (AC12): page/pages are reserved whole TOKENS, resolved from neither
+// root and owned by Story 2.7; params is a NAMESPACE, resolved from
+// its own root — conflating the two is how "page" would eventually
+// acquire a namespace, which AD-4 forbids forever.
+func BindText(text string, data, params Value, elementID string) (string, error) {
 	var out strings.Builder
 	rest := text
 	for {
@@ -70,44 +83,90 @@ func BindText(text string, data Value, elementID string) (string, error) {
 			)
 		}
 
-		val, presence := data.Lookup(path)
-		switch presence {
-		case Absent:
-			return "", fmt.Errorf("bind: element %s: data path %q is absent from the report data", elementID, strings.Join(path, "."))
-		case Null:
-			// AC9: renders as empty, not an error — nothing appended.
-		case Present:
-			// QA Finding 2 (this story's review, Major): AD-23's "each
-			// literal is converted to an exact scaled-integer decimal"
-			// must happen on a real production path, not only inside
-			// internal/bind's own unit tests — and AC3/AC4's mandated
-			// "located error naming the data path and the element id"
-			// must actually exist somewhere. A number is always wrong
-			// kind for a text binding (AC10), but before saying so we
-			// still validate it via AsDecimal so a coefficient- or
-			// exponent-out-of-bound literal in REPORT DATA is reported
-			// as such — located — rather than silently passing as an
-			// unremarkable "wrong kind" and never touching Decimal at
-			// all. Coercion is still never attempted (AC10): a
-			// well-formed number is still rejected below.
-			if val.Kind == KindNumber {
-				if _, derr := val.AsDecimal(); derr != nil {
-					return "", fmt.Errorf(
-						"bind: element %s: data path %q: %w",
-						elementID, strings.Join(path, "."), derr,
-					)
-				}
+		// AC12/AC13/D-1.7.4: the FIRST segment "params" always selects
+		// the params root, decided at the path-segment level (not on
+		// the trimmed literal string) so the whitespace-tolerant
+		// spelling "{{ params.x }}" is caught identically (M-6).
+		if path[0] == "params" {
+			if len(path) == 1 {
+				// AC17: "{{params}}" bare, no dot — params names a
+				// namespace, not a value.
+				return "", fmt.Errorf("bind: element %s: %q is a namespace, not a value", elementID, trimmed)
 			}
-			if val.Kind != KindString {
-				return "", fmt.Errorf(
-					"bind: element %s: data path %q is a %s, not a string — text bindings are never coerced",
-					elementID, strings.Join(path, "."), val.Kind,
-				)
+			resolved, err := lookupBound(params, path[1:], path, elementID, "params", "the supplied params")
+			if err != nil {
+				return "", err
 			}
-			out.WriteString(val.Str)
+			if resolved != nil {
+				out.WriteString(*resolved)
+			}
+			continue
+		}
+
+		// This story's review, Finding 3 (Major): D-1.7.4's binding
+		// clause is "the same code path as absent data" — the data
+		// branch now routes through lookupBound, the SAME helper the
+		// params branch above uses, rather than a second inline copy
+		// of AD-14's three-case switch. The two copies were output-
+		// equivalent (rootName "data", rootDesc "the report data"
+		// reproduce the original messages byte-for-byte), so this is a
+		// pure de-duplication: AD-14's Null/wrong-kind cases and
+		// D-1.6.6's bound-value check now hold on BOTH roots by
+		// construction, and TestAD14Triple (which already exercises
+		// this branch for the data root) covers lookupBound directly
+		// rather than the abandoned inline copy.
+		resolved, err := lookupBound(data, path, path, elementID, "data", "the report data")
+		if err != nil {
+			return "", err
+		}
+		if resolved != nil {
+			out.WriteString(*resolved)
 		}
 	}
 	return out.String(), nil
+}
+
+// lookupBound resolves subPath against root — EITHER root, data or
+// params (this story's review, Finding 3: D-1.7.4's binding text is
+// "the same code path as absent data", so this is now the ONE
+// implementation of AD-14's three-case switch, called from both the
+// data branch and the params branch of BindText above, not a params-
+// only helper with an abandoned inline twin) — and returns the text to
+// append, or nil for a null value that renders as empty (AC9's rule).
+// fullPath is the ORIGINAL placeholder path (the full dotted path,
+// including a leading "params" segment when root is the params tree)
+// used only for error text, so an absent-params error names
+// "params.reportDate" (AC16) rather than the report-data phrasing
+// (M-6: "absent from the report data" is actively misleading for a
+// value that was never sought there at all) — rootName/rootDesc carry
+// that distinct wording ("data"/"the report data" or "params"/"the
+// supplied params").
+func lookupBound(root Value, subPath, fullPath []string, elementID, rootName, rootDesc string) (*string, error) {
+	val, presence := root.Lookup(subPath)
+	switch presence {
+	case Absent:
+		return nil, fmt.Errorf("bind: element %s: %s path %q is absent from %s", elementID, rootName, strings.Join(fullPath, "."), rootDesc)
+	case Null:
+		return nil, nil
+	case Present:
+		if val.Kind == KindNumber {
+			if _, derr := val.AsDecimal(); derr != nil {
+				return nil, fmt.Errorf(
+					"bind: element %s: %s path %q: %w",
+					elementID, rootName, strings.Join(fullPath, "."), derr,
+				)
+			}
+		}
+		if val.Kind != KindString {
+			return nil, fmt.Errorf(
+				"bind: element %s: %s path %q is a %s, not a string — text bindings are never coerced",
+				elementID, rootName, strings.Join(fullPath, "."), val.Kind,
+			)
+		}
+		s := val.Str
+		return &s, nil
+	}
+	return nil, nil
 }
 
 // parseBindingPath parses inner (the raw text between "{{" and "}}",
