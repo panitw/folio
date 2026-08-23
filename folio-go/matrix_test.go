@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -403,33 +402,11 @@ func captureRender(t *testing.T, target matrixTarget, binPath string) []byte {
 	return runOnTarget(t, target, binPath, map[string]string{subprocessEnvVar: "1"})
 }
 
-// loadExpectedFixture reads fixtures/minimal-rect/expected.json — the
-// same recorded golden Story 1.1's TestRenderMatchesGoldenFixture reads
-// (AC7, vacuity guard 3: no second golden). AC16's shape check runs here
-// too, so a fixture whose sha256 has been widened into a per-target
-// object fails before this harness ever attempts a hash comparison.
-func loadExpectedFixture(t *testing.T, root string) expectedFixture {
-	t.Helper()
-	path := filepath.Join(root, "fixtures", "minimal-rect", "expected.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	var f expectedFixture
-	if err := json.Unmarshal(data, &f); err != nil {
-		t.Fatalf("parse fixture JSON: %v", err)
-	}
-	if f.GoToolchain == "" {
-		t.Fatal("fixture is missing goToolchain")
-	}
-	if f.SHA256 == "" {
-		t.Fatal("fixture is missing sha256")
-	}
-	if !isSHA256HexString(f.SHA256) {
-		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", f.SHA256)
-	}
-	return f
-}
+// checkFixtureShape, loadExpectedFixture and TestFixtureShapeCheckRedProof
+// (DW-1's AC6/RP-4 closure) moved to the untagged fixture_test.go (Blocker
+// 3, this story's QA review): this file carries the "matrix" build tag, so
+// they previously executed in zero gates. loadExpectedFixture is still
+// called below, from the same package.
 
 // renderLegResult is one target's captured, hashed render output.
 type renderLegResult struct {
@@ -461,7 +438,7 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 
 	root := repoRootFromTest(t)
 	buildDir := matrixBuildDir(t, root)
-	fixture := loadExpectedFixture(t, root)
+	fixture := loadExpectedFixture(t, filepath.Join(root, "fixtures", "minimal-rect", "expected.json"))
 
 	var results []renderLegResult
 	toolchainLegs := 0
@@ -601,7 +578,7 @@ func TestTargetRenderHash(t *testing.T) {
 
 	root := repoRootFromTest(t)
 	buildDir := matrixBuildDir(t, root)
-	fixture := loadExpectedFixture(t, root)
+	fixture := loadExpectedFixture(t, filepath.Join(root, "fixtures", "minimal-rect", "expected.json"))
 
 	binPath := buildRenderTestBinary(t, root, target, buildDir)
 	assertToolchainWitness(t, target, binPath, fixture.GoToolchain)

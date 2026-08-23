@@ -15,6 +15,19 @@ import (
 	"testing"
 )
 
+// ruleNoFloat64 is this guard's stable rule id (AC4): findings carry it so
+// a fixture scan's expected set can assert by file and rule, never by
+// count (AC1, D-1.3.3 amended).
+const ruleNoFloat64 = "no-float64"
+
+// finding is one violation, with its path relative to the scanned target
+// directory (AC4) and this guard's stable rule id.
+type finding struct {
+	path string
+	rule string
+	msg  string
+}
+
 // findFloatOccurrences walks a parsed file for any appearance at all of
 // the identifier "float64" or "float32", plus any untyped floating-point
 // literal (token.FLOAT). Flagging the bare identifier wherever it occurs
@@ -75,73 +88,173 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
-// TestNoFloat64UnderInternal parses every package under folio-go/internal/
-// and fails if any declaration, signature or literal mentions float64 or
-// float32 (AC7 / AD-23). Guard against vacuity (guard 2): it asserts it
+// walkGoFiles walks root and calls visit for every .go file found, with
+// its parsed AST and its path relative to root (AC4: findings must carry
+// a path relative to the scanned target directory). It skips any
+// directory literally named "testdata", at any depth, by directory name
+// (AC2) — not by path prefix and not by a list of specific paths. It
+// returns the first parse error verbatim rather than swallowing it
+// (AC5, D-1.3.3 amended): a target that cannot be read must never be
+// silently treated as "zero findings".
+func walkGoFiles(fset *token.FileSet, root string, visit func(rel string, file *ast.File) error) error {
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		file, perr := parser.ParseFile(fset, path, nil, parser.AllErrors)
+		if perr != nil {
+			return perr
+		}
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			return rerr
+		}
+		return visit(rel, file)
+	})
+}
+
+// noFloat64Stats reports what scanNoFloat64 actually examined, from the
+// scanner's own execution (Major 5, this story's QA review): the
+// production caller's vacuity guard used to re-derive "packages
+// visited" and "declarations seen" with a second, independent call to
+// walkGoFiles — which cannot see a dead scanner, because injecting
+// `if true { return nil, nil }` as scanNoFloat64's first statement never
+// touches that unrelated second walk. Reading these counts from
+// scanNoFloat64's own return value closes that gap: the same mutation
+// now zeroes out PackagesVisited and DeclsSeen too.
+type noFloat64Stats struct {
+	packagesVisited map[string]bool
+	declsSeen       int
+}
+
+// scanNoFloat64 is the AC1 pure checker for this rule: a function over a
+// target directory returning (findings, error), with no *testing.T
+// parameter, no hard-coded root and no repo-root discovery inside it.
+func scanNoFloat64(root string) ([]finding, noFloat64Stats, error) {
+	fset := token.NewFileSet()
+	var findings []finding
+	stats := noFloat64Stats{packagesVisited: map[string]bool{}}
+	err := walkGoFiles(fset, root, func(rel string, file *ast.File) error {
+		pkgDir := filepath.Dir(rel)
+		stats.packagesVisited[pkgDir] = true
+		if pkgDir != "." {
+			ast.Inspect(file, func(n ast.Node) bool {
+				switch n.(type) {
+				case *ast.FuncDecl, *ast.TypeSpec, *ast.ValueSpec:
+					stats.declsSeen++
+				}
+				return true
+			})
+		}
+		for _, msg := range findFloatOccurrences(fset, file, rel) {
+			findings = append(findings, finding{path: rel, rule: ruleNoFloat64, msg: msg})
+		}
+		return nil
+	})
+	return findings, stats, err
+}
+
+// assertExactFindings implements AC1's "by file and rule, never by
+// count" fixture assertion (RP-3c): a scan that finds the right *number*
+// of wrong things, but the wrong ones, must still fail.
+func assertExactFindings(t *testing.T, got []finding, want []finding) {
+	t.Helper()
+	gotSet := map[[2]string]bool{}
+	for _, f := range got {
+		gotSet[[2]string{f.path, f.rule}] = true
+	}
+	wantSet := map[[2]string]bool{}
+	for _, f := range want {
+		wantSet[[2]string{f.path, f.rule}] = true
+	}
+	for k := range wantSet {
+		if !gotSet[k] {
+			t.Errorf("expected finding not reported: file=%s rule=%s", k[0], k[1])
+		}
+	}
+	for k := range gotSet {
+		if !wantSet[k] {
+			t.Errorf("unexpected finding reported: file=%s rule=%s", k[0], k[1])
+		}
+	}
+	// Deliberately not "len(got) == len(want)" (AC1: by file and rule,
+	// never by count) — a single violating file may legitimately trip a
+	// rule more than once (e.g. violating_conversion.go's float64 return
+	// type and float64(x) conversion are two separate AST sites for the
+	// same file+rule pair).
+	if len(gotSet) != len(wantSet) {
+		t.Errorf("distinct (file,rule) pair count mismatch: got %d, want %d", len(gotSet), len(wantSet))
+	}
+}
+
+// TestNoFloat64UnderInternal is the AC1 production caller: it scans the
+// real folio-go/internal/ tree and asserts zero findings. It fails on a
+// scan error separately from, and before, asserting zero findings
+// (AC5, RP-3b) — the two are two statements, never collapsed into one.
+//
+// Guard against vacuity (guard 2): it asserts, from scanNoFloat64's OWN
+// returned noFloat64Stats (Major 5, this story's QA review — a second,
+// independently-derived re-walk cannot see a dead scanner), that it
 // actually visited the "geom" and "pdf" package directories **by name**,
 // and counts declarations only from files in a real package directory
 // (excluding this test's own directory, "."), so this cannot pass by
 // walking zero files, and — the review's Minor 16 — cannot pass after
-// deleting either real package while the other survives: the previous
-// version's guard unconditionally counted this file's own directory and
-// its own declarations, so it required only one real package to stay
-// green, not two.
+// deleting either real package while the other survives.
 func TestNoFloat64UnderInternal(t *testing.T) {
 	root, err := filepath.Abs(".")
 	if err != nil {
 		t.Fatalf("resolve internal/ root: %v", err)
 	}
 
-	packagesVisited := map[string]bool{}
-	declCount := 0
-	var findings []string
-
-	fset := token.NewFileSet()
-	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-
-		file, perr := parser.ParseFile(fset, path, nil, parser.AllErrors)
-		if perr != nil {
-			return perr
-		}
-
-		rel, _ := filepath.Rel(root, path)
-		pkgDir := filepath.Dir(rel)
-		packagesVisited[pkgDir] = true
-
-		if pkgDir != "." {
-			ast.Inspect(file, func(n ast.Node) bool {
-				switch n.(type) {
-				case *ast.FuncDecl, *ast.TypeSpec, *ast.ValueSpec:
-					declCount++
-				}
-				return true
-			})
-		}
-
-		findings = append(findings, findFloatOccurrences(fset, file, rel)...)
-		return nil
-	})
+	findings, stats, err := scanNoFloat64(root)
 	if err != nil {
 		t.Fatalf("walk internal/: %v", err)
 	}
 
-	if !packagesVisited["geom"] || !packagesVisited["pdf"] {
-		t.Fatalf("vacuity guard: expected to visit package directories \"geom\" and \"pdf\" by name, got %v", packagesVisited)
+	if !stats.packagesVisited["geom"] || !stats.packagesVisited["pdf"] {
+		t.Fatalf("vacuity guard: scanner's own stats did not report visiting package directories \"geom\" and \"pdf\", got %v", stats.packagesVisited)
 	}
-	if declCount == 0 {
-		t.Fatalf("vacuity guard: visited 0 declarations across real package directories (excluding this test's own directory)")
+	if stats.declsSeen == 0 {
+		t.Fatalf("vacuity guard: scanner's own stats report 0 declarations seen across real package directories (excluding this test's own directory)")
 	}
 
 	if len(findings) > 0 {
-		t.Fatalf("float64/float32 found under internal/ (forbidden by AD-23):\n%s", strings.Join(findings, "\n"))
+		var msgs []string
+		for _, f := range findings {
+			msgs = append(msgs, f.msg)
+		}
+		t.Fatalf("float64/float32 found under internal/ (forbidden by AD-23):\n%s", strings.Join(msgs, "\n"))
 	}
+}
+
+// TestNoFloat64FixtureScan is the AC1 fixture caller: it scans the
+// retained fixture tree at folio-go/testdata/lint/no-float64/ (D-1.3.3;
+// never under folio-go/internal/, F-10) and asserts exactly the named
+// findings, by file and rule, matching neither a subset nor a superset.
+func TestNoFloat64FixtureScan(t *testing.T) {
+	internalRoot, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("resolve internal/ root: %v", err)
+	}
+	fixtureRoot := filepath.Join(filepath.Dir(internalRoot), "testdata", "lint", "no-float64")
+
+	got, _, err := scanNoFloat64(fixtureRoot)
+	if err != nil {
+		t.Fatalf("walk fixture tree %s: %v", fixtureRoot, err)
+	}
+
+	want := []finding{
+		{path: "violating_field.go", rule: ruleNoFloat64},
+		{path: "violating_conversion.go", rule: ruleNoFloat64},
+	}
+	assertExactFindings(t, got, want)
 }

@@ -1,12 +1,15 @@
 package folio
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +66,146 @@ func isRepoRootDir(dir string) bool {
 	folioGo, err1 := os.Stat(filepath.Join(dir, "folio-go"))
 	fixtures, err2 := os.Stat(filepath.Join(dir, "fixtures"))
 	return err1 == nil && folioGo.IsDir() && err2 == nil && fixtures.IsDir()
+}
+
+// checkFixtureShape is the AC1/AC6 pure checker underlying DW-1: it reads
+// and validates the fixture at the given path — parses as JSON, carries
+// both version fields, and has a sha256 field that is a JSON string of
+// exactly 64 lower-case hex characters (AC16), never a per-target map,
+// array or object (D-1.2.2). It takes the fixture's location as a
+// parameter rather than a hard-coded relative path (AC6: the seam
+// applied generally here, not patched into this one call site as a
+// one-off), so it can be red-proved against a scratch copy without ever
+// touching the real golden fixture (RP-4, DW-1).
+//
+// Blocker 3 (this story's QA review): this function, loadExpectedFixture
+// and TestFixtureShapeCheckRedProof used to live in matrix_test.go,
+// which carries the "matrix" build tag — so DW-1's entire red-proof
+// executed in zero gates (the tagged suite is deferred to the Epic 1
+// boundary, D-000.4; CI's only `-tags=matrix` steps are `go build` and
+// `go vet`, neither of which runs a test). They live here instead,
+// untagged, in package folio's ordinary `go test ./...` path — the same
+// home isSHA256HexString already has — so DW-1's closure actually runs
+// on every story. matrix_test.go's TestCrossTargetByteIdentity and
+// TestTargetRenderHash still call loadExpectedFixture below; being in a
+// different file of the same package changes nothing about that call.
+func checkFixtureShape(path string) (expectedFixture, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return expectedFixture{}, fmt.Errorf("read fixture: %w", err)
+	}
+	var f expectedFixture
+	if err := json.Unmarshal(data, &f); err != nil {
+		return expectedFixture{}, fmt.Errorf("parse fixture JSON: %w", err)
+	}
+	if f.GoToolchain == "" {
+		return expectedFixture{}, fmt.Errorf("fixture is missing goToolchain")
+	}
+	if f.SHA256 == "" {
+		return expectedFixture{}, fmt.Errorf("fixture is missing sha256")
+	}
+	if !isSHA256HexString(f.SHA256) {
+		return expectedFixture{}, fmt.Errorf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", f.SHA256)
+	}
+	return f, nil
+}
+
+// loadExpectedFixture reads fixtures/minimal-rect/expected.json — the
+// same recorded golden Story 1.1's TestRenderMatchesGoldenFixture reads
+// (AC7, vacuity guard 3: no second golden) — via checkFixtureShape, and
+// fails the test on any shape violation.
+func loadExpectedFixture(t *testing.T, path string) expectedFixture {
+	t.Helper()
+	f, err := checkFixtureShape(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// TestFixtureShapeCheckRedProof is DW-1's closure (AC6, RP-4): it
+// red-proves AC16's shape check against scratch copies of
+// fixtures/minimal-rect/expected.json, and confirms the real fixture
+// file was never touched. Story 1.2's finisher deferred exactly this
+// (DW-1) because the check previously had no way to be shown going red
+// without mutating the real golden fixture.
+//
+// Finding 12 (this story's QA review): the fixture inventory promises
+// two scratch shapes — "a scratch expected.json whose sha256 is a
+// per-target object, and one whose value is upper-case or 63
+// characters" — but only the first existed, so the isSHA256HexString
+// branch of checkFixtureShape (as opposed to the earlier JSON-unmarshal
+// failure) had no red-proof at all. Both now run as subtests.
+func TestFixtureShapeCheckRedProof(t *testing.T) {
+	root := repoRootFromTest(t)
+	realPath := filepath.Join(root, "fixtures", "minimal-rect", "expected.json")
+
+	before, err := os.ReadFile(realPath)
+	if err != nil {
+		t.Fatalf("read real fixture: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(before, &raw); err != nil {
+		t.Fatalf("parse real fixture: %v", err)
+	}
+
+	writeScratch := func(t *testing.T, mutated map[string]any) string {
+		t.Helper()
+		widened, err := json.MarshalIndent(mutated, "", "  ")
+		if err != nil {
+			t.Fatalf("marshal scratch fixture: %v", err)
+		}
+		scratchPath := filepath.Join(t.TempDir(), "expected.json")
+		if err := os.WriteFile(scratchPath, widened, 0o644); err != nil {
+			t.Fatalf("write scratch fixture: %v", err)
+		}
+		return scratchPath
+	}
+
+	t.Run("sha256 widened into a per-target object", func(t *testing.T) {
+		mutated := map[string]any{}
+		for k, v := range raw {
+			mutated[k] = v
+		}
+		// The exact D-1.2.2 hazard AC16 exists to block.
+		mutated["sha256"] = map[string]string{
+			"darwin-arm64": "0000000000000000000000000000000000000000000000000000000000000000",
+		}
+		if _, err := checkFixtureShape(writeScratch(t, mutated)); err == nil {
+			t.Fatal("expected checkFixtureShape to fail on a widened per-target sha256 object, got nil error")
+		}
+	})
+
+	t.Run("sha256 wrong length or case", func(t *testing.T) {
+		cases := []struct {
+			name string
+			sha  string
+		}{
+			{"63 characters", strings.Repeat("a", 63)},
+			{"upper-case", strings.ToUpper(strings.Repeat("a", 64))},
+		}
+		for _, c := range cases {
+			c := c
+			t.Run(c.name, func(t *testing.T) {
+				mutated := map[string]any{}
+				for k, v := range raw {
+					mutated[k] = v
+				}
+				mutated["sha256"] = c.sha
+				if _, err := checkFixtureShape(writeScratch(t, mutated)); err == nil {
+					t.Fatalf("expected checkFixtureShape to fail on sha256 = %q, got nil error", c.sha)
+				}
+			})
+		}
+	})
+
+	after, err := os.ReadFile(realPath)
+	if err != nil {
+		t.Fatalf("re-read real fixture: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("real fixtures/minimal-rect/expected.json was mutated by this red-proof")
+	}
 }
 
 // TestRenderMatchesGoldenFixture is AC11: the live render's hash must

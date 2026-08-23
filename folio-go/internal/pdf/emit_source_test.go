@@ -10,6 +10,17 @@ import (
 	"testing"
 )
 
+// ruleNumericFormatting is this guard's stable rule id (AC4).
+const ruleNumericFormatting = "numeric-formatting"
+
+// numericFormattingFinding is one violation, with its path relative to
+// the scanned target directory (AC4) and this guard's stable rule id.
+type numericFormattingFinding struct {
+	path string
+	rule string
+	msg  string
+}
+
 // isForbiddenStrconvSelector reports whether name is one of the strconv
 // functions D-1.1.b's guardrail names: the Format* family (including
 // FormatFloat), Itoa, and the Append* family (including AppendFloat — the
@@ -81,72 +92,64 @@ func itoa10(n int) string {
 	return string(buf[i:])
 }
 
-// TestNumberFormattingIsConfinedToNumbersGo is AC6's source-level guard,
-// merged with D-1.1.b's file-scoped guardrail. D-1.1.b's guardrail text
-// was written for Story 1.3's lint; it is enforced here, in Story 1.1,
-// because this story is where the hole it closes actually exists (this
-// story's QA review, Blocker 2) — it is brought forward rather than left
-// for 1.3.
+// numericFormattingStats reports what scanNumericFormatting actually
+// examined, from the scanner's own execution (Major 5, this story's QA
+// review) — see internal/arch_test.go's identically-named-in-spirit
+// fix for why a second, independently-derived walk cannot be trusted as
+// a vacuity guard: injecting a dead first statement into
+// scanNumericFormatting would zero out its own reported stats but never
+// touch an unrelated walk built the old way.
+type numericFormattingStats struct {
+	filesChecked int
+}
+
+// scanNumericFormatting is the AC1 pure checker for this rule, narrowed
+// per D-1.3.2 to a single rule: within the given target directory
+// (production: exactly folio-go/internal/pdf/; fixture: a tree standing
+// in for it), every file except numbers.go — _test.go files included, no
+// exemption (the shipped no-exemption choice is kept) — is forbidden from
+// calling strconv.Format*/Itoa/Append* or a fmt formatting function. Any
+// directory named testdata is excluded (AC2). D-1.3.2 deleted the
+// second, module-wide half outright: nothing outside internal/pdf writes
+// an output byte (AD-5), so that half protected nothing while costing
+// AD-3's diagnostic carve-out (Story 1.4's fmt.Errorf, F-2).
 //
 // Matching resolves each call's import alias and its selector name via
 // go/ast on the parsed call expression, not literal source text or
-// regular expressions: a text/regex scan that enumerates
-// strconv.FormatFloat but not strconv.AppendFloat is exactly the
-// incomplete guard Blocker 2(a) measured, and comments (including this
-// package's own doc comments, which name these forbidden calls to explain
-// why they are forbidden) are never part of the AST's call expressions,
-// so no comment-stripping step is needed to avoid the guard tripping on
-// its own documentation.
-//
-// Two rules, applied in one walk:
-//   - Anywhere under internal/pdf, in every file except numbers.go
-//     (including _test.go files — no exemption): no strconv.Format*,
-//     strconv.Itoa, strconv.Append*, or fmt formatting call. This is
-//     D-1.1.b's guardrail, verbatim.
-//   - Everywhere else under folio-go/ (outside _test.go files): the same
-//     forbidden set, per AC6's broader "nowhere under folio-go/ outside
-//     _test.go files" wording. Nothing outside internal/pdf writes an
-//     output byte at all (AD-5), so this half is belt-and-braces on files
-//     that have no legitimate reason to need it.
-func TestNumberFormattingIsConfinedToNumbersGo(t *testing.T) {
-	root := repoRootFromTest(t)
-	folioGo := filepath.Join(root, "folio-go")
-	pdfDir := filepath.Join(folioGo, "internal", "pdf")
-
+// regular expressions (D-1.1.b, Blocker 2(a)).
+func scanNumericFormatting(root string) ([]numericFormattingFinding, numericFormattingStats, error) {
 	fset := token.NewFileSet()
-	filesChecked := 0
-	var findings []string
+	var findings []numericFormattingFinding
+	var stats numericFormattingStats
 
-	err := filepath.WalkDir(folioGo, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
+			if d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-
-		inPDFDir := filepath.Dir(path) == pdfDir
-		isTest := strings.HasSuffix(path, "_test.go")
-		isNumbersGo := inPDFDir && filepath.Base(path) == "numbers.go"
-
-		if isNumbersGo {
+		if filepath.Base(path) == "numbers.go" {
 			return nil // the one file this guardrail exempts
 		}
-		if !inPDFDir && isTest {
-			return nil // AC6's broader rule exempts _test.go outside internal/pdf
-		}
+		stats.filesChecked++
 
 		file, perr := parser.ParseFile(fset, path, nil, 0)
 		if perr != nil {
 			return perr
 		}
-		filesChecked++
 
 		aliases := importAliases(file)
-		rel, _ := filepath.Rel(root, path)
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			return rerr
+		}
 
 		ast.Inspect(file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
@@ -168,26 +171,127 @@ func TestNumberFormattingIsConfinedToNumbersGo(t *testing.T) {
 			pos := fset.Position(call.Pos())
 			switch {
 			case pkgPath == "strconv" && isForbiddenStrconvSelector(sel.Sel.Name):
-				findings = append(findings, rel+":"+itoa10(pos.Line)+": strconv."+sel.Sel.Name)
+				findings = append(findings, numericFormattingFinding{
+					path: rel, rule: ruleNumericFormatting,
+					msg: rel + ":" + itoa10(pos.Line) + ": strconv." + sel.Sel.Name,
+				})
 			case pkgPath == "fmt" && isForbiddenFmtSelector(sel.Sel.Name):
-				findings = append(findings, rel+":"+itoa10(pos.Line)+": fmt."+sel.Sel.Name)
+				findings = append(findings, numericFormattingFinding{
+					path: rel, rule: ruleNumericFormatting,
+					msg: rel + ":" + itoa10(pos.Line) + ": fmt." + sel.Sel.Name,
+				})
 			}
 			return true
 		})
 		return nil
 	})
+	return findings, stats, err
+}
+
+func assertExactNumericFormattingFindings(t *testing.T, got []numericFormattingFinding, want []numericFormattingFinding) {
+	t.Helper()
+	gotSet := map[[2]string]bool{}
+	for _, f := range got {
+		gotSet[[2]string{f.path, f.rule}] = true
+	}
+	wantSet := map[[2]string]bool{}
+	for _, f := range want {
+		wantSet[[2]string{f.path, f.rule}] = true
+	}
+	for k := range wantSet {
+		if !gotSet[k] {
+			t.Errorf("expected finding not reported: file=%s rule=%s", k[0], k[1])
+		}
+	}
+	for k := range gotSet {
+		if !wantSet[k] {
+			t.Errorf("unexpected finding reported: file=%s rule=%s", k[0], k[1])
+		}
+	}
+}
+
+// TestNumberFormattingIsConfinedToNumbersGo is AC6's / AC7's source-level
+// guard, merged with D-1.1.b's file-scoped guardrail and narrowed by
+// D-1.3.2 to scope exactly folio-go/internal/pdf/ (AC7): the production
+// caller scans the real internal/pdf/ tree and asserts zero, failing on a
+// scan error separately from, and before, the zero-findings assertion
+// (AC5, RP-3b). The vacuity guard reads the scanner's OWN reported
+// numericFormattingStats (Major 5, this story's QA review), not a
+// second, independently-derived filepath.WalkDir: a dead scanner that
+// returns immediately would leave an unrelated second walk untouched,
+// but it zeroes out the stats this test now asserts against.
+func TestNumberFormattingIsConfinedToNumbersGo(t *testing.T) {
+	root := repoRootFromTest(t)
+	pdfDir := filepath.Join(root, "folio-go", "internal", "pdf")
+
+	findings, stats, err := scanNumericFormatting(pdfDir)
 	if err != nil {
-		t.Fatalf("walk folio-go/: %v", err)
+		t.Fatalf("walk internal/pdf/: %v", err)
 	}
 
-	// Vacuity guard: this must actually have looked at more than zero
-	// files (document.go and emit_source_test.go itself, at minimum, are
-	// both in internal/pdf and are not numbers.go).
-	if filesChecked == 0 {
-		t.Fatal("vacuity guard: checked 0 files")
+	if stats.filesChecked == 0 {
+		t.Fatal("vacuity guard: scanner's own stats report 0 files checked")
 	}
 
 	if len(findings) > 0 {
-		t.Fatalf("forbidden strconv/fmt formatting call(s) found outside numbers.go (AC6, D-1.1.b):\n%s", strings.Join(findings, "\n"))
+		var msgs []string
+		for _, f := range findings {
+			msgs = append(msgs, f.msg)
+		}
+		t.Fatalf("forbidden strconv/fmt formatting call(s) found outside numbers.go (AC6/AC7, D-1.1.b):\n%s", strings.Join(msgs, "\n"))
 	}
+}
+
+// TestNumberFormattingFixtureScan is the AC1 fixture caller, red-proving
+// AC8's both directions on retained fixtures at
+// folio-go/testdata/lint/numeric-formatting/ (never under
+// folio-go/internal/, F-10):
+//   - pdf/violating.go, standing in for a non-numbers.go file inside
+//     internal/pdf, calls strconv.Itoa and IS reported when the scanned
+//     root is pdf/ — the same scope the production caller uses (AC7).
+//   - template/version.go, standing in for the shape Story 1.4's
+//     internal/template/version.go will take (F-2: fmt.Errorf naming
+//     the declared and supported versions), lives OUTSIDE pdf/ and is
+//     NOT reported when the scanned root is pdf/.
+//
+// Blocker 4 (this story's QA review): the previous fixture named the
+// fmt.Errorf file numbers.go, which hit the guard's pre-existing,
+// unrelated numbers.go-filename carve-out — identically to how it would
+// have applied under the deleted module-wide rule, so the fixture proved
+// nothing about D-1.3.2's actual narrowing. Renaming it to version.go
+// and moving it outside pdf/ makes the scope claim itself the thing under
+// test: the second t.Run below scans the fixture tree's PARENT (widening
+// the root past pdf/, exactly the regression a future edit could
+// introduce) and asserts template/version.go DOES appear — proving,
+// red, that its absence above is caused by AC7's scope, not by a
+// filename exemption.
+func TestNumberFormattingFixtureScan(t *testing.T) {
+	root := repoRootFromTest(t)
+	fixtureRoot := filepath.Join(root, "folio-go", "testdata", "lint", "numeric-formatting")
+
+	t.Run("scoped to pdf/, matching production", func(t *testing.T) {
+		got, stats, err := scanNumericFormatting(filepath.Join(fixtureRoot, "pdf"))
+		if err != nil {
+			t.Fatalf("walk fixture tree %s/pdf: %v", fixtureRoot, err)
+		}
+		if stats.filesChecked == 0 {
+			t.Fatal("vacuity guard: scanner's own stats report 0 files checked")
+		}
+		want := []numericFormattingFinding{
+			{path: "violating.go", rule: ruleNumericFormatting},
+		}
+		assertExactNumericFormattingFindings(t, got, want)
+	})
+
+	t.Run("widened to the parent, template/version.go must appear (Blocker 4)", func(t *testing.T) {
+		got, _, err := scanNumericFormatting(fixtureRoot)
+		if err != nil {
+			t.Fatalf("walk fixture tree %s: %v", fixtureRoot, err)
+		}
+		want := []numericFormattingFinding{
+			{path: filepath.Join("pdf", "violating.go"), rule: ruleNumericFormatting},
+			{path: filepath.Join("template", "version.go"), rule: ruleNumericFormatting},
+		}
+		assertExactNumericFormattingFindings(t, got, want)
+	})
 }

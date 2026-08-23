@@ -622,6 +622,11 @@ folio/                                # github.com/panitw/folio — monorepo
                                       #   amended). Deliberately outside folio-go so AD-1 and the
                                       #   float64 AST guard exclude the probe by construction
                                       #   (D-000.6, Story 1.2)
+  lint/                               # module github.com/panitw/folio/lint — the AD-1 import/
+                                      #   math-selector lint, the map-iteration check, and the
+                                      #   AD-26 licence check + manifest. A standalone module so
+                                      #   folio-go's own module graph gains no dependency (D-1.3.6);
+                                      #   CI merely invokes it (D-000.6, Story 1.3)
   folio-node/ · folio-java/ · …       # deferred SDKs, same fixtures, same namespace
 ```
 

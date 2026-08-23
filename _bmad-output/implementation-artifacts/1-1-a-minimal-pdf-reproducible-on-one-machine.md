@@ -1754,3 +1754,24 @@ width counts digits, excluding any sign.
 **Finding 28 — D-000.6's before/after wasn't fully quoted.** **FIX.** The superseded AD-3 Rule
 paragraph is now quoted in the Delivery Log's "Spine amendment (D-000.6)" section, alongside the
 resulting text that was already there.
+
+---
+
+## Superseded
+
+**By Story 1.3, ruling D-1.3.2.** This file's AC6 text, and the two places that restate it
+(lines **202**, **327** and **678**), describe the numeric-formatting guard's scope as "nowhere
+under `folio-go/`" — module-wide. Story 1.3 measured (F-2) that this over-broad scope blocks
+Story 1.4's `internal/template` error path (`fmt.Errorf` naming the declared and supported
+versions) before that story can even start, and narrowed the guard's scope to exactly
+`folio-go/internal/pdf/`, deleting the module-wide half outright rather than retaining it with an
+exemption list — "AD-5 is why deletion is safe: nothing outside `internal/pdf` writes an output
+byte, so the wide half protects nothing while costing AD-3's diagnostic carve-out" (D-1.3.2).
+
+Per this project's append-only convention for completed story files, **lines 202, 327 and 678 are
+left intact above, unedited, and this file's AC6 text is not rewritten** — rewriting it would claim
+this story verified something it did not. The guard's current, narrowed behaviour is `folio-go`'s
+`internal/pdf/emit_source_test.go` (`TestNumberFormattingIsConfinedToNumbersGo`), scoped to exactly
+`folio-go/internal/pdf/`, `_test.go` files included, `numbers.go` exempted, any `testdata/`
+directory excluded. `epics.md` was verified twice (D-1.3.2) to already state the narrowed scope
+correctly, so no `D-000.6` spine amendment applies to this narrowing.

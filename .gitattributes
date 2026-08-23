@@ -14,3 +14,10 @@
 fixtures/**/*.pdf binary
 fixtures/**/*.json text eol=lf
 *.go text eol=lf
+
+# lint/testdata/ holds Story 1.3's licence-check fixture module graphs
+# (D-1.3.8, AC30) — obviously-fake stub modules under example.test/,
+# never real third-party code, marked vendored so GitHub's language
+# detection and diff/review tooling do not treat them as ordinary
+# repository source.
+lint/testdata/** linguist-vendored

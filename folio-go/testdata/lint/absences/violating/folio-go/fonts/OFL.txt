@@ -1,0 +1,2 @@
+Fixture marker only — not real OFL 1.1 licence text. This file exists
+solely to prove ScanAbsences reports its presence (AC21, RP-10).

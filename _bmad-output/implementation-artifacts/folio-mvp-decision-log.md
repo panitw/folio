@@ -1347,3 +1347,504 @@ close: the code was right, the silence was not, and this is the record of why th
 
 **How we'd know it was wrong.** The spine or `hashmatrix/README.md` again describing a harness the
 module doesn't contain.
+
+## Epic 1 decisions — Story 1.3 (ruled before the story file was written)
+
+*Sequencing note: on Story 1.2 the creator ran in parallel with the lead's rulings and needed a full
+revision round. From 1.3 onward the rulings are obtained **first** and baked into the creator prompt.*
+
+### D-1.3.2 — Narrow the numeric-formatting guard to `internal/pdf`; amend no canonical document
+**Orchestrator decision**, on the lead's ruling. Closes Refresh divergence (1) and the D-1.1.b lesson.
+
+**Verdict.** The guard's scope becomes exactly `folio-go/internal/pdf/`: every file except
+`numbers.go`, `_test.go` files included (the shipped no-exemption choice is kept — stricter than
+D-1.1.b required and costs nothing), and any directory named `testdata` excluded per D-1.3.3. **The
+second, module-wide rule is deleted outright** — not kept with an exemption list.
+
+**Situation.** `emit_source_test.go` banned `fmt.Errorf`/`fmt.Sprintf`/`strconv.Itoa` across all of
+`folio-go/`, because Story 1.1's AC6 paraphrased D-1.1.b and dropped both its `internal/pdf` scope
+and AD-3's diagnostic carve-out. Story 1.4's AC requires an error naming the declared and supported
+versions — idiomatically `fmt.Errorf` in `internal/template` — so this was one story from going red.
+
+**Why deleting the module-wide half is safe rather than merely convenient.** AD-3's amended Rule
+carries the completeness argument: *"Because no package outside `internal/pdf` writes an output byte
+at all (AD-5), the restriction needs to police only that package… Number formatting inside a
+diagnostic message is not an output byte and is not covered."* AD-5 is load-bearing here — nothing
+outside `internal/pdf` **can** emit a byte, so the module-wide half protects nothing while costing
+the carve-out AD-3 states twice.
+
+**A factual correction that shrank the fix, and the orchestrator's claim was the wrong one.** The
+orchestrator told the lead the over-broad text lived in *both* `epics.md` and the Story 1.1 file.
+The lead checked and it does not; the orchestrator then re-verified independently. `epics.md`'s only
+`nowhere` is line 818 (AD-24's Y-flip, unrelated), and its Story 1.1 AC block at 435–445 was already
+correctly narrowed — "every **geometric** number… routed through a separate integer writer in the
+same file", explicitly citing D-1.1.b, with no module-wide clause. **The defect never propagated
+into the document every later story's ACs are carried from.**
+
+**Therefore D-000.6 does not fire.** The only document stating the over-broad rule is the
+**completed, committed Story 1.1 file** (lines 202, 327, 678), and that file is a *record of what
+was verified at `048999b`*, not a contract. Rewriting its AC6 would falsify the audit trail — it
+would claim we verified something we did not. Instead a short **`Superseded` note** is appended to
+that story file pointing at this ruling, leaving all three lines intact.
+
+**Precedent established, generalising the Story 1.1 finisher's Finding-14 DISMISS: completed story
+files are append-only, exactly like this log.** A shipped story records what was true when it
+shipped; corrections attach to it, they do not overwrite it.
+
+**Consequences.** The narrowing is red-proved **in both directions**, per D-1.3.1's two-fixture
+precedent: `strconv.Itoa` in a non-`numbers.go` file inside `internal/pdf` must still fail, **and**
+`fmt.Errorf` in `internal/template` must now pass. The second is the whole point and must be
+demonstrated rather than assumed — it is what unblocks Story 1.4.
+
+**How we'd know it was wrong.** Story 1.4 still meeting a red build on `fmt.Errorf`, or a diagnostic
+message somewhere under `internal/` being contorted to avoid a formatter.
+
+### D-1.3.3 — Every guard becomes a checker over a target path with two callers; fixtures live in `testdata/`
+**Orchestrator decision**, on the lead's ruling. This is the architectural ruling of Story 1.3.
+
+**Verdict.** Each guard is refactored into a **pure function taking a target directory and returning
+findings**, with exactly two callers: a **production scan** over the real tree asserting **zero**
+findings, and a **fixture scan** over a retained fixture tree asserting **exactly the named
+findings**, by file and rule. Every scanner skips any directory named `testdata`. Fixtures live at
+`folio-go/testdata/lint/<rule>/`.
+
+**Why `testdata/` is not an exemption list.** It is Go's own tool-level convention — the `go` command
+ignores `testdata/` universally — applied **by category**, so it cannot rot the way a per-file
+allowlist does. And files under `testdata/` are never compiled, which is precisely the property a
+*retained violating fixture* needs: it must contain deliberately-broken code without breaking the
+build.
+
+**Why this is consistent with D-1.2.3 despite reaching the opposite placement.** Both rulings say the
+same thing — *place the artifact so the property holds by construction* — and the properties are
+opposites, so the mechanisms are opposites. The **probe** must compile and execute on four targets,
+so it must be a buildable package, so `testdata/` is impossible and it needs its own module. The
+**lint fixture** must never compile and only ever be parsed, so `testdata/` is not merely acceptable
+but *better than a module*, because non-compilation is the property we want and `testdata/`
+guarantees it for free.
+
+**Both polarities are required.** Each rule ships (a) a violating fixture that must be reported and
+(b) a **compliant near-miss** that must **not** be. One fixture proves the guard fires; it does not
+prove the guard is not over-broad — and an over-broad guard is exactly what produced D-1.3.2.
+
+**This discharges DW-1**, and the assignment to 1.3 was not a parking spot but the *same seam*: "a
+fixture-path override so red-proofs never touch the real golden" and "a checker that takes its target
+path as a parameter" are one design. **Refinement:** 1.3 establishes the seam generally and applies
+it to Story 1.2's AC16 check as its first instance, rather than patching AC16 one-off.
+
+**Guardrail, measured.** Neither existing guard mentions `testdata` today, so a fixture added under
+`internal/` would currently be parsed by the `float64` guard and redden the suite. **Both scanners
+gain the `testdata/` skip and the two-caller shape before the first fixture is added**, or the first
+fixture is a build break.
+
+**How we'd know it was wrong.** A guard whose only evidence of firing is a mutation someone applied
+and reverted, rather than a fixture standing in the tree.
+
+### D-1.3.4 — The licence check ships its Go half now; the JS half is deferred as an *asserted absence*
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict.** Ship the Go module-graph check now — it is complete for everything that exists. Defer
+the `folio-designer/` lockfile half to **Story 5.1**, the story that creates that directory.
+
+**The deferral mechanism is the load-bearing part.** Story 1.3 ships an assertion that
+`folio-designer/`'s lockfile is **absent**. The day Epic 5 creates it, that assertion goes **red** and
+forces the JS half to be wired before the build can pass again.
+
+**In simple terms.** A conditional "check it if it's there" starts silently passing the moment the
+directory arrives, and nobody notices the half-check — the guard reports success precisely when it
+stops covering anything. Asserting the absence inverts that: arrival trips the wire. Same treatment
+for the AC's OFL 1.1 font text (fonts arrive at Story 2.2) and the Apache-2.0 `pdfjs-dist` NOTICE
+(Epic 5) — assert absent now, so landing them breaks the build until the manifest covers them.
+
+**On "release artifact", which the AC requires and this project cannot yet produce.** Split:
+- **Ships at 1.3** — the manifest is **generated and asserted complete**: every module in the resolved
+  graph appears with a resolved licence, and an **unknown or unresolvable licence fails the build**.
+  That is the substance of AD-26 and is fully implementable today.
+- **Deferred** — *publication* as an artifact attached to a release. No release process exists; the
+  `folio-go/v0.1.0` tag is Epic 4's close. Registered in `deferred-work.md`, **owner: Epic 4 close**.
+
+**Carried forward as an owner item, not a lead one.** No story currently owns the tagging event
+itself. "Who cuts `folio-go/v0.1.0` and what ships with it" is a release-process decision with
+licence-compliance consequences, and if it is still unowned when Epic 4 is planned it goes to the
+owner. AD-26's "release artifact, not a README paragraph" is a commitment somebody has to keep.
+
+**Confidence.** High on the Go half and the asserted-absence mechanism; **medium** on Story 5.1 as
+the JS owner — if Epic 5's shape shifts, the owner moves with the story that first creates the
+lockfile.
+
+**How we'd know it was wrong.** `folio-designer/` arriving without the absence assertion going red.
+
+### D-1.3.5 — Total ban on ranging a map under `internal/`; the escape hatch is stdlib and needs no exemption
+**Orchestrator decision**, on the lead's ruling. The subtlest call in Story 1.3.
+
+**Verdict.** **No `range` over a map value in any non-test file under `folio-go/internal/`.** No
+reachability analysis. The build fails naming file, line, and the offending expression.
+
+**Situation.** The AC reads *"when a `range` over a map **can reach an output byte**, the build fails
+naming the location."* Read literally that is a whole-program dataflow analysis from every map range
+to the PDF byte writer — undecidable in the general case, so in practice an approximation whose gaps
+nobody could enumerate.
+
+**In simple terms.** Map iteration order in Go is deliberately randomised, so a map range that
+influences output makes the output non-reproducible — the exact property this project exists to
+guarantee. Tracing *which* map ranges can reach the writer is the hard, unreliable problem. Banning
+map ranges in the directory where output is produced is the easy, exact one. We lose the ability to
+range a map in render-path code even when it would have been harmless; that is the price, paid
+knowingly.
+
+**Why this is AD-1's own shape rather than convenience.** The lead's predecessor put it exactly:
+*"The determinism boundary is a **directory** boundary, not a discipline."* AD-1's architectural move
+is to replace per-site judgement with a mechanical directory rule a reviewer cannot argue with. A
+reachability analysis would reintroduce precisely the per-site judgement AD-1 abolished. The AC's
+phrase "can reach an output byte" states the **hazard**, not the **mechanism** — the same relation
+AD-3's `Prevents` line has to its `Rule`, which is the distinction D-1.1.b was built on. Implementing
+a hazard statement literally is what made AD-3 unimplementable; the fix there was a conservative
+mechanical rule, and it is the fix here.
+
+**The escape hatch ships in 1.3, needs no new package, and cannot rot:**
+`for _, k := range slices.Sorted(maps.Keys(m)) { v := m[k]; … }` — stdlib, available at the
+`go 1.25.0` language floor. It ranges a **slice**, so the rule permits it *by construction*: no
+exemption, no allowlist, no `//lint:ignore` comment. **The lint's failure message names this idiom
+verbatim**, so the first developer to hit the rule is unblocked by the error text itself rather than
+by finding a story file.
+
+**Cost today: zero — measured.** There is no `range` over a map anywhere under `internal/` right now.
+We are pre-committing before a caller exists, which is the cheapest possible moment to take a
+restriction like this.
+
+**Detection invariant.** Detection must be **exact and type-based**: flag an `*ast.RangeStmt` whose
+subject resolves to a map type. A syntactic guess is **not** acceptable — a false positive on
+legitimate code is exactly how a guard gets weakened by the first person it inconveniences.
+
+**How we'd know it was wrong.** A legitimate render-path need to iterate a map that the sorted-keys
+idiom cannot express, or a developer disabling the rule rather than using the idiom.
+
+### D-1.3.6 — The new guards are a standalone tool in their own repo-root module; the two existing guards stay put
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict.** The **new** guards — the AD-1 import lint, the map-iteration check, and the licence
+check + manifest — live in a standalone tool in its own repo-root Go module (`lint/`,
+`module github.com/panitw/folio/lint`). Not a `go test` inside `folio-go`, and **not**
+`folio-go/cmd/`. The two existing guards (`internal/arch_test.go`,
+`internal/pdf/emit_source_test.go`) **stay where they are**.
+
+**Why.** D-1.3.5 requires exact type-based map detection, whose clean implementation is
+`golang.org/x/tools/go/packages` — a dependency `folio-go` must not carry, both for AD-6/AC2 and
+because Story 1.1's one-module assertion stands until Story 1.5 legitimately changes it. The licence
+check needs the whole Go module graph *and* a JS lockfile *and* must emit a manifest file: that is a
+tool, not an assertion, and it is awkward and slow inside `go test`. And D-1.2.3 already established
+the pattern — tooling that needs what `folio-go` must not have goes in its own repo-root module.
+Ruling differently would give two similar problems two different shapes for no reason.
+
+**D-1.2.1's "no new `cmd/` in `folio-go`" was scoped to Story 1.2 and does not bind here — but its
+reason does:** `folio-go/cmd/folio` belongs to Story 3.7 and must not be created early. The lint
+being a separate module means the question does not arise.
+
+**The existing guards stay because moving them buys no property** — they are package-scoped, exact,
+and working, and churn is not free. 1.3 **may** consolidate if it proves genuinely cheap, but must
+not do so silently: consolidation is a `DECISION NEEDED`, not a judgement call in the diff (D-1.2.6).
+Either way both gain D-1.3.3's `testdata/` skip and two-caller shape.
+
+**Invariant over mechanism — stated deliberately, the lead having over-specified once already this
+run (see D-1.2.3 amended).** What binds is: (a) exact detection with no false positives; (b) **no
+dependency added to `folio-go`'s module graph**; (c) locally runnable, with CI merely invoking it,
+per D-000.4. If the developer finds an exact, dependency-free path — stdlib `go/types` with a
+tolerant error config — that is a **permitted refinement, not a deviation**. What is forbidden is
+polluting `folio-go`'s graph or shipping a syntactic guess.
+
+**Consequences.** A D-000.6 amendment to the spine's §Source tree for the new directory ships in
+1.3's commit — one line, same shape as `hashmatrix/`'s. The new module's own dependency
+(`x/tools`, BSD-3-Clause) must appear in the manifest the licence check generates; **the check
+covering itself is correct**, and the story says so explicitly so it is not misread as a bootstrap
+problem.
+
+**Confidence.** High on placement; **medium** on `x/tools` specifically — which is why (b) is the
+invariant rather than the library name.
+
+### D-1.3.7 — Guard scope is stated positively; a build tag hides nothing
+**Orchestrator decision**, on the lead's ruling. Wording confirmed verbatim for the story file.
+
+**Verdict — the two paragraphs below go into Story 1.3's file as Dev Notes, verbatim.**
+
+> **Scope, stated positively.** These guards bind `folio-go/internal/`. They are written as a rule
+> about that directory — never as a rule about the repository with exceptions carved out.
+> **`hashmatrix/` is not an exemption and must not be named as one.** It is outside `folio-go`
+> entirely, so it is out of scope by construction; a guard that mentions it by name has the wrong
+> shape, and the next person to add a second name to that list will not notice they are eroding the
+> rule.
+
+> **A build tag does not hide a file from these guards.** `internal/arch_test.go` **parses** source
+> with `go/parser` rather than building it, so `//go:build` lines are invisible to it — a
+> `matrix`-tagged or `ignore`-tagged file under `internal/` is scanned exactly like any other.
+> `folio-go/matrix_test.go` is safe because of **where it is** (the module root, outside
+> `internal/`), not because of its tag; the tag's only job is AC12, keeping Docker and Node off the
+> routine `go test ./...` path. Two things follow: never move a tagged file under `internal/`
+> expecting the tag to protect it, and never add a `float64` to `matrix_test.go` on the assumption
+> that the tag hides it.
+
+**Plus one concrete instruction specific to this story.** Story 1.3 is built almost entirely out of
+claims about what fires and what does not, making it Epic 1's most exposed story to D-1.2.5. So:
+**every "this guard fires on X" claim in the Delivery Log must cite the retained fixture that
+demonstrates it**, never a mutation that was applied and reverted. That is what D-1.3.3's fixture
+architecture is *for*, and it is the difference between 1.3 shipping guards and 1.3 shipping
+assertions about guards.
+
+### D-1.3.3 (amended) — A checker returns `(findings, error)`; the production caller fails on error *before* asserting zero
+**Orchestrator decision**, on the lead's ruling. **Amends D-1.3.3 above; that entry stays as written.**
+Found by the Story 1.3 creator (F-5), by probing rather than reading — credited here because it
+corrects the lead's own ruling.
+
+**Verdict.** A checker returns `(findings, error)`. **The production caller must fail on a non-nil
+error, separately from and before asserting zero findings.** The fixture caller asserts findings **by
+file and rule, never by count** — a scan that finds the right *number* of wrong things must fail. And
+violating fixtures must be **valid syntax with forbidden semantics**, so a fixture can never redden a
+guard by being unparseable rather than by being non-compliant.
+
+**The hole in the original ruling.** D-1.3.3 said "checker returns findings; production caller asserts
+zero". Both shipped scanners `return err` from their walk function **before appending any finding**, so
+a scan that errors on an unparseable file returns **zero findings** — and a caller asserting zero
+**passes**. As written, the ruling made a crashed scan indistinguishable from a clean one.
+
+**In simple terms.** A smoke alarm that has lost power reports no smoke. The reading is identical to
+the reading from a working alarm in a room that is genuinely fine, and that is the whole problem: the
+guard is loudest exactly when it is healthy, and silent both when all is well and when it is dead.
+
+**Why this belongs in the log rather than being absorbed as a fix.** It is the same vacuity class as
+Story 1.2's two blockers (a counted-four assertion comparing a loop's output to its own input; a CI
+path reporting agreement over three of four targets) and D-1.3.4's rejected conditional lockfile check.
+**Absence silently reading as success** is this program's recurring failure mode — four instances in
+two stories — and each was caught by a different agent probing rather than reasoning. Worth stating as
+a standing suspicion: whenever a guard's healthy output and its dead output are the same value, that
+is a defect regardless of what the code looks like.
+
+**How we'd know it was wrong.** A guard whose test suite stays green after its scanner is made to
+throw on every file.
+
+### D-1.3.8 — The licence fixture is a stub module tree under `lint/testdata/licence/`; AD-26 was never in tension with it
+**Orchestrator decision**, on the lead's ruling. Answers the creator's DN-1 (raised, not arbitrated,
+per D-1.2.6).
+
+**Verdict.** Option **(b)**: a stub module tree with `replace`, at `lint/testdata/licence/`. Supplement
+with the classifier unit tests from option (c). **Do not adopt (a).**
+
+**The conflict dissolves on inspection, and this is the load-bearing part.** AD-26 forbids a
+**dependency carrying** a copyleft licence; its Prevents line names the mechanism — *"a copyleft
+dependency arriving through a plausible-looking package and forcing a relicence after the fact… Go
+links statically, so LGPL obligations would attach to the whole binary."* Copyleft obligations attach
+to **code received under a licence**. They do not attach to a text file that says "GPL". A stub module
+we authored, containing **zero lines of third-party code**, whose `LICENSE` file is fixture data
+written to be classified, creates no licensee relationship, transfers no copyrighted work, and imposes
+no obligation on anything.
+
+**"A module whose LICENSE file declares GPL" is not "a GPL dependency."** The clauses collide only if
+AD-26 is read as a rule about licence *strings* rather than about licensed *work* — and its Prevents
+line settles that in the language of static linking and relicensing. So there is no trade here and no
+owner escalation: retaining the fixture does not weaken AD-26 in any degree.
+
+**Placement holds by construction, via two independent mechanisms** — the `go` command ignores
+directories named `testdata` for package matching, and a directory containing its own `go.mod` is
+outside its parent module's boundary regardless. Belt and braces, with no exemption entry anywhere:
+the same shape as the source fixtures, for the same reason.
+
+**Three fixture graphs, not one** (D-1.3.3's both-polarities requirement plus the unknown-licence rule):
+
+| Fixture | Contains | Must |
+|---|---|---|
+| `copyleft/` | a stub module declaring GPL-3.0 (or LGPL/AGPL/SSPL) | **FAIL**, naming the module and the licence |
+| `permissive/` | stub modules declaring MIT / Apache-2.0 / BSD-3-Clause only | **PASS** |
+| `unknown/` | a stub module with **no** `LICENSE` file at all | **FAIL** as unresolvable |
+
+**The third is the one most worth retaining.** A silent pass on an unidentifiable licence is the
+realistic failure mode — far likelier than someone accidentally adding a GPL dependency — and it is
+the case D-1.3.4 already ruled must fail the build.
+
+**Guardrails.** Every `require` has a matching local `replace`, and the fixture graphs must resolve
+with `GOPROXY=off` — proving the checker resolves **without fetching**, which is both a CI hermeticity
+property and what makes a fake graph safe. **No full copyleft licence text in the repo**: include only
+what the classifier needs (an SPDX identifier line or short marker). That is not legal caution — there
+is no obligation, per above — but so that a human reader or a downstream scanner cannot mistake the
+repo for containing GPL-licensed material; if the classifier's design *requires* full text, treat that
+as a signal to key on SPDX identifiers plus a curated table instead. Make the fixtures obviously fake:
+module paths under `example.test/`, a header comment in each stating it contains no third-party code,
+and `lint/testdata/` marked `linguist-vendored` in `.gitattributes`.
+
+**Why not (a), a recorded graph fixture.** It is a second representation of something production
+derives live from `go list -m all`. When the two drift — a Go release changes the output shape, or
+someone edits the recorded file — the guard passes against a reality that no longer exists and nothing
+announces it. That is the mirror-file hazard, and it is worse here than usual because this guard's
+whole job is to be trusted **without being watched**. (a) is fine as input to a classifier unit test;
+it is not fine as the graph-walk fixture.
+
+**Why not (c) alone.** Unit-testing the classifier is genuinely valuable and ships as a supplement.
+Alone it is precisely the "assertions about guards rather than guards" outcome D-1.3.7 forbade: it
+would prove the classifier can read a licence while leaving entirely unexercised the part that walks a
+module graph and decides.
+
+**Confidence.** High on the AD-26 reading and on (b); **medium** on SPDX-vs-text classification, left
+to the developer under D-1.3.6's invariant.
+
+**How we'd know it was wrong.** The `unknown/` fixture passing, or a fixture graph that only resolves
+with `GOPROXY` reachable.
+
+### D-1.3.9 — The licence check covers every Go module in the repository
+**Orchestrator decision**, on the lead's ruling. Confirms the creator's AC18 reading.
+
+**Verdict.** `folio-go`, `hashmatrix`, **and** `lint`. Do not narrow it.
+
+**Grounding.** AD-26's scope line is **Binds: all** — not "Binds: `folio-go`" — and its Rule says "the
+whole module graph". When the spine was written there was exactly one Go module, so the singular noun
+was unambiguous; there are now three, and **the invariant's scope line resolves the ambiguity, not the
+noun**. D-1.3.6 already required `lint/`'s own `x/tools` dependency to appear in the manifest it
+generates, which would be incoherent if `lint/` were out of scope.
+
+**Refinement.** The manifest labels each dependency with **the module it serves** and **whether that
+module is shipped or build-time-only**. The ban applies uniformly to all three — no weakening — but the
+label is honest, costs nothing, and pre-empts a future argument that a copyleft build-time tool
+"doesn't really count". **A checker covering its own dependency is correct, not a bootstrap problem**,
+and the story says so plainly so nobody reads it as circular.
+
+**Standing consequence.** If a future story genuinely needs a **copyleft build-time tool**, that is an
+**owner escalation, not a lead call** — it would change AD-26's stated boundary, and AD-26 fails rather
+than warns by design.
+
+### D-1.3.10 — The `math` rule is a selector rule with a closed allow-list, not an import ban
+**Orchestrator decision**, on the lead's ruling. Confirms the creator's F-6, and tightens it.
+
+**Verdict.** A **selector** rule. **Any `math` function call whose name is not one of the seven
+allow-listed (`Sqrt`, `Floor`, `Ceil`, `Round`, `Trunc`, `Abs`, `Mod`) is a violation.** Non-call
+references are covered **by value kind**: integer-limit constants (`MaxInt64`, `MinInt64`, `MaxInt32`,
+…) are permitted; float-valued constants (`Pi`, `E`, `MaxFloat64`, `SmallestNonzeroFloat64`) are not.
+
+**This is AD-1's actual text, not a concession to shipped code.** Verified independently in the spine
+(lines 97–103): AD-1 bans importing four **package paths** (`time`, `os`, `math/rand`, `net`) and then
+names *"any `math` **transcendental**"* — a class of **functions**. It never says "may not import
+`math`". The clincher is the next sentence: *"The allow-listed numeric surface is `+ - * /`,
+comparison, and `Sqrt`, `Floor`, `Ceil`, `Round`, `Trunc`, `Abs`, `Mod`."* Those are all `math`
+**functions**. **An import-path ban would make AD-1's own allow-list unreachable and therefore
+meaningless** — a rule cannot both ban a package and enumerate which of its functions are tolerated.
+
+**Measured at `f9c27b3`.** `math` is imported under `internal/` today (`internal/pdf/numbers_test.go`,
+`internal/geom/scale_test.go`). Selector references tally **34 `math.MinInt64`, 7 `math.MaxInt64`, 1
+`math.Round`** — and the orchestrator checked that last one: it is at `internal/geom/scale.go:31`,
+**inside a comment** ("no call to math.Round"), not a call site. So every *real* reference is an
+untyped **integer** constant, with no float and no transcendental anywhere. D-1.3.1's `_test.go`
+exemption would **not** have saved these — it explicitly keeps banning transcendentals in tests — so an
+import-path rule reddens the shipped suite on its first run with no legitimate fix.
+
+**Allow-list, not deny-list.** AD-1's transcendental list ends in "…", which is not decidable; its
+allow-list is closed. Converting the open clause into "not one of the seven" makes the rule decidable
+and **fails safe**: a future Go release adding a new transcendental is banned by default rather than
+silently permitted.
+
+**Keep the seven in the rule even though they are unusable in practice.** All seven are `float64`-only,
+so AD-2/AD-23 and the arch guard prevent their use anyway — D-000.5 already recorded that the allow-list
+"describes what the lint tolerates, not an invitation to use `float64`". Someone will notice the
+redundancy and propose deleting them; **that would silently convert the lint from *tolerates-seven* to
+*bans-all-of-math*, a different rule than AD-1's.** The story says so explicitly.
+
+**Guardrails.** Resolve the import alias (`m "math"`) rather than matching the literal text `math.` —
+`emit_source_test.go` already does this and it is the established pattern. **Match on the AST, never a
+regex**: `scale.go` names `math.MinInt64` in five comments and `math.Round` in a sixth, and a text scan
+would flag every one. **The compliant near-miss fixture must include exactly that shape** — a comment
+naming a banned symbol — so the guard proves it does not fire on prose.
+
+**How we'd know it was wrong.** The guard reddening on a comment, or a new `math` function arriving in
+a Go release and passing unremarked.
+
+### D-000.6 amendment (Story 1.3) — `lint/` added to the spine's §Source tree
+**Ships in Story 1.3's own commit**, per D-000.6 and D-1.3.6's ruling that the AD-1 import/
+math-selector lint, the map-iteration check, and the AD-26 licence check + manifest live in a new
+repo-root module. Only the tree block changes; no invariant's **Binds** or **Prevents** line is
+touched.
+
+**Before** (`ARCHITECTURE-SPINE.md` §Source tree):
+```text
+  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — holds the
+                                      #   retained FMA contraction probe alone; the cross-target
+                                      #   matrix driver stays in folio-go/matrix_test.go (D-1.2.3
+                                      #   amended). Deliberately outside folio-go so AD-1 and the
+                                      #   float64 AST guard exclude the probe by construction
+                                      #   (D-000.6, Story 1.2)
+  folio-node/ · folio-java/ · …       # deferred SDKs, same fixtures, same namespace
+```
+
+**After:**
+```text
+  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — holds the
+                                      #   retained FMA contraction probe alone; the cross-target
+                                      #   matrix driver stays in folio-go/matrix_test.go (D-1.2.3
+                                      #   amended). Deliberately outside folio-go so AD-1 and the
+                                      #   float64 AST guard exclude the probe by construction
+                                      #   (D-000.6, Story 1.2)
+  lint/                               # module github.com/panitw/folio/lint — the AD-1 import/
+                                      #   math-selector lint, the map-iteration check, and the
+                                      #   AD-26 licence check + manifest. A standalone module so
+                                      #   folio-go's own module graph gains no dependency (D-1.3.6);
+                                      #   CI merely invokes it (D-000.6, Story 1.3)
+  folio-node/ · folio-java/ · …       # deferred SDKs, same fixtures, same namespace
+```
+
+*Corrected post-review (Finding 15, this story's QA review): the "After" block above originally*
+*reproduced the same one-column `#` misalignment on the `lint/` line that the spine file itself*
+*shipped with; both are now aligned to the same column as `hashmatrix/`'s and `lint/`'s own*
+*continuation lines (39, measured).*
+
+**How we'd know it was wrong.** A future story adding an exemption entry for `lint/` to the AD-1
+lint or the `float64` AST guard, or moving `lint/` under `folio-go/cmd/` — the whole point of this
+placement is that `folio-go`'s own guards need not know `lint/` exists, and Story 3.7 still owns
+`folio-go/cmd/` (D-1.3.6, AC23).
+
+### D-1.3.11 — The dependency-free map detector fails D-1.3.6's exactness invariant; fall back to `x/tools`
+**Orchestrator decision**, applying D-1.3.6 as written. **Fast path — the existing ruling determines
+the answer, so this was not re-referred to the lead.** Found by the Story 1.3 reviewer.
+
+**Verdict.** `lint/` adds `golang.org/x/tools` (BSD-3-Clause) and resolves map types through
+`go/packages` with full type information. The stdlib-only `tolerantImporter` path is withdrawn.
+
+**Why the existing ruling settles it.** D-1.3.6 permitted a dependency-free implementation as "a
+permitted refinement, **not a deviation**" — but conditioned on it being **exact**, and its binding
+invariant (a) is *exact detection with no false positives*. D-1.3.5 adds that "a syntactic guess is
+**not** acceptable". The shipped detector is not exact, and **the code says so itself**:
+`lint/internal/rules/maprange.go:66` carries the comment *"tolerant: best-effort resolution only"*,
+and the module's `go.mod` says "best effort" out loud. A ruling that permits X only if X is exact is
+not satisfied by an X that documents its own inexactness.
+
+**What the reviewer proved, on a copy of the real tree — not a synthetic case.** `tolerantImporter`
+returns an **empty** `types.Package` for anything `importer.Default()` misses, which is every sibling
+package under `folio-go/internal/`. The unresolved subject falls through
+`if !ok || tv.Type == nil { return true }` with `err == nil`, and `conf.Check`'s error is discarded
+twice (`_, _ =` plus a no-op `Error` callback). Adding `type ScaleTable map[string]Length` to
+`internal/geom` and two genuine map ranges over it in `internal/pdf` gives **`err=<nil>,
+findings=0`**, while `go build ./...` and `go vet ./...` on that same tree exit 0. Also missed: a
+type alias from another package, and another package's map-returning function. Caught: same-package
+and stdlib only — and the retained fixture uses a *locally spelled* `map[string]int`, which is
+precisely why the suite is green.
+
+**In simple terms.** `internal/pdf` **already imports** `internal/geom`. So the single most likely
+future shape — a map type declared in one internal package and ranged in another — is exactly the
+shape the detector cannot see. The guard is not weak at the edges; it is blind down the middle.
+
+**This is V10 again, inside the guard built to enforce V10.** *Whenever a guard's healthy output and
+its dead output are the same value, that is a defect regardless of how the code looks.* A blind
+detector and a clean tree both report `findings=0, err=nil`. That makes **six** instances across
+three stories, and this one is the sharpest: the story that named the pattern shipped an instance of
+it.
+
+**On invariant (b), which is what the developer over-applied.** D-1.3.6's invariant (b) is "**no
+dependency added to `folio-go`'s module graph**" — it says nothing about `lint/`'s own graph. The
+developer extended the discipline to `lint/` by choice (its `go.mod` comment states this explicitly)
+and paid for it with exactness. `x/tools` in `lint/` leaves `folio-go`'s graph untouched — verified:
+`folio-go`'s `go list -m all` is one line with no `go.sum` — so (b) still holds.
+
+**A useful side effect, not the reason.** D-1.3.6 and D-1.3.9 already required `lint/`'s own
+dependency to appear in the manifest its licence check generates. With `x/tools` present the manifest
+is **no longer empty**, which independently strengthens Finding 8's vacuous row-shape problem: the
+manifest assertions now run against real data rather than against nothing.
+
+**Consequences.** The `unknown/`-fixture and `GOPROXY=off` hermeticity requirements of D-1.3.8 still
+bind and must be re-proved with a real dependency in the graph. `x/tools`'s BSD-3-Clause licence must
+classify cleanly and appear in the manifest labelled **build-time-only** per D-1.3.9 — and that is
+now a live test of the label rather than a hypothetical one.
+
+**How we'd know it was wrong.** A map range whose type is declared in another package failing to
+produce a finding — the reviewer's exact reproduction, which must become a retained fixture rather
+than a one-off proof.

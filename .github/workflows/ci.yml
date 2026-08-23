@@ -1,0 +1,95 @@
+name: Build, vet, and guardrails
+
+# Story 1.3 (AC25): this workflow invokes the guardrails; it never
+# re-implements any part of them (D-1.2.6, Story 1.2 Finding 8). Each
+# job below is exactly the command a developer runs locally, with no
+# CI-only logic — go build/go vet/gofmt for each of the three Go
+# modules, folio-go's untagged test suite (which is where the two
+# existing guards — internal/arch_test.go's no-float64 check and
+# internal/pdf/emit_source_test.go's numeric-formatting check — and
+# DW-1's fixture-shape red-proof live), and lint's own test suite (which
+# is where the AD-1 import/math-selector lint, the map-range check and
+# the AD-26 licence check + manifest live, all as production/fixture
+# caller pairs under `go test ./...`, per AC1). The cross-target matrix
+# (matrix.yml) is a separate, per-epic-cadence workflow (D-000.4) and is
+# out of scope here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GO_VERSION: "1.26.0"
+
+jobs:
+  folio-go:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go build
+        working-directory: folio-go
+        run: go build ./...
+      - name: go vet
+        working-directory: folio-go
+        run: go vet ./...
+      - name: gofmt -l (must be empty)
+        working-directory: folio-go
+        run: test -z "$(gofmt -l .)"
+      - name: go test ./... (includes the two existing guards + DW-1)
+        working-directory: folio-go
+        run: go test ./...
+      - name: go build -tags=matrix (compiles; does not run the matrix, D-000.4)
+        working-directory: folio-go
+        run: go build -tags=matrix ./...
+      - name: go vet -tags=matrix
+        working-directory: folio-go
+        run: go vet -tags=matrix ./...
+
+  hashmatrix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go vet ./...
+        working-directory: hashmatrix
+        run: go vet ./...
+      - name: build the probe binary (plain "go build ./..." exits 1 by design, Story 1.2)
+        working-directory: hashmatrix
+        run: |
+          mkdir -p /tmp/hashmatrix-build
+          go build -o /tmp/hashmatrix-build/probe ./probe
+      - name: gofmt -l (must be empty)
+        working-directory: hashmatrix
+        run: test -z "$(gofmt -l .)"
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go build
+        working-directory: lint
+        run: go build ./...
+      - name: go vet
+        working-directory: lint
+        run: go vet ./...
+      - name: gofmt -l (must be empty)
+        working-directory: lint
+        run: test -z "$(gofmt -l .)"
+      - name: go mod download all (D-1.3.11: populates the module cache for lint's WHOLE module graph, not just the packages it imports directly, so the GOPROXY=off step below can resolve every dependency's LICENSE file offline)
+        working-directory: lint
+        run: go mod download all
+      - name: go test ./... (AD-1 lint, map-range, licence check + manifest — production and fixture scans, AC1)
+        working-directory: lint
+        env:
+          GOPROXY: "off"
+        run: go test ./...

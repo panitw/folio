@@ -52,6 +52,16 @@ go.work.sum
 # ── Cross-target matrix harness build output (Story 1.2, AC12/F-7) ─
 folio-go/.matrix-build/
 
+# ── Story 1.3's licence-check fixture module paths deliberately live
+# under `example.test/` (D-1.3.8 — RFC 2606's reserved TLD, used so a
+# fixture's fake module path can never collide with a real one). `*.test`
+# above, meant only for compiled Go test binaries, would otherwise
+# silently swallow the whole directory (and everything AC29/AC30 rely on
+# being committed) — found while staging this story's commit. Un-ignore
+# it explicitly.
+!lint/testdata/**/example.test/
+!lint/testdata/**/example.test/**
+
 # ── WASM build output ─────────────────────────────────────────────
 *.wasm
 wasm_exec.js
