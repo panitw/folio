@@ -502,6 +502,15 @@ func captureFontRender(t *testing.T, target matrixTarget, binPath string) []byte
 	return runOnTarget(t, target, binPath, map[string]string{subprocessFontEnvVar: "1"})
 }
 
+// captureImageRender runs binPath with FOLIO_SUBPROCESS_RENDER_IMAGE=1 —
+// AC22's THIRD selector (D-1.8.6, joining the two above, replacing
+// neither): rendering the image-embedding document
+// (fixtures/image-embed/) through the public Render path.
+func captureImageRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessImageEnvVar: "1"})
+}
+
 // checkFixtureShape, loadExpectedFixture and TestFixtureShapeCheckRedProof
 // (DW-1's AC6/RP-4 closure) moved to the untagged fixture_test.go (Blocker
 // 3, this story's QA review): this file carries the "matrix" build tag, so
@@ -537,11 +546,12 @@ func renderTableRows(results []renderLegResult) []string {
 // though TestCrossTargetByteIdentity (the local, matrix-tagged gate)
 // would catch it.
 type matrixDocument struct {
-	label            string
-	slug             string
-	capture          func(t *testing.T, target matrixTarget, binPath string) []byte
-	fixtureRelPath   []string
-	requireFontFile2 bool
+	label               string
+	slug                string
+	capture             func(t *testing.T, target matrixTarget, binPath string) []byte
+	fixtureRelPath      []string
+	requireFontFile2    bool
+	requireImageXObject bool // AC23 (D-1.8.6): applied per document, on the same basis as requireFontFile2
 }
 
 var matrixDocuments = []matrixDocument{
@@ -558,6 +568,13 @@ var matrixDocuments = []matrixDocument{
 		capture:          captureFontRender,
 		fixtureRelPath:   []string{"fixtures", "font-text", "expected.json"},
 		requireFontFile2: true,
+	},
+	{
+		label:               "image-embed (template+image)",
+		slug:                "image-embed",
+		capture:             captureImageRender,
+		fixtureRelPath:      []string{"fixtures", "image-embed", "expected.json"},
+		requireImageXObject: true,
 	},
 }
 
@@ -609,6 +626,18 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 					"target %s (%s): rendered output does not contain a FontFile2 (AC10b vacuity guard) — "+
 						"the D-000.4 matrix override for this story is only meaningful if the subprocess "+
 						"font path actually embeds a font",
+					target.name, doc.label,
+				)
+			}
+			if doc.requireImageXObject && !containsImageXObject(raw) {
+				// AC23 (D-1.8.6): the image child's output must be
+				// confirmed to actually contain an image XObject
+				// (/Subtype /Image) BEFORE any byte comparison runs, on
+				// every leg — otherwise the matrix could compare four
+				// identical IMAGELESS PDFs and report byte-identity,
+				// exactly what Story 1.5 discovered about fonts.
+				t.Fatalf(
+					"target %s (%s): rendered output does not contain an image XObject (AC23 vacuity guard)",
 					target.name, doc.label,
 				)
 			}
@@ -776,6 +805,14 @@ func TestTargetRenderHash(t *testing.T) {
 			// a passing per-target CI job either.
 			t.Fatalf(
 				"target %s (%s): rendered output does not contain a FontFile2 (AC10b vacuity guard)",
+				target.name, doc.label,
+			)
+		}
+		if doc.requireImageXObject && !containsImageXObject(raw) {
+			// AC23's same vacuity guard, applied to the per-target CI
+			// entry point.
+			t.Fatalf(
+				"target %s (%s): rendered output does not contain an image XObject (AC23 vacuity guard)",
 				target.name, doc.label,
 			)
 		}

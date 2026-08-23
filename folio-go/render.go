@@ -69,6 +69,123 @@ type textRunSource struct {
 	fontSize geom.Length
 }
 
+// bandWithOrigin pairs one of the document's three bands with the
+// PROVISIONAL vertical offset (AC28) at which its own element-relative
+// Y=0 sits — the placement math both collectTextRuns and
+// collectImageRuns need, factored once so the two element kinds agree
+// on where a band starts.
+type bandWithOrigin struct {
+	band   template.Band
+	origin geom.Length
+}
+
+// documentBands resolves pageDimensions and returns the three bands
+// with their origins, in authored (header, content, footer) order.
+func documentBands(doc *Template) ([]bandWithOrigin, error) {
+	_, height, err := pageDimensions(doc)
+	if err != nil {
+		return nil, err
+	}
+	usableHeight := height - doc.Page.Margin.Top - doc.Page.Margin.Bottom
+
+	var headerHeight, footerHeight geom.Length
+	if doc.Bands.PageHeader.Height.Set && !doc.Bands.PageHeader.Height.Null {
+		headerHeight = doc.Bands.PageHeader.Height.Value
+	}
+	if doc.Bands.PageFooter.Height.Set && !doc.Bands.PageFooter.Height.Null {
+		footerHeight = doc.Bands.PageFooter.Height.Value
+	}
+
+	return []bandWithOrigin{
+		{doc.Bands.PageHeader, 0},
+		{doc.Bands.Content, headerHeight},
+		{doc.Bands.PageFooter, usableHeight - footerHeight},
+	}, nil
+}
+
+// imageRunSource is one image element found while walking the
+// document's bands: its declared BOX (before fit/centre), and the asset
+// key it references.
+type imageRunSource struct {
+	elementID  string
+	assetKey   string
+	x, y       geom.Length
+	boxW, boxH geom.Length
+}
+
+// collectImageRuns walks every band in authored order and returns one
+// imageRunSource per image element (AD-24, source AC3/AC4). It does not
+// decode or validate the referenced asset — that is
+// resolveImagePlacement's job (renderDocument), called once the union
+// of images the whole document uses is known, mirroring collectTextRuns/
+// resolveFace's split.
+func collectImageRuns(doc *Template) ([]imageRunSource, error) {
+	bands, err := documentBands(doc)
+	if err != nil {
+		return nil, err
+	}
+
+	var runs []imageRunSource
+	for _, b := range bands {
+		for _, el := range b.band.Elements {
+			if el.Type != template.ElementImage {
+				continue
+			}
+			if !el.Width.Set || !el.Height.Set {
+				return nil, fmt.Errorf("folio: Render: element %s: image element has no declared width/height box", el.ID)
+			}
+			if !el.Asset.Set {
+				// M-2: parse_bands.go already makes a missing asset on
+				// an image element a load error, so this is
+				// unreachable for any successfully parsed Document —
+				// handled rather than assumed.
+				return nil, fmt.Errorf("folio: Render: element %s: image element has no asset", el.ID)
+			}
+			runs = append(runs, imageRunSource{
+				elementID: string(el.ID),
+				assetKey:  el.Asset.Value,
+				x:         el.X,
+				y:         b.origin + el.Y,
+				boxW:      el.Width.Value,
+				boxH:      el.Height.Value,
+			})
+		}
+	}
+	return runs, nil
+}
+
+// resolveImagePlacement computes AC13/AC14's fit-and-centre geometry for
+// one image run: the binding axis is chosen by CROSS-MULTIPLICATION
+// (bw*H vs bh*W — exact integer comparison, no division, no float), then
+// exactly one geom.ScaleRound call computes the free axis, and the
+// centring offsets are a SECOND ScaleRound call each
+// (ScaleRound(box-drawn, 1, 2)) rather than "/2" — D-1.8.4: "(bw-dw)/2
+// truncates when the difference is odd... route it through the same
+// function, so round-half-to-even applies and the program keeps exactly
+// one rounding mode in exactly one function."
+func resolveImagePlacement(run imageRunSource, img template.DecodedImage) (drawX, drawY, drawW, drawH geom.Length) {
+	bw, bh := run.boxW, run.boxH
+	w, h := int64(img.Width()), int64(img.Height())
+
+	// AC13: compare bw*H against bh*W, exact integer, no division.
+	if bw*geom.Length(h) <= bh*geom.Length(w) {
+		// width binds
+		drawW = bw
+		drawH = geom.ScaleRound(bw, h, w)
+	} else {
+		// height binds
+		drawH = bh
+		drawW = geom.ScaleRound(bh, w, h)
+	}
+
+	offsetX := geom.ScaleRound(bw-drawW, 1, 2)
+	offsetY := geom.ScaleRound(bh-drawH, 1, 2)
+
+	drawX = run.x + offsetX
+	drawY = run.y + offsetY
+	return drawX, drawY, drawW, drawH
+}
+
 // collectTextRuns walks every band (content, pageHeader, pageFooter) in
 // authored order and returns one textRunSource per non-empty text
 // element, resolving each element's face via its style's fontFamily
@@ -87,20 +204,6 @@ type textRunSource struct {
 // expression-shaped `{{formatNumber(...)}}` that is deliberately not
 // this story's business).
 func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet) ([]textRunSource, error) {
-	_, height, err := pageDimensions(doc)
-	if err != nil {
-		return nil, err
-	}
-	usableHeight := height - doc.Page.Margin.Top - doc.Page.Margin.Bottom
-
-	var headerHeight, footerHeight geom.Length
-	if doc.Bands.PageHeader.Height.Set && !doc.Bands.PageHeader.Height.Null {
-		headerHeight = doc.Bands.PageHeader.Height.Value
-	}
-	if doc.Bands.PageFooter.Height.Set && !doc.Bands.PageFooter.Height.Null {
-		footerHeight = doc.Bands.PageFooter.Height.Value
-	}
-
 	// bandOrigin is PROVISIONAL (AC28): the vertical offset, from the
 	// page's top printable edge, at which each band's own (element-
 	// relative) Y=0 sits — pageHeader at the top, content directly below
@@ -108,13 +211,11 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet) ([]text
 	// composition (stacking bands that actually grow with content, page
 	// breaks, etc.) is Story 2.5's (internal/layout) job; this is only
 	// enough to keep this story's fixtures from overlapping.
-	bands := []struct {
-		band   template.Band
-		origin geom.Length
-	}{
-		{doc.Bands.PageHeader, 0},
-		{doc.Bands.Content, headerHeight},
-		{doc.Bands.PageFooter, usableHeight - footerHeight},
+	// (documentBands, factored above so collectImageRuns agrees on the
+	// same band origins.)
+	bands, err := documentBands(doc)
+	if err != nil {
+		return nil, err
 	}
 
 	var runs []textRunSource
@@ -246,6 +347,77 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		}
 	}
 
+	imageRuns, ierr := collectImageRuns(t)
+	if ierr != nil {
+		return nil, ierr
+	}
+
+	// AC9's "one XObject per asset per document" (the same shape as
+	// fonts' "one subset per font per document"): dedup by asset key —
+	// decode each DISTINCT referenced asset exactly once, regardless of
+	// how many elements place it.
+	pdfImages := make(map[string]pdf.ImageXObject, len(imageRuns))
+	decodedByKey := make(map[string]template.DecodedImage, len(imageRuns))
+	assetKeys := make([]string, 0, len(imageRuns))
+	// firstElementIDByAssetKey carries FIRST (in imageRuns' authored
+	// order) referencing element id alongside each distinct asset key,
+	// so a render-time error can name the element that caused it (D-1.8.1
+	// amended's binding verdict-table clause: "Located, naming element
+	// id, asset key and media type" — Finding 4, Story 1.8 review: this
+	// was previously hard-coded to "", producing a visible hole in the
+	// error message instead of the element id).
+	firstElementIDByAssetKey := make(map[string]string, len(imageRuns))
+	seenAssetKey := map[string]bool{}
+	for _, r := range imageRuns {
+		if seenAssetKey[r.assetKey] {
+			continue
+		}
+		seenAssetKey[r.assetKey] = true
+		assetKeys = append(assetKeys, r.assetKey)
+		firstElementIDByAssetKey[r.assetKey] = r.elementID
+	}
+	slices.Sort(assetKeys)
+	for _, key := range assetKeys {
+		asset, ok := t.Assets[key]
+		if !ok {
+			return nil, fmt.Errorf("folio: Render: an image element references asset %q, which is not present in the document's assets map", key)
+		}
+		raw, derr := template.DecodeAssetBytes(asset)
+		if derr != nil {
+			return nil, fmt.Errorf("folio: Render: asset %q: %w", key, derr)
+		}
+		img, derr := template.DecodeImageForRender(asset.MediaType, raw, key, firstElementIDByAssetKey[key])
+		if derr != nil {
+			return nil, fmt.Errorf("folio: Render: %w", derr)
+		}
+		decodedByKey[key] = img
+		pdfImages[key] = pdf.ImageXObject{
+			Width:            img.Width(),
+			Height:           img.Height(),
+			ColorSpace:       img.ColorSpace,
+			BitsPerComponent: img.BitsPerComponent,
+			Filter:           img.Filter,
+			HasDecodeParms:   img.HasDecodeParms,
+			PredictorColors:  img.PredictorColors,
+			PredictorBPC:     img.PredictorBPC,
+			PredictorColumns: img.PredictorColumns,
+			Stream:           img.Stream,
+		}
+	}
+
+	pdfPlacements := make([]pdf.ImagePlacement, len(imageRuns))
+	for i, r := range imageRuns {
+		img := decodedByKey[r.assetKey]
+		drawX, drawY, drawW, drawH := resolveImagePlacement(r, img)
+		pdfPlacements[i] = pdf.ImagePlacement{
+			ResourceName: r.assetKey,
+			X:            drawX,
+			Y:            drawY,
+			DrawWidth:    drawW,
+			DrawHeight:   drawH,
+		}
+	}
+
 	width, height, perr := pageDimensions(t)
 	if perr != nil {
 		return nil, perr
@@ -258,11 +430,12 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 
 	page := pdf.TextPage{
 		Runs:       pdfRuns,
+		Images:     pdfPlacements,
 		Width:      width,
 		Height:     height,
 		MarginTop:  t.Page.Margin.Top,
 		MarginLeft: t.Page.Margin.Left,
 	}
 
-	return pdf.SerializeTextDocument([]pdf.TextPage{page}, embedded)
+	return pdf.SerializeTextDocument([]pdf.TextPage{page}, embedded, pdfImages)
 }

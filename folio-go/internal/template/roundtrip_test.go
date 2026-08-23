@@ -3,6 +3,7 @@ package template
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +83,71 @@ func mustBeCanonical(t *testing.T, name string, b []byte) {
 func TestP3FixturesAreCanonical(t *testing.T) {
 	for name, b := range canonicalFixtures(t) {
 		t.Run(name, func(t *testing.T) { mustBeCanonical(t, name, b) })
+	}
+}
+
+// TestHandWrappedAssetNormalisesToCanonical is AC3's NON-VACUOUS half
+// (D-1.8.2, D-1.8.9), RP-2's positive control: maximalFixture's asset
+// `data` is hand-re-wrapped at 64 columns (a legal hand-edit, AD-9's
+// Prevents line contemplates exactly this) instead of the canonical
+// 76-column split it ships with — the parser must still ACCEPT it (AC2:
+// "accept any wrapping"), and the serializer must produce EXACTLY the
+// same canonical 76-column bytes as the untouched fixture (AC1/AC3a).
+//
+// This is the test D-1.8.9 names explicitly as the ONLY discriminating
+// one: "canonical-in/canonical-out cannot fail against an echoing
+// serializer; 64-in/76-out cannot pass against one." A serializer that
+// merely echoed a.Data (the shipped baseline before this story, M-4)
+// would reproduce the 64-column wrapping verbatim here and this test
+// would fail — unlike TestP3FixturesAreCanonical, which passes against
+// an echoing serializer whenever the input already happens to be
+// 76-wrapped (exactly M-4's vacuity trap).
+func TestHandWrappedAssetNormalisesToCanonical(t *testing.T) {
+	canonical := maximalFixture
+
+	d, err := ParseDocument(canonical)
+	if err != nil {
+		t.Fatalf("parse canonical maximalFixture: %v", err)
+	}
+	handWrapped := string(canonical)
+	for key, asset := range d.Assets {
+		joined := strings.Join(asset.Data, "")
+		var wrapped64 []string
+		for i := 0; i < len(joined); i += 64 {
+			end := i + 64
+			if end > len(joined) {
+				end = len(joined)
+			}
+			wrapped64 = append(wrapped64, joined[i:end])
+		}
+		if len(wrapped64) < 2 {
+			t.Fatalf("test fixture assumption violated: asset %s's payload is too short to produce more than one 64-column element", key)
+		}
+		canonicalArray := "[\n        \"" + strings.Join(asset.Data, "\",\n        \"") + "\"\n      ]"
+		handArray := "[\n        \"" + strings.Join(wrapped64, "\",\n        \"") + "\"\n      ]"
+		if !strings.Contains(handWrapped, canonicalArray) {
+			t.Fatalf("could not locate asset %s's canonical data array in the fixture text to hand-rewrap it", key)
+		}
+		handWrapped = strings.Replace(handWrapped, canonicalArray, handArray, 1)
+	}
+
+	if handWrapped == string(canonical) {
+		t.Fatal("test fixture assumption violated: the hand-wrapped variant is byte-identical to the canonical fixture")
+	}
+
+	d2, err := ParseDocument([]byte(handWrapped))
+	if err != nil {
+		t.Fatalf("parse hand-wrapped (64-column) variant: %v (AC2: any wrapping must be accepted)", err)
+	}
+	out, err := SerializeDocument(d2)
+	if err != nil {
+		t.Fatalf("serialize hand-wrapped variant: %v", err)
+	}
+	if string(out) != string(canonical) {
+		t.Fatalf(
+			"RP-2: a 64-column hand-wrapped asset must re-serialize to EXACTLY the canonical 76-column bytes "+
+				"(D-1.8.9) — got:\n%s\n--- want ---\n%s", out, canonical,
+		)
 	}
 }
 

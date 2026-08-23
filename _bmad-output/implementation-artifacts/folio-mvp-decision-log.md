@@ -3595,3 +3595,322 @@ answer arrives looking exactly like the right one and **nothing announces the di
 **Pattern, not incident.** Story 1.6's equivalent claim was wrong **twice in the same way** ("thirteen
 call sites", corrected to 11). Three methods, three answers, and only one counts the thing anyone
 means.
+
+### D-1.7.1 (amended) — the narrated parameter counts were wrong; the verbatim signatures govern
+**Orchestrator decision**, on the lead's own correction. **Amends D-1.7.1's prose only; its verdict
+stands unchanged.**
+
+**Verdict.** `Render(t, d, p, f)` takes **four** parameters; `RenderTo(w, t, d, p, f)` takes **five**.
+D-1.7.1's prose said *"five positional arguments survive"* (echoing D-1.1.c's own loose phrasing) and
+then *"carry the six-argument form"*. **Neither count is right.** The verbatim signatures in the
+verdict govern; the narrated counts were wrong. Surfaced by the Story 1.7 finisher as F9 per D-1.2.6,
+not arbitrated.
+
+**What this is an instance of.** The lead **narrated a count beside a verbatim artifact and the
+narration drifted from it** — the identical failure as the reviewer's prose summary disagreeing with
+its own disposition table in the same story. **Four instances in two days**, all in the same
+direction.
+
+### D-000.14 (extended) — A total narrated beside the artifact it summarises is a second source of truth
+**Orchestrator decision**, on the lead's ruling. Extends D-000.14 *(mechanism: binding)*.
+
+**Verdict.** A disposition table's total is **computed, or omitted entirely** — never narrated
+alongside it. Same for any count stated beside the artifact it summarises.
+
+**The evidence is one story deep.** On Story 1.7 the same disposition table was counted three times:
+developer **29/29 clean**; reviewer's mirror **18/29 with 11 disagreements**; the finisher, recounting
+the reviewer's own ✅/❌/⚠️ marks, **17 agree with 12 disagreements** — *the reviewer's prose summary
+did not match its own table.* **All three were wrong, and all three undercounted the gap.** Add the
+lead's own D-1.7.1 prose (above) and that is four in two days.
+
+**Why this is D-000.14's own lesson landing on the disposition mechanism.** D-000.14 established that
+a text-matched count measures the regex and a filtered count measures the filter. This is the
+degenerate case: **a count that measures nothing at all**, because it was typed rather than derived —
+and it sits on top of the mechanism built to catch unread rows. **A number in prose beside a table it
+summarises has no guard.**
+
+## Epic 1 decisions — Story 1.8 (ruled before the story file was written)
+
+### D-1.8.1 — JPEG and PNG by passthrough; alpha, palette, 16-bit and interlaced are load errors; `mediaType` stays open
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict — what ships** *(binding for the format set and the failure mode; illustrative for the PDF
+filter details)*:
+
+| Input | Route | Why |
+|---|---|---|
+| **JPEG** | `/DCTDecode`, bytes embedded **unchanged** | zero re-encoding, byte-stable by construction |
+| **PNG** 8-bit RGB/Gray, non-interlaced, **no alpha** | `/FlateDecode` + `/DecodeParms /Predictor 15`, IDAT zlib stream **passed through** | PNG's own filtering maps onto PDF's predictor; **no compressor is invoked** |
+| PNG with alpha, palette, 16-bit or interlaced; any other media type | **Load error**, located, naming the asset key and the reason | — |
+
+**The passthrough design is the ruling's real content.** Story 1.1 deliberately kept `compress/flate`
+out of the output, calling its arrival *"a hash-changing, versioned event under AD-22 and the subject
+of carried risk **R4**"*. **Verified: `acceptance.md:83` rates R4 Medium — *"Compressor output is
+stable by observation, not by contract — a future Go release could invalidate every recorded golden
+hash downstream."*** Decoding and re-encoding a PNG would invoke our compressor and **materialise R4
+in the last story of Epic 1**. Passing the existing zlib stream through means the compressed bytes
+come **from the file, not from a compressor** — determinism is inherited from the input and R4 stays
+closed. **Take this route even where re-encoding would be simpler.**
+
+**Load error, not render error** *(binding)*: Story 1.4's posture is that a bad template fails in CI,
+and `folio.Validate` (Story 3.7) must catch it without rendering.
+
+**`mediaType` must NOT be declared a closed set** *(binding)* — the subtle half. Under **D-1.4.12** a
+closed set can only be extended by a **MAJOR** bump, so freezing `mediaType` now would make "add WebP"
+a breaking format change **forever**. Distinguish two failures instead: **format validity** (the
+`.folio` is well-formed; `mediaType` stays open) versus **library capability** (*this version* cannot
+render that media type, reported as a located error saying exactly that). Adding a format later is
+then a **capability gain, not a format change**. This distinction will recur for font formats and
+expression functions, so it is named once here.
+
+**Alpha is out of scope — and goes to the owner at the Epic 1 boundary report** *(illustrative)*.
+AD-6 excludes "transparency groups"; an image `/SMask` is not literally one, so this is a **scope
+call, not an invariant**. Ruled out because supporting it forces decode-and-re-encode — the R4
+exposure above. **But a transparent PNG is the single most common form a company logo takes, and the
+golden report's header carries a logo (Epic 4).** Not a one-way door — `/SMask` is purely additive
+later — so it does not block. **Surfaced to the owner while the golden report is still being
+designed**, not discovered at Epic 4.
+
+### D-1.8.2 — The 76-column split is canonical output; input wrapping is normalised
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**On serialize:** standard base64 (RFC 4648 §4, **with** padding, not URL-safe), split into elements
+of **exactly 76 characters**, the final element carrying the remainder (1–76). **Padding falls where
+it falls — inside the split, at the end of the last element.** Never stripped, never moved, never
+given its own element.
+
+**On parse:** accept **any** wrapping. Concatenate elements with nothing inserted, then decode
+strictly. A file hand-wrapped at 64 columns **loads** and **re-serializes at 76**.
+
+**That second half follows directly from D-1.4.3 and must not be tightened:** non-canonical-but-valid
+input is accepted and normalised; canonical is the fixed point (P3). **A parser that enforced 76
+columns would reject a legal hand-edit**, and AD-9's Prevents line explicitly contemplates a
+hand-editor. Invalid base64 (bad alphabet, bad padding, embedded whitespace) is a **load error**, as
+is **an asset whose decoded data is empty** — it cannot render, and its key would be the SHA-256 of
+nothing.
+
+**Round-trip obligation:** the corpus gains an asset-bearing fixture satisfying **P1, P2 and P3** — and
+**a hand-wrapped variant that normalises to the same canonical bytes is the non-vacuous half**, since
+a canonical-in/canonical-out test alone would pass on a serializer that merely echoed its input.
+
+### D-1.8.3 — Key over decoded bytes, validated on load; `/Width`/`/Height` → `appendInt`; orphans preserved because P1 forces it
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+1. **The key is the lowercase hex SHA-256 of the *decoded* bytes.** **Verified: `folio-format.md:219`
+   says "lowercase hex SHA-256 of the **raw bytes**"** — raw means decoded, not the base64 text. Two
+   identical images wrapped differently must produce the **same** key, which only holds over decoded
+   bytes.
+2. **Validate the key on load** — recompute and require equality; mismatch is a **load error**. This
+   makes dedup correct **by construction rather than by trust**, and catches a hand-edit that changed
+   the bytes but not the key — the exact corruption that would otherwise surface as two elements
+   silently sharing one wrong image.
+3. **`/Width` and `/Height` are pixel counts → `appendInt`** (D-1.1.b's routing table). The trap it
+   exists to pre-empt applies directly: routing a pixel count through `appendLength` would emit `0.8`
+   for an 800-pixel image.
+4. **Orphaned assets are PRESERVED — forced, not chosen.** **D-1.4.3's P1 requires
+   `Parse(Serialize(d)) == d`**, so a serializer dropping unreferenced assets would violate P1 for
+   every document containing one. **There is no policy latitude here.**
+   - **Corollary for Epics 5/6** *(binding)*: **garbage-collecting orphans is a designer feature — an
+     explicit user action — never a serializer side effect.** A save that silently deletes an asset the
+     author just unlinked and is about to re-link is data loss.
+
+### D-1.8.4 — Cross-multiply to choose the binding axis; route the centring halve through `ScaleRound` too
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*. Image `W×H` pixels, box
+`bw×bh` millipoints.
+
+1. **Choose the binding axis by cross-multiplication, never by ratio:** compare `bw*H` against
+   `bh*W`. Exact integer comparison, **no division, no float**.
+2. **Then one `ScaleRound` call:** width binds → `dw = bw`, `dh = ScaleRound(bw, H, W)`; height binds
+   → `dh = bh`, `dw = ScaleRound(bh, W, H)`.
+3. **The centring offsets are the second rounding site, and they must not be.** `(bw - dw) / 2`
+   **truncates** when the difference is odd — a second rounding behaviour smuggled in as arithmetic.
+   **Route it through the same function: `ScaleRound(bw-dw, 1, 2)`**, so round-half-to-even applies
+   and the program keeps **exactly one rounding mode in exactly one function** (AD-2, D-1.4.5).
+4. **Validate pixel dimensions at the trust boundary first** — `W > 0`, `H > 0`, bounded — **reusing
+   D-1.5.2's precedent exactly**: `ScaleRound`'s panics are programmer-error guards, not input
+   handling, so a `W == 0` from a corrupt header must be a **located load error, never a panic**. Same
+   seam, same reasoning, one story later.
+
+### D-1.8.5 — Reuse the fence: the no-fetch property holds by construction of the format
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*. **Add no new guard.**
+
+**The reason is structural, not "the guards are probably enough".** **Verified:
+`folio-format.md:224` — *"Images are only ever embedded. Folio never fetches by URL and never reads
+from disk at render time (FR33)."*** **There is no field in the format that can name a remote or
+on-disk resource.** An element's `asset` field is a **key into the in-memory `assets` map** — not a
+path, not a URL. At render time the bytes are already a `[]byte` on the parsed `Document`. **There is
+no code path that could fetch, because there is no value that names anything to fetch.** D-1.4.7's
+key-inventory drift test already keeps the field set honest.
+
+**One cheap behavioural check** *(illustrative)*, because "no guard needed" should still be
+observable: **mutate the in-memory asset bytes and assert the rendered PDF changes.** If the renderer
+read from disk, a cache, or anywhere but the document, it would not. Three lines, non-vacuous, and it
+**proves the provenance claim rather than restating it**.
+
+The existing `net` ban under `internal/` and the AST-located render-file fence stand unchanged, with
+**Story 1.7's recorded residual gap carried forward as-is — a capability fence, not a proof. Do not
+quietly upgrade its description in this story.**
+
+### D-1.8.6 — A third matrix document, with an image-XObject guard on every captured stream
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+The image document **joins** `minimal-rect` and `font-text` as a **third**; it replaces neither.
+`minimal-rect` is the fontless emission baseline whose four-target verification was deliberately
+preserved at Story 1.5; `font-text` covers subsetting. **Replacing either would silently retire
+coverage of a feature that is still shipping.**
+
+**The guard is the direct analogue of Story 1.5's `FontFile2` lesson:** assert each captured stream
+contains an **image XObject** (`/Subtype /Image`) **before** any comparison — **on every leg, not
+once**. Without it the matrix would compare four identical **imageless** PDFs and report byte-identity
+across all targets, which is exactly what 1.5 discovered about fonts. Each existing document keeps its
+own feature guard on the same basis.
+
+### D-1.8.1 (amended) — An unrecognised `mediaType` is never a load error; `Validate` predicts `Render`
+**Orchestrator decision**, on the lead's ruling. **Amends D-1.8.1's refusal clause.** Surfaced by the
+Story 1.8 creator per D-1.2.6, not arbitrated.
+
+**This does NOT narrow owner decision D-1.4.9 — it removes a refusal the lead wrongly introduced
+against it.** No owner escalation needed, and the record should say so plainly: the orchestrator's
+backstop caught a lead ruling contradicting an owner decision, and the fix was to stop contradicting
+it.
+
+**The decisive test, which makes the line principled rather than pragmatic.** Under D-1.8.1 as
+written, **the same bytes are valid or invalid depending on which library reads them.** That is the
+definition of a capability failure — and it is disqualifying on its own terms, because
+`folio-format.md` opens by calling the format *"a public contract, not an implementation detail"*,
+and **a public contract whose validity depends on the reader is not a contract.** "Valid `.folio`"
+must mean something stateable without naming a library version.
+
+**Amended verdict — three surfaces, three answers** *(mechanism: binding)*:
+
+| Surface | Unrecognised `mediaType` |
+|---|---|
+| `LoadTemplate` / `ParseTemplate` | **Never refused.** The document is valid; the asset is preserved verbatim (P1 requires it regardless) |
+| `Render` | **Error — only when an element actually needs to draw it.** Located, naming element id, asset key and media type |
+| `Validate` | Reports **what `Render` would do** |
+
+**The orchestrator's second face is what settled it.** D-1.8.3 preserves orphaned assets **because P1
+forces it** — so a valid document may carry an asset **nothing will ever draw**. Refusing the whole
+file over a rendering never attempted is indefensible.
+
+**The rule this generalises to, which matters more than this case** *(mechanism: binding)*:
+**`Validate` is a dry-run predictor of `Render`, not a second rule system.** An unrenderable asset
+nothing draws → `Render` succeeds → `Validate` is clean. One that is drawn → `Render` errors →
+`Validate` errors, **in CI, before production** — so Story 1.4's loud-failure posture is fully
+preserved *without* making validity reader-dependent. **This will matter at Story 3.7.**
+
+**Two consequences that fall out cleanly:**
+- **A hidden element never triggers it.** AD-24: *"A hidden element is **absent** from the
+  `PageModel`."* Nothing draws it, so nothing errors — **no special case needed**, it follows from
+  "error when the render needs to draw it".
+- **`Validate` without data cannot always predict** a `visibleIf`-gated image; where data-dependence
+  makes prediction impossible the diagnostic degrades to a **Warning**. Story 3.7 detail
+  *(mechanism: illustrative)*.
+
+**What the amendment does NOT relax** *(mechanism: binding)*: a **recognised** `mediaType` whose bytes
+do not parse as that format — a file declaring `image/png` that is not a PNG — **is** a load error.
+That failure is **reader-independent**: the file lies about itself and every library agrees it is
+malformed. Cheap to check via magic bytes and header for the two supported formats. **The contrast
+between these two cases is the clearest illustration of the validity/capability line.**
+
+### D-1.8.7 — The format doc's examples were hand-authored and never executed; execute them
+**Orchestrator decision**, on the lead's ruling. Second instance of the same pattern.
+
+**Verified by the orchestrator:** the format specification's worked **asset** example decodes to a
+PNG of **colour type 6 — RGB with alpha** — which D-1.8.1 rejects. It is also non-canonical under
+D-1.8.2 (wrapped 60+36; canonical is 76+20) and its key is a **literal ellipsis**. **Three
+independent D-000.6 amendment obligations on one example**, all landing in Story 1.8's commit
+*(mechanism: binding)*.
+
+**How the replacement is produced** *(binding)*: **generated by the shipped serializer** and
+**independently cross-checked by a second tool** (CRCs, colour type, digest), per D-1.4.10's
+discipline. The creator wrote its candidate in as **"a candidate to re-derive, not as truth"** — that
+instinct is correct and is honoured.
+
+**Then close it permanently with a mechanism that already exists** *(binding)*: **D-1.4.11 asserts the
+doc's fenced worked-example block is byte-identical to its golden fixture — extend that to the asset
+example.** After this the doc example cannot rot again.
+
+**The pattern, named because this is the second time** *(illustrative)*: `folio-format.md`'s examples
+were **hand-authored and never executed**. DN-1 found the worked example was **not a fixed point**;
+now the asset example is invalid **three ways**. **Every fenced block claiming to be complete or
+canonical should be executed, not read.** Fragments can at least have their field names covered by
+D-1.4.7's drift test.
+
+### D-1.8.8 — Three shipped fixtures carry invalid asset keys; validate shape AND value
+**Orchestrator decision**, on the lead's ruling. **D-1.8.3's validation working on day one.**
+
+**Verified by the orchestrator:** the asset keys in the shipped fixtures are **64×`a`**, **64×`b`**,
+and one of **62 characters** — not digest-shaped at all. **Nothing noticed**, across four stories.
+
+**Two additions to D-1.8.3** *(mechanism: binding)*:
+- **Validate shape *and* value**: 64 lowercase hex characters **and** equal to the SHA-256 of the
+  decoded bytes. **A 62-character key means no check validated shape either** — a different error
+  class from a wrong-but-well-formed digest, and the shape check is the cheaper one.
+- **Regenerating must not change what those fixtures test.** They exist for other properties
+  (passthrough, unknown keys); the key fix is **incidental to their purpose and must not silently
+  alter it.**
+
+### D-1.8.9 — The serializer must re-wrap from decoded bytes; the 64→76 fixture is the discriminating test
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**Verified at baseline:** `writeAssets` emits `a.Data` **verbatim with no re-wrapping**, so
+D-1.8.2's canonical-in/canonical-out half **passes vacuously today**.
+
+The serializer **re-wraps from the decoded bytes, never echoes the input array**. The non-vacuous
+half is the one D-1.8.2 already named: **a fixture wrapped at 64 columns that must serialize to 76.**
+**Canonical-in/canonical-out cannot fail against an echoing serializer; 64-in/76-out cannot pass
+against one.**
+
+### D-1.8.10 — AD-24's single-flip clause gets its first real test; make the guard positive
+**Orchestrator decision**, on the lead's ruling. **Applying a binding spine invariant that no ruling
+contradicts is not arbitration** — the creator was right not to treat it as such.
+
+AD-24 is unambiguous: *"The flip to PDF user space happens in **exactly one** function in
+`internal/pdf`, and nowhere else in the module inverts a coordinate."* An image path needs the same
+flip; open-coding it is a **direct AD-24 violation**, and no D-1.8.x ruling mentions it because none
+needed to.
+
+**Two refinements:**
+- **Make the guard positive, not negative** *(binding)*: assert that **all** content-stream coordinate
+  emission routes through the one flip function — **not** that "nobody else writes a minus sign",
+  which is unfalsifiable and will produce false positives. Same shape as D-1.1.b's `numbers.go` rule.
+- **Name what the finding actually is** *(illustrative)*: the invariant was never **enforced**, only
+  **unexercised** — one content-stream builder cannot violate "exactly one". Same
+  *holds-by-construction-not-by-logic* pattern as the vacuous re-wrap, and **Story 1.8 is the first
+  real test of AD-24's clause.** Worth saying in the story, because **"it was always satisfied" reads
+  as evidence it was guarded when it is evidence it never could have failed.**
+
+### D-1.8.11 — The licence manifest's extension allowlist is the rotting-list pattern; invert it
+**Orchestrator decision**, on the lead's ruling. **Recorded for the Epic 1 boundary gate**, not
+expanded into Story 1.8.
+
+**Verified:** the manifest scans **font extensions only** (`.ttf/.otf/.ttc`), so a committed image is
+**invisible to AD-26 enforcement** — a D-000.9 shape.
+
+**When fixed, do NOT add `.png`/`.jpg` to the list** *(mechanism: binding)* — an extension allowlist is
+the rotting-list pattern and the next asset type is invisible again. **Invert it: every committed file
+in the declared asset and fixture locations must be accounted for in the manifest, and anything
+uncovered fails.** That is the **coverage-witness form** — ask *"is every asset accounted for?"*, not
+*"is this file a font?"* — and it is **the same fix that closed `ScanAbsences`**.
+
+### D-1.8.7 (correction) — the fence/golden byte-identity mechanism is D-1.4.10's, not D-1.4.11's
+**Orchestrator correction.** Found by the Story 1.8 creator. **The obligation stands exactly as
+ruled; only the citation was wrong.**
+
+D-1.8.7 says *"D-1.4.11 asserts the doc's fenced worked-example block is byte-identical to its golden
+fixture — extend that to the asset example."* **Measured: D-1.4.11 is `ScanAbsences`' coverage
+witness.** The real mechanism is `TestWorkedExampleMatchesGoldenFixture`, whose own comment records
+it as **AC16 step 3 — D-1.4.10's**.
+
+**The creator was right not to raise this as `DECISION NEEDED`** — a verifiable misattribution
+*inside* one ruling is not a conflict *between* two, and D-1.2.6 governs the latter. Same disposition
+as the D-1.7.1 (amended) precedent: the verbatim artifact governs, the narration was wrong.
+
+**Two measured implementation facts that change how the extension is built** *(mechanism: binding)*:
+the existing extractor takes the **last** fence under `## Worked example`, so the asset example needs
+a **second extractor, not an edit**; and the asset example is a **fragment**, not a whole document, so
+the story must pick a golden shape for it and say which.
+
+**Third narrated-artifact drift in three stories** (D-1.7.1's parameter counts, the disposition-table
+totals, this). D-000.14 (extended) already binds; this is another instance, not a new rule.

@@ -344,6 +344,49 @@ func decodeAssets(raw json.RawMessage) (map[string]Asset, error) {
 		if err != nil {
 			return nil, newLoadError("assets."+k+".mediaType", "", string(mtRaw), "must be a string: "+err.Error())
 		}
+
+		// AC6a (D-1.8.8): validate SHAPE first, then VALUE — two
+		// distinct error classes. A key that is not even 64 lowercase
+		// hex characters is evidence nothing looked at the key at all;
+		// that is a different diagnosis from a well-formed key that
+		// does not match its data, and the shape check is the cheaper
+		// one, so it runs first.
+		if !isSHA256HexKey(k) {
+			return nil, newLoadError("assets."+k, "", k, "asset key is not a 64-character lowercase hex digest (AC6a)")
+		}
+
+		// AC4/AC1-AC2 (D-1.8.2): accept ANY input wrapping, decode
+		// strictly. AC4: invalid base64 and an empty decoded asset are
+		// both load errors.
+		decoded, derr := decodeBase64Asset(data)
+		if derr != nil {
+			return nil, newLoadError("assets."+k+".data", "", string(dataRaw), derr.Error())
+		}
+		if len(decoded) == 0 {
+			return nil, newLoadError("assets."+k+".data", "", string(dataRaw), "decoded asset data is empty — it cannot render, and its key would be the SHA-256 of nothing (AC4)")
+		}
+
+		// AC5/AC6 (D-1.8.3): the key is the SHA-256 of the DECODED
+		// bytes, validated on load; a mismatch is a load error naming
+		// both digests.
+		gotDigest := sha256HexOf(decoded)
+		if gotDigest != k {
+			return nil, newLoadError("assets."+k, "", k,
+				fmt.Sprintf("asset key does not match the SHA-256 of its data (expected %s, got %s) (AC6)", k, gotDigest))
+		}
+
+		// AC9/AC11a/AC11b (D-1.8.1 as amended): a RECOGNISED mediaType
+		// whose bytes are not that format is a load error — the file
+		// lies about itself, reader-independent. An UNRECOGNISED
+		// mediaType is never inspected here and never refused at load
+		// (D-1.8.1 amended); it only becomes a located error at render
+		// time, only when an element actually needs to draw it
+		// (DecodeImageForRender, image.go) — this loader never calls
+		// that predicate.
+		if _, recognised, ierr := decodeRecognisedImage(mt, decoded); recognised && ierr != nil {
+			return nil, newLoadError("assets."+k+".data", "", mt, ierr.Error())
+		}
+
 		extra, err := extraFields(aObj, consumed)
 		if err != nil {
 			return nil, fmt.Errorf("template: assets.%s: %w", k, err)

@@ -52,6 +52,7 @@ jobs:
           path: |
             folio-go/.matrix-build/hash.darwin-arm64.minimal-rect.txt
             folio-go/.matrix-build/hash.darwin-arm64.font-text.txt
+            folio-go/.matrix-build/hash.darwin-arm64.image-embed.txt
           if-no-files-found: error
 
   render-linux-amd64:
@@ -74,6 +75,7 @@ jobs:
           path: |
             folio-go/.matrix-build/hash.linux-amd64.minimal-rect.txt
             folio-go/.matrix-build/hash.linux-amd64.font-text.txt
+            folio-go/.matrix-build/hash.linux-amd64.image-embed.txt
           if-no-files-found: error
 
   render-linux-arm64:
@@ -96,6 +98,7 @@ jobs:
           path: |
             folio-go/.matrix-build/hash.linux-arm64.minimal-rect.txt
             folio-go/.matrix-build/hash.linux-arm64.font-text.txt
+            folio-go/.matrix-build/hash.linux-arm64.image-embed.txt
           if-no-files-found: error
 
   render-js-wasm:
@@ -118,6 +121,7 @@ jobs:
           path: |
             folio-go/.matrix-build/hash.js-wasm.minimal-rect.txt
             folio-go/.matrix-build/hash.js-wasm.font-text.txt
+            folio-go/.matrix-build/hash.js-wasm.image-embed.txt
           if-no-files-found: error
 
   compare-render-hashes:
@@ -133,7 +137,7 @@ jobs:
           pattern: hash-*
           path: hashes
           merge-multiple: true
-      - name: Assert all four render hashes are byte-identical, for BOTH documents (AC7, Finding 8)
+      - name: Assert all four render hashes are byte-identical, for ALL THREE documents (AC7, Finding 8, Story 1.8 AC22)
         # Blocker 2 (QA review): this step used to glob `hashes/hash.*.txt`
         # with no count and no shape check, so a job that silently wrote no
         # hash (upload-artifact's default if-no-files-found: warn) still
@@ -159,7 +163,7 @@ jobs:
         # version this replaces.
         run: |
           set -euo pipefail
-          docs="minimal-rect font-text"
+          docs="minimal-rect font-text image-embed"
           targets="darwin-arm64 linux-amd64 linux-arm64 js-wasm"
 
           overall_fail=0

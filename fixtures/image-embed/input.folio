@@ -1,0 +1,41 @@
+{
+  "assets": {
+    "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAGElEQVR42mL6z8DAAMZMEOo/AwMg",
+        "AAD//zwUBf/NjsW5AAAAAElFTkSuQmCC"
+      ],
+      "mediaType": "image/png"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "image", "asset": "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078", "x": 0, "y": 0, "width": 100, "height": 60}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 2,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}

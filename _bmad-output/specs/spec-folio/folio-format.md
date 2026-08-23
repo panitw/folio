@@ -206,10 +206,10 @@ conditional *formatting* is not.
 
 ```json
 "assets": {
-  "9f2b…c41d": {
+  "a31f60866b4aa41953176fee9ddb90dc9bc53dce174421f8f567fac364c8bc27": {
     "data": [
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk",
-      "YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAGklEQVR42mLhEpGTk5NjsbGxkZOT",
+      "AwQAAP//CoABrYEc9NQAAAAASUVORK5CYII="
     ],
     "mediaType": "image/png"
   }
@@ -220,6 +220,10 @@ Keyed by the **lowercase hex SHA-256 of the raw bytes**, so identical images sto
 deduplicate and emission order is stable. `data` is base64 hard-wrapped at 76 columns into an
 array of strings — the file stays valid JSON, and the template's non-asset content stays readable
 in a text diff (AD-9). Elements reference an asset by its key.
+
+*(This is a real, supported, non-alpha PNG — canonically wrapped and independently verified; a test
+keeps it byte-identical to this fence on every run, so it cannot silently drift. See the Delivery
+Log for how it was derived.)*
 
 Images are only ever embedded. Folio never fetches by URL and never reads from disk at render
 time (FR33).

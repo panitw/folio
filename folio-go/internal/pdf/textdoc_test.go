@@ -58,7 +58,7 @@ func TestSerializeTextDocumentEmbedsOneFontFileForTwoPages(t *testing.T) {
 	faces := map[string]EmbeddedFace{"Body": fakeFace("Body")}
 	pages := []TextPage{onePageWithText("Body"), onePageWithText("Body")}
 
-	out, err := SerializeTextDocument(pages, faces)
+	out, err := SerializeTextDocument(pages, faces, nil)
 	if err != nil {
 		t.Fatalf("SerializeTextDocument: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestSerializeTextDocumentEmbedsOneFontFileForTwoPages(t *testing.T) {
 // stream.
 func TestSerializeTextDocumentMissingFaceIsLocatedError(t *testing.T) {
 	pages := []TextPage{onePageWithText("DoesNotExist")}
-	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{})
+	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{}, nil)
 	if err == nil {
 		t.Fatal("expected an error for a run naming a face absent from the face set")
 	}
@@ -104,7 +104,7 @@ func TestSerializeTextDocumentUnmappedRuneIsLocatedError(t *testing.T) {
 		Width:  595276,
 		Height: 841890,
 	}}
-	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{"Body": face})
+	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{"Body": face}, nil)
 	if err == nil {
 		t.Fatal("expected an error for a rune absent from the face's GlyphForRune map")
 	}
@@ -123,5 +123,18 @@ func TestAppendXrefGeneralHandlesArbitraryObjectCounts(t *testing.T) {
 	// 7 offsets -> 7 entries, each 20 bytes (19 chars + trailing \n via Split).
 	if len(lines) < 7 {
 		t.Fatalf("expected at least 7 xref entry lines, got %d", len(lines))
+	}
+}
+
+// TestAssetKeyEscapeIsIdentity is AC18a: asset keys are 64 lowercase hex
+// characters, a strict subset of pdfNameEscape's kept set
+// ([A-Za-z0-9_-]), so escaping is the identity and distinct keys stay
+// distinct — asserted directly rather than left to be re-derived (the
+// font path's resource-name collision hazard, Story 1.5 QA Finding 23,
+// cannot arise here).
+func TestAssetKeyEscapeIsIdentity(t *testing.T) {
+	key := "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078"
+	if got := pdfNameEscape(key); got != key {
+		t.Fatalf("pdfNameEscape(%q) = %q, want the identity (AC18a)", key, got)
 	}
 }

@@ -42,11 +42,48 @@ type TextRun struct {
 	FontSize geom.Length
 }
 
+// ImagePlacement is one image element's resolved, DRAWN placement on a
+// page (AD-24: scaled to fit, centred, computed in integer millipoints —
+// the fit/centre computation itself lives in package folio's render.go;
+// this struct carries only the RESULT). X, Y are the top-left corner of
+// the DRAWN box (already centred within the element's declared box,
+// i.e. offset by the centring math), in the same page-local, Y-down
+// convention as TextRun.X/Y.
+type ImagePlacement struct {
+	ResourceName          string // key into the images map passed to SerializeTextDocument
+	X, Y                  geom.Length
+	DrawWidth, DrawHeight geom.Length
+}
+
+// ImageXObject is one distinct embedded image asset, ready to be
+// written as a PDF XObject stream (AC9, AC10): the Stream bytes are
+// ALREADY COMPRESSED (the source file's own JPEG or PNG IDAT bytes,
+// passed through unchanged — D-1.8.1) and are never decoded or
+// re-encoded by this package. Embedded exactly once per document
+// regardless of how many elements place it (AC8's dedup-by-key
+// definition, mirrored here the same way EmbeddedFace is embedded once
+// per document). Stream/Filter here are exactly what
+// internal/template.DecodedImage produced (AC10a: see that type's own
+// Stream field for the full explanation of why this is never
+// re-compressed — carried risk R4, D-1.8.1, AD-22).
+type ImageXObject struct {
+	Width, Height    int64 // intrinsic pixel dimensions (/Width, /Height — appendInt, D-1.1.b)
+	ColorSpace       string
+	BitsPerComponent int64
+	Filter           string // "DCTDecode" or "FlateDecode", no leading slash
+	HasDecodeParms   bool
+	PredictorColors  int64
+	PredictorBPC     int64
+	PredictorColumns int64
+	Stream           []byte
+}
+
 // TextPage is one page's provisional content plus the page geometry
 // needed to place it (AC28's provisional-origin math needs the page
 // height and margins to flip Y into PDF's bottom-up space).
 type TextPage struct {
 	Runs                  []TextRun
+	Images                []ImagePlacement
 	Width, Height         geom.Length
 	MarginTop, MarginLeft geom.Length
 }
@@ -62,11 +99,23 @@ type TextPage struct {
 // through appendInt/appendIntPadded (AD-3), and /ID is derived from the
 // document's own content (AD-7) — no compression, no /Info dictionary,
 // no /CreationDate or /ModDate.
-func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace) ([]byte, error) {
+func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace, images map[string]ImageXObject) ([]byte, error) {
 	b := newBuilder()
 
 	catalogID := b.reserve()
 	pagesID := b.reserve()
+
+	// Images are emitted in SORTED resource-name order (same
+	// ScanMapRange-compliant idiom as faces below): deterministic
+	// object numbers and resource-dict key order (AC18a: asset keys are
+	// 64 lowercase hex characters, a strict subset of pdfNameEscape's
+	// kept set, so distinct keys cannot collide as resource names —
+	// asserted directly in TestAssetKeyEscapeIsIdentity).
+	imageNames := slices.Sorted(maps.Keys(images))
+	imageIDs := make(map[string]int64, len(imageNames))
+	for _, name := range imageNames {
+		imageIDs[name] = b.reserve()
+	}
 
 	// Faces are emitted in SORTED name order (ScanMapRange-compliant:
 	// the escape hatch idiom, not a raw map range) — this reaches
@@ -135,6 +184,10 @@ func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace) ([]b
 		if cerr != nil {
 			return nil, cerr
 		}
+		content, cerr = appendImageContentStream(content, page, imageIDs)
+		if cerr != nil {
+			return nil, cerr
+		}
 
 		b.begin(pageIDs[i])
 		b.write([]byte("<< /Type /Page /Parent "))
@@ -150,7 +203,18 @@ func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace) ([]b
 			b.write([]byte(" "))
 			b.writeRef(faceIDs[name].type0)
 		}
-		b.write([]byte(" >> >> /Contents "))
+		b.write([]byte(" >>"))
+		if len(imageNames) > 0 {
+			b.write([]byte(" /XObject <<"))
+			for _, name := range imageNames {
+				b.write([]byte(" /"))
+				b.write([]byte(pdfNameEscape(name)))
+				b.write([]byte(" "))
+				b.writeRef(imageIDs[name])
+			}
+			b.write([]byte(" >>"))
+		}
+		b.write([]byte(" >> /Contents "))
 		b.writeRef(contentIDs[i])
 		b.write([]byte(" >>"))
 		b.end()
@@ -250,6 +314,37 @@ func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace) ([]b
 		b.writeInt(int64(len(toUnicodeCMap)))
 		b.write([]byte(" >>\nstream\n"))
 		b.write(toUnicodeCMap)
+		b.write([]byte("endstream"))
+		b.end()
+	}
+
+	// --- Per-image XObject objects ---
+	for _, name := range imageNames {
+		img := images[name]
+		b.begin(imageIDs[name])
+		b.write([]byte("<< /Type /XObject /Subtype /Image /Width "))
+		b.writeInt(img.Width)
+		b.write([]byte(" /Height "))
+		b.writeInt(img.Height)
+		b.write([]byte(" /ColorSpace /"))
+		b.write([]byte(img.ColorSpace))
+		b.write([]byte(" /BitsPerComponent "))
+		b.writeInt(img.BitsPerComponent)
+		b.write([]byte(" /Filter /"))
+		b.write([]byte(img.Filter))
+		if img.HasDecodeParms {
+			b.write([]byte(" /DecodeParms << /Predictor 15 /Colors "))
+			b.writeInt(img.PredictorColors)
+			b.write([]byte(" /BitsPerComponent "))
+			b.writeInt(img.PredictorBPC)
+			b.write([]byte(" /Columns "))
+			b.writeInt(img.PredictorColumns)
+			b.write([]byte(" >>"))
+		}
+		b.write([]byte(" /Length "))
+		b.writeInt(int64(len(img.Stream)))
+		b.write([]byte(" >>\nstream\n"))
+		b.write(img.Stream)
 		b.write([]byte("endstream"))
 		b.end()
 	}
@@ -363,7 +458,7 @@ func buildTextContentStream(page TextPage, faces map[string]EmbeddedFace) ([]byt
 		}
 
 		pdfX := page.MarginLeft + run.X
-		pdfY := page.Height - page.MarginTop - run.Y - run.FontSize
+		pdfY := flipY(page.Height, page.MarginTop, run.Y, run.FontSize)
 
 		c = append(c, "BT\n/"...)
 		c = append(c, pdfNameEscape(run.Face)...)

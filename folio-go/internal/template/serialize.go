@@ -378,13 +378,40 @@ func writeBorder(dst []byte, depth int, b Border) []byte {
 	return writeObject(dst, depth, fields)
 }
 
+// writeAssets re-wraps every asset's base64 from its DECODED bytes at
+// the canonical 76-column split and NEVER echoes the input array
+// (D-1.8.9, AC3a): it decodes a.Data (whatever wrapping it happens to
+// carry — any wrapping is accepted on parse, D-1.8.2) and calls
+// splitBase64Canonical on the result, so a serializer that merely
+// "fixed up" the existing elements would not satisfy this — the
+// canonical output is derived from the bytes, not from the input
+// array's shape. AC8: assets with no referencing element (orphans) are
+// PRESERVED here unconditionally — D-1.4.3's P1 (Parse(Serialize(d)) ==
+// d) forces this; there is no policy latitude to drop one.
+//
+// Epics 5/6 corollary (AC8a), verbatim: garbage-collecting orphans is a
+// designer feature — an explicit user action — never a serializer side
+// effect. A future "tidy unused assets" pass belongs elsewhere, never
+// here.
+//
+// Invariant this function assumes: a.Data is always valid, previously
+// parse-validated base64 (ParseDocument's decodeAssets already decoded
+// and validated it, per D-1.8.2/D-1.8.3). A hand-built Document whose
+// Asset.Data is not valid base64 violates that invariant; this function
+// panics rather than silently emitting invalid output, the same
+// programmer-error-guard shape ScaleRound uses (D-1.5.2's precedent).
 func writeAssets(dst []byte, depth int, assets map[string]Asset) []byte {
 	fields := make([]kv, 0, len(assets))
 	for _, k := range slices.Sorted(maps.Keys(assets)) {
 		a := assets[k]
+		decoded, err := decodeBase64Asset(a.Data)
+		if err != nil {
+			panic("template: SerializeDocument: asset " + k + " carries invalid base64 (invariant violation — assets must be parse-validated before serialization): " + err.Error())
+		}
+		canonical := splitBase64Canonical(decoded)
 		fields = append(fields, kv{k, func(dst []byte, depth int) []byte {
 			assetFields := []kv{
-				{"data", func(dst []byte, depth int) []byte { return writeStringArray(dst, depth, a.Data) }},
+				{"data", func(dst []byte, depth int) []byte { return writeStringArray(dst, depth, canonical) }},
 				{"mediaType", writeString(a.MediaType)},
 			}
 			assetFields = append(assetFields, extraKVs(a.Extra)...)

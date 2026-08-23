@@ -442,3 +442,105 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 		)
 	}
 }
+
+// TestRenderMatchesImageEmbedGoldenFixture is AC22/AC25 (D-1.8.6): the
+// THIRD matrix document, joining minimal-rect and font-text — same
+// shape as TestRenderMatchesFontTextGoldenFixture above, applied to the
+// image-embedding path.
+func TestRenderMatchesImageEmbedGoldenFixture(t *testing.T) {
+	root := repoRootFromTest(t)
+	fixturePath := filepath.Join(root, "fixtures", "image-embed", "expected.json")
+
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	var fixture expectedFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("parse fixture JSON: %v", err)
+	}
+
+	if fixture.FolioGoVersion == "" {
+		t.Fatal("fixture is missing folioGoVersion")
+	}
+	if fixture.GoToolchain == "" {
+		t.Fatal("fixture is missing goToolchain (RP-8: this must fail before the hash comparison runs)")
+	}
+	if fixture.SHA256 == "" {
+		t.Fatal("fixture is missing sha256")
+	}
+	if !isSHA256HexString(fixture.SHA256) {
+		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
+	}
+
+	// AC25a: input.folio is byte-identical to the Go constant that
+	// renders it — the same obligation font-text/input.folio carries
+	// (Finding 14, Story 1.5's QA review), inherited here.
+	inputFolioPath := filepath.Join(root, "fixtures", "image-embed", "input.folio")
+	inputFolioBytes, err := os.ReadFile(inputFolioPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", inputFolioPath, err)
+	}
+	if string(inputFolioBytes) != imageTestTemplateJSON {
+		t.Fatalf(
+			"%s has drifted from folio-go/imageTestTemplateJSON (render_test.go) — the two are "+
+				"supposed to be byte-identical; update input.folio to match, or this fixture no "+
+				"longer documents what actually produced its recorded hash",
+			inputFolioPath,
+		)
+	}
+
+	tpl, err := ParseTemplate([]byte(imageTestTemplateJSON))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	b, err := Render(tpl, Data("{}"), nil, nil)
+	if err != nil {
+		t.Fatalf("Render() error: %v", err)
+	}
+	assertWellFormedPDF(t, "image-embed golden fixture render", b)
+
+	// AC23's vacuity guard, applied here too: confirm the render
+	// actually contains an image XObject before comparing any hash — a
+	// render that silently dropped the image would certify nothing
+	// (D-000.9).
+	if !containsImageXObject(b) {
+		t.Fatal("image-embed golden fixture render does not contain an image XObject — the fixture would certify nothing (AC23)")
+	}
+
+	expectedPDFPath := filepath.Join(root, "fixtures", "image-embed", "expected.pdf")
+	expectedPDFBytes, err := os.ReadFile(expectedPDFPath)
+	if err != nil {
+		t.Fatalf("read expected.pdf: %v", err)
+	}
+	expectedPDFSum := sha256.Sum256(expectedPDFBytes)
+	expectedPDFHex := hex.EncodeToString(expectedPDFSum[:])
+	if expectedPDFHex != fixture.SHA256 {
+		t.Fatalf(
+			"fixtures/image-embed/expected.pdf's own sha256 (%s) does not match "+
+				"expected.json's recorded sha256 (%s) — the fixture's two halves have drifted apart",
+			expectedPDFHex, fixture.SHA256,
+		)
+	}
+
+	if runtime.Version() != fixture.GoToolchain {
+		t.Fatalf(
+			"toolchain mismatch: running under %s, fixture was recorded under %s. "+
+				"A Go toolchain bump is a versioned breaking change under AD-22 — "+
+				"the golden hash must be re-measured deliberately (C6).",
+			runtime.Version(), fixture.GoToolchain,
+		)
+	}
+
+	sum := sha256.Sum256(b)
+	gotHex := hex.EncodeToString(sum[:])
+	if gotHex != fixture.SHA256 {
+		t.Fatalf(
+			"golden fixture mismatch: got sha256 %s, want %s (fixtures/image-embed). "+
+				"Under AD-21/AD-22 this is a defect until proven to be an intended, "+
+				"versioned change — see fixtures/image-embed/README.md.",
+			gotHex, fixture.SHA256,
+		)
+	}
+}
