@@ -1,0 +1,309 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+    a { color: #58a6c4; } a:hover { color: #7cc0da; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #15181c; color: #aab2bb; font-size: 11px; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- DOCUMENT BAR -->
+  <div style="height: 40px; flex-shrink: 0; background: #1a1e23; border-bottom: 1px solid #272c33; display: flex; align-items: center; gap: 16px; padding: 0 12px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 18px; height: 18px; border: 1.5px solid #58a6c4; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 6px; height: 8px; background: #58a6c4;"></div>
+      </div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; color: #e6e9ec; letter-spacing: 0.04em;">FOLIO</span>
+    </div>
+    <div style="width: 1px; height: 18px; background: #272c33;"></div>
+    <div style="display: flex; align-items: center; gap: 7px;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">customer-statement.folio</span>
+      <div style="width: 5px; height: 5px; border-radius: 50%; background: #c9a758;"></div>
+      <span style="font-size: 10px; color: #737c86;">unsaved</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">
+      <span>rendered 412 ms ago</span>
+      <span>·</span>
+      <span style="color: #7fbf8a;">current</span>
+    </div>
+    <div style="width: 1px; height: 18px; background: #272c33;"></div>
+    <div style="display: flex; border: 1px solid #3a4048; background: #15181c;">
+      <div style="padding: 4px 14px; color: #737c86; font-size: 10px; letter-spacing: 0.04em;">DESIGN</div>
+      <div style="padding: 4px 14px; background: #1e3b46; color: #cfe8f2; font-weight: 600; font-size: 10px; letter-spacing: 0.04em;">PREVIEW</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+    <!-- ---------- PAGE THUMBNAILS ---------- -->
+    <div style="width: 132px; flex-shrink: 0; background: #1a1e23; border-right: 1px solid #272c33; display: flex; flex-direction: column;">
+      <div style="padding: 10px 12px 8px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600;">PAGES</div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 44px; height: 62px; background: #e9ecef; border: 1px solid #2f353d;"></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5e666f;">1</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 44px; height: 62px; background: #e9ecef; border: 1px solid #2f353d;"></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5e666f;">2</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 44px; height: 62px; background: #ffffff; border: 2px solid #58a6c4;"></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e6e9ec;">3</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; position: relative;">
+          <div style="width: 44px; height: 62px; background: #e9ecef; border: 1px solid #2f353d; position: relative;">
+            <div style="position: absolute; left: 0; right: 0; bottom: 8px; height: 5px; border-top: 1px dashed #c9a758; background: rgba(201,167,88,0.28);"></div>
+          </div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #c9a758;">4</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 44px; height: 62px; background: #e9ecef; border: 1px solid #2f353d;"></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5e666f;">5</span>
+        </div>
+      </div>
+      <div style="padding: 10px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">… 29 more</div>
+      <div style="flex-grow: 1;"></div>
+    </div>
+
+    <!-- ---------- RENDERED PAGE ---------- -->
+    <div style="flex-grow: 1; background: #0a0c0e; position: relative; display: flex; align-items: center; justify-content: center; min-width: 0;">
+
+      <!-- production marker -->
+      <div style="position: absolute; left: 16px; top: 14px; display: flex; align-items: center; gap: 7px; border: 1px solid #2f4f5c; background: #12222a; padding: 4px 9px;">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#58a6c4" stroke-width="1.4"><path d="M8 2l5 2.5v4c0 3-2.2 5-5 5.5C5.2 13.5 3 11.5 3 8.5v-4L8 2z"/><path d="M6 8l1.6 1.6L10.4 6.6"/></svg>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.07em; color: #8fd0e4;">PRODUCTION OUTPUT</span>
+      </div>
+
+      <div style="width: 496px; height: 701px; background: #ffffff; box-shadow: 0 4px 32px rgba(0,0,0,0.7); position: relative; padding: 22px 30px;">
+
+        <!-- repeated page header -->
+        <div style="display: flex; align-items: flex-start; gap: 12px;">
+          <div style="width: 78px; height: 34px; background: #1c2530; display: flex; align-items: center; justify-content: center;">
+            <span style="font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 9px; font-weight: 600; color: #ffffff; letter-spacing: 0.04em;">KRUNGSRI</span>
+          </div>
+          <div style="flex-grow: 1;">
+            <div style="font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 13px; font-weight: 600; color: #1c2530;">ธนาคารกรุงศรีอยุธยา</div>
+            <div style="font-size: 8px; letter-spacing: 0.14em; color: #6b7480; margin-top: 2px;">STATEMENT OF ACCOUNT</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 9px; color: #1c2530;">สาขาสีลม</div>
+            <div style="font-size: 8px; color: #6b7480; margin-top: 3px;">23/08/2026</div>
+          </div>
+        </div>
+
+        <div style="border-top: 1.5px solid #1c2530; margin-top: 14px;"></div>
+
+        <!-- continuation marker -->
+        <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+          <div>
+            <div style="font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 10px; color: #1c2530;">สมชาย วงศ์ประเสริฐ</div>
+            <div style="font-size: 8px; color: #6b7480; margin-top: 2px; font-family: 'IBM Plex Mono', monospace;">123-4-56789-0</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 8px; color: #6b7480;">01–31 Jul 2026</div>
+            <div style="font-size: 8px; color: #6b7480; margin-top: 2px; font-style: italic;">continued</div>
+          </div>
+        </div>
+
+        <!-- table with repeated header -->
+        <div style="margin-top: 12px;">
+          <div style="display: grid; grid-template-columns: 52px 1fr 62px 62px 72px;">
+            <div style="padding: 4px 4px; font-size: 8px; font-weight: 600; color: #1c2530; border-bottom: 1px solid #1c2530;">Date</div>
+            <div style="padding: 4px 4px; font-size: 8px; font-weight: 600; color: #1c2530; border-bottom: 1px solid #1c2530;">Description</div>
+            <div style="padding: 4px 4px; font-size: 8px; font-weight: 600; color: #1c2530; border-bottom: 1px solid #1c2530; text-align: right;">Debit</div>
+            <div style="padding: 4px 4px; font-size: 8px; font-weight: 600; color: #1c2530; border-bottom: 1px solid #1c2530; text-align: right;">Credit</div>
+            <div style="padding: 4px 4px; font-size: 8px; font-weight: 600; color: #1c2530; border-bottom: 1px solid #1c2530; text-align: right;">Balance</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">03/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">โอนเงินผ่านพร้อมเพย์</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">2,500.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">45,750.00</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">04/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">ค่าธรรมเนียมบริการรายเดือน</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">350.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">45,400.00</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">05/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">เงินเดือน บริษัท สยามเทค จำกัด</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">62,000.00</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">107,400.00</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">07/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">ชำระค่าบัตรเครดิต</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">18,240.50</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">89,159.50</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">09/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">ถอนเงินสด ATM สาขาสีลม</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">5,000.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">84,159.50</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">12/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">โอนเงินเข้าบัญชีออมทรัพย์</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">20,000.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">64,159.50</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">14/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">ดอกเบี้ยเงินฝาก</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">128.75</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">64,288.25</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">16/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">ค่าสาธารณูปโภค การไฟฟ้านครหลวง</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">1,842.30</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">62,445.95</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">18/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">ซื้อสินค้าออนไลน์</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">3,290.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">59,155.95</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">20/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">โอนเงินระหว่างธนาคาร</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">7,500.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">51,655.95</div>
+
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">21/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5;">ชำระเบี้ยประกันชีวิต</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">12,000.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px solid #f0f2f5;"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px solid #f0f2f5; text-align: right;">39,655.95</div>
+
+            <!-- ROW 12 — clipped -->
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px dashed #c9a758; background: rgba(201,167,88,0.14);">23/07/26</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 8px; color: #2a3440; border-bottom: 1px dashed #c9a758; background: rgba(201,167,88,0.14); overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">ค่าบริการโอนเงินต่างประเทศ รวมค่าธรรมเนียม</div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px dashed #c9a758; background: rgba(201,167,88,0.14); text-align: right;">980.00</div>
+            <div style="padding: 4px 4px; border-bottom: 1px dashed #c9a758; background: rgba(201,167,88,0.14);"></div>
+            <div style="padding: 4px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #2a3440; border-bottom: 1px dashed #c9a758; background: rgba(201,167,88,0.14); text-align: right;">38,675.95</div>
+          </div>
+        </div>
+
+        <!-- page footer -->
+        <div style="position: absolute; left: 30px; right: 30px; bottom: 22px;">
+          <div style="border-top: 0.5px solid #b6bec7; padding-top: 6px; display: flex; justify-content: space-between; align-items: flex-end;">
+            <span style="font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 7px; color: #6b7480;">เอกสารนี้เป็นความลับ · Confidential</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #6b7480;">Page 3 of 34</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- RENDER PANEL ---------- -->
+    <div style="width: 320px; flex-shrink: 0; background: #1a1e23; border-left: 1px solid #272c33; display: flex; flex-direction: column;">
+
+      <div style="padding: 11px 14px; border-bottom: 1px solid #272c33; font-size: 10px; letter-spacing: 0.06em; color: #e6e9ec; font-weight: 500;">RENDER</div>
+
+      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; border-bottom: 1px solid #272c33; font-family: 'IBM Plex Mono', monospace; font-size: 10px;">
+        <div style="display: flex; justify-content: space-between;"><span style="color: #5e666f;">engine</span><span style="color: #aab2bb;">folio-go v0.1</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: #5e666f;">target</span><span style="color: #aab2bb;">wasm · in browser</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: #5e666f;">pages</span><span style="color: #aab2bb;">34</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: #5e666f;">rows</span><span style="color: #aab2bb;">412</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: #5e666f;">elapsed</span><span style="color: #aab2bb;">412 ms</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: #5e666f;">size</span><span style="color: #aab2bb;">248 KB</span></div>
+      </div>
+
+      <!-- hash / byte-identity -->
+      <div style="padding: 12px 14px; border-bottom: 1px solid #272c33;">
+        <div style="font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600; margin-bottom: 8px;">OUTPUT HASH</div>
+        <div style="background: #15181c; border: 1px solid #2f353d; padding: 7px 9px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8fd0e4; line-height: 1.5; word-break: break-all;">
+          3f9ac10e8b4d2571<br>c6e0af39b7d84c12
+        </div>
+        <div style="display: flex; align-items: center; gap: 7px; margin-top: 8px;">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#7fbf8a" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M5.4 8l1.9 1.9 3.4-3.6"/></svg>
+          <span style="font-size: 10px; color: #7fbf8a;">Matches native render</span>
+        </div>
+        <div style="font-size: 10px; color: #4e565f; margin-top: 6px; line-height: 1.5;">
+          Identical bytes on darwin/arm64, linux/arm64, linux/amd64.
+        </div>
+      </div>
+
+      <!-- DIAGNOSTICS -->
+      <div style="padding: 12px 14px 6px; display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600; flex-grow: 1;">DIAGNOSTICS</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #c9a758;">1</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">errors 0</span>
+      </div>
+
+      <div style="padding: 0 14px 12px;">
+        <!-- diagnostic: dashed border + triangle, non-blocking -->
+        <div style="border: 1px dashed #6b5726; border-left: 3px dashed #c9a758; background: #1e1b13; padding: 9px 10px;">
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#c9a758" stroke-width="1.4" style="flex-shrink: 0; margin-top: 1px;"><path d="M8 2.5l5.5 10h-11L8 2.5z"/><path d="M8 6.6v3.2M8 11.4v.6"/></svg>
+            <div style="flex-grow: 1;">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <span style="font-size: 9px; letter-spacing: 0.08em; color: #c9a758; font-weight: 600;">DIAGNOSTIC</span>
+                <span style="font-size: 9px; color: #6b5726;">render completed</span>
+              </div>
+              <div style="font-size: 11px; color: #e0c07a; line-height: 1.45;">Row 12 exceeds content height. Clipped.</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8a7440; margin-top: 5px; line-height: 1.5;">
+                page 3 · transactions[11].description<br>table · band content
+              </div>
+              <div style="display: flex; gap: 6px; margin-top: 8px;">
+                <div style="border: 1px solid #6b5726; padding: 3px 9px; font-size: 10px; color: #e0c07a;">Locate on canvas</div>
+                <div style="border: 1px solid #3a4048; padding: 3px 9px; font-size: 10px; color: #737c86;">Dismiss</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- legend distinguishing diagnostic from error without colour -->
+        <div style="margin-top: 10px; padding-top: 9px; border-top: 1px solid #22272d; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#737c86" stroke-width="1.4"><path d="M8 2.5l5.5 10h-11L8 2.5z"/></svg>
+            <span style="font-size: 10px; color: #5e666f; flex-grow: 1;">Triangle, dashed — render proceeded</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#737c86" stroke-width="1.4"><rect x="2.8" y="2.8" width="10.4" height="10.4"/><path d="M6 6l4 4M10 6l-4 4"/></svg>
+            <span style="font-size: 10px; color: #5e666f; flex-grow: 1;">Square, solid — render failed</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex-grow: 1;"></div>
+
+      <div style="border-top: 1px solid #272c33; padding: 11px 14px; display: flex; gap: 8px;">
+        <div style="flex-grow: 1; text-align: center; padding: 6px 0; border: 1px solid #2f353d; color: #aab2bb; font-size: 11px;">Re-render</div>
+        <div style="flex-grow: 1; text-align: center; padding: 6px 0; border: 1px solid #3a4048; background: #22272d; color: #e6e9ec; font-size: 11px;">Save PDF</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE NAV / STATUS -->
+  <div style="height: 32px; flex-shrink: 0; background: #1a1e23; border-top: 1px solid #272c33; display: flex; align-items: center; gap: 12px; padding: 0 12px;">
+    <div style="display: flex; align-items: center; gap: 2px;">
+      <div style="padding: 3px 8px; border: 1px solid #2f353d; color: #737c86; font-family: 'IBM Plex Mono', monospace; font-size: 10px;">◀</div>
+      <div style="padding: 3px 10px; border: 1px solid #3a4048; background: #22272d; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e6e9ec;">Page 3 of 34</div>
+      <div style="padding: 3px 8px; border: 1px solid #2f353d; color: #aab2bb; font-family: 'IBM Plex Mono', monospace; font-size: 10px;">▶</div>
+    </div>
+    <div style="width: 1px; height: 16px; background: #272c33;"></div>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">100%</span>
+    <div style="flex-grow: 1;"></div>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">no network · nothing left this machine</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

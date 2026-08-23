@@ -1,0 +1,54 @@
+{
+  "artboards": [
+    { "file": "Load.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "First load" },
+    { "file": "Main.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "Workspace" },
+    { "file": "Binding.dc.html", "x": 0, "y": 1060, "w": 1440, "h": 900, "title": "Data binding" },
+    { "file": "TableEditor.dc.html", "x": 1560, "y": 1060, "w": 1440, "h": 900, "title": "Table structure" },
+    { "file": "Preview.dc.html", "x": 0, "y": 2120, "w": 1440, "h": 900, "title": "Preview mode" }
+  ],
+  "annotations": [
+    {
+      "id": "load-once",
+      "x": -330,
+      "y": 100,
+      "w": 250,
+      "text": "The one screen where the UI is deliberately not dense.\n\nNine megabytes is a real wait. Naming what is loading, itemised with sizes, turns dead time into an explanation of the product's model — embedded fonts, in-tab rendering, no server.\n\nA spinner with no progress would not be acceptable at this payload size."
+    },
+    {
+      "id": "band-boundaries",
+      "x": 3120,
+      "y": 100,
+      "w": 250,
+      "text": "Band boundaries are the highest-stakes ambiguity on the canvas.\n\nWhich band a component lands in decides whether it repeats on every page — so an unclear boundary produces wrong output, not a cosmetic error.\n\nHence: dashed rules extending past the page edge, labelled tabs outside it, and a tint on the repeating bands."
+    },
+    {
+      "id": "binding-not-values",
+      "x": -330,
+      "y": 1160,
+      "w": 250,
+      "text": "Bound components show the BINDING PATH, never a sample value.\n\nThe value depends on data supplied at render time. Showing a preview value would set a false expectation about what the recipient sees.\n\nThe tree is the only place sample values appear — and it says which file they came from."
+    },
+    {
+      "id": "matrix-not-form",
+      "x": 3120,
+      "y": 1160,
+      "w": 250,
+      "text": "Column config is a MATRIX — columns as rows, attributes as columns.\n\nA repeated single-column form hides the comparison that matters: widths against the available page width, and which columns carry aggregates.\n\nThe width budget (Σ 174.0 of 174.0 mm) makes fixed-width columns legible as a constraint."
+    },
+    {
+      "id": "diagnostic-vs-error",
+      "x": -330,
+      "y": 2220,
+      "w": 250,
+      "text": "Diagnostics and errors must be distinguishable without colour.\n\nDiagnostic: triangle, dashed border, render completed.\nError: square, solid border, render failed.\n\nThe legend sits in the panel so the distinction is learnable, not folklore."
+    },
+    {
+      "id": "no-cloud-affordances",
+      "x": 1620,
+      "y": 2220,
+      "w": 250,
+      "text": "Deliberately absent everywhere: share buttons, collaborator avatars, sync indicators, autosave, account menu.\n\nThere is no server and no account. Every one of those would be a lie — and the status bar says so plainly instead."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

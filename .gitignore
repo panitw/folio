@@ -1,0 +1,65 @@
+# ── OS ────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# ── Editors / IDEs ────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# ── Environment / secrets ─────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Node / frontend (designer: Vite + React + TS) ─────────────────
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+coverage/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# ── Go ────────────────────────────────────────────────────────────
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+go.work
+go.work.sum
+
+# ── WASM build output ─────────────────────────────────────────────
+*.wasm
+wasm_exec.js
+
+# ── Rendering / test output ───────────────────────────────────────
+tmp/
+.tmp/
+*.log
+
+# ── Tooling ───────────────────────────────────────────────────────
+.claude/settings.local.json
+
+# ── BMAD (personal, installer-managed) ────────────────────────────
+_bmad/config.user.toml

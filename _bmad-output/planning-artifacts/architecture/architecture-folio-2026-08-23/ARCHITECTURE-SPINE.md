@@ -1,0 +1,589 @@
+---
+name: 'Folio'
+type: architecture-spine
+purpose: build-substrate
+altitude: feature
+paradigm: 'functional core, imperative shell — core as a staged immutable pipeline'
+scope: 'Folio MVP v0.1 — the .folio template format, the folio-go rendering library (native + js/wasm), the PDF output profile, and the browser designer'
+status: final
+created: '2026-08-23'
+updated: '2026-08-23'
+binds: [FR1-FR45, NFR1-NFR8]
+sources:
+  - ../../prds/prd-folio-2026-08-22/prd.md
+  - ../../prds/prd-folio-2026-08-22/addendum.md
+  - ../../ux-designs/ux-folio-2026-08-23/EXPERIENCE.md
+  - ../../ux-designs/ux-folio-2026-08-23/DESIGN.md
+companions:
+  - ./reviews/review-rubric.md
+  - ./reviews/review-currency.md
+  - ./reviews/review-adversarial.md
+---
+
+# Architecture Spine — Folio
+
+## Design Paradigm
+
+**Functional core, imperative shell.** The core is pure: it reads no clock, no locale, no
+environment, no filesystem, no network, and holds no mutable global state. Everything that
+touches the world lives in a thin shell around it. FR43 stops being a discipline every
+contributor must remember and becomes a directory boundary a linter can enforce.
+
+The core is a **staged pipeline over immutable models**. Each stage consumes the previous
+stage's value and produces a new one; no stage mutates its input, and no stage reaches
+backwards.
+
+```mermaid
+graph LR
+  A[".folio bytes"] --> B["parse · validate"]
+  B --> C["Document"]
+  C --> D["bind · evaluate"]
+  D --> E["BoundTree"]
+  E --> F["measure · lay out · paginate"]
+  F --> G["PageModel"]
+  G --> H["serialize"]
+  H --> I["PDF bytes"]
+```
+
+| Paradigm role | Namespace |
+| --- | --- |
+| Shell — may read the world | `folio` (public API), `cmd/folio`, `wasm/`, `designer/` |
+| Core — pure, deterministic | `internal/` (everything under it) |
+| Shared kernel — imports nothing | `internal/geom` |
+
+## Invariants & Rules
+
+### Dependency direction
+
+Arrows point at what a package may import. Anything not drawn is forbidden. The absence of
+an arrow from `layout` to `pdf` is the load-bearing one — it is what keeps PNG, SVG, and
+HTML renderers possible later (PRD §5.4).
+
+```mermaid
+graph TD
+  CLI["cmd/folio"] --> API["folio · public API"]
+  WASMENTRY["wasm · js build tag"] --> API
+  API --> TPL["internal/template"]
+  API --> LAY["internal/layout"]
+  API --> PDFP["internal/pdf"]
+  API --> DIAG["internal/diag"]
+  LAY --> BND["internal/bind"]
+  LAY --> TXT["internal/text"]
+  LAY --> PM["internal/pagemodel"]
+  BND --> EXPR["internal/expr"]
+  BND --> TPL
+  TXT --> FSET["internal/fontset"]
+  PDFP --> PM
+  PDFP --> FSET
+  TPL --> GEOM["internal/geom"]
+  EXPR --> GEOM
+  BND --> GEOM
+  LAY --> GEOM
+  TXT --> GEOM
+  PM --> GEOM
+  PDFP --> GEOM
+  FSET --> GEOM
+  TPL --> DIAG
+  EXPR --> DIAG
+  LAY --> DIAG
+  TXT --> DIAG
+```
+
+### AD-1 — The determinism boundary is a directory boundary
+
+- **Binds:** all · NFR1.a–NFR1.d, FR43
+- **Prevents:** determinism eroding one reasonable-looking commit at a time, in a package
+  nobody thought of as "the render path".
+- **Rule:** every package under `internal/` is render path. Render-path code may not import
+  `time`, `os`, `math/rand`, `net`, or any `math` transcendental (`Sin`, `Cos`, `Tan`, `Log`,
+  `Exp`, `Pow`, `Sinh`, `Erf`, …); may not read package-level mutable state; and may not range
+  a map whose order can reach an output byte. CI enforces this with an import-restriction lint
+  and a map-iteration check, both wired before the first feature lands, not after. The
+  allow-listed numeric surface is `+ - * /`, comparison, and `Sqrt`, `Floor`, `Ceil`, `Round`,
+  `Trunc`, `Abs`, `Mod`. A carve-out is never granted to ship a feature (PRD counter-metric C3).
+
+### AD-2 — One fixed-point unit, one owner
+
+- **Binds:** `internal/geom` and every package that computes a position, advance, or dimension · NFR1.a
+- **Prevents:** two packages picking different fixed-point scales — layout in 1/1000 pt and
+  emission in 1/100 pt — so rounding diverges invisibly and appears only in the hash. Also
+  prevents a stray `float64` re-entering layout through a helper.
+- **Rule:** `internal/geom` defines `Length` as `int64` **millipoints** (1/1000 of a PDF point;
+  1 pt = 1/72 inch) and is the only package permitted to declare a geometric scalar type.
+  No `float64` appears in any layout, measurement, or emission signature. Font scaling is one
+  exported function with one documented rounding mode (round-half-to-even on the exact integer
+  quotient), never open-coded at a call site. `internal/geom` imports nothing outside the
+  standard library's exact-integer surface. `[ASSUMPTION]` Millipoints, not 1/64 pt or
+  units-per-em — chosen because it makes AD-3 exact.
+
+### AD-3 — Numbers reach the PDF through exactly one function
+
+- **Binds:** `internal/pdf` · NFR1.b
+- **Prevents:** `strconv.FormatFloat` or `fmt.Sprintf("%g")` reaching an output stream from any
+  call site, which reintroduces platform-visible float formatting after AD-2 removed floats
+  from layout.
+- **Rule:** one unexported emitter converts a `geom.Length` to its decimal text by integer
+  arithmetic — sign, integer part, and exactly three fractional digits, trailing zeros trimmed
+  — and no other code in the module writes a number into a content stream or object body. The
+  representation is exact by construction, since a millipoint is exactly three decimal places
+  of a point.
+
+### AD-4 — Two passes, and the second one lays nothing out
+
+- **Binds:** `internal/layout`, `internal/pdf` · FR31, NFR4
+- **Prevents:** `Page X of Y` being "fixed up" during serialization through a second,
+  slightly different measurement path — the classic way a total-page-count feature breaks
+  byte-identity.
+- **Rule:** pass one produces a complete `PageModel` and pass two serializes it. Text whose
+  content depends on the finished document (total page count, current page number) is carried
+  in the `PageModel` as a **late-bound slot** that already holds its final measured box,
+  resolved between the passes by substituting a string of pre-measured glyphs. `internal/pdf`
+  performs no measurement, no line breaking, and no pagination. **No expression may reference
+  pagination** — there is no `page` namespace and none may be added; page numbers exist only as
+  slots. The moment an expression could depend on the page it sits on, evaluation would have to
+  move after layout and this structure would collapse.
+
+### AD-5 — The page model knows nothing about PDF
+
+- **Binds:** `internal/pagemodel`, `internal/layout` · PRD §5.4
+- **Prevents:** a future PNG or SVG renderer requiring a rewrite because PDF object
+  references, resource dictionaries, or content-stream operators leaked into the layout output.
+- **Rule:** `internal/pagemodel` types name only geometry, glyph runs (font identity + glyph
+  ids + positions), images, and vector primitives. `internal/layout` may not import
+  `internal/pdf`. Excel is explicitly **not** protected this way and must not be forced into
+  this model.
+
+### AD-6 — Folio emits its own PDF
+
+- **Binds:** `internal/pdf` · NFR1, NFR3, FR29, FR32
+- **Prevents:** the byte-critical layer depending on a library whose reproducibility is a
+  present-tense observation rather than a contract, and whose text API cannot accept
+  externally-shaped glyphs anyway.
+- **Rule:** `internal/pdf` is Folio's own object serializer. No third-party PDF writer is a
+  dependency. It emits: catalog, page tree, content streams, `Type0`/`Identity-H` composite
+  fonts with a Folio-produced `FontFile2`, `ToUnicode` CMaps, image XObjects, and a classic
+  cross-reference table. `[ASSUMPTION]` The forcing argument, for review: Folio shapes text
+  itself (AD-8) and must therefore place glyphs by glyph id, which `signintech/gopdf` — MIT,
+  v0.38.0, otherwise deterministic — cannot express because it owns font embedding internally;
+  its `CreateEmbeddedFontSubsetName` was checked against current master and only replaces
+  spaces and slashes, so it emits no conforming subset tag either.
+  `boxesandglue/baseline-pdf` (BSD-3, v1.1.20) sits at the right layer but states it is not
+  used in production and expects API changes, and pulls in a PDF-import surface Folio never needs. The surface Folio needs is small: no encryption, no
+  annotations, no forms, no transparency groups, no shading, no ICC profiles, no tagging.
+
+### AD-7 — The PDF profile is pinned, and the core never reads the world for it
+
+- **Binds:** `internal/pdf`, `cmd/folio` · NFR1.e, NFR1.f, FR43, PRD Q11
+- **Prevents:** the direct contradiction between NFR1.f (adopt `SOURCE_DATE_EPOCH`) and FR43
+  (the render path reads no environment variable), resolved silently in the wrong direction.
+- **Rule:** target **PDF 1.7 (ISO 32000-1)**, resolving Q11. `/ID` is emitted as a
+  content-derived value — the first 16 bytes of a SHA-256 over the serialized body up to the
+  point `/ID` is written, with both array entries identical. `/CreationDate` and `/ModDate` are
+  **omitted** unless a date arrives through `params`. Font subset tags are the six letters
+  `A`–`Z` derived from a hash of the sorted glyph-id set, which ISO 32000-1 §9.6.4 permits.
+  The library core never reads an environment variable; `cmd/folio` reads `SOURCE_DATE_EPOCH`
+  and passes it in as a parameter like any other caller would.
+
+### AD-8 — The engine takes fonts as an explicit value
+
+- **Binds:** `internal/fontset`, `internal/text`, `folio`, `designer` · FR32, NFR3, NFR7, PRD Q2
+- **Prevents:** the native build embedding font bytes via `go:embed` while the browser fetches
+  font assets from a static host — two byte-streams that drift apart and produce different
+  subsets, and therefore different hashes, with nothing in the output to show it.
+- **Rule:** no package under `internal/` embeds font data. `Render` takes a `FontSet` value.
+  The repository holds font binaries in exactly one place, `fonts/`; the `folio/fonts` package
+  wraps them with `go:embed` for native callers, and the designer build copies from the same
+  directory. Font resolution inside a render is a pure lookup against the supplied `FontSet` —
+  never a host font query. A template names a family plus an **ordered fallback chain**; the
+  chain is part of the `FontSet`'s identity, so the same template with a different chain is a
+  different render, not a silent substitution. A glyph covered by no font in the chain is a
+  diagnostic (AD-15) with the element id and the offending rune, never a blank box.
+
+### AD-9 — `.folio` has one canonical byte form
+
+- **Binds:** `internal/template` · FR11, FR12, FR13, S5, S9
+- **Prevents:** the designer and a hand-editor producing different bytes for the same
+  document, which would break the round-trip guarantee and make every save a noisy diff.
+- **Rule:** `.folio` is JSON with exactly one legal serialization: object keys sorted, two-space
+  indent, LF line endings, no trailing whitespace, and a trailing newline. `internal/template`
+  owns both the parser and the serializer, and `Parse(Serialize(d)) == d` and
+  `Serialize(Parse(b)) == b` for any canonical `b` are round-trip tests that ship with the
+  format, not after it. A `version` field is validated on load; a future version fails with a
+  located error rather than rendering (FR13). Images live in a top-level `assets` object keyed
+  by the SHA-256 of their bytes, base64 hard-wrapped at 76 columns into an array of strings,
+  so the file stays valid JSON, text diffs stay readable, and repeated images deduplicate.
+  Elements reference assets by key.
+
+### AD-10 — Every element carries a stable, non-random id
+
+- **Binds:** `internal/template`, `internal/diag`, `designer` · FR41, FR44, EXPERIENCE §Determinism
+- **Prevents:** diagnostics that cannot point at anything, and a designer that cannot
+  highlight the element a render complained about. Also prevents UUIDs, which would randomize
+  the saved bytes of an otherwise unchanged document.
+- **Rule:** every element has an opaque short id allocated from a monotonic counter persisted
+  in the document. Ids are never reused, never renumbered on save, and never derived from
+  position or content. Every diagnostic and every error that concerns a template element
+  carries its id.
+
+### AD-11 — Row scope is an explicit alias
+
+- **Binds:** `internal/bind`, `internal/expr`, `designer` · FR16, FR17, FR19 · **resolves PRD Q3**
+- **Prevents:** the expression engine inferring a row alias by singularizing the collection
+  name while the binding UI shows something else — two rules for the same `{{transaction.amount}}`.
+- **Rule:** a repeating region declares its alias: `{"bind": "transactions[]", "as": "transaction"}`,
+  defaulting to `row` when omitted. Inside the region, the alias resolves to the current row.
+  Unqualified paths always resolve from the document root — a row **never** shadows the root.
+  `params.` is always the parameter namespace and can be shadowed by nothing. Aggregates
+  (`sum`, `count`, `avg`) always take a root-relative collection path, are legal inside a row
+  scope, and are **always computed over the whole collection — never over the rows on the
+  current page**. Per-page subtotals are not in MVP and must not be introduced as a special
+  case of an aggregate. This unblocks UX5.
+
+### AD-12 — Formatting locale is declared, never discovered
+
+- **Binds:** `internal/expr` · FR18, FR21, FR43 · **resolves PRD Q10**
+- **Prevents:** `formatDate` and `formatNumber` reaching for the host locale or time zone,
+  which would make the render a function of the machine and break NFR1 on the first
+  cross-machine test.
+- **Rule:** the document declares one `locale` tag and one fixed UTC offset. The engine carries
+  a compiled, embedded, versioned locale table for a **closed set** — `en`, `th`, `zh-Hans`,
+  `ja` — matching the scripts NFR3 requires; an unlisted tag is a load error, not a fallback.
+  `th` renders Buddhist-era years, which the real use case needs. `formatDate` accepts only
+  RFC 3339 strings or epoch-millisecond numbers. `formatNumber` scales by integer powers of ten
+  from a lookup table — never `math.Pow` (AD-1). The locale table version is part of the
+  library version, so changing it is a breaking change under AD-22.
+  `[ASSUMPTION]` The four-locale set is inferred from NFR3's script list; widen it only with a
+  golden fixture per locale.
+
+### AD-13 — Table geometry is derived, not stored twice
+
+- **Binds:** `internal/layout`, `designer` · FR23, FR25
+- **Prevents:** the designer scaling columns to fit a stored table width while the engine
+  clips them instead — the same template, two geometries, and no error anywhere.
+- **Rule:** column widths are absolute and authoritative. A table's width **is** the sum of its
+  column widths; it is never stored as an independent field. The content area's height is
+  likewise derived — page height minus margins minus page-header height minus page-footer
+  height — by one function in `internal/layout`.
+
+### AD-14 — Errors and diagnostics are one type on one channel
+
+- **Binds:** `internal/diag`, `folio`, `designer` · FR41, FR44, FR25
+- **Prevents:** each area inventing its own error type, so the designer cannot present them
+  uniformly and CI cannot assert that every FR41 case is covered.
+- **Rule:** one `Diagnostic` value carries `Severity` (`Error` aborts the render, `Warning`
+  accompanies a successful one), a **stable string code** from a closed registry, an optional
+  element id (AD-10), an optional data path, and a message. Every failure mode named in FR41
+  has a code and a test asserting it. Over-tall rows (FR25) and clipped content (FR44) are
+  `Warning`s returned alongside PDF bytes, never silent and never fatal. Codes are additive
+  only; changing a code's meaning is a breaking change.
+  Three data cases that would otherwise each be decided twice: an **absent** path is an `Error`
+  carrying the path; an explicit JSON **`null`** renders as empty and is not an error; a value
+  of the **wrong kind** for its element is an `Error`, never a coercion.
+
+### AD-15 — In the designer, the engine owns the document
+
+- **Binds:** `designer`, `wasm` · FR8, FR12, S5, S9
+- **Prevents:** the `.folio` schema being implemented twice — once in Go, once in TypeScript —
+  and drifting, which is the single most likely way the file the designer saves stops being the
+  file the library renders.
+- **Rule:** there is no TypeScript model of a `.folio` document. The wasm engine parses, holds,
+  mutates, validates, and serializes it. The UI holds an **immutable snapshot** for painting and
+  sends every committed mutation as a **command** over one channel. Transient interaction state
+  — a drag in flight, a resize preview, an uncommitted property keystroke — lives in the UI and
+  never enters the document. Undo and redo are engine-side history over committed commands;
+  loading sample data is not a command and is not undoable.
+
+### AD-16 — One wasm instance, in one worker, rendering from serialized bytes
+
+- **Binds:** `designer`, `wasm` · FR35, NFR5
+- **Prevents:** two engine instances holding two copies of a document that can disagree — and
+  prevents a render path in the browser that differs from the one a Go service will run.
+- **Rule:** the designer instantiates the wasm module **once**, in one dedicated Worker. The
+  render entry point takes the **serialized `.folio` bytes** produced by the same save path
+  (AD-9) — never a live in-memory document — so the previewed artifact is provably a render of
+  the file the user would save. All engine calls are async over a request/response channel;
+  the UI never blocks on one. A preview render takes **three** inputs, not two: the serialized
+  template, the sample data document, and a **parameter document the author edits** — without
+  the third, the golden report's generated date cannot be previewed at all (FR21, FR43) and S5
+  is undemonstrable. `[ASSUMPTION]` A second, render-only instance would keep the UI
+  fully responsive during a 50-page render but doubles resident font memory (~36 MB for CJK
+  alone); deferred until measured.
+
+### AD-17 — The browser never measures text, including on the canvas
+
+- **Binds:** `designer` · NFR2
+- **Prevents:** the design canvas wrapping a Thai or CJK line by browser rules while the engine
+  wraps it by dictionary or per-character rules — a canvas that is not merely approximate but
+  systematically wrong about where content lands, and therefore about which band it fits in.
+- **Rule:** the canvas paints DOM and SVG, and gets **every** text metric and line break from
+  the engine's measure API. Text is painted as pre-broken lines with browser wrapping disabled
+  (`white-space: pre`, no `text-wrap`, no justification). The browser contributes rasterization
+  only. `[ASSUMPTION]` DOM and SVG over Canvas2D — chosen because EXPERIENCE's accessibility
+  floor (keyboard reach, visible focus, accessible names) is far cheaper in DOM, and the
+  canvas holds no state worth the imperative model.
+
+### AD-18 — A preview is identified by what produced it
+
+- **Binds:** `designer` · EXPERIENCE §State Patterns (stale preview), NFR1, NFR5
+- **Prevents:** a stale PDF being presented as the production artifact — which EXPERIENCE names
+  as the one state failure that breaks the product's central promise, rather than merely
+  annoying someone.
+- **Rule:** every rendered preview is keyed by a hash of (serialized template ∥ data ∥ params ∥
+  engine version ∥ `FontSet` identity). The UI recomputes that key on every committed command
+  and marks the preview stale the moment it differs. A stale preview is visibly invalidated or
+  re-rendered; it is never shown unmarked. The preview surface is a controlled pdf.js canvas,
+  never the browser's built-in viewer in an `iframe` or `embed` — diagnostics must overlay it
+  and locate back to canvas elements (AD-10), and a 50-page render needs progress.
+
+### AD-19 — Offline is a build artifact, not a hope
+
+- **Binds:** `designer` · FR36, NFR8, EXPERIENCE S1
+- **Prevents:** shipping a designer that claims to work offline and then fails to load without
+  a network, because nothing ever cached the 9 MB of wasm and fonts. Not named in any input
+  document.
+- **Rule:** a service worker precaches the app shell, the wasm module, the Thai dictionary, and
+  the font assets under content-hashed URLs, and serves them cache-first. The S1 load screen's
+  progress is driven by that install, which is why it can honestly promise it happens once.
+  Assets are served brotli-compressed with immutable long-lived cache headers. Nothing in the
+  designer performs a network request at render or preview time.
+
+### AD-20 — Local file access is two-tier and capability-detected
+
+- **Binds:** `designer` · FR8
+- **Prevents:** building save-in-place against the File System Access API and discovering the
+  designer is Chromium-only — the API remains unimplemented in Firefox and Safari, which ship
+  OPFS alone.
+- **Rule:** where `showSaveFilePicker` exists, hold the file handle and save in place. Where it
+  does not, fall back to `<input type="file">` for open and a download for save. One capability
+  check at startup selects the tier; the rest of the app talks to one file-access interface and
+  never branches again. The unsaved-changes indicator is required in both tiers, and there is
+  no autosave in either (EXPERIENCE §State Patterns).
+
+### AD-21 — Every feature ships its golden fixture
+
+- **Binds:** all · NFR1, NFR6, S1–S3, S7, PRD Risks R1, R4, C6
+- **Prevents:** the CI matrix passing while every arm64 user receives different bytes —
+  contraction is an architecture property, not an operating-system one — and prevents red
+  hashes being regenerated rather than investigated.
+- **Rule:** the CI matrix is `darwin/arm64`, `linux/amd64`, **`linux/arm64`**, and `js/wasm`
+  executed under Node, with hashes compared across all four. Golden hashes are recorded
+  alongside both the `folio-go` version and the exact Go toolchain version. No change may land
+  without a fixture covering it, and a hash change is investigated as a defect until proven to
+  be an intended, versioned behaviour change.
+
+### AD-22 — The toolchain is pinned, and bumping it is a release event
+
+- **Binds:** all · NFR6, PRD Risk R4
+- **Prevents:** a routine Go upgrade silently changing `compress/flate` output and invalidating
+  every golden hash recorded by every downstream user's test suite.
+- **Rule:** `go.mod` pins an exact `toolchain` directive and CI uses that version only. Because
+  golden-hash equality is the primary verification mechanism, **any** change to layout,
+  subsetting, emission, the locale table, or the toolchain is a breaking change for downstream
+  test suites and is released as one.
+
+### AD-23 — Report data numbers are exact decimals, never `float64`
+
+- **Binds:** `internal/bind`, `internal/expr` · NFR1.a, FR14, FR18, FR19
+- **Prevents:** two failures that enter through the same door. Go's `encoding/json` decodes
+  every JSON number to `float64` by default, so `sum(transactions.amount)` would run in binary
+  floating point — in a product whose acceptance test is a **bank statement**. And a float
+  aggregate helper is exactly the multiply-add shape the compiler may fuse on arm64 and may not
+  on wasm, reintroducing the NFR1.a hazard that AD-2 closed for geometry but never closed for
+  data.
+- **Rule:** the JSON decoder preserves number **literals** (`UseNumber` or equivalent) and
+  `internal/bind` converts each to an exact scaled-integer decimal — an `int64` coefficient plus
+  an exponent — carrying the literal's own precision. All arithmetic in `sum`, `avg`, and
+  comparison is exact decimal arithmetic. `float64` appears nowhere under `internal/`, for
+  geometry or for data. A literal too large for the representation is an `Error` (AD-14), never
+  a silent narrowing. `avg` divides at a defined scale with round-half-to-even.
+
+### AD-24 — Boxes are absolute, and nothing negotiates
+
+- **Binds:** `internal/template`, `internal/layout`, `internal/pagemodel`, `internal/pdf`,
+  `designer` · PRD §6, FR1, FR5, FR20, FR44
+- **Prevents:** the banded model being implemented as a *slightly* flowing one, and the classic
+  sign error where more than one function flips between screen space and PDF space.
+- **Rule:** four things, each of which would otherwise be decided independently by the designer
+  epic and the layout epic:
+  - **Origin.** An element's x/y is relative to **its band's** top-left corner, never to the
+    page. Bands are placed on the page by `internal/layout` alone.
+  - **Axis.** `PageModel` is top-left origin with Y increasing downward — the same sense as the
+    canvas. The flip to PDF user space (bottom-left, Y up) happens in **exactly one** function
+    in `internal/pdf`, and nowhere else in the module inverts a coordinate.
+  - **Visibility.** A condition (FR20) is evaluated during bind. A hidden element is **absent**
+    from the `PageModel` and leaves no gap; siblings never move, because nothing in a band ever
+    reflows. Visibility applies to elements only — a condition may **not** hide a table row,
+    which would make pagination a function of data in a way FR25 does not define.
+  - **Images.** An image is scaled to **fit** its declared box preserving aspect ratio and
+    centred within it, computed in integer millipoints. Never stretched, never cropped, never
+    sized from its intrinsic pixel dimensions.
+
+## Consistency Conventions
+
+| Concern | Convention |
+| --- | --- |
+| Go package naming | Lower-case single words matching the pipeline stage (`template`, `bind`, `layout`, `pagemodel`, `pdf`). No `utils`, `common`, `helpers`, or `models`. |
+| Go types | Exported only in `folio` and `internal/diag`. Everything else is internal to its stage; a stage's output type is named for the noun it produces (`Document`, `BoundTree`, `PageModel`). |
+| Numbers | `geom.Length` (int64 millipoints) everywhere geometric; exact scaled-integer decimals for report data (AD-23). `float64` appears nowhere under `internal/`, for either. |
+| Scalar → text | One function in `internal/bind` converts a bound value to display text when no `formatNumber`/`formatDate` is applied. No other code stringifies a data value — a second one would be an accidental competing formatter. |
+| Font subsetting scope | One subset per font per **document**, over the union of glyphs the whole document uses. Never per page. |
+| Parsing | The expression parser is a hand-written recursive-descent parser — no generator, no dependency. The eight functions (FR18) are a closed table, so counter-metric C1 is a diff away from visible. Template validation is `internal/template` itself; **no JSON Schema library**, which would be a second source of truth against AD-9. |
+| Identifiers | Element ids opaque and short (AD-10). Asset keys are lower-case hex SHA-256. Diagnostic codes are `SCREAMING_SNAKE` from a closed registry. |
+| Dates and times | RFC 3339 strings or epoch milliseconds in data; a fixed offset declared on the document. No `time.Now` under `internal/`, ever. |
+| `.folio` field naming | `lowerCamelCase` JSON keys, matching the binding syntax users already type. |
+| Errors | Go errors from the public API wrap `diag.Diagnostic`; callers match on the code, never on message text. Nothing in `internal/` panics on malformed input — untrusted font and template bytes return diagnostics. |
+| Logging | The core does not log. The shell may. |
+| Configuration | There is none. Everything the render depends on arrives as an argument. |
+| TypeScript | Strict mode. The engine channel is the only async boundary; components receive the snapshot as props. Design tokens come from `DESIGN.md`, never hard-coded hex — including its two-accent grammar, where **cyan means structure and amber means data**, in every surface without exception. |
+| Designer accessibility | EXPERIENCE's behavioural floor binds now, independent of formal conformance being out of scope: every control keyboard-reachable, visible focus on everything focusable, accessible names on icon-only controls, diagnostics distinguished by shape before colour, and the Table Editor behaving as a data grid. |
+| Tests | Table-driven Go tests; every FR41 case has a named test; every visual feature has a golden fixture (AD-21). |
+
+## Stack
+
+Verified current as of 2026-08-23.
+
+| Name | Version |
+| --- | --- |
+| Go toolchain (pinned exactly, AD-22) | 1.26.x |
+| `boxesandglue/textshape` — shaping + subsetting | v0.0.15 |
+| `go-text/typesetting` — cross-validation of shaping only, test-scope | v0.3.4 |
+| PDF writer | none — Folio's own (AD-6) |
+| Thai dictionary — ICU `thaidict`, compiled to a `BytesTrie` | Unicode License, ~123 KB |
+| Fonts — Noto Sans, Noto Sans Thai, Noto Sans SC (variable, glyf) | SIL OFL 1.1 |
+| Designer fonts — IBM Plex Sans / Mono / Sans Thai | SIL OFL 1.1 |
+| TypeScript / React | 19.2.x |
+| Vite (Node 20.19+ / 22.12+) | 7.3.x |
+| `pdfjs-dist` — preview display only | 6.2.x |
+
+`[ASSUMPTION]` Go 1.27 shipped 2026-08-19 with a rewritten JSON engine and is **deliberately
+not adopted**: `compress/flate` byte-stability is verified only through 1.26, and adopting it
+is a re-measurement exercise under AD-22, not an upgrade.
+`[ASSUMPTION]` React and Vite are the conservative choice, not a considered preference — the
+engine holds document state (AD-15), so the framework does little, and the deepest ecosystem
+wins for the Table Editor's data grid.
+
+## Structural Seed
+
+### Containers
+
+```mermaid
+graph TB
+  subgraph tab["Browser tab — no account, no server, no upload"]
+    UI["Designer UI · React + TS<br/>canvas · palette · properties · binding · table editor"]
+    SW["Service worker · precache · AD-19"]
+    WK["Engine worker · folio-go js/wasm · AD-16<br/>owns the document · AD-15"]
+    PV["Preview surface · pdf.js"]
+  end
+  DISK[("User's disk<br/>.folio · sample .json")]
+  HOST[["Static host<br/>app · wasm · fonts · brotli"]]
+  subgraph svc["The integrator's Go service — not Folio's"]
+    APP["Application"]
+    LIB["folio-go · native"]
+  end
+  UI <--> WK
+  UI --> PV
+  WK --> PV
+  UI <--> DISK
+  SW --> HOST
+  UI --> SW
+  APP --> LIB
+  DISK -.->|"committed to git"| APP
+```
+
+### Deployment and environments
+
+There is no Folio-operated runtime. The operational envelope is three things and stops there:
+
+| Environment | What it is |
+| --- | --- |
+| Designer | Static files on any host. Brotli plus immutable content-hashed URLs are requirements, not tuning (AD-19). No backend, no database, no accounts, no telemetry. |
+| Library | A Go module fetched through the module proxy and compiled into someone else's binary. Folio operates nothing. |
+| CI | The four-target matrix of AD-21, plus the AD-1 lints. The only environment Folio itself runs. |
+
+The optional REST service (FR45) would be the first thing that changes this, and would bring a
+threat model with it — PRD §13 records that MVP deliberately has none. It is deferred below.
+
+### Core template entities
+
+```mermaid
+erDiagram
+  DOCUMENT ||--|| PAGESETUP : has
+  DOCUMENT ||--o{ BAND : "has exactly 3"
+  DOCUMENT ||--o{ ASSET : embeds
+  DOCUMENT ||--|| LOCALE : declares
+  BAND ||--o{ ELEMENT : contains
+  ELEMENT ||--o| BINDING : "may have"
+  ELEMENT ||--o| STYLE : has
+  ELEMENT ||--o{ COLUMN : "table only"
+  COLUMN ||--o| BINDING : "row-scoped"
+  COLUMN ||--o| AGGREGATE : "footer only"
+  ASSET ||--o{ ELEMENT : "referenced by hash"
+```
+
+Bands are exactly Page Header, Content, and Page Footer (FR6). Elements are exactly Text,
+Image, Table, Line, and Rectangle (FR4) — the set is closed, and counter-metric C2 makes
+growing it a warning sign rather than a feature.
+
+### Source tree
+
+```text
+folio-go/                      # module github.com/folio-reports/folio-go
+  folio.go                     # LoadTemplate · Validate · Render · RenderTo — the shell
+  fontset.go                   # FontSet as a public input (AD-8)
+  internal/
+    geom/                      # Length, Rect, rounding — imports nothing (AD-2)
+    diag/                      # Diagnostic, Severity, the code registry (AD-14)
+    template/                  # schema, canonical parse + serialize, ids, assets (AD-9, AD-10)
+    expr/                      # lexer, parser, the 8 functions, locale tables (AD-12)
+    bind/                      # data + params resolution, row scope, decimals (AD-11, AD-23)
+    text/                      # shaping, UAX #14 + Thai trie breaking, measurement
+    fontset/                   # resolution, fallback chain, subsetting (AD-8)
+    layout/                    # bands, absolute placement, table flow, pagination
+    pagemodel/                 # renderer-agnostic page model (AD-5)
+    pdf/                       # object serializer, xref, Type0/Identity-H, images (AD-6)
+  fonts/                       # the one copy of the font binaries; go:embed for native
+  cmd/folio/                   # CLI: validate, render — reads SOURCE_DATE_EPOCH (AD-7)
+  wasm/                        # js/wasm entry point, command channel (AD-15, AD-16)
+  testdata/golden/             # fixtures + hashes, per version and toolchain (AD-21)
+designer/                      # Vite + React + TS
+  src/engine/                  # worker host, command channel, snapshot store
+  src/canvas/                  # DOM/SVG canvas, bands, selection (AD-17)
+  src/panels/                  # palette, properties, binding tree, table editor
+  src/preview/                 # pdf.js surface, diagnostics overlay (AD-18)
+  src/file/                    # the two-tier file interface (AD-20)
+```
+
+## Capability → Architecture Map
+
+| Capability | Lives in | Governed by |
+| --- | --- | --- |
+| Designer canvas, palette, properties (FR1–FR6) | `designer/src/canvas`, `src/panels` | AD-15, AD-17, AD-24, DESIGN.md tokens |
+| Binding UI and sample data (FR7, FR9) | `designer/src/panels` | AD-11, AD-15 |
+| Table structure editor (FR10) | `designer/src/panels` | AD-13, AD-11 |
+| Open / save local files (FR8) | `designer/src/file` | AD-20, AD-9 |
+| Template format (FR11–FR13) | `internal/template` | AD-9, AD-10 |
+| Binding and expressions (FR14–FR20) | `internal/bind`, `internal/expr` | AD-11, AD-12, AD-23, AD-24, AD-1 |
+| Parameters (FR21) | `internal/bind` | AD-11, AD-7 |
+| Tables and pagination (FR22–FR28) | `internal/layout` | AD-13, AD-24, AD-4, AD-14 |
+| Rendering and output (FR29–FR33) | `internal/pdf`, `internal/fontset` | AD-6, AD-7, AD-8, AD-3, AD-24 |
+| Design canvas vs exact preview (FR34–FR36) | `designer/src/preview`, `wasm/` | AD-16, AD-17, AD-18, AD-19 |
+| Public Go API and error contract (FR37–FR44) | `folio`, `internal/diag` | AD-14, AD-5, AD-7 |
+| Byte reproducibility (NFR1) | everywhere under `internal/` | AD-1, AD-2, AD-3, AD-23, AD-21, AD-22 |
+| Script support (NFR3) | `internal/text`, `internal/fontset` | AD-8, AD-17 |
+
+## Deferred
+
+| Deferred | Why it can wait |
+| --- | --- |
+| REST rendering service (FR45) | Optional in the PRD, and the first thing that would give Folio an operated runtime and a threat model. Nothing in this spine forecloses it: it is another shell around the same core. |
+| Second render-only wasm instance | AD-16 records the trade. Revisit when a 50-page render is measured against real interaction, not before. |
+| Memory ceiling and throughput targets | PRD NFR4 has no numbers. Record a baseline the first time the 50-page golden report renders, then enforce against regression (S6). |
+| Incremental / streaming serialization | `RenderTo`'s writer signature is preserved so this arrives without an API break (NFR4). AD-4's two passes stand until then. |
+| Non-PDF renderers (PNG, SVG, HTML) | AD-5 keeps the seam open. No second renderer is designed here. |
+| Java, .NET, Node SDKs | The `-go` module suffix already reserves the naming. They consume the same `.folio` contract. |
+| Template ↔ library compatibility policy (NFR6) | AD-9 validates the version field; the forward/backward rules need a policy before v1, not before MVP. |
+| Accessibility conformance, and the canvas screen-reader model (UX1) | EXPERIENCE's behavioural floor binds now; formal conformance is out of MVP scope. |
+| Custom font upload in the designer (part of Q2) | AD-8 already makes custom fonts expressible in Go. The UI for it is not MVP. |
+| Sample-JSON persistence in `.folio` (UX2) | Costs a round-trip decision in AD-9's schema; revisit after the first real authoring session. |
+| Licence and distribution (Q7) | Undecided by choice. Nothing in this spine depends on the answer; all named dependencies are OFL, MIT, BSD-3, or Unicode. |
+| Build order (Q5, Q6) | Sequencing belongs to `bmad-create-epics-and-stories`. This spine deliberately imposes no phase order — note only that Thai line breaking is a prerequisite of text wrapping, not a refinement of it. |

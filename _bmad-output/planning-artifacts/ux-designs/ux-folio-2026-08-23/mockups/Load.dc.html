@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+    a { color: #58a6c4; } a:hover { color: #7cc0da; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #0d0f12; color: #aab2bb; font-size: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; position: relative;">
+
+  <div style="width: 560px; display: flex; flex-direction: column;">
+
+    <!-- mark -->
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 34px;">
+      <div style="width: 22px; height: 22px; border: 1.5px solid #58a6c4; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 7px; height: 10px; background: #58a6c4;"></div>
+      </div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: #e6e9ec; letter-spacing: 0.06em;">FOLIO</span>
+    </div>
+
+    <!-- statement -->
+    <div style="font-size: 19px; font-weight: 500; color: #e6e9ec; letter-spacing: -0.01em;">Loading rendering engine</div>
+    <div style="font-size: 12px; color: #737c86; margin-top: 7px; line-height: 1.55;">
+      Cached after this. It does not happen again.
+    </div>
+
+    <!-- manifest -->
+    <div style="margin-top: 28px; border-top: 1px solid #22272d;">
+
+      <!-- engine -->
+      <div style="display: grid; grid-template-columns: 18px 1fr 78px 62px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #191d21;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7fbf8a" stroke-width="1.6"><path d="M3 8.4l3.2 3.2L13 4.9"/></svg>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #aab2bb;">folio-go engine</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5e666f; text-align: right;">1.5 MB</span>
+        <span style="font-size: 10px; color: #5e666f; text-align: right;">wasm</span>
+      </div>
+
+      <!-- latin -->
+      <div style="display: grid; grid-template-columns: 18px 1fr 78px 62px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #191d21;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7fbf8a" stroke-width="1.6"><path d="M3 8.4l3.2 3.2L13 4.9"/></svg>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #aab2bb;">Latin fonts</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5e666f; text-align: right;">0.4 MB</span>
+        <span style="font-size: 10px; color: #5e666f; text-align: right;">embedded</span>
+      </div>
+
+      <!-- thai -->
+      <div style="display: grid; grid-template-columns: 18px 1fr 78px 62px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #191d21;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7fbf8a" stroke-width="1.6"><path d="M3 8.4l3.2 3.2L13 4.9"/></svg>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #aab2bb;">Thai fonts</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5e666f; text-align: right;">0.1 MB</span>
+        <span style="font-size: 10px; color: #5e666f; text-align: right;">embedded</span>
+      </div>
+
+      <!-- cjk — in progress -->
+      <div style="border-bottom: 1px solid #191d21; padding: 9px 0;">
+        <div style="display: grid; grid-template-columns: 18px 1fr 78px 62px; align-items: center; gap: 12px;">
+          <div style="width: 13px; height: 13px; border: 1.5px solid #58a6c4; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 5px; height: 5px; background: #58a6c4;"></div>
+          </div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">CJK fonts</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8fd0e4; text-align: right;">2.8 / 7.4 MB</span>
+          <span style="font-size: 10px; color: #58a6c4; text-align: right;">loading</span>
+        </div>
+        <div style="margin-top: 8px; margin-left: 30px; height: 3px; background: #1a1e23; display: flex;">
+          <div style="width: 38%; background: #58a6c4;"></div>
+        </div>
+      </div>
+
+      <!-- dictionary -->
+      <div style="display: grid; grid-template-columns: 18px 1fr 78px 62px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #22272d;">
+        <svg width="13" height="13" viewBox="0 0 16 16" stroke="#454c55" stroke-width="1.6"><path d="M4 8h8"/></svg>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5e666f;">Thai line-break dictionary</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #454c55; text-align: right;">0.12 MB</span>
+        <span style="font-size: 10px; color: #454c55; text-align: right;">queued</span>
+      </div>
+    </div>
+
+    <!-- overall -->
+    <div style="margin-top: 22px;">
+      <div style="display: flex; align-items: baseline; gap: 10px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 500; color: #e6e9ec;">4.8</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5e666f;">of 9.5 MB</span>
+        <span style="flex-grow: 1;"></span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #58a6c4;">51%</span>
+      </div>
+      <div style="margin-top: 10px; height: 5px; background: #1a1e23; border: 1px solid #22272d; display: flex;">
+        <div style="width: 51%; background: #58a6c4;"></div>
+      </div>
+    </div>
+
+    <!-- why it is big -->
+    <div style="margin-top: 16px; font-size: 11px; color: #4e565f; line-height: 1.6;">
+      CJK coverage is the bulk of it. Fonts are embedded so rendering never depends on the network or on what is installed.
+    </div>
+
+    <!-- model statement -->
+    <div style="margin-top: 30px; padding-top: 16px; border-top: 1px solid #191d21; display: flex; gap: 26px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#5e666f" stroke-width="1.4"><path d="M8 2l5 2.5v4c0 3-2.2 5-5 5.5C5.2 13.5 3 11.5 3 8.5v-4L8 2z"/></svg>
+        <span style="font-size: 10px; color: #5e666f;">No account</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#5e666f" stroke-width="1.4"><rect x="2.5" y="4" width="11" height="7"/><path d="M5.5 13.5h5"/></svg>
+        <span style="font-size: 10px; color: #5e666f;">Renders in this tab</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#5e666f" stroke-width="1.4"><path d="M9 2H4v12h8V5L9 2z"/><path d="M9 2v3h3"/></svg>
+        <span style="font-size: 10px; color: #5e666f;">Files stay on this machine</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- version pin, bottom -->
+  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 24px; display: flex; align-items: center; padding: 0 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #363d46;">
+    <span>folio-go v0.1</span>
+    <span style="flex-grow: 1;"></span>
+    <span>first run only</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

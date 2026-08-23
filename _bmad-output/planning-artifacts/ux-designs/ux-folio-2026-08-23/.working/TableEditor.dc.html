@@ -1,0 +1,207 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+    a { color: #58a6c4; } a:hover { color: #7cc0da; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #15181c; color: #aab2bb; font-size: 11px; position: relative; overflow: hidden;">
+
+  <!-- ===== dimmed workspace behind ===== -->
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column;">
+    <div style="height: 40px; background: #1a1e23; border-bottom: 1px solid #272c33; display: flex; align-items: center; gap: 16px; padding: 0 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 18px; height: 18px; border: 1.5px solid #2f4f5c; display: flex; align-items: center; justify-content: center;"><div style="width: 6px; height: 8px; background: #2f4f5c;"></div></div>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5e666f; letter-spacing: 0.04em;">FOLIO</span>
+      </div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5e666f;">customer-statement.folio</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; border: 1px solid #272c33;">
+        <div style="padding: 4px 14px; background: #22272d; color: #737c86; font-size: 10px; letter-spacing: 0.04em;">DESIGN</div>
+        <div style="padding: 4px 14px; color: #454c55; font-size: 10px; letter-spacing: 0.04em;">PREVIEW</div>
+      </div>
+    </div>
+    <div style="flex-grow: 1; background: #0d0f12; display: flex; align-items: center; justify-content: center;">
+      <div style="width: 496px; height: 701px; background: #22272d; box-shadow: 0 2px 24px rgba(0,0,0,0.55);"></div>
+    </div>
+  </div>
+
+  <!-- scrim -->
+  <div style="position: absolute; inset: 0; background: rgba(6,8,10,0.72);"></div>
+
+  <!-- ===== THE SHEET ===== -->
+  <div style="position: absolute; left: 160px; top: 96px; width: 1120px; height: 708px; background: #1a1e23; border: 1px solid #3a4048; box-shadow: 0 18px 60px rgba(0,0,0,0.6); display: flex; flex-direction: column;">
+
+    <!-- sheet header -->
+    <div style="height: 44px; flex-shrink: 0; border-bottom: 1px solid #272c33; display: flex; align-items: center; gap: 12px; padding: 0 16px;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#58a6c4" stroke-width="1.25"><rect x="2.5" y="3.5" width="11" height="9"/><path d="M2.5 6.5h11M6.5 6.5v6M10 6.5v6"/></svg>
+      <span style="color: #e6e9ec; font-weight: 500; font-size: 12px;">Table structure</span>
+      <div style="width: 1px; height: 16px; background: #2f353d;"></div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #c9a758;">transactions[]</span>
+      <span style="font-size: 10px; color: #4e565f;">34 items in sample</span>
+      <div style="flex-grow: 1;"></div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">band: content</span>
+      <div style="width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border: 1px solid #2f353d;">
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="#aab2bb" stroke-width="1.3"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg>
+      </div>
+    </div>
+
+    <!-- matrix header -->
+    <div style="display: grid; grid-template-columns: 26px 30px 1fr 1.15fr 92px 104px 118px 30px; background: #15181c; border-bottom: 1px solid #2f353d; flex-shrink: 0;">
+      <div></div>
+      <div style="padding: 7px 4px; font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600;">#</div>
+      <div style="padding: 7px 8px; font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600;">HEADER LABEL</div>
+      <div style="padding: 7px 8px; font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600;">BOUND FIELD <span style="color: #4e565f; letter-spacing: 0;">· row scope</span></div>
+      <div style="padding: 7px 8px; font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600; text-align: right;">WIDTH</div>
+      <div style="padding: 7px 8px; font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600;">ALIGN</div>
+      <div style="padding: 7px 8px; font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600;">FOOTER AGGREGATE</div>
+      <div></div>
+    </div>
+
+    <!-- ROW 1 · Date -->
+    <div style="display: grid; grid-template-columns: 26px 30px 1fr 1.15fr 92px 104px 118px 30px; border-bottom: 1px solid #22272d; align-items: center;">
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="12" viewBox="0 0 10 12" stroke="#4e565f" stroke-width="1.2"><path d="M2 3h6M2 6h6M2 9h6"/></svg></div>
+      <div style="padding: 0 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">1</div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; color: #e6e9ec;">Date</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #3a3118; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e0c07a; display: flex; align-items: center; gap: 6px;"><div style="width: 4px; height: 4px; border-radius: 50%; background: #c9a758;"></div>date</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e6e9ec; text-align: right;">22.0</div></div>
+      <div style="padding: 5px 8px;"><div style="display: flex; border: 1px solid #2f353d;"><div style="flex-grow: 1; text-align: center; padding: 4px 0; background: #2a3037; color: #e6e9ec; font-size: 10px;">L</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">C</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">R</div></div></div>
+      <div style="padding: 5px 8px;"><div style="background: #1a1e23; border: 1px solid #272c33; padding: 5px 8px; color: #5e666f; display: flex; justify-content: space-between;"><span>none</span><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#454c55" stroke-width="1.2"><path d="M1.5 3l2.5 2.5L6.5 3"/></svg></div></div>
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="10" viewBox="0 0 10 10" stroke="#454c55" stroke-width="1.2"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></div>
+    </div>
+
+    <!-- ROW 2 · Description (focused row) -->
+    <div style="display: grid; grid-template-columns: 26px 30px 1fr 1.15fr 92px 104px 118px 30px; border-bottom: 1px solid #22272d; align-items: center; background: #1d2228; box-shadow: inset 2px 0 0 #58a6c4;">
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="12" viewBox="0 0 10 12" stroke="#737c86" stroke-width="1.2"><path d="M2 3h6M2 6h6M2 9h6"/></svg></div>
+      <div style="padding: 0 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">2</div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #58a6c4; padding: 5px 8px; color: #e6e9ec; outline: 2px solid rgba(88,166,196,0.22);">Description</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #3a3118; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e0c07a; display: flex; align-items: center; gap: 6px;"><div style="width: 4px; height: 4px; border-radius: 50%; background: #c9a758;"></div>description</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e6e9ec; text-align: right;">64.0</div></div>
+      <div style="padding: 5px 8px;"><div style="display: flex; border: 1px solid #2f353d;"><div style="flex-grow: 1; text-align: center; padding: 4px 0; background: #2a3037; color: #e6e9ec; font-size: 10px;">L</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">C</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">R</div></div></div>
+      <div style="padding: 5px 8px;"><div style="background: #1a1e23; border: 1px solid #272c33; padding: 5px 8px; color: #5e666f; display: flex; justify-content: space-between;"><span>none</span><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#454c55" stroke-width="1.2"><path d="M1.5 3l2.5 2.5L6.5 3"/></svg></div></div>
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="10" viewBox="0 0 10 10" stroke="#737c86" stroke-width="1.2"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></div>
+    </div>
+
+    <!-- ROW 3 · Debit -->
+    <div style="display: grid; grid-template-columns: 26px 30px 1fr 1.15fr 92px 104px 118px 30px; border-bottom: 1px solid #22272d; align-items: center;">
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="12" viewBox="0 0 10 12" stroke="#4e565f" stroke-width="1.2"><path d="M2 3h6M2 6h6M2 9h6"/></svg></div>
+      <div style="padding: 0 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">3</div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; color: #e6e9ec;">Debit</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #3a3118; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e0c07a; display: flex; align-items: center; gap: 6px;"><div style="width: 4px; height: 4px; border-radius: 50%; background: #c9a758;"></div>debit</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e6e9ec; text-align: right;">28.0</div></div>
+      <div style="padding: 5px 8px;"><div style="display: flex; border: 1px solid #2f353d;"><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">L</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">C</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; background: #2a3037; color: #e6e9ec; font-size: 10px;">R</div></div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; color: #e6e9ec; display: flex; justify-content: space-between;"><span style="font-family: 'IBM Plex Mono', monospace;">sum</span><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#737c86" stroke-width="1.2"><path d="M1.5 3l2.5 2.5L6.5 3"/></svg></div></div>
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="10" viewBox="0 0 10 10" stroke="#454c55" stroke-width="1.2"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></div>
+    </div>
+
+    <!-- ROW 4 · Credit -->
+    <div style="display: grid; grid-template-columns: 26px 30px 1fr 1.15fr 92px 104px 118px 30px; border-bottom: 1px solid #22272d; align-items: center;">
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="12" viewBox="0 0 10 12" stroke="#4e565f" stroke-width="1.2"><path d="M2 3h6M2 6h6M2 9h6"/></svg></div>
+      <div style="padding: 0 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">4</div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; color: #e6e9ec;">Credit</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #3a3118; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e0c07a; display: flex; align-items: center; gap: 6px;"><div style="width: 4px; height: 4px; border-radius: 50%; background: #c9a758;"></div>credit</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e6e9ec; text-align: right;">28.0</div></div>
+      <div style="padding: 5px 8px;"><div style="display: flex; border: 1px solid #2f353d;"><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">L</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">C</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; background: #2a3037; color: #e6e9ec; font-size: 10px;">R</div></div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; color: #e6e9ec; display: flex; justify-content: space-between;"><span style="font-family: 'IBM Plex Mono', monospace;">sum</span><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#737c86" stroke-width="1.2"><path d="M1.5 3l2.5 2.5L6.5 3"/></svg></div></div>
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="10" viewBox="0 0 10 10" stroke="#454c55" stroke-width="1.2"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></div>
+    </div>
+
+    <!-- ROW 5 · Balance -->
+    <div style="display: grid; grid-template-columns: 26px 30px 1fr 1.15fr 92px 104px 118px 30px; border-bottom: 1px solid #2f353d; align-items: center;">
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="12" viewBox="0 0 10 12" stroke="#4e565f" stroke-width="1.2"><path d="M2 3h6M2 6h6M2 9h6"/></svg></div>
+      <div style="padding: 0 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">5</div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; color: #e6e9ec;">Balance</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #3a3118; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e0c07a; display: flex; align-items: center; gap: 6px;"><div style="width: 4px; height: 4px; border-radius: 50%; background: #c9a758;"></div>balance</div></div>
+      <div style="padding: 5px 8px;"><div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; color: #e6e9ec; text-align: right;">32.0</div></div>
+      <div style="padding: 5px 8px;"><div style="display: flex; border: 1px solid #2f353d;"><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">L</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; color: #5e666f; font-size: 10px;">C</div><div style="flex-grow: 1; text-align: center; padding: 4px 0; background: #2a3037; color: #e6e9ec; font-size: 10px;">R</div></div></div>
+      <div style="padding: 5px 8px;"><div style="background: #1a1e23; border: 1px solid #272c33; padding: 5px 8px; color: #5e666f; display: flex; justify-content: space-between;"><span>none</span><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#454c55" stroke-width="1.2"><path d="M1.5 3l2.5 2.5L6.5 3"/></svg></div></div>
+      <div style="display: flex; align-items: center; justify-content: center;"><svg width="10" height="10" viewBox="0 0 10 10" stroke="#454c55" stroke-width="1.2"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></div>
+    </div>
+
+    <!-- add column + width budget -->
+    <div style="display: flex; align-items: center; gap: 16px; padding: 9px 16px; border-bottom: 1px solid #272c33;">
+      <div style="display: flex; align-items: center; gap: 7px; border: 1px dashed #3a4048; padding: 5px 10px;">
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="#58a6c4" stroke-width="1.4"><path d="M5 1.5v7M1.5 5h7"/></svg>
+        <span style="color: #aab2bb; font-size: 10px;">Add column</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">Σ 174.0 mm</span>
+      <span style="font-size: 10px; color: #4e565f;">of</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">174.0 mm available</span>
+      <div style="width: 120px; height: 4px; background: #22272d; border: 1px solid #2f353d; display: flex;">
+        <div style="width: 100%; background: #58a6c4;"></div>
+      </div>
+      <span style="font-size: 10px; color: #58a6c4;">exact</span>
+    </div>
+
+    <!-- table-level options -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border-bottom: 1px solid #272c33;">
+      <div style="padding: 12px 16px; border-right: 1px solid #22272d;">
+        <div style="font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600; margin-bottom: 9px;">HEADER</div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 13px; height: 13px; border: 1px solid #58a6c4; background: #58a6c4; display: flex; align-items: center; justify-content: center;"><svg width="8" height="8" viewBox="0 0 8 8" stroke="#15181c" stroke-width="1.6" fill="none"><path d="M1.5 4l1.8 1.8L6.5 2.4"/></svg></div>
+            <span style="color: #e6e9ec; font-size: 10px;">Show header row</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 13px; height: 13px; border: 1px solid #3a4048; background: #2a3037; display: flex; align-items: center; justify-content: center;"><svg width="8" height="8" viewBox="0 0 8 8" stroke="#737c86" stroke-width="1.6" fill="none"><path d="M1.5 4l1.8 1.8L6.5 2.4"/></svg></div>
+            <span style="color: #737c86; font-size: 10px; flex-grow: 1;">Repeat on continuation pages</span>
+            <span style="font-size: 9px; color: #4e565f; border: 1px solid #2f353d; padding: 1px 5px;">REQUIRED</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 12px 16px; border-right: 1px solid #22272d;">
+        <div style="font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600; margin-bottom: 9px;">CELLS</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <div style="font-size: 10px; color: #5e666f; margin-bottom: 4px;">Padding</div>
+            <div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; display: flex; justify-content: space-between;"><span style="font-family: 'IBM Plex Mono', monospace; color: #e6e9ec;">1.5</span><span style="font-size: 9px; color: #4e565f;">mm</span></div>
+          </div>
+          <div>
+            <div style="font-size: 10px; color: #5e666f; margin-bottom: 4px;">Row height</div>
+            <div style="background: #22272d; border: 1px solid #2f353d; padding: 5px 8px; display: flex; justify-content: space-between;"><span style="font-family: 'IBM Plex Mono', monospace; color: #e6e9ec;">auto</span><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#737c86" stroke-width="1.2"><path d="M1.5 3l2.5 2.5L6.5 3"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <div style="font-size: 9px; letter-spacing: 0.09em; color: #737c86; font-weight: 600; margin-bottom: 9px;">BORDERS</div>
+        <div style="display: flex; gap: 6px;">
+          <div style="flex-grow: 1; text-align: center; padding: 6px 0; border: 1px solid #2f353d; background: #22272d; color: #5e666f; font-size: 10px;">None</div>
+          <div style="flex-grow: 1; text-align: center; padding: 6px 0; border: 1px solid #454d57; background: #2a3037; color: #e6e9ec; font-size: 10px;">Horizontal</div>
+          <div style="flex-grow: 1; text-align: center; padding: 6px 0; border: 1px solid #2f353d; background: #22272d; color: #5e666f; font-size: 10px;">All</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- pagination note -->
+    <div style="padding: 11px 16px; display: flex; align-items: center; gap: 10px; background: #15181c;">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#58a6c4" stroke-width="1.3"><circle cx="8" cy="8" r="6"/><path d="M8 7.2v4M8 5.1v.9"/></svg>
+      <span style="font-size: 10px; color: #aab2bb;">Rows are atomic. A row that does not fit moves whole to the next page. Column widths are fixed and never negotiated against content.</span>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <!-- sheet footer -->
+    <div style="height: 48px; flex-shrink: 0; border-top: 1px solid #272c33; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: #15181c;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">5 columns · 2 aggregates</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="padding: 6px 14px; border: 1px solid #2f353d; color: #aab2bb; font-size: 11px;">Cancel</div>
+      <div style="padding: 6px 16px; border: 1px solid #58a6c4; background: #1e3b46; color: #cfe8f2; font-size: 11px; font-weight: 500;">Apply</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
