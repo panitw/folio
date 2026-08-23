@@ -121,7 +121,7 @@ func TestRenderSubsetsOneFacePerDocumentNotPerElement(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
 	fs := testFontSet()
 
-	out, err := Render(tpl, fs)
+	out, err := Render(tpl, Data("{}"), fs)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, testFontSet())
+		b, err := Render(tpl, Data("{}"), testFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
@@ -570,7 +570,7 @@ func TestRenderProducesAValidPDF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, FontSet{})
+	b, err := Render(tpl, Data("{}"), FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -607,7 +607,7 @@ func TestRenderHasNoCreationOrModDate(t *testing.T) {
 		{label: "font-text", tpl: parseFontTestTemplate(t), fs: testFontSet()},
 	}
 	for _, c := range cases {
-		b, err := Render(c.tpl, c.fs)
+		b, err := Render(c.tpl, Data("{}"), c.fs)
 		if err != nil {
 			t.Fatalf("%s: Render() error: %v", c.label, err)
 		}
@@ -638,7 +638,7 @@ func TestRenderIDEntriesAreIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, FontSet{})
+	b, err := Render(tpl, Data("{}"), FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -729,7 +729,7 @@ func TestRenderUnrecognisedNamedPageSizeIsLocatedError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, err = Render(tpl, FontSet{})
+	_, err = Render(tpl, Data("{}"), FontSet{})
 	if err == nil {
 		t.Fatal("expected a located error for page.size \"Letter\" (Finding 17), got nil")
 	}
@@ -743,7 +743,7 @@ func TestRenderUnrecognisedNamedPageSizeIsLocatedError(t *testing.T) {
 // PROVISIONAL Story 1.1-1.4 signature did — "better than a public entry
 // point documented as ignoring its argument" (D-1.5.9).
 func TestRenderNilTemplateIsLocatedError(t *testing.T) {
-	_, err := Render(nil, FontSet{})
+	_, err := Render(nil, Data("{}"), FontSet{})
 	if err == nil {
 		t.Fatal("expected a located error for Render(nil, ...), got nil")
 	}
@@ -754,7 +754,7 @@ func TestRenderNilTemplateIsLocatedError(t *testing.T) {
 // font carrying a FontFile2 stream and a ToUnicode CMap.
 func TestRenderEmbedsSubsetFontAsType0Identity(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, testFontSet())
+	b, err := Render(tpl, Data("{}"), testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -854,7 +854,7 @@ func renderFontInSubprocess(t *testing.T, gomaxprocs string) []byte {
 // created=3304067374, modified=3573633780.
 func TestEmbeddedHeadTimestampsEqualSourceExactly(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, testFontSet())
+	b, err := Render(tpl, Data("{}"), testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}

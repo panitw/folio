@@ -1741,3 +1741,59 @@ Delivery Log text corrected), **D-1.4.11** (Finding 5 fixed), **D-1.4.12 (OWNER)
 **D-1.1.b** (Finding 20 fixed). See [§ Finding Resolutions](#finding-resolutions) above for the
 per-finding detail and file list.
 
+
+---
+
+## Defect found after done
+
+> **Appended, never rewritten** *(mechanism: binding, D-1.6.6)*. Everything above this heading is
+> the record as it stood when Story 1.4 was closed and is left exactly as written. This section is
+> an addition made during Story 1.6's creation, at baseline `5a1cf7d`.
+
+### A malformed template hangs the loader — Story 1.4's user-story promise was not met by the shipped code
+
+**Found by:** Story 1.6's creator, while measuring `splitJSONNumber` under D-1.6.1's mandate to
+reuse it. **Ruled by:** **D-1.6.6**. **Fixed by:** Story 1.6 — see the fixing commit named in that
+story's Delivery Log. **Not** a `deferred-work.md` entry: this is being fixed now, not deferred, and
+filing it there would dilute that file.
+
+**The promise, quoted from this file's own §Story above, verbatim:**
+
+> *"I want to load a `.folio` file and have malformed or future-versioned templates rejected with a
+> **located error**, So that a bad template is caught in CI rather than in production."*
+
+**What the shipped code does instead: it hangs.** Not a wrong error, not a slow error — no error,
+indefinitely.
+
+**The mechanism, measured.** `parseDecimalExponent` (`internal/template/decimal.go`) accumulates the
+exponent with `n = n*10 + int(c-'0')` and **no overflow check**. The wrapped value flows into
+`decodePoints`' `shift`, and from there into
+`new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(shift)), nil)`, which grinds forever building a
+number with ~10^18 digits.
+
+| Literal | `splitJSONNumber` | `decodePoints` |
+|---|---|---|
+| `1e2000000` | `exp=2000000`, `err=nil` | **errors correctly, 0.07s** — the control |
+| `1e99999999999999999999` | `exp=7766279631452241919`, `err=nil` | **hung; killed by `-timeout` at 15s** |
+| `1e9223372036854775808` | `exp=-9223372036854775808`, `err=nil` | **hung; killed by `-timeout` at 15s** |
+
+A **positive** exponent literal becomes the **most negative `int64`**. Both hangs show ~74
+`math/big` frames (`nat.sqr` / `karatsubaSqr` — `Exp`'s repeated squaring) in the panic trace.
+
+**Reachable from untrusted input through the public API — measured, not inferred.** A syntactically
+valid `.folio` (`fixtures/font-text/input.folio` with element `e1`'s `x` set to
+`1e99999999999999999999`) passed to **`folio.LoadTemplate`** hung and was killed by `-timeout` at
+20s, with the same `math/big` stack. Epic 5's designer loads user-authored templates, so this is
+reachable from untrusted input, not merely from a developer typo.
+
+**Why the fix lands in Story 1.6 rather than reopening this story** *(D-1.6.6)*: D-1.6.1 already
+mandates both an exponent bound **and** reuse of this exact splitter — so 1.4's defect and 1.6's
+ruled requirement are **the same line of code**. Reopening 1.4 would land a bound that 1.6
+immediately supersedes, in the one primitive the programme has forbidden from existing twice.
+
+**Why this was not caught here.** Story 1.4's numeric tests exercised *representable* out-of-range
+values (`1e100000`, `1e2000000`), where `geom.Length`'s int64 millipoint bound catches the value
+promptly and correctly. The defect only appears once the *exponent itself* overflows `int`, which no
+1.4 fixture reached. The lesson generalises: a bound tested only at values the downstream type can
+still reject does not test the bound.
+

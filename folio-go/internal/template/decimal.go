@@ -28,7 +28,7 @@ import (
 // is a load error (AC28) — nothing is rounded. int64 millipoint
 // overflow is a load error, never a wrap (AC27).
 func decodePoints(literal string) (geom.Length, error) {
-	sign, intPart, fracPart, exp, err := splitJSONNumber(literal)
+	sign, intPart, fracPart, exp, err := SplitJSONNumber(literal)
 	if err != nil {
 		return 0, err
 	}
@@ -67,13 +67,21 @@ func decodePoints(literal string) (geom.Length, error) {
 	return geom.Length(millipoints.Int64()), nil
 }
 
-// splitJSONNumber splits a valid JSON number literal into its sign
+// SplitJSONNumber splits a valid JSON number literal into its sign
 // (1 or -1), integer digit string, fractional digit string (without the
 // '.') and decimal exponent (0 if absent). It does not itself validate
 // full JSON number grammar — literal always comes from
 // encoding/json's own number scanner (via json.Number), which already
 // guarantees that.
-func splitJSONNumber(literal string) (sign int, intPart, fracPart string, exp int, err error) {
+//
+// This is the module's ONE splitter (AC6, D-1.6.1): internal/bind's
+// Decimal (Story 1.6) reuses it rather than duplicating it, which is
+// why it is exported — internal/bind importing internal/template is
+// the correct direction (Document -> BoundTree). Both consumers
+// (decodePoints here, and internal/bind.NewDecimal) share the exponent
+// bound this function enforces (see parseDecimalExponent) and each
+// layers its own tighter check on top (AC4b, D-1.6.6).
+func SplitJSONNumber(literal string) (sign int, intPart, fracPart string, exp int, err error) {
 	s := literal
 	sign = 1
 	if strings.HasPrefix(s, "-") {
@@ -105,6 +113,54 @@ func splitJSONNumber(literal string) (sign int, intPart, fracPart string, exp in
 	return sign, intPart, fracPart, exp, nil
 }
 
+// MaxSplitExponentMagnitude is SplitJSONNumber's own bound on the
+// magnitude of a parsed decimal exponent (D-1.6.6, AC4/AC4a/AC4b). It
+// is deliberately the WIDER of this module's two known consumer
+// bounds — decodePoints' implicit millipoint range (a handful of
+// significant digits, always far inside this bound) and
+// internal/bind.Decimal's own maxDecimalExponentMagnitude (100,000) —
+// so this shared splitter never refuses a literal either consumer
+// could legally represent (AC4b): each consumer then applies its own
+// tighter check on top of what this bound already let through.
+//
+// QA Finding 7 (this story's review, Minor): this was previously
+// 1,000,000 — 10x the actual wider consumer bound — which let ~900,000
+// exponent values no consumer can represent still reach decodePoints'
+// big.Int.Exp (measured: 33.0ms of repeated-squaring work at the old
+// bound, versus 29µs one past the corrected bound). Not a hang or a
+// regression (the loader aborts on the first bad element, so this was
+// bounded, input-proportional work, never a DoS) — but AC4a-ii's
+// "rejected BEFORE any big.Int scaling is attempted" was only true
+// above the old bound, and the decade of headroom was pure attack
+// surface no consumer could use. Set to exactly
+// internal/bind.maxDecimalExponentMagnitude, the wider of the two
+// known consumers today.
+//
+// The specific number is illustrative (AC4, mechanism note); that a
+// bound exists, is enforced before any big.Int scaling is attempted,
+// and is documented, is binding.
+const MaxSplitExponentMagnitude = 100_000
+
+// parseDecimalExponent parses s (the digits after 'e'/'E', with an
+// optional leading sign already known to belong here) into a decimal
+// exponent.
+//
+// Two fixes, both required (D-1.6.6, AC4a) — this function used to
+// accumulate with `n = n*10 + int(c-'0')` and no overflow check at
+// all, so an absurd exponent like "99999999999999999999" silently
+// wrapped into an arbitrary int64 (frequently math.MinInt64), which
+// then reached big.Int.Exp's repeated squaring in decodePoints and
+// HUNG the process — reachable from a syntactically valid `.folio`
+// through the public folio.LoadTemplate (measured, story 1.6 Dev
+// Notes M-1; the defect is recorded against Story 1.4's "malformed …
+// templates rejected with a located error" promise).
+//
+//  1. An overflow check DURING accumulation, not after: checking only
+//     after the loop would read a value that has already wrapped.
+//  2. A documented magnitude bound (MaxSplitExponentMagnitude),
+//     rejected here — before any consumer ever attempts a big.Int
+//     scaling operation. Rejecting only once the scaling has begun
+//     does not prevent the hang; the hang IS the scaling.
 func parseDecimalExponent(s string) (int, error) {
 	neg := false
 	if strings.HasPrefix(s, "+") {
@@ -122,13 +178,34 @@ func parseDecimalExponent(s string) (int, error) {
 		if c < '0' || c > '9' {
 			return 0, fmt.Errorf("non-digit %q in exponent", c)
 		}
-		n = n*10 + int(c-'0')
+		d := int(c - '0')
+		// Fix 1 (AC4a-i): overflow check DURING accumulation. n is
+		// always >= 0 here, so n*10+d overflows exactly when
+		// n > (MaxInt-d)/10 — this is checked BEFORE the multiply,
+		// never after, so n itself never wraps.
+		if n > (maxInt-d)/10 {
+			return 0, fmt.Errorf("exponent %q overflows during parsing", s)
+		}
+		n = n*10 + d
+	}
+	// Fix 2 (AC4a-ii): the documented magnitude bound, rejected here —
+	// before SplitJSONNumber ever returns to a caller that might feed
+	// this into big.Int.Exp. n cannot have wrapped (Fix 1), so this
+	// comparison is meaningful.
+	if n > MaxSplitExponentMagnitude {
+		return 0, fmt.Errorf("exponent magnitude %d exceeds the maximum of %d", n, MaxSplitExponentMagnitude)
 	}
 	if neg {
 		n = -n
 	}
 	return n, nil
 }
+
+// maxInt is the platform int's maximum value, spelled without an
+// import (this file already imports math/big, but keeping this literal
+// avoids pulling in "math" just for one constant used solely by Fix 1's
+// overflow check above).
+const maxInt = int(^uint(0) >> 1)
 
 // appendPoints appends the canonical on-disk spelling of a geom.Length
 // to dst: sign, integer part, and up to three fractional digits with

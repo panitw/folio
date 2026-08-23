@@ -140,3 +140,24 @@ Story 1.4's load failures are plain Go errors (D-1.4.2: *"1.4 must not mint them
 `columns[].footer`'s `sum`/`count`/`avg` must eventually use the *same* aggregate evaluation as the
 `{{sum(...)}}` family of expression functions — a single implementation, not two that can drift.
 Story 1.4 builds neither; nothing renders a table until Story 4.5.
+
+### DW-8 — `Decimal` moves to `internal/expr` (or a leaf) and 1.6's path matcher is deleted
+- **Deferred by:** Story 1.6 (rulings D-1.6.1, D-1.6.5)
+- **Owner:** **Story 3.2** — the expression-language story
+- **Forcing function:** DW-5's existing `internal/expr`-absent tripwire reddens the moment that
+  package is created, which is what makes someone re-read this entry.
+
+**Two obligations, one owner.**
+
+1. **The `Decimal` type moves; it is never duplicated.** AD-23 **Binds** both `internal/bind` and
+   `internal/expr`, and Epic 3's `sum`/`avg`/comparison need exact decimal arithmetic. But
+   `internal/bind` imports `internal/expr`, so `expr → bind` would be an **import cycle** — a hard
+   compile error. **The dangerous resolution is not the cycle (Go stops that) but duplicating the
+   type to break it.** Pre-committed: `internal/expr` may never import `internal/bind`; when 3.2
+   needs `Decimal`, the type **moves**.
+2. **Story 3.2's parser replaces 1.6's path matcher — deleted, not kept alongside.** 1.6 accepts only
+   a bare dotted path and rejects everything expression-shaped precisely so that two parsers never
+   coexist. If 3.2 leaves the matcher in place, the wrong one eventually wins.
+
+**How we'd know it was forgotten.** A second `Decimal` type anywhere in the module, or a dotted-path
+matcher surviving alongside the expression parser after 3.2.

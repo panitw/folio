@@ -92,17 +92,27 @@ func itoa(n int) string {
 // its parsed AST and its path relative to root (AC4: findings must carry
 // a path relative to the scanned target directory). It skips any
 // directory literally named "testdata", at any depth, by directory name
-// (AC2) — not by path prefix and not by a list of specific paths. It
-// returns the first parse error verbatim rather than swallowing it
-// (AC5, D-1.3.3 amended): a target that cannot be read must never be
-// silently treated as "zero findings".
+// (AC2) — not by path prefix and not by a list of specific paths — and,
+// since Story 1.6's second, module-wide caller (AC5a, D-1.6.7), any
+// directory whose name starts with "." (a dot-directory), at any depth,
+// BY CATEGORY: never by naming a specific one such as ".matrix-build"
+// — "a name on a list is the rot pattern" (AC5a). The root itself is
+// never skipped by this rule even if its own name happens to start
+// with "." (WalkDir's first callback IS the root; only entries found
+// WHILE walking are subject to the dot-directory skip), which matters
+// not at all in practice here since neither caller ever points this at
+// a dot-named root, but keeps the predicate exactly "skip a
+// dot-directory encountered during the walk", nothing more.
 func walkGoFiles(fset *token.FileSet, root string, visit func(rel string, file *ast.File) error) error {
+	first := true
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if d.Name() == "testdata" {
+			isRoot := first
+			first = false
+			if d.Name() == "testdata" || (!isRoot && strings.HasPrefix(d.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -257,4 +267,57 @@ func TestNoFloat64FixtureScan(t *testing.T) {
 		{path: "violating_conversion.go", rule: ruleNoFloat64},
 	}
 	assertExactFindings(t, got, want)
+}
+
+// TestNoFloat64UnderModule is Story 1.6's AC5/AC5a (D-1.6.7): the
+// SECOND production caller of the existing scanNoFloat64 checker — "a
+// caller is not a checker" — pointed at the WHOLE module
+// (folio-go/, root and below), not only folio-go/internal/. Measured
+// (M-6, this story's Dev Notes): the module root sat outside every
+// existing guard, so folio.Render could carry a float64 today with
+// nothing catching it. This subsumes internal/ (and, on arrival,
+// fonts/, cmd/, wasm/) rather than needing a new call site each time a
+// new top-level directory appears.
+//
+// Four binding properties (AC5a): whole module scope; `_test.go`
+// included (D-1.3.1's precedent — no exemption pre-emptively); skip
+// testdata/ and any dot-directory BY CATEGORY (walkGoFiles above,
+// never a specific name); keep TestNoFloat64UnderInternal, the
+// existing internal/-scoped caller, unmodified — two callers, one
+// checker.
+func TestNoFloat64UnderModule(t *testing.T) {
+	internalRoot, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("resolve internal/ root: %v", err)
+	}
+	moduleRoot := filepath.Dir(internalRoot) // folio-go/
+
+	findings, stats, err := scanNoFloat64(moduleRoot)
+	if err != nil {
+		t.Fatalf("walk module root %s: %v", moduleRoot, err)
+	}
+
+	// Vacuity guard (D-000.9 + extension, D-000.13): from the
+	// scanner's OWN reported stats, confirm it actually visited both
+	// the module-root package ("." relative to moduleRoot) and the
+	// "internal" directory the other caller already covers — a run
+	// that visited nothing, or only internal/, would report the same
+	// zero findings a healthy run does.
+	if !stats.packagesVisited["."] {
+		t.Fatalf("vacuity guard: scanner's own stats did not report visiting the module-root package (\".\"), got %v", stats.packagesVisited)
+	}
+	if !stats.packagesVisited["internal"] {
+		t.Fatalf("vacuity guard: scanner's own stats did not report visiting \"internal\" from the module root, got %v", stats.packagesVisited)
+	}
+	if stats.declsSeen == 0 {
+		t.Fatalf("vacuity guard: scanner's own stats report 0 declarations seen")
+	}
+
+	if len(findings) > 0 {
+		var msgs []string
+		for _, f := range findings {
+			msgs = append(msgs, f.msg)
+		}
+		t.Fatalf("float64/float32 found under the module root (forbidden by AD-23):\n%s", strings.Join(msgs, "\n"))
+	}
 }

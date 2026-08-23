@@ -1,0 +1,131 @@
+// Package bind is the report-data half of AD-23 (Story 1.6, D-1.6.1):
+// exact scaled-integer decimals over JSON literals, and the generic
+// value tree that report data (as opposed to the `.folio` document
+// itself) decodes into. It imports internal/template (Document ->
+// BoundTree is the correct direction, AC6) to reuse the module's ONE
+// number-literal splitter rather than duplicating it — internal/bind
+// never re-implements SplitJSONNumber.
+//
+// internal/bind inherits AD-1's full import ban in non-test files
+// (time, os, math/rand, net, math transcendentals) and D-1.3.1's exact
+// `_test.go` exemption (os, testing, path/filepath, embed — and
+// nothing else; time, math/rand and net stay banned in tests too,
+// AC29). It also inherits AD-23's float64 ban (AC5) automatically: the
+// second production caller this story adds to the existing checker
+// (AC5a) scans the whole module, internal/bind included.
+package bind
+
+import (
+	"fmt"
+	"math/big"
+	"strings"
+
+	"github.com/panitw/folio/folio-go/internal/template"
+)
+
+// Decimal is AD-23's exact scaled-integer decimal (D-1.6.1, AC1): an
+// int64 coefficient and an integral decimal exponent, carrying a JSON
+// number literal's own precision. This is NOT geom.Length: millipoints
+// are a fixed three-decimal scale for geometry, and a report-data
+// literal (a bank-statement figure, for instance) carries whatever
+// precision its author wrote — "1.50" and "1.5" are DISTINCT values
+// (AC2), which a fixed-scale type cannot represent.
+//
+// The value Decimal represents is Coefficient * 10^Exponent.
+type Decimal struct {
+	Coefficient int64
+	Exponent    int
+}
+
+// maxDecimalCoefficientDigits bounds Decimal's coefficient by
+// SIGNIFICANT digits only (AC3): leading zeros in the literal's
+// concatenated digit string are stripped before counting; trailing
+// zeros are never stripped (stripping them would collapse "1.50" into
+// {15,-1} and violate AC2's distinctness). 19 is the largest digit
+// count guaranteed to fit inside int64's positive range in every case;
+// SetString+IsInt64 below still rejects an all-9s 19-digit string that
+// exceeds MaxInt64.
+const maxDecimalCoefficientDigits = 19
+
+// maxDecimalExponentMagnitude is Decimal's OWN tighter exponent bound
+// (AC4b, D-1.6.6), applied on top of the shared splitter's WIDER bound
+// (template.MaxSplitExponentMagnitude). A future story that expands a
+// Decimal's digits at render time (the way decodePoints already does
+// for millipoints) would otherwise be able to construct a value whose
+// expansion is enormous even though its exponent fit inside the
+// splitter's shared, more permissive bound — so this consumer narrows
+// further, exactly as AC4b's layering requires. The specific number is
+// illustrative; that it exists, is checked against the CONSTRUCTED
+// Decimal.Exponent (exp - len(fracPart), not the literal's raw "e"
+// exponent — QA Finding 3, this story's review: a literal with no "e"
+// notation at all, or one that stacks a long fractional part on top of
+// its own exponent, never touched the old raw-exp check, and could
+// still construct an Exponent far past this bound), and is strictly
+// narrower than the splitter's raw-exponent bound, is binding.
+const maxDecimalExponentMagnitude = 100_000
+
+// NewDecimal converts a JSON number literal (as produced by
+// json.Decoder.UseNumber) into a Decimal (AC1, AC6). It reuses
+// internal/template.SplitJSONNumber — the module's one splitter — for
+// sign/digit/exponent decomposition, and never re-derives any of that
+// parsing itself.
+//
+// A coefficient that does not fit int64 (by significant digit count,
+// AC3) or an exponent whose magnitude exceeds this package's own bound
+// (AC4b) is a located error, never a truncation and never a wrap.
+func NewDecimal(literal string) (Decimal, error) {
+	sign, intPart, fracPart, exp, err := template.SplitJSONNumber(literal)
+	if err != nil {
+		return Decimal{}, fmt.Errorf("bind: %w", err)
+	}
+
+	// AC3a: intPart+fracPart may strip to the EMPTY string (every
+	// digit is a leading zero, e.g. "0.00") — that is legal, and the
+	// scale must still survive as Exponent even though Coefficient is
+	// 0 (never an error, never a lost scale).
+	digits := intPart + fracPart
+	sig := strings.TrimLeft(digits, "0")
+
+	// QA Finding 3 (this story's review, Major): the bound must apply
+	// to the CONSTRUCTED exponent, not the literal's raw "e" exponent.
+	// A literal with no "e" notation at all (e.g. "0." + 199999 zeros
+	// + "1") never touches exp, and a literal that stacks a long
+	// fracPart on top of its own exponent (e.g. "0." + 999999 zeros +
+	// "1e-100000") combines the two — both previously constructed an
+	// Exponent whose magnitude vastly exceeded this bound with
+	// err == nil. Checking here, after exponent is computed, closes
+	// both gaps; AC4b's layering (this bound strictly narrower than
+	// the splitter's raw-exp bound) still holds because len(fracPart)
+	// only ever makes the constructed value MORE negative, never less
+	// bounded than the raw exp alone.
+	exponent := exp - len(fracPart)
+	if exponent > maxDecimalExponentMagnitude || exponent < -maxDecimalExponentMagnitude {
+		return Decimal{}, fmt.Errorf(
+			"bind: value %q: exponent magnitude exceeds %d", literal, maxDecimalExponentMagnitude,
+		)
+	}
+
+	if sig == "" {
+		return Decimal{Coefficient: 0, Exponent: exponent}, nil
+	}
+
+	if len(sig) > maxDecimalCoefficientDigits {
+		return Decimal{}, fmt.Errorf(
+			"bind: value %q: coefficient has %d significant digits, exceeds %d (does not fit int64)",
+			literal, len(sig), maxDecimalCoefficientDigits,
+		)
+	}
+
+	coeff := new(big.Int)
+	if _, ok := coeff.SetString(sig, 10); !ok {
+		return Decimal{}, fmt.Errorf("bind: invalid numeric literal %q", literal)
+	}
+	if sign < 0 {
+		coeff.Neg(coeff)
+	}
+	if !coeff.IsInt64() {
+		return Decimal{}, fmt.Errorf("bind: value %q: coefficient does not fit int64", literal)
+	}
+
+	return Decimal{Coefficient: coeff.Int64(), Exponent: exponent}, nil
+}

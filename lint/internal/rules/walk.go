@@ -41,6 +41,16 @@ func walkGoFiles(root string, visit fileVisit) error {
 		if rerr != nil {
 			return rerr
 		}
+		if rel == "." {
+			// root IS this file (a file-scoped scan, e.g. AC12's
+			// render-entry check): filepath.Rel of a path against
+			// itself is always ".", which makes every finding's
+			// location read as "." instead of naming the file (QA
+			// Finding 13, this story's review). Fall back to the
+			// file's own base name so a located error stays located
+			// even when root is a single file.
+			rel = filepath.Base(path)
+		}
 		return visit(rel, file, fset)
 	})
 }

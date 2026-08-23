@@ -2,8 +2,11 @@ package rules
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -164,4 +167,118 @@ func TestForbiddenImportsMessageContent(t *testing.T) {
 	if !strings.Contains(piMsg, wantSurface) {
 		t.Errorf("math.Pi message missing allow-listed numeric surface (Finding 11): %q", piMsg)
 	}
+}
+
+// TestRenderEntryFileHasNoForbiddenImports is Story 1.6's AC12/AC13
+// (D-1.6.3): "the file declaring Render and RenderTo imports none of
+// os, time, net, math/rand" is asserted here by REUSING
+// ScanForbiddenImports — never a newly invented scanner (AC13) —
+// pointed at whichever file (or files) under folio-go/ actually declare
+// Render/RenderTo (found by AST, findRenderDeclaringFiles below), not
+// at a hard-coded path (filepath.WalkDir, which
+// ScanForbiddenImports/walkGoFiles are built on, visits a non-directory
+// root exactly once, so this is the existing checker at file scope, not
+// a second checker).
+//
+// QA Finding 1 (this story's review, Blocker): the original version
+// hard-coded folio-go/render_entry.go as the target. Moving func Render
+// back into folio.go (which imports "os"), leaving render_entry.go in
+// place holding only type Data and a doc comment, left this test
+// PASSING — the guard asserted a filename, never that the file
+// declares Render. D-1.6.3's own justification ("fails the moment
+// someone adds a convenience os.Getenv to the render entry point") was
+// false the moment the entry point moved, which is exactly what Story
+// 1.7 does when it adds RenderTo. The property now derives from the
+// function declaration, not the other way round.
+//
+// This is deliberately NOT a scan of the whole module-root package:
+// folio-go/folio.go (same package, different file) legitimately
+// imports "os" for LoadTemplate (D-1.4.6's os boundary is the package,
+// not this file) — AC12's property is a FILE-level fact, and asserting
+// it at package granularity would either false-positive on folio.go or
+// require inventing a per-file exemption this story does not need.
+//
+// Vacuity guard (AC25/D-000.9, sharpened by D-000.13 — Finding 1):
+// findRenderDeclaringFiles itself fails the test if no file under
+// folio-go/ declares Render or RenderTo, so a run that finds nothing
+// cannot read as "zero findings, pass". For each declaring file found,
+// filesSeen == 1 is asserted explicitly, and a missing file is already
+// a walk error surfaced by ScanForbiddenImports itself (D-1.3.3
+// amended: a target that cannot be read is never silently "zero
+// findings").
+func TestRenderEntryFileHasNoForbiddenImports(t *testing.T) {
+	root := repoRootFromTest(t)
+	renderFiles := findRenderDeclaringFiles(t, root)
+
+	for _, renderEntryFile := range renderFiles {
+		findings, stats, err := ScanForbiddenImports(renderEntryFile)
+		if err != nil {
+			t.Fatalf("scan %s: %v (AC12: the render entry file must exist and be readable)", renderEntryFile, err)
+		}
+		if stats.FilesSeen != 1 {
+			t.Fatalf("vacuity guard: expected exactly 1 file seen (the render entry file itself), got %d — stats: %+v", stats.FilesSeen, stats)
+		}
+		if len(findings) > 0 {
+			var msgs []string
+			for _, f := range findings {
+				msgs = append(msgs, f.Message)
+			}
+			t.Fatalf("AC12: the file declaring Render must import none of os/time/net/math/rand, found:\n%s", strings.Join(msgs, "\n"))
+		}
+	}
+}
+
+// findRenderDeclaringFiles locates every file directly under folio-go/
+// (the module-root package, non-test files only) that declares a
+// top-level function named Render or RenderTo — D-1.6.3's actual
+// property ("the file declaring Render and RenderTo"), located by
+// parsing the AST rather than assumed from a filename (QA Finding 1).
+// today this returns exactly one path (render_entry.go); if Story 1.7
+// ever splits Render and RenderTo across two files, both are scanned.
+//
+// Vacuity guard (D-000.9/D-000.13): zero declaring files is a hard
+// failure here, not a scan that silently found nothing to check — the
+// caller must never be able to read an empty result as "the property
+// holds".
+func findRenderDeclaringFiles(t *testing.T, root string) []string {
+	t.Helper()
+	folioGoDir := filepath.Join(root, "folio-go")
+	entries, err := os.ReadDir(folioGoDir)
+	if err != nil {
+		t.Fatalf("read %s: %v", folioGoDir, err)
+	}
+
+	fset := token.NewFileSet()
+	seen := map[string]bool{}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join(folioGoDir, name)
+		file, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			t.Fatalf("parse %s: %v", path, perr)
+		}
+		for _, decl := range file.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Recv != nil {
+				continue
+			}
+			if fd.Name.Name == "Render" || fd.Name.Name == "RenderTo" {
+				seen[path] = true
+				break
+			}
+		}
+	}
+
+	if len(seen) == 0 {
+		t.Fatalf("vacuity guard: no non-test file directly under %s declares Render or RenderTo — AC12's property is unassertable (D-000.9/D-000.13)", folioGoDir)
+	}
+	files := make([]string, 0, len(seen))
+	for f := range seen {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	return files
 }

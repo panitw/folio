@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/panitw/folio/folio-go/internal/bind"
 	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/pdf"
@@ -75,7 +76,17 @@ type textRunSource struct {
 // — the first chain entry present in fs wins. AC9's "union of glyphs
 // the document uses" is exactly the set of runes across everything this
 // function returns.
-func collectTextRuns(doc *Template, fs FontSet) ([]textRunSource, error) {
+//
+// Each text element's authored value is first resolved against data
+// via internal/bind.BindText (AC15-AC21, D-1.6.5): this is the ONLY
+// site that calls BindText, so AC20's field-scope fence — bind text
+// interpolation applies to text-element `value` only, never
+// table.bind/columns[].bind — holds by construction rather than by a
+// document-wide scan that would also visit those other fields (M-4:
+// the canonical golden fixture's `columns[].bind` contains an
+// expression-shaped `{{formatNumber(...)}}` that is deliberately not
+// this story's business).
+func collectTextRuns(doc *Template, data bind.Value, fs FontSet) ([]textRunSource, error) {
 	_, height, err := pageDimensions(doc)
 	if err != nil {
 		return nil, err
@@ -115,9 +126,30 @@ func collectTextRuns(doc *Template, fs FontSet) ([]textRunSource, error) {
 			if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
 				continue
 			}
+			boundText, berr := bind.BindText(el.Value.Value, data, string(el.ID))
+			if berr != nil {
+				return nil, fmt.Errorf("folio: Render: %w", berr)
+			}
+			// QA Finding 5 (this story's review, Major): resolveFace
+			// must run BEFORE the AC9 empty-text short-circuit below,
+			// not after it. The previous ordering let boundText == ""
+			// skip font-chain validation entirely, so an element with
+			// an unresolvable style.fontFamily chain (Story 1.5
+			// AC2/AC4's located error) rendered successfully whenever
+			// its bound value happened to be null or "" — the SAME
+			// broken template passing or failing depending on which
+			// report it was handed. AC9 only requires that a null
+			// binding "renders as empty, and is not an error"; it does
+			// not license skipping the element's own validation.
 			face, err := resolveFace(doc, el, fs)
 			if err != nil {
 				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
+			}
+			if boundText == "" {
+				// AC9: a placeholder resolving to explicit JSON null
+				// renders as empty — nothing left to draw for this run
+				// — but the element's own validation above still ran.
+				continue
 			}
 			fontSize := defaultFontSizePt
 			if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
@@ -125,7 +157,7 @@ func collectTextRuns(doc *Template, fs FontSet) ([]textRunSource, error) {
 			}
 			runs = append(runs, textRunSource{
 				face:     face,
-				text:     el.Value.Value,
+				text:     boundText,
 				x:        el.X,
 				y:        b.origin + el.Y,
 				fontSize: fontSize,
@@ -162,8 +194,8 @@ func resolveFace(doc *Template, el template.Element, fs FontSet) (string, error)
 // (AC14b). It resolves every text element's face, subsets each distinct
 // face EXACTLY ONCE over the union of runes the whole document uses
 // (AC9), and hands the result to internal/pdf.SerializeTextDocument.
-func renderDocument(t *Template, fs FontSet) ([]byte, error) {
-	runs, err := collectTextRuns(t, fs)
+func renderDocument(t *Template, data bind.Value, fs FontSet) ([]byte, error) {
+	runs, err := collectTextRuns(t, data, fs)
 	if err != nil {
 		return nil, err
 	}

@@ -41,7 +41,7 @@ development_status:
   1-3-guardrails-that-fail-the-build: done
   1-4-load-validate-and-round-trip-a-folio-template: done
   1-5-embed-and-subset-a-font-byte-stably: done
-  1-6-bind-scalar-json-values-into-text: backlog
+  1-6-bind-scalar-json-values-into-text: done
   1-7-render-to-an-io-writer-with-runtime-parameters: backlog
   1-8-embed-and-render-an-image-from-the-template: backlog
   epic-1-retrospective: optional

@@ -393,7 +393,7 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 	}
 
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, testFontSet())
+	b, err := Render(tpl, Data("{}"), testFontSet())
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}

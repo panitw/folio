@@ -3056,3 +3056,326 @@ treating it as a divergence — a wrong hash is a tooling fault until proven oth
 
 **How we'd know it was wrong.** A hash-mismatch report that disappears when re-measured by the file
 route — which is now the first thing to try, not the last.
+
+## Epic 1 decisions — Story 1.6 (ruled before the story file was written)
+
+### D-1.6.1 — `Decimal` is an `int64` coefficient plus a decimal exponent, in `internal/bind`, over one shared literal splitter
+**Orchestrator decision**, on the lead's ruling. The core of Story 1.6.
+
+**Verdict — the shape is fixed by the spine, not by the lead.** AD-23's Rule states it verbatim
+(verified at `ARCHITECTURE-SPINE.md:418`): *"`internal/bind` converts each to an exact scaled-integer
+decimal — an **`int64` coefficient plus an exponent** — carrying the literal's own precision."*
+*(mechanism: binding for the `int64` coefficient + integral decimal exponent; illustrative for field
+names and exponent width)*
+
+`1.50` → `{150, -2}`; `1.5` → `{15, -1}`; `36` → `{36, 0}`; `1e3` → `{1, 3}`. Precision preserved,
+distinct literals distinct. **This is not `geom.Length`** — millipoints are a fixed 3-decimal scale;
+a bank-statement literal carries its own.
+
+**"Too large" is two bounds, and only the first is the AC's letter** *(mechanism: binding)*:
+1. **Coefficient overflow** — the coefficient must fit `int64`. Only **significant** digits count, so
+   `0.00000000000000000001` is fine (`{1, -20}`) while a 20-significant-digit literal is an error.
+   This is the AC's "never a silent narrowing".
+2. **Exponent bound** — stated openly as a **safety addition beyond the AC's letter**. Report data is
+   untrusted caller input and an unbounded exponent is a **memory-amplification hazard**: a 10-byte
+   literal like `1e999999999` is representable in the struct but renders to a gigabyte of digits.
+   Reject at parse with a located error rather than accepting a value that fails later, further from
+   the cause. The specific range is illustrative; **that one exists is binding.**
+
+Both are located errors naming the path and the element id, per AD-14.
+
+**One implementation of JSON number-literal decomposition in the module** *(mechanism: binding)*.
+`internal/template/decimal.go:76` already has
+`splitJSONNumber(literal) (sign, intPart, fracPart, exp)` — verified — which is exactly the primitive
+1.6 needs. **Reuse it; do not write a second.** Two splitters would drift, and this is the money path.
+Whether it is exported from `internal/template` or moved lower is illustrative; `internal/bind`
+importing `internal/template` is the correct direction (Document → BoundTree). **What binds is that
+only one exists.**
+
+**Placement, with a pre-commitment that prevents the worst outcome** *(mechanism: binding)*.
+`Decimal` lives in **`internal/bind`** at 1.6, per AD-23's "`internal/bind` converts each". But AD-23
+**Binds** names *both* `internal/bind` and `internal/expr`, and Epic 3's `sum`/`avg`/comparison do
+exact decimal arithmetic — so `internal/expr` needs this type at Story 3.2, while `internal/bind`
+imports `internal/expr` (bind resolves expressions). That makes `expr → bind` an **import cycle and a
+hard compile error**. The dangerous resolution is **not** the cycle — Go stops that — **it is someone
+duplicating the type to break it.** Pre-committed now:
+- **`internal/expr` may never import `internal/bind`.** The arrow runs bind → expr.
+- When 3.2 needs `Decimal`, the type **moves** (to `expr` or a leaf package). **Duplicating it is
+  forbidden.**
+- Registered in `deferred-work.md`, **owner Story 3.2**. DW-5's existing `internal/expr`-absent
+  tripwire is the forcing function that makes someone re-read this.
+
+### D-1.6.2 — AD-14's three cases land unchanged, and the proof is that two of them *disagree*
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict.** Absent path = **Error** naming the path and element id; explicit `null` = **empty, not an
+error**; wrong kind = **Error, never a coercion**.
+
+**What makes D-1.4.8's presence seam load-bearing rather than decorative** *(mechanism: binding)* — a
+retained fixture triple over **one template and one path**, differing only in the data:
+
+| Data | Outcome |
+|---|---|
+| `{}` (path absent) | **Error**, naming path + element id |
+| `{"customer": {"name": null}}` | **renders empty**, no error |
+| `{"customer": {"name": 123}}` into a text element | **Error**, no coercion |
+
+**Rows 1 and 2 are the proof:** inputs differing **only** by absent-versus-null produce **opposite**
+outcomes. That is a test that cannot pass if the three-state distinction collapses — precisely what
+D-1.4.16's serialization test could not establish, since nothing branched on the difference until
+now. If a future refactor makes `Presence` two-state, row 1 or row 2 goes red immediately.
+
+**Vacuity guard** *(mechanism: binding)*: all three rows assert against the **same** template and
+**same** path. Three separate templates would let each row pass for its own unrelated reason.
+
+### D-1.6.3 — Reuse Story 1.3's lint; close the shell gap with a file-scoped rule, not reachability
+**Orchestrator decision**, on the lead's ruling.
+
+**The gap is real.** Story 1.3's lint binds `folio-go/internal/`. The AC's claim is about *"a render in
+progress"*, whose dynamic extent **starts in package `folio`** — where D-1.4.6 deliberately permits
+`os` so `LoadTemplate` can read a file. **So `folio.Render` could call `os.Getenv` today and no guard
+would fire.**
+
+**Verdict — structural separation, not reachability analysis** *(mechanism: binding for the property;
+illustrative for the filename)*, the same shape D-1.1.b used for `numbers.go`:
+
+> The file declaring `Render` and `RenderTo` imports **none** of `os`, `time`, `net`, `math/rand`.
+> The world-reading shell entry points (`LoadTemplate`) live in a **different file**, which may.
+
+Decidable, exact, no false positives, and it fails the moment someone adds a convenience `os.Getenv`
+to the render entry point. **1.6 adds nothing else** — `internal/`'s coverage is already 1.3's, and a
+second checker is what the lead's horizon note correctly forbade.
+
+**A clarification that must be in the story** *(mechanism: illustrative)*: the AC's "locale" means the
+**host** locale. AD-12 requires the render to use the locale **declared in the template** — reading
+the document's locale is mandatory, discovering the machine's is banned. Without that sentence
+someone will read the AC as forbidding AD-12.
+
+### D-1.6.4 — `Render(t *Template, d Data, f FontSet)`; `Data` is bytes; two decode trees, one shared primitive
+**Orchestrator decision**, on the lead's ruling.
+
+**Signature** *(mechanism: binding)*: `func Render(t *Template, d Data, f FontSet) ([]byte, error)` —
+insert-in-final-position against the target `Render(t, d, p, f)`, per D-1.5.5.
+
+**`type Data []byte`** — the named type from D-1.1.c, and the reason is unchanged and still that
+ruling's strongest argument: `Data` and `Params` become **adjacent same-typed arguments at Story
+1.7**, and *in a product whose acceptance fixture is a bank statement, that swap must be a compile
+error, not a support ticket.* **Do not "simplify" to `[]byte`.**
+
+**Bytes, not a decoded value** — confirmed, and Story 1.4 strengthens rather than weakens it: AD-23
+requires the library to own the `UseNumber`-preserving decode, so a caller-decoded value would arrive
+with its literals **already destroyed**.
+
+**Two decode paths, one shared primitive** *(mechanism: binding)*: the template decoder (1.4) builds a
+**schema-typed** tree; the data decoder (1.6) builds a **generic** value tree. Those tree-builders
+stay separate — merging them would force the schema to model arbitrary caller JSON. What they
+**share** is the number-literal decomposition from D-1.6.1. One splitter, two consumers, separate
+trees.
+
+### D-1.6.5 — Accept a bare dotted path; reject expression syntax loudly; reserve `{{page}}`/`{{pages}}`
+**Orchestrator decision**, on the lead's ruling.
+
+**The grammar 1.6 accepts** *(mechanism: binding)*: `{{`, optional whitespace,
+`ident ( "." ident )*`, optional whitespace, `}}`, where `ident` is `[A-Za-z_][A-Za-z0-9_]*`.
+
+**Everything else is a located error naming the element id** — anything containing `(`, `)`, `[`,
+`]`, `,`, a quote, an operator, or interior whitespace. **Rejecting is the mechanism that stops 1.6
+becoming a second expression implementation.** A permissive 1.6 that tries to "handle" a function call
+leaves Story 3.2 with two parsers to reconcile, and the wrong one wins whichever way that goes.
+
+**The error message must name Epic 3** *(mechanism: illustrative)* so a template author writing
+valid-in-3.2 syntax is told it is *not yet supported* rather than *malformed* — otherwise they rewrite
+a correct template.
+
+**`page` and `pages` are reserved, and this is not hypothetical** *(mechanism: binding)*. AD-4 is
+absolute: *"No `page` namespace exists for expressions to reach, and none may be added."* `{{page}}`
+and `{{pages}}` are late-bound **slots** recognised by the template layer (Story 2.7), not data paths.
+**Verified: `folio-go/testdata/template/golden/worked-example.json:56` already contains
+`"Page {{page}} of {{pages}}"`** — so 1.6 meets them on its **first run against the corpus**.
+
+**The failure this prevents.** If 1.6 resolved single-segment paths from data with no reservation,
+then a data document containing a `page` key would **silently capture the page-number slot** — and the
+symptom is *a wrong number on a rendered page*, not an error. So `{{page}}` and `{{pages}}` as
+complete bindings are **left untouched** for Story 2.7: never resolved from data, never an error.
+**Retained fixture: data containing a top-level `page` key must not change what `{{page}}` renders.**
+
+**Pre-commitment for 3.2** *(mechanism: binding)*: 3.2's parser **replaces** 1.6's path matcher — the
+matcher is **deleted**, not kept alongside. Registered in `deferred-work.md`, owner Story 3.2, same
+entry as D-1.6.1's type move.
+
+### D-000.9 (extended) — The diagnostic question applies to red-proofs, one level up
+**Orchestrator decision**, on the lead's framing. Extends D-000.9 rather than replacing it.
+
+**Verdict.** Story 1.5's review found the defect class had moved from *guards* to **proofs about
+guards** — four artifacts named as red-proofs that could not fail, including one asserting
+`rejectedTag(8) != rejectedTag(8)` which never called the function under test and stayed green under
+the exact mutation that reddened the real fixture.
+
+**The diagnostic question applies verbatim, aimed one level higher:** ***"What would this red-proof
+have printed if the mutation had never been applied?"*** If the answer is "the same thing", it proves
+nothing. **Added to the reviewer prompt explicitly**, because "red-proof" now names an artifact that
+can itself be vacuous.
+
+### D-1.5.10 (correction accepted) — the lead's falsified scope claim, and the pattern behind it
+**Orchestrator note**, on the lead's own account. Recorded because the pattern matters more than the
+instance.
+
+D-1.5.10 withdrew the head-table clock comparison as *"illegal, not just weak"* under D-1.3.1's ban on
+`time` in `_test.go` under `internal/`. The Story 1.5 reviewer verified **the test ships at the module
+root, not under `internal/`** — so that ban never applied. **The conclusion (equality-only) stands on
+the face-age argument alone**, which was the stronger half; the finisher corrected the record as
+`D-1.5.10 (corrected)`.
+
+**The lead's own diagnosis, worth holding it to:** *"both of my falsified claims this run were **scope
+assertions about where a rule applies**, made without opening the file"* — this and the base-36
+reversal, one story apart. Its adopted fix: **verify a file's location before invoking a
+directory-scoped rule.** This sits alongside D-1.4.15's mechanism tagging as the second self-imposed
+correction the lead has adopted this run.
+
+### D-1.6.6 — `decodePoints` hangs on a wrapped exponent: a shipped defect, fixed in 1.6, recorded against 1.4
+**Orchestrator decision**, on the lead's ruling. **A defect in committed code**, found by the Story 1.6
+creator (M-1) while probing the primitive D-1.6.1 requires it to reuse.
+
+**The defect, measured and isolated by the orchestrator, per literal, using Go's own `-timeout`:**
+
+| literal | `splitJSONNumber` | `decodePoints` |
+|---|---|---|
+| `1e2000000` | `exp=2000000, err=nil` | **errors correctly in ms** — "overflows int64 millipoints" |
+| `1e99999999999999999999` | `exp=7766279631452241919`, **err=nil** | **HANGS >20s** |
+| `1e9223372036854775808` | `exp=-9223372036854775808`, **err=nil** | **HANGS >20s** |
+
+Root cause, verified in source: `parseDecimalExponent` accumulates `n = n*10 + int(c-'0')` with **no
+overflow check and no digit bound**, then hands an astronomical or negative exponent to `big.Int`
+scaling. Note the second row — a **positive** exponent silently becomes the **most negative int64**.
+`1e2000000` is caught only because `2000000` is a *sane* value the millipoint bound rejects quickly.
+
+**Why this is severe rather than a latent primitive bug.** Story 1.4's user story reads verbatim:
+*"I want to load a `.folio` file and have malformed or future-versioned templates rejected with a
+**located error**, so that a bad template is caught in CI rather than in production."* **A malformed
+template hangs the loader instead of being rejected.** And the designer (Epic 5) loads user-authored
+templates, so this is reachable from untrusted input in the product as planned.
+
+**Verdict — option (c):** the code fix lands **in Story 1.6**; the defect is **recorded against Story
+1.4**.
+
+**Why not reopen 1.4.** D-1.6.1 **already** mandates an exponent bound and **already** mandates
+reusing this exact splitter — so 1.4's defect and 1.6's ruled requirement are *the same line of code*.
+Reopening 1.4 would land a bound that 1.6's ruling immediately supersedes or duplicates, in the one
+primitive we have specifically forbidden from existing twice. D-000.4's bisect convention exists for
+**matrix regressions attributable to an owning story**; this was found by the next story's creator and
+the ruled fix already lives in that story's scope.
+
+**What "recorded against 1.4" concretely means** *(mechanism: binding)*: an appended
+**`## Defect found after done`** section in Story 1.4's file — **appended, never rewritten**, per the
+completed-story-file precedent — stating the measurement, naming the fixing commit, and saying plainly
+that **1.4's user-story promise was not met by the shipped code**. **Not** a `deferred-work.md` entry:
+this is a defect being fixed now, not deferred work, and filing it there would dilute that file.
+
+**The proof obligation** *(mechanism: binding)*: a **retained corpus fixture**, not only a unit test —
+a `.folio` containing `1e99999999999999999999` must produce a **located error, quickly**. The unit test
+proves the primitive; the fixture proves 1.4's actual promise now holds **through the public loader**.
+
+**Red-proof, with a wrinkle that must not be fudged** *(mechanism: illustrative)*: before the fix this
+test **hangs**, and a hang is not a clean assertion failure — Go's `-timeout` panics the process. That
+timeout **is** the red, and it is recorded as *"hung; killed by `-timeout` at Ns"*, never dressed up as
+an assertion failure. Per D-1.2.5 a proof states what it actually observed.
+
+**The bound itself** *(mechanism: binding)*:
+- **Strip leading zeros; never strip trailing zeros.** `0.00000000000000000001` concatenates to a
+  **21-character** digit string whose integer value is **1**, so `len(digits) > 19` would **reject a
+  legal literal** — the count is taken **after** stripping leading zeros. Stripping *trailing* zeros
+  would turn `1.50` into `{15,-1}`, destroying the precision D-1.6.1's own table requires.
+- **Edge case named explicitly:** for `0.00`, stripping leading zeros yields the **empty string**.
+  That must produce coefficient `0` with the exponent preserved (`{0,-2}`), so `0.00` still displays
+  as `0.00`. A naive implementation produces an empty digit string and then errors or loses the scale.
+- **Two separate fixes in `parseDecimalExponent`, both needed:** (1) an **overflow check during
+  accumulation** — checking *after* the loop is too late, the value has already wrapped; (2) a
+  **documented magnitude bound**, rejected **before any `big.Int` scaling is attempted**.
+- **Layering:** the shared splitter rejects the **absurd** (no wrap, no explosion); each consumer then
+  applies its **own tighter** check — `decodePoints` against `geom.Length`'s millipoint range,
+  `internal/bind` against `Decimal`. **The splitter's bound must be the wider of the two**, so it never
+  refuses something a consumer could represent. The specific number is illustrative; **tests at the
+  bound and one past it are binding.**
+
+**How we'd know it was wrong.** Any template literal that neither loads nor produces a located error
+within the gate's timeout.
+
+### D-1.6.7 — Point a second production caller of the `float64` checker at the whole module
+**Orchestrator decision**, on the lead's ruling. Answers the creator's AC5 `DECISION NEEDED`.
+
+**Verdict — option (c)** *(mechanism: binding)*: a **second production caller** of the existing
+`float64` checker, scanning the whole module.
+
+**The three-way collision was with the lead's phrasing, not between the documents.** D-1.6.3 said
+*"1.6 adds nothing else… a second **checker** is what the horizon note correctly forbade."* **A caller
+is not a checker.** D-1.3.3 built exactly this architecture — a pure checker function over a target
+path with two callers, production and fixture — and adding a production call site is the shape that
+design exists to serve. The lead corrected its own wording rather than let a real gap ship because of
+it.
+
+**Measured (creator's M-6, controlled):** `os.Getenv` **and** `float64` inside `folio.Render` → build
+OK, `lint` 39/39 pass, `folio-go/internal/...` 157/157 pass. The **identical** mutation under
+`internal/geom/` turns both guards red with named rule findings. The guards are alive; the module root
+is simply outside their target. **Verified by the orchestrator:** `grep "float64\|float32" folio-go/*.go`
+→ **zero matches**, tests included — so the new caller goes **green on its first run**.
+
+**Why not (a), "document the module root as uncovered".** It documents a hazard closable in one line.
+AD-2 is explicit that *"no `float64` appears in any layout, measurement, or emission **signature**"* —
+the public API **is** a signature — and AD-23's Prevents names FMA contraction, which a `float64` in
+`folio.Render` handling a value en route to `internal/` reintroduces exactly. "Deliberately uncovered"
+would be true and indefensible.
+
+**Why not (b), extend the file-scoped rule.** It conflates two different invariants (AD-1's
+world-reading ban, AD-23's float ban) into one rule, and decisively it scopes `float64` to **one
+file** — a `float64` in `fontset.go` or `version.go` would stay invisible. It under-covers the thing
+it is meant to close.
+
+**Scope of the new caller** *(mechanism: binding for the properties; illustrative for the traversal)*:
+scan **the whole module** (`folio-go/`, root and below) rather than the root directory alone — it
+subsumes `internal/` and automatically covers `fonts/`, `cmd/` and `wasm/` when they arrive, rather
+than needing a new call site each time. **Include `_test.go`**, consistent with `internal/`'s
+treatment; it is clean today, and D-1.3.1's precedent is that test exemptions are granted only where
+*required*, never pre-emptively. **Skip `testdata/` and any dot-directory** — by **category** (leading
+dot), never by naming `.matrix-build`; a name on a list is the rot pattern. **Keep the existing
+`internal/`-scoped caller** — its vacuity guard names `geom` and `pdf` specifically and still earns its
+place. Two callers, one checker.
+
+### D-000.13 — A red-proof asserts on rule id and message, never on exit status; controls are valid syntax
+**Orchestrator decision**, on the lead's ruling. **Program-wide standing rule.** Promoted from the
+Story 1.6 creator's M-6a.
+
+**Verdict** *(mechanism: binding)*: **a red-proof asserts on the rule id and the finding message,
+never on exit status or mere failure.** And its companion: **a control mutation must be valid syntax
+with forbidden semantics** — the same rule `D-1.3.3 (amended)` set for violating fixtures, now applied
+to controls.
+
+**What happened.** The creator's first control appended an `import` **after** code, producing a
+**parse error**. Both scanners then failed through `D-1.3.3 (amended)`'s **error path** rather than by
+finding the rule violation. **The test went red — for the wrong reason — and would have been recorded
+as proof the guard works.**
+
+**Why this is the sharpest form of the class yet.** It is not a proof that *cannot* go red; it is a
+proof that goes red **without exercising the property at all**. D-000.9's diagnostic question
+("what would this have printed if it could not run?") does not catch it, because it *did* run and it
+*did* fail. The new question is: ***did it fail for the reason it names?***
+
+**Consequences.** Stated in the developer, reviewer and finisher prompts alongside D-000.9's two
+diagnostic questions. Note the irony worth preserving: `D-1.3.3 (amended)`'s error path — added to
+stop a crashed scan reading as clean — is what made this false red possible. **Separating "failed" from
+"found a violation" is the same discipline as separating "clean" from "could not look", one level
+along.**
+
+### D-1.6.8 — The canonical corpus is doing real work; keep it in the default gate
+**Orchestrator decision**, on the lead's ruling. Endorses the creator's M-4 as AC20.
+
+**Verdict.** The corpus holds four `{{…}}` in two schema fields, including
+`{{formatNumber(transaction.amount, "#,##0.00")}}` at `worked-example.json:19` — **three AC16
+rejection triggers at once**. It sits on `Column.Bind`, which `collectTextRuns` never reaches, and the
+golden fixture is round-tripped rather than rendered, **so there is no conflict today**. But an
+implementation scanning placeholders **document-wide** rather than only text-element values would
+**reject the canonical fixture on its first corpus run**. The constraint must be **stated** (AC20)
+rather than left as an accident of which walker happens to be used.
+
+**This is the second time the canonical fixture has caught a scoping error before it shipped** — the
+first being `{{page}}`/`{{pages}}` under D-1.6.5. That is a strong argument for keeping it in the
+**default gate** rather than behind a build tag.
