@@ -44,17 +44,17 @@ const defaultFontSizePt geom.Length = 12000
 // Letter dimensions is out of this story's scope.
 func pageDimensions(doc *Template) (width, height geom.Length, err error) {
 	switch {
-	case doc.Page.SizeIsName && doc.Page.SizeName == "A4":
+	case doc.doc.Page.SizeIsName && doc.doc.Page.SizeName == "A4":
 		width, height = pageWidthA4, pageHeightA4
-	case !doc.Page.SizeIsName:
-		width, height = doc.Page.SizeCustom.Width, doc.Page.SizeCustom.Height
+	case !doc.doc.Page.SizeIsName:
+		width, height = doc.doc.Page.SizeCustom.Width, doc.doc.Page.SizeCustom.Height
 	default:
 		return 0, 0, fmt.Errorf(
 			"folio: Render: page.size names %q, which this version does not implement dimensions "+
-				"for (only \"A4\" or a custom width/height)", doc.Page.SizeName,
+				"for (only \"A4\" or a custom width/height)", doc.doc.Page.SizeName,
 		)
 	}
-	if doc.Page.Orientation == "landscape" {
+	if doc.doc.Page.Orientation == "landscape" {
 		width, height = height, width
 	}
 	return width, height, nil
@@ -86,20 +86,20 @@ func documentBands(doc *Template) ([]bandWithOrigin, error) {
 	if err != nil {
 		return nil, err
 	}
-	usableHeight := height - doc.Page.Margin.Top - doc.Page.Margin.Bottom
+	usableHeight := height - doc.doc.Page.Margin.Top - doc.doc.Page.Margin.Bottom
 
 	var headerHeight, footerHeight geom.Length
-	if doc.Bands.PageHeader.Height.Set && !doc.Bands.PageHeader.Height.Null {
-		headerHeight = doc.Bands.PageHeader.Height.Value
+	if doc.doc.Bands.PageHeader.Height.Set && !doc.doc.Bands.PageHeader.Height.Null {
+		headerHeight = doc.doc.Bands.PageHeader.Height.Value
 	}
-	if doc.Bands.PageFooter.Height.Set && !doc.Bands.PageFooter.Height.Null {
-		footerHeight = doc.Bands.PageFooter.Height.Value
+	if doc.doc.Bands.PageFooter.Height.Set && !doc.doc.Bands.PageFooter.Height.Null {
+		footerHeight = doc.doc.Bands.PageFooter.Height.Value
 	}
 
 	return []bandWithOrigin{
-		{doc.Bands.PageHeader, 0},
-		{doc.Bands.Content, headerHeight},
-		{doc.Bands.PageFooter, usableHeight - footerHeight},
+		{doc.doc.Bands.PageHeader, 0},
+		{doc.doc.Bands.Content, headerHeight},
+		{doc.doc.Bands.PageFooter, usableHeight - footerHeight},
 	}, nil
 }
 
@@ -269,7 +269,7 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet) ([]text
 }
 
 // resolveFace resolves one text element's face name: style.fontFamily
-// names a fallback CHAIN (doc.Fonts[chain] is an ordered list of face
+// names a fallback CHAIN (doc.doc.Fonts[chain] is an ordered list of face
 // names); the first face name present as a key in fs wins. The engine
 // never queries the host — a chain with no member present in fs, or an
 // element with no fontFamily at all, is a located error naming the
@@ -279,7 +279,7 @@ func resolveFace(doc *Template, el template.Element, fs FontSet) (string, error)
 		return "", fmt.Errorf("has text but no style.fontFamily to resolve a font from")
 	}
 	chainName := el.Style.Value.FontFamily.Value
-	chain, ok := doc.Fonts[chainName]
+	chain, ok := doc.doc.Fonts[chainName]
 	if !ok || len(chain) == 0 {
 		return "", fmt.Errorf("style.fontFamily %q names a chain with no entries in the document's fonts map", chainName)
 	}
@@ -378,7 +378,7 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	}
 	slices.Sort(assetKeys)
 	for _, key := range assetKeys {
-		asset, ok := t.Assets[key]
+		asset, ok := t.doc.Assets[key]
 		if !ok {
 			return nil, fmt.Errorf("folio: Render: an image element references asset %q, which is not present in the document's assets map", key)
 		}
@@ -433,8 +433,8 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		Images:     pdfPlacements,
 		Width:      width,
 		Height:     height,
-		MarginTop:  t.Page.Margin.Top,
-		MarginLeft: t.Page.Margin.Left,
+		MarginTop:  t.doc.Page.Margin.Top,
+		MarginLeft: t.doc.Page.Margin.Left,
 	}
 
 	return pdf.SerializeTextDocument([]pdf.TextPage{page}, embedded, pdfImages)

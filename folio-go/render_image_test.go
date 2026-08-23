@@ -372,7 +372,7 @@ func TestRenderReadsAssetBytesFromTheDocumentItself(t *testing.T) {
 	// Mutate the in-memory asset's bytes directly on the parsed
 	// Document — a different, still-valid image with the SAME box, so
 	// only the embedded stream bytes differ.
-	asset := tpl.Assets[key]
+	asset := tpl.doc.Assets[key]
 	// Swap in different (still valid, still supported) PNG bytes under
 	// the SAME map key and element reference, re-wrapped canonically.
 	otherImage := []byte{
@@ -383,7 +383,7 @@ func TestRenderReadsAssetBytesFromTheDocumentItself(t *testing.T) {
 		0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
 	}
 	asset.Data = wrap76(otherImage)
-	tpl.Assets[key] = asset
+	tpl.doc.Assets[key] = asset
 
 	out2, err := Render(tpl, Data("{}"), nil, nil)
 	if err != nil {

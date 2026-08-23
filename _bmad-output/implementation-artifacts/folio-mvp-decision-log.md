@@ -3914,3 +3914,176 @@ the story must pick a golden shape for it and say which.
 
 **Third narrated-artifact drift in three stories** (D-1.7.1's parameter counts, the disposition-table
 totals, this). D-000.14 (extended) already binds; this is another instance, not a new rule.
+
+### Epic 1 gate finding — Template alias closed: opaque handle
+**Carried work, resolved.** `folio.Template` migrated from `type Template = template.Document` (an
+alias, making 32 exported `internal/template` declarations reachable and permitting field-by-field
+construction that bypassed `ParseTemplate`'s validation) to `type Template struct { doc
+*template.Document }` — construction only through `LoadTemplate`/`ParseTemplate`, no exported
+fields, no accessors added pre-emptively.
+
+**Verified by go/types-backed AST analysis** (not text search, and not bare-identifier matching,
+which produces false positives like `runtime.Version()`): a `golang.org/x/tools/go/packages`-loaded,
+fully type-checked scan of the pre-migration tree (commit `614bc99`, via a throwaway git worktree)
+for every `ast.SelectorExpr` whose receiver type-checks to `*internal/template.Document` (unwrapping
+the `Template` alias, which the current Go toolchain preserves as a distinct `types.Alias` node —
+`types.Unalias` was required to see through it) finds **50 field-reach sites in package `folio`**:
+44 in `render.go`, 4 in `template_test.go`, 2 in `render_image_test.go` — matching the pre-migration
+finding's named files exactly, though at a finer grain than the finding's own "~10" estimate (the
+finding's number was a rough per-call-site count; this one counts every AST selector node, the same
+measurement-method variance D-000.14 already documents for Story 1.7's swap proof, 19/36/8). A
+second AST pass over the rest of the repository (excluding `folio-go` itself) found **zero files
+importing `github.com/panitw/folio/folio-go`** — zero external callers, confirmed by parsing import
+specs, not by grep. All 50 in-package sites were updated to reach the unexported `doc` field
+directly (same package); `go build`/`go vet` on the migrated tree independently confirm no site was
+missed, since any leftover direct field access on the now-opaque `Template` fails to compile.
+
+**Compile-time proof added** (`folio-go/templateopaque_test.go` +
+`testdata/templateopaque/{good,bad}/`, same shape as Story 1.7's `paramsswap_test.go`):
+`folio.Template{Version: "1.0"}` from outside the package fails with `unknown field Version in
+struct literal of type folio.Template`; the `good` control (construction via `ParseTemplate`)
+builds. Confirmed by actually running `go build` on both fixtures, not by comment.
+
+**Gates, all green, raw exit codes confirmed via `rtk proxy`:** build/vet/gofmt clean in
+`folio-go/`, `hashmatrix/`, `lint/` (hashmatrix's documented `go build ./...` "probe" directory
+collision is pre-existing and unrelated); `lint` full suite green under `GOPROXY=off`; `go build
+-tags=matrix` and `go vet -tags=matrix` clean; full four-target matrix (darwin/arm64,
+linux/amd64, linux/arm64, js/wasm) over all three documents byte-identical to the pinned
+fixtures — `minimal-rect` `0f925e1b…` 547 B, `font-text` `dcd453a1…` 22299 B, `image-embed`
+`e5778eb8…` 995 B, unchanged. `folio-go` full suite: 185 top-level / 289 with subtests / 7
+packages (184/288 plus the one new red-proof test added by this change), zero failures.
+
+## Epic 2 decisions — opening (ruled before Story 2.1 was written)
+
+### D-2.0.1 — The `ja` font gap does not exist; AD-12 is a formatting invariant, not a font one
+**Orchestrator decision**, on the lead's ruling. **Retracts a flag carried since the first grounding
+pass. No owner escalation.**
+
+**Verified by the orchestrator:** AD-12's scope line reads **`Binds: internal/expr · FR18, FR21,
+FR43`**, and its Rule is about *"a compiled, embedded, versioned **locale table**"* for `en`, `th`,
+`zh-Hans`, `ja`. **It binds formatting — dates and numbers — and says nothing about fonts. It does
+not bind `internal/fontset`.** A `ja` document needs a locale-table entry, not a face. And NFR3 /
+CAP-14 require **"Latin, CJK, and Thai text"** — script classes, not a named Japanese face.
+
+**The lead's own account of the error, recorded because the pattern is now specific enough to act
+on:** *"That is the third time this run I have asserted a cross-domain implication from an invariant
+without reading its `Binds` line"* — base-36 from the worked example, D-1.3.1's `time` ban applied to
+a module-root test, and now this. **Adopted fix: before invoking an invariant outside the area being
+ruled on, read its `Binds` line first.** This joins D-1.4.15's mechanism tagging and the
+verify-location rule as the lead's third self-imposed correction.
+
+**The residual finding is real but smaller** *(mechanism: illustrative)*. Noto Sans SC is a **Pan-CJK**
+face: it carries kana and the ideograph set, so Japanese text **renders** — but with **Simplified
+Chinese glyph forms** where JP and SC conventions differ. **That is not tofu, and AD-8's
+missing-glyph diagnostic will not fire, because coverage exists.** It is a silent quality compromise
+visible only to a Japanese reader.
+
+**Verdict: disclose, do not build** *(mechanism: binding)*. Nothing requires a JP face; adding Noto
+Sans JP would add ~7 MB against Story 5.4's itemised "CJK 7.4 MB" and its ~9 MB budget — in a story
+whose AC exists specifically to explain *why CJK dominates*. **Not an escalation — a stated
+limitation**, recorded in Story 2.2 and surfaced in the **Epic 2 boundary report** so the owner sees
+it at their observation point (D-000.3). *This owner has consistently accepted a stated gap over a
+false guarantee; what they should not get is silence.*
+
+**`folio-go/fonts/` confirmed** *(mechanism: binding)*: D-000.5 governs over Story 2.2's `fonts/`
+wording. The reason is mechanical — **`go:embed` cannot reach outside its module**, so a repo-root
+`fonts/` would not fail loudly; it would embed **nothing** and surface as a font-resolution failure
+at render.
+
+### D-2.0.2 — Story 2.1's spike gate is pre-stated and absolute; the obvious pass condition is circular
+**Orchestrator decision**, on the lead's ruling.
+
+**The trap, first, because it would have bitten.** The pass condition **cannot** be "agreement with
+the S4 fixture" — Story 2.1's own AC says the hand review *"is kept as the **basis of** the S4
+fixture"*. **S4 is an output of this spike, not an input.** Gating the spike on a fixture it produces
+is circular and **would confirm automatically**.
+
+**Verdict — AD-25's two absolutes, plus the proper-noun absolute, plus a corpus floor, all written
+into the story file BEFORE the spike runs** *(mechanism: binding)*:
+
+| Condition | Threshold |
+|---|---|
+| No break inside any Thai character cluster | **Zero. Absolute.** |
+| No interior break in any run the dictionary cannot cover | **Zero. Absolute.** |
+| **No hand-identified proper noun in the corpus is split** | **Zero. Absolute.** |
+| Trie loads and queries correctly under `js/wasm` | Binary |
+| **Corpus floor** — minimum count of distinct Thai personal names, place names, transaction descriptions | **Pre-stated, non-zero** |
+
+The first two are absolute because AD-25 makes them so: *"two constraints sit **under** whatever the
+dictionary proposes, and both override it."* Not threshold-able.
+
+**The third is what actually retires R2**, and it comes from AD-25's Prevents line: *"the unrecognised
+words are **customer names**… Silently mis-breaking a person's name across 50,000 statements is a
+worse failure than any overflow."* **One split name is a deviation.**
+
+**The corpus floor is the anti-vacuity clause** *(mechanism: binding)*: without a pre-stated minimum,
+**a three-word corpus passes all three absolutes trivially** — a spike that proves nothing while
+reporting success, which is this program's dominant defect class arriving in a story with no code to
+guard. **Zero proper nouns examined is a failure, not a pass.**
+
+The dictionary-disagreement rate is **recorded, not gated** *(illustrative)* — there is no
+pre-existing ground truth to gate against — but a threshold is pre-stated above which it escalates.
+
+**Who decides** *(mechanism: binding)*: **confirmation is the lead's** (the conditions were
+pre-committed; the measurement either meets them or does not — mechanical). **Deviation is the
+owner's** — re-planning seven stories is a scope decision with lasting consequence.
+
+**The meta-rule that makes this work** *(mechanism: binding)*: the pass condition is written into the
+story file **before the spike runs**, and **changing it after seeing the data is a `DECISION NEEDED`,
+never a judgement call.** Otherwise a spike always confirms.
+
+### D-2.0.3 — DW-9's re-test is in scope at Story 2.2, and the fair test is a compiled, executed example
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding for the criteria; illustrative
+for naming)*.
+
+**In scope at 2.2** — the story that makes the honest example writable, which is why DW-9 was parked
+there.
+
+1. **The README's first-PDF example must be a Go `Example` function** in `example_test.go`, **compiled
+   and executed by `go test`** — not prose, not a fenced block nobody runs. AC4's claim is about what
+   an integrator must actually write, **so it must be verified by writing it** — and that makes it
+   un-rottable, the same move as the doc-block-equals-fixture assertion.
+2. **"Nothing ceremonial" means:** zero to PDF bytes takes **a load call and a render call**, with the
+   `FontSet` obtained in **one expression taking no arguments**. If a caller must enumerate faces,
+   assemble a fallback chain, or read files before rendering, **that is ceremony and the re-test
+   fails**.
+3. **No shortcuts that hide required steps** — no `_ = err`, no elided setup. The example shows
+   everything an integrator must type, or it is not measuring the thing.
+
+If it fails, that is a `DECISION NEEDED` on the API surface — the option D-1.1.c reserved, still
+available because nothing binds until `v0.1.0`.
+
+### D-2.0.4 — AD-5's arrow becomes live for the first time at Story 2.5, and must be guarded in its first commit
+**Orchestrator decision**, on the lead's ruling. **The most consequential item in this batch.**
+
+**Confirmed** *(binding)*: `{{page}}`/`{{pages}}` stay reserved and untouched until **Story 2.7**;
+Story 1.5's provisional band-origin assertion **dies at Story 2.5**, and its death is 2.5's AC being
+met.
+
+**Verified by the orchestrator:** `folio-go/internal/` today holds `bind`, `fontset`, `geom`, `pdf`,
+`template`. **There is no `layout` package** — so **AD-5's arrow has never existed and has never been
+guarded.** The very first line of this program's grounding was:
+
+> *"One dependency arrow matters more than the rest: **there is none from `internal/layout` to
+> `internal/pdf`**. That absence is what keeps PNG/SVG/HTML renderers possible later (AD-5), and it
+> is precisely the arrow a well-meaning commit will try to add."*
+
+**Story 2.5 must ship an import-direction guard in the same commit that creates `internal/layout`**
+*(mechanism: binding)* — `internal/layout` may not import `internal/pdf`, with a **retained violating
+fixture** proving it fires, per D-1.3.3's two-caller shape. **The guard must exist from the package's
+first commit, not be added later** — the window in which the arrow is easy to add and invisible is
+exactly the window before the guard exists.
+
+**Three more Epic 1 commitments this epic collects** *(mechanism: illustrative)*:
+- **AD-24's Y-flip gets its second content-stream builder.** Band placement is a **translation, not
+  an inversion** — it must not add a second flip. Story 1.8's positive guard should catch it; **2.5
+  is its first real test against a genuinely different caller.**
+- **The content-band height derivation** — `folio-format.md` says `content` has no `height` and it is
+  derived *"by one function"*, the same "exactly one function" shape. **Guard it positively at 2.5.**
+- **R4 stays shut, and the distinction is subtle enough to lose.** Epic 1 emits `/FlateDecode` as a
+  **filter name** on the image passthrough but **never invokes a compressor**. Nothing in Epic 2
+  requires compression. **Introducing content-stream compression is a hash-changing, versioned event
+  under AD-22 and must not happen incidentally** — if a story wants it, that is a `DECISION NEEDED`.
+
+**AD-4 also gets its first real test** at 2.5/2.6 — *"two passes, and the second one lays nothing
+out."* **Pagination is where a second layout pass is most tempting.**

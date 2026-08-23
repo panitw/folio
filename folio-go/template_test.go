@@ -52,8 +52,8 @@ func TestParseTemplate(t *testing.T) {
 	if tpl == nil {
 		t.Fatal("ParseTemplate returned a nil *Template with no error")
 	}
-	if tpl.Version != "1.0" {
-		t.Fatalf("Version = %q, want 1.0", tpl.Version)
+	if tpl.doc.Version != "1.0" {
+		t.Fatalf("Version = %q, want 1.0", tpl.doc.Version)
 	}
 }
 
@@ -70,8 +70,8 @@ func TestLoadTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTemplate: %v", err)
 	}
-	if tpl.Version != "1.0" {
-		t.Fatalf("Version = %q, want 1.0", tpl.Version)
+	if tpl.doc.Version != "1.0" {
+		t.Fatalf("Version = %q, want 1.0", tpl.doc.Version)
 	}
 }
 
