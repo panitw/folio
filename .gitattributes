@@ -1,0 +1,16 @@
+# This project's entire value proposition is byte-identical output, so a
+# checkout that silently rewrites line endings is a correctness hazard,
+# not a cosmetic one. Without this file, fixtures/minimal-rect/expected.pdf
+# contains no NUL byte and is therefore classified as text by git's
+# default binary heuristic — a checkout under core.autocrlf=true (the
+# Git-for-Windows default) would rewrite its LF bytes to CRLF, silently
+# changing its SHA-256 out from under the normative hash recorded in
+# expected.json. This story's QA review (Major 10) measured this directly
+# with `git diff --numstat`, which reported line counts rather than "- -"
+# for expected.pdf before this file existed.
+
+* text=auto eol=lf
+
+fixtures/**/*.pdf binary
+fixtures/**/*.json text eol=lf
+*.go text eol=lf

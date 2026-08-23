@@ -144,7 +144,7 @@ NFR8: **Privacy posture.** The draw.io model plus WebAssembly preview means temp
 
 - Paradigm: functional core (`internal/`), imperative shell (`folio`, `cmd/folio`, `wasm/`, `designer/`).
 - `internal/geom` defines `Length` as `int64` millipoints (1/1000 pt) and is the only package declaring a geometric scalar type (AD-2). No `float64` anywhere under `internal/`.
-- One unexported emitter converts numbers to PDF decimal text; no other code writes a number to output (AD-3).
+- Numbers reach PDF output in exactly two representations — a decimal emitter for geometric values and an integer writer for structural counts/offsets — both in one file; no other code writes a number to output (AD-3, as amended under D-1.1.b/D-000.6).
 - Two-pass pipeline; pass two performs no measurement, line breaking, or pagination. Page numbers are late-bound slots. No expression may reference pagination (AD-4).
 - `internal/pagemodel` is renderer-agnostic; `internal/layout` may not import `internal/pdf` (AD-5).
 - Report data numbers parsed as exact scaled-integer decimals via `UseNumber`, never `float64` (AD-23).
@@ -436,7 +436,7 @@ So that hash comparison becomes my regression test before any feature exists to 
 **Given** a hard-coded page containing one filled rectangle
 **When** `Render` is called
 **Then** a valid PDF 1.7 document is produced with catalog, page tree, content stream, and cross-reference table
-**And** every number in the output was written by the single unexported emitter as sign + integer part + up to three trimmed fractional digits
+**And** every geometric number in the output was written by the single unexported decimal emitter as sign + integer part + up to three trimmed fractional digits, with structural counts, offsets and object/generation numbers routed through a separate integer writer in the same file (D-1.1.b: AD-3 governs numeric representations, not the number of functions)
 **And** no `float64` appears in any signature under `internal/`
 
 **Given** the same input rendered twice in two separate OS processes

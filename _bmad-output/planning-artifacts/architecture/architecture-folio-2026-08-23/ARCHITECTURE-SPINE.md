@@ -116,17 +116,37 @@ graph TD
   standard library's exact-integer surface. `[ASSUMPTION]` Millipoints, not 1/64 pt or
   units-per-em — chosen because it makes AD-3 exact.
 
-### AD-3 — Numbers reach the PDF through exactly one function
+### AD-3 — Numbers reach the PDF through exactly one file, in exactly two representations
 
 - **Binds:** `internal/pdf` · NFR1.b
 - **Prevents:** `strconv.FormatFloat` or `fmt.Sprintf("%g")` reaching an output stream from any
   call site, which reintroduces platform-visible float formatting after AD-2 removed floats
   from layout.
-- **Rule:** one unexported emitter converts a `geom.Length` to its decimal text by integer
-  arithmetic — sign, integer part, and exactly three fractional digits, trailing zeros trimmed
-  — and no other code in the module writes a number into a content stream or object body. The
-  representation is exact by construction, since a millipoint is exactly three decimal places
-  of a point.
+- **Rule:** `internal/pdf` emits numbers in exactly **two** representations, and no number
+  reaches an output byte by any other route.
+  - **Decimal.** One unexported emitter converts a thousandths-scaled `int64` — every
+    `geom.Length`, and every other value defined in thousandths — to decimal text by integer
+    arithmetic: sign, integer part, exactly three fractional digits, trailing zeros and a bare
+    trailing point trimmed. Exact by construction, since a millipoint is exactly three decimal
+    places of a point. No rounding occurs here; rounding occurs only where a value is converted
+    *into* thousandths, and always round-half-to-even (AD-2).
+  - **Integer.** One unexported writer converts an `int64` to plain decimal digits with no
+    scaling, optionally zero-filled to a fixed width. It carries every count, byte length, file
+    offset, object and generation number, pixel dimension, and glyph metric in 1000-unit em
+    space — values whose text form has no platform variance and for which the decimal emitter
+    would be actively wrong (an xref offset of 12345 bytes is not 12.345).
+
+  A value that is neither is converted into one of the two by integer arithmetic before emission
+  and never formatted on its own terms: an 8-bit colour component becomes thousandths
+  (`c*1000/255`, round-half-to-even) and takes the decimal route. A glyph id under `Identity-H`
+  is a big-endian hex pair inside a string literal — a byte encoding, not a number, and it takes
+  neither route.
+
+  Both live in one file in `internal/pdf`. Because no package outside `internal/pdf` writes an
+  output byte at all (AD-5), the restriction needs to police only that package: CI fails any
+  reference to `strconv.Format*`, `strconv.Itoa`, `strconv.Append*`, or a `fmt` formatting call
+  in any other file of `internal/pdf`. Number formatting inside a diagnostic message is not an
+  output byte and is not covered.
 
 ### AD-4 — Two passes, and the second one lays nothing out
 
