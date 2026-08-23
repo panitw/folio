@@ -65,9 +65,10 @@ type Page struct {
 
 ## B. Public API Surface (folio-go)
 
-Suggested module path (§4, **undecided**): `github.com/folio-reports/folio` *or*
-`github.com/folio-reports/folio-go`. The code example imports the former; the section title
-and feature matrix call the component "folio-go". Public API identity unresolved.
+> **RESOLVED 2026-08-23.** Monorepo at `github.com/panitw/folio`; the Go module is
+> `github.com/panitw/folio/folio-go`, package `folio`. Release tags carry the directory prefix
+> (`folio-go/v0.1.0`) and a future major becomes `.../folio-go/v2`. Deferred SDKs take sibling
+> directories — `folio-node`, `folio-java`. See `ARCHITECTURE-SPINE.md` AD-22.
 
 ```go
 folio.LoadTemplate(path string) (Template, error)
@@ -85,6 +86,11 @@ rendering arrive later without a breaking change.
 ---
 
 ## C. Template Format Internals
+
+> **SUPERSEDED 2026-08-23** by `specs/spec-folio/folio-format.md`, which is the field-level
+> contract. The sketch below predates the three-band layout model (PRD §6) and shows a flat
+> `"body"` array; bands, units, element ids, style defaults and the assets block are all defined
+> in the companion. Retained only as the origin of the format decision.
 
 Text-based, JSON internally, extension `.folio` (§3):
 
@@ -317,6 +323,13 @@ map-iteration nondeterminism).
 **Archive note:** `jung-kurt/gofpdf` and `github.com/go-pdf/fpdf` are both archived. The live
 fork is `codeberg.org/go-pdf/fpdf` — a genuine module path change.
 
+> **Licence note, 2026-08-23.** PRD Q7 is resolved: Folio ships **MIT, open source**. The
+> GPL-3.0 and commercial-EULA candidates in this table are therefore disqualified structurally,
+> not incidentally, and no dependency may carry GPL, LGPL, AGPL, SSPL or a commercial EULA at any
+> depth — CI enforces it (`ARCHITECTURE-SPINE.md` AD-26). Separately, the architecture chose to
+> emit its own PDF rather than depend on any writer in this table (AD-6); the measurements are
+> retained as the evidence base for that call.
+
 **Every candidate above builds for `js/wasm` and `wasip1/wasm` with `CGO_ENABLED=0`.** The
 first draft's worry that cgo would disqualify PDF libraries was unfounded; the real
 disqualifiers are timestamps and map iteration.
@@ -347,6 +360,18 @@ resolve their dictionary via `runtime.Caller` at runtime — unconditionally fat
 WebAssembly.** No Go port of libthai or ICU4X exists.
 
 **Recommendation:** embed a dictionary and write longest-match/DAG segmentation directly.
+
+> **UPDATED 2026-08-23.** Re-verified against live sources: `go-wordseg` (2017) and `tsplitter`
+> (2015) are dead; `veer66/mapkha` is LGPL-3.0 and reads its dictionary from disk. One live
+> candidate has appeared — `akkaraponph/presspdf/thai` (MIT, v0.53.0, April 2026) — but its own
+> package doc says it replaces an import of `veer66/mapkha`, i.e. an MIT wrapper over
+> LGPL-3.0-derived code. **Rejected on licence provenance** now that Folio ships under MIT.
+> Two decisions followed: the dictionary is **PyThaiNLP `words_th`** (62,106 words, CC0-1.0)
+> rather than ICU `thaidict` (26,383, Unicode License) — more coverage against the unknown-word
+> problem, under a cleaner licence — and the deliverable is scoped to **break opportunities, not
+> word segmentation**: unknown runs are atomic and no break falls inside a Thai character
+> cluster, so an unrecognised customer name overflows visibly rather than being mis-split.
+> See `ARCHITECTURE-SPINE.md` AD-25.
 
 | Source | Words | Compiled | Licence |
 |---|---|---|---|

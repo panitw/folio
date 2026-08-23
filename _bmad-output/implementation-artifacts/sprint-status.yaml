@@ -1,0 +1,104 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 08-23-2026 09:38
+last_updated: 08-23-2026 09:38
+project: folio
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-a-minimal-pdf-reproducible-on-one-machine: backlog
+  1-2-cross-target-byte-identity-proven-in-ci: backlog
+  1-3-guardrails-that-fail-the-build: backlog
+  1-4-load-validate-and-round-trip-a-folio-template: backlog
+  1-5-embed-and-subset-a-font-byte-stably: backlog
+  1-6-bind-scalar-json-values-into-text: backlog
+  1-7-render-to-an-io-writer-with-runtime-parameters: backlog
+  1-8-embed-and-render-an-image-from-the-template: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-thai-break-opportunity-spike: backlog
+  2-2-the-shipped-font-set-and-its-fallback-chain: backlog
+  2-3-shape-latin-thai-and-cjk-text: backlog
+  2-4-break-and-measure-lines-in-all-three-scripts: backlog
+  2-5-compose-a-page-from-three-bands: backlog
+  2-6-render-multi-page-documents-with-headers-and-footers-on-ever: backlog
+  2-7-render-page-x-of-y: backlog
+  2-8-clip-overflowing-content-and-say-so: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-bind-a-repeating-region-to-a-collection-with-an-explicit-row: backlog
+  3-2-evaluate-the-expression-language: backlog
+  3-3-aggregate-over-a-collection: backlog
+  3-4-format-dates-and-numbers-by-declared-locale: backlog
+  3-5-hide-a-component-conditionally: backlog
+  3-6-fail-with-located-actionable-diagnostics: backlog
+  3-7-validate-a-template-and-render-it-from-the-command-line: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-lay-out-a-table-s-columns-header-and-cell-chrome: backlog
+  4-2-generate-rows-from-a-bound-collection: backlog
+  4-3-break-a-table-across-pages-without-splitting-a-row: backlog
+  4-4-repeat-the-table-header-on-every-continuation-page: backlog
+  4-5-render-footer-aggregates-without-orphaning-them: backlog
+  4-6-handle-a-row-taller-than-the-page: backlog
+  4-7-the-golden-report-renders-and-hashes-match: backlog
+  4-8-alternating-row-styling: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-the-design-system-and-application-shell: backlog
+  5-2-the-engine-worker-and-command-channel: backlog
+  5-3-work-offline: backlog
+  5-4-an-honest-first-run-load-screen: backlog
+  5-5-open-and-save-folio-files-locally: backlog
+  5-6-the-canvas-page-bands-grid-and-page-setup: backlog
+  5-7-place-and-manipulate-the-five-components: backlog
+  5-8-edit-component-properties: backlog
+  5-9-a-canvas-the-browser-never-measures: backlog
+  5-10-preview-the-exact-production-document: backlog
+  5-11-never-show-a-stale-preview: backlog
+  5-12-diagnostics-that-locate-and-an-interface-that-can-be-driven: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-load-sample-data-and-browse-its-paths: backlog
+  6-2-bind-a-component-by-picking-a-path: backlog
+  6-3-supply-parameters-for-preview: backlog
+  6-4-configure-table-columns-as-a-matrix: backlog
+  6-5-bind-columns-in-row-scope-and-configure-footer-aggregates: backlog
+  6-6-present-a-failed-render-honestly: backlog
+  6-7-the-round-trip-closes: backlog
+  epic-6-retrospective: optional

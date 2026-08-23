@@ -78,7 +78,7 @@ Scope was deliberately held rather than cut, so these are carried explicitly.
 | # | Risk | Severity |
 |---|---|---|
 | R1 | FMA contraction silently breaks byte-identity; divergence is invisible in output and an amd64-and-wasm-only CI matrix passes anyway | Critical |
-| R2 | Thai line breaking must be written from scratch, on the critical path — no maintained pure-Go segmenter exists, and it is a prerequisite of text wrapping rather than a refinement of it | High |
+| R2 | Thai line breaking must be written from scratch, on the critical path — it is a prerequisite of text wrapping rather than a refinement of it. Re-verified 2026-08-23: the two pure-Go segmenters are dead (2017, 2015), `veer66/mapkha` is LGPL-3.0 and reads its dictionary from disk, and the one live candidate is an MIT wrapper over LGPL-derived code. **Mitigated** by scoping the deliverable to break opportunities rather than segmentation, failing toward not breaking on unknown runs, and taking the 62k-word CC0 dictionary over the 26k-word one | High → Medium |
 | R3 | The strongest candidates for shaping and subsetting are pre-1.0 with explicitly unstable APIs | Medium |
 | R4 | Compressor output is stable by observation, not by contract — a future Go release could invalidate every recorded golden hash downstream | Medium |
 | R5 | Solo capacity against held scope — the dominant risk to delivery | High |

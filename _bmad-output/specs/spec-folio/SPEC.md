@@ -2,6 +2,7 @@
 id: SPEC-folio
 companions:
   - ./acceptance.md
+  - ./folio-format.md
   - ./glossary.md
   - ../../planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md
   - ../../planning-artifacts/prds/prd-folio-2026-08-22/prd.md
@@ -172,6 +173,14 @@ resolves toward making that handoff reliable rather than toward feature breadth.
 - **A ~9 MB first load is accepted** in exchange for a designer that is genuinely offline with
   no font-fetch failure mode.
 - **Reliability over feature breadth**, enforced against a solo delivery capacity.
+- **Folio ships under MIT, and nothing copyleft enters.** No dependency may carry GPL, LGPL,
+  AGPL, SSPL, or a commercial EULA at any depth — Go links statically, so such a dependency
+  would attach its obligations to the whole binary. Enforced by a CI licence check over the
+  module graph and the designer lockfile.
+- **Thai line breaking fails toward not breaking.** The engine's contract is break
+  *opportunities*, not word segmentation. A run no dictionary covers is atomic, and no break
+  falls inside a Thai character cluster — a customer's name overflows visibly rather than
+  being silently split in the wrong place.
 
 ## Non-goals
 
@@ -233,8 +242,6 @@ compare the hash.
   scheduled after them (PRD Q5)?
 - Does the designer really come last, when it carries success measure S5 and serves half the
   user base (PRD Q6)?
-- Licence and distribution — open source, source-available, or private (PRD Q7)? Undecided by
-  choice; nothing in the contract depends on the answer.
 - Where does sample JSON live relative to the template during design, and does its path persist
   in the `.folio` (PRD Q8, UX2)?
 - What are the forward and backward compatibility rules between template versions and library

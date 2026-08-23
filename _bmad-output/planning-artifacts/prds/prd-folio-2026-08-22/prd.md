@@ -68,10 +68,12 @@ Two roles are deliberately absent from MVP: there is no operator or administrato
 accounts, no RBAC, no multi-tenancy), and the end recipient of the PDF is not a Folio user
 — they receive a document, not an experience.
 
-> **Known tension, held open.** The build order in `addendum.md` §H places the designer at
-> Phase 5 of 6, and counter-metric C4 treats early designer work as a warning sign. That is
-> in real tension with the co-primary claim above. It is recorded as Q6 for
-> `bmad-create-epics-and-stories` to resolve, not silently reconciled here.
+> **Tension resolved.** The source plan placed the designer at Phase 5 of 6, in real tension
+> with the co-primary claim above. `bmad-create-epics-and-stories` settled it: engine-first
+> stands and C4 holds — no designer work begins until the engine renders the golden report —
+> but the designer is two epics rather than one trailing phase, and the exact preview ships
+> **with** the first of them rather than after it. Building a canvas that cannot be previewed
+> would mean authoring blind, and would leave NFR2 and NFR5 unvalidated until the final phase.
 
 ### 3.1 User Journeys
 
@@ -258,7 +260,9 @@ over table styling** wherever the two compete.
     negotiated against content.
 - **FR26** — Repeat the table header at the top of every continuation page.
 - **FR27** — Render footer aggregates: sum, count, and average.
-- **FR28** — *(if capacity permits)* Alternating row styling.
+- **FR28** — *(if capacity permits)* Alternating row styling. Capacity is judged at the point
+  the table work is otherwise complete; FR28 is cut before any of FR22–FR27 is compromised,
+  per the rule that correct pagination beats table styling.
 
 ### 7.6 Rendering and Output
 
@@ -311,7 +315,7 @@ engine — not a later SDK. It is the same engine the designer previews with.
 
 ### 7.9 REST Rendering Service *(Optional)*
 
-- **FR45** — *(optional, only if capacity permits)* Expose an HTTP endpoint accepting
+- **FR45** — *(optional, judged only once the golden report renders reproducibly — never before)* Expose an HTTP endpoint accepting
   parameters and data and responding with `application/pdf`. The template travels in the
   request or is resolved from a path supplied by the operator — **not** from a server-side
   report repository, which is out of scope. The Go library remains the higher-priority
@@ -364,8 +368,10 @@ threatens the product**; the ones the first draft emphasized turned out to be ch
   timestamp, and subset tags must be a deterministic hash of the glyph set. ISO 32000-1
   §9.6.4 requires only that the six letters be unique within a file, so a hash is conforming.
 - **NFR1.f — Document metadata is pinned.** Creation and modification dates and the document
-  ID are either omitted or derived from content. The `SOURCE_DATE_EPOCH` convention is
-  adopted for callers who need a fixed date.
+  ID are either omitted or derived from content. The **library core reads no environment
+  variable** — FR43 is absolute. The `SOURCE_DATE_EPOCH` convention is honoured instead by
+  callers and by Folio's own command-line tooling, which read it and pass the date in as a
+  parameter (FR21). This resolves what was an internal contradiction with FR43.
 - **NFR1.g — No encryption in MVP.** ISO 32000-1 §7.6.2 mandates a random initialization
   vector per encrypted string and stream. Encryption and byte-reproducibility are mutually
   exclusive; encryption is therefore out of scope (§5.3).
@@ -397,7 +403,15 @@ MVP must correctly shape, measure, break, and render **Latin, CJK, and Thai**:
 and defers to a dictionary, so every general segmenter yields effectively no break
 opportunities within Thai text. The dictionary must be embedded in the binary and versioned
 with the library — never read from disk (fatal under WebAssembly) and never taken from the
-host platform (breaks NFR1). See Q2 and Risk R2.
+host platform (breaks NFR1). See Risk R2.
+
+**The deliverable is break opportunities, not word segmentation.** The distinction is a
+requirement rather than an implementation detail: a segmentation error is a wrong linguistic
+analysis, whereas a break error is an awkward line, and Folio resolves the difference by
+offering *fewer* opportunities rather than wrong ones. A run of Thai the dictionary cannot
+cover is treated as atomic, and no break ever falls inside a Thai character cluster — so an
+unrecognised customer name overflows visibly under FR44 rather than being silently split in
+the wrong place.
 
 ### NFR4 — Memory and streaming
 
@@ -422,8 +436,13 @@ Forward and backward compatibility rules between template versions and library v
 undefined and need a policy before v1.
 
 Because golden-hash regression tests are the primary verification mechanism (§9), **any
-change to layout, subsetting, or emission is a breaking change for downstream users' test
-suites** and must be treated as such in the versioning policy.
+change to layout, subsetting, emission, or the pinned toolchain is a breaking change for
+downstream users' test suites** and must be treated as such in the versioning policy.
+
+Now that Folio ships publicly (Q7), this is no longer an internal note: third parties will pin
+these hashes, so the compatibility policy becomes a commitment rather than a convention. It
+remains undefined, and it is the one open item that grew more expensive when the licence was
+decided.
 
 ### NFR7 — Font provisioning
 
@@ -498,7 +517,7 @@ Signals that MVP is succeeding in the wrong direction:
 | C1 | Expression function count exceeding the **eight** specified | The language is becoming a scripting language |
 | C2 | Component palette exceeding five | Breadth is displacing reliability |
 | C3 | Any determinism exception carved out to ship a feature | NFR1 is the product; erosion is fatal |
-| C4 | Designer work starting before the engine renders the golden report | The source plan's sequencing rule, violated — but see the tension noted in §3 |
+| C4 | Designer work starting before the engine renders the golden report | The sequencing rule, violated. Upheld by the epic breakdown — see §3 |
 | C5 | Time-to-first-PDF for a new integrator exceeding a few minutes | The "extremely simple API" goal has failed |
 | C6 | Golden hashes regenerated rather than investigated when CI goes red | The regression suite has stopped being a test |
 
@@ -511,7 +530,7 @@ Scope was deliberately held rather than cut, so the risks are carried explicitly
 | # | Risk | Severity | Mitigation |
 |---|---|---|---|
 | R1 | **FMA contraction silently breaks NFR1.** Divergence is invisible in output and appears only in the hash; an amd64-and-wasm-only CI matrix passes anyway. | Critical | Fixed-point arithmetic (NFR1.a) makes it structural. An arm64 target in CI is mandatory. |
-| R2 | **Thai line breaking must be written from scratch**, on the critical path. No maintained pure-Go segmenter exists; the available ones are dead, unlicensed, or read their dictionary from disk. | High | Embed a permissively-licensed dictionary as a compiled trie; budget the work explicitly in the build order rather than discovering it. |
+| R2 | **Thai line breaking must be written from scratch**, on the critical path. Re-verified after the licence decision: the maintained pure-Go options are dead, LGPL-licensed, read their dictionary from disk, or are permissively wrapped around copyleft code. | High → Medium | Scope the deliverable to break opportunities rather than segmentation (NFR3); embed a permissively-licensed dictionary as a compiled trie; open the text epic with a spike gated on real Thai text including proper nouns, which can halt and re-plan the epic. |
 | R3 | **Library beta risk.** The strongest candidates for shaping, subsetting, and PDF writing are pre-1.0 with explicitly unstable APIs. | Medium | Pin versions; keep a second implementation available for cross-validation of shaping output. |
 | R4 | **Compressor output is stable by observation, not by contract.** Go's compatibility promise says nothing about encoder bytes, so a future Go release could invalidate every recorded golden hash downstream. | Medium | Record the Go version alongside golden hashes; treat a toolchain bump as a versioned breaking change (NFR6). |
 | R5 | **Solo capacity against held scope.** Reviewers identified this as the dominant risk to delivery. | High | Sequencing discipline: the engine must render the golden report before designer investment (C4). |
@@ -522,18 +541,28 @@ Scope was deliberately held rather than cut, so the risks are carried explicitly
 ## 11. Open Questions
 
 Q1, Q4, and Q9 from the first draft are answered and recorded in §8 and `addendum.md`;
-their numbers are left unused so existing references stay valid.
+their numbers are left unused so existing references stay valid. Q2, Q3, Q5, Q6, Q7, Q10 and
+Q11 were answered after this PRD was first finalized; they are kept here with their answers
+rather than deleted, so a reader who followed a reference still lands somewhere useful.
+
+### Still open
 
 | # | Question | Blocks |
 |---|---|---|
-| Q2 | Which specific font faces ship, under what licences, and how does a user supply a custom font? Coverage for Latin + CJK + Thai with deterministic subsetting is unresolved. | Architecture; NFR3, NFR7 |
-| Q3 | What is the row scope rule inside a repeating region (FR17)? | Template format, expression engine |
-| Q5 | Does the build order stand, given tables depend on aggregation from the expression engine that is scheduled after them? | Epics and story sequencing |
-| Q6 | Does the designer really come last, when it carries success criterion S5 and half the product's users? | Epics and story sequencing |
-| Q7 | Licence and distribution — open source, source-available, or private? Undecided by choice. | Deferred; revisit before any public repo |
-| Q8 | Where does sample JSON live relative to the template during design (FR9)? | Designer UX |
-| Q10 | What is the locale model for `formatDate` and `formatNumber`, given FR43 forbids reading the host locale? Patterns imply locale-sensitive behaviour that must come from somewhere explicit. | Expression engine |
-| Q11 | Which PDF version does Folio target? PDF 2.0 makes `/ID` mandatory, which constrains NFR1.f. | Architecture |
+| Q8 | Where does sample JSON live relative to the template during design (FR9), and does its path persist in the `.folio`? | Designer UX. Revisit at the first real authoring session |
+| — | What are the forward and backward compatibility rules between template versions and library versions (NFR6)? Public distribution made this a commitment to third parties rather than a convention. | Needed before v1, not before MVP |
+
+### Answered
+
+| # | Question | Answer |
+|---|---|---|
+| Q2 | Which font faces ship, under what licences, and how does a user supply a custom font? | Noto Sans, Noto Sans Thai and Noto Sans SC (variable, glyf outline), all SIL OFL 1.1, travelling with their licence text. A custom font is supplied as part of the explicit font set passed to a render; there is no font-upload UI in MVP. |
+| Q3 | What is the row scope rule inside a repeating region (FR17)? | A repeating region declares its alias explicitly, defaulting to `row`. Inside it the alias resolves to the current row; unqualified paths still resolve from the document root, so a row never shadows the root; `params.` can be shadowed by nothing. |
+| Q5 | Does the build order stand, given tables depend on aggregation scheduled after them? | No — the source plan's order was wrong, because table footer aggregates *are* `sum()`, `count()` and `avg()`. Expressions now precede tables, and scalar binding moves earlier still. |
+| Q6 | Does the designer really come last? | Engine-first stands and C4 holds, but the designer is two epics rather than one trailing phase, and the exact preview ships with the first of them. See §3. |
+| Q7 | Licence and distribution? | **MIT, open source.** No dependency may carry GPL, LGPL, AGPL, SSPL or a commercial EULA at any depth, since Go links statically; this is enforced mechanically rather than by habit. Redistributed fonts keep their OFL terms and notices. |
+| Q10 | What is the locale model for `formatDate` and `formatNumber`? | The template declares one locale tag and a fixed UTC offset. A compiled table covering a closed set — `en`, `th`, `zh-Hans`, `ja` — ships with the library; an unlisted tag is a load error, never a silent fallback. `th` renders Buddhist-era years. No host locale or host time zone is ever consulted. |
+| Q11 | Which PDF version does Folio target? | PDF 1.7 (ISO 32000-1). The document ID is content-derived; creation and modification dates are omitted unless a date arrives through parameters. |
 
 ---
 
@@ -543,11 +572,11 @@ their numbers are left unused so existing references stay valid.
 |---|---|
 | §3.1 | Both user journeys are inferred, not captured from a real session |
 | FR9 | Sample JSON is a separate local file, not embedded in the template |
-| FR17 | Row scope inside repeating regions needs explicit definition (Q3) |
+| FR17 | ~~Row scope needs explicit definition~~ — **resolved**, see Q3 |
 | NFR1 | Byte-identity is achievable in practice — verified against reproducible Go PDF writers, but not yet proven in Folio's own code |
 | NFR4 | No memory or throughput targets exist; a 50-page statement is the working target |
 | NFR6 | Template/library compatibility policy undefined |
-| NFR7 | Specific font faces and their licensing unresolved (Q2) |
+| NFR7 | ~~Specific font faces and their licensing unresolved~~ — **resolved**, see Q2 |
 | §9 | Success is acceptance-based, not adoption-based, per current distribution intent |
 
 ---
@@ -556,10 +585,13 @@ their numbers are left unused so existing references stay valid.
 
 Stated so a reviewer knows they were considered, not overlooked:
 
-- **No monetization, pricing, or packaging** — distribution intent is undecided (Q7).
+- **No monetization, pricing, or packaging.** Distribution is now decided — MIT, open source (Q7) — and no revenue model follows from it. Packaging remains out of scope.
 - **No security or threat model** — MVP has no server, no accounts, and no untrusted
   multi-tenant surface. This must be revisited the moment the optional REST service (FR45)
-  becomes real. Font parsing is an untrusted-input surface even in MVP.
+  becomes real. Font parsing is an untrusted-input surface even in MVP, and a template arriving
+  from an untrusted author is one too. Shipping publicly (Q7) does not change the runtime
+  surface, since Folio still operates nothing — but it does mean untrusted templates and fonts
+  will reach the library through people the author has never met.
 - **No accessibility requirements** — neither designer UI accessibility nor tagged/accessible
   PDF (PDF/UA, PDF/A) is in MVP. Likely a requirement for any enterprise buyer, should Folio
   go public.

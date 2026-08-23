@@ -47,7 +47,7 @@ graph LR
 
 | Paradigm role | Namespace |
 | --- | --- |
-| Shell — may read the world | `folio` (public API), `cmd/folio`, `wasm/`, `designer/` |
+| Shell — may read the world | `folio` (public API), `cmd/folio`, `wasm/`, `folio-designer/` |
 | Core — pure, deterministic | `internal/` (everything under it) |
 | Shared kernel — imports nothing | `internal/geom` |
 
@@ -191,9 +191,10 @@ graph TD
   font assets from a static host — two byte-streams that drift apart and produce different
   subsets, and therefore different hashes, with nothing in the output to show it.
 - **Rule:** no package under `internal/` embeds font data. `Render` takes a `FontSet` value.
-  The repository holds font binaries in exactly one place, `fonts/`; the `folio/fonts` package
-  wraps them with `go:embed` for native callers, and the designer build copies from the same
-  directory. Font resolution inside a render is a pure lookup against the supplied `FontSet` —
+  The repository holds font binaries in exactly one place, `folio-go/fonts/`; the `folio/fonts`
+  package wraps them with `go:embed` for native callers, and the designer build copies from the
+  same directory. They must live **inside** the Go module — `go:embed` cannot reach outside it,
+  so a repo-root `fonts/` would silently fail to embed. Font resolution inside a render is a pure lookup against the supplied `FontSet` —
   never a host font query. A template names a family plus an **ordered fallback chain**; the
   chain is part of the `FontSet`'s identity, so the same template with a different chain is a
   different render, not a silent substitution. A glyph covered by no font in the chain is a
@@ -377,6 +378,9 @@ graph TD
 - **Prevents:** a routine Go upgrade silently changing `compress/flate` output and invalidating
   every golden hash recorded by every downstream user's test suite.
 - **Rule:** `go.mod` pins an exact `toolchain` directive and CI uses that version only. Because
+  the module lives in a monorepo subdirectory, release tags carry the directory prefix —
+  `folio-go/v0.1.0`, not `v0.1.0` — and a future major version becomes
+  `github.com/panitw/folio/folio-go/v2`. And because
   golden-hash equality is the primary verification mechanism, **any** change to layout,
   subsetting, emission, the locale table, or the toolchain is a breaking change for downstream
   test suites and is released as one.
@@ -418,6 +422,42 @@ graph TD
     centred within it, computed in integer millipoints. Never stretched, never cropped, never
     sized from its intrinsic pixel dimensions.
 
+### AD-25 — Thai break opportunities fail toward not breaking
+
+- **Binds:** `internal/text` · NFR3, FR44, S4
+- **Prevents:** a greedy dictionary matcher shredding a word it does not recognise into
+  legal-but-wrong fragments and breaking a line inside it. On a customer statement the
+  unrecognised words are **customer names**, which no Thai dictionary carries — ICU's own
+  documentation concedes that longest-match handles unknown words badly and that this is serious
+  in real Thai text. Silently mis-breaking a person's name across 50,000 statements is a worse
+  failure than any overflow.
+- **Rule:** two constraints sit **under** whatever the dictionary proposes, and both override it:
+  - **Unknown runs are atomic.** A run of Thai characters the dictionary cannot cover yields
+    **no** interior break opportunities. It overflows visibly under FR44 — clipped, with a
+    located diagnostic — rather than being split at a guess.
+  - **No break inside a Thai character cluster.** A consonant with its vowels and tone marks is
+    indivisible. This is mechanical and needs no dictionary.
+
+  The engine's contract is *break opportunities*, not word segmentation. Correctness is judged
+  against the frozen S4 expected-break fixture, whose provenance may be a one-time offline
+  reference run, hand-checked — never a runtime dependency.
+
+### AD-26 — The licence boundary is MIT, and nothing copyleft enters
+
+- **Binds:** all · PRD Q7 (**resolved: MIT, open source**)
+- **Prevents:** a copyleft dependency arriving through a plausible-looking package and forcing a
+  relicence after the fact. This is not hypothetical: the only live Go Thai segmenter,
+  `akkaraponph/presspdf/thai`, is MIT on its own tin but says in its package documentation that it
+  replaces an import of `veer66/mapkha`, which is **LGPL-3.0** — and Go links statically, so LGPL
+  obligations would attach to the whole binary.
+- **Rule:** Folio ships under **MIT**. No dependency may carry GPL, LGPL, AGPL, SSPL, or a
+  commercial EULA, at any depth — a CI licence check enforces this on the whole module graph and
+  on `folio-designer/`'s lockfile, and it fails the build rather than warning. Redistributed
+  non-code assets keep their own terms and their notices: the shipped Noto and IBM Plex faces are
+  **SIL OFL 1.1** and travel with their licence text and copyright lines; `pdfjs-dist` is
+  **Apache-2.0** and travels with its NOTICE. A third-party licence manifest is a release artifact,
+  not a README paragraph.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -448,8 +488,9 @@ Verified current as of 2026-08-23.
 | `boxesandglue/textshape` — shaping + subsetting | v0.0.15 |
 | `go-text/typesetting` — cross-validation of shaping only, test-scope | v0.3.4 |
 | PDF writer | none — Folio's own (AD-6) |
-| Thai dictionary — ICU `thaidict`, compiled to a `BytesTrie` | Unicode License, ~123 KB |
+| Thai dictionary — PyThaiNLP `words_th`, compiled to a `BytesTrie` | CC0-1.0, 62,106 words |
 | Fonts — Noto Sans, Noto Sans Thai, Noto Sans SC (variable, glyf) | SIL OFL 1.1 |
+| Folio's own licence | MIT |
 | Designer fonts — IBM Plex Sans / Mono / Sans Thai | SIL OFL 1.1 |
 | TypeScript / React | 19.2.x |
 | Vite (Node 20.19+ / 22.12+) | 7.3.x |
@@ -497,7 +538,7 @@ There is no Folio-operated runtime. The operational envelope is three things and
 | Environment | What it is |
 | --- | --- |
 | Designer | Static files on any host. Brotli plus immutable content-hashed URLs are requirements, not tuning (AD-19). No backend, no database, no accounts, no telemetry. |
-| Library | A Go module fetched through the module proxy and compiled into someone else's binary. Folio operates nothing. |
+| Library | A Go module at `github.com/panitw/folio/folio-go`, fetched through the module proxy and compiled into someone else's binary. Folio operates nothing. |
 | CI | The four-target matrix of AD-21, plus the AD-1 lints. The only environment Folio itself runs. |
 
 The optional REST service (FR45) would be the first thing that changes this, and would bring a
@@ -527,46 +568,51 @@ growing it a warning sign rather than a feature.
 ### Source tree
 
 ```text
-folio-go/                      # module github.com/folio-reports/folio-go
-  folio.go                     # LoadTemplate · Validate · Render · RenderTo — the shell
-  fontset.go                   # FontSet as a public input (AD-8)
-  internal/
-    geom/                      # Length, Rect, rounding — imports nothing (AD-2)
-    diag/                      # Diagnostic, Severity, the code registry (AD-14)
-    template/                  # schema, canonical parse + serialize, ids, assets (AD-9, AD-10)
-    expr/                      # lexer, parser, the 8 functions, locale tables (AD-12)
-    bind/                      # data + params resolution, row scope, decimals (AD-11, AD-23)
-    text/                      # shaping, UAX #14 + Thai trie breaking, measurement
-    fontset/                   # resolution, fallback chain, subsetting (AD-8)
-    layout/                    # bands, absolute placement, table flow, pagination
-    pagemodel/                 # renderer-agnostic page model (AD-5)
-    pdf/                       # object serializer, xref, Type0/Identity-H, images (AD-6)
-  fonts/                       # the one copy of the font binaries; go:embed for native
-  cmd/folio/                   # CLI: validate, render — reads SOURCE_DATE_EPOCH (AD-7)
-  wasm/                        # js/wasm entry point, command channel (AD-15, AD-16)
-  testdata/golden/             # fixtures + hashes, per version and toolchain (AD-21)
-designer/                      # Vite + React + TS
-  src/engine/                  # worker host, command channel, snapshot store
-  src/canvas/                  # DOM/SVG canvas, bands, selection (AD-17)
-  src/panels/                  # palette, properties, binding tree, table editor
-  src/preview/                 # pdf.js surface, diagnostics overlay (AD-18)
-  src/file/                    # the two-tier file interface (AD-20)
+folio/                                # github.com/panitw/folio — monorepo
+  folio-go/                           # module github.com/panitw/folio/folio-go
+    folio.go                          # LoadTemplate · Validate · Render · RenderTo — the shell
+    fontset.go                        # FontSet as a public input (AD-8)
+    internal/
+      geom/                           # Length, Rect, rounding — imports nothing (AD-2)
+      diag/                           # Diagnostic, Severity, the code registry (AD-14)
+      template/                       # schema, canonical parse + serialize, ids, assets (AD-9, AD-10)
+      expr/                           # lexer, parser, the 8 functions, locale tables (AD-12)
+      bind/                           # data + params resolution, row scope, decimals (AD-11, AD-23)
+      text/                           # shaping, UAX #14 + Thai trie breaking, measurement
+      fontset/                        # resolution, fallback chain, subsetting (AD-8)
+      layout/                         # bands, absolute placement, table flow, pagination
+      pagemodel/                      # renderer-agnostic page model (AD-5)
+      pdf/                            # object serializer, xref, Type0/Identity-H, images (AD-6)
+    fonts/                            # the one copy of the font binaries (AD-8).
+                                      #   MUST sit inside the module: go:embed cannot reach out.
+    cmd/folio/                        # CLI: validate, render — reads SOURCE_DATE_EPOCH (AD-7)
+    wasm/                             # js/wasm entry point, command channel (AD-15, AD-16)
+  folio-designer/                     # Vite + React + TS
+    src/engine/                       # worker host, command channel, snapshot store
+    src/canvas/                       # DOM/SVG canvas, bands, selection (AD-17)
+    src/panels/                       # palette, properties, binding tree, table editor
+    src/preview/                      # pdf.js surface, diagnostics overlay (AD-18)
+    src/file/                         # the two-tier file interface (AD-20)
+  fixtures/                           # golden templates, data, params, recorded hashes (AD-21).
+                                      #   Repo-level, not per-SDK: read at test runtime, so every
+                                      #   future SDK conforms against the same bytes.
+  folio-node/ · folio-java/ · …       # deferred SDKs, same fixtures, same namespace
 ```
 
 ## Capability → Architecture Map
 
 | Capability | Lives in | Governed by |
 | --- | --- | --- |
-| Designer canvas, palette, properties (FR1–FR6) | `designer/src/canvas`, `src/panels` | AD-15, AD-17, AD-24, DESIGN.md tokens |
-| Binding UI and sample data (FR7, FR9) | `designer/src/panels` | AD-11, AD-15 |
-| Table structure editor (FR10) | `designer/src/panels` | AD-13, AD-11 |
-| Open / save local files (FR8) | `designer/src/file` | AD-20, AD-9 |
+| Designer canvas, palette, properties (FR1–FR6) | `folio-designer/src/canvas`, `src/panels` | AD-15, AD-17, AD-24, DESIGN.md tokens |
+| Binding UI and sample data (FR7, FR9) | `folio-designer/src/panels` | AD-11, AD-15 |
+| Table structure editor (FR10) | `folio-designer/src/panels` | AD-13, AD-11 |
+| Open / save local files (FR8) | `folio-designer/src/file` | AD-20, AD-9 |
 | Template format (FR11–FR13) | `internal/template` | AD-9, AD-10 |
 | Binding and expressions (FR14–FR20) | `internal/bind`, `internal/expr` | AD-11, AD-12, AD-23, AD-24, AD-1 |
 | Parameters (FR21) | `internal/bind` | AD-11, AD-7 |
 | Tables and pagination (FR22–FR28) | `internal/layout` | AD-13, AD-24, AD-4, AD-14 |
 | Rendering and output (FR29–FR33) | `internal/pdf`, `internal/fontset` | AD-6, AD-7, AD-8, AD-3, AD-24 |
-| Design canvas vs exact preview (FR34–FR36) | `designer/src/preview`, `wasm/` | AD-16, AD-17, AD-18, AD-19 |
+| Design canvas vs exact preview (FR34–FR36) | `folio-designer/src/preview`, `wasm/` | AD-16, AD-17, AD-18, AD-19 |
 | Public Go API and error contract (FR37–FR44) | `folio`, `internal/diag` | AD-14, AD-5, AD-7 |
 | Byte reproducibility (NFR1) | everywhere under `internal/` | AD-1, AD-2, AD-3, AD-23, AD-21, AD-22 |
 | Script support (NFR3) | `internal/text`, `internal/fontset` | AD-8, AD-17 |
@@ -585,5 +631,4 @@ designer/                      # Vite + React + TS
 | Accessibility conformance, and the canvas screen-reader model (UX1) | EXPERIENCE's behavioural floor binds now; formal conformance is out of MVP scope. |
 | Custom font upload in the designer (part of Q2) | AD-8 already makes custom fonts expressible in Go. The UI for it is not MVP. |
 | Sample-JSON persistence in `.folio` (UX2) | Costs a round-trip decision in AD-9's schema; revisit after the first real authoring session. |
-| Licence and distribution (Q7) | Undecided by choice. Nothing in this spine depends on the answer; all named dependencies are OFL, MIT, BSD-3, or Unicode. |
 | Build order (Q5, Q6) | Sequencing belongs to `bmad-create-epics-and-stories`. This spine deliberately imposes no phase order — note only that Thai line breaking is a prerequisite of text wrapping, not a refinement of it. |

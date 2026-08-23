@@ -96,6 +96,14 @@ font layer cannot render Thai correctly.
 with spaces. Unicode UAX #14 assigns Thai to a complex-context class and defers to a
 dictionary, so general segmenters yield effectively no break opportunities within Thai text.
 
+**Break opportunity** — a position where a line *may* end. Deliberately not the same as a word
+boundary: Folio's contract is to offer break opportunities, not to segment Thai correctly. The
+error costs differ — a wrong segmentation is a wrong analysis, a wrong break is an awkward line
+— and Folio resolves the difference by offering fewer opportunities rather than wrong ones.
+
+**Thai character cluster** — a consonant together with its vowels and tone marks. Indivisible:
+no break ever falls inside one. Mechanical, and requires no dictionary.
+
 **FontSet** — the explicit collection of font data handed to a render, with each family's
 ordered fallback chain. Part of a render's identity: the same template with a different
 FontSet is a different render, not a silent substitution. Never a host font query.
