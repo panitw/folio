@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if os.Getenv(subprocessEnvVar) == "1" {
-		b, err := Render()
+		b, err := Render(nil)
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
@@ -386,7 +386,7 @@ func TestRenderIsByteIdenticalAcrossTwoProcesses(t *testing.T) {
 // is recorded in the Delivery Log rather than wired into this test, since
 // this module intentionally has no PDF-reading dependency (AC2).
 func TestRenderProducesAValidPDF(t *testing.T) {
-	b, err := Render()
+	b, err := Render(nil)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -403,7 +403,7 @@ func TestRenderProducesAValidPDF(t *testing.T) {
 // R4 compression risk this story's Dev Notes explicitly remove from the
 // variable set (this story's QA review, Minor 20).
 func TestRenderHasNoCreationOrModDate(t *testing.T) {
-	b, err := Render()
+	b, err := Render(nil)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -419,7 +419,7 @@ func TestRenderHasNoCreationOrModDate(t *testing.T) {
 // entries are byte-identical to each other and 16 bytes each (32 hex
 // characters).
 func TestRenderIDEntriesAreIdentical(t *testing.T) {
-	b, err := Render()
+	b, err := Render(nil)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}

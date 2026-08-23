@@ -1,0 +1,33 @@
+# Shared value table for AC25 (D-1.4.3): internal/pdf's appendLength and
+# internal/template's appendPoints are independent reimplementations of
+# the same on-disk spelling rule (internal/template may not import
+# internal/pdf, AD-1). Both packages' tests read this file and assert
+# their own function produces exactly the expected string for the given
+# millipoint value, so a future divergence between the two shows up as a
+# red test here rather than as a silent byte surprise downstream.
+#
+# Format: one case per line, "<millipoints>\t<expected spelling>". Blank
+# lines and lines starting with # are ignored.
+0	0
+1	0.001
+999	0.999
+1000	1
+1500	1.5
+36000	36
+72500	72.5
+72501	72.501
+-1	-0.001
+-36000	-36
+-1000	-1
+100000	100
+1000000	1000
+123456	123.456
+120000	120
+# int64 extremes (this story's finisher review, Finding 14, Minor):
+# appendPlainInt's fixed [20]byte buffer and appendPoints' integer-part
+# negation are both places two independent reimplementations could
+# diverge only at the boundary, and MaxInt64/MinInt64 millipoints are
+# both legal, reachable values (a literal 9223372036854775.807 loads).
+9223372036854775807	9223372036854775.807
+-9223372036854775808	-9223372036854775.808
+-999	-0.999

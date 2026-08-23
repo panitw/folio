@@ -105,3 +105,38 @@ it" is a release-process decision with licence-compliance consequences (DW-3 dep
 D-1.1.c fixes the public API at that tag — so it is also the moment the medium-confidence
 argument-packaging question becomes irreversible. Not due now; **must not evaporate.** If it is still
 unowned when Epic 4 is planned, it goes to the owner rather than being absorbed into a story.
+
+### DW-5 — Derivation validation of `columns[].footerOf` from `bind`
+- **Deferred by:** Story 1.4 (ruling D-1.4.2, AC43/AC44)
+- **Owner:** **Story 3.2**, backstop **Story 3.7** (`folio.Validate` must include it)
+- **Anti-rot mechanism:** a test asserts `folio-go/internal/expr` is **absent**. The day Story 3.2
+  (or any story) creates that package, the assertion goes red and forces the derivation logic to be
+  wired before the build can pass again.
+
+D-1.1's derivation rule (a bare row-scoped path, or a single `formatNumber(...)` call over one) needs
+the parsed expression tree to check `bind`'s shape — machinery Story 1.4 deliberately does not build
+(no `internal/expr` package exists yet). Until Story 3.2 lands it, a `footer` with no `footerOf`
+simply loads (AC44's known, fixture-pinned gap) rather than being derived or rejected.
+
+### DW-6 — The two footer diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` / `TABLE_FOOTER_SOURCE_FORBIDDEN`
+- **Deferred by:** Story 1.4 (ruling D-1.4.2)
+- **Owner:** **Story 3.6** — the story that mints `internal/diag`'s stable diagnostic codes
+- **Anti-rot mechanism:** a test asserts `folio-go/internal/diag` is **absent**. The day Story 3.6
+  creates it, the assertion goes red and forces these two codes to be wired before the build can
+  pass again.
+
+Story 1.4's load failures are plain Go errors (D-1.4.2: *"1.4 must not mint them early"*).
+`internal/diag` does not exist yet; AD-14 lands with Story 1.6 and the codes with Story 3.6.
+
+### DW-7 — Footer evaluation sameness with `{{sum(...)}}` / `{{avg(...)}}` / `{{count(...)}}`
+- **Deferred by:** Story 1.4 (ruling D-1.4.2)
+- **Owner:** **Story 4.5**, by name
+- **Anti-rot mechanism:** **none possible.** D-1.4.2's own honesty: *"no package tripwire exists, so
+  `deferred-work.md` is the only trigger — flagged as the weakest of the three."* Nothing renders a
+  table (and so nothing evaluates an aggregate) until Story 4.5, so there is no absent-package
+  structural seam to key a red-proof on the way DW-5 and DW-6 have. This entry itself is the only
+  thing keeping the requirement visible until then.
+
+`columns[].footer`'s `sum`/`count`/`avg` must eventually use the *same* aggregate evaluation as the
+`{{sum(...)}}` family of expression functions — a single implementation, not two that can drift.
+Story 1.4 builds neither; nothing renders a table until Story 4.5.

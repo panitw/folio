@@ -1848,3 +1848,818 @@ now a live test of the label rather than a hypothetical one.
 **How we'd know it was wrong.** A map range whose type is declared in another package failing to
 produce a finding — the reviewer's exact reproduction, which must become a retained fixture rather
 than a one-off proof.
+
+## Standing decisions — added mid-run
+
+### D-000.9 — A guard's "all clear" must never be produced by the same code path as its "I could not look"
+**Orchestrator decision**, on the engineering lead's framing. **Program-wide standing rule**, applies
+to every remaining story and to every developer, reviewer and finisher prompt from Story 1.4 onward.
+
+**Verdict.** Three obligations, and a diagnostic question that makes them checkable in seconds.
+
+1. **Separate "clean" from "couldn't look."** Every guard returns findings **and a coverage
+   witness** — what it examined and **how many candidate sites it considered**, not how many files it
+   walked. **Zero candidates is a failure, not a pass.** Errors return separately and are assessed
+   **before** findings (the `D-1.3.3 (amended)` rule, generalised to everything).
+2. **The red is produced by construction, in a gate that actually runs.** A retained fixture in the
+   default gate — never a mutation applied and reverted, never behind a build tag, never "verified by
+   inspection".
+3. **The diagnostic question, for developer and reviewer alike:** *"What would this check have
+   printed if it had been unable to run at all?"* **If the answer is "the same thing," it is an
+   instance.** Reviewers verify a guard by **breaking the property in the real tree and watching a
+   gate that actually runs go red** — never by reading the guard.
+
+**Situation — six instances across three stories, each caught separately as if unrelated.**
+
+| # | Story | The instance | "All clear" signal |
+|---|---|---|---|
+| 1 | 1.2 | Counted-four assertion compared the loop's output to its own input | zero mismatches |
+| 2 | 1.2 | CI compare job globbed uncounted artifacts under `if-no-files-found: warn` | "All four targets agree" over three |
+| 3 | 1.3 | Conditional lockfile check (rejected at ruling time, D-1.3.4) | passes once the file arrives |
+| 4 | 1.3 | Scanner `return err` before appending any finding | zero findings |
+| 5 | 1.3 | Manifest row-shape assertion vacuous against an empty manifest | zero rows disagreed |
+| 6 | 1.3 | `tolerantImporter` blind across package boundaries | `err=nil, findings=0` |
+
+Plus three more found in the same review: an assertion comparing a message to the constant that built
+it, a red-proof behind a build tag so it ran in **zero** gates, and a fixture exempted by a filename
+carve-out that predated the change it was meant to prove.
+
+**In simple terms.** The mechanism is always the same: **the success signal is indistinguishable from
+the not-run signal.** A smoke alarm with a dead battery reports no smoke, and so does a working alarm
+in a clean room. You cannot tell them apart by looking at the reading — only by lighting a match.
+
+**Why writing it down did not stop it.** Story 1.3 **named this pattern in its own vacuity guards and
+then shipped an instance of it.** The reason is that the code always *looks* like it passed: there is
+no error, no warning, no anomalous value — the guard's healthy output and its dead output are
+literally the same bytes. Inspection therefore cannot catch it, in principle. Only construction can.
+
+**Consequences.** All three obligations go into every developer, reviewer and finisher prompt from
+Story 1.4 onward. Obligation 1 changes guard *signatures*, so it is a code change, not a discipline.
+Obligation 3 is the one that transfers, because it needs no understanding of the guard being checked.
+Note the meta-hazard: any test written **for** this rule is itself exposed to it — a key-coverage test
+that compares zero keys passes — so coverage witnesses must themselves report counts.
+
+**How we'd know it was wrong.** A seventh instance reaching `done`. That would mean the coverage
+witness is not being demanded, or is itself vacuous.
+
+## Epic 1 decisions — Story 1.4 (ruled before the story file was written)
+
+### D-1.4.2 — D-1.4.1 stands; 1.4 ships schema plus decidable validation only, with three deferrals
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict.** D-1.4.1 stands **in full, unamended**, and its `folio-format.md` amendment ships in
+**1.4's own commit** per D-000.6 — extend the `columns[].footer` row, add rows for `footerOf` and
+`footerFormat`, state the derivation, the `count` prohibition, and the two diagnostic codes.
+
+**The wrinkle is larger than "1.4 cannot call `internal/expr`."** D-1.4.1's derivation rule is *"a
+decidable syntactic property of the parsed expression tree"* — and there is no expression parser
+until Story 3.2, so 1.4 cannot validate derivability either. Split by what is decidable **without a
+parser**:
+
+| Check | In 1.4? | Why |
+|---|---|---|
+| `footerOf` present with `footer: "count"` → load error | **Yes** | pure field presence |
+| `footerOf` or `footerFormat` present with no `footer` → load error | **Yes** | pure field presence |
+| `footerOf` prefixed by the table's collection path + `.` | **Yes** | a **string** prefix test against `bind` with `[]` stripped — no parser |
+| `footerOf` omitted → derive from `bind`, else load error | **No** | needs the parsed expression tree |
+| Footer uses the *same* aggregate evaluation as `{{sum(...)}}` | **No** | nothing renders a table until 4.5 |
+
+**Three deferrals, each with a D-1.3.4 asserted-absence tripwire where one is possible.** Derivation
+validation → **Story 3.2**, backstop 3.7 (`folio.Validate` must include it); tripwire asserts
+`internal/expr` does not exist. Diagnostic codes `TABLE_FOOTER_SOURCE_UNRESOLVED` /
+`TABLE_FOOTER_SOURCE_FORBIDDEN` → **Story 3.6**; **1.4 must not mint them early** — its load failures
+are plain Go errors naming field, element id and offending value; tripwire asserts `internal/diag`
+does not exist. Footer evaluation sameness → **Story 4.5** by name; **no package tripwire exists**, so
+`deferred-work.md` is the only trigger — flagged as the weakest of the three.
+
+**Guardrail.** The derivation deferral must not silently become permanent permissiveness: until 3.2,
+a `footer` with no `footerOf` **loads**. That is a *known* gap and needs its own fixture asserting
+today's behaviour, or Story 3.2's author will read the absence of a check as evidence none was
+intended.
+
+### D-1.4.3 — Two numeric kinds, one canonical spelling, and "canonical" defined as a fixed point
+**Orchestrator decision**, on the lead's ruling. The load-bearing ruling of Story 1.4.
+
+**Verdict — representation.** Exactly two numeric kinds exist in a `.folio` file, and there is no
+third. **Points** (`x`, `y`, `width`, `height`, `fontSize`, `headerHeight`, `padding.*`, `margin.*`,
+`border.width`, `columns[].width`) are held as **`geom.Length`** (`int64` millipoints), converted on
+load by **exact ×1000 decimal-string arithmetic, never through `float64`**; on disk they are points,
+up to three decimals, **trailing zeros trimmed, no trailing `.`, no `-0`, no exponent** — the same
+spelling `appendLength` produces (`36` not `36.0`; `72.5` not `72.500`). **Plain integers**
+(`nextId`) are `int64`, plain digits. `version` is a **string** (`"MAJOR.MINOR"`), so it carries no
+round-trip hazard. Report-data numbers (AD-23's exact scaled decimals) are **not** in the template —
+that type is Story 1.6's and 1.4 must not build it.
+
+**Verdict — decoding.** `json.Decoder` with **`UseNumber()`** — not by analogy with AD-23 but because
+the alternative is unavailable: `encoding/json`'s default decodes every number to `float64`, and
+`folio-format.md`'s Units section already requires "the same exact-decimal path as report data
+(AD-23) — never `float64`."
+
+**Verdict — input tolerance.** Non-canonical but valid input is **accepted and normalised**, not
+rejected: `36.0000` → `36`, `1e3` → `1000`. AD-9 mandates one legal *serialization*, not one legal
+input, and its Prevents line explicitly contemplates a hand-editor. **Legality is a property of the
+value, not the spelling:** a number is legal iff its exact decimal value is a whole number of
+millipoints. `int64` millipoint overflow is a load error, never a wrap.
+
+**Verdict — what "canonical" means.** This is what makes `Serialize(Parse(b)) == b` satisfiable
+rather than vacuous or impossible. Three properties, all tested:
+- **P1 — round-trip through bytes:** for every `Document d` obtained by parsing a valid file,
+  `Parse(Serialize(d)) == d`.
+- **P2 — normalisation is idempotent:** for every valid input `b`,
+  `Serialize(Parse(b)) == Serialize(Parse(Serialize(Parse(b))))`.
+- **P3 — canonical is a fixed point:** `b` is canonical **iff** `Serialize(Parse(b)) == b`.
+
+The AC's `Serialize(Parse(b)) == b` then holds for canonical `b` **by P3's definition**, and the
+substantive tests are P1, P2, and a corpus of canonical fixtures — starting with
+`folio-format.md`'s own worked example, which that document labels "in canonical form" and which
+ships as a golden fixture under AD-21.
+
+**Four byte-level traps that make P3 real — all named in the story.** **HTML escaping OFF**
+(`json.Marshal` escapes `<`, `>`, `&` by default; left on, a template containing `<` round-trips to
+different bytes than a hand-editor wrote). **UTF-8 emitted literally**, no `\uXXXX` above `0x1F` —
+the golden report is a **Thai** bank statement, and escaping Thai or CJK would destroy the
+readability contract `folio-format.md` states as its purpose. **Minimal escaping only** — `"`, `\`,
+and controls below `0x20`; `/` is never escaped. **Key sort is byte-order over the UTF-8 key**, not
+locale-aware — all keys are ASCII lowerCamelCase so it never bites, stated anyway because a
+locale-aware sort would be invisible until someone adds a key.
+
+**The `omitempty` trap, which is the likeliest way P1 breaks.** The worked example carries
+`"assets": {}` — present and empty. **No `omitempty` on any field whose zero value is legal authored
+content.** An `omitempty` on `assets`, `x`, `y` or `fontSize` turns an authored `0` or `{}` into an
+absent key and breaks P1 silently for exactly the documents that look most ordinary.
+
+**Confidence.** High on representation and P1/P2/P3; **medium** on the exhaustiveness of the lead's
+numeric-field inventory — the developer must enumerate every numeric field in `folio-format.md` and
+classify each into kind 1 or kind 2, with a test asserting **no field escaped classification**. That
+enumeration is a coverage witness in D-000.9's sense.
+
+### D-1.4.4 — One document-wide counter; `nextId` absent or too low is a load error
+**Orchestrator decision**, on the lead's ruling. **Corrects a carried assumption:** ids are
+`"e" + decimal counter` (`e1`, `e2`, …), **not base-36** — verified in `folio-format.md`, whose
+worked example shows `e1`…`e5` with `nextId: 6` (lines 273, 287). The first grounding's base-36 note
+was a guess that never entered the contract.
+
+**Verdict.** Top-level `"nextId"`, an integer, sorted among the top-level keys. **One counter,
+document-wide** — `folio-format.md`'s `columns[]` row says each column carries "its own `id` (**same
+counter as elements**, so a diagnostic can name a column)", and AD-10 requires every diagnostic
+concerning a template element to carry its id, which demands document-wide uniqueness. Not per
+element type. **`nextId` absent → load error. `nextId` ≤ the highest id present → load error. Never
+repair, never renumber.**
+
+**Why deriving `nextId` as `max(existing)+1` is worse than it looks.** Delete the highest-id element
+and the derived counter **reuses that id on the next allocation** — violating AD-10's "never reused"
+silently and permanently. Everything Folio writes carries `nextId`, so the error only ever fires on a
+hand-authored file, where a located error is precisely what this story's user story asks for.
+
+**Guardrail — the test that catches the violation a serializer actually commits.** "Unchanged by a
+save" is **not** proved by a load→serialize round-trip; that is P1. It is proved by: **load, delete an
+element, serialize** — then assert every surviving id is byte-identical **and `nextId` is unchanged,
+not decremented**. A serializer that renumbers, or recomputes `nextId` from the surviving maximum,
+**passes P1 and fails this**. Retained fixture, both polarities.
+
+### D-1.4.5 — More than three decimals on geometry is a load error; nothing is rounded at load
+**Orchestrator decision**. **Already settled by the canonical document, not derived** — verified at
+`folio-format.md:24`: *"A coordinate with more than three decimal places is a load error, because it
+cannot be represented exactly."*
+
+**Verdict.** A geometry value that is not an exact whole number of millipoints is a **load error**.
+Nothing is rounded at load.
+
+**On whether this agrees with `internal/geom`'s round-half-to-even discipline: it agrees by not
+rounding at all**, which is the strongest available form of agreement. There remains exactly **one**
+rounding mode in the program, in exactly one function (`geom.ScaleRound`), used only where a value is
+*computed* into thousandths. Ingesting an authored value is not a computation. Rounding at load would
+create a second rounding site, make loading lossy, and silently render a document different from what
+its author wrote — in a program whose entire thesis is that what you wrote is what you get, verifiable
+by hash.
+
+**The check is on the value, not the spelling:** `36.0000` is legal (exactly 36000 millipoints) and
+normalises to `36`; `72.5001` is a load error. That keeps D-1.4.3's normalisation coherent.
+
+### D-1.4.6 — `Render(t *Template)`; the `os` boundary is the package boundary, and `ParseTemplate([]byte)` ships at 1.4
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict — signature after 1.4**, per D-1.1.c's one-parameter-per-story convergence:
+`func Render(t *Template) ([]byte, error)`.
+
+**Verdict — the `os` boundary is the package boundary, and the spine already drew it.** `folio` is
+the *shell*, not `internal/`: the spine's Paradigm line says "functional core (`internal/`),
+imperative shell (`folio`, `cmd/folio`, `wasm/`, `designer/`)", and its Source tree annotates
+`folio.go` as "LoadTemplate · Validate · Render · RenderTo — **the shell**". So `LoadTemplate(path
+string)` and `ParseTemplate(b []byte)` live in package `folio` at the module root, where `os` is
+permitted; **`internal/template` never sees a path** — it takes `[]byte` and returns a `*Template` or
+an error. AD-1 is untouched because no `internal/` package imports `os`.
+
+**`ParseTemplate` must ship at 1.4, not later.** The designer has **no filesystem**: AD-16 renders
+"from serialized bytes", and AD-20 makes local file access a two-tier *browser* capability. A
+path-only loader is unusable in the browser, so Epic 5 would have to widen the API — and D-1.1.c
+fixed the public surface precisely so later stories converge on it rather than reopening it.
+`ParseTemplate` is also the function `LoadTemplate` delegates to, so this is honest factoring rather
+than scope growth, and it does not violate the one-parameter-per-story rule, which governs `Render`.
+
+### D-1.4.7 — The Go code is normative; `folio-format.md` is a readability contract, with drift caught mechanically
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict.** `internal/template`'s parser and serializer are **normative**. `folio-format.md` is
+documentation.
+
+**Grounding, and the document self-classifies** — verified at `folio-format.md:12`: *"Only one
+implementation of this schema will ever exist — the engine owns the document and the designer never
+parses `.folio` (AD-15) — so this is a **readability contract, not a synchronization one**."* AD-9
+assigns ownership of both parser and serializer to `internal/template`, and the Consistency
+Conventions already rejected JSON Schema as "a second source of truth against AD-9". A normative
+prose spec would be that same second source of truth in different clothes.
+
+**But a readability contract that lies is worse than none**, so drift is caught mechanically, in both
+directions: extract every JSON key the serializer can emit (reflection over struct tags — exact on
+the Go side) and assert each appears as a backticked token in `folio-format.md`; scan the document's
+backticked lowerCamelCase tokens and assert each is a real key. This is D-1.3.8's lesson applied in
+the **permitted** direction: a doc that claims to mirror code has the mirroring asserted, rather than
+the doc being promoted to a second source of truth.
+
+**This test is itself exposed to D-000.9** — a key-coverage test that compares zero keys passes. It
+must report **how many keys it compared**, and zero compared must fail.
+
+**Fallback if the field tables prove too irregular to scan reliably:** narrow to the Go→doc direction
+only (every emittable key must appear somewhere in the file) and record the doc→Go direction as a
+deferral with an owner. **Do not** fall back to a checked-in list of key names — that is a third
+artifact and reintroduces exactly the drift this closes.
+
+### D-1.4.8 — What 1.4's loader must leave open for AD-14 (Story 1.6)
+**Orchestrator decision**, on the lead's ruling. AD-14's three pre-settled cases bind **binding**, not
+template loading; 1.4 implements none of them, but must not foreclose them.
+
+1. **Distinguish absent from `null` from present-with-value** in the parsed representation — pointer
+   fields or an explicit presence flag. A loader that collapses `null` into absent destroys the
+   distinction AD-14's second case depends on (explicit `null` = empty and **not** an error), and the
+   same decode helpers will be reached for in 1.6.
+2. **Never coerce on load.** A string where a number belongs is an error naming field, element id and
+   value — never a parse-and-convert. This is AD-14's third case arriving early, and it is also what
+   makes P1 hold: **coercion is lossy, so a coerced value cannot round-trip.**
+3. **No `omitempty` where the zero value is legal** — the same clause as D-1.4.3, restated because it
+   is the mechanism by which (1) is usually lost on the *serialize* side rather than the parse side.
+
+### D-1.4.9 — A higher MINOR loads, and unknown keys are preserved verbatim through save
+**Owner decision.** Escalated by the engineering lead as `OWNER-DECISION-NEEDED`; the owner chose
+**option 3 (full passthrough)**, **not** the lead's recommended option 4 (load read-only).
+
+**Verdict.** A `.folio` file declaring a higher **MINOR** version than the library supports **loads**.
+Keys the library does not recognise are **carried opaquely through parse and merged back in sorted
+order on serialize**, and are **ignored when rendering**. Nothing is dropped, nothing is refused.
+(A higher **MAJOR** remains a load error — `folio-format.md:46`, FR13, unchanged.)
+
+**Situation.** `folio-format.md:46` scopes load failure to MAJOR alone, so a `1.1` file made by a
+future Folio must open in today's Folio. The document says nothing about what today's library does
+with the parts it has never heard of, `SPEC.md` still lists **NFR6 as an open question**, and the
+spine explicitly defers the compatibility policy to pre-v1 — so the direction was silent **by
+design**, which is an escalation rather than licence to fill the gap. The schema freezes in this
+story (D-1.4.1), so the answer could not wait.
+
+**In simple terms.** Someone opens a document written by a newer version of the app. The newer
+version put things in it that this version has never heard of. This version can either refuse the
+file, quietly throw those things away the next time the user saves, or carry them along untouched
+and hand them back exactly as they arrived. The owner chose to carry them.
+
+**Options considered, and why the others lost.**
+- **(1) Refuse a higher MINOR too** — zero machinery, but contradicts `folio-format.md:46` as
+  written and forecloses forward compatibility entirely: every future format addition would
+  instantly orphan every older library. Would itself require amending the format doc.
+- **(2) Load, drop unknown keys on save** — near-zero machinery, but **silent, unrecoverable data
+  loss**: a user opens a newer file, saves, and newer-version work is gone with nothing to show it.
+  The lead argued against this whatever else was chosen; it is the only option that fails without
+  telling anyone.
+- **(4) Load read-only, refuse to save** — *the lead's recommendation*. Destroys nothing, needs no
+  passthrough machinery, keeps the promise `folio-format.md:46` actually makes, and keeps Story 1.4's
+  freeze small. Rejected by the owner.
+- **(3) Preserve unknown keys** — **chosen**.
+
+**Why the owner's choice beats the recommendation.** Option 4's cost is not merely "preview but no
+editing" — it is that the limitation lands on the **designer**, in Epic 5, on precisely the user who
+is least equipped to understand why a file that visibly opens cannot be saved. Forward compatibility
+that works only until you touch it is a promise users discover is hollow at the worst moment. Option
+3 pays its cost **once, in engine code, now**, while the schema is being frozen and while the round-
+trip properties are being built — rather than paying it forever in user-facing refusals. It is also
+the only option under which the round-trip guarantee is *strictly stronger*: a canonical `1.1` file
+processed by a `1.0` library still satisfies `Serialize(Parse(b)) == b`.
+
+**The accepted cost, stated plainly.** This is the most machinery of the four, and it lands in the
+one story whose job is to establish P1, P2, P3 and the drift test — the passthrough must be carried
+through parse, held per-object, and merged back in sorted order without disturbing any of them. The
+owner accepted that.
+
+**The mandatory guardrail — this sentence lands in `folio-format.md` in Story 1.4's commit
+(D-000.6), and without it the chosen option is unsafe:**
+
+> **MINOR additions are strictly additive and never change the meaning of an existing key.**
+
+Without that rule, a future MINOR could redefine a key this library already understands, and today's
+library would render such a file **confidently and wrongly** — the one failure mode worse than
+refusing it. The rule is what makes passthrough safe, and it is the part that will not be obvious
+later.
+
+**Consequences.**
+1. **`version` is preserved verbatim, never downgraded.** A `1.0` library saving a `1.1` file writes
+   `"version": "1.1"` — the file still contains `1.1` content, so claiming `1.0` would be a lie about
+   its own contents. (Referred to the lead for explicit confirmation; flagged here because it is a
+   direct forced consequence a developer would plausibly get backwards.)
+2. **P1 must hold *including* unknown keys** — the round-trip corpus needs a fixture carrying unknown
+   keys at multiple nesting levels, not just at the top.
+3. **The D-1.4.7 drift test is unaffected in scope**: it governs keys the serializer *itself* can
+   emit. Unknown passthrough keys are explicitly outside it — and that boundary must be stated, or a
+   future maintainer will read a passthrough key as drift.
+4. **Unknown keys are ignored at render.** They never reach `internal/layout` or `internal/pdf`, so
+   AD-5 and the determinism boundary are untouched.
+
+**How we'd know it was wrong.** A newer-version file losing content across a save in this library, or
+a future MINOR that redefines an existing key — the latter would mean the additive rule was written
+but not enforced by review.
+
+### D-1.4.4 (reversed in part) — Ids are lowercase base 36 after all
+**Orchestrator decision**, on the lead's ruling. **Reverses D-1.4.4's "not base-36" clause.** The
+original entry stays as written; the log is append-only.
+
+**Verdict.** Ids are `"e"` + the counter in **lowercase base 36**: counter 1→`e1`, 10→`ea`, 35→`ez`,
+36→`e10`, 71→`e1z`. **`nextId` is a plain decimal JSON integer.** Every other clause of D-1.4.4 —
+one document-wide counter, `nextId` absent or ≤ highest id is a load error, never repair, never
+renumber, and the load-delete-serialize guardrail — **stands unchanged**; only the *rendering*
+changes, not the counter semantics.
+
+**Grounding.** `folio-format.md:118`, the Elements field table, verbatim: *"`id` | `e` + the counter
+in **lowercase base 36** — `e1`, `ea`, `e1z`."*
+
+**How the wrong ruling was made, which matters more than the fact.** The lead read the format
+document's lines 1–60 and 150–300 and **skipped 60–150** — exactly where the normative field table
+sits. Ruling from that partial read, it overturned its own correct base-36 note by citing the
+**worked example**, whose `e1`…`e5` are **identical under both hypotheses** (measured: creator's
+M-7). The orchestrator then "verified" the correction by reading the worked example — the same
+ambiguous evidence — and confirmed it. Neither party opened line 118.
+
+**The transferable rule, and it generalises past this project.** **If the other hypothesis predicts
+the same observation, you have learned nothing.** Confirmation that arrives dressed as "the canonical
+document governs" is *more* persuasive and therefore needs *more* scrutiny, not less. And in a
+specification: **the field table is normative; the worked example is frequently ambiguous by
+construction** — never overturn a spec claim on evidence both hypotheses predict.
+
+**Consequences.** The encode/decode asymmetry is the deliverable and gets its own task with its own
+table test: allocation reads `nextId` (decimal), renders `"e" + base36(nextId)`, increments, writes
+back decimal; base-36 **decoding** is needed **only** to validate `nextId` against the highest id
+present. It is the single most likely place for a silent off-by-representation bug. **Canonical
+spelling is enforced at load:** ids must match `^e[0-9a-z]+$`, decode to ≥ 1, and carry **no leading
+zeros and no uppercase** — `e01` is a **load error**, not a value to normalise, because normalising
+would re-spell an id and AD-10 says ids are "never renumbered on save". Rejecting means ids
+round-trip **verbatim**, so P1/P3 hold trivially. **A duplicate id anywhere in the document is a load
+error** (AD-10's "never reused", plus its requirement that every diagnostic name a unique element).
+
+**How we'd know it was wrong.** An id changing spelling across a save, or `nextId` being rendered
+base-36 anywhere.
+
+### D-1.4.10 — Amend the worked example so it is genuinely canonical; cross-check it against an independent printer
+**Orchestrator decision**, on the lead's ruling. Answers the creator's DN-1.
+
+**Verdict.** Amend `folio-format.md`'s worked example under D-000.6 so it is a true fixed point.
+**Do not** add an inline-container rule to AD-9.
+
+**Measured (creator's M-1).** Decoding `folio-format.md:233–295` with `UseNumber` and re-encoding
+with `SetEscapeHTML(false)` + `SetIndent("", "  ")` gives **1648 B / 63 lines → 2096 B / 104 lines**,
+first divergence at **byte 181**. Keys were already sorted — the sort is fine. The cause is **7
+nested containers kept inline** (lines 242, 243, 247, 259, 274, 285, 289) while AD-9 fixes two-space
+indentation. The example is labelled "in canonical form" at line 230 and was to ship as the round-trip
+corpus's first golden fixture. Both cannot hold.
+
+**Why option (b) — adding an inline rule to AD-9 — is not available.** AD-9's Rule fixes "two-space
+indent". An inline nested container has **no** indentation, so a serializer emitting inline containers
+is not implementing AD-9's stated rule; it is implementing a different one. D-000.6 classifies a
+change to what an invariant *is* as **a direction change that goes to the owner**, not an amendment.
+So (b) is not a cheaper option — it is a different decision needing different approval, to buy 41
+lines of markdown.
+
+**Why (a) is squarely within D-000.6.** The amendment changes only the clause proven wrong —
+**whitespace** — and leaves the stated intent ("a minimal but complete template") intact. The
+document's own text supports it: *"Top-level keys appear sorted, as does every object in the file —
+that is the **serializer's job** (AD-9), not something an author maintains by hand."* The inline
+formatting was a hand-authored readability choice in a markdown file; it was never a claim about the
+serializer. Line 230's "in canonical form" is what turned it into one.
+
+**The D-000.9 guardrail at corpus level, which is the real risk here.** If the story generates the
+canonical bytes with its own serializer and pastes them into the document, **the document ratifies
+the story's guess and the first fixture proves nothing** — the vacuity class, one level up from code.
+So: **the amended example must be cross-checked against an independent JSON pretty-printer**
+(Python's `json.dumps(..., sort_keys=True, indent=2, ensure_ascii=False)` or equivalent) for
+**structure, indentation and key order**. Canonical form was deliberately chosen to *be* standard
+two-space pretty-printing, so a second implementation must agree on those three properties. Known
+divergences (separator conventions, trailing newline, escaping) are enumerated and normalised
+explicitly, and **each normalisation is named in the Delivery Log** — an unnamed normalisation is
+exactly where self-ratification would hide.
+
+**Then close the loop permanently:** a test asserts the document's fenced example block is
+**byte-identical** to the shipped golden fixture. After that, line 230's "in canonical form" is
+mechanically true rather than aspirational, and a future edit to either one reddens.
+
+**Consequences.** The `folio-format.md` amendments for this ruling, for D-1.4.1's `columns[].footer`
+row, and for D-1.4.9's strictly-additive sentence all land in **Story 1.4's own commit**. The example
+remains valid under D-1.4.1 as written — its `bind` is a single
+`formatNumber(<bare row-scoped path>, <pattern>)` call, which is derivation shape #2 — so no
+`footerOf` need be added to it.
+
+### D-1.4.8 (corrected) and D-1.4.3 (extended) — presence flags are forced; the `omitempty` rule is two-sided
+**Orchestrator decision**, on the lead's ruling. Both corrections came from the creator's M-2.
+
+**D-1.4.8(1) named a mechanism that does not work.** Measured: `encoding/json` leaves a `*int` **nil
+for both** an absent key and an explicit `null`, so **pointer fields cannot distinguish the three
+states**. The **presence-flag route is forced** — a wrapper carrying `set bool` (or
+`json.RawMessage`) with a custom `UnmarshalJSON`, since only the unmarshaller is told whether it was
+called at all. The *invariant* is unchanged and is what binds: absent / `null` / value must remain
+distinguishable, so AD-14's second case stays open for Story 1.6.
+
+**D-1.4.3's `omitempty` rule was one-sided.** A **nil map with `omitempty` removed serializes as
+`null`** — not `{}`, not absent — which breaks P1 against the worked example's `"assets": {}`. The
+rule is therefore two-sided: **no `omitempty` where the zero value is legal content, *and* every map
+and slice field must be initialised to empty rather than left nil.** The second half is the one a
+developer meets only when the fixture reddens.
+
+**Also measured, narrowing an earlier claim:** Thai and CJK emit literally **either way** under
+`encoding/json`, so D-1.4.3's literal-UTF-8 trap is a real requirement but **not** a default hazard —
+the story should say so rather than implying the default would mangle Thai. Default `Marshal` **does**
+escape `<`, `>`, `&`, so that half of the trap is live. `Encode` appends a trailing `\n`.
+
+### D-1.4.11 — `ScanAbsences` is the seventh D-000.9 instance, and it is in the enforcement code itself
+**Orchestrator decision**, on the lead's ruling. Found by the creator (M-5) at baseline `af6b5d5`.
+
+**Verdict.** `ScanAbsences` gains a **coverage witness**: it returns how many absence checks it
+**evaluated**, and **zero evaluated is a failure**. Closing this is Story 1.4's **task T2**, landing
+**before** the story's two new tripwires are added to `absenceChecks`.
+
+**Situation.** `ScanAbsences` is the **only** checker in `lint/internal/rules` returning
+`(findings, error)` with no stats, and `TestAbsencesProductionScan` asserts only zero findings — so
+**an empty `absenceChecks` list passes.** Story 1.4 extends that exact list with the `internal/expr`
+and `internal/diag` tripwires from D-1.4.2.
+
+**Why the sequencing is the whole point.** Adding entries to a list whose emptiness passes is
+precisely how a tripwire becomes decorative: the tripwires would be "present", and the check would
+pass **identically if they were absent**. The fix must land first, or the two new tripwires are
+unverifiable from the moment they ship.
+
+**Why this instance is the most significant of the seven.** It is in the code we shipped **one story
+ago, specifically to enforce this class of rule.** Story 1.3 named the pattern in its own vacuity
+guards, shipped an instance of it in the detector (D-1.3.11), and shipped a second instance in the
+absence checker. That is the strongest available evidence that **the pattern survives being written
+down** — and it is why D-000.9's diagnostic question belongs in every prompt rather than only in this
+log.
+
+**How we'd know it was wrong.** An eighth instance reaching `done`.
+
+### D-1.4.12 — Extending a closed set is a MAJOR change, never a MINOR
+**Owner decision.** Raised by the engineering lead as a forced consequence of D-1.4.9; the lead ruled
+it and flagged that it might narrow the owner's choice. The orchestrator escalated it anyway under
+the standing backstop (*a scope cut with lasting consequences goes to the owner even when the lead
+has ruled*), and the owner **confirmed** the lead's reading.
+
+**Verdict — the mandatory `folio-format.md` sentence says all three things:**
+
+> A MINOR increment may add **new optional keys** only. It may **not** change the meaning of an
+> existing key, and it may **not** extend a closed set of legal values (element `type`, `locale`,
+> `align`, `valign`, `columns[].footer`, `border.edges`, `page.orientation`, `page.size`). Extending
+> a closed set is a **MAJOR** change, because every existing library validates those sets as load
+> errors.
+
+**Situation — why D-1.4.9 does not work without this.** `folio-format.md` makes **eight closed sets**
+load errors (verified: `locale` at line 47, element `type` at line 119, and six more). **Passthrough
+does not save them.** Passthrough carries unknown *keys*; a new *value* in a known enum is **not** an
+unknown key — it is a known key whose closed-set validation rejects it. So if a MINOR could extend
+any of those sets, a `1.0` library would **refuse to load** that `1.1` file outright, and the forward
+compatibility D-1.4.9 just paid for would be void for exactly the additions most likely to be made.
+
+**In simple terms.** The owner bought "a newer file still opens." But "we added a sixth kind of
+element" is not a new *key* the old library can politely ignore — it is a value in a list the old
+library checks against a fixed set, and there is nothing it can do with an element type it cannot
+draw. So that kind of addition has to announce itself as breaking.
+
+**Options considered.**
+- **(a) Closed-set extension is MAJOR** — **chosen.** One rule, uniformly enforced, and the failure
+  is loud.
+- **(b) Older libraries skip unknown elements and report the skip** — maximum forward compatibility,
+  but it conflicts with **FR13**'s "never a best-effort render", and it means a document can render
+  *incomplete*. On the golden report — a bank statement — a silently missing section is materially
+  worse than a refused file.
+- **(c) Decide per set** — more faithful to each set's real risk, but eight separate rules, each
+  needing its own test and its own line in the format doc. Rejected on the cost of remembering and
+  enforcing eight boundaries where one suffices; and on inspection every one of the eight genuinely
+  cannot be faked by an older library (an unknown `locale` has no font or formatting rules; an
+  unknown `align` would be silently wrong).
+
+**Why this wins.** It is the only option whose failure mode is loud, and it keeps the format's
+evolution rule to a single sentence a maintainer can hold in their head. **The accepted cost is
+real and permanent:** evolution on those eight sets is now expensive forever — adding a sixth element
+type or a fifth locale orphans every older library.
+
+**A side effect the lead noted and the orchestrator endorses:** this protects PRD counter-metrics C1
+and C2. "Just add one more element type" or "one more palette colour" now costs a MAJOR version
+rather than sliding in on a MINOR — scope discipline enforced by the format rather than by
+willpower.
+
+**Consequences.** The story must keep the two validation paths **visibly separate**: an unknown
+**key** passes (passthrough); an unlisted **value** on a known key is still a load error. Conflating
+them is precisely how passthrough degrades into "validation is optional".
+
+**How we'd know it was wrong.** A MINOR release adding a closed-set value — which would mean the rule
+was written but not enforced at review.
+
+### D-1.4.13 — `version` is a property of the document: carried verbatim, raised only by content, lowered never
+**Orchestrator decision**, on the lead's confirmation. Confirms consequence 1 of D-1.4.9, which was
+logged provisionally and flagged confirmation-pending.
+
+**Verdict.** A `1.0` library that loads a `1.1` file, preserves its unknown keys and saves writes
+`"version": "1.1"`. **And the symmetric half, which a naive implementation gets wrong in the other
+direction:** a future `1.1` library loading a `1.0` file and changing nothing must write `"1.0"`. One
+rule: **`version` is a property of the document, carried verbatim; raised only when content actually
+requiring a higher version is introduced; lowered never.**
+
+**Why this needs stating rather than being obvious.** It means **this library writes files declaring
+a version it does not implement**, which reads wrong at first glance and which a developer will
+plausibly "fix". The naive implementation — "write the library's own version" — is wrong **both
+ways**.
+
+**The reframe that stops the fix, and it belongs in the code comment.** **`version` describes the
+document, not the writer.** A PDF 1.7 file edited by a tool that understands only 1.4 features does
+not become a PDF 1.4 file. That sentence turns the apparent absurdity into the only coherent reading.
+
+**Three further reasons, beyond the two already logged.**
+1. **AD-9 would otherwise be violated directly.** If a `1.0` library downgrades on save, the same
+   document has **two canonical byte forms** depending on which library last wrote it — precisely
+   what AD-9's Prevents line exists to stop ("the designer and a hand-editor producing different
+   bytes for the same document").
+2. **P3 would break for every older file.** If a `1.1` library rewrote unchanged `1.0` files as
+   `1.1`, `Serialize(Parse(b)) != b` for all of them — so the naive rule breaks the very property
+   passthrough was chosen to strengthen.
+3. **Other SDKs depend on the honesty.** The spine plans `folio-node/`, `folio-java/`, "same
+   fixtures, same namespace". A downgraded version misleads every future SDK, and they conform
+   against the same fixture corpus, so the lie propagates.
+
+**Consequences.** At Story 1.4 the *raise* path is unreachable (no `1.1` exists) — **do not build it,
+do not foreclose it.** Two cheap tests pin the rule: a `1.0` file round-trips as `1.0`, and a
+synthetic higher-MINOR file round-trips as `1.1` with its unknown keys intact.
+
+**How we'd know it was wrong.** Any save that changes `version` without changing content.
+
+### D-1.4.14 — The hand-written serializer is confirmed as correct architecture; the parser is stdlib
+**Orchestrator decision**, on the lead's ruling. **Opens with a correction the orchestrator got wrong.**
+
+**Correction first.** The orchestrator reported that the developer "hand-wrote the parser and
+serializer". **That is wrong, and it overstated the risk by most of its size.** Verified by file:
+`parse.go`, `rawvalue.go` and `decodehelpers.go` **all import `encoding/json`** and decode with
+`UseNumber`; only `serialize.go` and `jsonstring.go` do not. The JSON **tokenizer** — escape handling,
+UTF-8 decoding, the number grammar, the parts genuinely dangerous to hand-roll — **is stdlib**. The
+hand-written surface is the **emitter only**. The overstatement reached the reviewer's brief and was
+corrected mid-review.
+
+**Verdict.** The hand-written **serializer** is confirmed as the correct shape — not a tolerated
+deviation.
+
+**It is forced.** Five requirements must hold simultaneously in one byte stream: AC8's merged sorted
+sequence over known **and** passthrough keys; AC19 HTML escaping off; AC20 literal UTF-8; AC21
+minimal escaping; and `geom.Length` spelled as trimmed decimal points. `encoding/json` can be coerced
+toward this, but every leaf would need its own escape-disabled production, and `geom.Length` would
+need a `MarshalJSON` — **putting `.folio` format knowledge inside `internal/geom`**, whose entire job
+under AD-2 is owning the scalar type and which deliberately imports nothing. At that point struct tags
+carry no information.
+
+**And it is the project's established architecture, not an exception.** `jsonstring.go` is the direct
+analogue of `internal/pdf/numbers.go`: one file, one choke point, every string through
+`appendJSONString` so the three escaping rules are enforced in exactly one place. **That is AD-3's
+shape applied to a second output format** — hand-write the emitter, confine the hazard to one file,
+allow no other route to an output byte. Confirming it is *consistent* with D-1.1.b, not a departure.
+
+**The hazard it creates, and its closure.** The millipoints→decimal spelling now exists **twice**:
+`pdf.appendLength` and template's `appendPoints`. Two implementations of one conversion that must
+agree forever is a classic drift hazard. It is closed by a **shared value table** with mirror tests on
+both sides (AC25) — one data source, two consumers, the same construction ruled for the two-caller
+checkers in D-1.3.3. **That table must never be duplicated or forked.**
+
+**One correction to it:** the table is *shared* but lives under a path owned by one consumer
+(`folio-go/testdata/template/`). Move it to a neutral location (`folio-go/testdata/shared/`), or a
+future reader in `internal/pdf` will find their test reading another package's directory and "tidy"
+it. Finisher-sized change.
+
+**How we'd know it was wrong.** A route to an output byte in `serialize.go` that bypasses
+`appendJSONString`, or a second copy of the length-spelling table.
+
+### D-1.4.15 — AST extraction is necessary but not sufficient; add behavioural extraction and assert set equality
+**Orchestrator decision**, on the lead's ruling. Supersedes D-1.4.7's stated *mechanism*; its
+invariant is unchanged.
+
+**The lead's own framing of its error, recorded because the fix is general.** D-1.4.7 named
+"reflection over struct tags" as the mechanism — **specifying an implementation that had not been
+chosen yet.** The invariant was "exact on the Go side, both directions, no checked-in list"; "struct
+tags" was an assumption smuggled in wearing a mechanism's clothes. **This is the third such instance**
+(D-1.2.3 bundling the driver into `hashmatrix/`; D-1.3.6, which the lead caught itself and left open).
+The lead's own diagnosis of the tell: **it over-specifies precisely when it can picture the code.**
+
+**Adopted fix, binding on the lead from here:** every named mechanism in a ruling is tagged
+**`(mechanism: binding)`** or **`(mechanism: illustrative)`**. An untagged mechanism is read as
+illustrative and queried. Had D-1.4.7 stated only its invariant, there would have been no mechanism to
+depart from and nothing for the developer to fail to report.
+
+**Verdict — the substance.** AST extraction collects string literals from `kv{...}` composite literals
+in `serialize.go`. That is exact **iff every emitted key passes through that convention.** A key
+emitted by any other route — a direct byte append, a `kv` built from a variable — is invisible to it.
+**The failure is asymmetric in the bad direction:** if such a key is *also* undocumented, **neither**
+direction of the drift test notices. An emitted, undocumented, unextracted key is silent drift, in the
+test whose only job is catching drift. The developer's note that "a key that stops being written stops
+appearing in `serialize.go`'s source" is true for **removal** and false for **addition by another
+route**. Its first pass at the extractor being vacuous is evidence this family of proxy is fragile in
+practice, not only in principle.
+
+**Required — a second, behavioural extraction:** serialize a document exercising every known field,
+**parse the output bytes**, and collect every key actually present. Then **assert
+`astKeys == runtimeKeys`**, both directions, difference printed by name on failure. Two independent
+extractions of the same set catch each other's failure mode: a key emitted outside the `kv{}`
+convention appears in runtime and not AST; a fixture failing to exercise a field appears in AST and
+not runtime. **Neither alone is exact; together they are.** *(mechanism: binding for the set-equality
+assertion; illustrative for how the maximal document is assembled.)*
+
+**Cheap path first — make it a measurement, not new work.** Check whether the **union of the existing
+round-trip corpus** already covers every key in the AST set. If it does, the maximal document already
+exists. **If it does not, that gap is itself a finding** — the round-trip corpus would not be
+exercising every field, independent of the drift test. Coverage witnesses stay on **both** extractors;
+zero keys from either is a failure.
+
+**This is now the project's dominant successful pattern: two independent producers of the same answer,
+asserted equal.** D-1.4.10's independent pretty-printer, D-1.4.14's shared spelling table, and this.
+Three for three, it is the only construction that has held.
+
+### D-000.10 — Handoff dispositions one line per binding ruling; the reviewer mirrors it
+**Orchestrator decision**, on the lead's ruling. **Program-wide standing rule, from Story 1.5.**
+Replaces the exhortation in D-1.2.6 with a structural check; D-1.2.6's substance still binds.
+
+**Verdict.** Every developer return dispositions **every ruling ID the story file enumerates**, one
+line each, as exactly one of:
+- `applied-as-stated`
+- `applied-with-a-different-mechanism` — **and one sentence on what and why**
+- `not-reached-in-this-story`
+
+**The reviewer independently dispositions the same list against the code.** Two dispositions
+disagreeing is the signal.
+
+**Why D-1.2.6 stopped working — and it is not defiance.** Three consecutive developers resolved a
+ruling conflict inside the diff (Story 1.2's placement-vs-reuse contradiction; Story 1.3's
+over-application of invariant (b) into a neighbouring scope; Story 1.4's substitution of AST
+extraction for struct-tag reflection). **In all three the local answer was defensible and only the
+ruling-level consequence was a defect.** D-1.2.6 asks a developer to detect a *conflict between two
+rulings* — which requires holding both in mind and noticing an interaction, in flight, while solving
+something else. **That is the least reliable moment available.**
+
+**Why an enumerated list beats a prompted recollection.** The orchestrator first proposed a section
+titled "rulings whose stated mechanism I did not use — empty if none." The lead's correction is the
+difference between working and not: **that still has an empty default**, and still asks the developer
+to recognise that a ruling *had* a stated mechanism and that they departed from it. A table over an
+enumerated list has **no empty default** — you must write N lines, and you cannot write the line for
+D-1.4.7 without looking at what D-1.4.7 said. **It converts "notice something" into "walk a list",
+which models and humans both do reliably.**
+
+**Half the remedy is on the lead's side** — the mechanism tagging in D-1.4.15. If a ruling names no
+binding mechanism, there is nothing to silently depart from; some of the three instances were
+avoidable reports generated by over-specification.
+
+**Do not add friction to the decision itself.** Three for three, the developers' answers were
+defensible. **The defect is reporting, not judgement** — so the fix belongs at handoff and should cost
+a table.
+
+**How we'd know it was wrong.** A fourth silent departure, or a disposition table filled in without
+being read — every line `applied-as-stated` on a story where the reviewer finds a departure.
+
+### D-1.4.16 — Two D-000.9 shapes in Story 1.4, both closed behaviourally rather than by documentation
+**Orchestrator decision**, on the lead's ruling.
+
+**The `Presence` three-state API.** `absent[T]()` being unused is **not** a defect — absence is the
+**zero value**, so it is never constructed. Neither of the orchestrator's readings was right: the API
+is not incomplete and no state is unreachable. **The real issue is sharper:** at Story 1.4 **nothing
+branches on `Null` vs absent** — D-1.4.8 required the loader to *leave the distinction open* for Story
+1.6, not to consume it. So a three-state API exists whose third state no production code reads. That
+is a D-000.9 shape, and the guard is behavioural: **a test must prove `{}` and `{"a":null}` produce
+different `Presence` values *and* serialize back differently.** If serialization collapses them the
+distinction is decorative and Story 1.6 inherits a seam that was never load-bearing. **That test is
+what makes D-1.4.8 real rather than declared.**
+
+**`Render(t *Template)` ignoring `t`.** Provisional is correct under D-1.1.c — nothing can render a
+template until fonts land at 1.5 and layout in Epic 2. But **"documented as provisional" decays into
+prose nobody re-reads.** Do both: the doc comment states it ignores its argument **and why**, in the
+`PROVISIONAL` idiom Story 1.1 established; **and a named test asserts `Render(validTemplate)` and
+`Render(nil)` currently produce identical bytes.** The moment Story 1.5 or 1.6 makes them differ, that
+test fails and **forces its own deletion** — turning a silent "the argument does nothing" into an
+asserted fact with an expiry date. Same mechanism as D-1.3.4's asserted absence, applied to a
+behaviour rather than a path.
+
+### D-000.11 — Every gate runs `-count=1`; Go's test cache silently skips guards that read out-of-module files
+**Orchestrator decision.** **Program-wide standing rule, effective immediately.** Found by the Story
+1.4 reviewer; reproduced and widened by the orchestrator.
+
+**Verdict.** Every test invocation that functions as a **gate** — locally, in CI, and in every
+sub-agent prompt — runs with **`-count=1`**. `.github/workflows/ci.yml`'s two `go test ./...` steps
+are amended in Story 1.4's commit.
+
+**Situation.** Go's test cache does not track reads of files **outside the module**. Every guard in
+this project reads out-of-module files: the drift test reads `_bmad-output/specs/spec-folio/folio-format.md`;
+`lint`'s tripwires read directory paths across the repo; `folio-go/fixture_test.go` reads
+**`fixtures/minimal-rect/expected.json` at the repo root** — which is AD-21's byte-identity golden. So
+a cached `ok` can mean "the guard passed" or "the guard was not run and its input has since changed",
+and the two are indistinguishable.
+
+**Measured by the orchestrator, decisively.** With the cache primed by a plain `go test`, injecting a
+genuine new key into `folio-format.md`:
+
+```
+plain `go test` (cache-eligible)  →  ok  (cached)     <- drift NOT detected
+`go test -count=1`                →  FAIL             <- drift detected
+```
+
+**This is D-000.9 at the gate level, and it is the widest instance yet.** The pattern is *a guard's
+"all clear" produced by the same code path as its "I could not look"* — here the not-looking is done
+by the **build system**, above every guard at once. No amount of care inside a checker prevents it;
+`ScanAbsences`' coverage witness is correct and still reports nothing, because the process never runs.
+
+**Why it went unnoticed for four stories.** Every gate figure in this run was measured with
+`-count=1` — that habit is why the reported numbers were real. But `ci.yml` (shipped in Story 1.3)
+runs **plain `go test ./...`** at lines 45 and 95, and `actions/setup-go` restores a build/test cache
+by default, so **CI is exposed too**. The local habit masked a defect in the committed pipeline.
+
+**Consequences.** `-count=1` in: `ci.yml`'s two steps; every developer, reviewer and finisher prompt's
+gate list; and any future workflow. The matrix workflow is unaffected — it invokes `-run` with
+`-tags=matrix` against freshly built per-target binaries, and its harness compares captured bytes
+rather than trusting a `go test` exit code (D-1.2.1). **Note for reviewers: a cached `ok` is not
+evidence.** When verifying any claim about a guard, re-run with `-count=1` or the observation is
+worthless.
+
+**How we'd know it was wrong.** A guard that passes in CI while its out-of-module input is provably
+wrong — i.e. exactly the reproduction above, in the pipeline rather than on a laptop.
+
+### D-000.6 amendment (Story 1.4) — `folio-format.md`'s four amendments, verbatim before/after
+**Finisher entry**, closing this story's own AC51 obligation (3) ("the before/after of all three goes
+into the decision log" — extended to four; see Amendment D below and this story's Finding 17). Ships
+in Story 1.4's commit, per D-000.6. Before quotes are baseline `af6b5d5` (the field table's state
+before Story 1.4 touched it, as quoted in D-1.4.1); after quotes are this commit's shipped text.
+
+**Amendment A — the `columns[].footer` row, D-1.4.1 via D-1.4.2.**
+
+Before (the whole row, unchanged since baseline):
+> `columns[].footer` | *Optional.* `sum` · `count` · `avg`. Computed over the whole collection, never
+> per page (AD-11).
+
+After — two new rows inserted (developer, Story 1.4 `review`), and the `footer` row itself extended
+(finisher, this pass, Finding 9 — the developer's diff left it byte-identical to baseline despite
+AC51 and the Delivery Log both describing it as "extended"):
+> `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only**
+> (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**,
+> never per page (AD-11). Omitted means no footer cell for that column.
+>
+> `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g.
+> `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function
+> call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would
+> be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is
+> omitted, it is **derived** from the column's own `bind` … **As of Story 1.4, this derivation is not
+> yet implemented** — until Story 3.2 lands it, a `footer` with no `footerOf` simply loads, and the
+> aggregate itself is not computed until Story 4.5. Story 3.6 mints the two diagnostic codes this
+> eventually becomes: `TABLE_FOOTER_SOURCE_UNRESOLVED` … and `TABLE_FOOTER_SOURCE_FORBIDDEN` …
+>
+> `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer
+> value. Legal with all three `footer` operations.
+
+**Amendment B — the MINOR-additive safety sentence, D-1.4.9 / D-1.4.12.**
+
+Before (baseline `af6b5d5`): the Document table's "Top-level keys appear sorted…" sentence stood
+alone, with no MINOR-additive guardrail sentence beneath it.
+
+After — the developer added D-1.4.12's three-clause verdict (Story 1.4 `review`), **plus a fourth
+sentence D-1.4.12's verdict does not contain**; the finisher (this pass, Finding 16) dropped that
+fourth sentence so the shipped text matches the owner-ruled text verbatim (D-1.1.b):
+> A MINOR increment may add **new optional keys** only. It may **not** change the meaning of an
+> existing key, and it may **not** extend a closed set of legal values (element `type`, `locale`,
+> `align`, `valign`, `columns[].footer`, `border.edges`, `page.orientation`, `page.size`). Extending
+> a closed set is a **MAJOR** change, because every existing library validates those sets as load
+> errors.
+
+(Removed by the finisher, not part of D-1.4.12's verdict: *"A higher MINOR still loads (`version` is
+carried verbatim); a higher MAJOR is always a load error."* — accurate in isolation, but not the
+owner-ruled sentence, and D-1.1.b forbids shipping a ruling's mandatory verbatim text extended.)
+
+**Amendment C — the worked example, D-1.4.10.** Developer-authored (Story 1.4 `review`); unchanged by
+the finisher, per DN-1/D-000.6 obligation (1) — the worked example's *content* was never the clause
+proven wrong, only its whitespace was, and that is not this pass's concern. Before/after (1648 bytes /
+63 lines, 7 inline containers → 2096 bytes / 104 lines) is already recorded verbatim in the story's own
+Delivery Log.
+
+**Amendment D — the worked example's provenance note (newly enumerated by the finisher, Finding 17;
+the text itself shipped in the developer's Story 1.4 `review` diff, not added by the finisher).**
+
+Before (baseline `af6b5d5`): no such paragraph existed; the worked example fence was followed directly
+by the `{{page}}`/`{{pages}}` closing prose.
+
+After:
+> *(This example is generated by the module's own canonical serializer and cross-checked, structure,
+> indentation and key order, against an independent pretty-printer —
+> `json.dumps(..., sort_keys=True, indent=2, ensure_ascii=False)` — which reproduces it byte-identically
+> with scalars normalised out, D-1.4.10, AC16. It is shipped as the golden fixture
+> `folio-go/testdata/template/golden/worked-example.json`, and a test asserts this fenced block stays
+> byte-identical to that file.)*
+
+**How we'd know it was wrong.** A `folio-format.md` clause quoted in this log that does not match the
+file at the head of this story's commit, byte for byte.

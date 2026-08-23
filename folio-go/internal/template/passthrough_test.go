@@ -1,0 +1,179 @@
+package template
+
+import (
+	"strings"
+	"testing"
+)
+
+// This file is Finding 2's (Blocker, D-1.4.9 OWNER) fix and its own
+// guardrail: the reviewer's own methodology — "I injected one unknown
+// key 'zzNew' at every object level in a single otherwise-valid document
+// and checked accept-and-preserve" — reproduced here as a retained,
+// per-level table test so a future regression at any ONE level fails
+// with a specific level name rather than only a diffuse P1 DeepEqual
+// mismatch (unknownKeysFixture in fixtures_test.go also exercises all
+// ten ALLOW levels together, as one canonical fixture — this test is the
+// finer-grained, per-level companion, not a replacement).
+//
+// Ten of the document's eleven object levels accept and preserve an
+// unknown key opaquely (AC8, D-1.4.9: "nothing is dropped, nothing is
+// refused"). The eleventh, `bands`, is a DELIBERATE, ruled exception:
+// folio-format.md (:101) and AC5 state "Exactly these three keys (FR6)"
+// as one of the closed sets this story enforces — a normative statement
+// about the schema's shape, not an implementation choice with no ruling
+// behind it (unlike the other five levels this story's finisher review
+// found refusing with no such backing).
+
+// passthroughLevelBase is a single otherwise-valid document carrying
+// every object level under test, so one injector per level can insert a
+// marker key without needing eleven separate base documents. JSON object
+// key order in the INPUT is never significant to the parser — only the
+// serializer's OUTPUT is sorted — so the marker can be inserted anywhere
+// inside the target object.
+const passthroughLevelBase = `{
+  "assets": {
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {
+      "data": ["AA=="],
+      "mediaType": "image/png"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "as": "row",
+          "bind": "items[]",
+          "columns": [
+            {
+              "bind": "{{row.n}}",
+              "id": "e2",
+              "label": "N",
+              "width": 40
+            }
+          ],
+          "headerHeight": 14,
+          "id": "e1",
+          "style": {
+            "border": {"edges": ["bottom"]},
+            "fontSize": 9,
+            "padding": {"left": 3}
+          },
+          "type": "table",
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 3,
+  "page": {
+    "margin": {"bottom": 36, "left": 36, "right": 36, "top": 36},
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+const passthroughMarker = `"zzLevelProbe": true`
+
+// injectPassthroughMarker returns passthroughLevelBase with
+// passthroughMarker inserted inside the named object level's braces.
+func injectPassthroughMarker(t *testing.T, level string) string {
+	t.Helper()
+	b := passthroughLevelBase
+	inject := func(anchor, level string) string {
+		if !strings.Contains(b, anchor) {
+			t.Fatalf("level %q: anchor %q not found in passthroughLevelBase", level, anchor)
+		}
+		return strings.Replace(b, anchor, passthroughMarker+",\n"+anchor, 1)
+	}
+	switch level {
+	case "top-level":
+		return inject(`"assets": {`, level)
+	case "band":
+		return inject(`"elements": [`, level)
+	case "element":
+		return inject(`"as": "row",`, level)
+	case "column":
+		return inject(`"bind": "{{row.n}}",`, level)
+	case "style":
+		return inject(`"border": {"edges": ["bottom"]},`, level)
+	case "page":
+		return inject(`"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36},`, level)
+	case "page.margin":
+		return inject(`"bottom": 36, "left": 36, "right": 36, "top": 36`, level)
+	case "style.padding":
+		return inject(`"left": 3`, level)
+	case "style.border":
+		return inject(`"edges": ["bottom"]`, level)
+	case "assets[entry]":
+		return inject(`"data": ["AA=="],`, level)
+	case "bands":
+		return inject(`"content": {`, level)
+	}
+	t.Fatalf("no injector for level %q", level)
+	return ""
+}
+
+// TestPassthroughAtEveryObjectLevel is Finding 2's fix, red-proved by
+// construction: for each of the eleven object levels the reviewer
+// enumerated, inject a marker key at exactly that level and assert the
+// document is accepted with the marker surviving parse+serialize
+// verbatim (allow) — or, for bands alone, that it is a load error
+// (deny). Every case is exercised; the coverage witness fails on zero
+// (this package's D-000.9 convention).
+func TestPassthroughAtEveryObjectLevel(t *testing.T) {
+	cases := []struct {
+		name       string
+		wantAccept bool
+	}{
+		{"top-level", true},
+		{"band", true},
+		{"element", true},
+		{"column", true},
+		{"style", true},
+		{"page", true},
+		{"page.margin", true},
+		{"style.padding", true},
+		{"style.border", true},
+		{"assets[entry]", true},
+		{"bands", false},
+	}
+	if len(cases) != 11 {
+		t.Fatalf("coverage witness: expected all 11 object levels enumerated, got %d", len(cases))
+	}
+
+	exercised := 0
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			exercised++
+			doc := injectPassthroughMarker(t, c.name)
+			d, err := ParseDocument([]byte(doc))
+			if !c.wantAccept {
+				if err == nil {
+					t.Fatal("expected bands to REFUSE an unknown key (AC5, FR6 — the one deliberate closed-key exception), got no error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected level %q to accept an unknown key opaquely (D-1.4.9 OWNER: \"nothing is dropped, nothing is refused\"), got: %v", c.name, err)
+			}
+			out, err := SerializeDocument(d)
+			if err != nil {
+				t.Fatalf("serialize: %v", err)
+			}
+			if !strings.Contains(string(out), `"zzLevelProbe": true`) {
+				t.Fatalf("level %q: marker key did not survive parse+serialize:\n%s", c.name, out)
+			}
+		})
+	}
+	if exercised != 11 {
+		t.Fatalf("coverage witness: exercised %d of 11 object levels", exercised)
+	}
+}

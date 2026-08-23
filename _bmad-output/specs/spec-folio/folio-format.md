@@ -55,6 +55,12 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 Top-level keys appear sorted, as does every object in the file — that is the serializer's job
 (AD-9), not something an author maintains by hand.
 
+> A MINOR increment may add **new optional keys** only. It may **not** change the meaning of an
+> existing key, and it may **not** extend a closed set of legal values (element `type`, `locale`,
+> `align`, `valign`, `columns[].footer`, `border.edges`, `page.orientation`, `page.size`).
+> Extending a closed set is a **MAJOR** change, because every existing library validates those
+> sets as load errors.
+
 ## `page`
 
 ```json
@@ -156,7 +162,9 @@ designer and the engine disagree.
 | `as` | The row-scope alias. Optional; defaults to `row`. Inside the table, `<alias>.field` is the current row; unqualified paths still resolve from the document root (AD-11). |
 | `headerHeight` | Height of the repeated header row, in points. Accounted for on **every** continuation page. |
 | `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. |
-| `columns[].footer` | *Optional.* `sum` · `count` · `avg`. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
+| `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
+| `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 1.4, this derivation is not yet implemented** — until Story 3.2 lands it, a `footer` with no `footerOf` simply loads, and the aggregate itself is not computed until Story 4.5. Story 3.6 mints the two diagnostic codes this eventually becomes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape) — neither exists yet. |
+| `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer value. Legal with all three `footer` operations. |
 | `altRowBackground` | *Optional.* Colour for alternating rows (FR28). Alternation follows the row's index in the collection, so it does not reset per page. |
 
 ### `style`
@@ -239,12 +247,36 @@ A minimal but complete template, in canonical form.
           "as": "transaction",
           "bind": "transactions[]",
           "columns": [
-            { "align": "left", "bind": "{{transaction.date}}", "id": "e3", "label": "Date", "width": 80 },
-            { "align": "right", "bind": "{{formatNumber(transaction.amount, \"#,##0.00\")}}", "footer": "sum", "id": "e4", "label": "Amount", "width": 90 }
+            {
+              "align": "left",
+              "bind": "{{transaction.date}}",
+              "id": "e3",
+              "label": "Date",
+              "width": 80
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(transaction.amount, \"#,##0.00\")}}",
+              "footer": "sum",
+              "id": "e4",
+              "label": "Amount",
+              "width": 90
+            }
           ],
           "headerHeight": 16,
           "id": "e2",
-          "style": { "border": { "edges": ["bottom"] }, "fontSize": 8, "padding": { "left": 3, "right": 3 } },
+          "style": {
+            "border": {
+              "edges": [
+                "bottom"
+              ]
+            },
+            "fontSize": 8,
+            "padding": {
+              "left": 3,
+              "right": 3
+            }
+          },
           "type": "table",
           "x": 0,
           "y": 0
@@ -256,7 +288,10 @@ A minimal but complete template, in canonical form.
         {
           "height": 10,
           "id": "e5",
-          "style": { "align": "center", "fontSize": 7 },
+          "style": {
+            "align": "center",
+            "fontSize": 7
+          },
           "type": "text",
           "value": "Page {{page}} of {{pages}}",
           "width": 523,
@@ -271,7 +306,10 @@ A minimal but complete template, in canonical form.
         {
           "height": 16,
           "id": "e1",
-          "style": { "bold": true, "fontSize": 12 },
+          "style": {
+            "bold": true,
+            "fontSize": 12
+          },
           "type": "text",
           "value": "Statement for {{customer.name}}",
           "width": 400,
@@ -282,11 +320,22 @@ A minimal but complete template, in canonical form.
       "height": 60
     }
   },
-  "fonts": { "body": ["Noto Sans", "Noto Sans Thai", "Noto Sans SC"] },
+  "fonts": {
+    "body": [
+      "Noto Sans",
+      "Noto Sans Thai",
+      "Noto Sans SC"
+    ]
+  },
   "locale": "th",
   "nextId": 6,
   "page": {
-    "margin": { "bottom": 36, "left": 36, "right": 36, "top": 36 },
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
     "orientation": "portrait",
     "size": "A4"
   },
@@ -294,6 +343,8 @@ A minimal but complete template, in canonical form.
   "version": "1.0"
 }
 ```
+
+*(This example is generated by the module's own canonical serializer and cross-checked, structure, indentation and key order, against an independent pretty-printer — `json.dumps(..., sort_keys=True, indent=2, ensure_ascii=False)` — which reproduces it byte-identically with scalars normalised out, D-1.4.10, AC16. It is shipped as the golden fixture `folio-go/testdata/template/golden/worked-example.json`, and a test asserts this fenced block stays byte-identical to that file.)*
 
 `{{page}}` and `{{pages}}` are **not** expressions and **not** a data namespace — they are the two
 late-bound page-number slots, the only values in the format that depend on pagination (AD-4). No

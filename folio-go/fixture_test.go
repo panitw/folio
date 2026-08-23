@@ -270,7 +270,7 @@ func TestRenderMatchesGoldenFixture(t *testing.T) {
 
 	// Render and validate structurally first, unconditionally — see the
 	// ordering note above (Major 5).
-	b, err := Render()
+	b, err := Render(nil)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}

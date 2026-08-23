@@ -1,0 +1,104 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "as": "transaction",
+          "bind": "transactions[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{transaction.date}}",
+              "id": "e3",
+              "label": "Date",
+              "width": 80
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(transaction.amount, \"#,##0.00\")}}",
+              "footer": "sum",
+              "id": "e4",
+              "label": "Amount",
+              "width": 90
+            }
+          ],
+          "headerHeight": 16,
+          "id": "e2",
+          "style": {
+            "border": {
+              "edges": [
+                "bottom"
+              ]
+            },
+            "fontSize": 8,
+            "padding": {
+              "left": 3,
+              "right": 3
+            }
+          },
+          "type": "table",
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    "pageFooter": {
+      "elements": [
+        {
+          "height": 10,
+          "id": "e5",
+          "style": {
+            "align": "center",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "Page {{page}} of {{pages}}",
+          "width": 523,
+          "x": 0,
+          "y": 8
+        }
+      ],
+      "height": 30
+    },
+    "pageHeader": {
+      "elements": [
+        {
+          "height": 16,
+          "id": "e1",
+          "style": {
+            "bold": true,
+            "fontSize": 12
+          },
+          "type": "text",
+          "value": "Statement for {{customer.name}}",
+          "width": 400,
+          "x": 0,
+          "y": 10
+        }
+      ],
+      "height": 60
+    }
+  },
+  "fonts": {
+    "body": [
+      "Noto Sans",
+      "Noto Sans Thai",
+      "Noto Sans SC"
+    ]
+  },
+  "locale": "th",
+  "nextId": 6,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+07:00",
+  "version": "1.0"
+}
