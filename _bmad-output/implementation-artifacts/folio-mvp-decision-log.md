@@ -6525,3 +6525,148 @@ precedent): **7 conservation sites** across all 31 story-touched files — 5 fix
 plus 8 production accumulators swept and excluded with reason (summations with no assertion attached
 are not in the class).
 
+---
+
+### D-000.26 (refined) — A sign-off binds to the artifact expressing the property judged, not uniformly to the PDF hash
+
+*(mechanism: binding)* — refines [[D-2.3.5]]'s condition 2, which required a sign-off to name **the
+hash**.
+
+**That was right for a judgment about rendered appearance and wrong for a judgment about break
+placement.** [[D-2.4.3]] split the Thai obligation into two human judgments; binding both to the PDF
+digest binds one of them to an artifact that does not express what it judges.
+
+| sign-off | judges | binds to |
+|---|---|---|
+| Thai **reading** | does the rendered Thai read correctly | **the rendered image / PDF hash** |
+| Thai **break** | do the break points fall correctly | **the break-opportunity vector (data)** |
+
+**The concrete payoff.** A uniform baseline shift (DW-15) changes the bytes and the rendered image, so
+it correctly invalidates the **reading** sign-off — but the break vector is untouched, so the
+**break** sign-off **carries over.** Under the uniform-hash rule both would have been invalidated, and
+a scarce human would have been asked to re-examine something that had not changed.
+
+**Generalised:** this is [[D-000.21]] — *assert on the artifact that carries the property* — applied
+to **human judgments** rather than machine assertions. Over-binding a sign-off is not merely
+wasteful; it trains the signer that re-approval is routine, which is exactly the dilution
+[[D-2.4.3]] declined to accept.
+
+**Sequencing consequence** *(mechanism: binding)*: **a change that will invalidate a pending human
+sign-off should land before that sign-off is recorded**, or the human is asked twice. When such a
+request is already in flight, weigh re-requesting against holding the change — **the scarce human is
+the constraint, not the code.**
+
+---
+
+### D-000.16 (ranks corrected) — `text` precedes `fontset`; the table is now measured, not illustrative
+
+*(mechanism: binding)*
+
+**Framing first, because it matters for how the next creator treats an illustrative parameter.** This
+is **not a falsified ruling — it is the validation the ruling required.** D-000.16 said explicitly:
+*"binding for the rule; **illustrative for the ranks**"*, and instructed the story to **validate**
+them. The ranks were marked illustrative precisely because the real import graph had not been
+measured. Story 2.5's creator measured it and found one wrong. **The mechanism worked as designed.**
+
+**Measured:** `fontset -> [geom, text]` (`fontset.go:25`, `:245`, `:445` — created by Story 2.3a's own
+vendor containment), and **`text` imports nothing internal.** No cycle; `text` receives faces as
+**values**, which is the pipeline discipline (*"the signal rides on the value, never through an
+import"*) holding unaided.
+
+**The corrected order is right for a reason, not merely for compatibility.** Subsetting needs the
+glyph set; the glyph set comes from shaping — AD-8: *"one subset per font per document over the union
+of glyphs used."* **You cannot know the union without shaping first.** So **shape → collect → subset**
+is the true pipeline order and `text` genuinely precedes `fontset`. The original ordering assumed
+`text` depended on `fontset` for metrics; measurement shows metrics arrive as **values**.
+
+**Swap ranks 5 and 6.** Both arrows the guard exists to enforce still hold: `layout`(7) ↛ `pdf`(8),
+`expr`(3) ↛ `bind`(4). **The table is ratified as measured from here**, no longer illustrative.
+
+---
+
+### D-2.5.1 — The gate-obligation guard asserts set equality against a declared list, never a count in a name
+
+*(mechanism: binding)*
+
+The fourth Epic 2 gate obligation is **sanctioned**: a new golden that is not matrix-registered is
+exactly the drift Story 2.3 closed.
+
+**But `TestStory23aAddedNoThirdEpic2GateObligation` encodes a count in its name, and that name rots on
+every future obligation.** Replace it with an assertion that the **registered obligation set equals an
+explicit declared list.** Adding one then becomes a **one-line diff to that list** — visible and
+reviewable — instead of a rename.
+
+Same *derive-from-a-declarative-spec* move that fixed the per-face assertion set in [[D-000.23]]'s
+consequent obligation. It retires the counting problem **permanently** rather than deferring it one
+story.
+
+---
+
+### D-000.37 — A tripwire's failure message is executable by a human; a stale remedy is worse than a stale comment
+
+*(mechanism: binding)*
+
+**Because it will be followed.** `TestProvisionalBandOriginIsPinned` fires correctly on
+`mkdir internal/layout` — a **true** positive — but **its message's site-(2) instruction is half
+stale, and following it literally would silently move goldens** while the developer believed they were
+obeying the guard.
+
+We already knew a **false positive invites a workaround**. This is its sibling: a **true positive with
+an outdated remedy invites a wrong fix.**
+
+**The remedy text is maintained as code, not as prose**: any story that changes the mechanism a
+tripwire points at **updates the message in the same commit.** Story 2.5 assigns the deletion to an AC
+rather than leaving the stale instruction to be obeyed.
+
+---
+
+### D-000.4 (override criterion) — An override needs a new source of cross-target divergence, not a new golden
+
+*(mechanism: binding)* — Story 2.5's per-story override **declined**.
+
+**An override is warranted when a story introduces a new *source of cross-target divergence*** — float
+arithmetic, a vendor call, a compressor, a new dependency — **not merely because it records a new
+golden.** Story 2.4 qualified because line breaking ran vendor shaping across three scripts, adjacent
+to the float path just measured. **Story 2.5 is integer band arithmetic on `geom.Length`**: no floats,
+no new vendor surface, nothing that could diverge between arm64 and wasm that has not already been
+proved identical.
+
+**If "records a golden" sufficed, nearly every story would qualify**, and D-000.4's trade — which the
+owner made deliberately on wall-clock — would erode to nothing. The epic gate is three stories away
+and the new golden is verified there.
+
+**The creator stating the counter-argument so it could be refused is the right behaviour**: better to
+refuse a well-made case than never to see one.
+
+---
+
+### D-000.38 — Two guards sharing a parser are one guard wearing two names
+
+*(mechanism: binding)*
+
+**The instance.** A new matrix document written as a **gofmt-clean single-line struct literal**
+(`{label: "x", slug: "y", …},`) is invisible to **both** `TestEpic2GateObligationsMatchTheDeclaredSet`
+and `TestMatrixDocumentSlugsAreRegisteredInCI`. Constructed by Story 2.5's reviewer: it compiles under
+`-tags matrix`, and **both tests report green.** That is *"a matrix leg nobody compares, reported as
+green"* — the exact drift Story 2.3 closed — **reopened by formatting.**
+
+**The root cause is the structure, not the regex.** Both guards share one `^\s*slug:` pattern. Two
+guards that consume the same parse are **not independent**: a single parsing assumption defeats both
+simultaneously, while the pair's existence advertises redundancy that does not exist. **Fixing only
+the regex leaves that structure intact**, and the next formatting variant defeats them again.
+
+**The rule.** Independence between guards must be **in their mechanism**, not merely in their names or
+their assertions. Two checks over the same extraction are one check. When redundancy is the point —
+and here it was, since these two exist to cover each other — **the second guard must reach its facts
+by a different route**: parse the Go source with `go/ast` (already used in `lint`, which type-checks),
+or derive both lists from a **single declarative source that cannot be expressed two ways**, so there
+is no second spelling to miss.
+
+**And the red-proof must use the shape that escaped** — here the single-line literal — because per
+[[D-000.36]] a remedy proposed for a vacuity inherits the vacuity's own hazard.
+
+**The family this belongs to.** [[D-000.19]] said an unexplained delta between two independent
+computations is where a calibration hides. This is its dual: **when two computations *agree* because
+they are secretly one computation, the agreement is worth nothing** — and it reads as corroboration,
+which is worse than reading as silence.
+

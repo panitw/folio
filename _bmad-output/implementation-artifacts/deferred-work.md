@@ -487,3 +487,93 @@ with no effect on any document currently under the cap — but it **will move ev
 document that exceeds it**, so it wants to land with a deliberate re-record rather than as a drive-by.
 
 **Do not** "fix" this by capping the number of CIDs; the CID allocation is D-2.3.2 and is correct.
+
+---
+
+### DW-15 — First-baseline placement and inter-baseline spacing use two different models
+
+**Owner:** engineering lead to schedule; **must land BEFORE the Thai reading sign-off is recorded.**
+**Raised at:** Story 2.5 (creator), ruled a defect by the lead at DN-3. **Deliberately not landed in 2.5.**
+
+**The inconsistency.** `internal/pdf/textdoc.go:730` places the first baseline with
+`pdfY = flipY(..., run.FontSize)` — i.e. from the **font size**. But [[D-2.4.2]] derives inter-baseline
+spacing from **`hhea` ascent − descent (+ lineGap), maximised over the declared chain**. So the *first*
+line is positioned on one model and *every subsequent* line spaced on another.
+
+**Why it is a defect and not a tolerable approximation.** The two models agree only by coincidence, and
+the symptom is the classic one: *"why does the first line sit differently from the rest?"* — asked
+months later, by someone with no reason to suspect two different formulas. It is also
+scale-dependent: the discrepancy grows with the gap between font size and the chain's maximum
+ascent, so a Thai or CJK chain diverges more than a Latin one.
+
+**Why it was not fixed in Story 2.5** *(this is the load-bearing part)*: correcting it **re-records
+four goldens**, and one of them is `fixtures/shaped-text/expected.pdf`, whose digest
+`5964aad0…c92e00f` is bound to a **pending human sign-off**. Landing it inside 2.5 would have moved a
+golden a human had been asked to examine, silently invalidating a request already in flight.
+
+**Sequencing obligation** *(binding, per [[D-000.26]] refined)*: **this fix lands before the Thai
+reading sign-off is recorded**, not after. The reading sign-off binds to the rendered image, so a
+baseline shift invalidates it and the human would be asked twice. **The scarce human is the
+constraint, not the code.** The Thai *break* sign-off is unaffected — it binds to the break-opportunity
+vector, which a uniform baseline shift does not touch.
+
+**On landing it**: re-record all four goldens as one intended versioned change under AD-21/AD-22, each
+with its D-000.22 semantic acceptance step — and per [[D-000.30]], capture the pre-fix measurement of
+the discrepancy **before** applying the fix, since that window closes permanently.
+
+
+---
+
+### DW-16 — `pagemodel.ShapedGlyph.CID` is not always a glyph id, and the table needed to interpret it is not in the page model
+
+**Owner:** **engineering lead to rule on the shape**; the fix lands in **the first non-PDF renderer
+story**, which is its natural forcing function.
+**Raised at:** Story 2.5 (reviewer Finding 2, a Major; finisher DEFER — recorded, not re-architected).
+**Nothing regressed.** The allocation is Story 2.3's [[D-2.3.2]], unchanged. Story 2.5's type move
+relocated it into `internal/pagemodel` and thereby made it visible.
+
+**The property, precisely.** `pagemodel.ShapedGlyph.CID` carries **two different kinds of value**,
+and the field's name and doc comment describe only the first:
+
+- In `buildShapedPDFRuns`' **base block** (`internal/pdf` is not involved; the site is `render.go`'s
+  `cid = newGID`, guarded by `state.baseClaimed`), `CID` **is** the subset glyph id. A renderer
+  holding the subset font can look the glyph up directly. This is AD-5's "glyph ids", legitimately.
+- In the **`default` block**, a **second, synthetic identifier is minted** for a glyph that carries a
+  *different source text* — `cid = uint16(sub.NumGlyphs + len(state.extras))`. That value is **not**
+  a glyph id in any font. It is an index into `state.extras`, and its ceiling is stated by the code
+  itself: *"exceeds Identity-H's two-byte CID ceiling of 65535."*
+
+That branch exists **only** because PDF's `/ToUnicode` CMap maps one CID to one text. So the field's
+value range and its second meaning are both **defined by a PDF encoding**.
+
+**What a non-PDF consumer cannot do today.** The `CID → GID` map that resolves the synthetic values —
+`state.extras`, and the `pdf.CIDText` entries built from it — is deliberately kept **out** of the page
+model, correctly, because it is a PDF construct. The consequence is that a PNG/SVG/HTML renderer
+handed a `pagemodel.TextRun` **cannot resolve `Glyphs` back to glyphs**: for any glyph whose text
+differs from its first-seen text, `CID` indexes a table the renderer was not given. It cannot detect
+which case it is holding either — the two kinds of value are indistinguishable at the type.
+
+**Why this matters more than the field.** AD-5's stated purpose for keeping PDF out of the page model
+is *"that absence is what keeps PNG/SVG/HTML renderers possible later."* The page model now carries
+a field that partially defeats that, and AC1's substring guard **cannot see it**: `"cid"` is not in
+`pdfConceptSubstrings`, and adding it would be the **wrong fix**, because the base-block value is a
+perfectly legitimate subset glyph id. There is no lint that closes this; only a ruling does.
+
+**What would fix it** — the ruling needed, not a decision this entry may take:
+
+1. **Renderer-neutral.** `ShapedGlyph` carries a true `GlyphID` plus a separate text association, and
+   the PDF writer performs the CID allocation on its own side of the boundary, from those two.
+   `internal/pdf` already owns `CIDText`; this moves the *allocation* to sit beside it. Strictly more
+   faithful to AD-5, and strictly more work.
+2. **Amend AD-5.** Admit an encoding-scoped identifier explicitly, rename the field to say so, and
+   record that a non-PDF renderer needs an accompanying table which the page model does not carry.
+   Cheaper, and honest, but it narrows what the page model promises.
+
+**Why it is worth an entry rather than a passing mention.** The window in which this is cheap to see
+closes as soon as **more producers write the field**. Today there is exactly one
+(`buildShapedPDFRuns`), so option 1 is a local change. Every additional producer makes both options
+more expensive, and makes the field's dual meaning harder to establish from the code.
+
+**Do not** "fix" this by adding `cid` to `pdfConceptSubstrings`, and do not re-architect
+`buildShapedPDFRuns` opportunistically — neither Story 2.5's AC1 nor its Task 4 asked for it, and the
+developer was right not to attempt it.

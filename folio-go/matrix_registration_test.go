@@ -26,23 +26,38 @@ import (
 //
 // This test is deliberately UNTAGGED — it runs in the ordinary
 // `go test ./...` every story runs, not at the gate — and it reads both
-// lists as SOURCE TEXT, because the tagged list is not compiled into
-// this binary. Reading source is the weaker mechanism; running in every
-// story is what makes it worth having.
+// lists from SOURCE, because the tagged list is not compiled into this
+// binary. Reading source rather than the compiled value is the weaker
+// mechanism; running in every story is what makes it worth having.
+//
+// The Go side is read by go/parser (MatrixDocumentSlugsFromSource), not
+// by pattern-matching text: a regex over the source was measured to be
+// defeated by a single-line composite literal, and defeated the sibling
+// obligation guard in the same stroke. The workflow side stays a regex
+// because matrix.yml is YAML holding a shell line — there is no grammar
+// here to parse, and the `docs="…"` assignment has one spelling that a
+// missing match reports as a failure rather than as an empty list.
 func TestMatrixDocumentSlugsAreRegisteredInCI(t *testing.T) {
 	root := repoRootFromTest(t)
 
-	harness, err := os.ReadFile(filepath.Join(root, "folio-go", "matrix_test.go"))
+	declared, elements, err := MatrixDocumentSlugsFromSource(filepath.Join(root, "folio-go", "matrix_test.go"))
 	if err != nil {
-		t.Fatalf("read matrix_test.go: %v", err)
+		t.Fatalf("read matrixDocuments from matrix_test.go: %v", err)
 	}
-	slugRe := regexp.MustCompile(`(?m)^\s*slug:\s*"([^"]+)"`)
-	var declared []string
-	for _, m := range slugRe.FindAllStringSubmatch(string(harness), -1) {
-		declared = append(declared, m[1])
+	if len(declared) == 0 || elements == 0 {
+		t.Fatal("vacuity guard: found no matrixDocuments entries in matrix_test.go — this test would pass on an empty comparison")
 	}
-	if len(declared) == 0 {
-		t.Fatal("vacuity guard: found no slug: entries in matrix_test.go — this test would pass on an empty comparison")
+	// N-of-N witness: every literal element yielded a slug. This guard and
+	// TestEpic2GateObligationsMatchTheDeclaredSet now share ONE reader,
+	// and that is deliberate — they previously shared a REGEX, which was
+	// worse: it made them one guard wearing two names, and a single-line
+	// composite literal (gofmt-clean, compiling under -tags matrix) was
+	// measured invisible to both at once (Story 2.5 review, Finding 1).
+	// The shared reader parses the Go grammar, where the literal has no
+	// second spelling, and FAILS on an entry it cannot read rather than
+	// letting the set shrink underneath the comparison (D-000.36).
+	if len(declared) != elements {
+		t.Fatalf("vacuity guard: read %d slugs from %d matrixDocuments entries — a registered document is missing from the comparison", len(declared), elements)
 	}
 
 	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "matrix.yml"))
@@ -80,7 +95,7 @@ func TestMatrixDocumentSlugsAreRegisteredInCI(t *testing.T) {
 		}
 	}
 
-	t.Logf("matrix registration witness — %d documents registered in both matrixDocuments and matrix.yml, across %d targets", len(declared), len(targets))
+	t.Logf("matrix registration witness — %d documents read from %d matrixDocuments literal entries, registered in both matrixDocuments and matrix.yml, across %d targets", len(declared), elements, len(targets))
 }
 
 func equalSets(a, b []string) bool {

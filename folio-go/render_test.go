@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -126,6 +125,23 @@ const subprocessShapedTextEnvVar = "FOLIO_SUBPROCESS_RENDER_SHAPEDTEXT"
 // their boxes, and therefore the only one whose legs can disagree if
 // line breaking is not reproducible across targets.
 const subprocessWrappedTextEnvVar = "FOLIO_SUBPROCESS_RENDER_WRAPPEDTEXT"
+
+// subprocessThreeBandEnvVar is Story 2.5's SEVENTH selector (joining the
+// six above, replacing none): fixtures/three-band-page/, the band
+// composition document.
+//
+// It needs its own selector because no existing document can express a
+// band-composition defect. Measured by injection at Story 2.5's
+// creation: moving the PAGE HEADER band's origin was detected by ZERO
+// tests in the repository, because all six recorded fixtures have an
+// EMPTY pageHeader band — and all six share one page setup in which
+// marginTop == marginBottom and pageHeader.height == pageFooter.height,
+// so a SWAP of any pair among the four geometric inputs is invisible in
+// the bytes. This is the only registered document with content in all
+// three bands and four pairwise-distinct geometric inputs, and therefore
+// the only one whose legs can disagree if band composition is not
+// reproducible across targets.
+const subprocessThreeBandEnvVar = "FOLIO_SUBPROCESS_RENDER_THREEBAND"
 
 // shapedTextTemplateJSON is Story 2.3's AC10 fixture document
 // (fixtures/shaped-text/input.folio, kept byte-identical to it by
@@ -485,6 +501,19 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 		b, err := Render(tpl, Data(wrappedTextDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(b)
+	}
+	if os.Getenv(subprocessThreeBandEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(threeBandPageTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
@@ -1075,35 +1104,6 @@ func TestRenderEmbedsSubsetFontAsType0Identity(t *testing.T) {
 	}
 	if !containsFontFile2(b) {
 		t.Fatal("output does not contain a FontFile2 (AC10b vacuity guard)")
-	}
-}
-
-// TestProvisionalBandOriginIsPinned is AC28: the provisional band-origin
-// convention must be revisited the day internal/layout exists (Story
-// 2.5) rather than quietly becoming permanent. This fails the moment
-// that package appears, forcing a human to look at this file again.
-//
-// Finding 13 (QA review): the previous failure message named only
-// internal/pdf/textdoc.go (buildTextContentStream) — which does hold a
-// provisional convention (the Y-flip into PDF user space) — but AC28's
-// actual subject, the BAND origin (pageHeader at 0, content below the
-// header band, pageFooter at usableHeight-footerHeight), is implemented
-// in folio-go/render.go's collectTextRuns, which the old message never
-// mentioned. Both sites must be named, or the band-origin half can be
-// missed — exactly the "provisional quietly becomes real" outcome AC28
-// exists to prevent, arriving through a stale pointer.
-func TestProvisionalBandOriginIsPinned(t *testing.T) {
-	if _, err := os.Stat(filepath.Join("internal", "layout")); err == nil {
-		t.Fatal(
-			"internal/layout now exists — AD-24's real band-relative placement has arrived. " +
-				"TWO provisional sites must be replaced, and this pinning test deleted " +
-				"(AC28, D-1.5.5's self-retiring-assertion pattern): " +
-				"(1) folio-go/render.go's collectTextRuns — the PROVISIONAL band-origin convention " +
-				"(pageHeader at y=0, content below the header band, pageFooter flush against the " +
-				"bottom margin); " +
-				"(2) folio-go/internal/pdf/textdoc.go's buildTextContentStream — the PROVISIONAL " +
-				"Y-flip into PDF's bottom-up user space.",
-		)
 	}
 }
 

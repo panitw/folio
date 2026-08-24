@@ -138,12 +138,13 @@ func decodeParams(p Params) (bind.Value, error) {
 // simply unreachable by any binding — the caller's JSON shape is their
 // business; only the binding namespace is ours (AC15, D-1.7.4).
 //
-// PROVISIONAL: text is placed using a provisional band-relative origin
-// convention (AC28) that stands in for AD-24's real placement until
-// internal/layout exists (Story 2.5); TestProvisionalBandOriginIsPinned
-// (render_test.go) fails the day that package exists, forcing this to
-// be revisited. Story 1.6 gave Render its data parameter and Story 1.7
-// its params parameter and its io.Writer form, RenderTo (D-1.1.c).
+// Text and images are placed by internal/layout (Story 2.5, AD-24):
+// each element's page-absolute Y is its band's origin plus its own
+// band-relative Y, a translation and never an inversion, and the
+// content band's height is derived from page geometry alone by
+// internal/layout.ContentHeight. Story 1.6 gave Render its data
+// parameter and Story 1.7 its params parameter and its io.Writer form,
+// RenderTo (D-1.1.c).
 func Render(t *Template, d Data, p Params, f FontSet) ([]byte, error) {
 	if t == nil {
 		return nil, errNilTemplate

@@ -1,5 +1,7 @@
 package pdf
 
+import "github.com/panitw/folio/folio-go/internal/pagemodel"
+
 import (
 	"bytes"
 	"testing"
@@ -23,10 +25,10 @@ func fakeFace(name string) EmbeddedFace {
 	}
 }
 
-func onePageWithText(face string) TextPage {
-	return TextPage{
-		Runs: []TextRun{
-			{Face: face, SourceText: "AB", X: 0, Y: 0, FontSize: 12000, Glyphs: []ShapedGlyph{
+func onePageWithText(face string) pagemodel.Page {
+	return pagemodel.Page{
+		Runs: []pagemodel.TextRun{
+			{Face: face, SourceText: "AB", X: 0, Y: 0, FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
 				{CID: 1, XAdvance: 500},
 				{CID: 2, XAdvance: 600},
 			}},
@@ -45,7 +47,7 @@ func onePageWithText(face string) TextPage {
 // until Story 2.5, so real pagination is out of this story's scope) —
 // this test exercises the mechanism this property actually depends on:
 // SerializeTextDocument receives the resolved face set ONCE and embeds
-// each entry exactly once regardless of how many TextPages reference
+// each entry exactly once regardless of how many pagemodel.Pages reference
 // it, which is the "never per page" half of AC9. The "one subsetting
 // call" half — that internal/fontset.Font.Subset is called exactly
 // once per face, over the document-wide union of runes, not per
@@ -59,7 +61,7 @@ func onePageWithText(face string) TextPage {
 // pagination exists, and stays deferred here on that basis, honestly).
 func TestSerializeTextDocumentEmbedsOneFontFileForTwoPages(t *testing.T) {
 	faces := map[string]EmbeddedFace{"Body": fakeFace("Body")}
-	pages := []TextPage{onePageWithText("Body"), onePageWithText("Body")}
+	pages := []pagemodel.Page{onePageWithText("Body"), onePageWithText("Body")}
 
 	out, err := SerializeTextDocument(pages, faces, nil)
 	if err != nil {
@@ -89,7 +91,7 @@ func TestSerializeTextDocumentEmbedsOneFontFileForTwoPages(t *testing.T) {
 // the face set is a located error, never a silently-emitted .notdef
 // stream.
 func TestSerializeTextDocumentMissingFaceIsLocatedError(t *testing.T) {
-	pages := []TextPage{onePageWithText("DoesNotExist")}
+	pages := []pagemodel.Page{onePageWithText("DoesNotExist")}
 	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{}, nil)
 	if err == nil {
 		t.Fatal("expected an error for a run naming a face absent from the face set")
@@ -104,8 +106,8 @@ func TestSerializeTextDocumentMissingFaceIsLocatedError(t *testing.T) {
 func TestSerializeTextDocumentUnknownCIDIsLocatedError(t *testing.T) {
 	face := fakeFace("Body")
 	// CID 9 is beyond fakeFace's base block and its (empty) extras.
-	pages := []TextPage{{
-		Runs: []TextRun{{Face: "Body", SourceText: "Z", X: 0, Y: 0, FontSize: 12000, Glyphs: []ShapedGlyph{
+	pages := []pagemodel.Page{{
+		Runs: []pagemodel.TextRun{{Face: "Body", SourceText: "Z", X: 0, Y: 0, FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
 			{CID: 9, XAdvance: 500},
 		}}},
 		Width:  595276,
@@ -129,7 +131,7 @@ func TestSerializeTextDocumentUnknownCIDIsLocatedError(t *testing.T) {
 // label tells the next reader where to look.
 func TestShapedRunFailsClosedOnYOffset(t *testing.T) {
 	face := fakeFace("Body")
-	run := TextRun{Face: "Body", SourceText: "A", FontSize: 12000, Glyphs: []ShapedGlyph{
+	run := pagemodel.TextRun{Face: "Body", SourceText: "A", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
 		{CID: 1, XAdvance: 500, YOffset: 37},
 	}}
 	if _, err := appendShapedRun(nil, run, face); err == nil {
@@ -152,7 +154,7 @@ func TestShapedRunFailsClosedOnYOffset(t *testing.T) {
 func TestZeroAdjustmentRunEmitsTj(t *testing.T) {
 	face := fakeFace("Body")
 
-	plain := TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []ShapedGlyph{
+	plain := pagemodel.TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
 		{CID: 1, XAdvance: 500},
 		{CID: 2, XAdvance: 600},
 	}}
@@ -164,7 +166,7 @@ func TestZeroAdjustmentRunEmitsTj(t *testing.T) {
 		t.Fatalf("a zero-adjustment run must emit today's exact Tj bytes, got %q", got)
 	}
 
-	kerned := TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []ShapedGlyph{
+	kerned := pagemodel.TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
 		{CID: 1, XAdvance: 460}, // /W says 500: GPOS kerned it by -40
 		{CID: 2, XAdvance: 600},
 	}}
@@ -176,7 +178,7 @@ func TestZeroAdjustmentRunEmitsTj(t *testing.T) {
 		t.Fatalf("a kerned run must emit a TJ array carrying the +40 adjustment, got %q", got)
 	}
 
-	offset := TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []ShapedGlyph{
+	offset := pagemodel.TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
 		{CID: 1, XAdvance: 500},
 		{CID: 2, XAdvance: 600, XOffset: -29},
 	}}

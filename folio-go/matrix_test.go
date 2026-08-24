@@ -540,6 +540,66 @@ func captureWrappedTextRender(t *testing.T, target matrixTarget, binPath string)
 	return runOnTarget(t, target, binPath, map[string]string{subprocessWrappedTextEnvVar: "1"})
 }
 
+// captureThreeBandRender runs binPath with
+// FOLIO_SUBPROCESS_RENDER_THREEBAND=1 — Story 2.5's SEVENTH selector,
+// rendering fixtures/three-band-page/ through the public Render path.
+func captureThreeBandRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessThreeBandEnvVar: "1"})
+}
+
+// requireThreeBandPageUsesAllThreeBands is Story 2.5's OWN feature
+// guard, and it exists for the same reason requireShapedTextIsShaped and
+// requireWrappedTextIsWrapped do: "contains a FontFile2" is satisfied by
+// any embedding, and a document whose bands were composed WRONGLY would
+// still embed a face and still agree across four targets.
+//
+// Measured at Story 2.5's creation, by injecting a wrong origin into
+// each band in turn: a wrong PAGE-HEADER origin was caught by ZERO tests
+// in the repository, because all six pre-2.5 fixtures have an EMPTY
+// pageHeader band. This guard asserts, on EVERY leg and before any byte
+// comparison, that the captured stream carries FOUR runs at FOUR
+// DISTINCT baselines spanning all three bands — read off the PRODUCED
+// bytes, never off the renderer's intermediate state.
+//
+// The three band boundaries are stated as literals derived by hand from
+// the fixture's page setup (see three_band_page_fixture_test.go for the
+// arithmetic): the printable column runs from PDF-user-space y 811890
+// down to y 42000, the header band ends 18000 mp below the top, and the
+// footer band begins 24000 mp above the bottom.
+func requireThreeBandPageUsesAllThreeBands(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+
+	runs := readEmittedRuns(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the three-band-page leg emitted no text runs", target.name)
+	}
+	ys := linesByOrigin(runs)
+	if len(ys) != 4 {
+		t.Fatalf("%s: the three-band-page leg occupies %d distinct baselines %v, want exactly 4 (one per text element: one header, two content, one footer) — a leg that collapsed two bands would compare byte-identical to itself and certify nothing",
+			target.name, len(ys), ys)
+	}
+
+	// PDF user space, bottom-up: printable top = 841890 - 30000 = 811890,
+	// printable bottom = 42000. Header band: [811890-18000, 811890] =
+	// [793890, 811890]. Footer band: [42000, 42000+24000] = [42000, 66000].
+	var header, content, footer int
+	for _, y := range ys {
+		switch {
+		case y >= 793890:
+			header++
+		case y <= 66000:
+			footer++
+		default:
+			content++
+		}
+	}
+	if header == 0 || content == 0 || footer == 0 {
+		t.Fatalf("%s: the three-band-page leg's baselines %v put %d run(s) in the page-header band, %d in the content band and %d in the page-footer band — every band must carry at least one, or a band-origin defect is invisible on this target",
+			target.name, ys, header, content, footer)
+	}
+}
+
 // requireWrappedTextIsWrapped is Story 2.4's OWN feature guard, and it
 // exists for the same reason requireShapedTextIsShaped does.
 //
@@ -783,6 +843,29 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "wrapped-text", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireWrappedTextIsWrapped,
+	},
+	{
+		// Story 2.5's AC7 fixture: the only registered document with
+		// content in ALL THREE bands and four pairwise-distinct
+		// geometric inputs.
+		//
+		// REGISTERED HERE; ITS FOUR LEGS ARE NOT RUN BY THIS STORY.
+		// D-000.4 (override criterion) DECLINED Story 2.5's per-story
+		// override: "an override is warranted when a story introduces a
+		// new SOURCE OF CROSS-TARGET DIVERGENCE — float arithmetic, a
+		// vendor call, a compressor, a new dependency — not merely
+		// because it records a new golden. Story 2.5 is integer band
+		// arithmetic on geom.Length." The legs are the Epic 2 boundary
+		// gate's, and registration now is what gives that gate something
+		// to compare (D-2.5.1 sanctions this as the gate's fourth
+		// obligation; a golden registered in one list and not the other
+		// is "a matrix leg nobody compares, reported as green").
+		label:            "three-band-page (band composition, all three bands populated)",
+		slug:             "three-band-page",
+		capture:          captureThreeBandRender,
+		fixtureRelPath:   []string{"fixtures", "three-band-page", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireThreeBandPageUsesAllThreeBands,
 	},
 }
 

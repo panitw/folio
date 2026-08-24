@@ -8,6 +8,8 @@ import (
 	"github.com/panitw/folio/folio-go/internal/bind"
 	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/layout"
+	"github.com/panitw/folio/folio-go/internal/pagemodel"
 	"github.com/panitw/folio/folio-go/internal/pdf"
 	"github.com/panitw/folio/folio-go/internal/template"
 	"github.com/panitw/folio/folio-go/internal/text"
@@ -29,8 +31,9 @@ const (
 // concern).
 const defaultFontSizePt geom.Length = 12000
 
-// pageDimensions resolves a Document's page geometry (AC28's placement
-// math needs page height and margins). An unrecognised named size is a
+// pageDimensions resolves a Document's page geometry (band composition
+// needs page height and margins; see pageGeometryOf, which is the only
+// caller that reaches internal/layout with them). An unrecognised named size is a
 // located error, not a silent A4 substitution (Finding 17, QA review:
 // the previous version fell back to A4 for ANY named size other than
 // "A4" — a document declaring "size": "Letter" rendered as A4 with no
@@ -86,36 +89,63 @@ type textRunSource struct {
 }
 
 // bandWithOrigin pairs one of the document's three bands with the
-// PROVISIONAL vertical offset (AC28) at which its own element-relative
-// Y=0 sits — the placement math both collectTextRuns and
-// collectImageRuns need, factored once so the two element kinds agree
-// on where a band starts.
+// PAGE-ABSOLUTE vertical offset at which its own element-relative Y=0
+// sits — the placement both collectTextRuns and collectImageRuns need,
+// factored once so the two element kinds agree on where a band starts.
+//
+// The origin itself is NOT computed here. Under AD-24 "bands are placed
+// on the page by internal/layout alone", so this file resolves the page
+// SETUP and hands it to internal/layout, which answers with the three
+// origins. Package folio computes no band origin
+// (TestNoBandOriginArithmeticInPackageFolio, internal/bandcomposition_arch_test.go).
 type bandWithOrigin struct {
 	band   template.Band
 	origin geom.Length
 }
 
-// documentBands resolves pageDimensions and returns the three bands
-// with their origins, in authored (header, content, footer) order.
+// pageGeometryOf reads the document's page setup into internal/layout's
+// closed input struct. Every geometric input band composition is allowed
+// to see passes through here, and nothing else does: an element, or a
+// measurement of one, has no route into PageGeometry, which is AD-24's
+// "nothing negotiates" holding structurally rather than by convention.
+//
+// A band's height key that is absent or explicitly null reads as zero —
+// the same treatment the pre-2.5 code gave it, unchanged.
+func pageGeometryOf(doc *Template) (layout.PageGeometry, error) {
+	width, height, err := pageDimensions(doc)
+	if err != nil {
+		return layout.PageGeometry{}, err
+	}
+	g := layout.PageGeometry{
+		Width:        width,
+		Height:       height,
+		MarginTop:    doc.doc.Page.Margin.Top,
+		MarginBottom: doc.doc.Page.Margin.Bottom,
+		MarginLeft:   doc.doc.Page.Margin.Left,
+		MarginRight:  doc.doc.Page.Margin.Right,
+	}
+	if doc.doc.Bands.PageHeader.Height.Set && !doc.doc.Bands.PageHeader.Height.Null {
+		g.PageHeaderHeight = doc.doc.Bands.PageHeader.Height.Value
+	}
+	if doc.doc.Bands.PageFooter.Height.Set && !doc.doc.Bands.PageFooter.Height.Null {
+		g.PageFooterHeight = doc.doc.Bands.PageFooter.Height.Value
+	}
+	return g, nil
+}
+
+// documentBands returns the three bands with their origins, in authored
+// (header, content, footer) order, asking internal/layout for the
+// origins rather than deriving them.
 func documentBands(doc *Template) ([]bandWithOrigin, error) {
-	_, height, err := pageDimensions(doc)
+	g, err := pageGeometryOf(doc)
 	if err != nil {
 		return nil, err
 	}
-	usableHeight := height - doc.doc.Page.Margin.Top - doc.doc.Page.Margin.Bottom
-
-	var headerHeight, footerHeight geom.Length
-	if doc.doc.Bands.PageHeader.Height.Set && !doc.doc.Bands.PageHeader.Height.Null {
-		headerHeight = doc.doc.Bands.PageHeader.Height.Value
-	}
-	if doc.doc.Bands.PageFooter.Height.Set && !doc.doc.Bands.PageFooter.Height.Null {
-		footerHeight = doc.doc.Bands.PageFooter.Height.Value
-	}
-
+	origins := layout.Origins(g)
 	return []bandWithOrigin{
-		{doc.doc.Bands.PageHeader, 0},
-		{doc.doc.Bands.Content, headerHeight},
-		{doc.doc.Bands.PageFooter, usableHeight - footerHeight},
+		{doc.doc.Bands.PageHeader, origins.PageHeader},
+		{doc.doc.Bands.Content, origins.Content},
+		{doc.doc.Bands.PageFooter, origins.PageFooter},
 	}, nil
 }
 
@@ -161,7 +191,7 @@ func collectImageRuns(doc *Template) ([]imageRunSource, error) {
 				elementID: string(el.ID),
 				assetKey:  el.Asset.Value,
 				x:         el.X,
-				y:         b.origin + el.Y,
+				y:         layout.PlaceInBand(b.origin, el.Y),
 				boxW:      el.Width.Value,
 				boxH:      el.Height.Value,
 			})
@@ -220,15 +250,12 @@ func resolveImagePlacement(run imageRunSource, img template.DecodedImage) (drawX
 // expression-shaped `{{formatNumber(...)}}` that is deliberately not
 // this story's business).
 func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *fontCache) ([]textRunSource, error) {
-	// bandOrigin is PROVISIONAL (AC28): the vertical offset, from the
-	// page's top printable edge, at which each band's own (element-
-	// relative) Y=0 sits — pageHeader at the top, content directly below
-	// it, pageFooter flush against the bottom margin. Real band
-	// composition (stacking bands that actually grow with content, page
-	// breaks, etc.) is Story 2.5's (internal/layout) job; this is only
-	// enough to keep this story's fixtures from overlapping.
-	// (documentBands, factored above so collectImageRuns agrees on the
-	// same band origins.)
+	// documentBands asks internal/layout where each band's own
+	// (element-relative) Y=0 sits on the page: pageHeader at the top,
+	// content directly below it, pageFooter starting exactly where the
+	// content band ends. Every element's page Y below is
+	// layout.PlaceInBand(origin, el.Y) — a TRANSLATION, never an
+	// inversion (D-2.0.4, AD-24).
 	bands, err := documentBands(doc)
 	if err != nil {
 		return nil, err
@@ -313,7 +340,7 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 				}
 			}
 
-			elementY := b.origin + el.Y
+			elementY := layout.PlaceInBand(b.origin, el.Y)
 			for i, ln := range lines {
 				lineY := elementY + geom.Length(int64(i))*advance
 				runs = append(runs, positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize)...)
@@ -690,22 +717,22 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		}
 	}
 
-	pdfPlacements := make([]pdf.ImagePlacement, len(imageRuns))
+	pdfPlacements := make([]pagemodel.ImagePlacement, len(imageRuns))
 	for i, r := range imageRuns {
 		img := decodedByKey[r.assetKey]
 		drawX, drawY, drawW, drawH := resolveImagePlacement(r, img)
-		pdfPlacements[i] = pdf.ImagePlacement{
-			ResourceName: r.assetKey,
-			X:            drawX,
-			Y:            drawY,
-			DrawWidth:    drawW,
-			DrawHeight:   drawH,
+		pdfPlacements[i] = pagemodel.ImagePlacement{
+			AssetKey:   r.assetKey,
+			X:          drawX,
+			Y:          drawY,
+			DrawWidth:  drawW,
+			DrawHeight: drawH,
 		}
 	}
 
-	width, height, perr := pageDimensions(t)
-	if perr != nil {
-		return nil, perr
+	geometry, gerr := pageGeometryOf(t)
+	if gerr != nil {
+		return nil, gerr
 	}
 
 	pdfRuns, cerr := buildShapedPDFRuns(runs, shapedRuns, clusterTexts, subsets, embedded, cache, fs)
@@ -713,16 +740,11 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		return nil, cerr
 	}
 
-	page := pdf.TextPage{
-		Runs:       pdfRuns,
-		Images:     pdfPlacements,
-		Width:      width,
-		Height:     height,
-		MarginTop:  t.doc.Page.Margin.Top,
-		MarginLeft: t.doc.Page.Margin.Left,
-	}
+	// internal/layout produces the page model (AD-5); package folio hands
+	// it to a renderer and does nothing else with it.
+	page := layout.ComposePage(geometry, pdfRuns, pdfPlacements)
 
-	return pdf.SerializeTextDocument([]pdf.TextPage{page}, embedded, pdfImages)
+	return pdf.SerializeTextDocument([]pagemodel.Page{page}, embedded, pdfImages)
 }
 
 // cidKey identifies one allocated CID: a subset glyph together with the
@@ -743,7 +765,7 @@ type cidKey struct {
 //
 //   - AC4: every CID a content stream will emit originates in a shaped
 //     glyph run. There is no other route: this is the only function that
-//     produces a pdf.ShapedGlyph, and the only input it reads is the
+//     produces a pagemodel.ShapedGlyph, and the only input it reads is the
 //     shaper's output mapped through the subset plan. The old
 //     rune -> GlyphForRune -> CID path does not exist any more, so the
 //     property is structural rather than asserted by a denylist.
@@ -768,7 +790,7 @@ func buildShapedPDFRuns(
 	embedded map[string]pdf.EmbeddedFace,
 	cache *fontCache,
 	fs FontSet,
-) ([]pdf.TextRun, error) {
+) ([]pagemodel.TextRun, error) {
 	type faceCIDs struct {
 		byKey       map[cidKey]uint16
 		baseClaimed map[uint16]bool
@@ -777,7 +799,7 @@ func buildShapedPDFRuns(
 	}
 	alloc := map[string]*faceCIDs{}
 
-	pdfRuns := make([]pdf.TextRun, len(runs))
+	pdfRuns := make([]pagemodel.TextRun, len(runs))
 	for i, r := range runs {
 		sub, ok := subsets[r.face]
 		if !ok {
@@ -795,7 +817,7 @@ func buildShapedPDFRuns(
 			alloc[r.face] = state
 		}
 
-		glyphs := make([]pdf.ShapedGlyph, 0, len(shaped[i]))
+		glyphs := make([]pagemodel.ShapedGlyph, 0, len(shaped[i]))
 		for gi, g := range shaped[i] {
 			newGID, retained := sub.GlyphForSource[g.GlyphID]
 			if !retained {
@@ -848,7 +870,7 @@ func buildShapedPDFRuns(
 				state.entries = append(state.entries, pdf.CIDText{CID: cid, Text: key.text})
 			}
 
-			glyphs = append(glyphs, pdf.ShapedGlyph{
+			glyphs = append(glyphs, pagemodel.ShapedGlyph{
 				CID:      cid,
 				XAdvance: int64(geom.ScaleRound(geom.Length(int64(g.XAdvance)), 1000, upem)),
 				XOffset:  int64(geom.ScaleRound(geom.Length(int64(g.XOffset)), 1000, upem)),
@@ -856,7 +878,7 @@ func buildShapedPDFRuns(
 			})
 		}
 
-		pdfRuns[i] = pdf.TextRun{
+		pdfRuns[i] = pagemodel.TextRun{
 			Face:       r.face,
 			Glyphs:     glyphs,
 			SourceText: r.text,

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	folio "github.com/panitw/folio/folio-go"
 )
 
 // Story 2.3a, AC6 and AC7. This file asserts the two claims the story
@@ -125,85 +127,88 @@ func TestStory23aMovedNoGoldenDigest(t *testing.T) {
 	}
 }
 
-// TestStory23aAddedNoThirdEpic2GateObligation is AC7's assertion, stated
-// mechanically rather than as an intention.
+// declaredEpic2GateObligations IS THE LIST. It is the single, explicit
+// declaration of everything the Epic 2 boundary gate owes, and the guard
+// below asserts the OBSERVED obligation set equals it exactly.
 //
-// THE NAME IS STORY 2.3a's; THE COUNT IS NOT. As of Story 2.4 the Epic 2
-// gate owes exactly THREE things and must not be given a fourth:
+// D-2.5.1, which replaced this guard's previous shape:
 //
-//  1. the four-target matrix legs, now including 2.3/2.3a's registration
-//     and Story 2.4's `wrapped-text`;
-//  2. D-2.3.5's Thai READING sign-off, bound to
-//     fixtures/shaped-text/expected.pdf's digest above;
-//  3. D-2.4.3's Thai BREAK sign-off, bound to
-//     fixtures/expected-breaks/expected_breaks.json's own digest.
+//	"TestStory23aAddedNoThirdEpic2GateObligation encodes a COUNT IN ITS
+//	NAME, and that name rots on every future obligation. Replace it with
+//	an assertion that the registered obligation set equals an explicit
+//	declared list. Adding one then becomes a ONE-LINE DIFF to that list —
+//	visible and reviewable — instead of a rename."
 //
-// (2) and (3) are two distinct human judgments — "does this Thai read
-// correctly" and "do these break points fall correctly" — and each is
-// tracked as its own DELIBERATELY RED gate-run test under
-// //go:build matrix: TestShapedTextThaiSemanticSignOffIsRecorded and
-// TestExpectedBreaksHumanSignOffIsRecorded. Each stays red until its own
-// sign-off file names a reader, a date, what they examined, and the
-// digest it certifies. Neither story creates either file.
+// The same derive-from-a-declarative-spec move that fixed the per-face
+// assertion set in D-000.23's consequent obligation. It retires the
+// counting problem PERMANENTLY rather than deferring it one story: the
+// old name asserted "no THIRD", then had to mean "no FOURTH" while still
+// reading "Third", which is a false statement compiled into the suite.
 //
-// The inventory in (b) below is the mechanical statement of that count:
-// it catches a FOURTH obligation appearing, and it catches one being
-// removed.
+// Two kinds of obligation are observable in the tree, and both are
+// listed here so neither can grow unnoticed:
 //
-// CADENCE, SCOPED TO THE STORY IT DESCRIBES. Under the per-epic
-// heavy-test cadence (D-000.4) STORY 2.3a wrote no matrix leg and ran
-// none, and had nothing to register: its AC6 asserts every output byte
-// is unchanged, so the four-target byte identity Story 2.3 established
-// still held by construction and a new leg would have been a gate
-// obligation with no question behind it. Story 2.4 is the opposite case
-// — it introduces a new document — so it registers a leg AND runs the
-// matrix in-story, which D-000.4 names 2.4 as an override for.
-func TestStory23aAddedNoThirdEpic2GateObligation(t *testing.T) {
+//	matrix-file: <path>      a //go:build matrix file — a gate-run test.
+//	                         A deliberately-red sign-off record is one of
+//	                         these, and so is the matrix harness itself.
+//	matrix-document: <slug>  a document registered in matrixDocuments
+//	                         whose four legs the gate must run and
+//	                         compare.
+//
+// Each entry names the story and the ruling that authorised it. Adding
+// one without a ruling is exactly what this guard exists to stop.
+var declaredEpic2GateObligations = []string{
+	// The gate-run test files.
+	"matrix-file: fontgen_matrix_test.go",                 // Story 2.2 — shipped-face instancing
+	"matrix-file: matrix_test.go",                         // Story 1.2 — the four-target legs themselves
+	"matrix-file: shaped_signoff_matrix_test.go",          // Story 2.3 — Thai READING sign-off (D-2.3.5)
+	"matrix-file: expected_breaks_signoff_matrix_test.go", // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
+
+	// The documents whose four legs the gate runs and compares.
+	"matrix-document: minimal-rect",          // Story 1.1
+	"matrix-document: font-text",             // Story 1.5
+	"matrix-document: image-embed",           // Story 1.8
+	"matrix-document: multi-script-fallback", // Story 2.2
+	"matrix-document: shaped-text",           // Story 2.3
+	"matrix-document: wrapped-text",          // Story 2.4 — legs RUN in-story (D-000.4 override)
+	"matrix-document: three-band-page",       // Story 2.5 — legs DEFERRED to the gate (D-2.5.1; D-000.4 override criterion DECLINED)
+}
+
+// TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically
+// rather than as an intention, that what the Epic 2 boundary gate owes
+// is exactly what declaredEpic2GateObligations says it owes — no more,
+// and no fewer.
+//
+// The two Thai sign-offs are distinct human judgments — "does this Thai
+// READ correctly" and "do these BREAK POINTS fall correctly" — and each
+// is tracked as its own deliberately-red gate-run test
+// (TestShapedTextThaiSemanticSignOffIsRecorded,
+// TestExpectedBreaksHumanSignOffIsRecorded). Each stays red until its
+// own sign-off file names a reader, a date, what they examined, and the
+// digest it certifies. No story creates either file — see (a).
+//
+// D-000.26 (refined) is why they are two records and not one: a sign-off
+// binds to the artifact expressing the property judged. The reading
+// judgment binds to fixtures/shaped-text/expected.pdf's digest; the
+// break judgment binds to the break-opportunity VECTOR, which a uniform
+// baseline shift would leave untouched.
+func TestEpic2GateObligationsMatchTheDeclaredSet(t *testing.T) {
 	root := repoRootForByteNeutrality(t)
 
-	// (a) The sign-off obligation is still outstanding. If this file
-	//     appears, the Thai sign-off has been given — which is a real
-	//     event that must be recorded deliberately, by D-2.3.5's owner,
-	//     never as a side effect of another story.
+	// (a) The sign-off obligations are still OUTSTANDING. If either file
+	//     appears, a human judgment has been given — a real event that
+	//     must be recorded deliberately by its owner, never as a side
+	//     effect of another story (D-000.28: a claim written before the
+	//     event it asserts is false from birth, and reads identically to
+	//     a true one).
 	signoff := filepath.Join(root, "fixtures", "shaped-text", "thai-signoff.json")
 	if _, err := os.Stat(signoff); err == nil {
-		t.Errorf("%s exists. Story 2.3a must not create it: it is D-2.3.5's outstanding gate obligation, and the record must name a real reader and a real date (D-000.28: a claim written before the event it asserts is false from birth)", signoff)
+		t.Errorf("%s exists. No story may create it: it is D-2.3.5's outstanding gate obligation, and the record must name a real reader and a real date", signoff)
 	}
 
-	// (b) The set of matrix-tagged FILES, asserted as an inventory BY
-	//     NAME, so that ADDING one — which is what a new gate obligation
-	//     looks like in the tree — fails here. Removing one fails too.
-	//
-	//     THE INVENTORY GREW ONCE, DELIBERATELY, AND THIS IS THE RECORD
-	//     OF IT. At 431a6a5 it held three files and the gate owed two
-	//     things. Story 2.4 added expected_breaks_signoff_matrix_test.go
-	//     under D-2.4.3, which rules the addition explicitly: "a separate
-	//     //go:build matrix sign-off bound to its own digest... leaving
-	//     thai-signoff.json and 5964aad0…c92e00f untouched — a re-record
-	//     then invalidates exactly one and not the other". The reason a
-	//     second record was required rather than an extension of the
-	//     first: "does this Thai READ correctly" and "do these BREAK
-	//     POINTS fall correctly" are two distinct human judgments, and a
-	//     reader signing off on legibility would not know they were also
-	//     certifying break placement.
-	//
-	//     So the gate now owes THREE things — the four-target matrix
-	//     legs, the Thai rendering sign-off, and the Thai break sign-off
-	//     — and this guard's job is unchanged: it now catches a FOURTH.
-	//     D-2.4.3 says in terms "do not add a fourth".
-	//
-	//     Note what did NOT change: part (a) above still asserts
-	//     thai-signoff.json is absent, and Story 2.4 neither created it
-	//     nor read it nor extended its schema.
-	wantMatrixFiles := map[string]bool{
-		"fontgen_matrix_test.go":                 true, // Story 2.2
-		"matrix_test.go":                         true, // Story 1.2 — the four-target legs
-		"shaped_signoff_matrix_test.go":          true, // Story 2.3 — Thai RENDERING sign-off (D-2.3.5)
-		"expected_breaks_signoff_matrix_test.go": true, // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
-	}
-
+	// (b) The OBSERVED obligation set, gathered from the tree itself.
 	moduleRoot := filepath.Join(root, "folio-go")
-	gotMatrixFiles := map[string]bool{}
+	got := map[string]bool{}
 	scanned := 0
 	werr := filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -225,7 +230,7 @@ func TestStory23aAddedNoThirdEpic2GateObligation(t *testing.T) {
 		scanned++
 		if hasMatrixBuildConstraint(string(src)) {
 			rel, _ := filepath.Rel(moduleRoot, path)
-			gotMatrixFiles[filepath.ToSlash(rel)] = true
+			got["matrix-file: "+filepath.ToSlash(rel)] = true
 		}
 		return nil
 	})
@@ -233,23 +238,60 @@ func TestStory23aAddedNoThirdEpic2GateObligation(t *testing.T) {
 		t.Fatalf("walk %s: %v", moduleRoot, werr)
 	}
 	if scanned == 0 {
-		t.Fatal("vacuity guard: the walk read 0 Go files, so \"the matrix-tagged set is unchanged\" says nothing")
+		t.Fatal("vacuity guard: the walk read 0 Go files, so \"the obligation set is unchanged\" says nothing")
 	}
 
-	for name := range wantMatrixFiles {
-		if !gotMatrixFiles[name] {
-			t.Errorf("matrix-tagged file %s is no longer tagged — the Epic 2 gate's obligations must not shrink silently either", name)
+	// The registered matrix documents. matrix_test.go is itself
+	// matrix-tagged and therefore not compiled into this binary, so its
+	// slugs are read from SOURCE — the same mechanism
+	// matrix_registration_test.go uses (which separately pins these
+	// slugs against .github/workflows/matrix.yml; this guard pins them
+	// against the declared obligation list, a different question).
+	//
+	// Both guards call folio.MatrixDocumentSlugsFromSource and nothing
+	// else. They previously shared a REGEX (`(?m)^\s*slug:\s*"…"`), which
+	// made them one guard wearing two names: a single-line composite
+	// literal is gofmt-clean, compiles under -tags matrix, and was
+	// measured invisible to BOTH at once (Story 2.5 review, Finding 1).
+	// The shared reader parses the Go grammar, where the literal has no
+	// second spelling, and FAILS on any entry it cannot read rather than
+	// dropping it from the set.
+	slugs, elements, serr := folio.MatrixDocumentSlugsFromSource(filepath.Join(moduleRoot, "matrix_test.go"))
+	if serr != nil {
+		t.Fatalf("read matrixDocuments from matrix_test.go: %v", serr)
+	}
+	if len(slugs) == 0 || elements == 0 {
+		t.Fatal("vacuity guard: no matrixDocuments entries found in matrix_test.go — the document half of the obligation set would be silently empty")
+	}
+	// N-of-N witness: every literal element yielded a slug. Asserted here
+	// as well as inside the reader, so this guard does not take the
+	// reader's word for its own completeness.
+	if len(slugs) != elements {
+		t.Fatalf("vacuity guard: read %d slugs from %d matrixDocuments entries — a registered document is missing from the observed obligation set", len(slugs), elements)
+	}
+	t.Logf("obligation witness — %d matrix documents read from %d matrixDocuments literal entries, %d Go files walked", len(slugs), elements, scanned)
+	for _, slug := range slugs {
+		got["matrix-document: "+slug] = true
+	}
+
+	// (c) Set equality against the declared list, in both directions.
+	want := map[string]bool{}
+	for _, o := range declaredEpic2GateObligations {
+		want[o] = true
+	}
+	for o := range want {
+		if !got[o] {
+			t.Errorf("declared Epic 2 gate obligation %q is NOT present in the tree — obligations must not disappear silently either. Either restore it, or remove its line from declaredEpic2GateObligations with the ruling that discharged it.", o)
 		}
 	}
-	for name := range gotMatrixFiles {
-		if !wantMatrixFiles[name] {
+	for o := range got {
+		if !want[o] {
 			t.Errorf(
-				"%s is matrix-tagged and is not in the sanctioned inventory. That is a FOURTH Epic 2 gate "+
-					"obligation. The gate owes exactly three things — the four-target matrix legs, D-2.3.5's "+
-					"Thai RENDERING sign-off, and D-2.4.3's Thai BREAK sign-off — and D-2.4.3 says in terms "+
-					"\"do not add a fourth\". One may not be added without a ruling that says so explicitly, "+
-					"recorded in the inventory above alongside the story and the decision that authorised it.",
-				name)
+				"%q is an Epic 2 gate obligation and is NOT in declaredEpic2GateObligations.\n\n"+
+					"An obligation may not be added without a ruling that says so explicitly. Record it as a "+
+					"ONE-LINE addition to that list, naming the story and the decision that authorised it "+
+					"(D-2.5.1). Do not rename this test, and do not encode a count anywhere.",
+				o)
 		}
 	}
 }

@@ -54,7 +54,7 @@ development_status:
   # type-aware AD-23 guard). Must land before 2.4 adds vendor call sites.
   2-3a-audit-the-vendor-boundary: done
   2-4-break-and-measure-lines-in-all-three-scripts: done
-  2-5-compose-a-page-from-three-bands: backlog
+  2-5-compose-a-page-from-three-bands: done
   2-6-render-multi-page-documents-with-headers-and-footers-on-ever: backlog
   2-7-render-page-x-of-y: backlog
   2-8-clip-overflowing-content-and-say-so: backlog

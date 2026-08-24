@@ -4,7 +4,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/pagemodel"
 )
 
 // EmbeddedFace is one font's resolved, subsetted embedding, ready to be
@@ -65,62 +65,10 @@ type EmbeddedFace struct {
 	HeadCreated, HeadModified              int64 // AC11a: copied verbatim into the embedded head table
 }
 
-// TextRun is one literal run of text on one page, placed at a
-// PROVISIONAL origin (AC28). AD-24 makes element x/y band-relative once
-// internal/layout exists (Story 2.5); until then this package treats
-// X/Y as an offset from the page's top-left printable corner (inside
-// the margins), Y increasing DOWNWARD — the opposite sense from PDF's
-// native bottom-up user space, chosen to match how X/Y read in the
-// `.folio` document model. TestProvisionalBandOriginIsPinned (in
-// folio-go, module root) fails the moment internal/layout exists,
-// forcing this convention to be revisited rather than quietly becoming
-// permanent.
-type TextRun struct {
-	Face string
-
-	// Glyphs is the run's SHAPED glyph sequence (Story 2.3). Every CID
-	// emitted for this run originates here; there is no rune -> CID
-	// route into a content stream any more (AC4). Positions are already
-	// scaled to the 1000-unit em, by geom.ScaleRound, at the one site
-	// that knows the face's unitsPerEm (package folio's renderDocument).
-	Glyphs []ShapedGlyph
-
-	// SourceText is the run's original text, carried for diagnostics
-	// only. Nothing in this package derives a glyph, a CID or a width
-	// from it.
-	SourceText string
-
-	X, Y     geom.Length
-	FontSize geom.Length
-}
-
-// ShapedGlyph is one glyph of a shaped run, ready to emit: a CID plus
-// its position, all in the PDF's 1000-unit em (AD-2's one scaling
-// function has already been applied by the caller).
-type ShapedGlyph struct {
-	CID      uint16
-	XAdvance int64
-	XOffset  int64
-	YOffset  int64
-}
-
 // CIDText is one /ToUnicode entry: the text a CID extracts as.
 type CIDText struct {
 	CID  uint16
 	Text string
-}
-
-// ImagePlacement is one image element's resolved, DRAWN placement on a
-// page (AD-24: scaled to fit, centred, computed in integer millipoints —
-// the fit/centre computation itself lives in package folio's render.go;
-// this struct carries only the RESULT). X, Y are the top-left corner of
-// the DRAWN box (already centred within the element's declared box,
-// i.e. offset by the centring math), in the same page-local, Y-down
-// convention as TextRun.X/Y.
-type ImagePlacement struct {
-	ResourceName          string // key into the images map passed to SerializeTextDocument
-	X, Y                  geom.Length
-	DrawWidth, DrawHeight geom.Length
 }
 
 // ImageXObject is one distinct embedded image asset, ready to be
@@ -146,16 +94,6 @@ type ImageXObject struct {
 	Stream           []byte
 }
 
-// TextPage is one page's provisional content plus the page geometry
-// needed to place it (AC28's provisional-origin math needs the page
-// height and margins to flip Y into PDF's bottom-up space).
-type TextPage struct {
-	Runs                  []TextRun
-	Images                []ImagePlacement
-	Width, Height         geom.Length
-	MarginTop, MarginLeft geom.Length
-}
-
 // SerializeTextDocument writes pages as a classic (uncompressed) PDF 1.7
 // document, embedding every distinct face named in faces EXACTLY ONCE
 // regardless of how many pages or runs reference it (AC9: "one subset
@@ -167,7 +105,7 @@ type TextPage struct {
 // through appendInt/appendIntPadded (AD-3), and /ID is derived from the
 // document's own content (AD-7) — no compression, no /Info dictionary,
 // no /CreationDate or /ModDate.
-func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace, images map[string]ImageXObject) ([]byte, error) {
+func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace, images map[string]ImageXObject) ([]byte, error) {
 	b := newBuilder()
 
 	catalogID := b.reserve()
@@ -713,19 +651,30 @@ func appendHex4(dst []byte, v uint16) []byte {
 // FALSE version of an invariant is that same hazard pointed the other
 // way.
 //
-// Provisional origin (AC28): run.X/run.Y are read as an offset from the
-// page's top-left printable corner, Y increasing DOWNWARD; converted to
-// PDF's bottom-up user space as
+// Origin (PERMANENT, not provisional): run.X/run.Y are PAGE-ABSOLUTE
+// offsets from the page's top-left printable corner, Y increasing
+// DOWNWARD, as pagemodel.TextRun documents. They are NOT band-relative
+// and must never become so — under AD-24 bands are placed on the page by
+// internal/layout alone, so a band-relative TextRun would move band
+// placement into this package and violate AD-24 outright. internal/layout
+// has already added the band origin before a page model exists.
+//
+// Converting that top-down Y into PDF's bottom-up user space is this
+// package's own business and happens in exactly one function, flipY
+// (AD-24's one-and-only inverter, ratified by D-1.8.10):
 //
 //	pdfX = marginLeft + run.X
-//	pdfY = pageHeight - marginTop - run.Y - run.FontSize
+//	pdfY = flipY(pageHeight, marginTop, run.Y, run.FontSize)
 //
-// placing the text baseline approximately run.FontSize below the run's
-// top-left corner. This is a stand-in for AD-24's real band-relative
-// placement, which arrives with internal/layout in Story 2.5 —
-// TestProvisionalBandOriginIsPinned (folio-go, module root) fails the
-// day that package exists, forcing this function to be revisited.
-func buildTextContentStream(page TextPage, faces map[string]EmbeddedFace) ([]byte, error) {
+// The FontSize term places the baseline that far below the run's top.
+// That offset is derived from a different quantity than D-2.4.2's
+// inter-baseline leading, which is max(hhea ascent − descent + lineGap)
+// over the declared chain — a known, RECORDED defect (DW-15), not a
+// provisional stand-in and not this story's to change: moving it
+// re-records four goldens and would silently invalidate D-2.3.5's
+// pending human Thai reading sign-off, which is bound to
+// fixtures/shaped-text/expected.pdf's digest.
+func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) ([]byte, error) {
 	var c []byte
 	for _, run := range page.Runs {
 		if len(run.Glyphs) == 0 {
@@ -793,7 +742,7 @@ func buildTextContentStream(page TextPage, faces map[string]EmbeddedFace) ([]byt
 // a string literal, i.e. a byte encoding like /ID, not a number. Same
 // for the six-letter subset tag. This must be said in a code comment or
 // a later agent will 'unify' it."
-func appendShapedRun(dst []byte, run TextRun, face EmbeddedFace) ([]byte, error) {
+func appendShapedRun(dst []byte, run pagemodel.TextRun, face EmbeddedFace) ([]byte, error) {
 	// adjustments[i] is the combined term that sits BEFORE glyph i;
 	// adjustments[len] is the trailing term after the last glyph, which
 	// is emitted so the run's total advance is exactly the shaped
