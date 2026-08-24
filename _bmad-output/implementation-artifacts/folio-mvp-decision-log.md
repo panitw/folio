@@ -7150,3 +7150,124 @@ cite-the-subject obligation applies to a claimed hazard as much as to a claimed 
 **The tell that caught it**: the entry named a **file and an import**, so it was checkable — which is
 [[D-000.35]] doing its work in the direction of *falsifying* a claim rather than supporting one.
 
+---
+
+### D-2.6.1 — The pagination model: a window onto one unbounded column, and no line is ever split
+
+*(mechanism: binding)* — resolves DN-1/2/3.
+
+**The window model is close to forced.** AD-4 gives pass one the whole layout and forbids pass two
+from laying anything out; AD-24 makes boxes absolute and forbids negotiation. A model where pages are
+laid out **independently**, or where elements **reposition per page**, violates both. Content as **one
+unbounded column sliced into page-height windows** satisfies both and matches the epic's *"content
+grows by producing more pages."*
+
+**Line granularity is FORCED, not chosen** — a single text element can wrap past a page, so element
+granularity would make **an element taller than a page unplaceable**. Say *forced* in the story so
+nobody revisits it as a preference.
+
+**The boundary rule is ruled as an invariant, because "the line's top edge" admits two readings:**
+
+> **No line is ever split across a page boundary. A line is placed on the first page whose window
+> contains it entirely** — from `baseline − max(ascent)` to `baseline + max(descent)`, per
+> [[D-2.4.2]] as amended.
+
+If *"top edge"* meant the decision **input**, with a fit check, that is this rule. If it meant the
+boundary **test** — a line belongs to whichever page contains its top — **it is wrong**: it permits a
+line straddling the boundary, drawn half on one page. **Nothing would diagnose that**, because FR44's
+overflow machinery concerns content exceeding its **box**, not the page edge. **A bank statement
+cannot ship a half-line**, and whitespace at the foot of a page is correct typesetting, not a defect.
+
+**Images: atomic, same rule, one addition** *(binding)*. An image goes to the **first page whose window
+contains it entirely**. An image whose declared box is **taller than the content window fits
+nowhere** — an **overflow diagnostic under FR44**, never a silent clip and never a straddle. Note the
+AD-24 interaction: the image is already scaled to fit its **box**, so this is a statement about the
+box — making it a **template error with a located message**, not a render-time surprise.
+
+---
+
+### D-2.6.2 — A gate obligation is warranted when it is the only cross-target artifact for a shipped FR
+
+*(mechanism: binding)* — resolves DN-4; the Epic 2 gate now owes **five**.
+
+*"If refused, FR30 ships with no cross-target artifact"* settles it, and **that is the criterion** —
+which is why counting obligations was never the right frame.
+
+**And it is cheap because of the shape already ruled**: [[D-2.5.1]]'s check asserts the **registered set
+against a declared list**, so a fifth is a **one-line reviewable diff** rather than a rename. The
+mechanism paying off one story after it was ruled is worth a line in the gate.
+
+**The heavy-test decline composes rather than conflicts.** The multi-page path **is** matrix-covered —
+at the **gate**, via this obligation, not **in-story** via an override. Page-object ordering and xref
+width are integer and already exercised: no float, vendor call, compressor or dependency.
+**Obligation yes, override no.**
+
+---
+
+### D-2.6.3 — `folio-format.md` gains a pagination clause under D-000.6
+
+*(mechanism: binding)* — resolves DN-5.
+
+**Pagination is normative**: it determines what a `.folio` document renders to, a template author must
+know it to design a report, and **a second implementation must paginate identically or the format
+stops being a contract.** The clause states the four rules — window model, line granularity,
+fit-entirely, images atomic — **as outcomes, not mechanisms**, per the correction now made three
+times ([[D-2.3.1]], [[D-2.4.4]], and here).
+
+---
+
+### D-000.16 (limitation) — A rank order cannot express "no edge to this particular lower package"
+
+*(mechanism: binding)* — recorded beside [[D-000.16]] so the next reader knows what the rank guard does
+**not** cover.
+
+`internal/pdf → internal/layout` is **legal today**: the rank rule is *"a package may import only
+lower ranks"*, and `layout`(7) is lower than `pdf`(8). **So the guard enforces AD-5 and does nothing
+for AD-4.**
+
+**The limitation is structural.** A rank order expresses *"no backward edges"* but **cannot express
+"no edge to this particular lower package."** `pdf` legitimately depends on `pagemodel` — **the
+value** — and must not depend on `layout` — **the computation**. Both sit below it, so ranks cannot
+separate them.
+
+So Story 2.6's AC5 is **not a restatement**: it is a **supplementary forbidden edge the rank table
+structurally cannot carry**, and a genuine forward guard on an open hole.
+
+**Contrast with AC2**, which correctly **names the existing Story 2.5 guards** rather than adding a
+third — [[D-000.42]]'s redundancy rule applied by someone deciding **not** to add coverage. **Both
+dispositions are right and they are opposite**, which is the sign the rule is being reasoned about
+rather than applied by reflex.
+
+---
+
+### D-2.6.4 — Pin `expected_breaks.json` in the ordinary suite, not only behind the matrix tag
+
+*(mechanism: binding)*
+
+A fixture whose **only** digest pin lives behind `//go:build matrix` can be **edited between gates with
+the ordinary suite green.** That matters more than the feedback delay suggests: **the Thai break
+sign-off binds to the break vector**, so an unpinned file means **the sign-off's subject can drift
+silently while the sign-off still reads as valid.**
+
+Pin it in the ordinary suite — cheap, and it closes the gap the sign-off binding depends on.
+
+---
+
+### D-000.50 — Before writing a guard, ask whether any subject can express the defect
+
+*(mechanism: binding)* — standing pre-flight question; **twice now the fixture population, not the
+assertions, was the binding constraint.**
+
+- **Story 2.5**: moving the page-header origin was detected by **zero** tests — all six fixtures had an
+  **empty `pageHeader`** and a symmetric page setup, making four geometric inputs mutually swappable.
+- **Story 2.6**: **0 of 7 fixtures are multi-page**, 1 of 7 has a populated page header, 2 of 7 a
+  populated footer. **No existing fixture can express this story's defect.**
+
+**The question comes before the assertion, not after it.** A correct assertion over subjects that
+cannot exhibit the defect is vacuous, and it is **invisible in review** because the assertion itself
+reads as sound. Both instances were found by *laying out the actual fixtures and measuring*, not by
+inspection.
+
+**Companion to [[D-000.36]]**: that rule says a remedy for a vacuity inherits the vacuity's hazard;
+this one says **check the population before you write the remedy at all.**
+
