@@ -7473,3 +7473,155 @@ page with content cut off"*, which is a product judgment.
 making oversized-line-ness **render-time** rather than declaration-time — ground 2 collapses and the
 two subjects genuinely differ. D-2.4.2 constraint 1 forbids exactly that, and AD-24 depends on it.
 
+
+---
+
+### D-000.53 — A golden is not accepted until a reader we did not write resolves it into the objects it claims to contain
+
+*(mechanism: **binding** for the rule; **illustrative** for `qpdf`)*
+
+**The rule.** No golden artifact is accepted — **first recording or re-recording** — until a reader
+this project did not write parses it and resolves it into the semantic objects it claims to contain.
+The page tree resolves to N pages, every indirect reference in it names an object that exists, and N
+equals the count the artifact declares. **The reader, its version, and the verbatim invocation are
+recorded in the fixture's provenance with its output.**
+
+Stated as an **outcome, not a tool**. Not *"`qpdf --check` must exit 0"* — that is a mechanism, and
+this run has already had to correct mechanism-named rules three times ([[D-2.3.1]], [[D-2.4.4]],
+[[D-2.6.3]]). `qpdf --check` (12.4.0, `/opt/homebrew/bin/qpdf`) is today's instrument.
+
+**What forced it.** Story 2.6 recorded `fixtures/multi-page/expected.pdf` — the project's first
+multi-page document — and it would not open. Preview refused it; pdf.js reported *"page 0 of 2"*.
+Object 2 was emitted as `<< /Type /Pages /Kids [8 0 R10 0 R] /Count 2 >>`: **no separator between two
+indirect references.** A tokenizer reads `R10` as one unknown token, so **neither kid resolved** and
+the page tree was empty. `/Kids` is the only site in the package emitting two refs back-to-back —
+`/Font` and `/XObject` write `" /"+name+" "` before each, and the singular sites are followed by a
+literal — and `document.go:81` hardcodes exactly one kid. **The defect could not manifest until a
+document had more than one page.** The owner found it by trying to open the file.
+
+**The framing that matters, corrected by measurement rather than assumed.** The first diagnosis — *"the
+semantic acceptance step had a blind spot"* — was **wrong, and understated it**. `render_test.go:600`'s
+`assertWellFormedPDF` fatals on `pageCount != 1` (line 615), so it is **unusable on a multi-page
+document**, and `multi_page_fixture_test.go` **does not call it** (0 matches, against 18 call sites
+elsewhere). The file was not validated-and-passed; **the only instrument that could have looked encodes
+the single-page shape as an invariant, and was therefore silently never invoked.** *The first artifact
+of a new shape is validated by nothing, because every existing guard was written when that shape did
+not exist.*
+
+**Why every bespoke check passed a file that is not a document.** Each was true, for its own reason:
+`/Type /Page` count == 2 counted **object definitions** — both pages were emitted correctly and both
+were reachable in the xref; what was broken was the array pointing at them. `/Count 2` read an integer
+that was right — **`/Count` is a claim about the kids, not a fact derived from them.** The per-page
+header/footer Y, the line→page partition and the no-negative-Y check parsed **content streams**, which
+do not care whether anything references them. Byte-identity across two processes proves determinism —
+**a deterministically wrong file is byte-identical to itself.**
+
+The common shape, and the reason the remedy is an oracle rather than another assertion: **every check
+asserted a property of a PART; the defect was in a REFERENCE BETWEEN parts.** Every assertion measured
+**presence**; the property that mattered was **reachability**. Three refs existed; none resolved. No
+quantity of added per-part assertions would have found it.
+
+**Grounding**: [[D-000.22]] (a hash certifies non-change and can never certify correctness — the
+acceptance step is the only thing standing in that gap) + [[D-000.44]] (a re-recording is a recording,
+which is why *"first"* is struck from the rule) + [[D-000.21]], **sharpened**: assert on the artifact
+that carries the property, **and prove it carries it**. Precedent verified rather than inherited:
+Story 1.1 AC2 used `qpdf` as an independent oracle **specifically to avoid a module dependency**, and
+**AD-25 verbatim** — *"a one-time offline reference run, hand-checked — never a runtime dependency"* —
+which [[D-2.3.1]] applied to shaping via `hb-shape`. Nothing new is invented; this applies the
+established shape to document structure.
+
+**Guardrail**: **this step is not discharged by an assertion this project wrote.** That is the whole
+point of the independence, and the measurement above is why — our own checker excluded the subject.
+
+---
+
+### D-2.6.6 — The eight goldens are validated and the evidence recorded, but structural validity is NOT a gate obligation
+
+*(mechanism: **binding**)*
+
+All eight goldens are validated and the measurement recorded — fixture path, `qpdf` version, **verbatim
+invocation**, output line — in Story 2.6's Delivery Log **and** each fixture's provenance/README. Seven
+read *"settled, validated at `<commit>`"*; the eighth says it was broken and names the fix. A run by the
+orchestrator or the developer is **not** a project record ([[D-000.26]]), and an audit row ends
+**settled or fixed, never carried** ([[D-000.29]]).
+
+**It does not become a sixth gate obligation.** Applying [[D-2.6.2]]'s own criterion — *a gate obligation
+is warranted when it is the only cross-target artifact for a shipped FR* — structural validity of
+committed bytes **is not cross-target**: the bytes are identical on every leg by construction, and that
+identity is precisely what the matrix already proves. Putting it in the gate spends the gate's attention
+on something that **cannot vary by leg**, and erodes [[D-2.5.1]]'s declared-list mechanism back toward
+counting. **The Epic 2 gate still owes exactly five**; `TestEpic2GateObligationsMatchTheDeclaredSet`
+stays green untouched and the gate is written on five.
+
+---
+
+### D-2.6.7 — Two oracles, two different jobs: external at recording time, in-repo on every leg
+
+*(mechanism: **binding** for the split; **illustrative** for the mechanics)*
+
+- **The external oracle is the acceptance instrument, and it runs at recording time only** — off-leg, on
+  the recording machine, hand-checked, output pasted into provenance. It is **never** a runtime or CI
+  dependency (**AD-25**, `wantModuleGraph`/`TestModuleGraphAllowlist`), and js/wasm has no `qpdf`.
+  **It must not be gated to "the legs that have it"**: a check that runs on some legs and not others
+  produces exactly [[D-000.9]]'s signal — an *"all clear"* indistinguishable from *"I could not look"* —
+  one level up, at the leg.
+- **The in-repo checker is the standing regression guard, and it runs everywhere.** Two repairs are
+  **required**, both forced by the measurement in [[D-000.53]]: (1) **`assertWellFormedPDF` takes the
+  expected page count as a parameter** rather than hardcoding 1 — per [[D-000.34]] the `pageCount != 1`
+  assertion is **not** deleted, because on the seven single-page fixtures it is load-bearing and its
+  death would be silent; generalise it and pass 1 at the 18 existing call sites. (2)
+  **`multi_page_fixture_test.go` must call it.** *A checker that exists and is not called on the one
+  subject able to express the defect is worth nothing* — that, not the missing byte, is the process
+  defect.
+
+**The asymmetry is now measured, not hypothetical**: an in-repo checker written by the same hands **did**
+share the emitter's blind spot, by excluding the subject. That is the argument for the external oracle at
+recording time. It is **not** an argument against the in-repo checker, the only thing that runs on every
+leg on every story. Per [[D-000.38]] the two are genuinely independent **in mechanism** — one is our
+parse, one is a third party's — so the pair is **real redundancy, not two names on one parse**.
+
+**Guardrail — [[D-000.30]], window closing.** The fix was already in the working tree when this was ruled.
+The defect must be captured **before** commit: revert the separator, render, keep those bytes, and show
+that the repaired `assertWellFormedPDF`, `golden_structural_validity_test.go`, and the external oracle
+**each** go red on them. Per [[D-000.40]] **the mutation asserts it applied by a non-empty diff, never by
+an exit code**; per [[D-000.36]] the remedy is run against the real defect bytes before it is credited.
+A guard not shown red on **these** bytes is a forward guard ([[D-000.24]]) and must be labelled one.
+
+---
+
+### D-2.6.8 — Three layers, three different properties: emitter helper, token well-formedness, page-tree semantics
+
+*(mechanism: **binding** for the invariants; **illustrative** for the spellings)*
+
+The artifact-level page-tree check is **not sufficient**, and the emitter fix is ruled **in**.
+
+1. **Emitter helper** *(binding)* — a `writeRefArray(ids []int64)` / `appendRefArray` that takes the slice
+   and **cannot** omit the separator, replacing the hand-rolled loop. **Leading** separator, so the one-kid
+   case stays `[8 0 R]` byte-for-byte. This prevents the class **by construction**, which outranks any
+   guard over it.
+2. **Artifact-level delimiter check** *(binding as invariant, illustrative as mechanism)* — the defect's
+   true shape is *"a `N 0 R` token not followed by a delimiter."* Key the guard on **that**, not on
+   `/Kids` ([[D-000.15]]: key a guard on its purpose, never on a proxy). **Named caveat to be resolved,
+   not hand-waved**: binary stream data can contain any byte sequence, so it must be scoped to non-stream
+   regions (`assertStreamLengthsAreExact` already locates them). For every ref array other than `/Kids`
+   this is a **forward guard with no available red-proof** ([[D-000.24]]) and must be labelled one.
+3. **Keep `golden_structural_validity_test.go`** — sound, and **not** redundant with (2): it catches a
+   **wrong `/Count`** and a **dangling kid**, which a token check cannot see.
+
+**Against the "one instance today" argument**: [[D-000.23]]'s remedy is about **cardinality**. `appendRef`
+has ~13 call sites and there are **two** page-tree emitters (`document.go:81` hardcodes one kid;
+`textdoc.go:186` is the loop). **`/Kids` being the sole instance is a fact about today's feature set, not
+about the code** — Story 2.7, Epic 4's tables, and any future `/Annots` or name tree add ref arrays.
+
+**Do not count these as three coverages of one property** ([[D-000.42]]): construction, token
+well-formedness, page-tree semantics — **three properties, three mechanisms**.
+
+**Guardrail**: the working-tree comment claims the leading separator *"keeps all seven single-page goldens
+from moving."* Per [[D-000.52]] — **measure it**, do not accept the argument: seven digests unmoved, at
+every declared site ([[D-000.47]]'s four-site list), by the file route ([[D-000.12]] as corrected,
+`rtk proxy` first then redirect).
+
+**The assumption that would flip (3)'s ordering**: if the delimiter check cannot be cleanly scoped out of
+stream data, **invert the layers** — the helper plus the page-tree check stand alone and the delimiter
+check is **dropped** rather than shipped as a false-positive generator ([[D-000.15]]: a false positive in
+a guard is an attack on the guard).
