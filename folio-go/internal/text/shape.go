@@ -68,10 +68,28 @@ type ShapedGlyph struct {
 // Nothing here selects a weight, an instance or an axis. ot.Shaper
 // exposes SetVariations, SetVariation, SetNamedInstance,
 // SetSyntheticBold and SetSyntheticSlant; NONE of them is called, and
-// none may be added (D-2.2.1, D-2.2.4): four take float32, which
+// none may be added (D-2.2.1, D-2.2.4).
+//
+// CORRECTION, D-2.2.4 (correction) / Story 2.3a AC9. This comment used
+// to justify that by saying "four take float32, which
 // internal/arch_test.go bans under internal/ and the module root
-// (AD-23), and the fifth would fabricate a weight the project
-// deliberately does not ship. The shipped faces are static,
+// (AD-23)". THAT MECHANISM WAS FALSE. internal/arch_test.go matches the
+// SPELLING of a type identifier and the kind of a literal; an untyped
+// integer constant handed to such a parameter writes no identifier and
+// is a BasicLit of kind INT, so it passes the guard untouched.
+// internal/fontset/fontset_test.go's
+// TestSubsetPinnedInstancesProduceDifferentTags calls the vendor's
+// PinAxisLocation with the constant 700 today, guard green. A reader
+// trusting the old sentence would believe AD-23 fenced a door that was
+// open.
+//
+// The conclusion is unchanged and rests on its own reasons: none of the
+// five is called, the four variation setters would select an instance
+// the project deliberately does not ship, and the fifth would fabricate
+// a weight. What is new is that AD-23 now genuinely reaches this shape —
+// lint's type-aware no-float-typed-value rule matches on the RESOLVED
+// type, so any call passing a fractional value to any of them is
+// reported whether or not a type is ever spelled. The shipped faces are static,
 // Regular-only, and a caller-supplied variable face is rejected at
 // ingestion by fontset.New rather than instanced here.
 type Shaper struct {

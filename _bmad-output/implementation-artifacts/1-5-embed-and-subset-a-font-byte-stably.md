@@ -1603,3 +1603,68 @@ AC30 (Findings 1, 18), AC31 (Finding 7 — now satisfied, the disposition table 
 - **Story opener** — 346 words (within 150–350), past-tense-ready, scope fence stated.
 - **D-1.2.6 near-conflict** — the developer's "resolved by construction, not by choosing a side"
   claim is **verified true**, not a silent choice. See disposition row 19.
+
+---
+
+## Defect found after done
+
+> **Appended, never rewritten** *(mechanism: binding, D-1.6.6)*. Everything above this heading is the
+> record as it stood when Story 1.5 was closed and is left exactly as written. This section is an
+> addition made during **Story 2.3a**, at baseline `431a6a5`.
+
+### `folio.Render` panics on caller-supplied font bytes whose `maxp` is missing or short
+
+**Found by:** Story 2.3a's audit of the vendor boundary, while enumerating what each `textshape`
+accessor returns when its table is absent. **Ruled by:** **D-2.3a.1**. **Fixed by:** Story 2.3a —
+the guard is `requireReadableTables` in `folio-go/internal/fontset/fontset.go`. **Not** a
+`deferred-work.md` entry: it was fixed in the story that surfaced it, which is the same disposition
+Story 1.6's `decodePoints` hang received (D-1.6.6).
+
+**Recorded here because Story 1.5 shipped the call site.** `internal/fontset.New` reached
+`ot.NewFace(parsed)` with unvalidated caller bytes, and has done since this story. The defect is not
+a regression introduced later; it was latent from the moment the seam was built, and nothing in the
+repository could observe it because no test had ever handed the seam a font with a missing table.
+
+**The violation, against a convention this project states verbatim.** The spine's Consistency
+Conventions say: *"Nothing in `internal/` panics on malformed input — **untrusted font and template
+bytes** return diagnostics."* `folio.FontSet` is a public `map[string][]byte`, so those bytes are on
+exactly the same footing as a template. The precedent is explicit and already in the suite:
+`TestParseTemplateRejectsPNGTruncatedInHeaderWithoutPanicking` exists because malformed caller input
+must produce a located error. Font bytes had no such test, and they crashed the process.
+
+**The mechanism, measured** against `folio-go/testdata/fonts/Roboto-Regular.ttf` with its `maxp`
+record removed from the table directory:
+
+```
+panic: runtime error: makeslice: len out of range
+  ot.ParseHmtx         (textshape@v0.0.15/ot/hmtx.go:38)
+  ot.NewFace           (textshape@v0.0.15/ot/metrics.go:342)
+  internal/fontset.New (folio-go/internal/fontset/fontset.go)
+```
+
+`(*ot.Font).NumGlyphs()` returns **0** when `maxp` is absent *or shorter than six bytes*;
+`hhea.NumberOfHMetrics` is 1294; `ot.ParseHmtx` then evaluates
+`make([]int16, numGlyphs-numberOfHMetrics)` = `make([]int16, -1294)`. `ot.ParseHmtxFromFont` guards
+this case; **`ot.NewFace` does not.**
+
+**The silent sibling, which is the more important half.** D-2.3a.1 ruled that fixing only `NumGlyphs`
+would have been the wrong fix, because the audit found a second, quieter member of the same class —
+*folio reads a table that may be absent and receives a substituted default*. With `OS/2` stripped
+instead, the same face **rendered successfully** and produced `/CapHeight 928` where the intact face
+gives `711` — the ascender, not a cap height, in a document reporting success, with every guard in
+the repository green. Measured at `431a6a5` in an isolated worktree: 22,198 bytes against the intact
+render's 22,310.
+
+**The fix, therefore, is not a `maxp` check.** It is a presence validation at face ingestion covering
+every table folio actually reads — `head`, `maxp`, `hhea`, `hmtx`, `OS/2` — failing with a located
+error naming the face and the missing table, plus a consistency check between `maxp`'s glyph count
+and `hhea`'s `numberOfHMetrics`. `name` and `cmap` are deliberately **not** required: folio already
+reports their absence observably, and requiring either would reverse a ruled disposition. The full
+per-accessor enumeration the list is derived from is
+`folio-go/internal/fontset/vendor-boundary.md`.
+
+**Live guards, in `folio-go/internal/fontset/vendorboundary_test.go`:**
+`TestVendorPanicsOnAMissingMaxpWithoutFolioGuard` (the hazard still exists in the vendor, so the
+guard is load-bearing rather than decorative) and `TestFolioDeclinesEverySubstitutionAtIngestion`
+(the located error, asserted on the error's *text* — that it names the face and the table — never
+merely on `err != nil`).

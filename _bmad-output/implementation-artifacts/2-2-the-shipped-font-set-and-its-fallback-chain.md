@@ -1931,3 +1931,60 @@ string, leaking no vendor type) plus one field on `pdf.EmbeddedFace`. `/BaseFont
 |---|---|---|
 | 2026-08-24 | story finisher | **All 20 QA findings resolved: 20 FIX, 0 DISMISS, 0 DEFER.** The Blocker was resolved by D-2.2.4's ruled route — ship static Regular-only instances, delete the render-time instancing seam, reject caller-supplied variable faces at ingestion with a remedy-naming diagnostic. **Font derivation**: `tools/fontgen/instance_faces.py` + `make fonts`, Python 3.12.13 / fontTools 4.63.0, `SOURCE_DATE_EPOCH=1451606400`; all three produced files matched the reference sha256 and byte count **exactly**, coverage witness 3 of 3. Variable faces deleted; static faces committed. **Semantic acceptance (D-000.22), read off the produced artifacts**: all three shipped `.ttf`s `usWeightClass=400`, `name[1]`/`name[2]`/`name[6]` exact, no `fvar`/`gvar`/`avar`, `glyf` present, `CFF2` absent; all three EMBEDDED programs `usWeightClass=400` (**CJK was 100/Thin**), static, `glyf`; `/BaseFont` = `HWHCMP+NotoSans-Regular`, `SRBEFB+NotoSansSC-Regular`, `CZSHFA+NotoSansThai-Regular`. Assertions are driven by a declarative per-face spec, and each group opens with a presence precondition — the embedded programs carry **no `name` table**, so name assertions there would have passed vacuously. **Four-target matrix RE-RUN in full**: `darwin/arm64`, `linux/amd64`, `linux/arm64` (Docker), `js/wasm` (Node v24.16.0) — all four agree on all **four** documents; binaries verified rebuilt (mtimes 11:01:14–11:01:18, run at 11:01:2x) rather than reused. `minimal-rect` `0f925e1b…` and `image-embed` `e5778eb8…` reproduce unchanged; `font-text` `c7afb900…` unchanged (its FontFile2 digest held); `multi-script-fallback` **re-recorded** to `20f3388a…`, 55,086 bytes, an AD-22 versioned change. **Regeneration test** (`fontgen_matrix_test.go`, `//go:build matrix`) written AND actually run: PASS in 8.15 s, 3 of 3 faces reproduce; red-proved by flipping one byte of the Thai face. **Red-proofs performed and reverted, each restore verified with `/usr/bin/diff`**: undeclared stray face at the real location (`fonts-asset-unaccounted`); a declared face moved out of the tree (`fonts-asset-missing`); `range fs` in `render.go` (`map-range`, rule id now printed); tag written back into the program (V5a exclusivity: 3 name positions → 4 occurrences); the example's placeholder removed; one byte of a committed face flipped. **Payload, `brotli -q 11`, decimal MB, 4 of 4 compared**: faces 5.07 MB (was 9.33 variable), + trie 0.31 + engine ~1.5 = **6.88 MB** — inside NFR7 (9.00) with 2.12 MB headroom and inside 5.4 (9.52) with 2.64 MB. **Gates**: `folio-go` `go build`/`go vet`/`gofmt -l`/`-tags=matrix` build+vet all clean; `go test -count=1 ./...` → **331 pass / 2 fail counting subtests (219/2 top-level)**, the two being `TestCorpusMeetsP6ExerciseFloors` and `TestP2IndependentDPCrossCheck` — **Story 2.1's intentional pre-existing FAILs, and no others**. `lint` fully green including `GOPROXY=off`; `MANIFEST.md` regenerated (three shipped faces, all `OFL-1.1`, `folio-go shipped`). `hashmatrix` `go vet`/`gofmt`/probe build clean. **Suites NOT run in this session**: none of the repo's Go suites were skipped. `hashmatrix`'s FMA contraction probe was **not re-run** — D-2.2.0 binds it not to be, and the static switch makes its subject (the float `gvar` interpolation path) unreachable from the render entirely. Status → `done`. |
 
+
+---
+
+## Correction found after done
+
+> **Appended, never rewritten** *(mechanism: binding, D-1.6.6)*. Everything above this heading is the
+> record as it stood when Story 2.2 was closed and is left exactly as written, including the two
+> statements this section falsifies. Nothing above was edited. This section is an addition made
+> during **Story 2.3a**'s finisher pass, against baseline `431a6a5`.
+
+### The `PinAxisLocation` / `float32` mechanism this story recorded twice is false
+
+**Found by:** Story 2.3a's audit of the vendor boundary. **Ruled by:** **D-2.2.4 (correction)** and
+its amendment **D-2.2.4 (correction, amended)**. **Swept and corrected by:** Story 2.3a's finisher.
+
+Two statements in this file give, as a reason folio ships static faces, the claim that reaching the
+vendor's `PinAxisLocation` *requires the identifier `float32`*, which AD-23's arch guard bans. Both
+are quoted verbatim here so the correction is legible without diffing:
+
+1. **Line 1098–1104**, the Dev Agent Record design note — *"Adding one would require a `float32`-typed
+   parameter to reach the vendor's `PinAxisLocation`, writing the literal identifier `float32` into a
+   file under `internal/` — Trap 10's exact hole in the AD-23 arch guard (identifier-based, not
+   type-based)."*
+2. **Line 1857–1859**, the F1 resolution rationale — *"Reaching `PinAxisLocation` at all needs the
+   identifier `float32`, banned under `internal/` and the module root by `arch_test.go:54` (AD-23)."*
+
+**Why it is false.** `arch_test.go` matches the **spelling** of a type identifier and the **kind** of
+a literal. An untyped integer constant passed to a `float32` parameter writes no identifier at all and
+is an `*ast.BasicLit` of kind `INT`, so it passes the guard untouched.
+`folio-go/internal/fontset/fontset_test.go:515` calls
+`in.PinAxisLocation(ot.MakeTag('w','g','h','t'), 700)` **today, with that guard green** — a one-line
+disproof that stood in the tree the whole time. Note that statement 1 above *already contains its own
+refutation* three sentences later, where it correctly describes the untyped literal `700` reaching the
+parameter "with no `float32`/`float64` identifier ever written".
+
+**What the conclusion actually rests on** — unchanged, and never dependent on the false premise:
+
+- **Payload.** The static faces compress to **4.82 MB** against **8.30 MB** for the upstream variable
+  builds.
+- **`usWeightClass` correctness.** `textshape@v0.0.15` `subset/execute.go:496-499` copies `OS/2`
+  verbatim and never writes `usWeightClass`; there is no writer for that field anywhere in the
+  dependency. Pinning `wght=400` in-process would have produced Regular outlines carrying metadata
+  still claiming Thin. `fontTools` *does* set the field when it instances, which is what makes
+  instancing ahead of the build the correct route.
+- **Deleting the FMA path.** Removing the render-time seam removes the float `gvar` interpolation
+  path — D-2.2.0's measured FMA hazard — from the render entirely, rather than leaving it monitored.
+
+**AD-23 does now reach this shape**, but by a different mechanism than this file claimed: `lint`'s
+type-aware **`no-float-typed-value`** rule (Story 2.3a, AC1) matches on the type `go/types` *resolves*,
+never on what the source spells, and reports `PinAxisLocation(700)` as the float-typed value
+expression it is. The syntactic guard is unchanged and still runs beside it.
+
+**Why this file was corrected by appending rather than by editing the two lines.** D-1.6.6 binds a
+closed story's record to append-only, exactly as Story 1.5's own *Defect found after done* section
+does. Rewriting the two statements would erase the evidence that the claim was ever believed — and
+D-2.2.4 (correction, amended) exists precisely because a correction that tidies away its own instances
+teaches nothing about the class.

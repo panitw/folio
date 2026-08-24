@@ -100,3 +100,47 @@ entry for the full account.
 section, rather than overwriting the above. The actual Epic 2 gate (matrix run, deferred-work
 sweep, spine-drift audit, exported-surface audit) runs once, at Epic 2's close, and should read
 this file's accumulated items alongside its own measurements.*
+
+---
+
+## Story 2.3a — the vendor boundary, audited (appended, not overwriting)
+
+**The project now has an enumerated, executable answer to "what does our one dependency tell us when
+it does not know?"** — `folio-go/internal/fontset/vendor-boundary.md`, measured against
+`textshape v0.0.15`, with its load-bearing rows derived from the vendor by
+`folio-go/internal/fontset/vendorboundary_test.go` rather than narrated beside it.
+
+**Two live defects were found and BOTH were fixed here, not deferred.** Both are the same class —
+*folio reads a table that may be absent and receives a substituted default* — with a loud member and
+a silent one:
+
+- **`maxp` (loud, D-2.3a.1).** `folio.Render` **panicked** on caller-supplied font bytes whose `maxp`
+  was missing or short. `folio.FontSet` is a public `map[string][]byte`, so that was untrusted input
+  reaching a panic through the documented entry point, against a convention the spine states
+  verbatim. Recorded against Story 1.5, which shipped the call site.
+- **`OS/2` (silent, and worse).** A caller-supplied face without `OS/2` **rendered successfully** and
+  declared `/CapHeight 928` where the intact face gives `711` — the ascender, not a cap height — with
+  every guard in the repository green. Harmless for everything folio ships (all three faces are
+  `OS/2` v4 with a real `sCapHeight`), live for the input surface `folio.FontSet` is.
+
+Both are closed by one guard at face ingestion, validating every table folio actually reads, with a
+located error naming the face and the table. `name` and `cmap` are deliberately excluded, each for a
+ruled reason recorded in the enumeration.
+
+**`/BaseFont` no longer substitutes silently (D-2.3a.2).** A program declaring no `name` record still
+gets the FontSet key — `/BaseFont` is Required and the key is true of the face — but the PDF now says
+so in a comment. At `431a6a5` a nameless render was byte-identical in length to an intact one, which
+is precisely the indistinguishability D-2.2.6 was bought to remove.
+
+**AD-23 is now enforced by type, not by spelling.** The syntactic guard promised "no float arithmetic
+under `internal/`" and delivered "no float *identifiers*". A new `lint` rule
+(`no-float-typed-value`) matches on the type `go/types` resolves; it reported four expressions in
+`internal/fontset/fontset.go` that the syntactic guard could not see, and reports zero now that both
+sites read the integer the `hmtx` table actually carries. **The existing guard is unmodified and
+still runs: two guards, two mechanisms, one invariant.**
+
+**Nothing was added to this gate.** No new `//go:build matrix` test; the three matrix-tagged files,
+`.github/workflows/matrix.yml` and all of `fixtures/shaped-text/` are byte-unchanged from `431a6a5`;
+`thai-signoff.json` is still absent. **The gate owes exactly what it owed before: the four-target
+matrix legs, and D-2.3.5's Thai sign-off.** No fixture was re-recorded and no golden digest moved —
+including `fixtures/shaped-text`'s `5964aad0…92e00f`, which the pending Thai sign-off is bound to.

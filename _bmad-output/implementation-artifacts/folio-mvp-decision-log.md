@@ -5813,3 +5813,281 @@ because the vendor sorts below the call. An AST scan is the only mechanism that 
 
 **DEFER:** one, **DW-14** — `/ToUnicode`'s unbounded `beginbfchar` section against the spec's
 100-entry cap. Pre-existing, unreachable today, largest section measured at 28.
+---
+
+### D-2.2.4 (correction) — one supporting premise was false; the ruling stands on independent grounds
+
+*(mechanism: binding)* — **appended, not rewritten**, per the record's append-only discipline.
+
+**The false premise.** [[D-2.2.4]]'s correction 3 stated that *"pin every axis to an explicitly chosen
+value"* was **unimplementable** under AD-23, because reaching the vendor's `PinAxisLocation` requires
+the identifier `float32`, which `arch_test.go:54` bans.
+
+**That is false, and it is testable in one line.** `fontset_test.go:515` calls
+`in.PinAxisLocation(ot.MakeTag('w','g','h','t'), 700)` **today, with the guard green.** An untyped
+constant converts to a `float32` parameter with **no `float32` token anywhere**, and `700` is an
+`*ast.BasicLit` of kind **`INT`** — invisible to a `token.FLOAT` scanner. The same false claim stands
+in four places the story corrects: `fontset.go:112`, `:425`, `:494`, and `internal/text/shape.go:71`.
+
+**How it got accepted, which is the instructive part.** It was accepted **in the same conversation
+that established the guard sees identifiers, not types.** Those are *the same fact from opposite
+sides*: the blind spot hiding `int64(vendorFloat())` **also** hides `PinAxisLocation(700)`. The
+blind spot was learned in one direction and not turned around.
+
+**Grounds that survive, stated explicitly** — none depends on the float argument:
+
+1. **Payload** — 4.82 MB compressed against 8.30 MB for the variable build.
+2. **`usWeightClass` correctness** — `textshape` copies `OS/2` verbatim and never writes the field;
+   `fontTools` sets it explicitly when instancing.
+3. **Deleting the FMA path** — no `fvar`/`gvar` in a shipped face means instancing never runs.
+
+**Why this is logged rather than quietly left.** *"The conclusion survived"* is exactly the reasoning
+that lets a bad argument stay in the record. The concrete harm is that a later reader relying on
+D-2.2.4 would **inherit a premise that is false** and might build on it. Corrections append; they do
+not rewrite.
+
+---
+
+### D-2.3a.1 — Validate table presence at face ingestion; a panic on caller bytes is a convention violation
+
+*(mechanism: binding)* — resolves 2.3a's Q1.
+
+**The defect.** `folio.Render` **panics** on caller-supplied font bytes whose `maxp` is missing or
+short: `NumGlyphs()` returns **0**, `NumberOfHMetrics` is 1294, so `ot.ParseHmtx` reaches
+`make([]int16, -1294)` → `makeslice: len out of range`, via `ot.NewFace` ← `fontset.go:70`.
+`ParseHmtxFromFont` guards this; `NewFace` does not. `folio.FontSet` is a **public
+`map[string][]byte`**, so this is untrusted input reaching a panic through the documented entry point.
+
+**It is a stated-convention violation, not a robustness nit.** The spine's Consistency Conventions
+say verbatim: *"Nothing in `internal/` panics on malformed input — **untrusted font and template
+bytes** return diagnostics."*
+
+**Fixed in 2.3a, recorded against Story 1.5**, which shipped the `NewFace` call site — the same
+disposition as Story 1.6's `decodePoints` hang: fixed in the story that **surfaced** it, noted on the
+story that **shipped** it.
+
+**Do not fix only `NumGlyphs`.** The audit found a second instance of the same class, and the silent
+one is worse:
+
+| table stripped from Roboto | outcome through the public entry |
+|---|---|
+| `maxp` | **PANIC** — loud |
+| `OS/2` | **renders, `/CapHeight 928` where the intact face gives `711`** — silent, wrong, shipped |
+
+One class — *folio reads a table that may be absent and receives a substituted default* — with a loud
+instance and a silent one.
+
+**Ruled: validate at face ingestion that every table folio actually reads is present**, failing with a
+**located error naming the face and the missing table**. Scope it to the tables the half-2 enumeration
+identifies as read, so **the two halves compose rather than compete** — the audit produces the list
+the guard consumes. **Do not require `name`**: Story 2.2 deliberately tolerates a nameless program,
+and requiring it would reverse a ruled disposition.
+
+**The symmetry is the point:** *"assert the table exists before asserting on its contents"* was made
+binding for **guards** in [[D-2.2.6]]'s amendment. This is the same rule applied to **production
+reads** — prove the table exists before reading it. One discipline, two sites.
+
+---
+
+### D-2.3a.2 — A substituted `/BaseFont` must be diagnosed, not silent
+
+*(mechanism: binding for the property; illustrative for the mechanism)* — resolves 2.3a's Q2.
+
+`readPostScriptName` correctly returns `""` for a nameless program (Story 2.2's ruled disposition),
+but `internal/pdf/textdoc.go:334-336` then **substitutes the FontSet key back in**. Measured: a
+nameless program still emits `/BaseFont /HXRYNT+Roboto-Regular`.
+
+**`/BaseFont` is Required and must be a legal name, so something must go there**, and the FontSet key
+is genuinely true of the face we loaded. It is not ruled absent.
+
+**But the silent substitution defeats the property [[D-2.2.6]] was bought for.** Its third reason was
+that `/BaseFont` **makes an invisible property visible** — a Thin-named program shows as
+`NotoSansSC-Thin`. Under silent substitution a **nameless** program is **indistinguishable from a
+correctly-named one**, so a reader cannot tell whether `/BaseFont` reflects the program or reflects
+us.
+
+**Ruled: diagnose it** — the same disposition as a caller-supplied variable face. Do not reject, do
+not silently substitute: **name it.** AD-8's *"not a silent substitution"* governs, and it costs one
+diagnostic. **A code comment documents the behaviour for a maintainer; it does nothing for whoever
+reads the PDF**, which is the audience D-2.2.6 was written for.
+
+This is [[D-000.25]]'s pattern reappearing **one layer above** where Story 2.2 closed it.
+
+---
+
+### D-000.29 — An audit row ends settled or fixed, never carried
+
+*(mechanism: binding)*
+
+**An audit that converts each suspicion into either "confirmed and fixed" or "traced and closed" is
+doing its job. One that ends with open questions has merely relocated them.**
+
+**The precedent that named it.** [[D-000.25]] flagged `Face.Upem()`'s population path as unaudited,
+with a specific worry: D-1.5.2 requires `unitsPerEm` validated in 16–16384 before `ScaleRound`, so if
+construction substituted a default for a missing `head`, **our validation would pass on fiction.**
+
+Traced: **the vendor does substitute 1000 — and folio never reads it.** D-1.5.2's validation does not
+pass on fiction. The row ends **settled**, with the reason recorded, rather than carried forward as a
+maybe.
+
+A carried row costs more than an unopened one, because it **reads as diligence** while providing none
+— and the next reader must redo the tracing to learn whether anything was ever wrong.
+
+---
+
+### D-000.30 — A fix destroys the red-proof for the guard against it; capture the proof before the fix
+
+*(mechanism: binding)*
+
+**The phenomenon.** When a defect is closed, the path that produced it **stops existing** — so the
+guard written against that defect can no longer be red-proved by reproducing it. The fix and its own
+evidence are in tension, and the tension is structural, not a mistake by anyone.
+
+**The instance.** Story 2.3a asserted that stripping `OS/2` from a face yields `/CapHeight 928` where
+the intact face gives `711` — a silently wrong value in shipped output. The ruled fix
+([[D-2.3a.1]]) validates table presence at ingestion, so **a face with no `OS/2` no longer reaches the
+renderer at all.** The `928` half of the assertion became **unconstructible by the fix that made it
+matter.**
+
+**The three wrong responses, all of which this run has seen elsewhere:**
+
+1. **Weaken the guard** so the remaining half looks like full coverage.
+2. **Manufacture a red-proof** — reintroduce the defect behind a flag, or assert on something adjacent
+   and call it the same thing.
+3. **Credit the guard with the proof anyway**, on the grounds that it *was* true once. This is
+   [[D-000.28]]'s anticipatory boilerplate wearing the opposite tense.
+
+**The correct response, and what 2.3a did:** measure the defect **before** the fix — in a worktree at
+the pre-fix commit — record the measurement with its subject cited ([[D-000.26]]), and then label the
+now-unconstructible half a **forward guard with no available red-proof** ([[D-000.24]]). The live half
+is asserted on produced bytes behind a presence precondition; the refusal itself is asserted.
+
+**The distinction that makes this honest** *(mechanism: binding)*:
+
+> **A one-time measurement taken before the fix is evidence the defect was real. It is not a standing
+> red-proof, and must never be recorded as one.**
+
+The first says *"this was broken, here is the number."* The second says *"this test fails if it breaks
+again."* Both are worth having; **only the second protects the future**, and conflating them
+manufactures confidence that no mechanism supports.
+
+**Consequent obligation** *(mechanism: binding)*: when a story fixes a defect it also guards against,
+**capture the red-proof before applying the fix** — at the pre-fix commit, in a worktree — or state
+plainly that no standing red-proof exists. The window in which the proof is constructible closes
+permanently when the fix lands, and it cannot be reopened afterwards without reintroducing the defect.
+
+---
+
+### D-2.2.4 (correction, amended) — the correction's own enumeration was sampled, not swept
+
+*(mechanism: binding)* — appended to [[D-2.2.4]]'s correction, which was itself a correction.
+
+The correction entry stated the falsified `PinAxisLocation` claim stood in **four** places. Story
+2.3a's review found at least **two more**:
+
+- `folio-go/internal/fontset/fontset.go:751` — *"explicitly is both unreachable (AD-23 bans
+  `float32`)"*, uncorrected.
+- `folio-go/internal/fontset/fontset_test.go:466` — *"needs the identifier `float32`, which AD-23's
+  arch guard bans"* — sitting **three lines above line 515**, which is the exact call that disproves
+  it, and contradicted by its own next sentence.
+
+**The enumeration was written from the sites someone happened to have been shown.** That is
+[[D-000.23]] in a new dress: *a correction written in response to instances covers the instances, not
+the class.* The remedy is the same one that rule already names — sweep for **every form the claim
+takes** (`PinAxisLocation`, "unreachable", "AD-23 bans", "identifier `float32`", "arch guard bans"),
+across `.go`, `.md` and story files, production **and** test.
+
+**Why a sampled correction is worse than an uncorrected claim.** An uncorrected claim is uniformly
+wrong, and a reader who catches it anywhere distrusts it everywhere. A **partially** corrected claim
+is *right in the places someone looked and wrong elsewhere* — and the corrected sites lend the
+surviving ones credibility, because the text now reads as maintained. The 2.3a finisher is producing
+the swept list and its count so the record finally holds an enumeration rather than a sample.
+
+
+---
+
+### D-2.3a.3 — Story 2.3a finisher: the swept enumeration D-2.2.4 (correction, amended) asked for
+
+*(mechanism: record)* — the sibling follow-up entry to [[D-2.3a.1]] and [[D-2.3a.2]]. It does not
+amend them, and it does not edit [[D-2.2.4]] (correction, amended); it **discharges** that entry's
+closing sentence, which said *"The 2.3a finisher is producing the swept list and its count so the
+record finally holds an enumeration rather than a sample."*
+
+**The count is 8 carrier sites.** Swept for all five forms of the claim — `PinAxisLocation`,
+"unreachable", "AD-23 bans", "identifier `float32`", "arch guard bans" — across **every file type in
+the repository**, production and test, source and record.
+
+| # | site | found by |
+|---|---|---|
+| 1 | `folio-go/internal/fontset/fontset.go` — `New`'s D-2.2.4 block (baseline `:112`) | D-2.2.4 (correction) |
+| 2 | `folio-go/internal/fontset/fontset.go` — `Subset` doc comment (baseline `:425`) | D-2.2.4 (correction) |
+| 3 | `folio-go/internal/text/shape.go` — `Shaper` doc comment (baseline `:71`) | D-2.2.4 (correction) |
+| 4 | `folio-go/internal/fontset/fontset.go:751` (baseline `:494`) | D-2.2.4 (correction) — **enumerated but not executed** |
+| 5 | `folio-go/internal/fontset/fontset_test.go:465-471` | Story 2.3a review |
+| 6 | `tools/fontgen/instance_faces.py:16-19` | **this sweep, and nothing before it** |
+| 7 | `_bmad-output/…/2-2-…md:1098-1104` | this sweep |
+| 8 | `_bmad-output/…/2-2-…md:1857-1859` | this sweep |
+
+**Site 6 is the finding, and it sharpens [[D-000.23]] rather than merely instancing it again.** The
+ruling's enumeration searched `.go`. The review's sweep searched `.go` and `.md`. Both were *sweeps*
+by intent and *samples* by construction, because each inherited the previous pass's idea of where the
+claim could live. `tools/fontgen/instance_faces.py` is a Python build tool whose module docstring
+gave the falsified claim as its third reason for shipping static faces — a load-bearing statement, in
+the file that actually performs the derivation, invisible to every search anyone had run.
+
+> **A sweep is defined by the class of the claim, never by the file types the last search happened
+> to cover** *(mechanism: binding)*. Widening the search terms while leaving the search *surface*
+> inherited is not a sweep; it is the previous sample re-run with better regexes.
+
+**Consequent obligation** *(mechanism: binding)*: when [[D-000.23]] requires a correction to cover a
+class rather than its instances, the sweep must state **which file types it searched** and why that
+set is exhaustive for the claim. A correction that cannot say what it searched has not swept.
+
+**Three term-matches are not carriers**, verified individually rather than corrected on sight:
+`folio-go/internal/fontset/vendor-boundary.md` and `lint/internal/rules/floattyped_test.go` both
+state the claim *in order to record that it is false*, and Story 1.5's record at `:636-639` is
+**accurate as written** — it says the guard flags *"the bare identifier"* and that *"a call site that
+**names the type** would go red"*, which is conditional and true. Correcting it would have introduced
+an error. **A sweep must be able to distinguish a claim from a quotation of it**, or it will
+manufacture the drift it was sent to remove.
+
+**Two dispositions, deliberately different, for the same claim in different kinds of document.** The
+six live-source sites are corrected **in place**, each keeping its "this used to say X, that was
+false, here is why" form. The two in Story 2.2's closed record are corrected by an **appended
+section** under [[D-1.6.6]] — *appended, never rewritten* — and the instances inside this decision log
+are left exactly as written, because this document is append-only by its own header. Erasing the
+original wording would destroy the evidence that the claim was ever believed, which is the entire
+subject of D-2.2.4 (correction, amended).
+
+**Corrected text states the real grounds**, never merely deletes the claim: payload (**4.82 MB**
+compressed against **8.30 MB**), `usWeightClass` correctness (`textshape@v0.0.15`
+`subset/execute.go:496-499` copies `OS/2` verbatim and has no writer for the field), and deleting the
+FMA/interpolation path. None of the three ever depended on the false premise, which is why the
+conclusion survives its collapse intact.
+
+---
+
+### D-2.3a.4 — Story 2.3a finisher: a position-bound citation restales on the next edit
+
+*(mechanism: binding)* — a consequence discovered while discharging [[D-2.3a.3]], recorded because it
+recurred immediately and will recur again.
+
+Correcting carrier site 5 lengthened a comment block in
+`folio-go/internal/fontset/fontset_test.go` and moved the call that **disproves** the falsified claim
+from line 515 to line 529. **Five** separate citations to `fontset_test.go:515` — in `fontset.go`
+(three), `internal/text/shape.go` and `lint/internal/rules/floattyped_test.go` — went stale in the
+same edit that corrected the claim they supported.
+
+> **Cite the thing, not its coordinates.** A citation to a line number is a claim about a position,
+> and positions are invalidated by edits that change nothing the citation is about. Cite the test or
+> function **by name**, which survives every edit that does not remove the thing itself.
+
+All five were re-cited as `TestSubsetPinnedInstancesProduceDifferentTags`, not renumbered — because
+renumbering restores the citation and preserves the defect. This is the same shape as [[D-1.6.3]]'s
+hard-coded filename and Story 2.3a's own Finding 7 (a guard excusing a file **by filename**): three
+instances now of *a reference bound to a name or position rather than to the property it is about*.
+
+**Consequent obligation** *(mechanism: binding)*: a citation in committed source to a specific line
+of another file must name the declaration it points into. A bare `file.go:NNN` in a comment is a
+defect at rest — it is correct only until someone edits above it, and nothing in the build will ever
+say otherwise.

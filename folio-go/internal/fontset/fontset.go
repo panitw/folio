@@ -45,6 +45,18 @@ type Font struct {
 	modified   int64  // head.modified, offset 28, LONGDATETIME (F-5)
 	psName     string // name table record 6, read directly (see readPostScriptName)
 
+	// hmtx is the face's horizontal metrics, parsed ONCE at construction
+	// from the table itself via ot.ParseHmtxFromFont, which returns
+	// uint16 advances. It is the integer path: nothing in this package
+	// calls (*ot.Face).HorizontalAdvance any more. See advanceWidth.
+	hmtx *ot.Hmtx
+
+	// numGlyphs is the face's own glyph count, read once at construction
+	// and validated non-zero there (requireReadableTables). Every glyph
+	// id handed to hmtx is bounds-checked against it first, because
+	// (*ot.Hmtx).GetAdvanceWidth FABRICATES for an out-of-range id.
+	numGlyphs int
+
 	// shaper is this face's ONE OpenType shaper, built at construction
 	// and reused for every shaping call against this face — the
 	// vendor's documented contract ("A Shaper is created once per font
@@ -67,6 +79,39 @@ func New(name string, data []byte) (*Font, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fontset: font %q: parse: %w", name, err)
 	}
+
+	// D-2.3a.1 (binding): validate, HERE at face ingestion and BEFORE
+	// ot.NewFace, that every table folio actually reads is present and
+	// self-consistent. This must precede NewFace because NewFace is
+	// where the panic is — see requireReadableTables for the mechanism
+	// and for why the list is what it is.
+	if verr := requireReadableTables(name, parsed); verr != nil {
+		return nil, verr
+	}
+
+	// Advance widths are read through the INTEGER path, parsed once here
+	// and held on the struct, in the same shape as psName, unitsPerEm,
+	// created and modified. See advanceWidth below for why the float
+	// accessor is declined.
+	hmtx, hmErr := ot.ParseHmtxFromFont(parsed)
+	if hmErr != nil {
+		return nil, fmt.Errorf("fontset: font %q: read hmtx table: %w", name, hmErr)
+	}
+
+	// UNREACHABLE VENDOR-CONTRACT ASSERTION, LABELLED AS SUCH RATHER THAN
+	// COUNTED AS COVERAGE (D-000.24; Story 2.3a, AC9). Measured against
+	// textshape v0.0.15: ot.NewFace ends `return f, nil` on every path,
+	// and every table parse error inside it is discarded into `_`. It has
+	// no failure mode. The seven table-removal cases in Story 2.3a's
+	// enumeration (see vendor-boundary.md) all return err == nil,
+	// INCLUDING the one that used to panic. This branch cannot fire.
+	//
+	// It is KEPT, not deleted, because it is the assertion that would
+	// catch the vendor gaining a failure mode — the same disposition
+	// Subset's "was not retained by the subset plan" branch already
+	// carries. It reads like coverage in a diff and is not; saying so is
+	// the honest form. Do not count it as coverage and do not write a
+	// test that claims to exercise it.
 	face, err := ot.NewFace(parsed)
 	if err != nil {
 		return nil, fmt.Errorf("fontset: font %q: build face: %w", name, err)
@@ -108,16 +153,33 @@ func New(name string, data []byte) (*Font, error) {
 	//     Thai, and every guard in the project agreed the artifact was
 	//     correct because each was asked whether the value CHANGED,
 	//     never whether it meant what its name implied (D-000.21).
-	//   - Pinning an explicitly chosen weight is unreachable: the
-	//     vendor's PinAxisLocation requires the identifier `float32`,
-	//     which internal/arch_test.go:54 bans under internal/ AND the
-	//     module root (AD-23). And it would not have worked anyway —
+	//   - Pinning an explicitly chosen weight would not have worked —
 	//     textshape@v0.0.15 subset/execute.go:496-499 copies `OS/2`
 	//     VERBATIM and never updates usWeightClass (there is no writer
 	//     for that field anywhere in textshape), so pinning wght=400 on
 	//     a variable face yields Regular outlines carrying metadata that
 	//     still claims Thin — strictly worse than the defect it fixes,
 	//     because outlines and metadata would then disagree.
+	//
+	// CORRECTION, D-2.2.4 (correction) / Story 2.3a AC9. This block used
+	// to give a THIRD reason: that pinning was "unreachable" because
+	// PinAxisLocation requires the identifier `float32`, which
+	// internal/arch_test.go:54 bans. THAT WAS FALSE, and it was testable
+	// in one line: fontset_test.go's
+	// TestSubsetPinnedInstancesProduceDifferentTags calls
+	// `in.PinAxisLocation(ot.MakeTag('w','g','h','t'), 700)` today, with
+	// that guard green. An untyped integer constant takes the parameter's
+	// type with no type identifier written anywhere, and `700` is a
+	// BasicLit of kind INT, which a scanner matching kind FLOAT cannot
+	// see. The identifier was never required. The conclusion above is
+	// unaffected — it rests on payload size, on usWeightClass
+	// correctness, and on deleting the interpolation path, none of which
+	// depend on the false premise. What has changed is that the door is
+	// now genuinely closed by a TYPE-aware rule rather than a
+	// spelling-aware one: lint's no-float-typed-value reports
+	// PinAxisLocation(700) as the float-typed value expression it is, and
+	// the one call site that remains is the sanctioned test below, held
+	// as a named inventory entry rather than an exemption.
 	//
 	// So the seam is DELETED rather than fixed. folio's own shipped
 	// faces arrive already static (folio-go/fonts/, derived by
@@ -162,8 +224,178 @@ func New(name string, data []byte) (*Font, error) {
 		created:    created,
 		modified:   modified,
 		psName:     psName,
+		hmtx:       hmtx,
+		numGlyphs:  parsed.NumGlyphs(),
 		shaper:     shaper,
 	}, nil
+}
+
+// requiredTables is the list D-2.3a.1's guard consumes, and it is
+// produced by Story 2.3a's audit rather than guessed: it is exactly the
+// set of tables folio's own code READS through the vendor, minus the two
+// whose absence folio already reports honestly. See
+// internal/fontset/vendor-boundary.md for the per-accessor measurements
+// this list is derived from.
+//
+// Read, and therefore required:
+//
+//	head  — readUnitsPerEm, readHeadTimes, (*ot.Face).BBox
+//	maxp  — (*ot.Font).NumGlyphs, in Subset and in ot.NewFace's own hmtx parse
+//	hhea  — (*ot.Face).Ascender, (*ot.Face).Descender, numberOfHMetrics
+//	hmtx  — every advance width, via ot.ParseHmtxFromFont
+//	OS/2  — (*ot.Face).CapHeight
+//
+// Read, and deliberately NOT required, each for a ruled reason:
+//
+//	name  — Story 2.2 deliberately tolerates a nameless program:
+//	        readPostScriptName returns "", which is observably absent.
+//	        Requiring it would reverse a ruled disposition (D-2.3a.1,
+//	        verbatim: "Do not require `name`").
+//	cmap  — (*ot.Face).Cmap() returns nil when the table is absent, which
+//	        is HONEST, and folio nil-checks it at both call sites
+//	        (HasGlyph, AdvanceForRune). Requiring it would break Story
+//	        2.2's fallback chain: today a chain whose first face carries
+//	        no cmap falls through to the next face and renders; requiring
+//	        the table would turn that into a load error and make the
+//	        whole FontSet unloadable over one unusable member. That is a
+//	        behaviour reversal, not a tightening.
+//
+// glyf/loca are not in the list because folio never reads them itself —
+// the vendor subsetter does, and it reports their absence honestly
+// ("subset: required table missing").
+var requiredTables = []struct {
+	tag  ot.Tag
+	name string
+	why  string
+}{
+	{ot.TagHead, "head", "unitsPerEm, the created/modified timestamps and the font bounding box"},
+	{ot.TagMaxp, "maxp", "the face's glyph count, which bounds every glyph id folio hands the vendor"},
+	{ot.TagHhea, "hhea", "the ascender, the descender and numberOfHMetrics"},
+	{ot.TagHmtx, "hmtx", "every glyph advance width, and therefore the PDF /W array"},
+	{ot.TagOS2, "OS/2", "the cap height, which reaches the PDF FontDescriptor as /CapHeight"},
+}
+
+// requireReadableTables is D-2.3a.1's ruled guard: at face ingestion,
+// every table folio actually reads must be PRESENT, and a missing one is
+// a located error naming the face and the table — never a panic and
+// never a substituted default.
+//
+// THE LOUD INSTANCE. folio.Render used to PANIC on caller-supplied font
+// bytes whose maxp was missing or short: (*ot.Font).NumGlyphs returns 0
+// in that case, hhea's numberOfHMetrics is whatever the face declares
+// (1294 for the Roboto test face), and ot.NewFace then reaches
+// ot.ParseHmtx's `make([]int16, numGlyphs-numberOfHMetrics)` — a slice
+// of length -1294, i.e. "makeslice: len out of range". folio.FontSet is
+// a public map[string][]byte, so those are untrusted caller bytes
+// reaching a panic through the documented entry point. The spine's
+// Consistency Conventions say verbatim: "Nothing in internal/ panics on
+// malformed input — untrusted font and template bytes return
+// diagnostics."
+//
+// THE SILENT INSTANCE, WHICH IS WORSE, AND WHY THIS GUARD IS NOT SCOPED
+// TO maxp. The same class — folio reads a table that may be absent and
+// receives a substituted default — has a quiet member. With OS/2
+// stripped, (*ot.Face).CapHeight() returns (*ot.Face).Ascender(), and
+// folio renders a PDF that reports success and declares /CapHeight 928
+// where the intact face gives 711. Measured on
+// testdata/fonts/Roboto-Regular.ttf against fixtures/font-text/. Every
+// guard in the repository stayed green. A guard that fixed only the
+// panic would have left that one shipping.
+//
+// PRESENCE IS ASSERTED BEFORE CONTENTS, WHICH IS THE SAME DISCIPLINE
+// D-2.2.6's amendment made binding for guards, applied here to a
+// PRODUCTION READ (D-2.3a.1: "one discipline, two sites").
+func requireReadableTables(name string, font *ot.Font) error {
+	for _, rt := range requiredTables {
+		if !font.HasTable(rt.tag) {
+			return fmt.Errorf(
+				"fontset: font %q: required table %q is absent — folio reads it for %s, and the vendor would "+
+					"substitute a default rather than report it missing",
+				name, rt.name, rt.why,
+			)
+		}
+	}
+
+	// Presence is not enough for maxp: (*ot.Font).NumGlyphs returns 0
+	// for a maxp shorter than six bytes just as it does for an absent
+	// one, and 0 is the value that produces the negative slice length.
+	numGlyphs := font.NumGlyphs()
+	if numGlyphs <= 0 {
+		return fmt.Errorf(
+			"fontset: font %q: the \"maxp\" table reports %d glyphs — it is present but too short to read a "+
+				"glyph count from, and every glyph id folio hands the vendor is bounded by that count",
+			name, numGlyphs,
+		)
+	}
+
+	// Nor is presence enough for hhea: numberOfHMetrics is read from
+	// hhea and the glyph count from maxp, and the vendor subtracts one
+	// from the other without checking the order. A face whose two tables
+	// disagree reaches the same negative slice length by a different
+	// route, so the consistency between them is checked here rather than
+	// assumed.
+	hheaData, herr := font.TableData(ot.TagHhea)
+	if herr != nil {
+		return fmt.Errorf("fontset: font %q: read hhea table: %w", name, herr)
+	}
+	hhea, perr := ot.ParseHhea(hheaData)
+	if perr != nil {
+		return fmt.Errorf("fontset: font %q: parse hhea table: %w", name, perr)
+	}
+	numHMetrics := int(hhea.NumberOfHMetrics)
+	if numHMetrics <= 0 || numHMetrics > numGlyphs {
+		return fmt.Errorf(
+			"fontset: font %q: the \"hhea\" table declares numberOfHMetrics %d against the \"maxp\" table's "+
+				"%d glyphs — the two disagree, and the vendor would compute a negative metrics length from them",
+			name, numHMetrics, numGlyphs,
+		)
+	}
+	return nil
+}
+
+// advanceWidth returns gid's horizontal advance in font units, as the
+// INTEGER the hmtx table actually carries.
+//
+// IT DECLINES (*ot.Face).HorizontalAdvance, AND THIS IS STORY 2.2's
+// readPostScriptName PATTERN APPLIED A THIRD TIME — read the table
+// directly, take the integer, decline the accessor. There are two
+// independent reasons, and the second is the one that would have
+// survived even if AD-23 did not exist:
+//
+//  1. The accessor is FLOAT-TYPED. Its return type is inferred at the
+//     call site, so neither banned identifier is ever spelled and the
+//     syntactic AD-23 guard in internal/arch_test.go walks straight past
+//     `int64(f.face.HorizontalAdvance(gid))`. The type-aware rule in
+//     lint (no-float-typed-value) is what makes AD-23 enforceable here;
+//     it reported these sites and reports zero now.
+//  2. The accessor SUBSTITUTES. When hmtx or hhea is absent it returns
+//     the face's unitsPerEm — a plausible number, indistinguishable from
+//     a real advance — where ot.ParseHmtxFromFont returns an error and
+//     requireReadableTables refuses the face outright.
+//
+// The swap is BYTE-NEUTRAL, and that was measured rather than assumed:
+// over every glyph of all four committed faces —
+// testdata/fonts/Roboto-Regular.ttf (1,294), fonts/notosans (4,515),
+// fonts/notosansthai (467) and fonts/notosanssc (31,036), 37,312 glyphs
+// in total — int64 of the accessor's value and int64 of
+// (*ot.Hmtx).GetAdvanceWidth agree on every single glyph, 0 mismatches.
+// They must: both branches of the accessor convert a uint16, and every
+// uint16 is exactly representable in the accessor's 24-bit mantissa.
+//
+// THE BOUNDS CHECK IS NOT DEFENSIVE DECORATION. GetAdvanceWidth
+// FABRICATES for an out-of-range glyph id: it returns lastAdvanceWidth,
+// a real number belonging to a different glyph. Measured: gid 65535 on
+// the 1,294-glyph Roboto face returns 506. So an out-of-range id is a
+// located error here, never a value.
+func (f *Font) advanceWidth(gid uint16) (uint16, error) {
+	if int(gid) >= f.numGlyphs {
+		return 0, fmt.Errorf(
+			"fontset: font %q: glyph id %d does not exist in this face, which has %d glyphs (0..%d) — "+
+				"the vendor would return another glyph's advance rather than report it missing",
+			f.name, gid, f.numGlyphs, f.numGlyphs-1,
+		)
+	}
+	return f.hmtx.GetAdvanceWidth(ot.GlyphID(gid)), nil
 }
 
 // Shaper returns this face's single, reused OpenType shaper (Story 2.3,
@@ -310,12 +542,21 @@ func (f *Font) HasGlyph(r rune) bool {
 // (folio-go/render.go's splitByFace), and nothing in the render path
 // calls this any more.
 //
-// It is retained deliberately, not left as an oversight: it is one of
-// the two `ot.Face.HorizontalAdvance` (`float32`) call sites that
-// `2-3a-audit-the-vendor-boundary` (D-000.25) owns and audits, and
-// deleting it here would silently shrink that story's subject. Any
+// It is retained deliberately, not left as an oversight: it was one of
+// the two `ot.Face.HorizontalAdvance` call sites that
+// `2-3a-audit-the-vendor-boundary` (D-000.25) owned and audited, and
+// deleting it there would silently have shrunk that story's subject. Any
 // future caller must first establish that the raw `hmtx` number, not
 // the shaped one, is what it wants.
+//
+// Story 2.3a, AC5: it was FIXED IN PLACE rather than deleted. It no
+// longer calls the vendor's fractional accessor at all — it reads the
+// `hmtx` table's own integer through advanceWidth, which also
+// bounds-checks the glyph id. The number it returns is unchanged, and
+// that is measured, not assumed: the two paths agree on all 37,312
+// glyphs of the four committed faces (see advanceWidth). Whether this
+// function survives without a caller is a separate question Story 2.3a
+// did not answer.
 func (f *Font) AdvanceForRune(r rune) (int64, bool) {
 	cmap := f.face.Cmap()
 	if cmap == nil {
@@ -325,7 +566,16 @@ func (f *Font) AdvanceForRune(r rune) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
-	adv := f.face.HorizontalAdvance(gid)
+	adv, aerr := f.advanceWidth(uint16(gid))
+	if aerr != nil {
+		// The glyph id came from this face's own cmap, so it is inside
+		// the face's glyph count unless the cmap and maxp disagree.
+		// Reporting "r did not resolve" is this function's existing
+		// contract for "there is no usable advance here", and it is
+		// observably absent rather than a fabricated number — which is
+		// exactly what the bounds check exists to prevent.
+		return 0, false
+	}
 	return int64(geom.ScaleRound(geom.Length(int64(adv)), 1000, int64(f.unitsPerEm))), true
 }
 
@@ -421,10 +671,19 @@ type Subset struct {
 // `gvar` to interpolate, and no float arithmetic on the render path.
 //
 // This package still exposes NO way for a caller to request a
-// particular instance, and that is deliberate rather than unfinished:
-// reaching the vendor's PinAxisLocation requires the identifier
-// `float32`, which internal/arch_test.go:54 bans under internal/ and
-// the module root (AD-23). Bold, when it arrives, is a `wght` instance
+// particular instance, and that is deliberate rather than unfinished.
+// The reason is D-2.2.4's, not AD-23's: textshape never rewrites
+// OS/2.usWeightClass, so a pinned instance would carry metadata
+// contradicting its own outlines. (This comment used to say instead that
+// reaching PinAxisLocation "requires the identifier `float32`, which
+// internal/arch_test.go:54 bans". That was false — see New's D-2.2.4
+// block and D-2.2.4 (correction): an untyped INT constant reaches the
+// float parameter with no identifier written at all, and the test at
+// fontset_test.go's TestSubsetPinnedInstancesProduceDifferentTags
+// does exactly that with the guard green. AD-23 is
+// enforced against that shape now, but by lint's type-aware
+// no-float-typed-value rule, not by the identifier scan.)
+// Bold, when it arrives, is a `wght` instance
 // derived AHEAD of the build by tools/fontgen/instance_faces.py and
 // shipped as its own static face — and it inherits D-2.2.1's standing
 // condition (its own golden, plus a four-target matrix run) so it does
@@ -491,8 +750,22 @@ func (f *Font) Subset(sourceGlyphs []uint16) (*Subset, error) {
 	// carrying `fvar` at ingestion, with a located diagnostic that names
 	// the remedy. See New()'s comment for why the seam was deleted
 	// rather than fixed — pinning to defaults embedded Thin, and pinning
-	// explicitly is both unreachable (AD-23 bans `float32`) and
-	// ineffective (textshape never rewrites OS/2.usWeightClass).
+	// explicitly is ineffective (textshape never rewrites
+	// OS/2.usWeightClass), on top of which the static faces halve the
+	// payload (4.82 MB compressed against 8.30) and deleting the seam
+	// removes the float `gvar` interpolation path outright.
+	//
+	// CORRECTION, D-2.2.4 (correction, amended) / Story 2.3a Finding 1.
+	// This block used to give "unreachable (AD-23 bans `float32`)" as a
+	// second reason. THAT WAS FALSE, for the reason New()'s D-2.2.4 block
+	// sets out at length: an untyped INT constant reaches the float
+	// parameter with no identifier written anywhere, and
+	// fontset_test.go's TestSubsetPinnedInstancesProduceDifferentTags
+	// calls PinAxisLocation that way today with the
+	// syntactic guard green. AD-23 does now reach this shape, but through
+	// lint's type-aware no-float-typed-value rule, not the identifier
+	// scan. The grounds above are unaffected: none of them ever depended
+	// on the false premise.
 	//
 	// Do not reintroduce a pin here. The consequence of this deletion is
 	// that the float `gvar` interpolation path — D-2.2.0's measured FMA
@@ -562,7 +835,10 @@ func (f *Font) Subset(sourceGlyphs []uint16) (*Subset, error) {
 		if !ok {
 			return nil, fmt.Errorf("fontset: font %q: output glyph %d has no source glyph", f.name, newGID)
 		}
-		adv := f.face.HorizontalAdvance(oldGID)
+		adv, aerr := f.advanceWidth(uint16(oldGID))
+		if aerr != nil {
+			return nil, aerr
+		}
 		width1000 := geom.ScaleRound(geom.Length(int64(adv)), 1000, int64(f.unitsPerEm))
 		widthForGlyph[uint16(newGID)] = int64(width1000)
 	}

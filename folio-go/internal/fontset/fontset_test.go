@@ -462,13 +462,27 @@ func testVariableFontBytes(t *testing.T) []byte {
 // is not merely a stylistic choice: New() REJECTS a variable face
 // outright (TestNewRejectsVariableFace below), so a variable fixture
 // cannot reach (*Font).Subset at all. Production exposes no way to
-// request an instance because reaching subset.Input.PinAxisLocation
-// needs the identifier `float32`, which AD-23's arch guard bans under
-// internal/ and the module root (Trap 10). The literal axis values
-// below are UNTYPED constants; passed directly as PinAxisLocation's
-// argument, Go converts them to float32 with no `float32`/`float64`
-// identifier ever appearing in this file's source — confirmed by this
-// package's own `go vet`/arch-guard gates passing.
+// request an instance for D-2.2.4's reasons: textshape never rewrites
+// OS/2.usWeightClass, so a pinned instance would carry metadata
+// contradicting its own outlines; the shipped static faces halve the
+// payload (4.82 MB compressed against 8.30); and deleting the seam
+// removes the float `gvar` interpolation path from the render.
+//
+// CORRECTION, D-2.2.4 (correction, amended) / Story 2.3a Finding 1.
+// This comment used to say instead that reaching
+// subset.Input.PinAxisLocation "needs the identifier `float32`, which
+// AD-23's arch guard bans under internal/ and the module root". THAT
+// WAS FALSE — and it was falsified three lines below, by this test's
+// own call at the `wght=700` line. The next paragraph always said so:
+// the literal axis values below are UNTYPED constants; passed directly
+// as PinAxisLocation's argument, Go converts them to float32 with no
+// `float32`/`float64` identifier ever appearing in this file's source —
+// confirmed by this package's own `go vet`/arch-guard gates passing.
+// The identifier was never required, so the guard never fenced this
+// door. AD-23 reaches this call now through lint's type-aware
+// no-float-typed-value rule, which reports it as the float-typed value
+// expression it is; this file is a named entry in that rule's test-scope
+// inventory rather than an exemption.
 func TestSubsetPinnedInstancesProduceDifferentTags(t *testing.T) {
 	data := testVariableFontBytes(t)
 

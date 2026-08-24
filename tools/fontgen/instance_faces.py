@@ -13,11 +13,33 @@ not the upstream variable builds — for three reasons, each measured:
      Regular outlines carrying metadata that still claimed Thin: strictly worse.
      `fontTools` DOES set the field when it instances, so instancing here and
      letting textshape copy it through is what makes the value correct.
-  3. Reaching the vendor's `PinAxisLocation` requires the identifier `float32`,
-     which `folio-go/internal/arch_test.go:54` bans under `internal/` and the
-     module root (AD-23). Deleting the seam satisfies the guard rather than
-     fighting it; a caller-supplied face that still carries `fvar` is now
-     REJECTED at face ingestion with a located diagnostic naming the remedy.
+  3. The static faces are also the smaller payload: 4.82 MB compressed against
+     8.30 MB for the upstream variable builds. Deleting the render-time seam
+     removes the float `gvar` interpolation path entirely, and a caller-supplied
+     face that still carries `fvar` is REJECTED at face ingestion with a located
+     diagnostic naming the remedy.
+
+CORRECTION, D-2.2.4 (correction, amended) / Story 2.3a Finding 1. Reason 3 above
+used to read: "Reaching the vendor's `PinAxisLocation` requires the identifier
+`float32`, which `folio-go/internal/arch_test.go:54` bans under `internal/` and
+the module root (AD-23). Deleting the seam satisfies the guard rather than
+fighting it". THAT MECHANISM WAS FALSE. `arch_test.go` matches the SPELLING of a
+type identifier and the KIND of a literal; an untyped integer constant handed to
+a float parameter writes no identifier and is a BasicLit of kind INT, so it
+passes untouched. `folio-go/internal/fontset/fontset_test.go:515` calls
+`in.PinAxisLocation(ot.MakeTag('w','g','h','t'), 700)` today with that guard
+green. The identifier was never required and AD-23 never fenced this door. The
+conclusion is unchanged — it rests on reasons 1 and 2 and on the payload and
+interpolation-path grounds now stated in reason 3, none of which depended on the
+false premise. AD-23 reaches this shape now through `lint`'s type-aware
+`no-float-typed-value` rule, which matches on the type go/types RESOLVES rather
+than on what the source spells.
+
+This file was the SIXTH site carrying that claim, and the first found outside
+`.go`/`.md`: D-2.2.4 (correction) enumerated four, Story 2.3a's review found two
+more by sweeping `.go` and `.md`, and this one surfaced only when the finisher
+widened the sweep to every file type. It is the enumeration-vs-class point of
+D-000.23 landing a third time.
 
 Why this is a build-time-only tool and its OUTPUT is committed, not generated on
 demand: generating at build time would make the shipped font a function of the

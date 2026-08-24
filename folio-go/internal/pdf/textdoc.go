@@ -329,13 +329,54 @@ func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace, imag
 		// result to ^[A-Z]{6}\+<name6>$ per face, which catches both a
 		// stale name and a double-applied tag.
 		//
-		// Falls back to the FontSet key — the pre-2.2 behaviour — only
-		// when the supplied program declares no name record at all.
+		// D-2.3a.2 (binding): when the supplied program declares no name
+		// record at all, /BaseFont still carries the FontSet key — but
+		// the substitution is NAMED IN THE PDF rather than performed
+		// silently.
+		//
+		// Why the key still goes there. /BaseFont is Required by Table
+		// 117 and must be a legal name, so something has to be written,
+		// and the FontSet key is genuinely true of the face folio
+		// loaded. Rejecting a nameless program is not available either:
+		// Story 2.2 deliberately tolerates one (fontset.readPostScriptName
+		// returns "", which is observably absent, and that is a ruled
+		// disposition).
+		//
+		// Why silence is not available. D-2.2.6 bought /BaseFont
+		// specifically to make an invisible property visible — a
+		// Thin-named program shows as NotoSansSC-Thin, which is how the
+		// Thin defect would have been legible by reading the PDF. Under
+		// a silent fallback a NAMELESS program is indistinguishable from
+		// a correctly-named one, so a reader cannot tell whether
+		// /BaseFont reflects the embedded program or reflects us —
+		// which defeats the property the entry was bought for. AD-8's
+		// "not a silent substitution" governs, and it costs one
+		// diagnostic.
+		//
+		// Why the diagnostic is a PDF comment and not a code comment. A
+		// code comment documents the behaviour for a maintainer; it does
+		// nothing for whoever reads the PDF, and that reader is the
+		// audience D-2.2.6 was written for. A `%` comment between two
+		// indirect objects is legal PDF (ISO 32000-1 §7.2.4), is skipped
+		// as whitespace by every conforming reader, is greppable in the
+		// bytes, and is written BEFORE b.begin so the object's recorded
+		// xref offset is the offset of "N 0 obj", unchanged.
+		//
+		// It is byte-neutral for every face that has a name record, and
+		// every face folio ships or tests with has one — so no fixture
+		// digest moves.
 		psName := face.PostScriptName
-		if psName == "" {
+		substituted := psName == ""
+		if substituted {
 			psName = name
 		}
 		baseFont := face.Tag + "+" + pdfNameEscape(psName)
+
+		if substituted {
+			b.write([]byte("% folio: /BaseFont "))
+			b.write([]byte(baseFont))
+			b.write([]byte(" names the FontSet key, NOT the embedded program: this CIDFont program declares no `name` record, so it has no CIDFontName of its own (ISO 32000-1 Table 117).\n"))
+		}
 
 		toUnicodeCMap, uerr := buildToUnicodeCMap(face)
 		if uerr != nil {
