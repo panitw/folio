@@ -8092,3 +8092,117 @@ registered matrix document and carries the one element FR44's clip acts on, so d
 not leave FR44 without a cross-target artifact. `declaredEpic2GateObligations` stays **byte-unchanged**.
 **Note for the gate: `wrapped-text`'s recorded digest still MOVES even though the obligation set does
 not.**
+
+---
+
+### D-2.8.5 — The unread-`Diagnostics` concern is NOT an AD-14 gap; the property belongs to the presented interface, and its guard belongs on the producer
+
+*(mechanism: **binding**)*
+
+**The lead corrected its own grounds**, and the correction is recorded first because otherwise the next
+reader re-derives the objection from [[D-2.8.3]] and treats a **closed** question as an open gap.
+
+The OD-1 recommendation leaned on *"a channel that is silently ignorable is the 'silent' AD-14
+forbids."* Read against AD-14's **Prevents** line rather than its Rule sentence alone —
+*"each area inventing its own error type, so the designer cannot present them uniformly and CI cannot
+assert that every FR41 case is covered"* — **the harm AD-14 exists to prevent is TYPE FRAGMENTATION.**
+Its *"never silent and never fatal"* sits in a sentence about what **the engine** does with a clip:
+returns it as a `Warning` rather than dropping it or failing on it. **AD-14 binds the producer and the
+type, not every caller's discipline.**
+
+**The owner's result struct satisfies AD-14 completely** — one `Diagnostic` type, one channel, returned
+alongside the bytes, never dropped, never fatal. The objection was a real engineering concern **wearing
+an invariant's clothes**, and it was overstated.
+
+**All three orchestrator-proposed mitigations declined:**
+
+- **"Record it as an accepted gap against AD-14" is WRONG AS FRAMED and would itself be a defect.** It
+  would put **a risk in the register that does not exist** — [[D-000.49]] exactly: *a record that
+  overstates a risk is a defect, not caution* — and it corrupts the count downstream guards compare
+  against. **Do not write it.**
+- **The AST guard is declined on [[D-000.15]] and [[D-000.50]].** The purpose is *"a diagnostic reaches
+  a human"*; the guard's key would be *"`.Diagnostics` is read in the same function that reads
+  `.Bytes`"* — **a proxy**, and the gap between them is where the false positives live. **Check the
+  population first**: the `Render` call sites are **overwhelmingly tests** that render a fixture and
+  hash bytes and legitimately do not care. The guard would fire on scores of **correct** sites and its
+  remedy would be `_ = res.Diagnostics` sprinkled through the suite — **ceremony that proves nothing and
+  actively teaches the codebase that discarding is the expected move.** *A guard whose remedy is to
+  write a discard is worse than no guard: it manufactures the appearance of coverage while training the
+  behaviour it exists to prevent.*
+- **Redesigning the struct is declined** — it fights the shape the owner chose.
+
+**What replaces them — [[D-000.21]] sharpened: the property belongs to the artifact that carries it.**
+*"A clipped-content warning reaches a human"* is **not carried by a Go expression**. It is carried by the
+**presented interface**, and three stories already own that surface and can assert it where it is
+observable: **Story 3.7** (the CLI must print diagnostics it receives), **Story 5.12** (*"Diagnostics
+that locate and an interface that can be driven"*), **Story 6.6** (*"Present a failed render
+honestly"*).
+
+**Binding**: file this in `deferred-work.md` as a **named forward obligation with those three owners** —
+*"surfacing returned diagnostics to a human is asserted in 3.7, 5.12 and 6.6, on the presented output,
+not on the Go call graph"* — **and NOT as an accepted risk.** *A deferral with a real owner and a real
+assertion point is a different object from a gap we have decided to live with, and only one of them is
+true here.*
+
+**The guard that IS warranted, on the producer side where a real defect can live**: 2.8's own FR44
+acceptance test — render `wrapped-text`, assert `len(res.Diagnostics) == 1` with the expected code and
+element id, **red-proved by suppressing the attach**.
+
+**Robustness**: if anyone later reads *"never silent"* as binding the whole system rather than the
+engine, **the disposition is unchanged** — the designer and CLI are inside the system, and 3.7/5.12/6.6
+are exactly where that reading lands too. **Both readings converge**, which is what makes this safe to
+close.
+
+**A count discrepancy, recorded rather than reconciled** ([[D-000.26]]): the creator measured **72
+`Render` call expressions in 25 files (5 non-test)** at `f651409`; the orchestrator, re-deriving at
+`7f97ef7` by stripping comments and string literals, excluding declarations and subtracting `RenderTo`
+matches, measured **55 (54 test, 1 non-test)**. **The methods differ and neither has been reconciled.**
+**The ruling is robust to the difference** — both agree the population is overwhelmingly tests, which is
+the entire basis for declining the AST guard. **The developer must re-derive the figure at its own
+commit and name the commit** rather than inheriting either number.
+
+---
+
+### D-2.8.6 — `RenderTo` returns `([]Diagnostic, error)`, not `Result`
+
+*(mechanism: **binding**)*
+
+```go
+func Render(t *Template, d Data, p Params, f FontSet) (Result, error)
+func RenderTo(w io.Writer, t *Template, d Data, p Params, f FontSet) ([]Diagnostic, error)
+```
+
+**Grounding**: **`Result` names what a render *produced*. `RenderTo` does not produce bytes to its
+caller** — it writes them to a writer as a side effect. A `Result` whose `Bytes` is nil on this path is
+**a statement about what happened that is false and unobservable**: nil, empty, and *"the bytes went to
+the writer"* are **indistinguishable at the call site**, and generic code written over `Result` would
+silently receive nothing. That is the field-meaningless-on-one-path trap, and it is a **silent**
+failure. The asymmetry objection is the weaker of the two — the functions already differ in their inputs
+and in what they produce, so an asymmetric return **is consistent with what they are**, and it costs a
+doc comment, which is a **visible** cost. ***Trade a silent trap for a visible difference, always.***
+
+**Rejected**: a distinct narrower type (`type Diagnostics []Diagnostic`) — speculative surface with no
+method it needs today, and it would give the project **two spellings for the same thing**
+(`Result.Diagnostics` and `Diagnostics`), the second-source-of-truth shape. **One element type, one
+spelling.**
+
+**Guardrails** *(binding)*:
+- **The names are unchanged**, so **AD-1's forbidden-import scan** — which matches top-level functions
+  named **exactly** `Render`/`RenderTo` — keeps finding them. **Confirm in the story rather than
+  assuming**; this was the measured hazard that killed the sibling-entry-point option.
+- **The early-return defect is fixed by construction and must be PROVED so.** A `Warning` is not an
+  error, so `RenderTo` now proceeds, writes, and returns the diagnostics — closing the measured
+  breakage where a warning produced **no output at all**. **Red-proof**: a clipping document rendered
+  through `RenderTo` must write **complete bytes** *and* return the warning.
+- **Assert the two entry points agree** — render a clipping document both ways and assert `Render`'s
+  `res.Diagnostics` equals `RenderTo`'s returned slice. **Two producers asserted equal, each catching
+  the other's failure mode**, red-proving the propagation. **Pin one side against a literal expectation
+  as well, so the pair cannot both drift.**
+- **Determinism — a NEW output surface no existing guard covers.** Every determinism guard in this
+  project checks **bytes**, and `Diagnostics` is **not bytes**. Two rules, stated in the doc comment
+  **and** asserted: (1) **order is document order** — band order, then element declaration order within
+  a band, **never map order**; `ScanMapRange` guards the *mechanism* module-wide but **nothing yet
+  states the rule**, so an assertion has nothing to assert against. (2) **Empty is `nil`, one
+  representation** — otherwise two renders of the same document differ under `reflect.DeepEqual` while
+  producing identical bytes, and every downstream test picks its own convention. **This is AD-9's
+  one-canonical-form discipline arriving at the API surface, and it is cheap only if decided now.**
