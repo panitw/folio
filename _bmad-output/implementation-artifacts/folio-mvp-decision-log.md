@@ -7271,3 +7271,104 @@ inspection.
 **Companion to [[D-000.36]]**: that rule says a remedy for a vacuity inherits the vacuity's hazard;
 this one says **check the population before you write the remedy at all.**
 
+---
+
+### D-2.6.1 (amended) — The sliding window; option (A)'s arithmetic is WITHDRAWN
+
+*(mechanism: binding)* — the ruling settled the boundary **invariant** and then adopted option (A)'s
+**arithmetic** by reference **without checking that the two compose.** Under a rigid grid a straddling
+line has **no** window containing it entirely, so the invariant was **unsatisfiable** without a rule
+(A) does not contain. The developer declining to choose between a ruled invariant and a ruled
+arithmetic was correct.
+
+**(A) is dead by measurement, not argument.** Bump the straddler flush to the next window top and
+leave later items alone: line 44 → 0, line 45 → **7,590**, against an Advance of **16,344**. **The two
+lines overlap.**
+
+**(B) violates AD-24 by its own text**, which is stronger than calling it negotiation:
+
+> *"A hidden element is absent from the `PageModel` and leaves no gap; **siblings never move, because
+> nothing in a band ever reflows**."*
+
+Under (B) an absolutely-positioned sibling **with nothing to do with the overflow** moves from
+2,000,000 to 2,008,754. **Siblings move. A band reflows.** That is not an analogy to the clause — it is
+the case the clause describes.
+
+**Ruled: (C), the sliding window.** Window N+1 begins at the **top of the first item that did not fit
+in window N**; page-relative Y is `columnY − windowStart(N)`; **page count falls out of the advance and
+is not a closed-form function of the column height.** Option (A)'s `[N·H, (N+1)·H)`, `columnY − N·H`
+and `ceil(lowestBottom/H)` are **withdrawn** — they were (A)'s, and (A) is eliminated.
+
+**(C) is the only model under which nothing repositions**: every element keeps its declared column
+position and only the **window** moves. It is also the only reading under which every sentence of
+D-2.6.1 is literally true, with no clamp and no synthetic column gap.
+
+**A consequence stated now rather than discovered later:** windows advance to the top of the **first
+unplaced item**, not by a fixed `H`, so **no page is ever empty** — an element far below the text
+starts the next window instead of generating blank pages.
+
+**And the consequence authors must be told** *(binding — goes in `folio-format.md` with the pagination
+clause)*: **across a window boundary, declared vertical gaps collapse.** An element that starts a
+window renders at the top of its page, whatever gap was declared above it. **That is the price of
+never splitting a line and never reflowing a sibling** — a real semantic an author needs before
+designing a report, not a detail to be found in a diff.
+
+**Sub-question (i) — column-wide, and the tension dissolves rather than being traded.** The window is a
+property of the **page**, not of an element. Both pulls are then satisfied at once: *"elements never
+reposition"* (every declared column Y is untouched) and *"a paragraph's leading survives a page break"*
+(the lines keep their column positions, so the gap between line 43 and line 44 is still exactly
+`Advance`; they merely fall in different windows). **They only appeared to conflict under (B), where
+the column is mutated.**
+
+**Sub-question (ii) — a line taller than the content window is in scope, and it is the same FR44 case
+as the oversized image** *(binding)*. It fits in **no** window, so ruling *"never split"* without
+ruling this leaves the implementation to split, loop, or panic. Reachable at `fontSize > H`.
+**Disposition: place it at the top of a page, clip at the window bottom, emit a located diagnostic
+naming the element** — FR44's sanctioned behaviour. **Clipped is not split**: the remainder does not
+reappear on the next page, so the boundary invariant holds. **One overflow rule, two subjects.**
+
+---
+
+### D-000.51 — When you justify a remedy by describing the current state, check the current state
+
+*(mechanism: binding)* — the lead's own standing form, after enough repetitions to earn one.
+
+[[D-2.6.4]] justified pinning `expected_breaks.json` by saying its *"only digest pin is matrix-tagged
+today."* **Measured: the literal occurs at zero sites.** The matrix-tagged test **computes** the digest
+at run time and compares it against a `break-signoff.json` **that does not exist**. **The file was
+pinned nowhere at all.**
+
+**The remedy survived; the justification did not — and only one of those is self-correcting.** A
+remedy that is right for a wrong reason will be re-derived by the next reader from the wrong reason,
+and may then be scoped wrongly or dropped when the stated condition appears not to hold.
+
+**And distinguish two things the same missing file explains**, because conflating them would have hidden
+a real hole behind a working mechanism:
+
+- **`break-signoff.json` absent → the matrix test fails.** That is **not broken**: it is
+  [[D-2.3.5]]'s pending-sign-off blocker **doing its job**, refusing to let the gate pass.
+- **The fixture pinned nowhere → it could be edited with the whole suite green.** That was a **genuine
+  hole**, and it is larger than the ruling described: **the Thai break sign-off's subject could have
+  drifted while the sign-off still read as valid.**
+
+---
+
+### D-000.52 — A structural claim about a guard is worth exactly as much as its demonstration
+
+*(mechanism: binding)*
+
+[[D-000.16]]'s limitation — *a rank order cannot express "no edge to this particular lower package"* —
+was **asserted from the rank rule's shape.** Story 2.6's developer **demonstrated** it: with
+`pdf → layout` in place, **lint's `stage-rank` stayed fully green across all four of its tests while
+the new guard reddened.**
+
+**The hole is measured, not argued.** A claim about what a guard *cannot* see is exactly the kind that
+sounds obvious and is routinely wrong — and it is cheap to demonstrate, because you need only
+introduce the violation and observe which guard stays green.
+
+**Companion note**: the same developer **declined to claim the story's red-proof numbers**, because the
+story never stated **which Latin sentence it repeated** — and measured its own subject instead, citing
+it. That is [[D-000.26]] applied by an agent to a document written for it, and the **second time this
+week** an agent has refused to inherit a number it could not attribute. **Both times the inherited
+figure turned out to be wrong.**
+
