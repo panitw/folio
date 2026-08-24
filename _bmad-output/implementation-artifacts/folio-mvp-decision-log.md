@@ -7125,3 +7125,28 @@ it, which is [[D-1.8.1]]'s entire point. The true count under `folio-go/` outsid
 as already adjudicated. **An exception recorded as pre-existing is still a measurement**, and left
 standing this one would have read as carried risk **R4** being open when the module's design closes
 it.
+---
+
+### D-000.49 — A record that overstates a risk is a defect, not caution
+
+*(mechanism: binding)* — found by Story 2.5a's finisher, in a document written for the Epic 2 gate.
+
+**The instance.** `epic-2-boundary-gate.md` recorded *"compressor imports: **1**, `internal/template/image.go`'s `compress/zlib`"*. **That file imports only `fmt`.** Its single mention of a compressor is a **comment** stating that PNG bytes pass through **without** one. The true count is **0**.
+
+**Why this needed fixing rather than shrugging at.** Left standing it reads as **carried risk R4 being
+open** — a gate document telling a reader that a closed risk is live. The usual failure this project
+hunts is a record that **understates** a problem; this is its mirror, and it is not the safe direction:
+
+- It **spends attention** at the gate on a risk that does not exist.
+- It **erodes the record's authority** — a reader who checks one overstated entry discounts the
+  others, including the true ones.
+- And it **corrupts the count**, which is the artifact downstream guards compare against.
+
+**The rule.** A record's numbers are asserted in **both** directions: a claimed occurrence must be
+**shown to exist**, exactly as a claimed absence must be shown absent. **"Conservative" is not a
+defence for a number that is wrong** — a risk register is a measurement, and [[D-000.26]]'s
+cite-the-subject obligation applies to a claimed hazard as much as to a claimed clean bill.
+
+**The tell that caught it**: the entry named a **file and an import**, so it was checkable — which is
+[[D-000.35]] doing its work in the direction of *falsifying* a claim rather than supporting one.
+
