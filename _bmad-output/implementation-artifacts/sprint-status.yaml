@@ -48,7 +48,7 @@ development_status:
 
   epic-2: backlog
   2-1-thai-break-opportunity-spike: done
-  2-2-the-shipped-font-set-and-its-fallback-chain: backlog
+  2-2-the-shipped-font-set-and-its-fallback-chain: done
   2-3-shape-latin-thai-and-cjk-text: backlog
   2-4-break-and-measure-lines-in-all-three-scripts: backlog
   2-5-compose-a-page-from-three-bands: backlog

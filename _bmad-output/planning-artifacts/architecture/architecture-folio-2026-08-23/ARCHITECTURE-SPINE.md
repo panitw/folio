@@ -200,7 +200,11 @@ graph TD
   content-derived value — the first 16 bytes of a SHA-256 over the serialized body up to the
   point `/ID` is written, with both array entries identical. `/CreationDate` and `/ModDate` are
   **omitted** unless a date arrives through `params`. Font subset tags are the six letters
-  `A`–`Z` derived from a hash of the sorted glyph-id set, which ISO 32000-1 §9.6.4 permits.
+  `A`–`Z` derived from a hash of the embedded font program's own bytes — the value
+  `subset.Subset()` returns, in full — which ISO 32000-1 §9.6.4 permits and, unlike a hash
+  of the sorted glyph-id set alone, discriminates two pinned instances of one variable
+  face that share a glyph-id set but differ in outline data (Story 2.2, D-2.2.2
+  superseded).
   The library core never reads an environment variable; `cmd/folio` reads `SOURCE_DATE_EPOCH`
   and passes it in as a parameter like any other caller would.
 
@@ -218,7 +222,7 @@ graph TD
   never a host font query. A template names a family plus an **ordered fallback chain**; the
   chain is part of the `FontSet`'s identity, so the same template with a different chain is a
   different render, not a silent substitution. A glyph covered by no font in the chain is a
-  diagnostic (AD-15) with the element id and the offending rune, never a blank box.
+  diagnostic (AD-14) with the element id and the offending rune, never a blank box.
 
 ### AD-9 — `.folio` has one canonical byte form
 
@@ -622,6 +626,15 @@ folio/                                # github.com/panitw/folio — monorepo
                                       #   amended). Deliberately outside folio-go so AD-1 and the
                                       #   float64 AST guard exclude the probe by construction
                                       #   (D-000.6, Story 1.2)
+  tools/fontgen/                      # Python: derives the shipped STATIC faces from their upstream
+                                      #   VARIABLE builds, ahead of the build. Its OUTPUT is
+                                      #   committed under folio-go/fonts/ — generating at build time
+                                      #   would make the shipped font a function of the build
+                                      #   environment, which is AD-22's drift class at the asset
+                                      #   layer. Python and not Go so lint's
+                                      #   absence-source-date-epoch content check, which keys on that
+                                      #   literal in .go files under folio-go/, does not fire on
+                                      #   legitimate work (D-2.2.4, D-000.6, Story 2.2)
   lint/                               # module github.com/panitw/folio/lint — the AD-1 import/
                                       #   math-selector lint, the map-iteration check, and the
                                       #   AD-26 licence check + manifest. A standalone module so

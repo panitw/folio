@@ -511,6 +511,58 @@ func captureImageRender(t *testing.T, target matrixTarget, binPath string) []byt
 	return runOnTarget(t, target, binPath, map[string]string{subprocessImageEnvVar: "1"})
 }
 
+// captureMultiScriptRender runs binPath with
+// FOLIO_SUBPROCESS_RENDER_MULTISCRIPT=1 — Story 2.2's AC8 FOURTH
+// selector (D-1.8.6, joining the three above, replacing none): rendering
+// the multi-script fallback-chain document (fixtures/multi-script-
+// fallback/) through the public Render path, against the real shipped
+// face set.
+func captureMultiScriptRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessMultiScriptEnvVar: "1"})
+}
+
+// requireInstancedShippedFaces is AC8's OWN feature guard (V6): asserts
+// that raw (a captured multi-script leg) contains exactly the three
+// shipped faces' embedded programs, and that EACH ONE is genuinely
+// INSTANCED — carries no fvar/gvar/avar table — never merely "contains
+// a FontFile2" (which requireFontFile2 alone would accept even from an
+// un-instanced, still-variable embedding, proving nothing about AC7's
+// actual hazard).
+func requireInstancedShippedFaces(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	programs := extractAllFontFile2Programs(t, raw)
+	if len(programs) != len(shippedFaceSpecs) {
+		t.Fatalf(
+			"target %s: multi-script fixture must embed exactly %d FontFile2 programs (one per shipped face "+
+				"actually used), got %d (AC8 vacuity guard)",
+			target.name, len(shippedFaceSpecs), len(programs),
+		)
+	}
+
+	// D-000.22's semantic acceptance step, run on EVERY target rather
+	// than only where the golden was recorded. It asserts the tables
+	// (static, glyf, no CFF2) AND OS/2.usWeightClass == 400, each behind
+	// a presence precondition.
+	//
+	// The weight half is the one that matters here and it is new. The
+	// previous guard checked only that `fvar`/`gvar`/`avar` were absent,
+	// which the Thin CJK program satisfied perfectly: it WAS genuinely
+	// instanced, to a default weight of 100. Four targets then agreed on
+	// it, byte for byte, and every one of them was right about the
+	// question it was asked (D-000.21).
+	assertEmbeddedProgramsAreStaticRegular(t, "target "+target.name, programs, 400)
+
+	// And the PDF-level name, which is what a reader or a validator sees:
+	// one six-letter subset tag, one '+', then the embedded program's own
+	// PostScript name (ISO 32000-1 §9.6.4 + Table 117).
+	wantPS := map[string]bool{}
+	for _, spec := range shippedFaceSpecs {
+		wantPS[spec.PostScriptName] = true
+	}
+	assertBaseFontNames(t, "target "+target.name, raw, wantPS)
+}
+
 // checkFixtureShape, loadExpectedFixture and TestFixtureShapeCheckRedProof
 // (DW-1's AC6/RP-4 closure) moved to the untagged fixture_test.go (Blocker
 // 3, this story's QA review): this file carries the "matrix" build tag, so
@@ -552,6 +604,12 @@ type matrixDocument struct {
 	fixtureRelPath      []string
 	requireFontFile2    bool
 	requireImageXObject bool // AC23 (D-1.8.6): applied per document, on the same basis as requireFontFile2
+	// extraGuard is Story 2.2's (AC8) generalization: a document-specific
+	// feature guard beyond requireFontFile2/requireImageXObject, run on
+	// EVERY captured leg before any byte comparison — the same shape,
+	// widened because "contains a FontFile2" is not sufficient to prove
+	// AC7's instancing hazard was actually exercised (V6).
+	extraGuard func(t *testing.T, target matrixTarget, raw []byte)
 }
 
 var matrixDocuments = []matrixDocument{
@@ -575,6 +633,14 @@ var matrixDocuments = []matrixDocument{
 		capture:             captureImageRender,
 		fixtureRelPath:      []string{"fixtures", "image-embed", "expected.json"},
 		requireImageXObject: true,
+	},
+	{
+		label:            "multi-script-fallback (shipped faces, fallback chain)",
+		slug:             "multi-script-fallback",
+		capture:          captureMultiScriptRender,
+		fixtureRelPath:   []string{"fixtures", "multi-script-fallback", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireInstancedShippedFaces,
 	},
 }
 
@@ -640,6 +706,9 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 					"target %s (%s): rendered output does not contain an image XObject (AC23 vacuity guard)",
 					target.name, doc.label,
 				)
+			}
+			if doc.extraGuard != nil {
+				doc.extraGuard(t, target, raw)
 			}
 
 			sum := sha256.Sum256(raw)
@@ -815,6 +884,9 @@ func TestTargetRenderHash(t *testing.T) {
 				"target %s (%s): rendered output does not contain an image XObject (AC23 vacuity guard)",
 				target.name, doc.label,
 			)
+		}
+		if doc.extraGuard != nil {
+			doc.extraGuard(t, target, raw)
 		}
 
 		sum := sha256.Sum256(raw)

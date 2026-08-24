@@ -76,3 +76,10 @@ tmp/
 
 # ── BMAD (personal, installer-managed) ────────────────────────────
 _bmad/config.user.toml
+
+# Upstream VARIABLE font builds, fetched only to replay the shipped
+# faces' derivation (`make fonts` / `make fonts-verify`, D-2.2.4). They
+# are inputs, not artifacts: ~20 MB of sources for the ~11 MB of static
+# faces that actually ship and ARE committed. Each face's NOTICE.md
+# records the release URL and the sha256 to fetch them by.
+/.font-sources/

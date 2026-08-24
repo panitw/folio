@@ -65,6 +65,12 @@ func (f Family) String() string {
 var permissiveSPDX = map[string]bool{
 	"MIT": true, "Apache-2.0": true, "BSD-2-Clause": true, "BSD-3-Clause": true,
 	"ISC": true, "0BSD": true, "Unlicense": true, "CC0-1.0": true,
+	// OFL-1.1 joined this list at Story 2.2 (AC2, AD-26), the first
+	// story to introduce an OFL-licensed asset (the three shipped Noto
+	// faces) — measured, "OFL" appeared nowhere in the lint module
+	// before this, and its full legal code was misclassified as "MIT"
+	// (see ClassifyLicenceText) until this story's fix.
+	"OFL-1.1": true,
 }
 
 var copyleftSPDXPrefixes = []string{"GPL-", "LGPL-", "AGPL-", "SSPL-"}
@@ -96,6 +102,32 @@ func ClassifyLicenceText(text string) (Family, string) {
 		return FamilyCopyleft, "LGPL-3.0"
 	case strings.Contains(upper, "GNU GENERAL PUBLIC LICENSE"):
 		return FamilyCopyleft, "GPL-3.0"
+	case strings.Contains(upper, "SIL OPEN FONT LICENSE") && strings.Contains(upper, "VERSION 1.1"):
+		// Story 2.2 (AC2, AD-26): measured, real misclassification this
+		// story is the first to exercise — the OFL 1.1 full legal code's
+		// own grant clause opens "Permission is hereby granted, free of
+		// charge, to any person obtaining a copy of the Font Software...",
+		// the same MIT-detection substring the case below matches on,
+		// so every one of this story's three OFL-licensed faces was
+		// classified as "MIT" until this case was added ABOVE the MIT
+		// check. "SIL OPEN FONT LICENSE" is the licence's own name,
+		// appearing at the top of the committed OFL.txt text, and is not
+		// a substring of the MIT, Apache, or BSD legal codes.
+		//
+		// "VERSION 1.1" is a REQUIRED conjunct, not decoration. Without
+		// it this branch returned the SPDX id "OFL-1.1" for any text
+		// containing the licence's name — including OFL **1.0**, whose
+		// text carries the identical phrase, and including any
+		// dependency LICENSE that merely bundles OFL text alongside its
+		// own. The family verdict is permissive either way, so the
+		// copyleft gate was never at risk; the LABEL was wrong, and the
+		// label is what lands in lint/MANIFEST.md and attributes the
+		// asset. The committed OFL text contains "Version 1.1" in its
+		// own title line, so the conjunct costs nothing to satisfy and
+		// makes a 1.0 file classify as FamilyUnknown — which D-1.3.4
+		// deliberately makes a LOUD build failure rather than a quiet
+		// mislabel. The CC0 marker below pins its version the same way.
+		return FamilyPermissive, "OFL-1.1"
 	case strings.Contains(upper, "MIT LICENSE") || strings.Contains(upper, "PERMISSION IS HEREBY GRANTED, FREE OF CHARGE"):
 		return FamilyPermissive, "MIT"
 	case strings.Contains(upper, "APACHE LICENSE"):

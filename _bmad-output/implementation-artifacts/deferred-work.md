@@ -73,6 +73,19 @@ landing either breaks the build until the manifest covers it.
 **Confidence on the owner:** medium. If Epic 5's shape shifts, the owner moves with whichever story
 first creates the lockfile.
 
+**Fonts half retired (Story 2.2, AC5).** Story 2.2 shipped the three production faces at
+`folio-go/fonts/` (Noto Sans, Noto Sans Thai, Noto Sans SC — AC1, AC9), each with its OFL-1.1
+`LICENSE-OFL.txt` and `NOTICE.md`, so the `absence-fonts-dir` tripwire's job is done: it fired the
+day the directory landed, exactly as designed. It has been **removed** from
+`lint/internal/rules/absences.go`'s `absenceChecks` and replaced by a fail-closed guard with the
+opposite polarity — `ScanFontsAssets` (`lint/internal/rules/fontsassets.go`, rule ids
+`fonts-asset-unaccounted` / `fonts-asset-missing`), which now REQUIRES `folio-go/fonts/` to exist
+and to hold only recognised shapes (a font file, a `LICENSE*`/`NOTICE*` pair, or a `.go` source
+file), red-proved both ways (a stray file at the real location, and — via
+`lint/internal/manifest.ResolveAssets`, AC25 — a missing `NOTICE*` file). **The JS/lockfile half of
+this entry is unaffected and remains open, owned by Story 5.1** — only the fonts half is retired
+here; DW-2 as a whole is not closed.
+
 **Correction (Finding 8, this story's QA review, Major).** The three absence checks originally keyed
 on exact guessed filenames (`folio-designer/package-lock.json`, `folio-go/fonts/OFL.txt`,
 `folio-designer/third-party-notices/pdfjs-dist/NOTICE`) — a `pnpm-lock.yaml` or an `OFL-1.1.txt`
@@ -162,9 +175,24 @@ Story 1.4 builds neither; nothing renders a table until Story 4.5.
 **How we'd know it was forgotten.** A second `Decimal` type anywhere in the module, or a dotted-path
 matcher surviving alongside the expression parser after 3.2.
 
-### DW-9 — Re-test AC4's "nothing ceremonial" claim once a shipped font set exists
+### DW-9 — Re-test AC4's "nothing ceremonial" claim once a shipped font set exists — **RETIRED at Story 2.2**
 - **Deferred by:** Story 1.7 (ruling D-1.7.1)
 - **Owner:** **Story 2.2** — "The shipped font set and its fallback chain"
+- **Retired:** the re-test ran. `folio-go/example_test.go` carries a compiled, EXECUTED
+  `func Example()` (`go test -run Example` passes with its `// Output:` comment), rewritten against
+  the shipped set: `folio.LoadTemplate`, then `fonts.Shipped()` — the `FontSet` obtained in ONE
+  expression taking NO arguments — then `folio.Render`. `folio-go/README.md`'s "Your first PDF"
+  section now shows this Example verbatim — and "verbatim" is mechanically checked, not asserted:
+  `TestREADMEExampleBlockMatchesSource` byte-compares the fenced block against `example_test.go`,
+  after the two were found to have drifted (the README kept the dead `err == nil &&` conjunct that
+  the .go file had genuinely dropped). The "this step is ceremony Story 2.2 REMOVES" comment is
+  removed (it is no longer true), and a new subsection explains why `folio`/`folio/fonts` stay two
+  separate imports: a root re-export would embed **~11.3 MB raw** into every caller's binary,
+  including the wasm build. *(That figure was `~9 MB` here and in the README until Story 2.2's
+  finisher — `go:embed` stores RAW bytes, so the binary-size argument takes the uncompressed
+  measurement; ~9 MB is NFR7's COMPRESSED download budget, against which the shipped faces measure
+  5.07 MB at `brotli -q 11`.) **Verdict: the claim held — the re-test did not surface a
+  `DECISION NEEDED`.**
 
 Story 1.7's AC4 requires that producing a first PDF takes *"a load call and a render call, and nothing
 ceremonial"*, and D-1.1.c named the README as the test of whether five positional arguments read as
@@ -217,9 +245,10 @@ injection at the real repo location (a scratch reference added under `folio-go/`
 (`folio-go/testdata/lint/absences/violating/folio-go/internal/paramsdate/placeholder.go`, replacing
 the old `.../folio-go/cmd/placeholder.go`). The coverage witness (`AbsencesStats.ChecksEvaluated`)
 was verified to still count this row: it increments once per entry in `absenceChecks` regardless of
-which check kind that entry is, and `TestAbsencesChecksIncludeAllFiveEntries` still pins five rule ids
+which check kind that entry is, and `TestAbsencesChecksIncludeAllFourEntries` still pins the rule ids
 by name (now including `absence-source-date-epoch`), so a silently shrunk list still fails loudly
-either way.
+either way. *(Renamed and reduced from five to four by Story 2.2, which retired `absence-fonts-dir`
+when it shipped the faces that tripwire existed to force — see DW-2.)*
 
 **The general rule this produced** (recorded in Story 2.1's Dev Notes too): key a guard on its
 purpose, not on a proxy for its purpose. Where the key is broader than the purpose, the gap is where
@@ -305,3 +334,81 @@ gap.** That measured fact is now available to whoever specifies S4's adequacy cr
 
 **How we'd know it was forgotten.** S4 still carrying only 2 genuinely-uncoverable, independently-attested
 opaque items when Epic 4's golden report ships.
+
+### DW-12 — Every later pinned instance inherits AC7's golden + matrix obligation
+- **Deferred by:** Story 2.2 (ruling D-2.2.1)
+- **Owner:** **whichever story next adds a pinned instance of a shipped variable face** (on current
+  planning, a candidate is Bold — a `wght`-axis instance — should it arrive; not committed to any
+  numbered story here)
+
+Story 2.2 ships exactly one pinned instance per shipped face — each face's DEFAULT instance (Bold
+and other non-default named instances are explicitly out of this story's scope). D-2.2.1's binding
+standing condition: **value-dependence is the whole hazard** — a clean four-target result on one
+(face, pinned instance) pair says nothing about a different pair of the SAME face, because
+instancing arithmetic (gvar/avar interpolation) is value-dependent (D-2.2.0's own measured limits).
+
+**So:** any later story that adds a NEW pinned instance of a face already shipped (e.g. a Bold
+weight) must (a) add its own golden — the embedded, instanced program's own digest, the same shape
+`folio-go/fixture_test.go`'s `TestMultiScriptFallbackGoldenFixture` already records for Story 2.2's
+three default instances — and (b) re-run the full four-target matrix in that story, not defer it to
+an epic boundary. This is a standing obligation this story registers so a later reader does not have
+to rediscover why (D-000.4's per-story override list already gets amended each time a story is
+identified as one; this is the reasoning that identifies the NEXT one before it is drafted).
+
+**How we'd know it was forgotten.** A story ships a new pinned instance of an existing shipped face
+with no new golden recorded for it, and no four-target matrix re-run logged in its Delivery Log.
+
+---
+
+### DW-13 — Size the uncompressed-`FontFile2` payload cost against real CJK content, then put it to the owner
+
+**Owner:** orchestrator to schedule the sizing; **the adoption decision is the project owner's.**
+**Raised at:** Story 2.2, while verifying the embedded programs' table sets.
+
+**The observation.** Folio's `FontFile2` streams ship **uncompressed** — `/Length` equals `/Length1`,
+no `/Filter` — while the project uses `/FlateDecode` with `/Predictor 15` elsewhere.
+
+**It is deliberate and mechanically enforced, not drift.** `lint/internal/rules/nocompressor.go`
+(`no-compressor-import`) forbids any file under `folio-go/` importing `compress/flate`,
+`compress/zlib` or `compress/gzip`, with a retained violating fixture at
+`testdata/lint/no-compressor/violating-compressor/bad.go`. Per D-1.8.1, *"no compressor is invoked"*
+is **the mechanism that keeps R4 closed** — `acceptance.md:83`: *"compressor output is stable by
+observation, not by contract."* The image route embeds each file's **own already-compressed bytes**;
+it never invokes a compressor. **Compressing font streams is therefore impossible without retiring or
+narrowing a guard that has been proved to fire.** Nothing to change in Story 2.2; its report cites the
+rule id and D-1.8.1 and stops.
+
+**Why it still deserves sizing.** The fixtures hide the magnitude — the CJK subset is **732 bytes** —
+and that is exactly why the question read as invisible. Rough bound: the static CJK face is 10.6 MB
+over ~20k glyphs, so roughly 300–800 bytes of `glyf` per character; a Chinese bank statement plausibly
+uses 300–800 distinct characters, giving **~150–400 KB embedded per PDF**, against which Flate on
+`glyf` typically saves about half. **Honest expectation: tens to low-hundreds of KB per document —
+real, bounded, and quite possibly not worth its cost.** Measuring may well return "leave it", which is
+a good outcome and cheap to reach.
+
+**Two constraints to settle before anyone proposes a clever middle path:**
+
+1. **The image passthrough precedent does not extend here.** Images work because the file arrives
+   already compressed and we embed its own bytes. A font subset is **synthesised at render time**, so
+   there are no pre-existing compressed bytes to pass through — and WOFF2 is not available, since
+   `FontFile2` requires raw TTF. **Along that axis the choice is binary:** invoke a compressor or do
+   not. There is no third way, and someone will propose one.
+2. **There is a genuine third option on a different axis** — a **vendored, version-pinned DEFLATE
+   implementation** instead of `compress/flate`. That converts R4 from *"we cannot control the
+   compressor"* into *"we pin the compressor exactly as we pin the toolchain"*, which is
+   philosophically identical to AD-22's move and arguably **more** stable than stdlib, whose flate has
+   been tuned across releases while a pinned vendored copy would not be. Costs: a new dependency
+   through AD-26's licence check and D-1.5.1's allowlist, plus narrowing the guard to permit exactly
+   that one import — which keeps the decision **visible** rather than dissolving it.
+
+**Framing for the owner, not to be over-stated:** adopting compression **widens** R4 rather than
+creating a new risk. Golden hashes are *already* toolchain-sensitive — AD-22 makes a toolchain bump a
+release event requiring re-measurement. Compression makes **more** of the output sensitive, and
+sensitive to a component historically tuned across releases. That is a difference of **degree**, and
+the owner should weigh it as one.
+
+**Also do, cheaply and now:** state the **consequence** beside `acceptance.md:83`'s R4 note — *font
+programs and content streams ship uncompressed, so Folio's PDFs are deliberately larger than a typical
+producer's.* The document already records the **reason**; what is missing is what follows from it,
+which is the sentence someone will otherwise re-derive — or "fix".
+

@@ -407,6 +407,30 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 		t.Fatal("font-text golden fixture render does not contain a FontFile2 — the fixture would certify nothing (AC10b)")
 	}
 
+	// Story 2.2 (AC6/AC6a, D-2.2.2 (superseded)): the six-letter subset
+	// tag re-derivation moved this fixture's whole-document hash (the
+	// tag changed at its three sites, and the content-derived /ID moved
+	// as a consequence — see fixtures/font-text/README.md's "Re-recorded
+	// at Story 2.2" section for the measured, tag-only delta). AC8's
+	// original "bytes unchanged" clause is corrected by this same
+	// commit into a narrower, still-meaningful one: the EMBEDDED FONT
+	// PROGRAM itself — independent of its tag, and independent of the
+	// PDF's other content-derived bytes — must still be byte-identical.
+	// Pinning this constant is what makes a FUTURE change that moves
+	// the program (not just the tag) distinguishable from one that
+	// doesn't, which the whole-document hash alone cannot tell apart.
+	const wantFontTextProgramSHA256 = "2ef52cca3f6bdb76de8cf5a4c73ca3f7e0f9154bb7bb0b1122425127419db4de"
+	programSum := sha256.Sum256(extractFontFile2Program(t, b))
+	if gotProgram := hex.EncodeToString(programSum[:]); gotProgram != wantFontTextProgramSHA256 {
+		t.Fatalf(
+			"font-text's embedded FontFile2 PROGRAM bytes changed: got sha256 %s, want %s — "+
+				"this is the assertion that replaced AC8's original whole-fixture \"bytes unchanged\" "+
+				"clause (Story 2.2): the program itself must stay stable even though the fixture's "+
+				"whole-document hash was deliberately re-recorded for the tag-derivation change",
+			gotProgram, wantFontTextProgramSHA256,
+		)
+	}
+
 	expectedPDFPath := filepath.Join(root, "fixtures", "font-text", "expected.pdf")
 	expectedPDFBytes, err := os.ReadFile(expectedPDFPath)
 	if err != nil {
@@ -540,6 +564,190 @@ func TestRenderMatchesImageEmbedGoldenFixture(t *testing.T) {
 			"golden fixture mismatch: got sha256 %s, want %s (fixtures/image-embed). "+
 				"Under AD-21/AD-22 this is a defect until proven to be an intended, "+
 				"versioned change — see fixtures/image-embed/README.md.",
+			gotHex, fixture.SHA256,
+		)
+	}
+}
+
+// TestMultiScriptFallbackGoldenFixture is Story 2.2's AC8 fourth
+// fixture: renders multiScriptTestTemplateJSON (fixtures/multi-script-
+// fallback/input.folio) through the public Render path against the
+// REAL shipped face set, and compares against the recorded golden —
+// the same shape TestRenderMatchesFontTextGoldenFixture already
+// established for font-text, extended with AC7's per-(face,pinned-
+// instance) program digests (V7): the whole-document hash proves the
+// DOCUMENT is stable; the three per-face digests below prove each
+// enumerated PAIR individually is, which is what "a golden for EVERY
+// (face, pinned instance) pair — not one sample" asks for.
+func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
+	root := repoRootFromTest(t)
+	fixturePath := filepath.Join(root, "fixtures", "multi-script-fallback", "expected.json")
+
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var fixture expectedFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("parse fixture JSON: %v", err)
+	}
+	if fixture.FolioGoVersion == "" {
+		t.Fatal("fixture is missing folioGoVersion")
+	}
+	if fixture.GoToolchain == "" {
+		t.Fatal("fixture is missing goToolchain (RP-8: this must fail before the hash comparison runs)")
+	}
+	if fixture.SHA256 == "" {
+		t.Fatal("fixture is missing sha256")
+	}
+	if !isSHA256HexString(fixture.SHA256) {
+		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
+	}
+
+	inputFolioPath := filepath.Join(root, "fixtures", "multi-script-fallback", "input.folio")
+	inputFolioBytes, err := os.ReadFile(inputFolioPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", inputFolioPath, err)
+	}
+	if string(inputFolioBytes) != multiScriptTestTemplateJSON {
+		t.Fatalf(
+			"%s has drifted from folio-go/multiScriptTestTemplateJSON (render_test.go) — the two are "+
+				"supposed to be byte-identical (kept in sync by hand, per font-text's precedent)",
+			inputFolioPath,
+		)
+	}
+
+	tpl, err := ParseTemplate([]byte(multiScriptTestTemplateJSON))
+	if err != nil {
+		t.Fatalf("parse template: %v", err)
+	}
+	b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("Render() error: %v", err)
+	}
+	assertWellFormedPDF(t, "multi-script-fallback golden fixture render", b)
+
+	if !containsFontFile2(b) {
+		t.Fatal("multi-script-fallback golden fixture render does not contain a FontFile2 — the fixture would certify nothing (AC10b)")
+	}
+	programs := extractAllFontFile2Programs(t, b)
+	if len(programs) != len(shippedFaceSpecs) {
+		t.Fatalf(
+			"expected exactly %d embedded FontFile2 programs (one per shipped face actually used), got %d",
+			len(shippedFaceSpecs), len(programs),
+		)
+	}
+
+	// D-000.22's semantic acceptance step, on the EMBEDDED programs:
+	// static, glyf, and Regular. This is the assertion whose absence let
+	// Story 2.2 record a golden with Simplified Chinese at
+	// usWeightClass=100 while four-target byte-identity, the program
+	// digest and the missing-glyph diagnostic all reported success.
+	assertEmbeddedProgramsAreStaticRegular(t, "multi-script-fallback golden", programs, 400)
+
+	// ...and on the produced PDF: /BaseFont must carry the embedded
+	// program's own PostScript name behind exactly one six-letter tag
+	// (ISO 32000-1 Table 117), not the FontSet key.
+	wantPS := map[string]bool{}
+	for _, spec := range shippedFaceSpecs {
+		wantPS[spec.PostScriptName] = true
+	}
+	assertBaseFontNames(t, "multi-script-fallback golden", b, wantPS)
+
+	// V5a's exclusivity half: every occurrence of each subset tag in
+	// the whole PDF must sit in a name position.
+	assertSubsetTagsAppearOnlyInNames(t, "multi-script-fallback golden", b)
+
+	// AC7's per-(face, instance) goldens (V7): one per shipped face.
+	// Object-number order in the rendered PDF is Noto Sans, Noto Sans
+	// SC, Noto Sans Thai (measured, matches alphabetical face-name
+	// sort — render.go's faceNames := slices.Sorted(maps.Keys(...))).
+	//
+	// RE-RECORDED by Story 2.2's finisher, and this is a versioned
+	// change under AD-22, not a drift. The shipped faces are no longer
+	// the upstream VARIABLE builds instanced at render time to their axis
+	// defaults; they are static Regular instances derived ahead of the
+	// build (D-2.2.4). The old Noto Sans SC program here recorded
+	// OS/2.usWeightClass = 100 — Thin — because that face's `wght` axis
+	// defaults to 100 and "pin every axis to its default" faithfully
+	// produced it. Every guard agreed the artifact was correct; none was
+	// asked whether the value meant what its name implied (D-000.21).
+	// assertEmbeddedProgramsAreStaticRegular above is the assertion that
+	// was missing, and it now runs before these hashes are compared.
+	wantProgramSHA256 := []string{
+		"51620d3ae7f511c3b537439f40737d277907c44b0b2cc9d643529daffcd9ccd6", // Noto Sans
+		"4a2c1e286e0628124e90931afd0b017f16eea3fd38b5c9ff978d3d82315a495d", // Noto Sans SC
+		"beca96084cf1277a6b234727a373c66f8fbc2671a189cf6cea387e7b17702a28", // Noto Sans Thai
+	}
+	faceLabels := []string{"Noto Sans", "Noto Sans SC", "Noto Sans Thai"}
+
+	// V7's guard, REBUILT. It previously read
+	//
+	//     if len(wantProgramSHA256) != 3 { ... }
+	//
+	// which compares a slice literal's length to a hard-coded 3
+	// declared six lines above it. That cannot detect the hazard V7 is
+	// named for, and was red-proved open: adding a fourth face to
+	// fonts.Shipped() left the whole root package green, with four
+	// shipped (face, instance) pairs against three goldens.
+	//
+	// The count is now asserted against the ENUMERATION rather than
+	// narrated beside it (D-000.14). testShippedFontSet() is chained to
+	// fonts.Shipped() by TestShippedSpecCoversEverythingShipped and
+	// TestFontsShippedMatchesExpectedFaceSet, so a face added to the
+	// shipped set and nowhere else now fails HERE.
+	if len(wantProgramSHA256) != len(shippedFaceSpecs) {
+		t.Fatalf(
+			"AC7/V7: %d per-instance goldens are recorded, but %d (face, pinned instance) pairs ship. "+
+				"The matrix would be monitoring a subset of the risk surface and reporting green over the "+
+				"uncovered ones — D-2.2.1's exact hazard.",
+			len(wantProgramSHA256), len(shippedFaceSpecs),
+		)
+	}
+	if len(faceLabels) != len(wantProgramSHA256) {
+		t.Fatalf("test bug: %d face labels for %d goldens", len(faceLabels), len(wantProgramSHA256))
+	}
+	for i, prog := range programs {
+		sum := sha256.Sum256(prog)
+		got := hex.EncodeToString(sum[:])
+		if got != wantProgramSHA256[i] {
+			t.Fatalf(
+				"%s's embedded, instanced program changed: got sha256 %s, want %s (AC7 per-instance golden). "+
+					"Under AD-21/AD-22 this is a defect until proven to be an intended, versioned change.",
+				faceLabels[i], got, wantProgramSHA256[i],
+			)
+		}
+	}
+
+	expectedPDFPath := filepath.Join(root, "fixtures", "multi-script-fallback", "expected.pdf")
+	if expectedPDFBytes, err := os.ReadFile(expectedPDFPath); err == nil {
+		expectedPDFSum := sha256.Sum256(expectedPDFBytes)
+		expectedPDFHex := hex.EncodeToString(expectedPDFSum[:])
+		if expectedPDFHex != fixture.SHA256 {
+			t.Fatalf(
+				"fixtures/multi-script-fallback/expected.pdf's own sha256 (%s) does not match "+
+					"expected.json's recorded sha256 (%s) — the fixture's two halves have drifted apart",
+				expectedPDFHex, fixture.SHA256,
+			)
+		}
+	}
+
+	if runtime.Version() != fixture.GoToolchain {
+		t.Fatalf(
+			"toolchain mismatch: running under %s, fixture was recorded under %s. "+
+				"A Go toolchain bump is a versioned breaking change under AD-22 — "+
+				"the golden hash must be re-measured deliberately (C6).",
+			runtime.Version(), fixture.GoToolchain,
+		)
+	}
+
+	sum := sha256.Sum256(b)
+	gotHex := hex.EncodeToString(sum[:])
+	if gotHex != fixture.SHA256 {
+		t.Fatalf(
+			"golden fixture mismatch: got sha256 %s, want %s (fixtures/multi-script-fallback). "+
+				"Under AD-21/AD-22 this is a defect until proven to be an intended, "+
+				"versioned change — see fixtures/multi-script-fallback/README.md.",
 			gotHex, fixture.SHA256,
 		)
 	}

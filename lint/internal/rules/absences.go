@@ -54,36 +54,35 @@ type absenceCheck struct {
 }
 
 // absenceChecks names the artifacts DW-2 defers, each with its owning
-// story (deferred-work.md). Both are keyed on a DIRECTORY, not a guessed
-// filename (Finding 8, this story's QA review — a Major, proved by
-// construction): the original checks matched exactly
-// "folio-designer/package-lock.json" and "folio-go/fonts/OFL.txt",
-// which a pnpm-lock.yaml, a yarn.lock, or an OFL-1.1.txt would each pass
-// straight through with zero findings — D-1.3.4's own rejected hazard
-// ("the guard reports success precisely when it stops covering
-// anything") arriving through a side door the exact filename never
-// anticipated. folio-designer/ absent catches ANY artifact landing
-// under it — including the package-lock.json shape and the
-// third-party-notices/pdfjs-dist/NOTICE shape the original third check
-// existed for separately; both live inside folio-designer/, so the
+// story (deferred-work.md). Keyed on a DIRECTORY, not a guessed filename
+// (Finding 8, this story's QA review — a Major, proved by
+// construction): the original check matched exactly
+// "folio-designer/package-lock.json", which a pnpm-lock.yaml or a
+// yarn.lock would have passed straight through with zero findings —
+// D-1.3.4's own rejected hazard ("the guard reports success precisely
+// when it stops covering anything") arriving through a side door the
+// exact filename never anticipated. folio-designer/ absent catches ANY
+// artifact landing under it — including the package-lock.json shape and
+// the third-party-notices/pdfjs-dist/NOTICE shape a separate check
+// originally existed for; both live inside folio-designer/, so the
 // directory-level check is strictly broader, not narrower, than the two
-// checks it replaces. folio-go/fonts/ absent is the same move for the
-// OFL licence text: Story 2.2 cannot ship a single face without
-// creating that directory first.
+// checks it replaces.
+//
+// Story 2.2 (AC5) removed this list's other original entry,
+// "absence-fonts-dir" (folio-go/fonts/ required to be ABSENT): Story 2.2
+// shipped faces there, so that tripwire's job is done, and it is
+// replaced by ScanFontsAssets (fontsassets.go) — a fail-closed guard
+// with the OPPOSITE polarity, requiring folio-go/fonts/ to exist and
+// hold only recognised shapes, now that it is expected to be present.
 //
 // The exact real-world path each future story lands its artifacts at
 // beneath these directories is that story's own call; this guard's job
-// is only to fail loudly the day either directory appears at all.
+// is only to fail loudly the day the directory appears at all.
 var absenceChecks = []absenceCheck{
 	{
 		relPath: "folio-designer",
 		rule:    "absence-designer-project",
 		desc:    "folio-designer/ must be absent until Story 5.1 creates the project and wires the JS licence half (DW-2)",
-	},
-	{
-		relPath: "folio-go/fonts",
-		rule:    "absence-fonts-dir",
-		desc:    "folio-go/fonts/ must be absent until Story 2.2 ships faces and wires the OFL 1.1 licence text (DW-2)",
 	},
 	// The two entries below are Story 1.4's tripwires (AC48, AC49,
 	// D-1.4.2), added AFTER AC50/D-1.4.11 closed ScanAbsences' own

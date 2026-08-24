@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/boxesandglue/textshape/ot"
+	"github.com/boxesandglue/textshape/subset"
 )
 
 // testFontPath is Story 1.5's one small Latin test face (AC26), committed
@@ -316,12 +317,17 @@ func TestDeriveTagUsesClosureSetNotOutputNumbering(t *testing.T) {
 // calls deriveTag internally) on the same two same-size, different-
 // content sets AC7b uses, and separately reproduces what the REJECTED
 // output-numbering derivation would have produced over the identical
-// NumGlyphs. The two computations are then compared against each
-// other: the rejected derivation MUST collide (it is a pure function of
-// count alone, by construction of createCompactMapping's always-dense
+// NumGlyphs, using a LOCAL, self-contained re-implementation of that
+// rejected fold (Story 2.2 removed production's own GID-folding helper,
+// fnv64aOverGIDs, when AC6/D-2.2.2 (superseded) moved deriveTag onto the
+// returned program bytes — this test still needs the OLD algorithm to
+// prove production no longer behaves like it, so it carries its own
+// copy rather than reaching into production internals that no longer
+// exist). The rejected derivation MUST collide (it is a pure function
+// of count alone, by construction of createCompactMapping's always-dense
 // {0..n-1} output numbering), and the real, shipped tags MUST NOT — so
-// this test fails the moment deriveTag's call site is swapped for the
-// rejected derivation, exactly the mutation the reviewer used.
+// this test fails the moment deriveTag's call site is swapped back to
+// EITHER the old glyph-set reading or the rejected output-numbering one.
 func TestDeriveTagRedProofAgainstOutputNumbering(t *testing.T) {
 	f, err := New("roboto", testFontBytes(t))
 	if err != nil {
@@ -344,18 +350,25 @@ func TestDeriveTagRedProofAgainstOutputNumbering(t *testing.T) {
 	}
 
 	// rejectedTag reproduces the REJECTED output-numbering derivation
-	// directly: a hash over {0..numGlyphs-1}, using the SAME digest/tag
-	// folding as production's fnv64aOverGIDs + deriveTag, so the only
-	// variable is which glyph-id set is hashed.
+	// directly: a hash over {0..numGlyphs-1}, using a local copy of the
+	// FNV-1a-over-glyph-ids fold this package's production code used
+	// before AC6/AC6a (D-2.2.2 (superseded)), so the only variable is
+	// which glyph-id set is hashed.
 	rejectedTag := func(numGlyphs int) string {
-		gids := make([]ot.GlyphID, numGlyphs)
-		for i := range gids {
-			gids[i] = ot.GlyphID(i)
+		const offset64 = uint64(14695981039346656037)
+		const prime64 = uint64(1099511628211)
+		h := offset64
+		for i := 0; i < numGlyphs; i++ {
+			gid := ot.GlyphID(i)
+			b := [2]byte{byte(gid >> 8), byte(gid)}
+			for _, c := range b {
+				h ^= uint64(c)
+				h *= prime64
+			}
 		}
-		digest := fnv64aOverGIDs(gids)
 		const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 		var tag [6]byte
-		v := digest
+		v := h
 		for i := 0; i < 6; i++ {
 			tag[i] = letters[v%26]
 			v /= 26
@@ -371,14 +384,194 @@ func TestDeriveTagRedProofAgainstOutputNumbering(t *testing.T) {
 
 	// The assertion that actually exercises production and fails under
 	// the mutation this test is named for: if fontset.go's deriveTag
-	// call site used the output-numbering derivation instead of
-	// Plan.GlyphSet(), subA.Tag would equal subB.Tag here, just like the
-	// rejected derivation does above.
+	// call site used the output-numbering derivation instead of the
+	// returned program bytes, subA.Tag would equal subB.Tag here, just
+	// like the rejected derivation does above.
 	if subA.Tag == subB.Tag {
 		t.Fatalf(
 			"deriveTag collided (%q) for two same-size, different-content glyph sets — indistinguishable from the "+
 				"rejected output-numbering reading, which always collides for equal NumGlyphs (%q)",
 			subA.Tag, rejectedA,
+		)
+	}
+}
+
+// testVariableFontBytes is Story 2.2's variable-font (fvar/gvar/avar,
+// glyf outlines) test fixture, committed with its OFL 1.1 licence text
+// and copyright line (AC25, AD-26) at
+// folio-go/testdata/fonts/notosansthai-variable-testonly/NotoSansThai-VF.ttf
+// — used ONLY to exercise axis pinning/instancing in this package's own
+// tests (V5). It is NOT the shipped copy (folio-go/fonts/notosansthai/).
+func testVariableFontBytes(t *testing.T) []byte {
+	t.Helper()
+	path := filepath.Join("..", "..", "testdata", "fonts", "notosansthai-variable-testonly", "NotoSansThai-VF.ttf")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read variable test font %s: %v", path, err)
+	}
+	return data
+}
+
+// TestSubsetPinnedInstancesProduceDifferentTags is V5's retained
+// discrimination fixture (D-2.2.2's original fixture, retained under the
+// superseding ruling): two PINNED INSTANCES of the SAME variable face,
+// over the SAME glyph set, must receive DIFFERENT subset tags — because
+// they are different embedded programs (different `gvar`-interpolated
+// outlines), and AC6's tag hashes the program bytes. This is RED against
+// the pre-Story-2.2 derivation (hash of Plan.GlyphSet() alone): two
+// pinned instances retain the identical glyph-id closure for an
+// identical rune set, so the old tag was identical too (B6) — this test
+// fails under that reading and passes under the ruled one.
+//
+// BOTH instances are built by calling the vendor subsetter DIRECTLY
+// from this test file, never through (*Font).Subset. Since D-2.2.4 that
+// is not merely a stylistic choice: New() REJECTS a variable face
+// outright (TestNewRejectsVariableFace below), so a variable fixture
+// cannot reach (*Font).Subset at all. Production exposes no way to
+// request an instance because reaching subset.Input.PinAxisLocation
+// needs the identifier `float32`, which AD-23's arch guard bans under
+// internal/ and the module root (Trap 10). The literal axis values
+// below are UNTYPED constants; passed directly as PinAxisLocation's
+// argument, Go converts them to float32 with no `float32`/`float64`
+// identifier ever appearing in this file's source — confirmed by this
+// package's own `go vet`/arch-guard gates passing.
+func TestSubsetPinnedInstancesProduceDifferentTags(t *testing.T) {
+	data := testVariableFontBytes(t)
+
+	runes := []rune("กขค") // three Thai letters — identical rune set for both instances below.
+
+	// instanceProgram builds one subset of the variable fixture over
+	// `runes`, pinned as `pin` directs, entirely through the vendor API.
+	instanceProgram := func(t *testing.T, label string, pin func(*subset.Input, *ot.Font)) ([]byte, int) {
+		t.Helper()
+		parsed, err := ot.ParseFont(data, 0)
+		if err != nil {
+			t.Fatalf("%s: ot.ParseFont: %v", label, err)
+		}
+		face, err := ot.NewFace(parsed)
+		if err != nil {
+			t.Fatalf("%s: ot.NewFace: %v", label, err)
+		}
+		cmap := face.Cmap()
+		var gids []ot.GlyphID
+		for _, r := range runes {
+			gid, ok := cmap.Lookup(ot.Codepoint(r))
+			if !ok {
+				t.Fatalf("%s: no glyph for rune %U in test fixture", label, r)
+			}
+			gids = append(gids, gid)
+		}
+		input := subset.NewInput()
+		input.AddGlyphs(gids...)
+		pin(input, face.Font)
+		plan, err := subset.CreatePlan(face.Font, input)
+		if err != nil {
+			t.Fatalf("%s: subset.CreatePlan: %v", label, err)
+		}
+		program, err := plan.Execute()
+		if err != nil {
+			t.Fatalf("%s: plan.Execute: %v", label, err)
+		}
+		return program, plan.NumOutputGlyphs()
+	}
+
+	defaultProgram, defaultGlyphs := instanceProgram(t, "default instance",
+		func(in *subset.Input, f *ot.Font) { in.PinAllAxesToDefault(f) })
+	pinnedProgram, pinnedGlyphs := instanceProgram(t, "wght=700 instance",
+		func(in *subset.Input, _ *ot.Font) { in.PinAxisLocation(ot.MakeTag('w', 'g', 'h', 't'), 700) })
+
+	defaultTag, err := deriveTag(defaultProgram)
+	if err != nil {
+		t.Fatalf("deriveTag(default instance program): %v", err)
+	}
+	pinnedTag, err := deriveTag(pinnedProgram)
+	if err != nil {
+		t.Fatalf("deriveTag(pinned wght=700 program): %v", err)
+	}
+
+	if defaultGlyphs != pinnedGlyphs {
+		t.Fatalf(
+			"test fixture assumption violated: NumGlyphs differ between the two instances (%d vs %d) — "+
+				"not a same-glyph-set case; the fixture and rune set must be re-chosen",
+			defaultGlyphs, pinnedGlyphs,
+		)
+	}
+	if bytes.Equal(defaultProgram, pinnedProgram) {
+		t.Fatalf(
+			"test bug: two differently-pinned instances (default vs wght=700) produced BYTE-IDENTICAL programs — " +
+				"the fixture's pinning had no effect, so this test cannot discriminate anything",
+		)
+	}
+	if defaultTag == pinnedTag {
+		t.Fatalf(
+			"deriveTag collided (%q) for two DIFFERENT pinned instances of one face over the SAME glyph set — "+
+				"exactly the collision AC6/D-2.2.2 (superseded) exists to make impossible by construction "+
+				"(the old glyph-set-only tag WOULD collide here, since both instances retain the same glyph "+
+				"closure for the same runes)",
+			defaultTag,
+		)
+	}
+}
+
+// TestNewRejectsVariableFace is D-2.2.4's deleted-seam assertion. A
+// caller-supplied face that still carries `fvar` must be REJECTED at
+// face ingestion — not instanced, and not mid-render — so the failure
+// is early, located and actionable.
+//
+// The message content is asserted, not just the error's existence: most
+// Google Fonts downloads are variable builds today, so a caller hitting
+// this needs an ACTION. A refusal that does not name the remedy would
+// satisfy a nil-check test and still leave the caller stuck.
+func TestNewRejectsVariableFace(t *testing.T) {
+	_, err := New("noto-sans-thai-variable", testVariableFontBytes(t))
+	if err == nil {
+		t.Fatalf(
+			"New accepted a VARIABLE face (one carrying `fvar`). D-2.2.4 requires rejection at ingestion: " +
+				"PDF 1.7 cannot express a variable font, and silently pinning axes to their defaults is what " +
+				"embedded Simplified Chinese as Thin (D-000.21) — Noto Sans SC's `wght` axis defaults to 100.",
+		)
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"noto-sans-thai-variable", // located: names the face
+		"fvar",                    // names the property that disqualified it
+		"variable",                // in plain words, not just the table tag
+		"instancer",               // names the remedy: instance it first
+		"wght=400",                // and gives a concrete, runnable pointer
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf(
+				"the variable-face rejection message does not contain %q, so it does not tell the caller "+
+					"what to do about it.\nD-2.2.4 (binding): the message must NAME THE REMEDY.\ngot: %s",
+				want, msg,
+			)
+		}
+	}
+}
+
+// TestSubsetTagNonCircularity is V5a, binding (D-2.2.2 (superseded)): the
+// tag's non-circularity must be ASSERTED BY A TEST, not merely stated in
+// a comment. The tag string must never occur inside the program bytes
+// it was derived FROM — if it did, a later change that patches the
+// font's `name` table with the tag would make the derivation circular,
+// and this test's failure must be legible as exactly that, not as an
+// opaque assertion failure.
+func TestSubsetTagNonCircularity(t *testing.T) {
+	f, err := New("roboto", testFontBytes(t))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	sub, err := f.Subset([]rune("Hello, World!"))
+	if err != nil {
+		t.Fatalf("Subset: %v", err)
+	}
+	if bytes.Contains(sub.Program, []byte(sub.Tag)) {
+		t.Fatalf(
+			"NON-CIRCULARITY VIOLATED: subset tag %q appears inside the program bytes it was derived FROM. "+
+				"The tag must be computed from the program and never written back into it (e.g. into the "+
+				"font's `name` table) — if something now does that, the derivation has become circular and "+
+				"must be revisited (D-2.2.2 (superseded), V5a), not patched around by choosing a different tag.",
+			sub.Tag,
 		)
 	}
 }

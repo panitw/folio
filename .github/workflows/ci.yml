@@ -100,7 +100,7 @@ jobs:
       - name: go mod download all (D-1.3.11: populates the module cache for lint's WHOLE module graph, not just the packages it imports directly, so the GOPROXY=off step below can resolve every dependency's LICENSE file offline)
         working-directory: lint
         run: go mod download all
-      - name: go test -count=1 ./... (AD-1 lint, map-range, licence check + manifest — production and fixture scans, AC1)
+      - name: go test -count=1 ./... (AD-1 lint, map-range, fonts-assets, licence check + manifest — production and fixture scans, AC1)
         working-directory: lint
         env:
           GOPROXY: "off"

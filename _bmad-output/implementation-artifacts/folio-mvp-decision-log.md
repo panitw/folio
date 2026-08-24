@@ -4813,3 +4813,588 @@ the two intentional `--- FAIL`s, and D-2.1.6 (the owner's decision, resting on P
 mechanism and architectural cause are identical to what the owner already ruled on; only bookkeeping
 figures around it were corrected. **This entry closes the finisher's pass; it is not a new confirmation
 and it does not reopen the story.**
+
+### D-2.2.2 (superseded) — The subset tag hashes the SUBSET PROGRAM BYTES; the F2DOT14 clause is withdrawn
+**Orchestrator decision**, on the lead's ruling. **Answers the Story 2.2 creator's DN-1.** A conflict
+between two of the lead's own rulings, not an implementation shortfall.
+
+**Why the ruled mechanism was unreachable — verified by the creator and independently by the
+orchestrator:** `normalizedCoords []int` is an **unexported field** at `subset/plan.go:46`; **`Plan`
+has 17 exported methods and none returns it** (enumerated); there is no `Avar()`. **The only reachable
+axis values are `Input.PinnedAxes() map[ot.Tag]float32` — the caller-facing floats the same ruling
+forbids hashing.**
+
+**And recomputing is worse than what it rejects.** It needs `Fvar().NormalizeAxisValue()` (returns
+`float32`) plus replicating the unexported `floatToF2DOT14`, whose body is `int(v*16384 + 0.5)`
+(`plan.go:525`) — **a fusable multiply-add, the exact shape D-2.2.0 measured as the live FMA surface in
+this very dependency** — placed in the **tag** path, where a divergence is *harder to attribute*: **a
+wrong tag is a silently colliding subset, not a hash that visibly moves.**
+
+**Verdict** *(mechanism: binding)*: the six-letter tag derives from a hash of **`subset.Subset()`'s
+returned program bytes.**
+
+**Why this is right rather than least-bad:**
+- **It is exactly what D-2.2.2 said the principle was** — *"hash what determined the bytes, in the form
+  it was determined in."* **The bytes are what determined the bytes.** The lead named the principle and
+  then reached past it for a proxy.
+- **Zero float anywhere** — not ours, not recomputed, not borrowed.
+- **Trivially reachable** — it is the return value already held.
+- **Collision becomes impossible by construction:** two subsets share a tag only if their programs are
+  byte-identical, in which case they **are** the same subset and sharing is correct. **Strictly stronger
+  than either the glyph-set or glyph-set-plus-coordinates form.**
+- **Consistent with D-1.5.8**: a tag keyed on the *request* lies about what is embedded. Hashing the
+  request's axis values — even as integers — is that same error one layer along. **Program bytes are the
+  maximal form of "what is embedded."**
+
+**Non-circularity, verified by the lead and re-verified by the orchestrator:** nothing writes the tag
+into the font program. The tag's **sole** appearance is `/BaseFont /` at `internal/pdf/textdoc.go:240`
+and `:250` — a **PDF-level name**. **The story must ASSERT this rather than inherit it:** if anything
+later patches the font's `name` table with the tag, the derivation becomes circular and must be
+revisited.
+
+**Both discrimination fixtures survive by a stronger mechanism** — different glyph sets of the same
+size → different programs → different tags (D-1.5.8); two instances with the same glyph set →
+different programs → different tags (D-2.2.2's own fixture). **Keep both.**
+
+**Accepted cost:** a `textshape` upgrade now moves every tag. **Correct behaviour, not a defect** —
+AD-22 already makes any subsetting change a versioned breaking change, the same argument that settled
+D-1.5.8.
+
+**D-000.6 amendment to AD-7's tag clause, in 2.2's commit — the lead's, not the owner's.** AD-7 names
+*"a hash of the sorted glyph-id set"*, which **under-specifies for instanced faces** — the same shape as
+AD-25's Rule under-delivering on its own Prevents. **Unlike AD-25, this has no product consequence, no
+scope change, no payload change and no story re-plan:** a mechanism substitution that strictly improves
+discrimination while preserving the clause's intent. **Binds and Prevents untouched.** Land it **before
+any golden is recorded** — the tag is in the bytes.
+
+### D-2.2.3 — `ScanMapRange` extends to the whole module; and the lead's fourth directory-scope error
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**D-2.2-D3's guardrail was vacuous.** It ruled *"`internal/` must never range the `FontSet` map"* for a
+type that lives in package `folio` **at the module root**. `ScanMapRange`'s production root is
+`folio-go/internal` only, and **no `internal/` package can name `folio.FontSet` without an import
+cycle — so the guardrail is green whether or not the guard exists.**
+
+**The lead's own account, recorded because the fix is the transferable part.** This is the **fourth**
+instance of the same error. After the third it wrote down an intention to verify *where a thing lives*
+before invoking a directory-scoped rule, and did not follow it. **Replacing intention with a mechanical
+habit:**
+
+> **When I write a guardrail naming a directory scope, I name the file the risk actually lives in. If I
+> cannot name the file, I have not checked.**
+
+**The real guard:** extend **`ScanMapRange`'s production scan to the whole module** (`folio-go/`,
+`testdata` and dot-directories skipped) — exactly as the `float64` scan was extended at D-1.6.7, and for
+the identical reason: **the render path's extent starts in package `folio` (D-1.6.3), so the hazard does
+too.** One new production **caller** on an existing checker, not a new checker.
+
+**Expect either outcome:** it may go **red immediately** if `render.go` ranges the `FontSet` — **a real
+defect found, not a problem with the guard**. If green, its red-proof is adding a range to `render.go`.
+The `slices.Sorted(maps.Keys(m))` escape hatch applies unchanged.
+
+### D-2.2.4 — AD-8's diagnostics citation is wrong; fix it as a D-000.6 amendment
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*. Found by the Story 2.2 creator.
+
+AD-8's Rule says *"is a diagnostic **(AD-15)**"*. **AD-15 is designer-owns-the-document (`:304`);
+diagnostics is AD-14 (`:289`).** A **citation error in a Rule's text**, inside one document, **Binds and
+Prevents untouched** — squarely a D-000.6 amendment, fixed in 2.2's commit per the D-1.8.7 precedent.
+**Fixing rather than parking is correct: a spine invariant citing the wrong sibling invariant is exactly
+what every later reader re-derives independently.**
+
+### D-2.2.5 — The payload delta is resolved by MEASUREMENT, not by arbitration between documents
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**Reported, not filled** (D-000.17), and **5.4's ACs are not edited.** NFR7 (`epics.md:121`) itemises
+~1.5 + 7.4 + ~0.1 = **9.0 MB**; Story 5.4 AC2 (`:1400`) itemises 1.5 + 0.4 + 0.1 + 7.4 + 0.12 =
+**9.52 MB** — **a ~0.52 MB disagreement**: either 5.4 double-counts Latin+Thai or NFR7 omits them.
+
+**Story 2.2 is the first story that can weigh the real faces, so it measures rather than arbitrates** —
+shipped face sizes **and the actual compressed trie** (2.4 MB raw against a claimed 0.1 MB is a **24×**
+ratio, plausible for a trie but currently unmeasured) — and reports **all** the numbers. **Whoever
+reconciles then does it with data rather than by choosing which document to believe.**
+
+**The consequence that makes this more than bookkeeping** *(illustrative)*: **Story 5.4's AC2 itemises
+those numbers TO USERS** and requires the screen to explain *why CJK dominates*. **A wrong itemisation
+shown to a user is a product defect, not a documentation typo** — so a material discrepancy is
+**owner-visible at the Epic 2 report**, not a quiet correction.
+
+### D-000.18 (mechanized) — The gate harness writes machine-readable results; the story's tables are asserted equal to it
+**Orchestrator decision**, on the lead's ruling. **Program-wide** *(mechanism: binding)*. **Lands in the
+Epic 2 gate** — pipeline machinery, not font work.
+
+**Six instances of narration drift in this run**, culminating in a Dev Agent Record claiming **PASS on
+failing rows inside the story reopened to fix exactly that.** That is conclusive: **the rule binds and
+is not changing behaviour.**
+
+> **The gate harness writes a machine-readable results file. The story's results table and Dev Agent
+> Record are asserted equal to it.**
+
+**This converts "please do not drift" into "cannot drift"**, using the two-independent-producers
+construction that has worked every time (D-1.4.10's independent pretty-printer, D-1.4.14's shared
+spelling table, D-1.4.15's set equality). **The work has been right every time; only the transcription
+has failed — so guard the transcription, not the work.**
+
+---
+
+### D-000.21 — Assert on the produced thing, never on the thing you asked for
+
+*(mechanism: binding)*
+
+**The rule.** Every assertion about an artifact must read the property **off the artifact**. An
+assertion that reads the *input* — the value requested, the pin passed in, the set asked for, the
+summary written afterwards — proves only that the request was well-formed. It cannot detect a
+producer that ignored the request, transformed it, or silently carried something else through.
+
+**Why this earned a standing entry.** It is the fourth time this program has hit the same defect, and
+each instance looked like a different problem at the time. None of them looked like the previous one:
+
+| # | Where | The input-side assertion that would have passed | What was actually wrong |
+|---|---|---|---|
+| D-1.5.8 | subset tag | derive the tag from the **requested** glyph set | the tag would name glyphs that were never embedded |
+| P2 (Thai spike) | coverage floor | ask what the engine **declared** uncoverable | it never asked what *was* uncoverable |
+| D-000.18 | the record | confirm against the **table summarising** the run | the table drifted from the run it summarised |
+| D-2.2.x (this) | font weight | assert the **pin passed** to the render call | `usWeightClass` on the embedded program read 100 |
+
+The lead made the D-1.5.8 ruling itself and then failed to apply that ruling's own logic to weight one
+story later — which is the strongest evidence available that this needs to be a named rule rather than
+a habit. A habit did not survive one story.
+
+**The plain-language version.** *Asking for Regular and getting Regular are two different facts.* Only
+the second one is worth asserting, and only the produced file can answer it.
+
+**How this bit, concretely.** Story 2.2 embedded Simplified Chinese as **Thin (usWeightClass=100)** in
+a recorded golden. Three guards agreed the artifact was correct — four-target byte-identity, the
+font-program digest, and the missing-glyph diagnostic — and **all three were right.** The bytes really
+were identical on every target; the program really was stable; the glyphs really were covered. Each
+guard answered its own question accurately. **None of them was asked whether the value meant what its
+name implied.** That sentence leads the Epic 2 gate's section on this class.
+
+**The reason the shipped face was the one that broke.** `NotoSansSC-VF`'s `wght` axis has
+**default=100**, not 400 — alone among the three faces. Latin and Thai default to 400, so every test a
+developer ran looked correct, and the one face that was wrong is the one whose script nobody on this
+project reads. A defect that is invisible to its author and legible only to a reader we do not have is
+exactly what a semantic assertion is for.
+
+---
+
+### D-000.22 — A golden fixture needs a semantic acceptance step at first recording
+
+*(mechanism: binding)*
+
+**The rule.** When a golden fixture is recorded for the **first** time, the story recording it must
+name and assert at least one **semantic property** of the artifact — a property that would be wrong if
+the recording itself were wrong — separately from and additionally to the hash. Per [[D-000.21]] the
+property is read **off the artifact**, never off the inputs that produced it.
+
+**Why a hash cannot do this job.** A hash guards against **change**. It says "this is the same as what
+we recorded." It has nothing whatever to say about whether what we recorded was **right**, and it
+cannot acquire that ability later. The asymmetry matters because of what a golden *becomes*:
+
+> The moment a golden is committed it stops being an output and starts being an **input**. Every
+> guard downstream then agrees with it — correctly, and forever. A wrong first recording is not a bug
+> that gets caught later; it is a bug that gets **ratified** later.
+
+So the first recording is the **only** moment at which the question "is this right?" is answerable at
+all. After that, every mechanism in the project is structurally committed to answering "is this the
+same?" instead.
+
+**The plain-language version.** *A hash tells you nobody moved the furniture. It does not tell you the
+furniture was ever in the right room.* Somebody has to look, once, at the beginning.
+
+**What counts as a semantic property.** Something a human could be wrong about and a machine can check
+— the weight class of an embedded font, the page count, the number of glyphs actually embedded, the
+declared page size, the compression filter used. Not a restatement of the hash, and not a property
+derived from the same inputs the artifact was built from.
+
+**What this story must do under it.** Story 2.2 asserts, on the **embedded program** in each
+font-bearing golden: `OS/2.usWeightClass` equals the intended weight, `fvar` is absent, and `gvar` is
+absent. And — since the failure mode here was specifically *"a value nobody could read"* — a human
+looks at the rendered Chinese before the golden is frozen. The machine check catches the recurrence;
+the human check is what would have caught the original.
+
+---
+
+### D-2.2.4 — Ship static instanced faces, Regular-only, and reject caller-supplied variable faces
+
+*(mechanism: binding)* — **reverses D-2.2.3**, which put the static switch in its own story.
+
+**What the reversal turned on.** The separate-story ruling's strongest reason was attributability:
+two stacked causes moving one golden at once. That reason was **moot and the lead said so plainly**
+rather than defending it — Story 2.2 has not committed, so there is no prior golden to move *from*,
+and 2.2 must re-record regardless because the Thin defect is in its own seam and its own fixture. The
+real choice was never "one movement or two"; it was **record once against the correct artifact, or
+record twice.**
+
+**The fact that forced it.** `textshape@v0.0.15`, `subset/execute.go:496-499`, copies `OS/2`
+**verbatim** into the subset and never updates `usWeightClass` when instancing. Independently
+confirmed: the identifier appears nowhere in textshape except `ot/metrics.go`, which only ever
+*parses* it. There is no writer. So pinning `wght=400` on the variable CJK face would have produced
+**Regular outlines carrying metadata that still claimed Thin** — strictly worse than the shipped
+defect, where outlines and metadata at least agree. Correcting it in-place would mean rewriting `OS/2`
+and recomputing both its table-directory checksum and `head.checkSumAdjustment`, in the render path,
+ordered before the tag hash.
+
+Shipping statics deletes that requirement rather than satisfying it. `fontTools` **explicitly writes**
+`OS/2.usWeightClass` when it instances (it logs `Setting OS/2.usWeightClass = 400`, and the produced
+file reads back 400), so textshape's verbatim copy then propagates a correct value. Worth stating
+precisely: it works because fontTools *sets* the field, **not** because nothing touches it. The
+latter framing would predict breakage the moment the subsetter changed, and that is not the mechanism.
+
+**Three corrections applied to the ruling before it was briefed** — each found by reading a produced
+file under [[D-000.21]], and each one would have shipped a defect:
+
+1. **"No `fvar`, so the FMA hazard is gone" was false as first specified.** `NotoSans-VF` and
+   `NotoSansThai-VF` each carry **two** axes — `wght` *and* `wdth` (min 62.5, default 100, max 100).
+   Pinning `wght` alone leaves `fvar` **and** `gvar` alive on **four of the five** faces; only the
+   single-axis CJK face becomes genuinely static. The story would have recorded a golden that *looked*
+   static while the float `gvar` path still ran. Pinning both axes also cuts Latin's compressed size
+   40% (377 KB → 227 KB), because `gvar` was riding along unnoticed.
+2. **Regular + Bold contradicted the story's own fence.** `fontset.go:250-258` fences Bold out in
+   prose — D-2.2.1: *"Bold is a wght instance; if it arrives after 2.2, its story inherits this
+   obligation"* — and the package deliberately exposes no way to request a non-default instance. Bold
+   faces would have been **261 KB selectable by nothing**. The lead had contradicted its own D-2.2.1
+   one message after making it. **Regular-only for all three faces.**
+3. **"Pin every axis to an explicitly chosen value" was unimplementable.** Reaching the vendor's
+   `PinAxisLocation` requires the identifier `float32`, and `arch_test.go:54` bans `float32` *and*
+   `float64` under `internal/` **and** the module root (AD-23). The instruction and the arch guard
+   could not both hold; the guard is older and load-bearing.
+
+**The resolution to (3) deletes the seam instead of fixing it** *(mechanism: binding)*: a
+caller-supplied face that still has `fvar` is **rejected with a located diagnostic at face ingestion**
+— not instanced, and not mid-render, so the failure is early and named. Shipped faces arrive static,
+so no pin is ever needed. This satisfies AD-8's no-silent-substitution, keeps AD-23 intact, and
+**removes the float `gvar` path from the render entirely** — the FMA hazard stops being monitored and
+stops existing. The message must **name the remedy** ("instance it first", with a concrete pointer),
+since most Google Fonts downloads are variable today and a caller needs an action, not a refusal.
+
+**Payload, measured with `epics.md:1382`'s mandated codec (brotli -q 11), all faces, engine included:**
+
+| configuration | fonts | + engine 1.5 + dict 0.12 | vs ~9.52 MB |
+|---|---|---|---|
+| variable (as shipped in 2.2 today) | 9.33 MB | 10.95 MB | **+15% over** |
+| static, Regular + Bold | 5.33 MB | 6.95 MB | inside |
+| **static, Regular-only (adopted)** | **5.07 MB** | **6.69 MB** | **inside, 2.8 MB headroom** |
+
+An earlier reconciliation of mine claimed this overrun had dissolved; the reviewer proved it had not,
+on three counts — MiB relabelled as MB, gzip used where brotli is mandated, and the ~1.5 MB engine
+omitted from the measured side while both budgets include it. The overrun was **real**. The static
+switch is what resolves it, not the arithmetic.
+
+---
+
+### D-2.2.5 — NFR7's "variable build" clause is amended under D-000.6; the PRD and addendum are reported, not edited
+
+*(mechanism: binding)*
+
+**The tension.** NFR7 (`epics.md:121`) says verbatim: *"Take the glyf/TrueType **variable** build over
+CFF/OpenType."* Shipping statics contradicts its literal text.
+
+**Why the amendment is in scope.** NFR7 is **unimplementable as written**: its own font budget is
+0.4 + 0.1 + 7.4 = **7.9 MB**, and the build it mandates measures **9.33 MB** compressed. The clause
+cannot be satisfied on its own terms. D-000.6 exists precisely for the "false, incomplete, or
+unimplementable" case, and `epics.md` is inside its scope by established precedent.
+
+**What the amendment preserves.** The clause's operative contrast is **glyf vs CFF**, not variable vs
+static — and the statics are verified `glyf=True, CFF2=False`. NFR7's intent (three scripts, embedded,
+byte-stable, fully offline, within ~9 MB) is preserved and is **only reachable with** the amendment.
+So the **adjective** changes; the choice it was defending does not.
+
+**A hypothesis the lead raised, tested, and discarded — in the direction that helps.** The lead
+proposed that the budget had been costed against a static build. Reading the surrounding paragraphs
+falsified it: `addendum.md:399` costed **the same file, to the byte** — *"`NotoSansSC[wght].ttf` is
+17.77 MB on disk → 7.42 MB compressed, covering nine weights"* — against
+`NotoSansCJKsc-Regular.otf` at 16.44 MB → 10.90 MB. The 7.42 figure is optimistic and sits **below the
+same document's own table**, which puts TTF/glyf variable at ~44–51%, i.e. 7.82–9.06 MB. Our measured
+8.30 is inside their range; their own quoted figure is not.
+
+**This reframes the amendment far more favourably: the reasoning was sound, the option set was
+incomplete.** The authors compared glyf-variable-nine-weights against CFF-static-one-weight and
+**correctly chose glyf**. They never costed **glyf-static-one-weight** — 4.82 MB — which beats both.
+The operative contrast is *reinforced*, not overturned: glyf static (4.82) < glyf variable (8.30) <
+CFF static (10.90).
+
+**And the benefit the variable build was bought for is unreachable.** Its stated advantage is
+*"covering nine weights"*, but `folio-format.md:192` gives the format `bold` and `italic` as
+**booleans** — it can express **two** weights, and 2.2's engine can select **one**. The variable build
+costs **3.48 MB compressed for eight weights nothing can request.** This is the same defect as the
+Bold faces in [[D-2.2.4]], one layer up: **shipping a capability nothing can ask for.**
+
+**Scope boundary, held deliberately.** `prd.md:455` and `addendum.md:399` are **outside** D-000.6 —
+its scope is the spine, `folio-format.md`, the SPEC companions, and `epics.md` by precedent. The lead
+declined to widen it to reach a document the owner authored, on the grounds that quiet enlargement is
+exactly what a stated boundary exists to prevent. **`epics.md` is amended in 2.2's commit; the PRD and
+addendum are reported at the Epic 2 gate** — they retain the superseded costing, the glyf-over-CFF
+reasoning is unaffected and reinforced, and whether to correct them is the owner's call, since no
+implementation depends on it.
+
+**Method note the lead asked to keep.** Its wrong hypothesis surfaced only because the quoted sentence
+was checked against the paragraph containing it. **A quoted sentence is an input; the paragraph it
+sits in is the artifact** — [[D-000.21]] applied to documents rather than fonts.
+
+---
+
+### D-000.23 — A guard written in response to a defect covers the defect, not its class
+
+*(mechanism: binding)* — the sampling rule behind [[D-000.22]]'s "semantic acceptance step".
+
+**The rule.** When you write a guard *after* a defect, assume the field you are about to guard is the
+one already handled by mature tooling, and go looking for the fields **nobody has been burned by
+yet.** Cover **every field that carries the meaning**, not the field that failed.
+
+**The mechanism, which is counter-intuitive and is why this needs stating.** Mature tooling was
+written by people who got burned first. So a property that just burned *you* is evidence about **the
+tooling's maturity on that property** — it says nothing about your artifact's other properties.
+Selecting your guard by "what went wrong last time" therefore selects for **the field most likely to
+be already fixed.** That is close to the worst available sampling rule.
+
+**The instance that earned it, which is as clean as this class ever gets.** The morning's ruling
+([[D-000.22]]) required a semantic acceptance step on golden fixtures, and the property chosen was
+`OS/2.usWeightClass` — the field that had just shipped Thin Chinese. That is precisely
+the field `fontTools` handles: it logs `Setting OS/2.usWeightClass = 400` and writes it correctly.
+Meanwhile the instanced Regular face still carried:
+
+```
+name[1] 'Noto Sans SC Thin'    name[6] 'NotoSansSC-Thin'    name[17] 'Thin'
+OS/2.usWeightClass = 400       outlines: Regular
+```
+
+**The guard designed that same day to catch the defect would have passed the defect**, because weight
+is stated **three independent times** in this artifact — the weight class, the name records, and the
+outlines themselves — and they can disagree pairwise. `usWeightClass` was the one already fixed.
+
+**The remedy is about cardinality, not vigilance.** The assertion set's job is to cover the **number
+of independent places the meaning is represented.** Count those first; assert all of them.
+
+**The recursive catch, worth keeping because it happened inside the fix.** The corrected assertion set
+first briefed to the finisher contained `no name record contains "Thin"` — keyed on the exact string
+that burned us. A face defaulting to `Light`, `ExtraLight` or `Black` sails past it. **A denylist
+entry is never coverage;** the positive assertions are the guard (`name[1]` equals the exact family,
+`name[2] == "Regular"`, `name[6]` ends `-Regular`). The same error, one level down, inside its own
+correction.
+
+**Consequent obligation** *(mechanism: binding)*: derive a per-artifact assertion set from a
+**declarative spec** — one record per shipped face: family, instance name, axis pins, expected weight
+class — and assert **spec equals artifact**. Enumerating assertions by hand means the next story that
+adds a face inherits none of them, which is how a guard written for today's artifacts fails to cover
+tomorrow's.
+
+---
+
+### D-2.2.6 — `/BaseFont` must be the embedded program's PostScript name (ISO 32000-1 Table 117)
+
+*(mechanism: binding)* — orchestrator decision; the lead framed the fork and left the call here.
+
+**The defect, pre-existing since Story 1.5.** ISO 32000-1 Table 117 (CIDFontType2): *"BaseFont — the
+PostScript name of the CIDFont. For Type 2 CIDFonts, this shall be the value of the CIDFontName entry
+in the CIDFont program."* `textdoc.go:234` builds it as `face.Tag + "+" + pdfNameEscape(name)` where
+`name` is the **FontSet key**, and `:250` reuses the same variable for the descendant CIDFont. So the
+**declared** name and the **embedded program's** name disagree — `NotoSansSC` against
+`NotoSansSC-Thin` today, `NotoSansSC-Regular` after the static switch. Disagreeing either way; the
+switch does not create it.
+
+**How it surfaced, which is the interesting part.** The report to the owner claimed the Thin defect
+"would have been visible in the PDF as `/BaseFont`". The lead measured the golden and falsified it:
+
+```
+/BaseFont:  AWPJVD+NotoSansThai   MQPBJO+NotoSans   ZVXRIO+NotoSansSC
+"Thin" / "Regular" / "Bold" in the PDF bytes:  0 occurrences each
+```
+
+`name[6]` never reaches the output at all. **The artifact would have shipped with Regular outlines, a
+correct weight class, an embedded program calling itself Thin, and nothing anywhere in the PDF showing
+it.** The assertion set was the only thing that could ever have caught it — which strengthens
+[[D-000.23]] rather than weakening it.
+
+**Ruling: fix it inside Story 2.2.** Expose `PostScriptName()` on `internal/fontset` (it must not leak
+`*ot.Font`, so D-2.2.x's encapsulation holds) and use it for `baseFont`, giving
+`ZVXRIO+NotoSansSC-Regular`. Three reasons:
+
+1. **It is free now and expensive later.** 2.2 re-records every font-bearing golden regardless, so the
+   byte movement is already paid for. Deferring costs a separate re-record **plus** a full four-target
+   matrix run.
+2. **It is a real conformance defect** — a PDF/A validator flags it, and it is the name a viewer falls
+   back to when the embedded program fails to load.
+3. **It converts an invisible property into a visible one.** The reason this defect hid is that
+   nothing in the output carried the font's own identity. Once `/BaseFont` reflects the embedded
+   program, a future weight defect of this class becomes detectable **by reading the PDF**, rather than
+   only by the dedicated assertion we happened to think of. That is a durable structural gain, and it
+   is the same principle as [[D-000.21]] expressed in the artifact instead of in a test.
+
+**Bounded**: if the change turns out to be materially more than the accessor — anything reshaping the
+fontset seam or moving a non-font golden — it stops and returns as a finding for a later story rather
+than expanding inside this one.
+
+---
+
+### D-2.2.6 (amended) — the name comes from the shipped face; the embedded programs carry no identity
+
+*(mechanism: binding)* — amends [[D-2.2.6]]'s **mechanism**. The decision is unchanged: the
+conformance fix lands in Story 2.2, bounded to one exposed method on `internal/fontset`.
+
+**What was wrong.** D-2.2.6 as first specified said to read the PostScript name **from the embedded
+program**. There is nothing there to read. Verified directly on the golden's three `FontFile2`
+streams:
+
+```
+obj   6  60048 B  name=False cmap=False post=False | GDEF GPOS OS/2 glyf head hhea hmtx loca maxp prep
+obj  11    732 B  name=False cmap=False post=False | GDEF      OS/2 glyf head hhea hmtx loca maxp prep
+obj  16    560 B  name=False cmap=False post=False | GDEF      OS/2 glyf head hhea hmtx loca maxp prep
+parsed 3/3 embedded programs — name table present in NONE
+```
+
+`textshape/subset/execute.go:531-545` places `ot.TagName` in `optionalTables`, copied only when
+pass-through is requested; nothing requests it. **This is not a defect** — PDF §9.9.2 sanctions the
+reduced table set for embedded CIDFontType2 programs, because `CIDToGIDMap` performs the mapping.
+
+**Corrected mechanism: read the PostScript name from the shipped face.** This is not a compromise.
+PDF's own model is that the embedded program *need not* self-identify — which is precisely why
+`/BaseFont` exists and why the spec permits stripping `name`. Every real producer writes the original
+font's PostScript name into `/BaseFont` and ships a name-less subset. Enabling pass-through instead
+would be the wrong trade: the CJK subset is **732 bytes**, and Noto's full multi-language name table
+would several-fold it **in every PDF Folio ever produces**, to satisfy a clause the spec's own
+embedding model works around.
+
+**It does not violate [[D-000.21]].** The shipped face is *our* produced artifact, with its own
+asserted identity, and the subset is derived from it — so the name is true of the program by
+construction. The chain is spec → generated face (asserted) → `PostScriptName` → `/BaseFont`, and
+every link is checked. That is materially different from reading an input we do not control.
+
+**D-2.2.6's third reason survives and is stronger under this mechanism**: a future weight defect of
+this class surfaces as `XXXXXX+NotoSansSC-Thin` in `/BaseFont`, readable in the PDF. Under
+name-pass-through it would have been buried inside a font stream.
+
+**The circularity question dissolves.** `/BaseFont`'s two inputs are independent — the tag from the
+final program bytes, the name from the shipped face — so no cycle exists and the existing
+non-circularity red-proof still guards the only shape that could create one.
+
+---
+
+**The vacuity trap this created, which is the part worth keeping** *(mechanism: binding)*
+
+The orchestrator's own correction to the assertion set instructed that `name[1]`, `name[2]`, `name[6]`
+and the "Thin" check be run **against the embedded program**. Run there, **every one of them passes
+vacuously** — there are no name records, so no record contains "Thin", and the positive checks read a
+table that does not exist.
+
+**Four green assertions from an artifact carrying none of the fields they name** — the exact failure
+class this story exists to close, introduced *by the correction to it*, one message after
+[[D-000.23]] was logged.
+
+**Why the mistake was natural, which is what makes it dangerous.** Having just adopted *"assert on the
+produced thing"*, the instinct is to reach for the **most**-produced artifact in the chain. Here that
+is the artifact from which the field has been deliberately removed. **"Produced" and "carries the
+property" are independent**, and [[D-000.21]] silently assumed they travel together.
+
+**Consequent obligations:**
+
+1. **Assert face identity on the face; assert `/BaseFont` on the PDF; assert `usWeightClass` on the
+   embedded program** (which *does* retain `OS/2`). Two artifacts, three assertion sites, none
+   substituting for another.
+2. **Every assertion group must first assert that the table it reads exists**, and fail loudly if it
+   does not. A presence precondition is what makes this class impossible rather than merely avoided
+   this time.
+
+---
+
+### D-000.21 (sharpened) — Assert on the artifact that carries the property, and prove it carries it
+
+*(mechanism: binding)* — supersedes [[D-000.21]]'s statement, one day after it was made.
+
+**The original.** *"Assert on the produced thing, never on the thing you asked for."*
+
+**What it missed.** The produced thing **may not be where the property lives.** D-000.21 silently
+assumed that "produced" and "carries the property" travel together. They are independent, and the
+counter-example arrived within a day: the embedded font programs are the most-produced artifact in the
+chain and carry **no name table at all**, so every identity assertion aimed at them passes **vacuously**.
+
+**The corrected rule, in full:**
+
+> **Assert on the artifact that carries the property — and prove it carries it.**
+
+The second clause is not a refinement or a defensive nicety. It is **the missing half of the original
+rule**: without it, "assert on the produced thing" reduces to a vacuous pass exactly where the
+property has been legitimately stripped, and reads as green. The presence-precondition from
+[[D-2.2.6]] (amended) is therefore binding wherever this rule is applied — **assert the field exists
+before asserting anything about its value.**
+
+**Why the failure mode is specifically hard to see.** Having adopted "assert on the produced thing",
+the natural instinct is to reach for the **most**-produced artifact in the chain. That instinct is
+precisely wrong when a downstream stage has deliberately removed the field — and deliberate removal is
+common, because downstream stages exist to strip what they do not need. **The more processed the
+artifact, the more likely it is to have lost the property you want to check.**
+
+**Worked example, all three sites from one story:**
+
+| property | lives in | asserting it elsewhere |
+|---|---|---|
+| face identity (`name[1]`, `name[2]`, `name[6]`) | the **shipped `.ttf`** | passes vacuously on the embedded program — no `name` table |
+| `/BaseFont` conformance | the **produced PDF** | not present in the face at all |
+| `usWeightClass` | the **embedded program** (retains `OS/2`) | asserting on the face misses subsetter corruption |
+
+Three properties, three different artifacts, **no two interchangeable** — and the naive reading of
+D-000.21 would have put all three on the last one.
+
+
+---
+
+### D-2.2.6 — `/BaseFont` carries the embedded program's own name; and the assertion split that fixing it forced
+
+*(mechanism: binding)* — ruled by the coordinator during Story 2.2's finisher pass.
+
+**The defect.** ISO 32000-1 Table 117 (CIDFontType2) requires `/BaseFont` to be *"the value of the
+CIDFontName entry in the CIDFont program"*, prefixed with §9.6.4's six-letter subset tag. Folio
+spelled it from the **FontSet key** (`internal/pdf/textdoc.go:234`, `:250`) — the name the caller
+happened to file the face under — so the declared name and the embedded program disagreed:
+`NotoSansSC` against `NotoSansSC-Regular`. Pre-existing since Story 1.5; the static switch did not
+create it.
+
+**Fixed in 2.2 rather than deferred, for three reasons.** It costs one exposed accessor and **zero
+extra golden movement**, because 2.2 was re-recording anyway — deferring would cost a separate
+re-record plus a full four-target matrix run. It is a real conformance defect: PDF/A validators flag
+it, and it is the name a viewer falls back to when the embedded program fails to load. And it
+**converts an invisible property into a visible one** — the Thin defect ([[D-000.21]]) hid precisely
+because nothing in the output carried the font's own identity. Once `/BaseFont` reflects the embedded
+program, a future weight defect of this class is legible by reading the PDF, not only through the
+dedicated assertion we happened to remember to write.
+
+**Scope held to one accessor**, as ruled: `fontset.PostScriptName()` returns a plain string and
+leaks no vendor type (AC17a, D-1.5.10). It reads `name` record 6 **directly**, never through
+`(*ot.Face).PostscriptName()`, which substitutes the literal string `"Unknown"` when the name table
+is absent — the same silent-substitution shape the `Upem()` comment in that file already documents.
+
+**The measurement that changed the ruling, and the general rule it produced.** The instruction was
+initially to read every name assertion off the **embedded `FontFile2` program**. Measured on all
+three of the golden's streams: **the embedded programs have no `name` table at all.** `textshape`
+lists `ot.TagName` in `optionalTables` (`subset/execute.go:531-545`) and copies it only on explicit
+request; nothing requests it. That is not a defect — PDF §9.9.2 sanctions the reduced table set for
+an embedded CIDFontType2, since `/CIDToGIDMap` does the mapping.
+
+> Had the instruction been followed as written, `name[1]`, `name[2]`, `name[6]` and *"no record
+> contains Thin"* would each have passed **vacuously**: there are no name records, so no record
+> contains anything. Four green assertions from an artifact carrying none of the fields they name —
+> the exact failure class the story exists to close, introduced by a correction to it.
+
+**The rule, in its sharpened form** *(binding, generalising [[D-000.21]])*:
+
+> **Assert on the artifact that carries the property, and prove it carries it.**
+
+The presence precondition is not defensive decoration. It is the half of the rule that stops it
+collapsing into a vacuous pass wherever a downstream stage has legitimately stripped the field. The
+assertion split Story 2.2 ships is therefore three-way: `name[1]`/`name[2]`/`name[6]` and the table
+set off the **shipped `.ttf`**; `usWeightClass` off the **embedded program** (which does carry
+`OS/2`); `/BaseFont` matching `^[A-Z]{6}\+<name6>$` off the **produced PDF**.
+
+**Name-table pass-through was considered and rejected.** Enabling it would have made the original
+instruction literally workable, at the cost of several-folding a 716-byte CJK subset in every PDF
+folio produces — to satisfy a clause PDF's own embedding model works around.
+
+**Two further notes.**
+
+- **Non-circularity is undisturbed.** `/BaseFont`'s two inputs are independent: the tag hashes the
+  final program bytes, the name is read from the shipped face. Neither feeds the other, and the
+  embedded program carries no `name` table for a tag to be written into. V5a's exclusivity assertion
+  (every tag occurrence sits in a name position) was nonetheless built and red-proved.
+- **A denylist entry is never coverage.** *"No name record contains 'Thin'"* is kept as
+  belt-and-braces only: a face defaulting to `Light`, `ExtraLight` or `Black` sails past it. The
+  positive assertions — exact family, `name[2] == "Regular"`, `name[6]` ending `-Regular`,
+  `usWeightClass == 400` — are the guard.

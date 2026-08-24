@@ -77,7 +77,7 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 	// not decorative.
 }
 
-// TestAbsencesChecksIncludeAllFiveEntries closes the shrunk-list gap
+// TestAbsencesChecksIncludeAllFourEntries closes the shrunk-list gap
 // D-1.4.11 warned about and this story's finisher review (Finding 5,
 // Major) confirmed was still open: the witness above proves
 // ChecksEvaluated tracks the scanner's OWN loop, but nothing previously
@@ -85,15 +85,17 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 // tripwires left ChecksEvaluated == 2 (still non-zero) and the whole
 // suite green. This asserts the specific rule ids, so removing any one
 // entry — not only emptying the whole list — fails loudly. Story 1.7
-// (AC25, D-1.7.7) added the fifth entry as a path check,
+// (AC25, D-1.7.7) added a fifth entry as a path check,
 // "absence-cmd-dir"; Story 2.1 (D-2.1.x) re-keyed it to a CONTENT
 // check, "absence-source-date-epoch" (see absences.go's comment on
-// that row) — this test still pins five entries, by rule id, so both
-// check kinds are covered by the same shrunk-list protection.
-func TestAbsencesChecksIncludeAllFiveEntries(t *testing.T) {
+// that row). Story 2.2 (AC5) removed "absence-fonts-dir" — the faces it
+// guarded against now ship, and ScanFontsAssets (fontsassets.go) is its
+// fail-closed replacement — bringing this list back down to four
+// entries; this test still pins them, by rule id, so both check kinds
+// are covered by the same shrunk-list protection.
+func TestAbsencesChecksIncludeAllFourEntries(t *testing.T) {
 	want := []string{
 		"absence-designer-project",
-		"absence-fonts-dir",
 		"absence-expr-package",
 		"absence-diag-package",
 		"absence-source-date-epoch",
@@ -145,7 +147,6 @@ func TestAbsencesFixtureScan(t *testing.T) {
 		}
 		want := []Finding{
 			{Path: "folio-designer", Rule: "absence-designer-project"},
-			{Path: "folio-go/fonts", Rule: "absence-fonts-dir"},
 			{Path: "folio-go/internal/paramsdate/placeholder.go", Rule: "absence-source-date-epoch"},
 		}
 		assertExactFindings(t, got, want)

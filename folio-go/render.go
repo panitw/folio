@@ -203,7 +203,7 @@ func resolveImagePlacement(run imageRunSource, img template.DecodedImage) (drawX
 // the canonical golden fixture's `columns[].bind` contains an
 // expression-shaped `{{formatNumber(...)}}` that is deliberately not
 // this story's business).
-func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet) ([]textRunSource, error) {
+func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *fontCache) ([]textRunSource, error) {
 	// bandOrigin is PROVISIONAL (AC28): the vertical offset, from the
 	// page's top printable edge, at which each band's own (element-
 	// relative) Y=0 sits — pageHeader at the top, content directly below
@@ -231,64 +231,182 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet) ([]text
 			if berr != nil {
 				return nil, fmt.Errorf("folio: Render: %w", berr)
 			}
-			// QA Finding 5 (this story's review, Major): resolveFace
-			// must run BEFORE the AC9 empty-text short-circuit below,
-			// not after it. The previous ordering let boundText == ""
-			// skip font-chain validation entirely, so an element with
-			// an unresolvable style.fontFamily chain (Story 1.5
-			// AC2/AC4's located error) rendered successfully whenever
-			// its bound value happened to be null or "" — the SAME
-			// broken template passing or failing depending on which
-			// report it was handed. AC9 only requires that a null
+			// QA Finding 5 (this story's review, Major): the fontFamily
+			// chain must be validated BEFORE the AC9 empty-text
+			// short-circuit below, not after it. The previous ordering
+			// let boundText == "" skip font-chain validation entirely,
+			// so an element with an unresolvable style.fontFamily chain
+			// (Story 1.5 AC2/AC4's located error) rendered successfully
+			// whenever its bound value happened to be null or "" — the
+			// SAME broken template passing or failing depending on
+			// which report it was handed. AC9 only requires that a null
 			// binding "renders as empty, and is not an error"; it does
 			// not license skipping the element's own validation.
-			face, err := resolveFace(doc, el, fs)
+			chain, err := fontChain(doc, el)
 			if err != nil {
 				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
 			}
 			if boundText == "" {
 				// AC9: a placeholder resolving to explicit JSON null
 				// renders as empty — nothing left to draw for this run
-				// — but the element's own validation above still ran.
+				// — but the element's fontFamily chain still validated
+				// above. There is no text, so there is nothing to check
+				// coverage against (Story 2.2, AC4).
 				continue
 			}
 			fontSize := defaultFontSizePt
 			if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
 				fontSize = el.Style.Value.FontSize.Value
 			}
-			runs = append(runs, textRunSource{
-				face:     face,
-				text:     boundText,
-				x:        el.X,
-				y:        b.origin + el.Y,
-				fontSize: fontSize,
-			})
+			// Story 2.2, AC4: COVERAGE-based resolution, per rune,
+			// across the chain — never "first chain member present in
+			// fs" (the pre-Story-2.2 reading). May split one element
+			// into several textRunSources, one per contiguous run of
+			// runes sharing the same resolved face.
+			elRuns, serr := splitByFace(chain, boundText, el.X, b.origin+el.Y, fontSize, fs, cache)
+			if serr != nil {
+				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
+			}
+			runs = append(runs, elRuns...)
 		}
 	}
 	return runs, nil
 }
 
-// resolveFace resolves one text element's face name: style.fontFamily
-// names a fallback CHAIN (doc.doc.Fonts[chain] is an ordered list of face
-// names); the first face name present as a key in fs wins. The engine
-// never queries the host — a chain with no member present in fs, or an
-// element with no fontFamily at all, is a located error naming the
-// element (AC2, AC4).
-func resolveFace(doc *Template, el template.Element, fs FontSet) (string, error) {
+// fontChain resolves one text element's style.fontFamily to its ordered
+// fallback chain of face names (AD-8's Rule; AC3). It does not touch
+// coverage — resolveRuneFace does that, per rune, against this chain.
+func fontChain(doc *Template, el template.Element) ([]string, error) {
 	if !el.Style.Set || el.Style.Null || !el.Style.Value.FontFamily.Set || el.Style.Value.FontFamily.Null {
-		return "", fmt.Errorf("has text but no style.fontFamily to resolve a font from")
+		return nil, fmt.Errorf("has text but no style.fontFamily to resolve a font from")
 	}
 	chainName := el.Style.Value.FontFamily.Value
 	chain, ok := doc.doc.Fonts[chainName]
 	if !ok || len(chain) == 0 {
-		return "", fmt.Errorf("style.fontFamily %q names a chain with no entries in the document's fonts map", chainName)
+		return nil, fmt.Errorf("style.fontFamily %q names a chain with no entries in the document's fonts map", chainName)
 	}
-	for _, face := range chain {
-		if _, present := fs[face]; present {
-			return face, nil
+	return chain, nil
+}
+
+// fontCache parses a face's bytes into a *fontset.Font at most once per
+// distinct face name, across the whole render (coverage checks touch
+// every candidate face in a chain, not just the one ultimately used,
+// so without this a long document would re-parse the same face
+// repeatedly). Looked up and written only by key — NEVER ranged
+// (ScanMapRange, D-2.2.3's whole-module scan).
+type fontCache struct {
+	byName map[string]*fontset.Font
+}
+
+func newFontCache() *fontCache {
+	return &fontCache{byName: map[string]*fontset.Font{}}
+}
+
+// get parses and caches fs[name] on first use. A face NAMED in a chain
+// but ABSENT from fs is reported here, once, the first time that chain
+// entry is actually consulted — not a document-wide upfront validation
+// pass, matching this package's existing "validate at the point of use"
+// shape (resolveFace's prior behaviour).
+func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
+	if f, ok := c.byName[name]; ok {
+		return f, nil
+	}
+	data, ok := fs[name]
+	if !ok {
+		return nil, fmt.Errorf("face %q is not present in the supplied FontSet", name)
+	}
+	f, err := fontset.New(name, data)
+	if err != nil {
+		return nil, err
+	}
+	c.byName[name] = f
+	return f, nil
+}
+
+// resolveRuneFace is AC4's COVERAGE-based resolution: walk chain in
+// order and return the first face name that is BOTH present in fs AND
+// whose cmap actually contains a glyph for r (never a proxy such as
+// "the locale is ja" or "the face is not the preferred one for this
+// script" — D-2.2-D4). A chain member absent from fs is skipped, not an
+// error by itself — only "no member of the chain covers r" is.
+func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (string, error) {
+	for _, name := range chain {
+		if _, present := fs[name]; !present {
+			continue
+		}
+		f, err := cache.get(name, fs)
+		if err != nil {
+			return "", err
+		}
+		if f.HasGlyph(r) {
+			return name, nil
 		}
 	}
-	return "", fmt.Errorf("no face in chain %q (%v) is present in the supplied FontSet", chainName, chain)
+	return "", fmt.Errorf("no font in chain %v has a glyph for rune %U — a located failure, not a blank box (AC4)", chain, r)
+}
+
+// splitByFace walks text rune by rune, resolving each rune's face via
+// resolveRuneFace, and groups maximal consecutive runs of runes sharing
+// the SAME resolved face into one textRunSource each, in original text
+// order. This is what actually makes a document's fallback CHAIN mean
+// something — a single element mixing Latin, Thai and CJK runes
+// produces one sub-run per script, each embedded from its own face,
+// rather than the whole element silently using only the chain's first
+// present member (the pre-Story-2.2 behaviour, which never consulted
+// coverage at all).
+//
+// Positioning: only the FIRST sub-run keeps the element's authored X;
+// each later sub-run's X is the previous sub-run's X plus its own total
+// advance (fontCache's AdvanceForRune, scaled by fontSize) — glyphs
+// WITHIN one sub-run are still positioned by the embedded font's own
+// /W array at PDF-render time via a single Tj/TJ operator, exactly as a
+// one-face element already worked before this story.
+func splitByFace(
+	chain []string, text string, x, y, fontSize geom.Length, fs FontSet, cache *fontCache,
+) ([]textRunSource, error) {
+	type segment struct {
+		face  string
+		runes []rune
+	}
+	var segments []segment
+	for _, r := range text {
+		face, err := resolveRuneFace(chain, r, fs, cache)
+		if err != nil {
+			return nil, err
+		}
+		if n := len(segments); n > 0 && segments[n-1].face == face {
+			segments[n-1].runes = append(segments[n-1].runes, r)
+			continue
+		}
+		segments = append(segments, segment{face: face, runes: []rune{r}})
+	}
+
+	runs := make([]textRunSource, 0, len(segments))
+	cursor := x
+	for _, seg := range segments {
+		runs = append(runs, textRunSource{
+			face:     seg.face,
+			text:     string(seg.runes),
+			x:        cursor,
+			y:        y,
+			fontSize: fontSize,
+		})
+
+		f, err := cache.get(seg.face, fs)
+		if err != nil {
+			return nil, err
+		}
+		var advance1000 int64
+		for _, r := range seg.runes {
+			a, ok := f.AdvanceForRune(r)
+			if !ok {
+				return nil, fmt.Errorf("face %q: no advance for rune %U it just claimed coverage for", seg.face, r)
+			}
+			advance1000 += a
+		}
+		cursor += geom.ScaleRound(geom.Length(advance1000), int64(fontSize), 1000)
+	}
+	return runs, nil
 }
 
 // renderDocument is Render's implementation once t is known non-nil
@@ -296,7 +414,13 @@ func resolveFace(doc *Template, el template.Element, fs FontSet) (string, error)
 // face EXACTLY ONCE over the union of runes the whole document uses
 // (AC9), and hands the result to internal/pdf.SerializeTextDocument.
 func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, error) {
-	runs, err := collectTextRuns(t, data, params, fs)
+	// cache is shared between collection (coverage checks, AC4) and
+	// embedding (subsetting) below, so a face is ever parsed at most
+	// once per render regardless of how many chain members or runes
+	// consult it. Only ever looked up by key, never ranged.
+	cache := newFontCache()
+
+	runs, err := collectTextRuns(t, data, params, fs, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -312,13 +436,9 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 
 	embedded := make(map[string]pdf.EmbeddedFace, len(faceNames))
 	for _, name := range faceNames {
-		data, ok := fs[name]
-		if !ok {
-			return nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet", name)
-		}
-		font, ferr := fontset.New(name, data)
+		font, ferr := cache.get(name, fs)
 		if ferr != nil {
-			return nil, fmt.Errorf("folio: Render: %w", ferr)
+			return nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet: %w", name, ferr)
 		}
 		// ONE subsetting call per font per document (AC9), over the
 		// union of runes collected above.
@@ -329,21 +449,25 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		metrics := font.Metrics()
 		created, modified := font.HeadTimes()
 		embedded[name] = pdf.EmbeddedFace{
-			Name:          name,
-			Program:       sub.Program,
-			Tag:           sub.Tag,
-			NumGlyphs:     sub.NumGlyphs,
-			GlyphForRune:  sub.GlyphForRune,
-			WidthForGlyph: sub.WidthForGlyph,
-			Ascent:        metrics.Ascent,
-			Descent:       metrics.Descent,
-			CapHeight:     metrics.CapHeight,
-			BBoxXMin:      metrics.BBoxXMin,
-			BBoxYMin:      metrics.BBoxYMin,
-			BBoxXMax:      metrics.BBoxXMax,
-			BBoxYMax:      metrics.BBoxYMax,
-			HeadCreated:   created,
-			HeadModified:  modified,
+			Name: name,
+			// The face's OWN identity, read off the supplied font
+			// program's `name` table — not this map key (ISO 32000-1
+			// Table 117; see internal/pdf's baseFont comment).
+			PostScriptName: font.PostScriptName(),
+			Program:        sub.Program,
+			Tag:            sub.Tag,
+			NumGlyphs:      sub.NumGlyphs,
+			GlyphForRune:   sub.GlyphForRune,
+			WidthForGlyph:  sub.WidthForGlyph,
+			Ascent:         metrics.Ascent,
+			Descent:        metrics.Descent,
+			CapHeight:      metrics.CapHeight,
+			BBoxXMin:       metrics.BBoxXMin,
+			BBoxYMin:       metrics.BBoxYMin,
+			BBoxXMax:       metrics.BBoxXMax,
+			BBoxYMax:       metrics.BBoxYMax,
+			HeadCreated:    created,
+			HeadModified:   modified,
 		}
 	}
 

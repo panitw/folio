@@ -118,7 +118,7 @@ NFR5: **Fidelity between design and production.** The exact preview and the prod
 
 NFR6: **Versioning.** Templates carry a format version; library ships as `folio-go v0.1`. Because golden-hash regression tests are the primary verification mechanism, any change to layout, subsetting, or emission is a breaking change for downstream test suites. Forward/backward compatibility rules undefined and need a policy before v1.
 
-NFR7: **Font provisioning.** All fonts embedded and subsetted; subsetting byte-stable. Latin + CJK + Thai coverage requires a shipped font set embedded so the designer works fully offline. Measured budget: engine and font stack ~1.5 MB compressed, CJK face ~7.4 MB, Thai dictionary ~0.1 MB. Take the glyf/TrueType variable build over CFF/OpenType. Accepted: ~9 MB first load.
+NFR7: **Font provisioning.** All fonts embedded and subsetted; subsetting byte-stable. Latin + CJK + Thai coverage requires a shipped font set embedded so the designer works fully offline. Measured budget: engine and font stack ~1.5 MB compressed, CJK face ~7.4 MB, Thai dictionary ~0.1 MB. Take the glyf/TrueType static build over CFF/OpenType. Accepted: ~9 MB first load.
 
 NFR8: **Privacy posture.** The draw.io model plus WebAssembly preview means templates and data never leave the user's machine during design — a property to state and protect.
 

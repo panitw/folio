@@ -9,55 +9,183 @@ parameters, and fonts — is handed in explicitly.
 
 ## Your first PDF
 
-Three calls: load a template, assemble the fonts it needs, render.
+Two calls — load a template, render — and the font set the render needs
+comes from a single, no-argument expression: `fonts.Shipped()`. This is
+`example_test.go` in full, reproduced here **verbatim** — and that word is
+mechanically checked, not promised: `TestREADMEExampleBlockMatchesSource`
+compares this fenced block byte-for-byte against the file, so the two
+cannot drift. It is a real, compiled, executed Go testable example
+(`go test -run Example -v ./...` runs it and checks its `// Output:`
+comment matches):
 
 ```go
-package main
+package folio_test
 
 import (
+	"bytes"
+	"fmt"
 	"log"
-	"os"
 
-	"github.com/panitw/folio/folio-go"
+	folio "github.com/panitw/folio/folio-go"
+	"github.com/panitw/folio/folio-go/fonts"
 )
 
-func main() {
-	// 1. Load a `.folio` template (the document's layout, bands and
-	// elements — see _bmad-output/specs/spec-folio/folio-format.md).
-	tpl, err := folio.LoadTemplate("statement.folio")
+// Example demonstrates the whole path from a `.folio` template on disk to
+// rendered PDF bytes: a load call, a render call, and — the one thing this
+// example exists to prove — the FontSet arriving as a single, no-argument
+// expression, fonts.Shipped(). There is no builder, no options struct, and
+// no field-by-field assembly of font bytes: Story 2.2's shipped face set is
+// simply asked for.
+func Example() {
+	tpl, err := folio.LoadTemplate("testdata/example/first-pdf.folio")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 2. Assemble the fonts the template's text elements need, from
-	// your own bytes. This step is ceremony Story 2.2 REMOVES: once
-	// folio-go ships a bundled font set (folio-go/fonts/), an
-	// integrator with no special typography needs will not have to
-	// read a font file at all. Until then, every caller supplies the
-	// bytes themselves — the engine never reaches onto the host
-	// looking for a font (AD-8).
-	fontBytes, err := os.ReadFile("Roboto-Regular.ttf")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fonts := folio.FontSet{"Roboto-Regular": fontBytes}
-
-	// 3. Render. Report data and runtime parameters are two SEPARATE
-	// JSON documents (see "Data vs. Params" below) — here, a small
-	// report-data document and a params document supplying one
-	// runtime value.
 	data := folio.Data(`{"customer": {"name": "Ada Lovelace"}}`)
-	params := folio.Params(`{"reportDate": "2026-08-23"}`)
+	params := folio.Params(`{}`)
 
-	pdfBytes, err := folio.Render(tpl, data, params, fonts)
+	pdfBytes, err := folio.Render(tpl, data, params, fonts.Shipped())
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := os.WriteFile("statement.pdf", pdfBytes, 0o644); err != nil {
-		log.Fatal(err)
+
+	// The exact byte length is not asserted here: it is a faithful,
+	// reproducible function of this template and these inputs (AD-1,
+	// AD-21), but pinning that number in this example would make it
+	// fail on any unrelated, legitimate change to the rendering
+	// pipeline — the fixture tests under testdata/ already carry that
+	// burden with a recorded SHA-256, deliberately re-recorded. `err`
+	// is already known nil at this point (log.Fatal above exits on any
+	// non-nil err), so asserting it again would be a vacuous conjunct —
+	// printing "true" whether or not this line ever ran against a real
+	// error.
+	//
+	// What IS asserted is that the data actually reached the page. The
+	// template's text element reads "Hello, {{customer.name}}!", so the
+	// bound name has to survive binding, shaping and subsetting to end
+	// up in the font's glyph coverage. Before this, the template's only
+	// element was the literal "Hello, World!" with no placeholder at
+	// all: the customer data above bound to nothing, never reached the
+	// PDF, and binding could have been entirely broken with this
+	// example still printing "true".
+	renderedNonEmpty := len(pdfBytes) > 0
+	boundNameReachedThePDF := pdfContainsGlyphsFor(pdfBytes, "Ada Lovelace")
+	fmt.Println(renderedNonEmpty && boundNameReachedThePDF)
+	// Output: true
+}
+
+// pdfContainsGlyphsFor reports whether every distinct rune of s ended up
+// in the rendered document's ToUnicode mapping — i.e. whether the text
+// really was placed, rather than merely supplied.
+//
+// It reads the produced PDF rather than the inputs (D-000.21). Checking
+// for the literal string would not work: text is written as Identity-H
+// glyph ids, not as readable characters, so the name is present only as
+// the CMap entries that map those glyphs back to Unicode — measured as
+// LOWER-case hex, e.g. "<0041>" for 'A'.
+func pdfContainsGlyphsFor(pdfBytes []byte, s string) bool {
+	for _, r := range s {
+		if r == ' ' {
+			continue
+		}
+		if !bytes.Contains(pdfBytes, []byte(fmt.Sprintf("<%04x>", r))) {
+			return false
+		}
 	}
+	return true
 }
 ```
+
+The template's own `fonts` fallback chain names `"Noto Sans"` — one of the
+three face names `fonts.Shipped()` returns (`"Noto Sans"`, `"Noto Sans
+Thai"`, `"Noto Sans SC"`) — so the chain resolves against the shipped set
+with no font bytes read from disk by the caller at all. An integrator with
+special typography needs (a brand face, a script the shipped set doesn't
+cover) still builds a `folio.FontSet` by hand from their own bytes, exactly
+as before Story 2.2 — `fonts.Shipped()` is a convenience for the common
+case, not the only way to construct a `FontSet`.
+
+### Why `folio` and `folio/fonts` are separate imports
+
+This is load-bearing, not ceremony. `package folio` (the render engine,
+module root) and `package fonts` (the shipped face data, `folio-go/fonts/`)
+are two separate imports, and `folio` never imports `fonts` — only the
+other direction. A caller who wants the shipped set opts in explicitly with
+a second import line.
+
+If `folio` re-exported the shipped set itself, importing `folio` would mean
+importing `folio/fonts`, and the **~11.3 MB** of embedded Noto face data
+would be compiled into **every** consumer's binary, whether or not that consumer
+ever calls `fonts.Shipped()` — Go does not strip an `//go:embed`'d
+byte slice out of a binary just because nothing reads the variable at
+runtime. Two callers pay that cost involuntarily under a merged import:
+
+- An integrator who supplies their own single Latin face and has no use
+  for Thai or Simplified-Chinese coverage still gets all three embedded.
+- Every wasm build — where binary size is a shipped, user-visible cost,
+  not just a build artifact on a server — pays for CJK support it may
+  never render a single glyph of.
+
+Keeping `fonts` a separate, leaf package that only *depends on* `folio`
+(never the reverse) means the ~11.3 MB is opt-in: it's in your binary only
+if your own code imports `folio-go/fonts` and calls `Shipped()`.
+
+> **Two different numbers, and mixing them up understates this argument by
+> about 2×.** `go:embed` stores **raw** bytes, so what lands in a binary is
+> the faces' uncompressed size — **11,289,880 B ≈ 11.3 MB**. The **~9 MB**
+> figure quoted elsewhere in the planning documents is a *compressed
+> download* budget, which is the right unit for a wasm payload over the
+> wire (**5.07 MB** for the three faces at `brotli -q 11`) and the wrong
+> one for a sentence about binary size. Use the raw figure for the binary
+> argument; use the compressed figure only where a download is meant.
+
+### The `locale` field
+
+A `.folio` document carries a top-level `"locale"`, and it is the document's
+own property — folio never consults the host's locale, environment or
+system settings for it (that is what makes a render reproducible across
+machines, AD-1).
+
+`locale` selects the language-dependent behaviour folio applies to the
+document's text: number and date formatting conventions, and the
+line-breaking rules used for scripts that need them. It is a closed set —
+an unrecognised value is a load error naming the field, never a silent
+fallback to a default, because a document that quietly formatted its
+currency under the wrong convention would be wrong in a way nobody
+notices until a customer does.
+
+`"th"` is what engages Thai dictionary-based break opportunities; `"en"` is
+the ordinary Latin case. `"ja"` renders, with the caveat immediately below
+— which is worth reading before choosing it.
+
+### A known limitation: Japanese glyph forms
+
+`locale: "ja"` **renders** correctly with the shipped font set — `"Noto Sans
+SC"` is a Pan-CJK face, so it carries kana and the ideograph set Japanese
+text draws from, and no `MISSING_GLYPH`-style diagnostic fires (there is
+real glyph coverage, so AC4's coverage diagnostic correctly stays silent).
+
+What the shipped set does **not** do is give Japanese text Japanese glyph
+*forms*. A meaningful minority of CJK ideographs are drawn with different
+canonical shapes under the Simplified-Chinese and Japanese conventions —
+"Noto Sans SC" draws the Simplified-Chinese shape for those, not the
+Japanese one. A `ja` document rendered against `fonts.Shipped()` today is
+therefore readable, but shows Simplified-Chinese glyph forms for that
+subset of characters — a **glyph-form quality gap**, not tofu, not a
+missing-coverage bug, and not something AC4 is expected to catch (AC4
+answers "is there a glyph at all", not "is it the regionally correct
+shape").
+
+This is a stated, accepted limitation, not an oversight: fixing it means
+shipping a dedicated Noto Sans JP face, which is not size-neutral — Noto
+Sans JP would add several megabytes on top of the shipped set's measured
+**5.07 MB** compressed download (the figure NFR7's ~9 MB budget is written
+in), for every consumer, including the wasm build this repo already treats
+size as a real cost for (see above). Until that
+trade-off is made deliberately, `ja` documents get correct Japanese text
+*coverage* through Noto Sans SC, with Simplified-Chinese glyph *shapes*
+where the two conventions diverge.
 
 ## Writing straight to a destination: `RenderTo`
 
@@ -170,8 +298,11 @@ would quietly undo the pin this section is about.)
 
 ## What's not here yet
 
-- **A bundled set of ready-made fonts.** Story 2.2 ships one; until then,
-  every caller supplies font bytes directly, as shown above.
+- **A dedicated Japanese glyph-form face.** Story 2.2's shipped set covers
+  `ja` text via the Pan-CJK "Noto Sans SC" face (correct coverage,
+  Simplified-Chinese glyph shapes) — see "A known limitation: Japanese
+  glyph forms" above. A Noto Sans JP face would fix the shapes at the cost
+  of roughly 7 MB more in every consumer's download.
 - **Page numbering.** `{{page}}` and `{{pages}}` are reserved placeholder
   names — they parse and pass through a template untouched — but nothing
   resolves them yet.

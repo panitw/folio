@@ -60,6 +60,85 @@ func TestMapRangeProductionScan(t *testing.T) {
 	}
 }
 
+// TestMapRangeUnderModule is Story 2.2's D-2.2.3 extension: a SECOND
+// production caller on the SAME checker (ScanMapRange itself is
+// unchanged, and the slices.Sorted(maps.Keys(...)) escape hatch is
+// unchanged) — the exact D-1.6.7 move ("the render path's extent
+// starts in package folio, so the hazard does too"), the identical
+// precedent folio-go/internal/arch_test.go's TestNoFloat64UnderModule
+// already applied to the no-float64 guard.
+//
+// Measured, at creation (B15, V4): TestMapRangeProductionScan above
+// only ever scans folio-go/internal/, so "internal/ must never range
+// the FontSet" was VACUOUSLY true — no internal/ package can even name
+// folio.FontSet without an import cycle, and FontSet is declared and
+// consumed entirely at the module root (fontset.go, render.go), outside
+// that root. Extending the scan to the WHOLE MODULE is what makes this
+// guard non-vacuous for the file that actually touches a FontSet.
+//
+// TestMapRangeProductionScan (internal/-scoped) is kept UNCHANGED —
+// two callers, one checker, exactly as D-1.6.7 left the float64 guard.
+func TestMapRangeUnderModule(t *testing.T) {
+	root := repoRootFromTest(t)
+	moduleRoot := filepath.Join(root, "folio-go")
+
+	findings, stats, err := ScanMapRange(moduleRoot)
+	if err != nil {
+		t.Fatalf("scan module root %s: %v", moduleRoot, err)
+	}
+
+	// Vacuity guard (D-000.9 + D-000.13), from the scanner's OWN
+	// reported stats: confirm it actually visited the module-root
+	// package (where render.go and fontset.go live, dir ".") and
+	// "internal", not just the directory TestMapRangeProductionScan
+	// already covers on its own.
+	visitedModuleRootPkg, visitedInternal := false, false
+	for _, dir := range stats.DirsVisited {
+		if dir == "." {
+			visitedModuleRootPkg = true
+		}
+		if dir == "internal" || strings.HasPrefix(dir, "internal"+string(filepath.Separator)) || strings.HasPrefix(dir, "internal/") {
+			visitedInternal = true
+		}
+	}
+	if !visitedModuleRootPkg {
+		t.Fatalf("vacuity guard: scanner's own stats did not report visiting the module-root package (\".\"), got %v", stats.DirsVisited)
+	}
+	if !visitedInternal {
+		t.Fatalf("vacuity guard: scanner's own stats did not report visiting \"internal\" from the module root, got %v", stats.DirsVisited)
+	}
+	if stats.FilesParsed == 0 {
+		t.Fatal("vacuity guard: scanner's own stats report 0 files parsed under the module root")
+	}
+
+	if len(findings) > 0 {
+		// D-000.13: report BY RULE ID AND MESSAGE, never by exit status.
+		// This loop previously collected f.Message alone and never
+		// referenced f.Rule at all, so the Dev Agent Record's claim that
+		// the guard "fired by rule id (map-range) and message" was not
+		// supported by anything this test does. A finding's rule id is
+		// the stable, greppable half of its identity — the half a reader
+		// uses to find the rule that produced it — and it is precisely
+		// the half that was missing.
+		var msgs []string
+		for _, f := range findings {
+			msgs = append(msgs, f.Rule+": "+f.Path+": "+f.Message)
+			if f.Rule != RuleMapRange {
+				t.Errorf(
+					"finding at %s carries rule id %q, want %q — a finding emitted by this scan under "+
+						"another rule id would be unattributable to the guard that produced it",
+					f.Path, f.Rule, RuleMapRange,
+				)
+			}
+		}
+		t.Fatalf(
+			"map range(s) found under the WHOLE MODULE (AD-1, NFR1.d, D-2.2.3) — this is a defect found, "+
+				"not a guard problem; fix the range, do not narrow the scan:\n%s",
+			strings.Join(msgs, "\n"),
+		)
+	}
+}
+
 // TestMapRangeFixtureScan is the AC1 fixture caller, red-proving AC16's
 // both polarities on retained fixtures at
 // folio-go/testdata/lint/map-range/ (never under folio-go/internal/,

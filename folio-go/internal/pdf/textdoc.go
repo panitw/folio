@@ -13,12 +13,13 @@ import (
 // internal/fontset's boundary (AC17a) — this package's job is only to
 // spell it out as PDF objects, per AD-3's routing rules.
 type EmbeddedFace struct {
-	Name          string // resource/base-font name (the caller's FontSet key)
-	Program       []byte // FontFile2 payload (a standalone TrueType font)
-	Tag           string // AC6's six-letter subset tag
-	NumGlyphs     int
-	GlyphForRune  map[rune]uint16 // rune -> CID (Identity-H: CID == subset glyph id)
-	WidthForGlyph map[uint16]int64
+	Name           string // PDF resource name (the caller's FontSet key)
+	PostScriptName string // the embedded program's OWN name — see baseFont below
+	Program        []byte // FontFile2 payload (a standalone TrueType font)
+	Tag            string // AC6's six-letter subset tag
+	NumGlyphs      int
+	GlyphForRune   map[rune]uint16 // rune -> CID (Identity-H: CID == subset glyph id)
+	WidthForGlyph  map[uint16]int64
 
 	Ascent, Descent, CapHeight             int64
 	BBoxXMin, BBoxYMin, BBoxXMax, BBoxYMax int64
@@ -232,7 +233,34 @@ func SerializeTextDocument(pages []TextPage, faces map[string]EmbeddedFace, imag
 	for _, name := range faceNames {
 		face := faces[name]
 		ids := faceIDs[name]
-		baseFont := face.Tag + "+" + pdfNameEscape(name)
+		// ISO 32000-1 Table 117 (CIDFontType2): /BaseFont "shall be the
+		// value of the CIDFontName entry in the CIDFont program",
+		// prefixed with the six-letter subset tag (§9.6.4). Before
+		// Story 2.2 folio spelled this from the FontSet KEY — the name
+		// the caller happened to file the face under — so the declared
+		// name and the embedded program disagreed (`NotoSansSC` vs
+		// `NotoSansSC-Regular`). PDF/A validators flag that, and it is
+		// the name a viewer falls back to when the embedded program
+		// fails to load.
+		//
+		// The two halves are INDEPENDENT, which is what keeps the tag
+		// derivation non-circular (AC6): the tag hashes the final
+		// program bytes, while PostScriptName is read off the supplied
+		// face's own `name` table. Neither is an input to the other, and
+		// the embedded program carries no `name` table for a tag to be
+		// written into (PDF §9.9.2 sanctions the reduced table set for
+		// an embedded CIDFontType2, since /CIDToGIDMap does the
+		// mapping). The semantic acceptance assertion pins the composed
+		// result to ^[A-Z]{6}\+<name6>$ per face, which catches both a
+		// stale name and a double-applied tag.
+		//
+		// Falls back to the FontSet key — the pre-2.2 behaviour — only
+		// when the supplied program declares no name record at all.
+		psName := face.PostScriptName
+		if psName == "" {
+			psName = name
+		}
+		baseFont := face.Tag + "+" + pdfNameEscape(psName)
 
 		toUnicodeCMap := buildToUnicodeCMap(face)
 

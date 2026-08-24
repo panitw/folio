@@ -17,8 +17,6 @@ package fontset
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 
 	"github.com/boxesandglue/textshape/ot"
 	"github.com/boxesandglue/textshape/subset"
@@ -44,6 +42,7 @@ type Font struct {
 	unitsPerEm uint16 // validated: MinUnitsPerEm <= unitsPerEm <= MaxUnitsPerEm
 	created    int64  // head.created, offset 20, LONGDATETIME (F-5)
 	modified   int64  // head.modified, offset 28, LONGDATETIME (F-5)
+	psName     string // name table record 6, read directly (see readPostScriptName)
 }
 
 // New parses data as an OpenType/TrueType font named name (the name the
@@ -87,8 +86,96 @@ func New(name string, data []byte) (*Font, error) {
 		return nil, fmt.Errorf("fontset: font %q: read head table: %w", name, herr)
 	}
 
-	return &Font{name: name, face: face, unitsPerEm: upem, created: created, modified: modified}, nil
+	// Story 2.2 / D-2.2.4 (binding): a caller-supplied VARIABLE face is
+	// REJECTED here, at face ingestion — not instanced, and not
+	// mid-render. PDF 1.7 cannot express a variable font (AD-7 pins the
+	// profile), so a variable face cannot be embedded as supplied, and
+	// the two ways of coping with that in-process are both closed:
+	//
+	//   - Pinning every axis to its DEFAULT (what this package did
+	//     before) is not a neutral act. NotoSansSC-VF's `wght` axis
+	//     defaults to 100, so "the default instance" embedded
+	//     Simplified Chinese as THIN beside Regular Latin and Regular
+	//     Thai, and every guard in the project agreed the artifact was
+	//     correct because each was asked whether the value CHANGED,
+	//     never whether it meant what its name implied (D-000.21).
+	//   - Pinning an explicitly chosen weight is unreachable: the
+	//     vendor's PinAxisLocation requires the identifier `float32`,
+	//     which internal/arch_test.go:54 bans under internal/ AND the
+	//     module root (AD-23). And it would not have worked anyway —
+	//     textshape@v0.0.15 subset/execute.go:496-499 copies `OS/2`
+	//     VERBATIM and never updates usWeightClass (there is no writer
+	//     for that field anywhere in textshape), so pinning wght=400 on
+	//     a variable face yields Regular outlines carrying metadata that
+	//     still claims Thin — strictly worse than the defect it fixes,
+	//     because outlines and metadata would then disagree.
+	//
+	// So the seam is DELETED rather than fixed. folio's own shipped
+	// faces arrive already static (folio-go/fonts/, derived by
+	// tools/fontgen/instance_faces.py, which pins the axes AND lets
+	// fontTools write the correct usWeightClass), and a caller bringing
+	// their own variable face is told, early and by name, to instance it
+	// first. This removes the float `gvar` interpolation path from the
+	// render entirely — the FMA hazard D-2.2.0 measured stops being
+	// monitored and stops existing.
+	//
+	// The message NAMES THE REMEDY on purpose: most Google Fonts
+	// downloads are variable builds today, so a caller hitting this
+	// needs an action, not a refusal.
+	if parsed.HasTable(ot.TagFvar) {
+		return nil, fmt.Errorf(
+			"fontset: font %q: this is a VARIABLE font (it has an `fvar` table) and cannot be embedded: "+
+				"PDF 1.7 cannot express a variable font, and folio will not silently pick an instance for you "+
+				"(the default instance is not always Regular — Noto Sans SC's `wght` axis defaults to 100, i.e. Thin). "+
+				"Instance it to a single static weight first, e.g. "+
+				"`fonttools varLib.instancer --update-name-table %s.ttf wght=400 -o %s-Regular.ttf`, "+
+				"pinning EVERY axis the face declares rather than just `wght` "+
+				"(see tools/fontgen/instance_faces.py for the full recipe folio uses for its own shipped faces, "+
+				"including the reproducibility pin the bare command above omits)",
+			name, name, name,
+		)
+	}
+
+	psName, perr := readPostScriptName(parsed)
+	if perr != nil {
+		return nil, fmt.Errorf("fontset: font %q: read name table: %w", name, perr)
+	}
+
+	return &Font{
+		name:       name,
+		face:       face,
+		unitsPerEm: upem,
+		created:    created,
+		modified:   modified,
+		psName:     psName,
+	}, nil
 }
+
+// PostScriptName returns the face's own PostScript name — `name` table
+// record 6, read off the supplied font program itself, never derived
+// from the FontSet key the caller happened to file it under.
+//
+// It exists because ISO 32000-1 Table 117 (CIDFontType2) requires
+// /BaseFont to be "the value of the CIDFontName entry in the CIDFont
+// program". Before Story 2.2 folio spelled /BaseFont from the FontSet
+// key, so the declared name and the embedded program disagreed
+// (`NotoSansSC` vs `NotoSansSC-Regular`) — a real conformance defect:
+// PDF/A validators flag it, and it is the name a viewer falls back to
+// when the embedded program fails to load.
+//
+// Fixing it also converts an INVISIBLE property into a visible one,
+// which is the more valuable half. The Thin defect (D-000.21) hid
+// precisely because nothing in the output carried the font's own
+// identity; now that /BaseFont reflects the embedded program, a future
+// weight defect of this class is legible by reading the PDF, not only
+// through the dedicated assertion we happened to remember to write.
+//
+// Returns "" when the supplied program declares no usable name record;
+// the caller decides what to do about that (internal/pdf falls back to
+// the FontSet key, which is the pre-2.2 behaviour). This accessor
+// returns a plain string and never leaks *ot.Font, *ot.Name or any
+// other vendor type through the seam (AC17a, D-1.5.10).
+func (f *Font) PostScriptName() string { return f.psName }
 
 // parseHead reads and parses the head table once. *ot.Font and *ot.Head
 // never leave this function or its two callers below (AC17a).
@@ -108,6 +195,36 @@ func readHeadTimes(font *ot.Font) (created, modified int64, err error) {
 		return 0, 0, err
 	}
 	return head.Created, head.Modified, nil
+}
+
+// readPostScriptName reads `name` table record 6 directly, rather than
+// through (*ot.Face).PostscriptName(). That vendor accessor returns the
+// literal string "Unknown" when the parsed font carries no name table
+// (ot/metrics.go:415-420) — a silent substitution of exactly the kind
+// the readUnitsPerEm comment below documents for Upem(), and one that
+// would put the PDF name /Unknown into /BaseFont while every assertion
+// downstream reported a well-formed string. A missing name table is
+// reported here as "", which is observably absent.
+//
+// A missing or unparseable `name` table is NOT an ingestion error: it is
+// not part of what this seam validates (AC16/AC17 validate unitsPerEm),
+// and a face that renders correctly should not become unloadable over a
+// metadata table. The guard that this value is RIGHT for the faces folio
+// actually ships is the semantic acceptance assertion on the produced
+// PDF (D-000.22), which pins /BaseFont to ^[A-Z]{6}\+<name6>$ per face.
+func readPostScriptName(font *ot.Font) (string, error) {
+	if !font.HasTable(ot.TagName) {
+		return "", nil
+	}
+	data, err := font.TableData(ot.TagName)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := ot.ParseName(data)
+	if err != nil {
+		return "", err
+	}
+	return parsed.PostScriptName(), nil
 }
 
 // readUnitsPerEm reads the head table's unitsPerEm field (offset 18)
@@ -136,6 +253,42 @@ func (f *Font) UnitsPerEm() uint16 { return f.unitsPerEm }
 // values, verbatim (LONGDATETIME: seconds since 1904). AC11a asserts
 // the embedded subset's copies equal these exactly.
 func (f *Font) HeadTimes() (created, modified int64) { return f.created, f.modified }
+
+// HasGlyph reports whether f's cmap maps r to any glyph (Story 2.2,
+// AC4): the COVERAGE test the missing-glyph diagnostic is built on —
+// evaluated per rune, against each candidate face's own cmap, in chain
+// order. Never a proxy such as a locale check or "is this the preferred
+// face for the script" (D-2.2-D4).
+func (f *Font) HasGlyph(r rune) bool {
+	cmap := f.face.Cmap()
+	if cmap == nil {
+		return false
+	}
+	_, ok := cmap.Lookup(ot.Codepoint(r))
+	return ok
+}
+
+// AdvanceForRune returns r's horizontal advance in f, scaled to a
+// 1000-unit em (the same scale (*Subset).WidthForGlyph uses), and
+// whether r resolved to a glyph at all. Used to position a multi-face
+// text run's SECOND and later face-segments (Story 2.2, AC4): once a
+// segment's face is resolved, its total advance determines where the
+// next segment starts. Never used to place individual glyphs WITHIN one
+// segment — the embedded font's own /W array (from WidthForGlyph) does
+// that at PDF-render time via a single Tj/TJ operator, exactly as it
+// already does for one-face elements today.
+func (f *Font) AdvanceForRune(r rune) (int64, bool) {
+	cmap := f.face.Cmap()
+	if cmap == nil {
+		return 0, false
+	}
+	gid, ok := cmap.Lookup(ot.Codepoint(r))
+	if !ok {
+		return 0, false
+	}
+	adv := f.face.HorizontalAdvance(gid)
+	return int64(geom.ScaleRound(geom.Length(int64(adv)), 1000, int64(f.unitsPerEm))), true
+}
 
 // Metrics is the subset of font-wide metrics a PDF FontDescriptor
 // needs, scaled to a 1000-unit em via geom.ScaleRound — this module's
@@ -208,6 +361,27 @@ type Subset struct {
 // Sorting here would make that property untestable (AC8a: "a defensive
 // normalisation upstream of a check can delete that check's
 // discriminating power") — do not reintroduce it.
+//
+// Story 2.2 (D-2.2.4, binding): this function does NO instancing. PDF
+// 1.7 cannot express a variable font (AD-7), and folio's answer is that
+// a variable face never gets this far — New() rejects one at ingestion
+// with a located diagnostic naming the remedy. Everything arriving here
+// is already a single static instance, so there is no axis to pin, no
+// `gvar` to interpolate, and no float arithmetic on the render path.
+//
+// This package still exposes NO way for a caller to request a
+// particular instance, and that is deliberate rather than unfinished:
+// reaching the vendor's PinAxisLocation requires the identifier
+// `float32`, which internal/arch_test.go:54 bans under internal/ and
+// the module root (AD-23). Bold, when it arrives, is a `wght` instance
+// derived AHEAD of the build by tools/fontgen/instance_faces.py and
+// shipped as its own static face — and it inherits D-2.2.1's standing
+// condition (its own golden, plus a four-target matrix run) so it does
+// not have to rediscover why.
+//
+// This package's own tag-discrimination test (V5) exercises a second,
+// non-default instance by calling the vendor subsetter directly,
+// entirely from the test file, never through this method.
 func (f *Font) Subset(runes []rune) (*Subset, error) {
 	cmap := f.face.Cmap()
 	if cmap == nil {
@@ -244,6 +418,18 @@ func (f *Font) Subset(runes []rune) (*Subset, error) {
 	input := subset.NewInput()
 	input.AddGlyphs(gids...) // do NOT sort gids first — AC8, D-1.5.7.
 
+	// There is NO instancing seam here any more (D-2.2.4, binding). Every
+	// font reaching this point is already static: New() rejects a face
+	// carrying `fvar` at ingestion, with a located diagnostic that names
+	// the remedy. See New()'s comment for why the seam was deleted
+	// rather than fixed — pinning to defaults embedded Thin, and pinning
+	// explicitly is both unreachable (AD-23 bans `float32`) and
+	// ineffective (textshape never rewrites OS/2.usWeightClass).
+	//
+	// Do not reintroduce a pin here. The consequence of this deletion is
+	// that the float `gvar` interpolation path — D-2.2.0's measured FMA
+	// hazard, the reason this story carries a four-target matrix at all
+	// — is not merely monitored, it is unreachable from the render.
 	plan, err := subset.CreatePlan(f.face.Font, input)
 	if err != nil {
 		return nil, fmt.Errorf("fontset: font %q: create subset plan: %w", f.name, err)
@@ -254,7 +440,13 @@ func (f *Font) Subset(runes []rune) (*Subset, error) {
 		return nil, fmt.Errorf("fontset: font %q: execute subset: %w", f.name, err)
 	}
 
-	tag, err := deriveTag(plan.GlyphSet())
+	// AC6 / D-2.2.2 (superseded): the six-letter subset tag hashes the
+	// RETURNED PROGRAM BYTES — the embedded font program itself, in
+	// full — never plan.GlyphSet() alone (which collided for two
+	// pinned instances of one face sharing a glyph-id set, B6) and
+	// never any axis coordinate in any form, exact or float (D-1.5.8:
+	// a tag keyed on the request lies about what is embedded).
+	tag, err := deriveTag(program)
 	if err != nil {
 		return nil, fmt.Errorf("fontset: font %q: derive subset tag: %w", f.name, err)
 	}
@@ -295,21 +487,19 @@ func (f *Font) Subset(runes []rune) (*Subset, error) {
 	}, nil
 }
 
-// deriveTag is AC6/AC7: the six-letter A-Z subset tag, derived from a
-// hash of Plan.GlyphSet() — the closure set, in SOURCE-font glyph
-// numbering (D-1.5.8) — sorted ascending BEFORE hashing. This is the
-// one site in this story where sorting is correct and required (AC7,
-// AC6): the ordering is ours, it reaches an output byte (the tag), and
-// it comes from ranging a map, so Story 1.3's ScanMapRange guard is
-// load-bearing here and must not be worked around — the escape hatch
-// idiom (slices.Sorted(maps.Keys(...))) is used deliberately, not
-// incidentally.
+// deriveTag is AC6/AC6a's ruled derivation (`D-2.2.2 (superseded)`): the
+// six-letter A-Z subset tag, derived from a hash of `program` — the
+// COMPLETE embedded font program `subset.Subset()` (here, plan.Execute())
+// returned, byte for byte. Not the glyph-id set (B6: two pinned
+// instances of one face collided under that reading, since instancing
+// changes outlines without changing which glyph ids are retained), not
+// any axis coordinate in any form, exact or float (D-1.5.8: a tag keyed
+// on the request lies about what is embedded).
 //
-// AC7a records the two rejected readings and why: hashing the
-// requested set (not the closure) lets two different embedded programs
-// share a tag; hashing the OUTPUT numbering is catastrophic, because
-// createCompactMapping always produces {0..n-1} regardless of which
-// glyphs those are, making the tag a function of glyph count alone.
+// Zero float anywhere in this function, by construction: `program` is
+// already a []byte, so there is no map to sort and no ScanMapRange
+// concern at this site at all — this derivation needs no escape hatch
+// because it never ranges a map in the first place.
 //
 // D-1.1.b, verbatim, on why this six-letter tag is not routed through
 // internal/pdf's numeric emitters: "Glyph ids under Identity-H take
@@ -317,14 +507,12 @@ func (f *Font) Subset(runes []rune) (*Subset, error) {
 // literal, i.e. a byte encoding like /ID, not a number. Same for the
 // six-letter subset tag. This must be said in a code comment or a
 // later agent will 'unify' it."
-func deriveTag(glyphSet map[ot.GlyphID]bool) (string, error) {
-	if len(glyphSet) == 0 {
-		return "", fmt.Errorf("empty glyph set")
+func deriveTag(program []byte) (string, error) {
+	if len(program) == 0 {
+		return "", fmt.Errorf("empty font program")
 	}
 
-	sorted := slices.Sorted(maps.Keys(glyphSet)) // ScanMapRange-compliant: sort before use.
-
-	digest := fnv64aOverGIDs(sorted)
+	digest := fnv64aOverBytes(program)
 
 	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	var tag [6]byte
@@ -336,22 +524,19 @@ func deriveTag(glyphSet map[ot.GlyphID]bool) (string, error) {
 	return string(tag[:]), nil
 }
 
-// fnv64aOverGIDs folds a sorted glyph-id sequence into a single uint64
-// using FNV-1a, big-endian per glyph id — a fixed, deterministic,
-// integer-only digest (no floating point, no wall-clock, no
-// randomness) suitable for AC6's "hash of the sorted glyph-id set".
-func fnv64aOverGIDs(sorted []ot.GlyphID) uint64 {
+// fnv64aOverBytes folds a byte sequence into a single uint64 using
+// FNV-1a — a fixed, deterministic, integer-only digest (no floating
+// point, no wall-clock, no randomness) suitable for AC6's "hash of the
+// returned program bytes".
+func fnv64aOverBytes(data []byte) uint64 {
 	const (
 		offset64 = 14695981039346656037
 		prime64  = 1099511628211
 	)
 	h := uint64(offset64)
-	for _, gid := range sorted {
-		b := [2]byte{byte(gid >> 8), byte(gid)}
-		for _, c := range b {
-			h ^= uint64(c)
-			h *= prime64
-		}
+	for _, c := range data {
+		h ^= uint64(c)
+		h *= prime64
 	}
 	return h
 }
