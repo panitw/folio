@@ -455,12 +455,19 @@ graph TD
   documentation concedes that longest-match handles unknown words badly and that this is serious
   in real Thai text. Silently mis-breaking a person's name across 50,000 statements is a worse
   failure than any overflow.
-- **Rule:** two constraints sit **under** whatever the dictionary proposes, and both override it:
+- **Rule:** three constraints sit **under** whatever the dictionary proposes, and all override it:
   - **Unknown runs are atomic.** A run of Thai characters the dictionary cannot cover yields
     **no** interior break opportunities. It overflows visibly under FR44 — clipped, with a
     located diagnostic — rather than being split at a guess.
   - **No break inside a Thai character cluster.** A consonant with its vowels and tone marks is
     indivisible. This is mechanical and needs no dictionary.
+  - **A declared value is never split.** A document may declare, in its `unbreakableValues` list,
+    which data paths hold values that must stay on one line; no break opportunity survives inside
+    a substituted value from a listed path. The engine **never infers** membership. It cannot:
+    Thailand's Surname Act has every family coin a unique surname out of ordinary dictionary
+    words, so a surname and the common words it was built from are character-for-character
+    identical and no dictionary-coverage rule can separate them. The declaration reaches the
+    breaking stage as a **parameter**, never through an import.
 
   The engine's contract is *break opportunities*, not word segmentation. Correctness is judged
   against the frozen S4 expected-break fixture, whose provenance may be a one-time offline

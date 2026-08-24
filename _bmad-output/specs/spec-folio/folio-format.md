@@ -36,6 +36,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
   "locale": "th",
   "nextId": 14,
   "page": {},
+  "unbreakableValues": ["customer.name"],
   "utcOffset": "+07:00",
   "version": "1.0"
 }
@@ -51,6 +52,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 | `bands` | Exactly three bands (below). |
 | `assets` | Embedded binary assets, keyed by content hash (below). |
 | `nextId` | The next element-id counter value. Persisted so ids survive a save without renumbering (AD-10). |
+| `unbreakableValues` | *Optional.* A list of **bare root-relative dotted value paths** (e.g. `"customer.name"`) whose bound values must never be split across a line break — the same path convention `columns[].footerOf` uses: no `{{ }}`, no function call, no `[]`. Row-scoped paths are written root-relative under that same convention. The engine **never infers** membership; see *Line breaking* below. Declared once for the document because the property belongs to the data, not to a box. Absent means no value is protected. |
 
 Top-level keys appear sorted, as does every object in the file — that is the serializer's job
 (AD-9), not something an author maintains by hand.
@@ -227,6 +229,66 @@ Log for how it was derived.)*
 
 Images are only ever embedded. Folio never fetches by URL and never reads from disk at render
 time (FR33).
+
+## Line breaking
+
+Text wraps inside its element's declared `width`. Where a line may end is decided per script, and
+what follows is the **whole** rule — this section is deliberately written as a list of what the
+engine does **not** do as well as what it does, because every omission below is a deliberate
+narrowing rather than an unfinished edge.
+
+| Script | Rule |
+|---|---|
+| Latin, and anything with no rule of its own | A line may end **after** a run of whitespace, and nowhere else. The whitespace run is consumed by the break: it is drawn on neither line. |
+| CJK | A line may end between any two adjacent Han or kana characters. |
+| Thai | Thai is written without interword spaces, so break positions come from an embedded dictionary. A stretch of Thai the dictionary cannot account for is kept whole. |
+
+**This is not UAX #14, and nothing in folio claims conformance to it.** Absent, by name:
+hyphenation; a break at `-` or any other punctuation; the contextual pair rules that make up the
+bulk of the standard.
+
+**Kinsoku is not implemented.** A CJK line may begin with `，` or `。` and may end with an opening
+bracket. Fullwidth punctuation and fullwidth digits are not break candidates at all.
+
+### Line height
+
+Consecutive baselines in a wrapped element sit a fixed distance apart. That distance is a function
+of the element's **declared font stack** and its font size, and of nothing else — in particular it
+does **not** depend on which characters happen to land on a given line. Adding one Chinese
+character to a paragraph never reflows it.
+
+The distance is the **largest** `ascent - descent + lineGap` among the faces of the declared stack,
+read from each face's `hhea` table and scaled to the font size.
+
+> **A stack declares what may appear in an element. Leading must accommodate what may appear — not
+> what does appear.**
+
+"What does appear" is content-dependent, and content-dependent line height would make a box
+negotiate with its contents. "What may appear" is exactly the declared stack.
+
+The cost is bounded by the author's own choice. A Latin-only element in a
+`["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]` stack gets about 11% taller lines than Noto Sans
+alone would need — but the author declared that stack, and an author who wants Latin metrics
+declares a Latin-only stack. **No element pays for a face its own stack does not name.**
+
+There is no `lineHeight` key. Line height is derived, not authored.
+
+### Values that must never be split
+
+The engine does **not** guess which stretches of text are names. It cannot: Thai surnames are
+coined, one per family, out of ordinary everyday words, so a dictionary genuinely cannot tell a
+person's name from the words it was built from — `ศรีสุข` as a surname is character-for-character
+the two common words `ศรี` and `สุข`.
+
+So a template **declares** it, in the document-level `unbreakableValues` list. Every value
+substituted from a listed path is kept on one line. Literal text around the placeholder is
+unaffected — `"Statement for {{customer.name}}"` still breaks between *Statement* and *for*.
+
+**The declaration protects bound values only.** A Thai name that appears inside free-form literal
+text carries no declaration and remains breakable. That limitation is stated, not fixed.
+
+If a value that must not be split is wider than its box, it **overflows visibly** rather than being
+re-broken, squeezed or silently dropped.
 
 ## What is *not* in the file
 

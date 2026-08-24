@@ -9,7 +9,38 @@ package bind
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
+
+// Substitution records one placeholder's contribution to BindTextSpans'
+// output: which data path produced it, and which part of the result it
+// occupies.
+//
+// Start and End are RUNE indices into the returned string, half-open.
+// Rune indices, because every position the breaking stage works in is a
+// rune index — AD-25's break positions and GlyphInfo.Cluster alike
+// (D-2.3.2) — and a byte offset that happened to be equal for ASCII
+// would diverge silently on the first Thai character.
+//
+// A placeholder that resolved to JSON null contributes an EMPTY span
+// (Start == End) rather than no span at all. It is reported because the
+// caller asked what each path produced, and "nothing, at this position"
+// is the honest answer; it can never affect breaking, since an empty
+// span has no interior.
+//
+// THIS TYPE CARRIES NO OPINION ABOUT LINE BREAKING, and internal/bind
+// has none. It reports what it substituted and where. Whether a span is
+// unbreakable is the DOCUMENT's declaration, matched against Path by
+// the caller, and handed to internal/text as a parameter (D-000.16:
+// "the signal rides on the value, never through an import").
+type Substitution struct {
+	// Path is the bare dotted path exactly as authored, including a
+	// leading "params" segment when it resolved against the params root.
+	Path string
+
+	// Start, End are rune indices into BindTextSpans' returned string.
+	Start, End int
+}
 
 // reservedPlaceholders are AD-4's page-number slots (D-1.6.5, AC18):
 // owned by Story 2.7, never resolved from data and never an error at
@@ -48,19 +79,55 @@ var reservedPlaceholders = map[string]bool{
 // its own root — conflating the two is how "page" would eventually
 // acquire a namespace, which AD-4 forbids forever.
 func BindText(text string, data, params Value, elementID string) (string, error) {
+	s, _, err := BindTextSpans(text, data, params, elementID)
+	return s, err
+}
+
+// BindTextSpans is BindText plus the report of WHAT it substituted
+// WHERE: one Substitution per resolved placeholder, in output order,
+// with rune spans into the returned string.
+//
+// It is the same traversal, not a second one. BindText delegates here,
+// so there is exactly one implementation of the binding grammar and the
+// spans cannot drift from the text they describe — the same "only one
+// derivation" discipline Story 2.3's Blocker 1 imposed on advances.
+//
+// Story 2.4 (D-2.1.10) needs this because a template may declare that
+// certain DATA PATHS are never to be split across lines, and honouring
+// that requires knowing which stretch of the bound string came from
+// which path. folio-format.md:130 lets a text `value` mix literal text
+// with bindings — both of the specification's own worked examples do
+// ("Statement for {{customer.name}}") — so "the whole element" is not a
+// usable answer: it would forbid breaking between "Statement" and
+// "for". The span is the unit, and this is where the span is known.
+//
+// {{page}} and {{pages}} produce NO Substitution. They are reserved
+// tokens owned by Story 2.7, resolved from neither root, and they name
+// no data path — so there is nothing a document could declare about
+// them.
+func BindTextSpans(text string, data, params Value, elementID string) (string, []Substitution, error) {
 	var out strings.Builder
+	// runesWritten tracks the rune length of out, maintained alongside
+	// every write rather than recomputed, so a Substitution's bounds are
+	// recorded at the moment the text is appended.
+	runesWritten := 0
+	var subs []Substitution
+	write := func(s string) {
+		out.WriteString(s)
+		runesWritten += utf8.RuneCountInString(s)
+	}
 	rest := text
 	for {
 		start := strings.Index(rest, "{{")
 		if start < 0 {
-			out.WriteString(rest)
+			write(rest)
 			break
 		}
-		out.WriteString(rest[:start])
+		write(rest[:start])
 		afterOpen := rest[start+2:]
 		end := strings.Index(afterOpen, "}}")
 		if end < 0 {
-			return "", fmt.Errorf("bind: element %s: unterminated \"{{\" (missing closing \"}}\")", elementID)
+			return "", nil, fmt.Errorf("bind: element %s: unterminated \"{{\" (missing closing \"}}\")", elementID)
 		}
 		inner := afterOpen[:end]
 		rest = afterOpen[end+2:]
@@ -68,19 +135,31 @@ func BindText(text string, data, params Value, elementID string) (string, error)
 		trimmed := strings.TrimSpace(inner)
 		if reservedPlaceholders[trimmed] {
 			// AC18: reserved for Story 2.7 — left byte-for-byte
-			// unchanged, never resolved from data, never an error.
-			out.WriteString("{{")
-			out.WriteString(inner)
-			out.WriteString("}}")
+			// unchanged, never resolved from data, never an error. It
+			// names no data path, so it yields no Substitution.
+			write("{{")
+			write(inner)
+			write("}}")
 			continue
 		}
 
 		path, perr := parseBindingPath(inner)
 		if perr != nil {
-			return "", fmt.Errorf(
+			return "", nil, fmt.Errorf(
 				"bind: element %s: %q is not a supported binding path (%s) — expression syntax is not yet supported (Epic 3)",
 				elementID, trimmed, perr,
 			)
+		}
+
+		// record wraps one resolved placeholder's write, capturing the
+		// rune span it occupies. Used by both roots below, so neither
+		// can acquire a different notion of where a substitution sits.
+		record := func(resolved *string) {
+			from := runesWritten
+			if resolved != nil {
+				write(*resolved)
+			}
+			subs = append(subs, Substitution{Path: strings.Join(path, "."), Start: from, End: runesWritten})
 		}
 
 		// AC12/AC13/D-1.7.4: the FIRST segment "params" always selects
@@ -91,15 +170,13 @@ func BindText(text string, data, params Value, elementID string) (string, error)
 			if len(path) == 1 {
 				// AC17: "{{params}}" bare, no dot — params names a
 				// namespace, not a value.
-				return "", fmt.Errorf("bind: element %s: %q is a namespace, not a value", elementID, trimmed)
+				return "", nil, fmt.Errorf("bind: element %s: %q is a namespace, not a value", elementID, trimmed)
 			}
 			resolved, err := lookupBound(params, path[1:], path, elementID, "params", "the supplied params")
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
-			if resolved != nil {
-				out.WriteString(*resolved)
-			}
+			record(resolved)
 			continue
 		}
 
@@ -117,13 +194,11 @@ func BindText(text string, data, params Value, elementID string) (string, error)
 		// rather than the abandoned inline copy.
 		resolved, err := lookupBound(data, path, path, elementID, "data", "the report data")
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		if resolved != nil {
-			out.WriteString(*resolved)
-		}
+		record(resolved)
 	}
-	return out.String(), nil
+	return out.String(), subs, nil
 }
 
 // lookupBound resolves subPath against root — EITHER root, data or

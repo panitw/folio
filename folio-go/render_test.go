@@ -113,6 +113,20 @@ const multiScriptTestTemplateJSON = `{
 // story regresses — D-000.9's exact shape.
 const subprocessShapedTextEnvVar = "FOLIO_SUBPROCESS_RENDER_SHAPEDTEXT"
 
+// subprocessWrappedTextEnvVar is Story 2.4's SIXTH selector (joining the
+// five above, replacing none): fixtures/wrapped-text/, the line-breaking
+// document.
+//
+// It needs its own selector for the same reason shaped-text did. Every
+// earlier fixture FITS its box — measured, all ten text elements, the
+// widest at 26% of its width — so a matrix comparing four legs of any of
+// them would agree perfectly while certifying nothing about wrapping: a
+// build that never broke a line would produce identical bytes. This is
+// the only registered document whose elements are measured to overflow
+// their boxes, and therefore the only one whose legs can disagree if
+// line breaking is not reproducible across targets.
+const subprocessWrappedTextEnvVar = "FOLIO_SUBPROCESS_RENDER_WRAPPEDTEXT"
+
 // shapedTextTemplateJSON is Story 2.3's AC10 fixture document
 // (fixtures/shaped-text/input.folio, kept byte-identical to it by
 // TestShapedTextGoldenFixture). Every element is chosen for what it
@@ -458,6 +472,19 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(b)
+	}
+	if os.Getenv(subprocessWrappedTextEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(wrappedTextTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		b, err := Render(tpl, Data(wrappedTextDataJSON), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)

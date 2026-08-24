@@ -124,6 +124,19 @@ func writeDocument(dst []byte, d *Document) []byte {
 		{"assets", func(dst []byte, depth int) []byte { return writeAssets(dst, depth, d.Assets) }},
 		{"nextId", writePlainInt(d.NextID)},
 	}
+	// unbreakableValues (Story 2.4, D-2.4.1) is OPTIONAL, and an absent
+	// declaration must round-trip as an ABSENT KEY — not as "[]".
+	// Emitting an empty array for every document that never used the
+	// feature would move every existing golden's bytes, which AC12
+	// forbids: exactly one recorded artifact moves in this story, and it
+	// is not a template. The nil/empty distinction is therefore
+	// load-bearing here in the same way D-1.4.3's fifth trap is.
+	if len(d.UnbreakableValues) > 0 {
+		paths := d.UnbreakableValues
+		fields = append(fields, kv{"unbreakableValues", func(dst []byte, depth int) []byte {
+			return writeStringArray(dst, depth, paths)
+		}})
+	}
 	fields = append(fields, extraKVs(d.Extra)...)
 	return writeObject(dst, 0, fields)
 }

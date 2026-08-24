@@ -154,6 +154,20 @@ func ParseDocument(b []byte) (*Document, error) {
 		consumed["assets"] = true
 	}
 
+	// unbreakableValues (Story 2.4; D-2.1.6 OWNER, D-2.4.1) — optional,
+	// a list of bare root-relative dotted data paths. Absent stays
+	// absent: the field is not defaulted to an empty list, because a
+	// document that never declared it must round-trip WITHOUT the key
+	// (the canonical-fixed-point property Story 1.4 pins).
+	if raw, ok := top["unbreakableValues"]; ok {
+		consumed["unbreakableValues"] = true
+		paths, err := decodeUnbreakableValues(raw)
+		if err != nil {
+			return nil, err
+		}
+		doc.UnbreakableValues = paths
+	}
+
 	// nextId (AC32, AC33, AC37) — must be a plain decimal integer, never
 	// base 36.
 	nextRaw, ok := top["nextId"]

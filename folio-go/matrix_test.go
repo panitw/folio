@@ -532,6 +532,45 @@ func captureShapedTextRender(t *testing.T, target matrixTarget, binPath string) 
 	return runOnTarget(t, target, binPath, map[string]string{subprocessShapedTextEnvVar: "1"})
 }
 
+// captureWrappedTextRender runs binPath with
+// FOLIO_SUBPROCESS_RENDER_WRAPPEDTEXT=1 — Story 2.4's SIXTH selector,
+// rendering fixtures/wrapped-text/ through the public Render path.
+func captureWrappedTextRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessWrappedTextEnvVar: "1"})
+}
+
+// requireWrappedTextIsWrapped is Story 2.4's OWN feature guard, and it
+// exists for the same reason requireShapedTextIsShaped does.
+//
+// "Contains a FontFile2" is satisfied by any embedding, and every
+// pre-2.4 fixture's text FITS its box — so a matrix comparing four legs
+// of a document that never wrapped would agree byte for byte and certify
+// nothing about line breaking. This guard asserts on EVERY leg, before
+// any byte comparison, that the captured stream actually carries wrapped
+// text: MORE DISTINCT BASELINES THAN TEXT ELEMENTS. The fixture has four
+// text elements and is measured to occupy nine baselines; a build that
+// stopped wrapping would emit four, and this fires.
+//
+// It is a property of the PRODUCED bytes, read back off them.
+func requireWrappedTextIsWrapped(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+
+	const wantElements = 4
+	runs := readEmittedRuns(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the wrapped-text leg emitted no text runs", target.name)
+	}
+	ys := linesByOrigin(runs)
+	if len(ys) <= wantElements {
+		t.Fatalf(
+			"%s: the wrapped-text leg occupies %d distinct baselines %v for %d text elements — nothing "+
+				"wrapped on this target, so comparing its bytes would certify nothing about line breaking",
+			target.name, len(ys), ys, wantElements,
+		)
+	}
+}
+
 // requireShapedTextIsShaped is Story 2.3's OWN feature guard for the
 // shaped-text document, and it is the reason registering the legs is not
 // a formality.
@@ -730,6 +769,20 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "shaped-text", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireShapedTextIsShaped,
+	},
+	{
+		// Story 2.4's AC15 fixture. REGISTERED AND RUN IN-STORY:
+		// D-000.4 names 2.4 explicitly as a per-story matrix override
+		// ("line breaking feeds every measurement"), alongside 1.2, 1.5,
+		// 1.8 and 4.7. Unlike shaped-text above, this document's four
+		// legs are executed by this story, not deferred to the Epic 2
+		// gate.
+		label:            "wrapped-text (line breaking, all three scripts)",
+		slug:             "wrapped-text",
+		capture:          captureWrappedTextRender,
+		fixtureRelPath:   []string{"fixtures", "wrapped-text", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireWrappedTextIsWrapped,
 	},
 }
 

@@ -298,20 +298,41 @@ func TestP1NeverBreaksInsideCluster(t *testing.T) {
 	items := loadCorpus(t)
 	dict := Dictionary()
 
-	var violations int
+	var violations, exercised, itemsWithBreaks int
 	for _, it := range items {
 		runes := []rune(it.Text)
 		boundary := ClusterBoundaries(runes)
 		breaks, _ := ComputeBreaks(dict, it.Text, false)
+		if len(breaks) > 0 {
+			itemsWithBreaks++
+		}
 		for _, b := range breaks {
+			exercised++
 			if !boundary[b] {
 				t.Errorf("P1 VIOLATION: item %s (%q) proposes a break at rune %d, which is not a cluster boundary", it.ID, it.Text, b)
 				violations++
 			}
 		}
 	}
+
+	// VACUITY GUARD. P1 is a NEGATIVE assertion made once per proposed
+	// break, so its strength is exactly the size of the population it
+	// sweeps — and that population shrank when Story 2.4's
+	// both-sides-coverable filter withdrew 32 of the corpus's 558
+	// proposals (558 -> 526, measured). A future change that withdrew
+	// them ALL would leave this test iterating zero times and reporting
+	// "zero violations", which is how a guard dies silently while still
+	// passing. The floor is deliberately well below the measured 526 —
+	// it is a vacuity guard, not a second copy of the break count, which
+	// AC10's fixture already pins exactly.
+	if exercised == 0 {
+		t.Fatal("vacuity: the corpus proposed no break at all, so P1 asserted nothing")
+	}
+	if exercised < 100 {
+		t.Fatalf("vacuity: P1 swept only %d break positions across %d items; at the fix commit it swept 526. Something has withdrawn most of the corpus's break opportunities, and P1 is no longer measuring what it claims to", exercised, len(items))
+	}
 	if violations == 0 {
-		t.Log("P1: zero violations across the full corpus (absolute, per AD-25)")
+		t.Logf("P1: zero violations across the full corpus (absolute, per AD-25) — %d break positions swept across %d of %d items", exercised, itemsWithBreaks, len(items))
 	}
 }
 
@@ -330,14 +351,16 @@ func TestP2NeverBreaksInsideUnknownRun(t *testing.T) {
 	items := loadCorpus(t)
 	dict := Dictionary()
 
-	var violations int
+	var violations, unknownRuns, pairs int
 	for _, it := range items {
 		breaks, runs := ComputeBreaks(dict, it.Text, false)
 		for _, r := range runs {
 			if r.Kind != RunUnknownThai {
 				continue
 			}
+			unknownRuns++
 			for _, b := range breaks {
+				pairs++
 				if b > r.Start && b < r.End {
 					t.Errorf("P2 VIOLATION: item %s (%q) proposes a break at rune %d, strictly inside an uncoverable run [%d,%d)", it.ID, it.Text, b, r.Start, r.End)
 					violations++
@@ -345,8 +368,31 @@ func TestP2NeverBreaksInsideUnknownRun(t *testing.T) {
 			}
 		}
 	}
+
+	// VACUITY FLOOR, on the same pattern P1 carries and for the same
+	// reason. This is a NEGATIVE assertion made once per
+	// (uncoverable run, proposed break) pair, so its strength is exactly
+	// the size of the population it sweeps — and Story 2.4's
+	// both-sides-coverable filter shrank the break population it draws
+	// from (558 -> 526). A change that stopped classifying anything as
+	// RunUnknownThai, or withdrew the remaining breaks, would leave this
+	// loop iterating zero times and still logging "zero violations",
+	// which is how a self-referential guard dies silently while passing.
+	//
+	// The floors are deliberately well below the values measured at this
+	// commit; they are vacuity guards, not second copies of a count that
+	// AC10's fixture already pins exactly.
+	if unknownRuns == 0 {
+		t.Fatal("vacuity: the corpus produced no RunUnknownThai span at all, so P2's premise never arose and this test asserted nothing")
+	}
+	if pairs == 0 {
+		t.Fatal("vacuity: no (uncoverable run, proposed break) pair was examined, so P2 swept an empty population")
+	}
+	if unknownRuns < 15 {
+		t.Fatalf("vacuity: P2 found only %d RunUnknownThai spans across %d items; MEASURED AT THE STORY 2.4 FINISH COMMIT: 66 spans across 243 items. Something has stopped classifying Thai as uncoverable, and this guard is no longer measuring what it claims to", unknownRuns, len(items))
+	}
 	if violations == 0 {
-		t.Log("P2: zero violations across the full corpus (absolute, per AD-25)")
+		t.Logf("P2: zero violations across the full corpus (absolute, per AD-25) — %d RunUnknownThai spans and %d (run, break) pairs swept across %d items. SELF-CONSISTENCY ONLY: see TestP2IndependentDPCrossCheck for the measurement against an independent ground truth", unknownRuns, pairs, len(items))
 	}
 }
 

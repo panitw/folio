@@ -243,7 +243,7 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 			if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
 				continue
 			}
-			boundText, berr := bind.BindText(el.Value.Value, data, params, string(el.ID))
+			boundText, subs, berr := bind.BindTextSpans(el.Value.Value, data, params, string(el.ID))
 			if berr != nil {
 				return nil, fmt.Errorf("folio: Render: %w", berr)
 			}
@@ -277,13 +277,47 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 			// Story 2.2, AC4: COVERAGE-based resolution, per rune,
 			// across the chain — never "first chain member present in
 			// fs" (the pre-Story-2.2 reading). May split one element
-			// into several textRunSources, one per contiguous run of
-			// runes sharing the same resolved face.
-			elRuns, serr := splitByFace(chain, boundText, el.X, b.origin+el.Y, fontSize, fs, cache)
+			// into several face segments, one per contiguous run of
+			// runes sharing the same resolved face. Shaped ONCE here;
+			// every line below is a SLICE of these glyphs, never a
+			// re-shape of a shorter string (Story 2.4, AC10).
+			segs, serr := shapeSegments(chain, boundText, fs, cache)
 			if serr != nil {
 				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 			}
-			runs = append(runs, elRuns...)
+			totalRunes := len([]rune(boundText))
+
+			// Story 2.4: where may this element break, and what may it
+			// not break inside? The atomic spans are the document's
+			// declared unbreakableValues matched against the rune spans
+			// bind.BindTextSpans reported — handed to internal/text as a
+			// PARAMETER (D-000.16), never through an import.
+			atomic := atomicSpansFor(doc.doc.UnbreakableValues, subs)
+			ops := text.Opportunities(text.Dictionary(), boundText, atomic)
+
+			boxWidth := geom.Length(0)
+			if el.Width.Set && !el.Width.Null {
+				boxWidth = el.Width.Value
+			}
+			lines := packLines(segs, ops, totalRunes, fontSize, boxWidth)
+
+			// One leading for the element, from its DECLARED chain
+			// (D-2.4.2, ruled): computed once, outside the loop, because
+			// it is a function of the chain and the size and of nothing
+			// on any individual line.
+			var advance geom.Length
+			if len(lines) > 1 {
+				advance, serr = lineAdvance(chain, fontSize, fs, cache)
+				if serr != nil {
+					return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
+				}
+			}
+
+			elementY := b.origin + el.Y
+			for i, ln := range lines {
+				lineY := elementY + geom.Length(int64(i))*advance
+				runs = append(runs, positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize)...)
+			}
 		}
 	}
 	return runs, nil
@@ -402,6 +436,25 @@ func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (stri
 func splitByFace(
 	chain []string, elementText string, x, y, fontSize geom.Length, fs FontSet, cache *fontCache,
 ) ([]textRunSource, error) {
+	segs, err := shapeSegments(chain, elementText, fs, cache)
+	if err != nil {
+		return nil, err
+	}
+	return positionSegments(segs, 0, len([]rune(elementText)), x, y, fontSize), nil
+}
+
+// shapeSegments performs Story 2.2's per-rune coverage resolution and
+// Story 2.3's per-face-segment shaping, ONCE, and returns the result
+// without positioning it.
+//
+// It is factored out of splitByFace so that Story 2.4's line breaker
+// measures and slices the SAME shaped glyphs that are ultimately drawn.
+// Shaping once and slicing is not an optimisation — it is the
+// correctness property: re-shaping a line's shorter text can
+// legitimately produce different glyphs at the new boundary, and a
+// second derivation of the same quantity is exactly what Story 2.3's
+// Blocker 1 removed.
+func shapeSegments(chain []string, elementText string, fs FontSet, cache *fontCache) ([]faceSegment, error) {
 	type segment struct {
 		face  string
 		runes []rune
@@ -419,8 +472,8 @@ func splitByFace(
 		segments = append(segments, segment{face: face, runes: []rune{r}})
 	}
 
-	runs := make([]textRunSource, 0, len(segments))
-	cursor := x
+	out := make([]faceSegment, 0, len(segments))
+	runeStart := 0
 	for _, seg := range segments {
 		f, err := cache.get(seg.face, fs)
 		if err != nil {
@@ -442,24 +495,55 @@ func splitByFace(
 			return nil, fmt.Errorf("face %q: %w", seg.face, terr)
 		}
 
-		runs = append(runs, textRunSource{
+		out = append(out, faceSegment{
 			face:         seg.face,
-			text:         segText,
+			segText:      segText,
+			runeStart:    runeStart,
+			runeEnd:      runeStart + len(seg.runes),
+			glyphs:       glyphs,
+			clusterTexts: texts,
+			unitsPerEm:   int64(f.UnitsPerEm()),
+		})
+		runeStart += len(seg.runes)
+	}
+	return out, nil
+}
+
+// positionSegments turns the element-global rune range [from, to) of a
+// shaped element into drawable runs, laying them out left to right from
+// x at baseline y.
+//
+// Positioning: only the FIRST sub-run keeps x; each later sub-run's x is
+// the previous one's x plus that sub-run's SHAPED total advance, scaled
+// by fontSize. The cursor is advanced by measureRuneRange over exactly
+// the glyphs the run carries — the same function the line breaker
+// decides with — so a run's drawn width and its contribution to the
+// cursor cannot disagree.
+func positionSegments(segs []faceSegment, from, to int, x, y, fontSize geom.Length) []textRunSource {
+	runs := make([]textRunSource, 0, len(segs))
+	cursor := x
+	for _, s := range segs {
+		if to <= s.runeStart || from >= s.runeEnd {
+			continue
+		}
+		lo, hi := s.glyphRangeForRunes(maxInt(from, s.runeStart), minInt(to, s.runeEnd))
+		if hi <= lo {
+			continue
+		}
+		runeLo := maxInt(from, s.runeStart) - s.runeStart
+		runeHi := minInt(to, s.runeEnd) - s.runeStart
+		runs = append(runs, textRunSource{
+			face:         s.face,
+			text:         string([]rune(s.segText)[runeLo:runeHi]),
 			x:            cursor,
 			y:            y,
 			fontSize:     fontSize,
-			glyphs:       glyphs,
-			clusterTexts: texts,
+			glyphs:       s.glyphs[lo:hi],
+			clusterTexts: s.clusterTexts[lo:hi],
 		})
-
-		upem := int64(f.UnitsPerEm())
-		var advance1000 int64
-		for _, g := range glyphs {
-			advance1000 += int64(geom.ScaleRound(geom.Length(int64(g.XAdvance)), 1000, upem))
-		}
-		cursor += geom.ScaleRound(geom.Length(advance1000), int64(fontSize), 1000)
+		cursor += geom.ScaleRound(geom.Length(s.advance1000(lo, hi)), int64(fontSize), 1000)
 	}
-	return runs, nil
+	return runs
 }
 
 // renderDocument is Render's implementation once t is known non-nil

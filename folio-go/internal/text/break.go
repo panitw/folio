@@ -74,7 +74,23 @@ func scriptSpans(runes []rune) []scriptSpan {
 //
 // Returned breaks are the sorted rune-index positions, strictly
 // between 0 and len(runes), where an interior break opportunity is
-// proposed. runs is the full decomposition, for reporting.
+// proposed.
+//
+// runs is the GREEDY DICTIONARY DECOMPOSITION, for reporting — and in
+// constrained mode it is deliberately NOT the same thing as "the gaps
+// between breaks". Story 2.4's both-sides-coverable filter (tileable.go)
+// withdraws proposals the greedy matcher made inside spans that cannot
+// be tiled at all, so a boundary between two adjacent RunWord runs may
+// carry no break opportunity. Reconstructing breaks from runs would
+// therefore give the PRE-FIX answer. Callers that want break positions
+// must read breaks; runs answers "what did the dictionary match", which
+// is what the P6 exercise floors count (corpus_test.go's computeP6Stats)
+// and why filtering it here would silently move a disclosed measurement.
+//
+// The filter never adds a position, so every property asserted over
+// breaks in the withdrawing direction — P1's cluster absolute, P2's
+// atomic-unknown-run absolute — holds at least as strongly after it as
+// before.
 func ComputeBreaks(dict *BytesTrie, s string, unconstrained bool) (breaks []int, runs []Run) {
 	runes := []rune(s)
 	if len(runes) == 0 {
@@ -92,6 +108,18 @@ func ComputeBreaks(dict *BytesTrie, s string, unconstrained bool) (breaks []int,
 			runs = append(runs, Run{span.start, span.end, RunNonThai})
 		} else {
 			segBreaks, segRuns := segmentThaiSpan(dict, runes, span.start, span.end, clusterOK, unconstrained)
+			if !unconstrained {
+				// Story 2.4's both-sides-coverable filter (tileable.go):
+				// the greedy matcher's notion of an uncoverable run is
+				// order-dependent, so it proposes breaks inside spans
+				// that an order-independent measurement says cannot be
+				// tiled at all. Withdraw those. Constrained mode only:
+				// unconstrained mode exists to reproduce AD-25's
+				// Prevents line verbatim for P6f/P6g, and filtering it
+				// would make it stop reproducing the very behaviour it
+				// is there to measure.
+				segBreaks = filterBothSidesCoverable(dict, runes, span.start, span.end, segBreaks)
+			}
 			breaks = append(breaks, segBreaks...)
 			runs = append(runs, segRuns...)
 		}

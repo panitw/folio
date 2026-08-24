@@ -19,16 +19,60 @@ func TestComputeBreaksKnownWords(t *testing.T) {
 
 // TestComputeBreaksNoBreakInsideCluster is AC7/P1 exercised through the
 // full pipeline, not just ClusterBoundaries in isolation.
+//
+// THIS TEST WAS VACUOUS AND IS NOW NOT. Its subject was "เก็บ", which is
+// itself a single dictionary entry: the greedy matcher swallows it whole
+// and proposes NO interior break, so the loop asserting "no break at 1
+// or 2" never executed a single iteration and the test passed by doing
+// nothing. Measured at 0266a86, BEFORE Story 2.4's filter existed —
+// so this is a pre-existing weakness found by auditing the guards the
+// filter touches, not one the filter introduced (the same audit is why
+// V11's sample moved; see below).
+//
+// The subject is now "เก็บเงิน" ("save money"), two dictionary entries,
+// measured to carry a real break at rune 4 and to have FOUR interior
+// positions that are not cluster boundaries — 1 and 2 inside "เก็",
+// 5 and 6 inside "เงิ". So there is something to propose and something
+// forbidden to propose it at.
+//
+// The assertion is against the FORBIDDEN SET computed from
+// ClusterBoundaries, not against hand-written indices: it covers every
+// non-boundary position by construction rather than the two a reader
+// happened to notice (D-000.23).
 func TestComputeBreaksNoBreakInsideCluster(t *testing.T) {
 	d := Dictionary()
-	runes := []rune("เก็บ") // เ-ก-็-บ: a leading vowel + consonant + above mark + consonant
-	breaks, _ := ComputeBreaks(d, "เก็บ", false)
-	for _, b := range breaks {
-		// b must never fall strictly inside the เก็ cluster (index 1..2).
-		if b == 1 || b == 2 {
-			t.Errorf("break reported at %d, inside a Thai character cluster in %q (runes=%q)", b, "เก็บ", runes)
+	const subject = "เก็บเงิน" // เ-ก-็-บ-เ-ง-ิ-น: two clusters carrying above/below marks
+	runes := []rune(subject)
+	breaks, _ := ComputeBreaks(d, subject, false)
+
+	boundary := ClusterBoundaries(runes)
+	var forbidden []int
+	for i := 1; i < len(runes); i++ {
+		if !boundary[i] {
+			forbidden = append(forbidden, i)
 		}
 	}
+
+	// Vacuity guards, both polarities. Without the first, an engine
+	// returning no breaks at all passes; without the second, a subject
+	// with no interior clusters passes.
+	if len(breaks) == 0 {
+		t.Fatalf("vacuity: %q proposes no break at all, so the cluster assertion below would iterate zero times and assert nothing", subject)
+	}
+	if len(forbidden) == 0 {
+		t.Fatalf("vacuity: %q has no interior position that is inside a cluster, so there is nothing this test could catch", subject)
+	}
+
+	forbiddenSet := map[int]bool{}
+	for _, f := range forbidden {
+		forbiddenSet[f] = true
+	}
+	for _, b := range breaks {
+		if forbiddenSet[b] {
+			t.Errorf("break reported at rune %d, strictly inside a Thai character cluster in %q (forbidden positions: %v, runes=%q)", b, subject, forbidden, runes)
+		}
+	}
+	t.Logf("AC7/P1: %q proposes %v; all %d non-cluster-boundary positions %v are refused", subject, breaks, len(forbidden), forbidden)
 }
 
 // TestComputeBreaksAtomicUnknownRun is AC6/P2: a nonsense Thai string
@@ -74,23 +118,37 @@ func TestComputeBreaksMixedScript(t *testing.T) {
 // on at least one real input, or P6f/P6g measure nothing.
 func TestUnconstrainedVsConstrainedSwitchActuallyToggles(t *testing.T) {
 	d := Dictionary()
-	// "ดอเลาะ": a genuine Thai-Malay regional surname (this story's
-	// corpus, name-116/name-117 population — re-pointed from the
-	// pre-rebuild name-101/name-102 ids, this story's second QA review,
-	// Nit 1). Verified (probe, this
-	// story's dev record) to be a case where the two modes ACTUALLY
-	// differ: unconstrained proposes no break at all (nothing in it
-	// matches anything, so nothing is ever proposed — "nothing to
-	// override"), while the constrained engine's atomic-run
-	// resumption scan finds a short, spurious legal match partway
-	// through and proposes an interior break there. The original
-	// example ("บ้านรถ") looked plausible but measured IDENTICALLY
-	// under both modes (this story's reopening finding) — a compound
-	// of two morphemes that are BOTH cleanly recognised, at a position
-	// that is also a clean cluster boundary, gives greedy matching no
-	// reason to behave differently whether or not AD-25's constraints
-	// are active, so it never actually red-proved anything.
-	compound := "ดอเลาะ"
+	// "ชัยวัฒน์": a Thai given name, the uncoverable [0,8) span of
+	// corpus items name-021 and name-081. Measured (Story 2.4's dev
+	// record) at unconstrained=[3 7] against constrained=[], on a
+	// SINGLE Thai script span with no space in it — so the difference
+	// is attributable to the mode switch itself and not to a
+	// script-boundary break both modes would emit anyway.
+	//
+	// It is also the clearest available illustration of what the switch
+	// toggles: unconstrained is AD-25's Prevents line running live —
+	// "a greedy dictionary matcher shredding a word it does not
+	// recognise into legal-but-wrong fragments" — and constrained is
+	// the engine refusing.
+	//
+	// WHY THE SAMPLE MOVED, AND WHY THAT IS NOT A REGRESSION. The
+	// previous sample "ดอเลาะ" discriminated for the opposite reason:
+	// unconstrained proposed nothing, while the CONSTRAINED engine's
+	// atomic-run resumption scan found a short spurious legal match
+	// partway through and proposed an interior break there. That
+	// spurious break was the P2 defect, and Story 2.4's
+	// both-sides-coverable filter withdrew it — so both modes now
+	// return [] for "ดอเลาะ" and it discriminates nothing. The fix
+	// consumed this guard's discriminating input, exactly as D-000.30
+	// describes: closing a defect destroys the evidence that depended
+	// on it. The response is a NEW measured discriminating input, not a
+	// weakened assertion.
+	//
+	// (The sample before that, "บ้านรถ", measured IDENTICALLY under
+	// both modes and never red-proved anything at all — a compound of
+	// two cleanly-recognised morphemes at a clean cluster boundary
+	// gives greedy matching no reason to behave differently.)
+	compound := "ชัยวัฒน์"
 
 	unconBreaks, _ := ComputeBreaks(d, compound, true)
 	conBreaks, _ := ComputeBreaks(d, compound, false)

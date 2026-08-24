@@ -1,0 +1,297 @@
+{
+  "_README": [
+    "S4's frozen expected-break fixture (acceptance.md:65, epics.md:836).",
+    "HAND-CHECKED ONCE AND THEN NEVER REGENERATED TO MAKE A TEST PASS.",
+    "",
+    "There is no generator for this file, deliberately: nothing in this repository",
+    "can write it. `words` is the LABEL - the segmentation a reader would make - and",
+    "`expectedBreaks` is its arithmetic: the cumulative rune lengths of every word",
+    "but the last. Check the WORDS; the numbers follow. Positions are RUNE indices.",
+    "Every item is whitespace-free, so each break is zero-width and one position says",
+    "everything about it.",
+    "",
+    "A BREAK OPPORTUNITY IS NOT AN ETYMOLOGY. The first draft of this fixture split",
+    "thai-003..thai-010 into their historical morphemes - school as hall+study, train",
+    "as vehicle+fire - and labelled each seam as a break. That was wrong. Every one of",
+    "those eight is a single dictionary HEADWORD, and a reader no more breaks inside",
+    "them than an English reader breaks 'notebook' after 'note'. The labels were",
+    "corrected to one word each, on evidence independent of the engine's output",
+    "(headword membership in the shipped wordlist), and the eight now serve as the",
+    "fixture's negative controls: a lexicalised compound is NOT split. thai-001 and",
+    "thai-002 are the contrast - sequences that are NOT headwords, though both of",
+    "their parts are, and which therefore DO carry a break.",
+    "",
+    "STATUS: authored by the Story 2.4 dev agent. The human hand-check is a SEPARATE,",
+    "PENDING Epic 2 gate obligation, bound to this file's own digest (D-2.4.3) and",
+    "distinct from the Thai RENDERING sign-off in fixtures/shaped-text/. A re-record",
+    "of either must invalidate exactly one of them."
+  ],
+  "items": [
+    {
+      "id": "thai-001",
+      "text": "ประเทศไทย",
+      "words": [
+        "ประเทศ",
+        "ไทย"
+      ],
+      "expectedBreaks": [
+        6
+      ],
+      "gloss": "country + Thai. The sequence is NOT a headword; both parts are."
+    },
+    {
+      "id": "thai-002",
+      "text": "เก็บเงิน",
+      "words": [
+        "เก็บ",
+        "เงิน"
+      ],
+      "expectedBreaks": [
+        4
+      ],
+      "gloss": "keep + money. The sequence is NOT a headword; both parts are."
+    },
+    {
+      "id": "thai-003",
+      "text": "นักเรียน",
+      "words": [
+        "นักเรียน"
+      ],
+      "expectedBreaks": [],
+      "gloss": "student. Headword; -er + study etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-004",
+      "text": "โรงเรียน",
+      "words": [
+        "โรงเรียน"
+      ],
+      "expectedBreaks": [],
+      "gloss": "school. Headword; hall + study etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-005",
+      "text": "โรงพยาบาล",
+      "words": [
+        "โรงพยาบาล"
+      ],
+      "expectedBreaks": [],
+      "gloss": "hospital. Headword; hall + nursing etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-006",
+      "text": "รถไฟ",
+      "words": [
+        "รถไฟ"
+      ],
+      "expectedBreaks": [],
+      "gloss": "train. Headword; vehicle + fire etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-007",
+      "text": "หนังสือพิมพ์",
+      "words": [
+        "หนังสือพิมพ์"
+      ],
+      "expectedBreaks": [],
+      "gloss": "newspaper. Headword; book + print etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-008",
+      "text": "วันเกิด",
+      "words": [
+        "วันเกิด"
+      ],
+      "expectedBreaks": [],
+      "gloss": "birthday. Headword; day + born etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-009",
+      "text": "ที่อยู่",
+      "words": [
+        "ที่อยู่"
+      ],
+      "expectedBreaks": [],
+      "gloss": "address. Headword; place + reside etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-010",
+      "text": "ใบเสร็จ",
+      "words": [
+        "ใบเสร็จ"
+      ],
+      "expectedBreaks": [],
+      "gloss": "receipt. Headword; sheet + complete etymologically, ONE word for breaking."
+    },
+    {
+      "id": "thai-011",
+      "text": "ธนาคาร",
+      "words": [
+        "ธนาคาร"
+      ],
+      "expectedBreaks": [],
+      "gloss": "bank - one word"
+    },
+    {
+      "id": "thai-012",
+      "text": "โทรศัพท์",
+      "words": [
+        "โทรศัพท์"
+      ],
+      "expectedBreaks": [],
+      "gloss": "telephone - one word"
+    },
+    {
+      "id": "thai-013",
+      "text": "เงิน",
+      "words": [
+        "เงิน"
+      ],
+      "expectedBreaks": [],
+      "gloss": "money - one word"
+    },
+    {
+      "id": "thai-014",
+      "text": "ไทย",
+      "words": [
+        "ไทย"
+      ],
+      "expectedBreaks": [],
+      "gloss": "Thai - one word"
+    },
+    {
+      "id": "thai-015",
+      "text": "ชัยวัฒน์",
+      "words": [
+        "ชัยวัฒน์"
+      ],
+      "expectedBreaks": [],
+      "gloss": "given name; the uncoverable span of corpus name-021/name-081"
+    },
+    {
+      "id": "thai-016",
+      "text": "ดอเลาะ",
+      "words": [
+        "ดอเลาะ"
+      ],
+      "expectedBreaks": [],
+      "gloss": "Thai-Malay surname; corpus name-116, independently attested (DW-11)"
+    },
+    {
+      "id": "thai-017",
+      "text": "แนแซ",
+      "words": [
+        "แนแซ"
+      ],
+      "expectedBreaks": [],
+      "gloss": "Thai-Malay surname; corpus name-117, independently attested (DW-11)"
+    },
+    {
+      "id": "thai-018",
+      "text": "ฉั่วสมบูรณ์",
+      "words": [
+        "ฉั่วสมบูรณ์"
+      ],
+      "expectedBreaks": [],
+      "gloss": "surname; corpus synthetic-039, genuinely uncoverable"
+    },
+    {
+      "id": "cjk-001",
+      "text": "结算单",
+      "words": [
+        "结",
+        "算",
+        "单"
+      ],
+      "expectedBreaks": [
+        1,
+        2
+      ],
+      "gloss": "statement"
+    },
+    {
+      "id": "cjk-002",
+      "text": "共三页",
+      "words": [
+        "共",
+        "三",
+        "页"
+      ],
+      "expectedBreaks": [
+        1,
+        2
+      ],
+      "gloss": "three pages in total"
+    },
+    {
+      "id": "cjk-003",
+      "text": "汉字",
+      "words": [
+        "汉",
+        "字"
+      ],
+      "expectedBreaks": [
+        1
+      ],
+      "gloss": "Han characters"
+    },
+    {
+      "id": "cjk-004",
+      "text": "北京",
+      "words": [
+        "北",
+        "京"
+      ],
+      "expectedBreaks": [
+        1
+      ],
+      "gloss": "Beijing"
+    },
+    {
+      "id": "cjk-005",
+      "text": "东京都",
+      "words": [
+        "东",
+        "京",
+        "都"
+      ],
+      "expectedBreaks": [
+        1,
+        2
+      ],
+      "gloss": "Tokyo Metropolis"
+    },
+    {
+      "id": "cjk-006",
+      "text": "日本語",
+      "words": [
+        "日",
+        "本",
+        "語"
+      ],
+      "expectedBreaks": [
+        1,
+        2
+      ],
+      "gloss": "Japanese language"
+    },
+    {
+      "id": "cjk-007",
+      "text": "こんにちは",
+      "words": [
+        "こ",
+        "ん",
+        "に",
+        "ち",
+        "は"
+      ],
+      "expectedBreaks": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "gloss": "hello - hiragana"
+    }
+  ]
+}

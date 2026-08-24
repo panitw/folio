@@ -215,8 +215,9 @@ var utf8TrapFixture = []byte(`{
 // are escaped; '/' is never escaped.
 var minimalEscapeTrapFixture = []byte("{\n  \"assets\": {},\n  \"bands\": {\n    \"content\": {\n      \"elements\": []\n    },\n    \"pageFooter\": {\n      \"elements\": [],\n      \"height\": 20\n    },\n    \"pageHeader\": {\n      \"elements\": [\n        {\n          \"height\": 14,\n          \"id\": \"e1\",\n          \"type\": \"text\",\n          \"value\": \"a \\\"quoted\\\" \\\\ line1\\nline2 a/b\",\n          \"width\": 200,\n          \"x\": 0,\n          \"y\": 0\n        }\n      ],\n      \"height\": 20\n    }\n  },\n  \"fonts\": {},\n  \"locale\": \"en\",\n  \"nextId\": 2,\n  \"page\": {\n    \"margin\": {\n      \"bottom\": 36,\n      \"left\": 36,\n      \"right\": 36,\n      \"top\": 36\n    },\n    \"orientation\": \"portrait\",\n    \"size\": \"A4\"\n  },\n  \"utcOffset\": \"+00:00\",\n  \"version\": \"1.0\"\n}\n")
 
-// maximalFixture exercises every one of the 51 keys the serializer can
-// emit (D-1.4.15's "maximal document"; this story's finisher review,
+// maximalFixture exercises every one of the 52 keys the serializer can
+// emit (52 as of Story 2.4, which added the document-level
+// "unbreakableValues" declaration) (D-1.4.15's "maximal document"; this story's finisher review,
 // Findings 1 and 8): every element kind, every style/border/padding
 // field, the footer/footerOf/footerFormat trio, an image asset, and
 // visibleIf. It is both a canonicalFixtures entry (closing Finding 8's
@@ -376,6 +377,9 @@ var maximalFixture = []byte(`{
     "orientation": "portrait",
     "size": "A4"
   },
+  "unbreakableValues": [
+    "customer.name"
+  ],
   "utcOffset": "+07:00",
   "version": "1.0"
 }

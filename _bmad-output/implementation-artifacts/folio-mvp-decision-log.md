@@ -6091,3 +6091,393 @@ instances now of *a reference bound to a name or position rather than to the pro
 of another file must name the declaration it points into. A bare `file.go:NNN` in a comment is a
 defect at rest — it is correct only until someone edits above it, and nothing in the build will ever
 say otherwise.
+---
+
+### D-2.4.1 — The unbreakable-field declaration is a document-level list of bare root-relative dotted data paths
+
+*(mechanism: binding)* — resolves DN-1. This is the concrete form of the owner's D-2.1.6 ruling.
+
+**Element-level granularity is wrong, definitively — and the format's own worked example proves it.**
+`folio-format.md:130` defines a text element's `value` as *"the string, **which may contain `{{ }}`
+bindings**"*, and both canonical examples **mix literal text with bindings**:
+`"Statement for {{customer.name}}"` and `"Page {{page}} of {{pages}}"`. Marking such an element
+unbreakable would forbid breaking between *"Statement"* and *"for"* — destroying wrapping for exactly
+the shape the specification itself demonstrates. Not a preference; **a defect the canonical example
+would exhibit on day one.**
+
+**Sub-element granularity has two candidate homes, and one is closed:**
+
+- **Inside the binding syntax** (`{{customer.name|atomic}}`) — **rejected.** It grows the expression
+  language, which counter-metrics C1/C2 exist to make visible, and it collides with D-1.6.5 (Story
+  1.6 accepts *only* bare dotted paths, with Epic 3's parser replacing the matcher). The syntax would
+  be **paid for twice**.
+- **A list of data paths** — no new syntax, no expression-language growth. **Chosen.**
+
+**Ruled: a document-level list of bare root-relative dotted data paths**, spelled exactly as
+`footerOf` already is (D-1.4.1: *"a bare root-relative dotted value path… No `{{ }}`, no function
+call, no `[]`"*). Row-scoped paths are expressed root-relative under the same convention, so the
+format carries **one** path convention rather than two.
+
+**Document-level rather than per-element, because the property belongs to the data, not to a box.** If
+`customer.name` holds a name in the header, it holds one in the footer. Declaring it once is DRY and
+semantically honest, and it gives Epic 6's binding UI a single place to offer *"this field is a name"*.
+
+**Why this is not an owner decision** (the orchestrator leaned that way and was wrong): the
+granularity is **forced by the format's own structure**, so there is nothing to fork on. And the
+MAJOR-bump concern does not attach — a new **optional key** is a MINOR addition under D-1.4.12; only
+extending a **closed set of values** requires MAJOR, and this is a list, not an enum.
+
+**Surface it at the Epic 2 report as a statement, not a question** — the concrete form of what the
+owner already ruled. Nothing is foreclosed before `v0.1.0` if they want the spelling different.
+
+---
+
+### D-2.4.2 — Fix the leading criterion before the measurement; let the measurement choose within it
+
+*(mechanism: binding)* — resolves DN-2.
+
+The leading rule is **welded into every golden recorded after it**, so inheriting whatever the
+implementation does first is the failure mode. But picking a metric **blind** would be choosing by
+taste where this project has consistently chosen by measurement. So the **criterion is fixed before
+the data** — the D-2.0.2 discipline applied to a design choice rather than a spike.
+
+**Three binding constraints:**
+
+1. **Leading is a function of (declared font chain, font size) — never of the glyphs that happen to
+   appear on a line.** If line height varied with content, adding one CJK character would reflow the
+   element, and AD-24's *"boxes are absolute, and nothing negotiates"* forbids precisely that. **This
+   constraint decides most candidates on its own.**
+2. **It reads only tables 2.3a's presence precondition requires, and never a substituted default.**
+   We have just measured what a missing `OS/2` produces — `/CapHeight 928` against a true `711`.
+   Leading must not inherit that class of fiction.
+3. **The rule is stated in `folio-format.md`**, because it is welded into goldens and is therefore
+   **public behaviour**, not an implementation detail.
+
+**Then measure the candidates and report the numbers** — `hhea` ascent/descent/lineGap versus `OS/2`
+typo metrics versus a size multiple, across the actual shipped chain. **If exactly one survives the
+constraints it is chosen; if more than one survives, the measurements come back for a ruling.**
+
+---
+
+### D-2.4.3 — The Thai break sign-off is a second, separately-bound human obligation
+
+*(mechanism: binding)* — resolves ESC-2; the Epic 2 gate now owes **three** things.
+
+*"Does this Thai **read** correctly"* and *"do these **break points** fall correctly"* are **two
+distinct human judgments**. One sign-off covering both is the conflation [[D-000.23]] warns about,
+with an added hazard: **a reader signing off on legibility would not know they were also certifying
+break placement.**
+
+So: a **separate** `//go:build matrix` sign-off bound to **its own digest** (per [[D-2.3.5]]'s
+condition 2), leaving `thai-signoff.json` and `5964aad0…c92e00f` untouched — **a re-record then
+invalidates exactly one and not the other.**
+
+**DN-4, confirmed: no third sign-off for the wrapped-PDF golden.** Its human judgment is break
+placement, which this fixture already covers **at the layer where it is legible**. A second sign-off
+over the same judgment one artifact downstream is ceremony — and worse, **it would dilute the first by
+making sign-offs feel routine.**
+
+---
+
+### D-2.4.4 — `epics.md:823`'s UAX #14 clause names a mechanism; amend it to name the outcome
+
+*(mechanism: binding)* — resolves DN-3, same shape as [[D-2.3.1]].
+
+The clause requires breaks *"at whitespace per UAX #14"*. **Not implementable**: it needs a new
+module, and `wantModuleGraph` forbids one. Amend under D-000.6 to name the **outcome** — breaks occur
+at whitespace and at script-appropriate opportunities — so the clause does not break again when the
+library landscape moves. **State the invariant, not the mechanism.**
+
+---
+
+### D-000.31 — An agent checking its brief against the source is now load-bearing, not incidental
+
+*(mechanism: illustrative — recorded for the Epic 2 gate)*
+
+**Three times in this run an agent has checked its instructions against the source and found the
+instructions wrong.** The most consequential: Story 2.4's brief listed
+`TestP2IndependentDPCrossCheck` as an expected pre-existing failure, when **D-2.1.9 routes that exact
+defect to Story 2.4 by name.** Following the brief would have **shipped 2.4 without its central
+fix** — the story would have preserved the bug it exists to close, and reported green.
+
+The orchestrator wrote that brief. The correction came from reading the ruling rather than the
+instruction.
+
+**The corollary for how briefs should be written**: name the *sources* an agent must reconcile
+against, not only the conclusions drawn from them. A brief that hands down conclusions alone gives an
+agent nothing to check them with.
+
+**And the related instinct worth keeping**: the creator asked that the matrix-cadence waiver be
+*"logged as a ruling rather than silently retired"* — and the answer turned out to be that **there was
+never a waiver, only an orchestrator error** (D-000.4 names 2.4 as a per-story override explicitly).
+**Asking for a deviation to be logged is how you discover it was never sanctioned.**
+
+---
+
+### D-2.4.2 (resolved) — Leading is `hhea` A−D(+lineGap), taken as the MAXIMUM over the declared chain
+
+*(mechanism: binding)*
+
+**The metric: `hhea` ascent − descent (+ lineGap).** `hhea` is in `requiredTables` and validated at
+ingestion with a located error, so **no substituted default is reachable**. `lineGap` is 0 on all
+three shipped faces — byte-neutral to include, and honest for a face that declares one.
+
+**The face: the MAXIMUM over the faces of the declared chain present in the FontSet.** Measured on the
+committed faces, scaled to the 1000-unit em:
+
+```
+face             hhea A  hhea D  gap    A−D   USE_TYPO_METRICS
+Noto Sans          1069    -293    0   1362   True
+Noto Sans Thai     1061    -450    0   1511   True
+Noto Sans SC       1160    -288    0   1448   False
+
+(a) first face of chain = 1362      (b) max over chain = 1511
+at 16pt: (a) gives 21.79pt · Thai requires 24.18pt · shortfall 2.38pt
+```
+
+**(a) is disqualified, not out-argued.** It ships **below-vowels colliding with the next line's
+above-vowels in the default chain, on the script this epic exists to support** — and welds that into
+every subsequent golden.
+
+**Constraint 1 correctly declined to separate them, which is a constraint working rather than
+failing.** It forbids *content-dependent* leading; **(b) depends on the *declared* chain, not on the
+glyphs that appear**, so adding a CJK character reflows nothing and AD-24 holds exactly as under (a).
+
+**The formulation that makes (b) positively correct** *(binding — stated in `folio-format.md`)*:
+
+> **A chain declares what may appear in an element. Leading must accommodate what may appear — not
+> what does appear.**
+
+"What does appear" is content-dependent and forbidden; "what may appear" is exactly the declared
+chain. **The cost is bounded by the author's own choice**: a Latin-only element in a Latin+Thai+CJK
+chain gets 11% taller lines, but the author declared that chain — and one who wants Latin metrics
+declares a Latin-only chain. (b) imposes CJK/Thai leading **only on someone who declared CJK/Thai
+faces.**
+
+*Noted, not built: an explicit `lineHeight` key would let an author tighten leading without narrowing
+the chain. Format surface we do not need today; the escape hatch if a real case demands it.*
+
+**Both eliminations were decided by measurement, not argument:**
+
+- **`OS/2` typo metrics — eliminated on constraint 2, in the cleanest way available.** Noto Sans SC
+  declares **`USE_TYPO_METRICS = false`** — *the face itself says those are not its line metrics* —
+  yet they are plausible numbers, giving 1000/em against a true 1448, **below the face's own ascent
+  plus descent**. This is the `/CapHeight 928 against 711` fiction class, caught by a constraint
+  written **one story after** the finding that motivated it. A guard catching its class on a
+  *different symptom* is the strongest evidence available that the class was real.
+- **A size multiple — eliminated on arithmetic.** 1.2 em is below **all three** shipped faces; even
+  1.5 em misses Thai's 1511.
+
+---
+
+### D-000.32 — Any constant fitted to the shipped set is a hidden dependency on the shipped set
+
+*(mechanism: binding)* — generalised from the size-multiple elimination.
+
+A constant tuned until it clears the current artifacts **works until the first artifact you did not
+tune against, and then fails silently** — no error, just overlapping text. **Derive from the artifact;
+never fit to the sample.** The tell is a number that would need re-checking whenever the inputs
+change, with nothing in the build that re-checks it.
+
+---
+
+### D-000.33 — A conservation assertion cannot see a degenerate partition
+
+*(mechanism: binding)*
+
+**An additivity or conservation law is satisfied trivially by a degenerate partition.** Story 2.4's
+additivity check stayed **green** under a byte-offset mutation, because every boundary past rune 1
+collapsed to all-glyphs-or-none and `whole + 0 == whole` holds.
+
+**So testing a conservation law requires also asserting the partition is non-degenerate** — both parts
+non-empty — not merely that the parts sum. The fix is to pin the **partition** (boundary indices as
+hand-derived literals from `"ณัฐวุฒิ"`'s cluster vector `[0 0 2 3 3 5 5]`), not just the conservation.
+
+Same family as Story 1.1's *"two empty files are byte-identical"*, one abstraction up.
+
+**And the framing, kept verbatim:** *a red-proof that does not redden is a finding, not a formality.*
+A stated proof that ran and did not fire is **more** valuable than one that fires — it is the only
+kind that tells you the guard was weaker than its own description.
+
+---
+
+### D-000.34 — When a fix lands, check whether any test's discriminating power depended on the defect
+
+*(mechanism: binding)*
+
+**A test built on a bug dies with the bug — silently, because it goes on passing.**
+
+Story 2.4's `TestUnconstrainedVsConstrainedSwitchActuallyToggles` used `"ดอเลาะ"` *because* the engine
+proposed a spurious break there. **That break was the P2 defect.** The filter withdrew it, both modes
+now return `[]`, and the guard discriminates nothing while remaining green.
+
+**The model answer**, which this story performed: measure which inputs still discriminate (23 of 243
+corpus items — but **no single-span one**), then re-point at a measured, **stronger** discriminator
+(`"ชัยวัฒน์"`: unconstrained `[3 7]` versus constrained `[]`).
+
+Companion to [[D-000.30]]: that rule says the *red-proof* window closes when a fix lands; this one
+says **existing guards can quietly lose their teeth at the same moment.**
+
+---
+
+### D-000.35 — An AC or comment citing an existing capability names the symbol
+
+*(mechanism: binding)* — cheap prophylactic, third instance.
+
+Story 2.4's AC2 cited CJK ranges *"the engine already classifies for face resolution"*. **No such
+classification exists** — face resolution is coverage-based and classifies nothing by script.
+
+Third instance of a specification asserting something untrue about existing code, after F3's wrong
+artifact ([[D-2.3.4]]) and the `PinAxisLocation` mechanism ([[D-2.2.4]] correction). **Naming the
+symbol makes the citation checkable rather than atmospheric** — and a citation that cannot be checked
+is one nobody will check.
+
+
+---
+
+### D-2.4.5 — Story 2.4's canonical-document amendments, quoted verbatim
+
+*(mechanism: binding — the record AC6 and D-2.4.4 require)*
+
+Two canonical documents were amended under [[D-000.6]] in this story, and both are quoted before and
+after here so the change is auditable without a diff.
+
+**1. `ARCHITECTURE-SPINE.md`, AD-25 — the Rule gains a third mechanism ([[D-2.1.6]], [[D-2.1.10]]).**
+
+*Before:*
+
+> - **Rule:** two constraints sit **under** whatever the dictionary proposes, and both override it:
+>   - **Unknown runs are atomic.** A run of Thai characters the dictionary cannot cover yields
+>     **no** interior break opportunities. It overflows visibly under FR44 — clipped, with a
+>     located diagnostic — rather than being split at a guess.
+>   - **No break inside a Thai character cluster.** A consonant with its vowels and tone marks is
+>     indivisible. This is mechanical and needs no dictionary.
+
+*After:*
+
+> - **Rule:** three constraints sit **under** whatever the dictionary proposes, and all override it:
+>   - **Unknown runs are atomic.** *(unchanged, verbatim)*
+>   - **No break inside a Thai character cluster.** *(unchanged, verbatim)*
+>   - **A declared value is never split.** A document may declare, in its `unbreakableValues` list,
+>     which data paths hold values that must stay on one line; no break opportunity survives inside
+>     a substituted value from a listed path. The engine **never infers** membership. It cannot:
+>     Thailand's Surname Act has every family coin a unique surname out of ordinary dictionary
+>     words, so a surname and the common words it was built from are character-for-character
+>     identical and no dictionary-coverage rule can separate them. The declaration reaches the
+>     breaking stage as a **parameter**, never through an import.
+
+**AD-25's `Binds` and `Prevents` lines are byte-unchanged**, as are the two existing mechanisms and
+the closing paragraph. Only the Rule's mechanism list moved, which is the scope AC6 permits.
+
+**2. `epics.md:823` — the UAX #14 clause names the outcome, not the mechanism ([[D-2.4.4]]).**
+
+*Before:* `**Then** breaks occur at whitespace per UAX #14`
+
+*After:* `**Then** breaks occur at whitespace, and at script-appropriate opportunities in every other script`
+
+Nothing in the engine claims UAX #14 conformance, and the narrowing is stated by name — no
+hyphenation, no break at `-`, no contextual pair rules — in `internal/text`'s package doc, in
+`folio-format.md`'s new *Line breaking* section, and in `folio-go/README.md`.
+
+---
+
+### D-2.4.6 — The leading rule is the maximum over the declared chain, and `folio-format.md` says why
+
+*(mechanism: binding)* — the ruling [[D-2.4.2]]'s measurement produced, recorded with its numbers.
+
+D-2.4.2 fixed the criterion before the data and asked for the candidates to be measured against it.
+Exactly one **metric** survived; the measurement then exposed a second question the candidates had
+never distinguished — *which face of the chain* — and the answer is the **maximum over the declared
+chain**.
+
+**The measurements, read from the tables (`TableData` + `ParseHhea`/`ParseOS2`), declining the
+substituting accessors.** Scaled to the 1000-unit em, against the faces as committed:
+
+| face | `hhea` A−D+gap | `OS/2` typo A−D | `fsSelection` | USE_TYPO_METRICS |
+|---|---|---|---|---|
+| Noto Sans | **1362** | 1362 | 0x00c0 | true |
+| Noto Sans Thai | **1511** | 1511 | 0x00c0 | true |
+| Noto Sans SC | **1448** | **1000** | 0x0040 | **false** |
+
+**`OS/2` typo metrics — eliminated on constraint 2.** Noto Sans SC declares `USE_TYPO_METRICS = false`:
+the face itself says those values are not its line metrics, and using them gives **1000 against a true
+1448**, *below the face's own ascent plus descent*. A plausible number that is wrong — the
+`/CapHeight 928 against 711` class exactly. The vendor also exposes no accessor for them at all.
+
+**A size multiple — eliminated on measurement.** 1.2 em is below all three faces; even 1.5 em is below
+Noto Sans Thai's 1511. Clearing the shipped set needs ≥ 1.511 em, a constant fitted to today's faces.
+
+**First-face — eliminated on measurement, and this is why the second question mattered.** The shipped
+chain's first face gives 1362 where Noto Sans Thai needs 1511: at 16 pt, 21.79 pt of leading for text
+needing 24.18. Thai below-vowels collide with the next line's above-vowels **in the default chain, on
+the script this epic exists to support**.
+
+**Constraint 1 correctly declined to separate first-face from max-over-chain**, and that is the
+constraint working rather than failing: it forbids *content-dependent* leading, and neither candidate
+is content-dependent. **(b) depends on the DECLARED chain, not on the glyphs that appear**, so adding a
+CJK character reflows nothing and AD-24 holds exactly as under (a).
+
+**The sentence that makes (b) positively correct rather than merely safe**, now in `folio-format.md`:
+
+> **A chain declares what may appear in an element. Leading must accommodate what may appear — not
+> what does appear.**
+
+**The cost is bounded by the author's own choice:** a Latin-only element in a Latin+Thai+CJK chain gets
+~11% taller lines, but the author declared that chain, and an author who wants Latin metrics declares a
+Latin-only chain. **No element pays for a face its own chain does not name.**
+
+**No `lineHeight` key.** Noted as the escape hatch if a real case ever demands it; it is format surface
+not needed today, and line height is derived rather than authored.
+
+**Where the ambiguity came from, for the record:** DN-2 framed the candidates as *metrics* and never
+distinguished first-face from max-over-chain, so its recommendation of the first face was never
+weighed against the alternative. The dev agent declined to overturn it by taste and escalated with the
+measurements, which is the behaviour [[D-000.31]] describes.
+
+---
+
+### D-2.4.7 — Story 2.4 finisher corrections: two misquotes, one stale citation, and a deferred terminology split
+
+*Filed 2026-08-24 by the story finisher, closing Story 2.4's review findings 4 and 5. Appended, not
+edited into [[D-2.4.2]] or [[D-2.4.6]]: this log's header is explicit that entries are append-only
+and "a reversal is appended, never a rewrite". The rulings themselves are unchanged and remain
+correct — only their block quotes were inaccurate.*
+
+**1. The binding formulation is quoted `chain`; the canonical document says `stack`.**
+[[D-2.4.2]] (resolved) and [[D-2.4.6]] both block-quote the sentence as *"**A chain declares** what
+may appear in an element. Leading must accommodate what may appear — not what does appear."*
+`_bmad-output/specs/spec-folio/folio-format.md:263` — the document both rulings point at, and the
+canonical side — reads:
+
+> **A stack declares what may appear in an element. Leading must accommodate what may appear — not
+> what does appear.**
+
+That is the verbatim text. `folio-format.md` uses "stack" consistently through the section
+(*declared font stack*, *a Latin-only stack*, *no element pays for a face its own stack does not
+name*), so the document is internally consistent and the two rulings are the inaccurate side.
+[[D-2.4.6]]'s own heading claims *"`folio-format.md` says why"*, which makes the misquote worse than
+cosmetic: [[D-2.4.5]] exists precisely so a reader can grep a canonical sentence and land on it.
+**The substance of both rulings is unaffected** — the leading rule is still the maximum over the
+declared stack of `hhea` ascent − descent + lineGap, and the argument for it is unchanged.
+
+**2. The UAX #14 clause is `epics.md:827`, not `:823`.** [[D-2.4.4]]'s heading and [[D-2.4.5]]'s
+amendment list both cite line 823. Verified at `0266a86` and at head: the clause *"**Then** breaks
+occur at whitespace per UAX #14"* is at line **827**, and the amendment is exactly one line
+(`@@ -824,7 +824,7 @@`). The amendment itself is correct; only the citation was off by four.
+D-000.14/D-000.26 ask locations to be precise so a reader can land on them, which is the whole reason
+this is worth an entry.
+
+**3. Deferred, and named so it is not lost: the code says `chain`, the spec says `stack`.**
+`wrap.go`'s `lineAdvance(chain …)`, `fontChain`, and their tests use `chain`; `folio-format.md` uses
+`stack` throughout. Both are internally consistent and neither is wrong, but a reader moving between
+them has to translate. **Follow-up:** pick one term and align both sides. It was deferred out of
+Story 2.4's finish commit deliberately — that commit's scope is `_test.go` files and documents, and
+renaming identifiers across `wrap.go` and `render.go` would touch production code the four-target
+matrix has already certified for this story. It belongs in a story that can re-run the matrix behind
+the rename.
+
+**What this entry does NOT do.** It adds no gate obligation. The Epic 2 gate still owes exactly
+three things — the outstanding four-target matrix legs, D-2.3.5's Thai *reading* sign-off, and
+D-2.4.3's Thai *break* sign-off — and `TestStory23aAddedNoThirdEpic2GateObligation` still catches a
+fourth.
+

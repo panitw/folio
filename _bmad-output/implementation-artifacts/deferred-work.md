@@ -335,6 +335,27 @@ gap.** That measured fact is now available to whoever specifies S4's adequacy cr
 **How we'd know it was forgotten.** S4 still carrying only 2 genuinely-uncoverable, independently-attested
 opaque items when Epic 4's golden report ships.
 
+#### Story 2.4's discharge — AC18. **No new items were added. The load-bearing count remains 2.**
+
+Story 2.4 falls inside DW-11's stated owner window ("Epic 2's later stories"), so it owes an answer in
+writing rather than silence. The answer is: **none were found, and none were invented.**
+
+The dev agent had no access to a sourced, independently-attested register of Thai personal names, and
+D-000.17 — reinforced by D-2.1.15 Major 5's own precedent, where "a plausible surname" was demoted to
+`synthetic_probe` rather than counted — forbids manufacturing attestation to reach a number. Adding a
+name that *looks* opaque would move the figure from 2 to 3 while moving the evidence not at all, which
+is the failure this entry exists to keep visible. **`ดอเลาะ` and `แนแซ` remain the only two.**
+`corpus.json` and `cmd/gencorpus/main.go` are byte-unchanged by Story 2.4.
+
+**What did change, and why it is not a discharge.** Story 2.4 closed the P2 defect these two items were
+the load-bearing witnesses *for* (26 violations across 17 corpus items to 0, D-2.1.9). That removes the
+**symptom** DW-11 was tracking the risk of, and it does not remove the **thinness**: coverage of the
+hard path still rests on two attested items, and a future regression in that path would still be
+detected by only those two. Story 2.4's new fixture `fixtures/expected-breaks/` exercises the same path
+from a second direction — `ดอเลาะ`, `แนแซ`, `ชัยวัฒน์` and `ฉั่วสมบูรณ์` all appear there as
+zero-break labels — but that is a **conformance fixture, not the corpus**, it contributes nothing to
+P6g, and it adds no attested name. **DW-11 stays open, at 2.**
+
 ### DW-12 — Every later pinned instance inherits AC7's golden + matrix obligation
 - **Deferred by:** Story 2.2 (ruling D-2.2.1)
 - **Owner:** **whichever story next adds a pinned instance of a shipped variable face** (on current
@@ -435,6 +456,25 @@ font-text              : 25
 multi-script-fallback  : 4, 1, 1
 shaped-text            : 14, 7, 28
 ```
+
+**Story 2.4's measurement — AC17. NOT TRIGGERED; this entry stays open.** DW-14 named 2.4 as its owner
+*"if its corpora reach the limit first"*, and a wrapped Thai paragraph was the plausible input that
+would. It does not. Measured on the produced bytes of the new `fixtures/wrapped-text/` render (four
+text elements, three scripts, all three shipped faces embedded):
+
+```
+wrapped-text           : 28, 18, 38
+```
+
+Largest section **38**, against a cap of 100. The fixture was **not sized to duck the cap** — its box
+widths were chosen to force wrapping (the numbers are in the story's AC15 record) and the section sizes
+are simply what that produced; the largest is comparable to `shaped-text`'s existing 28.
+
+`folio-go/wrapped_text_fixture_test.go`'s `assertToUnicodeSectionsUnderCap` now measures this on every
+run and **fails loudly if any section exceeds 100**, with a message saying stop-and-escalate rather
+than fix-in-place — because the remedy (chunking into ≤100-entry sections) moves the golden hash of
+every document over the cap, and this entry's own text asks that it *"land with a deliberate re-record
+rather than as a drive-by"*. So the trigger is now a test rather than a reader's vigilance.
 
 **Why it is worth a standing entry rather than a passing mention.** Story 2.3 is the story that both
 **rewrote this function's entry source** (CIDs are now allocated per (glyph, cluster text), so the

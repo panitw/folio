@@ -37,6 +37,42 @@ type Document struct {
 	// Assets is keyed by lowercase hex SHA-256 of the raw bytes.
 	Assets map[string]Asset
 
+	// UnbreakableValues is the document's declaration of which bound
+	// values must never be split across a line break (Story 2.4;
+	// D-2.1.6 OWNER, D-2.4.1). Each entry is a BARE ROOT-RELATIVE
+	// DOTTED DATA PATH, spelled exactly as `footerOf` is (D-1.4.1: "a
+	// bare root-relative dotted value path… No `{{ }}`, no function
+	// call, no `[]`") — one path convention in the format, not two.
+	// Row-scoped paths are written root-relative under the same
+	// convention.
+	//
+	// DOCUMENT-LEVEL, NOT ELEMENT-LEVEL, AND THE FORMAT'S OWN EXAMPLE
+	// IS WHY (D-2.4.1). folio-format.md defines a text element's
+	// `value` as a string "which may contain {{ }} bindings", and both
+	// canonical examples MIX literal text with bindings — "Statement
+	// for {{customer.name}}". An element-level flag would forbid
+	// breaking between "Statement" and "for", breaking wrapping for
+	// exactly the shape the specification demonstrates. The property
+	// belongs to the DATA, not to a box: if customer.name holds a name
+	// in the header it holds one in the footer, so it is declared once.
+	//
+	// The engine NEVER infers membership of this list. That is the
+	// whole point of D-2.1.6: Thai surnames are coined by law out of
+	// ordinary dictionary words, so no dictionary-coverage rule can
+	// tell a proper noun from its parts. See internal/text's package
+	// doc for the mechanism and its disclosed limitation.
+	//
+	// Optional and ADDITIVE: absent from a document that does not use
+	// it, and round-tripped as an absent key. A new optional key is a
+	// MINOR addition under D-1.4.12 — it is a list, not an extension of
+	// a closed set of values — and D-1.4.9's passthrough already
+	// guarantees an older library loads a file carrying it.
+	//
+	// Authored order is preserved (order carries no meaning, and
+	// preserving it keeps load/save a fixed point without reordering an
+	// author's file). Duplicates are a load error.
+	UnbreakableValues []string
+
 	// NextID is the next element-id counter value, decimal (AC32).
 	NextID int64
 

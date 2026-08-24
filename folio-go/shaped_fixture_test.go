@@ -317,7 +317,12 @@ type emittedRun struct {
 	// the same unit geom.Length carries, recovered from the decimal
 	// point-valued operand so a test can compare segment origins
 	// against hand-derived numbers (Story 2.3 finisher, Blocker 1).
-	OriginXMilli  int64
+	OriginXMilli int64
+	// OriginYMilli is the run's Tm y translation, in MILLIPOINTS.
+	// Story 2.4 reads it to count the LINES an element occupies: every
+	// run on one line shares a y, and a wrapped element emits one
+	// distinct y per line.
+	OriginYMilli  int64
 	CIDs          []uint16
 	Adjustments   []int64
 	UsedTJ        bool
@@ -332,18 +337,24 @@ type emittedRun struct {
 // that no number on an output path is ever floating point (AD-2/AD-23).
 func tmOriginXMilli(t *testing.T, operands string) int64 {
 	t.Helper()
+	return tmOperandMilli(t, operands, 2)
+}
+
+// tmOperandMilli is tmOriginXMilli generalised over which operand to
+// read: fromEnd == 2 is x, fromEnd == 1 is y, in `1 0 0 1 <x> <y> Tm`.
+func tmOperandMilli(t *testing.T, operands string, fromEnd int) int64 {
+	t.Helper()
 	fields := strings.Fields(operands)
 	if len(fields) < 6 {
 		t.Fatalf("text matrix has %d operands, want 6: %q", len(fields), operands)
 	}
-	// fields is [/Resource size 1 0 0 1 x y] — x is the second-to-last.
-	raw := fields[len(fields)-2]
+	raw := fields[len(fields)-fromEnd]
 	neg := strings.HasPrefix(raw, "-")
 	raw = strings.TrimPrefix(raw, "-")
 	intPart, fracPart, _ := strings.Cut(raw, ".")
 	whole, err := strconv.ParseInt(intPart, 10, 64)
 	if err != nil {
-		t.Fatalf("unparseable Tm x %q in %q: %v", raw, operands, err)
+		t.Fatalf("unparseable Tm operand %q in %q: %v", raw, operands, err)
 	}
 	var frac int64
 	if fracPart != "" {
@@ -351,11 +362,11 @@ func tmOriginXMilli(t *testing.T, operands string) int64 {
 			fracPart += "0"
 		}
 		if len(fracPart) > 3 {
-			t.Fatalf("Tm x %q carries more than millipoint precision", raw)
+			t.Fatalf("Tm operand %q carries more than millipoint precision", raw)
 		}
 		frac, err = strconv.ParseInt(fracPart, 10, 64)
 		if err != nil {
-			t.Fatalf("unparseable Tm x fraction %q: %v", fracPart, err)
+			t.Fatalf("unparseable Tm operand fraction %q: %v", fracPart, err)
 		}
 	}
 	v := whole*1000 + frac
@@ -403,7 +414,11 @@ func readEmittedRuns(t *testing.T, b []byte) []emittedRun {
 		resource := strings.TrimPrefix(strings.Fields(block[:tf])[0], "/")
 
 		tm := strings.Index(block, " Tm\n")
-		run := emittedRun{Resource: resource, OriginXMilli: tmOriginXMilli(t, block[:tm])}
+		run := emittedRun{
+			Resource:     resource,
+			OriginXMilli: tmOperandMilli(t, block[:tm], 2),
+			OriginYMilli: tmOperandMilli(t, block[:tm], 1),
+		}
 		body := block[tm+len(" Tm\n"):]
 		run.UsedTJ = strings.Contains(body, "] TJ")
 

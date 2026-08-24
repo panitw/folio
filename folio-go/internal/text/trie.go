@@ -108,6 +108,40 @@ func (t *BytesTrie) LongestMatch(s []byte) int {
 	return best
 }
 
+// forEachWordPrefix walks s once from the trie root and calls fn with
+// the byte length of every dictionary entry that is a prefix of s, in
+// ascending length order. It stops as soon as no entry can extend
+// further.
+//
+// It exists so Story 2.4's tileability computation (break.go's
+// tileableForward / tileableBackward) costs one walk per start
+// position rather than one full Contains per (start, end) pair. The
+// naive form is O(n^2) trie descents AND allocates a string per pair;
+// this form is O(n * longest-entry) descents and allocates nothing.
+// The two agree by construction — both report exactly "is s[:k] an
+// entry" — and TestForEachWordPrefixMatchesContains asserts that
+// agreement over the shipped trie rather than assuming it.
+func (t *BytesTrie) forEachWordPrefix(s []byte, fn func(byteLen int)) {
+	if len(t.buf) == 0 {
+		return
+	}
+	pos := 0
+	for i := 0; i <= len(s); i++ {
+		isWord, numChildren, childrenStart := t.readNode(pos)
+		if isWord && i > 0 {
+			fn(i)
+		}
+		if i == len(s) {
+			return
+		}
+		childPos, found := t.findChild(childrenStart, numChildren, s[i])
+		if !found {
+			return
+		}
+		pos = childPos
+	}
+}
+
 // trieNode is the in-memory build-time representation used only by
 // CompileTrie. It never leaves this file.
 type trieNode struct {

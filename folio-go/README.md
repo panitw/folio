@@ -187,6 +187,48 @@ trade-off is made deliberately, `ja` documents get correct Japanese text
 *coverage* through Noto Sans SC, with Simplified-Chinese glyph *shapes*
 where the two conventions diverge.
 
+### A stated limitation: only *declared* values are protected from breaking
+
+Text wraps inside its element's declared `width`. Where a line may end is
+decided per script: Latin breaks after whitespace, CJK between adjacent
+Han or kana characters, and Thai — which is written without interword
+spaces — from an embedded dictionary. Where the dictionary cannot account
+for a stretch of Thai, folio keeps that stretch whole rather than guessing.
+
+**folio does not try to recognise names, and this is deliberate.** Thai
+surnames are coined by law, one per family, out of ordinary everyday
+words: `ศรีสุข` as a surname is character-for-character the two common
+words `ศรี` and `สุข`. Measured over the shipped 62,107-word list, **83%
+of the personal names** in folio's own test corpus decompose entirely into
+dictionary entries. No amount of dictionary can separate a person's name
+from the words it was built from, so a bigger dictionary, a surname list,
+and "never break Thai at all" were each considered and rejected.
+
+Instead, a template **declares** which data paths hold values that must
+never be split, in a document-level list:
+
+```json
+"unbreakableValues": ["customer.name", "transactions.payee"]
+```
+
+Every value substituted from a listed path stays on one line. Literal text
+around the placeholder is unaffected, so `"Statement for {{customer.name}}"`
+still wraps between *Statement* and *for*.
+
+**What this does not reach, stated plainly:** a Thai name that appears
+inside **free-form text** — a transaction description reading "โอนให้ศรีสุข",
+or "transfer to Srisuk" — is not a bound value, carries no declaration, and
+remains breakable. That is the accepted cost of the mechanism. It is
+disclosed here rather than fixed, because the alternative is guessing, and
+guessing wrong on a customer's name across fifty thousand statements is the
+failure this design exists to prevent.
+
+Two further narrowings, named so you do not have to discover them:
+**folio's Latin breaking is not UAX #14** (no hyphenation, no break at
+`-`, none of the contextual pair rules), and **kinsoku is not
+implemented** for CJK (a line may begin with `，` or end with an opening
+bracket).
+
 ## Writing straight to a destination: `RenderTo`
 
 `Render` returns a `[]byte`. `RenderTo` writes the same bytes to an

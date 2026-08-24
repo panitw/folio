@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 )
 
 // rawIsNull reports whether raw's trimmed bytes are the literal JSON
@@ -131,4 +132,74 @@ func extraFields(obj map[string]json.RawMessage, consumed map[string]bool) ([]Fi
 		fields = append(fields, Field{Key: k, Value: v})
 	}
 	return fields, nil
+}
+
+// decodeUnbreakableValues decodes the document-level `unbreakableValues`
+// list (Story 2.4; D-2.1.6 OWNER, D-2.4.1) and validates every entry
+// against D-1.4.1's path convention — "a bare root-relative dotted value
+// path… No `{{ }}`, no function call, no `[]`", the same convention
+// `footerOf` already uses.
+//
+// VALIDATING IT HERE IS WHAT MAKES THE CONVENTION REAL. A key that
+// accepted "{{customer.name}}" or "sum(x)" would quietly grow a second
+// path dialect, and the entry would then silently match nothing at
+// render time — a declaration that appears honoured and is not. That is
+// worse than a load error, because it fails in the direction of
+// splitting a customer's name with no diagnostic anywhere.
+//
+// The grammar is Story 1.6's, deliberately restated rather than
+// imported: internal/template must not import internal/bind (the two
+// packages' numeric-spelling functions are already deliberately
+// unshared for the same reason, AC25), and a parse-time schema check is
+// not a bind-time resolution.
+func decodeUnbreakableValues(raw json.RawMessage) ([]string, error) {
+	paths, err := decodeStringArrayRaw(raw)
+	if err != nil {
+		return nil, newLoadError("unbreakableValues", "", string(raw), "must be an array of strings: "+err.Error())
+	}
+	seen := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		if !isBareDottedPath(p) {
+			return nil, newLoadError("unbreakableValues", "", p,
+				"must be a bare root-relative dotted data path such as \"customer.name\" (D-1.4.1, the same convention footerOf uses): "+
+					"no \"{{ }}\", no function call, no \"[]\", no whitespace")
+		}
+		if seen[p] {
+			return nil, newLoadError("unbreakableValues", "", p, "listed more than once — a duplicate declaration is never repaired and never silently collapsed")
+		}
+		seen[p] = true
+	}
+	return paths, nil
+}
+
+// isBareDottedPath reports whether p matches D-1.4.1's path convention:
+//
+//	path    := ident ( "." ident )*
+//	ident   := [A-Za-z_][A-Za-z0-9_]*
+//
+// Identical to the grammar internal/bind accepts inside "{{ }}"
+// (D-1.6.5), minus the braces — which is the point of D-2.4.1's "one
+// path convention in the format, not two".
+func isBareDottedPath(p string) bool {
+	if p == "" {
+		return false
+	}
+	for _, seg := range strings.Split(p, ".") {
+		if seg == "" {
+			return false
+		}
+		for i := 0; i < len(seg); i++ {
+			c := seg[i]
+			switch {
+			case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c == '_':
+			case c >= '0' && c <= '9':
+				if i == 0 {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+	}
+	return true
 }

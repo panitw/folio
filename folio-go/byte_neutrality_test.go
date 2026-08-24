@@ -128,19 +128,36 @@ func TestStory23aMovedNoGoldenDigest(t *testing.T) {
 // TestStory23aAddedNoThirdEpic2GateObligation is AC7's assertion, stated
 // mechanically rather than as an intention.
 //
-// The Epic 2 gate owes exactly two things and must not be given a third:
-// the four-target matrix legs, and D-2.3.5's Thai sign-off. The sign-off
-// is tracked as a DELIBERATELY RED gate-run test
-// (TestShapedTextThaiSemanticSignOffIsRecorded, //go:build matrix),
-// which stays red until fixtures/shaped-text/thai-signoff.json names a
-// reader, a date, what they examined, and the digest above. Story 2.3a
-// neither creates that file nor touches that test.
+// THE NAME IS STORY 2.3a's; THE COUNT IS NOT. As of Story 2.4 the Epic 2
+// gate owes exactly THREE things and must not be given a fourth:
 //
-// Under the per-epic heavy-test cadence (D-000.4) this story writes no
-// matrix leg and runs none, and there is nothing to register: AC6
-// asserts every output byte is unchanged, so the four-target byte
-// identity Story 2.3 established still holds by construction and a new
-// leg would be a gate obligation with no question behind it.
+//  1. the four-target matrix legs, now including 2.3/2.3a's registration
+//     and Story 2.4's `wrapped-text`;
+//  2. D-2.3.5's Thai READING sign-off, bound to
+//     fixtures/shaped-text/expected.pdf's digest above;
+//  3. D-2.4.3's Thai BREAK sign-off, bound to
+//     fixtures/expected-breaks/expected_breaks.json's own digest.
+//
+// (2) and (3) are two distinct human judgments — "does this Thai read
+// correctly" and "do these break points fall correctly" — and each is
+// tracked as its own DELIBERATELY RED gate-run test under
+// //go:build matrix: TestShapedTextThaiSemanticSignOffIsRecorded and
+// TestExpectedBreaksHumanSignOffIsRecorded. Each stays red until its own
+// sign-off file names a reader, a date, what they examined, and the
+// digest it certifies. Neither story creates either file.
+//
+// The inventory in (b) below is the mechanical statement of that count:
+// it catches a FOURTH obligation appearing, and it catches one being
+// removed.
+//
+// CADENCE, SCOPED TO THE STORY IT DESCRIBES. Under the per-epic
+// heavy-test cadence (D-000.4) STORY 2.3a wrote no matrix leg and ran
+// none, and had nothing to register: its AC6 asserts every output byte
+// is unchanged, so the four-target byte identity Story 2.3 established
+// still held by construction and a new leg would have been a gate
+// obligation with no question behind it. Story 2.4 is the opposite case
+// — it introduces a new document — so it registers a leg AND runs the
+// matrix in-story, which D-000.4 names 2.4 as an override for.
 func TestStory23aAddedNoThirdEpic2GateObligation(t *testing.T) {
 	root := repoRootForByteNeutrality(t)
 
@@ -153,15 +170,36 @@ func TestStory23aAddedNoThirdEpic2GateObligation(t *testing.T) {
 		t.Errorf("%s exists. Story 2.3a must not create it: it is D-2.3.5's outstanding gate obligation, and the record must name a real reader and a real date (D-000.28: a claim written before the event it asserts is false from birth)", signoff)
 	}
 
-	// (b) The set of matrix-tagged FILES is exactly the three that
-	//     carried the tag at 431a6a5. Asserted as an inventory, by name,
-	//     so that ADDING a matrix-tagged file — which is what "a third
-	//     gate obligation" would look like in the tree — fails here.
-	//     Removing one fails too.
+	// (b) The set of matrix-tagged FILES, asserted as an inventory BY
+	//     NAME, so that ADDING one — which is what a new gate obligation
+	//     looks like in the tree — fails here. Removing one fails too.
+	//
+	//     THE INVENTORY GREW ONCE, DELIBERATELY, AND THIS IS THE RECORD
+	//     OF IT. At 431a6a5 it held three files and the gate owed two
+	//     things. Story 2.4 added expected_breaks_signoff_matrix_test.go
+	//     under D-2.4.3, which rules the addition explicitly: "a separate
+	//     //go:build matrix sign-off bound to its own digest... leaving
+	//     thai-signoff.json and 5964aad0…c92e00f untouched — a re-record
+	//     then invalidates exactly one and not the other". The reason a
+	//     second record was required rather than an extension of the
+	//     first: "does this Thai READ correctly" and "do these BREAK
+	//     POINTS fall correctly" are two distinct human judgments, and a
+	//     reader signing off on legibility would not know they were also
+	//     certifying break placement.
+	//
+	//     So the gate now owes THREE things — the four-target matrix
+	//     legs, the Thai rendering sign-off, and the Thai break sign-off
+	//     — and this guard's job is unchanged: it now catches a FOURTH.
+	//     D-2.4.3 says in terms "do not add a fourth".
+	//
+	//     Note what did NOT change: part (a) above still asserts
+	//     thai-signoff.json is absent, and Story 2.4 neither created it
+	//     nor read it nor extended its schema.
 	wantMatrixFiles := map[string]bool{
-		"fontgen_matrix_test.go":        true,
-		"matrix_test.go":                true,
-		"shaped_signoff_matrix_test.go": true,
+		"fontgen_matrix_test.go":                 true, // Story 2.2
+		"matrix_test.go":                         true, // Story 1.2 — the four-target legs
+		"shaped_signoff_matrix_test.go":          true, // Story 2.3 — Thai RENDERING sign-off (D-2.3.5)
+		"expected_breaks_signoff_matrix_test.go": true, // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
 	}
 
 	moduleRoot := filepath.Join(root, "folio-go")
@@ -206,9 +244,11 @@ func TestStory23aAddedNoThirdEpic2GateObligation(t *testing.T) {
 	for name := range gotMatrixFiles {
 		if !wantMatrixFiles[name] {
 			t.Errorf(
-				"%s is matrix-tagged and was not at 431a6a5. That is a THIRD Epic 2 gate obligation. "+
-					"The gate owes exactly two things — the four-target matrix legs and D-2.3.5's Thai sign-off — "+
-					"and a third may not be added without saying so explicitly.",
+				"%s is matrix-tagged and is not in the sanctioned inventory. That is a FOURTH Epic 2 gate "+
+					"obligation. The gate owes exactly three things — the four-target matrix legs, D-2.3.5's "+
+					"Thai RENDERING sign-off, and D-2.4.3's Thai BREAK sign-off — and D-2.4.3 says in terms "+
+					"\"do not add a fourth\". One may not be added without a ruling that says so explicitly, "+
+					"recorded in the inventory above alongside the story and the decision that authorised it.",
 				name)
 		}
 	}

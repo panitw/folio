@@ -824,7 +824,7 @@ So that a multi-line address or transaction description is legible rather than m
 
 **Given** Latin text
 **When** lines are broken
-**Then** breaks occur at whitespace per UAX #14
+**Then** breaks occur at whitespace, and at script-appropriate opportunities in every other script
 
 **Given** CJK text
 **When** lines are broken

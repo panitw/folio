@@ -57,6 +57,14 @@ type Font struct {
 	// (*ot.Hmtx).GetAdvanceWidth FABRICATES for an out-of-range id.
 	numGlyphs int
 
+	// hheaAscent/hheaDescent/hheaLineGap are the face's LINE metrics in
+	// FONT UNITS, read directly from the hhea table at construction (see
+	// New) rather than through the substituting (*ot.Face) accessors.
+	// LineMetrics scales them; nothing else reads them.
+	hheaAscent  int16
+	hheaDescent int16
+	hheaLineGap int16
+
 	// shaper is this face's ONE OpenType shaper, built at construction
 	// and reused for every shaping call against this face — the
 	// vendor's documented contract ("A Shaper is created once per font
@@ -96,6 +104,28 @@ func New(name string, data []byte) (*Font, error) {
 	hmtx, hmErr := ot.ParseHmtxFromFont(parsed)
 	if hmErr != nil {
 		return nil, fmt.Errorf("fontset: font %q: read hmtx table: %w", name, hmErr)
+	}
+
+	// The hhea LINE metrics, parsed once here from the table itself for
+	// the same reason advanceWidth declines (*ot.Face).HorizontalAdvance:
+	// the accessors SUBSTITUTE. (*ot.Face).Ascender returns a hard-coded
+	// 800 and (*ot.Face).Descender a hard-coded -200 when hhea is
+	// absent, and (*ot.Face).LineGap returns 0 — three plausible numbers
+	// indistinguishable from real ones. requireReadableTables already
+	// refuses a face with no hhea, so those branches are unreachable
+	// here; reading the table anyway means the guarantee does not depend
+	// on that reasoning holding at a distance.
+	//
+	// D-2.4.2 constraint 2 makes this binding for LEADING specifically:
+	// leading "reads only tables 2.3a's presence precondition requires,
+	// and never a substituted default".
+	hheaRaw, hheaErr := parsed.TableData(ot.TagHhea)
+	if hheaErr != nil {
+		return nil, fmt.Errorf("fontset: font %q: read hhea table: %w", name, hheaErr)
+	}
+	hheaTable, hheaPErr := ot.ParseHhea(hheaRaw)
+	if hheaPErr != nil {
+		return nil, fmt.Errorf("fontset: font %q: parse hhea table: %w", name, hheaPErr)
 	}
 
 	// UNREACHABLE VENDOR-CONTRACT ASSERTION, LABELLED AS SUCH RATHER THAN
@@ -227,6 +257,10 @@ func New(name string, data []byte) (*Font, error) {
 		hmtx:       hmtx,
 		numGlyphs:  parsed.NumGlyphs(),
 		shaper:     shaper,
+
+		hheaAscent:  hheaTable.Ascender,
+		hheaDescent: hheaTable.Descender,
+		hheaLineGap: hheaTable.LineGap,
 	}, nil
 }
 
@@ -904,4 +938,45 @@ func fnv64aOverBytes(data []byte) uint64 {
 		h *= prime64
 	}
 	return h
+}
+
+// LineMetrics is a face's hhea LINE metrics, scaled to a 1000-unit em
+// via geom.ScaleRound — this module's one scaling function (AD-2), so
+// no caller outside this package converts a raw font-unit value itself.
+//
+// Distinct from Metrics, which is the subset a PDF FontDescriptor needs.
+// These three answer a different question — how far apart consecutive
+// baselines sit — and LineGap has no FontDescriptor counterpart at all.
+type LineMetrics struct {
+	// Ascent is hhea.ascender: distance above the baseline. Positive.
+	Ascent int64
+	// Descent is hhea.descender: distance below the baseline. NEGATIVE,
+	// as the table carries it, so callers write Ascent-Descent and not
+	// Ascent+Descent. Measured on the shipped faces: Noto Sans -293,
+	// Noto Sans Thai -450, Noto Sans SC -288.
+	Descent int64
+	// LineGap is hhea.lineGap: extra leading the face asks for between
+	// lines. Measured as 0 on all three shipped faces, so including it
+	// is byte-neutral for the shipped set today and honest for a face
+	// that declares one.
+	LineGap int64
+}
+
+// LineMetrics returns f's hhea line metrics scaled to the 1000-unit em.
+//
+// Read from the hhea TABLE at construction, never through
+// (*ot.Face).Ascender / Descender / LineGap, which substitute 800 /
+// -200 / 0 for an absent table (D-2.4.2 constraint 2: leading must never
+// inherit a substituted default). requireReadableTables makes hhea's
+// presence a load error naming the face and the table, so an absent hhea
+// never reaches here at all.
+func (f *Font) LineMetrics() LineMetrics {
+	scale := func(v int16) int64 {
+		return int64(geom.ScaleRound(geom.Length(int64(v)), 1000, int64(f.unitsPerEm)))
+	}
+	return LineMetrics{
+		Ascent:  scale(f.hheaAscent),
+		Descent: scale(f.hheaDescent),
+		LineGap: scale(f.hheaLineGap),
+	}
 }
