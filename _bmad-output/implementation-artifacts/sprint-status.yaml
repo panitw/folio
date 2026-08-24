@@ -61,6 +61,10 @@ development_status:
   # digest that sign-off binds to (D-000.26 refined).
   2-5a-align-first-baseline-with-the-leading-model: done
   2-6-render-multi-page-documents-with-headers-and-footers-on-ever: done
+  # 2-6a inserted between 2.6 and 2.7 per D-2.6.9 (behavioural sweep of the shared
+  # PDF-reading test helpers for single-page-shape assumptions). Must land BEFORE
+  # 2.7, which adds a run on every page and lands directly on those helpers.
+  2-6a-sweep-single-page-assumptions-from-the-shared-pdf-readers: backlog
   2-7-render-page-x-of-y: backlog
   2-8-clip-overflowing-content-and-say-so: backlog
   epic-2-retrospective: optional
