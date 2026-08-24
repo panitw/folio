@@ -7917,3 +7917,178 @@ registration. This is the **first instance where the brief's defect was an OMISS
 assertion** — invisible to any check that reads what the brief *says*. The creator caught it by going to
 `epics.md` rather than by scrutinising the quotation. **D-000.31's corollary, restated: name the source, not
 only the conclusions — a truncation has no tell.**
+
+---
+
+### D-2.8.1 — The declared WIDTH is a clip bound; a text element's declared HEIGHT is not
+
+*(mechanism: **binding**)*
+
+FR44 clips against the element's declared **width**. It does **not** clip a text element against its
+declared **height**. The ten vertical overflows found in the committed corpus are **not defects**, are
+not clipped, and **emit no diagnostic**.
+
+**Grounding — ruled on grounds; the fixture consequences are stated LAST and labelled corroboration.**
+
+1. **The author cannot satisfy a vertical bound, so it cannot be one.** A line box is
+   `max(ascent) + max(descent) + max(lineGap)` over the declared stack ([[D-2.4.2]] amended) — derived
+   from font tables **the template cannot see** — and [[D-2.4.6]] **explicitly declined a `lineHeight`
+   key** (*"line height is derived rather than authored"*). There is **no mechanism by which an author
+   can make a declared height agree with the engine's computed line box.** Making `height` a clip bound
+   would impose a **structurally unsatisfiable** constraint, and would break D-2.4.6's own justification
+   for the leading rule — *"the cost is bounded by the author's own choice"* — since under a vertical
+   clip the cost becomes unbounded **and silent**.
+2. **Width is an input to layout; height is not.** Line breaking breaks **against** the declared width,
+   which is what makes horizontal overflow *meaningful*: it means breaking **failed**, and **AD-25**
+   names the only way it can (an unbreakable run). **Height is consulted by nothing** — [[D-2.6.1]]'s
+   pagination slices against the **content window** and ignores declared element heights entirely. A
+   vertical clip would clip against **a number no layout stage ever read**.
+3. **The spine's only worked FR44 case is horizontal.** **AD-25 verbatim**: *"Unknown runs are atomic…
+   It overflows visibly under FR44 — clipped, with a located diagnostic — rather than being split at a
+   guess."* There is **no vertical counterpart anywhere in the spine.**
+
+**The measurement that made it concrete** (creator, through the existing per-element layout probe;
+orchestrator re-derived the 7.3 % from first principles): **eleven elements in the committed corpus
+already overflow.** Horizontal — **exactly one**: `wrapped-text` `e4`, **24 585 mp against a 20 000 mp
+box (+22.9 %)**, AD-25's worked case placed deliberately by Story 2.4. Vertical — **ten**: `multi-page`
+e1 (+35.4 %), **`shaped-text` e1–e7 (+7.3 % each)**, `multi-script-fallback` e1 (+12.7 %).
+
+**The 7.3 % is systematic, not authorial.** `shaped-text` declares `height: 24` at `fontSize: 16` —
+**1.5 em, the conventional single-line box**. Our leading is **1.61 em** on the default stack
+(`1160 + 450`), giving **25 760 mp against 24 000 declared**. **Every author who declares a one-line box
+the conventional way would be clipped by their own engine.** That is a design contradiction, not a
+fixture defect.
+
+**Corroboration only** *(stated last so it is not load-bearing)*: the vertical reading would shave
+descenders off the **Thai reading fixture** whose pending sign-off asks a reader to confirm mark
+placement, cut `multi-page` e1 from 29 lines to ~21 and so **falsify FR30 on the fixture that proves
+it**, and move **both** pending-sign-off goldens. Recorded because a ruling whose consequences are that
+bad usually has a defect in its grounds — **here the grounds and the consequences agree.**
+
+**What `height` IS for** — because leaving a declared field inert is the [[D-000.28]] shape, and it is
+**not** inert: **image** — a real, honoured bound **today** (AD-24's fit-and-centre scales into the
+declared box; D-2.6.1 made an image box taller than the content window a template error; an image is
+**fit, never clipped**). **Text** — the box for **`valign`** (in `closedValigns`, parsed and honoured by
+nothing yet, the same status as `align`) and the designer's canvas rectangle in Epic 5. **Table** — not
+declared at all (`folio-format.md:205`).
+
+**Guardrails**: amend `folio-format.md` under [[D-000.6]] **in 2.8's own commit** at the
+`x, y, width, height` row as an **outcome**, never a mechanism — *a text element's declared height is
+not a clip bound and content exceeding it renders in full; height is honoured for images and reserved
+for `valign`*. **No diagnostic for vertical text overflow** — it would fire on nearly every
+conventionally-authored document ([[D-000.15]]: a false positive is an attack on the guard). The clip's
+red-proof subject is **`wrapped-text` e4**, the corpus's **only** horizontal instance — say so per
+[[D-000.50]], because the other nine fixtures **cannot express this defect**.
+**`fixtures/wrapped-text/expected.pdf` moves and there is no byte-neutral alternative**; per
+[[D-000.44]] a re-recording is a recording, owing a fresh semantic acceptance step and
+[[D-000.53]]'s independent-reader step. **No pending sign-off binds to it** — confirm in the story
+rather than assuming.
+
+---
+
+### D-2.8.2 — The clip may NOT ship without the diagnostic channel; the remedy is to ship both, not to defer FR44
+
+*(mechanism: **binding**)*
+
+**AD-14 forbids the split in terms.** Verbatim (spine ~line 295): *"Over-tall rows (FR25) and clipped
+content (FR44) are `Warning`s returned alongside PDF bytes, **never silent and never fatal**."* Shipping
+a clip with no channel would violate a **spine invariant**, not merely 2.8's AC — and it would convert a
+**visible** defect into an **invisible** one, the exact inverse of the story's own *"So that I find out
+on the preview instead of from a customer."*
+
+**And "neither" is ruled against as the default.** The blocker was **one owner question**, not a body of
+work: AD-14 already fixes the payload, the severity and the disposition — **only the seam was open**.
+Deferring FR44 out of Epic 2 would leave the corpus's only overflow unreported forever and make
+`epics.md`'s coverage table false at the gate, **to avoid asking a question we could ask now**.
+
+**Sequencing** *(binding)*: OD-1 goes to the owner **before** 2.8 leaves `ready-for-dev`. **Done — see
+D-2.8.3.** Had the owner declined or deferred, the fallback was the creator's disposition executed
+honestly: FR44 slips, `epics.md`'s coverage table is **amended under D-000.6 in the same commit** (never
+left false), and the gate is told **in terms** that FR44 is unmet ([[D-000.17]] — *a floor that is not
+met is reported as unmet, never filled*).
+
+---
+
+### D-2.8.3 — OWNER DECISION: the diagnostic channel is a RESULT STRUCT
+
+*(mechanism: **binding**; **owner's decision, not the lead's recommendation**)*
+
+```go
+type Result struct {
+    Bytes       []byte
+    Diagnostics []Diagnostic
+}
+func Render(t *Template, d Data, p Params, f FontSet) (Result, error)
+```
+
+**The owner chose this over the lead's recommended third-return-value form**, having been shown both
+signatures and both trade-offs rendered side by side — **including the "invisible when ignored"
+objection, stated in the option's own text.** It is settled and **is not to be re-litigated.**
+
+**What AD-14 had already settled, leaving only the seam open**: one `Diagnostic` carrying severity, a
+stable code from a closed registry, optional element id, optional data path, and message; severity
+`Warning`; disposition *returned alongside PDF bytes, never silent, never fatal*. **That kills any
+bespoke type.**
+
+**Three of five candidates were eliminated on AD-14's text before the owner saw the question**: a
+non-nil **error** — *measured broken*, `RenderTo` returns early on a non-nil error and **never writes**,
+so a warning would produce **no output at all** for a document that rendered fine; a **sink or callback
+parameter** — passed in, not returned, and [[D-1.7.1]] reaches it squarely; and a **sibling entry point**
+`RenderWithDiagnostics` — *measured hazard*, AD-1's forbidden-import guard locates its scan target by
+matching top-level functions named **exactly** `Render`/`RenderTo`, so a new name is **silently outside
+the scan**.
+
+**The price, corrected** ([[D-000.31]] — the orchestrator's brief said "at v0.1.0" and was wrong):
+**`v0.1.0` has not shipped.** One tag exists (`pre-email-rewrite`), `Version = "0.0.0-dev"`, **zero
+external consumers by construction**. The change costs **72 mechanical call-site edits inside the
+module** (`Render` = 72 call expressions in 25 files, 5 non-test; `RenderTo` = 7, all in one test file;
+zero call sites outside the module — measured at `f651409` on a clean tree by parsing every `.go` file
+with comments and strings stripped) and **breaks nobody**.
+
+**The open obligation this shape carries**: an unread `Diagnostics` field has **no tell** — no blank
+identifier, nothing to grep, nothing to guard — which is in tension with AD-14's *"never silent."*
+**The owner's choice of shape stands; the invariant still needs protecting.** The mitigation is being
+designed **inside** the chosen shape, not around it, together with `RenderTo`'s form (a `Result` whose
+`Bytes` is meaningless in one of two entry points is itself the [[D-000.28]] shape).
+
+---
+
+### D-2.8.4 (correction) — DW-6's anti-rot tripwire EXISTS. Do not build one. The record's wording is wrong, and the real hazard is the inverse
+
+*(mechanism: **binding**)*
+
+**Correcting a finding reported by 2.8's creator and relayed by the orchestrator.** The guard is **live
+production lint code** at `lint/internal/rules/absences.go:100-104` — rule **`absence-diag-package`**,
+registered in `absenceChecks` beside `absence-designer-project` and `absence-expr-package`, executed by
+`ScanAbsences`, carrying D-1.4.11's coverage witness. **It is not testdata** — the testdata fixture the
+search also hit is the **red-proof for** this rule.
+
+**Verified by execution, not by reading** (orchestrator): creating `folio-go/internal/diag/` turns
+`TestAbsencesProductionScan` **red**, naming `absence-diag-package` with its exact `desc`. Removed;
+tree clean.
+
+**Why the report went wrong.** `deferred-work.md:235` says *"a **test** asserts `folio-go/internal/diag`
+is absent."* The implementation is a **lint absence rule**, not a Go test. **A search shaped by the
+record's own vocabulary missed the mechanism that satisfies it** — [[D-000.35]] in the falsifying
+direction, *name the symbol*. **The correction is to the record, not to the tree.**
+
+**The real hazard is the inverse of the one reported: the guard dies on arrival.** The day any story
+creates `internal/diag`, `absence-diag-package` goes red and **the cheapest fix is to delete the rule**,
+retiring DW-6's forcing function **silently and permanently**.
+
+**Obligations, in order** *(binding)*: (1) **correct `deferred-work.md`'s DW-6 anti-rot line now** to
+name the actual mechanism and symbol — a record that misdescribes a live guard is how a **second,
+duplicate guard** gets built. (2) **Whichever story first creates `folio-go/internal/diag` must, in the
+same commit, delete the absence rule AND land the positive assertion that replaces it** — that the code
+registry contains `TABLE_FOOTER_SOURCE_UNRESOLVED` and `TABLE_FOOTER_SOURCE_FORBIDDEN`. **Replace, never
+merely delete: an absence guard is a placeholder for a presence guard.** (3) Per [[D-000.37]] the rule's
+`desc` names **"Story 3.6"**; if 2.8 mints the package, **update the message in the same commit** or the
+developer who meets the red is told to wait for a story that already happened. (4) **Whose debt**: not
+2.8's unless 2.8 creates the package — the obligation attaches to **whichever story first creates it**,
+an owner that is a **condition rather than a story number**. **Do not open a separate item.**
+
+**Gate**: **six confirmed, seventh DECLINED** on [[D-2.6.2]]'s criterion — `wrapped-text` is already a
+registered matrix document and carries the one element FR44's clip acts on, so declining a seventh does
+not leave FR44 without a cross-target artifact. `declaredEpic2GateObligations` stays **byte-unchanged**.
+**Note for the gate: `wrapped-text`'s recorded digest still MOVES even though the obligation set does
+not.**
