@@ -249,6 +249,43 @@ mechanical. `/Width` and `/Height` are pixel counts → `appendInt`. Override st
 - Story **4.8** (alternating row styling, named "first to be cut") remains an **owner** call if
   capacity pressure ever reaches it.
 
+### Refresh — 2026-08-24 (third session, mid-Story-2.6 handover)
+
+*Appended by the third engineering lead. The two sections above still hold and are not rewritten.
+The predecessor's transcript was lost at a session boundary while Story 2.6 was in development, so
+this is a re-grounding **from the record**, per [[D-000.8]]. Read in full: this log's `## Lead
+Grounding`, all 52 `D-000.*` standing rules (including every amendment, extension, sharpening and
+correction), and every `D-2.4.*` → `D-2.6.*` entry; `deferred-work.md` DW-1…DW-16;
+`sprint-status.yaml`. The spine, `SPEC.md` and `epics.md` were **not** re-read wholesale — the
+predecessors' conclusions about them stand. Targeted verification only, listed below.*
+
+**What I verified live rather than inherited** (each because the pending decision hinges on it):
+
+| claim | verified | result |
+|---|---|---|
+| the public API has no non-fatal diagnostic channel | `folio-go/render_entry.go` | `Render(t, d, p, f) ([]byte, error)` and `RenderTo(w, t, d, p, f) error` — **confirmed, no warning path** |
+| `internal/diag` does not exist yet | `ls folio-go/internal/` | 8 packages, **no `diag`** — it is Story 3.6's ([[DW-6]]) |
+| Story 2.8's ACs | `epics.md:931-951` | clip **and** diagnostic **and** *"PDF bytes are still returned — clipping degrades output but does not fail the render"* — i.e. **2.8 is the story that must build the non-fatal channel** |
+| Story 2.6's scope fence | the story file, §*Scope fence* | *"Not clipping, and not an overflow diagnostic… this story changes how many sheets exist, not what happens at a box edge"* |
+| the shipped overflow path | `folio-go/internal/layout/paginate.go` | typed `OverflowError{ElementID, ItemHeight, ContentHeight, Kind}`, message carries three named remedies ([[D-000.37]]-clean) |
+
+**One finding, and it is the pending decision** — [[D-2.6.1]] (amended) sub-question (ii) is
+internally inconsistent with two clauses of the ruling it amends. Ruled and recorded separately as
+[[D-2.6.5]]; the grounds are FR44's scope, not the developer's convenience, and the log entry names
+all three.
+
+**Two record-vs-reality notes, neither a defect:** `sprint-status.yaml` carries 2.6 as
+`ready-for-dev` while it is in development (a status-file lag, not a divergence), and `epic-2:
+backlog` while six of its stories are `done` — the latter is already flagged, not fixed, in Story
+2.6's own *Flagged, not fixed* section, and the epic key is the gate's to flip.
+
+**What the Epic 2 gate owes, carried forward unchanged:** matrix registration for 2.3/2.3a,
+`fixtures/three-band-page/`, `matrix-document: multi-page` (2.6), the Thai **reading** sign-off
+(`fixtures/shaped-text/expected.pdf`) and the Thai **break** sign-off
+(`fixtures/expected-breaks/expected_breaks.json`) — five, per [[D-2.6.2]], bound to their own
+artifacts per [[D-000.26]] (refined). `TestCorpusMeetsP6ExerciseFloors` **staying red is required**
+by Story 2.4's AC5 ([[D-000.17]]) and is not to be "fixed".
+
 ---
 
 ## Standing decisions (set at run start, 2026-08-23)
@@ -7371,4 +7408,68 @@ story never stated **which Latin sentence it repeated** — and measured its own
 it. That is [[D-000.26]] applied by an agent to a document written for it, and the **second time this
 week** an agent has refused to inherit a number it could not attribute. **Both times the inherited
 figure turned out to be wrong.**
+
+---
+
+### D-2.6.5 — An item that fits in no window is a located template error, for BOTH subjects
+
+*(mechanism: binding)* — appended, never edited into [[D-2.6.1]]. **D-2.6.1 (amended) sub-question
+(ii)'s "clip at the window bottom" disposition is WITHDRAWN.**
+
+An item that fits in **no** window — an image whose declared box exceeds the content window, or a line
+whose leading exceeds it — is a **located error returned from `Render`/`RenderTo`, naming the
+element**. `internal/layout.OverflowError{ElementID, ItemHeight, ContentHeight, Kind}` as shipped is
+the ruled shape: **no clip bound on `pagemodel.TextRun`, no `q … W n … Q` path in `internal/pdf`, no
+change to the public signature in this story.**
+
+**Ground 1 — FR44 does not reach this case, and D-2.6.1 says so in its own words.** The ruling states
+*"FR44's overflow machinery concerns content exceeding its **box**, not the page edge."* Its own
+amendment then disposed of the oversized line as *"FR44's sanctioned behaviour"* — **invoking FR44 for
+a page-edge case the ruling it amends had already excluded from FR44.** Story 2.6's scope fence draws
+the same line (*"this story changes how many sheets exist, not what happens at a box edge"*), and the
+story's DN-3 had already observed that Story 2.8 is scoped to *"content exceeding its declared bounds,
+which a page boundary is not."* **Three independent sources, all pre-dating the divergence.**
+
+**Ground 2 — both subjects are declaration-level, not render-time, and that is what makes *"one
+overflow rule, two subjects"* actually true.** D-2.6.1 made the image a template error precisely
+because *"the image is already scaled to fit its box, so this is a statement about the box."* **The
+same holds for a line**: per [[D-2.4.2]] constraint 1, leading is a function of **(declared font stack,
+font size)** and never of the glyphs that appear; the content window is page height minus declared
+margins and band heights. So *"some line is taller than the window"* is **decidable from template +
+fontset with no data at all.** Two declaration-level impossibilities → one disposition. **The
+amendment's slogan was right; its two dispositions contradicted it.**
+
+**Ground 3 — "clip AND diagnose" is not expressible today.** Verified: `Render(t, d, p, f) ([]byte,
+error)`, `RenderTo(w, …) error`, and `folio-go/internal/` holds eight packages, **none of them
+`diag`** — Story 3.6 mints it (DW-6). **A ruling that forces a choice between returning bytes and
+diagnosing will have the diagnostic dropped**, which is the half that ships silently wrong output.
+
+**Guardrails** *(binding)*:
+
+- **Red-proof needs a synthetic template, not a fixture** — [[D-000.50]] already named this story's
+  fixture population as unable to express the defect. Assert the error's **element id and `Kind`**,
+  with **both subjects exercised** (`fontSize > H` for `"line"`, an oversized declared image box for
+  `"image"`). **One subject only would assert "one rule, two subjects" while only one subject can
+  express it.** Assert on the fields, never on *"an error occurred"*.
+- **`Kind` is derived as `"image"` when `len(it.Images) > 0`.** If an item can ever carry both runs
+  and images, that classifier **mislabels** — assert the exclusivity where items are built, or make
+  the mixed case explicit.
+- **`folio-format.md`'s pagination clause must state the outcome as *fits-nowhere is a load/render
+  error naming the element*, and must NOT mention clipping.** The file carries no pagination clause
+  yet, so this is **written correctly the first time rather than corrected.**
+- **Byte-neutrality untouched** — no valid document changes bytes; nothing moves a golden on this.
+
+**Story 2.8 inherits work larger than "clip machinery", and its creator must be told now.** `epics.md:938-950`
+requires clip **and** diagnostic **and** *"PDF bytes are still returned — clipping degrades output but
+does not fail the render."* **That is not expressible in the current public API**, so **2.8 owns a
+diagnostic-channel design decision on `Render`'s surface.**
+
+**Scope, stated inside the ruling:** this settles **page-edge** overflow only. If, once 2.8 has built a
+non-fatal channel, anyone wants page-edge overflow reclassified as clip-and-continue, **that is the
+owner's call, not a re-ruling** — the trade is *"a template that fails loudly today would then ship a
+page with content cut off"*, which is a product judgment.
+
+**The assumption that would flip it**: if leading could ever depend on the glyphs actually present —
+making oversized-line-ness **render-time** rather than declaration-time — ground 2 collapses and the
+two subjects genuinely differ. D-2.4.2 constraint 1 forbids exactly that, and AD-24 depends on it.
 
