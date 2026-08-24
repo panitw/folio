@@ -6481,3 +6481,47 @@ three things — the outstanding four-target matrix legs, D-2.3.5's Thai *readin
 D-2.4.3's Thai *break* sign-off — and `TestStory23aAddedNoThirdEpic2GateObligation` still catches a
 fourth.
 
+---
+
+### D-000.36 — A proposed remedy for a vacuity is itself subject to vacuity; measure it before adopting it
+
+*(mechanism: binding)* — second instance of the rule the lead stated at the Epic 1 gate: **a mitigation
+for a measurement hazard must itself be measured before it is relied on.** Recorded again because the
+first instance was about shell instruments and this one is about test assertions, and neither reader
+would recognise the other.
+
+**The instance.** Story 2.4's review found `TestMeasureIsAdditiveAcrossASplit` stayed green under the
+byte-offset mutation, and proposed the obvious remedy — require `left > 0 && right > 0`, the
+non-degenerate-partition precondition [[D-000.33]] calls for. **Implemented verbatim, the test stayed
+green under the mutation, witnessed on 4 of 4 subjects.**
+
+**Two measured reasons, both worth knowing:**
+
+1. **Additivity is preserved by *any* monotone boundary function.** `left + consumed + right == whole`
+   holds whenever the boundary moves consistently — so the assertion can only detect a **saturating**
+   boundary function, never a merely *wrong* one. A non-empty precondition rules out the degenerate
+   case and leaves the entire monotone-but-wrong space untouched.
+2. **Every split in the subject table fell on a face-segment boundary**, where segment-local rune
+   indices and byte offsets **both read 0** and are therefore indistinguishable.
+   `"ณัฐวุฒิ เกิด กรุงเทพ"` segments as `[0,7)[7,8)[8,12)[12,13)[13,20)` and breaks at 7 and 12 —
+   **zero interior splits.** The subject could not express the defect regardless of the assertion.
+
+**The complete fix needed three parts, not one**: the non-empty guard, **plus** a whitespace-free Thai
+subject that breaks strictly *inside* one segment, **plus** a precondition that fatals if interior
+splits are ever lost from the table. Under the mutation it now fails naming the subject.
+
+**The general form** *(mechanism: binding)*:
+
+> **A remedy proposed for a vacuity inherits the vacuity's own hazard. Run the mutation against the
+> remedy before adopting it — a fix that "obviously" closes a hole is exactly the kind nobody
+> re-measures.**
+
+And the corollary that made this one visible: **the subject matters as much as the assertion.** A
+correct assertion over inputs that cannot express the defect is still vacuous — [[D-2.3.2]]'s corpus
+obligation (`น้ำ` *and* standalone `า` in one document) is the same requirement stated for fixtures.
+
+**Also closed in the same sweep, as an enumeration rather than a sample** ([[D-2.2.4]] correction's
+precedent): **7 conservation sites** across all 31 story-touched files — 5 fixed, 2 already adequate,
+plus 8 production accumulators swept and excluded with reason (summations with no assertion attached
+are not in the class).
+
