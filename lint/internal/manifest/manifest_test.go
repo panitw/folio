@@ -59,3 +59,33 @@ func TestManifestUpToDate(t *testing.T) {
 		t.Fatalf("lint/MANIFEST.md is out of date — run `cd lint && go run ./cmd/genmanifest` and commit the result")
 	}
 }
+
+// TestResolveAssetsIncludesWordlist is Story 2.1's addition (AC9): the
+// CC0 wordlist at folio-go/internal/text/wordlist/ must appear in
+// ResolveAssets' output — a font-extension-only walk would never see
+// it (that gap is exactly what motivated AC9's separate guard); this
+// asserts the manifest generator ALSO accounts for it, not just the
+// lint guard.
+func TestResolveAssetsIncludesWordlist(t *testing.T) {
+	root := repoRootFromTest(t)
+	rows, err := ResolveAssets(root)
+	if err != nil {
+		t.Fatalf("ResolveAssets: %v", err)
+	}
+	const wantPath = "folio-go/internal/text/wordlist/words_th.txt"
+	var found *AssetRow
+	for i := range rows {
+		if rows[i].Path == wantPath {
+			found = &rows[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected an AssetRow for %s, got %d rows: %v", wantPath, len(rows), rows)
+	}
+	if found.Licence != "CC0-1.0" {
+		t.Errorf("wordlist AssetRow.Licence = %q, want %q", found.Licence, "CC0-1.0")
+	}
+	if found.Copyright == "" {
+		t.Error("wordlist AssetRow.Copyright is empty")
+	}
+}

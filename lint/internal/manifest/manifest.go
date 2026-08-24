@@ -248,7 +248,70 @@ func ResolveAssets(repoRoot string) ([]AssetRow, error) {
 			})
 		}
 	}
+
+	// The CC0 wordlist (Story 2.1, AC9, AD-26) is a second, distinct
+	// declared asset location — NOT font-extensioned, so the walk above
+	// never sees it (that gap is exactly what motivated AC9's own
+	// separate fail-closed guard, lint/internal/rules/wordlistassets.go
+	// — D-1.8.11's premise, confirmed with a second live instance).
+	// Resolved explicitly here, rather than widening fontExtensions
+	// (which would be the forbidden fail-open shortcut for a completely
+	// different reason: fontExtensions is keyed on FONT files, and a
+	// wordlist is not one).
+	if wordlistRow, ok, err := resolveWordlistAssetRow(repoRoot); err != nil {
+		return nil, err
+	} else if ok {
+		rows = append(rows, wordlistRow)
+	}
+
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Path < rows[j].Path })
 	return rows, nil
+}
+
+// wordlistAssetDir is the same declared location AC9's fail-closed
+// guard scans (lint/internal/rules/wordlistassets.go's
+// wordlistAssetLocation) — duplicated here deliberately rather than
+// imported, matching this codebase's existing precedent of duplicating
+// small helpers (e.g. repoRootFromTest) across packages rather than
+// creating a shared-utility import just to avoid one constant.
+const wordlistAssetDir = "folio-go/internal/text/wordlist"
+
+// resolveWordlistAssetRow produces the wordlist's AssetRow if the
+// declared location exists and carries its wordlist, licence text and
+// NOTICE (AC9's OWN guard is what enforces "exists and is complete" —
+// this function reports "not present" rather than erroring when the
+// location is simply absent, e.g. at a revision before Story 2.1).
+func resolveWordlistAssetRow(repoRoot string) (AssetRow, bool, error) {
+	absDir := filepath.Join(repoRoot, filepath.FromSlash(wordlistAssetDir))
+	if _, err := os.Stat(filepath.Join(absDir, "words_th.txt")); err != nil {
+		return AssetRow{}, false, nil
+	}
+
+	licenceText, err := os.ReadFile(filepath.Join(absDir, "LICENSE-CC0-1.0.txt"))
+	if err != nil {
+		return AssetRow{}, false, fmt.Errorf("%s: wordlist present but licence text unreadable (AC9, AD-26): %w", wordlistAssetDir, err)
+	}
+	noticeText, err := os.ReadFile(filepath.Join(absDir, "NOTICE"))
+	if err != nil {
+		return AssetRow{}, false, fmt.Errorf("%s: wordlist present but NOTICE unreadable (AC9, AD-26): %w", wordlistAssetDir, err)
+	}
+
+	copyrightLine, ok := extractCopyrightLine(string(noticeText))
+	if !ok {
+		return AssetRow{}, false, fmt.Errorf("%s: NOTICE file does not contain a line starting with \"Copyright\" (AC25-equivalent for AC9, AD-26)", wordlistAssetDir)
+	}
+
+	licenceLabel := "SEE NOTICE"
+	if _, spdx := licence.ClassifyLicenceText(string(licenceText)); spdx != "" {
+		licenceLabel = spdx
+	}
+
+	return AssetRow{
+		Path:      wordlistAssetDir + "/words_th.txt",
+		Licence:   licenceLabel,
+		Copyright: copyrightLine,
+		Serves:    "folio-go shipped (embedded dictionary)",
+	}, true, nil
 }
 
 // extractCopyrightLine returns the first line of text that contains the

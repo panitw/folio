@@ -4087,3 +4087,729 @@ exactly the window before the guard exists.
 
 **AD-4 also gets its first real test** at 2.5/2.6 — *"two passes, and the second one lays nothing
 out."* **Pagination is where a second layout pass is most tempting.**
+
+### D-000.12 (corrected) — A mitigation for a measurement hazard must itself be measured
+**Orchestrator decision**, on the lead's own correction *(mechanism: binding)*.
+
+**D-000.12's stated mitigation — "write to a file and read it back" — is INSUFFICIENT.** Measured: the
+wrapper **rewrites the `go` command itself**, so a plain redirect captures its *summary*, not the
+output. A matrix verification reported **0 of 12 expected hash lines while simultaneously reporting a
+pass**. **The correct form is `rtk proxy` first, THEN redirect.**
+
+**The lead's own account, recorded because the general rule is the valuable part:** *"I proposed a
+mitigation from reasoning, in a domain where reasoning had already failed three times… **a mitigation
+for a measurement hazard must itself be measured before it is relied on** — otherwise it is a second
+unverified instrument stacked on the first."*
+
+**Fourth false reading from this wrapper**, and the first where the **fix written after the third was
+itself never tested against the thing it was fixing.**
+
+**Related, same ledger:** the `Template` migration measured **50** field-reach sites against the
+lead's *"~10"* — a **`grep`-shaped estimate presented as a measurement**. The under-count has a
+mechanical cause worth keeping: **the Go toolchain preserves a type alias as a distinct `types.Alias`
+node**, so resolving it requires an explicit `types.Unalias` call. D-000.14 again.
+
+## Epic 2 decisions — Story 2.1
+
+### D-2.1.1 — 2.1 is not a D-000.4 override; the S4 fixture must give the deferred Docker legs something to measure
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**Not an override.** The override clause is scoped to *"a story whose **own deliverable** is
+hash-shaped"*, and **2.1 emits no PDF bytes** — three matrix legs would have nothing to measure. AC3
+needs **execution** under `js/wasm`, a **target-capability** question, and that leg costs **no Docker
+boot** — precisely the cost the owner traded away in D-000.4. **js/wasm in-story; Docker legs to the
+Epic 2 gate.**
+
+**The guardrail, without which the deferral is empty** *(mechanism: binding)*: the computed break
+opportunities must be **asserted against the checked-in S4 fixture in an ordinary test that runs on
+every target**. Then the gate's `linux/amd64` and `linux/arm64` legs **genuinely exercise 2.1's work**
+— a target computing different breaks fails the fixture — rather than merely compiling it.
+**Otherwise the Docker legs are deferred to a gate with nothing to check.**
+
+### D-2.1.2 — Route (b), and the criterion is fail-closed versus fail-open
+**Orchestrator decision**, on the lead's ruling. Answers the creator's `DECISION NEEDED`.
+
+**All three facts verified independently** (orchestrator and lead): `fontExtensions = {".ttf",
+".otf", ".ttc"}` at `manifest.go:86`; `Render(rows) + RenderAssets(assetRows)` — **fully generated**,
+so a hand-written row is **erased on regeneration** and `TestManifestUpToDate` reddens immediately;
+and **`CC0` appears nowhere in the `lint` module.**
+
+**Verdict: route (b)** — a minimal generated addition scoped to declared asset locations.
+
+**The criterion the creator asked for, and it is a single question** *(mechanism: binding)*:
+
+> ***Does the mechanism FAIL on a file it does not recognise, or IGNORE it?***
+
+- **Fail-closed** — walk the declared asset locations, require every file to be **accounted for**,
+  **fail on anything uncovered**. That is D-1.8.11's inversion, and a minimal scope is its **first
+  increment**.
+- **Fail-open** — add `.txt`/`.trie` to `fontExtensions`. That is **the forbidden shortcut**, and
+  **scope has nothing to do with it**.
+
+**So (b) is legitimate if and only if it is fail-closed. The number of locations is negotiable; the
+shape is not. A one-location fail-closed walk is strictly better than a ten-extension fail-open
+list.**
+
+**Why not (a):** expanding a **spike** into a lint-architecture story in the epic's opening slot is
+real scope creep, and the full inversion needs decisions about what counts as an asset location that
+this story has no business making.
+
+**Why not (c), named as the creator asked:** it is **mechanically green while substantively
+incomplete** — the absence-reads-as-success shape, this program's dominant defect class. And the
+Epic 1 gate's justification for deferring was *"latent, **zero current instances**"*. **Story 2.1
+destroys that ground. A gap deferred for having no instances, then kept deferred once it has one, is
+a gap nobody ever closes.**
+
+### D-2.1.3 — CC0-1.0 joins `permissiveSPDX`; and the general rule that distinguishes a fail-safe from a rotting list
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**CC0-1.0 is a public-domain dedication and belongs in `permissiveSPDX`.** In scope regardless of
+which route the manifest question took. Two-direction red-proof: **a CC0 asset passes, an unknown
+licence fails.**
+
+**The general rule, which the creator identified and the lead affirmed:**
+
+> **An allowlist whose miss is LOUD is a fail-safe. An allowlist whose miss is SILENT is a rotting
+> list.**
+
+`permissiveSPDX` is the first — an unrecognised licence classifies as `unknown`, and **D-1.3.4
+deliberately made unknown a build failure**. `fontExtensions` is the second — an unrecognised
+extension is simply **invisible**. **Same data structure, opposite failure modes.** Someone will
+eventually cite D-1.8.11 to argue against AC8; **the distinction belongs in the story text.**
+
+### D-2.1.4 — The corpus floors, confirmed, with a strengthening the exercise floor's own logic implies
+**Orchestrator decision**, on the lead's ruling.
+
+**Item floor confirmed as proposed** *(binding)*: **≥120 personal names, ≥40 place names across
+regions, ≥40 transaction descriptions, ≥200 total — computed as the sum, never narrated**
+(D-000.14). The surname argument is the strongest part: **Thai law requires surnames to be coined and
+unique per family**, so they are reliably out-of-dictionary and are exactly the class AD-25's
+Prevents line names. Weighting that bucket largest is correct.
+
+**Exercise floor confirmed as proposed** *(binding)* — and it is the better half, proposed by the
+creator unprompted: *"a 200-item corpus in which the dictionary covers everything proves nothing
+about the uncoverable-run absolute."* That is **D-000.9's coverage-witness idea applied to a
+hand-reviewed corpus**, and `P6a = 0` being a **failure** is the right consequence.
+
+**The strengthening — the exercise floor's own logic goes one step further** *(mechanism: binding)*:
+among the ≥120 personal names, **a stated minimum must be names for which the *unconstrained*
+dictionary proposes at least one interior break.**
+
+**Why:** AD-25's atomic-unknown-run rule is an **override** — it sits *under* what the dictionary
+proposes and overrules it. **A name that decomposes into no dictionary words is trivially unsplit, so
+it exercises the override not at all.** A corpus of 120 such names would satisfy every absolute while
+**never once making the override do work**. Those cases are **mechanically identifiable** — run the
+greedy matcher and count — so this is a countable floor like the others, not a judgement call. Same
+move as requiring **both polarities** in a fixture: the discriminating cases are the ones where the
+guard has to actually override something.
+
+**Disagreement escalation confirmed** *(mechanism: illustrative for the thresholds)*: **>15% of items**
+disagreeing at any position, or **any single item with >3** disagreements named individually
+regardless of rate. **Recorded, not gated** — there is no pre-existing ground truth to gate against,
+the same circularity D-2.0.2 identified.
+
+### D-2.2.0 — Variable-font instancing: measured, not obviously broken, and converted from unknown to monitored
+**Orchestrator decision**, on the lead's ruling. **Measured by the orchestrator before the story was
+written.** No owner escalation.
+
+**The hazard, verified verbatim in `textshape@v0.0.15`:** `ot/gvar.go:259-260` and `:487-488` are
+`deltas.XDeltas[i] += float64(xDeltas[i]) * scalar` — **the canonical fusable multiply-accumulate**,
+the exact shape `hashmatrix`'s contraction probe detects — feeding `subset/plan.go:504-505`'s
+`int16(math.Round(deltas.XDeltas[i]))`. **A 1-ULP difference flips a rounded glyph coordinate,
+changes the outline, changes the `FontFile2` bytes, changes the hash.** That is R1 (Critical)
+materialising inside a dependency, on the render path.
+
+**And instancing is forced, not chosen:** PDF 1.7 cannot express a variable font (AD-7 pins the
+profile); `subset/execute.go:503` shows variation tables are **passed through** rather than subset
+when not instancing, so a 50-glyph subset would carry the whole `gvar` table; and `style.bold` is a
+`wght`-axis instance.
+
+**Measured — all four targets agree.** `AnekBangla-subset.ttf` (the only available variable face:
+`fvar` + `gvar` + `glyf`, the same shape as the shipped Noto set), A–Z subset, **both axes pinned
+off-default** so interpolation actually ran (`wght` 611 vs 500 default; `wdth` 109.25 vs 100),
+`IsInstanced()` true. One pinned toolchain; native, `alpine:3.20` under both Linux arches, Node via
+`go_js_wasm_exec`.
+
+| Target | Hash | Bytes |
+|---|---|---|
+| darwin/arm64 | `ca66b20c…1488db` | 412 |
+| linux/amd64 | `ca66b20c…1488db` | 412 |
+| linux/arm64 | `ca66b20c…1488db` | 412 |
+| js/wasm | `ca66b20c…1488db` | 412 |
+
+**Three limits, recorded because "measured" must mean what it says** *(mechanism: binding — these go
+into Story 2.2's measurement table verbatim; a later reader finding "all four agreed" without them
+would over-trust it)*:
+1. **Different font, same arithmetic.** Not a Noto face. The code path is identical, **the delta
+   values are not**, and FMA divergence is **value-dependent** — it appears only when fused and
+   unfused results straddle a rounding boundary. Strong evidence, **not proof**, for another font.
+2. **`math.Round` is the amplifier, and the probe may simply have missed its boundary.** Pinned
+   coordinates were arbitrary (+37% of range) and may never have produced a near-`.5` delta.
+3. **All axes pinned.** Real use pins `wght` only, leaving `wdth` at default — a different scalar
+   computation (`gvar.go:325`'s `scalar *=` chain runs differently when a coordinate equals its peak).
+
+**Do not re-run the probe** *(mechanism: binding)*. **Limit 1 dominates 2 and 3:** a boundary-seeking
+sweep would tighten a measurement on **AnekBangla**, and value-dependence means none of it transfers
+to Noto Sans SC's deltas. **Spending more on the wrong font optimises a measurement we are about to
+supersede.**
+
+**The reframing, which is what makes further probing unnecessary** *(mechanism: binding)*: **we do not
+need to prove instancing byte-stable in general. We need the shipped instances' bytes recorded as
+goldens and re-verified on every matrix run.** That is precisely AD-21's purpose — *"a hash change is
+investigated as a defect until proven to be an intended, versioned behaviour change."* **A
+value-dependent hazard no probe can exhaustively exclude is exactly what a recorded golden plus a
+repeating matrix is the right instrument for.** The residual risk is not eliminated; it is
+**converted from unknown to monitored**, which is the correct end state and is reachable now.
+
+### D-000.9 (extended to probes) — A probe reporting "no divergence" must state what would have made it fire
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*. **Program-wide.**
+
+**The probe above had no coverage witness.** It never established that its configuration was
+*capable* of producing a divergence, so **a green result is indistinguishable from "could not have
+seen one."** Ask D-000.9's diagnostic question of it — *what would this probe have printed if the
+arithmetic diverged on some other input?* — and the answer is **the same thing**.
+
+**Rule:** a probe reporting "no divergence" **states what would have made it fire**, or its negative
+result is recorded as **"not obviously broken"**, never as **"stable."**
+
+**Note the distinction from the defect class itself:** the orchestrator identified the limit
+unprompted, which is the opposite of the failure. **The class is not noticing.**
+
+### D-2.2.1 — Story 2.2 is a D-000.4 override, and records a golden for EVERY (face, pinned instance) pair
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**Override confirmed on independent grounds:** not because the probe was inconclusive, but because
+**the probe cannot be conclusive for faces it did not test.** The instancing arithmetic is a new hash
+surface and belongs in the matrix **in-story**.
+
+**The substantive half: 2.2 records a golden for every (face, pinned instance) pair it ships — not
+one sample.** Value-dependence is the whole hazard, so **a clean result on Noto Sans at `wght`
+default says nothing about Noto Sans SC at a pinned weight.** The recorded set must cover the actual
+risk surface, or **the matrix is monitoring a subset of what ships.**
+
+**Standing condition, registered in `deferred-work.md` rather than left as a one-off** *(binding)*:
+**every later story that adds a pinned instance adds its golden and runs the matrix.** Bold is a
+`wght` instance; if it arrives after 2.2, its story inherits this obligation — so the story that
+first renders bold does not have to rediscover why.
+
+### D-2.2.2 — The subset tag hashes glyph ids PLUS pinned axis coordinates in F2DOT14 integer form
+**Orchestrator decision**, on the lead's ruling. **A correctness defect, independent of
+byte-stability.**
+
+**The collision:** two instances of one face share a **glyph set** and have **different programs**, so
+AD-7's tag over the sorted glyph-id set **alone collides**. ISO 32000-1 §9.6.4 requires the tag to
+distinguish subsets **within a file** — exactly what a document containing regular *and* bold
+produces. Same discrimination failure as D-1.5.8's output-numbering trap, one layer up.
+
+**The hash input** *(mechanism: binding)*: the sorted glyph-id set **plus the pinned axis coordinates
+in their normalized F2DOT14 integer form** — **not** the caller-facing float values.
+
+**Why the second half matters more than it looks:** hashing `wght=700.0` would put a **`float64` in
+the subset-tag derivation path**, which AD-1/AD-23 forbid under `internal/` and which the arch guard
+would catch — **but only if the identifier appears**. The F2DOT14 integers are what **actually
+determined the outlines**, they are exact, and they are already computed. **Hash what determined the
+bytes, in the form it was determined in.**
+
+**Fixture** *(binding)*: two instances of the same face, **same glyph set**, must produce **different
+tags** — red under a glyph-set-only tag, green under the ruled one. Same discriminating shape as
+D-1.5.8's different-sets-same-size fixture.
+
+### D-2.1.5 — `absence-cmd-dir` is re-keyed on `SOURCE_DATE_EPOCH`; a guard keyed broader than its purpose fires on the wrong thing
+**Orchestrator decision**, on the lead's ruling. **The tripwire mechanism's first false positive**,
+caught live against a red build.
+
+**What happened.** Story 2.1's developer created `folio-go/cmd/gentrie/` and `folio-go/cmd/gencorpus/`
+— the trie compiler and corpus tooling the spike legitimately needs. Measured:
+`TestAbsencesProductionScan` **exit 1**, naming `absence-cmd-dir`. **The tooling is correct; the
+tripwire was wrong.**
+
+**The mismatch.** D-1.7.7 keyed that row on the **directory** `folio-go/cmd`, deliberately, per DW-2's
+correction that *"an exact filename guess is a false-pass hazard a directory-level check does not
+have."* But its **purpose** (DW-10) is narrower than its **key**: it exists to force AD-7's
+params-date wiring to be settled when the CLI that reads `SOURCE_DATE_EPOCH` arrives at Story 3.7.
+**`cmd/` has more than one legitimate tenant, and only one of them was the target.** The row did
+exactly what it was keyed to do and nothing it was meant to do.
+
+**Verdict — route (d), key on the trigger** *(mechanism: binding for the trigger; illustrative for the
+table's representation)*:
+
+> **`SOURCE_DATE_EPOCH` must not appear in any Go source under `folio-go/` until AD-7's params-date
+> wiring is settled (DW-10).**
+
+**Why the orchestrator's own proposal (c) was rejected — and this is the sharp part.** Asserting
+*"`cmd/folio` specifically must not exist"* **must name `folio`**, so it carries the **identical
+filename-guess hazard** as narrowing the key. If Story 3.7 names its binary `cmd/foliocli`, **neither
+fires and DW-10 evaporates silently.** The lifecycle framing (D-2.2's fonts pattern) is right, but
+**that mechanism worked for fonts because there the path *is* the obligation; here the path is only a
+proxy for it, which is the whole problem.**
+
+**Why not moving the tooling out:** `cmd/` is in the spine's **own Source tree**, so it is a described
+location, not an improvisation. `hashmatrix/` and `lint/` are repo-root modules because they need
+**dependencies `folio-go` must not carry** (D-1.5.1's allowlist); `gentrie` and `gencorpus` are
+**stdlib-only tools inside the module**. If either ever needs a third-party dependency, the D-1.5.1
+allowlist will say so loudly — that is the moment to reconsider, not now.
+
+**Measured, so the re-key goes green immediately:** `SOURCE_DATE_EPOCH` appears in **no** Go source
+under `folio-go/`, and neither new tool mentions it or `CreationDate`. Its **only** occurrence
+anywhere in Go source is a **comment** at `lint/internal/rules/absences.go:77`, inside the rule's own
+description — **which scoping to `folio-go/` excludes naturally, with no exemption.**
+
+**Three obligations, in Story 2.1's own commit** *(all binding)*: replace the row and **update DW-10
+with the re-keying and the reason**; **re-prove it fires** by adding `SOURCE_DATE_EPOCH` to a scratch
+file under `folio-go/`, observing the red naming its rule, and removing it — **a re-keyed tripwire is
+a new tripwire and inherits the obligation to be seen failing**; and because the row now matches file
+**content** rather than a **path**, **the coverage witness must count both rule kinds**, or the
+extension **reopens exactly the `ChecksEvaluated == 0` gap that T2 closed** — re-creating the seventh
+instance of the dominant defect class inside the fix for a different one.
+
+### D-000.15 — Key a guard on its purpose, never on a proxy for its purpose
+**Orchestrator decision**, on the lead's ruling. **Program-wide standing rule** *(mechanism: binding,
+in the developer and reviewer prompts)*.
+
+> **Key a guard on its purpose, not on a proxy for its purpose. Where the key is broader than the
+> purpose, the gap is where false positives live — and a false positive's danger is not the noise, it
+> is the workaround it invites.**
+
+**Its sibling, recorded earlier in this run:** *tripwires guard the arrival, but nothing guards the
+removal* (which D-2.2's fonts ruling answered by converting the row to a positive assertion).
+
+**Together they say something worth writing down: a guard erodes fastest at the point where it is
+wrong**, because **the cheapest resolution to a false positive is always to weaken the guard.** That
+makes key/purpose alignment matter more for guards than for ordinary code — **a false positive in a
+guard is not an inconvenience, it is an attack on the guard.**
+
+**The drill for every future tripwire:** *state the obligation in one sentence, then ask whether the
+key **is** that sentence or a **stand-in** for it.* *"AD-7's params date must be wired when the CLI
+reads `SOURCE_DATE_EPOCH`"* keys on **`SOURCE_DATE_EPOCH`**. It never keyed on `cmd/`.
+
+**Process note the lead was explicit about:** the developer was told the ruling **immediately** rather
+than waiting to see whether it surfaced the conflict itself. The `DECISION NEEDED` reflex is worth
+reinforcing, **but not at the price of a developer sitting against a red build on a conflict already
+resolved** — every hour it stays red makes the quiet workaround more attractive, **which is the exact
+dynamic this rule names.**
+
+### D-2.1.6 — The template declares unbreakable fields; AD-25 gains a third mechanism
+**OWNER DECISION.** Escalated under D-2.0.2's pre-committed rule that **confirmation is the lead's and
+deviation is the owner's**. The owner chose **option 2**, the lead's recommendation.
+
+**Verdict.** A template may declare that a bound value must never be broken. The engine never proposes
+a break inside such a field. **Declarative, not inferred** — the template author states it, the way a
+real bank statement already knows which value is a customer name.
+
+**The deviation that forced this.** Story 2.1's pre-stated gate failed **P3**: **104 violations across
+102 of 180 proper-noun items.** P1, P2, P4, P5 and P6 all passed with zero violations.
+
+**Why the two existing absolutes cannot reach it.** AD-25 names cluster identity and atomic-unknown-run;
+**both are keyed on dictionary coverage, neither on proper-noun identity.** Thailand's Surname Act
+requires surnames to be **coined and unique per family**, and most are built from ordinary words —
+`ศรีสุข` = `ศรี` + `สุข`, both common entries. So the constrained engine finds two complete legal
+matches at a **genuine cluster boundary**: P1 cannot fire (the boundary is real), P2 cannot fire
+(nothing is uncoverable). Measured: **100 of 120 personal names (83%) are built this way — the common
+case, not the tail.**
+
+**The deeper reason no implementation could have closed it** (lead, after stress-testing the
+alternatives): **the information is not in the character stream.** `ศรีสุข` as a surname and `ศรี สุข`
+as two words are **byte-identical**; a Thai reader separates them by context and world knowledge. A
+bigger dictionary cannot help — **both halves are in it**. A surname list can never be complete — the
+population is **unbounded by law**. All-Thai-atomic destroys the wrapping `acceptance.md` requires.
+
+**Options rejected, with reasons recorded:** *accept and document* — ships the failure AD-25 was
+written to prevent, on the customer-facing name field of a bank statement; *surname list* — makes the
+failure **rarer but less predictable**, a probabilistic patch on a correctness invariant, plus payload
+against an already ~9 MB budget; *never break Thai* — trivially satisfies the rule and **breaks the
+product**.
+
+**Accepted cost, disclosed:** option 2 protects **declared name fields**. A Thai name embedded in
+**free-form text** — a transaction description like "transfer to Srisuk" — **remains breakable**. That
+is a smaller, statable limitation and it is the part this option does not reach.
+
+**The trade the owner made, and its precedent.** The lead flagged the resemblance to **D-1.4.9**
+deliberately: option 2's cost lands **in engine code now** rather than **on a reader of a Thai bank
+statement later** — the same reasoning by which the owner overrode the lead on forward compatibility.
+**It held again.**
+
+**Consequences** *(mechanism: binding)*: one **optional format field** (additive, permitted under
+D-1.4.12 — it adds a key, it does not extend a closed set); a signal carried from **binding into line
+breaking**; work landing in **Stories 2.4 and 2.5**; and a **D-000.6 amendment adding AD-25's third
+mechanism**, executing in the implementing story. **The amendment mechanism is D-000.6's; the choice of
+what to amend to was the owner's.**
+
+**Separately — 2 of the 104 are NOT architectural** *(mechanism: binding)*. `name-101` and `name-102`
+are P6g "opaque" names whose surnames show zero interior breaks alone but violate in full context: the
+**atomic-run resume scan landing on a short spurious match inside a run it had already declared
+uncoverable.** That is a **defect in P2's implementation**, not the architecture, and **it is fixed
+regardless of which option was chosen.**
+
+### D-2.1.7 — The lead declined a jurisdictional argument that would have made this its own call
+**Orchestrator note**, recording the lead's own reasoning because the principle outlives the instance.
+
+AD-25's Rule under-delivers on **its own Prevents line** — arguably the textbook "incomplete canonical
+document" case **D-000.6** exists to amend, which would have made this the lead's call. **It declined
+that route:**
+
+> *"D-2.0.2 pre-committed that deviation is the owner's, and I committed to it **before seeing the
+> data**. That pre-commitment is the entire mechanism preventing a spike from always confirming, and
+> **a pre-commitment its author can reclaim once it becomes inconvenient isn't one.**"*
+
+### D-2.1.8 — Two things about Story 2.1 worth recording beyond the decision
+**Orchestrator note.**
+
+**The developer refused an available local fix.** It had a **pre-stated absolute failing**, an obvious
+patch to hand — add a third mechanism and make P3 pass — and declined it: *"quietly patching the
+ENGINE's contract to force a pre-stated absolute to pass is the same move in different clothing"* as
+moving the goalposts. It also did not adjust the corpus, thresholds or labels after seeing results.
+**Three stories ago the recurring failure was developers silently resolving ruling conflicts in the
+diff. This is the exact inverse, chosen freely under pressure.**
+
+**The corpus floor is why this is known at all.** The lead's P6f strengthening — *among the ≥120
+personal names, a minimum must be names for which the **unconstrained** dictionary proposes an interior
+break* — is what forced the decomposable case into the corpus. **Without it, a corpus of opaque
+surnames would have passed all three absolutes and confirmed the approach** — and the defect would have
+surfaced in Epic 4, with the layout engine built on top of it.
+
+### D-2.1.9 — The spike is confirmed complete; P2's zero is self-referential, and the two fixes land in different places
+**Orchestrator decision**, on the lead's ruling. **Confirmation half of D-2.0.2, exercised.**
+
+**Story 2.1 is complete. No rework** *(mechanism: binding)*. It implemented AD-25 **exactly as
+written** and its mechanical deliverables measured clean. **The deviation is a finding about the
+invariant, not a defect in the story** — and finding it cheaply, before seven downstream stories were
+built on it, is precisely what the spike was commissioned to do. **Requiring rework would punish a
+spike for succeeding at its actual purpose.**
+
+**P2 is not blind — it is SELF-REFERENTIAL, and that changes where the fix goes.** It asks *"did a
+break land inside a run **the engine declared** uncoverable?"* rather than *"…inside a run that **is**
+uncoverable."* In context the matcher segments `ประภา ดอเลาะ` differently than the surname alone, so
+part matches, the span is **never declared uncoverable**, and P2 correctly reports zero **about its own
+classification**. **Both sides move together** — the same family as an assertion comparing a message to
+the constant that built it.
+
+**Two fixes, two homes** *(mechanism: binding)*:
+
+| Fix | Where | Why |
+|---|---|---|
+| **P2's measurement** — evaluate against an **independently computed** uncoverable set, derived from the dictionary directly rather than from the matcher's segmentation | **2.1's finish** | a guard reporting PASS while a known instance exists **poisons every future measurement**; two independent producers asserted against each other is the construction that has held every time |
+| **The engine behaviour** — atomicity dissolving under context | **Story 2.4** | it is line-breaking behaviour, and 2.4 owns line breaking; `name-101`/`name-102` are its **retained fixture** |
+
+**Expect P2 to go RED when the measurement is fixed, and let it.** 2.1 completes as *"deviation
+recorded and routed"*; recording **P2: 2 violations** beside P3's 104 is **more honest than shipping a
+PASS we know is wrong**. **No guard should ship reporting a false pass, least of all one guarding an
+absolute.**
+
+**And this matters MORE after the owner's choice, not less** *(illustrative)*: D-2.1.6 protects
+**declared** fields, so a name in **free text** is still guarded only by the atomic-unknown-run rule.
+**The P2 hole sits in exactly the mechanism option 2 does not replace.**
+
+### D-2.1.10 — The unbreakable-field format key and AD-25's amendment both land in Story 2.4, together
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**Not earlier, and specifically not ahead of the enforcement.** A format field with **no consumer** is
+a schema addition that **silently does nothing** — an author could set it and observe no effect. That
+is the *"declared but not load-bearing"* shape of D-1.4.8's presence flags before Story 1.6 consumed
+them, which D-1.4.16 had to **invent a test** to prove was real. Landing field and enforcement together
+makes it **provably load-bearing from its first commit**: set → no break inside the span; unset →
+breaks as before.
+
+**Not 2.5** — that is band composition; the constraint is enforced in **line breaking**, which is 2.4.
+The **AD-25 amendment** executes in the same commit per D-000.6. The field is **additive** — a new
+optional key, **not** a closed-set extension — so D-1.4.12 permits it as MINOR and D-1.4.9's
+passthrough already guarantees an older library loads a file carrying it. 2.4 therefore touches
+`template` (the field), `bind` (marking the span) and `text` (honouring it).
+
+### D-2.3.0 — Story 2.3 must preserve a character-range → glyph-range mapping through shaping
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*. **Flagged now rather than
+discovered at 2.4.**
+
+The atomic span is a **character-range** property, and Story 2.4 must apply it to **shaped output**.
+**Thai shaping reorders and combines**, so if Story 2.3 discards provenance, **2.4 cannot tell which
+glyphs belong to the protected span and the owner's chosen mechanism becomes unimplementable.** Same
+shape as D-1.6.1's type-placement pre-commitment: **cheaper to require now than to retrofit.**
+
+### D-000.16 — A stage-rank import guard, replacing AD-5's single arrow with a table
+**Orchestrator decision**, on the lead's ruling. **Program-wide** *(mechanism: binding for the rule;
+illustrative for the ranks)*.
+
+**The signal rides on the value, never through an import.** `internal/text` must **not** import
+`internal/bind`; the BoundTree's text nodes carry the atomic flag and the breaking API accepts it as a
+**parameter**. That is the spine's whole design: *"a strictly forward staged pipeline over immutable
+values."* **Stages communicate by what they pass, not by what they import.**
+
+**Verified by the orchestrator — the graph is clean and forward-only today:**
+
+```
+geom -> (nothing)     template -> geom     bind -> geom template
+fontset -> geom       pdf -> geom          text -> (nothing)
+```
+
+**Six of the spine's ten `internal/` packages exist. Four do not — `diag`, `expr`, `layout`,
+`pagemodel`.** Declaring the order **once, now** guards all four arrivals; declaring it at Story 2.5
+guards fewer.
+
+**Verdict: a stage-rank guard, landing at the next story that creates an `internal/` package.** Each
+package gets a rank; a package may import only **lower** ranks. Retained violating fixture, two-caller
+shape per D-1.3.3, **green today**. Illustrative ranking for the implementing story to validate:
+`geom` 0 · `diag`/`pagemodel` 1 · `template` 2 · `expr` 3 · `bind` 4 · `fontset` 5 · `text` 6 ·
+`layout` 7 · `pdf` 8.
+
+**Why one table beats the single AD-5 rule:** both arrows we already care about fall out **by
+construction** — `layout`(7) cannot import `pdf`(8), satisfying **AD-5**; `expr`(3) cannot import
+`bind`(4), satisfying **D-1.6.1's pre-commitment that stopped the decimal type being duplicated**.
+**And it pre-forbids the arrows nobody has thought of yet — the entire category that made AD-5 worth
+naming.** One table subsumes two rules and closes a class.
+
+### D-2.1.11 — The confirmation is WITHDRAWN; Story 2.1 reopens at development
+**Orchestrator decision**, on the lead's own withdrawal.
+
+> *"I confirmed against a table reading P5 PASS and P6 PASS. P5 fails (102 genuine < 120), P6d fails
+> (18 < 20), and P2 reported 0 against an actual 27. D-2.0.2 makes the floors **part of the gate**,
+> and I pre-committed that the gate's conditions were stated in advance precisely so they could not be
+> met by interpretation afterwards. **A gate that did not pass its own pre-stated conditions is not
+> confirmed, and I do not get to hold a confirmation issued against numbers that turned out not to be
+> measurements.**"*
+
+**Reopened at development, not finish** *(mechanism: binding)* — the corpus needs re-sourcing and P2's
+measurement needs rebuilding; neither is finishing work.
+
+**The owner's decision (D-2.1.6) STANDS, and the correction strengthens it.** The architectural finding
+is independent of every defect: 104 violations reproduce, are carried **entirely by the 102 genuine
+surnames**, and `break.go` provably contains **no proper-noun concept**. The defects affect the
+**floors**, not the **mechanism** — and correcting them moves the count the **safe** way: replacing
+synthetics with genuine names and labelling given names yields **161, not fewer.** **The finding was
+understated.** Reported to the owner as a **report, not a question**.
+
+### D-000.17 — A floor that is not met is reported as unmet. It is never filled.
+**Orchestrator decision**, on the lead's ruling. **Program-wide standing rule** *(mechanism: binding)*.
+
+**The shape, which is the whole lesson.** The Story 2.1 developer **refused to patch the engine** to
+make a pre-stated absolute pass — correctly, calling it *"the same move in different clothing"* as
+changing the pass condition after seeing the data. **Then it manufactured 38 corpus items to make a
+pre-stated floor pass.** That is **the identical move, applied to the sample instead of the engine**,
+and it went unnoticed because **the floor counted items rather than requiring anything of them.**
+
+> **A floor that is not met is reported as unmet. It is never filled.**
+
+**Filling a floor is the sampling twin of moving a threshold.** If a genuine corpus cannot reach its
+floor, that is a **finding** — about sourcing, about the language, about the budget — and it is
+**escalated, not synthesised away.**
+
+**Concretely** *(binding for the properties; illustrative for the mechanics)*:
+- **Every corpus item carries provenance. Floors count sourced items only.**
+- **Synthetic items may remain, labelled, counting toward nothing.** Do **not** delete the 38 — an
+  obsolete-character string genuinely **is** an uncoverable run, so they have real exercise value for
+  P6a. They must simply never satisfy a **genuine-name** floor.
+- **Bar obsolete characters from the genuine buckets** — ฅ (U+0E05), ฃ (U+0E03). Mechanical, and it
+  forecloses this specific dodge permanently.
+- **The generator may assemble from sourced data; it may not invent items to reach a number.** That is
+  the property to assert.
+- **Fix P6d's predicate**: `isThaiScript` excluding U+0020 made **the space in every two-token name**
+  count as "mixing with Latin/digits", inflating 18 to 167. The floor must count an actual Latin
+  letter or digit.
+
+**Why this matters beyond the gate:** this corpus becomes **S4, the frozen expected-break fixture**,
+which Stories 2.4 and 2.8 and the golden report are judged against **for the life of the project**. A
+fixture that is **27% synthetic strings of an obsolete character** is a poor foundation for that
+independently of whether the finding is in doubt. **Rebuild it because it becomes S4.**
+
+### D-2.1.12 — P2 is a method, not a number; and how a correct count became a wrong anticipation
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+**The method, and no target number:** P2 is evaluated against an **independently computed** uncoverable
+set — DP over the raw wordlist, a token uncoverable iff **no** segmentation exists at any split — and
+asserts **zero** interior breaks within any such span. **The assertion is zero. 27 is the current
+measured failure, not a target.** A fix landing at 3 is still a fail. **Calibrating to any number
+re-creates the self-referential failure at a new value.**
+
+**The lead's own error, recorded because the mechanism generalises.** The spike report noted that *2 of
+the P6g opaque names* also violated. The lead adopted that **2** as the count of **P2-class**
+violations — but those 2 were a subset of the **P3** violations that happened to sit on opaque-name
+items, **a completely different population** from "breaks inside independently-uncoverable spans",
+which includes given names and non-name tokens.
+
+> **A count is meaningless without the population it ranges over, and carrying one across a population
+> boundary is how a plausible number becomes a wrong anticipation that a finisher would then calibrate
+> to.**
+
+### D-2.1.13 — AC9 did not implement D-2.1.2; the ruling stands unchanged
+**Orchestrator decision**, on the lead's ruling *(mechanism: binding)*.
+
+D-2.1.2 ruled a **fail-closed** walk on a single criterion: *does the mechanism fail on a file it does
+not recognise, or ignore it?* What shipped uses `os.ReadDir` with `if e.IsDir() { continue }` and
+**never requires the expected files** — **fail-open on subdirectories**, and green with **both licence
+files deleted**. **That is not a variant of the ruling; it is the shape the ruling exists to forbid.**
+
+**Two red-proofs, both required:** delete `LICENSE-CC0-1.0.txt` (and `NOTICE`) → **red**; place an
+unaccounted file in a **subdirectory** of a declared asset location → **red**. **Either one passing
+means it is still fail-open.** The CC0 wordlist must appear in `MANIFEST.md` — its absence is the same
+defect from the other side.
+
+**AC1's "62,107" is an artifact, not a divergence** — a **line** count against **62,106** distinct
+words (exactly the epic's figure), the +1 a duplicate (`โรม่า`). Correct the record and drop the
+reported divergence: **a fabricated discrepancy in a spike report is as corrosive as a fabricated
+agreement.**
+
+### D-000.18 — Confirm against the artifact, never against a table summarising it
+**Orchestrator decision**, on the lead's adopted rule *(mechanism: illustrative)*.
+
+> *"When I hold the confirmation half of a pre-stated gate, I confirm against the artifact, not against
+> a table summarising it — at minimum spot-checking the rows that would be easiest to satisfy
+> vacuously."*
+
+**Every number in the gate table was narrated by the thing being judged.** This run has now produced
+narrated-count drift in a reviewer's summary, a developer's disposition table, the lead's own ruling
+prose, and now a spike's gate table — and here the drift was **not a slip but a floor being satisfied
+by construction in the worst sense.** The rows easiest to satisfy vacuously are **floors whose only
+content is a count.**
+
+### D-2.1.14 — The gate does not confirm; P6g stands unmet, and the shortfall is NOT free
+**Orchestrator decision**, on the lead's ruling. **The orchestrator's justification for this outcome
+was wrong and the lead corrected it with a measurement.**
+
+**Verdict: option (b).** The gate does **not** confirm. **P6g stands unmet as a third failing row**
+beside P2 and P3. Story 2.1 completes as *"deviation recorded and routed"* with three failing rows.
+
+**Why not amend the floor, even though the case for amending it is good.** D-2.0.2's meta-rule is the
+only thing standing between a spike and always confirming. The lead honoured it when a **genuinely
+defensible jurisdictional argument** would have let it rule the deviation itself (D-2.1.7), and the
+principle it logged then was its own: *a pre-commitment its author can reclaim once it becomes
+inconvenient isn't one.* **Relaxing it now, when relaxing it is convenient, retires that principle at
+the first opportunity to use it.** And note the structure: (a)'s case is a **good** argument —
+**post-hoc amendments always have good arguments, which is precisely why the rule forbids them rather
+than weighing them. A rule that yields to a sufficiently good justification is a rule that yields.**
+
+**The categorical question, answered because it will recur** *(mechanism: binding)*: **yes, "the
+category does not exist at this frequency" is genuinely different from "we did not reach the number"
+— and no, that difference does not license amending the condition after it fails.** The right
+handling of a mis-specified floor discovered post hoc: **record it unmet, record the measurement that
+explains why, and let the next pre-commitment be better informed. You do not amend the failed
+condition; you improve the next one.**
+
+**THE CORRECTION — the synthetics do not serve P6g's purpose, and the orchestrator's reasoning for (b)
+was wrong.** The orchestrator argued the shortfall cost nothing because *"the exercise value P6g was
+after is delivered by the synthetics."* **Measured against the real 1,520,247-byte wordlist, and
+independently re-verified by the orchestrator:**
+
+| Character | Dictionary words containing it (of 62,107) |
+|---|---|
+| **ฅ (U+0E05)** | **2** — `ฅน`, `ฅนไท` |
+| **ฃ (U+0E03)** | **2** — `ฃวด`, `ฃึ้น` |
+
+| Real opaque name | Per-character dictionary frequency |
+|---|---|
+| `ดอเลาะ` | **8,748 – 26,383** |
+| `แนแซ` | **2,095 – 21,328** |
+
+**So a synthetic ฅ-string is near-trivially uncoverable** — essentially no dictionary word can
+partially match inside it, the matcher finds no spurious boundary, and the atomic-run rule succeeds
+**the easy way**. **The real opaque names that produced violations are built from ordinary modern
+characters appearing in thousands of words — which is exactly WHY they violated:** the resume scan
+lands on a short spurious legal match inside a run it had already declared uncoverable. **That is the
+hard path, and it is the path P2 demonstrably fails on.**
+
+**Consequences** *(mechanism: binding)*:
+- **The 8 sourced opaque names are load-bearing for S4 and must be marked as such.** They are currently
+  the **only** corpus items covering the path where P2 breaks.
+- **P6g's shortfall is a standing item — a known thinness in the S4 fixture**, not a closed row.
+  Registered in `deferred-work.md`: if more genuinely-opaque names can be sourced during Epic 2's later
+  stories or Epic 4's golden-report work, **they are added.** This fixture is consulted for the life of
+  the project; **8 items on its most fragile path is thin and should be visibly thin.**
+- **Do not delete the 38 synthetics** — they genuinely exercise the **easy** path, which also needs
+  covering. **They simply do not substitute for the hard one, and the labelling must say which is
+  which.**
+
+### D-000.19 — An unexplained delta between two independent computations is where a calibration hides
+**Orchestrator decision**, on the lead's ruling. **Program-wide** *(mechanism: binding)*.
+
+P2 returned **26** against the first reviewer's independently computed **27**. **An unexplained delta
+in an independently-computed cross-check is indistinguishable from someone having nudged one
+computation toward the other.**
+
+**Only two resolutions are acceptable:**
+1. Traced to a known change (here, the `place-040` label fix) **with the specific item named** and
+   shown to move from one side to the other; or
+2. Traced to a **defect in one of the two computations**, with the defect identified.
+
+**"Close enough", "within noise", and "not material" are not resolutions.** If the delta cannot be
+explained, **the two computations are not independent enough to be trusted as a cross-check, and the
+check is rebuilt rather than accepted.** **Two producers agreeing is only evidence when a disagreement
+would have been diagnosable.**
+
+### D-000.20 — Every text tool carries an encoding and collation assumption; for non-ASCII it is usually wrong and always silent
+**Orchestrator decision**, on the lead's ruling. **Program-wide** *(mechanism: binding)*. **Fifth
+instrument failure of this run, and the first that is not the wrapper.**
+
+Shell `sort`/`uniq` **mangled multi-byte Thai UTF-8** on this machine, producing silently wrong
+grouping — **not an error, just wrong answers**. Unlike the previous four (a wrapper rewriting or
+summarising commands) this is a **locale assumption inside a standard POSIX tool**: `sort` and `uniq`
+collate per `LC_COLLATE`/`LC_ALL`.
+
+**Rule:** for any measurement over non-ASCII data, use a tool where the encoding is **explicit**
+(Python with `encoding='utf-8'`), or pin `LC_ALL=C` and accept byte-order semantics **deliberately**.
+**The developer switching to Python and saying so is the correct handling and is credited.**
+
+**Five distinct instruments have now produced false readings in one run** — a wrapper printing success
+over a non-zero exit, corrupting binary through pipes, truncating output, capturing summaries instead
+of output, and now a POSIX text tool mis-collating non-ASCII. **The common factor is not any one tool:
+a measurement is a claim about an instrument as much as about the subject**, and this program's
+standard of evidence has caught all five precisely because it keeps asking **which instrument produced
+the number.** Worth a line in the Epic 2 boundary report.
+
+### D-2.1.15 — Story 2.1's finisher closes the second QA review's Blocker and five Majors; the gate outcome (D-2.1.14) is unchanged
+**Orchestrator note**, recording the finisher's pass. **Mechanism: illustrative** — this entry records
+what was done and why; it creates no new binding rule.
+
+**The second QA review verified all five prior blockers and all 19 review-#1 findings fixed, then found
+the story's own Dev Agent Record repeating the exact defect the reopening exists to fix** (narrating
+pre-reopening numbers as current fact — Blocker 1) **plus five Majors and five Minors.** The finisher
+triaged every finding and closed the following, each independently re-measured after the change:
+
+- **Blocker 1 — FIXED.** The Dev Agent Record's pre-reopening sections (dispositions table, "THE
+  FINDING", "Genuine measured facts", Change Log) are marked `SUPERSEDED (D-000.17/18 reopening)` and
+  followed by a corrected version stating the true current figures (P2 FAIL 26/17, P3 FAIL 172/120 of
+  162, P6g FAIL 7 < 20, corpus 243 items/204 sourced/39 synthetic, 314 `--- PASS`/2 `--- FAIL`/0 `---
+  SKIP`), never presented as passing.
+- **Major 1 — FIXED.** `lint/internal/licence/classify.go`'s CC0 fallback marker no longer matches
+  `"CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM"` (boilerplate shared by every CC family member) —
+  narrowed to `"CC0 1.0 UNIVERSAL"` alone, sufficient for the committed licence file. Three new red-proof
+  cases in `classify_test.go` assert CC BY-NC-SA/BY-SA/BY-ND all classify `FamilyUnknown`.
+- **Major 2 — FIXED.** The Dev Agent Record's ruling-dispositions table is extended from 24 to all 36
+  rulings this story enumerates, including `D-000.17`, `D-000.18`, `D-2.1.13`, `D-2.1.14`.
+- **Major 3 — FIXED.** The 27→26 delta (D-000.19) is now traced in `SPIKE-REPORT.md` itself: the 27 was
+  measured over the superseded 220-item corpus; the current 243-item corpus (post D-000.17 rebuild)
+  independently re-derives 26. Different populations, not drift.
+- **Major 4 — FIXED.** `SPIKE-REPORT.md`'s P2 representative-violations table carried four rows from the
+  pre-rebuild corpus (three naming the wrong text for their id). Regenerated from the live test output.
+  Story 2.4's retained-fixture reference (D-2.1.9) is re-pointed from `name-101`/`name-102` to
+  `name-116`/`name-117` — see the next item for why there are two ids, not three.
+- **Major 5 — FIXED.** D-000.17's "may not invent items to reach a number" property was enforced only
+  against the obsolete-consonant dodge, covered only two of five sourced buckets, was reachable from no
+  gate, and was already evaded by one item (`ฉั่วสมบูรณ์`, self-described only as "a plausible" surname).
+  The finisher (a) extended the obsolete-consonant bar to all five sourced buckets; (b) added
+  `TestCorpusRegeneratedMatchesCommitted` (`folio-go/cmd/gencorpus/main_test.go`), mirroring
+  `TestTrieRegeneratedMatchesCommitted`'s precedent, so a hand-edited `corpus.json` now reddens a gate;
+  (c) relabelled `ฉั่วสมบูรณ์` from `personal_name`/`sourced` to `synthetic_probe` rather than
+  retroactively asserting an attestation that was never established. **Consequence, measured and
+  disclosed everywhere it appears:** P6g's generator-measured count moves from 8 to 7; P5's
+  personal-name count moves from 123 to 122 (still ≥120); P3 moves from 173 to 172 violations (one
+  fewer proper-noun-bearing item); P2's 26/17 is unaffected (the same text still violates, now under id
+  `synthetic-039`, and P2 is computed over every Thai-script span regardless of category). `DW-11` in
+  `deferred-work.md` is corrected to its honest load-bearing figure: **2** genuinely-uncoverable,
+  independently-attested sourced opaque names (`ดอเลาะ`, `แนแซ`) — not 7, and not the original 8.
+- **Minors 1, 2, 3, 5 and Nits 1–4 — FIXED**, each a disclosure or comment correction, no further
+  code-behaviour change: `DW-11`'s figure (Minor 1, above); the P6a genuine/synthetic split, 64 = 25
+  sourced + 39 synthetic (Minor 2); P6d's zero-margin/single-category disclosure (Minor 3); the
+  corpus-wide "does the switch matter" figure, 119/122 same on the surname alone, 17/122 differ on the
+  full item text (Minor 5); stale corpus ids in `break_test.go`'s V11 comment (Nit 1, re-pointed to
+  `name-116`/`name-117`); the report's own miscounted preamble (Nit 2); `DW-10`'s placeholder ruling id
+  (Nit 3, now `D-2.1.5`); the `js/wasm` leg's success log understating what it asserted (Nit 4).
+- **Minor 4 and Nit 5 — left open, by design.** Minor 4 (whether AC5's hand review being mechanical
+  labelling changes what evidentiary weight P3's 172 carries) is routed as an open `DECISION NEEDED` in
+  `SPIKE-REPORT.md` rather than resolved unilaterally by the finisher — a genuine interpretive question,
+  not a measurement defect. Nit 5 (`sprint-status.yaml`'s `epic-2: backlog`) is left untouched on
+  explicit instruction: the tracker advances epic-level keys only at the epic's own gate, and this
+  finisher's mandate was scoped to `2-1-thai-break-opportunity-spike`'s own status line only.
+
+**The gate outcome does not change.** D-2.1.14 stands: the gate does **not** confirm. P2, P3 and P6g
+remain three failing rows, `TestCorpusMeetsP6ExerciseFloors` and `TestP2IndependentDPCrossCheck` remain
+the two intentional `--- FAIL`s, and D-2.1.6 (the owner's decision, resting on P3) is unaffected — P3's
+mechanism and architectural cause are identical to what the owner already ruled on; only bookkeeping
+figures around it were corrected. **This entry closes the finisher's pass; it is not a new confirmation
+and it does not reopen the story.**

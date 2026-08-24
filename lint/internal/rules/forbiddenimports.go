@@ -22,6 +22,17 @@ const RuleForbiddenImports = "forbidden-imports"
 // AC12).
 const RuleMathSelector = "math-selector"
 
+// RuleRuntimeCaller is Story 2.1's addition (AC2, V1): AD-1's render
+// path must never depend on the filesystem or on inspecting its own
+// call stack (both are exactly what would make `internal/text`'s
+// embedded-trie loader behave differently on js/wasm than natively).
+// "os" is already a banned import path; `runtime.Caller` is a
+// SELECTOR ban on an otherwise-unbanned package, exactly like
+// RuleMathSelector's treatment of `math` — importing "runtime" itself
+// (e.g. for runtime.GOOS, runtime.Version) is not banned; only the
+// Caller selector is.
+const RuleRuntimeCaller = "runtime-caller-selector"
+
 // bannedImportPaths is AD-1's Rule, verbatim: "Render-path code may not
 // import time, os, math/rand, [or] net". math is deliberately absent —
 // it is judged by selector, not by import path (AC12, D-1.3.10: AD-1
@@ -211,6 +222,34 @@ func ScanForbiddenImports(root string) ([]Finding, ForbiddenImportsStats, error)
 						rel, pos.Line, sel.Sel.Name, allowedNumericSurface),
 				})
 			}
+			return true
+		})
+
+		// runtime.Caller selector matching (AC2, V1, Story 2.1): same
+		// alias-resolved shape as the math selector above, but a
+		// simpler ban — ANY reference to runtime.Caller (call or not)
+		// is a finding; no allow-list, because there is no legitimate
+		// render-path use of it (D-000.9: measured zero occurrences
+		// repo-wide before this story, so this is a genuine, not
+		// vacuous, new check).
+		ast.Inspect(file, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			pkgIdent, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			pkgPath, known := aliases[pkgIdent.Name]
+			if !known || pkgPath != "runtime" || sel.Sel.Name != "Caller" {
+				return true
+			}
+			pos := fset.Position(sel.Pos())
+			findings = append(findings, Finding{
+				Path: rel, Rule: RuleRuntimeCaller, Line: pos.Line,
+				Message: fmt.Sprintf("%s:%d: forbidden runtime.Caller reference — render-path code must never inspect its own call stack or depend on filesystem-shaped introspection (AD-1, AC2)", rel, pos.Line),
+			})
 			return true
 		})
 		return nil

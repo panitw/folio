@@ -1,0 +1,1 @@
+fixture stand-in for words_th.txt

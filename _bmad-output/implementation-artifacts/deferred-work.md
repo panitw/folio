@@ -199,10 +199,50 @@ reproducibly"*, its **Covers** line names **AD-7**, and it carries criteria for 
 being read by the CLI and passed in as a parameter — with the library core still reading no
 environment variable — plus the negative case (*"no date supplied by any route → omitted"*).
 
-**Forcing function:** Story 1.7 adds an **absence tripwire on `folio-go/cmd/`**, so the creation of
-`cmd/folio` at 3.7 reddens until this is settled. Story 1.7 also re-scopes
-`TestRenderHasNoCreationOrModDate` from an unconditional assertion to *"params carrying no date"*, so
-3.7's developer does not meet a red test whose cheapest resolution is to weaken it.
+**Forcing function — RE-KEYED at Story 2.1 (D-2.1.5).** Story 1.7 originally added an absence
+tripwire keyed on the PATH `folio-go/cmd/` existing at all, as a proxy for "the CLI that reads
+`SOURCE_DATE_EPOCH` has arrived." That key was **broader than the purpose**: `cmd/` has more than one
+legitimate tenant, and Story 2.1's own build-time tooling (`cmd/gentrie`, `cmd/gencorpus`,
+`cmd/genbreaks`) tripped it despite having nothing to do with AD-7 or params-date wiring — a measured
+false positive, confirmed independently (`TestAbsencesProductionScan` failing, naming
+`absence-cmd-dir`, before this re-key).
+
+**The row is now keyed on its trigger, not on a path:** `SOURCE_DATE_EPOCH` must not appear in any Go
+source under `folio-go/` until this is settled. Implemented as a new check KIND
+(`absenceKindContent`) in `lint/internal/rules/absences.go`, rule id **`absence-source-date-epoch`**
+(was `absence-cmd-dir`) — it scans `.go` files under `folio-go/` (excluding `testdata/`) for the
+literal string `SOURCE_DATE_EPOCH`, rather than checking whether a directory exists. Red-proofed by
+injection at the real repo location (a scratch reference added under `folio-go/`, observed
+`TestAbsencesProductionScan` fail naming the new rule, then removed) and by a permanent fixture
+(`folio-go/testdata/lint/absences/violating/folio-go/internal/paramsdate/placeholder.go`, replacing
+the old `.../folio-go/cmd/placeholder.go`). The coverage witness (`AbsencesStats.ChecksEvaluated`)
+was verified to still count this row: it increments once per entry in `absenceChecks` regardless of
+which check kind that entry is, and `TestAbsencesChecksIncludeAllFiveEntries` still pins five rule ids
+by name (now including `absence-source-date-epoch`), so a silently shrunk list still fails loudly
+either way.
+
+**The general rule this produced** (recorded in Story 2.1's Dev Notes too): key a guard on its
+purpose, not on a proxy for its purpose. Where the key is broader than the purpose, the gap is where
+false positives live — and a false positive in a guard invites exactly the workaround (weakening the
+guard) that erodes it fastest. `cmd/folio` — the CLI itself — will still trip this the moment Story
+3.7 writes `os.Getenv("SOURCE_DATE_EPOCH")` anywhere under `folio-go/`, regardless of what its `cmd/`
+subpackage is named.
+
+**Trade-off, named explicitly (this story's code review, Finding 14) so 3.7's reviewer checks for
+it**: purpose-keying traded an UNEVADABLE predicate for an EVADABLE one. The old path key
+(`folio-go/cmd/` existing) could not be dodged by spelling. The new content key
+(`strings.Contains(source, "SOURCE_DATE_EPOCH")`) does not fire on `"SOURCE_DATE_" + "EPOCH"`, on a
+constant defined elsewhere and referenced by name, or on a value read from a variable — Story 3.7's
+developer meeting a red build now has a cheaper workaround than before existed. This is an accepted
+trade (a guard keyed on a real proxy that can occasionally be evaded beats one keyed on the wrong
+thing that never fires falsely but also never fires correctly for a legitimate second tenant of the
+path), but it is a trade, not a strict improvement, and 3.7's reviewer should specifically check for
+`os.Getenv` calls under `folio-go/` (already banned outside `_test.go` by AD-1) rather than trusting
+this content match alone.
+
+Story 1.7 also re-scopes `TestRenderHasNoCreationOrModDate` from an unconditional assertion to
+*"params carrying no date"*, so 3.7's developer does not meet a red test whose cheapest resolution is
+to weaken it — this part is unchanged by the Story 2.1 re-key.
 
 **Blast radius, measured smaller than feared:** only fixtures that **supply a date** would move. A
 params-carrying render with **no** date is byte-identical to today, so 3.7's impact is new fixtures
@@ -210,3 +250,58 @@ plus any existing fixture that opts in — **not the corpus**.
 
 **How we'd know it was forgotten.** `cmd/folio` existing while `/CreationDate` is still emitted
 unconditionally-absent with no params date path.
+
+### DW-11 — S4's opaque-name coverage is thin: 2 genuinely-uncoverable sourced items on its most fragile path
+- **Raised by:** Story 2.1's re-measurement under D-000.17 (a floor reported unmet, not filled)
+- **Corrected by:** Story 2.1's finisher, per its second QA review (Minor 1 and Major 5) — the load-bearing
+  count this entry originally carried (8) conflated two different properties. See *Corrected count*
+  below.
+- **Owner:** **Epic 2's later stories and Epic 4's golden-report work** — add genuinely-opaque sourced
+  Thai personal names as they are found
+- **Status:** open, and deliberately visible
+
+P6g's floor asked for **≥20** genuinely opaque (zero-interior-break) sourced Thai personal names.
+The generator's own P6g count (its literal criterion — "the unconstrained matcher proposes no interior
+break") is **7** (was reported as 8 before this correction; see below). Per D-000.17 this was
+**reported unmet, not filled.**
+
+**Corrected count — the honest load-bearing figure is 2, not 7 and not the original 8.** The second QA
+review (Minor 1) measured that P6g's criterion is satisfied by two structurally different populations
+that must not be conflated:
+
+| Surname | Whole dictionary entry? | Genuinely uncoverable (the hard path P2 fails on)? |
+|---|---|---|
+| `ดอเลาะ` | no | ✅ yes — independently attested (Thai-Malay/Muslim regional surname) |
+| `แนแซ` | no | ✅ yes — independently attested (Thai-Malay/Muslim regional surname) |
+| `ชินวัตร`, `จิราธิวัฒน์`, `หวั่งหลี`, `ประยูรวงศ์`, `ทวีสิน` | **yes — all five** | ❌ no — these exercise the OPPOSITE path (whole-word match, nothing to override) |
+
+An eighth item, `ฉั่วสมบูรณ์` ("a plausible Sino-Thai family name" per its own original comment), was
+**removed from this bucket entirely** by the finisher (D-000.17's "may not invent items to reach a
+number" applies to attestation, not just to obsolete-character padding): "plausible" is not sourced,
+so rather than retroactively claim it was attested, `cmd/gencorpus/main.go` now labels it
+`synthetic_probe` and excludes it from every genuine floor, exactly like the 38 obsolete-consonant
+probes. This is why the generator's own P6g figure is 7, not 8.
+
+**So the true load-bearing count for S4's most fragile path (the one P2 demonstrably fails on) is 2,
+not 7 and not 8.** The five whole-dictionary-entry names satisfy P6g's literal wording but exercise the
+*other* polarity P6g exists to guarantee (nothing proposed, nothing to override) — they are real and
+correctly counted under P6g's criterion, but they carry none of the risk this deferred item is about.
+
+**Why the shortfall is not free — measured.** `ฅ (U+0E05)` appears in **2 of 62,107** dictionary words,
+so the 38 synthetic obsolete-character strings are **near-trivially uncoverable**: nothing can
+partially match inside them, and the atomic-run rule succeeds **the easy way**. The real opaque names
+that produced violations (`ดอเลาะ`, `แนแซ`) are built from ordinary characters appearing in **thousands**
+of words — which is **why** they violated, via the resume scan landing on a spurious short match inside
+a run already declared uncoverable. **That is the hard path, and the path P2 demonstrably fails on.**
+
+**So the 2 genuinely-uncoverable, independently-attested sourced opaque names are load-bearing for
+S4** — currently the **only** items covering the path where P2 breaks. **The 38 synthetics (plus the
+one reclassified name) cover the easy path and must not be counted as substitutes.**
+
+**Context that explains the shortfall rather than excusing it:** 115 of 122 sourced names (**94%**)
+decompose into recognisable morphemes, because Thai naming convention favours composing from meaningful
+words. **Genuinely opaque real names appear to be a real minority of the language, not a sourcing-effort
+gap.** That measured fact is now available to whoever specifies S4's adequacy criteria.
+
+**How we'd know it was forgotten.** S4 still carrying only 2 genuinely-uncoverable, independently-attested
+opaque items when Epic 4's golden report ships.

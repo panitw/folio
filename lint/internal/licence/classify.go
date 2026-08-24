@@ -47,9 +47,24 @@ func (f Family) String() string {
 // identifiers this classifier recognises. AD-26's Rule names the
 // forbidden families explicitly: "GPL, LGPL, AGPL, SSPL, or a
 // commercial EULA".
+// CC0-1.0 joined this list at Story 2.1 (AC8, D-2.1.3), the first
+// story to introduce a CC0 asset (PyThaiNLP's words_th wordlist) —
+// measured, "CC0" appeared nowhere in the lint module before this.
+//
+// The general rule, so a later reader does not cite D-1.8.11 against
+// this addition (D-2.1.3, binding): an allowlist whose miss is LOUD is
+// a fail-safe; an allowlist whose miss is SILENT is a rotting list.
+// permissiveSPDX is a fail-safe — an unrecognised licence classifies as
+// FamilyUnknown, and D-1.3.4 deliberately made that a build failure, so
+// a miss here is loud and adding a correct entry is ordinary
+// maintenance. D-1.8.11 forbids extending manifest.go's fontExtensions
+// instead: THAT list's miss is silent (an unrecognised extension is
+// simply never scanned, and nothing is ever said) — same data
+// structure shape, opposite failure mode. The two must not be
+// conflated because they look alike in a diff.
 var permissiveSPDX = map[string]bool{
 	"MIT": true, "Apache-2.0": true, "BSD-2-Clause": true, "BSD-3-Clause": true,
-	"ISC": true, "0BSD": true, "Unlicense": true,
+	"ISC": true, "0BSD": true, "Unlicense": true, "CC0-1.0": true,
 }
 
 var copyleftSPDXPrefixes = []string{"GPL-", "LGPL-", "AGPL-", "SSPL-"}
@@ -87,6 +102,22 @@ func ClassifyLicenceText(text string) (Family, string) {
 		return FamilyPermissive, "Apache-2.0"
 	case strings.Contains(upper, "BSD 3-CLAUSE") || strings.Contains(upper, "BSD 2-CLAUSE") || strings.Contains(upper, "REDISTRIBUTION AND USE IN SOURCE"):
 		return FamilyPermissive, "BSD-3-Clause"
+	case strings.Contains(upper, "CC0 1.0 UNIVERSAL"):
+		// Story 2.1 (AC8, D-2.1.3): the committed LICENSE-CC0-1.0.txt is
+		// the CC0 1.0 Universal legal code in full (matching the
+		// Apache/BSD full-text precedent above, not an SPDX-only
+		// marker), so it needs its own fallback text match, not just
+		// the SPDX-line path. The marker is deliberately narrow: an
+		// earlier version of this fallback also matched "CREATIVE
+		// COMMONS CORPORATION IS NOT A LAW FIRM", which is boilerplate
+		// opening EVERY Creative Commons legal code (CC BY, CC BY-SA,
+		// CC BY-NC, CC BY-ND, ...), not just CC0 — that over-broad
+		// marker classified the entire CC family, including
+		// NonCommercial and ShareAlike variants, as permissive CC0-1.0
+		// (this story's second QA review, Major 1). "CC0 1.0
+		// UNIVERSAL" alone is sufficient for the committed file and
+		// does not appear in any other CC licence's legal code.
+		return FamilyPermissive, "CC0-1.0"
 	}
 	return FamilyUnknown, ""
 }

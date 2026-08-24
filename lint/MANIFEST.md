@@ -39,4 +39,5 @@ build failure (`ResolveAssets`), not a silent gap.
 
 | Path | Licence | Copyright | Serves |
 |---|---|---|---|
+| folio-go/internal/text/wordlist/words_th.txt | CC0-1.0 | Copyright: none asserted (CC0-1.0 public domain dedication). Original | folio-go shipped (embedded dictionary) |
 | folio-go/testdata/fonts/Roboto-Regular.ttf | Apache-2.0 | Copyright 2011 Google Inc. All Rights Reserved. | folio-go test fixture |

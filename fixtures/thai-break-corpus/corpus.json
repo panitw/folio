@@ -1,0 +1,2959 @@
+[
+  {
+    "id": "name-001",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมชาย ศรีสุข",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-002",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมหญิง ศรีศักดิ์",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-003",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วิชัย ศรีอุดม",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-004",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วิไล ศรีรัก",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-005",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มานพ ศรีนภา",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-006",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มาลี ศรีไพร",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-007",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุนีย์ ศรีสถาพร",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-008",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุนทร ศรีเกียรติ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-009",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กมลา สุขจันทร์",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-010",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กัญญา สุขบุญ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-011",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "นงนุช สุขตระกูล",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-012",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ดวงใจ สุขกล้า",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-013",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "พรทิพย์ สุขอรุณ",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-014",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วันเพ็ญ สุขเมือง",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-015",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมศักดิ์ สุขลักษณ์",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-016",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมหมาย สุขทิพย์",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-017",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "บุญเลิศ วงศ์เดช",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-018",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุรชัย วงศ์ประเสริฐ",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        19
+      ]
+    ]
+  },
+  {
+    "id": "name-019",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อนุชา วงศ์รัก",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-020",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธีระ วงศ์นภา",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-021",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ชัยวัฒน์ วงศ์ไพร",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-022",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กิตติ วงศ์สถาพร",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-023",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "นิภา วงศ์เกียรติ",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-024",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "รัตนา ทองจันทร์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-025",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุภาพร ทองบุญ",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-026",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อรุณี ทองตระกูล",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-027",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "จิราพร ทองกล้า",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-028",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ปิยะ ทองอรุณ",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-029",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ณัฐวุฒิ ทองเมือง",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-030",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วรรณา ทองลักษณ์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-031",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ศิริพร ทองทิพย์",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-032",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "เอกชัย แก้วเดช",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-033",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "พิชิต แก้วประเสริฐ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-034",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุริยา แก้วหอม",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-035",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "จันทิมา แก้วจิตร",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-036",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ปราณี แก้วป่า",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-037",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มนัส แก้วอนันต์",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-038",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วิรัตน์ แก้วพิพัฒน์",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        19
+      ]
+    ]
+  },
+  {
+    "id": "name-039",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธวัชชัย จันทร์ทอง",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-040",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุพจน์ จันทร์ธรรม",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-041",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ประภา จันทร์สกุล",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-042",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กาญจนา จันทร์ปัญญา",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-043",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "พัชรี จันทร์ดาว",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-044",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมพงษ์ จันทร์นคร",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-045",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ไพโรจน์ จันทร์โภคา",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-046",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อัมพร จันทร์พูน",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-047",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุดา ทรัพย์พงษ์",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-048",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สายฝน ทรัพย์สมบูรณ์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        19
+      ]
+    ]
+  },
+  {
+    "id": "name-049",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ทิพวรรณ ทรัพย์ดี",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-050",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "บุษบา ทรัพย์คำ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-051",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กนกวรรณ ทรัพย์รุ่ง",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-052",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ศศิธร ทรัพย์รุ่งเรือง",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        21
+      ]
+    ]
+  },
+  {
+    "id": "name-053",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มนตรี ทรัพย์วิสุทธิ์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        20
+      ]
+    ]
+  },
+  {
+    "id": "name-054",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธนา พงษ์ศรี",
+    "properNounSpans": [
+      [
+        0,
+        3
+      ],
+      [
+        4,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-055",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ประพันธ์ พงษ์ศักดิ์",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        19
+      ]
+    ]
+  },
+  {
+    "id": "name-056",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุขสันต์ พงษ์สวัสดิ์",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        20
+      ]
+    ]
+  },
+  {
+    "id": "name-057",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ปรีดา พงษ์หวาน",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-058",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อาทิตย์ พงษ์ใจ",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-059",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "จรัส พงษ์ป่า",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-060",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธัญญา พงษ์อนันต์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-061",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมชาย พงษ์พิพัฒน์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-062",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมหญิง ชัยแก้ว",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-063",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วิชัย ชัยบุญ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-064",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วิไล ชัยตระกูล",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-065",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มานพ ชัยกล้า",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-066",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มาลี ชัยเดือน",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-067",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุนีย์ ชัยบุรี",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-068",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุนทร ชัยสิริ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-069",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กมลา ชัยผล",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        10
+      ]
+    ]
+  },
+  {
+    "id": "name-070",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กัญญา เดชพงษ์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-071",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "นงนุช เดชวัฒนา",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-072",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ดวงใจ เดชมั่นคง",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-073",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "พรทิพย์ เดชแสง",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-074",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วันเพ็ญ เดชสาย",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-075",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมศักดิ์ เดชกิจ",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-076",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมหมาย เดชโสภา",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-077",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "บุญเลิศ ศักดิ์วงศ์",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-078",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุรชัย ศักดิ์มณี",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-079",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อนุชา ศักดิ์ไพบูลย์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        19
+      ]
+    ]
+  },
+  {
+    "id": "name-080",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธีระ ศักดิ์ปรีชา",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-081",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ชัยวัฒน์ ศักดิ์ฟ้า",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-082",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กิตติ ศักดิ์เขา",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-083",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "นิภา ศักดิ์ไพศาล",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-084",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "รัตนา ศักดิ์ยศ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-085",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุภาพร รัตน์จันทร์",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-086",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อรุณี รัตน์เจริญ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-087",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "จิราพร รัตน์งาม",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-088",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ปิยะ รัตน์มั่ง",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-089",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ณัฐวุฒิ รัตน์อรุณ",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-090",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วรรณา รัตน์เมือง",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-091",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ศิริพร รัตน์ลักษณ์",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-092",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "เอกชัย รัตน์ทิพย์",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-093",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "พิชิต มณีชัย",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-094",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุริยา มณีสวัสดิ์",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-095",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "จันทิมา มณีหวาน",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-096",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ปราณี มณีใจ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-097",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มนัส มณีป่า",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-098",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "วิรัตน์ มณีอนันต์",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-099",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธวัชชัย มณีพิพัฒน์",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-100",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุพจน์ ธรรมทอง",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-101",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ประภา ธรรมบุญ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-102",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กาญจนา ธรรมตระกูล",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        17
+      ]
+    ]
+  },
+  {
+    "id": "name-103",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "พัชรี ธรรมกล้า",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-104",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมพงษ์ ธรรมเดือน",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-105",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ไพโรจน์ ธรรมบุรี",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-106",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อัมพร ธรรมสิริ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-107",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุดา ธรรมผล",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-108",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สายฝน บุญพงษ์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "name-109",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ทิพวรรณ บุญประเสริฐ",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        19
+      ]
+    ]
+  },
+  {
+    "id": "name-110",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "บุษบา บุญหอม",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-111",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "กนกวรรณ บุญจิตร",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-112",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ศศิธร บุญน้ำ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "name-113",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "มนตรี บุญพันธ์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-114",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธนา บุญอำไพ",
+    "properNounSpans": [
+      [
+        0,
+        3
+      ],
+      [
+        4,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "name-115",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ประพันธ์ เจริญวงศ์",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "name-116",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สุขสันต์ ดอเลาะ",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ],
+      [
+        9,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-117",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ปรีดา แนแซ",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        10
+      ]
+    ]
+  },
+  {
+    "id": "name-118",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "อาทิตย์ ชินวัตร",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ],
+      [
+        8,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "name-119",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "จรัส จิราธิวัฒน์",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ],
+      [
+        5,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-120",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "ธัญญา หวั่งหลี",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        14
+      ]
+    ]
+  },
+  {
+    "id": "name-121",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมชาย ประยูรวงศ์",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ],
+      [
+        6,
+        16
+      ]
+    ]
+  },
+  {
+    "id": "name-122",
+    "category": "personal_name",
+    "provenance": "sourced",
+    "text": "สมหญิง ทวีสิน",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        7,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "synthetic-001",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฌา",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-002",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฌี",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-003",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฌู",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-004",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฌอ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-005",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฎา",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-006",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฎี",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-007",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฎู",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-008",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฎอ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-009",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฑา",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-010",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฑี",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-011",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฑู",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-012",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฑอ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-013",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฬา",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-014",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฬี",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-015",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฬู",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-016",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฬอ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-017",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฌา",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-018",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฌี",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-019",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฌือ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-020",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฌิว",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-021",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฎือ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-022",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฎิว",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-023",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฑือ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-024",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฑิว",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-025",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฬือ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-026",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฬิว",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-027",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฐา",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-028",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฐี",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-029",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฐู",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-030",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฐอ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-031",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฐือ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-032",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅาฐิว",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-033",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฌู",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-034",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฌอ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-035",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฌือ",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-036",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฌิว",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-037",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฎา",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-038",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฅีฎี",
+    "notes": "constructed from obsolete Thai consonants (ฅ/ฃ) to guarantee zero dictionary coverage; not claimed as a real name (D-000.17)"
+  },
+  {
+    "id": "synthetic-039",
+    "category": "synthetic_probe",
+    "provenance": "synthetic",
+    "text": "ฉั่วสมบูรณ์",
+    "notes": "originally listed as a sourced opaque surname (\"Chua Sombun\") whose own comment called it only \"a plausible Sino-Thai family name\" — plausible is not sourced (D-000.17). Relabelled synthetic rather than retroactively asserted as attested; not claimed as a real name (this story's second QA review, Major 5)."
+  },
+  {
+    "id": "place-001",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "เชียงใหม่",
+    "properNounSpans": [
+      [
+        0,
+        9
+      ]
+    ]
+  },
+  {
+    "id": "place-002",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "เชียงราย",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "id": "place-003",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ลำปาง",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  {
+    "id": "place-004",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ลำพูน",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  {
+    "id": "place-005",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "แม่ฮ่องสอน",
+    "properNounSpans": [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "id": "place-006",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "น่าน",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ]
+    ]
+  },
+  {
+    "id": "place-007",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "พะเยา",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  {
+    "id": "place-008",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "แพร่",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ]
+    ]
+  },
+  {
+    "id": "place-009",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "นครราชสีมา",
+    "properNounSpans": [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "id": "place-010",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "บุรีรัมย์",
+    "properNounSpans": [
+      [
+        0,
+        9
+      ]
+    ]
+  },
+  {
+    "id": "place-011",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "สุรินทร์",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "id": "place-012",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ศรีสะเกษ",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "id": "place-013",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "อุบลราชธานี",
+    "properNounSpans": [
+      [
+        0,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "place-014",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ขอนแก่น",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "id": "place-015",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "อุดรธานี",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "id": "place-016",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "หนองคาย",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "id": "place-017",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "พระนครศรีอยุธยา",
+    "properNounSpans": [
+      [
+        0,
+        15
+      ]
+    ]
+  },
+  {
+    "id": "place-018",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ปทุมธานี",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "id": "place-019",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "นนทบุรี",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "id": "place-020",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "สมุทรปราการ",
+    "properNounSpans": [
+      [
+        0,
+        11
+      ]
+    ]
+  },
+  {
+    "id": "place-021",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ราชบุรี",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "id": "place-022",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "กาญจนบุรี",
+    "properNounSpans": [
+      [
+        0,
+        9
+      ]
+    ]
+  },
+  {
+    "id": "place-023",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "สุพรรณบุรี",
+    "properNounSpans": [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "id": "place-024",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "นครปฐม",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ]
+    ]
+  },
+  {
+    "id": "place-025",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ชลบุรี",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ]
+    ]
+  },
+  {
+    "id": "place-026",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ระยอง",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  {
+    "id": "place-027",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "จันทบุรี",
+    "properNounSpans": [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "id": "place-028",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ตราด",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ]
+    ]
+  },
+  {
+    "id": "place-029",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ฉะเชิงเทรา",
+    "properNounSpans": [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "id": "place-030",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "นครนายก",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "id": "place-031",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ปราจีนบุรี",
+    "properNounSpans": [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "id": "place-032",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "สระแก้ว",
+    "properNounSpans": [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "id": "place-033",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ภูเก็ต",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ]
+    ]
+  },
+  {
+    "id": "place-034",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "กระบี่",
+    "properNounSpans": [
+      [
+        0,
+        6
+      ]
+    ]
+  },
+  {
+    "id": "place-035",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "พังงา",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  {
+    "id": "place-036",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "ตรัง",
+    "properNounSpans": [
+      [
+        0,
+        4
+      ]
+    ]
+  },
+  {
+    "id": "place-037",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "สงขลา",
+    "properNounSpans": [
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  {
+    "id": "place-038",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "นครศรีธรรมราช",
+    "properNounSpans": [
+      [
+        0,
+        13
+      ]
+    ]
+  },
+  {
+    "id": "place-039",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "สุราษฎร์ธานี",
+    "properNounSpans": [
+      [
+        0,
+        12
+      ]
+    ]
+  },
+  {
+    "id": "place-040",
+    "category": "place_name",
+    "provenance": "sourced",
+    "text": "สาขาเซ็นทรัลเวิลด์",
+    "properNounSpans": [
+      [
+        4,
+        18
+      ]
+    ]
+  },
+  {
+    "id": "txn-001",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าธรรมเนียมรายปี"
+  },
+  {
+    "id": "txn-002",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "โอนเงินผ่าน PromptPay"
+  },
+  {
+    "id": "txn-003",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ชำระค่าไฟฟ้า กฟภ."
+  },
+  {
+    "id": "txn-004",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ถอนเงินตู้ ATM กรุงเทพฯ"
+  },
+  {
+    "id": "txn-005",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ซื้อสินค้า 7-ELEVEN สาขาสยาม"
+  },
+  {
+    "id": "txn-006",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าน้ำประปา กปน."
+  },
+  {
+    "id": "txn-007",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "โอนเงินเข้าบัญชี นายสมชาย"
+  },
+  {
+    "id": "txn-008",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "รับเงินเดือน บริษัท ABC จำกัด"
+  },
+  {
+    "id": "txn-009",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ชำระค่าบัตรเครดิต KTC"
+  },
+  {
+    "id": "txn-010",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าโทรศัพท์มือถือ AIS"
+  },
+  {
+    "id": "txn-011",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "จ่ายค่าเช่าบ้าน เดือนสิงหาคม"
+  },
+  {
+    "id": "txn-012",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "โอนเงิน QR CODE ร้านกาแฟ"
+  },
+  {
+    "id": "txn-013",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าประกันชีวิต AIA"
+  },
+  {
+    "id": "txn-014",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ซื้อตั๋วเครื่องบิน Thai Airways"
+  },
+  {
+    "id": "txn-015",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าเทอมมหาวิทยาลัย"
+  },
+  {
+    "id": "txn-016",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ถอนเงินสด POS 1234"
+  },
+  {
+    "id": "txn-017",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "รับโอนจาก บริษัท XYZ"
+  },
+  {
+    "id": "txn-018",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าปรับชำระล่าช้า"
+  },
+  {
+    "id": "txn-019",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "หักบัญชีอัตโนมัติ"
+  },
+  {
+    "id": "txn-020",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าธรรมเนียมโอนต่างธนาคาร"
+  },
+  {
+    "id": "txn-021",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ซื้อของออนไลน์ Shopee"
+  },
+  {
+    "id": "txn-022",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "จ่ายบิล TRUE MOVE H"
+  },
+  {
+    "id": "txn-023",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าเบี้ยประกันรถยนต์"
+  },
+  {
+    "id": "txn-024",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "โอนเงินระหว่างประเทศ SWIFT"
+  },
+  {
+    "id": "txn-025",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าจัดส่งสินค้า Kerry Express"
+  },
+  {
+    "id": "txn-026",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "รับเงินคืนภาษี"
+  },
+  {
+    "id": "txn-027",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ชำระค่าสินเชื่อบ้าน ธอส."
+  },
+  {
+    "id": "txn-028",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าธรรมเนียมบัตร ATM"
+  },
+  {
+    "id": "txn-029",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ซื้อน้ำมัน ปตท. สาขาบางนา"
+  },
+  {
+    "id": "txn-030",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "จ่ายค่าอาหาร ร้านส้มตำ"
+  },
+  {
+    "id": "txn-031",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "โอนเงินสวัสดิการ"
+  },
+  {
+    "id": "txn-032",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่ารักษาพยาบาล โรงพยาบาลศิริราช"
+  },
+  {
+    "id": "txn-033",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "รับดอกเบี้ยเงินฝาก"
+  },
+  {
+    "id": "txn-034",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ชำระค่าอินเทอร์เน็ต 3BB"
+  },
+  {
+    "id": "txn-035",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าธรรมเนียมกดเงินต่างประเทศ"
+  },
+  {
+    "id": "txn-036",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ซื้อประกันการเดินทาง"
+  },
+  {
+    "id": "txn-037",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "จ่ายค่าเบี้ยประกันสุขภาพ"
+  },
+  {
+    "id": "txn-038",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "โอนเงินผ่าน Mobile Banking"
+  },
+  {
+    "id": "txn-039",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ค่าธรรมเนียมรักษาบัญชี"
+  },
+  {
+    "id": "txn-040",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ถอนเงินผ่านสาขา ธนาคารกรุงไทย"
+  },
+  {
+    "id": "txn-041",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "ชำระค่าสินค้า Lazada เลขที่คำสั่งซื้อ 88213"
+  },
+  {
+    "id": "txn-042",
+    "category": "transaction_description",
+    "provenance": "sourced",
+    "text": "โอนเงินผ่าน SCB Easy ครั้งที่ 4"
+  }
+]

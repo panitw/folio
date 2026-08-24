@@ -34,6 +34,14 @@ func TestAbsencesProductionScan(t *testing.T) {
 	if stats.ChecksEvaluated != len(absenceChecks) {
 		t.Fatalf("AC25b: ChecksEvaluated (%d) must equal the row count (%d) — a skipped row would still read as a healthy non-zero witness otherwise", stats.ChecksEvaluated, len(absenceChecks))
 	}
+	// Story 2.1's reopening, Finding 13: ChecksEvaluated counts ROWS, not
+	// WORK — a content-kind row whose scope directory does not exist (or
+	// exists but holds zero .go files) reports zero findings identically
+	// to a healthy scan. At the real repo root, folio-go/ exists and
+	// holds many .go files, so this must be non-zero.
+	if stats.ContentFilesScanned == 0 {
+		t.Fatalf("vacuity guard (Finding 13): the content-kind absence check reports it scanned zero .go files under folio-go/ at the real repo root — coverage witness failed")
+	}
 	if len(findings) > 0 {
 		t.Fatalf("DW-2 artifact(s) found present at the repo root — wire the matching licence half (AC21):\n%v", findings)
 	}
@@ -77,14 +85,18 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 // tripwires left ChecksEvaluated == 2 (still non-zero) and the whole
 // suite green. This asserts the specific rule ids, so removing any one
 // entry — not only emptying the whole list — fails loudly. Story 1.7
-// (AC25, D-1.7.7) adds the fifth entry, "absence-cmd-dir".
+// (AC25, D-1.7.7) added the fifth entry as a path check,
+// "absence-cmd-dir"; Story 2.1 (D-2.1.x) re-keyed it to a CONTENT
+// check, "absence-source-date-epoch" (see absences.go's comment on
+// that row) — this test still pins five entries, by rule id, so both
+// check kinds are covered by the same shrunk-list protection.
 func TestAbsencesChecksIncludeAllFiveEntries(t *testing.T) {
 	want := []string{
 		"absence-designer-project",
 		"absence-fonts-dir",
 		"absence-expr-package",
 		"absence-diag-package",
-		"absence-cmd-dir",
+		"absence-source-date-epoch",
 	}
 	if len(absenceChecks) != len(want) {
 		t.Fatalf("absenceChecks has %d entries, want %d (%v) — an entry was added or removed without updating this pin", len(absenceChecks), len(want), want)
@@ -112,10 +124,13 @@ func TestAbsencesChecksIncludeAllFiveEntries(t *testing.T) {
 // third-party-notices/pdfjs-dist/NOTICE — Finding 8's fix (this story's
 // QA review) keys the check on the folio-designer/ directory itself, so
 // both are caught by the SAME finding; want reflects that (two findings,
-// one per directory-level check, not three). folio-go/cmd/placeholder.go
-// is Finding 10's fix (this story's review, Nit): before it existed,
-// only the one-shot RP-8 mutation ever proved absence-cmd-dir fires;
-// this makes that proof permanent, alongside the two rows above.
+// one per directory-level check, not three).
+// folio-go/internal/paramsdate/placeholder.go (Story 2.1, D-2.1.x —
+// replacing the old folio-go/cmd/placeholder.go after absence-cmd-dir
+// was re-keyed to the content check absence-source-date-epoch) makes
+// that proof permanent, alongside the two rows above: it is a real .go
+// file, anywhere under the fixture's folio-go/ subtree, whose content
+// contains the literal string SOURCE_DATE_EPOCH.
 func TestAbsencesFixtureScan(t *testing.T) {
 	root := repoRootFromTest(t)
 	base := filepath.Join(root, "folio-go", "testdata", "lint", "absences")
@@ -131,7 +146,7 @@ func TestAbsencesFixtureScan(t *testing.T) {
 		want := []Finding{
 			{Path: "folio-designer", Rule: "absence-designer-project"},
 			{Path: "folio-go/fonts", Rule: "absence-fonts-dir"},
-			{Path: "folio-go/cmd", Rule: "absence-cmd-dir"},
+			{Path: "folio-go/internal/paramsdate/placeholder.go", Rule: "absence-source-date-epoch"},
 		}
 		assertExactFindings(t, got, want)
 	})
@@ -143,6 +158,13 @@ func TestAbsencesFixtureScan(t *testing.T) {
 		}
 		if stats.ChecksEvaluated == 0 {
 			t.Fatalf("expected a non-zero coverage witness (AC50)")
+		}
+		// Finding 13 (this story's reopening): compliant/ now carries a
+		// real folio-go/ subtree with one clean .go file, so this leg's
+		// zero findings is EARNED (a real scan found nothing), not a
+		// scope directory silently absent.
+		if stats.ContentFilesScanned == 0 {
+			t.Fatalf("vacuity guard (Finding 13): compliant/'s content-kind check reports scanning zero files — its zero findings would be indistinguishable from an absent scope directory")
 		}
 		if len(got) > 0 {
 			t.Fatalf("compliant/ must report zero findings, got %v", got)

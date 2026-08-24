@@ -95,6 +95,7 @@ func TestForbiddenImportsFixtureScan(t *testing.T) {
 		{Path: "violating_subpackage_imports.go", Rule: RuleForbiddenImports},
 		{Path: "violating_math_call.go", Rule: RuleMathSelector},
 		{Path: "violating_math_pi.go", Rule: RuleMathSelector},
+		{Path: "violating_runtime_caller.go", Rule: RuleRuntimeCaller}, // Story 2.1, AC2, V1
 	}
 	assertExactFindings(t, got, want)
 }
