@@ -29,7 +29,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -672,12 +671,25 @@ func requirePageTreeResolves(t *testing.T, target matrixTarget, raw []byte, want
 //  3. The running header and footer appear on BOTH pages, so a leg that
 //     paginated the content but dropped the running bands from page 2 —
 //     which is what "page 34 is as complete as page 1" forbids — fails.
-//     This reads EVERY text-bearing content stream via
-//     readEmittedRunsAllPages, not just the first one — the original
-//     helper it called, readEmittedRuns, reads exactly one stream by
-//     design (see its docblock) and silently under-counted this two-page
-//     document to one page's worth of runs, fataling unconditionally on
-//     every leg (Story 2.6 finisher, Blocker 1).
+//     This reads EVERY text-bearing content stream via readEmittedRuns
+//     (shaped_fixture_test.go), which Story 2.6a repaired to walk every
+//     text-bearing stream in deterministic ascending-object-number order.
+//     Before that repair this call used a narrow sibling,
+//     readEmittedRunsAllPages, added here rather than by changing
+//     readEmittedRuns' contract for its OTHER call sites — 11 of them at
+//     Story 2.6a's own start-of-work baseline (Story 2.6 finisher,
+//     Blocker 1) — Story 2.6a's charter was to sweep those 11 sites and,
+//     having found none of them depended on single-stream reading (Story
+//     2.6a, AC6), merged the sibling's behaviour directly into
+//     readEmittedRuns and retired the sibling. THIS call site (line 692)
+//     is a TWELFTH, multi-stream site the merge itself created; Story
+//     2.6a's review (Finding 5) caught that AC6's classification table
+//     never covered it, and the finisher's correction adds it explicitly:
+//     it is one of the 3 call sites in the finishing-commit tree that
+//     genuinely depend on every-stream reading (the other 2 are new tests
+//     shaped_fixture_test.go added closing Finding 1 / Blocker 1), against
+//     11 single-stream sites elsewhere — see readEmittedRuns' own docblock
+//     for the corrected count.
 func requireMultiPageIsGenuinelyMultiPage(t *testing.T, target matrixTarget, raw []byte) {
 	t.Helper()
 
@@ -686,7 +698,7 @@ func requireMultiPageIsGenuinelyMultiPage(t *testing.T, target matrixTarget, raw
 	}
 	requirePageTreeResolves(t, target, raw, 2)
 
-	runs := readEmittedRunsAllPages(t, raw)
+	runs := readEmittedRuns(t, raw)
 	if len(runs) == 0 {
 		t.Fatalf("%s: the multi-page leg emitted no text runs", target.name)
 	}
@@ -714,48 +726,32 @@ func requireMultiPageIsGenuinelyMultiPage(t *testing.T, target matrixTarget, raw
 	}
 }
 
-// readEmittedRunsAllPages is the multi-page-aware SIBLING of
-// readEmittedRuns (shaped_fixture_test.go), added narrowly for this one
-// caller rather than by changing readEmittedRuns' contract for its other
-// eleven call sites (Story 2.6 finisher, Blocker 1 — scope guard: Story
-// 2.6a owns sweeping the rest, and would be unable to measure what it
-// fixed if this story silently changed the shared function's behaviour
-// first).
+// NOTE (Story 2.6a, tombstone — deliberately not a doc comment, per the
+// story's own review Finding 10: a future reader must not mistake this
+// for documenting a live declaration below): readEmittedRunsAllPages used
+// to be this file's multi-page-aware sibling of readEmittedRuns
+// (shaped_fixture_test.go). Story 2.6's finisher added it narrowly for
+// this one caller rather than changing readEmittedRuns' contract for its
+// other call sites — 11 of them at Story 2.6a's own start-of-work
+// baseline (Blocker 1 — scope guard), so that Story 2.6a — chartered to
+// sweep those 11 sites — could measure what it fixed rather than
+// inheriting an already-changed function.
 //
-// It parses EVERY text-bearing content stream in the document, in
-// deterministic ASCENDING OBJECT-NUMBER order (pdfObjects returns a map,
-// so iterating it directly is nondeterministic run to run — the same
-// hazard Finding 1 named secondarily), and concatenates their runs via
-// parseContentStreamRuns, the exact parser readEmittedRuns itself uses per
-// stream. For this fixture's emitter, ascending object number is page
-// order: content objects are reserved one per page, in page order, after
-// every page object (render.go's object-reservation order, *Measured
-// findings* 3).
-func readEmittedRunsAllPages(t *testing.T, b []byte) []emittedRun {
-	t.Helper()
-	objs := pdfObjects(t, b)
-
-	nums := make([]int, 0, len(objs))
-	for num := range objs {
-		nums = append(nums, num)
-	}
-	sort.Ints(nums)
-
-	var runs []emittedRun
-	streams := 0
-	for _, num := range nums {
-		s, ok := streamBody(objs[num])
-		if !ok || !bytes.Contains(s, []byte(" Tf\n")) {
-			continue
-		}
-		streams++
-		runs = append(runs, parseContentStreamRuns(t, s)...)
-	}
-	if streams == 0 {
-		t.Fatal("produced PDF carries no text content stream")
-	}
-	return runs
-}
+// Story 2.6a's sweep (AC4, AC5, AC6) found none of the 11 baseline sites
+// depended on single-stream reading, merged this function's deterministic
+// ascending-object-number, every-text-stream behaviour directly into
+// readEmittedRuns, and retired this sibling — its one caller,
+// requireMultiPageIsGenuinelyMultiPage above, now calls readEmittedRuns
+// directly. That also satisfies AC5: a multi-page-aware reader is reachable
+// from the ordinary, untagged suite, because readEmittedRuns always was.
+// This function is deliberately deleted rather than kept as an unused
+// alias — a retired helper visible to future callers reads as an option.
+//
+// Correction (Story 2.6a review, Finding 5): that merge made
+// requireMultiPageIsGenuinelyMultiPage itself a TWELFTH call site, and
+// AC6's classification table, written against the 11-site baseline,
+// never covered it. It is corrected above, at this function's own former
+// call site.
 
 // requireThreeBandPageUsesAllThreeBands is Story 2.5's OWN feature
 // guard, and it exists for the same reason requireShapedTextIsShaped and

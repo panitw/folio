@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -111,19 +112,67 @@ func objRefAfter(obj []byte, key string) (int, bool) {
 
 // resourceType0Objects maps each PDF font RESOURCE NAME to its Type0
 // font object, read off the produced document's page resource
-// dictionary. Factored out so that every per-face reader below — the
-// /ToUnicode CMap and the /CIDToGIDMap — walks the SAME path to the same
-// object rather than each re-deriving it.
+// dictionaries — EVERY page object's, not an arbitrary one. Factored out
+// so that every per-face reader below — the /ToUnicode CMap and the
+// /CIDToGIDMap — walks the SAME path to the same object rather than each
+// re-deriving it.
 //
-// Every step fails LOUDLY if the object it needs is absent (D-000.21
+// Repaired by Story 2.6a (AC7): before the repair this walked pdfObjects'
+// map in undefined iteration order, took the FIRST object matching
+// "/Type /Page " that carried a /Font resource dictionary, and stopped —
+// silently discarding every other page's font resources. On a document
+// where two pages use different faces, this would read one page's fonts
+// and report them as the whole document's.
+//
+// D-000.50's answer (corrected by the review, Finding 7): the reason no
+// COMMITTED GOLDEN expresses this is not merely that fixtures/multi-page/'s
+// two page objects happen to carry a byte-identical
+// `/Font << /NotoSans 3 0 R >>` — it is that no document THIS ENGINE CAN
+// EMIT ever could. internal/pdf/textdoc.go collects the face set
+// DOCUMENT-GLOBALLY (`faceNames := slices.Sorted(maps.Keys(faces))`,
+// textdoc.go:130), rejects an escaped-name collision across the WHOLE
+// document up front (textdoc.go:140-143), and then writes that identical
+// `/Font << … >>` dictionary, in the same sorted order, into EVERY page
+// object (textdoc.go:217). Two pages with different fonts is not a
+// fixture this repo lacks; it is a document shape the serializer cannot
+// produce until it starts writing per-page font dictionaries.
+//
+// Despite that, this guard is PROVEN, not forward (D-000.50, D-000.24):
+// TestResourceType0ObjectsResolvesFontsFromEveryPageObject below builds an
+// in-memory literal — not a fixture, not an emitted byte — carrying two
+// page objects with two DIFFERENT font resource names, which the
+// pre-repair "stop at the first" code demonstrably cannot resolve both of
+// (red-proofed by reverting to that shape; the reverted test fails). A
+// synthetic subject that expresses a defect is an available red-proof
+// under D-000.50 whether or not any committed golden also expresses it.
+//
+// Shape note, not a live defect (Finding 7): the repaired helper is
+// page-COMPLETE (it now visits every page) but not page-AWARE — it merges
+// every page's dict into one map[string][]byte, so two pages mapping the
+// same resource NAME to two DIFFERENT objects would still be
+// last-writer-wins, silently. That cannot happen today for the same
+// serializer reason above (names are assigned and collision-checked
+// globally), so it is recorded here for whoever changes the serializer's
+// per-page assumption next, not repaired now.
+//
+// Every step fails LOUDLY if an object it needs is absent (D-000.21
 // sharpened). A missing object must not read as "no discrepancy found".
 func resourceType0Objects(t *testing.T, b []byte) (map[int][]byte, map[string][]byte) {
 	t.Helper()
 	objs := pdfObjects(t, b)
 
-	// The page object carries /Resources << /Font << /Name N 0 R ... >>
-	var fontDict []byte
-	for _, obj := range objs {
+	nums := make([]int, 0, len(objs))
+	for num := range objs {
+		nums = append(nums, num)
+	}
+	sort.Ints(nums)
+
+	// Every page object carries /Resources << /Font << /Name N 0 R ... >>.
+	// Collect all of them, in deterministic ascending object-number order,
+	// rather than stopping at the first.
+	var fontDicts [][]byte
+	for _, num := range nums {
+		obj := objs[num]
 		if !bytes.Contains(obj, []byte("/Type /Page ")) {
 			continue
 		}
@@ -136,37 +185,79 @@ func resourceType0Objects(t *testing.T, b []byte) (map[int][]byte, map[string][]
 		if j == -1 {
 			t.Fatal("page's /Font resource dictionary is unterminated")
 		}
-		fontDict = after[:j]
-		break
+		fontDicts = append(fontDicts, after[:j])
 	}
-	if fontDict == nil {
+	if len(fontDicts) == 0 {
 		t.Fatal("produced PDF carries no page /Font resource dictionary — every assertion about fonts below would be vacuous")
 	}
 
 	out := map[string][]byte{}
-	fields := strings.Fields(string(fontDict))
-	for i := 0; i < len(fields); i++ {
-		if !strings.HasPrefix(fields[i], "/") {
-			continue
+	for _, fontDict := range fontDicts {
+		fields := strings.Fields(string(fontDict))
+		for i := 0; i < len(fields); i++ {
+			if !strings.HasPrefix(fields[i], "/") {
+				continue
+			}
+			if i+3 >= len(fields) || fields[i+3] != "R" {
+				continue
+			}
+			name := strings.TrimPrefix(fields[i], "/")
+			num, err := strconv.Atoi(fields[i+1])
+			if err != nil {
+				continue
+			}
+			type0, ok := objs[num]
+			if !ok {
+				t.Fatalf("resource /%s names object %d, which is not present", name, num)
+			}
+			out[name] = type0
 		}
-		if i+3 >= len(fields) || fields[i+3] != "R" {
-			continue
-		}
-		name := strings.TrimPrefix(fields[i], "/")
-		num, err := strconv.Atoi(fields[i+1])
-		if err != nil {
-			continue
-		}
-		type0, ok := objs[num]
-		if !ok {
-			t.Fatalf("resource /%s names object %d, which is not present", name, num)
-		}
-		out[name] = type0
 	}
 	if len(out) == 0 {
 		t.Fatal("no font resources resolved to a Type0 font object")
 	}
 	return objs, out
+}
+
+// TestResourceType0ObjectsResolvesFontsFromEveryPageObject is the Story
+// 2.6a review's Finding 6 red-proof, committed rather than discarded
+// (D-000.24, D-000.50): the story's own Delivery Log states discriminating
+// power was "proven with a throwaway synthetic two-page subject carrying
+// two different font resource names ... The probe was deleted after the
+// run." D-000.50 asks whether ANY subject can express the defect, not
+// whether a COMMITTED GOLDEN can — an in-memory literal is not an emitted
+// byte and needs no fixture, so there was never a reason to discard it.
+//
+// The buffer below is not a valid PDF — pdfObjects and this function only
+// ever scan for "N 0 obj\n" ... "\nendobj\n" markers and a
+// "/Type /Page " substring; neither needs a header, xref, or trailer — so
+// this costs no fixture and moves no emitted bytes.
+func TestResourceType0ObjectsResolvesFontsFromEveryPageObject(t *testing.T) {
+	buf := []byte(
+		"1 0 obj\n<< /Type /Page /Resources << /Font << /FaceA 10 0 R >> >> >>\nendobj\n" +
+			"2 0 obj\n<< /Type /Page /Resources << /Font << /FaceB 20 0 R >> >> >>\nendobj\n" +
+			"10 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /FaceA >>\nendobj\n" +
+			"20 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /FaceB >>\nendobj\n")
+
+	_, byName := resourceType0Objects(t, buf)
+
+	if len(byName) != 2 {
+		t.Fatalf("resourceType0Objects resolved %d font resource(s) across two page objects with DIFFERENT resource names, want 2 (one per page)", len(byName))
+	}
+	faceA, ok := byName["FaceA"]
+	if !ok {
+		t.Fatal("resourceType0Objects did not resolve page 1's /FaceA resource")
+	}
+	if !bytes.Contains(faceA, []byte("/BaseFont /FaceA")) {
+		t.Fatalf("resourceType0Objects's /FaceA resolved to the wrong object: %q", faceA)
+	}
+	faceB, ok := byName["FaceB"]
+	if !ok {
+		t.Fatal("resourceType0Objects did not resolve page 2's /FaceB resource — this is exactly the pre-repair defect: stopping at the FIRST /Type /Page object carrying a /Font dict silently discards every other page's fonts")
+	}
+	if !bytes.Contains(faceB, []byte("/BaseFont /FaceB")) {
+		t.Fatalf("resourceType0Objects's /FaceB resolved to the wrong object: %q", faceB)
+	}
 }
 
 // cidToGlyphForResources maps each PDF font RESOURCE NAME to the
@@ -376,48 +467,155 @@ func tmOperandMilli(t *testing.T, operands string, fromEnd int) int64 {
 	return v
 }
 
-// readEmittedRuns parses the FIRST text-bearing content stream it finds
-// back into runs. This is AC4's mechanism: the CIDs are read off the
-// PRODUCED artifact, never off the renderer's intermediate state.
+// readEmittedRuns parses EVERY text-bearing content stream in the document
+// back into runs, in deterministic ASCENDING OBJECT-NUMBER order, and
+// concatenates them via parseContentStreamRuns — the exact per-stream
+// parser this function itself uses, unchanged (D-000.34: the seam stays
+// per-stream; this function is what walks it across every stream).
 //
-// EVERY CALLER OF THIS FUNCTION TODAY RENDERS A SINGLE-PAGE DOCUMENT, so
-// "first stream found" and "the only stream" are the same thing — pdfObjects
-// returns a map, so which object counts as "first" is not even
-// deterministic, and it does not matter because there is only one. It is
-// NOT SAFE to call this on a document with more than one content stream: it
-// will read exactly one page's runs and silently discard the rest, which is
-// precisely the shape of Story 2.6's own Blocker 1 (finisher fix) — a
-// two-page render read back as one page of runs. Story 2.6a's charter is to
-// sweep this function's 12 call sites across 5 files for that assumption;
-// see the multi-page-aware sibling readEmittedRunsAllPages in
-// matrix_test.go, used ONLY by the multi-page leg's own guard, added
-// narrowly rather than by changing this function's contract for the eleven
-// callers that do not need it (Story 2.6 finisher, Blocker 1: scope guard).
+// Repaired by Story 2.6a (D-2.6.9). Before the repair this function read
+// only the FIRST text-bearing stream pdfObjects' map iteration happened to
+// produce — which, because pdfObjects returns a map and Go randomises map
+// iteration order, was not even deterministic: measured over 20 calls
+// against fixtures/multi-page/expected.pdf, it returned 9 runs on some
+// calls and 24 on others, against 33 actually present, with no fatal and
+// no warning either way (Story 2.6a, Measured findings 1 — the red-proof).
+// On every fixture that carries exactly one text-bearing stream — 11 of
+// this function's call sites, at the finishing commit (Story 2.6a review
+// Finding 5's correction: the pre-fix count of "12 call sites, 11 of them
+// single-stream" undercounted by exactly the sites this REPAIR itself
+// created, see below) — "first stream found" and "the only stream" are
+// the same value, which is exactly why the defect was invisible until a
+// genuinely multi-page subject existed to run this helper against.
+//
+// The other 3 call sites render the multi-page fixture and genuinely
+// depend on every-stream reading: matrix_test.go's
+// requireMultiPageIsGenuinelyMultiPage (added by the Story 2.6 finisher
+// against the now-retired sibling readEmittedRunsAllPages, re-pointed
+// here by this story's AC5), and this file's own
+// TestReadEmittedRunsMatchesThePerPageStreamSplitOnAMultiPageDocument and
+// TestReadEmittedRunsIsDeterministicAcrossRepeatedCallsOnAMultiPageDocument
+// (committed by this story's finisher to close Finding 1 / Blocker 1 —
+// the repair shipped with no test that could see a reversion).
+//
+// ascending object number is page order for this fixture's emitter:
+// content objects are reserved one per page, in page order, after every
+// page object (render.go's object-reservation order; see also the
+// now-retired sibling readEmittedRunsAllPages this function absorbed,
+// matrix_test.go, Story 2.6 finisher).
 func readEmittedRuns(t *testing.T, b []byte) []emittedRun {
 	t.Helper()
 	objs := pdfObjects(t, b)
 
-	var content []byte
-	for _, obj := range objs {
-		s, ok := streamBody(obj)
-		if !ok {
+	nums := make([]int, 0, len(objs))
+	for num := range objs {
+		nums = append(nums, num)
+	}
+	sort.Ints(nums)
+
+	var runs []emittedRun
+	streams := 0
+	for _, num := range nums {
+		s, ok := streamBody(objs[num])
+		if !ok || !bytes.Contains(s, []byte(" Tf\n")) {
 			continue
 		}
-		if bytes.Contains(s, []byte(" Tf\n")) {
-			content = s
-			break
-		}
-		_ = s
+		streams++
+		runs = append(runs, parseContentStreamRuns(t, s)...)
 	}
-	if content == nil {
+	if streams == 0 {
 		t.Fatal("produced PDF carries no text content stream")
 	}
-
-	runs := parseContentStreamRuns(t, content)
 	if len(runs) == 0 {
 		t.Fatal("content stream carries no text runs")
 	}
 	return runs
+}
+
+// TestReadEmittedRunsMatchesThePerPageStreamSplitOnAMultiPageDocument is
+// the Story 2.6a review's Blocker 1 red-proof, committed: AC4 requires
+// readEmittedRuns' repair be "verified by a test that RUNS the repaired
+// helper against the multi-page subject, not by reading it", and the
+// story as delivered shipped only a deleted throwaway probe (a
+// measurement — 200 calls, histogram map[33:200] — never committed as an
+// assertion). This test renders the multi-page fixture directly
+// (renderMultiPage, multi_page_fixture_test.go — untagged, package
+// folio, costs no new fixture and no new emitted bytes) and cross-checks
+// readEmittedRuns' total run count against an INDEPENDENTLY derived
+// total: splitPageContentStreams walks the page tree's /Kids array and
+// each page object's OWN /Contents reference (it never touches
+// pdfObjects' " Tf\n" stream scan readEmittedRuns itself uses), and
+// parseContentStreamRuns re-parses each of those streams the same
+// per-stream way readEmittedRuns does internally. Two independently
+// reached traversals agreeing is a materially stronger claim than a
+// single hard-coded expected count (D-2.6.8: construction and the guard
+// that verifies it are different properties, and both belong).
+//
+// Red-proof: reverting readEmittedRuns to `break` after the first
+// Tf-bearing stream (this story's own baseline defect) makes this test
+// fail — the multi-page document carries two text-bearing content
+// streams, so the helper's total falls to one page's worth while the
+// independent per-page total stays at both.
+func TestReadEmittedRunsMatchesThePerPageStreamSplitOnAMultiPageDocument(t *testing.T) {
+	raw := renderMultiPage(t)
+
+	got := readEmittedRuns(t, raw)
+
+	streams := splitPageContentStreams(t, raw)
+	if len(streams) != mpTotalPages {
+		t.Fatalf("splitPageContentStreams returned %d page content stream(s), want %d", len(streams), mpTotalPages)
+	}
+	var want int
+	for _, s := range streams {
+		want += len(parseContentStreamRuns(t, []byte(s)))
+	}
+	if want == 0 {
+		t.Fatal("the independent per-page split+parse found ZERO runs on the multi-page document — this test would pass vacuously against a helper that also returns zero; that is not what is being measured here")
+	}
+
+	if len(got) != want {
+		t.Fatalf("readEmittedRuns returned %d run(s) on the multi-page document; the independent per-page split+parse totals %d across its %d pages — readEmittedRuns must scan EVERY text-bearing stream, not an arbitrary one",
+			len(got), want, mpTotalPages)
+	}
+}
+
+// TestReadEmittedRunsIsDeterministicAcrossRepeatedCallsOnAMultiPageDocument
+// is the determinism half of the Story 2.6a review's Blocker 1 (D-2.6.8:
+// construction and guard are different properties and both belong).
+// Before this story's repair, readEmittedRuns walked pdfObjects' map in
+// UNDEFINED Go map iteration order and returned as soon as it hit the
+// first Tf-bearing stream — so on fixtures/multi-page/expected.pdf,
+// measured over 20 calls in one process, it silently returned 9 runs on
+// some calls and 24 on others (histogram map[9:4 24:16], against 33
+// actually present), with no fatal and no warning either way (Measured
+// findings 1). The repair sorts object numbers before iterating and reads
+// EVERY text-bearing stream rather than stopping at one, so repeated
+// calls must now always agree.
+//
+// Repetition count: 50, chosen to comfortably exceed the 20 calls that
+// empirically produced BOTH branches under the pre-repair code (Measured
+// findings 1). Go randomizes map iteration order independently on each
+// `range`, so each of those 20 calls behaved close to an independent
+// coin flip between the two branches; 50 independent calls all landing on
+// the same branch by chance alone, were this test run against the
+// unrepaired helper, has probability on the order of 2^-49 — negligible,
+// not merely small — so this reliably detects a reversion rather than
+// merely making one plausible to catch.
+func TestReadEmittedRunsIsDeterministicAcrossRepeatedCallsOnAMultiPageDocument(t *testing.T) {
+	raw := renderMultiPage(t)
+
+	const calls = 50
+	histogram := map[int]int{}
+	for i := 0; i < calls; i++ {
+		n := len(readEmittedRuns(t, raw))
+		histogram[n]++
+	}
+	if n, ok := histogram[0]; ok && n > 0 {
+		t.Fatal("readEmittedRuns returned zero runs on at least one call — this test would pass vacuously if every call returned zero")
+	}
+	if len(histogram) != 1 {
+		t.Fatalf("readEmittedRuns returned inconsistent run counts across %d calls in one process: %v — it must return the SAME count on every call", calls, histogram)
+	}
 }
 
 // parseContentStreamRuns parses ONE content stream's text-showing operators

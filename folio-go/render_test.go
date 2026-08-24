@@ -2,6 +2,7 @@ package folio
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
@@ -841,6 +842,40 @@ func assertStartxrefPointsAtXref(t *testing.T, label string, b []byte) int {
 // assertXrefEntriesPointAtTheirObjects parses the classic xref table
 // starting at xrefOffset and checks that every in-use entry's offset
 // genuinely lands on "N 0 obj" for its own object number.
+//
+// Repaired by Story 2.6a (AC8, D-000.50): before the repair this function
+// parsed exactly ONE xref subsection and returned, without ever checking
+// whether the bytes following its "count" entries were the "trailer"
+// keyword or a second, unexamined subsection — "one of something encoded
+// as an invariant", the same class as Finding 1 and Finding 2. It now
+// loops over every subsection the table declares and fatals if what
+// follows the last one's entries is neither "trailer" nor a further
+// well-formed "start count" header, instead of silently stopping.
+//
+// Story 2.6a review, Blocker 2 (fixed by the finisher): the FIRST version
+// of this repair checked for "trailer" before ever consuming a subsection
+// header, so a table declaring ZERO subsections returned cleanly without
+// one assertion — the exact defect class this repair exists to remove,
+// reintroduced by the repair itself (D-000.48). It now fatals if "trailer"
+// is reached with no subsection yet examined.
+//
+// Story 2.6a review, Finding 8 (fixed by the finisher): the FIRST version
+// also required each subsequent subsection to start EXACTLY where the
+// previous one ended, which rejects the legal non-contiguous form ISO
+// 32000-1 §7.5.4 explicitly permits. It now only rejects a subsection
+// that OVERLAPS an object number a previous subsection already covered
+// (start < the running next-object-number), and accepts a gap.
+//
+// This repo's serializer emits exactly one subsection by construction (a
+// single contiguous object range), so no COMMITTED GOLDEN can express any
+// of this — every golden here has exactly one subsection (Story 2.6a,
+// Measured findings 3). But D-000.50 asks whether ANY subject can express
+// the defect, not merely a committed one: the four
+// TestAssertXrefEntriesPointAtTheirObjects* tests below build small
+// in-memory literal buffers (no fixture, no emitted byte) that do, so this
+// guard is PROVEN (D-000.50, D-000.24), not forward — each of the two
+// review findings above is red-proofed by literally reverting this
+// function to its prior shape and confirming the corresponding test fails.
 func assertXrefEntriesPointAtTheirObjects(t *testing.T, label string, b []byte, xrefOffset int) {
 	t.Helper()
 
@@ -851,54 +886,258 @@ func assertXrefEntriesPointAtTheirObjects(t *testing.T, label string, b []byte, 
 	}
 	xrefBody = xrefBody[len(xrefKW):]
 
-	headerEnd := bytes.IndexByte(xrefBody, '\n')
-	if headerEnd == -1 {
-		t.Fatalf("%s: xref subsection header is not newline-terminated", label)
+	firstSubsection := true
+	nextObjNum := 0
+	for {
+		if bytes.HasPrefix(xrefBody, []byte("trailer")) {
+			if firstSubsection {
+				t.Fatalf("%s: xref table declares no subsections before %q", label, "trailer")
+			}
+			return
+		}
+
+		headerEnd := bytes.IndexByte(xrefBody, '\n')
+		if headerEnd == -1 {
+			t.Fatalf("%s: xref subsection header is not newline-terminated", label)
+		}
+		fields := strings.Fields(string(xrefBody[:headerEnd]))
+		if len(fields) != 2 {
+			t.Fatalf("%s: xref subsection header %q does not have two fields", label, xrefBody[:headerEnd])
+		}
+		start, err1 := strconv.Atoi(fields[0])
+		count, err2 := strconv.Atoi(fields[1])
+		if err1 != nil || err2 != nil || count < 1 {
+			t.Fatalf("%s: unexpected xref subsection header %q", label, xrefBody[:headerEnd])
+		}
+		if firstSubsection && start != 0 {
+			t.Fatalf("%s: first xref subsection must start at object 0, header %q", label, xrefBody[:headerEnd])
+		}
+		if !firstSubsection && start < nextObjNum {
+			t.Fatalf("%s: xref subsection header %q overlaps object %d from the previous subsection", label, xrefBody[:headerEnd], nextObjNum-1)
+		}
+		firstSubsection = false
+
+		entries := xrefBody[headerEnd+1:]
+		for i := 0; i < count; i++ {
+			objNum := start + i
+			entryStart := i * 20
+			if entryStart+20 > len(entries) {
+				t.Fatalf("%s: xref entry %d is truncated", label, objNum)
+			}
+			entry := entries[entryStart : entryStart+20]
+			if entry[10] != ' ' || entry[16] != ' ' || entry[18] != ' ' || entry[19] != '\n' {
+				t.Fatalf("%s: xref entry %d %q is not exactly 20 bytes in the expected shape", label, objNum, entry)
+			}
+			offStr := string(entry[0:10])
+			genStr := string(entry[11:16])
+			kind := entry[17]
+			off, oerr := strconv.Atoi(offStr)
+			_, gerr := strconv.Atoi(genStr)
+			if oerr != nil || gerr != nil {
+				t.Fatalf("%s: xref entry %d %q has a non-numeric offset or generation field", label, objNum, entry)
+			}
+			switch kind {
+			case 'f':
+				if objNum != 0 {
+					t.Fatalf("%s: xref entry %d is a free entry, but only object 0 should be", label, objNum)
+				}
+			case 'n':
+				if objNum == 0 {
+					t.Fatalf("%s: xref entry 0 must be the free entry, got in-use", label)
+				}
+				want := strconv.Itoa(objNum) + " 0 obj"
+				if off < 0 || off+len(want) > len(b) || string(b[off:off+len(want)]) != want {
+					t.Fatalf("%s: xref entry %d claims offset %d, but %q was not found there", label, objNum, off, want)
+				}
+			default:
+				t.Fatalf("%s: xref entry %d has an unrecognised entry kind %q", label, objNum, string(kind))
+			}
+		}
+		nextObjNum = start + count
+		xrefBody = entries[count*20:]
 	}
-	fields := strings.Fields(string(xrefBody[:headerEnd]))
-	if len(fields) != 2 {
-		t.Fatalf("%s: xref subsection header %q does not have two fields", label, xrefBody[:headerEnd])
-	}
-	start, err1 := strconv.Atoi(fields[0])
-	count, err2 := strconv.Atoi(fields[1])
-	if err1 != nil || err2 != nil || start != 0 || count < 1 {
-		t.Fatalf("%s: unexpected xref subsection header %q", label, xrefBody[:headerEnd])
+}
+
+// xrefNegativeCaseEnvVar selects which malformed xref buffer a re-exec of
+// this test binary should run TestXrefEntriesRejectsMalformedSubprocess
+// against, when set. The parent tests below launch a CHILD process for
+// this rather than calling assertXrefEntriesPointAtTheirObjects directly
+// against a `t.Run` subtest, because a subtest that fails via t.Fatalf
+// unconditionally fails its parent test — and the whole `go test`
+// invocation — with no supported way to catch and swallow that failure
+// in-process (verified empirically: wrapping the fataling call in
+// `t.Run` and checking only the returned bool still reports the outer
+// test, and the package run, as FAILED). Re-executing as a subprocess
+// (the same technique subprocessEnvVar and its siblings above already use
+// for a different reason — isolating process state) means the FATAL
+// happens in a process whose own exit status this file never asks `go
+// test` to interpret; only the exit CODE, inspected by the parent test
+// exactly once, decides this file's own PASS/FAIL.
+const xrefNegativeCaseEnvVar = "FOLIO_XREF_NEGATIVE_CASE"
+
+// TestXrefEntriesRejectsMalformedSubprocess is not a test in its own
+// right and asserts nothing when run ordinarily — it t.Skips immediately
+// unless xrefNegativeCaseEnvVar is set, which only the re-exec launched
+// by TestAssertXrefEntriesPointAtTheirObjectsRejectsZeroSubsections and
+// TestAssertXrefEntriesPointAtTheirObjectsRejectsOverlappingSubsections
+// does. Its own t.Fatalf, when the case under test correctly rejects its
+// buffer, ends this SEPARATE process with a non-zero exit code — which is
+// the signal the parent test reads.
+func TestXrefEntriesRejectsMalformedSubprocess(t *testing.T) {
+	which := os.Getenv(xrefNegativeCaseEnvVar)
+	if which == "" {
+		t.Skip("only runs when re-executed as a subprocess with " + xrefNegativeCaseEnvVar + " set")
 	}
 
-	entries := xrefBody[headerEnd+1:]
-	for i := 0; i < count; i++ {
-		entryStart := i * 20
-		if entryStart+20 > len(entries) {
-			t.Fatalf("%s: xref entry %d is truncated", label, i)
+	switch which {
+	case "zero-subsection":
+		buf := []byte("%PDF-1.7\nxref\ntrailer\n<< /Size 1 >>\nstartxref\n9\n%%EOF\n")
+		xrefOffset := bytes.Index(buf, []byte("xref\n"))
+		if xrefOffset == -1 {
+			t.Fatal("test buffer does not contain the xref keyword")
 		}
-		entry := entries[entryStart : entryStart+20]
-		if entry[10] != ' ' || entry[16] != ' ' || entry[18] != ' ' || entry[19] != '\n' {
-			t.Fatalf("%s: xref entry %d %q is not exactly 20 bytes in the expected shape", label, i, entry)
-		}
-		offStr := string(entry[0:10])
-		genStr := string(entry[11:16])
-		kind := entry[17]
-		off, oerr := strconv.Atoi(offStr)
-		_, gerr := strconv.Atoi(genStr)
-		if oerr != nil || gerr != nil {
-			t.Fatalf("%s: xref entry %d %q has a non-numeric offset or generation field", label, i, entry)
-		}
-		switch kind {
-		case 'f':
-			if i != 0 {
-				t.Fatalf("%s: xref entry %d is a free entry, but only object 0 should be", label, i)
-			}
-		case 'n':
-			if i == 0 {
-				t.Fatalf("%s: xref entry 0 must be the free entry, got in-use", label)
-			}
-			want := strconv.Itoa(i) + " 0 obj"
-			if off < 0 || off+len(want) > len(b) || string(b[off:off+len(want)]) != want {
-				t.Fatalf("%s: xref entry %d claims offset %d, but %q was not found there", label, i, off, want)
-			}
-		default:
-			t.Fatalf("%s: xref entry %d has an unrecognised entry kind %q", label, i, string(kind))
-		}
+		assertXrefEntriesPointAtTheirObjects(t, "probe", buf, xrefOffset)
+	case "overlap":
+		const obj1Body = "1 0 obj\n<< >>\nendobj\n"
+		header := "%PDF-1.7\n"
+		body := header + obj1Body
+		obj1Offset := len(header)
+
+		// Subsection 1: "0 2" covers objects 0 and 1, so the next free
+		// object number is 2. Subsection 2: "1 1" re-claims object 1 —
+		// an overlap, not a gap.
+		xref := "xref\n" +
+			"0 2\n" + xrefEntryBytes(0, 'f') + xrefEntryBytes(obj1Offset, 'n') +
+			"1 1\n" + xrefEntryBytes(obj1Offset, 'n') +
+			"trailer\n<< /Size 6 >>\n"
+		xrefOffset := len(body)
+		full := []byte(body + xref)
+		assertXrefEntriesPointAtTheirObjects(t, "probe", full, xrefOffset)
+	case "bad-offset-in-second-subsection":
+		const obj1Body = "1 0 obj\n<< >>\nendobj\n"
+		const obj5Body = "5 0 obj\n<< >>\nendobj\n"
+		header := "%PDF-1.7\n"
+		body := header + obj1Body + obj5Body
+		obj1Offset := len(header)
+
+		// Subsection 1: "0 2", well-formed. Subsection 2: "5 1", but its
+		// entry claims an offset that does NOT land on "5 0 obj" — the
+		// exact wrong-offset shape the per-entry check exists to catch,
+		// now inside the SECOND subsection rather than the first, so this
+		// proves that check applies uniformly rather than only to
+		// whatever the loop happens to examine first.
+		xref := "xref\n" +
+			"0 2\n" + xrefEntryBytes(0, 'f') + xrefEntryBytes(obj1Offset, 'n') +
+			"5 1\n" + xrefEntryBytes(999999, 'n') +
+			"trailer\n<< /Size 6 >>\n"
+		xrefOffset := len(body)
+		full := []byte(body + xref)
+		assertXrefEntriesPointAtTheirObjects(t, "probe", full, xrefOffset)
+	default:
+		t.Fatalf("unknown %s value %q", xrefNegativeCaseEnvVar, which)
+	}
+}
+
+// runXrefNegativeCaseSubprocess re-executes this test binary pinned to
+// TestXrefEntriesRejectsMalformedSubprocess with xrefNegativeCaseEnvVar
+// set to which, and reports whether the child exited non-zero (i.e.
+// whether assertXrefEntriesPointAtTheirObjects fatalled on that buffer).
+func runXrefNegativeCaseSubprocess(t *testing.T, which string) (fatalled bool, output []byte) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestXrefEntriesRejectsMalformedSubprocess$", "-test.v")
+	cmd.Env = append(os.Environ(), xrefNegativeCaseEnvVar+"="+which)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return false, out
+	}
+	if _, ok := err.(*exec.ExitError); ok {
+		return true, out
+	}
+	t.Fatalf("could not even launch the subprocess for xref negative case %q: %v\n%s", which, err, out)
+	return false, out
+}
+
+// TestAssertXrefEntriesPointAtTheirObjectsRejectsZeroSubsections is the
+// Story 2.6a review's Blocker 2 red-proof, committed rather than declared
+// unavailable (D-000.24, D-000.30): before this repair,
+// assertXrefEntriesPointAtTheirObjects checked for the "trailer" keyword
+// BEFORE ever consuming a single subsection header, so an xref table that
+// declared zero subsections returned cleanly without making one
+// assertion — the exact "silent truncation to nothing" class this story
+// exists to remove, reintroduced by the story's own repair of a different
+// instance of the same class (D-000.48). Verified against a `804eea1`
+// worktree: this buffer FATALs there too (on the "does not have two
+// fields" branch, by accident of the trailer body reading as one field),
+// so this red-proof discriminates the SAME direction as the review's
+// throwaway probe, now committed instead of discarded.
+func TestAssertXrefEntriesPointAtTheirObjectsRejectsZeroSubsections(t *testing.T) {
+	fatalled, out := runXrefNegativeCaseSubprocess(t, "zero-subsection")
+	if !fatalled {
+		t.Fatalf("assertXrefEntriesPointAtTheirObjects accepted a zero-subsection xref table without ever examining a subsection; it must fatal. Subprocess output:\n%s", out)
+	}
+}
+
+// xrefEntryBytes builds one 20-byte classic xref entry in the exact shape
+// assertXrefEntriesPointAtTheirObjects requires: a 10-digit offset, a
+// space, a 5-digit generation, a space, an 'n' or 'f' kind byte, a space,
+// and a trailing newline.
+func xrefEntryBytes(offset int, kind byte) string {
+	return fmt.Sprintf("%010d %05d %c \n", offset, 0, kind)
+}
+
+// TestAssertXrefEntriesPointAtTheirObjectsAcceptsNonContiguousSubsections
+// is the Story 2.6a review's Finding 8 red-proof, committed: a classic
+// xref table is explicitly permitted to describe non-contiguous object
+// ranges (ISO 32000-1 7.5.4), so a second subsection whose "start" is
+// GREATER than the previous subsection's next object number — a gap, not
+// a continuation — must be accepted. Before Finding 8's fix this function
+// required exact continuation (start == nextObjNum) and would have
+// fatalled on this well-formed input.
+func TestAssertXrefEntriesPointAtTheirObjectsAcceptsNonContiguousSubsections(t *testing.T) {
+	const obj1Body = "1 0 obj\n<< >>\nendobj\n"
+	const obj5Body = "5 0 obj\n<< >>\nendobj\n"
+	header := "%PDF-1.7\n"
+	body := header + obj1Body + obj5Body
+	obj1Offset := len(header)
+	obj5Offset := len(header) + len(obj1Body)
+
+	// Subsection 1: "0 2" covers objects 0 (free) and 1 (in-use).
+	// Subsection 2: "5 1" covers object 5 — a gap over objects 2..4 that
+	// the first subsection never claimed and never will.
+	xref := "xref\n" +
+		"0 2\n" + xrefEntryBytes(0, 'f') + xrefEntryBytes(obj1Offset, 'n') +
+		"5 1\n" + xrefEntryBytes(obj5Offset, 'n') +
+		"trailer\n<< /Size 6 >>\n"
+
+	xrefOffset := len(body)
+	full := []byte(body + xref)
+
+	assertXrefEntriesPointAtTheirObjects(t, "probe", full, xrefOffset)
+}
+
+// TestAssertXrefEntriesPointAtTheirObjectsRejectsOverlappingSubsections
+// guards the boundary Finding 8's fix must not loosen too far: relaxing
+// the continuation check from "==" to "the gap-permitting >=" must still
+// reject a second subsection that re-claims an object number the first
+// subsection already covered.
+func TestAssertXrefEntriesPointAtTheirObjectsRejectsOverlappingSubsections(t *testing.T) {
+	fatalled, out := runXrefNegativeCaseSubprocess(t, "overlap")
+	if !fatalled {
+		t.Fatalf("assertXrefEntriesPointAtTheirObjects accepted a second subsection that overlaps object 1 already covered by the first; it must fatal. Subprocess output:\n%s", out)
+	}
+}
+
+// TestAssertXrefEntriesPointAtTheirObjectsRejectsBadOffsetInSecondSubsection
+// is the second half of the Story 2.6a review's Finding 6 red-proof for
+// AC8 (the first half is the non-contiguous-acceptance test above): a bad
+// entry offset must still be caught when it appears in the SECOND
+// subsection, proving the per-entry offset check the review's own probe
+// exercised applies to every subsection the loop visits, not only
+// whichever one it happens to reach first.
+func TestAssertXrefEntriesPointAtTheirObjectsRejectsBadOffsetInSecondSubsection(t *testing.T) {
+	fatalled, out := runXrefNegativeCaseSubprocess(t, "bad-offset-in-second-subsection")
+	if !fatalled {
+		t.Fatalf("assertXrefEntriesPointAtTheirObjects accepted a second subsection whose entry offset does not land on its declared object; it must fatal. Subprocess output:\n%s", out)
 	}
 }
 
