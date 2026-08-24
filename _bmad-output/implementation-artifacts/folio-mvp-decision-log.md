@@ -7781,3 +7781,139 @@ that was written to correct that behaviour.** [[D-000.48]] anticipated this: a c
 introduce a fresh instance of the class it is correcting. **The substance of D-2.6.9 is unaffected** —
 the predicate, the placement, the cost control and the guardrails all stand; only the number moves, and
 it moves in the direction that makes the sweep slightly cheaper, not larger.
+
+---
+
+### D-2.7.1 — "The box is already measured" means the box is FIXED; re-summing advances at substitution is rejected
+
+*(mechanism: **binding**)*
+
+`epics.md:918-921` carries two clauses: *"a late-bound slot whose box is already measured"* **and** *"resolved
+between the passes by substituting pre-measured glyphs."* The settled reading: **the box is fixed at pass one
+and does not change per page.** Option (e) — re-summing pre-measured advances at substitution time to get an
+exact per-page width — is **rejected**.
+
+**Grounding, strongest first.**
+
+1. **The rival reading makes half the AC inert.** Under *"no shaping happens between passes"*, the first clause
+   says nothing the second does not already say — "pre-measured glyphs" **is** the no-shaping guarantee. Under
+   *"the box is fixed"*, both clauses do work: one constrains the **box**, the other the **operation**. A reading
+   that leaves half an acceptance criterion doing nothing loses to one that gives both clauses a job. And
+   *"already measured"* is a past participle describing the state **entering** the between-pass step.
+2. **The consequential ground** — the one to keep if the textual one were disputed. Under (e) an element's
+   content width **changes after line breaking has already happened in pass one**. For a page-number element
+   narrow enough to wrap, a line that fit at `9` does not fit at `10`, and only two outcomes follow, **both
+   forbidden**: re-break between the passes (**layout inside pass two, exactly what AD-4 forbids**), or do not
+   re-break and **silently overflow**. Under (a) the class does not exist, because pass one breaks against the
+   final width. **Rules are chosen on the general case, not on the one short run in front of us.**
+3. **Re-summing advances is positioning.** *"Pre-measured glyphs"* licenses substitution **without shaping** —
+   it is not a licence to re-derive positions. **Arithmetic that produces a glyph's x is layout**, whatever its
+   inputs.
+
+**Guardrail** *(a boundary, not a ground — do not re-derive the ruling from it)*: any advance arithmetic needed
+at substitution must not land in `internal/pdf`; Story 2.6's AC5 and `internal/passtwo_arch_test.go` guard that
+edge.
+
+---
+
+### D-2.7.2 — Reserve at `digits(Y)`; the slack sits BEFORE the digits; no zero-padding
+
+*(mechanism: **binding**)*
+
+**The reservation.** Only `{{page}}` needs one. **Y is the same value on every page**, so `{{pages}}` renders at
+its exact width with **no slack at all**. Since **X ≤ Y always**, `digits(X) ≤ digits(Y)`, so a slot of
+`digits(Y)` digit-advances is **exactly sufficient and never over-wide**. The reservation is **derived from the
+artifact** (Y, known at pass one), not fitted to a sample and not capped at a constant — [[D-000.32]] satisfied
+by construction. The slack exists in **one** slot and is at most `digits(Y) − digits(X)` advances.
+
+**The slack disposition, ruled rather than escalated** — [[D-2.4.2]]'s method: *fix the criterion before the
+data; if exactly one candidate survives, it is chosen.*
+
+- **Zero-padding (`Page 09 of 99`) eliminated on a constraint, not on taste.** It alters the **spelling of a
+  substituted value**: the author wrote `Page {{page}} of {{pages}}`, and rendering `09` supplies content the
+  template did not ask for. This project's posture on bound values is **AD-14's** — *wrong kind is an error and
+  **never a coercion*** — and silently re-spelling a number is a coercion. Digit-count formatting is a
+  **`formatNumber` pattern** (the surface `columns[].footerFormat` establishes, **Story 3.4 owns**), not a
+  pagination behaviour. **Pagination must not pre-empt an Epic 3 formatting feature.**
+- **Slack *after* the digits eliminated on measurement.** All three shipped faces carry **tabular figures** —
+  ten identical digit advances each (**572 / 572 / 555**, upem 1000), measured twice by independent routes
+  (orchestrator: hand-rolled `cmap`/`hmtx`; creator: `fontset.New` → `AdvanceForRune`). **Tabular figures exist
+  so numerals align in a column.** Reserving max width and trailing the slack destroys the alignment the face's
+  metrics were designed for and puts a stray gap before *"of"*, which reads as a defect.
+- **Survivor: the digits are RIGHT-ALIGNED within the reserved slot.** `Page  9 of 10` / `Page 10 of 10` — the
+  numerals form a column across pages and `" of Y"` sits at the same x on every page.
+
+**The product question is surfaced, not escalated** — [[D-2.4.1]]'s precedent: it goes to the **Epic 2 report as
+a statement**. Nothing is foreclosed before `v0.1.0`; the owner may ask for a different spelling then at the
+cost of one re-record. **Spending an escalation on an arm already eliminated on AD-14 grounds would ask the
+owner to ratify an option the lead would have to advise against.**
+
+**Option (b) disposed — and it is a PROVEN guard, not a forward one.** *Require tabular figures* is dead **as an
+AC** (satisfied at birth, [[D-000.28]]; no subject can falsify it, [[D-000.50]]). But the residual hazard —
+**the face set is not frozen, and a proportional-figure face would silently break the reservation** — is real
+and **red-provable**: assert from the declarative per-face record that **all ten digit advances are equal within
+each shipped face**, and red-prove by perturbing one digit's advance in a scratch copy, the move Story 2.3a used
+for the stripped-`OS/2` case. **Key it on the purpose — *the reservation is valid* — not on the phrase "tabular
+figures"** ([[D-000.15]]).
+
+**The assumption that would flip right- versus left-alignment**: a shipped face whose digits are not uniform —
+which the guard above now makes impossible to change silently.
+
+---
+
+### D-2.7.3 — `{{page}}`/`{{pages}}` resolve ONLY in the page-header and page-footer bands; in a content band it is a located template error
+
+*(mechanism: **binding**)*
+
+In a content-band element the construct is a **located template error naming the element** — not a silent
+literal, not a best-effort render.
+
+**The fence is FORCED, not chosen**, which is why it is a ruling and not a scope decision. Y is computable in
+pass one **because** `layout.ContentHeight` takes page geometry only and *"cannot consult the content band's
+elements or their measured sizes"*, and `paginateDocument` routes only content-band items into `Paginate`. Put
+the construct **in** the content band and that independence is gone: the reserved width is `digits(Y)`, Y is the
+page count, the page count depends on content-band layout, and that layout depends on the slot's width.
+Resolving it needs **iteration to a fixed point**, which is negotiation, and **AD-24 forbids negotiation
+outright.** This is not scope trimmed for capacity — it is a construct that **cannot be given a meaning under
+the invariants we have**.
+
+Same category as [[D-2.6.5]]: **a declaration-level impossibility, knowable from the template alone with no
+data** — which is why the disposition is an **error**, not diagnose-and-continue, and why it is consistent with
+the overflow ruling rather than a second rule.
+
+**Guardrails**: red-prove on **a template that actually places `{{page}}` in a content-band element** — a
+fixture, not an argument. State it in `folio-format.md` under [[D-000.6]] beside the existing prose at line 494,
+as an **outcome** (*these resolve in the page header and page footer; elsewhere the document fails to render,
+naming the element*) and **not** as a mechanism — the correction this run has now made four times.
+**Content-band pagination text is NOT deferred work with an owner**: it is ruled out under current invariants,
+and wanting it later is a **direction change (an AD-24 carve-out), the owner's call**. **Do not file a DW
+entry**, which would imply someone may simply pick it up.
+
+---
+
+### D-2.7.4 — The Epic 2 gate owes SIX; and the scope of D-2.6.6's "still owes five", stated so it is not misapplied
+
+*(mechanism: **binding**)*
+
+**Six.** Apply [[D-2.6.2]]'s settling sentence — *a gate obligation is warranted when it is the only
+cross-target artifact for a shipped FR*. FR31 ships in 2.7; **zero of the ten fixtures contains `{{page}}`**;
+`multi-page`'s footer is a deliberately clean literal; **all eight `matrixDocuments` entries render no page
+number**. Without a new entry **FR31 has no cross-target artifact at all**. Warranted.
+
+**The correction.** [[D-2.6.6]]'s sentence *"the Epic 2 gate still owes five"* was scoped to **structural
+validation of already-committed bytes** — not cross-target, since the matrix is itself what proves those bytes
+identical across legs. **It was never a cap on obligations**, and it does not reach a **new rendered document**.
+Read as a cap it would forbid exactly the case D-2.6.2 exists to allow. *A ruling that has to be re-derived from
+a stale quotation is a failure mode this run has now seen twice.*
+
+Also confirmed: the **[[D-000.4]] override is correctly DECLINED** (integer advance arithmetic; no float, vendor
+call, compressor or dependency), while **[[D-000.54]]'s native leg IS owed** as a sequencing fix in the task
+list. **Those two dispositions are opposite and both right, which is the sign the criterion is being applied
+rather than reached for.**
+
+**Process note — [[D-000.31]], fourth instance, and a new kind.** The orchestrator's brief to 2.7's creator
+quoted **three** ACs where `epics.md` has **four**, the omitted one being precisely the AC that mandates matrix
+registration. This is the **first instance where the brief's defect was an OMISSION rather than a wrong
+assertion** — invisible to any check that reads what the brief *says*. The creator caught it by going to
+`epics.md` rather than by scrutinising the quotation. **D-000.31's corollary, restated: name the source, not
+only the conclusions — a truncation has no tell.**
