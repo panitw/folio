@@ -573,8 +573,9 @@ func (f *Font) HasGlyph(r rune) bool {
 // disagrees with what was drawn wherever GPOS kerns — measured at 640
 // millipoints for "AV ก" at 16 pt in the shipped chain. The segment
 // cursor is derived from the SHAPED advances instead
-// (folio-go/render.go's splitByFace), and nothing in the render path
-// calls this any more.
+// (folio-go/render.go's positionSegments, whose cursor sums
+// faceSegment.advance1000), and nothing in the render path calls this
+// any more.
 //
 // It is retained deliberately, not left as an oversight: it was one of
 // the two `ot.Face.HorizontalAdvance` call sites that

@@ -85,7 +85,7 @@ func (s faceSegment) glyphRangeForRunes(from, to int) (lo, hi int) {
 //
 // PER GLYPH, THEN SUMMED — never summed and then scaled. That is the
 // already-rounded space the viewer's pen consumes, and it is the same
-// order splitByFace's segment cursor and appendShapedRun's advance
+// order positionSegments' segment cursor and appendShapedRun's advance
 // correction use. Changing the order here would reintroduce a second
 // derivation of the same quantity, which is precisely Story 2.3's
 // Blocker 1.
@@ -108,7 +108,7 @@ func (s faceSegment) advance1000(lo, hi int) int64 {
 //
 // Per segment: scale each glyph advance to the 1000-em, sum, then scale
 // by font size. Across segments: sum those. This reproduces
-// splitByFace's cursor arithmetic exactly, because it IS that
+// positionSegments' cursor arithmetic exactly, because it IS that
 // arithmetic — a line's width and the position of the next face
 // segment on it are the same number computed once.
 //

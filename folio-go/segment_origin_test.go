@@ -39,7 +39,7 @@ type segmentOriginCase struct {
 
 // TestFaceSegmentOriginsUseShapedAdvances is Story 2.3 finisher's
 // Blocker 1 guard, and it is deliberately NOT written against
-// splitByFace's own arithmetic.
+// positionSegments' own cursor arithmetic.
 //
 // The defect it exists to catch was that a face-segment's text was DRAWN
 // kerned (appendShapedRun emits a trailing TJ adjustment so the run's

@@ -68,11 +68,12 @@ func pageDimensions(doc *Template) (width, height geom.Length, err error) {
 // bands, together with the resolved face name it needs and the SHAPED
 // answer for its text.
 //
-// glyphs/clusterTexts are populated by splitByFace, in the same pass
-// that computes x, and that co-location is the point rather than a
-// convenience: x is derived from glyphs (see splitByFace's comment), so
-// a run cannot be drawn from one shaping answer and positioned from
-// another. Story 2.3's finisher, Blocker 1 — the previous arrangement
+// glyphs/clusterTexts are populated by positionSegments, in the same
+// pass that computes x, and that co-location is the point rather than a
+// convenience: x is derived from the very glyphs carried alongside it
+// (positionSegments' cursor sums faceSegment.advance1000 over the same
+// slice it hands to the run), so a run cannot be drawn from one shaping
+// answer and positioned from another. Story 2.3's finisher, Blocker 1 — the previous arrangement
 // shaped in renderDocument and summed raw `hmtx` advances here, which
 // drew kerned text at unkerned origins.
 type textRunSource struct {
@@ -422,59 +423,11 @@ func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (stri
 	return "", fmt.Errorf("no font in chain %v has a glyph for rune %U — a located failure, not a blank box (AC4)", chain, r)
 }
 
-// splitByFace walks text rune by rune, resolving each rune's face via
-// resolveRuneFace, and groups maximal consecutive runs of runes sharing
-// the SAME resolved face into one textRunSource each, in original text
-// order. This is what actually makes a document's fallback CHAIN mean
-// something — a single element mixing Latin, Thai and CJK runes
-// produces one sub-run per script, each embedded from its own face,
-// rather than the whole element silently using only the chain's first
-// present member (the pre-Story-2.2 behaviour, which never consulted
-// coverage at all).
-//
-// Positioning: only the FIRST sub-run keeps the element's authored X;
-// each later sub-run's X is the previous sub-run's X plus that sub-run's
-// SHAPED total advance, scaled by fontSize — glyphs WITHIN one sub-run
-// are positioned by the embedded font's own /W array plus the TJ
-// adjustments appendShapedRun emits, exactly as a one-face element
-// already worked before this story.
-//
-// The shaped advance is the ONLY correct cursor, and shaping therefore
-// happens HERE rather than one frame up in renderDocument — Story 2.3's
-// finisher, Blocker 1. Until this story, the segment cursor was a sum of
-// per-rune `hmtx` advances (fontset.AdvanceForRune) and that agreed with
-// what was drawn only because nothing was kerned. Once runs are drawn
-// kerned, a segment summed from raw `hmtx` places the NEXT face's
-// segment as though the kerning had not happened: measured against the
-// shipped chain ["Noto Sans","Noto Sans Thai","Noto Sans SC"] at 16 pt,
-// the element "AV ก" placed its Thai segment 640 millipoints (0.64 pt)
-// too far right, and "Wo. ก" 320. Text drawn kerned and placed unkerned
-// is the whole defect.
-//
-// The structural fix is not "sum the right numbers" but "have only one
-// number": the glyphs the cursor is derived from are the SAME
-// []text.ShapedGlyph carried on the returned textRunSource and handed to
-// buildShapedPDFRuns, so the drawn run and the next segment's origin
-// cannot disagree again — there is no second derivation left to drift.
-// Per-glyph advances are scaled to the 1000-unit em INDIVIDUALLY and
-// then summed, never summed and then scaled, because that is the
-// already-rounded space the viewer's pen consumes (the same reasoning
-// appendShapedRun's advance-correction term rests on).
-func splitByFace(
-	chain []string, elementText string, x, y, fontSize geom.Length, fs FontSet, cache *fontCache,
-) ([]textRunSource, error) {
-	segs, err := shapeSegments(chain, elementText, fs, cache)
-	if err != nil {
-		return nil, err
-	}
-	return positionSegments(segs, 0, len([]rune(elementText)), x, y, fontSize), nil
-}
-
 // shapeSegments performs Story 2.2's per-rune coverage resolution and
 // Story 2.3's per-face-segment shaping, ONCE, and returns the result
 // without positioning it.
 //
-// It is factored out of splitByFace so that Story 2.4's line breaker
+// It is separated from positioning so that Story 2.4's line breaker
 // measures and slices the SAME shaped glyphs that are ultimately drawn.
 // Shaping once and slicing is not an optimisation — it is the
 // correctness property: re-shaping a line's shorter text can
@@ -590,12 +543,13 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	}
 
 	// Story 2.3, AC1/AC8: each face-segment is shaped ONCE, with its own
-	// buffer, by splitByFace — which is also where the segment cursor is
-	// computed, so there is exactly ONE shaping answer per segment and
-	// the drawn glyphs and the next segment's origin are derived from
-	// it. Re-shaping here would reintroduce the second derivation
-	// Blocker 1 was; these two slices are views onto what splitByFace
-	// already produced, built by ranging a SLICE (D-1.3.5).
+	// buffer, by shapeSegments; positionSegments then derives the
+	// segment cursor from those same shaped glyphs. So there is exactly
+	// ONE shaping answer per segment and the drawn glyphs and the next
+	// segment's origin are derived from it. Re-shaping here would
+	// reintroduce the second derivation Blocker 1 was; these two slices
+	// are views onto what shapeSegments already produced, built by
+	// ranging a SLICE (D-1.3.5).
 	shapedRuns := make([][]text.ShapedGlyph, len(runs))
 	clusterTexts := make([][]string, len(runs))
 	for i, r := range runs {
