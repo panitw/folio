@@ -336,3 +336,57 @@ the public API.**
   moves the golden hash of every document over the cap and stays the gate's.
 - **DW-11 stays open at 2.** Story 2.6 falls in its owner window and owes an answer: **none were found,
   and none were invented.** Pagination cannot reach `internal/text`.
+
+---
+
+## 7. Pre-gate environment readiness — measured, not assumed
+
+Recorded at `ecd0056` by the orchestrator, because a gate that cannot run is discovered at the worst
+possible moment. **Only `darwin/arm64` has ever actually been executed**; the other three legs have been
+compiled and vetted and never run ([[D-000.55]] is explicit that this is not the same thing).
+
+| leg | dispatch | this host | measured |
+|---|---|---|---|
+| `darwin/arm64` | native | Go 1.26.0 | **runs** — `TestTargetRenderHash` passes |
+| `linux/arm64` | Docker | Docker 29.6.2 | **platform executes** — `docker run --platform linux/arm64 alpine:3 uname -m` → `aarch64` |
+| `linux/amd64` | Docker, **emulated** on this host | Docker 29.6.2 | **platform executes** — → `x86_64` |
+| `js/wasm` | Node | Node v24.16.0 | toolchain present |
+
+`docker buildx` advertises `linux/arm64, linux/amd64, linux/amd64/v2, linux/riscv64, linux/ppc64le,
+linux/s390x, linux/386`. **All four gate targets are runnable on this machine.**
+
+**What this proves and what it does not.** It proves the **environment** cannot fail the gate for want of
+a toolchain or a platform. It proves **nothing** about whether the legs agree — that is the gate's whole
+job, and `matrix_test.go:236` already names a missing daemon, a missing `linux/arm64` platform and a
+missing Node as its failure modes. Stated in both halves per [[D-000.54]]'s guardrail, which required
+exactly this distinction for the native leg.
+
+## 8. DW-14 re-measured at `ecd0056` — Story 2.7 did NOT move it closer
+
+**Method matters here, and the first attempt got it wrong.** The cap is **per `beginbfchar` section**, not
+per document. An ad-hoc line count over the whole file sums sections and overstates the largest by roughly
+double. The authoritative instrument is the regex `wrapped_text_fixture_test.go:377` already uses —
+`(\d+)\s+beginbfchar(.*?)endbfchar` — where **the count is the integer the section declares**.
+
+| fixture | sections | sizes |
+|---|---|---|
+| `multi-page` | 1 | **[45]** ← largest single section |
+| `wrapped-text` | 3 | [28, 18, 38] |
+| `page-count-20` | 1 | **[32]** ← Story 2.7's new golden |
+| `shaped-text` | 3 | [14, 7, 28] |
+| `font-text` | 1 | [25] |
+| `three-band-page` | 1 | [17] |
+| `multi-script-fallback` | 3 | [4, 1, 1] |
+| `minimal-rect`, `image-embed` | 0 | — |
+
+**Section 6's statement stands**: `multi-page` at **45** is the largest section any fixture records, and
+DW-14 is **not** triggered. **Story 2.7's fixtures did not move it** — `page-count-20` records 32 despite
+forcing all ten digit CIDs into the subset, because entries are per unique `(GID, Unicode-context)` pair
+and page count does not multiply them.
+
+**A process note against myself, recorded because this run keeps producing the same class.** The first
+measurement here was taken with a hand-rolled `grep` rather than the project's own instrument, and
+reported `wrapped-text` at 86 as a near-cap emergency. It was **the sum of three sections against a
+per-section cap** — a real number about the wrong subject, which is [[D-000.26]] again, and the same
+error this run has now recorded against a developer, a creator and the orchestrator twice. **The
+established instrument existed and was not reached for first.**
