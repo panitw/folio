@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/panitw/folio/folio-go/internal/bind"
+	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/text"
 )
@@ -275,84 +276,247 @@ func atomicSpansFor(declared []string, subs []bind.Substitution) []text.Span {
 	return spans
 }
 
-// lineAdvance is THE leading rule (D-2.4.2, ruled): the distance from
-// one baseline to the next, for an element drawn with the declared
-// chain at fontSize.
+// THE VERTICAL MODEL (D-2.4.2 as AMENDED). One rule, three maxima.
 //
-// It is the MAXIMUM, over the faces of the DECLARED chain that are
-// present in fs, of that face's hhea (ascent - descent + lineGap),
-// scaled to fontSize. One function, never open-coded at a call site
-// (AD-2: "font scaling is one exported function").
+// A chain declares what MAY appear in an element. The vertical model
+// must accommodate what MAY appear — and it must do so PER AXIS,
+// because ascent and descent are independent axes and the worst case
+// takes the worst of each:
+//
+//	span                        value
+//	-------------------------   -------------------------------
+//	top -> first baseline       max(A)
+//	baseline -> baseline        max(A) + max(D) + max(gap)
+//	last baseline -> bottom     max(D)
+//
+// each maximised INDEPENDENTLY over the faces of the DECLARED chain
+// that are present in the supplied FontSet, scaled to fontSize.
+//
+// # What the amendment corrected, and why the original was wrong
+//
+// D-2.4.2 as first ruled took the inter-baseline distance to be
+// max(A - D + gap) over the chain — the worst SINGLE FACE. That
+// maximises the wrong quantity. The space between two baselines must
+// hold line N's DESCENDERS plus line N+1's ASCENDERS, so the constraint
+// is the worst adjacent PAIR, and the original form implicitly assumed
+// one face supplies both axes. That is FALSE on the shipped set, where
+// the two axes are won by DIFFERENT faces:
+//
+//	face             A       D      gap    A - D + gap
+//	Noto Sans        1069    -293   0      1362
+//	Noto Sans Thai   1061    -450   0      1511   <- wins DESCENT
+//	Noto Sans SC     1160    -288   0      1448   <- wins ASCENT
+//
+//	worst pair = max(A) + max(|D|) = 1160 + 450 = 1610
+//	superseded = max(A - D + gap)               = 1511
+//	shortfall                                   =   99
+//
+// So the superseded rule under-spaced the shipped chain by 99 units of
+// the em — a potential ink overlap between a Thai line's below-vowels
+// and the next line's ideograph ascenders, in the DEFAULT chain, on the
+// scripts this epic exists to support.
+//
+// Note what the amendment does NOT change, because it bounds the blast
+// radius: for a chain resolving to ONE present face, max(A) + max(|D|)
+// + max(gap) is IDENTICALLY A - D + gap. A single face cannot fail to
+// supply both axes, so every single-face chain's advance is unchanged.
+// Measured: the shipped Noto x3 chain moves 1511 -> 1610; ["Noto Sans"]
+// and the Roboto test face do not move at all.
 //
 // # Why the maximum over the chain, and why that is not content-dependent
 //
-//	A chain declares what MAY appear in an element. Leading must
-//	accommodate what MAY appear — not what DOES appear.
+//	A chain declares what MAY appear in an element. The vertical model
+//	must accommodate what MAY appear — not what DOES appear.
 //
-// "What does appear" is content-dependent, and content-dependent leading
-// is forbidden: adding one CJK character would reflow the element, which
-// AD-24's "boxes are absolute, and nothing negotiates" rules out. "What
-// may appear" is exactly the declared chain — a static property of the
-// template, identical for every value the element is ever bound to. So
-// this depends on the chain and on nothing that is drawn.
+// "What does appear" is content-dependent, and content-dependent
+// vertical placement is forbidden: adding one CJK character would
+// reflow the element, which AD-24's "boxes are absolute, and nothing
+// negotiates" rules out. "What may appear" is exactly the declared
+// chain — a static property of the template, identical for every value
+// the element is ever bound to. So all three spans depend on the chain
+// and the size and on nothing that is drawn.
 //
-// # Why not the chain's first face
+// # Why the FIRST baseline uses max(A), and why that is no longer a judgment
 //
-// Measured, not argued. Against the shipped chain ["Noto Sans", "Noto
-// Sans Thai", "Noto Sans SC"], the first face gives 1362/1000 em while
-// Noto Sans Thai requires 1511 — at 16 pt that is 21.79 pt of leading
-// for text needing 24.18, so Thai below-vowels collide with the next
-// line's above-vowels, in the DEFAULT chain, on the script this epic
-// exists to support.
+// Before the amendment, "whose ascent places the first baseline" looked
+// like a free choice between the tallest ascent (1160) and the ascent
+// of whichever face won the advance maximisation (1061). It is not a
+// choice: the first span is the same accommodate-what-may-appear
+// question asked about the ascent axis alone, and its answer is max(A)
+// by the same argument the other two spans use. Under the alternative,
+// an ideograph on the first line overshoots the element's declared top
+// by 99 units of the em. That the two candidates coincided on the
+// shipped set only — both landing on a Noto face — is exactly the
+// fit-to-the-sample hazard D-000.32 names.
+//
+// The defect this replaces on the first span was worse than either
+// candidate: internal/pdf placed the first baseline at run.FontSize
+// below the element top — the point SIZE used as a proxy for an ascent
+// it has no relationship to (DW-15). It is off by max(A) - 1000 units
+// per em, which is +160/em on the shipped chain and -72/em on the
+// Roboto test face. NOTE THE SIGN: it is not a consistent downward
+// drift, it flips direction with the face, so no assertion anywhere may
+// be phrased as a DIRECTION (D-000.45).
 //
 // # Why hhea, and not OS/2 typo metrics or a multiple of the size
 //
-// Also measured. Noto Sans SC declares USE_TYPO_METRICS = false
-// (fsSelection 0x0040), so its sTypoAscender/Descender of 880/-120 are
-// explicitly NOT its line metrics — yet 1000/em is a perfectly plausible
-// number, and it is below that face's own 1448. That is the same class
-// of fiction as a substituted /CapHeight. And a fixed multiple fails
-// outright: 1.2 em is below all three shipped faces (1362, 1511, 1448),
-// and even 1.5 em is below Noto Sans Thai.
+// Measured. Noto Sans SC declares USE_TYPO_METRICS = false (fsSelection
+// 0x0040), so its sTypoAscender/Descender of 880/-120 are explicitly
+// NOT its line metrics — yet 1000/em is a perfectly plausible number,
+// and it is below that face's own 1448. That is the same class of
+// fiction as a substituted /CapHeight. And a fixed multiple fails
+// outright: 1.2 em is below all three shipped faces, and even 1.5 em is
+// below the ruled 1610.
 //
 // The bounded cost, stated: a Latin-only element in a Latin+Thai+CJK
-// chain gets ~11% taller lines than Noto Sans alone would need. The
-// author declared that chain; an author who wants Latin metrics declares
-// a Latin-only chain. No element pays for a face its own chain does not
+// chain gets taller lines than Noto Sans alone would need. The author
+// declared that chain; an author who wants Latin metrics declares a
+// Latin-only chain. No element pays for a face its own chain does not
 // name.
-func lineAdvance(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (geom.Length, error) {
-	var maxUnits int64
-	present := 0
+
+// verticalMetrics is one declared chain's finished vertical model at one
+// font size, in millipoints. Every field is derived from the SAME chain
+// walk, which is the whole point of the type existing: two independent
+// walks answering two halves of one geometric question is precisely the
+// defect Story 2.5a fixed, and a struct returned from one walk is what
+// stops it being recreated one level up.
+type verticalMetrics struct {
+	// FirstBaseline is top-of-element -> first baseline: max(A) scaled.
+	FirstBaseline geom.Length
+
+	// Advance is baseline -> baseline: max(A)+max(|D|)+max(gap) scaled.
+	Advance geom.Length
+
+	// LastDescent is last baseline -> the bottom of the text's vertical
+	// extent: max(|D|) scaled.
+	//
+	// STATED HONESTLY, because a field nothing calls is exactly the
+	// thing D-000.46 warns about: NOTHING IN PRODUCTION CONSUMES THIS
+	// FIELD TODAY. It is the third span of the ruled model and it is
+	// computed here so the model is stated ONCE, in the one place that
+	// walks the chain, rather than re-derived by whoever first needs it
+	// — which is the second-derivation hazard this type exists to
+	// close. Its production consumer arrives with clipping and overflow
+	// diagnostics (Story 2.8, FR44/AD-14). It IS asserted today, by
+	// TestVerticalModelArithmeticOverFabricatedMetrics.
+	LastDescent geom.Length
+}
+
+// chainLineMetrics is THE place in this module that walks a declared
+// chain, decides which of its members are present in the supplied
+// FontSet, tolerates an absent member, and reports the line metrics of
+// those that remain. It is the same "chain entry present in fs"
+// tolerance fontChain and resolveRuneFace already apply.
+//
+// It reads (*fontset.Font).LineMetrics and NOTHING else. That reads the
+// hhea TABLE, never (*ot.Face).Ascender/Descender/LineGap, which
+// substitute 800/-200/0 for an absent table (D-2.4.2 constraint 2: the
+// vertical model must never inherit a substituted default), and
+// requireReadableTables makes an absent hhea a load error. In
+// particular it must never read (*fontset.Font).Metrics's Ascent, which
+// IS populated through the substituting vendor accessor and exists for
+// the PDF /FontDescriptor, not for placement.
+func chainLineMetrics(chain []string, fs FontSet, cache *fontCache) ([]fontset.LineMetrics, error) {
+	out := make([]fontset.LineMetrics, 0, len(chain))
 	for _, name := range chain {
 		if _, ok := fs[name]; !ok {
 			// A chain member the caller did not supply cannot appear in
-			// the element, so it does not constrain the leading. This is
-			// the same "first chain entry present in fs" tolerance
-			// fontChain and resolveRuneFace already apply.
+			// the element, so it does not constrain the vertical model.
 			continue
 		}
 		f, err := cache.get(name, fs)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		lm := f.LineMetrics()
-		units := lm.Ascent - lm.Descent + lm.LineGap
-		if units > maxUnits {
-			maxUnits = units
-		}
-		present++
+		out = append(out, f.LineMetrics())
 	}
-	if present == 0 {
-		return 0, fmt.Errorf(
+	return out, nil
+}
+
+// verticalModel is the PURE arithmetic of the ruled model: given the
+// line metrics of a chain's present faces and a font size, produce the
+// three spans.
+//
+// It takes metrics as a VALUE and never touches a *fontset.Font, and
+// that shape is load-bearing rather than tidy. hhea lineGap is 0 on all
+// four faces this repository commits, so the lineGap term is
+// BYTE-NEUTRAL on every artifact that ships: no golden can distinguish
+// a model that includes it from one that drops it, and strengthening a
+// golden assertion to try would manufacture a guard against a
+// difference that does not exist on this input set and would fire on a
+// legitimate refactor (D-000.39 sharpened). The only way that term can
+// have teeth is a direct unit test over FABRICATED metrics carrying a
+// non-zero LineGap — which is possible only if the arithmetic is
+// reachable without a font. Hence this signature.
+//
+// chain is carried for the error messages alone; nothing is read from
+// it, so a test may pass any label it likes.
+func verticalModel(chain []string, metrics []fontset.LineMetrics, fontSize geom.Length) (verticalMetrics, error) {
+	if len(metrics) == 0 {
+		return verticalMetrics{}, fmt.Errorf(
 			"folio: none of the fallback chain's faces %v is present in the supplied FontSet, so no line height can be derived from it",
 			chain,
 		)
 	}
-	if maxUnits <= 0 {
-		return 0, fmt.Errorf(
-			"folio: the fallback chain %v yields a line height of %d font units — every face in it declares an hhea ascent no greater than its descent",
-			chain, maxUnits,
+
+	// Each axis maximised INDEPENDENTLY — the correction the amendment
+	// turns on. Taking max(A - D + gap) here instead would silently
+	// re-assume that one face supplies both axes.
+	//
+	// The maxima are clamped at zero: a face declaring a negative hhea
+	// ascent must not pull the first baseline ABOVE the element's top,
+	// and a positive hhea descent must not pull the bottom above the
+	// baseline.
+	var maxAscent, maxDescent, maxLineGap int64
+	for _, lm := range metrics {
+		if lm.Ascent > maxAscent {
+			maxAscent = lm.Ascent
+		}
+		if d := -lm.Descent; d > maxDescent {
+			maxDescent = d
+		}
+		if lm.LineGap > maxLineGap {
+			maxLineGap = lm.LineGap
+		}
+	}
+
+	units := maxAscent + maxDescent + maxLineGap
+	if units <= 0 {
+		return verticalMetrics{}, fmt.Errorf(
+			"folio: the fallback chain %v yields a line height of %d font units — over its present faces max(hhea ascent)=%d, max(-hhea descent)=%d and max(hhea lineGap)=%d sum to nothing a line can be drawn in",
+			chain, units, maxAscent, maxDescent, maxLineGap,
 		)
 	}
-	return geom.ScaleRound(geom.Length(maxUnits), int64(fontSize), 1000), nil
+
+	scale := func(u int64) geom.Length {
+		return geom.ScaleRound(geom.Length(u), int64(fontSize), 1000)
+	}
+	return verticalMetrics{
+		FirstBaseline: scale(maxAscent),
+		Advance:       scale(units),
+		LastDescent:   scale(maxDescent),
+	}, nil
+}
+
+// chainVerticalModel is the production entry point: ONE chain walk
+// feeding the one arithmetic. A caller needing both the first-baseline
+// offset and the inter-baseline advance takes both from a single call —
+// AC1's "there is no second derivation left to drift".
+func chainVerticalModel(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (verticalMetrics, error) {
+	metrics, err := chainLineMetrics(chain, fs, cache)
+	if err != nil {
+		return verticalMetrics{}, err
+	}
+	return verticalModel(chain, metrics, fontSize)
+}
+
+// lineAdvance is the inter-baseline span of the ruled model, kept under
+// the name the rest of the module and its tests already use. It is a
+// PROJECTION of chainVerticalModel, never a second derivation.
+func lineAdvance(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (geom.Length, error) {
+	vm, err := chainVerticalModel(chain, fontSize, fs, cache)
+	if err != nil {
+		return 0, err
+	}
+	return vm.Advance, nil
 }

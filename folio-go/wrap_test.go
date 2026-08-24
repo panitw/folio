@@ -541,23 +541,46 @@ func TestAtomicSpansForIsDrivenByTheDeclarationSet(t *testing.T) {
 	}
 }
 
-// TestLineAdvanceIsTheMaxOverTheDeclaredChain is D-2.4.2's ruled
-// leading rule, asserted with LITERALS derived from the committed faces'
-// hhea tables rather than recomputed the way lineAdvance computes it.
+// TestLineAdvanceIsTheMaxOverTheDeclaredChain is the ruled
+// inter-baseline rule (D-2.4.2 as AMENDED), asserted with LITERALS
+// derived from the committed faces' hhea tables rather than recomputed
+// the way lineAdvance computes it.
 //
 // Provenance (D-000.26). Read via font.TableData(ot.TagHhea) +
 // ot.ParseHhea, scaled to the 1000-unit em, from the faces as committed
 // under folio-go/fonts/:
 //
-//	Noto Sans        upem 1000  asc 1069  desc -293  gap 0  -> 1362
-//	Noto Sans Thai   upem 1000  asc 1061  desc -450  gap 0  -> 1511
-//	Noto Sans SC     upem 1000  asc 1160  desc -288  gap 0  -> 1448
+//	face             asc    desc   gap   A - D + gap
+//	Noto Sans        1069   -293   0     1362
+//	Noto Sans Thai   1061   -450   0     1511    <- wins DESCENT
+//	Noto Sans SC     1160   -288   0     1448    <- wins ASCENT
 //
-// THE FIRST-FACE HYPOTHESIS IS ASSERTED AGAINST, NOT MERELY ABSENT. The
-// shipped chain's first face gives 1362 and the ruled answer gives 1511;
-// a chain whose maximum is its first member could not tell the two
-// apart, so the chain order is varied to prove the rule is a maximum and
-// not a position.
+// The ruled advance maximises each axis INDEPENDENTLY:
+//
+//	max(A) + max(|D|) + max(gap) = 1160 + 450 + 0 = 1610
+//
+// TWO HYPOTHESES ARE ASSERTED AGAINST, NOT MERELY ABSENT.
+//
+//   - firstFace: "the chain's first member governs". Varying the chain
+//     ORDER proves the rule is a maximum and not a position.
+//   - superseded: "max(A - D + gap) over the chain", the worst SINGLE
+//     FACE — the rule as D-2.4.2 was FIRST ruled, before the amendment.
+//     It gives 1511 where the ruled answer is 1610, a 99-unit shortfall
+//     that is a potential ink overlap between a Thai line's below-vowels
+//     and the next line's ideograph ascenders.
+//
+// AC14 / D-000.34 — WHAT THE AMENDMENT DID TO THIS TABLE'S OWN
+// DISCRIMINATING POWER, recorded because it is exactly the failure mode
+// D-000.34 names. The "Thai first" row used to be this table's NEGATIVE
+// CONTROL, labelled "the one order where (a) and (b) agree": under the
+// superseded rule a Thai-first chain gave 1511 by BOTH hypotheses. The
+// amendment destroys that property — no single-face-first ordering can
+// produce 1610, because 1610 requires TWO faces — so that row silently
+// became a discriminating case and the table would have been left with
+// its negative control gone and nobody told. The negative control is now
+// carried explicitly by the single-face rows, where a single face cannot
+// fail to supply both axes and all three hypotheses agree BY
+// CONSTRUCTION.
 func TestLineAdvanceIsTheMaxOverTheDeclaredChain(t *testing.T) {
 	const fontSize = geom.Length(16000) // 16 pt
 
@@ -565,46 +588,47 @@ func TestLineAdvanceIsTheMaxOverTheDeclaredChain(t *testing.T) {
 	mp := func(units int64) geom.Length { return geom.Length(units * 16) }
 
 	cases := []struct {
-		name      string
-		chain     []string
-		wantUnits int64
-		firstFace int64 // what hypothesis (a) would have produced
-		note      string
+		name       string
+		chain      []string
+		wantUnits  int64
+		firstFace  int64 // what the first-face hypothesis would produce
+		superseded int64 // what max(A - D + gap) over the chain would produce
+		note       string
 	}{
 		{
 			name:      "shipped chain, Latin first",
 			chain:     []string{"Noto Sans", "Noto Sans Thai", "Noto Sans SC"},
-			wantUnits: 1511, firstFace: 1362,
-			note: "Noto Sans Thai's 1511 governs, not the first face's 1362",
+			wantUnits: 1610, firstFace: 1362, superseded: 1511,
+			note: "1160 (SC) + 450 (Thai) governs — neither the first face's 1362 nor any single face's 1511",
 		},
 		{
 			name:      "same faces, CJK first — order must not matter",
 			chain:     []string{"Noto Sans SC", "Noto Sans", "Noto Sans Thai"},
-			wantUnits: 1511, firstFace: 1448,
+			wantUnits: 1610, firstFace: 1448, superseded: 1511,
 			note: "a maximum is order-independent; a first-face rule would give 1448 here",
 		},
 		{
-			name:      "Thai first — the one order where (a) and (b) agree",
+			name:      "Thai first — was the negative control BEFORE the amendment",
 			chain:     []string{"Noto Sans Thai", "Noto Sans", "Noto Sans SC"},
-			wantUnits: 1511, firstFace: 1511,
-			note: "NEGATIVE CONTROL: both hypotheses give 1511, so rejecting (a) is not achieved by rejecting every answer",
+			wantUnits: 1610, firstFace: 1511, superseded: 1511,
+			note: "under the SUPERSEDED rule both hypotheses gave 1511 here and this row was the negative control; the amendment made it discriminating, which is why the control moved to the single-face rows (D-000.34)",
 		},
 		{
-			name:      "Latin-only chain pays only for Latin",
+			name:      "NEGATIVE CONTROL: Latin-only chain pays only for Latin",
 			chain:     []string{"Noto Sans"},
-			wantUnits: 1362, firstFace: 1362,
-			note: "an author who wants Latin metrics declares a Latin-only chain",
+			wantUnits: 1362, firstFace: 1362, superseded: 1362,
+			note: "one face supplies BOTH axes, so all three hypotheses agree by construction — rejecting the others is not achieved by rejecting every answer",
 		},
 		{
-			name:      "a chain member absent from the FontSet does not constrain",
+			name:      "NEGATIVE CONTROL: a chain member absent from the FontSet does not constrain",
 			chain:     []string{"Noto Sans", "Not In The FontSet"},
-			wantUnits: 1362, firstFace: 1362,
+			wantUnits: 1362, firstFace: 1362, superseded: 1362,
 			note: "a face the caller did not supply cannot appear in the element",
 		},
 	}
 
 	fs := testShippedFontSet()
-	var discriminating int
+	var vsFirstFace, vsSuperseded, controls int
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := lineAdvance(tc.chain, fontSize, fs, newFontCache())
@@ -612,22 +636,41 @@ func TestLineAdvanceIsTheMaxOverTheDeclaredChain(t *testing.T) {
 				t.Fatalf("lineAdvance(%v): %v", tc.chain, err)
 			}
 			want := mp(tc.wantUnits)
-			if tc.wantUnits != tc.firstFace {
-				discriminating++
-				if got == mp(tc.firstFace) {
-					t.Errorf("chain %v produced %d millipoints, which is the FIRST FACE's leading — the rule is the MAXIMUM over the declared chain (%s)", tc.chain, got, tc.note)
-					return
-				}
+			if tc.wantUnits != tc.firstFace && got == mp(tc.firstFace) {
+				t.Errorf("chain %v produced %d millipoints, which is the FIRST FACE's leading — the rule is a MAXIMUM over the declared chain, not a position (%s)", tc.chain, got, tc.note)
+				return
+			}
+			if tc.wantUnits != tc.superseded && got == mp(tc.superseded) {
+				t.Errorf("chain %v produced %d millipoints, which is max(hhea A - D + gap) over the chain — the SUPERSEDED worst-single-face rule. The amended rule maximises each axis INDEPENDENTLY, giving %d (%s)", tc.chain, got, want, tc.note)
+				return
 			}
 			if got != want {
 				t.Errorf("chain %v produced %d millipoints, want %d (%s)", tc.chain, got, want, tc.note)
 			}
 		})
+		switch {
+		case tc.wantUnits == tc.firstFace && tc.wantUnits == tc.superseded:
+			controls++
+		default:
+			if tc.wantUnits != tc.firstFace {
+				vsFirstFace++
+			}
+			if tc.wantUnits != tc.superseded {
+				vsSuperseded++
+			}
+		}
 	}
-	if discriminating == 0 {
-		t.Fatal("vacuity: no case distinguishes the maximum from the first face, so this table asserts nothing about the ruling")
+	if vsFirstFace == 0 {
+		t.Fatal("vacuity: no case distinguishes the maximum from the first face, so this table asserts nothing about that half of the ruling")
 	}
-	t.Logf("D-2.4.2: %d of %d cases distinguish max-over-chain from first-face", discriminating, len(cases))
+	if vsSuperseded == 0 {
+		t.Fatal("vacuity: no case distinguishes max(A)+max(|D|)+max(gap) from the SUPERSEDED max(A-D+gap), so this table would pass unchanged against the rule the amendment replaced")
+	}
+	if controls == 0 {
+		t.Fatal("vacuity: every case rejects both rival hypotheses, so rejecting them is achieved by rejecting EVERY answer — this table needs at least one case where all three agree")
+	}
+	t.Logf("D-2.4.2 (amended): %d of %d cases distinguish the ruled answer from the first-face rule, %d from the superseded worst-single-face rule, and %d are negative controls where all three agree",
+		vsFirstFace, len(cases), vsSuperseded, controls)
 }
 
 // TestLineAdvanceIsNotContentDependent is constraint 1, asserted

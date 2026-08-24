@@ -6670,3 +6670,458 @@ computations is where a calibration hides. This is its dual: **when two computat
 they are secretly one computation, the agreement is worth nothing** — and it reads as corroboration,
 which is worse than reading as silence.
 
+---
+
+### D-000.39 — A surviving mutation with a byte-identical artifact is evidence of equivalence, not of a gap
+
+*(mechanism: binding)* — the disposition Story 2.5 twice reached and the finisher flagged as the
+strongest unrecorded rule.
+
+**The situation.** You mutate the code to prove a guard can fail. The guard stays green. The reflex is
+to treat this as a hole and strengthen the assertion until it fires.
+
+**That reflex is wrong when the produced artifact is byte-identical**, because then the mutation was a
+**semantic no-op** and there is nothing to detect. Strengthening the assertion until such a mutation
+reddens does not close a gap — it manufactures a guard against a difference that does not exist, and
+that guard will later fire on a legitimate refactor.
+
+**The instance.** Swapping `marginTop`/`marginBottom` *inside* `ContentHeight`'s expression left every
+assertion green **and the digest byte-identical**. Both margins enter the partition only as a **sum**,
+and `a − b − c == a − c − b` exactly. **No assertion over derived values can ever see it.** The
+reviewer confirmed completeness by probing the *adjacent* mutation that should be visible —
+`ComposePage` carrying `MarginBottom` as `MarginTop` — which reddens three ways.
+
+**The obligation, which is what makes this honest** *(binding)*: a surviving mutation may be declared
+an equivalence only by **showing the artifact is byte-identical** and by **finding the nearest
+mutation that IS observable and demonstrating it fires.** Absent that second half, "it's equivalent"
+is indistinguishable from "our guards are blind here" — which is the claim it is being used to deny.
+
+**Where strengthening remains available**: at the **inputs**, before the values are combined. Story
+2.5 pins each margin individually there, which is the only place the swap is expressible.
+
+**Distinguish from [[D-000.36]]**: there, the remedy stayed green because the *subject* could not
+express the defect — a real gap, fixed by changing the subject. Here the *mutation* cannot produce a
+difference at all. **The two look identical from the test's point of view, and the artifact's bytes
+are what separate them.**
+
+---
+
+### D-000.40 — A mutation must print its own preconditions; an exit code cannot tell you it applied
+
+*(mechanism: binding)* — ninth instrument failure of the run, and the second inside a mutation harness.
+
+**The instance.** A red-proof used `sed 's/\bx\b/y/'`. **BSD sed does not support `\b`**, so the
+substitution **never applied** — while `sed` exited 0 and the subsequent test run reported exactly the
+result a successful mutation would have produced *if the guard were sound*. A second attempt injected
+**malformed Go**, which proved the parser path rather than the identifier path it was aimed at.
+
+**Both were caught by printing the mutation's preconditions rather than by checking its exit code**,
+and both are recorded in the story as invalid attempts rather than silently replaced.
+
+**The rule.** A mutation harness must **assert that the mutation took effect** — the file differs, the
+intended token actually changed, the code still compiles for the reason under test — **before** the
+result of the test run means anything. **A green suite after a mutation that never applied is
+indistinguishable from a green suite after a mutation the guard failed to catch.**
+
+Same family as [[D-000.9]]: the tool's *"I changed nothing"* and its *"I changed something harmless"*
+must not produce the same observation. And it joins the run's standing list — `rtk proxy` before
+redirect, both operands proven non-empty before comparison, N-of-N coverage witnesses, and
+[[D-000.26]]'s cite-the-subject — as a **portable-tooling** hazard: `\b`, `-i`, `sort`, and `grep -P`
+all differ on BSD, and this project develops on darwin and ships to linux.
+
+**Recording invalid attempts as invalid, rather than replacing them quietly, is the behaviour that
+made both visible.**
+
+---
+
+### D-000.41 — Request a scarce human sign-off only when no scheduled work is known to move the artifact it binds to
+
+*(mechanism: binding)*
+
+**The hole this closes.** Story 2.5a was scheduled before 2.6 so DW-15's baseline fix lands **before**
+the Thai reading sign-off is requested — otherwise the owner examines the same Thai twice. But that
+only works **if 2.6 does not move the same fixture again.** The orchestrator's own note said 2.6
+*"will likely re-record those goldens anyway"* — in which case a sign-off recorded after 2.5a is
+invalidated by 2.6, **and the scarce human is spent twice for exactly the reason the story was split
+to avoid.**
+
+**The rule.** A human sign-off is requested only when **no scheduled work is known to move the
+artifact it binds to.** Otherwise you are buying attributability with someone else's attention.
+
+**Operationally**: the question is answerable early and cheaply — it is the same *"which fixtures can
+move"* measurement Story 2.4's creator already performed, and [[D-000.36]]'s population finding in 2.5
+shows how much that measurement pays. **2.6's creator measures whether its changes move any
+signed-off-pending golden, before any request is sent.**
+
+- 2.6 does **not** move `shaped-text` → request the reading sign-off after 2.5a, as planned.
+- 2.6 **does** → hold the request until after 2.6. 2.5a's value is then **attributability alone** —
+  still sufficient reason to split, just not the second one.
+
+---
+
+### D-000.39 (sharpened) — the neighbouring observable mutation must be at the SAME SITE
+
+*(mechanism: binding)*
+
+The obligation as first written — *"find the nearest mutation that IS observable and demonstrate it
+fires"* — is **satisfiable by a mutation somewhere convenient**, which is how a good rule becomes a
+formality. Demonstrating the guard fires on some other line proves **the guard exists**; it does not
+prove the guard has **resolution where you just declared an equivalence.**
+
+> **Byte-identity proves the mutation was inert. A neighbouring observable mutation at the same site
+> proves the guard is not blind there. You need both, because each alone is consistent with the
+> failure the other rules out.**
+
+And the discriminator between this rule and [[D-000.36]] is worth stating plainly: **when a mutation
+survives, the artifact's bytes tell you which failure you are looking at.** Bytes identical → the
+mutation was inert. Bytes would differ but the subject cannot express it → **the population is
+wrong.** Same green test, **opposite remedies**, and only the artifact separates them.
+
+---
+
+### D-000.40 (sharpened) — the mutation asserts it applied by observing the artifact, not by its exit code
+
+*(mechanism: binding)*
+
+> **The mutation must assert it applied by observing the artifact — a non-empty diff, or a reported
+> count of occurrences changed — before any test result is interpreted. An exit code is the *tool's*
+> claim about itself; the diff is the artifact.**
+
+That is [[D-000.21]] arriving in the mutation harness.
+
+**And practically**: prefer a mutator that **reports what it changed** over one that changes and exits.
+This run already concluded Python is the reliable instrument for measurement; the same applies to
+mutation, for the same reason.
+
+**Portable-tooling hazard list, for the gate note** — every one is a silent behaviour difference on the
+path between where this project is developed (darwin) and where it ships (linux): **`\b`, `-i`,
+`sort`, `grep -P`.** `sed 's/\bx\b/y/'` on BSD is the purest instance found: **the tool succeeded at
+doing nothing, and the test then reported exactly what a sound guard would have reported.** Both halves
+silent; the run indistinguishable from success.
+
+---
+
+### D-000.42 — "Redundant" is a third guard category, beside proven and forward
+
+*(mechanism: binding)*
+
+The vocabulary had two states: **proven** (a red-proof fires) and **forward guard with no available
+red-proof** ([[D-000.24]]). Story 2.5's finisher found a third and labelled it correctly: neutering its
+count check **reddens nothing**, because the check *is* exercised — but only **through another
+assertion**.
+
+| category | red-proof | independent teeth |
+|---|---|---|
+| **proven** | fires | yes |
+| **forward guard** (D-000.24) | not constructible | unknown |
+| **redundant** (this) | does not fire | **no — subsumed by another assertion** |
+
+It is **not unproven; it is redundant.** Labelling it so is honest, and — more importantly — **stops it
+being counted as coverage**, which is how a guard set comes to look larger than it is. Keep such
+checks if they are cheap belt-and-braces; never count them.
+
+---
+
+### DW-16 (direction ruled) — `pagemodel` carries glyph ids; CID allocation stays entirely in `internal/pdf`
+
+*(mechanism: binding for the direction; illustrative for the mechanism)*
+
+**The naming is the tell.** A **CID** is a PDF/CIDFont concept, and AD-5 is *"The page model knows
+nothing about PDF."* A **glyph id** is a font concept **any** renderer can resolve against the face. A
+PNG or SVG renderer can rasterise from (face, GID); it can do **nothing** with a CID whose
+disambiguating table lives on the PDF side. The extras branch is pure Identity-H CID-space
+management — an encoding concern that should never have reached a renderer-agnostic model.
+
+**Preferred over tagging the field**, because relocating removes the two-meanings problem **by
+construction**: a discriminator tag would make the ambiguity *legible* while keeping a PDF concept in
+the page model.
+
+**Not urgent** — nothing regressed, and AD-5's forcing function (a second renderer) is post-MVP. **The
+direction is ruled now so nothing further is built against the current shape.** If the relocation
+changes allocation order **it moves bytes**, in which case it takes its own commit under the same
+attributability discipline applied to 2.5a. **Owner**: whichever comes first of the next story touching
+`pagemodel`'s glyph representation, or Epic 5's first non-PDF renderer.
+
+---
+
+### D-2.4.2 (amended) — Leading maximises each axis independently; the constraint is the worst adjacent PAIR
+
+*(mechanism: binding)* — amends [[D-2.4.2]] the same day it was ruled. **The wrong quantity was
+maximised.**
+
+**The defect.** Between two baselines the space must hold **line N's descenders plus line N+1's
+ascenders**. The original rule took `max(A − D + gap)` over the chain — **the worst single face** —
+when the constraint is **the worst adjacent pair**:
+
+```
+worst pair = max(descent) + max(ascent) = 450 (Thai) + 1160 (SC) = 1610
+ruled      = max(A − D + gap)           = max(1362, 1511, 1448)  = 1511
+shortfall                                                          =   99
+```
+
+**Amended, and forced by D-2.4.2's own principle rather than a new one:**
+
+> **Leading = max(ascent) + max(|descent|) + max(lineGap), each maximised independently over the
+> declared chain.**
+
+*A chain declares what may appear; accommodate what may appear* — **applied per axis**, because ascent
+and descent are independent axes and the worst case takes the worst of each. The original form
+**implicitly assumed one face supplies both**, which is false on the shipped set: **Thai wins descent,
+SC wins ascent.** All three D-2.4.2 constraints still hold — content-independent, `hhea`-only,
+statable in `folio-format.md`.
+
+**The corrected vertical model is one rule with three maxima:**
+
+| span | value |
+|---|---|
+| top → first baseline | `max(A)` |
+| baseline → baseline | `max(A) + max(D) + max(gap)` |
+| last baseline → bottom | `max(D)` |
+
+**DN-1 falls out of the same correction: the first baseline uses `max(ascent)` = 1160.** It is no
+longer a separate judgment. That the two candidates **coincide only on the shipped set** is
+[[D-000.32]]'s fitted-to-the-sample hazard **one ruling away from where it was named**, and would have
+gone unnoticed until a chain whose advance-winner is not its tallest face.
+
+---
+
+### D-2.5a.1 — DN-3 folds into 2.5a: two symptoms of one defect, not two subjects
+
+*(mechanism: binding)*
+
+**This widens a scoped story, which was twice refused before. The difference is the granularity of the
+cause:**
+
+- **2.2's static switch vs 2.2's Thin fix** — **two different subjects** stacked in one movement.
+  Un-attributable. Refused.
+- **DW-15 and DN-3** — **two symptoms of one defect**: the vertical placement model uses **proxies**
+  (`fontSize`; worst-single-face) instead of accommodating the declared chain. Correcting one and not
+  the other ships an **internally inconsistent model** — the same objection raised against
+  `pdfY = flipY(..., run.FontSize)` in the first place.
+
+**The economics are decisive**: both move the same five goldens and both are upstream of the reading
+sign-off. Split, we pay two movements, two matrix passes, and — if the sign-off falls between them —
+**two human passes**. Together: one cause, one movement, one request.
+
+**State the scope difference honestly**: DW-15 shifts baselines **uniformly**; DN-3 changes **line
+height**, so **fewer lines fit a band and wrapping or overflow may shift.** Larger blast radius; check
+the fixtures for it explicitly rather than assuming. **Nothing else folds in** — the vertical model is
+the cause; multi-page headers are not.
+
+---
+
+### D-000.43 — When the concern is sequencing rather than divergence, fix the sequence, not the cadence
+
+*(mechanism: binding)*
+
+Story 2.5a declined the heavy-test override honestly against [[D-000.4]]'s criterion — same integer
+`ScaleRound`, same vendor entry points, no float, compressor or dependency — and then **correctly
+diagnosed its own counter-argument as being about sequencing, not divergence.**
+
+Its substitute (AC13): **the reading sign-off is not requested until the gate's four matrix legs agree
+on the new digest.** That composes with [[D-000.41]] rather than duplicating it — D-000.41 says *do not
+request while scheduled work may move the artifact*; AC13 adds *do not request until the legs agree on
+the digest.* **Together they protect the scarce human from both futures.**
+
+**And it is strictly better than the override**: an override buys a matrix run in-story at Docker cost;
+AC13 buys the same protection **for the thing that actually matters** — nobody is asked to judge bytes
+that might not reproduce — **at zero cost.**
+
+---
+
+### D-000.44 — A re-recording is a recording: D-000.22's step is owed every time, not only the first
+
+*(mechanism: binding)*
+
+**Measured**: of the five goldens 2.5a re-records, **only one** has a semantic check that can see the
+defect. **Three have none at all** — so [[D-000.22]] was recorded as discharged for fixtures that never
+had the step.
+
+D-000.22's timing clause is *"at first recording"*. **A re-recording is a recording** — it is precisely
+when the step is owed, and the story touching all five is the one that owes it. **2.5a adds semantic
+acceptance for every fixture it re-records.**
+
+**And the one that exists but is blind is the purest [[D-000.21]] instance yet**:
+`TestWrappedTextSemanticAcceptance` calls `lineAdvance`, compares it to a literal, then **computes the
+observed baselines and discards them.** It asserts on the **input** and throws away the **artifact** —
+while being named for semantic acceptance. Repair it to assert the computed baselines.
+
+---
+
+### D-000.45 — Assert the computed value from a declarative table, never a direction
+
+*(mechanism: binding)* — second instance; the first would have shipped a vacuously-false guard.
+
+**Roboto's ascent is 928 — below 1000** — so `max(ascent) − fontSize` is **negative** and its baseline
+moves **up**, while the three shipped Noto faces move **down**. **Any guard phrased *"the baseline sits
+lower than the font size implies"* is false on a real subject in the repository.**
+
+Same correction as `epics.md:751`'s `YOffset != 0`, which was **vacuously false** across every shipped
+face. **Twice now a directional phrasing would have shipped a guard that is false on real data** — so:
+**assert the computed value from a declarative per-subject table**, never a direction, never an
+inequality standing in for a value.
+
+---
+
+### D-000.46 — Dead code that documents the system incorrectly is worse than dead code
+
+*(mechanism: binding)*
+
+`render.go:463`'s `splitByFace` has **zero call sites in production or test**, while **six comments
+describe it as the live placement path** — and it computes placement on the **old** model.
+
+**Every reader who greps for placement finds it first.** It is not merely unused; it is a **false map**
+of the system, and it survives precisely because nothing fails when it is wrong. **Delete it or wire
+it — but never leave comments asserting a path that does not execute.**
+
+Companion to [[D-000.37]]: a stale *remedy* is executed by a human; a stale *description* is reasoned
+from by a human. Both are followed.
+
+---
+
+### D-000.47 — Enumerate a multi-site invariant once, declaratively, and have the check read the list
+
+*(mechanism: binding)*
+
+A golden's digest lives at **four sites**, discovered by measurement: the PDF, `expected.json`,
+`byte_neutrality_test.go`'s second literal (3 of its 5 entries move), and **two fixture READMEs**.
+
+**Four sites found by measurement are four sites a future re-record can miss.** Declare the list once
+and have the check read it — the same *derive-from-a-declarative-spec* move that fixed the per-face
+assertion set ([[D-000.23]]) and the gate-obligation count ([[D-2.5.1]]).
+
+And per [[D-000.37]], update `byte_neutrality_test.go`'s **"Do not update this literal"** message **in
+the same commit** — this story must update it, so a true guard now carries a remedy that forbids the
+correct action.
+
+---
+
+### D-000.34 (extended) — A fix can silently destroy a NEGATIVE control, not only a positive one
+
+*(mechanism: binding)* — unanticipated instance, found by Story 2.5a's developer applying D-000.34 to
+its own change.
+
+[[D-000.34]] says a test built on a bug **dies with the bug**, silently, because it goes on passing.
+Story 2.5a found the **mirror image**, which is harder to see:
+
+`TestLineAdvanceIsTheMaxOverTheDeclaredChain`'s **negative control** was the "Thai first" row, chosen
+precisely because it was *"the one order where (a) and (b) agree"*. **The amendment destroys that
+property** — 1610 now requires two faces — so the row **silently became a discriminating case.** The
+table would have been left with **its negative control gone and nobody told**, still green, still
+looking like a controlled experiment.
+
+**A positive control that dies stops catching regressions. A negative control that dies stops proving
+the test can distinguish anything at all** — and its death is invisible, because a control passing is
+what a control is supposed to do.
+
+**The obligation** *(binding)*: when a change alters the property a control was selected for, the
+control must be **re-selected and the reason re-stated** — not merely re-run. Story 2.5a's rebuild is
+the model: **two rival hypotheses**, controls moved to the **single-face** rows (where the two
+formulas still coincide), and **three vacuity guards**.
+
+**And check the whole touched set, not the one you noticed.** A control's justification is usually
+written once, in prose, at the moment it was chosen — so nothing in the build re-evaluates whether it
+still holds.
+
+---
+
+### D-000.48 — A correction sweep can introduce a fresh instance of the class it is correcting
+
+*(mechanism: binding)*
+
+**The instance.** Story 2.5a's AC8 comment sweep existed to fix stale citations. It **added**
+`render.go:359`'s reference to `TestVerticalModelErrorPathsThroughThePublicEntryPoint` — **a test that
+exists nowhere** (the real name is `...AreUnreachableThroughRender`). The sweep correcting stale
+citations introduced a stale citation.
+
+**Why this is not merely careless.** A sweep is written in one pass, at speed, over many sites, by
+someone holding the *intent* of each comment rather than checking each symbol. **The very conditions
+that make a sweep worth doing — breadth and momentum — are the ones that produce unverified
+citations.** So the hazard is structural, not attributable to inattention.
+
+**And an unresolvable citation is worse than none**, because it **reads as checkable**: a reader who
+sees a named test assumes someone could run it, and stops looking.
+
+**The obligation** *(binding)*: **a sweep that writes citations must verify every citation it writes
+resolves to a real declaration**, and report the swept list with its count — mechanically, not by
+reading. This is [[D-000.35]] (*name the symbol*) plus the [[D-2.2.4]]-correction precedent
+(*enumerate, never sample*) applied to the sweep's **output** rather than its input.
+
+**Companion finding, same layer.** The same story's D-000.45 guard was **correct** while its success
+message stated both directions **backwards** — *"2 sit lower … 16 sit higher"* — contradicting its own
+`Fatalf`. That is [[D-000.21]] **in the reporting layer**: the message was derived from the author's
+expectation rather than from the measured values. **Derive the narration from the same computed table
+the assertion uses**, so the two cannot disagree. A correct guard with an inverted message will be
+believed over the guard, because the message is what a human reads.
+
+**And a third, mechanically detectable**: `epic-2-boundary-gate.md` carried a **65-character** sha256
+— one character too many — as *the value a human is told the deferred matrix legs will compare*. A
+digest of the wrong length is checkable by shape alone; anything that records digests for human action
+should assert their length.
+
+
+---
+
+### D-2.5a.2 — Discharging D-000.48's sweep obligation found a second instance inside the same sweep
+
+*(mechanism: binding · filed by Story 2.5a's finisher · appends to, and does not amend, [[D-000.48]])*
+
+**What was asked.** [[D-000.48]] obliges *"a sweep that writes citations must verify every citation it
+writes resolves to a real declaration, and report the swept list with its count — mechanically, not
+by reading."* Story 2.5a's finisher discharged it.
+
+**What the discharge found.** The single instance D-000.48 was written about was **not the only one**.
+The same AC8 sweep also wrote `present == 0` and `maxUnits <= 0` into `vertical_model_test.go`'s doc
+comment and its success log as though they named symbols. `verticalModel`'s two error paths are
+spelled `len(metrics) == 0` and `units <= 0`; **there is no `maxUnits` anywhere in the module**. The
+names came from AC4's prose, where they are conditions rather than symbols, and were carried into
+code as if they were symbols.
+
+**Why it survived the review.** The reviewer read those two spellings inside a passage whose
+*judgment* it had independently verified and concurred with — declining the [[D-000.24]] forward-guard
+label. **A citation embedded in a conclusion the reader has just endorsed inherits that endorsement**,
+which is precisely the reading that a mechanical sweep does not perform.
+
+**The obligation** *(binding, sharpening D-000.48)*: the sweep must enumerate **symbol** citations,
+not only test names, and it must run over the **whole added-line population** — a citation is not
+exempt because the sentence containing it was found sound.
+
+**Reported, as D-000.48 requires**: 114 distinct citations swept across 1 799 added Go lines in 12
+files and 2 276 added document lines in 8 files, checked against 368 parsed `Test…` declarations.
+**109 resolve. 5 do not**: one is D-000.48's own instance (fixed), two are texts *quoting* that
+instance in order to condemn it ([[D-000.48]] itself, and the story's QA section) — one is
+`TestStory23aMovedNoGoldenDigest`, a deliberately deleted symbol cited only in the past tense, and
+one is this entry's own finding (fixed). A citation of something deliberately removed is a **record**,
+not a pointer, and must survive.
+
+### D-2.5a.3 — A finding's own suggested resolution is not authority over a re-measurement
+
+*(mechanism: binding · filed by Story 2.5a's finisher)*
+
+**The instance.** Story 2.5a's review raised a Nit that correction **C2** enumerated the `splitByFace`
+references incompletely, and its Suggested Resolution was to *"align C2's enumeration with DN-4's"*,
+DN-4 being described as *"the right one and matches the code"*. Re-measured rather than applied:
+`git grep -c splitByFace 17f5f7a -- folio-go` reports 11 matching lines across four files, one of
+which is the declaration's own `func` keyword. **There are ten references, not nine.** DN-4 counts
+`render.go`'s six as *"six production comments"* and silently drops
+`internal/fontset/fontset.go:576`. Both C2 and DN-4 were wrong, in opposite directions, and the
+resolution as written would have propagated the second error while fixing the first.
+
+**Why this is structural.** A reviewer proposing a fix names a **known-good source** to copy from,
+because that is cheaper than re-deriving. But the source's authority is inherited from the reviewer's
+attention, not established by it — and the whole reason the finding exists is that a count in this
+document was wrong. [[D-000.18]] already says *recompute, never transcribe*; this is that rule applied
+to the **remedy** rather than to the measurement.
+
+**The obligation** *(binding)*: when a finding's resolution says *"make X agree with Y"*, **measure Y**
+before copying it. Report the measurement and its counting rule, and if Y is also wrong, correct both
+and say so.
+
+**Related, same story, same shape.** The Delivery Log's gate table recorded *"compressor imports: 1,
+`internal/template/image.go`'s pre-existing `compress/zlib`"*. That file imports **only `fmt`**; its
+sole mention of `compress/zlib` is a comment stating that PNG bytes are carried through **without**
+it, which is [[D-1.8.1]]'s entire point. The true count under `folio-go/` outside `testdata/` is
+**zero**. Nobody flagged it, because a row asserting a *known, accepted, pre-existing* exception reads
+as already adjudicated. **An exception recorded as pre-existing is still a measurement**, and left
+standing this one would have read as carried risk **R4** being open when the module's design closes
+it.

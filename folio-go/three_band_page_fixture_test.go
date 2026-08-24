@@ -213,21 +213,38 @@ func TestThreeBandPagePartitionIsPinnedByValue(t *testing.T) {
 // internal/pdf places a baseline at
 //
 //	pdfX = marginLeft + run.X
-//	pdfY = flipY(pageHeight, marginTop, run.Y, run.FontSize)
-//	     = pageHeight - marginTop - run.Y - run.FontSize
+//	pdfY = flipY(pageHeight, marginTop, run.Y, run.BaselineOffset)
+//	     = pageHeight - marginTop - run.Y - run.BaselineOffset
 //
 // and run.Y is layout.PlaceInBand(bandOrigin, element.y) — a
-// translation. Working each one out, in millipoints, and then in the
+// translation.
+//
+// THE FOURTH TERM IS NO LONGER run.FontSize (Story 2.5a). It is the
+// ruled vertical model's first span: max(hhea ascent) over the
+// element's DECLARED chain, scaled to the point size. This document
+// declares ["Noto Sans"] alone, whose hhea ascent is 1069/1000 em, so
+// each size gets its own offset:
+//
+//	size  9 pt -> 1069 *  9 =  9621 mp
+//	size 12 pt -> 1069 * 12 = 12828 mp
+//	size  8 pt -> 1069 *  8 =  8552 mp
+//
+// THREE DISTINCT OFFSETS for the three sizes, which is what keeps the
+// "four distinct placements" assertion below non-vacuous after the
+// change (AC14 / D-000.34: a test built on a bug dies with the bug,
+// silently, because it goes on passing).
+//
+// Working each one out, in millipoints, and then in the
 // points-with-trimmed-zeros form appendLength emits:
 //
 //	e4  pageHeader  y=4    size 9   run.Y = 0      + 4000   =   4000
-//	    pdfY = 841890 - 30000 -   4000 -  9000 = 798890 -> "798.89"
+//	    pdfY = 841890 - 30000 -   4000 -  9621 = 798269 -> "798.269"
 //	e1  content     y=0    size 12  run.Y = 18000  + 0      =  18000
-//	    pdfY = 841890 - 30000 -  18000 - 12000 = 781890 -> "781.89"
+//	    pdfY = 841890 - 30000 -  18000 - 12828 = 781062 -> "781.062"
 //	e2  content     y=120  size 12  run.Y = 18000  + 120000 = 138000
-//	    pdfY = 841890 - 30000 - 138000 - 12000 = 661890 -> "661.89"
+//	    pdfY = 841890 - 30000 - 138000 - 12828 = 661062 -> "661.062"
 //	e3  pageFooter  y=6    size 8   run.Y = 745890 + 6000   = 751890
-//	    pdfY = 841890 - 30000 - 751890 -  8000 =  52000 -> "52"
+//	    pdfY = 841890 - 30000 - 751890 -  8552 =  51448 -> "51.448"
 //
 //	pdfX = 36000 + 0 = 36000 -> "36" for all four.
 //
@@ -241,10 +258,10 @@ var tbExpectedTm = []struct {
 	tm      string
 	text    string
 }{
-	{"e4", "pageHeader", "1 0 0 1 36 798.89 Tm", "HEADER BAND ONLY"},
-	{"e1", "content", "1 0 0 1 36 781.89 Tm", "CONTENT BAND FIRST ELEMENT"},
-	{"e2", "content", "1 0 0 1 36 661.89 Tm", "CONTENT BAND SECOND ELEMENT"},
-	{"e3", "pageFooter", "1 0 0 1 36 52 Tm", "FOOTER BAND ONLY"},
+	{"e4", "pageHeader", "1 0 0 1 36 798.269 Tm", "HEADER BAND ONLY"},
+	{"e1", "content", "1 0 0 1 36 781.062 Tm", "CONTENT BAND FIRST ELEMENT"},
+	{"e2", "content", "1 0 0 1 36 661.062 Tm", "CONTENT BAND SECOND ELEMENT"},
+	{"e3", "pageFooter", "1 0 0 1 36 51.448 Tm", "FOOTER BAND ONLY"},
 }
 
 // TestThreeBandPageSemanticAcceptance is AC7's machine-checkable

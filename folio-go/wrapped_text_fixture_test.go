@@ -101,16 +101,80 @@ func TestWrappedTextSemanticAcceptance(t *testing.T) {
 		t.Fatalf("the render occupies only %d baselines for %d elements — nothing wrapped, and this fixture is certifying an unwrapped document", len(ys), len(wrappedTextExpectedLines))
 	}
 
-	// The baselines are evenly spaced WITHIN an element by the ruled
-	// leading, and the leading is the chain's maximum: Noto Sans Thai's
-	// 1511/1000 em at 11 pt = 16,621 mp.
-	const wantAdvance = geom.Length(16621)
+	// (d) THE BASELINES THE ARTIFACT ACTUALLY CARRIES ARE EVENLY SPACED
+	//     WITHIN AN ELEMENT BY THE RULED ADVANCE.
+	//
+	// REPAIRED BY STORY 2.5a UNDER D-000.44. What stood here was the
+	// purest D-000.21 instance in the module: it called the production
+	// lineAdvance, compared the answer to a literal, and then — having
+	// already computed `ys`, the distinct baselines of the produced
+	// document, three statements above — USED ONLY THEIR COUNT AND
+	// THREW THE VALUES AWAY. It asserted on the INPUT while being named
+	// for semantic acceptance, and its own comment made a claim about
+	// the ARTIFACT ("the baselines are evenly spaced") that nothing
+	// checked against the artifact.
+	//
+	// The ruled advance (D-2.4.2 as AMENDED), hand-derived:
+	//
+	//	max(A)   = 1160 (Noto Sans SC)
+	//	max(|D|) =  450 (Noto Sans Thai)   <- a DIFFERENT face
+	//	max(gap) =    0
+	//	units    = 1160 + 450 + 0 = 1610
+	//	at 11 pt: 1610 * 11 = 17710 mp
+	//
+	// The SUPERSEDED rule — max(A - D + gap), the worst single face —
+	// gave 1511 * 11 = 16621, which is the literal that used to stand
+	// here. It is retained below as the hypothesis this assertion
+	// discriminates against.
+	const wantAdvance = geom.Length(17710)
+	const supersededAdvance = geom.Length(16621)
+
+	// NON-DEGENERACY PRECONDITION (D-000.33). "Evenly spaced" is
+	// satisfied TRIVIALLY by an element with one baseline, and by a
+	// document whose elements each have one. The spacing claim means
+	// nothing until at least one element contributes two consecutive
+	// baselines, so that is established first and the count of
+	// intervals actually compared is reported.
+	intervals := 0
+	base := 0
+	for _, id := range []string{"e1", "e2", "e3", "e4"} {
+		n := wrappedTextExpectedLines[id]
+		if base+n > len(ys) {
+			t.Fatalf("presence precondition: the render carries %d baselines, too few to cover %s's %d lines starting at index %d", len(ys), id, n, base)
+		}
+		// ys is sorted DESCENDING in pdfY, i.e. top of page first, so
+		// each successive line within an element is `advance` LOWER.
+		for i := base + 1; i < base+n; i++ {
+			gap := geom.Length(ys[i-1] - ys[i])
+			if gap == supersededAdvance {
+				t.Errorf("%s: the observed spacing between baselines %d and %d is %d mp, which is exactly max(hhea A - D + gap) over the chain — the SUPERSEDED worst-single-face rule. The amended rule maximises each axis independently: max(A)=1160 (Noto Sans SC) + max(|D|)=450 (Noto Sans Thai) = 1610 units = %d mp at 11 pt",
+					id, i-1, i, gap, wantAdvance)
+			} else if gap != wantAdvance {
+				t.Errorf("%s: the observed spacing between baselines %d and %d is %d mp, want the hand-derived %d mp (D-2.4.2 amended)", id, i-1, i, gap, wantAdvance)
+			}
+			intervals++
+		}
+		base += n
+	}
+	if intervals == 0 {
+		t.Fatal("vacuity: no element in this fixture contributed two consecutive baselines, so the spacing assertion above compared nothing (D-000.33)")
+	}
+
+	// THE PRODUCTION FUNCTION AGREES WITH WHAT THE ARTIFACT CARRIES.
+	//
+	// LABELLED REDUNDANT (D-000.42), NOT COUNTED AS COVERAGE. This
+	// comparison has no teeth that the artifact assertion above and
+	// TestVerticalModelArithmeticOverFabricatedMetrics do not already
+	// have: any change that moved lineAdvance would redden both of
+	// them first. It is kept as cheap belt-and-braces that ties the
+	// artifact back to the symbol that produced it — and it is
+	// explicitly NOT one of the checks this fixture claims as coverage.
 	got, err := lineAdvance([]string{"Noto Sans", "Noto Sans Thai", "Noto Sans SC"}, geom.Length(11000), testShippedFontSet(), newFontCache())
 	if err != nil {
 		t.Fatalf("lineAdvance: %v", err)
 	}
 	if got != wantAdvance {
-		t.Errorf("the fixture's leading is %d millipoints, want %d (max over the declared chain, D-2.4.2)", got, wantAdvance)
+		t.Errorf("REDUNDANT CHECK: the fixture's leading is %d millipoints, want %d (D-2.4.2 amended)", got, wantAdvance)
 	}
 
 	// (e) The declared page size and the embedded faces are what the
@@ -127,7 +191,7 @@ func TestWrappedTextSemanticAcceptance(t *testing.T) {
 	// (f) AC17's /ToUnicode section sizes.
 	assertToUnicodeSectionsUnderCap(t, b)
 
-	t.Logf("wrapped-text semantic acceptance: %d text runs across %d baselines %v, leading %d mp", len(runs), len(ys), ys, got)
+	t.Logf("wrapped-text semantic acceptance: %d text runs across %d baselines %v; %d OBSERVED inter-baseline intervals all equal the ruled %d mp (superseded rule would give %d)", len(runs), len(ys), ys, intervals, wantAdvance, supersededAdvance)
 }
 
 // TestWrappedTextLayoutProperties is AC15 (b), (c) and (d): the

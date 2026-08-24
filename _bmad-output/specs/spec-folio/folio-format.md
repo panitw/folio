@@ -250,28 +250,59 @@ bulk of the standard.
 **Kinsoku is not implemented.** A CJK line may begin with `，` or `。` and may end with an opening
 bracket. Fullwidth punctuation and fullwidth digits are not break candidates at all.
 
-### Line height
+### Vertical placement
 
-Consecutive baselines in a wrapped element sit a fixed distance apart. That distance is a function
-of the element's **declared font stack** and its font size, and of nothing else — in particular it
-does **not** depend on which characters happen to land on a given line. Adding one Chinese
-character to a paragraph never reflows it.
+Where an element's lines sit vertically is a function of the element's **declared font stack** and
+its font size, and of nothing else — in particular it does **not** depend on which characters happen
+to land on a given line. Adding one Chinese character to a paragraph never reflows it.
 
-The distance is the **largest** `ascent - descent + lineGap` among the faces of the declared stack,
-read from each face's `hhea` table and scaled to the font size.
+> **A stack declares what may appear in an element. Vertical placement must accommodate what may
+> appear — not what does appear.**
 
-> **A stack declares what may appear in an element. Leading must accommodate what may appear — not
-> what does appear.**
+"What does appear" is content-dependent, and content-dependent placement would make a box negotiate
+with its contents. "What may appear" is exactly the declared stack.
 
-"What does appear" is content-dependent, and content-dependent line height would make a box
-negotiate with its contents. "What may appear" is exactly the declared stack.
+**One rule, three spans, three maxima.** Write `A`, `D` and `gap` for a face's `hhea` ascent, the
+absolute value of its `hhea` descent, and its `hhea` lineGap, each read from the face's own `hhea`
+table and scaled to the font size. Then, over the faces of the declared stack:
+
+| span | distance |
+|---|---|
+| top of the element → **first** baseline | `max(A)` |
+| baseline → next baseline | `max(A) + max(D) + max(gap)` |
+| **last** baseline → bottom of the text | `max(D)` |
+
+**Each maximum is taken independently, over its own axis.** That is the whole of the rule and it is
+easy to get subtly wrong: the natural-looking `max(A - D + gap)` — the largest single face — is
+**not** the same quantity, and it is too small.
+
+The space between two baselines has to hold the **descenders of the line above** and the
+**ascenders of the line below**. Those are two different lines, and on a mixed stack they can resolve
+to two different faces, so the constraint is the worst **adjacent pair**, not the worst single face.
+On the shipped stack the two axes are won by different faces — Noto Sans Thai has the deepest
+descender (450/1000 em) and Noto Sans SC the tallest ascender (1160/1000 em):
+
+```
+worst pair       = max(A) + max(D) = 1160 + 450          = 1610
+largest one face = max(A - D + gap) = max(1362,1511,1448) = 1511
+```
+
+The single-face form is **99 units of the em short** — enough for a Thai line's below-vowels to
+touch the next line's ideograph ascenders, on the default stack. For a stack resolving to a **single**
+face the two forms are identical, since one face cannot fail to supply both axes.
+
+The first baseline is placed by `max(A)` for the same reason and by the same argument, asked about
+the ascent axis alone: the tallest thing that may appear on the first line must fit above it. It is
+**not** the point size. The two coincide only by accident, and they diverge in **both** directions —
+Noto Sans SC's ascent is 1160/em, so its first baseline sits *lower* than the point size implies,
+while a face whose `hhea` ascent is below its em sits *higher*.
 
 The cost is bounded by the author's own choice. A Latin-only element in a
-`["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]` stack gets about 11% taller lines than Noto Sans
-alone would need — but the author declared that stack, and an author who wants Latin metrics
-declares a Latin-only stack. **No element pays for a face its own stack does not name.**
+`["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]` stack gets taller lines than Noto Sans alone would
+need — but the author declared that stack, and an author who wants Latin metrics declares a
+Latin-only stack. **No element pays for a face its own stack does not name.**
 
-There is no `lineHeight` key. Line height is derived, not authored.
+There is no `lineHeight` key and no first-baseline key. Vertical placement is derived, not authored.
 
 ### Values that must never be split
 

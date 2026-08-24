@@ -55,6 +55,11 @@ development_status:
   2-3a-audit-the-vendor-boundary: done
   2-4-break-and-measure-lines-in-all-three-scripts: done
   2-5-compose-a-page-from-three-bands: done
+  # 2-5a inserted before 2.6 to discharge DW-15 (first baseline placed from font
+  # size vs inter-baseline spacing from hhea ascent). Must land BEFORE the Thai
+  # reading sign-off is recorded: it re-records shaped-text/expected.pdf, whose
+  # digest that sign-off binds to (D-000.26 refined).
+  2-5a-align-first-baseline-with-the-leading-model: done
   2-6-render-multi-page-documents-with-headers-and-footers-on-ever: backlog
   2-7-render-page-x-of-y: backlog
   2-8-clip-overflowing-content-and-say-so: backlog

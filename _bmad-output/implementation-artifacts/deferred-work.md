@@ -53,6 +53,104 @@ red-proving it the same indirect way, or not at all.
 
 ---
 
+### DW-15 — First-baseline placement and inter-baseline spacing use two different models — **FIXED**
+
+- **Raised at:** Story 2.5 (creator), ruled a defect by the lead at that story's DN-3.
+- **Owner was:** engineering lead to schedule; *must land BEFORE the Thai reading sign-off is recorded.*
+- **Closed by:** **Story 2.5a**, `2-5a-align-first-baseline-with-the-leading-model`, which exists for
+  no other purpose. Commit: this file's own commit (a commit cannot self-reference its own hash).
+- **Ends FIXED, not "partially addressed"** ([[D-000.29]]). **No open question is carried forward
+  under this number.**
+
+**The defect, as it was.** `internal/pdf`'s `buildTextContentStream` placed the first baseline with
+`pdfY = flipY(..., run.FontSize)` — from the **point size**. [[D-2.4.2]] derived inter-baseline
+spacing from the `hhea` metrics of the **declared chain**. So the *first* line was positioned on one
+model and *every subsequent* line spaced on another, and the two agreed only by coincidence.
+
+**Corrections to this entry's own text, measured at `17f5f7a` before the fix.** All three were wrong
+as written, and each would have misdirected the work:
+
+| this entry said | measured |
+|---|---|
+| the defect is at `internal/pdf/textdoc.go:730` | **`:689`**. `:730` is inside `appendShapedRun`, which places nothing. |
+| correcting it re-records **four** goldens | **FIVE.** The fifth is `fixtures/font-text/`. |
+| "a Thai or CJK chain diverges more than a Latin one" | True in magnitude, **incomplete in sign** — see below. |
+
+**THE SIGN, which this entry got wrong by omission and which is the finding most worth keeping.** The
+error is **not** a consistent downward drift. It is `max(hhea ascent) − 1000` units per em, and
+`hhea` ascent is not always above the em: Roboto-Regular's is **928**. So `fixtures/font-text/`'s
+baselines moved **UP** by 1.008 pt at 14 pt while every Noto-chain baseline moved **DOWN**. This is
+now [[D-000.45]], binding: **assert the computed value from a declarative table, never a direction.**
+A guard phrased *"the baseline sits lower than the font size implies"* is **false on a fixture that
+ships.**
+
+**PRE-FIX MEASUREMENT** ([[D-000.30]] — captured before any production file was edited, because the
+window in which it is constructible closes permanently). Read from the `hhea` table via
+`(*fontset.Font).LineMetrics()`, scaled to the 1000-unit em:
+
+| face | A | D | gap | A − D + gap |
+|---|---|---|---|---|
+| Noto Sans | 1069 | −293 | 0 | 1362 |
+| Noto Sans Thai | 1061 | **−450** | 0 | **1511** |
+| Noto Sans SC | **1160** | −288 | 0 | 1448 |
+| Roboto-Regular (test face) | **928** | −244 | 0 | 1172 |
+
+Per shipped chain and size, in millipoints — `now` is `run.FontSize`, `aligned` is
+`ScaleRound(max(A), size, 1000)`:
+
+| document · element | chain | size | now | aligned | Δ |
+|---|---|---|---|---|---|
+| `font-text` e1 | Roboto | 14 pt | 14 000 | 12 992 | **−1 008 (UP)** |
+| `font-text` e2 | Roboto | 9 pt | 9 000 | 8 352 | **−648 (UP)** |
+| `multi-script-fallback` e1 | Noto ×3 | 14 pt | 14 000 | 16 240 | +2 240 |
+| `shaped-text` e1…e7 | Noto ×3 | 16 pt | 16 000 | 18 560 | +2 560 |
+| `three-band-page` e1, e2 | Noto Sans | 12 pt | 12 000 | 12 828 | +828 |
+| `three-band-page` e4 | Noto Sans | 9 pt | 9 000 | 9 621 | +621 |
+| `three-band-page` e3 | Noto Sans | 8 pt | 8 000 | 8 552 | +552 |
+| `wrapped-text` e1…e4 | Noto ×3 | 11 pt | 11 000 | 12 760 | +1 760 |
+
+**THE RULING TAKEN, and why it was not a judgment in the end.** This entry's owning story raised DN-1
+— *whose* ascent places the first baseline — as a blocking choice between `max(ascent)` (1160) and
+the ascent of the face that won the advance maximisation (1061). [[D-2.4.2]] **(amended)** dissolved
+the question: the first span is the accommodate-what-may-appear argument asked about the ascent axis
+alone, so its answer is `max(A)` by the same reasoning the other spans use. That the two candidates
+coincided **on the shipped set only** is [[D-000.32]]'s fitted-to-the-sample hazard one ruling away
+from where it was named.
+
+**WHAT ELSE LANDED WITH IT, and why that is one cause rather than two** ([[D-2.5a.1]]). The story's
+DN-3 reported that D-2.4.2's original `max(A − D + gap)` maximises the **worst single face** when the
+constraint is the **worst adjacent pair** — a 99-unit shortfall on the shipped chain. That was ruled
+**the same defect, not a second subject**: both are the vertical model using a **proxy** instead of
+accommodating the declared chain. So D-2.4.2 was amended and both landed together:
+
+| span | value |
+|---|---|
+| top → first baseline | `max(A)` |
+| baseline → baseline | `max(A) + max(D) + max(gap)` |
+| last baseline → bottom | `max(D)` |
+
+**DN-3 therefore does NOT open a new DW entry.** It is fixed here. Neither does DN-4 (`splitByFace`,
+zero call sites, six comments calling it the live placement path): [[D-000.46]] ruled that dead code
+misdescribing the system is worse than dead code, and it was **deleted** with all nine of its
+references corrected.
+
+**Blast radius, measured rather than assumed.** The advance moves **only for a multi-face chain** —
+for a single present face `max(A)+max(D)+max(gap)` is identically `A − D + gap` — and only
+`wrapped-text` has multi-line elements on such a chain. Confirmed by mutation: reinstating the
+superseded advance rule reddens `wrapped-text` and **nothing else**. Wrapping itself cannot shift:
+`packLines` takes no vertical quantity and runs before the model is computed.
+
+**Five goldens re-recorded** as one attributable movement under AD-21/AD-22, each with a D-000.22
+semantic acceptance step read off the **new** artifact ([[D-000.44]]: a re-recording is a recording,
+and three of the five had no such step at all before this story).
+
+**The sequencing obligation was honoured.** The fix landed **before** the Thai reading sign-off was
+recorded, and Story 2.5a **did not** request it — see `epic-2-boundary-gate.md`. The Thai *break*
+sign-off is unaffected, and that is now **measured** rather than assumed: no break-related test moved.
+
+
+---
+
 ## Open
 
 ### DW-2 — The licence check's JS half: `folio-designer/`'s lockfile
@@ -487,40 +585,6 @@ with no effect on any document currently under the cap — but it **will move ev
 document that exceeds it**, so it wants to land with a deliberate re-record rather than as a drive-by.
 
 **Do not** "fix" this by capping the number of CIDs; the CID allocation is D-2.3.2 and is correct.
-
----
-
-### DW-15 — First-baseline placement and inter-baseline spacing use two different models
-
-**Owner:** engineering lead to schedule; **must land BEFORE the Thai reading sign-off is recorded.**
-**Raised at:** Story 2.5 (creator), ruled a defect by the lead at DN-3. **Deliberately not landed in 2.5.**
-
-**The inconsistency.** `internal/pdf/textdoc.go:730` places the first baseline with
-`pdfY = flipY(..., run.FontSize)` — i.e. from the **font size**. But [[D-2.4.2]] derives inter-baseline
-spacing from **`hhea` ascent − descent (+ lineGap), maximised over the declared chain**. So the *first*
-line is positioned on one model and *every subsequent* line spaced on another.
-
-**Why it is a defect and not a tolerable approximation.** The two models agree only by coincidence, and
-the symptom is the classic one: *"why does the first line sit differently from the rest?"* — asked
-months later, by someone with no reason to suspect two different formulas. It is also
-scale-dependent: the discrepancy grows with the gap between font size and the chain's maximum
-ascent, so a Thai or CJK chain diverges more than a Latin one.
-
-**Why it was not fixed in Story 2.5** *(this is the load-bearing part)*: correcting it **re-records
-four goldens**, and one of them is `fixtures/shaped-text/expected.pdf`, whose digest
-`5964aad0…c92e00f` is bound to a **pending human sign-off**. Landing it inside 2.5 would have moved a
-golden a human had been asked to examine, silently invalidating a request already in flight.
-
-**Sequencing obligation** *(binding, per [[D-000.26]] refined)*: **this fix lands before the Thai
-reading sign-off is recorded**, not after. The reading sign-off binds to the rendered image, so a
-baseline shift invalidates it and the human would be asked twice. **The scarce human is the
-constraint, not the code.** The Thai *break* sign-off is unaffected — it binds to the break-opportunity
-vector, which a uniform baseline shift does not touch.
-
-**On landing it**: re-record all four goldens as one intended versioned change under AD-21/AD-22, each
-with its D-000.22 semantic acceptance step — and per [[D-000.30]], capture the pre-fix measurement of
-the discrepancy **before** applying the fix, since that window closes permanently.
-
 
 ---
 

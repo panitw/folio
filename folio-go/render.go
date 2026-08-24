@@ -82,6 +82,21 @@ type textRunSource struct {
 	x, y     geom.Length
 	fontSize geom.Length
 
+	// baselineOffset is top-of-line -> baseline for this run: the ruled
+	// model's first span, max(hhea ascent) over the DECLARED chain,
+	// scaled to fontSize (D-2.4.2 as amended). It is a LAYOUT quantity
+	// and it is resolved here, in package folio, because AD-5 keeps
+	// placement decisions out of every renderer: internal/pdf must not
+	// re-derive it from faces[run.Face].
+	//
+	// It is identical for every run of one element — every face segment
+	// and every line — because it is a function of the chain and the
+	// size and NOT of what was drawn. Deriving it per-run from the
+	// resolved face would make it content-dependent, which AD-24 rules
+	// out for exactly the reason it rules it out for the advance:
+	// adding one CJK character would reflow the element.
+	baselineOffset geom.Length
+
 	// glyphs is the shaper's answer for text, in FONT UNITS and drawing
 	// order. clusterTexts is its per-glyph /ToUnicode source text
 	// (text.ClusterTexts), parallel to glyphs.
@@ -329,22 +344,28 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 			}
 			lines := packLines(segs, ops, totalRunes, fontSize, boxWidth)
 
-			// One leading for the element, from its DECLARED chain
-			// (D-2.4.2, ruled): computed once, outside the loop, because
-			// it is a function of the chain and the size and of nothing
-			// on any individual line.
-			var advance geom.Length
-			if len(lines) > 1 {
-				advance, serr = lineAdvance(chain, fontSize, fs, cache)
-				if serr != nil {
-					return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
-				}
+			// ONE vertical model for the element, from its DECLARED
+			// chain (D-2.4.2 as amended): computed once, outside the
+			// loop, from ONE walk of the chain, because every span of it
+			// is a function of the chain and the size and of nothing on
+			// any individual line.
+			//
+			// UNCONDITIONAL, where the superseded code computed the
+			// advance only when len(lines) > 1. The first-baseline
+			// offset is needed by EVERY element with at least one line,
+			// so this call now runs for single-line elements too — which
+			// widens the set of inputs that can reach verticalModel's two
+			// error paths. That widening is measured rather than assumed:
+			// see TestVerticalModelErrorPathsAreUnreachableThroughRender.
+			vm, serr := chainVerticalModel(chain, fontSize, fs, cache)
+			if serr != nil {
+				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 			}
 
 			elementY := layout.PlaceInBand(b.origin, el.Y)
 			for i, ln := range lines {
-				lineY := elementY + geom.Length(int64(i))*advance
-				runs = append(runs, positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize)...)
+				lineY := elementY + geom.Length(int64(i))*vm.Advance
+				runs = append(runs, positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize, vm.FirstBaseline)...)
 			}
 		}
 	}
@@ -499,7 +520,7 @@ func shapeSegments(chain []string, elementText string, fs FontSet, cache *fontCa
 // the glyphs the run carries — the same function the line breaker
 // decides with — so a run's drawn width and its contribution to the
 // cursor cannot disagree.
-func positionSegments(segs []faceSegment, from, to int, x, y, fontSize geom.Length) []textRunSource {
+func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baselineOffset geom.Length) []textRunSource {
 	runs := make([]textRunSource, 0, len(segs))
 	cursor := x
 	for _, s := range segs {
@@ -513,13 +534,14 @@ func positionSegments(segs []faceSegment, from, to int, x, y, fontSize geom.Leng
 		runeLo := maxInt(from, s.runeStart) - s.runeStart
 		runeHi := minInt(to, s.runeEnd) - s.runeStart
 		runs = append(runs, textRunSource{
-			face:         s.face,
-			text:         string([]rune(s.segText)[runeLo:runeHi]),
-			x:            cursor,
-			y:            y,
-			fontSize:     fontSize,
-			glyphs:       s.glyphs[lo:hi],
-			clusterTexts: s.clusterTexts[lo:hi],
+			face:           s.face,
+			text:           string([]rune(s.segText)[runeLo:runeHi]),
+			x:              cursor,
+			y:              y,
+			fontSize:       fontSize,
+			baselineOffset: baselineOffset,
+			glyphs:         s.glyphs[lo:hi],
+			clusterTexts:   s.clusterTexts[lo:hi],
 		})
 		cursor += geom.ScaleRound(geom.Length(s.advance1000(lo, hi)), int64(fontSize), 1000)
 	}
@@ -833,12 +855,13 @@ func buildShapedPDFRuns(
 		}
 
 		pdfRuns[i] = pagemodel.TextRun{
-			Face:       r.face,
-			Glyphs:     glyphs,
-			SourceText: r.text,
-			X:          r.x,
-			Y:          r.y,
-			FontSize:   r.fontSize,
+			Face:           r.face,
+			Glyphs:         glyphs,
+			SourceText:     r.text,
+			X:              r.x,
+			Y:              r.y,
+			FontSize:       r.fontSize,
+			BaselineOffset: r.baselineOffset,
 		}
 	}
 

@@ -664,16 +664,33 @@ func appendHex4(dst []byte, v uint16) []byte {
 // (AD-24's one-and-only inverter, ratified by D-1.8.10):
 //
 //	pdfX = marginLeft + run.X
-//	pdfY = flipY(pageHeight, marginTop, run.Y, run.FontSize)
+//	pdfY = flipY(pageHeight, marginTop, run.Y, run.BaselineOffset)
 //
-// The FontSize term places the baseline that far below the run's top.
-// That offset is derived from a different quantity than D-2.4.2's
-// inter-baseline leading, which is max(hhea ascent − descent + lineGap)
-// over the declared chain — a known, RECORDED defect (DW-15), not a
-// provisional stand-in and not this story's to change: moving it
-// re-records four goldens and would silently invalidate D-2.3.5's
-// pending human Thai reading sign-off, which is bound to
-// fixtures/shaped-text/expected.pdf's digest.
+// The fourth term places the baseline that far below the run's top, and
+// it is a CARRIED LAYOUT QUANTITY — pagemodel.TextRun.BaselineOffset,
+// resolved by package folio from the element's DECLARED font chain
+// before this package sees the page.
+//
+// IT IS NO LONGER run.FontSize, AND MUST NEVER BECOME SO AGAIN. That
+// was DW-15: the point size used as a proxy for an ascent it has no
+// relationship to, so the first baseline and D-2.4.2's inter-baseline
+// advance answered one geometric question from two unrelated sources
+// and agreed only by accident. Story 2.5a fixed it, re-recording five
+// goldens as one attributable movement.
+//
+// NOR MAY IT BE RE-DERIVED HERE FROM faces[run.Face]. Two reasons, and
+// both are structural rather than stylistic:
+//
+//   - AD-5. Placement is decided before a renderer sees it. A renderer
+//     computing a baseline is a renderer deciding layout.
+//   - AD-24. The offset is a function of the element's DECLARED chain,
+//     not of the face a particular run resolved to. Deriving it per-run
+//     from the resolved face would make it content-dependent — adding
+//     one CJK character would reflow the element.
+//
+// run.FontSize is still used, one line below, as the Tf operand. That
+// use is the actual font size in the content stream and is correct; it
+// is a DIFFERENT job that happens to have had the same value.
 func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) ([]byte, error) {
 	var c []byte
 	for _, run := range page.Runs {
@@ -686,7 +703,7 @@ func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) 
 		}
 
 		pdfX := page.MarginLeft + run.X
-		pdfY := flipY(page.Height, page.MarginTop, run.Y, run.FontSize)
+		pdfY := flipY(page.Height, page.MarginTop, run.Y, run.BaselineOffset)
 
 		body, berr := appendShapedRun(nil, run, face)
 		if berr != nil {

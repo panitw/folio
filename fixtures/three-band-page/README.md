@@ -70,7 +70,13 @@ survives **any monotone boundary function**. The three origins are additionally 
 increasing**, so a collapsed band fails rather than passing quietly.
 
 Each element's emitted content-stream Y is asserted against a hand-computed literal
-(`pdfY = 841890 - 30000 - runY - fontSize`): `798.89`, `781.89`, `661.89`, `52`.
+(`pdfY = 841890 - 30000 - runY - baselineOffset`): `798.269`, `781.062`, `661.062`, `51.448`.
+
+**The fourth term is the ruled vertical model's first span, not the point size** (Story 2.5a; DW-15
+fixed). It is `max(hhea ascent)` over the element's declared stack, scaled — for this document's
+`["Noto Sans"]` stack, `1069/1000 em`, giving `9621`, `12828` and `8552` mp at 9, 12 and 8 pt. Three
+sizes give **three distinct offsets**, which is what keeps the "four distinct placements" assertion
+non-vacuous after the change.
 
 ## What this document CANNOT express
 
@@ -80,8 +86,9 @@ Stated so nobody reads more into it than is there:
 - **Nothing about Thai, or any script judgment.** It is deliberately all-Latin and **creates no
   human sign-off obligation**. The Thai reading judgment is D-2.3.5's and is bound to
   `fixtures/shaped-text/`; the Thai break judgment is D-2.4.3's and is bound to the break vector.
-- **Nothing about shaping, breaking or leading.** Every element fits its box on one line; those are
-  Story 2.4's fixtures.
+- **Nothing about shaping, breaking or inter-baseline spacing.** Every element fits its box on one
+  line, so no *second* baseline exists here and the baseline-to-baseline span is unobservable; those
+  are Story 2.4's fixtures. This document *does* pin the **first**-baseline span, at three sizes.
 - **Nothing about overflow.** Content taller than its band still overflows visibly. Clipping and
   overflow diagnostics are Story 2.8.
 - **Nothing about images, bindings or a second face.** One face, four literal strings, no assets.
@@ -122,6 +129,6 @@ target and is not four-target agreement; nothing here claims it is.
 
 ```
 recorded on   darwin/arm64, go1.26.0
-sha256        2315855a9038d57127a1378e5aa48fa6b3dbfb1e57fc9eef939d1351ada6d04f
-bytes         54445
+sha256        746efcbcfb5be30a06caaaefae25e3eaba1962c3fa47a74da10af6d0885372bf
+bytes         54452
 ```

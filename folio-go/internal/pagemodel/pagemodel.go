@@ -67,6 +67,38 @@ type TextRun struct {
 
 	X, Y     geom.Length
 	FontSize geom.Length
+
+	// BaselineOffset is the distance DOWNWARD from this run's top-left
+	// corner (X/Y above) to its BASELINE — the ruled vertical model's
+	// first span: max(hhea ascent) over the element's DECLARED font
+	// chain, scaled to FontSize (D-2.4.2 as amended).
+	//
+	// WHY IT IS CARRIED HERE RATHER THAN DERIVED BY A RENDERER. It is a
+	// LAYOUT quantity, and under AD-5 the page model is the finished
+	// description of a laid-out page: a renderer that computed its own
+	// baseline would be deciding placement. internal/layout and package
+	// folio resolve it from the chain before a value of this type
+	// exists, exactly as they already resolve the band origin into X/Y.
+	//
+	// WHY IT IS NOT DERIVABLE FROM Face. It is a function of the
+	// DECLARED CHAIN, not of the face this particular run resolved to,
+	// so every run of one element carries the SAME value even when the
+	// runs sit on different faces and different lines. A renderer
+	// deriving it from its own resolved face would make it
+	// content-dependent — adding one CJK character would reflow the
+	// element — which is what AD-24's "boxes are absolute, and nothing
+	// negotiates" rules out.
+	//
+	// WHY IT IS NOT FontSize. It used to be, by omission rather than by
+	// choice: internal/pdf placed the baseline FontSize below the top,
+	// using the point size as a proxy for an ascent it has no
+	// relationship to (DW-15, fixed by Story 2.5a). The two agree only
+	// by accident. Measured on the shipped faces, max(hhea ascent) is
+	// 1069/1061/1160 per em for the three Noto faces and 928 for the
+	// Roboto test face — so the old proxy erred DOWNWARD for the first
+	// three and UPWARD for the fourth. It has no consistent direction,
+	// and nothing may assert one (D-000.45).
+	BaselineOffset geom.Length
 }
 
 // ShapedGlyph is one glyph of a shaped run: its identifier within the

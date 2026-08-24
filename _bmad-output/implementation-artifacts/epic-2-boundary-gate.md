@@ -144,3 +144,83 @@ still runs: two guards, two mechanisms, one invariant.**
 `thai-signoff.json` is still absent. **The gate owes exactly what it owed before: the four-target
 matrix legs, and D-2.3.5's Thai sign-off.** No fixture was re-recorded and no golden digest moved —
 including `fixtures/shaped-text`'s `5964aad0…92e00f`, which the pending Thai sign-off is bound to.
+
+---
+
+## Story 2.5a — the vertical model corrected; five goldens re-recorded; **the sign-off is HELD** (appended, not overwriting)
+
+### 1. THE ITEM THAT PROTECTS A HUMAN — read this one first
+
+**`fixtures/shaped-text/expected.pdf`'s digest MOVED.** It was
+`5964aad0e696010c6e3f34a48d0775af6ae527a6cbe2f5c6319158f43c92e00f` and is now
+`6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370`.
+
+D-2.3.5's Thai **reading** sign-off binds to those bytes. **It had not been requested, and this story
+did not request it** — that is the whole reason this story exists as its own story rather than as a
+paragraph inside 2.6 ([[D-000.41]], which names this story by key). `thai-signoff.json` is still
+absent and `TestShapedTextThaiSemanticSignOffIsRecorded` is still deliberately red.
+
+**THE CONDITION FOR RELEASING THE REQUEST, binding on whoever sends it ([[D-000.43]]):**
+
+> The reading sign-off is requested only once **both** hold:
+>
+> 1. **No scheduled work is known to move `fixtures/shaped-text/expected.pdf` again** (D-000.41), and
+> 2. **the gate's four matrix legs have RUN and AGREED on the new digest** above.
+>
+> Condition 2 exists because a reader must never be asked to certify bytes that a later leg proves
+> target-dependent. It composes with condition 1 rather than duplicating it: D-000.41 protects
+> against a *future story* moving the artifact, condition 2 against the artifact *not reproducing*.
+> Together they protect the scarce human from both futures, at zero cost — which is why the D-000.4
+> per-story matrix override was **declined** rather than taken. The concern was sequencing, not
+> divergence, and the sequence is what was fixed.
+
+**HAND-OFF, stated here so it is not lost between two story files:** **Story 2.6's creator carries
+D-000.41's own obligation** — measure whether 2.6 moves any sign-off-pending golden **before** any
+request is sent.
+
+### 2. The Epic 2 gate owes the same FOUR things — no fifth. Each one's fate:
+
+| obligation | what Story 2.5a did to it |
+|---|---|
+| **the four-target matrix legs** | **Count unchanged; CONTENT changed.** 5 of the 7 registered `matrixDocuments` now compare against new `expected.json` digests, which the harness picks up automatically via `fixtureRelPath`. Nothing to edit, and nothing was edited. |
+| **D-2.3.5's Thai READING sign-off** | **Still outstanding, now bound to DIFFERENT BYTES** (item 1). Not discharged, not weakened, not re-scoped. |
+| **D-2.4.3's Thai BREAK sign-off** | **Untouched, and MEASURED so.** No break-related test moved: `fixtures/expected-breaks/` and `fixtures/thai-break-corpus/` are byte-unchanged and every break test stayed green. D-000.26 (refined)'s claim that the break judgment binds to the break-opportunity vector, which a baseline shift does not touch, is now **confirmed rather than assumed**. |
+| **`three-band-page`'s deferred matrix legs** | **Still deferred to the gate**, still declined under D-000.4's criterion. They will compare the **new** digest `746efcbcfb5be30a06caaaefae25e3eaba1962c3fa47a74da10af6d0885372bf`. |
+
+**No fifth obligation was added.** `declaredEpic2GateObligations` is byte-unchanged and
+`TestEpic2GateObligationsMatchTheDeclaredSet` passes with a 7-of-7 witness. The tests this story
+added are ordinary tests, not `//go:build matrix` files, and no new document was registered in
+`matrixDocuments`.
+
+### 3. Heavy tests: the override was DECLINED, and the legs were NOT run
+
+Stated plainly because the alternative is a reader assuming otherwise: **this story did not run the
+four-target matrix legs.** D-000.4's criterion is *a new source of cross-target divergence* — float
+arithmetic, a vendor call, a compressor, a new dependency — **not a moved golden**. The new
+arithmetic is `geom.ScaleRound` on `int64`, the same integer function in the same package that
+`lineAdvance` has used since Story 2.4; the vendor entry points touched are a **subset** of those
+already touched; `go list -m all` is still exactly two modules; `no-float-typed-value` reports zero.
+`matrix_test.go`'s `requireThreeBandPageUsesAllThreeBands` was **compile-checked** under
+`go vet -tags matrix` and its band-boundary thresholds re-verified by hand against the new baselines
+— but it was **not executed**.
+
+### 4. A guard whose remedy forbade the correct action, corrected in the same commit
+
+`byte_neutrality_test.go`'s digest tripwire told its reader, verbatim: *"Do not update this literal
+to make the test pass."* Story 2.5a **had to** update three of those literals. So a **true** guard
+was carrying a remedy that **forbade the correct action** — [[D-000.37]]: a tripwire's failure
+message is executed by a human. The message now names both authorised movements (2.3a's
+byte-neutrality premise, 2.5a's re-record) and keeps the prohibition, restated as the rule it always
+was rather than as one story's premise.
+
+### 5. A golden's digest lives at FOUR sites, and that is now a checked property
+
+Found by measurement, not inspection: the PDF, `expected.json`, `byte_neutrality_test.go`'s
+independent second literal, and **two fixture READMEs** (which also quote the byte COUNT — a fifth
+thing that goes stale). Per [[D-000.47]] the list is now **declared once**
+(`goldenDigestRecord`) and the check **reads it**, including a completeness half that scans for each
+digest value and fails on any **undeclared** site. That guard caught a real gap on its first run.
+
+**Owner-visible consequence:** the second-literal discipline now covers **all seven** fixtures, where
+before it covered five — `three-band-page` and `wrapped-text` had **no** independent second copy of
+their digest at all.

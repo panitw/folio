@@ -44,9 +44,23 @@ proving anything about the declaration.
   test pass. Every semantic property — line counts, per-line widths against the box, no boundary
   inside a Thai cluster, no boundary inside a declared span, the embedded faces, the `/ToUnicode`
   section sizes — is asserted at recording and none of it is deferrable (D-000.22, D-2.3.5).
-- **The leading is welded in.** Line-to-line advance is the maximum `ascent - descent + lineGap` over
-  the *declared* font stack (D-2.4.2): 1511/1000 em from Noto Sans Thai, 16,621 mp at 11 pt. Changing
-  that rule re-records this fixture and every one recorded after it.
+- **The vertical model is welded in.** Both spans come from the *declared* font stack, each axis
+  maximised **independently** (D-2.4.2 as **amended**, Story 2.5a):
+
+  | span | rule | this fixture, at 11 pt |
+  |---|---|---|
+  | top → first baseline | `max(A)` | `1160/1000 em` (Noto Sans SC) → **12,760 mp** |
+  | baseline → baseline | `max(A) + max(D) + max(gap)` | `1160 + 450 + 0 = 1610` → **17,710 mp** |
+
+  The superseded form — `max(ascent - descent + lineGap)`, the largest *single* face — gave 1511/em
+  and 16,621 mp, **99 units per em short**, because it assumed one face supplies both axes when Noto
+  Sans Thai wins the descent (450) and Noto Sans SC the ascent (1160). Changing that rule re-records
+  this fixture and every one recorded after it.
+
+  **This is the ONLY fixture in the repository on which the baseline-to-baseline span is observable
+  at all** — it is the only one with a multi-line element on a multi-face stack, and for a
+  single-face stack the amended and superseded forms are identical. Measured by mutation: reinstating
+  the superseded rule reddens this fixture and nothing else.
 - `input.folio` is kept byte-identical to `folio-go/wrapped_text_template.go`'s
   `wrappedTextTemplateJSON` by hand, as `font-text` and `multi-script-fallback` already are.
 
@@ -57,8 +71,8 @@ Registered in `matrixDocuments` **and** in `.github/workflows/matrix.yml`, and �
 matrix override ("line breaking feeds every measurement"). All four targets agree:
 
 ```
-darwin/arm64   3845da37ae198beae3d3ef98211678b02a397a87336cea025e2e8286a712288e  72743 bytes
-linux/amd64    3845da37ae198beae3d3ef98211678b02a397a87336cea025e2e8286a712288e  72743 bytes
-linux/arm64    3845da37ae198beae3d3ef98211678b02a397a87336cea025e2e8286a712288e  72743 bytes
-js/wasm        3845da37ae198beae3d3ef98211678b02a397a87336cea025e2e8286a712288e  72743 bytes
+darwin/arm64   277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
+linux/amd64    277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
+linux/arm64    277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
+js/wasm        277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
 ```
