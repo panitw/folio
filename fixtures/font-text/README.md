@@ -78,3 +78,72 @@ distinguishable from one that only moves the *tag*.
 The "Measured, at record time" facts above (`head.created`/`head.modified`, the PyMuPDF text
 extraction) did not need re-measurement: the program bytes did not move, only its tag and the
 consequently-derived `/ID`.
+
+---
+
+## Re-recorded at Story 2.3 (AD-22 versioned change) — and this fixture is now an OBSERVING fixture
+
+Story 2.3 put the typeface's own OpenType layout rules in charge of the render. This fixture's
+bytes moved as a result, and the move **retires a regression rather than accepting one**.
+
+### What changed, and why it is a fix
+
+Story 2.3's F3 recorded this fixture as *blind to shaping*. It is not, and the way that
+measurement misled is worth keeping on the page: **F3 measured the string `"Hello"` against a
+shipped Noto face**, while this fixture renders `"Hello, World!"` and `"Page footer 0123456789"`
+through `folio-go/testdata/fonts/Roboto-Regular.ttf` at `unitsPerEm` 2048 — a different string
+*and* a different face. Roboto's `GPOS` kerns two pairs in that text, so the **previous bytes
+recorded UNKERNED output**: two `Tj` operators, no `TJ`, 22,299 bytes. The new bytes are 22,310,
+with two `TJ` arrays and zero `Tj`.
+
+| run | glyph | `hmtx` advance | shaped advance | delta (font units) | TJ adjustment (1000-em) |
+|---|---|---|---|---|---|
+| `Hello, World!` | `W`, gid 59, index 7 | 1817 | **1786** | −31 | **15** |
+| `Page footer 0123456789` | `P`, gid 52, index 0 | 1292 | **1281** | −11 | **6** |
+
+Scaling is `geom.ScaleRound` to the PDF's 1000-unit em: `887 − 872 = 15` and `631 − 625 = 6`.
+
+### Provenance: cross-checked against the reference implementation before re-recording
+
+The kerning was confirmed against **HarfBuzz**, not against a second port of the same lineage — a
+**one-time offline reference run, hand-checked, never a build, test or runtime dependency**
+(AD-25; the same precedent Story 1.1 set with `qpdf --check`). The module graph is unchanged and
+`TestModuleGraphAllowlist` is untouched.
+
+**Tool version:** `hb-shape (HarfBuzz) 14.2.0`
+
+**Exact invocations, verbatim, from the repository root:**
+
+```
+hb-shape --no-glyph-names folio-go/testdata/fonts/Roboto-Regular.ttf "Hello, World!"
+[44=0+1460|73=1+1085|80=2+497|80=3+497|83=4+1168|16=5+402|4=6+507|59=7+1786|83=8+1168|86=9+693|80=10+497|72=11+1155|5=12+527]
+
+hb-shape --no-glyph-names folio-go/testdata/fonts/Roboto-Regular.ttf "Page footer 0123456789"
+[52=0+1281|69=1+1114|75=2+1149|73=3+1085|4=4+507|74=5+711|83=6+1168|83=7+1168|88=8+669|73=9+1085|86=10+693|4=11+507|20=12+1150|21=13+1150|22=14+1150|23=15+1150|24=16+1150|25=17+1150|26=18+1150|27=19+1150|28=20+1150|29=21+1150]
+```
+
+HarfBuzz reports `1786` for `W` and `1281` for `P` — the kerned advances — agreeing with
+`textshape` value for value.
+
+### This fixture has moved lists
+
+`fixtures/font-text/` is no longer blind to shaping. It **observes** it, and its guard says so in
+values rather than only in a digest: `TestRenderMatchesFontTextGoldenFixture` asserts the operator
+is `TJ` (never a bare `Tj`) **and asserts the adjustments `15` and `6` by value**.
+
+That is deliberate, and it is the part to preserve if this fixture is ever touched again. A change
+that silently loses kerning produces a **hash** mismatch, and the cheapest available response to a
+hash mismatch is to re-record it. Naming the expected adjustments makes re-recording a kerning
+regression impossible without **deleting an assertion** — which is visible in a diff, where a
+changed digest is not (D-000.22).
+
+The fixtures that genuinely **cannot** observe Story 2.3 are `minimal-rect/` (fontless),
+`image-embed/` (no text) and `multi-script-fallback/` (measured: `"Ada ก 汉"` shapes to itself on
+all three shipped faces). All three are byte-identical across this story, and
+`TestShapedTextFixtureObservabilityRedProof` asserts `multi-script-fallback/`'s blindness directly
+— it is the red-proof that gives `fixtures/shaped-text/`'s observability claim its meaning.
+
+### If this hash goes red
+
+Unchanged from above: under AD-21/AD-22 it is a **defect until proven to be an intended, versioned
+change**. Do not regenerate the fixture to make a test pass.

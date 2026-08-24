@@ -750,11 +750,67 @@ So that my customers' names are not merely present but correct.
 **Given** Thai text containing vowels and tone marks
 **When** it is shaped
 **Then** marks are positioned by `GPOS` mark-to-base positioning
-**And** output is cross-validated against `go-text/typesetting` for the same input
+**And** output is cross-validated against an independent reference implementation for the same input
+
+> **AMENDED IN DEVELOPMENT, Story 2.3 (clause 1: D-000.24 · clause 2: D-2.3.1).** Two clauses above
+> were written before Stories 2.1 and 2.2 landed and were measurably wrong as stated.
+>
+> *(Citation corrected by Story 2.3's finisher. This block previously cited "D-2.3.2, D-2.3.3".
+> **D-2.3.2** is the `/ToUnicode` CID-allocation ruling and governs neither clause; **D-2.3.3** is
+> titled "`epics.md:756` is weak, not false, and is **NOT** amended" — a ruling whose entire content
+> is a refusal to amend, offered as the authority for an amendment. The two blocks' citations were
+> effectively swapped. D-000.6 requires an amendment to name its authorising ruling, and a citation
+> that reads as support and inverts on inspection is the citation-integrity analogue of the false
+> credit closed in `fixtures/shaped-text/README.md`: both point a reader at evidence that says the
+> opposite of what they were told it says.)*
+>
+> **1. "marks are positioned by `GPOS` mark-to-base positioning" is true but is not the
+> observable.** Measured across all three shipped faces: `GlyphPos.YOffset` is **0 for every glyph
+> of every sample**. What actually moves is a **horizontal** offset plus a **`GSUB` substitution** —
+> Thai's lowered mark forms. An acceptance criterion phrased as *"assert some mark has a non-zero
+> `YOffset`"* is vacuously false and would block a correct implementation; one phrased as *"assert
+> a non-zero `XOffset`"* guards only the field that happens to move in these three faces, and a
+> fourth face positioning vertically sails past it. The story asserts **all five fields**
+> (`GlyphID`, `Cluster`, `XAdvance`, `XOffset`, `YOffset`) for **every glyph of every row** against
+> a declarative frozen table, with `YOffset` documented as a **forward guard with no available
+> red-proof** rather than credited with one it does not have.
+>
+> **2. `go-text/typesetting` is not the oracle, and would have been a weak one.**
+> `gomod_test.go`'s `wantModuleGraph` asserts `go list -m all` equals exactly two modules, and
+> `go list -m all` includes test-only dependencies — so adding it fails a committed guard whose
+> purpose is to make a new module a conscious act (D-1.5.1). **`epics.md` predates that guard.**
+> Independently of the guard: `textshape`'s README credits `benoitkugler/textlayout` as its
+> inspiration and `go-text/typesetting` descends from the same code, so two ports with a shared
+> ancestor agreeing is the vacuous-citation shape — if both would make the same mistake, the
+> agreement predicts the same observation either way.
+>
+> The oracle is **HarfBuzz itself** (`hb-shape` 14.2.0), the reference implementation, run against
+> **folio's** corpus as a one-time offline reference run, hand-checked and frozen at
+> `fixtures/shaped-text/harfbuzz-oracle.json` — **no new module, `wantModuleGraph` untouched**
+> (AD-25; Story 1.1's `qpdf --check` precedent). Sixteen rows, all five fields per glyph, agreeing
+> value for value.
 
 **Given** the same text shaped in two separate processes
 **When** the resulting glyph runs are compared
 **Then** glyph ids and positions are byte-identical
+
+> **CLARIFIED IN DEVELOPMENT, Story 2.3 (D-2.3.3).** *(Citation corrected by Story 2.3's finisher;
+> this block previously cited D-2.3.1, the HarfBuzz oracle ruling, which governs `:753` and not this
+> clause. D-2.3.3 is the ruling on this clause, and note what it licenses: it holds `:756` to be
+> **weak, not false**, so this is a clarifying note appended beside the clause and **not** a D-000.6
+> amendment — the clause text itself is untouched.)*
+>
+> Read as a property of the *intermediate glyph
+> buffer*, this is a property of the **vendor**, not of folio, and it was already true at Story
+> 2.3's baseline before any shaping code existed — near-vacuous as an acceptance criterion.
+> Measured anyway and recorded: five separate process invocations over the same inputs produced
+> **one distinct output digest, 5/5**.
+>
+> The artifact folio actually sells is **the rendered PDF**, so that is where the criterion is
+> enforced — by D-000.4's four-target byte-identity matrix, which now covers
+> `fixtures/shaped-text/` as its fifth registered document. The `js/wasm` and `CGO_ENABLED=0`
+> clause above is likewise kept as a **regression** guard and labelled as one: it too was already
+> true at baseline, so it is never evidence that this story landed.
 
 ### Story 2.4: Break and measure lines in all three scripts
 

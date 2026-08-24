@@ -5398,3 +5398,418 @@ folio produces — to satisfy a clause PDF's own embedding model works around.
   belt-and-braces only: a face defaulting to `Light`, `ExtraLight` or `Black` sails past it. The
   positive assertions — exact family, `name[2] == "Regular"`, `name[6]` ending `-Regular`,
   `usWeightClass == 400` — are the guard.
+---
+
+### D-000.24 — "Forward guard with no available red-proof" is a named, permitted category
+
+*(mechanism: binding)*
+
+**The rule.** A guard whose red-proof is **not currently constructible** is labelled as such —
+explicitly, in the assertion's own text — and is **never credited with a red-proof it does not have.**
+
+**Why it needs to be a named category rather than a judgement call.** Until now the project's
+vocabulary had two states: *guarded* (with a red-proof) and *unguarded*. That forces a false choice
+whenever a property is worth asserting but cannot currently be made to fail — and the pressure is
+always toward the dishonest option, because "unguarded" reads as a gap and "guarded" reads as done.
+
+**A guard credited with a red-proof it does not have is worse than one openly labelled unproven**,
+because the label tells the next reader **where to look**. A false credit tells them the opposite.
+
+**The instance that named it.** Story 2.3's `YOffset` assertion. `epics.md:751` names GPOS
+mark-to-base as Thai's mechanism, but `YOffset` measures **0 for every glyph of every sample across
+all three shipped faces** — an AC phrased `assert YOffset != 0` would be **vacuously false and would
+block a correct implementation.** The real mechanism for `ปั` is **GSUB selecting a lowered mark
+form** (`uni0E49.small`), with GPOS active only **horizontally** (`@-29,0`). So the assertion is worth
+keeping as a forward guard against a future face that does use vertical positioning — and there is no
+way to red-prove it today.
+
+**Do not manufacture a red-proof to fill the gap**, and do not weaken the assertions around it to
+match its status. Story 2.3 asserts all five position fields from a declarative table; only `YOffset`
+carries the label.
+
+---
+
+### D-2.3.1 — Cross-validate shaping against HarfBuzz itself, as a one-time offline oracle
+
+*(mechanism: binding)* — resolves D-2.3-Q2; **amends `epics.md:753` under D-000.6.**
+
+**Why the mandated library is out.** `epics.md:753` mandates cross-validation against
+`go-text/typesetting`. It is **unimplementable**: `gomod_test.go:59`'s `wantModuleGraph` asserts
+`go list -m all` equals exactly two modules, and that includes test dependencies.
+
+**And it would have been weak evidence even if possible.** textshape's `README.md:5` says *"The
+shaping logic is a **port of HarfBuzz**"*, and `:125` credits *"[textlayout] — Earlier Go HarfBuzz
+port that **inspired this implementation**"*. The lineage is **HarfBuzz → textlayout → both siblings**.
+Two implementations descended from one source agreeing tells you far less than the AC's phrasing
+implies — it mostly re-measures their common ancestor.
+
+**Also rejected: textshape's own `harfbuzz-tests/` corpus.** Better than a sibling comparison, and
+still weaker than it looks — **a vendor's test corpus is curated by the vendor and selected to pass.**
+
+**Ruled: run `hb-shape` against *our* corpus, once, offline, and freeze the expectations as a
+committed fixture.** `hb-shape` 14.2.0 is present at `/opt/homebrew/bin/hb-shape`. Two precedents make
+this the established shape here rather than an invention:
+
+- **Story 1.1's `qpdf --check`** — an external CLI used as an independent oracle *specifically* to
+  avoid a module dependency (AC2). Identical situation.
+- **AD-25, verbatim**: *"whose provenance may be a **one-time offline reference run, hand-checked —
+  never a runtime dependency**."* Exactly this, applied to shaping instead of Thai breaking.
+
+No module dependency, no runtime dependency, `wantModuleGraph` untouched, and the oracle is **the
+reference implementation** rather than a cousin of the thing under test. The `hb-shape` version and
+the **exact invocation, verbatim** go into the fixture's provenance.
+
+**The amendment** *(mechanism: binding)*: `epics.md:753` names a **library**; amend it to name the
+**outcome** — cross-validation against an independent reference implementation. **State the invariant,
+not the mechanism**; a clause naming a mechanism breaks when the mechanism moves.
+
+---
+
+### D-2.3.2 — `/ToUnicode` allocates CIDs per (GID, Unicode-context), not per GID
+
+*(mechanism: binding)* — resolves D-2.3-Q1.
+
+**The round-trip framing is confirmed**: assert that text **extracts back to the original string**,
+never that "every CID has an entry" — the latter is satisfiable by a map that is wrong in every entry.
+
+**The collision the original recommendation missed.** `/ToUnicode` maps **CID → Unicode**, but the
+correct answer is **context-dependent**, and the worst case is Thai and is already in our corpus.
+Measured with `hb-shape` 14.2.0 against the shipped face:
+
+```
+น้ำ  →  [uni0E19 | uni0E4D | uni0E49.small@-29,0 | uni0E32]      3 runes → 4 glyphs
+า    →  [uni0E32]                                                the SAME glyph, standalone
+U+0E33 NFD → U+0E33            SARA AM has NO canonical decomposition
+NFC(NIKHAHIT + SARA AA) → stays decomposed; nothing recomposes it
+```
+
+SARA AM (U+0E33) decomposes during shaping into NIKHAHIT + **SARA AA (U+0E32)** — and SARA AA also
+occurs as an ordinary standalone character. So one glyph needs two different answers:
+
+- map the cluster tail to **empty** → every standalone `า` in the document extracts as **nothing**;
+- map it to **U+0E32** → `น้ำ` extracts as the decomposed sequence, which **does not round-trip**.
+  Thai SARA AM has no canonical decomposition, so no normalisation recomposes it and **search for the
+  word fails**.
+
+**One CID cannot carry both answers.** Ruled fix, cheap and requiring no ActualText machinery:
+**allocate CIDs per (GID, Unicode-context) rather than per GID.** `CIDToGIDMap` is ours, so two CIDs
+may point at the **same GID** carrying different `/ToUnicode` entries — no glyph duplication, only CID
+space. Anything that assumes CID↔GID is 1:1, or that inverts the map, must be checked.
+
+**The corpus obligation is the load-bearing half** *(mechanism: binding)*: the fixture must contain
+**both `น้ำ` and a standalone `า` in the same document**, asserting both extract correctly. Without
+that pairing, **a per-GID implementation passes** on a corpus where the conflict never arises. This is
+the both-polarities discipline applied to **fixture content** rather than to guards — a corpus that
+cannot express the defect is not evidence against it.
+
+---
+
+### D-2.3.3 — `epics.md:756` is weak, not false, and is NOT amended
+
+*(mechanism: binding)* — resolves D-2.3-Q3.
+
+Story 2.3's AC9 asserts the **PDF** rather than the vendor's in-process determinism, and records the
+shaper measurement as evidence. Correct: `epics.md:756`'s "byte-identical in two processes" is
+**already true at baseline** (5/5 identical digests), and **an AC that cannot fail is as useless as a
+guard that cannot fail.**
+
+**But no D-000.6 amendment.** The clause is **weak**, not **false** — and D-000.6's bar is *"false,
+incomplete, or unimplementable"*. Widening it to cover weakness would convert an amendment mechanism
+into a **general editing licence for epic text**, which is precisely the creeping enlargement the
+stated boundary exists to prevent. The story's stricter AC supersedes **by being stricter**, and
+records why. Keep the bar where it is.
+
+Contrast [[D-2.3.1]] and `epics.md:751`, both of which **are** amended: one is unimplementable against
+a committed guard, the other states something **false about the shipped faces**. Weakness is not
+falsity, and the distinction is what keeps the mechanism narrow.
+
+---
+
+### D-000.25 — The vendor boundary is unaudited, and AD-23's guard is syntactic
+
+*(mechanism: binding)* — scoped to **one dedicated story, sequenced between 2.3 and 2.4.**
+
+**Finding 1 — AD-23 promises more than it delivers.**
+
+> **AD-23 promises "no float arithmetic under `internal/`" and delivers "no float *identifiers* under
+> `internal/`". Those differed by nothing measurable until now.**
+
+`arch_test.go:50-60` walks the AST for `*ast.Ident` named `float32`/`float64` and `*ast.BasicLit` of
+kind FLOAT. A vendor function **returning** a float is invisible to it — the type is inferred, so the
+identifier never appears. Two live call sites, both in `internal/fontset`:
+
+```go
+adv := f.face.HorizontalAdvance(gid)                    // :289  — adv is float32, invisibly
+adv := f.face.HorizontalAdvance(oldGID)                 // :476  — subset width table
+```
+
+**Measured harmless today, and that is exactly what makes it dangerous.** The accessor is a pure
+conversion — `float32(f.hmtx.GetAdvanceWidth(glyph))` — and every `uint16` is exactly representable in
+`float32` (24-bit mantissa), so `int64(float32(x)) == x` for every possible input. **The guard is
+green for a reason that has nothing to do with the guard.** The day the vendor applies variation
+deltas or any scaling inside that function, the truncation becomes lossy and **nothing in the project
+reports it.**
+
+**Finding 2 — the larger one: vendor accessors substitute plausible defaults for missing data.** This
+is the [[D-000.9]] class arriving from **outside our code, where none of our conventions reach.**
+Four confirmed instances:
+
+| accessor | returns when its table is absent | consequence |
+|---|---|---|
+| `Face.PostscriptName()` | the literal string **`"Unknown"`** | `/BaseFont /TAG+Unknown`, with every downstream assertion reporting a well-formed string |
+| `Font.NumGlyphs()` | **`0`** on missing/short `maxp` | a caller looping to `NumGlyphs()` **silently does nothing** |
+| `Name.FamilyName()` | indexes `entries[1]` directly | unguarded index |
+| `Face.Upem()` | plain field read — **but its population path is unaudited** | **D-1.5.2 requires `unitsPerEm` validated in 16–16384 before `ScaleRound`. If construction substitutes a default for a missing `head`, that validation passes on fiction** — a ruling silently satisfied by a substituted value |
+
+The `PostscriptName` case was caught unprompted by Story 2.2's finisher, which read `name` record 6
+directly and returned `""` — **observably absent** — rather than a plausible string. That is the
+correct disposition and the pattern for the rest.
+
+**Ruled: one dedicated story, before 2.4, not folded into it.** Three reasons:
+
+1. **2.4 adds vendor surface.** Auditing first means 2.4's new call sites are written against a known
+   map; auditing after means auditing more.
+2. **2.4 is already heavy** — line breaking across three scripts plus D-2.1.6's atomic-span mechanism.
+   Two guard workstreams would overload the story that most needs focus.
+3. Both items are **the same subject**: what crosses the vendor boundary, and what we may believe
+   about it.
+
+**Scope**: a **type-aware** AD-23 check in `lint` (the module already type-checks for map detection, so
+the capability exists), red-proved by `int64(someVendorFloat())` going red; plus an enumeration of
+**every vendor accessor folio calls** and what each returns when its table is absent.
+
+**Expect the type-aware guard to go red immediately on `fontset.go:289` and `:476`.** That is the
+audit finding its first two instances — **not** a problem with the guard.
+
+---
+
+### D-2.3.4 — Re-record `fixtures/font-text/` as an intended versioned change, with a semantic acceptance step
+
+*(mechanism: binding)*
+
+**The premise that failed.** Story 2.3's F3 table asserted all four existing fixtures were blind to
+shaping. `fixtures/font-text/` is **not**: it renders through `folio-go/testdata/fonts/Roboto-Regular.ttf`
+(upem 2048) via the chain `"body" -> ["Roboto-Regular"]`, **not** a shipped Noto face — and F3's row
+also listed text the fixture does not contain (`"Hello"` against the actual `"Hello, World!"` and
+`"Page footer 0123456789"`).
+
+Roboto's GPOS kerns two pairs in that text. `hb-shape` 14.2.0, kerning on versus off:
+
+```
+W (gid59):  1786 with GPOS  ·  1817 with --features=-kern   → −31 font units  (−15 @1000-em)
+P (gid52):  1281 with GPOS  ·  1292 from hmtx               → −11 font units  (−6  @1000-em)
+```
+
+Independently confirmed before ruling: the current golden's `/BaseFont` is `HXRYNT+Roboto-Regular`,
+and it contains **2 `Tj` and 0 `TJ`** at 22,299 bytes. **The fixture literally records unkerned
+output.**
+
+**Ruled (A): re-record.** AD-21 requires a hash change be treated as a defect *"until proven to be an
+intended, versioned behaviour change."* Proven here: the reference implementation confirms both
+values, the mechanism is understood (GPOS applied where it previously was not), exactly two pairs
+move, exactly one fixture changes, the other three are byte-identical, and no new failure appears.
+
+**The decisive argument is not that the premise was false — it is that the old bytes are wrong.** They
+draw `Wo` and `Pa` unkerned because Folio ignored GPOS. **Re-recording retires a regression rather
+than accepting one**, and it converts `font-text` from a fixture blind to this story into one that
+observes it — the direction F3's own argument runs in.
+
+**No alternative exists.** Keeping the hash by disabling kerning for one document would be **crippling
+the product to make a golden pass** — worse than regenerating a golden to make a test pass. And there
+is no third option: the old golden pins a pre-shaping code path that no longer exists.
+
+**The binding condition — first golden re-recording since [[D-000.22]], and a bare hash swap is what
+that rule exists to prevent:**
+
+1. Assert the specific `TJ` adjustments **by value, not by hash** (−31 and −11 at upem 2048, scaled).
+2. Assert the operator is **`TJ`, not `Tj`** — the fixture now exercises a branch it never has.
+3. Record the `hb-shape` version and **exact invocation, verbatim**, in the fixture's README.
+
+**Why that is not bookkeeping.** A future change that silently loses kerning produces a **hash
+mismatch** — and the cheapest available response to a hash mismatch is **to re-record.** Assertions
+naming the expected adjustments make re-recording a kerning regression **impossible without deleting
+an assertion**, which is visible in a diff where a changed digest is not.
+
+---
+
+### D-000.26 — Cite the subject of a measurement, not just its result
+
+*(mechanism: binding)*
+
+**The rule.** Every recorded measurement must **name the artifact it measured**, precisely enough that
+a reader can tell whether it is the right one — the face, the file, the exact input string, the
+invocation. Not only the number it produced.
+
+**The mechanism, which inverts the usual intuition.** A **mis-aimed measurement propagates further
+than a stated assumption**, because *nobody re-checks a measurement.* A table labelled "measured"
+**transfers its authority** to whatever it says; an assumption invites the reader to test it. So the
+expected cost of a mis-aimed measurement **exceeds** that of an unstated assumption — even though
+measuring is otherwise strictly better.
+
+**The remedy is not to measure less.** It is to make the subject checkable on the page. F3's row said
+*"font-text: `Hello`"*. Had it said *"font-text, via `Roboto-Regular.ttf` (upem 2048), text
+`Hello, World!`"*, the error would have been visible **without re-measuring** — because the wrong face
+and the wrong string are both wrong **in the citation**, not only in the conclusion.
+
+This is [[D-000.21]] applied to the thing you are **characterising** rather than the thing you are
+**guarding**, and it is the same question as the gate note's *"ask what the number is a number of"*,
+asked from the opposite end.
+
+---
+
+### D-000.27 — Evidence that the decision log propagates rules to agents who never saw them made
+
+*(mechanism: illustrative — an observation about the process, recorded for the Epic 2 gate)*
+
+Two rules transferred this week to agents that were **not present** when they were made:
+
+1. **Story 2.3's creator** independently produced *"forward guard with no available red-proof"* — the
+   category later ruled binding as [[D-000.24]] — by refusing to claim a red-proof for the `YOffset`
+   assertion it could not construct.
+2. **Story 2.3's developer** applied the base-36 rule (*if the other hypothesis predicts the same
+   observation, you have learned nothing*) unprompted: it noticed `"office"` → 0,1,4,5 is **ambiguous**
+   between rune-index and byte-offset because ASCII makes them identical, and disambiguated with
+   `"ณัฐวุฒิ"` → 0,0,2,3,3,5,5, where byte offsets would be multiples of three. `hb-shape` agrees.
+
+Each agent is a **fresh cold spawn** with no access to the conversation in which those rules were
+made. **The rules are propagating through the artifacts rather than through the conversation** — which
+is the entire purpose of writing them into this log, and the first evidence in this run that the log
+is doing work **beyond audit.**
+
+---
+
+### D-000.28 — Anticipatory boilerplate is a distinct failure from narration drift
+
+*(mechanism: binding)*
+
+Narration has now asserted something the artifact does not support **three times** in this run. Twice
+as **drift**; once, in Story 2.3, as **anticipatory boilerplate**. They need separating, because
+**their remedies differ**:
+
+| | what it is | how it is fixed |
+|---|---|---|
+| **Drift** | a record that **was** true and diverged | **re-derive the record from the artifact** |
+| **Anticipatory** | a record written **before** the fact it asserts, therefore **never** true | **do not write the claim until the event** — re-deriving cannot help, there is nothing to re-derive from |
+
+**Anticipatory is the more dangerous of the two.** Drift leaves a trail — the claim was true at some
+commit, so history can adjudicate it. **An anticipatory claim is false from birth and reads identically
+to a true one.** No amount of checking the record against history will expose it, because history
+never supported it either.
+
+**The instance.** `fixtures/shaped-text/README.md:89-92` and `shaped_fixture_test.go:660` both assert
+**"A human read the rendered Thai before this hash was frozen"**, citing the story's completion notes
+as evidence — and those notes say the check is **outstanding**.
+
+**It is a process finding, not an integrity one**, and that distinction is recorded deliberately: the
+developer reported the gap **plainly and unprompted** in the same run, and recommended the story not
+be called done without a Thai reader. The boilerplate was written ahead of an event that was then
+honestly reported as not having happened.
+
+**Worth noting without belabouring**: the false credit sits inside a comment *citing the Thin-Chinese
+lesson about guards that do not check what they claim.* **The comment was right about the class and
+wrong about itself.**
+
+---
+
+### D-2.3.5 — "Frozen with sign-off pending" is a legitimate state, under three conditions
+
+*(mechanism: binding)*
+
+**It does not hollow out [[D-000.22]]**, because that rule's own wording already separates the two
+claims: the semantic assertion is *"separate from and additional to the hash."* **Byte-stability and
+semantic correctness are different claims about a fixture, and freezing one does not consume the
+other** — provided the artifact says which one is outstanding.
+
+But whether it hollows the rule turns **entirely on the tracking mechanism**, so:
+
+1. **The pending obligation is a FAILING TEST, never a log entry** *(binding)*. The fixture directory
+   carries a sign-off record naming the reader, the date, and what they examined; a **gate-run test
+   fails while it is absent**, gated as the matrix legs are — so the story commits green and the
+   **gate cannot pass**. **A note is optional; a red gate is not.** Every deferral in this run that
+   held did so because something mechanical eventually fired.
+2. **The sign-off names the hash it signed off** *(binding)*. Otherwise a later re-recording carries a
+   sign-off for **different bytes** — precisely the stale-provenance failure closed yesterday on
+   derived fonts. Binding sign-off to digest makes a re-record **automatically invalidate it** and
+   demand a fresh look. That is the anti-rot property, and it costs one line.
+3. **The artifacts say "pending", never anything stronger** — already bound by [[D-000.24]].
+
+**The boundary that keeps the rule's teeth** *(mechanism: binding)* — stated explicitly so "pending"
+cannot become the default:
+
+> **D-000.22's machine-checkable half is never deferrable. Only its irreducibly-human half is, and
+> only against a mechanical blocker.**
+
+Weight class, name records, `TJ` adjustment values, axis pins, byte-identity across targets — all
+asserted **at recording**, with no deferral available. Only *"does this Thai read correctly to someone
+who reads Thai"* may be pending, because it is the one thing no assertion substitutes for.
+
+**The evidence for that split is our own: the Thin-Chinese defect was caught by a machine-checkable
+property, not by a human look.** The machine half is where nearly all the value has come from, so it
+stays mandatory — and confining "pending" to the human half means the rule loses almost nothing while
+remaining livable for a one-person project.
+
+**Applied here**: Story 2.3 commits; the Thai sign-off blocks the **Epic 2 gate**, not the story. A bad
+result lands as its own commit against 2.3, exactly as a red catch-up run would. Holding a finished
+story on a human availability window is the stall the standing instruction exists to prevent, and this
+path is genuinely recoverable.
+
+
+---
+
+### D-2.3.6 — Story 2.3 finisher follow-ups: the segment cursor, the sign-off gate, and two citation repairs
+
+*(mechanism: record — appended as a sibling entry, never as an edit to [[D-2.3.1]]…[[D-2.3.5]], which
+this log's own header makes append-only.)*
+
+Filed by Story 2.3's finisher. Twelve QA findings triaged **11 FIX · 0 DISMISS · 1 DEFER**. Four
+consequences are worth a standing record because they change something a later story would otherwise
+re-derive or re-break.
+
+**1. Shaping moved into `splitByFace`, and the second derivation was deleted rather than corrected.**
+The segment cursor summed raw `hmtx` advances while runs were drawn kerned — text drawn kerned and
+placed unkerned, measured at **640 millipoints for `"AV ก"` at 16 pt** in the shipped chain. The fix
+is not "sum the right numbers": each face-segment is now shaped once, in the same pass that computes
+its origin, and the drawn glyphs and the next segment's origin come from **one** answer. **Do not
+reintroduce a second shaping call in `renderDocument`** — the defect was two derivations agreeing
+until they didn't, and the structure is what prevents it, not the arithmetic.
+
+**`fontset.AdvanceForRune` is deliberately retained with no caller.** It is one of the two
+`ot.Face.HorizontalAdvance` (`float32`) sites [[D-000.25]] hands to
+`2-3a-audit-the-vendor-boundary`; deleting it would silently shrink that story's subject from two
+sites to one. The count is **still two**.
+
+**2. A fixture can be green by accident of ordering, and that is worse than an absent fixture.**
+`fixtures/shaped-text/` was blind to this defect for a reason that had nothing to do with its text:
+its only shape-observable Latin segment was the **last** segment of its element, so the wrong cursor
+was never consumed, and the one genuine mixed-run element happened to carry no kern pair. The golden
+was green over a live defect **while reading as coverage in every report**. Generalising, and this is
+the part to keep: *a fixture that exercises a property only in a position where the property's output
+is discarded certifies nothing about it.* Element `e7` (`"AV ก"`) was added to close it, and
+`TestFaceSegmentOriginsUseShapedAdvances` states the property in hand-derived literals cross-checked
+against `hb-shape` 14.2.0 rather than by recomputing production's own arithmetic.
+
+**3. [[D-2.3.5]] is implemented, and the gate is red as committed.**
+`TestShapedTextThaiSemanticSignOffIsRecorded` is `//go:build matrix`, so 2.3 commits green and the
+**Epic 2 gate cannot pass** until `fixtures/shaped-text/thai-signoff.json` names a reader, a date,
+what they examined, and the digest `5964aad0…92e00f`. All four legs red-proved (absent → fail;
+matching → pass; stale digest → fail; empty field → fail). The boundary — *D-000.22's
+machine-checkable half is never deferrable; only its irreducibly-human half is, and only against a
+mechanical blocker* — is recorded verbatim in the fixture README so it is not re-derived.
+
+**4. Two citation repairs, and the class they share.** `epics.md`'s two Story 2.3 blocks had **swapped**
+ruling citations, and the `:751`/`:753` block cited **D-2.3.3** — whose text is *"…is NOT amended"* —
+as authority for an amendment. Corrected to **D-000.24** (clause 1) / **D-2.3.1** (clause 2), and
+**D-2.3.3** on the `:756` block. **A citation that reads as support and inverts on inspection is the
+same defect as a fixture README claiming a human check that never happened** — both hand a reader
+evidence that says the opposite of what they were told. [[D-000.26]] is the general form; these are
+two instances of it found in one story, in different artifact kinds.
+
+**Also recorded, because the measurement is reusable.** `internal/fontset.Subset` accepted glyph ids
+the face does not have — the vendor **fabricates** rather than reports (`Subset([65535])` against a
+4,515-glyph face returned a 460-byte program, no error). Now validated before `AddGlyphs`. And
+`TestPermutationInvariance` was **demonstrated** unable to detect a folio-side sort: injecting
+`slices.Sort` into `Subset` reddens the new AST guard while that test stays PASS in the same run,
+because the vendor sorts below the call. An AST scan is the only mechanism that can see it.
+
+**DEFER:** one, **DW-14** — `/ToUnicode`'s unbounded `beginbfchar` section against the spec's
+100-entry cap. Pre-existing, unreachable today, largest section measured at 28.

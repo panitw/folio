@@ -11,22 +11,25 @@ import (
 // subsetting; this file's job is the PDF assembly layer alone.
 func fakeFace(name string) EmbeddedFace {
 	return EmbeddedFace{
-		Name:      name,
-		Program:   []byte("FAKE-TRUETYPE-PROGRAM-BYTES-" + name),
-		Tag:       "ABCDEF",
-		NumGlyphs: 2,
-		GlyphForRune: map[rune]uint16{
-			'A': 1,
-			'B': 2,
-		},
+		Name:          name,
+		Program:       []byte("FAKE-TRUETYPE-PROGRAM-BYTES-" + name),
+		Tag:           "ABCDEF",
+		NumGlyphs:     3,
 		WidthForGlyph: map[uint16]int64{0: 0, 1: 500, 2: 600},
+		ToUnicode: []CIDText{
+			{CID: 1, Text: "A"},
+			{CID: 2, Text: "B"},
+		},
 	}
 }
 
 func onePageWithText(face string) TextPage {
 	return TextPage{
 		Runs: []TextRun{
-			{Face: face, Text: "AB", X: 0, Y: 0, FontSize: 12000},
+			{Face: face, SourceText: "AB", X: 0, Y: 0, FontSize: 12000, Glyphs: []ShapedGlyph{
+				{CID: 1, XAdvance: 500},
+				{CID: 2, XAdvance: 600},
+			}},
 		},
 		Width:      595276,
 		Height:     841890,
@@ -93,20 +96,96 @@ func TestSerializeTextDocumentMissingFaceIsLocatedError(t *testing.T) {
 	}
 }
 
-// TestSerializeTextDocumentUnmappedRuneIsLocatedError exercises the
-// per-rune guard in appendHexCIDString: a rune with no entry in
-// GlyphForRune is a located error.
-func TestSerializeTextDocumentUnmappedRuneIsLocatedError(t *testing.T) {
+// TestSerializeTextDocumentUnknownCIDIsLocatedError exercises the
+// per-glyph guard in appendShapedRun: a CID with no width in the
+// embedded face is a located error, never a silently-emitted .notdef.
+// Story 2.3 re-keyed this from runes onto CIDs, because there is no
+// rune -> CID route into a content stream any more (AC4).
+func TestSerializeTextDocumentUnknownCIDIsLocatedError(t *testing.T) {
 	face := fakeFace("Body")
-	// "Z" is not in fakeFace's GlyphForRune map.
+	// CID 9 is beyond fakeFace's base block and its (empty) extras.
 	pages := []TextPage{{
-		Runs:   []TextRun{{Face: "Body", Text: "Z", X: 0, Y: 0, FontSize: 12000}},
+		Runs: []TextRun{{Face: "Body", SourceText: "Z", X: 0, Y: 0, FontSize: 12000, Glyphs: []ShapedGlyph{
+			{CID: 9, XAdvance: 500},
+		}}},
 		Width:  595276,
 		Height: 841890,
 	}}
 	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{"Body": face}, nil)
 	if err == nil {
-		t.Fatal("expected an error for a rune absent from the face's GlyphForRune map")
+		t.Fatal("expected an error for a CID with no width in the embedded face")
+	}
+}
+
+// TestShapedRunFailsClosedOnYOffset is AC6's fail-closed branch, tested
+// DIRECTLY because it cannot be reached through the render path.
+//
+// Measured across all three shipped faces at Story 2.3: YOffset is 0 for
+// every glyph of every sample, so no production input triggers this and
+// the branch has NO available red-proof through a rendered document.
+// Handing the emitter a synthetic run is the honest way to exercise it,
+// and saying so here is the point: a guard credited with a red-proof it
+// does not have is worse than one openly labelled unproven, because the
+// label tells the next reader where to look.
+func TestShapedRunFailsClosedOnYOffset(t *testing.T) {
+	face := fakeFace("Body")
+	run := TextRun{Face: "Body", SourceText: "A", FontSize: 12000, Glyphs: []ShapedGlyph{
+		{CID: 1, XAdvance: 500, YOffset: 37},
+	}}
+	if _, err := appendShapedRun(nil, run, face); err == nil {
+		t.Fatal("a glyph carrying a non-zero YOffset must be a located error, not a silently dropped offset")
+	}
+
+	// ...and the same run with YOffset zeroed must succeed, so the test
+	// above cannot pass for an unrelated reason.
+	run.Glyphs[0].YOffset = 0
+	if _, err := appendShapedRun(nil, run, face); err != nil {
+		t.Fatalf("the same run with YOffset 0 must emit cleanly, got: %v", err)
+	}
+}
+
+// TestZeroAdjustmentRunEmitsTj is AC6/AC14's compatibility clause,
+// asserted on the emitted bytes rather than assumed: a run in which
+// every adjustment computes to zero emits a bare Tj hex string —
+// exactly the bytes folio emitted before Story 2.3 — and a run carrying
+// a real offset or a kerned advance emits a TJ array instead.
+func TestZeroAdjustmentRunEmitsTj(t *testing.T) {
+	face := fakeFace("Body")
+
+	plain := TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []ShapedGlyph{
+		{CID: 1, XAdvance: 500},
+		{CID: 2, XAdvance: 600},
+	}}
+	got, err := appendShapedRun(nil, plain, face)
+	if err != nil {
+		t.Fatalf("appendShapedRun: %v", err)
+	}
+	if string(got) != "<00010002> Tj\n" {
+		t.Fatalf("a zero-adjustment run must emit today's exact Tj bytes, got %q", got)
+	}
+
+	kerned := TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []ShapedGlyph{
+		{CID: 1, XAdvance: 460}, // /W says 500: GPOS kerned it by -40
+		{CID: 2, XAdvance: 600},
+	}}
+	got, err = appendShapedRun(nil, kerned, face)
+	if err != nil {
+		t.Fatalf("appendShapedRun (kerned): %v", err)
+	}
+	if !bytes.HasPrefix(got, []byte("[<0001>40<0002>")) {
+		t.Fatalf("a kerned run must emit a TJ array carrying the +40 adjustment, got %q", got)
+	}
+
+	offset := TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, Glyphs: []ShapedGlyph{
+		{CID: 1, XAdvance: 500},
+		{CID: 2, XAdvance: 600, XOffset: -29},
+	}}
+	got, err = appendShapedRun(nil, offset, face)
+	if err != nil {
+		t.Fatalf("appendShapedRun (offset): %v", err)
+	}
+	if !bytes.Contains(got, []byte("29<0002>")) {
+		t.Fatalf("an x-offset run must emit the +29 pre-glyph adjustment, got %q", got)
 	}
 }
 

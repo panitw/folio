@@ -22,6 +22,7 @@ import (
 	"github.com/boxesandglue/textshape/subset"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/text"
 )
 
 // MinUnitsPerEm and MaxUnitsPerEm are AC16's valid unitsPerEm range,
@@ -43,6 +44,14 @@ type Font struct {
 	created    int64  // head.created, offset 20, LONGDATETIME (F-5)
 	modified   int64  // head.modified, offset 28, LONGDATETIME (F-5)
 	psName     string // name table record 6, read directly (see readPostScriptName)
+
+	// shaper is this face's ONE OpenType shaper, built at construction
+	// and reused for every shaping call against this face — the
+	// vendor's documented contract ("A Shaper is created once per font
+	// and reused across shaping calls"). Its type is folio's own
+	// text.Shaper, not *ot.Shaper, so no vendor pointer crosses this
+	// package's seam (AC17a, D-1.5.10).
+	shaper *text.Shaper
 }
 
 // New parses data as an OpenType/TrueType font named name (the name the
@@ -141,6 +150,11 @@ func New(name string, data []byte) (*Font, error) {
 		return nil, fmt.Errorf("fontset: font %q: read name table: %w", name, perr)
 	}
 
+	shaper, serr := text.NewShaper(name, face)
+	if serr != nil {
+		return nil, fmt.Errorf("fontset: font %q: %w", name, serr)
+	}
+
 	return &Font{
 		name:       name,
 		face:       face,
@@ -148,8 +162,21 @@ func New(name string, data []byte) (*Font, error) {
 		created:    created,
 		modified:   modified,
 		psName:     psName,
+		shaper:     shaper,
 	}, nil
 }
+
+// Shaper returns this face's single, reused OpenType shaper (Story 2.3,
+// AC1). One per Font, constructed in New, never one per call and never
+// one per run.
+//
+// The returned type is folio's own internal/text.Shaper. This accessor
+// deliberately does NOT expose *ot.Face or *ot.Shaper: D-1.5.10's
+// binding form of D-1.5.2 — "a vendor type we cannot constrain must not
+// become part of a seam we rely on being constrained" — and the whole
+// reason this package wraps the parsed face privately in the first
+// place.
+func (f *Font) Shaper() *text.Shaper { return f.shaper }
 
 // PostScriptName returns the face's own PostScript name — `name` table
 // record 6, read off the supplied font program itself, never derived
@@ -268,15 +295,27 @@ func (f *Font) HasGlyph(r rune) bool {
 	return ok
 }
 
-// AdvanceForRune returns r's horizontal advance in f, scaled to a
-// 1000-unit em (the same scale (*Subset).WidthForGlyph uses), and
-// whether r resolved to a glyph at all. Used to position a multi-face
-// text run's SECOND and later face-segments (Story 2.2, AC4): once a
-// segment's face is resolved, its total advance determines where the
-// next segment starts. Never used to place individual glyphs WITHIN one
-// segment — the embedded font's own /W array (from WidthForGlyph) does
-// that at PDF-render time via a single Tj/TJ operator, exactly as it
-// already does for one-face elements today.
+// AdvanceForRune returns r's raw `hmtx` horizontal advance in f, scaled
+// to a 1000-unit em (the same scale (*Subset).WidthForGlyph uses), and
+// whether r resolved to a glyph at all.
+//
+// NOT A POSITIONING FUNCTION, and this is a correction rather than a
+// caveat. Story 2.2 used it to place a multi-face run's second and later
+// face-segments; Story 2.3's finisher removed that call site (Blocker 1)
+// because the value is the UNKERNED `hmtx` advance and runs are now
+// drawn KERNED. Summing it over a segment's runes yields a cursor that
+// disagrees with what was drawn wherever GPOS kerns — measured at 640
+// millipoints for "AV ก" at 16 pt in the shipped chain. The segment
+// cursor is derived from the SHAPED advances instead
+// (folio-go/render.go's splitByFace), and nothing in the render path
+// calls this any more.
+//
+// It is retained deliberately, not left as an oversight: it is one of
+// the two `ot.Face.HorizontalAdvance` (`float32`) call sites that
+// `2-3a-audit-the-vendor-boundary` (D-000.25) owns and audits, and
+// deleting it here would silently shrink that story's subject. Any
+// future caller must first establish that the raw `hmtx` number, not
+// the shaped one, is what it wants.
 func (f *Font) AdvanceForRune(r rune) (int64, bool) {
 	cmap := f.face.Cmap()
 	if cmap == nil {
@@ -323,10 +362,17 @@ func (f *Font) Metrics() Metrics {
 
 // Subset is one face's subsetted, embeddable output (AC5, AC9): a
 // standalone TrueType program covering exactly the glyphs the supplied
-// runes resolve to (plus whatever closure the vendor subsetter itself
-// adds — composite components, GSUB-reachable glyphs, .notdef), a
-// six-letter tag derived from the closure set (AC6, AC7), and enough
-// per-glyph data to drive a PDF Type0/CIDFontType2 embedding.
+// SOURCE GLYPH IDS name (plus whatever closure the vendor subsetter
+// itself adds — composite components, GSUB-reachable glyphs, .notdef),
+// a six-letter tag derived from the program bytes (AC6, AC7), and
+// enough per-glyph data to drive a PDF Type0/CIDFontType2 embedding.
+//
+// Story 2.3, AC5: the input is the set of glyphs the SHAPED runs
+// actually contain, never the set of runes the document contains. That
+// is D-1.5.8's own rule applied one level up — "assert on the produced
+// thing, never on the thing you asked for" — and the two sets are
+// measurably different: shaping "office" in Noto Sans draws glyph 1656,
+// the `ffi` ligature, which no rune maps to at all.
 type Subset struct {
 	// Program is the FontFile2 payload: a complete, standalone TrueType
 	// font containing only the retained glyphs.
@@ -340,10 +386,16 @@ type Subset struct {
 	// warning: this is NOT what the tag is derived from).
 	NumGlyphs int
 
-	// GlyphForRune maps each requested, resolvable rune to its glyph id
-	// in the OUTPUT (subset) numbering — the CID a content stream Tj
-	// operator addresses under Identity-H.
-	GlyphForRune map[rune]uint16
+	// GlyphForSource maps each requested SOURCE glyph id to its glyph id
+	// in the OUTPUT (subset) numbering, obtained from plan.MapGlyph.
+	//
+	// It is NOT a CID map. Story 2.3 allocates CIDs per (subset glyph,
+	// /ToUnicode context) rather than per glyph — see internal/pdf's
+	// CIDEntry — because one glyph legitimately needs two different
+	// /ToUnicode answers in one document (the tail of "น้ำ" and a
+	// standalone "า" are the same glyph). Anything inverting this map
+	// must not assume CIDs and glyph ids are 1:1.
+	GlyphForSource map[uint16]uint16
 
 	// WidthForGlyph maps every OUTPUT glyph id to its horizontal
 	// advance, scaled to a 1000-unit em (the PDF /W array's unit),
@@ -352,15 +404,14 @@ type Subset struct {
 	WidthForGlyph map[uint16]int64
 }
 
-// Subset builds one subset over the union of runes supplied (AC9: one
-// subset call per font per document, over everything the document
-// uses). The caller's rune ordering is IRRELEVANT and this function
-// never sorts its input (AC8, D-1.5.7): runes is deduplicated into a
-// Go map before anything is handed to the vendor subsetter, so any
-// permutation of the same rune set produces byte-identical output.
-// Sorting here would make that property untestable (AC8a: "a defensive
-// normalisation upstream of a check can delete that check's
-// discriminating power") — do not reintroduce it.
+// Subset builds one subset over the union of SOURCE GLYPH IDS supplied
+// (AC9: one subset call per font per document, over everything the
+// document draws). The caller's ordering is IRRELEVANT and this function
+// never sorts its input (AC8, D-1.5.7): the slice is deduplicated by
+// first occurrence, so any permutation of the same glyph set produces
+// byte-identical output. Sorting here would make that property
+// untestable (AC8a: "a defensive normalisation upstream of a check can
+// delete that check's discriminating power") — do not reintroduce it.
 //
 // Story 2.2 (D-2.2.4, binding): this function does NO instancing. PDF
 // 1.7 cannot express a variable font (AD-7), and folio's answer is that
@@ -382,37 +433,54 @@ type Subset struct {
 // This package's own tag-discrimination test (V5) exercises a second,
 // non-default instance by calling the vendor subsetter directly,
 // entirely from the test file, never through this method.
-func (f *Font) Subset(runes []rune) (*Subset, error) {
-	cmap := f.face.Cmap()
-	if cmap == nil {
-		return nil, fmt.Errorf("fontset: font %q has no cmap table", f.name)
-	}
-
+func (f *Font) Subset(sourceGlyphs []uint16) (*Subset, error) {
 	// Deduplicate by ranging the CALLER'S SLICE, never a map (D-1.3.5's
 	// ScanMapRange bans ranging a map anywhere under internal/, with no
 	// site-specific exception — and D-1.5.7 separately forbids sorting
 	// this particular site, since a sort here would make AC8's
 	// permutation-invariance proof vacuous, AC8a). Both rulings are
 	// satisfied at once by never constructing a map whose KEYS this
-	// function ranges: `seen` and `oldGIDForRune` below are read by
-	// direct index, only ever written and looked up — never ranged —
-	// so gids ends up in exactly the caller's rune order (deduplicated
-	// by first occurrence), which is what varies from call to call when
-	// AC8's repeat/permutation-invariance tests permute their input.
-	seen := map[rune]bool{}
-	oldGIDForRune := map[rune]ot.GlyphID{}
+	// function ranges: `seen` below is read by direct index, only ever
+	// written and looked up — never ranged — so gids ends up in exactly
+	// the caller's order (deduplicated by first occurrence), which is
+	// what varies from call to call when AC8's repeat/permutation-
+	// invariance tests permute their input.
+	// Every source id is validated against the FACE's own glyph count
+	// before it reaches the vendor (Story 2.3 finisher, Finding 8).
+	//
+	// This is a real guard on a reachable path, and it is what makes the
+	// "not retained" check below honest. Since AC5 re-keyed this function
+	// on GLYPH IDS, a caller can hand it an id the face does not have —
+	// and the vendor does not report that, it FABRICATES a glyph.
+	// Measured against fonts/notosans/NotoSans-Regular.ttf (4,515
+	// glyphs): Subset([]uint16{65535}) returned a 460-byte program and a
+	// complete mapping, with no error and nothing unmapped. That is
+	// D-000.25's Finding 2 shape — "vendor accessors substitute plausible
+	// defaults for missing data" — arriving at a call site this story
+	// created, and the resulting bytes are a wrong glyph embedded in a
+	// document that reports success.
+	numGlyphs := f.face.Font.NumGlyphs()
+	if numGlyphs <= 0 {
+		return nil, fmt.Errorf("fontset: font %q: face reports %d glyphs", f.name, numGlyphs)
+	}
+
+	seen := map[uint16]bool{}
 	var gids []ot.GlyphID
-	for _, r := range runes {
-		if seen[r] {
+	var uniqueSources []uint16
+	for _, g := range sourceGlyphs {
+		if seen[g] {
 			continue
 		}
-		seen[r] = true
-		gid, ok := cmap.Lookup(ot.Codepoint(r))
-		if !ok {
-			return nil, fmt.Errorf("fontset: font %q: no glyph for rune %U", f.name, r)
+		if int(g) >= numGlyphs {
+			return nil, fmt.Errorf(
+				"fontset: font %q: glyph id %d does not exist in this face, which has %d glyphs (0..%d) — "+
+					"the subsetter would fabricate one rather than report it missing",
+				f.name, g, numGlyphs, numGlyphs-1,
+			)
 		}
-		oldGIDForRune[r] = gid
-		gids = append(gids, gid)
+		seen[g] = true
+		uniqueSources = append(uniqueSources, g)
+		gids = append(gids, ot.GlyphID(g))
 	}
 
 	input := subset.NewInput()
@@ -451,19 +519,40 @@ func (f *Font) Subset(runes []rune) (*Subset, error) {
 		return nil, fmt.Errorf("fontset: font %q: derive subset tag: %w", f.name, err)
 	}
 
-	// Ranges `runes` (a slice) again, not oldGIDForRune (a map) — same
-	// ScanMapRange reasoning as above.
-	glyphForRune := map[rune]uint16{}
-	for _, r := range runes {
-		if _, already := glyphForRune[r]; already {
-			continue
-		}
-		oldGID := oldGIDForRune[r]
-		newGID, ok := plan.MapGlyph(oldGID)
+	// Ranges `uniqueSources` (a slice), never a map — same ScanMapRange
+	// reasoning as above.
+	//
+	// A shaped glyph the plan did not retain is a LOCATED ERROR naming
+	// the face and the glyph id (AC5), never a silent substitution and
+	// never .notdef: if this fires, the set handed to the subsetter and
+	// the set the renderer is about to draw have disagreed, and emitting
+	// a blank box would make that disagreement invisible.
+	//
+	// UNREACHABLE VENDOR-CONTRACT ASSERTION, LABELLED AS SUCH RATHER THAN
+	// COUNTED AS COVERAGE (D-000.24; Story 2.3 finisher, Finding 8).
+	// plan.MapGlyph reads p.glyphMap, and createCompactMapping inserts
+	// every member of glyphSet — which is this function's input plus its
+	// closure — so a glyph passed to AddGlyphs is ALWAYS mapped. Coverage
+	// confirms it: this branch's count is 0, and no test in the repo
+	// matches "was not retained" against this package. It reads like
+	// coverage in a diff and cannot fire; saying so is the honest form.
+	//
+	// It is kept, not deleted, because it is the assertion that would
+	// catch the vendor changing that contract — and because AC5's LIVE
+	// guard is the render-side one (render.go's buildShapedPDFRuns,
+	// red-proved by dropping the `ffi` ligature from the subset union),
+	// not this. The reachable half of this seam is the glyph-count
+	// validation above, which IS red-proved.
+	glyphForSource := map[uint16]uint16{}
+	for _, src := range uniqueSources {
+		newGID, ok := plan.MapGlyph(ot.GlyphID(src))
 		if !ok {
-			return nil, fmt.Errorf("fontset: font %q: rune %U's glyph was not retained by the subset plan", f.name, r)
+			return nil, fmt.Errorf(
+				"fontset: font %q: shaped glyph id %d was not retained by the subset plan",
+				f.name, src,
+			)
 		}
-		glyphForRune[r] = newGID
+		glyphForSource[src] = newGID
 	}
 
 	numOut := plan.NumOutputGlyphs()
@@ -479,11 +568,11 @@ func (f *Font) Subset(runes []rune) (*Subset, error) {
 	}
 
 	return &Subset{
-		Program:       program,
-		Tag:           tag,
-		NumGlyphs:     numOut,
-		GlyphForRune:  glyphForRune,
-		WidthForGlyph: widthForGlyph,
+		Program:        program,
+		Tag:            tag,
+		NumGlyphs:      numOut,
+		GlyphForSource: glyphForSource,
+		WidthForGlyph:  widthForGlyph,
 	}, nil
 }
 

@@ -120,6 +120,37 @@ func TestHeadTimesMatchMeasuredValues(t *testing.T) {
 	}
 }
 
+// shapedGlyphIDs returns the SOURCE glyph ids f actually draws for text,
+// in drawing order, deduplicated by first occurrence — the exact shape
+// of input Subset now takes (Story 2.3, AC5: the subset is keyed on the
+// glyphs the renderer draws, never on the runes the author typed).
+//
+// The tests below permute THIS, not a rune string. That is the point of
+// AC5's clause about the permutation-invariance test: permuting runes
+// upstream of a glyph-keyed subsetter would be permuting an input the
+// function no longer has, which deletes the check's discriminating power
+// exactly as a defensive sort would (AC8a).
+func shapedGlyphIDs(t *testing.T, f *Font, text string) []uint16 {
+	t.Helper()
+	glyphs, err := f.Shaper().Shape(text)
+	if err != nil {
+		t.Fatalf("Shape(%q): %v", text, err)
+	}
+	if len(glyphs) == 0 {
+		t.Fatalf("Shape(%q) produced no glyphs — a subset built from this would certify nothing", text)
+	}
+	seen := map[uint16]bool{}
+	var out []uint16
+	for _, g := range glyphs {
+		if seen[g.GlyphID] {
+			continue
+		}
+		seen[g.GlyphID] = true
+		out = append(out, g.GlyphID)
+	}
+	return out
+}
+
 // TestSubsetContainsRequestedGlyphs is a basic sanity check: subsetting
 // "AB" produces a subset in which both runes resolve to a glyph id.
 func TestSubsetContainsRequestedGlyphs(t *testing.T) {
@@ -127,18 +158,21 @@ func TestSubsetContainsRequestedGlyphs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	sub, err := f.Subset([]rune("AB"))
+	gids := shapedGlyphIDs(t, f, "AB")
+	sub, err := f.Subset(gids)
 	if err != nil {
 		t.Fatalf("Subset: %v", err)
 	}
 	if len(sub.Program) == 0 {
 		t.Fatal("Subset produced no program bytes")
 	}
-	if _, ok := sub.GlyphForRune['A']; !ok {
-		t.Error("subset has no glyph mapping for 'A'")
+	if len(gids) != 2 {
+		t.Fatalf("shaping \"AB\" produced %d distinct glyphs, want 2", len(gids))
 	}
-	if _, ok := sub.GlyphForRune['B']; !ok {
-		t.Error("subset has no glyph mapping for 'B'")
+	for _, g := range gids {
+		if _, ok := sub.GlyphForSource[g]; !ok {
+			t.Errorf("subset has no mapping for source glyph %d", g)
+		}
 	}
 	if len(sub.Tag) != 6 {
 		t.Fatalf("tag %q is not exactly six characters", sub.Tag)
@@ -165,9 +199,9 @@ func TestRepeatInvarianceWithinOneProcess(t *testing.T) {
 	}
 
 	const n = 32 // >= 16, AC8.
-	runes := []rune("Hello, World! 0123456789")
+	gids := shapedGlyphIDs(t, f, "Hello, World! 0123456789")
 
-	first, err := f.Subset(runes)
+	first, err := f.Subset(gids)
 	if err != nil {
 		t.Fatalf("Subset (call 1): %v", err)
 	}
@@ -180,7 +214,7 @@ func TestRepeatInvarianceWithinOneProcess(t *testing.T) {
 		t.Fatal("Subset (call 1) produced no program bytes — repeat-invariance would pass vacuously")
 	}
 	for i := 1; i < n; i++ {
-		got, err := f.Subset(runes)
+		got, err := f.Subset(gids)
 		if err != nil {
 			t.Fatalf("Subset (call %d): %v", i+1, err)
 		}
@@ -205,12 +239,12 @@ func TestPermutationInvariance(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	ascending := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	reversed := make([]rune, len(ascending))
-	for i, r := range ascending {
-		reversed[len(ascending)-1-i] = r
+	ascending := shapedGlyphIDs(t, f, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	reversed := make([]uint16, len(ascending))
+	for i, g := range ascending {
+		reversed[len(ascending)-1-i] = g
 	}
-	shuffled := []rune("MZAQBWCXDVEYFUGTHSRIJKLNOP")
+	shuffled := shapedGlyphIDs(t, f, "MZAQBWCXDVEYFUGTHSRIJKLNOP")
 	// Finding 19 (QA review): assert SET equality, not just length. A
 	// length-only check would still pass if the literal above were
 	// edited to introduce a duplicate plus an omission — which would
@@ -273,8 +307,8 @@ func TestDeriveTagUsesClosureSetNotOutputNumbering(t *testing.T) {
 	// glyph closures differ (Latin letters map to distinct, non-composite
 	// glyphs in Roboto — no shared components to accidentally collapse
 	// the closures to the same set).
-	setA := []rune("ABC")
-	setB := []rune("DEF")
+	setA := shapedGlyphIDs(t, f, "ABC")
+	setB := shapedGlyphIDs(t, f, "DEF")
 
 	subA, err := f.Subset(setA)
 	if err != nil {
@@ -334,8 +368,8 @@ func TestDeriveTagRedProofAgainstOutputNumbering(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	setA := []rune("ABC")
-	setB := []rune("DEF")
+	setA := shapedGlyphIDs(t, f, "ABC")
+	setB := shapedGlyphIDs(t, f, "DEF")
 
 	subA, err := f.Subset(setA)
 	if err != nil {
@@ -561,7 +595,7 @@ func TestSubsetTagNonCircularity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	sub, err := f.Subset([]rune("Hello, World!"))
+	sub, err := f.Subset(shapedGlyphIDs(t, f, "Hello, World!"))
 	if err != nil {
 		t.Fatalf("Subset: %v", err)
 	}

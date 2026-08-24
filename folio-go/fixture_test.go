@@ -455,6 +455,95 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 		)
 	}
 
+	// ------------------------------------------------------------------
+	// Story 2.3's SEMANTIC ACCEPTANCE STEP for this fixture's
+	// re-recording (D-000.22, and a binding condition of the ruling that
+	// authorised the re-record).
+	//
+	// This golden MOVED in Story 2.3, and it is a versioned change under
+	// AD-21/AD-22, not a drift. The story's F3 recorded this fixture as
+	// blind to shaping. It is not, and the reason is worth stating
+	// because it is how a measurement misleads: F3 measured the string
+	// "Hello" against a shipped Noto face, while this fixture renders
+	// "Hello, World!" and "Page footer 0123456789" through
+	// testdata/fonts/Roboto-Regular.ttf at unitsPerEm 2048 — a different
+	// string AND a different face. Roboto's GPOS kerns two pairs in that
+	// text, so the PREVIOUS bytes recorded UNKERNED output: two Tj
+	// operators, no TJ, 22,299 bytes. Re-recording retires a regression
+	// rather than accepting one.
+	//
+	// This fixture has therefore MOVED FROM the "blind to shaping" list
+	// TO the OBSERVING list. The fixtures that genuinely cannot observe
+	// this story are minimal-rect (fontless), image-embed (no text) and
+	// multi-script-fallback (measured: "Ada ก 汉" shapes to itself on all
+	// three faces — TestShapedTextFixtureObservabilityRedProof asserts
+	// exactly that, and depends on it).
+	//
+	// Cross-checked against the REFERENCE implementation before
+	// re-recording — hb-shape (HarfBuzz) 14.2.0, a one-time offline run,
+	// never a build/test/runtime dependency (AD-25; the same precedent
+	// Story 1.1 set with qpdf --check). Exact invocations, verbatim,
+	// from the repository root:
+	//
+	//	hb-shape --no-glyph-names folio-go/testdata/fonts/Roboto-Regular.ttf "Hello, World!"
+	//	  [44=0+1460|73=1+1085|80=2+497|80=3+497|83=4+1168|16=5+402|4=6+507|
+	//	   59=7+1786|83=8+1168|86=9+693|80=10+497|72=11+1155|5=12+527]
+	//
+	//	hb-shape --no-glyph-names folio-go/testdata/fonts/Roboto-Regular.ttf "Page footer 0123456789"
+	//	  [52=0+1281|69=1+1114|75=2+1149|73=3+1085|4=4+507|74=5+711|83=6+1168|
+	//	   83=7+1168|88=8+669|73=9+1085|86=10+693|4=11+507|20=12+1150|...]
+	//
+	// HarfBuzz reports W (gid 59) at 1786 against its hmtx 1817 — minus
+	// 31 font units — and P (gid 52) at 1281 against its hmtx 1292 —
+	// minus 11. Scaled to the PDF's 1000-unit em by geom.ScaleRound,
+	// which is where the content stream's numbers live: 887 - 872 = 15,
+	// and 631 - 625 = 6.
+	//
+	// THE ADJUSTMENTS ARE ASSERTED BY VALUE, NOT BY HASH, and that is
+	// the whole point of writing them out. A future change that silently
+	// loses kerning produces a hash mismatch, and the cheapest available
+	// response to a hash mismatch is to re-record it. Naming the expected
+	// adjustments makes re-recording a kerning regression impossible
+	// without DELETING AN ASSERTION — which is visible in a diff, where a
+	// changed digest is not.
+	if !bytes.Contains(b, []byte("] TJ\n")) {
+		t.Fatal(
+			"fixtures/font-text/ emits no TJ array at all. Since Story 2.3 this document's text is KERNED " +
+				"and must be shown with a TJ array carrying the adjustments; Tj-only output is the unkerned " +
+				"pre-2.3 behaviour this fixture was re-recorded to retire (AC6, D-000.22).",
+		)
+	}
+	if bytes.Contains(b, []byte("> Tj\n")) {
+		t.Fatal(
+			"fixtures/font-text/ still emits a bare Tj operator. Both of this document's runs carry a GPOS " +
+				"kern, so both must be TJ arrays — a Tj here means one run lost its adjustment.",
+		)
+	}
+	for _, want := range []struct {
+		adjustment string
+		why        string
+	}{
+		{
+			">15<",
+			`the "Wo" kern in "Hello, World!": W (gid 59) has hmtx 1817 against a shaped advance of 1786, ` +
+				`i.e. -31 font units at unitsPerEm 2048, which is 887 - 872 = 15 in the PDF's 1000-unit em`,
+		},
+		{
+			">6<",
+			`the "Pa" kern in "Page footer 0123456789": P (gid 52) has hmtx 1292 against a shaped advance ` +
+				`of 1281, i.e. -11 font units, which is 631 - 625 = 6`,
+		},
+	} {
+		if !bytes.Contains(b, []byte(want.adjustment)) {
+			t.Errorf(
+				"fixtures/font-text/'s content stream does not carry the TJ adjustment %q — %s. "+
+					"If the kerning has genuinely changed, that is a finding to investigate; do NOT delete "+
+					"this assertion to make a re-record pass (D-000.22).",
+				want.adjustment, want.why,
+			)
+		}
+	}
+
 	sum := sha256.Sum256(b)
 	gotHex := hex.EncodeToString(sum[:])
 	if gotHex != fixture.SHA256 {

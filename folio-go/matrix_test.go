@@ -522,6 +522,80 @@ func captureMultiScriptRender(t *testing.T, target matrixTarget, binPath string)
 	return runOnTarget(t, target, binPath, map[string]string{subprocessMultiScriptEnvVar: "1"})
 }
 
+// captureShapedTextRender runs binPath with
+// FOLIO_SUBPROCESS_RENDER_SHAPEDTEXT=1 — Story 2.3's AC10 FIFTH selector
+// (joining the four above, replacing none): rendering the shaped-text
+// document (fixtures/shaped-text/) through the public Render path,
+// against the real shipped face set.
+func captureShapedTextRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessShapedTextEnvVar: "1"})
+}
+
+// requireShapedTextIsShaped is Story 2.3's OWN feature guard for the
+// shaped-text document, and it is the reason registering the legs is not
+// a formality.
+//
+// "Contains a FontFile2" is satisfied by any embedding at all, and every
+// pre-2.3 fixture's text was measured to shape to itself — so a matrix
+// comparing four legs of a document that was never shaped would agree
+// perfectly, byte for byte, and certify nothing about this story. This
+// guard asserts on EVERY leg, before any byte comparison, that the
+// captured stream actually carries shaping: at least one TJ array with a
+// non-zero adjustment (GPOS reached the page) AND at least one CID whose
+// /ToUnicode entry is longer than one rune (GSUB collapsed a cluster).
+// Both are properties of the PRODUCED bytes, read back off them.
+func requireShapedTextIsShaped(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+
+	programs := extractAllFontFile2Programs(t, raw)
+	if len(programs) != len(shippedFaceSpecs) {
+		t.Fatalf(
+			"target %s: the shaped-text fixture must embed exactly %d FontFile2 programs, got %d",
+			target.name, len(shippedFaceSpecs), len(programs),
+		)
+	}
+	assertEmbeddedProgramsAreStaticRegular(t, "target "+target.name, programs, 400)
+
+	wantPS := map[string]bool{}
+	for _, spec := range shippedFaceSpecs {
+		wantPS[spec.PostScriptName] = true
+	}
+	assertBaseFontNames(t, "target "+target.name, raw, wantPS)
+
+	emitted := readEmittedRuns(t, raw)
+	adjusted := 0
+	for _, run := range emitted {
+		if run.NonZeroAdjust {
+			adjusted++
+		}
+	}
+	if adjusted == 0 {
+		t.Fatalf(
+			"target %s: the shaped-text fixture's content stream carries NO TJ adjustment. Four targets "+
+				"agreeing on an unshaped document would be byte-identical and would certify nothing about "+
+				"this story (D-000.9).",
+			target.name,
+		)
+	}
+
+	merged := 0
+	for _, cmap := range toUnicodeForResources(t, raw) {
+		for _, txt := range cmap {
+			if len([]rune(txt)) > 1 {
+				merged++
+			}
+		}
+	}
+	if merged == 0 {
+		t.Fatalf(
+			"target %s: no CID in the shaped-text fixture extracts as more than one rune, so no ligature or "+
+				"merged cluster reached the page — GSUB is not being exercised on this leg",
+			target.name,
+		)
+	}
+}
+
 // requireInstancedShippedFaces is AC8's OWN feature guard (V6): asserts
 // that raw (a captured multi-script leg) contains exactly the three
 // shipped faces' embedded programs, and that EACH ONE is genuinely
@@ -641,6 +715,21 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "multi-script-fallback", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireInstancedShippedFaces,
+	},
+	{
+		// Story 2.3's AC10 fixture. REGISTERED IN-STORY, RUN AT THE
+		// EPIC 2 BOUNDARY GATE: 2.3 is not one of D-000.4's per-story
+		// matrix overrides (those are 1.2, 1.5, 1.8, 2.4 and 4.7), so
+		// the Docker legs are deliberately not run here. Registering it
+		// is still this story's obligation — AD-21 binds every feature
+		// to ship its golden, and a fixture recorded but never added to
+		// this list is one the matrix silently never covers.
+		label:            "shaped-text (shaping, all three scripts)",
+		slug:             "shaped-text",
+		capture:          captureShapedTextRender,
+		fixtureRelPath:   []string{"fixtures", "shaped-text", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireShapedTextIsShaped,
 	},
 }
 

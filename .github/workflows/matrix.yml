@@ -53,6 +53,8 @@ jobs:
             folio-go/.matrix-build/hash.darwin-arm64.minimal-rect.txt
             folio-go/.matrix-build/hash.darwin-arm64.font-text.txt
             folio-go/.matrix-build/hash.darwin-arm64.image-embed.txt
+            folio-go/.matrix-build/hash.darwin-arm64.multi-script-fallback.txt
+            folio-go/.matrix-build/hash.darwin-arm64.shaped-text.txt
           if-no-files-found: error
 
   render-linux-amd64:
@@ -76,6 +78,8 @@ jobs:
             folio-go/.matrix-build/hash.linux-amd64.minimal-rect.txt
             folio-go/.matrix-build/hash.linux-amd64.font-text.txt
             folio-go/.matrix-build/hash.linux-amd64.image-embed.txt
+            folio-go/.matrix-build/hash.linux-amd64.multi-script-fallback.txt
+            folio-go/.matrix-build/hash.linux-amd64.shaped-text.txt
           if-no-files-found: error
 
   render-linux-arm64:
@@ -99,6 +103,8 @@ jobs:
             folio-go/.matrix-build/hash.linux-arm64.minimal-rect.txt
             folio-go/.matrix-build/hash.linux-arm64.font-text.txt
             folio-go/.matrix-build/hash.linux-arm64.image-embed.txt
+            folio-go/.matrix-build/hash.linux-arm64.multi-script-fallback.txt
+            folio-go/.matrix-build/hash.linux-arm64.shaped-text.txt
           if-no-files-found: error
 
   render-js-wasm:
@@ -122,6 +128,8 @@ jobs:
             folio-go/.matrix-build/hash.js-wasm.minimal-rect.txt
             folio-go/.matrix-build/hash.js-wasm.font-text.txt
             folio-go/.matrix-build/hash.js-wasm.image-embed.txt
+            folio-go/.matrix-build/hash.js-wasm.multi-script-fallback.txt
+            folio-go/.matrix-build/hash.js-wasm.shaped-text.txt
           if-no-files-found: error
 
   compare-render-hashes:
@@ -163,7 +171,20 @@ jobs:
         # version this replaces.
         run: |
           set -euo pipefail
-          docs="minimal-rect font-text image-embed"
+          # Story 2.3: shaped-text joins the list, and multi-script-fallback
+          # is added with it — Story 2.2 registered that document in
+          # matrix_test.go's matrixDocuments but never here, so CI has been
+          # publishing four documents' worth of legs and comparing three.
+          # This hand-maintained list drifting from matrixDocuments is
+          # exactly Finding 8's hazard recurring;
+          # TestMatrixDocumentSlugsAreRegisteredInCI
+          # (folio-go/matrix_registration_test.go) now asserts the two agree.
+          # That file is deliberately UNTAGGED — it carries no //go:build
+          # matrix line, so the guard runs in every story's plain
+          # `go test ./...` and not only at the epic boundary gate. Running
+          # every story is what makes it worth having; matrix_test.go would
+          # have been the wrong home for exactly that reason.
+          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text"
           targets="darwin-arm64 linux-amd64 linux-arm64 js-wasm"
 
           overall_fail=0

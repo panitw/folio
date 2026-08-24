@@ -412,3 +412,38 @@ programs and content streams ship uncompressed, so Folio's PDFs are deliberately
 producer's.* The document already records the **reason**; what is missing is what follows from it,
 which is the sentence someone will otherwise re-derive — or "fix".
 
+
+---
+
+### DW-14 — `/ToUnicode` emits one unbounded `beginbfchar` section; the spec caps a section at 100
+
+**Raised by:** Story 2.3's QA review (Finding 7, Nit). **Deferred by:** Story 2.3's finisher.
+**Owner:** the Epic 2 boundary gate, or Story 2.4 if its corpora reach the limit first.
+
+**What.** `internal/pdf.buildToUnicodeCMap` emits the whole CMap as a single
+`N beginbfchar … endbfchar` block with `N = len(face.ToUnicode)`. The ToUnicode CMap specification
+limits one `beginbfchar`/`endbfchar` section to **100 entries**. A document whose face needs more than
+100 distinct CIDs would emit a section a strict validator rejects.
+
+**Why it is deferred rather than fixed in 2.3.** It is **pre-existing, not a 2.3 regression** — the
+pre-2.3 derivation had the same unbounded shape, so the defect is inherited and charging it to this
+story would be wrong on the record. It is also not reachable by anything folio ships today. Measured
+across every text fixture at this commit, every section is well under the cap:
+
+```
+font-text              : 25
+multi-script-fallback  : 4, 1, 1
+shaped-text            : 14, 7, 28
+```
+
+**Why it is worth a standing entry rather than a passing mention.** Story 2.3 is the story that both
+**rewrote this function's entry source** (CIDs are now allocated per (glyph, cluster text), so the
+entry count is no longer bounded by the glyph count) **and produced the largest section to date (28)**.
+Story 2.4's larger Thai corpora push it further in the same direction. The trend and the rewrite are
+both this story's; only the fix is not.
+
+**Fix when taken:** chunk into sections of at most 100 entries. It is a local change to one emitter
+with no effect on any document currently under the cap — but it **will move every golden hash of any
+document that exceeds it**, so it wants to land with a deliberate re-record rather than as a drive-by.
+
+**Do not** "fix" this by capping the number of CIDs; the CID allocation is D-2.3.2 and is correct.

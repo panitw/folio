@@ -49,7 +49,10 @@ development_status:
   epic-2: backlog
   2-1-thai-break-opportunity-spike: done
   2-2-the-shipped-font-set-and-its-fallback-chain: done
-  2-3-shape-latin-thai-and-cjk-text: backlog
+  2-3-shape-latin-thai-and-cjk-text: done
+  # 2-3a inserted between 2.3 and 2.4 per D-000.25 (vendor-boundary audit +
+  # type-aware AD-23 guard). Must land before 2.4 adds vendor call sites.
+  2-3a-audit-the-vendor-boundary: backlog
   2-4-break-and-measure-lines-in-all-three-scripts: backlog
   2-5-compose-a-page-from-three-bands: backlog
   2-6-render-multi-page-documents-with-headers-and-footers-on-ever: backlog

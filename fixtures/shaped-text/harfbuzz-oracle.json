@@ -1,0 +1,758 @@
+{
+  "tool": "hb-shape",
+  "toolPath": "/opt/homebrew/bin/hb-shape",
+  "toolVersion": "hb-shape (HarfBuzz) 14.2.0",
+  "method": "One-time offline reference run, hand-checked, frozen here. HarfBuzz is never a build, test or runtime dependency of folio-go: the module graph is unchanged and TestModuleGraphAllowlist is untouched. Replay: run each row's own argv verbatim against the font file named in that row (paths are repository-root-relative; the recording used absolute paths under this checkout).",
+  "rows": [
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "ปั",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "ปั"
+      ],
+      "glyphs": [
+        {
+          "g": 80,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 605,
+          "ay": 0
+        },
+        {
+          "g": 46,
+          "cl": 0,
+          "dx": -1,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "ฟั",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "ฟั"
+      ],
+      "glyphs": [
+        {
+          "g": 16,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 682,
+          "ay": 0
+        },
+        {
+          "g": 46,
+          "cl": 0,
+          "dx": 21,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "ที่",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "ที่"
+      ],
+      "glyphs": [
+        {
+          "g": 117,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 609,
+          "ay": 0
+        },
+        {
+          "g": 94,
+          "cl": 0,
+          "dx": -3,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 44,
+          "cl": 0,
+          "dx": -3,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "น้ำ",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "น้ำ"
+      ],
+      "glyphs": [
+        {
+          "g": 71,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 613,
+          "ay": 0
+        },
+        {
+          "g": 59,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 49,
+          "cl": 0,
+          "dx": -29,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 86,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 406,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "ป้ำ",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "ป้ำ"
+      ],
+      "glyphs": [
+        {
+          "g": 80,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 605,
+          "ay": 0
+        },
+        {
+          "g": 60,
+          "cl": 0,
+          "dx": 1,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 49,
+          "cl": 0,
+          "dx": -204,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 86,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 406,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "ณัฐวุฒิ",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "ณัฐวุฒิ"
+      ],
+      "glyphs": [
+        {
+          "g": 70,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 909,
+          "ay": 0
+        },
+        {
+          "g": 45,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 118,
+          "cl": 2,
+          "dx": 0,
+          "dy": 0,
+          "ax": 547,
+          "ay": 0
+        },
+        {
+          "g": 134,
+          "cl": 3,
+          "dx": 0,
+          "dy": 0,
+          "ax": 492,
+          "ay": 0
+        },
+        {
+          "g": 97,
+          "cl": 3,
+          "dx": -42,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 116,
+          "cl": 5,
+          "dx": 0,
+          "dy": 0,
+          "ax": 903,
+          "ay": 0
+        },
+        {
+          "g": 92,
+          "cl": 5,
+          "dx": 36,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "เกิด",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "เกิด"
+      ],
+      "glyphs": [
+        {
+          "g": 91,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 295,
+          "ay": 0
+        },
+        {
+          "g": 29,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 600,
+          "ay": 0
+        },
+        {
+          "g": 92,
+          "cl": 1,
+          "dx": -2,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 12,
+          "cl": 3,
+          "dx": 0,
+          "dy": 0,
+          "ax": 616,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "า",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "า"
+      ],
+      "glyphs": [
+        {
+          "g": 86,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 406,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans Thai",
+      "fontFile": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+      "fontSha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
+      "text": "กรุงเทพ",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf",
+        "กรุงเทพ"
+      ],
+      "glyphs": [
+        {
+          "g": 29,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 600,
+          "ay": 0
+        },
+        {
+          "g": 81,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 488,
+          "ay": 0
+        },
+        {
+          "g": 97,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 0,
+          "ay": 0
+        },
+        {
+          "g": 58,
+          "cl": 3,
+          "dx": 0,
+          "dy": 0,
+          "ax": 537,
+          "ay": 0
+        },
+        {
+          "g": 91,
+          "cl": 4,
+          "dx": 0,
+          "dy": 0,
+          "ax": 295,
+          "ay": 0
+        },
+        {
+          "g": 117,
+          "cl": 5,
+          "dx": 0,
+          "dy": 0,
+          "ax": 609,
+          "ay": 0
+        },
+        {
+          "g": 77,
+          "cl": 6,
+          "dx": 0,
+          "dy": 0,
+          "ax": 695,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans",
+      "fontFile": "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+      "fontSha256": "a4c811314da2ade3b4d2f44e80cda21dd2624e50be82dcefa298dc45a3c92d6c",
+      "text": "office",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+        "office"
+      ],
+      "glyphs": [
+        {
+          "g": 82,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 605,
+          "ay": 0
+        },
+        {
+          "g": 1656,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 946,
+          "ay": 0
+        },
+        {
+          "g": 70,
+          "cl": 4,
+          "dx": 0,
+          "dy": 0,
+          "ax": 480,
+          "ay": 0
+        },
+        {
+          "g": 72,
+          "cl": 5,
+          "dx": 0,
+          "dy": 0,
+          "ax": 564,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans",
+      "fontFile": "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+      "fontSha256": "a4c811314da2ade3b4d2f44e80cda21dd2624e50be82dcefa298dc45a3c92d6c",
+      "text": "fi",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+        "fi"
+      ],
+      "glyphs": [
+        {
+          "g": 1654,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 602,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans",
+      "fontFile": "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+      "fontSha256": "a4c811314da2ade3b4d2f44e80cda21dd2624e50be82dcefa298dc45a3c92d6c",
+      "text": "AV",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+        "AV"
+      ],
+      "glyphs": [
+        {
+          "g": 36,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 599,
+          "ay": 0
+        },
+        {
+          "g": 57,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 600,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans",
+      "fontFile": "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+      "fontSha256": "a4c811314da2ade3b4d2f44e80cda21dd2624e50be82dcefa298dc45a3c92d6c",
+      "text": "Wo. To,",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+        "Wo. To,"
+      ],
+      "glyphs": [
+        {
+          "g": 58,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 910,
+          "ay": 0
+        },
+        {
+          "g": 82,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 605,
+          "ay": 0
+        },
+        {
+          "g": 17,
+          "cl": 2,
+          "dx": 0,
+          "dy": 0,
+          "ax": 268,
+          "ay": 0
+        },
+        {
+          "g": 3,
+          "cl": 3,
+          "dx": 0,
+          "dy": 0,
+          "ax": 260,
+          "ay": 0
+        },
+        {
+          "g": 55,
+          "cl": 4,
+          "dx": 0,
+          "dy": 0,
+          "ax": 486,
+          "ay": 0
+        },
+        {
+          "g": 82,
+          "cl": 5,
+          "dx": 0,
+          "dy": 0,
+          "ax": 605,
+          "ay": 0
+        },
+        {
+          "g": 15,
+          "cl": 6,
+          "dx": 0,
+          "dy": 0,
+          "ax": 268,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans",
+      "fontFile": "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+      "fontSha256": "a4c811314da2ade3b4d2f44e80cda21dd2624e50be82dcefa298dc45a3c92d6c",
+      "text": "Hello",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosans/NotoSans-Regular.ttf",
+        "Hello"
+      ],
+      "glyphs": [
+        {
+          "g": 43,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 741,
+          "ay": 0
+        },
+        {
+          "g": 72,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 564,
+          "ay": 0
+        },
+        {
+          "g": 79,
+          "cl": 2,
+          "dx": 0,
+          "dy": 0,
+          "ax": 258,
+          "ay": 0
+        },
+        {
+          "g": 79,
+          "cl": 3,
+          "dx": 0,
+          "dy": 0,
+          "ax": 258,
+          "ay": 0
+        },
+        {
+          "g": 82,
+          "cl": 4,
+          "dx": 0,
+          "dy": 0,
+          "ax": 605,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans SC",
+      "fontFile": "folio-go/fonts/notosanssc/NotoSansSC-Regular.ttf",
+      "fontSha256": "5ef5755b1ac6502180985a2aba6ef0b42d6663829f6f653898ced8411a060158",
+      "text": "结算单",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosanssc/NotoSansSC-Regular.ttf",
+        "结算单"
+      ],
+      "glyphs": [
+        {
+          "g": 21201,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 20375,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 10118,
+          "cl": 2,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        }
+      ]
+    },
+    {
+      "face": "Noto Sans SC",
+      "fontFile": "folio-go/fonts/notosanssc/NotoSansSC-Regular.ttf",
+      "fontSha256": "5ef5755b1ac6502180985a2aba6ef0b42d6663829f6f653898ced8411a060158",
+      "text": "结算单，共３页",
+      "argv": [
+        "hb-shape",
+        "--no-glyph-names",
+        "--output-format=json",
+        "folio-go/fonts/notosanssc/NotoSansSC-Regular.ttf",
+        "结算单，共３页"
+      ],
+      "glyphs": [
+        {
+          "g": 21201,
+          "cl": 0,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 20375,
+          "cl": 1,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 10118,
+          "cl": 2,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 29763,
+          "cl": 3,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 9641,
+          "cl": 4,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 29770,
+          "cl": 5,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        },
+        {
+          "g": 27742,
+          "cl": 6,
+          "dx": 0,
+          "dy": 0,
+          "ax": 1000,
+          "ay": 0
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "HarfBuzz is the REFERENCE implementation, not a sibling port. go-text/typesetting was rejected as the oracle: it would break gomod_test.go's wantModuleGraph, and it descends from the same benoitkugler/textlayout lineage textshape's README credits, so its agreement is weaker evidence than it looks.",
+    "textshape's own harfbuzz-tests/ corpus was rejected too: a vendor's test corpus is curated by the vendor and selected to pass. This oracle runs HarfBuzz against FOLIO's corpus.",
+    "Precedent: Story 1.1 used qpdf --check as an external oracle specifically to avoid a module dependency, and AD-25 permits provenance by 'a one-time offline reference run, hand-checked — never a runtime dependency'.",
+    "Cluster values here are RUNE indices, matching textshape. See the Thai name row, whose clusters are 0,0,2,3,3,5,5 — byte offsets over seven three-byte runes would be multiples of 3."
+  ]
+}

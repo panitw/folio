@@ -1,0 +1,30 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 500, "height": 24, "value": "ปั ฟั ที่ ป้ำ", "style": {"fontFamily": "body", "fontSize": 16}},
+        {"id": "e2", "type": "text", "x": 0, "y": 28, "width": 500, "height": 24, "value": "ณัฐวุฒิ เกิด กรุงเทพ", "style": {"fontFamily": "body", "fontSize": 16}},
+        {"id": "e3", "type": "text", "x": 0, "y": 56, "width": 500, "height": 24, "value": "น้ำ า", "style": {"fontFamily": "body", "fontSize": 16}},
+        {"id": "e4", "type": "text", "x": 0, "y": 84, "width": 500, "height": 24, "value": "office fi AV Wo. To,", "style": {"fontFamily": "body", "fontSize": 16}},
+        {"id": "e5", "type": "text", "x": 0, "y": 112, "width": 500, "height": 24, "value": "结算单，共３页", "style": {"fontFamily": "body", "fontSize": 16}},
+        {"id": "e6", "type": "text", "x": 0, "y": 140, "width": 500, "height": 24, "value": "Ada ปั 结", "style": {"fontFamily": "body", "fontSize": 16}},
+        {"id": "e7", "type": "text", "x": 0, "y": 168, "width": 500, "height": 24, "value": "AV ก", "style": {"fontFamily": "body", "fontSize": 16}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {
+    "body": ["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]
+  },
+  "locale": "th",
+  "nextId": 8,
+  "page": {
+    "margin": {"bottom": 36, "left": 36, "right": 36, "top": 36},
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}

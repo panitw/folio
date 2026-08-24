@@ -10,6 +10,7 @@ import (
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/pdf"
 	"github.com/panitw/folio/folio-go/internal/template"
+	"github.com/panitw/folio/folio-go/internal/text"
 )
 
 // A4 page dimensions in millipoints, matching internal/pdf's Story 1.1
@@ -61,12 +62,27 @@ func pageDimensions(doc *Template) (width, height geom.Length, err error) {
 }
 
 // textRunSource is one text element found while walking the document's
-// bands, together with the resolved face name it needs.
+// bands, together with the resolved face name it needs and the SHAPED
+// answer for its text.
+//
+// glyphs/clusterTexts are populated by splitByFace, in the same pass
+// that computes x, and that co-location is the point rather than a
+// convenience: x is derived from glyphs (see splitByFace's comment), so
+// a run cannot be drawn from one shaping answer and positioned from
+// another. Story 2.3's finisher, Blocker 1 — the previous arrangement
+// shaped in renderDocument and summed raw `hmtx` advances here, which
+// drew kerned text at unkerned origins.
 type textRunSource struct {
 	face     string
 	text     string
 	x, y     geom.Length
 	fontSize geom.Length
+
+	// glyphs is the shaper's answer for text, in FONT UNITS and drawing
+	// order. clusterTexts is its per-glyph /ToUnicode source text
+	// (text.ClusterTexts), parallel to glyphs.
+	glyphs       []text.ShapedGlyph
+	clusterTexts []string
 }
 
 // bandWithOrigin pairs one of the document's three bands with the
@@ -356,20 +372,42 @@ func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (stri
 // coverage at all).
 //
 // Positioning: only the FIRST sub-run keeps the element's authored X;
-// each later sub-run's X is the previous sub-run's X plus its own total
-// advance (fontCache's AdvanceForRune, scaled by fontSize) — glyphs
-// WITHIN one sub-run are still positioned by the embedded font's own
-// /W array at PDF-render time via a single Tj/TJ operator, exactly as a
-// one-face element already worked before this story.
+// each later sub-run's X is the previous sub-run's X plus that sub-run's
+// SHAPED total advance, scaled by fontSize — glyphs WITHIN one sub-run
+// are positioned by the embedded font's own /W array plus the TJ
+// adjustments appendShapedRun emits, exactly as a one-face element
+// already worked before this story.
+//
+// The shaped advance is the ONLY correct cursor, and shaping therefore
+// happens HERE rather than one frame up in renderDocument — Story 2.3's
+// finisher, Blocker 1. Until this story, the segment cursor was a sum of
+// per-rune `hmtx` advances (fontset.AdvanceForRune) and that agreed with
+// what was drawn only because nothing was kerned. Once runs are drawn
+// kerned, a segment summed from raw `hmtx` places the NEXT face's
+// segment as though the kerning had not happened: measured against the
+// shipped chain ["Noto Sans","Noto Sans Thai","Noto Sans SC"] at 16 pt,
+// the element "AV ก" placed its Thai segment 640 millipoints (0.64 pt)
+// too far right, and "Wo. ก" 320. Text drawn kerned and placed unkerned
+// is the whole defect.
+//
+// The structural fix is not "sum the right numbers" but "have only one
+// number": the glyphs the cursor is derived from are the SAME
+// []text.ShapedGlyph carried on the returned textRunSource and handed to
+// buildShapedPDFRuns, so the drawn run and the next segment's origin
+// cannot disagree again — there is no second derivation left to drift.
+// Per-glyph advances are scaled to the 1000-unit em INDIVIDUALLY and
+// then summed, never summed and then scaled, because that is the
+// already-rounded space the viewer's pen consumes (the same reasoning
+// appendShapedRun's advance-correction term rests on).
 func splitByFace(
-	chain []string, text string, x, y, fontSize geom.Length, fs FontSet, cache *fontCache,
+	chain []string, elementText string, x, y, fontSize geom.Length, fs FontSet, cache *fontCache,
 ) ([]textRunSource, error) {
 	type segment struct {
 		face  string
 		runes []rune
 	}
 	var segments []segment
-	for _, r := range text {
+	for _, r := range elementText {
 		face, err := resolveRuneFace(chain, r, fs, cache)
 		if err != nil {
 			return nil, err
@@ -384,25 +422,40 @@ func splitByFace(
 	runs := make([]textRunSource, 0, len(segments))
 	cursor := x
 	for _, seg := range segments {
-		runs = append(runs, textRunSource{
-			face:     seg.face,
-			text:     string(seg.runes),
-			x:        cursor,
-			y:        y,
-			fontSize: fontSize,
-		})
-
 		f, err := cache.get(seg.face, fs)
 		if err != nil {
 			return nil, err
 		}
+
+		// AC1/AC8: one buffer per FACE-SEGMENT, never per element and
+		// never per document — GuessSegmentProperties derives script and
+		// direction from the buffer's own contents, so a mixed-script
+		// string would let one script's rules govern another's runes.
+		// The segmentation above is Story 2.2's, unchanged.
+		segText := string(seg.runes)
+		glyphs, serr := f.Shaper().Shape(segText)
+		if serr != nil {
+			return nil, serr
+		}
+		texts, terr := text.ClusterTexts(segText, glyphs)
+		if terr != nil {
+			return nil, fmt.Errorf("face %q: %w", seg.face, terr)
+		}
+
+		runs = append(runs, textRunSource{
+			face:         seg.face,
+			text:         segText,
+			x:            cursor,
+			y:            y,
+			fontSize:     fontSize,
+			glyphs:       glyphs,
+			clusterTexts: texts,
+		})
+
+		upem := int64(f.UnitsPerEm())
 		var advance1000 int64
-		for _, r := range seg.runes {
-			a, ok := f.AdvanceForRune(r)
-			if !ok {
-				return nil, fmt.Errorf("face %q: no advance for rune %U it just claimed coverage for", seg.face, r)
-			}
-			advance1000 += a
+		for _, g := range glyphs {
+			advance1000 += int64(geom.ScaleRound(geom.Length(int64(g.XAdvance)), 1000, upem))
 		}
 		cursor += geom.ScaleRound(geom.Length(advance1000), int64(fontSize), 1000)
 	}
@@ -425,15 +478,39 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		return nil, err
 	}
 
-	// Union of runes per face, across the WHOLE document (AC9) — built
-	// by ranging `runs` (a slice), never a map, at the collection site.
-	runesByFace := map[string][]rune{}
-	for _, r := range runs {
-		runesByFace[r.face] = append(runesByFace[r.face], []rune(r.text)...)
+	// Story 2.3, AC1/AC8: each face-segment is shaped ONCE, with its own
+	// buffer, by splitByFace — which is also where the segment cursor is
+	// computed, so there is exactly ONE shaping answer per segment and
+	// the drawn glyphs and the next segment's origin are derived from
+	// it. Re-shaping here would reintroduce the second derivation
+	// Blocker 1 was; these two slices are views onto what splitByFace
+	// already produced, built by ranging a SLICE (D-1.3.5).
+	shapedRuns := make([][]text.ShapedGlyph, len(runs))
+	clusterTexts := make([][]string, len(runs))
+	for i, r := range runs {
+		shapedRuns[i] = r.glyphs
+		clusterTexts[i] = r.clusterTexts
 	}
 
-	faceNames := slices.Sorted(maps.Keys(runesByFace)) // ScanMapRange-compliant: sorted, deterministic object order.
+	// Union of SHAPED GLYPH IDS per face, across the WHOLE document
+	// (AC9, AC5) — built by ranging `runs` (a slice), never a map.
+	//
+	// This is the change AC5 is about: the subset input is the set of
+	// glyphs the renderer actually draws, not the set of runes the
+	// author typed. They are measurably different — shaping "office"
+	// draws the `ffi` ligature, which no rune maps to — and building
+	// the subset from the runes would leave the drawn glyph
+	// unaddressable (D-1.5.8, one level up).
+	glyphsByFace := map[string][]uint16{}
+	for i, r := range runs {
+		for _, g := range shapedRuns[i] {
+			glyphsByFace[r.face] = append(glyphsByFace[r.face], g.GlyphID)
+		}
+	}
 
+	faceNames := slices.Sorted(maps.Keys(glyphsByFace)) // ScanMapRange-compliant: sorted, deterministic object order.
+
+	subsets := make(map[string]*fontset.Subset, len(faceNames))
 	embedded := make(map[string]pdf.EmbeddedFace, len(faceNames))
 	for _, name := range faceNames {
 		font, ferr := cache.get(name, fs)
@@ -441,11 +518,12 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 			return nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet: %w", name, ferr)
 		}
 		// ONE subsetting call per font per document (AC9), over the
-		// union of runes collected above.
-		sub, serr := font.Subset(runesByFace[name])
+		// union of shaped glyph ids collected above.
+		sub, serr := font.Subset(glyphsByFace[name])
 		if serr != nil {
 			return nil, fmt.Errorf("folio: Render: %w", serr)
 		}
+		subsets[name] = sub
 		metrics := font.Metrics()
 		created, modified := font.HeadTimes()
 		embedded[name] = pdf.EmbeddedFace{
@@ -457,7 +535,6 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 			Program:        sub.Program,
 			Tag:            sub.Tag,
 			NumGlyphs:      sub.NumGlyphs,
-			GlyphForRune:   sub.GlyphForRune,
 			WidthForGlyph:  sub.WidthForGlyph,
 			Ascent:         metrics.Ascent,
 			Descent:        metrics.Descent,
@@ -547,9 +624,9 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		return nil, perr
 	}
 
-	pdfRuns := make([]pdf.TextRun, len(runs))
-	for i, r := range runs {
-		pdfRuns[i] = pdf.TextRun{Face: r.face, Text: r.text, X: r.x, Y: r.y, FontSize: r.fontSize}
+	pdfRuns, cerr := buildShapedPDFRuns(runs, shapedRuns, clusterTexts, subsets, embedded, cache, fs)
+	if cerr != nil {
+		return nil, cerr
 	}
 
 	page := pdf.TextPage{
@@ -562,4 +639,170 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	}
 
 	return pdf.SerializeTextDocument([]pdf.TextPage{page}, embedded, pdfImages)
+}
+
+// cidKey identifies one allocated CID: a subset glyph together with the
+// text it extracts as. Two entries sharing a glyph but differing in text
+// are two CIDs pointing at one glyph (Story 2.3, D-2.3-Q1 as ruled) —
+// see pdf.EmbeddedFace.ExtraCIDs for the measured case that forces it.
+type cidKey struct {
+	glyph uint16
+	text  string
+}
+
+// buildShapedPDFRuns turns the document's shaped runs into the CID-level
+// runs internal/pdf emits, and — as the same pass, because the two
+// cannot be computed independently — allocates each face's CID space and
+// its /ToUnicode entries.
+//
+// Three things happen here and each is an acceptance criterion:
+//
+//   - AC4: every CID a content stream will emit originates in a shaped
+//     glyph run. There is no other route: this is the only function that
+//     produces a pdf.ShapedGlyph, and the only input it reads is the
+//     shaper's output mapped through the subset plan. The old
+//     rune -> GlyphForRune -> CID path does not exist any more, so the
+//     property is structural rather than asserted by a denylist.
+//   - AC6/AD-2: every position is scaled from FONT UNITS to the PDF's
+//     1000-unit em exactly once, here, through geom.ScaleRound — this
+//     module's one scaling function with its one documented rounding
+//     mode. internal/pdf receives numbers already in the output's unit
+//     and scales nothing.
+//   - AC7/D-2.3-Q1: CIDs are allocated per (subset glyph, cluster text)
+//     pair, in first-encounter order over runs in document order — a
+//     deterministic order derived by ranging SLICES only (D-1.3.5).
+//
+// AD-23 holds trivially here: ot.GlyphPos is int16 throughout and
+// geom.Length is int64, so nothing on this path is or becomes a float.
+// Advances come from the shaper (which includes GPOS kerning), never
+// from ot.Face.HorizontalAdvance (which returns float32 and omits it).
+func buildShapedPDFRuns(
+	runs []textRunSource,
+	shaped [][]text.ShapedGlyph,
+	clusterTexts [][]string,
+	subsets map[string]*fontset.Subset,
+	embedded map[string]pdf.EmbeddedFace,
+	cache *fontCache,
+	fs FontSet,
+) ([]pdf.TextRun, error) {
+	type faceCIDs struct {
+		byKey       map[cidKey]uint16
+		baseClaimed map[uint16]bool
+		extras      []uint16
+		entries     []pdf.CIDText
+	}
+	alloc := map[string]*faceCIDs{}
+
+	pdfRuns := make([]pdf.TextRun, len(runs))
+	for i, r := range runs {
+		sub, ok := subsets[r.face]
+		if !ok {
+			return nil, fmt.Errorf("folio: Render: face %q has shaped runs but no subset", r.face)
+		}
+		font, ferr := cache.get(r.face, fs)
+		if ferr != nil {
+			return nil, fmt.Errorf("folio: Render: face %q: %w", r.face, ferr)
+		}
+		upem := int64(font.UnitsPerEm())
+
+		state, seen := alloc[r.face]
+		if !seen {
+			state = &faceCIDs{byKey: map[cidKey]uint16{}, baseClaimed: map[uint16]bool{}}
+			alloc[r.face] = state
+		}
+
+		glyphs := make([]pdf.ShapedGlyph, 0, len(shaped[i]))
+		for gi, g := range shaped[i] {
+			newGID, retained := sub.GlyphForSource[g.GlyphID]
+			if !retained {
+				// AC5: a shaped glyph the plan did not retain is a
+				// located error naming the face and the glyph id, never
+				// a silent .notdef.
+				return nil, fmt.Errorf(
+					"folio: Render: face %q: shaped glyph id %d was not retained by the subset plan",
+					r.face, g.GlyphID,
+				)
+			}
+
+			key := cidKey{glyph: newGID, text: clusterTexts[i][gi]}
+			cid, allocated := state.byKey[key]
+			if !allocated {
+				switch {
+				case !state.baseClaimed[newGID]:
+					// The BASE block: CID == subset glyph id, exactly
+					// as every folio PDF worked before this story.
+					cid = newGID
+					state.baseClaimed[newGID] = true
+				default:
+					// This glyph already carries a different text at its
+					// base CID, so its second meaning needs a second CID
+					// pointing at the same glyph.
+					//
+					// Identity-H's CID is TWO BYTES. Past 65535 the
+					// conversion below wraps silently and the extra CID
+					// collides with the base block, producing both a
+					// wrong glyph and a wrong /ToUnicode entry — a silent
+					// wrap where every other limit in this codebase is a
+					// located error (Story 2.3 finisher, Finding 12).
+					// Unreachable in practice (it needs a subset near the
+					// 65535-glyph ceiling PLUS context-distinct CIDs on
+					// top of it), which is exactly why it would never be
+					// noticed if it did happen.
+					next := sub.NumGlyphs + len(state.extras)
+					if next > 0xFFFF {
+						return nil, fmt.Errorf(
+							"folio: Render: face %q: CID space exhausted — the subset has %d glyphs and this "+
+								"document needs %d additional CIDs for glyphs carrying more than one source "+
+								"text, which exceeds Identity-H's two-byte CID ceiling of 65535",
+							r.face, sub.NumGlyphs, len(state.extras)+1,
+						)
+					}
+					cid = uint16(next)
+					state.extras = append(state.extras, newGID)
+				}
+				state.byKey[key] = cid
+				state.entries = append(state.entries, pdf.CIDText{CID: cid, Text: key.text})
+			}
+
+			glyphs = append(glyphs, pdf.ShapedGlyph{
+				CID:      cid,
+				XAdvance: int64(geom.ScaleRound(geom.Length(int64(g.XAdvance)), 1000, upem)),
+				XOffset:  int64(geom.ScaleRound(geom.Length(int64(g.XOffset)), 1000, upem)),
+				YOffset:  int64(geom.ScaleRound(geom.Length(int64(g.YOffset)), 1000, upem)),
+			})
+		}
+
+		pdfRuns[i] = pdf.TextRun{
+			Face:       r.face,
+			Glyphs:     glyphs,
+			SourceText: r.text,
+			X:          r.x,
+			Y:          r.y,
+			FontSize:   r.fontSize,
+		}
+	}
+
+	// Write each face's allocated CID space back into its EmbeddedFace.
+	// Ranges `runs` (a slice) to reach the face names, never `alloc`
+	// (a map) — D-1.3.5, and the reason the entries end up in a
+	// deterministic order at all.
+	written := map[string]bool{}
+	for _, r := range runs {
+		if written[r.face] {
+			continue
+		}
+		written[r.face] = true
+		state := alloc[r.face]
+		face := embedded[r.face]
+		face.ExtraCIDs = state.extras
+		entries := slices.Clone(state.entries)
+		// Ascending CID order — the order buildToUnicodeCMap emits and
+		// the order the pre-2.3 CMap already used, so a document that
+		// needs no extra CIDs produces byte-identical /ToUnicode.
+		slices.SortFunc(entries, func(a, b pdf.CIDText) int { return int(a.CID) - int(b.CID) })
+		face.ToUnicode = entries
+		embedded[r.face] = face
+	}
+
+	return pdfRuns, nil
 }
