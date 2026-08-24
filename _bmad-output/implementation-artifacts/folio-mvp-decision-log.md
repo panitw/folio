@@ -7743,3 +7743,41 @@ the twelve call sites derived its discriminating power from reading only the fir
 each was found by a **different route**: a human opening the file, a developer enumerating, and a
 reviewer running the real entry point. **None was found by inspection.** That is the argument for the
 behavioural predicate above.
+
+---
+
+### D-2.6.9 (correction) — the call-site count was measured on an uncommitted working tree; it is 11, not 12
+
+*(mechanism: **binding** for the correction; the ruling's substance is unchanged)*
+
+[[D-2.6.9]] records `readEmittedRuns` as having **12 call sites across 5 files**. **The committed count is
+11**, and it is 11 at **every** commit — `44a1d0f` (where the 12 was written), `4001354`, and `d1af588`:
+12 occurrences minus the definition. Story 2.6a's creator caught it.
+
+**Per-file, at `d1af588`**: `shaped_fixture_test.go` 5, `matrix_test.go` **3**, and one each in
+`wrapped_text_fixture_test.go`, `segment_origin_test.go`, `first_baseline_acceptance_test.go`.
+
+**The cause, stated precisely, because the obvious explanation is wrong.** It is *not* that the pattern
+`readEmittedRuns` also matches the sibling `readEmittedRunsAllPages` — the grep used a trailing
+parenthesis and could never match it. The cause is that **the orchestrator grepped the working tree
+while Story 2.6's work was still uncommitted in it.** `matrix_test.go` carried **4** calls in that
+working tree and **3** in the committed tree; the finisher later converted one to
+`readEmittedRunsAllPages`, returning it to 3. **12 was true of a tree that could not be checked out,
+and 11 is true of every commit.** Two real numbers about two different subjects.
+
+**This is [[D-000.26]]** — *cite the subject of a measurement* — and the citation that was missing is
+**the commit**. A count taken from a tree with uncommitted work in it is a measurement of a moment, not
+of the repository, and it is indistinguishable in the record from a measurement of the repository.
+
+**Consequence, generalised** *(binding)*: **an enumeration recorded in the decision log or a story file
+must name the commit it was taken at**, and must be taken against a tree with no uncommitted changes in
+the files being counted — or must say explicitly that it was not. This closes the same gap
+[[D-000.55]] closed for test evidence: a true statement that reads as a stronger one.
+
+**Note the pattern, since [[D-2.6.9]] exists to correct exactly it.** The orchestrator recorded a count
+from intent-adjacent evidence rather than from a citable artifact, which is the developer's
+*"I counted what I intended to add, not what the artifact contains"* one level up — **inside the ruling
+that was written to correct that behaviour.** [[D-000.48]] anticipated this: a correction sweep can
+introduce a fresh instance of the class it is correcting. **The substance of D-2.6.9 is unaffected** —
+the predicate, the placement, the cost control and the guardrails all stand; only the number moves, and
+it moves in the direction that makes the sweep slightly cheaper, not larger.
