@@ -27,7 +27,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -548,6 +551,212 @@ func captureThreeBandRender(t *testing.T, target matrixTarget, binPath string) [
 	return runOnTarget(t, target, binPath, map[string]string{subprocessThreeBandEnvVar: "1"})
 }
 
+// captureMultiPageRender runs binPath with
+// FOLIO_SUBPROCESS_RENDER_MULTIPAGE=1 — Story 2.6's EIGHTH selector,
+// rendering fixtures/multi-page/ through the public Render path.
+func captureMultiPageRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessMultiPageEnvVar: "1"})
+}
+
+// matrixKidsArrayRE and matrixWellFormedRefRE are this file's OWN copies of
+// golden_structural_validity_test.go's kidsArrayRE / wellFormedRefRE, not a
+// shared import: that file is package folio_test (external), this one is
+// package folio (internal, so it can call readEmittedRuns et al. directly,
+// AD-21) — the two packages cannot share unexported identifiers. The
+// duplication is a regex LITERAL, not a stateful walk (contrast Finding 8's
+// nonStreamRegions/assertStreamLengthsAreExact coupling, which this is NOT
+// an instance of), and the two callers check genuinely different subjects:
+// golden_structural_validity_test.go resolves the COMMITTED golden on disk;
+// requirePageTreeResolves below resolves the FRESH per-target render, before
+// any byte comparison — D-2.6.8's layer/subject distinction applied to this
+// guard (Story 2.6 finisher, Blocker 1 / Finding 2).
+var matrixKidsArrayRE = regexp.MustCompile(`/Type /Pages /Kids \[([^\]]*)\] /Count (\d+)`)
+var matrixWellFormedRefRE = regexp.MustCompile(`^(\d+) 0 R$`)
+
+// requirePageTreeResolves is Story 2.6's finisher fix for Blocker 1 / Major
+// 2: the ORIGINAL two checks it replaces — bytes.Count("<< /Type /Page
+// /Parent ") == wantPages, and bytes.Contains("] /Count %d ") — both measure
+// PRESENCE, and both were satisfied by the exact broken bytes this story
+// exists to prevent: "<< /Type /Pages /Kids [8 0 R10 0 R] /Count 2 >>" has
+// two correctly-emitted /Type /Page objects and the literal substring
+// "] /Count 2 ", while its page tree resolves to ZERO pages (D-000.53). A
+// fix that merely counted to 2 would leave a guard that cannot tell a
+// working document from the artifact that started this story.
+//
+// So this resolves the /Kids array into the SET of object numbers it
+// actually references — not merely their COUNT, which
+// golden_structural_validity_test.go's finisher fix (Finding 4) shows is not
+// enough either: a duplicated reference plus an orphaned page has the right
+// count and the wrong set — and requires that set to equal wantPages AND to
+// equal the set of objects actually defined as "/Type /Page". Every
+// well-formedness precondition below fires with a diagnostic BEFORE the
+// weaker checks would have (D-000.21 sharpened).
+func requirePageTreeResolves(t *testing.T, target matrixTarget, raw []byte, wantCount int) {
+	t.Helper()
+
+	m := matrixKidsArrayRE.FindSubmatch(raw)
+	if m == nil {
+		t.Fatalf("%s: no page tree of the form \"/Type /Pages /Kids [...] /Count N\" found", target.name)
+	}
+	declaredCount, err := strconv.Atoi(string(m[2]))
+	if err != nil || declaredCount != wantCount {
+		t.Fatalf("%s: page tree declares /Count %q, want %d", target.name, m[2], wantCount)
+	}
+
+	fields := bytes.Fields(m[1])
+	if len(fields)%3 != 0 {
+		t.Fatalf("%s: /Kids array %q does not tokenize into whole \"N 0 R\" triples — a run-together "+
+			"reference (e.g. \"8 0 R10 0 R\") collapses two tokens into one unparseable token, which is "+
+			"exactly how a two-page document shipped with an EMPTY page tree behind a correct-looking "+
+			"/Count (D-000.53)", target.name, m[1])
+	}
+	refSet := map[int]bool{}
+	for i := 0; i+2 < len(fields); i += 3 {
+		ref := string(fields[i]) + " " + string(fields[i+1]) + " " + string(fields[i+2])
+		rm := matrixWellFormedRefRE.FindStringSubmatch(ref)
+		if rm == nil {
+			t.Fatalf("%s: /Kids array contains %q, which is not a well-formed indirect reference (\"N 0 R\")", target.name, ref)
+		}
+		num, _ := strconv.Atoi(rm[1])
+		refSet[num] = true
+	}
+	if len(refSet) != declaredCount {
+		t.Fatalf("%s: /Kids array references %d DISTINCT object(s) but /Count says %d — a duplicated "+
+			"reference plus an orphaned page has the right count and the wrong set, and a count comparison "+
+			"cannot see it (Finding 4)", target.name, len(refSet), declaredCount)
+	}
+
+	objs := pdfObjects(t, raw)
+	definedSet := map[int]bool{}
+	for num, body := range objs {
+		if bytes.HasPrefix(body, []byte("<< /Type /Page /Parent ")) {
+			definedSet[num] = true
+		}
+	}
+	for num := range refSet {
+		if !definedSet[num] {
+			t.Fatalf("%s: /Kids references object %d, which is never defined as a /Type /Page object — a "+
+				"syntactically valid reference to a non-existent or wrong-typed object is still an empty "+
+				"page tree", target.name, num)
+		}
+	}
+	if len(definedSet) != len(refSet) {
+		t.Fatalf("%s: the file defines %d /Type /Page object(s) but the page tree references %d distinct "+
+			"one(s) — a page object that exists and is unreachable is invisible to a reader and to a hash "+
+			"alike", target.name, len(definedSet), len(refSet))
+	}
+}
+
+// requireMultiPageIsGenuinelyMultiPage is Story 2.6's OWN feature guard, and
+// it exists for the same reason requireShapedTextIsShaped,
+// requireWrappedTextIsWrapped and requireThreeBandPageUsesAllThreeBands do:
+// "contains a FontFile2" is satisfied by any embedding, and a document that
+// FAILED TO PAGINATE would still embed a face and still agree across four
+// targets — four legs agreeing on the WRONG answer is the failure mode a
+// cross-target hash comparison cannot see by itself.
+//
+// It asserts, on EVERY leg and before any byte comparison, the four things
+// that make this document the pagination fixture rather than just another
+// golden:
+//
+//  1. Its page tree RESOLVES — every /Kids reference is a distinct, defined
+//     /Type /Page object, matching the declared /Count exactly
+//     (requirePageTreeResolves, added by the finisher: the ORIGINAL two
+//     checks here — a page-object count and a "] /Count N " substring —
+//     both measured PRESENCE and both passed on the exact broken bytes this
+//     story exists to prevent; see Blocker 1 / Finding 2).
+//  2. NO text is placed at a negative PDF Y. That is the defect itself:
+//     before this story the same document drew its last seven lines below
+//     the bottom edge of the sheet, silently.
+//  3. The running header and footer appear on BOTH pages, so a leg that
+//     paginated the content but dropped the running bands from page 2 —
+//     which is what "page 34 is as complete as page 1" forbids — fails.
+//     This reads EVERY text-bearing content stream via
+//     readEmittedRunsAllPages, not just the first one — the original
+//     helper it called, readEmittedRuns, reads exactly one stream by
+//     design (see its docblock) and silently under-counted this two-page
+//     document to one page's worth of runs, fataling unconditionally on
+//     every leg (Story 2.6 finisher, Blocker 1).
+func requireMultiPageIsGenuinelyMultiPage(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+
+	if len(raw) == 0 {
+		t.Fatalf("%s: the multi-page leg produced no bytes", target.name)
+	}
+	requirePageTreeResolves(t, target, raw, 2)
+
+	runs := readEmittedRunsAllPages(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the multi-page leg emitted no text runs", target.name)
+	}
+	for _, r := range runs {
+		if r.OriginYMilli < 0 {
+			t.Fatalf("%s: the multi-page leg places text at a NEGATIVE PDF Y (%d) — text drawn below the bottom edge of the sheet, which is precisely the defect Story 2.6 fixed", target.name, r.OriginYMilli)
+		}
+	}
+
+	// The running bands, one occurrence per page. Their PDF Y is identical on
+	// every page by construction (AC3), so counting occurrences of each Y is
+	// exactly "does it appear on both pages".
+	headerRuns, footerRuns := 0, 0
+	for _, r := range runs {
+		switch r.OriginYMilli {
+		case 798269:
+			headerRuns++
+		case 51448:
+			footerRuns++
+		}
+	}
+	if headerRuns != 2 || footerRuns != 2 {
+		t.Fatalf("%s: the multi-page leg carries %d page-header run(s) and %d page-footer run(s) at their declared Y; a two-page document must carry exactly 2 of each — one per page",
+			target.name, headerRuns, footerRuns)
+	}
+}
+
+// readEmittedRunsAllPages is the multi-page-aware SIBLING of
+// readEmittedRuns (shaped_fixture_test.go), added narrowly for this one
+// caller rather than by changing readEmittedRuns' contract for its other
+// eleven call sites (Story 2.6 finisher, Blocker 1 — scope guard: Story
+// 2.6a owns sweeping the rest, and would be unable to measure what it
+// fixed if this story silently changed the shared function's behaviour
+// first).
+//
+// It parses EVERY text-bearing content stream in the document, in
+// deterministic ASCENDING OBJECT-NUMBER order (pdfObjects returns a map,
+// so iterating it directly is nondeterministic run to run — the same
+// hazard Finding 1 named secondarily), and concatenates their runs via
+// parseContentStreamRuns, the exact parser readEmittedRuns itself uses per
+// stream. For this fixture's emitter, ascending object number is page
+// order: content objects are reserved one per page, in page order, after
+// every page object (render.go's object-reservation order, *Measured
+// findings* 3).
+func readEmittedRunsAllPages(t *testing.T, b []byte) []emittedRun {
+	t.Helper()
+	objs := pdfObjects(t, b)
+
+	nums := make([]int, 0, len(objs))
+	for num := range objs {
+		nums = append(nums, num)
+	}
+	sort.Ints(nums)
+
+	var runs []emittedRun
+	streams := 0
+	for _, num := range nums {
+		s, ok := streamBody(objs[num])
+		if !ok || !bytes.Contains(s, []byte(" Tf\n")) {
+			continue
+		}
+		streams++
+		runs = append(runs, parseContentStreamRuns(t, s)...)
+	}
+	if streams == 0 {
+		t.Fatal("produced PDF carries no text content stream")
+	}
+	return runs
+}
+
 // requireThreeBandPageUsesAllThreeBands is Story 2.5's OWN feature
 // guard, and it exists for the same reason requireShapedTextIsShaped and
 // requireWrappedTextIsWrapped do: "contains a FontFile2" is satisfied by
@@ -783,6 +992,25 @@ type matrixDocument struct {
 	// widened because "contains a FontFile2" is not sufficient to prove
 	// AC7's instancing hazard was actually exercised (V6).
 	extraGuard func(t *testing.T, target matrixTarget, raw []byte)
+
+	// wantPages is how many /Type /Page objects this document's render must
+	// carry, passed to assertWellFormedPDF on EVERY leg.
+	//
+	// It is a per-document field rather than a constant because Story 2.6
+	// added the first document with more than one page — and because the
+	// checker previously hard-coded 1, it could not be pointed at that
+	// document at all. Zero reads as 1, so every pre-2.6 entry keeps its
+	// existing meaning without being edited.
+	wantPages int
+}
+
+// pageCount returns the document's declared page count, treating the zero
+// value as 1 so the seven single-page entries need no edit.
+func (d matrixDocument) pageCount() int {
+	if d.wantPages == 0 {
+		return 1
+	}
+	return d.wantPages
 }
 
 var matrixDocuments = []matrixDocument{
@@ -867,6 +1095,29 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requireThreeBandPageUsesAllThreeBands,
 	},
+	{
+		// Story 2.6. The legs are DEFERRED to the Epic 2 boundary gate, on
+		// the same D-000.4 reasoning that deferred three-band-page's: the
+		// override criterion is a NEW SOURCE OF CROSS-TARGET DIVERGENCE —
+		// float arithmetic, a vendor call, a compressor, a new dependency —
+		// not merely a new golden. Pagination is integer comparison and
+		// subtraction on geom.Length; it calls no shaper, adds no
+		// dependency, and go list -m all stays at exactly two modules.
+		//
+		// D-2.6.2 SANCTIONS this as the gate's FIFTH obligation, and the
+		// criterion it ruled on is that this is the ONLY cross-target
+		// artifact for a shipped FR30: refusing it would ship FR30 with
+		// none. Registration now is what gives the gate something to
+		// compare — "a golden registered in one list and not the other is a
+		// matrix leg nobody compares, reported as green."
+		label:            "multi-page (pagination, running header and footer on every page)",
+		slug:             "multi-page",
+		capture:          captureMultiPageRender,
+		fixtureRelPath:   []string{"fixtures", "multi-page", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireMultiPageIsGenuinelyMultiPage,
+		wantPages:        2,
+	},
 }
 
 // TestCrossTargetByteIdentity is AC1's single local entry point and AC7's
@@ -905,7 +1156,7 @@ func TestCrossTargetByteIdentity(t *testing.T) {
 
 		for _, doc := range matrixDocuments {
 			raw := doc.capture(t, target, binPath)
-			assertWellFormedPDF(t, target.name+" ("+doc.label+")", raw) // AC6, every leg's own output
+			assertWellFormedPDF(t, target.name+" ("+doc.label+")", raw, doc.pageCount()) // AC6, every leg's own output
 
 			if doc.requireFontFile2 && !containsFontFile2(raw) {
 				// AC10b: the font child's output must be confirmed to
@@ -1090,7 +1341,14 @@ func TestTargetRenderHash(t *testing.T) {
 
 	for _, doc := range matrixDocuments {
 		raw := doc.capture(t, target, binPath)
-		assertWellFormedPDF(t, target.name+" ("+doc.label+")", raw)
+		// doc.pageCount(), NOT a literal 1: this loop runs over EVERY
+		// registered document, so a hard-coded page count here would fatal
+		// on the multi-page document at the GATE — the one place this
+		// matrix-tagged path runs, and the last place anyone wants to
+		// discover it. Same defect class as the one that let the first
+		// multi-page golden ship: a checker encoding the single-page shape
+		// as an invariant.
+		assertWellFormedPDF(t, target.name+" ("+doc.label+")", raw, doc.pageCount())
 
 		if doc.requireFontFile2 && !containsFontFile2(raw) {
 			// AC10b's vacuity guard, same reasoning as

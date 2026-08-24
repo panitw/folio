@@ -54,6 +54,14 @@ func (b *builder) writeRef(id int64) {
 	b.body = appendRef(b.body, id)
 }
 
+// writeRefArray writes a complete array of indirect references, brackets
+// included. It is the ONLY way this package should emit two or more refs in
+// sequence — see appendRefArray for why that is a construction rule rather
+// than a convention.
+func (b *builder) writeRefArray(ids []int64) {
+	b.body = appendRefArray(b.body, ids)
+}
+
 func (b *builder) writeInt(v int64) {
 	b.body = appendInt(b.body, v)
 }

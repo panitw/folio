@@ -273,7 +273,7 @@ func TestThreeBandPageSemanticAcceptance(t *testing.T) {
 	b := renderThreeBandPage(t)
 
 	// Well-formed, one page, and NOT blank.
-	assertWellFormedPDF(t, "three-band-page", b)
+	assertWellFormedPDF(t, "three-band-page", b, 1)
 	if !containsFontFile2(b) {
 		t.Fatal("three-band-page output contains no /FontFile2 — a hash over a document that embedded no face would certify nothing about band composition either")
 	}
@@ -545,8 +545,8 @@ func TestThreeBandPageIsByteIdenticalAcrossTwoProcesses(t *testing.T) {
 	a := renderThreeBandInSubprocess(t, "1")
 	b := renderThreeBandInSubprocess(t, "4")
 
-	assertWellFormedPDF(t, "child A (GOMAXPROCS=1, three-band)", a)
-	assertWellFormedPDF(t, "child B (GOMAXPROCS=4, three-band)", b)
+	assertWellFormedPDF(t, "child A (GOMAXPROCS=1, three-band)", a, 1)
+	assertWellFormedPDF(t, "child B (GOMAXPROCS=4, three-band)", b, 1)
 	if !containsFontFile2(a) || !containsFontFile2(b) {
 		t.Fatal("a child's output contains no FontFile2 — a match below would prove nothing (AC10b's vacuity guard, applied here)")
 	}

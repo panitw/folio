@@ -454,6 +454,29 @@ from a second direction — `ดอเลาะ`, `แนแซ`, `ชัยว�
 zero-break labels — but that is a **conformance fixture, not the corpus**, it contributes nothing to
 P6g, and it adds no attested name. **DW-11 stays open, at 2.**
 
+#### Story 2.6's answer — AC10. **No new items were added. The load-bearing count remains 2.**
+
+Story 2.6 also falls inside DW-11's owner window (*"Epic 2's later stories"*), so it owes an answer in
+writing rather than silence. The answer is the same as 2.4's, and for the same reason: **none were
+found, and none were invented.**
+
+Nothing in Story 2.6 goes near the corpus. Pagination consumes `packLines`' output; it does not compute,
+produce or consume a break-opportunity vector, and `packLines` itself takes no vertical quantity and
+runs **before** the vertical model — so there is no route by which a pagination change could either
+require a corpus item or make one newly available. `fixtures/thai-break-corpus/corpus.json` and
+`cmd/gencorpus/main.go` are **byte-unchanged**, and `TestCorpusMeetsP6ExerciseFloors` still reports
+`P6g … got 7, need >=20` with the stats line `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`,
+character for character (Story 2.4's AC5 requires exactly that).
+
+The dev agent had no more access to a sourced, independently-attested register of Thai personal names
+than 2.4's did, and D-000.17 forbids manufacturing attestation to reach a number. **`ดอเลาะ` and
+`แนแซ` remain the only two. DW-11 stays open, at 2.**
+
+The one thing worth adding for the gate: Story 2.6's new fixture `fixtures/multi-page/` is **all-Latin
+by construction** and creates **no Thai judgment of any kind**, so it neither contributes to P6g nor
+adds a third sign-off obligation. That was a deliberate choice recorded in the fixture's README, not an
+accident of what the document happened to contain.
+
 ### DW-12 — Every later pinned instance inherits AC7's golden + matrix obligation
 - **Deferred by:** Story 2.2 (ruling D-2.2.1)
 - **Owner:** **whichever story next adds a pinned instance of a shipped variable face** (on current
@@ -573,6 +596,36 @@ run and **fails loudly if any section exceeds 100**, with a message saying stop-
 than fix-in-place — because the remedy (chunking into ≤100-entry sections) moves the golden hash of
 every document over the cap, and this entry's own text asks that it *"land with a deliberate re-record
 rather than as a drive-by"*. So the trigger is now a test rather than a reader's vigilance.
+
+**Story 2.6's measurement — AC11. NOT TRIGGERED; this entry stays open.** DW-14's owner is *"the Epic
+2 boundary gate, or Story 2.4 if its corpora reach the limit first"*, and Story 2.6's creator flagged a
+new plausible trigger: **a multi-page fixture is the first document in the repository that could
+plausibly reach 100 distinct `(glyph, text)` pairs in one face**, because the entry source is now
+per-(glyph, cluster text) rather than per-glyph and a longer document has more clusters. Measured on
+the produced bytes of `fixtures/multi-page/expected.pdf`:
+
+```
+multi-page             : 45          (one section, one face)
+```
+
+Largest section **45**, against a cap of 100. **Reported in both directions (D-000.49), because the
+figure understates the headroom in one way and overstates it in another and both matter:**
+
+- It is the **largest single section recorded so far** — above `wrapped-text`'s 38 and `shaped-text`'s
+  28 — and it comes from a document that is only **two pages** and **single-face**. The trend DW-14
+  tracks is confirmed, not contradicted.
+- But it is **one face and all-Latin**. `wrapped-text`'s 38 is the largest of *three* sections across
+  three faces, so per-face this document is not the outlier the raw number suggests. A three-script
+  multi-page document would be the real test, and none exists.
+
+**The honest reading**: 45 of 100 on a 29-line, single-face, two-page document means a document of
+roughly **twice the length in one face** would reach the cap — which is an ordinary report, not a
+pathological one. This is the closest any artifact has come, and the trigger is now foreseeable rather
+than hypothetical. **The fix stays the gate's**, per this entry's own request that it *"land with a
+deliberate re-record rather than as a drive-by"*: chunking into ≤100-entry sections moves the golden
+hash of every document over the cap.
+
+**DW-14 stays open, and its risk is now higher than when it was written.**
 
 **Why it is worth a standing entry rather than a passing mention.** Story 2.3 is the story that both
 **rewrote this function's entry source** (CIDs are now allocated per (glyph, cluster text), so the

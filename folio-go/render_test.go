@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -142,6 +143,17 @@ const subprocessWrappedTextEnvVar = "FOLIO_SUBPROCESS_RENDER_WRAPPEDTEXT"
 // the only one whose legs can disagree if band composition is not
 // reproducible across targets.
 const subprocessThreeBandEnvVar = "FOLIO_SUBPROCESS_RENDER_THREEBAND"
+
+// subprocessMultiPageEnvVar is Story 2.6's EIGHTH selector, rendering
+// fixtures/multi-page/ through the public Render path in a FRESH process.
+//
+// It exists for the same reason the seven before it do: a golden recorded
+// from one process pins whatever that process happened to do, including a map
+// iteration order. The multi-page document is the first with more than one
+// page, so it is the first whose PAGE OBJECT ORDER could vary between
+// processes — which is exactly the property a second process can falsify and
+// a second call in the same process cannot.
+const subprocessMultiPageEnvVar = "FOLIO_SUBPROCESS_RENDER_MULTIPAGE"
 
 // shapedTextTemplateJSON is Story 2.3's AC10 fixture document
 // (fixtures/shaped-text/input.folio, kept byte-identical to it by
@@ -520,6 +532,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(b)
 	}
+	if os.Getenv(subprocessMultiPageEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(multiPageTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(b)
+	}
 	if os.Getenv(subprocessMultiScriptEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(multiScriptTestTemplateJSON))
 		if err != nil {
@@ -573,7 +598,7 @@ func writeToStdoutOrDie(b []byte) {
 // assertions and Nit 26's fix for a page-count check that used to depend
 // on an incidental trailing space rather than an actual dictionary
 // boundary.
-func assertWellFormedPDF(t *testing.T, label string, b []byte) {
+func assertWellFormedPDF(t *testing.T, label string, b []byte, wantPages int) {
 	t.Helper()
 
 	if len(b) == 0 {
@@ -586,9 +611,31 @@ func assertWellFormedPDF(t *testing.T, label string, b []byte) {
 		t.Fatalf("%s: output does not end with %%%%EOF", label)
 	}
 
+	// THE EXPECTED PAGE COUNT IS A PARAMETER, and this is Story 2.6's
+	// repair of a real process defect rather than a tidy-up.
+	//
+	// This assertion used to read `pageCount != 1`, hard-coded. That made
+	// the ONE well-formedness checker in the module UNCALLABLE on a
+	// multi-page document: it would have fatalled on the very property that
+	// made the document interesting. So when Story 2.6 recorded the first
+	// multi-page golden, this checker was simply never invoked on it — and
+	// the golden shipped with an unresolvable page tree, past its hash and
+	// past a bespoke acceptance step assembled from checks a broken file
+	// satisfies.
+	//
+	// The checker existed. It could not be pointed at the subject. That is
+	// worse than a missing check, because the 18 call sites elsewhere make
+	// the module look covered.
+	//
+	// THE `!= wantPages` COMPARISON IS KEPT, NOT DELETED (D-000.34). On the
+	// seven single-page fixtures it is load-bearing — a render that
+	// suddenly emitted two pages must still fail — and deleting it to
+	// accommodate the multi-page case would have destroyed a live assertion
+	// silently, which is exactly what D-000.34 is about. Every pre-2.6 call
+	// site passes 1 and is unchanged in meaning.
 	pageCount := countPageObjects(b)
-	if pageCount != 1 {
-		t.Fatalf("%s: expected exactly one /Type /Page object, found %d", label, pageCount)
+	if pageCount != wantPages {
+		t.Fatalf("%s: expected exactly %d /Type /Page object(s), found %d", label, wantPages, pageCount)
 	}
 
 	if !bytes.Contains(b, []byte("/Type /Catalog")) {
@@ -598,6 +645,145 @@ func assertWellFormedPDF(t *testing.T, label string, b []byte) {
 	xrefOffset := assertStartxrefPointsAtXref(t, label, b)
 	assertXrefEntriesPointAtTheirObjects(t, label, b, xrefOffset)
 	assertStreamLengthsAreExact(t, label, b)
+	assertIndirectRefsAreDelimited(t, label, b)
+}
+
+// nonStreamRegions returns the byte ranges of b that are NOT inside a stream
+// body, by walking the same /Length -> "stream\n" -> body -> "endstream"
+// structure assertStreamLengthsAreExact validates.
+//
+// WHY THE SCOPING IS NECESSARY AND WHY IT IS SOUND. Stream bodies are
+// arbitrary binary — subsetted font programs and image bytes — and can
+// contain any sequence, including "R" followed by a digit. A token check run
+// over the whole file would be a false-positive generator, and a false
+// positive in a guard is an attack on the guard (D-000.15): the first one
+// gets the guard suppressed. The scoping is EXACT rather than heuristic
+// because every stream in this module declares its length up front, and
+// assertStreamLengthsAreExact — which runs immediately before this — has
+// already fatalled if any declared length did not land exactly on
+// "endstream". So the regions are known, not guessed.
+//
+// UNDECLARED COUPLING, NAMED (Story 2.6 finisher, Finding 8 — Minor, not
+// a reason to drop this guard). This function is a SECOND, INDEPENDENT
+// copy of assertStreamLengthsAreExact's walk (/Length -> "stream\n" ->
+// body -> "endstream"), differing only in what happens on a malformed
+// condition: that function t.Fatalf's, this one silently `break`s. The
+// soundness argument above depends on (a) assertWellFormedPDF calling
+// assertStreamLengthsAreExact immediately before this, and (b) the two
+// walks staying byte-for-byte equivalent — NEITHER is asserted by the
+// type system or by a test. Measured at the time of writing: region/body
+// separation is exact on every committed golden (0 bytes of stream body
+// leak into a scanned region, the /Length1 font shape included), and even
+// a TOTAL scoping failure would produce 0 false positives on today's
+// corpus — so this is not a live D-000.15 false-positive generator. But
+// if a future edit relaxes one walk (e.g. adds "stream\r\n" support, or
+// widens the 40-byte window) without the other, `break` fires early and
+// the ENTIRE REMAINDER OF THE FILE, font programs included, silently
+// becomes a "non-stream region". If you touch either walk, touch both.
+func nonStreamRegions(b []byte) [][]byte {
+	var out [][]byte
+	cursor := 0
+	idx := 0
+	for {
+		const kw = "/Length "
+		rel := bytes.Index(b[idx:], []byte(kw))
+		if rel == -1 {
+			break
+		}
+		pos := idx + rel + len(kw)
+		end := pos
+		for end < len(b) && b[end] >= '0' && b[end] <= '9' {
+			end++
+		}
+		if end == pos {
+			break
+		}
+		declared, err := strconv.Atoi(string(b[pos:end]))
+		if err != nil {
+			break
+		}
+		const streamKW = "stream\n"
+		streamRel := bytes.Index(b[end:], []byte(streamKW))
+		if streamRel == -1 || streamRel > 40 {
+			break
+		}
+		bodyStart := end + streamRel + len(streamKW)
+		bodyEnd := bodyStart + declared
+		if bodyEnd > len(b) {
+			break
+		}
+		out = append(out, b[cursor:bodyStart])
+		cursor = bodyEnd
+		idx = bodyEnd
+	}
+	out = append(out, b[cursor:])
+	return out
+}
+
+// refTokenRE matches an indirect reference token together with the ONE byte
+// that follows it, so the follower can be inspected.
+var refTokenRE = regexp.MustCompile(`\d+ 0 R(.|\n)`)
+
+// isPDFDelimiter reports whether c may legally terminate a token: ISO 32000-1
+// Table 1 (white space) and Table 2 (delimiters).
+func isPDFDelimiter(c byte) bool {
+	switch c {
+	case 0x00, '\t', '\n', '\f', '\r', ' ':
+		return true
+	case '(', ')', '<', '>', '[', ']', '{', '}', '/', '%':
+		return true
+	}
+	return false
+}
+
+// assertIndirectRefsAreDelimited is Story 2.6's artifact-level guard on the
+// defect that shipped a golden no viewer would open.
+//
+// IT IS KEYED ON THE DEFECT'S SHAPE, NOT ON /Kids (D-000.15: key a guard on
+// its purpose, never on a proxy). The purpose is "an indirect reference must
+// be a TOKEN a parser can terminate". The bug happened to be in /Kids, but
+// /Kids is NOT the only ref array the format emits today — CORRECTED by the
+// finisher (Finding 3): /DescendantFonts is a second one, live in most
+// goldens. What is true is narrower: /Kids is the only ref array that is
+// ever MULTI-ELEMENT today, which is a fact about the current feature set,
+// not about the code. Story 2.7's page numbering and Epic 4's tables add
+// ref arrays that can be multi-element, as would any /Annots or name tree.
+//
+// FORWARD GUARD, LABELLED (D-000.24). For /Kids this has a real red-proof:
+// the actual recorded bytes "[8 0 R10 0 R]" redden it — reproduced again by
+// the finisher (Blocker 1 / Major 2 red-proof) after routing document.go's
+// page tree and textdoc.go's /DescendantFonts through appendRefArray /
+// writeRefArray, confirming both remaining sites moved no golden. For
+// /DescendantFonts and any future ref array there is still no red-proof
+// available, because neither is ever multi-element yet. That half remains a
+// forward guard on a hazard the code can commit but has not, and it is NOT
+// counted as proven coverage.
+func assertIndirectRefsAreDelimited(t *testing.T, label string, b []byte) {
+	t.Helper()
+
+	regions := nonStreamRegions(b)
+	if len(regions) == 0 {
+		t.Fatalf("%s: the non-stream scoping produced no regions, so this check would look nowhere", label)
+	}
+	refs := 0
+	for _, region := range regions {
+		for _, m := range refTokenRE.FindAllSubmatch(region, -1) {
+			refs++
+			follower := m[1][0]
+			if !isPDFDelimiter(follower) {
+				t.Errorf("%s: the indirect reference %q is followed by %q, which is neither white space nor a PDF delimiter.\n\n"+
+					"A reference must be a TOKEN a parser can terminate. \"8 0 R10 0 R\" tokenizes as one unknown "+
+					"token \"R10\", so NEITHER reference resolves — that is how a two-page document shipped with an "+
+					"EMPTY page tree behind a correct-looking /Count, and a viewer showed \"page 0 of 2\".",
+					label, bytes.TrimRight(m[0], string(follower)), string(follower))
+			}
+		}
+	}
+	// PRESENCE PRECONDITION: a document with no indirect references at all
+	// would satisfy "every reference is delimited" by having none.
+	if refs == 0 {
+		t.Fatalf("%s: no indirect reference found outside stream data — every PDF this module emits has at least a /Parent and a /Contents, so finding none means the scoping is broken and this check looked nowhere", label)
+	}
 }
 
 // countPageObjects counts occurrences of "/Type /Page" that are not the
@@ -719,6 +905,14 @@ func assertXrefEntriesPointAtTheirObjects(t *testing.T, label string, b []byte, 
 // assertStreamLengthsAreExact finds every "/Length N" declaration
 // followed by a stream body and checks that the body is exactly N bytes
 // long, ending at a literal "endstream".
+//
+// COUPLING, NAMED (Story 2.6 finisher, Finding 8): nonStreamRegions
+// (defined earlier in this file, and consumed by
+// assertIndirectRefsAreDelimited further down) is a SECOND, INDEPENDENT
+// copy of this exact walk, relying on THIS function having already
+// fatalled on every malformed condition it silently `break`s on instead.
+// If you change this walk's shape, change nonStreamRegions the same way,
+// or its scoping silently stops covering what it claims to.
 func assertStreamLengthsAreExact(t *testing.T, label string, b []byte) {
 	t.Helper()
 
@@ -865,8 +1059,8 @@ func TestRenderIsByteIdenticalAcrossTwoProcesses(t *testing.T) {
 	a := renderInSubprocess(t, "1")
 	b := renderInSubprocess(t, "4")
 
-	assertWellFormedPDF(t, "child A (GOMAXPROCS=1)", a)
-	assertWellFormedPDF(t, "child B (GOMAXPROCS=4)", b)
+	assertWellFormedPDF(t, "child A (GOMAXPROCS=1)", a, 1)
+	assertWellFormedPDF(t, "child B (GOMAXPROCS=4)", b, 1)
 
 	if !bytes.Equal(a, b) {
 		offset, window := firstDivergence(a, b)
@@ -889,7 +1083,7 @@ func TestRenderProducesAValidPDF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
-	assertWellFormedPDF(t, "Render()", b)
+	assertWellFormedPDF(t, "Render()", b, 1)
 }
 
 // TestRenderWithNoDateInParamsOmitsCreationAndModDate is AC9, RE-SCOPED
@@ -1095,7 +1289,7 @@ func TestRenderEmbedsSubsetFontAsType0Identity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	assertWellFormedPDF(t, "font document", b)
+	assertWellFormedPDF(t, "font document", b, 1)
 
 	for _, want := range []string{"/Subtype /Type0", "/Encoding /Identity-H", "/FontFile2", "/ToUnicode", "/Subtype /CIDFontType2"} {
 		if !bytes.Contains(b, []byte(want)) {
@@ -1121,8 +1315,8 @@ func TestRenderWithFontIsByteIdenticalAcrossTwoProcesses(t *testing.T) {
 	a := renderFontInSubprocess(t, "1")
 	b := renderFontInSubprocess(t, "4")
 
-	assertWellFormedPDF(t, "child A (GOMAXPROCS=1, font)", a)
-	assertWellFormedPDF(t, "child B (GOMAXPROCS=4, font)", b)
+	assertWellFormedPDF(t, "child A (GOMAXPROCS=1, font)", a, 1)
+	assertWellFormedPDF(t, "child B (GOMAXPROCS=4, font)", b, 1)
 
 	if !containsFontFile2(a) {
 		t.Fatal("child A output does not contain a FontFile2 (AC10b vacuity guard) — a match below would prove nothing")

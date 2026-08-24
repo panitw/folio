@@ -224,3 +224,115 @@ digest value and fails on any **undeclared** site. That guard caught a real gap 
 **Owner-visible consequence:** the second-literal discipline now covers **all seven** fixtures, where
 before it covered five — `three-band-page` and `wrapped-text` had **no** independent second copy of
 their digest at all.
+
+---
+
+## Story 2.6 — pagination; the gate now owes **FIVE** things (appended, not overwriting)
+
+*Dated 2026-08-24. Appended by Story 2.6. Nothing above this line is altered.*
+
+### 1. THE ITEM THAT MATTERS MOST — a recorded golden passed its hash and its semantic acceptance step, and was not a PDF
+
+Story 2.6 recorded `fixtures/multi-page/expected.pdf`. It **passed** its golden hash and it **passed**
+the story's whole semantic acceptance step. The **owner opened it and it would not render.**
+
+```
+$ qpdf --check fixtures/multi-page/expected.pdf
+ERROR: file does not contain any pages
+qpdf: errors detected                                            exit=2
+```
+
+The cause was one missing byte in the page tree — `/Kids [8 0 R10 0 R]`, with no separator. A PDF
+tokenizer reads `R10` as one unknown token, so **neither** kid resolves and the page tree is empty. A
+viewer showed *"page 0 of 2"*.
+
+**Every acceptance check was true of the broken file, and each for its own reason.** This is the part
+the gate should read, not the one-character fix:
+
+| the check | why it passed on an unrenderable file |
+|---|---|
+| `/Type /Page` objects == 2 | counted **object definitions**. Both pages were emitted correctly and both were in the xref. What was broken was the **array pointing at them** — a different object. |
+| `/Count 2` | read the integer. The integer was right. **`/Count` is a claim about the kids, not a fact derived from them.** |
+| per-page header/footer Y, the pinned line→page partition, no negative Y | parsed the **content streams** directly. Content streams do not care whether anything references them, so they read exactly as in a healthy file. Independently confirmed: a length-preserving hand patch of the recorded bytes rendered correctly with **every one of these properties already right**. |
+| byte-identity across two processes | says the output is **deterministic**. A deterministically wrong file is byte-identical to itself. |
+
+**The common shape: every check asserted a property of a PART, and the defect was in a REFERENCE
+BETWEEN parts.** No quantity of additional per-part assertions would have found it.
+
+**A hash certifies that bytes have not changed since they were recorded. It is silent on whether they
+were right when they were recorded.** [[D-000.22]]'s semantic acceptance step is the only thing
+standing in that gap, and here it was assembled entirely out of checks a broken file satisfies.
+
+**Remedy shipped**: `folio-go/golden_structural_validity_test.go` — a **hermetic** structural oracle
+(no shell-out, so it runs on every target including `js-wasm`) applied to **every** fixture declared in
+`goldenDigestRecord`. It parses `/Kids`, groups tokens **in threes** — which is what exposes a
+run-together pair, where a substring search for `"8 0 R"` and `"10 0 R"` finds both and reports success
+— requires each reference to resolve to a defined `/Type /Page` object, and requires no page object to
+be orphaned. Red-proved against the real broken bytes: it reddened for `multi-page` alone while the
+other seven stayed green. `internal/pdf`'s `TestPagesTreeKidsAreSeparated` guards the emitter itself.
+
+> **PROPOSED STANDING RULE, for the lead — raised, not assumed.** *No recorded PDF golden's hash may
+> be trusted until the artifact has passed a structural validity oracle.* A recording is an act of
+> acceptance ([[D-000.44]] makes that true of re-recordings too), and accepting bytes nobody has shown
+> to be a **document** is exactly what happened here. Two notes for whoever rules it: the oracle must
+> be **hermetic**, because a `qpdf`-dependent check silently degrades to nothing where qpdf is absent;
+> and it belongs in the **acceptance step**, not only in the suite, so it gates the **first** recording.
+
+### 2. The Epic 2 gate now owes **FIVE** things, and the fifth was ruled, not assumed
+
+| obligation | fate under Story 2.6 |
+|---|---|
+| the four-target matrix legs | **unchanged.** The override was DECLINED again; the legs are the gate's. |
+| [[D-2.3.5]]'s Thai **reading** sign-off | **untouched, and RELEASED to be requested.** `fixtures/shaped-text/expected.pdf` is byte-unchanged at `6c040ef7…c6c85370`, re-verified at close. |
+| [[D-2.4.3]]'s Thai **break** sign-off | **untouched.** `expected_breaks.json` byte-unchanged at `a545e042…9324de`. Its subject is now **pinned in the ordinary suite** — see item 4. |
+| `three-band-page`'s deferred matrix legs | **still deferred, still declined** under [[D-000.4]]. |
+| **`matrix-document: multi-page` — NEW, the FIFTH** | **ADDED**, sanctioned by [[D-2.6.2]]: it is the **only cross-target artifact for a shipped FR30**, and refusing it would ship FR30 with none. A **one-line diff** to `declaredEpic2GateObligations`, exactly the shape [[D-2.5.1]] created it for — the mechanism paid off one story after it was ruled. Legs **deferred** to the gate; heavy-test override **declined** (pagination is integer comparison and subtraction on `geom.Length`: no float, no vendor call, no compressor, no new dependency). |
+
+**Golden**: `fixtures/multi-page/expected.pdf` = `66ce0ee477fa1ce5e42d51bcc87d859bcddafb3d2bb2ca6ade3e35d3f895869b`, 66,525 bytes, 2 pages.
+
+### 3. AD-4's forward guard closes a hole the rank table structurally cannot express
+
+`internal/pdf → internal/layout` was **legal**: the rank rule is *"may import only lower ranks"* and
+`layout`(7) is below `pdf`(8), so the edge is **downward**. **Measured, not argued**: with that import
+present, lint's `stage-rank` stayed **fully green across all four of its tests** while the new guard
+reddened. A rank order expresses *"no backward edges"* and **cannot** express *"no edge to this
+particular lower package"* ([[D-000.16]] limitation) — `pdf` legitimately needs `pagemodel` (the
+**value**) and must not touch `layout` (the **computation**), and both sit below it.
+
+### 4. `expected_breaks.json` was pinned NOWHERE, not "only behind the matrix tag"
+
+[[D-2.6.4]] ordered an ordinary-suite pin on the premise that the only existing pin was matrix-tagged.
+**Measured: the digest literal occurs at ZERO sites in the repository.** The matrix-tagged test
+**computes** the digest at run time and compares it against `fixtures/expected-breaks/break-signoff.json`
+— **which does not exist**. So the file was unpinned entirely and `folio-go/expected_breaks_digest_test.go`
+is its **first** digest pin, not its second. The ordered remedy is unchanged; the premise was weaker
+than stated.
+
+**Two different things are explained by that one absent file, and the gate should not conflate them**:
+the missing `break-signoff.json` making the matrix test fail is **the pending-sign-off blocker working
+as designed** — the gate refusing to pass. The **unpinned fixture** was the genuine hole.
+
+**Discriminating red-proof**: mutating a `gloss` field — which no engine consults — was **invisible** to
+the pre-existing ordinary suite while the new pin caught it. Mutating a field the engine *does* read
+would have proven nothing, because `internal/text/s4_expected_test.go` would have caught that anyway.
+
+### 5. Carried to Story 2.8, and it is larger than clip machinery
+
+[[D-2.6.5]] withdrew D-2.6.1's *"clip at the window bottom"* disposition: an item that fits in **no**
+window is a **located error naming the element**, for a line and an image alike. But `epics.md:938-950`
+requires 2.8's box-overflow case to clip **and** diagnose **and** still return PDF bytes — *"clipping
+degrades output but does not fail the render."* **That is not expressible on `Render`'s current
+surface**, which returns `([]byte, error)`. **Story 2.8 owns a diagnostic-channel design decision on
+the public API.**
+
+### 6. Flagged, not fixed
+
+- `sprint-status.yaml` still reads `epic-2: backlog` while `2-1`…`2-6` are done or in review. **The
+  epic key is the gate's to flip, not a story's.** Unchanged.
+- **DW-14 is now the closest it has ever been to firing.** `fixtures/multi-page/` produces a
+  **45-entry** `beginbfchar` section against the spec's cap of 100 — the largest any fixture has
+  recorded, from a document that is only **two pages and one face**. A document roughly twice as long
+  in one face reaches the cap, and that is an ordinary report. Re-measured, **not** discharged: the fix
+  moves the golden hash of every document over the cap and stays the gate's.
+- **DW-11 stays open at 2.** Story 2.6 falls in its owner window and owes an answer: **none were found,
+  and none were invented.** Pagination cannot reach `internal/text`.

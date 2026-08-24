@@ -45,3 +45,27 @@ otherwise match nothing and prove nothing.
 Same rule as the other two fixtures (AD-21, AD-22): a hash change here is a defect until proven to
 be an intended, versioned change. Never regenerate this fixture just to make a failing test pass;
 investigate first, and re-record deliberately as part of a documented breaking change.
+
+## Provenance — external structural validation (D-000.53)
+
+No golden artifact is accepted — first recording **or re-recording** (D-000.44) — until a reader this
+project did not write parses it and resolves it into the semantic objects it claims to contain.
+
+| | |
+|---|---|
+| reader | `qpdf` **12.4.0** |
+| invocation | `qpdf --check fixtures/image-embed/expected.pdf` |
+| result | exit **0** — `No syntax or stream encoding errors found` |
+| invocation | `qpdf --show-npages fixtures/image-embed/expected.pdf` |
+| result | **1** page(s), matching the declared `/Count` |
+| validated at | `50ad6c8` (Story 2.6) |
+
+**Settled**, validated unchanged at `50ad6c8`. This artifact predates D-000.53 and was validated retroactively; it is recorded here so the row ends settled rather than carried (D-000.29).
+
+The external reader is the **acceptance instrument, at recording time only** — run off-leg on the
+recording machine, hand-checked, output pasted here. It is never a runtime or CI dependency (AD-25,
+`TestModuleGraphAllowlist`), and it is deliberately **not** gated to "the legs that have qpdf": a check
+that runs on some legs and not others reproduces D-000.9's failure — an "all clear" indistinguishable
+from "I could not look" — one level up, at the leg. The standing every-leg regression guard is the
+in-repo checker `folio-go/golden_structural_validity_test.go`, which is hermetic and covers all four
+targets including `js-wasm`.

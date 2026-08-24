@@ -106,6 +106,54 @@ function (AD-13's sibling rule). Storing it would be a second source of truth.
 Every element's `x` and `y` are relative to **its band's** top-left corner, never to the page
 (AD-24).
 
+### Pagination
+
+A document whose content is taller than one content band becomes **several pages**. The page header
+and the page footer are drawn on **every** one of them, identically, at the same band origins: page
+thirty-four is as complete as page one.
+
+**The content band is a window onto one tall column.** The elements of `content` form a single
+column of unbounded height; each page shows one page-height window onto it. A longer report is
+**more windows**, never rearranged furniture. Four rules decide what a reader sees.
+
+| | rule |
+|---|---|
+| 1 | **Where a page begins.** The first page's window begins at the top of the content band. Each later window begins at the top of the **first item that did not fit** in the window before it. |
+| 2 | **What the unit is.** The unit that lands on a page is the **line**, not the element. A paragraph continues from the foot of one page to the head of the next. |
+| 3 | **No line is ever split.** A line is drawn on the first page whose window holds it **entirely**, from the top of its tallest possible ascender to the bottom of its deepest possible descender. |
+| 4 | **An image is atomic**, and the same rule applies to its **declared box**. |
+
+**Whitespace at the foot of a page is correct.** Rule 3 means a line that would fall half on one
+sheet and half on the next is drawn whole on the next sheet, and the space it vacated stays empty. A
+statement cannot ship a half-line, and there is no setting that trades this away.
+
+**Nothing moves sideways and nothing reflows to close a gap.** Every element keeps exactly the
+position its author gave it within the column, so no element is ever displaced because a neighbour
+grew (AD-24). One consequence follows directly and an author should know it before designing a
+report rather than finding it in a diff:
+
+> **Across a window boundary, declared vertical gaps collapse.** An element that begins a window is
+> drawn at the top of its page, whatever gap was declared above it. That is the price of never
+> splitting a line and never reflowing a sibling.
+
+**No page is ever blank.** Because a window begins at the first item that did not fit rather than at
+a fixed multiple of the content height, an element declared far below the preceding content starts
+the next page instead of generating empty pages in front of it.
+
+**An item that fits in no window is an error, not a surprise.** If a single line is taller than the
+content band — a font size larger than the space available — or an image's **declared box** is, then
+no window of any position can hold it, and loading or rendering the document **fails with an error
+naming the element**. It is never drawn partly, never split, and never spilled past the page edge.
+
+Both cases are decidable from the **template and the font set alone**, with no report data: line
+height is a function of the declared font stack and font size (see *Vertical placement*), and the
+window is page height minus the declared margins and band heights. So this is a fault in the
+document, reported the same way to everyone who renders it, and not something one report's data can
+trigger and another's cannot.
+
+There is no page-break key, no `keepTogether`, and no widow or orphan control. Where the pages fall
+is derived from the four rules above and from nothing an author writes.
+
 ## Elements
 
 Common to all five types:

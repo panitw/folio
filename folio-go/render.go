@@ -102,6 +102,32 @@ type textRunSource struct {
 	// (text.ClusterTexts), parallel to glyphs.
 	glyphs       []text.ShapedGlyph
 	clusterTexts []string
+
+	// --- Story 2.6: which band, and which atomic column item ---
+	//
+	// band is the index into documentBands' authored order: 0 pageHeader,
+	// 1 content, 2 pageFooter. Only the CONTENT band paginates; the other
+	// two are repeated verbatim on every page (AC3), which is what makes
+	// page 34 as complete as page 1.
+	band int
+
+	// elementID names the element this run came from, for the located
+	// overflow diagnostic ONLY (layout.OverflowError). No geometry is
+	// derived from it.
+	elementID string
+
+	// lineIndex is the run's line within its element. Together with
+	// elementID it identifies the atomic COLUMN ITEM this run belongs to:
+	// one line's runs are contiguous in the slice and share both values,
+	// so grouping is a scan for a change of key rather than a map.
+	lineIndex int
+
+	// itemTop / itemBottom are the LINE's vertical extent, page-absolute:
+	// `baseline − max(ascent)` .. `baseline + max(descent)` over the
+	// element's DECLARED chain (D-2.4.2 as amended). Carried rather than
+	// re-derived downstream — a second derivation of this number is
+	// precisely what that amendment exists to prevent.
+	itemTop, itemBottom geom.Length
 }
 
 // bandWithOrigin pairs one of the document's three bands with the
@@ -173,6 +199,10 @@ type imageRunSource struct {
 	assetKey   string
 	x, y       geom.Length
 	boxW, boxH geom.Length
+
+	// band is documentBands' authored index: 0 pageHeader, 1 content,
+	// 2 pageFooter. Story 2.6 paginates the content band alone.
+	band int
 }
 
 // collectImageRuns walks every band in authored order and returns one
@@ -188,7 +218,7 @@ func collectImageRuns(doc *Template) ([]imageRunSource, error) {
 	}
 
 	var runs []imageRunSource
-	for _, b := range bands {
+	for bandIndex, b := range bands {
 		for _, el := range b.band.Elements {
 			if el.Type != template.ElementImage {
 				continue
@@ -210,6 +240,7 @@ func collectImageRuns(doc *Template) ([]imageRunSource, error) {
 				y:         layout.PlaceInBand(b.origin, el.Y),
 				boxW:      el.Width.Value,
 				boxH:      el.Height.Value,
+				band:      bandIndex,
 			})
 		}
 	}
@@ -278,7 +309,7 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 	}
 
 	var runs []textRunSource
-	for _, b := range bands {
+	for bandIndex, b := range bands {
 		for _, el := range b.band.Elements {
 			if el.Type != template.ElementText {
 				continue
@@ -365,7 +396,21 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 			elementY := layout.PlaceInBand(b.origin, el.Y)
 			for i, ln := range lines {
 				lineY := elementY + geom.Length(int64(i))*vm.Advance
-				runs = append(runs, positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize, vm.FirstBaseline)...)
+				placed := positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize, vm.FirstBaseline)
+				// Story 2.6: the LINE's extent, computed here from the
+				// vertical model that is already in hand — `lineY` IS
+				// `baseline − max(ascent)` because positionSegments
+				// places the baseline at lineY + vm.FirstBaseline, and
+				// vm.FirstBaseline IS max(ascent) scaled. The bottom
+				// adds max(descent). Same numbers, no re-derivation.
+				for j := range placed {
+					placed[j].band = bandIndex
+					placed[j].elementID = string(el.ID)
+					placed[j].lineIndex = i
+					placed[j].itemTop = lineY
+					placed[j].itemBottom = lineY + vm.FirstBaseline + vm.LastDescent
+				}
+				runs = append(runs, placed...)
 			}
 		}
 	}
@@ -718,9 +763,168 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 
 	// internal/layout produces the page model (AD-5); package folio hands
 	// it to a renderer and does nothing else with it.
-	page := layout.ComposePage(geometry, pdfRuns, pdfPlacements)
+	//
+	// Story 2.6: this used to be `[]pagemodel.Page{layout.ComposePage(...)}`
+	// — a ONE-ELEMENT SLICE, which was the entire defect. Everything
+	// upstream already produced page-absolute content and everything
+	// downstream already handled N pages: pdf.SerializeTextDocument
+	// reserves a page/content object pair per page and writes len(pages)
+	// into /Count. Only the middle produced one. Content taller than the
+	// content band was still DRAWN — below the bottom edge of the sheet,
+	// with no error and no warning.
+	pages, perr := paginateDocument(geometry, runs, imageRuns, pdfRuns, pdfPlacements)
+	if perr != nil {
+		return nil, perr
+	}
 
-	return pdf.SerializeTextDocument([]pagemodel.Page{page}, embedded, pdfImages)
+	return pdf.SerializeTextDocument(pages, embedded, pdfImages)
+}
+
+// contentBandIndex is documentBands' authored index for the content band —
+// the one band Story 2.6 paginates. The page header and page footer are
+// repeated verbatim on every page instead.
+const (
+	pageHeaderBandIndex = 0
+	contentBandIndex    = 1
+	pageFooterBandIndex = 2
+)
+
+// paginateDocument turns one document's finished, page-absolute content into
+// N pages, by asking internal/layout where the window boundaries fall.
+//
+// AD-4 IS THE POINT OF THIS FUNCTION'S SHAPE. Everything it receives is
+// already laid out: pdfRuns and pdfPlacements carry final page-absolute
+// coordinates, and this function only decides WHICH PAGE each belongs to and
+// subtracts that page's window shift. It measures nothing, breaks nothing and
+// re-positions nothing relative to anything else — pass one already did all
+// of it. The page model that leaves here is finished, which is what lets
+// internal/pdf lay nothing out (internal/passtwo_arch_test.go).
+//
+// THE PER-PAGE ORDER IS load-bearing and is NOT incidental: page header runs,
+// then that page's content runs in AUTHORED order, then page footer runs —
+// exactly the order documentBands walks the three bands, and therefore
+// exactly the order the pre-2.6 code produced. That is what makes a document
+// which fits on one page emit the SAME BYTES as before this story, which
+// every one of the six existing goldens depends on.
+func paginateDocument(
+	geometry layout.PageGeometry,
+	runs []textRunSource,
+	imageRuns []imageRunSource,
+	pdfRuns []pagemodel.TextRun,
+	pdfPlacements []pagemodel.ImagePlacement,
+) ([]pagemodel.Page, error) {
+	// The two repeated bands, and the content column's atomic items.
+	var header, footer layout.BandContent
+	var items []layout.ColumnItem
+
+	// Text. One line's runs are CONTIGUOUS in `runs` and share
+	// (band, elementID, lineIndex) — positionSegments emits them together —
+	// so the grouping below is a scan for a change of key, never a map
+	// (D-1.3.5 / ScanMapRange: a map range would make the item order, and
+	// therefore the emitted byte order, non-deterministic).
+	for i := 0; i < len(runs); i++ {
+		switch runs[i].band {
+		case pageHeaderBandIndex:
+			header.Runs = append(header.Runs, layout.TextRunRef(i))
+			continue
+		case pageFooterBandIndex:
+			footer.Runs = append(footer.Runs, layout.TextRunRef(i))
+			continue
+		}
+		// Content band: gather this whole line.
+		//
+		// This ASSUMES runs[i].band == contentBandIndex, since the switch
+		// above already `continue`d past header and footer. That is true
+		// today because documentBands (see documentBands, this file)
+		// enumerates exactly three bands — but the assumption used to be
+		// implicit: if it ever stopped holding (a fourth band), the loop
+		// below matches ZERO runs at j (its condition fails at j==i), so
+		// item.Runs stays empty, i = j-1 restores i, and the outer i++
+		// puts i right back where it started — an infinite loop appending
+		// an empty ColumnItem every iteration until OOM. Story 2.6
+		// finisher, Finding 10: made an explicit internal error instead of
+		// relying on an unasserted enumeration invariant in another
+		// function.
+		if runs[i].band != contentBandIndex {
+			return nil, fmt.Errorf("folio: internal error: paginateDocument: run %d has band %d, which is neither the page-header, page-footer, nor content band — documentBands' three-band enumeration invariant no longer holds", i, runs[i].band)
+		}
+		j := i
+		item := layout.ColumnItem{
+			ElementID: runs[i].elementID,
+			Top:       runs[i].itemTop,
+			Bottom:    runs[i].itemBottom,
+		}
+		for j < len(runs) &&
+			runs[j].band == contentBandIndex &&
+			runs[j].elementID == runs[i].elementID &&
+			runs[j].lineIndex == runs[i].lineIndex {
+			item.Runs = append(item.Runs, layout.TextRunRef(j))
+			j++
+		}
+		items = append(items, item)
+		i = j - 1
+	}
+
+	// Images. Each is its own atomic item, and its extent is its DECLARED
+	// BOX (r.y .. r.y+boxH), not the drawn box centred inside it: AD-24
+	// already scaled the image to fit the box, so "does it fit on a page" is
+	// a question about the BOX the template declared (D-2.6.1, rule 4).
+	for i, r := range imageRuns {
+		switch r.band {
+		case pageHeaderBandIndex:
+			header.Images = append(header.Images, layout.ImageRef(i))
+		case pageFooterBandIndex:
+			footer.Images = append(footer.Images, layout.ImageRef(i))
+		default:
+			items = append(items, layout.ColumnItem{
+				ElementID: r.elementID,
+				Top:       r.y,
+				Bottom:    r.y + r.boxH,
+				Images:    []layout.ImageRef{layout.ImageRef(i)},
+			})
+		}
+	}
+
+	plan, err := layout.Paginate(geometry, items)
+	if err != nil {
+		return nil, fmt.Errorf("folio: Render: %w", err)
+	}
+
+	pages := make([]pagemodel.Page, 0, len(plan.Pages))
+	for _, assigned := range plan.Pages {
+		pageRuns := make([]pagemodel.TextRun, 0, len(header.Runs)+len(assigned.ContentRuns)+len(footer.Runs))
+		for _, ref := range header.Runs {
+			pageRuns = append(pageRuns, pdfRuns[ref])
+		}
+		for _, ref := range assigned.ContentRuns {
+			// The window shift, and it is the ONLY transformation
+			// pagination applies. Every content item on one page shares it,
+			// so no item can be displaced relative to another — the column
+			// itself is never mutated.
+			run := pdfRuns[ref]
+			run.Y -= assigned.Shift
+			pageRuns = append(pageRuns, run)
+		}
+		for _, ref := range footer.Runs {
+			pageRuns = append(pageRuns, pdfRuns[ref])
+		}
+
+		pageImages := make([]pagemodel.ImagePlacement, 0, len(header.Images)+len(assigned.ContentImages)+len(footer.Images))
+		for _, ref := range header.Images {
+			pageImages = append(pageImages, pdfPlacements[ref])
+		}
+		for _, ref := range assigned.ContentImages {
+			img := pdfPlacements[ref]
+			img.Y -= assigned.Shift
+			pageImages = append(pageImages, img)
+		}
+		for _, ref := range footer.Images {
+			pageImages = append(pageImages, pdfPlacements[ref])
+		}
+
+		pages = append(pages, layout.ComposePage(geometry, pageRuns, pageImages))
+	}
+	return pages, nil
 }
 
 // cidKey identifies one allocated CID: a subset glyph together with the

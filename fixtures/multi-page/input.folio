@@ -1,0 +1,28 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 480, "height": 700, "value": "This statement covers the period from the first of January to the thirty-first of March. Every page of it carries the same running header and the same running footer, so a reader handed only the second sheet can still tell what they are holding and who issued it. The content below is one single text element. It is not divided into paragraphs, sections or boxes, and nothing in it has been repositioned in order to make it fit. It simply runs on until it reaches the bottom of the content band, and then it continues at the top of the next page, at exactly the leading it had before. No line is ever split across the boundary between two pages. A line that would otherwise fall half on one sheet and half on the next is placed whole on the next sheet instead, and the small band of whitespace left behind at the foot of the earlier page is correct typesetting rather than a defect. A bank statement cannot ship a half line. That single rule is what makes this document safe to print, safe to file, and safe to read aloud from. Nothing on any page negotiates for space with anything else, and no element ever moves sideways or shuffles upward to close a gap that pagination opened.", "style": {"fontFamily": "body", "fontSize": 24}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [
+        {"id": "e2", "type": "text", "x": 0, "y": 6, "width": 480, "height": 16, "value": "FOOTER REPEATED ON EVERY PAGE", "style": {"fontFamily": "body", "fontSize": 8}}
+      ],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [
+        {"id": "e3", "type": "text", "x": 0, "y": 4, "width": 480, "height": 16, "value": "HEADER REPEATED ON EVERY PAGE", "style": {"fontFamily": "body", "fontSize": 9}}
+      ],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}

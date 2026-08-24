@@ -15,13 +15,22 @@
 // would not know they were also certifying break placement.
 //
 // So this record is bound to its OWN digest — the sha256 of
-// fixtures/expected-breaks/expected_breaks.json — and
-// fixtures/shaped-text/thai-signoff.json and its digest
-// 5964aad0…c92e00f are not touched, read, or extended by this file. A
-// re-record of either fixture must invalidate EXACTLY ONE of the two
-// sign-offs and not the other. That is the property, and it is why the
-// schema and the binding are duplicated here rather than shared: sharing
-// them would couple the two invalidations back together.
+// fixtures/expected-breaks/expected_breaks.json — and the Thai READING
+// sign-off's own artifact and digest (see fixtures/shaped-text/README.md's
+// provenance for its current value) are not touched, read, or extended by
+// this file. A re-record of either fixture must invalidate EXACTLY ONE of
+// the two sign-offs and not the other. That is the property, and it is why
+// the schema and the binding are duplicated here rather than shared:
+// sharing them would couple the two invalidations back together.
+//
+// CORRECTED by the finisher (Story 2.6 finisher, Finding 6): this comment
+// used to name the reading sign-off's digest as a literal, 5964aad0…c92e00f
+// — which had gone stale (shaped-text/expected.pdf was re-recorded by
+// Story 2.5a; its digest is now 6c040ef7…c6c85370) and named a file,
+// fixtures/shaped-text/thai-signoff.json, that has never existed. Both were
+// comment-only and read by no live assertion. Named by pointer rather than
+// by a second copy of a value that restales exactly like this one did
+// (Story 2.3a's finding on position- and value-bound citations).
 //
 // After this story the Epic 2 gate owes THREE things: the four-target
 // matrix legs, the Thai RENDERING sign-off, and this one. That is

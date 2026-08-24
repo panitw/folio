@@ -60,7 +60,7 @@ development_status:
   # reading sign-off is recorded: it re-records shaped-text/expected.pdf, whose
   # digest that sign-off binds to (D-000.26 refined).
   2-5a-align-first-baseline-with-the-leading-model: done
-  2-6-render-multi-page-documents-with-headers-and-footers-on-ever: backlog
+  2-6-render-multi-page-documents-with-headers-and-footers-on-ever: done
   2-7-render-page-x-of-y: backlog
   2-8-clip-overflowing-content-and-say-so: backlog
   epic-2-retrospective: optional

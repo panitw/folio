@@ -183,11 +183,14 @@ func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace
 
 	// --- Pages (parent) ---
 	b.begin(pagesID)
-	b.write([]byte("<< /Type /Pages /Kids ["))
-	for _, pid := range pageIDs {
-		b.writeRef(pid)
-	}
-	b.write([]byte("] /Count "))
+	b.write([]byte("<< /Type /Pages /Kids "))
+	// The array is emitted from the SLICE, by appendRefArray, which cannot
+	// omit the separator between two references. The hand-rolled loop this
+	// replaced emitted "[8 0 R10 0 R]" for a two-page document: a tokenizer
+	// reads "R10" as one unknown token, so neither kid resolved and the page
+	// tree was empty behind a correct-looking /Count.
+	b.writeRefArray(pageIDs)
+	b.write([]byte(" /Count "))
 	b.writeInt(int64(len(pages)))
 	b.write([]byte(" >>"))
 	b.end()
@@ -324,9 +327,15 @@ func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace
 		b.begin(ids.type0)
 		b.write([]byte("<< /Type /Font /Subtype /Type0 /BaseFont /"))
 		b.write([]byte(baseFont))
-		b.write([]byte(" /Encoding /Identity-H /DescendantFonts ["))
-		b.writeRef(ids.cidFont)
-		b.write([]byte("] /ToUnicode "))
+		b.write([]byte(" /Encoding /Identity-H /DescendantFonts "))
+		// Routed through writeRefArray, not hand-rolled "[" + writeRef +
+		// "]", per Story 2.6 finisher's Finding 3: /DescendantFonts is a
+		// second ref array in this module, live in most goldens, and was
+		// the other hand-rolled site the "no other ref array exists yet"
+		// premise was measurably false about. Byte-identical for this
+		// always-one-element array (leading separator design).
+		b.writeRefArray([]int64{ids.cidFont})
+		b.write([]byte(" /ToUnicode "))
 		b.writeRef(ids.toUnicode)
 		b.write([]byte(" >>"))
 		b.end()

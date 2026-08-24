@@ -74,7 +74,7 @@ func linesByOrigin(runs []emittedRun) []int64 {
 // confirmed — no third sign-off).
 func TestWrappedTextSemanticAcceptance(t *testing.T) {
 	b := renderWrappedText(t)
-	assertWellFormedPDF(t, "wrapped-text golden fixture render", b)
+	assertWellFormedPDF(t, "wrapped-text golden fixture render", b, 1)
 
 	runs := readEmittedRuns(t, b)
 	if len(runs) == 0 {

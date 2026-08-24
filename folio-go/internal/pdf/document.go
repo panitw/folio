@@ -78,9 +78,15 @@ func Serialize() []byte {
 
 	offsets[2] = len(body)
 	body = appendObjHeader(body, 2)
-	body = append(body, "<< /Type /Pages /Kids ["...)
-	body = appendRef(body, 3)
-	body = append(body, "] /Count "...)
+	body = append(body, "<< /Type /Pages /Kids "...)
+	// Routed through appendRefArray, not hand-rolled, per Story 2.6
+	// finisher's Finding 3: this was the SECOND of the two page-tree
+	// emitters appendRefArray's own docblock names as the reason /Kids
+	// being single-kid today is a fact about the feature set, not the
+	// code. Byte-identical for this always-one-kid document (leading
+	// separator design): "[" + appendRef(3) + "]" either way.
+	body = appendRefArray(body, []int64{3})
+	body = append(body, " /Count "...)
 	body = appendInt(body, 1)
 	body = append(body, " >>"...)
 	body = appendObjFooter(body)
@@ -208,6 +214,46 @@ func appendObjFooter(dst []byte) []byte {
 // literal string inside a dict constant, contradicting D-1.1.b's routing
 // table, which the Delivery Log claimed (incorrectly) was fully exercised
 // (this story's QA review, Major 8).
+// appendRefArray appends a PDF array of indirect references — "[8 0 R 10 0 R]"
+// — from the slice itself, so the separator CANNOT be omitted.
+//
+// WHY THIS EXISTS RATHER THAN A GUARD OVER THE HAND-ROLLED LOOP. Story 2.6
+// emitted the page tree as `for _, id := range ids { b.writeRef(id) }`, and
+// appendRef emits "N 0 R" with no trailing space — correct at every other
+// call site, because each of them follows the ref with a literal. Two refs
+// back-to-back produced "[8 0 R10 0 R]". A PDF tokenizer reads "R10" as one
+// unknown token, so NEITHER kid resolved, the page tree was EMPTY, and a
+// recorded golden shipped that no viewer would open.
+//
+// The missing separator is not a fact about /Kids. appendRef has around
+// thirteen call sites and there are TWO page-tree emitters (document.go's
+// single-kid literal and textdoc.go's loop). CORRECTED by the finisher
+// (Finding 3): /Kids is NOT the only ref array — textdoc.go's
+// /DescendantFonts is also one, live in most goldens. What is true is
+// narrower: every ref array this module emits is always SINGLE-ELEMENT
+// today except /Kids, which is a fact about today's feature set, not about
+// this code — and both document.go's page tree and textdoc.go's
+// /DescendantFonts now route through this function too, so the class is
+// prevented by construction wherever it is reachable at all. Story 2.7's
+// page numbering, Epic 4's tables, and any future /Annots or name tree
+// remain the ones that can make a NEW array multi-element. So the
+// separator is made unomittable rather than guarded: prevention by
+// construction outranks any check over it.
+//
+// THE SEPARATOR IS LEADING, not trailing. That keeps the one-element case
+// exactly "[8 0 R]" — byte-for-byte what every single-page golden already
+// contains — so this change moves no committed artifact.
+func appendRefArray(dst []byte, objNums []int64) []byte {
+	dst = append(dst, '[')
+	for i, num := range objNums {
+		if i > 0 {
+			dst = append(dst, ' ')
+		}
+		dst = appendRef(dst, num)
+	}
+	return append(dst, ']')
+}
+
 func appendRef(dst []byte, objNum int64) []byte {
 	dst = appendInt(dst, objNum)
 	dst = append(dst, ' ')

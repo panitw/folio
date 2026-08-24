@@ -283,7 +283,7 @@ func TestFirstBaselineSemanticAcceptanceAcrossEveryReRecordedGolden(t *testing.T
 			if len(b) == 0 {
 				t.Fatalf("presence precondition: %s rendered no bytes", fx.name)
 			}
-			assertWellFormedPDF(t, fx.name+" first-baseline acceptance", b)
+			assertWellFormedPDF(t, fx.name+" first-baseline acceptance", b, 1)
 			if !containsFontFile2(b) {
 				t.Fatalf("presence precondition: %s embeds no /FontFile2 — a baseline assertion over a document that embedded no face would certify nothing", fx.name)
 			}

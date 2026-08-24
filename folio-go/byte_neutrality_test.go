@@ -148,6 +148,20 @@ var goldenDigestRecord = []struct {
 		},
 	},
 	{
+		// RECORDED by Story 2.6 — the FIRST multi-page document in the
+		// repository, and the only artifact on which the ruled pagination
+		// model is observable at all. Its 29 content lines partition 22/7
+		// across two pages; every pre-2.6 fixture is single-page, so none
+		// of them can express a pagination defect (D-000.50).
+		dir:    "multi-page",
+		sha256: "66ce0ee477fa1ce5e42d51bcc87d859bcddafb3d2bb2ca6ade3e35d3f895869b",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/multi-page/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/multi-page/README.md"},
+		},
+	},
+	{
 		// Re-recorded by Story 2.5a. THE ONLY FIXTURE WITH MULTI-LINE
 		// ELEMENTS, so the only artifact in the repository on which
 		// D-2.4.2's AMENDED advance (1511 -> 1610 units on the Noto x3
@@ -171,6 +185,18 @@ var goldenDigestRecord = []struct {
 // golden moves — rewriting them would destroy the record of what
 // actually produced which bytes, which is the thing AD-21 exists to
 // keep. So the scope is the live artifacts and this file.
+//
+// NAMED EXCEPTION (Story 2.6 finisher, Finding 11): boundaryGateDocuments
+// — e.g. epic-2-boundary-gate.md — also quote a golden's digest, and
+// theirs is a LIVE gate binding, not history, yet they sit under
+// _bmad-output/ and are OUT of this scope like every story file. That is
+// deliberate (the gate doc is append-only and dated, so a re-record
+// appends a new line rather than staling an old one, and re-scoping to it
+// would drag every story file back in), but it means this test's own log
+// line — "the search scope carries no undeclared occurrence" — is true of
+// the SCOPE, not of the repository. boundaryGateDocuments' digests are
+// covered separately, by SHAPE rather than by value, in
+// TestBoundaryGateDigestsAreWellFormed below.
 var goldenDigestSearchScope = []string{"fixtures", filepath.Join("folio-go", "byte_neutrality_test.go")}
 
 // TestGoldenDigestAgreesAtEveryDeclaredSite is the digest guard, in the
@@ -452,6 +478,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: shaped-text",           // Story 2.3
 	"matrix-document: wrapped-text",          // Story 2.4 — legs RUN in-story (D-000.4 override)
 	"matrix-document: three-band-page",       // Story 2.5 — legs DEFERRED to the gate (D-2.5.1; D-000.4 override criterion DECLINED)
+	"matrix-document: multi-page",            // Story 2.6 — the gate's FIFTH obligation, SANCTIONED by D-2.6.2; legs DEFERRED to the gate (D-000.4 override criterion DECLINED)
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

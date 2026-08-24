@@ -376,9 +376,23 @@ func tmOperandMilli(t *testing.T, operands string, fromEnd int) int64 {
 	return v
 }
 
-// readEmittedRuns parses the page's content stream back into runs. This
-// is AC4's mechanism: the CIDs are read off the PRODUCED artifact, never
-// off the renderer's intermediate state.
+// readEmittedRuns parses the FIRST text-bearing content stream it finds
+// back into runs. This is AC4's mechanism: the CIDs are read off the
+// PRODUCED artifact, never off the renderer's intermediate state.
+//
+// EVERY CALLER OF THIS FUNCTION TODAY RENDERS A SINGLE-PAGE DOCUMENT, so
+// "first stream found" and "the only stream" are the same thing — pdfObjects
+// returns a map, so which object counts as "first" is not even
+// deterministic, and it does not matter because there is only one. It is
+// NOT SAFE to call this on a document with more than one content stream: it
+// will read exactly one page's runs and silently discard the rest, which is
+// precisely the shape of Story 2.6's own Blocker 1 (finisher fix) — a
+// two-page render read back as one page of runs. Story 2.6a's charter is to
+// sweep this function's 12 call sites across 5 files for that assumption;
+// see the multi-page-aware sibling readEmittedRunsAllPages in
+// matrix_test.go, used ONLY by the multi-page leg's own guard, added
+// narrowly rather than by changing this function's contract for the eleven
+// callers that do not need it (Story 2.6 finisher, Blocker 1: scope guard).
 func readEmittedRuns(t *testing.T, b []byte) []emittedRun {
 	t.Helper()
 	objs := pdfObjects(t, b)
@@ -399,6 +413,21 @@ func readEmittedRuns(t *testing.T, b []byte) []emittedRun {
 		t.Fatal("produced PDF carries no text content stream")
 	}
 
+	runs := parseContentStreamRuns(t, content)
+	if len(runs) == 0 {
+		t.Fatal("content stream carries no text runs")
+	}
+	return runs
+}
+
+// parseContentStreamRuns parses ONE content stream's text-showing operators
+// into runs. Factored out of readEmittedRuns, byte-for-byte the same logic
+// that lived inline there, so a multi-page-aware caller can parse several
+// streams the identical way and concatenate them rather than duplicating
+// this ~70-line parser (Story 2.6 finisher, Blocker 1). This extraction
+// changes NOTHING about what readEmittedRuns itself does or returns.
+func parseContentStreamRuns(t *testing.T, content []byte) []emittedRun {
+	t.Helper()
 	var runs []emittedRun
 	for _, block := range strings.Split(string(content), "BT\n")[1:] {
 		end := strings.Index(block, "ET\n")
@@ -1036,7 +1065,7 @@ func TestShapedTextGoldenFixture(t *testing.T) {
 	}
 
 	b := renderShapedTextFixture(t)
-	assertWellFormedPDF(t, "shaped-text golden fixture render", b)
+	assertWellFormedPDF(t, "shaped-text golden fixture render", b, 1)
 
 	// --- D-000.22's semantic acceptance step, on the produced PDF ---
 

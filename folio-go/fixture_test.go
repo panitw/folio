@@ -285,7 +285,7 @@ func TestRenderMatchesGoldenFixture(t *testing.T) {
 	// directly, exactly as it did before Render accepted a template at
 	// all.
 	b := pdf.Serialize()
-	assertWellFormedPDF(t, "golden fixture render", b)
+	assertWellFormedPDF(t, "golden fixture render", b, 1)
 
 	// expected.pdf is kept for human diffing, but nothing previously read
 	// it, so it could silently drift from the normative hash in
@@ -397,7 +397,7 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
-	assertWellFormedPDF(t, "font-text golden fixture render", b)
+	assertWellFormedPDF(t, "font-text golden fixture render", b, 1)
 
 	// AC10b's vacuity guard, applied here too: confirm the render
 	// actually contains a FontFile2 before comparing any hash — a
@@ -612,7 +612,7 @@ func TestRenderMatchesImageEmbedGoldenFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
-	assertWellFormedPDF(t, "image-embed golden fixture render", b)
+	assertWellFormedPDF(t, "image-embed golden fixture render", b, 1)
 
 	// AC23's vacuity guard, applied here too: confirm the render
 	// actually contains an image XObject before comparing any hash — a
@@ -714,7 +714,7 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
-	assertWellFormedPDF(t, "multi-script-fallback golden fixture render", b)
+	assertWellFormedPDF(t, "multi-script-fallback golden fixture render", b, 1)
 
 	if !containsFontFile2(b) {
 		t.Fatal("multi-script-fallback golden fixture render does not contain a FontFile2 — the fixture would certify nothing (AC10b)")
