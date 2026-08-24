@@ -559,8 +559,32 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(b)
 	}
+	if os.Getenv(subprocessPageCount20EnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(pageCount20TemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(b)
+	}
 	os.Exit(m.Run())
 }
+
+// subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
+// fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in
+// a FRESH process, for the same reason multi-page needed one: a golden
+// recorded from one process pins whatever that process happened to do.
+// 20 pages is the smallest of this story's four page counts that spans
+// the page-9-to-page-10 digit boundary (finding 8, story creation), so
+// it is the one registered for cross-target comparison; the other three
+// (1, 5, 50 pages) are verified behaviourally in the ordinary suite
+// (page_count_matrix_test.go) without a separate matrix leg.
+const subprocessPageCount20EnvVar = "FOLIO_SUBPROCESS_RENDER_PAGECOUNT20"
 
 // writeToStdoutOrDie writes b to stdout in full and exits 0, or reports a
 // short/failed write and exits 1. A short write here would otherwise be

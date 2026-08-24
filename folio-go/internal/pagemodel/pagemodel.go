@@ -99,6 +99,70 @@ type TextRun struct {
 	// three and UPWARD for the fourth. It has no consistent direction,
 	// and nothing may assert one (D-000.45).
 	BaselineOffset geom.Length
+
+	// PageSlots is empty for every run except one carrying at least one
+	// of Story 2.7's {{page}} constructs. AD-4, verbatim: "a late-bound
+	// slot whose box is already measured" (D-2.7.1: the box is FIXED
+	// here, in pass one) "resolved between the passes by substituting
+	// pre-measured glyphs" (D-2.7.1: substitution is glyph selection,
+	// never a re-shape; D-2.7.2: the digits are right-aligned within
+	// the reservation, no padding).
+	//
+	// A SLICE, not a single value (this story's review, Blocker 1): a
+	// template author may write more than one {{page}} occurrence in
+	// one element ("Page {{page}} of {{pages}} / {{page}}"), and
+	// because the whole construct is ASCII it can land in a single
+	// face segment on a single line — one TextRun carrying two
+	// reservations. A scalar field here silently overwrote the first
+	// with the second (the run drew the reservation's filler `0` on
+	// every page, unnoticed, since nothing errored). Entries are
+	// disjoint, non-overlapping glyph ranges within Glyphs, in
+	// ascending GlyphLo order.
+	//
+	// It names no PDF concept: a reservation width in DIGITS, a
+	// per-digit advance and a face's own pre-shaped digit identifiers
+	// are page-model quantities exactly as CID already is on
+	// ShapedGlyph above.
+	PageSlots []PageNumberSlot
+}
+
+// PageNumberSlot is Story 2.7's late-bound page-number slot (D-2.7.1,
+// D-2.7.2). It marks a GlyphLo:GlyphHi range within the carrying
+// TextRun's Glyphs as a DigitsY-wide reservation for the document's
+// current page number, and carries everything substitution needs
+// WITHOUT re-shaping: the ten digits' CIDs and their (tabular, equal)
+// advance, both measured once in pass one.
+//
+// Substitution (the between-passes step, package folio's
+// paginateDocument) replaces the reserved range with DECIMAL(pageNum)'s
+// CIDs, RIGHT-ALIGNED within the DigitsY-wide reservation: a page whose
+// own digit count is less than DigitsY leaves the slack BEFORE the
+// digits, expressed as a positioning adjustment on the first drawn
+// digit — never a pad glyph (none exists across the shipped face set,
+// measured at this story's creation) and never zero-padding (AD-14: a
+// coercion of a bound value, which this project never performs
+// silently).
+type PageNumberSlot struct {
+	// GlyphLo, GlyphHi delimit the reservation within the carrying
+	// run's Glyphs. GlyphHi - GlyphLo == DigitsY always (D-2.7.2: a
+	// slot of digits(Y) digit-advances is exactly sufficient and never
+	// over-wide, since X <= Y always).
+	GlyphLo, GlyphHi int
+
+	// DigitsY is digits(Y), the slot's fixed reservation width — the
+	// number of decimal digits in the document's total page count.
+	DigitsY int
+
+	// DigitAdvance is the per-digit XAdvance, 1000-unit em, identical
+	// for every digit 0-9 in a tabular-figure face (measured at this
+	// story's creation: 572/572/555 across the three shipped faces).
+	DigitAdvance int64
+
+	// DigitCID[d] is the pre-shaped CID for decimal digit d (0-9) on
+	// this run's Face — allocated once, in pass one, alongside every
+	// other CID this document uses. Substitution never shapes; it only
+	// selects among these ten.
+	DigitCID [10]uint16
 }
 
 // ShapedGlyph is one glyph of a shaped run: its identifier within the

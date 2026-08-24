@@ -494,3 +494,6 @@ A minimal but complete template, in canonical form.
 `{{page}}` and `{{pages}}` are **not** expressions and **not** a data namespace — they are the two
 late-bound page-number slots, the only values in the format that depend on pagination (AD-4). No
 `page` namespace exists for expressions to reach, and none may be added.
+
+These resolve in the page header and page footer bands. Elsewhere — in the content band — the
+document fails to render, naming the element. (D-2.7.3)

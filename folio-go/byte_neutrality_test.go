@@ -162,6 +162,19 @@ var goldenDigestRecord = []struct {
 		},
 	},
 	{
+		// RECORDED by Story 2.7 — the first document carrying a resolved
+		// {{page}}/{{pages}} construct, and the only artifact spanning
+		// the page-9-to-page-10 digit-count boundary (finding 8, story
+		// creation: no other fixture reaches 10 pages).
+		dir:    "page-count-20",
+		sha256: "b32fa1c5babb8327b09b5c2bc0a11628b8c8885b9c5661c0262ec24920c5150f",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/page-count-20/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/page-count-20/README.md"},
+		},
+	},
+	{
 		// Re-recorded by Story 2.5a. THE ONLY FIXTURE WITH MULTI-LINE
 		// ELEMENTS, so the only artifact in the repository on which
 		// D-2.4.2's AMENDED advance (1511 -> 1610 units on the Noto x3
@@ -479,6 +492,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: wrapped-text",          // Story 2.4 — legs RUN in-story (D-000.4 override)
 	"matrix-document: three-band-page",       // Story 2.5 — legs DEFERRED to the gate (D-2.5.1; D-000.4 override criterion DECLINED)
 	"matrix-document: multi-page",            // Story 2.6 — the gate's FIFTH obligation, SANCTIONED by D-2.6.2; legs DEFERRED to the gate (D-000.4 override criterion DECLINED)
+	"matrix-document: page-count-20",         // Story 2.7 — the gate's SIXTH obligation, SANCTIONED by D-2.7.4 (D-2.6.2's criterion: FR31 had no cross-target artifact before this entry); legs DEFERRED to the gate (D-000.4 override criterion DECLINED, D-2.7.4)
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

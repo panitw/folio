@@ -52,6 +52,26 @@ var reservedPlaceholders = map[string]bool{
 	"pages": true,
 }
 
+// declaredResolutionRoots is Story 2.7's AC3 closure, in the shape
+// internal/template/closedsets.go and declaredEpic2GateObligations
+// already use for "this absence must stay absent" (D-2.5.1): the
+// DECLARED set of resolution roots — the values BindTextSpans passes as
+// lookupBound's rootName argument — compared, both directions, against
+// the OBSERVED set internal/bind_arch_test.go's
+// TestBindResolutionRootsAreClosed collects by scanning this file's own
+// lookupBound call sites.
+//
+// A "page" NAMESPACE is precisely a THIRD entry here (BindText's own
+// doc comment below carries the fence, verbatim: "conflating the two
+// is how 'page' would eventually acquire a namespace, which AD-4
+// forbids forever" — cited by enclosing function, not by line number:
+// this story's review, Finding 7, found the line-number pointer here
+// already stale once, from this story's own edit). Adding
+// one is a one-line, VISIBLE diff to this list, and the guard catches a
+// third lookupBound call site whether or not this list is edited to
+// match it.
+var declaredResolutionRoots = []string{"data", "params"}
+
 // BindText resolves every "{{…}}" placeholder in text against data and
 // params (AC15-AC21, AC12-AC17, D-1.6.5, D-1.7.4), scoped to one text
 // element (elementID names it in every error, AC8/AC16/AC17). "{{page}}"

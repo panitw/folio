@@ -340,3 +340,56 @@ func TestBindTextPageAndPagesUnaffectedByParamsRoot(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// TestBindTextDottedPageAndPagesPathsAreOrdinaryDataPaths is AC3's
+// D-000.50 subject, asserted BEHAVIOURALLY rather than by inspecting
+// BindTextSpans' call sites (this story's review, Blocker 2:
+// TestBindResolutionRootsAreClosed keys its OBSERVED set on lookupBound
+// call sites — a PROXY. An early-return shape identical to the
+// reservation's own dispatch a few lines above it, `if path[0] ==
+// "page" { record(nil); continue }`, never calls lookupBound at all, so
+// the AST scan sees nothing to disagree with — yet a probe confirmed
+// {{page.number}}/{{page.total}} then render without error, which is
+// exactly the "page" NAMESPACE AC3 forbids).
+//
+// The property AC3 actually requires — "no page namespace exists, and
+// none can be added" — is a statement about what {{page.<anything>}}
+// RESOLVES TO, not about which internal helper produced it. This test
+// asserts that directly: "page"/"pages" are reserved ONLY as bare whole
+// tokens (the TRIMMED literal "page" or "pages" exactly); a DOTTED path
+// under either does not match that reservation and falls through to the
+// ordinary data-root lookup, which — against data carrying no top-level
+// "page"/"pages" key — is the ordinary "absent from data" error. Never
+// a namespace-specific resolution, and never a silent empty string.
+//
+// This assertion cannot be evaded by reshaping BindTextSpans' internal
+// dispatch (a differently-named helper, an early return, a lookup
+// table): it reads the OUTPUT, not the mechanism that produced it — the
+// artifact that actually carries the property (D-000.21).
+//
+// RED-PROOF (D-000.52), executed by hand against the reviewer's exact
+// mutation and reverted, restore confirmed by digest — see the story's
+// Delivery Log for the transcript: inserting `if path[0] == "page" {
+// record(nil); continue }` immediately above the params branch in
+// BindTextSpans makes every case below resolve to "" instead of
+// erroring, reddening this test.
+func TestBindTextDottedPageAndPagesPathsAreOrdinaryDataPaths(t *testing.T) {
+	empty := mustDecode(t, `{}`)
+	cases := []string{"{{page.number}}", "{{page.total}}", "{{pages.total}}", "{{pages.number}}"}
+	for _, text := range cases {
+		t.Run(text, func(t *testing.T) {
+			got, err := BindText(text, empty, noParams, "e1")
+			if err == nil {
+				t.Fatalf("%s resolved to %q without error against data carrying no top-level \"page\"/"+
+					"\"pages\" key — a \"page\" NAMESPACE exists, which AD-4/AC3 forbid: \"no page "+
+					"namespace exists and none can be added\"", text, got)
+			}
+			if !strings.Contains(err.Error(), "absent from the report data") {
+				t.Errorf("%s: want the ordinary absent-data-path error, got a different shape: %v — a "+
+					"different error here could mean a namespace-specific code path was reached instead "+
+					"of the ordinary data lookup", text, err)
+			}
+			t.Logf("%s correctly rejected as an ordinary absent data path: %v", text, err)
+		})
+	}
+}

@@ -726,6 +726,52 @@ func requireMultiPageIsGenuinelyMultiPage(t *testing.T, target matrixTarget, raw
 	}
 }
 
+// capturePageCount20Render runs binPath with
+// FOLIO_SUBPROCESS_RENDER_PAGECOUNT20=1 — Story 2.7's selector,
+// rendering fixtures/page-count-20/ through the public Render path.
+func capturePageCount20Render(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessPageCount20EnvVar: "1"})
+}
+
+// requirePageCount20HasCorrectPageNumbers is this document's OWN feature
+// guard, the same reason requireMultiPageIsGenuinelyMultiPage exists:
+// "contains a FontFile2" is satisfied by any embedding, and a document
+// whose page numbers were WRONG would still embed a face and still agree
+// across four targets if the wrongness were consistent. It reads the
+// literal "Page X of Y" off EVERY page through the document's own
+// /ToUnicode CMap (AC1's own instruction: assert on the produced content
+// stream, never on the input or on "a substitution occurred"), including
+// pages 9 and 10 — D-2.7.2's digit-count boundary, the case no other
+// registered document can express.
+func requirePageCount20HasCorrectPageNumbers(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+
+	if len(raw) == 0 {
+		t.Fatalf("%s: the page-count-20 leg produced no bytes", target.name)
+	}
+	requirePageTreeResolves(t, target, raw, 20)
+
+	streams := splitPageContentStreams(t, raw)
+	if len(streams) != 20 {
+		t.Fatalf("%s: the page-count-20 leg resolved to %d page(s), want 20", target.name, len(streams))
+	}
+	cmap := mpParseToUnicode(t, raw)
+	for p := 0; p < 20; p++ {
+		want := "Page " + itoaForTest(int64(p+1)) + " of 20"
+		found := false
+		for _, run := range mpExtractRuns(t, streams[p], cmap) {
+			if run.text == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s: page %d does not draw %q anywhere in its content stream", target.name, p+1, want)
+		}
+	}
+}
+
 // NOTE (Story 2.6a, tombstone — deliberately not a doc comment, per the
 // story's own review Finding 10: a future reader must not mistake this
 // for documenting a live declaration below): readEmittedRunsAllPages used
@@ -1113,6 +1159,36 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requireMultiPageIsGenuinelyMultiPage,
 		wantPages:        2,
+	},
+	{
+		// Story 2.7. The legs are DEFERRED to the Epic 2 boundary gate,
+		// on D-2.7.4's confirmation of D-000.4's criterion: page-number
+		// substitution is integer advance arithmetic on geom.Length —
+		// no float, no vendor call, no compressor, no new dependency —
+		// so it introduces no NEW source of cross-target divergence.
+		//
+		// D-2.6.2 SANCTIONS this as the gate's SIXTH obligation: FR31
+		// ships in this story, zero of the ten pre-existing fixtures
+		// contain {{page}}, and multi-page's own footer is a
+		// deliberately clean literal — without this entry FR31 has no
+		// cross-target artifact at all.
+		//
+		// 20 pages, spanning the page-9-to-page-10 digit boundary
+		// (epics.md's fourth Story 2.7 acceptance criterion names 1, 5,
+		// 20 and 50 — cited by ordinal, not line range, this story's
+		// review, Finding 6; finding 8, story creation, is why 20 and
+		// 50 are in the spec — no existing
+		// fixture could express a page number whose digit count
+		// changes mid-document). The other three sizes are verified
+		// behaviourally, without a separate matrix leg, in
+		// page_count_matrix_test.go.
+		label:            "page-count-20 (Page X of Y, digit-count boundary)",
+		slug:             "page-count-20",
+		capture:          capturePageCount20Render,
+		fixtureRelPath:   []string{"fixtures", "page-count-20", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requirePageCount20HasCorrectPageNumbers,
+		wantPages:        20,
 	},
 }
 

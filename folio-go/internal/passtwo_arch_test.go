@@ -79,6 +79,22 @@ var layoutSymbolSubstrings = []string{
 	"lineadvance",      // wrap.go's lineAdvance
 	"measurerunerange", // wrap.go's measureRuneRange
 	"columnwindow",     // Story 2.6's own pagination vocabulary
+
+	// Story 2.7, AC2.2: the {{page}} slot's BOX is measured in pass
+	// one and its RESOLUTION happens BETWEEN the passes, in package
+	// folio — never inside internal/pdf, which only ever reads
+	// pagemodel.TextRun.Glyphs (never .PageSlot, which resolution has
+	// already cleared by the time internal/pdf sees a page). This is
+	// not a restatement of "internal/pdf performs no measurement": it
+	// is the story's OWN vocabulary, added because a re-implementation
+	// naming none of the ABOVE substrings could still smuggle the
+	// slot's resolution into pass two under a fresh name.
+	"pageslot",        // pagemodel.PageNumberSlot / TextRun.PageSlot
+	"digitcid",        // pagemodel.PageNumberSlot.DigitCID
+	"digittable",      // page_number.go's digitTableRun
+	"resolvepagerun",  // page_number.go's resolvePageRunForPage
+	"buildpagenumber", // page_number.go's buildPageNumberSlot
+	"pageslotspan",    // page_number.go's pageSlotSpan
 }
 
 // TestInternalPDFReachesNoLayoutComputation is Story 2.6's AC5, first

@@ -1,27 +1,40 @@
 package folio
 
-// Story 2.6's AC8: {{page}} and {{pages}} are NOT implemented, and this test
-// makes implementing them fail.
+// Story 2.6's AC8 built {{page}} and {{pages}} as a RESERVATION with no
+// resolution: the two tests below pinned that "not yet" as a NEGATIVE
+// property, deliberately, so a developer implementing pagination could
+// not slip the one-line substitution in without a test noticing
+// (Story 2.6's own file comment: "layout.Pagination literally
+// enumerates the pages — and substituting it into a footer string is
+// ONE LINE").
 //
-// THE HAZARD IS NOT THE EPIC TEXT. epics.md §2.6 is silent on page numbers,
-// checked line by line, and folio-format.md says normatively that Story 2.7
-// owns them (D-1.6.5, AC18). The hazard is that a developer building
-// pagination HAS THE PAGE INDEX IN HAND — layout.Pagination literally
-// enumerates the pages — and substituting it into a footer string is ONE
-// LINE. This test exists solely to make that one line fail.
+// STORY 2.7 IS THAT IMPLEMENTATION, and the file's own Story 2.6
+// comment authorises exactly this inversion: "at which point this
+// document's rendering legitimately changes and this test legitimately
+// becomes 2.7's to rewrite." TestReservedPagePlaceholdersPassThroughOnEveryPage
+// is renamed and inverted below to assert the RESOLVED text.
 //
-// D-000.34 (extended) is why this is worth writing DOWN rather than trusting:
-// the reservation is currently held only by internal/bind, which pagination
-// does not touch, so nothing today would notice the one line being added in
-// package folio instead. A negative control dies invisibly, because a control
-// passing is what a control does.
+// D-000.34 governs what happens to TestReservedPlaceholderSetIsUnchanged.
+// Its POSITIVE half — "{{page}}/{{pages}} pass through unchanged" — is
+// now FALSE and is not weakened into "the resolved text appears": that
+// rewrite is green on a renderer that has quietly stopped binding data
+// entirely (AC3/AC4's hazard, named in this story's brief). The positive
+// property this file used to carry — "page/pages are a CLOSED, DECLARED
+// set, not ordinary data paths" — now lives structurally, in
+// internal/bind's declared resolution-root set (AC3,
+// TestBindResolutionRootsAreClosed in internal/bind), compared against
+// the OBSERVED set in both directions, the same shape closedsets.go and
+// declaredEpic2GateObligations already use for "this absence must stay
+// absent" (D-2.5.1's mechanism). The NEGATIVE half here — a non-reserved
+// placeholder must still resolve-or-error — SURVIVES UNCHANGED and still
+// reddens: it is the only thing standing between "every placeholder now
+// resolves correctly" and "every placeholder now resolves because
+// nothing is checked any more."
 //
 // WHY IT ASSERTS OFF THE PRODUCED CONTENT STREAM AND NOT OFF THE INPUT.
 // D-000.21 sharpened: assert on the artifact that carries the property. The
 // property is what a READER of the PDF sees, so the literal characters are
 // recovered from the drawn glyphs through the document's own /ToUnicode CMap.
-// Asserting that the input still contains "{{page}}" would pass on a renderer
-// that substituted it on the way out.
 
 import (
 	"strings"
@@ -33,9 +46,14 @@ import (
 // placeholders, in the shape a template author would naturally write.
 //
 // It is a SEPARATE document rather than an edit to fixtures/multi-page/ so
-// that the committed golden is not re-recorded when Story 2.7 implements
-// these placeholders — at which point this document's rendering legitimately
-// changes and this test legitimately becomes 2.7's to rewrite.
+// that the committed golden was not re-recorded when Story 2.7 implemented
+// these placeholders — fixtures/multi-page/'s footer stayed the fixed
+// literal "FOOTER REPEATED ON EVERY PAGE" throughout, and this document
+// is still the one that exercises {{page}}/{{pages}}. Two pages, so
+// digits(Y) == 1 and every page's own digit count already equals Y's —
+// this file's assertions therefore say nothing about D-2.7.2's
+// right-alignment slack; the 20/50-page matrix documents (page_number_test.go)
+// are where the digit-count boundary is exercised.
 const reservedPlaceholderFooterTemplate = `{
   "assets": {},
   "bands": {
@@ -66,24 +84,24 @@ const reservedPlaceholderFooterTemplate = `{
 }
 `
 
-// reservedFooterLiteral is what a reader must see, character for character,
-// on EVERY page: the placeholders spelled out, unresolved.
-const reservedFooterLiteral = "Page {{page}} of {{pages}}"
-
-// TestReservedPagePlaceholdersPassThroughOnEveryPage is AC8.
+// TestReservedPagePlaceholdersResolveOnEveryPage is AC1/AC4: the
+// inversion of Story 2.6's AC8 pass-through test. X is the current page
+// and Y the document total, correct on EVERY page, read off the
+// PRODUCED content stream through the document's own /ToUnicode CMap —
+// never off the input, and never off "a substitution occurred" (AC1's
+// own instruction: asserting on the input or on the page model does not
+// carry the property).
 //
-// PRESENCE PRECONDITION: the document must render as N >= 2 pages before the
-// assertion means anything. On a one-page document "the literal appears on
-// every page" is a claim about a single page and says nothing about the
-// hazard, which is specifically that pagination hands you a page INDEX.
-func TestReservedPagePlaceholdersPassThroughOnEveryPage(t *testing.T) {
+// PRESENCE PRECONDITION: the document must render as N >= 2 pages
+// before the assertion means anything, and this fixture's own footer
+// text is what forces the hazard Story 2.6 built the negative control
+// around — pagination hands the implementer a page index.
+func TestReservedPagePlaceholdersResolveOnEveryPage(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(reservedPlaceholderFooterTemplate))
 	if err != nil {
 		t.Fatalf("presence precondition: the template does not parse: %v", err)
 	}
 
-	// The reserved tokens really are in the INPUT — otherwise the assertion
-	// below is about a document that never contained them.
 	if !strings.Contains(reservedPlaceholderFooterTemplate, "{{page}}") ||
 		!strings.Contains(reservedPlaceholderFooterTemplate, "{{pages}}") {
 		t.Fatal("presence precondition: the template carries neither reserved placeholder")
@@ -91,82 +109,104 @@ func TestReservedPagePlaceholdersPassThroughOnEveryPage(t *testing.T) {
 
 	b, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
 	if rerr != nil {
-		t.Fatalf("Render: %v — a reserved placeholder must PASS THROUGH, never be an error", rerr)
+		t.Fatalf("Render: %v", rerr)
 	}
 
 	streams := splitPageContentStreams(t, b)
 	if len(streams) < 2 {
-		t.Fatalf("presence precondition: the document rendered as %d page(s); this assertion needs at least 2, because the hazard it guards is that PAGINATION puts a page index in the implementer's hand", len(streams))
+		t.Fatalf("presence precondition: the document rendered as %d page(s); this assertion needs at least 2 to say anything about X varying across pages", len(streams))
 	}
 
 	cmap := mpParseToUnicode(t, b)
 	for p, stream := range streams {
+		want := "Page " + itoaForTest(int64(p+1)) + " of " + itoaForTest(int64(len(streams)))
 		found := false
+		var seen []string
 		for _, run := range mpExtractRuns(t, stream, cmap) {
-			if run.text == reservedFooterLiteral {
+			seen = append(seen, run.text)
+			if run.text == want {
 				found = true
 				break
 			}
-			// A substituted footer is the exact failure this guards. Name it
-			// specifically rather than letting it fall through to "not found",
-			// so the message tells the next reader what happened.
-			if strings.HasPrefix(run.text, "Page ") && !strings.Contains(run.text, "{{") {
-				t.Errorf("page %d draws the footer as %q — the reserved placeholders have been RESOLVED.\n\n"+
-					"{{page}} and {{pages}} are owned by STORY 2.7 (D-1.6.5, AC18). They pass through unchanged "+
-					"and are never resolved from data. Story 2.6 paginates, which is exactly what puts the page "+
-					"index within reach — and implementing the substitution early would quietly foreclose 2.7's "+
-					"design, because the choice of one-based vs zero-based, of where the count is computed, and "+
-					"of whether a second pass is needed would all have been made by accident.",
-					p+1, run.text)
-				found = true
-				break
+			if strings.Contains(run.text, "{{page}}") || strings.Contains(run.text, "{{pages}}") {
+				t.Errorf("page %d still draws an UNRESOLVED reserved placeholder: %q — Story 2.7 resolves "+
+					"{{page}}/{{pages}} in the page header and page footer bands", p+1, run.text)
 			}
 		}
 		if !found {
-			t.Errorf("page %d does not draw the literal %q anywhere in its content stream", p+1, reservedFooterLiteral)
+			t.Errorf("page %d does not draw %q anywhere in its content stream (drew: %v)", p+1, want, seen)
 		}
 	}
 }
 
-// TestReservedPlaceholderSetIsUnchanged pins the reservation itself.
-//
-// The pass-through test above asserts the BEHAVIOUR on one document. This
-// asserts the SET, so that adding a third reserved token — or removing one of
-// these two — is a visible, deliberate edit rather than a side effect.
-// internal/bind is a different package, so this reaches the property through
-// the behaviour that expresses it rather than through the variable.
-func TestReservedPlaceholderSetIsUnchanged(t *testing.T) {
-	for _, token := range []string{"{{page}}", "{{pages}}"} {
-		src := strings.Replace(reservedPlaceholderFooterTemplate,
-			"Page {{page}} of {{pages}}", "["+token+"]", 1)
-		tpl, err := ParseTemplate([]byte(src))
-		if err != nil {
-			t.Fatalf("%s: template does not parse: %v", token, err)
-		}
-		b, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
-		if rerr != nil {
-			t.Errorf("%s: Render failed (%v) — a RESERVED token must pass through, not error", token, rerr)
-			continue
-		}
-		cmap := mpParseToUnicode(t, b)
-		streams := splitPageContentStreams(t, b)
+// TestReservedPagePlaceholdersResolveTwoOccurrencesInOneElement is
+// Blocker 1's red-proof (this story's review), on a REAL template
+// rather than an argument — the ruling's own instruction (D-2.7.3's
+// precedent). It is the reviewer's exact repro: a footer with a SECOND
+// {{page}} occurrence after the ordinary "Page {{page}} of {{pages}}"
+// construct. Because the whole footer is ASCII, all three occurrences
+// resolve to ONE face segment on ONE line — a single TextRun. Before
+// this story's review fix, TextRun carried a single PageSlot rather
+// than a slice, so positionSegments' per-occurrence write silently
+// OVERWROTE the first slot with the second: page 1 drew "Page 0 of 2 /
+// 1" (the reservation's filler "0", not "1") and page 2 drew "Page 0
+// of 2 / 2" — a plausible-looking WRONG page number, with no error, on
+// every page.
+func TestReservedPagePlaceholdersResolveTwoOccurrencesInOneElement(t *testing.T) {
+	src := strings.Replace(reservedPlaceholderFooterTemplate,
+		"Page {{page}} of {{pages}}", "Page {{page}} of {{pages}} / {{page}}", 1)
+	tpl, err := ParseTemplate([]byte(src))
+	if err != nil {
+		t.Fatalf("presence precondition: the template does not parse: %v", err)
+	}
+
+	b, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
+	if rerr != nil {
+		t.Fatalf("Render: %v", rerr)
+	}
+
+	streams := splitPageContentStreams(t, b)
+	if len(streams) < 2 {
+		t.Fatalf("presence precondition: the document rendered as %d page(s); this assertion needs at least 2 to say anything about X varying across pages", len(streams))
+	}
+
+	cmap := mpParseToUnicode(t, b)
+	for p, stream := range streams {
+		pageStr := itoaForTest(int64(p + 1))
+		total := itoaForTest(int64(len(streams)))
+		want := "Page " + pageStr + " of " + total + " / " + pageStr
 		found := false
-		for _, stream := range streams {
-			for _, run := range mpExtractRuns(t, stream, cmap) {
-				if run.text == "["+token+"]" {
-					found = true
-				}
+		var seen []string
+		for _, run := range mpExtractRuns(t, stream, cmap) {
+			seen = append(seen, run.text)
+			if run.text == want {
+				found = true
+			}
+			if strings.Contains(run.text, "Page 0 of") {
+				t.Errorf("page %d drew the reservation's FILLER digit %q — the exact silent mis-render "+
+					"Blocker 1 names: a run carrying two {{page}} occurrences resolved only the last one",
+					p+1, run.text)
 			}
 		}
 		if !found {
-			t.Errorf("%s: the literal %q is not drawn anywhere — it is no longer passing through unchanged", token, "["+token+"]")
+			t.Errorf("page %d does not draw %q anywhere in its content stream (drew: %v) — the FIRST "+
+				"{{page}} occurrence in the element must resolve to the same page number as the second",
+				p+1, want, seen)
 		}
 	}
+}
 
-	// The NEGATIVE half: a token that is NOT reserved must still be resolved
-	// (or error) rather than passing through. Without this, a change that made
-	// EVERY placeholder pass through unchanged would leave the assertions
-	// above green while silently disabling all data binding.
+// TestReservedPlaceholderSetIsUnchanged now carries ONLY the negative
+// half (D-000.34, finding 7 of this story's creation). The positive
+// half — "{{page}}/{{pages}} pass through unchanged" — is gone because
+// it is no longer true, and it is NOT replaced by "the resolved text
+// appears here": that rewrite is green on a renderer that has quietly
+// stopped binding data at all, which is exactly the gap this test
+// exists to close. The positive property that survives — page/pages
+// are a CLOSED set, never ordinary data paths — is asserted
+// structurally by internal/bind's TestBindResolutionRootsAreClosed
+// (AC3), not behaviourally here.
+func TestReservedPlaceholderSetIsUnchanged(t *testing.T) {
 	src := strings.Replace(reservedPlaceholderFooterTemplate,
 		"Page {{page}} of {{pages}}", "{{notreserved}}", 1)
 	tpl, err := ParseTemplate([]byte(src))
@@ -175,7 +215,7 @@ func TestReservedPlaceholderSetIsUnchanged(t *testing.T) {
 	}
 	if _, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet()); rerr == nil {
 		t.Error("a NON-reserved placeholder {{notreserved}} rendered without error against empty data — " +
-			"if every placeholder now passes through unchanged, the two assertions above are vacuous and " +
-			"data binding is silently disabled")
+			"if every placeholder now resolves without checking whether it is a known data path, data " +
+			"binding is silently disabled")
 	}
 }

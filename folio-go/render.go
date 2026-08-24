@@ -128,6 +128,32 @@ type textRunSource struct {
 	// re-derived downstream — a second derivation of this number is
 	// precisely what that amendment exists to prevent.
 	itemTop, itemBottom geom.Length
+
+	// --- Story 2.7: AD-4's late-bound page-number slot ---
+	//
+	// pageSlots mirrors pagemodel.PageNumberSlot's GlyphLo/GlyphHi/
+	// DigitsY, in the FONT-UNIT glyph slice this run carries before
+	// buildShapedPDFRuns converts it (renderDocument attaches the
+	// pagemodel.PageNumberSlot values themselves, once CIDs and
+	// 1000-em advances exist). Populated only by positionSegments, when
+	// it is handed a non-empty slots argument — every other call site
+	// leaves this nil, so this is additive and changes no existing run.
+	//
+	// A SLICE (this story's review, Blocker 1): a run may carry more
+	// than one {{page}} occurrence — see pagemodel.TextRun.PageSlots'
+	// doc comment for why a scalar field here was a silent mis-render.
+	pageSlots []textRunPageSlot
+}
+
+// textRunPageSlot is one {{page}} reservation's glyph range within the
+// carrying textRunSource — positionSegments' own coordinates (local to
+// this run, before buildShapedPDFRuns reindexes into the document's
+// final CID space). Mirrors pagemodel.PageNumberSlot's GlyphLo/GlyphHi/
+// DigitsY exactly; the CID table and per-digit advance are attached
+// later, in renderDocument, once pass one has allocated them.
+type textRunPageSlot struct {
+	glyphLo, glyphHi int
+	digitsY          int
 }
 
 // bandWithOrigin pairs one of the document's three bands with the
@@ -309,112 +335,234 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 	}
 
 	var runs []textRunSource
-	for bandIndex, b := range bands {
-		for _, el := range b.band.Elements {
-			if el.Type != template.ElementText {
-				continue
-			}
-			if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
-				continue
-			}
-			boundText, subs, berr := bind.BindTextSpans(el.Value.Value, data, params, string(el.ID))
-			if berr != nil {
-				return nil, fmt.Errorf("folio: Render: %w", berr)
-			}
-			// QA Finding 5 (this story's review, Major): the fontFamily
-			// chain must be validated BEFORE the AC9 empty-text
-			// short-circuit below, not after it. The previous ordering
-			// let boundText == "" skip font-chain validation entirely,
-			// so an element with an unresolvable style.fontFamily chain
-			// (Story 1.5 AC2/AC4's located error) rendered successfully
-			// whenever its bound value happened to be null or "" — the
-			// SAME broken template passing or failing depending on
-			// which report it was handed. AC9 only requires that a null
-			// binding "renders as empty, and is not an error"; it does
-			// not license skipping the element's own validation.
-			chain, err := fontChain(doc, el)
-			if err != nil {
-				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
-			}
-			if boundText == "" {
-				// AC9: a placeholder resolving to explicit JSON null
-				// renders as empty — nothing left to draw for this run
-				// — but the element's fontFamily chain still validated
-				// above. There is no text, so there is nothing to check
-				// coverage against (Story 2.2, AC4).
-				continue
-			}
-			fontSize := defaultFontSizePt
-			if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
-				fontSize = el.Style.Value.FontSize.Value
-			}
-			// Story 2.2, AC4: COVERAGE-based resolution, per rune,
-			// across the chain — never "first chain member present in
-			// fs" (the pre-Story-2.2 reading). May split one element
-			// into several face segments, one per contiguous run of
-			// runes sharing the same resolved face. Shaped ONCE here;
-			// every line below is a SLICE of these glyphs, never a
-			// re-shape of a shorter string (Story 2.4, AC10).
-			segs, serr := shapeSegments(chain, boundText, fs, cache)
-			if serr != nil {
-				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
-			}
-			totalRunes := len([]rune(boundText))
+	for bandIndex := range bands {
+		bandRuns, _, berr := collectBandTextRuns(doc, bands, bandIndex, data, params, fs, cache, passthroughResolver)
+		if berr != nil {
+			return nil, berr
+		}
+		runs = append(runs, bandRuns...)
+	}
+	return runs, nil
+}
 
-			// Story 2.4: where may this element break, and what may it
-			// not break inside? The atomic spans are the document's
-			// declared unbreakableValues matched against the rune spans
-			// bind.BindTextSpans reported — handed to internal/text as a
-			// PARAMETER (D-000.16), never through an import.
-			atomic := atomicSpansFor(doc.doc.UnbreakableValues, subs)
-			ops := text.Opportunities(text.Dictionary(), boundText, atomic)
+// elementTokenResolver decides what a text element's bound text — ALREADY
+// through bind.BindTextSpans, so the only "{{…}}" tokens still literal
+// are {{page}} and {{pages}} (internal/bind/text.go:45-50's reservation)
+// — becomes before shaping. It is the seam Story 2.7 uses to give the
+// content band and the two repeated bands different answers to "what
+// does {{page}} mean here" without duplicating collectBandTextRuns'
+// shaping/packing/positioning body (D-000.42).
+type elementTokenResolver func(elementID, boundText string, subs []bind.Substitution) (resolvedText string, resolvedSubs []bind.Substitution, slots []pageSlotSpan, err error)
 
-			boxWidth := geom.Length(0)
-			if el.Width.Set && !el.Width.Null {
-				boxWidth = el.Width.Value
+// passthroughResolver is collectTextRuns' resolver: {{page}}/{{pages}}
+// pass through exactly as bind.BindTextSpans left them, unchanged. This
+// is BYTE-FOR-BYTE today's pre-Story-2.7 behaviour — collectTextRuns
+// itself never learns a page count and never needs to.
+func passthroughResolver(_, boundText string, subs []bind.Substitution) (string, []bind.Substitution, []pageSlotSpan, error) {
+	return boundText, subs, nil, nil
+}
+
+// contentBandResolver is D-2.7.3's fence: {{page}}/{{pages}} resolve
+// ONLY in the page-header and page-footer bands. In the content band
+// the construct is a located template error naming the element — not a
+// silent literal — because content-band Y depends on content-band
+// layout, which depends on this construct's width: a fixed point AD-24
+// forbids negotiating.
+func contentBandResolver(elementID, boundText string, subs []bind.Substitution) (string, []bind.Substitution, []pageSlotSpan, error) {
+	if name, found := firstReservedPageToken(boundText, subs); found {
+		return "", nil, nil, fmt.Errorf(
+			"folio: Render: element %s: {{%s}} resolves only in the page header and page footer bands "+
+				"(D-2.7.3) — this element is in the content band, where the page count the construct "+
+				"needs depends on this band's own layout, which AD-24 does not permit resolving by "+
+				"negotiation",
+			elementID, name,
+		)
+	}
+	return boundText, subs, nil, nil
+}
+
+// headerFooterResolver is D-2.7.2's reservation, built once pageCount
+// (Y) is known: {{pages}} becomes Y's exact digits (no reservation — Y
+// is the same value on every page) and {{page}} becomes a
+// digits(Y)-wide filler reservation, reported as a pageSlotSpan for
+// positionSegments to mark.
+func headerFooterResolver(pageCount int) elementTokenResolver {
+	return func(elementID, boundText string, subs []bind.Substitution) (string, []bind.Substitution, []pageSlotSpan, error) {
+		if _, found := firstReservedPageToken(boundText, subs); !found {
+			return boundText, subs, nil, nil
+		}
+		resolved, slots, repl := resolvePageTokens(boundText, pageCount, subs)
+		return resolved, shiftSubstitutions(subs, repl), slots, nil
+	}
+}
+
+// collectBandTextRuns is collectTextRuns' body, generalised over ONE
+// band and one elementTokenResolver — the single implementation
+// collectTextRuns (legacy, all bands, pass-through) and Story 2.7's
+// two-phase pipeline (content-only, then header/footer-once-Y-is-known)
+// both drive, so the shaping/packing/positioning sequence exists in
+// exactly one place (D-000.42).
+//
+// It returns, alongside the band's runs, one pendingPageSlot per
+// {{page}} occurrence resolved in this call — indices LOCAL to the
+// returned runs slice; the caller shifts them once the final combined
+// run order is known.
+func collectBandTextRuns(
+	doc *Template,
+	bands []bandWithOrigin,
+	bandIndex int,
+	data, params bind.Value,
+	fs FontSet,
+	cache *fontCache,
+	resolve elementTokenResolver,
+) ([]textRunSource, []pendingPageSlot, error) {
+	b := bands[bandIndex]
+	var runs []textRunSource
+	var pending []pendingPageSlot
+
+	for _, el := range b.band.Elements {
+		if el.Type != template.ElementText {
+			continue
+		}
+		if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
+			continue
+		}
+		boundText, subs, berr := bind.BindTextSpans(el.Value.Value, data, params, string(el.ID))
+		if berr != nil {
+			return nil, nil, fmt.Errorf("folio: Render: %w", berr)
+		}
+
+		resolvedText, resolvedSubs, slots, rerr := resolve(string(el.ID), boundText, subs)
+		if rerr != nil {
+			return nil, nil, rerr
+		}
+		boundText, subs = resolvedText, resolvedSubs
+
+		// QA Finding 5 (this story's review, Major): the fontFamily
+		// chain must be validated BEFORE the AC9 empty-text
+		// short-circuit below, not after it. The previous ordering
+		// let boundText == "" skip font-chain validation entirely,
+		// so an element with an unresolvable style.fontFamily chain
+		// (Story 1.5 AC2/AC4's located error) rendered successfully
+		// whenever its bound value happened to be null or "" — the
+		// SAME broken template passing or failing depending on
+		// which report it was handed. AC9 only requires that a null
+		// binding "renders as empty, and is not an error"; it does
+		// not license skipping the element's own validation.
+		chain, err := fontChain(doc, el)
+		if err != nil {
+			return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
+		}
+		if boundText == "" {
+			// AC9: a placeholder resolving to explicit JSON null
+			// renders as empty — nothing left to draw for this run
+			// — but the element's fontFamily chain still validated
+			// above. There is no text, so there is nothing to check
+			// coverage against (Story 2.2, AC4).
+			continue
+		}
+		fontSize := defaultFontSizePt
+		if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
+			fontSize = el.Style.Value.FontSize.Value
+		}
+		// Story 2.2, AC4: COVERAGE-based resolution, per rune,
+		// across the chain — never "first chain member present in
+		// fs" (the pre-Story-2.2 reading). May split one element
+		// into several face segments, one per contiguous run of
+		// runes sharing the same resolved face. Shaped ONCE here;
+		// every line below is a SLICE of these glyphs, never a
+		// re-shape of a shorter string (Story 2.4, AC10).
+		segs, serr := shapeSegments(chain, boundText, fs, cache)
+		if serr != nil {
+			return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
+		}
+		totalRunes := len([]rune(boundText))
+
+		// Story 2.4: where may this element break, and what may it
+		// not break inside? The atomic spans are the document's
+		// declared unbreakableValues matched against the rune spans
+		// bind.BindTextSpans reported — handed to internal/text as a
+		// PARAMETER (D-000.16), never through an import.
+		atomic := atomicSpansFor(doc.doc.UnbreakableValues, subs)
+		ops := text.Opportunities(text.Dictionary(), boundText, atomic)
+
+		boxWidth := geom.Length(0)
+		if el.Width.Set && !el.Width.Null {
+			boxWidth = el.Width.Value
+		}
+		lines := packLines(segs, ops, totalRunes, fontSize, boxWidth)
+
+		// ONE vertical model for the element, from its DECLARED
+		// chain (D-2.4.2 as amended): computed once, outside the
+		// loop, from ONE walk of the chain, because every span of it
+		// is a function of the chain and the size and of nothing on
+		// any individual line.
+		//
+		// UNCONDITIONAL, where the superseded code computed the
+		// advance only when len(lines) > 1. The first-baseline
+		// offset is needed by EVERY element with at least one line,
+		// so this call now runs for single-line elements too — which
+		// widens the set of inputs that can reach verticalModel's two
+		// error paths. That widening is measured rather than assumed:
+		// see TestVerticalModelErrorPathsAreUnreachableThroughRender.
+		vm, serr := chainVerticalModel(chain, fontSize, fs, cache)
+		if serr != nil {
+			return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
+		}
+
+		elementY := layout.PlaceInBand(b.origin, el.Y)
+		startPending := len(pending)
+		for i, ln := range lines {
+			lineY := elementY + geom.Length(int64(i))*vm.Advance
+			placed, poserr := positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize, vm.FirstBaseline, slots)
+			if poserr != nil {
+				return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, poserr)
 			}
-			lines := packLines(segs, ops, totalRunes, fontSize, boxWidth)
-
-			// ONE vertical model for the element, from its DECLARED
-			// chain (D-2.4.2 as amended): computed once, outside the
-			// loop, from ONE walk of the chain, because every span of it
-			// is a function of the chain and the size and of nothing on
-			// any individual line.
-			//
-			// UNCONDITIONAL, where the superseded code computed the
-			// advance only when len(lines) > 1. The first-baseline
-			// offset is needed by EVERY element with at least one line,
-			// so this call now runs for single-line elements too — which
-			// widens the set of inputs that can reach verticalModel's two
-			// error paths. That widening is measured rather than assumed:
-			// see TestVerticalModelErrorPathsAreUnreachableThroughRender.
-			vm, serr := chainVerticalModel(chain, fontSize, fs, cache)
-			if serr != nil {
-				return nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
-			}
-
-			elementY := layout.PlaceInBand(b.origin, el.Y)
-			for i, ln := range lines {
-				lineY := elementY + geom.Length(int64(i))*vm.Advance
-				placed := positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize, vm.FirstBaseline)
-				// Story 2.6: the LINE's extent, computed here from the
-				// vertical model that is already in hand — `lineY` IS
-				// `baseline − max(ascent)` because positionSegments
-				// places the baseline at lineY + vm.FirstBaseline, and
-				// vm.FirstBaseline IS max(ascent) scaled. The bottom
-				// adds max(descent). Same numbers, no re-derivation.
-				for j := range placed {
-					placed[j].band = bandIndex
-					placed[j].elementID = string(el.ID)
-					placed[j].lineIndex = i
-					placed[j].itemTop = lineY
-					placed[j].itemBottom = lineY + vm.FirstBaseline + vm.LastDescent
+			// Story 2.6: the LINE's extent, computed here from the
+			// vertical model that is already in hand — `lineY` IS
+			// `baseline − max(ascent)` because positionSegments
+			// places the baseline at lineY + vm.FirstBaseline, and
+			// vm.FirstBaseline IS max(ascent) scaled. The bottom
+			// adds max(descent). Same numbers, no re-derivation.
+			for j := range placed {
+				placed[j].band = bandIndex
+				placed[j].elementID = string(el.ID)
+				placed[j].lineIndex = i
+				placed[j].itemTop = lineY
+				placed[j].itemBottom = lineY + vm.FirstBaseline + vm.LastDescent
+				// Story 2.7 review, Blocker 1: ONE pendingPageSlot per
+				// {{page}} occurrence this run carries, not one per
+				// run — a run may carry more than one.
+				for _, ps := range placed[j].pageSlots {
+					pending = append(pending, pendingPageSlot{
+						runIndex: len(runs) + j,
+						glyphLo:  ps.glyphLo,
+						glyphHi:  ps.glyphHi,
+						digitsY:  ps.digitsY,
+					})
 				}
-				runs = append(runs, placed...)
+			}
+			runs = append(runs, placed...)
+		}
+
+		// Story 2.7: this element used a {{page}} slot, so its face's
+		// ten digits need CIDs allocated even though only ONE filler
+		// digit was actually shaped above (finding 3, story creation:
+		// digit identity never affects width, but substitution needs
+		// EVERY digit's CID, since any of 0-9 may be a page's own).
+		if len(slots) > 0 && len(pending) > startPending {
+			dt, dterr := digitTableRun(chain, fontSize, fs, cache)
+			if dterr != nil {
+				return nil, nil, dterr
+			}
+			dtIndex := len(runs)
+			runs = append(runs, dt)
+			for k := startPending; k < len(pending); k++ {
+				pending[k].digitTableIndex = dtIndex
 			}
 		}
 	}
-	return runs, nil
+	return runs, pending, nil
 }
 
 // fontChain resolves one text element's style.fontFamily to its ordered
@@ -565,20 +713,44 @@ func shapeSegments(chain []string, elementText string, fs FontSet, cache *fontCa
 // the glyphs the run carries — the same function the line breaker
 // decides with — so a run's drawn width and its contribution to the
 // cursor cannot disagree.
-func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baselineOffset geom.Length) []textRunSource {
+// slots is Story 2.7's addition: element-global rune spans of a
+// {{page}} reservation within [from,to). Empty for every caller but the
+// page-header/page-footer collection path, in which case this function
+// is byte-for-byte what it was before this story — no extra allocation,
+// no extra comparison beyond the nil check on the outer loop.
+//
+// A run's pageSlots is a SLICE (this story's review, Blocker 1): more
+// than one {{page}} occurrence can land in one face segment on one
+// line — "Page {{page}} of {{pages}} / {{page}}" is entirely ASCII, so
+// it is a single run, and each matching slot is APPENDED, never
+// overwritten.
+//
+// A slot that would straddle two face segments or two lines cannot be
+// expressed as one contiguous glyph range and is therefore a located
+// error naming the run's rune range, not a panic — this story's review,
+// Finding 10: everywhere else on this path a structural impossibility
+// is a located error (D-2.6.5's precedent; digitTableRun and
+// buildPageNumberSlot in page_number.go both return one), and a public
+// entry point (Render) must not let an internal panic cross it
+// uncaught. Unreachable through the shipped set, where the construct is
+// entirely ASCII (finding 5, story creation), but checked rather than
+// assumed.
+func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baselineOffset geom.Length, slots []pageSlotSpan) ([]textRunSource, error) {
 	runs := make([]textRunSource, 0, len(segs))
 	cursor := x
 	for _, s := range segs {
 		if to <= s.runeStart || from >= s.runeEnd {
 			continue
 		}
-		lo, hi := s.glyphRangeForRunes(maxInt(from, s.runeStart), minInt(to, s.runeEnd))
+		elemLo := maxInt(from, s.runeStart)
+		elemHi := minInt(to, s.runeEnd)
+		lo, hi := s.glyphRangeForRunes(elemLo, elemHi)
 		if hi <= lo {
 			continue
 		}
-		runeLo := maxInt(from, s.runeStart) - s.runeStart
-		runeHi := minInt(to, s.runeEnd) - s.runeStart
-		runs = append(runs, textRunSource{
+		runeLo := elemLo - s.runeStart
+		runeHi := elemHi - s.runeStart
+		run := textRunSource{
 			face:           s.face,
 			text:           string([]rune(s.segText)[runeLo:runeHi]),
 			x:              cursor,
@@ -587,16 +759,50 @@ func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baseline
 			baselineOffset: baselineOffset,
 			glyphs:         s.glyphs[lo:hi],
 			clusterTexts:   s.clusterTexts[lo:hi],
-		})
+		}
+		for _, sl := range slots {
+			if sl.to <= elemLo || sl.from >= elemHi {
+				continue // no overlap with this segment's contribution to this line
+			}
+			if sl.from < elemLo || sl.to > elemHi {
+				return nil, fmt.Errorf(
+					"folio: Render: internal error: a {{page}} reservation [%d,%d) straddles a "+
+						"face-segment or line boundary at [%d,%d) — Story 2.7 requires the construct to "+
+						"resolve to one face segment on one line",
+					sl.from, sl.to, elemLo, elemHi,
+				)
+			}
+			slotLo, slotHi := s.glyphRangeForRunes(sl.from, sl.to)
+			run.pageSlots = append(run.pageSlots, textRunPageSlot{
+				glyphLo: slotLo - lo,
+				glyphHi: slotHi - lo,
+				digitsY: sl.digitsY,
+			})
+		}
+		runs = append(runs, run)
 		cursor += geom.ScaleRound(geom.Length(s.advance1000(lo, hi)), int64(fontSize), 1000)
 	}
-	return runs
+	return runs, nil
 }
 
 // renderDocument is Render's implementation once t is known non-nil
 // (AC14b). It resolves every text element's face, subsets each distinct
 // face EXACTLY ONCE over the union of runes the whole document uses
 // (AC9), and hands the result to internal/pdf.SerializeTextDocument.
+//
+// ERROR ORDERING ON A MULTI-DEFECT DOCUMENT (this story's review,
+// Finding 9). This story's two-phase restructure — geometry, then
+// images, then content-band text (D-2.7.3's fence), then
+// layout.Paginate (D-2.6.5's OverflowError), then header/footer text
+// (D-2.7.2's reservation) — changed WHICH located error a document with
+// MORE THAN ONE simultaneous defect reports, in four ways relative to
+// the pre-2.7 single-pass collection order. This is NOT a contractual
+// promise: no AC and no golden fixes an ordering among unrelated,
+// simultaneous defects, and none of the eight pre-existing goldens
+// (single-outcome inputs) can observe it. It is recorded here, as this
+// story's review asked, so a future restructure changes it
+// KNOWINGLY rather than as an unnoticed by-product of where a phase
+// boundary happens to fall — not so a caller can depend on it.
 func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, error) {
 	// cache is shared between collection (coverage checks, AC4) and
 	// embedding (subsetting) below, so a face is ever parsed at most
@@ -604,9 +810,73 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	// consult it. Only ever looked up by key, never ranged.
 	cache := newFontCache()
 
-	runs, err := collectTextRuns(t, data, params, fs, cache)
-	if err != nil {
-		return nil, err
+	bands, bandsErr := documentBands(t)
+	if bandsErr != nil {
+		return nil, bandsErr
+	}
+	geometry, gerr := pageGeometryOf(t)
+	if gerr != nil {
+		return nil, gerr
+	}
+	imageRuns, ierr := collectImageRuns(t)
+	if ierr != nil {
+		return nil, ierr
+	}
+
+	// Story 2.7, PHASE A: the content band ALONE, under D-2.7.3's fence
+	// (contentBandResolver errors on {{page}}/{{pages}} rather than
+	// passing them through). This is the ONLY input layout.Paginate
+	// needs — internal/layout/band.go's ContentHeight takes page
+	// geometry alone (finding 2, story creation) — so it is legal to
+	// learn Y here, BEFORE the page-header/page-footer text exists,
+	// without becoming pass two's job: this is still pass one, just
+	// reordered within it.
+	contentRuns, _, cterr := collectBandTextRuns(t, bands, contentBandIndex, data, params, fs, cache, contentBandResolver)
+	if cterr != nil {
+		return nil, cterr
+	}
+	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns))
+	if plerr != nil {
+		return nil, fmt.Errorf("folio: Render: %w", plerr)
+	}
+	pageCount := len(contentPlan.Pages)
+
+	// PHASE B: the two repeated bands, now that D-2.7.2's reservation
+	// (digits(Y)) is computable. Collected in documentBands' authored
+	// order — header, then footer — and combined below in that same
+	// order relative to content (header, content, footer) so a
+	// document using NO page slot produces the identical run sequence,
+	// and therefore the identical CID allocation order
+	// (buildShapedPDFRuns is order-sensitive by design, AC7/D-2.3-Q1),
+	// this story's own change produced for every pre-existing document.
+	headerRuns, headerPending, herr := collectBandTextRuns(t, bands, pageHeaderBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
+	if herr != nil {
+		return nil, herr
+	}
+	footerRuns, footerPending, ferr := collectBandTextRuns(t, bands, pageFooterBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
+	if ferr != nil {
+		return nil, ferr
+	}
+
+	headerOffset := 0
+	contentOffset := len(headerRuns)
+	footerOffset := contentOffset + len(contentRuns)
+
+	runs := make([]textRunSource, 0, len(headerRuns)+len(contentRuns)+len(footerRuns))
+	runs = append(runs, headerRuns...)
+	runs = append(runs, contentRuns...)
+	runs = append(runs, footerRuns...)
+
+	var pending []pendingPageSlot
+	for _, p := range headerPending {
+		p.runIndex += headerOffset
+		p.digitTableIndex += headerOffset
+		pending = append(pending, p)
+	}
+	for _, p := range footerPending {
+		p.runIndex += footerOffset
+		p.digitTableIndex += footerOffset
+		pending = append(pending, p)
 	}
 
 	// Story 2.3, AC1/AC8: each face-segment is shaped ONCE, with its own
@@ -680,11 +950,6 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		}
 	}
 
-	imageRuns, ierr := collectImageRuns(t)
-	if ierr != nil {
-		return nil, ierr
-	}
-
 	// AC9's "one XObject per asset per document" (the same shape as
 	// fonts' "one subset per font per document"): dedup by asset key —
 	// decode each DISTINCT referenced asset exactly once, regardless of
@@ -751,14 +1016,28 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 		}
 	}
 
-	geometry, gerr := pageGeometryOf(t)
-	if gerr != nil {
-		return nil, gerr
-	}
-
 	pdfRuns, cerr := buildShapedPDFRuns(runs, shapedRuns, clusterTexts, subsets, embedded, cache, fs)
 	if cerr != nil {
 		return nil, cerr
+	}
+
+	// Story 2.7, AC2's between-passes attachment point: buildShapedPDFRuns
+	// has just allocated CIDs for every glyph in the document, INCLUDING
+	// each page-slot's digit table, so this is the first point at which
+	// buildPageNumberSlot can read the ten pre-shaped, pre-CID'd digits a
+	// {{page}} occurrence will select among. Nothing here shapes
+	// anything — it reads what pass one already measured.
+	//
+	// APPENDED, not assigned (this story's review, Blocker 1): `pending`
+	// carries one entry per {{page}} OCCURRENCE, and more than one can
+	// share a runIndex — a run's PageSlots is the ordered collection of
+	// every reservation it carries, not its last one.
+	for _, ps := range pending {
+		slot, serr := buildPageNumberSlot(pdfRuns[ps.runIndex].Face, pdfRuns[ps.digitTableIndex], ps)
+		if serr != nil {
+			return nil, serr
+		}
+		pdfRuns[ps.runIndex].PageSlots = append(pdfRuns[ps.runIndex].PageSlots, *slot)
 	}
 
 	// internal/layout produces the page model (AD-5); package folio hands
@@ -830,6 +1109,15 @@ func paginateDocument(
 		case pageFooterBandIndex:
 			footer.Runs = append(footer.Runs, layout.TextRunRef(i))
 			continue
+		case digitTableBandIndex:
+			// Story 2.7: exists only to carry a face's ten digit CIDs
+			// through buildShapedPDFRuns (see digitTableRun) — never
+			// drawn, never assigned to a page, never a content-band
+			// item. Explicitly skipped, by name, rather than falling
+			// into the "unrecognised band" internal error below: that
+			// error guards documentBands' three-band ENUMERATION, and
+			// this band is deliberately outside it.
+			continue
 		}
 		// Content band: gather this whole line.
 		//
@@ -891,10 +1179,18 @@ func paginateDocument(
 	}
 
 	pages := make([]pagemodel.Page, 0, len(plan.Pages))
-	for _, assigned := range plan.Pages {
+	for pageIdx, assigned := range plan.Pages {
+		// Story 2.7, AC2's between-passes step: pageNum is THIS page's
+		// own number, 1-based. resolvePageRunForPage is a no-op for
+		// every run but the ones carrying a PageSlots entry (empty for
+		// every document that declares no {{page}} construct, which is
+		// what keeps every pre-2.7 golden byte-identical: len(PageSlots)
+		// == 0 returns run unchanged, verbatim, exactly as this loop
+		// already copied it).
+		pageNum := pageIdx + 1
 		pageRuns := make([]pagemodel.TextRun, 0, len(header.Runs)+len(assigned.ContentRuns)+len(footer.Runs))
 		for _, ref := range header.Runs {
-			pageRuns = append(pageRuns, pdfRuns[ref])
+			pageRuns = append(pageRuns, resolvePageRunForPage(pdfRuns[ref], pageNum))
 		}
 		for _, ref := range assigned.ContentRuns {
 			// The window shift, and it is the ONLY transformation
@@ -906,7 +1202,7 @@ func paginateDocument(
 			pageRuns = append(pageRuns, run)
 		}
 		for _, ref := range footer.Runs {
-			pageRuns = append(pageRuns, pdfRuns[ref])
+			pageRuns = append(pageRuns, resolvePageRunForPage(pdfRuns[ref], pageNum))
 		}
 
 		pageImages := make([]pagemodel.ImagePlacement, 0, len(header.Images)+len(assigned.ContentImages)+len(footer.Images))

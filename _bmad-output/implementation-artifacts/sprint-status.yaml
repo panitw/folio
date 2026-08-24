@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 08-24-2026
+last_updated: 08-25-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -65,7 +65,7 @@ development_status:
   # PDF-reading test helpers for single-page-shape assumptions). Must land BEFORE
   # 2.7, which adds a run on every page and lands directly on those helpers.
   2-6a-sweep-single-page-assumptions-from-the-shared-pdf-readers: done
-  2-7-render-page-x-of-y: backlog
+  2-7-render-page-x-of-y: done
   2-8-clip-overflowing-content-and-say-so: backlog
   epic-2-retrospective: optional
 

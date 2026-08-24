@@ -1,0 +1,28 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Marker 1", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [
+        {"id": "e2", "type": "text", "x": 0, "y": 6, "width": 480, "height": 16, "value": "Page {{page}} of {{pages}}", "style": {"fontFamily": "body", "fontSize": 8}}
+      ],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [
+        {"id": "e3", "type": "text", "x": 0, "y": 4, "width": 480, "height": 16, "value": "PAGE COUNT MATRIX FIXTURE", "style": {"fontFamily": "body", "fontSize": 9}}
+      ],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
