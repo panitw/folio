@@ -7625,3 +7625,121 @@ every declared site ([[D-000.47]]'s four-site list), by the file route ([[D-000.
 stream data, **invert the layers** — the helper plus the page-tree check stand alone and the delimiter
 check is **dropped** rather than shipped as a false-positive generator ([[D-000.15]]: a false positive in
 a guard is an attack on the guard).
+
+---
+
+### D-000.54 — A newly registered matrix document runs its native leg at registration; this is a sequencing fix, NOT a cadence override
+
+*(mechanism: **binding**)*
+
+When a story adds an entry to `matrixDocuments`, it runs that document's leg **on the host target only**,
+once, before the story may reach `review`:
+
+```
+FOLIO_MATRIX_TARGET=darwin/arm64 go test -tags=matrix -count=1 -run TestTargetRenderHash .
+```
+
+**It must not be logged as a [[D-000.4]] override.** D-000.4 requires a genuinely **new source of
+cross-target divergence** — float arithmetic, a vendor call, a compressor, a new dependency — **not
+merely a new golden**, and warned that on a weaker trigger *"nearly every story would qualify and
+D-000.4's trade would erode to nothing."* Registering a document is exactly that weaker trigger.
+Logging it as an override spends the owner's deliberate wall-clock trade to buy something the override
+was never the right instrument for.
+
+**It is [[D-000.43]]'s move** — the one the log already recorded as *"strictly better than the
+override"*, where 2.5a bought the protection that mattered at zero cost instead of a Docker run. The
+expensive thing in D-000.4 is the **Docker arm64 boot**; the host leg is a local `go test` with no
+Docker at all. The owner's trade is untouched.
+
+**What forced it.** Story 2.6 registered `multi-page` and reported its legs *"written, compiled and
+vetted, deliberately not run."* The leg **failed unconditionally on all four targets**:
+`requireMultiPageIsGenuinelyMultiPage` reads runs via `readEmittedRuns`, which takes the **first** text
+content stream and `break`s — one page's worth — then fatals demanding two headers. Reproduced at the
+real entry point, `matrix_test.go:1233`. The other seven legs hashed correctly.
+
+**Guardrail — state precisely what the native leg proves, because it is narrower than it looks.** It
+proves the leg **executes and produces a hash on one target**. It proves **nothing** about cross-target
+agreement, which remains the gate's job. **Both halves go in the Delivery Log**; the second half is what
+stops this becoming the next unearned assurance.
+
+---
+
+### D-000.55 — `go vet -tags matrix` is a compile gate, not an honesty check; and the compound phrase is banned
+
+*(mechanism: **binding**)*
+
+`go vet -tags matrix` stays — it is still the only thing that can check a leg the host cannot run — but
+it is **no longer the honesty check for a deferred leg**; [[D-000.54]]'s native-leg execution is. **Vet
+may never again be offered as assurance that a deferred leg works.**
+
+**Grounding**: [[D-000.15]] — key a guard on its purpose, never on a proxy for its purpose. The
+obligation is *"this leg will run at the gate."* Vet keys on **compilation**, a stand-in for it, and the
+gap between the two is precisely where Story 2.6's Blocker lived. And [[D-000.9]]: the story's report
+was **true**, and its all-clear was **indistinguishable from could-not-look**.
+
+**The wording rule — the transferable half.** **Ban the compound phrase.** *"written, compiled and
+vetted, deliberately not run"* is a true sentence that reads as *"checked"*. Split it:
+
+- what was **executed**, naming **which target by name** ([[D-000.26]] — cite the subject);
+- separately, the legs **not run**, named **individually**, with the cadence clause that defers them.
+
+**This is not a new obligation.** [[D-000.4]]'s Consequences already require each Delivery Log to *"name
+the suites it actually measured and name the unrun ones explicitly."* The defect is that **"vetted" was
+allowed to occupy the "measured" column.** Record it as an existing rule being enforced, so the next
+reader sees enforcement rather than a new rule arriving.
+
+---
+
+### D-2.6.9 — Story 2.6a is inserted before 2.7 to sweep the shared PDF-reading helpers; the predicate is behavioural, never a grep
+
+*(mechanism: **binding** for the predicate, the placement and the cost control; **illustrative** for the
+inventory)*
+
+**Sweep it, as an inserted Story 2.6a between 2.6 and 2.7.** Ruled rather than escalated: it discharges
+[[D-000.50]] (*before writing a guard, ask whether any subject can express the defect*) and
+[[D-000.53]], both already binding. **It is not new scope, so it is not the owner's.**
+
+**The design point that decides whether the sweep is worth anything.** Do **not** sweep for the literal
+`1`. Of the three instances, **two are not spelled with a `1`**: the `/Kids` bug was a **missing
+separator**, and `readEmittedRuns` is a **`break` after the first stream containing `" Tf\n"`**. Only
+`matrix_test.go:1212` was a literal. **A text-matched sweep finds one of three** — [[D-000.14]] exactly:
+it would measure the regex.
+
+**The predicate that works.** Enumerate the quantities the engine can now emit **N** of — pages, content
+streams, page-header runs, page-footer runs, embedded faces, image XObjects, xref subsections — and for
+each, **run the existing shared helpers against a subject with N > 1 and observe which fatal, mis-count,
+or silently truncate.** The subject already exists: the multi-page fixture. *Enforce the property
+behaviourally, never by name-matching* — the same reason `assertWellFormedPDF` had to be parameterised
+rather than grepped for.
+
+**The cost, measured rather than guessed** *(orchestrator-verified, text-matched — per [[D-000.14]] this
+is the sweep's starting inventory, not its answer)*: `readEmittedRuns` has **12 call sites across 5
+files** — `shaped_fixture_test.go` 5, `matrix_test.go` 4, and one each in `wrapped_text_fixture_test.go`,
+`segment_origin_test.go`, `first_baseline_acceptance_test.go`. Every one is single-page today, so **all
+twelve are correct today and all twelve become silently wrong the moment their subject is multi-page.**
+That is **not twelve bugs; it is one helper with an undocumented contract and a silent truncation.** The
+helper population is small and enumerable — `pdfObjects` (2 calls), `streamBody` (3), `readEmittedRuns`
+(12), `countPageObjects` (1), plus `assertWellFormedPDF` (already repaired). **The sweep is bounded
+because the helpers are few, not because the call sites are.**
+
+**Why 2.6a and not the gate or 2.7.** Not the gate — a gate is a **verification point, not a work item**,
+and this fails [[D-2.6.2]]'s criterion. **The Epic 2 gate still owes five.** Not folded into 2.7 —
+[[D-000.25]]'s reasoning for inserting 2.3a applies almost verbatim: **audit first**, so the next story's
+new call sites are written against a known map, and do not stack two guard workstreams onto a story that
+needs focus. **Before 2.7 urgently**: 2.7 is `Page X of Y`, which adds **a run on every page** and will
+land directly on these helpers.
+
+**Guardrails**: [[D-000.17]] governs the budget — if the enumeration exceeds what 2.6a can carry, the
+remainder is **reported unmet with each instance named**, never quietly dropped and never triaged by
+taste; make the enumeration-and-count 2.6a's **first** task so the scope decision is made on a number.
+[[D-000.48]] — a correction sweep can introduce a fresh instance of the class it corrects, and this one
+corrects **silent truncation**, so verify each repaired helper against the multi-page subject
+mechanically. [[D-000.34]] — repairing `readEmittedRuns` may **kill a detector**: check whether any of
+the twelve call sites derived its discriminating power from reading only the first stream, and
+**re-point rather than re-run**. [[D-000.42]] — count what the sweep **fixes**, not what it inspects.
+
+**The evidence, stated as evidence rather than as principle**: [[D-000.53]]'s framing has now held
+**three times in one story** — the `/Kids` emitter, `matrix_test.go:1212`, and `readEmittedRuns` — and
+each was found by a **different route**: a human opening the file, a developer enumerating, and a
+reviewer running the real entry point. **None was found by inspection.** That is the argument for the
+behavioural predicate above.
