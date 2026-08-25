@@ -288,6 +288,67 @@ by Story 2.4's AC5 ([[D-000.17]]) and is not to be "fixed".
 
 ---
 
+### Grounding refresh — session 4, 2026-08-25 at HEAD `e7f3f9c` (Epic 3 opening)
+
+Fourth lead, re-grounded per [[D-000.8]] from the three existing grounding sections and the 58
+`D-000.*` standing rules rather than re-deriving the program. **The three prior sections still hold
+and are NOT rewritten.** UX docs remain unread until Epic 5.
+
+**Verified live rather than inherited** (each because an Epic 3 ruling hinges on it): `internal/expr`
+and `internal/diag` confirmed **absent** (8 packages exist); the rank table confirmed as [[D-000.16]]
+left it, with `expr` 3 and `diag` 1 **pre-ranked ahead of arrival**; `Severity`/`Diagnostic`/`Result`
+confirmed in the **public** package `folio`; all three absence tripwires (`absence-expr-package`,
+`absence-diag-package`, `absence-source-date-epoch`) confirmed live and all three fire in Epic 3.
+
+**One record claim came back FALSE.** `internal/bind/decimal.go` implements [[D-1.6.1]]'s `Decimal`
+(int64 coefficient + exponent) exactly — but **it has no arithmetic at all.** `NewDecimal` only: no
+Add, no Compare, no Div anywhere in the module. Story 3.3's aggregates therefore build on a type that
+cannot yet add, which is not a defect but is not what "the type exists" implies either.
+
+**THE HIGHEST-VALUE FINDING — AD-23's enforcement is keyed on a PROXY, and the proxy has a hole.**
+Both guards — the syntactic AST scan (`internal/arch_test.go`) and the type-aware `lint` rule
+(`ScanFloatTypedValues`, built at 2.3a under [[D-000.25]]) — key on `float32`/`float64`. The
+type-aware one tests `*types.Basic` carrying `types.IsFloat`. **Neither can see `math/big.Float`**: it
+is a named struct type, so `types.IsFloat` never fires, and the identifier is not `float64`, so the
+syntactic scan never fires. `big.Float` is *arbitrary-precision binary floating point* — the exact
+thing Story 3.3's AC1 forbids **by name**. This is not a hypothetical reach: `internal/bind` already
+imports `math/big` (`decimal.go:20`, for `big.Int`), so the import is already blessed and `big.Float`
+is one identifier away. `big.Rat` is exact but is *also* wrong for `avg`, because carrying an
+unrounded rational dodges the ruled "defined scale + round-half-to-even" requirement.
+
+**What produces the reach:** `sum` aligns N coefficients to a common exponent and adds them, where
+`int64` overflows long before AD-23's *literal* bound bites — **and AD-23 rules literal overflow
+explicitly while being silent on accumulator overflow.** That silence sits on the money path, in the
+story whose acceptance test is a bank statement. This is [[D-000.15]]'s failure shape (a guard keyed
+on a proxy rather than the purpose), sitting unfired on the one epic that walks into it.
+
+**Findings recorded against Epic 3, to be ruled as they come up:**
+1. The `big.Float`/`big.Rat` hole is real, unguarded and **unmentioned anywhere in the record** — the
+   log's own claim that AD-23 is enforced is narrower than it reads.
+2. **Story 3.2's AC set is internally inconsistent**: "the function table is closed and contains
+   exactly eight entries" versus five of the eight (`sum`/`count`/`avg`, `formatDate`/`formatNumber`)
+   arriving in 3.3 and 3.4. Not a citation slip — a sequencing contradiction in the AC text. A
+   registered-but-unimplemented `sum` returning a plausible `0` is a wrong bank-statement total,
+   silently: [[D-000.25]]'s vendor-default hazard reproduced **in our own code**.
+3. AD-23 rules literal overflow and is silent on **accumulator** overflow, while `sum` is the
+   operation it exists for. A gap, not an error.
+4. **[[DW-8]]'s `Decimal` move is owned by the wrong story.** DW-8 names 3.2, but **3.3** is the story
+   that needs the arithmetic, so 3.2 performs a move it does not itself consume and will look
+   deferrable. If deferred, 3.3 is exactly where a second `Decimal` gets born to break a cycle Go
+   would otherwise have stopped — the failure [[D-1.6.1]] wrote itself to prevent.
+
+**Top sequencing risk:** three absence tripwires fire in this epic, and in each case **the cheapest
+fix to the red is to delete the rule**, retiring the forcing function silently. [[DW-6]] records the
+correct pattern (delete the rule *and* land the replacing positive assertion in the same commit) — but
+**writes it down for `diag` only.** It applies identically to `expr` and to `SOURCE_DATE_EPOCH`, and
+nothing said so until now. Highest-probability quiet loss in the epic.
+
+**Carried unchanged:** `TestCorpusMeetsP6ExerciseFloors` stays red ([[D-000.17]] / [[D-2.1.14]] /
+Story 2.4 AC5), now bound by [[D-000.57]]. Epic 4 is the C4 hard gate. **[[D-2.1.6]] is untouched** —
+no Epic 3 story reaches segmentation, and nothing here may reopen it.
+
+---
+
 ## Standing decisions (set at run start, 2026-08-23)
 
 ### D-000.1 — Build order is numeric, driven explicitly by story number
