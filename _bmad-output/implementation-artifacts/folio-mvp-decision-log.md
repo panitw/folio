@@ -9207,3 +9207,52 @@ heavy on it. Putting on a heavy-looking box that happens to be empty tells you n
    indistinguishable without checking. [[D-000.19]]'s principle applied to mutation testing: **an
    unexplained agreement is where a broken instrument hides**, and the instrument here was the
    orchestrator's.
+
+### D-3.2.2 — CEL (and any general-purpose expression library) is REJECTED, and the reason is the numeric model, not the parser
+**Owner decision**, on the orchestrator's recommendation. *(mechanism: binding)*
+
+**The question, raised by the owner from real experience.** *"Do you want to use CEL? I used it in my
+other project with a success."* A fair question — CEL is well-designed, widely deployed, and would
+normally be the right instinct over hand-rolling a grammar.
+
+**Verdict: keep the hand-written recursive-descent parser** (`epics.md:187`, `epics.md:999`,
+counter-metric C1).
+
+**THE DECISIVE FACT, and it is one fact.** **CEL has no decimal type.** Its numeric model is `int`
+(int64), `uint` (uint64) and `double` (**float64**). Any non-integer arithmetic goes through **binary
+floating point** — and a numeric literal carrying a fraction parses as a `double`.
+
+**Why that is disqualifying HERE specifically, rather than a general objection to CEL.** AD-23 exists
+because an adversarial review of the architecture found exactly this hazard and named it:
+*"Report data numbers would have been float64 via `encoding/json` default — **money arithmetic in
+binary floating point on a bank-statement product**, plus a fusable multiply-add path reintroducing
+the NFR1.a hazard AD-2 closed only for geometry."* The response was AD-23: exact scaled-integer
+decimals, `UseNumber` decoding, float64 nowhere under `internal/`. **Adopting CEL would reintroduce,
+as a dependency, the precise defect the architecture was amended to prevent.**
+
+**And it would now be caught by our own guard.** Story 3.1a shipped a lint rule banning binary-float
+types at the `folio-go` module root by resolved type identity ([[D-3.1a.1]] corrected). CEL's `double`
+path trips it. **Story 3.3 also requires division at a declared scale with round-half-to-even
+([[D-3.1a.1]]) — which CEL cannot express at all.**
+
+**Three secondary costs, each already a settled concern in this project** *(mechanism: illustrative)*:
+the closed **eight**-entry function table (counter-metric C1) means disabling and fighting CEL's
+standard library; `cel-go` pulls **ANTLR and protobuf** onto the **js/wasm** target, where payload size
+has already been measured and argued (4.82 MB vs 8.30 MB, [[D-2.2.4]]); and it is a **new vendor
+boundary in the byte-reproducible core**, the auditing of which consumed an entire inserted story
+([[D-000.25]], Story 2.3a).
+
+**The honest steelman, recorded so it is not re-litigated from scratch.** CEL *can* be made to work:
+register a custom opaque decimal type with operator overloads, and build a restricted environment via
+`NewCustomEnv` with the standard library omitted and `double` literals rejected by a checker pass.
+**But then CEL supplies only the PARSER while we write all the arithmetic anyway** — carrying a
+dependency, a wasm payload and an audit obligation to avoid writing the cheapest part of the job.
+
+**In plain terms.** The hard part of an expression language for this product is not reading
+`sum(transactions.amount)` — it is adding up money without losing a satang. CEL is excellent at the
+first and structurally cannot do the second. Buying the library gets us the easy half and forbids the
+half the product is actually about.
+
+**What would reopen this** *(mechanism: binding)*: CEL gaining a first-class exact-decimal type in its
+own type system — not a custom extension we register, which is the steelman already rejected above.
+Until then, a proposal to adopt CEL should be answered with this entry rather than re-derived.
