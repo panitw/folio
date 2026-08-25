@@ -8454,3 +8454,56 @@ new digest; `break-signoff.json` was **not** written by this work and
 **Gate status, unchanged**: `epic-2: backlog` stays; six matrix obligations plus two sign-offs, one of
 which (the break sign-off) now names the corrected digest and awaits the owner's read. A single local
 commit referencing Story 2.4 carries this correction; Story 2.4 itself was not reopened.
+
+---
+
+### D-000.56 — A provenance record is a claim about a place, and it is not verified until someone goes there
+
+*(mechanism: **binding** for the rule; **illustrative** for the fonts)*
+
+**The rule.** A recorded provenance — *"this artifact came from repository R at commit C, path P"* — is
+an **unverified claim** until someone fetches `R@C/P` and hashes it. **A matching sha256 on the artifact
+proves the artifact is the intended one; it proves NOTHING about the pointer.** The two are independent,
+and only the pointer tells a future reader how to reproduce.
+
+**What forced it.** `folio-go/fonts/notosanssc/NOTICE.md` recorded the SC face's source as
+`github.com/notofonts/noto-cjk` at commit `523d033d6cb47f4a80c58a35753646f5c3608a78`. That was **wrong**,
+and it was found **the first time anyone tried to replay the derivation** — for the Epic 2 boundary
+gate's `matrix-file: fontgen_matrix_test.go` obligation.
+
+Measured by the orchestrator, not inferred:
+
+- **That repository at that commit contains no `NotoSansSC[wght].ttf` at all.** Its entire tree (277
+  entries, untruncated) carries exactly **one** SC TrueType variable font —
+  `Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf` — hashing to `d68bafcb…`, **not** the recorded source
+  hash.
+- The file that **does** hash to the recorded `a3041811…` is `ofl/notosanssc/NotoSansSC[wght].ttf` in
+  **`github.com/google/fonts`**, confirmed at pinned commit
+  `2894aab31764f10f29c421bdfd2340d3b382d384` (2022-12-09) and **not merely on the mutable `main`**.
+- **The row contradicted itself and the tell was in plain sight**: `NotoSansSC[wght].ttf` is the
+  **Google Fonts** naming convention, quoted alongside a **noto-cjk** commit.
+
+**The recorded sha256 was correct throughout, so the shipped face is the intended file.** The defect was
+the **pointer**, not the artifact — which is precisely why a hash cannot stand in for a provenance check.
+Corrected in the NOTICE with an appended correction note rather than a silent edit.
+
+**Grounding**: this is [[D-000.53]]'s shape applied one level out. D-000.53 says a golden is not accepted
+until **a reader we did not write** resolves it. **A provenance row is not accepted until the place it
+names is visited.** In both cases the failure mode is identical — *a record that has never been executed
+reads exactly like one that has.* And it is [[D-000.9]] again: *"the sources were not present"* and
+*"the faces reproduce"* must never be the same signal, which is why
+`TestShippedFacesReproduceFromUpstream` **fails rather than skips** when the sources are absent. **That
+deliberate design is the only reason this was ever found.**
+
+**Consequence** *(binding)*: **the other two faces' provenance was verified in the same pass** — both
+release zips resolve, and in each the file matching the recorded hash is the `googlefonts` variable build
+(`NotoSans[wdth,wght].ttf`, `NotoSansThai[wdth,wght].ttf`). **All three are now settled, not carried**
+([[D-000.29]]). Any future NOTICE row naming a repo, commit and path is **not** recorded as verified
+until fetched and hashed, and **a mutable ref (`main`, a branch, a tag that can move) is not a
+provenance pin** — name a commit.
+
+**The obligation now passes**: with all three sources in place and hash-verified,
+`TestShippedFacesReproduceFromUpstream` **derives and compares 3 of 3 faces and reports OK** — the
+committed faces reproduce byte-for-byte from their recorded derivations under `SOURCE_DATE_EPOCH`, on
+Python **3.12.13** with fontTools **4.63.0** (an isolated `.fontgen-venv`, gitignored, reached through
+the existing `FOLIO_FONTGEN_PYTHON` override so **no system interpreter is modified**).

@@ -83,3 +83,6 @@ _bmad/config.user.toml
 # faces that actually ship and ARE committed. Each face's NOTICE.md
 # records the release URL and the sha256 to fetch them by.
 /.font-sources/
+
+# Local fontgen toolchain (pinned Python 3.12.13 + fontTools 4.63.0), never committed
+/.fontgen-venv/

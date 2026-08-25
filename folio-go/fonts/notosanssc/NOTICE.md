@@ -27,10 +27,34 @@ because the variable build cannot meet NFR7's own font budget.
 
 | item | value |
 |---|---|
-| Upstream project | `github.com/notofonts/noto-cjk`, commit `523d033d6cb47f4a80c58a35753646f5c3608a78` |
-| Upstream file | `NotoSansSC[wght].ttf` (googlefonts variable build)<br>(committed during development as `NotoSansSC-VF.ttf`, byte-identical) |
-| Fetched | 2026-08-23 |
+| Upstream project | `github.com/google/fonts`, commit `2894aab31764f10f29c421bdfd2340d3b382d384` (2022-12-09, *"Noto Sans SC hotfix2 (#5533)"*) |
+| Upstream file | `ofl/notosanssc/NotoSansSC[wght].ttf`<br>(committed during development as `NotoSansSC-VF.ttf`, byte-identical) |
+| Fetched | 2026-08-23; **provenance corrected 2026-08-25** — see the correction note below |
 | **sha256 of the SOURCE (upstream) file** | `a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da` |
+
+### Provenance correction, 2026-08-25
+
+**This row previously named `github.com/notofonts/noto-cjk` at commit
+`523d033d6cb47f4a80c58a35753646f5c3608a78`. That was wrong**, and it was found the first time anyone
+tried to replay the derivation for the Epic 2 boundary gate.
+
+Measured, not inferred:
+
+- That repository **at that commit contains no `NotoSansSC[wght].ttf` at all.** Its whole tree carries
+  exactly one SC TrueType variable font — `Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf` — and that file
+  hashes to `d68bafcb…`, **not** the recorded source hash.
+- The file that **does** hash to the recorded `a3041811…` is `ofl/notosanssc/NotoSansSC[wght].ttf` in
+  **`github.com/google/fonts`**, confirmed at the pinned commit above and not merely on `main`.
+- `NotoSansSC[wght].ttf` is the **Google Fonts** naming convention, which is the tell the original row
+  contradicted itself on: it named a noto-cjk commit while quoting a google/fonts filename.
+
+**The recorded sha256 was CORRECT throughout, so the shipped face is the intended file** — the defect
+was the pointer to where it came from, not the artifact. `TestShippedFacesReproduceFromUpstream` now
+passes on all three faces with this corrected source.
+
+**The other two faces' provenance was verified in the same pass and is correct as written** — both
+release zips resolve, and in each the file matching the recorded hash is the `googlefonts` variable
+build (`NotoSans[wdth,wght].ttf`, `NotoSansThai[wdth,wght].ttf`).
 
 ## Provenance — the shipped artifact
 

@@ -1,0 +1,402 @@
+<title>Where Lines May Break</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400&family=Noto+Sans+Thai:wght@400&family=Noto+Sans:wght@400&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --paper:#F4F6F8; --card:#FFFFFF; --ink:#131A21; --muted:#5C6975;
+  --rule:#DCE3E8; --rule-soft:#E9EEF2;
+  --seam:#0B6E7F; --seam-soft:#E0F1F4;
+  --whole:#8A5200; --whole-soft:#F6EEE1;
+  --ok:#1F6F43; --ok-soft:#E4F1E9;
+  --query:#9B2C2C; --query-soft:#F8E8E8;
+  --diverge:#6A4AA0; --diverge-soft:#EEE8F7;
+  --shadow:0 1px 2px rgba(19,26,33,.05),0 6px 20px rgba(19,26,33,.05);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1418; --card:#161D23; --ink:#E3E9EE; --muted:#94A2AF;
+    --rule:#26313A; --rule-soft:#1E262D;
+    --seam:#4CC5D6; --seam-soft:#12303540;
+    --whole:#E3A44A; --whole-soft:#2A211440;
+    --ok:#5FBE87; --ok-soft:#14291E40;
+    --query:#E88B8B; --query-soft:#2B171740;
+    --diverge:#B79CE8; --diverge-soft:#22193440;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1418; --card:#161D23; --ink:#E3E9EE; --muted:#94A2AF;
+  --rule:#26313A; --rule-soft:#1E262D;
+  --seam:#4CC5D6; --seam-soft:#12303540;
+  --whole:#E3A44A; --whole-soft:#2A211440;
+  --ok:#5FBE87; --ok-soft:#14291E40;
+  --query:#E88B8B; --query-soft:#2B171740;
+  --diverge:#B79CE8; --diverge-soft:#22193440;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:52rem;margin:0 auto;padding:0 1.5rem 6rem}
+
+/* ---- header ---- */
+header{padding:4rem 0 2rem;border-bottom:1px solid var(--rule)}
+.eyebrow{
+  font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--seam);font-weight:600;margin:0 0 1rem
+}
+h1{
+  font-family:Spectral,Georgia,serif;font-weight:600;
+  font-size:clamp(2.1rem,5vw,3rem);line-height:1.1;margin:0 0 1rem;
+  text-wrap:balance;letter-spacing:-.01em;
+}
+.standfirst{
+  font-family:Spectral,Georgia,serif;font-size:1.15rem;line-height:1.55;
+  color:var(--muted);margin:0 0 1.75rem;max-width:38rem;
+}
+.standfirst em{font-style:italic;color:var(--ink)}
+.meta{
+  display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;font-size:.8rem;color:var(--muted);
+  font-family:"IBM Plex Mono",monospace;
+}
+.meta b{color:var(--ink);font-weight:500}
+
+/* ---- prose ---- */
+section{padding:2.5rem 0 0}
+h2{
+  font-family:Spectral,Georgia,serif;font-weight:600;font-size:1.5rem;
+  margin:0 0 .5rem;letter-spacing:-.01em;text-wrap:balance;
+}
+h3{
+  font-size:.74rem;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;margin:2.5rem 0 .25rem;
+}
+p{margin:0 0 1rem;max-width:38rem}
+.note{
+  border-left:2px solid var(--seam);padding:.1rem 0 .1rem 1rem;
+  color:var(--muted);font-size:.94rem;margin:1.25rem 0;max-width:38rem;
+}
+.note b{color:var(--ink)}
+
+/* ---- legend ---- */
+.legend{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));
+  gap:1rem;margin:1.5rem 0 0;
+}
+.leg{
+  background:var(--card);border:1px solid var(--rule);border-radius:3px;
+  padding:1rem 1.1rem;box-shadow:var(--shadow);
+}
+.leg-t{font-weight:600;font-size:.92rem;margin:0 0 .3rem;display:flex;align-items:center;gap:.5rem}
+.leg p{font-size:.87rem;color:var(--muted);margin:0}
+
+/* ---- specimen cards ---- */
+.item{
+  background:var(--card);border:1px solid var(--rule);border-radius:3px;
+  padding:1.4rem 1.5rem;margin:.85rem 0;box-shadow:var(--shadow);
+  transition:border-color .15s ease;
+}
+@media (prefers-reduced-motion:reduce){.item{transition:none}}
+.item[data-mark="ok"]{border-color:var(--ok)}
+.item[data-mark="query"]{border-color:var(--query)}
+
+.item-head{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;margin-bottom:1rem}
+.id{
+  font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-weight:500;
+  color:var(--muted);letter-spacing:.02em;
+}
+.chip{
+  font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;font-weight:600;
+  padding:.16rem .5rem;border-radius:2px;
+}
+.chip.split{background:var(--seam-soft);color:var(--seam)}
+.chip.whole{background:var(--whole-soft);color:var(--whole)}
+.chip.attn{background:var(--query-soft);color:var(--query)}
+.chip.declared{background:var(--whole-soft);color:var(--whole)}
+.chip.diverge{background:var(--diverge-soft);color:var(--diverge)}
+.chip.changed{background:var(--ok-soft);color:var(--ok)}
+.chip.unrem{background:var(--rule-soft);color:var(--muted)}
+.gloss{margin-left:auto;font-size:.84rem;color:var(--muted);font-style:italic;font-family:Spectral,Georgia,serif}
+
+/* the specimen itself */
+.specimen{
+  font-size:2.35rem;line-height:1.75;padding:.5rem 0 .9rem;
+  overflow-x:auto;white-space:nowrap;
+}
+.specimen.thai{font-family:"Noto Sans Thai","Noto Sans",sans-serif}
+.specimen.cjk{font-family:"Noto Sans SC","Noto Sans",sans-serif}
+.w{position:relative}
+.seam{
+  display:inline-block;width:0;position:relative;
+}
+.seam::before{
+  content:"";position:absolute;left:-1px;top:-.62em;height:1.5em;
+  border-left:2px solid var(--seam);
+}
+.seam::after{
+  content:attr(data-at);position:absolute;left:3px;top:.72em;
+  font-family:"IBM Plex Mono",monospace;font-size:.28em;
+  color:var(--seam);font-weight:500;
+}
+.nobreak{
+  border-bottom:2px solid var(--whole);padding-bottom:.06em;
+}
+.seam.div::before{border-left:2px dashed var(--diverge)}
+.seam.div::after{color:var(--diverge)}
+.item[data-chg="1"]{border-left:3px solid var(--ok)}
+
+.words{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.25rem 0 1rem}
+.wl{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-right:.3rem}
+.wchip{
+  font-size:1rem;padding:.15rem .55rem;border:1px solid var(--rule);border-radius:2px;
+  background:var(--paper);
+}
+.wchip.thai{font-family:"Noto Sans Thai",sans-serif}
+.wchip.cjk{font-family:"Noto Sans SC",sans-serif}
+
+/* decision */
+.decide{display:flex;gap:.5rem;align-items:center;border-top:1px solid var(--rule-soft);padding-top:.9rem}
+.decide .q{font-size:.84rem;color:var(--muted);margin-right:auto}
+button{
+  font-family:inherit;font-size:.83rem;font-weight:500;cursor:pointer;
+  padding:.4rem .9rem;border-radius:2px;border:1px solid var(--rule);
+  background:var(--card);color:var(--ink);transition:all .12s ease;
+}
+@media (prefers-reduced-motion:reduce){button{transition:none}}
+button:hover{border-color:var(--muted)}
+button:focus-visible{outline:2px solid var(--seam);outline-offset:2px}
+button[aria-pressed="true"].y{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+button[aria-pressed="true"].n{background:var(--query-soft);border-color:var(--query);color:var(--query)}
+
+/* progress */
+.progress{
+  position:sticky;top:0;z-index:5;background:var(--paper);
+  border-bottom:1px solid var(--rule);padding:.7rem 0;margin-bottom:0;
+  display:flex;align-items:center;gap:1rem;font-size:.82rem;
+  font-family:"IBM Plex Mono",monospace;color:var(--muted);
+}
+.bar{flex:1;height:3px;background:var(--rule);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--seam);transition:width .2s ease}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+
+/* composer */
+.composer{background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:1.5rem;box-shadow:var(--shadow);margin-top:1.5rem}
+label{display:block;font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:1rem 0 .35rem}
+label:first-child{margin-top:0}
+input,textarea{
+  width:100%;font-family:inherit;font-size:.95rem;padding:.55rem .7rem;
+  border:1px solid var(--rule);border-radius:2px;background:var(--paper);color:var(--ink);
+}
+input:focus,textarea:focus{outline:2px solid var(--seam);outline-offset:-1px;border-color:var(--seam)}
+textarea{min-height:6.5rem;resize:vertical;line-height:1.55}
+pre{
+  background:var(--paper);border:1px solid var(--rule);border-radius:2px;
+  padding:1rem;overflow-x:auto;font-family:"IBM Plex Mono",monospace;
+  font-size:.82rem;line-height:1.6;margin:1rem 0 0;
+}
+.actions{display:flex;gap:.6rem;align-items:center;margin-top:1rem;flex-wrap:wrap}
+.hint{font-size:.82rem;color:var(--muted)}
+footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--rule);font-size:.84rem;color:var(--muted)}
+code{font-family:"IBM Plex Mono",monospace;font-size:.88em;background:var(--rule-soft);padding:.1rem .3rem;border-radius:2px}
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Second pass · corrected fixture · Epic 2 boundary gate</p>
+  <h1>Where Lines May Break</h1>
+  <p class="standfirst">Your first pass found four wrong labels, so the fixture was corrected rather than signed. This is the corrected version, bound to a new digest. <em>Six items changed; the five you never raised are marked as unremarked rather than approved.</em></p>
+  <div class="meta">
+    <span>fixture <b>expected_breaks.json</b></span>
+    <span>digest <b>40ba08f6…a1cf26c</b></span>
+    <span>items <b>25</b></span>
+  </div>
+</header>
+
+<section>
+  <h2>What changed since your first pass</h2>
+  <p>Your four corrections split into two kinds, and they were handled differently because they point in opposite directions.</p>
+
+  <p class="note"><b>You wanted fewer breaks in 北京.</b> That is expressible: the engine has a channel for “this value is declared, never split it”, built because Thai surnames are made of ordinary dictionary words and no rule can separate them. 北京 now carries that declaration — and so do 东京都 and こんにちは, which you added when I showed you their actual break positions. The engine produces no break there <b>because it was told</b>, not because it inferred anything.</p>
+
+  <p class="note" style="border-color:var(--diverge)"><b>You wanted more breaks in the three Thai compounds.</b> Nothing can express that. A declaration can only remove break opportunities, never add them. Removing those words from the shipped dictionary would make it factually wrong and silently change every document containing them; inferring where a compound may split is what the architecture already rules impossible. So they are recorded as <b>known divergences</b>: the fixture keeps your judgment, the engine falls short of it, and the shortfall is stated in the format spec rather than hidden.</p>
+
+  <p>One consequence worth knowing: the fixture used to claim its labels followed a rule — <em>if a word is in the dictionary, never break inside it</em>. All three compounds you split are in the dictionary, and so are the five you kept whole. That rule could never have predicted your judgment, so it has been replaced with an admission that no such rule exists.</p>
+
+  <h2 style="margin-top:2.5rem">What you are being asked, again</h2>
+  <p>The same single question, on the corrected labels:</p>
+  <p class="note"><b>Would a native reader accept a line ending at each marked seam — and never inside any of the words?</b></p>
+
+  <div class="legend">
+    <div class="leg">
+      <p class="leg-t"><span class="chip split">Seam</span></p>
+      <p>A line <b>may</b> end here, and the engine will do it. Solid teal rule with the rune position.</p>
+    </div>
+    <div class="leg">
+      <p class="leg-t"><span class="chip diverge">Divergence</span></p>
+      <p>Dashed violet: <b>you</b> accept a break here, the engine will not produce one. A declared, known shortfall.</p>
+    </div>
+    <div class="leg">
+      <p class="leg-t"><span class="chip declared">Declared</span></p>
+      <p>Amber underline: the engine is <b>told</b> this is one unit and must never break inside it.</p>
+    </div>
+    <div class="leg">
+      <p class="leg-t"><span class="chip whole">Kept whole</span></p>
+      <p>Amber underline, no declaration: one word by the dictionary, so no break arises.</p>
+    </div>
+  </div>
+
+  <p class="note"><b>If a label is still wrong, do not sign off.</b> Mark it <em>Query</em> and tell me — the fixture gets corrected again and the digest moves again. That is the cycle working, not failing.</p>
+</section>
+
+<div class="progress">
+  <span id="count">0 of 25 reviewed</span>
+  <span class="bar"><i id="fill"></i></span>
+  <button id="reset" style="padding:.2rem .6rem;font-size:.75rem">Clear marks</button>
+</div>
+
+<section id="list"></section>
+
+<section>
+  <h2>Record your sign-off</h2>
+  <p>When every item is marked <em>Accept</em>, this composes the record the gate is waiting for. Edit the summary in your own words — it should be specific enough that someone reading it in a year can tell it from “looked fine”.</p>
+  <div class="composer">
+    <label for="reader">Your name</label>
+    <input id="reader" type="text" placeholder="A person, not a role" autocomplete="name">
+    <label for="date">Date read</label>
+    <input id="date" type="date">
+    <label for="examined">What you checked, and what you concluded</label>
+    <textarea id="examined" placeholder="Marks a few items and a draft appears here."></textarea>
+    <div class="actions">
+      <button id="copy" class="y">Copy the record</button>
+      <span class="hint" id="copied"></span>
+    </div>
+    <pre id="out">{}</pre>
+    <p class="hint" style="margin-top:1rem">Save this as <code>fixtures/expected-breaks/break-signoff.json</code> — or paste it back to me and I will write it.</p>
+  </div>
+</section>
+
+<footer>
+  <p>This sheet is a reading aid. The record it produces binds to the fixture’s digest, so any later edit to <code>expected_breaks.json</code> invalidates the sign-off automatically — by design.</p>
+  <p>Separate from the Thai <em>rendering</em> sign-off, which answers a different question — whether vowels and tone marks sit on the right consonants — and binds to a different file. Resolving one does not resolve the other.</p>
+</footer>
+
+</div>
+
+<script>
+const DIGEST="40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c";
+const ITEMS=[{"id":"thai-001","s":"thai","t":"ประเทศไทย","w":["ประเทศ","ไทย"],"b":[6],"g":"country + Thai. The sequence is NOT a headword; both parts are","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-002","s":"thai","t":"เก็บเงิน","w":["เก็บ","เงิน"],"b":[4],"g":"keep + money. The sequence is NOT a headword; both parts are","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-003","s":"thai","t":"นักเรียน","w":["นักเรียน"],"b":[],"g":"student. Headword; -er + study etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-004","s":"thai","t":"โรงเรียน","w":["โรงเรียน"],"b":[],"g":"school. Headword; hall + study etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-005","s":"thai","t":"โรงพยาบาล","w":["โรงพยาบาล"],"b":[],"g":"hospital. Headword; hall + nursing etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-006","s":"thai","t":"รถไฟ","w":["รถไฟ"],"b":[],"g":"train. Headword; vehicle + fire etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-007","s":"thai","t":"หนังสือพิมพ์","w":["หนังสือ","พิมพ์"],"b":[7],"g":"newspaper","dec":false,"chg":true,"div":true,"unr":false},{"id":"thai-008","s":"thai","t":"วันเกิด","w":["วัน","เกิด"],"b":[3],"g":"birthday","dec":false,"chg":true,"div":true,"unr":false},{"id":"thai-009","s":"thai","t":"ที่อยู่","w":["ที่","อยู่"],"b":[3],"g":"address","dec":false,"chg":true,"div":true,"unr":false},{"id":"thai-010","s":"thai","t":"ใบเสร็จ","w":["ใบเสร็จ"],"b":[],"g":"receipt. Headword; sheet + complete etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-011","s":"thai","t":"ธนาคาร","w":["ธนาคาร"],"b":[],"g":"bank - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-012","s":"thai","t":"โทรศัพท์","w":["โทรศัพท์"],"b":[],"g":"telephone - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-013","s":"thai","t":"เงิน","w":["เงิน"],"b":[],"g":"money - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-014","s":"thai","t":"ไทย","w":["ไทย"],"b":[],"g":"Thai - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-015","s":"thai","t":"ชัยวัฒน์","w":["ชัยวัฒน์"],"b":[],"g":"given name; the uncoverable span of corpus name-021/name-081","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-016","s":"thai","t":"ดอเลาะ","w":["ดอเลาะ"],"b":[],"g":"Thai-Malay surname; corpus name-116, independently attested (DW-11)","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-017","s":"thai","t":"แนแซ","w":["แนแซ"],"b":[],"g":"Thai-Malay surname; corpus name-117, independently attested (DW-11)","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-018","s":"thai","t":"ฉั่วสมบูรณ์","w":["ฉั่วสมบูรณ์"],"b":[],"g":"surname; corpus synthetic-039, genuinely uncoverable","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-001","s":"cjk","t":"结算单","w":["结","算","单"],"b":[1,2],"g":"statement","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-002","s":"cjk","t":"共三页","w":["共","三","页"],"b":[1,2],"g":"three pages in total","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-003","s":"cjk","t":"汉字","w":["汉","字"],"b":[1],"g":"Han characters","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-004","s":"cjk","t":"北京","w":["北京"],"b":[],"g":"Beijing","dec":true,"chg":true,"div":false,"unr":false},{"id":"cjk-005","s":"cjk","t":"东京都","w":["东京都"],"b":[],"g":"Tokyo Metropolis","dec":true,"chg":true,"div":false,"unr":false},{"id":"cjk-006","s":"cjk","t":"日本語","w":["日","本","語"],"b":[1,2],"g":"Japanese language","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-007","s":"cjk","t":"こんにちは","w":["こんにちは"],"b":[],"g":"hello - hiragana","dec":true,"chg":true,"div":false,"unr":false}];
+
+const KEY="folio-break-signoff-v2";
+let marks={};
+try{marks=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){marks={}}
+
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;")}
+
+function specimen(it){
+  if(!it.b.length) return '<span class="nobreak">'+esc(it.t)+'</span>';
+  let html="",pos=0;
+  it.w.forEach((word,i)=>{
+    html+='<span class="w">'+esc(word)+'</span>';
+    pos+=Array.from(word).length;
+    if(i<it.w.length-1) html+='<span class="seam'+(it.div?' div':'')+'" data-at="'+pos+'"></span>';
+  });
+  return html;
+}
+
+function render(){
+  document.getElementById("list").innerHTML=ITEMS.map(it=>{
+    const whole=!it.b.length;
+    const m=marks[it.id]||"";
+    return '<div class="item" data-mark="'+m+'" data-chg="'+(it.chg?1:0)+'" id="i-'+it.id+'">'
+      +'<div class="item-head">'
+        +'<span class="id">'+it.id+'</span>'
+        +(whole?(it.dec?'<span class="chip declared">declared \u2014 never break</span>'
+                       :'<span class="chip whole">kept whole</span>')
+               :'<span class="chip '+(it.div?'diverge':'split')+'">'+it.b.length+' seam'+(it.b.length>1?'s':'')+'</span>')
+        +(it.chg?'<span class="chip changed">you corrected this</span>':'')
+        +(it.unr?'<span class="chip unrem">never raised</span>':'')
+        +'<span class="gloss">'+esc(it.g)+'</span>'
+      +'</div>'
+      +'<div class="specimen '+it.s+'">'+specimen(it)+'</div>'
+      +'<div class="words"><span class="wl">told to treat as</span>'
+        +it.w.map(w=>'<span class="wchip '+it.s+'">'+esc(w)+'</span>').join("")+'</div>'
+      +(it.div?'<p class="hint" style="margin:-.4rem 0 1rem;color:var(--diverge)"><b>Declared shortfall.</b> You accept a break here; the engine will not produce one, because this is a dictionary word and nothing can tell it otherwise. It is recorded as a known divergence and the line simply wraps whole \u2014 never wrongly.</p>':'')
+      +(it.dec&&it.chg?'<p class="hint" style="margin:-.4rem 0 1rem;color:var(--whole)"><b>Declared unbreakable.</b> The engine is told this value is one unit, so it produces no break. Nothing is inferred from the characters.</p>':'')
+      +(it.unr?'<p class="hint" style="margin:-.4rem 0 1rem">You did not raise this one, so it stands unremarked rather than approved. Worth a look now.</p>':'')
+      +'<div class="decide">'
+        +'<span class="q">'+(it.div?'The seam is right, and the engine not honouring it is acceptable — correct?'
+                                    :whole?'Never break inside this \u2014 correct?'
+                                          :'A line may end at each mark \u2014 correct?')+'</span>'
+        +'<button class="y" data-id="'+it.id+'" data-v="ok" aria-pressed="'+(m==="ok")+'">Accept</button>'
+        +'<button class="n" data-id="'+it.id+'" data-v="query" aria-pressed="'+(m==="query")+'">Query</button>'
+      +'</div></div>';
+  }).join("");
+}
+
+function draft(){
+  const q=ITEMS.filter(i=>marks[i.id]==="query").map(i=>i.id);
+  const done=ITEMS.filter(i=>marks[i.id]).length;
+  if(!done) return "";
+  const whole=ITEMS.filter(i=>!i.b.length).length, split=ITEMS.length-whole;
+  let s="Read all "+ITEMS.length+" break labels in expected_breaks.json — "+split
+       +" sequences carrying seams and "+whole+" labelled as single words that must never break. "
+       +"Checked that every marked seam falls between words and never inside one, including the eight "
+       +"lexicalised compounds (thai-003..thai-010) held whole and the two contrast cases "
+       +"(thai-001, thai-002) that do carry a seam.";
+  s+=q.length? " Queried "+q.length+": "+q.join(", ")+" — these labels look wrong and the fixture needs correcting before sign-off."
+             : " Every label is correct as written.";
+  return s;
+}
+
+function update(){
+  const done=ITEMS.filter(i=>marks[i.id]).length;
+  document.getElementById("count").textContent=done+" of "+ITEMS.length+" reviewed";
+  document.getElementById("fill").style.width=(done/ITEMS.length*100)+"%";
+  const ex=document.getElementById("examined");
+  if(!ex.dataset.touched) ex.value=draft();
+  const rec={
+    reader:document.getElementById("reader").value||"<your name>",
+    date:document.getElementById("date").value||"<YYYY-MM-DD>",
+    examined:ex.value||"<what you checked and what you concluded>",
+    sha256:DIGEST
+  };
+  document.getElementById("out").textContent=JSON.stringify(rec,null,2);
+}
+
+document.getElementById("list").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-id]"); if(!b) return;
+  const id=b.dataset.id, v=b.dataset.v;
+  marks[id]=marks[id]===v?"":v;
+  try{localStorage.setItem(KEY,JSON.stringify(marks))}catch(err){}
+  const card=document.getElementById("i-"+id);
+  card.dataset.mark=marks[id]||"";
+  card.querySelectorAll("button[data-id]").forEach(x=>x.setAttribute("aria-pressed",String(marks[id]===x.dataset.v)));
+  update();
+});
+
+document.getElementById("reset").addEventListener("click",()=>{
+  marks={}; try{localStorage.removeItem(KEY)}catch(e){}
+  const ex=document.getElementById("examined"); delete ex.dataset.touched; ex.value="";
+  render(); update();
+});
+
+["reader","date"].forEach(id=>document.getElementById(id).addEventListener("input",update));
+document.getElementById("examined").addEventListener("input",e=>{e.target.dataset.touched="1";update()});
+
+document.getElementById("copy").addEventListener("click",async()=>{
+  const txt=document.getElementById("out").textContent;
+  try{await navigator.clipboard.writeText(txt);document.getElementById("copied").textContent="Copied.";}
+  catch(e){document.getElementById("copied").textContent="Select the block below and copy it.";}
+  setTimeout(()=>{document.getElementById("copied").textContent=""},2600);
+});
+
+try{document.getElementById("date").value=new Date().toISOString().slice(0,10)}catch(e){}
+render(); update();
+</script>
