@@ -32,12 +32,22 @@
     "thai-009 (split - the engine's conservative 'no break' was too narrow for what a",
     "reader accepts), and cjk-004, cjk-005, cjk-007 (declared unbreakable - a bare-",
     "string reading proposed breaks a reader rejects for these specific values).",
+    "Explicitly corrected by the owner's SECOND-PASS 2026-08-25 hand-check (D-2.4.13):",
+    "cjk-001, cjk-002, cjk-003, cjk-006 (declared unbreakable, same mechanism as the",
+    "first four - the owner queried the remaining per-character CJK items and",
+    "answered 'these strings are units'). That is all seven CJK items now declared",
+    "atomic.",
     "Explicitly declined: none remain - cjk-005 was re-asked with its actual break",
     "positions shown (see its gloss) and the owner changed the answer.",
     "Unremarked, therefore NOT ratified: thai-003, thai-004, thai-005, thai-006,",
-    "thai-010 (student, school, hospital, train, receipt) - never raised in the",
+    "thai-010 (student, school, hospital, train, receipt) - never raised in either",
     "hand-check, so their 'kept whole' labels stand only as the Story 2.4 agent's",
     "original judgment, not as anything the owner has confirmed.",
+    "NEW, NOT OWNER-ADJUDICATED: cjk-008, added in the second-pass correction so the",
+    "engine's standard per-character CJK breaking stays covered now that all seven",
+    "declarable CJK items are atomic. Its label is DERIVED FROM UAX #14 class ID, not",
+    "a native-speaker judgment - see its gloss - and it must not be read as owner-",
+    "adjudicated the way the CJK/Thai items above are.",
     "",
     "AC14's exact-equality assertion has a small, enumerated, justified exception for",
     "thai-007/008/009 - see TestS4ExpectedBreaksMatchTheEngine's s4ExpectedDivergences",
@@ -46,14 +56,19 @@
     "editing the shipped wordlist to make a real Thai word disappear (forbidden,",
     "D-000.32) - the fixture stays the human oracle and the engine's conservative",
     "shortfall is named and bounded instead of hidden inside a relaxed assertion.",
+    "Every CJK correction, both passes, is fail-OPEN in direction (the engine",
+    "proposes breaks the human rejects) and is therefore fixed by declaration, never",
+    "enumerated as a divergence (D-2.4.9) - only fail-closed gaps belong in",
+    "s4ExpectedDivergences, and no CJK item has ever entered that list.",
     "",
     "STATUS: authored by the Story 2.4 dev agent; corrected against the owner's",
-    "2026-08-24 hand-check (a standalone correction referencing Story 2.4, not a",
+    "2026-08-24 hand-check, then corrected again against the owner's SECOND-PASS",
+    "2026-08-25 hand-check (both standalone corrections referencing Story 2.4, not a",
     "reopening of it). The human SIGN-OFF is a SEPARATE, still-PENDING Epic 2 gate",
-    "obligation, requested only after this correction landed and bound to this",
-    "file's own (new) digest (D-2.4.3), distinct from the Thai RENDERING sign-off in",
-    "fixtures/shaped-text/. A re-record of either must invalidate exactly one of",
-    "them."
+    "obligation, requested only after this second correction lands and bound to",
+    "this file's own (newest) digest (D-2.4.3), distinct from the Thai RENDERING",
+    "sign-off in fixtures/shaped-text/. A re-record of either must invalidate",
+    "exactly one of them."
   ],
   "items": [
     {
@@ -237,41 +252,31 @@
       "id": "cjk-001",
       "text": "结算单",
       "words": [
-        "结",
-        "算",
-        "单"
+        "结算单"
       ],
-      "expectedBreaks": [
-        1,
-        2
-      ],
-      "gloss": "statement"
+      "expectedBreaks": [],
+      "declaredAtomic": true,
+      "gloss": "statement. Owner's second-pass hand-check (2026-08-25, D-2.4.13): a bare-string reading proposes 结|算|单, which a reader rejects for this value — DECLARED unbreakable, AD-25's third mechanism, the same treatment already given 北京/东京都/こんにちは. This is a document-level fact about this value, not a property the engine infers from the characters — it occurs, undeclared, as a substring of cjk-008 below, where it DOES break per character."
     },
     {
       "id": "cjk-002",
       "text": "共三页",
       "words": [
-        "共",
-        "三",
-        "页"
+        "共三页"
       ],
-      "expectedBreaks": [
-        1,
-        2
-      ],
-      "gloss": "three pages in total"
+      "expectedBreaks": [],
+      "declaredAtomic": true,
+      "gloss": "three pages in total. Owner's second-pass hand-check (2026-08-25, D-2.4.13): a bare-string reading proposes 共|三|页, which a reader rejects for this value — DECLARED unbreakable, AD-25's third mechanism. It occurs, undeclared, as a substring of cjk-008 below, where it DOES break per character — a declaration is a fact about the value, not the characters."
     },
     {
       "id": "cjk-003",
       "text": "汉字",
       "words": [
-        "汉",
-        "字"
+        "汉字"
       ],
-      "expectedBreaks": [
-        1
-      ],
-      "gloss": "Han characters"
+      "expectedBreaks": [],
+      "declaredAtomic": true,
+      "gloss": "Han characters. Owner's second-pass hand-check (2026-08-25, D-2.4.13): a bare-string reading proposes 汉|字, which a reader rejects for this value — DECLARED unbreakable, AD-25's third mechanism."
     },
     {
       "id": "cjk-004",
@@ -297,15 +302,11 @@
       "id": "cjk-006",
       "text": "日本語",
       "words": [
-        "日",
-        "本",
-        "語"
+        "日本語"
       ],
-      "expectedBreaks": [
-        1,
-        2
-      ],
-      "gloss": "Japanese language"
+      "expectedBreaks": [],
+      "declaredAtomic": true,
+      "gloss": "Japanese language. Owner's second-pass hand-check (2026-08-25, D-2.4.13): a bare-string reading proposes 日|本|語, which a reader rejects for this value — DECLARED unbreakable, AD-25's third mechanism."
     },
     {
       "id": "cjk-007",
@@ -316,6 +317,50 @@
       "expectedBreaks": [],
       "declaredAtomic": true,
       "gloss": "hello - hiragana. Flagged by the orchestrator and unremarked in the first hand-check; shown to the owner alongside cjk-005 (same shape as 北京 — every kana of a single word), and the owner gave it the same declared-unbreakable treatment."
+    },
+    {
+      "id": "cjk-008",
+      "text": "结算单共三页请核对每一行的金额与日期",
+      "words": [
+        "结",
+        "算",
+        "单",
+        "共",
+        "三",
+        "页",
+        "请",
+        "核",
+        "对",
+        "每",
+        "一",
+        "行",
+        "的",
+        "金",
+        "额",
+        "与",
+        "日",
+        "期"
+      ],
+      "expectedBreaks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "gloss": "statement, three pages in total; please check the amount and date on every line. 18 runes, every one Unicode category Lo, no punctuation and no digits — attested verbatim in fixtures/wrapped-text/input.folio. UNDECLARED, so the engine's standard per-character CJK breaking (UAX #14 class ID) is exercised, unlike every other CJK item in this fixture, all seven of which are now declaredAtomic. This label is DERIVED FROM UAX #14, not a native-speaker judgment (D-2.4.13) — unlike the human-labelled items above, it does not carry the owner's adjudication and must not be read as if it did. It also demonstrates the mechanism directly: 结算单 (cjk-001) and 共三页 (cjk-002) occur here as SUBSTRINGS of this run, where they DO break per character — the standalone declarations above are document-level facts about those specific values, not properties of the characters themselves, so there is no contradiction."
     }
   ]
 }

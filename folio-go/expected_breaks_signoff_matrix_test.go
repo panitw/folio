@@ -109,10 +109,14 @@ func TestExpectedBreaksHumanSignOffIsRecorded(t *testing.T) {
 				"labelled as ONE word each and never yet confirmed by a person; thai-007/008/009, which "+
 				"are ALSO lexicalised compounds but which the 2026-08-24 hand-check split anyway (no "+
 				"wordlist property distinguishes them from the five kept whole — see the fixture's "+
-				"_README); thai-001/thai-002, which are deliberately labelled as two words; and "+
-				"cjk-004/cjk-005/cjk-007, which carry `declaredAtomic: true` and are deliberately never "+
-				"split regardless of what a bare-string reading of the same characters would propose. "+
-				"Then write %s as:\n"+
+				"_README); thai-001/thai-002, which are deliberately labelled as two words; "+
+				"cjk-004/cjk-005/cjk-007 (first pass, 2026-08-24) and cjk-001/cjk-002/cjk-003/cjk-006 "+
+				"(second pass, 2026-08-25), all seven of which carry `declaredAtomic: true` and are "+
+				"deliberately never split regardless of what a bare-string reading of the same "+
+				"characters would propose; and cjk-008, a NEW undeclared item exercising the engine's "+
+				"standard per-character CJK breaking whose label is derived from UAX #14, not a "+
+				"native-speaker judgment, and is therefore NOT something this sign-off needs to "+
+				"adjudicate the way the human-labelled items above are. Then write %s as:\n"+
 				"  {\n"+
 				"    \"reader\":   \"<your name>\",\n"+
 				"    \"date\":     \"<YYYY-MM-DD>\",\n"+

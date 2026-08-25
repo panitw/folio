@@ -534,6 +534,7 @@ inside a dictionary headword, including a lexicalised compound a native reader w
 | digest | before | after |
 |---|---|---|
 | `fixtures/expected-breaks/expected_breaks.json` | `a545e04259033429d2cf8d1bba07f3137f6c0a106d635e918d31eabd599324de` | `40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c` |
+| `fixtures/expected-breaks/expected_breaks.json` (second-pass, D-2.4.13) | `40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c` | `f0848d4e89b950aae8c8fc4e21af37ff56f602f42075786575b00a7531cfb19e` |
 | `fixtures/shaped-text/expected.pdf` | `6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370` | **unchanged, confirmed** |
 | `fixtures/multi-page/expected.pdf` | `66ce0ee477fa1ce5e42d51bcc87d859bcddafb3d2bb2ca6ade3e35d3f895869b` | **unchanged, confirmed** |
 | `fixtures/wrapped-text/expected.pdf` | `07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6` | **unchanged, confirmed** |
@@ -565,3 +566,126 @@ unchanged at 600 PASS / 1 FAIL (`TestCorpusMeetsP6ExerciseFloors`, stats
 break sign-off (now naming the new digest), the pre-existing shaped-text Thai reading sign-off
 (untouched, digest confirmed unmoved), and the pre-existing missing-font-sources reproduction gate
 (environmental, unrelated to this correction).
+
+## Standalone correction, round two (references Story 2.4; not a reopening) — the owner's second-pass CJK hand-check applied
+
+**Executed** (D-000.55): `fixtures/expected-breaks/expected_breaks.json` was corrected against the
+owner's second-pass 2026-08-25 hand-check, recorded as D-2.4.13, and every declared digest site was
+updated to match, on target `folio-go` (baseline `7f6f054`): `go build ./...`, `go vet ./...`, and
+`go test ./...` (600 PASS / 1 FAIL, `TestCorpusMeetsP6ExerciseFloors`, stats identical to baseline
+`{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`); `go vet -tags matrix ./...` and
+`go test -tags matrix ./...` (607 PASS / 3 FAIL: the two pending sign-offs plus the same P6 floor
+failure — `TestShippedFacesReproduceFromUpstream` confirmed passing separately with
+`FOLIO_FONTGEN_PYTHON` set, this shell's env lacked it on the plain matrix run).
+
+### 1. Four declarations join the three already atomic — all seven CJK items are now declared
+
+`cjk-001` (结算单), `cjk-002` (共三页), `cjk-003` (汉字) and `cjk-006` (日本語) now carry
+`"declaredAtomic": true`, joining `cjk-004`/`cjk-005`/`cjk-007` from the first pass. The owner queried
+these four directly and answered "these strings are units." **The engine is unchanged** —
+`isCJKIdeographOrKana` still implements exactly UAX #14 class ID's per-character CJK breaking; D-2.4.13
+(researched against UAX #14, W3C `clreq` and `jlreq`) establishes that per-character breaking is the
+Unicode-standard behaviour and that neither `clreq` nor `jlreq` recommends word-boundary-aware CJK
+breaking. These four declarations are template-level facts about these specific *values*, carried by
+AD-25's third mechanism, exactly like the first three — nothing is inferred and no heuristic exists.
+
+### 2. `cjk-008` — a new, undeclared item so the engine's standard CJK breaking stays covered
+
+With all seven declarable CJK items now atomic, no fixture subject would exercise the engine's
+per-character CJK breaking at all. **Added `cjk-008`, undeclared**: `结算单共三页请核对每一行的金额与
+日期` — verified (not assumed) to be 18 runes, every one Unicode category `Lo`, no punctuation and no
+digits, and attested verbatim in `fixtures/wrapped-text/input.folio` (`input.folio:8`). Labelled one
+word per rune, breaking at every interior position 1..17. **Its label is derived from UAX #14, not a
+native-speaker judgment**, and its gloss says so explicitly — `_README` and
+`fixtures/expected-breaks/README.md` both record it as a NEW row that is NOT owner-adjudicated, so it
+is never mistaken for a human label the way the other CJK/Thai items are. It also demonstrates the
+declaration mechanism directly: `结算单` (cjk-001) and `共三页` (cjk-002) occur inside it as
+substrings — the very strings declared atomic as standalone items — and break per character there
+anyway, because a declaration is a document-level fact about a value, not a property of the
+characters.
+
+### 3. A narrowing already stated, confirmed rather than duplicated
+
+The task called for `folio-format.md`'s Line breaking section to state, under D-000.6, that the engine
+implements no line-start/line-end prohibition rules (kinsoku) for CJK punctuation, in the same register
+as its existing named limits. **Checked, not assumed**: that narrowing is already present at this
+correction's own baseline `7f6f054` (`folio-format.md`'s Line breaking section, the "Kinsoku is not
+implemented" paragraph, stated as an outcome — no fullwidth-punctuation break candidates, no
+line-start/line-end prohibitions). No edit was made to avoid duplicating it. `cjk-008` was deliberately
+chosen punctuation-free so it exercises per-character CJK breaking without exercising, or appearing to
+assert conformance with, that unimplemented prohibition.
+
+### 4. Three-state record updated: four items move from unremarked to explicitly corrected; `cjk-008` is a new, non-adjudicated row
+
+`_README` (in `expected_breaks.json`) and `fixtures/expected-breaks/README.md` both now record
+`cjk-001`/`cjk-002`/`cjk-003`/`cjk-006` under "explicitly corrected" (second pass, 2026-08-25),
+alongside the first pass's `cjk-004`/`cjk-005`/`cjk-007`. The five Thai controls
+(`thai-003`/`004`/`005`/`006`/`010`) remain listed under "unremarked, therefore NOT ratified" —
+untouched by this correction; silence is not ratification. `cjk-008` is recorded under a new,
+separate state: NOT owner-adjudicated, derived from UAX #14.
+
+### 5. Red-proofed every declaration and the new item, live, restored byte-identical
+
+Per D-000.40, each mutation asserts by a non-empty diff, never an exit code. Stripping
+`declaredAtomic` from each of `cjk-001`, `cjk-002`, `cjk-003` and `cjk-006` individually reddened
+`TestS4ExpectedBreaksMatchTheEngine` with an `S4 MISMATCH` naming that item (engine reverts to
+per-character breaking); each mutation was then reverted and confirmed byte-identical by `diff`
+against the pre-mutation copy. `cjk-008` was red-proofed by mutating its `words`/`expectedBreaks` to a
+single atomic-shaped label without declaring it — this simulates "the engine stopped breaking CJK" at
+the fixture level, since it is the only item exercising undeclared CJK breaking — and it reddened with
+an `S4 MISMATCH` showing the engine still proposing all 17 interior breaks; reverted and confirmed
+byte-identical.
+
+### 6. Category B (`thai-007`/`008`/`009`) untouched; direction rule holds; no CJK divergence entry exists
+
+`s4ExpectedDivergences` is unchanged and still names only `thai-007`/`thai-008`/`thai-009`. Confirmed
+by inspection and by the passing run above (`TestS4ExpectedBreaksMatchTheEngine` logs exactly 3
+declared divergences, all Thai). Every CJK correction across both passes is fail-**open** in direction
+(the engine proposes a break a reader rejects for that specific value) — D-2.4.9's teeth require that
+shape be fixed by declaration, never enumerated as a divergence, and no CJK item has ever entered
+`s4ExpectedDivergences`.
+
+### 7. The digest moved again, at both non-matrix-tagged declared sites
+
+| digest | before (round 1) | after (round 2) |
+|---|---|---|
+| `fixtures/expected-breaks/expected_breaks.json` | `40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c` | `f0848d4e89b950aae8c8fc4e21af37ff56f602f42075786575b00a7531cfb19e` |
+| `fixtures/shaped-text/expected.pdf` | `6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370` | **unchanged, confirmed by direct hash** |
+| `fixtures/multi-page/expected.pdf` | `66ce0ee477fa1ce5e42d51bcc87d859bcddafb3d2bb2ca6ade3e35d3f895869b` | **unchanged, confirmed by direct hash** |
+| `fixtures/wrapped-text/expected.pdf` | `07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6` | **unchanged, confirmed by direct hash — note `cjk-008`'s text renders inside this golden and it did not move** |
+
+Updated at `folio-go/expected_breaks_digest_test.go`'s `expectedBreaksDigest` literal and at this
+table. `byte_neutrality_test.go`'s `goldenDigestRemedy` message was re-checked (D-000.37) and still
+tells the truth: it governs `goldenDigestRecord`'s PDF-golden literals, none of which moved here, and
+`expected_breaks.json` is deliberately outside that record's scope (it is not a PDF golden, per that
+test file's own comment). `TestGoldenDigestAgreesAtEveryDeclaredSite` still passes.
+`expected_breaks_signoff_matrix_test.go`'s red-gate remedy message was also updated to name all seven
+declared CJK items (not just the first three) and to introduce `cjk-008` as a non-adjudicated item, so
+a reader following it is not misdirected. Grepped the new digest and the round-1 digest across the
+repository: the round-1 digest now appears only in the append-only decision log, this table's own
+"before" column, and the pre-existing, out-of-scope `break-signoff-review-sheet.html` (see below);
+nowhere else.
+
+`TestS4ExpectedBreaksAreLabelsNotEngineOutput` confirmed passing against the corrected fixture: 5 of
+26 items now genuinely partitioned (down from 9 of 25, because four items moved from multi-word to
+single-declared-word), still non-degenerate.
+
+### 8. Flagged, not fixed: `break-signoff-review-sheet.html` is stale
+
+`_bmad-output/implementation-artifacts/break-signoff-review-sheet.html` already carried an uncommitted
+edit from a prior session when this correction began (a `draft()` summary rewrite, unrelated to the
+CJK labels). It still embeds the round-1 digest and the round-1 `ITEMS` array (`cjk-001`/`002`/`003`/
+`006` shown as split, `cjk-008` absent). This file is not a declared digest site in the D-000.47 sense
+(it is a reading aid for the pending sign-off, not part of `goldenDigestRecord` or any Go-enforced
+pin), and it was left untouched — regenerating it correctly requires re-deriving its `ITEMS` array and
+its per-item `dec`/`chg`/`div`/`unr`/(new "not-adjudicated" state for `cjk-008`) flags from the
+corrected fixture, which is presentation work for whoever next requests the sign-off, not part of this
+correction's scope. **Flagged here rather than silently left inconsistent.**
+
+### 9. Gate obligation count is unchanged: SIX matrix legs plus TWO sign-offs
+
+This correction, like round one, touches only the break-labels subject of one of the two pending
+sign-offs, not the obligation count. `epic-2: backlog` stays. `break-signoff.json` was **not** written
+by this work. The sign-off is requested only now that this second correction has landed, against the
+newest digest above — that request, and any regeneration of the stale review sheet, is separate
+follow-up work.

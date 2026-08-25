@@ -49,11 +49,14 @@ surname side. **The fixture is the oracle BECAUSE no rule can replace it.**
 
 Three states, recorded separately in `expected_breaks.json`'s own `_README` — silence is not
 ratification:
-- **explicitly corrected**: `thai-007`, `thai-008`, `thai-009` (split), and `cjk-004`, `cjk-005`,
-  `cjk-007` (declared unbreakable — see below);
+- **explicitly corrected**: `thai-007`, `thai-008`, `thai-009` (split), and — across two hand-checks —
+  all seven CJK items declared unbreakable: `cjk-004`, `cjk-005`, `cjk-007` (2026-08-24, first pass)
+  and `cjk-001`, `cjk-002`, `cjk-003`, `cjk-006` (2026-08-25, second pass, D-2.4.13 — see below);
 - **explicitly declined**: none remain — `cjk-005` was re-asked with its actual break positions shown
   and the owner changed the answer;
-- **unremarked, therefore not ratified**: `thai-003`/`004`/`005`/`006`/`010`.
+- **unremarked, therefore not ratified**: `thai-003`/`004`/`005`/`006`/`010`;
+- **new and NOT owner-adjudicated**: `cjk-008` (second pass, D-2.4.13) — its label is derived from
+  UAX #14 class ID, not a native-speaker judgment; see below.
 
 `thai-001` and `thai-002` remain the contrast for the compounds kept whole: sequences that are *not*
 headwords though both of their parts are, and which therefore do carry a break.
@@ -71,12 +74,37 @@ fixture for the first time — the whole value is passed to the engine as a decl
 (AD-25's third mechanism), so the engine reproduces "no interior break" because it was told, not because
 anything was inferred.
 
+**Second pass (2026-08-25, D-2.4.13).** The owner queried the remaining four per-character CJK items —
+`cjk-001` 结算单, `cjk-002` 共三页, `cjk-003` 汉字, `cjk-006` 日本語 — and answered "these strings are
+units." That is all seven CJK items now declared atomic. Asked to research CJK word breaking rather than
+adjudicate a typographic standard personally, the finding (grounded in UAX #14, W3C `clreq` and `jlreq`
+— see D-2.4.13) is that **the engine is correct and unchanged**: per-character breaking between Han/kana
+pairs is exactly what UAX #14's class ID specifies, and neither `clreq` nor `jlreq` recommends
+word-boundary-aware breaking. The seven declarations are template-level facts about these specific
+*values*, not a change to how the engine breaks CJK text in general.
+
+With all seven CJK items declared atomic, no fixture subject would exercise the engine's standard
+per-character CJK breaking at all — so **`cjk-008`** was added, undeclared: `结算单共三页请核对每一行的
+金额与日期`, 18 runes, attested verbatim in `fixtures/wrapped-text/input.folio`, every rune Unicode
+category `Lo`, no punctuation and no digits. Its label — one word per rune, breaking at every interior
+position — is **derived from UAX #14, not a native-speaker judgment**, and its gloss says so explicitly
+so it is never mistaken for an owner-adjudicated item. It also demonstrates the mechanism directly:
+`结算单` and `共三页` occur inside it as substrings — the very strings declared atomic as standalone
+items — and break per character there anyway. **A declaration is a document-level fact about a value,
+not a property of the characters**, so this is not a contradiction.
+
 The correction is recorded rather than quietly applied, because "the fixture changed and then the test
 passed" is exactly the shape this fixture exists to make impossible.
 
+## A narrowing this fixture does not attempt to close
+
+The engine does not implement kinsoku (line-start/line-end prohibitions for CJK punctuation) — see
+`folio-format.md`'s Line breaking section. `cjk-008` was deliberately chosen punctuation-free so it
+exercises per-character CJK breaking without straying into a prohibition the engine does not honour.
+
 ## Coverage
 
-25 items — 9 expecting at least one break, 16 expecting none. Both polarities are asserted to be
+26 items — 6 expecting at least one break, 20 expecting none. Both polarities are asserted to be
 non-empty, so neither an engine that never proposes a break nor one that proposes them everywhere can
 pass. Thai personal names (`ชัยวัฒน์`, `ดอเลาะ`, `แนแซ`, `ฉั่วสมบูรณ์`) appear as zero-break labels:
 they are AD-25's atomic-unknown-run absolute stated as a conformance expectation.
