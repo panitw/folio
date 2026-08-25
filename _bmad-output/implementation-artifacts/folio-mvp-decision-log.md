@@ -8571,3 +8571,79 @@ The narrowing belongs in `folio-format.md` beside the existing line-breaking lim
 
 **Sources**: UAX #14 (`unicode.org/reports/tr14/`), W3C `clreq` (`w3.org/TR/clreq/`), W3C `jlreq`
 (`w3.org/TR/jlreq/`).
+
+---
+
+### D-000.57 — An epic gate MAY close over a red, but only over one that was REQUIRED to be red before it ran
+**Orchestrator decision**, on the direction already settled by [[D-000.17]], [[D-2.1.14]] and Story
+2.4's AC5 — the lead was not consulted because those three jointly determine the answer, and inventing
+a fourth opinion where the direction is already decisive is how settled rules get quietly re-opened.
+**Program-wide standing rule** *(mechanism: binding)*.
+
+**The situation.** The Epic 2 boundary gate ran green on every obligation but finished
+**609 PASS / 1 FAIL**. The single failure, `TestCorpusMeetsP6ExerciseFloors`, is the Story 2.1
+intentional red that [[D-000.17]] forbids anyone to "fix". The question was not *"is this test
+failing?"* — plainly it is — but **"may a gate close while it is?"**
+
+> **A gate may close over a red only if the requirement that it be red pre-dates the run, is recorded
+> against an artifact, and the failure's reported numbers are byte-identical to the declared baseline.
+> Otherwise the gate is not closing over a known red — it is ratifying a new one.**
+
+**Why all three clauses carry weight, in plain terms.** Imagine the rule without them. *Without
+"pre-dates the run"*: any failure discovered at a gate can be relabelled "expected" the moment it is
+inconvenient — the post-hoc amendment [[D-2.1.14]] already refused, wearing a different hat. *Without
+"recorded against an artifact"*: "we knew about that one" is unfalsifiable a year later, when the
+person who knew is gone. *Without "byte-identical numbers"*: the test name stays red while what it
+measures silently drifts — `P6g:7` quietly becoming `P6g:3` would still present as "the same known
+failure", and a real regression would ride in under the cover of a sanctioned one.
+
+**Discharged here, each clause checked rather than asserted:** the requirement pre-dates the run
+(Story 2.4 AC5, and [[D-2.1.14]] before it); it is recorded against an artifact (`deferred-work.md`,
+open and with a corrected honest load-bearing count of **2**, not the literal 7); and the stats
+`{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}` are byte-identical to the declared baseline.
+
+**The inverse, stated so it is not lost:** a gate may **never** close over a red that merely *looks*
+familiar, and "it was already failing before my change" is not this rule — that is the excuse this
+rule is shaped to exclude. The burden is on the closer to show the three clauses hold, not on a future
+reader to disprove them.
+
+**Consequence** *(mechanism: binding)*: every future epic gate that closes over a red must name, in
+its own gate document, which requirement mandates it and which baseline its numbers match. Epic 2's
+does (`epic-2-boundary-gate.md`, "THE GATE, RUN AND CLOSED", §3).
+
+---
+
+### D-000.58 — A gate procedure that cannot be run from a clean checkout is not a procedure
+**Orchestrator decision**. **Program-wide** *(mechanism: binding)*.
+
+**What was found while closing Epic 2.** The gate's documented instruction was, in effect, *"run the
+matrix"*. But `TestShippedFacesReproduceFromUpstream` shells out to `$FOLIO_FONTGEN_PYTHON`,
+**defaulting to `python3`**, and the derivation is pinned to Python 3.12.13 / fontTools 4.63.0. On the
+one host where this gate has ever run, `python3` is the right *Python* but has **no fontTools** — and
+the interpreter that satisfies the pin lived only in `.fontgen-venv`, which is **`.gitignore`d**.
+
+**So the gate was reproducible only by someone who already knew a fact recorded nowhere durable.**
+
+> **A gate's reproduce procedure must be executable from a clean checkout by a reader who knows
+> nothing the document does not say. An environment that exists only on the machine where the gate
+> last passed is not part of the repository, and a procedure that depends on it is a procedure that
+> works exactly once.**
+
+**Note what was NOT wrong, because the distinction is the useful part.** The *pins* were already
+durable — `EXPECTED_PYTHON` / `EXPECTED_FONTTOOLS` live in the generator, in code. The *failure* was
+already loud — the test `t.Fatal`s rather than skipping, deliberately, so that "the sources were not
+present" can never read as "the faces reproduce". **Both of those are correct and were left alone.**
+The gap was strictly between them: nothing said **how to construct an environment satisfying the pins**,
+so the honest fail-closed red presented to a newcomer as *a font regression that isn't one*, and would
+have cost them the time it takes to disprove.
+
+**Fixed by recording the venv-construction steps and the required env var in the gate document
+(§5), not by:** committing the venv, nor by making the test auto-discover a suitable interpreter.
+Both alternatives trade a loud environmental failure for a quieter one, and the pins exist precisely
+because fontTools is **not** byte-deterministic across versions — an auto-discovered interpreter is
+how you get goldens that move for reasons nobody logged.
+
+**Consequence** *(mechanism: binding)*: any test that reaches outside the Go toolchain — an
+interpreter, a container, a downloaded source, a daemon — must have its construction steps written
+where the gate procedure is written. Naming the env var is not enough; the reader needs the command
+that makes the env var's value exist.

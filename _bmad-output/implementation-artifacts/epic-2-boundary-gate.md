@@ -689,3 +689,114 @@ sign-offs, not the obligation count. `epic-2: backlog` stays. `break-signoff.jso
 by this work. The sign-off is requested only now that this second correction has landed, against the
 newest digest above — that request, and any regeneration of the stale review sheet, is separate
 follow-up work.
+
+---
+
+## THE GATE, RUN AND CLOSED — `epic-2: backlog` → `done` (2026-08-25, baseline `65c31eb`)
+
+Run by the orchestrator, independently, after the guard correction at `65c31eb` discharged the last
+two obligations. **Verified rather than accepted**: every claim below was re-derived from the run's own
+output, because a gate that reports itself green is exactly where an unearned pass would hide.
+
+```
+FOLIO_FONTGEN_PYTHON=/Users/panitw/Projects/folio/.fontgen-venv/bin/python \
+  go test -tags=matrix -count=1 -v ./...
+```
+
+**609 PASS / 1 FAIL** (377 / 1 at top level), **1 SKIP**.
+
+### 1. All SIX obligations discharged, each with a witness in the output
+
+| # | Obligation | Witness |
+|---|---|---|
+| 1 | matrix registration for 2.3/2.3a, `three-band-page`, `multi-page` | `obligation witness — 9 matrix documents read from 9 matrixDocuments literal entries, 160 Go files walked` |
+| 2 | Thai **reading** sign-off | `Thai semantic sign-off present: reader "Panit Wechasil", date 2026-08-25, digest 6c040ef7…` |
+| 3 | Thai **break** sign-off | `S4 break-label sign-off present: reader "Panit Wechasil", date 2026-08-25, digest f0848d4e…` |
+| 4 | shipped faces reproduce from upstream | `fontgen: OK` |
+| 5 | cross-target byte-identity | 9 documents × 4 targets, all agreeing (below) |
+| 6 | digest pinned at every declared site | the D-000.47 site-set check, green |
+
+### 2. THE CENTRAL CLAIM WAS ACTUALLY MEASURED, not compiled
+
+Section 7 above recorded that **only `darwin/arm64` had ever actually been executed** — the other three
+legs had been compiled and vetted, which [[D-000.55]] is explicit is *not the same thing*. **That is no
+longer true.** This run executed all four legs and they agree byte-for-byte on all nine documents:
+
+```
+darwin/arm64   linux/amd64   linux/arm64   js/wasm     ← 9 documents, identical digest and byte length each
+```
+
+Counted per leg from the run's output: **9 / 9 / 9 / 9**. The gate's whole purpose — that the same
+template renders the same bytes on every target — is now **measured, not assumed**, for the first time.
+
+### 3. The one FAIL is REQUIRED to be there, and is not a blocker
+
+`TestCorpusMeetsP6ExerciseFloors` — `P6g (opaque names) floor not met: got 7, need >=20`, stats
+`{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`, **byte-identical to the declared baseline**.
+
+This red is **mandated**, not tolerated: Story 2.4's AC5 requires it to stay red, [[D-2.1.14]] settled
+it as a **standing item** (a known thinness in the S4 fixture) registered in `deferred-work.md` with a
+corrected honest count — the load-bearing figure is **2**, not 7 and not 8 — and [[D-000.17]] is
+binding: **a floor that is not met is reported as unmet, never filled.** A green here would mean
+somebody had filled it, which is the precise failure D-000.17 exists to forbid.
+
+**So the gate closes over it deliberately, and the shortfall stays visible.** It is not carried into
+Epic 3 as a debt to clear; it is carried as a *measurement* to improve only if genuinely-opaque Thai
+names can be sourced (Epic 4's golden-report work is the next natural opportunity).
+
+### 4. The one SKIP is benign by construction — checked, not waved through
+
+`TestXrefEntriesRejectsMalformedSubprocess` skips unless `FOLIO_XREF_NEGATIVE_CASE` is set. It is a
+**helper, not a test**: three parent tests re-execute it as a subprocess and read its exit code. All
+three cases (`zero-subsection`, `overlap`, `bad-offset-in-second-subsection`) have parents, and all
+four parents **passed**. The negative control for `assertXrefEntriesPointAtTheirObjects` — the check
+added because of the `/Kids` defect — genuinely has teeth.
+
+*(Minor, flagged not fixed: the helper's doc comment names only two parents; a third,
+`…RejectsBadOffsetInSecondSubsection`, was added later. Stale comment, no behavioural effect.)*
+
+### 5. THE GATE WAS NOT REPRODUCIBLE AS DOCUMENTED — fixed here
+
+**The problem.** `TestShippedFacesReproduceFromUpstream` shells out to `tools/fontgen/instance_faces.py`
+using `$FOLIO_FONTGEN_PYTHON`, **defaulting to `python3`**. The derivation is pinned to
+**Python 3.12.13 / fontTools 4.63.0** (`EXPECTED_PYTHON` / `EXPECTED_FONTTOOLS` in the generator —
+those pins are durable in code and are not the gap). On this host `python3` *is* already 3.12.13, but
+has **no fontTools**, so a bare `go test -tags=matrix ./...` **fails** this leg for a purely
+environmental reason — and the interpreter that makes it pass lived only in `.fontgen-venv`, which is
+**`.gitignore`d at line 88** and therefore does not survive a fresh clone.
+
+**Why this mattered enough to fix before closing.** The failure is loud, not silent — the test
+`t.Fatal`s rather than skipping, deliberately, so "the sources were not present" can never read as "the
+faces reproduce". That is correct fail-closed design. But it means the *documented* gate procedure
+("run the matrix") produces a **red that looks like a font regression** and is not one. The next person
+to run this gate would have spent that time on a phantom.
+
+**The procedure, recorded so the gate is runnable from a clean checkout:**
+
+```bash
+# once — build an interpreter satisfying the generator's own pins
+python3 -m venv .fontgen-venv                      # must be Python 3.12.13
+./.fontgen-venv/bin/pip install 'fontTools==4.63.0'  # NOT byte-deterministic across versions
+
+# every gate run — the env var is REQUIRED; the `python3` default will not do
+FOLIO_FONTGEN_PYTHON="$PWD/.fontgen-venv/bin/python" \
+  go test -tags=matrix -count=1 ./...
+```
+
+**This procedure was executed, not just written.** A throwaway venv was built from a clean state by
+exactly the two commands above (resulting in Python 3.12.13 / fontTools 4.63.0) and
+`TestShippedFacesReproduceFromUpstream` was run against it: **`ok  github.com/panitw/folio/folio-go`**.
+The venv was then deleted. A reproduce procedure nobody has reproduced is a guess.
+
+The upstream variable sources are a **separate** prerequisite with their own fail-closed message
+(each face's `NOTICE.md` carries the release URL and sha256; `FOLIO_FONT_SOURCES=<dir>` relocates them).
+
+**Deliberately not done:** committing the venv, or making the test auto-discover an interpreter. Both
+would trade an honest environmental failure for a quieter one, and the pins exist precisely because
+fontTools is not byte-deterministic across versions.
+
+### 6. `epic-2: backlog` → `done`
+
+All ten stories (2.1, 2.2, 2.3, 2.3a, 2.4, 2.5, 2.5a, 2.6, 2.6a, 2.7, 2.8) are `done`, all six gate
+obligations are discharged with witnesses, and the four-target matrix is measured rather than compiled.
+The epic key was the gate's to flip, and this is the gate flipping it.

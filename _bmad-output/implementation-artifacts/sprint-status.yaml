@@ -46,7 +46,9 @@ development_status:
   1-8-embed-and-render-an-image-from-the-template: done
   epic-1-retrospective: optional
 
-  epic-2: backlog
+  # epic-2 closed 2026-08-25 over one REQUIRED red (TestCorpusMeetsP6ExerciseFloors,
+  # P6g 7<20) which D-000.17/D-2.1.14 mandate stay unmet. See epic-2-boundary-gate.md.
+  epic-2: done
   2-1-thai-break-opportunity-spike: done
   2-2-the-shipped-font-set-and-its-fallback-chain: done
   2-3-shape-latin-thai-and-cjk-text: done
