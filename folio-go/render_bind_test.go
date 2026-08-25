@@ -67,11 +67,11 @@ func TestRenderScopeFenceIgnoresTableBind(t *testing.T) {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
 	data := Data(`{"customer": {"name": "Ada Lovelace"}}`)
-	b, err := Render(tpl, data, nil, testFontSet())
+	res, err := Render(tpl, data, nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render must succeed despite the table's expression-shaped bind fields: %v", err)
 	}
-	if len(b) == 0 {
+	if len(res.Bytes) == 0 {
 		t.Fatal("Render produced no bytes")
 	}
 }
@@ -84,11 +84,11 @@ func TestRenderBindsTextPlaceholder(t *testing.T) {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
 	data := Data(`{"customer": {"name": "Ada Lovelace"}}`)
-	b, err := Render(tpl, data, nil, testFontSet())
+	res, err := Render(tpl, data, nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if len(b) == 0 {
+	if len(res.Bytes) == 0 {
 		t.Fatal("Render produced no bytes")
 	}
 }

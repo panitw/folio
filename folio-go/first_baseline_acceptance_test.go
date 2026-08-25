@@ -429,11 +429,11 @@ func contributorsOf(by map[string]int) []string {
 func renderFontTextForAcceptance(t *testing.T) []byte {
 	t.Helper()
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, Data("{}"), nil, testFontSet())
+	res, err := Render(tpl, Data("{}"), nil, testFontSet())
 	if err != nil {
 		t.Fatalf("render font-text: %v", err)
 	}
-	return b
+	return res.Bytes
 }
 
 // renderMultiScriptForAcceptance renders
@@ -444,11 +444,11 @@ func renderMultiScriptForAcceptance(t *testing.T) []byte {
 	if err != nil {
 		t.Fatalf("parse multi-script template: %v", err)
 	}
-	b, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
+	res, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
 	if rerr != nil {
 		t.Fatalf("render multi-script-fallback: %v", rerr)
 	}
-	return b
+	return res.Bytes
 }
 
 // fixtureFontSetFor returns the FontSet each fixture renders against.

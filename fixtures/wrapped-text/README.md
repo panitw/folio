@@ -3,7 +3,9 @@
 The golden for **line breaking and measurement**. Every earlier text fixture *fits* its boxes — all
 ten of their text elements were measured, the widest at 26% of its declared width — so none of them
 can tell a build that wraps from one that does not. This is the only fixture whose elements are
-measured to **overflow** their boxes, and therefore the only one whose bytes move if wrapping breaks.
+measured to **overflow** their boxes, and therefore the only one whose bytes move if wrapping breaks
+— and, as of Story 2.8, the only one whose bytes move because FR44's clip finally exists to paint
+something differently over that overflow (see "Story 2.8" below).
 
 ## What each element is for
 
@@ -26,8 +28,12 @@ dictionary words `ศรี` and `สุข`.
 Its box is **deliberately narrower (20,000 mp) than the value itself measures (24,585 mp)**. That is
 what makes the declaration load-bearing rather than decorative:
 
-- **declared** (as shipped): `ผู้รับ` / `ศรีสุข` — the surname stays whole and **overflows its box
-  visibly**, which is AD-25's own prescription and Story 2.8's clipping to finish.
+- **declared** (as shipped): `ผู้รับ` / `ศรีสุข` — the surname stays whole and, as of Story 2.8, is
+  **clipped at the box's left/right edges** (FR44, D-2.8.1): every glyph is still drawn — never
+  reflowed, never dropped — but a PDF clip path (`W n`) restricts what is visible to the box's
+  20,000 mp width, and a `Diagnostic` (`TEXT_CLIPPED_WIDTH`, naming `e4`) is returned alongside the
+  bytes. Before Story 2.8 the surname painted past the box's edge with no clip and no diagnostic;
+  that is the AD-25 prescription this story finishes.
 - **undeclared** (the same template with the list removed, nothing else changed): `ผู้รับ` / `ศรี` /
   `สุข` — the surname **splits**.
 
@@ -68,14 +74,33 @@ proving anything about the declaration.
 
 Registered in `matrixDocuments` **and** in `.github/workflows/matrix.yml`, and — unlike `shaped-text`
 — its four legs were **actually run in its own story**, because D-000.4 names 2.4 as a per-story
-matrix override ("line breaking feeds every measurement"). All four targets agree:
+matrix override ("line breaking feeds every measurement"). Story 2.8 re-ran all four legs against the
+NEW bytes below (`go test -tags=matrix -run TestCrossTargetByteIdentity .`, `TestCrossTargetByteIdentity`
+PASS) — this is a **re-recording of an existing registered document**, not a new registration, so the
+obligation is "the four legs agree on the new bytes before the digest is trusted" (D-000.54's native-leg
+obligation attaches only to a *newly* registered document and is NOT owed here; this is the other case).
+All four targets agree:
 
 ```
-darwin/arm64   277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
-linux/amd64    277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
-linux/arm64    277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
-js/wasm        277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5  72738 bytes
+darwin/arm64   07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6  72790 bytes
+linux/amd64    07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6  72790 bytes
+linux/arm64    07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6  72790 bytes
+js/wasm        07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6  72790 bytes
 ```
+
+## Story 2.8 — FR44's clip re-recorded this golden
+
+`e4`'s overflowing surname is now clipped (see "`e4` is the discriminating element" above): the PDF
+content stream wraps `e4`'s two lines in `q / 36 0 20 841.89 re / W n / ... / Q` — a clip restricted to
+the box's HORIZONTAL span alone (`36` = left margin + `e4`'s `x`; `20` = `e4`'s declared width). The
+clip rectangle's vertical extent is the whole page (`0` to `841.89`, the A4 height in points) — never
+anything derived from `e4`'s declared `height` (D-2.8.1: a text element's declared height is not a clip
+bound). This is the **only** change: `e1`/`e2`/`e3` and every other committed golden are byte-identical
+before and after this story (measured, `TestGoldenDigestAgreesAtEveryDeclaredSite`).
+
+**This is a deliberate re-recording, not a regression** (AD-21/AD-22, D-000.44): there is no
+byte-neutral way to stop painting something FR44 says must be clipped. See Story
+`2-8-clip-overflowing-content-and-say-so.md`'s "Golden movement" section for the full argument.
 
 ## Provenance — external structural validation (D-000.53)
 
@@ -89,9 +114,13 @@ project did not write parses it and resolves it into the semantic objects it cla
 | result | exit **0** — `No syntax or stream encoding errors found` |
 | invocation | `qpdf --show-npages fixtures/wrapped-text/expected.pdf` |
 | result | **1** page(s), matching the declared `/Count` |
-| validated at | `50ad6c8` (Story 2.6) |
+| validated at | Story 2.8's development commit (baseline `278520b`; finisher records the landing commit) |
 
-**Settled**, validated unchanged at `50ad6c8`. This artifact predates D-000.53 and was validated retroactively; it is recorded here so the row ends settled rather than carried (D-000.29).
+**Re-validated for Story 2.8's re-recording** (D-000.44: a re-recording is a recording, so this step is
+owed again — it is not carried forward from the `50ad6c8` row below).
+
+Prior validation (Story 2.6, retroactive, predates D-000.53): settled at `50ad6c8`, recorded so that
+row ends settled rather than carried (D-000.29).
 
 The external reader is the **acceptance instrument, at recording time only** — run off-leg on the
 recording machine, hand-checked, output pasted here. It is never a runtime or CI dependency (AD-25,

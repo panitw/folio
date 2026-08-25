@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 
 	"github.com/panitw/folio/folio-go/internal/bind"
 	"github.com/panitw/folio/folio-go/internal/fontset"
@@ -143,6 +144,20 @@ type textRunSource struct {
 	// than one {{page}} occurrence — see pagemodel.TextRun.PageSlots'
 	// doc comment for why a scalar field here was a silent mis-render.
 	pageSlots []textRunPageSlot
+
+	// --- Story 2.8: FR44's clip, D-2.8.1 ---
+	//
+	// clipToBox marks that this run belongs to a text element whose
+	// widest packed line exceeds its declared WIDTH (detectWidthOverflow,
+	// below) — never its declared height, which D-2.8.1 rules is not a
+	// clip bound at all. clipX/clipWidth are that element's declared box
+	// left edge and width, PAGE-ABSOLUTE exactly like x above.
+	// internal/pdf uses them to wrap this run's drawing operators in a
+	// PDF clip path restricted to the box's HORIZONTAL extent only — the
+	// vertical clip bound it uses is the full page, never anything
+	// derived from an element's declared height (AC3).
+	clipToBox        bool
+	clipX, clipWidth geom.Length
 }
 
 // textRunPageSlot is one {{page}} reservation's glyph range within the
@@ -336,7 +351,13 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 
 	var runs []textRunSource
 	for bandIndex := range bands {
-		bandRuns, _, berr := collectBandTextRuns(doc, bands, bandIndex, data, params, fs, cache, passthroughResolver)
+		// Diagnostics discarded here: collectTextRuns is the pre-2.7
+		// legacy, all-bands walker kept alive only for a handful of
+		// composition tests (collect_text_runs_composition_test.go,
+		// shaped_fixture_test.go) that assert on run geometry, not on
+		// overflow. renderDocument (below) is the one path that
+		// actually surfaces Story 2.8's Diagnostics through Render.
+		bandRuns, _, _, berr := collectBandTextRuns(doc, bands, bandIndex, data, params, fs, cache, passthroughResolver)
 		if berr != nil {
 			return nil, berr
 		}
@@ -415,10 +436,18 @@ func collectBandTextRuns(
 	fs FontSet,
 	cache *fontCache,
 	resolve elementTokenResolver,
-) ([]textRunSource, []pendingPageSlot, error) {
+) ([]textRunSource, []pendingPageSlot, []Diagnostic, error) {
 	b := bands[bandIndex]
 	var runs []textRunSource
 	var pending []pendingPageSlot
+	// diags accumulates in ELEMENT DECLARATION ORDER within this one
+	// band — the `for _, el := range b.band.Elements` loop below walks
+	// the authored `.folio` document in order, never a map, so this
+	// slice is already the order D-2.8.6's Result.Diagnostics doc
+	// comment requires WITHIN one band. renderDocument concatenates
+	// this band's diags after the header band's and before the footer
+	// band's to get full document order across all three.
+	var diags []Diagnostic
 
 	for _, el := range b.band.Elements {
 		if el.Type != template.ElementText {
@@ -429,12 +458,12 @@ func collectBandTextRuns(
 		}
 		boundText, subs, berr := bind.BindTextSpans(el.Value.Value, data, params, string(el.ID))
 		if berr != nil {
-			return nil, nil, fmt.Errorf("folio: Render: %w", berr)
+			return nil, nil, nil, fmt.Errorf("folio: Render: %w", berr)
 		}
 
 		resolvedText, resolvedSubs, slots, rerr := resolve(string(el.ID), boundText, subs)
 		if rerr != nil {
-			return nil, nil, rerr
+			return nil, nil, nil, rerr
 		}
 		boundText, subs = resolvedText, resolvedSubs
 
@@ -451,7 +480,7 @@ func collectBandTextRuns(
 		// not license skipping the element's own validation.
 		chain, err := fontChain(doc, el)
 		if err != nil {
-			return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
+			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
 		}
 		if boundText == "" {
 			// AC9: a placeholder resolving to explicit JSON null
@@ -474,7 +503,7 @@ func collectBandTextRuns(
 		// re-shape of a shorter string (Story 2.4, AC10).
 		segs, serr := shapeSegments(chain, boundText, fs, cache)
 		if serr != nil {
-			return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
+			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}
 		totalRunes := len([]rune(boundText))
 
@@ -492,6 +521,27 @@ func collectBandTextRuns(
 		}
 		lines := packLines(segs, ops, totalRunes, fontSize, boxWidth)
 
+		// Story 2.8, AC1/D-2.8.1: does this element's widest packed
+		// line exceed its declared WIDTH? Computed from the SAME
+		// wrappedLine.width the packer already measured — never a
+		// second measurement of the text — and against boxWidth alone,
+		// never el.Height (D-2.8.1: a text element's declared height is
+		// not a clip bound and this function never reads el.Height).
+		overflow, overflows := detectWidthOverflow(string(el.ID), lines, boxWidth)
+		if overflows {
+			diags = append(diags, Diagnostic{
+				Severity:  SeverityWarning,
+				Code:      DiagCodeTextClippedWidth,
+				ElementID: overflow.elementID,
+				Message: fmt.Sprintf(
+					"element %s: the widest laid-out line is %s wide, exceeding the element's declared "+
+						"width of %s; the overflowing content is clipped at the box's left/right edges, "+
+						"never reflowed and never dropped (FR44)",
+					overflow.elementID, millipoints(overflow.measuredWidth), millipoints(overflow.declaredWidth),
+				),
+			})
+		}
+
 		// ONE vertical model for the element, from its DECLARED
 		// chain (D-2.4.2 as amended): computed once, outside the
 		// loop, from ONE walk of the chain, because every span of it
@@ -507,7 +557,7 @@ func collectBandTextRuns(
 		// see TestVerticalModelErrorPathsAreUnreachableThroughRender.
 		vm, serr := chainVerticalModel(chain, fontSize, fs, cache)
 		if serr != nil {
-			return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
+			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}
 
 		elementY := layout.PlaceInBand(b.origin, el.Y)
@@ -516,7 +566,7 @@ func collectBandTextRuns(
 			lineY := elementY + geom.Length(int64(i))*vm.Advance
 			placed, poserr := positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize, vm.FirstBaseline, slots)
 			if poserr != nil {
-				return nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, poserr)
+				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, poserr)
 			}
 			// Story 2.6: the LINE's extent, computed here from the
 			// vertical model that is already in hand — `lineY` IS
@@ -530,6 +580,17 @@ func collectBandTextRuns(
 				placed[j].lineIndex = i
 				placed[j].itemTop = lineY
 				placed[j].itemBottom = lineY + vm.FirstBaseline + vm.LastDescent
+				// Story 2.8, AC6: every run of an overflowing element
+				// carries the SAME clip box (the element's declared
+				// left edge and width) — clipping is a property of the
+				// ELEMENT, not of any one line or face segment within
+				// it, so a multi-line or multi-face-segment overflow
+				// clips uniformly across all its runs.
+				if overflows {
+					placed[j].clipToBox = true
+					placed[j].clipX = el.X
+					placed[j].clipWidth = boxWidth
+				}
 				// Story 2.7 review, Blocker 1: ONE pendingPageSlot per
 				// {{page}} occurrence this run carries, not one per
 				// run — a run may carry more than one.
@@ -553,7 +614,7 @@ func collectBandTextRuns(
 		if len(slots) > 0 && len(pending) > startPending {
 			dt, dterr := digitTableRun(chain, fontSize, fs, cache)
 			if dterr != nil {
-				return nil, nil, dterr
+				return nil, nil, nil, dterr
 			}
 			dtIndex := len(runs)
 			runs = append(runs, dt)
@@ -562,7 +623,56 @@ func collectBandTextRuns(
 			}
 		}
 	}
-	return runs, pending, nil
+	return runs, pending, diags, nil
+}
+
+// widthOverflow is Story 2.8, AC1's per-element horizontal overflow
+// record: the element id, the declared bound and the measured extent
+// (the widest packed line's width). The axis is always "width" —
+// D-2.8.1 fences the vertical axis out entirely, so there is no axis
+// field to carry. detectWidthOverflow is the SINGLE place this record
+// is computed, driving both the emitted Diagnostic (AC1/AC7) and the
+// clip decision (AC6): an element that does not overflow never reaches
+// either.
+type widthOverflow struct {
+	elementID     string
+	declaredWidth geom.Length
+	measuredWidth geom.Length
+}
+
+// detectWidthOverflow reports whether lines' widest member exceeds
+// boxWidth (D-2.8.1: the declared WIDTH is FR44's only clip bound; a
+// text element's declared HEIGHT is read by nothing here, exactly as
+// finding 1 measured it is read by nothing in the pre-2.8 renderer). A
+// zero-or-negative boxWidth means "no declared width" — packLines'
+// own convention (wrap.go: "el.Width.Set && !el.Width.Null" gates
+// boxWidth above; an absent width is always boxWidth == 0) — and never
+// overflows: there is no bound to measure against.
+func detectWidthOverflow(elementID string, lines []wrappedLine, boxWidth geom.Length) (widthOverflow, bool) {
+	if boxWidth <= 0 {
+		return widthOverflow{}, false
+	}
+	widest := geom.Length(0)
+	for _, ln := range lines {
+		if ln.width > widest {
+			widest = ln.width
+		}
+	}
+	if widest <= boxWidth {
+		return widthOverflow{}, false
+	}
+	return widthOverflow{elementID: elementID, declaredWidth: boxWidth, measuredWidth: widest}, true
+}
+
+// millipoints spells a geom.Length for a HUMAN-READABLE Diagnostic
+// message (Story 2.8). Not an output-format emitter: nothing in a PDF,
+// a page model or a golden passes through here, so AD-3's "one number
+// emitter" (internal/pdf's numbers.go) is untouched — this mirrors
+// internal/layout/paginate.go's own millipoints, kept package-local
+// exactly as that one is, because the property it serves (a readable
+// diagnostic) is local to each package that needs one.
+func millipoints(v geom.Length) string {
+	return strconv.FormatInt(int64(v), 10) + "mp"
 }
 
 // fontChain resolves one text element's style.fontFamily to its ordered
@@ -803,7 +913,7 @@ func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baseline
 // story's review asked, so a future restructure changes it
 // KNOWINGLY rather than as an unnoticed by-product of where a phase
 // boundary happens to fall — not so a caller can depend on it.
-func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, error) {
+func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, []Diagnostic, error) {
 	// cache is shared between collection (coverage checks, AC4) and
 	// embedding (subsetting) below, so a face is ever parsed at most
 	// once per render regardless of how many chain members or runes
@@ -812,15 +922,15 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 
 	bands, bandsErr := documentBands(t)
 	if bandsErr != nil {
-		return nil, bandsErr
+		return nil, nil, bandsErr
 	}
 	geometry, gerr := pageGeometryOf(t)
 	if gerr != nil {
-		return nil, gerr
+		return nil, nil, gerr
 	}
 	imageRuns, ierr := collectImageRuns(t)
 	if ierr != nil {
-		return nil, ierr
+		return nil, nil, ierr
 	}
 
 	// Story 2.7, PHASE A: the content band ALONE, under D-2.7.3's fence
@@ -831,13 +941,13 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	// learn Y here, BEFORE the page-header/page-footer text exists,
 	// without becoming pass two's job: this is still pass one, just
 	// reordered within it.
-	contentRuns, _, cterr := collectBandTextRuns(t, bands, contentBandIndex, data, params, fs, cache, contentBandResolver)
+	contentRuns, _, contentDiags, cterr := collectBandTextRuns(t, bands, contentBandIndex, data, params, fs, cache, contentBandResolver)
 	if cterr != nil {
-		return nil, cterr
+		return nil, nil, cterr
 	}
 	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns))
 	if plerr != nil {
-		return nil, fmt.Errorf("folio: Render: %w", plerr)
+		return nil, nil, fmt.Errorf("folio: Render: %w", plerr)
 	}
 	pageCount := len(contentPlan.Pages)
 
@@ -849,14 +959,27 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	// and therefore the identical CID allocation order
 	// (buildShapedPDFRuns is order-sensitive by design, AC7/D-2.3-Q1),
 	// this story's own change produced for every pre-existing document.
-	headerRuns, headerPending, herr := collectBandTextRuns(t, bands, pageHeaderBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
+	headerRuns, headerPending, headerDiags, herr := collectBandTextRuns(t, bands, pageHeaderBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
 	if herr != nil {
-		return nil, herr
+		return nil, nil, herr
 	}
-	footerRuns, footerPending, ferr := collectBandTextRuns(t, bands, pageFooterBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
+	footerRuns, footerPending, footerDiags, ferr := collectBandTextRuns(t, bands, pageFooterBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
 	if ferr != nil {
-		return nil, ferr
+		return nil, nil, ferr
 	}
+
+	// Story 2.8, D-2.8.6: Result.Diagnostics is DOCUMENT ORDER — band
+	// order, then element declaration order within a band — never map
+	// order (there is no map here) and never collection order (PHASE A
+	// collects content BEFORE header/footer above, but band order is
+	// header, content, footer, so this concatenation is NOT the order
+	// the three collectBandTextRuns calls above happened to run in).
+	// Each *Diags slice is already in element-declaration order within
+	// its own band (collectBandTextRuns' own doc comment on `diags`).
+	var diags []Diagnostic
+	diags = append(diags, headerDiags...)
+	diags = append(diags, contentDiags...)
+	diags = append(diags, footerDiags...)
 
 	headerOffset := 0
 	contentOffset := len(headerRuns)
@@ -917,13 +1040,13 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	for _, name := range faceNames {
 		font, ferr := cache.get(name, fs)
 		if ferr != nil {
-			return nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet: %w", name, ferr)
+			return nil, nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet: %w", name, ferr)
 		}
 		// ONE subsetting call per font per document (AC9), over the
 		// union of shaped glyph ids collected above.
 		sub, serr := font.Subset(glyphsByFace[name])
 		if serr != nil {
-			return nil, fmt.Errorf("folio: Render: %w", serr)
+			return nil, nil, fmt.Errorf("folio: Render: %w", serr)
 		}
 		subsets[name] = sub
 		metrics := font.Metrics()
@@ -978,15 +1101,15 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	for _, key := range assetKeys {
 		asset, ok := t.doc.Assets[key]
 		if !ok {
-			return nil, fmt.Errorf("folio: Render: an image element references asset %q, which is not present in the document's assets map", key)
+			return nil, nil, fmt.Errorf("folio: Render: an image element references asset %q, which is not present in the document's assets map", key)
 		}
 		raw, derr := template.DecodeAssetBytes(asset)
 		if derr != nil {
-			return nil, fmt.Errorf("folio: Render: asset %q: %w", key, derr)
+			return nil, nil, fmt.Errorf("folio: Render: asset %q: %w", key, derr)
 		}
 		img, derr := template.DecodeImageForRender(asset.MediaType, raw, key, firstElementIDByAssetKey[key])
 		if derr != nil {
-			return nil, fmt.Errorf("folio: Render: %w", derr)
+			return nil, nil, fmt.Errorf("folio: Render: %w", derr)
 		}
 		decodedByKey[key] = img
 		pdfImages[key] = pdf.ImageXObject{
@@ -1018,7 +1141,7 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 
 	pdfRuns, cerr := buildShapedPDFRuns(runs, shapedRuns, clusterTexts, subsets, embedded, cache, fs)
 	if cerr != nil {
-		return nil, cerr
+		return nil, nil, cerr
 	}
 
 	// Story 2.7, AC2's between-passes attachment point: buildShapedPDFRuns
@@ -1035,7 +1158,7 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	for _, ps := range pending {
 		slot, serr := buildPageNumberSlot(pdfRuns[ps.runIndex].Face, pdfRuns[ps.digitTableIndex], ps)
 		if serr != nil {
-			return nil, serr
+			return nil, nil, serr
 		}
 		pdfRuns[ps.runIndex].PageSlots = append(pdfRuns[ps.runIndex].PageSlots, *slot)
 	}
@@ -1053,10 +1176,14 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, e
 	// with no error and no warning.
 	pages, perr := paginateDocument(geometry, runs, imageRuns, pdfRuns, pdfPlacements)
 	if perr != nil {
-		return nil, perr
+		return nil, nil, perr
 	}
 
-	return pdf.SerializeTextDocument(pages, embedded, pdfImages)
+	b, serr := pdf.SerializeTextDocument(pages, embedded, pdfImages)
+	if serr != nil {
+		return nil, nil, serr
+	}
+	return b, diags, nil
 }
 
 // contentBandIndex is documentBands' authored index for the content band —
@@ -1362,6 +1489,9 @@ func buildShapedPDFRuns(
 			Y:              r.y,
 			FontSize:       r.fontSize,
 			BaselineOffset: r.baselineOffset,
+			ClipToBox:      r.clipToBox,
+			ClipX:          r.clipX,
+			ClipWidth:      r.clipWidth,
 		}
 	}
 

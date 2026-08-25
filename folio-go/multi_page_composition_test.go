@@ -131,10 +131,11 @@ func TestMultiPageComposedPageCountFromADeclaredTable(t *testing.T) {
 			if err != nil {
 				t.Fatalf("presence precondition: the synthetic template does not even parse: %v", err)
 			}
-			b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+			res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
+			b := res.Bytes
 			if len(b) == 0 {
 				t.Fatal("presence precondition: Render returned zero bytes")
 			}

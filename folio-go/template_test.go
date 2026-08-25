@@ -173,17 +173,17 @@ func TestLoadTemplateRejectsNegativeWrapExponentQuicklyToo(t *testing.T) {
 }
 
 // TestRenderAcceptsATemplate is AC22: Render's signature is
-// func Render(t *Template, d Data, f FontSet) ([]byte, error).
+// func Render(t *Template, d Data, p Params, f FontSet) (Result, error).
 func TestRenderAcceptsATemplate(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(minimalTemplateJSON))
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), nil, FontSet{})
+	res, err := Render(tpl, Data("{}"), nil, FontSet{})
 	if err != nil {
 		t.Fatalf("Render(tpl): %v", err)
 	}
-	if len(b) == 0 {
+	if len(res.Bytes) == 0 {
 		t.Fatal("Render(tpl) produced no bytes")
 	}
 }

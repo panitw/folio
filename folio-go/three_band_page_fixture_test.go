@@ -90,11 +90,11 @@ func parseThreeBandPageTemplate(t *testing.T) *Template {
 
 func renderThreeBandPage(t *testing.T) []byte {
 	t.Helper()
-	b, err := Render(parseThreeBandPageTemplate(t), Data("{}"), nil, testShippedFontSet())
+	res, err := Render(parseThreeBandPageTemplate(t), Data("{}"), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("Render(three-band-page): %v", err)
 	}
-	return b
+	return res.Bytes
 }
 
 // TestThreeBandPagePartitionIsPinnedByValue is AC6: the band partition

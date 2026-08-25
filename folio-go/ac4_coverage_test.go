@@ -57,10 +57,11 @@ func TestCoverageBasedFallbackSpansAllThreeShippedFaces(t *testing.T) {
 	// exactly AD-8's "a template names a family plus an ordered
 	// fallback chain, tried left to right per glyph" scenario.
 	data := folio.Data(`{"name": "Ada ก 汉"}`)
-	pdfBytes, err := folio.Render(tpl, data, folio.Params(`{}`), fonts.Shipped())
+	res, err := folio.Render(tpl, data, folio.Params(`{}`), fonts.Shipped())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
+	pdfBytes := res.Bytes
 
 	// V6's vacuity guard, applied to all three faces at once: a render
 	// that silently dropped to one face (or produced tofu) would still

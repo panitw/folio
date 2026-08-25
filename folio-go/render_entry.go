@@ -145,19 +145,35 @@ func decodeParams(p Params) (bind.Value, error) {
 // internal/layout.ContentHeight. Story 1.6 gave Render its data
 // parameter and Story 1.7 its params parameter and its io.Writer form,
 // RenderTo (D-1.1.c).
-func Render(t *Template, d Data, p Params, f FontSet) ([]byte, error) {
+//
+// Story 2.8 (D-2.8.3, the owner's decision): Render returns a Result
+// rather than a bare []byte. A non-nil error still means exactly what
+// it always did — no bytes, nothing rendered — and Result{}.Bytes is
+// only ever meaningful on the err == nil path, unchanged in spirit from
+// before this story. What is new is Result.Diagnostics: content that
+// could not be honoured exactly as declared (FR44: an element's widest
+// line exceeding its declared width) is clipped at the box boundary and
+// reported as a Diagnostic alongside complete, valid bytes — never
+// silently, and never by failing the render (AD-14). See Result's own
+// doc comment for the ordering and emptiness guarantees Diagnostics
+// carries.
+func Render(t *Template, d Data, p Params, f FontSet) (Result, error) {
 	if t == nil {
-		return nil, errNilTemplate
+		return Result{}, errNilTemplate
 	}
 	data, err := bind.DecodeData(d)
 	if err != nil {
-		return nil, fmt.Errorf("folio: Render: %w", err)
+		return Result{}, fmt.Errorf("folio: Render: %w", err)
 	}
 	params, err := decodeParams(p)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
-	return renderDocument(t, data, params, f)
+	b, diags, rerr := renderDocument(t, data, params, f)
+	if rerr != nil {
+		return Result{}, rerr
+	}
+	return Result{Bytes: b, Diagnostics: diags}, nil
 }
 
 // RenderTo produces the same document as Render, but writes it to w
@@ -213,20 +229,34 @@ func Render(t *Template, d Data, p Params, f FontSet) ([]byte, error) {
 // actually pins what this implementation does. A filesystem-snapshot
 // check to close this gap is deliberately NOT built (disproportionate,
 // and it would test the OS rather than this library).
-func RenderTo(w io.Writer, t *Template, d Data, p Params, f FontSet) error {
+//
+// D-2.8.6: RenderTo returns ([]Diagnostic, error), NOT Result. Result
+// names what a render PRODUCED, and RenderTo does not produce bytes to
+// its caller — it writes them to w as a side effect. A Result whose
+// Bytes were always nil on this path would be a claim that is false and
+// unobservable: nil, empty, and "the bytes went to the writer" are
+// indistinguishable at the call site. This asymmetry with Render's
+// signature is deliberate and costs this doc comment, not a trap.
+//
+// D-2.8.2/D-2.8.6: a Warning is not an error (AD-14), so a document that
+// renders with warnings still writes its COMPLETE bytes to w and still
+// returns those warnings — RenderTo never again produces "no output at
+// all" for a document that rendered successfully with something to
+// report.
+func RenderTo(w io.Writer, t *Template, d Data, p Params, f FontSet) ([]Diagnostic, error) {
 	if w == nil {
-		return errNilWriter
+		return nil, errNilWriter
 	}
-	b, err := Render(t, d, p, f)
+	res, err := Render(t, d, p, f)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	n, err := w.Write(b)
+	n, err := w.Write(res.Bytes)
 	if err != nil {
-		return fmt.Errorf("folio: RenderTo: write failed after %d of %d bytes: %w", n, len(b), err)
+		return nil, fmt.Errorf("folio: RenderTo: write failed after %d of %d bytes: %w", n, len(res.Bytes), err)
 	}
-	if n != len(b) {
-		return fmt.Errorf("folio: RenderTo: short write: wrote %d of %d bytes, writer reported no error", n, len(b))
+	if n != len(res.Bytes) {
+		return nil, fmt.Errorf("folio: RenderTo: short write: wrote %d of %d bytes, writer reported no error", n, len(res.Bytes))
 	}
-	return nil
+	return res.Diagnostics, nil
 }

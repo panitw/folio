@@ -45,10 +45,11 @@ func Example() {
 	data := folio.Data(`{"customer": {"name": "Ada Lovelace"}}`)
 	params := folio.Params(`{}`)
 
-	pdfBytes, err := folio.Render(tpl, data, params, fonts.Shipped())
+	res, err := folio.Render(tpl, data, params, fonts.Shipped())
 	if err != nil {
 		log.Fatal(err)
 	}
+	pdfBytes := res.Bytes
 
 	// The exact byte length is not asserted here: it is a faithful,
 	// reproducible function of this template and these inputs (AD-1,

@@ -719,6 +719,27 @@ func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) 
 			return nil, berr
 		}
 
+		// Story 2.8, FR44/D-2.8.1: ClipToBox wraps this run's BT..ET
+		// pair in a "q ... re W n ... Q" clip, restricted to the
+		// element's declared box on the HORIZONTAL axis alone. The
+		// clip rectangle's vertical extent is the WHOLE PAGE (0 to
+		// page.Height, in this content stream's own bottom-up user
+		// space) — never anything derived from the element's own
+		// declared height, which D-2.8.1 rules is not a clip bound.
+		// "q"/"Q" bracket the clip so it never leaks into the next
+		// run's drawing.
+		clipped := run.ClipToBox
+		if clipped {
+			clipX := page.MarginLeft + run.ClipX
+			c = append(c, "q\n"...)
+			c = appendLength(c, clipX)
+			c = append(c, " 0 "...)
+			c = appendLength(c, run.ClipWidth)
+			c = append(c, ' ')
+			c = appendLength(c, page.Height)
+			c = append(c, " re\nW n\n"...)
+		}
+
 		c = append(c, "BT\n/"...)
 		c = append(c, pdfNameEscape(run.Face)...)
 		c = append(c, ' ')
@@ -730,6 +751,10 @@ func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) 
 		c = append(c, " Tm\n"...)
 		c = append(c, body...)
 		c = append(c, "ET\n"...)
+
+		if clipped {
+			c = append(c, "Q\n"...)
+		}
 	}
 	return c, nil
 }

@@ -293,11 +293,11 @@ func parseMultiPageTemplate(t *testing.T) *Template {
 
 func renderMultiPage(t *testing.T) []byte {
 	t.Helper()
-	b, err := Render(parseMultiPageTemplate(t), Data("{}"), nil, testShippedFontSet())
+	res, err := Render(parseMultiPageTemplate(t), Data("{}"), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("Render(multi-page): %v", err)
 	}
-	return b
+	return res.Bytes
 }
 
 // mpKidsArrayRE and mpContentsRefRE are this file's OWN, narrow regexes for

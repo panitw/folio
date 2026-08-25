@@ -181,7 +181,7 @@ var goldenDigestRecord = []struct {
 		// chain) is observable at all. Its README quotes the digest on
 		// all four matrix-target lines.
 		dir:    "wrapped-text",
-		sha256: "277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5",
+		sha256: "07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6",
 		sites: []goldenDigestSite{
 			{kind: "expected.json", relPath: "fixtures/wrapped-text/expected.json"},
 			{kind: "second-literal"},

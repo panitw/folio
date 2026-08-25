@@ -124,6 +124,28 @@ type TextRun struct {
 	// are page-model quantities exactly as CID already is on
 	// ShapedGlyph above.
 	PageSlots []PageNumberSlot
+
+	// ClipToBox, ClipX, ClipWidth are Story 2.8's FR44 clip (D-2.8.1):
+	// when ClipToBox is true, a renderer restricts this run's drawing to
+	// the HORIZONTAL span [ClipX, ClipX+ClipWidth) — the element's own
+	// declared box left edge and width, PAGE-ABSOLUTE exactly like X
+	// above — because the element's widest laid-out line exceeds that
+	// declared width.
+	//
+	// There is no vertical counterpart, and this is not an omission: a
+	// text element's declared HEIGHT is not a clip bound (D-2.8.1 — no
+	// mechanism lets an author satisfy one, and no layout stage ever
+	// reads it). A renderer honouring ClipToBox restricts only the
+	// horizontal axis and must clip vertically to the page itself (or
+	// not at all), never to anything derived from an element's declared
+	// height.
+	//
+	// Set uniformly across every run of one overflowing element (package
+	// folio's collectBandTextRuns): a multi-line or multi-face-segment
+	// element clips the same box on every one of its runs.
+	ClipToBox bool
+	ClipX     geom.Length
+	ClipWidth geom.Length
 }
 
 // PageNumberSlot is Story 2.7's late-bound page-number slot (D-2.7.1,

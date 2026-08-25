@@ -848,11 +848,11 @@ func renderShapedTextFixture(t *testing.T) []byte {
 	if err != nil {
 		t.Fatalf("parse template: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+	res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	return b
+	return res.Bytes
 }
 
 // TestShapedTextFixtureIsShapeObservable is AC11, and it is the most

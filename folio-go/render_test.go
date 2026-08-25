@@ -349,10 +349,11 @@ func TestRenderSubsetsOneFacePerDocumentNotPerElement(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
 	fs := testFontSet()
 
-	out, err := Render(tpl, Data("{}"), nil, fs)
+	outRes, err := Render(tpl, Data("{}"), nil, fs)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
+	out := outRes.Bytes
 	if !containsFontFile2(out) {
 		t.Fatal("rendered document has no /FontFile2 — vacuity guard failed before this test's real assertions could mean anything (AC10b)")
 	}
@@ -474,12 +475,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), nil, testFontSet())
+		res, err := Render(tpl, Data("{}"), nil, testFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	if os.Getenv(subprocessImageEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(imageTestTemplateJSON))
@@ -487,12 +488,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), nil, nil)
+		res, err := Render(tpl, Data("{}"), nil, nil)
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	if os.Getenv(subprocessShapedTextEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(shapedTextTemplateJSON))
@@ -500,12 +501,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	if os.Getenv(subprocessWrappedTextEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(wrappedTextTemplateJSON))
@@ -513,12 +514,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data(wrappedTextDataJSON), nil, testShippedFontSet())
+		res, err := Render(tpl, Data(wrappedTextDataJSON), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	if os.Getenv(subprocessThreeBandEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(threeBandPageTemplateJSON))
@@ -526,12 +527,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	if os.Getenv(subprocessMultiPageEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(multiPageTemplateJSON))
@@ -539,12 +540,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	if os.Getenv(subprocessMultiScriptEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(multiScriptTestTemplateJSON))
@@ -552,12 +553,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	if os.Getenv(subprocessPageCount20EnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(pageCount20TemplateJSON))
@@ -565,12 +566,12 @@ func TestMain(m *testing.M) {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)
 		}
-		writeToStdoutOrDie(b)
+		writeToStdoutOrDie(res.Bytes)
 	}
 	os.Exit(m.Run())
 }
@@ -1342,11 +1343,11 @@ func TestRenderProducesAValidPDF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), nil, FontSet{})
+	res, err := Render(tpl, Data("{}"), nil, FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
-	assertWellFormedPDF(t, "Render()", b, 1)
+	assertWellFormedPDF(t, "Render()", res.Bytes, 1)
 }
 
 // TestRenderWithNoDateInParamsOmitsCreationAndModDate is AC9, RE-SCOPED
@@ -1401,10 +1402,11 @@ func TestRenderWithNoDateInParamsOmitsCreationAndModDate(t *testing.T) {
 		{label: "fontless, params present but no date key", tpl: mustParseMinimalTemplate(t), fs: FontSet{}, params: Params(`{"reportTitle": "Q3 Statement"}`)},
 	}
 	for _, c := range cases {
-		b, err := Render(c.tpl, Data("{}"), c.params, c.fs)
+		res, err := Render(c.tpl, Data("{}"), c.params, c.fs)
 		if err != nil {
 			t.Fatalf("%s: Render() error: %v", c.label, err)
 		}
+		b := res.Bytes
 		for _, key := range forbidden {
 			if bytes.Contains(b, []byte(key)) {
 				t.Errorf("%s: output contains %s", c.label, key)
@@ -1432,10 +1434,11 @@ func TestRenderIDEntriesAreIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), nil, FontSet{})
+	res, err := Render(tpl, Data("{}"), nil, FontSet{})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
+	b := res.Bytes
 
 	idx := bytes.Index(b, []byte("/ID ["))
 	if idx == -1 {
@@ -1548,10 +1551,11 @@ func TestRenderNilTemplateIsLocatedError(t *testing.T) {
 // font carrying a FontFile2 stream and a ToUnicode CMap.
 func TestRenderEmbedsSubsetFontAsType0Identity(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, Data("{}"), nil, testFontSet())
+	res, err := Render(tpl, Data("{}"), nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
+	b := res.Bytes
 	assertWellFormedPDF(t, "font document", b, 1)
 
 	for _, want := range []string{"/Subtype /Type0", "/Encoding /Identity-H", "/FontFile2", "/ToUnicode", "/Subtype /CIDFontType2"} {
@@ -1619,10 +1623,11 @@ func renderFontInSubprocess(t *testing.T, gomaxprocs string) []byte {
 // created=3304067374, modified=3573633780.
 func TestEmbeddedHeadTimestampsEqualSourceExactly(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, Data("{}"), nil, testFontSet())
+	res, err := Render(tpl, Data("{}"), nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
+	b := res.Bytes
 	if !containsFontFile2(b) {
 		t.Fatal("output does not contain a FontFile2 — cannot proceed (AC10b vacuity guard)")
 	}

@@ -231,10 +231,19 @@ simply loads (AC44's known, fixture-pinned gap) rather than being derived or rej
 
 ### DW-6 — The two footer diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` / `TABLE_FOOTER_SOURCE_FORBIDDEN`
 - **Deferred by:** Story 1.4 (ruling D-1.4.2)
-- **Owner:** **Story 3.6** — the story that mints `internal/diag`'s stable diagnostic codes
-- **Anti-rot mechanism:** a test asserts `folio-go/internal/diag` is **absent**. The day Story 3.6
-  creates it, the assertion goes red and forces these two codes to be wired before the build can
-  pass again.
+- **Owner:** **whichever story first creates `folio-go/internal/diag`** — expected to be Story 3.6,
+  but the obligation attaches to the condition, not the story number (D-2.8.4)
+- **Anti-rot mechanism (corrected, D-2.8.4):** this is **not a test**. It is the live production lint
+  rule `absence-diag-package` (`lint/internal/rules/absences.go:100-104`), registered in
+  `absenceChecks`, executed by `TestAbsencesProductionScan`. The day any story creates
+  `folio-go/internal/diag`, that scan goes red naming `absence-diag-package` — and the **real hazard
+  is the inverse of what this entry used to say**: the cheapest fix to the red is to **delete the
+  rule**, which would retire this forcing function silently and permanently. Whichever story creates
+  the package must, in the **same commit**: (1) delete `absence-diag-package` AND (2) land the
+  **positive** assertion that replaces it — that the code registry contains
+  `TABLE_FOOTER_SOURCE_UNRESOLVED` and `TABLE_FOOTER_SOURCE_FORBIDDEN`. Replace, never merely delete.
+  Also update the rule's `desc` (it currently names "Story 3.6" by name — D-000.37) in that same
+  commit if it turns out not to be 3.6.
 
 Story 1.4's load failures are plain Go errors (D-1.4.2: *"1.4 must not mint them early"*).
 `internal/diag` does not exist yet; AD-14 lands with Story 1.6 and the codes with Story 3.6.
@@ -694,3 +703,58 @@ more expensive, and makes the field's dual meaning harder to establish from the 
 **Do not** "fix" this by adding `cid` to `pdfConceptSubstrings`, and do not re-architect
 `buildShapedPDFRuns` opportunistically — neither Story 2.5's AC1 nor its Task 4 asked for it, and the
 developer was right not to attempt it.
+
+### DW-17 — Surfacing a returned `Diagnostic` to a human is a presented-interface obligation, not a Go call-graph one
+- **Deferred by:** Story 2.8 (ruling D-2.8.5)
+- **Owners:** **Story 3.7** (the CLI must print the diagnostics it receives), **Story 5.12**
+  ("Diagnostics that locate and an interface that can be driven"), **Story 6.6** ("Present a failed
+  render honestly")
+- **Anti-rot mechanism:** none possible, and none is owed. D-2.8.5 declined an AST guard asserting
+  that every `Render`/`RenderTo` call site also reads `.Diagnostics`/its returned slice: the call-site
+  population is overwhelmingly tests that render a fixture and hash bytes, which legitimately do not
+  care, so the guard would fire on scores of correct sites and its remedy (`_ = res.Diagnostics`)
+  would be ceremony training the codebase to discard rather than to check. This entry is the only
+  thing keeping the obligation visible until one of its three owners lands it.
+
+**This is not an accepted gap against AD-14 — do not record it as one (D-000.49).** AD-14's
+**Prevents** clause is about type fragmentation (*"each area inventing its own error type… CI cannot
+assert that every FR41 case is covered"*), not about caller discipline. `folio.Result` satisfies AD-14
+completely: one `Diagnostic` type, one channel, returned alongside the bytes, never dropped, never
+fatal. What remains open is a **presented-interface** property — *"a clipped-content warning reaches a
+human"* — which is not carried by a Go expression and cannot be asserted from the Go call graph
+(D-000.21: the property belongs to the artifact that carries it). Story 3.7's CLI, Story 5.12's
+located-diagnostics interface and Story 6.6's honest-failure presentation are where it becomes
+observable, and each owes an assertion on ITS OWN presented output once built.
+
+**How we'd know it was forgotten.** Story 3.7, 5.12 or 6.6 ships without a test that a `Diagnostic`
+folio's render path returns actually appears in what a human sees (CLI stdout, the driven interface,
+the failed-render presentation) — a case where `Render`/`RenderTo` returned a non-empty
+`Diagnostics`/warning slice and nothing downstream of it printed, logged or displayed any part of it.
+
+### DW-18 — `Severity`'s zero value is a VALID severity, so no test can prove the field was ever explicitly set
+- **Deferred by:** Story 2.8 finisher (review Finding 2, `render_clip_diagnostic_test.go`)
+- **Owner:** whoever next touches `folio.Severity` (`diagnostic.go`) — plausibly Story 3.6, which
+  mints the next `Diagnostic`-carrying codes and is the first natural place a `SeverityError` value
+  gets constructed for real.
+- **The defect, measured.** `SeverityWarning Severity = iota` makes `SeverityWarning == 0`, which is
+  also the zero value every `Diagnostic{}` literal starts from. The code-review's mutation M8 —
+  deleting `Severity: SeverityWarning,` from the one production construction site
+  (`render.go:532-533`) — leaves the field unset, which is bit-for-bit identical to a field correctly
+  set to `SeverityWarning`. Every assertion in `render_clip_diagnostic_test.go` that reads
+  `d.Severity != SeverityWarning` (three sites) is therefore comparing a value to itself under either
+  outcome; none can fail no matter which of the two states produced it.
+- **Why this story does not fix it.** The only fix that closes the gap is a change to `Severity`'s
+  zero-value semantics — e.g. an unexported `severityUnset Severity = iota` ahead of `SeverityWarning`
+  so the zero value stops being a valid severity and `SeverityWarning` becomes `1`. That changes the
+  numeric value of a public constant on a public exported type, which is the product's front door
+  (AD-14) and an owner/engineering-lead call, not a finisher's to make unilaterally while closing out
+  a test-quality review. No production code was touched for this finding; `render_clip_diagnostic_test.go`
+  gained a comment recording the limitation at each of the three assertion sites instead of a false
+  claim of coverage.
+- **Anti-rot mechanism:** none exists and none is owed by this story. This entry is what keeps the
+  gap visible until `Severity` is touched again.
+- **How we'd know it was forgotten.** A future `Diagnostic{..., Severity: SeverityError, ...}`
+  construction site ships with the `Severity:` field accidentally omitted (e.g. a copy-paste from a
+  `Warning`-only helper), and the render path silently returns it as a `Warning` — AD-14's
+  disposition rule ("Error aborts the render, Warning accompanies a successful one") violated with no
+  test catching it, because the zero value still reads as a valid, unremarkable `Warning`.

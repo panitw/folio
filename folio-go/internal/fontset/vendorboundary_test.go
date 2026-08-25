@@ -456,11 +456,12 @@ func TestFolioDeclinesEverySubstitutionAtIngestion(t *testing.T) {
 			t.Fatalf("anti-vacuity: the cmap-stripped first face reports HasGlyph('H') = true, so the render below would not exercise a fall-through at all")
 		}
 
-		out, err := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"),
+		outRes, err := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"),
 			folio.FontSet{faceName: strippedFirst, fallbackName: fallbackBytes})
 		if err != nil {
 			t.Fatalf("rendering a chain [%s, %s] whose FIRST face has no cmap returned %v — requiring cmap in requiredTables would convert this rendering document into an unloadable FontSet, reversing Story 2.2's ruled fall-through rather than tightening it", faceName, fallbackName, err)
 		}
+		out := outRes.Bytes
 		if len(out) == 0 {
 			t.Fatalf("rendering the two-face chain returned no error but produced 0 bytes — a document that renders must produce bytes")
 		}
@@ -470,8 +471,9 @@ func TestFolioDeclinesEverySubstitutionAtIngestion(t *testing.T) {
 		// unloadable, 0 bytes. cmap does not. Both operands measured
 		// here, neither quoted.
 		osStripped := stripTableRecord(t, robotoBytes(t), "OS/2")
-		bad, berr := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"),
+		badRes, berr := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"),
 			folio.FontSet{faceName: osStripped, fallbackName: fallbackBytes})
+		bad := badRes.Bytes
 		if berr == nil {
 			t.Fatalf("control: the same chain with a REQUIRED table (OS/2) missing on the first face rendered %d bytes without error, so this test cannot distinguish a tolerated table from a required one", len(bad))
 		}
@@ -515,10 +517,11 @@ func TestCapHeightSubstitutionIsAssertedOnTheEmittedBytes(t *testing.T) {
 		t.Fatalf("parse %s: %v", tmplPath, terr)
 	}
 
-	out, err := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"), folio.FontSet{faceName: robotoBytes(t)})
+	outRes, err := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"), folio.FontSet{faceName: robotoBytes(t)})
 	if err != nil {
 		t.Fatalf("render %s with the intact subject face %s: %v", tmplPath, robotoPath(), err)
 	}
+	out := outRes.Bytes
 
 	// Presence precondition: the property must live in this artifact.
 	const capKey = "/CapHeight "
@@ -578,16 +581,18 @@ func TestNamelessProgramNamesItsBaseFontSubstitutionInThePDF(t *testing.T) {
 		t.Fatalf("parse %s: %v", tmplPath, terr)
 	}
 
-	intact, ierr := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"), folio.FontSet{faceName: robotoBytes(t)})
+	intactRes, ierr := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"), folio.FontSet{faceName: robotoBytes(t)})
 	if ierr != nil {
 		t.Fatalf("render %s with the intact %s: %v", tmplPath, robotoPath(), ierr)
 	}
+	intact := intactRes.Bytes
 
 	stripped := stripTableRecord(t, robotoBytes(t), "name")
-	nameless, nerr := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"), folio.FontSet{faceName: stripped})
+	namelessRes, nerr := folio.Render(tmpl, folio.Data("{}"), folio.Params("{}"), folio.FontSet{faceName: stripped})
 	if nerr != nil {
 		t.Fatalf("render %s with a name-stripped %s: %v — a nameless program is ruled LOADABLE (Story 2.2, D-2.3a.1)", tmplPath, robotoPath(), nerr)
 	}
+	nameless := namelessRes.Bytes
 
 	// The diagnostic marker, spelled here independently of the
 	// production code that writes it.

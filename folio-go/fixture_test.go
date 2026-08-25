@@ -393,10 +393,11 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 	}
 
 	tpl := parseFontTestTemplate(t)
-	b, err := Render(tpl, Data("{}"), nil, testFontSet())
+	res, err := Render(tpl, Data("{}"), nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
+	b := res.Bytes
 	assertWellFormedPDF(t, "font-text golden fixture render", b, 1)
 
 	// AC10b's vacuity guard, applied here too: confirm the render
@@ -608,10 +609,11 @@ func TestRenderMatchesImageEmbedGoldenFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), nil, nil)
+	res, err := Render(tpl, Data("{}"), nil, nil)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
+	b := res.Bytes
 	assertWellFormedPDF(t, "image-embed golden fixture render", b, 1)
 
 	// AC23's vacuity guard, applied here too: confirm the render
@@ -710,10 +712,11 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse template: %v", err)
 	}
-	b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+	res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
+	b := res.Bytes
 	assertWellFormedPDF(t, "multi-script-fallback golden fixture render", b, 1)
 
 	if !containsFontFile2(b) {

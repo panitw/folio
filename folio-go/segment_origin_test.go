@@ -87,10 +87,11 @@ func TestFaceSegmentOriginsUseShapedAdvances(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse template for %q: %v", tc.text, err)
 			}
-			b, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+			res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
 			if err != nil {
 				t.Fatalf("render %q: %v", tc.text, err)
 			}
+			b := res.Bytes
 
 			runs := readEmittedRuns(t, b)
 			// D-000.21 sharpened: prove the artifact carries the thing

@@ -390,3 +390,96 @@ reported `wrapped-text` at 86 as a near-cap emergency. It was **the sum of three
 per-section cap** — a real number about the wrong subject, which is [[D-000.26]] again, and the same
 error this run has now recorded against a developer, a creator and the orchestrator twice. **The
 established instrument existed and was not reached for first.**
+
+## Story 2.8 — FR44's clip and diagnostic channel; the gate still owes SIX, not seven
+
+*Appended by Story 2.8. Nothing above this line is altered. Baseline for this section: `278520b`.*
+
+### 1. Both halves shipped together (D-2.8.2)
+
+OD-1 (the diagnostic seam) was ruled by the owner before this story left `ready-for-dev`: `Result`
+(D-2.8.3), `RenderTo` returns `([]Diagnostic, error)` not `Result` (D-2.8.6). With the seam ruled,
+OD-3's "ship both, or neither" resolved to **both**: FR44's clip (source AC1) and the diagnostic
+channel (source AC2) landed in this one story. **FR44 now ships in Epic 2** — the earlier framing
+("under OD-3 (i), FR44 does not ship in Epic 2") is superseded and does not apply.
+
+### 2. `Render`/`RenderTo` signatures changed — a MEASURED, not a v0.1.0, break
+
+```go
+func Render(t *Template, d Data, p Params, f FontSet) (Result, error)
+func RenderTo(w io.Writer, t *Template, d Data, p Params, f FontSet) ([]Diagnostic, error)
+```
+
+`v0.1.0` has not shipped (D-000.31): one tag (`pre-email-rewrite`), `Version = "0.0.0-dev"`, zero
+external consumers by construction. The names `Render`/`RenderTo` are unchanged, so **AD-1's
+forbidden-import scan — which locates its target files by matching top-level functions named EXACTLY
+those two names — keeps finding them**, confirmed by running lint's own suite (`go test ./...` under
+`lint/`, all green) rather than assumed.
+
+### 3. The gate still owes exactly SIX obligations; a seventh remains DECLINED
+
+D-2.8.4, applying D-2.6.2's criterion: `wrapped-text` is already a registered `matrixDocuments` entry
+carrying the ONE element FR44's clip acts on (`e4`). Declining a seventh entry does not leave FR44
+without a cross-target artifact — the criterion that would compel one. `declaredEpic2GateObligations`
+stays **byte-unchanged**, confirmed (`TestEpic2GateObligationsMatchTheDeclaredSet` passes unmodified).
+
+**But note for the gate: `wrapped-text`'s recorded digest MOVES even though the obligation set does
+not.** This is a re-recording of an EXISTING registered document, not a new registration — a
+different obligation from D-000.54's native-leg requirement (which attaches only to newly registered
+documents and is not owed here). Its four legs were re-run against the new bytes in this story's own
+development (`TestCrossTargetByteIdentity`, all four targets agree) — the Story 2.4 in-story-override
+precedent, applied to a re-recording rather than a first recording.
+
+| digest | before (`278520b`) | after (this story) |
+|---|---|---|
+| `fixtures/wrapped-text/expected.pdf` | `277bc5c023475b77fbcaebf0421c982e1456ccec292b4c92d88efa89056b0ad5` (72,738 bytes) | `07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6` (72,790 bytes) |
+| `fixtures/shaped-text/expected.pdf` | `6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370` | **unchanged** |
+| `fixtures/expected-breaks/expected_breaks.json` | `a545e04259033429d2cf8d1bba07f3137f6c0a106d635e918d31eabd599324de` | **unchanged** |
+| `fixtures/multi-page/expected.pdf` | `66ce0ee477fa1ce5e42d51bcc87d859bcddafb3d2bb2ca6ade3e35d3f895869b` | **unchanged** |
+| `page-count-20` | (recorded, Story 2.7) | **unchanged** |
+
+Both pending sign-offs (`shaped-text` Thai reading, `expected-breaks` Thai break) are **untouched** —
+`wrapped-text` carries neither, and OD-2's fence (the vertical axis stays out of scope, D-2.8.1)
+means the seven `shaped-text` elements that overflow vertically are neither clipped nor diagnosed.
+Measured (`TestGoldenDigestAgreesAtEveryDeclaredSite`, all sites agree except the one deliberate
+`wrapped-text` movement, which the test names and explains rather than silently accepting).
+
+### 4. `epics.md`'s FR44 coverage claim is now TRUE, where the earlier framing expected it false
+
+The prior boundary-gate note (Story 2.6, item 5) anticipated a diagnostic-channel design decision
+still open at the gate. It was ruled (D-2.8.3) and both halves of FR44 shipped in this story. No
+`epics.md` amendment is owed for FR44 — the coverage table's claim now holds.
+
+### 5. `folio-format.md` amended under D-000.6
+
+The `x, y, width, height` row (`_bmad-output/specs/spec-folio/folio-format.md`) now states, as an
+outcome: a text element's declared `width` is a clip bound (FR44), its declared `height` is not, and
+an image's `height` is honoured for AD-24's fit-and-centre and reserved for a future `valign`.
+
+### 6. `internal/diag` was NOT created by this story
+
+D-2.8.3/D-2.8.6 place `Result` and `Diagnostic` directly in package `folio` (module root), not in
+`internal/diag` — the owner's ruling names them unqualified. DW-6's tripwire
+(`lint/internal/rules/absences.go`'s `absence-diag-package` rule, corrected by D-2.8.4) therefore
+stays **green and untouched**; confirmed by running `lint`'s suite and by confirming
+`folio-go/internal/diag` does not exist on disk. `deferred-work.md`'s DW-6 entry was corrected (wrong
+noun: "a test" → the actual lint rule) but its obligation is not this story's.
+
+### 7. Flagged, not fixed
+
+- **DW-17 (new)**: surfacing a returned `Diagnostic` to a human is a presented-interface obligation
+  owed by Stories 3.7, 5.12 and 6.6 (D-2.8.5) — not a Go call-graph property, and no AST guard was
+  built (declined on D-000.15/D-000.50: the call-site population is overwhelmingly tests that
+  legitimately do not care about diagnostics).
+- **Call-site count discrepancy, still not fully reconciled.** The creator measured 72 `Render` call
+  expressions (25 files, 5 non-test) at `f651409`, text-stripping comments/strings. The orchestrator
+  re-derived 55 at `7f97ef7` with a different stripping method. This developer re-derived a THIRD
+  number at this story's own pre-commit working tree (atop `278520b`) using a `go/ast`-based
+  `CallExpr` scan (no text stripping needed — the parser already excludes comments/strings and
+  declarations structurally): **75** `Render` call expressions across **26** files (4 non-test:
+  `render_entry.go` + the three `testdata/swapproof/*/main.go` fixtures — `example_test.go` is
+  counted as an ordinary test file by this method, unlike the creator's manual carve-out), and **9**
+  `RenderTo` call expressions across **2** files (0 non-test). The three numbers are NOT reconciled
+  to each other and are not expected to be: each was taken at a different commit with a different
+  method, and this story's own diff legitimately added new call sites (its own new test file). Named
+  here per D-2.6.9 so the next reader does not inherit any of the three uncritically.

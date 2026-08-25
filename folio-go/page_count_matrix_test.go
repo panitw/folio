@@ -81,10 +81,11 @@ func TestPageCountFixturesRenderCorrectPageNumbersEverywhere(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
-			b, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
+			res, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
 			if rerr != nil {
 				t.Fatalf("Render: %v", rerr)
 			}
+			b := res.Bytes
 			streams := splitPageContentStreams(t, b)
 			if len(streams) != f.pages {
 				t.Fatalf("presence precondition: rendered %d page(s), want %d", len(streams), f.pages)

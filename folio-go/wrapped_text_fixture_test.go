@@ -40,11 +40,11 @@ func renderWrappedText(t *testing.T) []byte {
 	if err != nil {
 		t.Fatalf("parse wrapped-text template: %v", err)
 	}
-	b, err := Render(tpl, Data(wrappedTextDataJSON), nil, testShippedFontSet())
+	res, err := Render(tpl, Data(wrappedTextDataJSON), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("render wrapped-text: %v", err)
 	}
-	return b
+	return res.Bytes
 }
 
 // linesByOrigin groups emitted runs into lines by their Tm y

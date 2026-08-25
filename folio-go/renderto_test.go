@@ -87,7 +87,7 @@ func TestRenderToSurfacesWriterError(t *testing.T) {
 	wantErr := errors.New("boom: disk full")
 	w := errWriter{err: wantErr}
 
-	err := RenderTo(w, tpl, Data("{}"), nil, FontSet{})
+	_, err := RenderTo(w, tpl, Data("{}"), nil, FontSet{})
 	if err == nil {
 		t.Fatal("AC5: RenderTo must return a non-nil error when the writer fails")
 	}
@@ -105,14 +105,15 @@ func TestRenderToSurfacesWriterError(t *testing.T) {
 // reported.
 func TestRenderToSurfacesPartialThenErrWrite(t *testing.T) {
 	tpl := renderToFixture(t)
-	full, ferr := Render(tpl, Data("{}"), nil, FontSet{})
+	fullRes, ferr := Render(tpl, Data("{}"), nil, FontSet{})
 	if ferr != nil {
 		t.Fatalf("Render() error: %v", ferr)
 	}
+	full := fullRes.Bytes
 	wantErr := errors.New("boom: disk full, mid-write")
 	w := partialThenErrWriter{err: wantErr}
 
-	err := RenderTo(w, tpl, Data("{}"), nil, FontSet{})
+	_, err := RenderTo(w, tpl, Data("{}"), nil, FontSet{})
 	if err == nil {
 		t.Fatal("AC5: RenderTo must return a non-nil error when the writer fails mid-write")
 	}
@@ -132,7 +133,7 @@ func TestRenderToSurfacesPartialThenErrWrite(t *testing.T) {
 // ...).
 func TestRenderToRejectsNilWriter(t *testing.T) {
 	tpl := renderToFixture(t)
-	err := RenderTo(nil, tpl, Data("{}"), nil, FontSet{})
+	_, err := RenderTo(nil, tpl, Data("{}"), nil, FontSet{})
 	if err == nil {
 		t.Fatal("expected a located error for RenderTo(nil writer, ...), got nil")
 	}
@@ -147,13 +148,14 @@ func TestRenderToRejectsNilWriter(t *testing.T) {
 // RenderTo.
 func TestRenderToDetectsShortWrite(t *testing.T) {
 	tpl := renderToFixture(t)
-	full, ferr := Render(tpl, Data("{}"), nil, FontSet{})
+	fullRes, ferr := Render(tpl, Data("{}"), nil, FontSet{})
 	if ferr != nil {
 		t.Fatalf("Render() error: %v", ferr)
 	}
+	full := fullRes.Bytes
 	w := &shortWriter{max: len(full) - 1}
 
-	err := RenderTo(w, tpl, Data("{}"), nil, FontSet{})
+	_, err := RenderTo(w, tpl, Data("{}"), nil, FontSet{})
 	if err == nil {
 		t.Fatal("AC6: a short write (n < len(p), err == nil) must produce a non-nil error from RenderTo")
 	}
@@ -178,13 +180,14 @@ func TestRenderToDetectsShortWrite(t *testing.T) {
 // behavioural comparison AC4 refuses).
 func TestRenderToWritesExactByteCount(t *testing.T) {
 	tpl := renderToFixture(t)
-	want, rerr := Render(tpl, Data("{}"), nil, FontSet{})
+	wantRes, rerr := Render(tpl, Data("{}"), nil, FontSet{})
 	if rerr != nil {
 		t.Fatalf("Render() error: %v", rerr)
 	}
+	want := wantRes.Bytes
 
 	w := &countingWriter{}
-	if err := RenderTo(w, tpl, Data("{}"), nil, FontSet{}); err != nil {
+	if _, err := RenderTo(w, tpl, Data("{}"), nil, FontSet{}); err != nil {
 		t.Fatalf("RenderTo() error: %v", err)
 	}
 	if w.total != len(want) {
@@ -199,13 +202,14 @@ func TestRenderToWritesExactByteCount(t *testing.T) {
 // call count matters too.
 func TestRenderToWritesNothingExtra(t *testing.T) {
 	tpl := renderToFixture(t)
-	want, rerr := Render(tpl, Data("{}"), nil, FontSet{})
+	wantRes, rerr := Render(tpl, Data("{}"), nil, FontSet{})
 	if rerr != nil {
 		t.Fatalf("Render() error: %v", rerr)
 	}
+	want := wantRes.Bytes
 
 	w := &countingWriter{}
-	if err := RenderTo(w, tpl, Data("{}"), nil, FontSet{}); err != nil {
+	if _, err := RenderTo(w, tpl, Data("{}"), nil, FontSet{}); err != nil {
 		t.Fatalf("RenderTo() error: %v", err)
 	}
 
@@ -229,7 +233,7 @@ func TestRenderToWritesNothingExtra(t *testing.T) {
 // writer must see no calls at all.
 func TestRenderToPropagatesRenderError(t *testing.T) {
 	w := &countingWriter{}
-	err := RenderTo(w, nil, Data("{}"), nil, FontSet{})
+	_, err := RenderTo(w, nil, Data("{}"), nil, FontSet{})
 	if err == nil {
 		t.Fatal("expected an error for RenderTo(nil template, ...)")
 	}

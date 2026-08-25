@@ -107,10 +107,11 @@ func TestReservedPagePlaceholdersResolveOnEveryPage(t *testing.T) {
 		t.Fatal("presence precondition: the template carries neither reserved placeholder")
 	}
 
-	b, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
+	res, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
 	if rerr != nil {
 		t.Fatalf("Render: %v", rerr)
 	}
+	b := res.Bytes
 
 	streams := splitPageContentStreams(t, b)
 	if len(streams) < 2 {
@@ -160,10 +161,11 @@ func TestReservedPagePlaceholdersResolveTwoOccurrencesInOneElement(t *testing.T)
 		t.Fatalf("presence precondition: the template does not parse: %v", err)
 	}
 
-	b, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
+	res, rerr := Render(tpl, Data("{}"), nil, testShippedFontSet())
 	if rerr != nil {
 		t.Fatalf("Render: %v", rerr)
 	}
+	b := res.Bytes
 
 	streams := splitPageContentStreams(t, b)
 	if len(streams) < 2 {

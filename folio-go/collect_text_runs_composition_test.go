@@ -57,7 +57,7 @@ func TestCollectTextRunsMatchesTheShippingBandComposition(t *testing.T) {
 	if berr != nil {
 		t.Fatalf("documentBands: %v", berr)
 	}
-	contentRuns, _, cerr := collectBandTextRuns(tpl, bands, contentBandIndex, data, data, fs, shipCache, contentBandResolver)
+	contentRuns, _, _, cerr := collectBandTextRuns(tpl, bands, contentBandIndex, data, data, fs, shipCache, contentBandResolver)
 	if cerr != nil {
 		t.Fatalf("collectBandTextRuns(content): %v", cerr)
 	}
@@ -69,11 +69,11 @@ func TestCollectTextRunsMatchesTheShippingBandComposition(t *testing.T) {
 	if perr != nil {
 		t.Fatalf("layout.Paginate: %v", perr)
 	}
-	headerRuns, _, herr := collectBandTextRuns(tpl, bands, pageHeaderBandIndex, data, data, fs, shipCache, headerFooterResolver(len(plan.Pages)))
+	headerRuns, _, _, herr := collectBandTextRuns(tpl, bands, pageHeaderBandIndex, data, data, fs, shipCache, headerFooterResolver(len(plan.Pages)))
 	if herr != nil {
 		t.Fatalf("collectBandTextRuns(header): %v", herr)
 	}
-	footerRuns, _, ferr := collectBandTextRuns(tpl, bands, pageFooterBandIndex, data, data, fs, shipCache, headerFooterResolver(len(plan.Pages)))
+	footerRuns, _, _, ferr := collectBandTextRuns(tpl, bands, pageFooterBandIndex, data, data, fs, shipCache, headerFooterResolver(len(plan.Pages)))
 	if ferr != nil {
 		t.Fatalf("collectBandTextRuns(footer): %v", ferr)
 	}

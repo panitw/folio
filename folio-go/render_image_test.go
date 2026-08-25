@@ -112,10 +112,11 @@ func TestRenderEmbedsImageXObject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	out, err := Render(tpl, Data("{}"), nil, nil)
+	outRes, err := Render(tpl, Data("{}"), nil, nil)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
+	out := outRes.Bytes
 	if !bytes.Contains(out, []byte("/Subtype /Image")) {
 		t.Fatal("rendered PDF does not contain an image XObject")
 	}
@@ -136,10 +137,11 @@ func TestRenderEmbedsJPEGXObject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	out, err := Render(tpl, Data("{}"), nil, nil)
+	outRes, err := Render(tpl, Data("{}"), nil, nil)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
+	out := outRes.Bytes
 	if !bytes.Contains(out, []byte("/DCTDecode")) {
 		t.Fatal("expected the JPEG passthrough route (/DCTDecode)")
 	}
@@ -364,10 +366,11 @@ func TestRenderReadsAssetBytesFromTheDocumentItself(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	out1, err := Render(tpl, Data("{}"), nil, nil)
+	out1Res, err := Render(tpl, Data("{}"), nil, nil)
 	if err != nil {
 		t.Fatalf("Render (first): %v", err)
 	}
+	out1 := out1Res.Bytes
 
 	// Mutate the in-memory asset's bytes directly on the parsed
 	// Document — a different, still-valid image with the SAME box, so
@@ -385,10 +388,11 @@ func TestRenderReadsAssetBytesFromTheDocumentItself(t *testing.T) {
 	asset.Data = wrap76(otherImage)
 	tpl.doc.Assets[key] = asset
 
-	out2, err := Render(tpl, Data("{}"), nil, nil)
+	out2Res, err := Render(tpl, Data("{}"), nil, nil)
 	if err != nil {
 		t.Fatalf("Render (mutated): %v", err)
 	}
+	out2 := out2Res.Bytes
 
 	if bytes.Equal(out1, out2) {
 		t.Fatal("AC20: mutating the in-memory asset bytes did not change the rendered output — the renderer may not be reading from the document itself")
