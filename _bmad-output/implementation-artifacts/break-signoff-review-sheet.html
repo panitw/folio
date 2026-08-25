@@ -122,6 +122,7 @@ p{margin:0 0 1rem;max-width:38rem}
 .chip.diverge{background:var(--diverge-soft);color:var(--diverge)}
 .chip.changed{background:var(--ok-soft);color:var(--ok)}
 .chip.unrem{background:var(--rule-soft);color:var(--muted)}
+.chip.derived{background:var(--seam-soft);color:var(--seam)}
 .gloss{margin-left:auto;font-size:.84rem;color:var(--muted);font-style:italic;font-family:Spectral,Georgia,serif}
 
 /* the specimen itself */
@@ -209,50 +210,51 @@ code{font-family:"IBM Plex Mono",monospace;font-size:.88em;background:var(--rule
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">Second pass · corrected fixture · Epic 2 boundary gate</p>
+  <p class="eyebrow">Third pass · all CJK declared · Epic 2 boundary gate</p>
   <h1>Where Lines May Break</h1>
-  <p class="standfirst">Your first pass found four wrong labels, so the fixture was corrected rather than signed. This is the corrected version, bound to a new digest. <em>Six items changed; the five you never raised are marked as unremarked rather than approved.</em></p>
+  <p class="standfirst">Two passes, ten corrections, no sign-off yet — which is the check working. Every CJK item is now declared unbreakable, and one new row was added so the engine’s ordinary behaviour stays tested. <em>That row’s label is mine, not yours, and it is marked as such.</em></p>
   <div class="meta">
     <span>fixture <b>expected_breaks.json</b></span>
-    <span>digest <b>40ba08f6…a1cf26c</b></span>
-    <span>items <b>25</b></span>
+    <span>digest <b>f0848d4e…31cfb19e</b></span>
+    <span>items <b>26</b></span>
   </div>
 </header>
 
 <section>
-  <h2>What changed since your first pass</h2>
-  <p>Your four corrections split into two kinds, and they were handled differently because they point in opposite directions.</p>
+  <h2>What changed since your second pass</h2>
+  <p>You queried the four remaining per-character CJK items. Together with the three from the first pass, that was all seven — so I researched it rather than making you adjudicate a typographic standard.</p>
 
-  <p class="note"><b>You wanted fewer breaks in 北京.</b> That is expressible: the engine has a channel for “this value is declared, never split it”, built because Thai surnames are made of ordinary dictionary words and no rule can separate them. 北京 now carries that declaration — and so do 东京都 and こんにちは, which you added when I showed you their actual break positions. The engine produces no break there <b>because it was told</b>, not because it inferred anything.</p>
+  <p class="note"><b>You were right, and so was the engine.</b> The Unicode line-breaking standard says a line may ordinarily break between any two ideographic characters, and the W3C’s Chinese and Japanese layout requirements both regulate only where breaks are <em>forbidden</em> — neither asks for word-aware breaking. So breaking inside 汉字 is permitted by the standard, and the engine is behaving correctly. What you were expressing is a different thing: that <b>these particular values are units</b>. That is a document-level fact, and the engine has a channel for exactly it. All seven now carry that declaration.</p>
 
-  <p class="note" style="border-color:var(--diverge)"><b>You wanted more breaks in the three Thai compounds.</b> Nothing can express that. A declaration can only remove break opportunities, never add them. Removing those words from the shipped dictionary would make it factually wrong and silently change every document containing them; inferring where a compound may split is what the architecture already rules impossible. So they are recorded as <b>known divergences</b>: the fixture keeps your judgment, the engine falls short of it, and the shortfall is stated in the format spec rather than hidden.</p>
+  <p class="note" style="border-color:var(--seam)"><b>One new row, and its label is not yours.</b> Declaring all seven would have left nothing in the fixture exercising how the engine actually breaks CJK. So <b>cjk-008</b> is an undeclared eighteen-character run, taken from text already in another fixture rather than invented. Its label follows from the Unicode standard, not from a native reader, and it is marked <em>derived</em> throughout — your sign-off does not certify it.</p>
 
-  <p>One consequence worth knowing: the fixture used to claim its labels followed a rule — <em>if a word is in the dictionary, never break inside it</em>. All three compounds you split are in the dictionary, and so are the five you kept whole. That rule could never have predicted your judgment, so it has been replaced with an admission that no such rule exists.</p>
+  <p>There is a detail in that row worth seeing: <b>结算单</b> and <b>共三页</b> appear <em>inside</em> it — the very strings declared unbreakable on their own. Not a contradiction. A declaration is a fact about a value, not about the characters. Left undeclared, the same characters break normally.</p>
 
-  <h2 style="margin-top:2.5rem">What you are being asked, again</h2>
-  <p>The same single question, on the corrected labels:</p>
+  <p class="note" style="border-color:var(--diverge)"><b>The three Thai compounds are unchanged</b> and remain recorded divergences: your label stands, the engine falls short of it, and the shortfall is written into the format spec.</p>
+
+  <h2 style="margin-top:2.5rem">What you are being asked</h2>
   <p class="note"><b>Would a native reader accept a line ending at each marked seam — and never inside any of the words?</b></p>
 
   <div class="legend">
     <div class="leg">
       <p class="leg-t"><span class="chip split">Seam</span></p>
-      <p>A line <b>may</b> end here, and the engine will do it. Solid teal rule with the rune position.</p>
+      <p>A line <b>may</b> end here and the engine will do it. Solid teal rule with the rune position.</p>
     </div>
     <div class="leg">
       <p class="leg-t"><span class="chip diverge">Divergence</span></p>
-      <p>Dashed violet: <b>you</b> accept a break here, the engine will not produce one. A declared, known shortfall.</p>
+      <p>Dashed violet: <b>you</b> accept a break here, the engine will not produce one. A declared shortfall.</p>
     </div>
     <div class="leg">
       <p class="leg-t"><span class="chip declared">Declared</span></p>
-      <p>Amber underline: the engine is <b>told</b> this is one unit and must never break inside it.</p>
+      <p>Amber underline: the engine is <b>told</b> this value is one unit and must never break inside it.</p>
     </div>
     <div class="leg">
-      <p class="leg-t"><span class="chip whole">Kept whole</span></p>
-      <p>Amber underline, no declaration: one word by the dictionary, so no break arises.</p>
+      <p class="leg-t"><span class="chip derived">Derived</span></p>
+      <p>Labelled from the Unicode standard, not by a reader. Present for coverage; <b>not</b> what you certify.</p>
     </div>
   </div>
 
-  <p class="note"><b>If a label is still wrong, do not sign off.</b> Mark it <em>Query</em> and tell me — the fixture gets corrected again and the digest moves again. That is the cycle working, not failing.</p>
+  <p class="note"><b>If a label is still wrong, do not sign off.</b> Mark it <em>Query</em> and tell me. Two rounds have each found real defects; a third would be the process working, not failing.</p>
 </section>
 
 <div class="progress">
@@ -290,10 +292,10 @@ code{font-family:"IBM Plex Mono",monospace;font-size:.88em;background:var(--rule
 </div>
 
 <script>
-const DIGEST="40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c";
-const ITEMS=[{"id":"thai-001","s":"thai","t":"ประเทศไทย","w":["ประเทศ","ไทย"],"b":[6],"g":"country + Thai. The sequence is NOT a headword; both parts are","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-002","s":"thai","t":"เก็บเงิน","w":["เก็บ","เงิน"],"b":[4],"g":"keep + money. The sequence is NOT a headword; both parts are","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-003","s":"thai","t":"นักเรียน","w":["นักเรียน"],"b":[],"g":"student. Headword; -er + study etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-004","s":"thai","t":"โรงเรียน","w":["โรงเรียน"],"b":[],"g":"school. Headword; hall + study etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-005","s":"thai","t":"โรงพยาบาล","w":["โรงพยาบาล"],"b":[],"g":"hospital. Headword; hall + nursing etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-006","s":"thai","t":"รถไฟ","w":["รถไฟ"],"b":[],"g":"train. Headword; vehicle + fire etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-007","s":"thai","t":"หนังสือพิมพ์","w":["หนังสือ","พิมพ์"],"b":[7],"g":"newspaper","dec":false,"chg":true,"div":true,"unr":false},{"id":"thai-008","s":"thai","t":"วันเกิด","w":["วัน","เกิด"],"b":[3],"g":"birthday","dec":false,"chg":true,"div":true,"unr":false},{"id":"thai-009","s":"thai","t":"ที่อยู่","w":["ที่","อยู่"],"b":[3],"g":"address","dec":false,"chg":true,"div":true,"unr":false},{"id":"thai-010","s":"thai","t":"ใบเสร็จ","w":["ใบเสร็จ"],"b":[],"g":"receipt. Headword; sheet + complete etymologically, ONE word for breaking","dec":false,"chg":false,"div":false,"unr":true},{"id":"thai-011","s":"thai","t":"ธนาคาร","w":["ธนาคาร"],"b":[],"g":"bank - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-012","s":"thai","t":"โทรศัพท์","w":["โทรศัพท์"],"b":[],"g":"telephone - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-013","s":"thai","t":"เงิน","w":["เงิน"],"b":[],"g":"money - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-014","s":"thai","t":"ไทย","w":["ไทย"],"b":[],"g":"Thai - one word","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-015","s":"thai","t":"ชัยวัฒน์","w":["ชัยวัฒน์"],"b":[],"g":"given name; the uncoverable span of corpus name-021/name-081","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-016","s":"thai","t":"ดอเลาะ","w":["ดอเลาะ"],"b":[],"g":"Thai-Malay surname; corpus name-116, independently attested (DW-11)","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-017","s":"thai","t":"แนแซ","w":["แนแซ"],"b":[],"g":"Thai-Malay surname; corpus name-117, independently attested (DW-11)","dec":false,"chg":false,"div":false,"unr":false},{"id":"thai-018","s":"thai","t":"ฉั่วสมบูรณ์","w":["ฉั่วสมบูรณ์"],"b":[],"g":"surname; corpus synthetic-039, genuinely uncoverable","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-001","s":"cjk","t":"结算单","w":["结","算","单"],"b":[1,2],"g":"statement","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-002","s":"cjk","t":"共三页","w":["共","三","页"],"b":[1,2],"g":"three pages in total","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-003","s":"cjk","t":"汉字","w":["汉","字"],"b":[1],"g":"Han characters","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-004","s":"cjk","t":"北京","w":["北京"],"b":[],"g":"Beijing","dec":true,"chg":true,"div":false,"unr":false},{"id":"cjk-005","s":"cjk","t":"东京都","w":["东京都"],"b":[],"g":"Tokyo Metropolis","dec":true,"chg":true,"div":false,"unr":false},{"id":"cjk-006","s":"cjk","t":"日本語","w":["日","本","語"],"b":[1,2],"g":"Japanese language","dec":false,"chg":false,"div":false,"unr":false},{"id":"cjk-007","s":"cjk","t":"こんにちは","w":["こんにちは"],"b":[],"g":"hello - hiragana","dec":true,"chg":true,"div":false,"unr":false}];
+const DIGEST="f0848d4e89b950aae8c8fc4e21af37ff56f602f42075786575b00a7531cfb19e";
+const ITEMS=[{"id":"thai-001","s":"thai","t":"ประเทศไทย","w":["ประเทศ","ไทย"],"b":[6],"g":"country + Thai. The sequence is NOT a headword; both parts are","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-002","s":"thai","t":"เก็บเงิน","w":["เก็บ","เงิน"],"b":[4],"g":"keep + money. The sequence is NOT a headword; both parts are","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-003","s":"thai","t":"นักเรียน","w":["นักเรียน"],"b":[],"g":"student. Headword; -er + study etymologically, ONE word for breaking","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":true},{"id":"thai-004","s":"thai","t":"โรงเรียน","w":["โรงเรียน"],"b":[],"g":"school. Headword; hall + study etymologically, ONE word for breaking","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":true},{"id":"thai-005","s":"thai","t":"โรงพยาบาล","w":["โรงพยาบาล"],"b":[],"g":"hospital. Headword; hall + nursing etymologically, ONE word for breaking","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":true},{"id":"thai-006","s":"thai","t":"รถไฟ","w":["รถไฟ"],"b":[],"g":"train. Headword; vehicle + fire etymologically, ONE word for breaking","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":true},{"id":"thai-007","s":"thai","t":"หนังสือพิมพ์","w":["หนังสือ","พิมพ์"],"b":[7],"g":"newspaper","dec":false,"chg":true,"new":false,"derived":false,"div":true,"unr":false},{"id":"thai-008","s":"thai","t":"วันเกิด","w":["วัน","เกิด"],"b":[3],"g":"birthday","dec":false,"chg":true,"new":false,"derived":false,"div":true,"unr":false},{"id":"thai-009","s":"thai","t":"ที่อยู่","w":["ที่","อยู่"],"b":[3],"g":"address","dec":false,"chg":true,"new":false,"derived":false,"div":true,"unr":false},{"id":"thai-010","s":"thai","t":"ใบเสร็จ","w":["ใบเสร็จ"],"b":[],"g":"receipt. Headword; sheet + complete etymologically, ONE word for breaking","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":true},{"id":"thai-011","s":"thai","t":"ธนาคาร","w":["ธนาคาร"],"b":[],"g":"bank - one word","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-012","s":"thai","t":"โทรศัพท์","w":["โทรศัพท์"],"b":[],"g":"telephone - one word","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-013","s":"thai","t":"เงิน","w":["เงิน"],"b":[],"g":"money - one word","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-014","s":"thai","t":"ไทย","w":["ไทย"],"b":[],"g":"Thai - one word","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-015","s":"thai","t":"ชัยวัฒน์","w":["ชัยวัฒน์"],"b":[],"g":"given name; the uncoverable span of corpus name-021/name-081","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-016","s":"thai","t":"ดอเลาะ","w":["ดอเลาะ"],"b":[],"g":"Thai-Malay surname; corpus name-116, independently attested (DW-11)","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-017","s":"thai","t":"แนแซ","w":["แนแซ"],"b":[],"g":"Thai-Malay surname; corpus name-117, independently attested (DW-11)","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"thai-018","s":"thai","t":"ฉั่วสมบูรณ์","w":["ฉั่วสมบูรณ์"],"b":[],"g":"surname; corpus synthetic-039, genuinely uncoverable","dec":false,"chg":false,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-001","s":"cjk","t":"结算单","w":["结算单"],"b":[],"g":"statement","dec":true,"chg":true,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-002","s":"cjk","t":"共三页","w":["共三页"],"b":[],"g":"three pages in total","dec":true,"chg":true,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-003","s":"cjk","t":"汉字","w":["汉字"],"b":[],"g":"Han characters","dec":true,"chg":true,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-004","s":"cjk","t":"北京","w":["北京"],"b":[],"g":"Beijing","dec":true,"chg":true,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-005","s":"cjk","t":"东京都","w":["东京都"],"b":[],"g":"Tokyo Metropolis","dec":true,"chg":true,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-006","s":"cjk","t":"日本語","w":["日本語"],"b":[],"g":"Japanese language","dec":true,"chg":true,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-007","s":"cjk","t":"こんにちは","w":["こんにちは"],"b":[],"g":"hello - hiragana","dec":true,"chg":true,"new":false,"derived":false,"div":false,"unr":false},{"id":"cjk-008","s":"cjk","t":"结算单共三页请核对每一行的金额与日期","w":["结","算","单","共","三","页","请","核","对","每","一","行","的","金","额","与","日","期"],"b":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],"g":"statement, three pages in total; please check the amount and date on every line","dec":false,"chg":false,"new":true,"derived":true,"div":false,"unr":false}];
 
-const KEY="folio-break-signoff-v2";
+const KEY="folio-break-signoff-v3";
 let marks={};
 try{marks=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){marks={}}
 
@@ -322,6 +324,7 @@ function render(){
                :'<span class="chip '+(it.div?'diverge':'split')+'">'+it.b.length+' seam'+(it.b.length>1?'s':'')+'</span>')
         +(it.chg?'<span class="chip changed">you corrected this</span>':'')
         +(it.unr?'<span class="chip unrem">never raised</span>':'')
+        +(it.derived?'<span class="chip derived">derived from the standard</span>':'')
         +'<span class="gloss">'+esc(it.g)+'</span>'
       +'</div>'
       +'<div class="specimen '+it.s+'">'+specimen(it)+'</div>'
@@ -330,6 +333,7 @@ function render(){
       +(it.div?'<p class="hint" style="margin:-.4rem 0 1rem;color:var(--diverge)"><b>Declared shortfall.</b> You accept a break here; the engine will not produce one, because this is a dictionary word and nothing can tell it otherwise. It is recorded as a known divergence and the line simply wraps whole \u2014 never wrongly.</p>':'')
       +(it.dec&&it.chg?'<p class="hint" style="margin:-.4rem 0 1rem;color:var(--whole)"><b>Declared unbreakable.</b> The engine is told this value is one unit, so it produces no break. Nothing is inferred from the characters.</p>':'')
       +(it.unr?'<p class="hint" style="margin:-.4rem 0 1rem">You did not raise this one, so it stands unremarked rather than approved. Worth a look now.</p>':'')
+      +(it.derived?'<p class="hint" style="margin:-.4rem 0 1rem;color:var(--seam)"><b>Not your judgment \u2014 mine.</b> This row is new, and its label follows from the Unicode line-breaking standard rather than from a native reader: UAX\u00a0#14 says a line may break between any two ideographic characters. It exists so that declaring the other seven does not leave the engine\u2019s ordinary CJK behaviour untested. Check it if you like, but it is not what your sign-off certifies.</p>':'')
       +'<div class="decide">'
         +'<span class="q">'+(it.div?'The seam is right, and the engine not honouring it is acceptable — correct?'
                                     :whole?'Never break inside this \u2014 correct?'
@@ -344,12 +348,20 @@ function draft(){
   const q=ITEMS.filter(i=>marks[i.id]==="query").map(i=>i.id);
   const done=ITEMS.filter(i=>marks[i.id]).length;
   if(!done) return "";
-  const whole=ITEMS.filter(i=>!i.b.length).length, split=ITEMS.length-whole;
-  let s="Read all "+ITEMS.length+" break labels in expected_breaks.json — "+split
-       +" sequences carrying seams and "+whole+" labelled as single words that must never break. "
-       +"Checked that every marked seam falls between words and never inside one, including the eight "
-       +"lexicalised compounds (thai-003..thai-010) held whole and the two contrast cases "
-       +"(thai-001, thai-002) that do carry a seam.";
+  // Every figure below is DERIVED from ITEMS, never hardcoded — an earlier
+  // version of this sheet carried prose from a superseded fixture and
+  // generated a summary that was false.
+  const whole=ITEMS.filter(i=>!i.b.length), split=ITEMS.filter(i=>i.b.length);
+  const dec=ITEMS.filter(i=>i.dec), div=ITEMS.filter(i=>i.div);
+  const seamIds=split.map(i=>i.id).join(", ");
+  let s="Read all "+ITEMS.length+" break labels in expected_breaks.json at this digest — "
+       +split.length+" sequences carrying seams ("+seamIds+") and "+whole.length
+       +" labelled as single words that must never break. Checked that every marked seam falls "
+       +"between words and never inside one.";
+  if(dec.length) s+=" Confirmed the "+dec.length+" declared-unbreakable items ("
+       +dec.map(i=>i.id).join(", ")+") carry no interior break.";
+  if(div.length) s+=" Confirmed the "+div.length+" recorded divergences ("
+       +div.map(i=>i.id).join(", ")+"), where the label is mine and the engine will not reproduce it.";
   s+=q.length? " Queried "+q.length+": "+q.join(", ")+" — these labels look wrong and the fixture needs correcting before sign-off."
              : " Every label is correct as written.";
   return s;
