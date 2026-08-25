@@ -71,8 +71,8 @@ development_status:
   2-8-clip-overflowing-content-and-say-so: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-bind-a-repeating-region-to-a-collection-with-an-explicit-row: ready-for-dev
+  epic-3: in-progress
+  3-1-bind-a-repeating-region-to-a-collection-with-an-explicit-row: done
   # 3-1a inserted between 3.1 and 3.2 per D-3.1a.1, on D-000.25's precedent (which
   # inserted 2.3a for this same guard). AD-23's float ban is keyed on float32/float64
   # and cannot see math/big.Float. Must land BEFORE 3.2 creates internal/expr.

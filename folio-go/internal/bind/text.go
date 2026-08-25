@@ -70,7 +70,18 @@ var reservedPlaceholders = map[string]bool{
 // one is a one-line, VISIBLE diff to this list, and the guard catches a
 // third lookupBound call site whether or not this list is edited to
 // match it.
-var declaredResolutionRoots = []string{"data", "params"}
+//
+// Story 3.1 / D-3.1.1 widens this to a THIRD entry, "row": the row
+// scope AD-11 declares, authorised as a resolution root by the same
+// mechanism D-1.7.4 used for "params" — a root, not a reserved token.
+// "row" is the ROOT CLASS, never the author's own alias spelling (see
+// Scope's doc comment, scope.go) — the guard's own Fatalf on a
+// non-literal rootName is exactly why the alias can never be passed
+// here directly. TestBindResolutionRootsClosureRedProof was re-run
+// after this widening and still reddens (D-3.1.1), proving AD-4's
+// "page" fence survived it: "page"/"pages" remain reserved tokens,
+// resolved from neither root.
+var declaredResolutionRoots = []string{"data", "params", "row"}
 
 // BindText resolves every "{{…}}" placeholder in text against data and
 // params (AC15-AC21, AC12-AC17, D-1.6.5, D-1.7.4), scoped to one text
@@ -125,7 +136,21 @@ func BindText(text string, data, params Value, elementID string) (string, error)
 // tokens owned by Story 2.7, resolved from neither root, and they name
 // no data path — so there is nothing a document could declare about
 // them.
+//
+// Story 3.1 / AC0: this is now a thin wrapper over Resolve,
+// constructing a Scope with NO row set — the pre-3.1 behaviour,
+// byte-identical. Resolve is the single dispatch AC0 requires;
+// a future row-scoped caller (Story 4.2) calls it directly with a
+// Scope built through NewScope(...).WithRow(...).
 func BindTextSpans(text string, data, params Value, elementID string) (string, []Substitution, error) {
+	return Resolve(text, NewScope(data, params), elementID)
+}
+
+// Resolve is AC0's single dispatch: the one implementation of
+// the binding grammar's resolution-root traversal, taking a Scope
+// rather than bare data/params values, so BindText/BindTextSpans and
+// any future row-scoped caller share one traversal, never two.
+func Resolve(text string, scope Scope, elementID string) (string, []Substitution, error) {
 	var out strings.Builder
 	// runesWritten tracks the rune length of out, maintained alongside
 	// every write rather than recomputed, so a Substitution's bounds are
@@ -192,7 +217,33 @@ func BindTextSpans(text string, data, params Value, elementID string) (string, [
 				// namespace, not a value.
 				return "", nil, fmt.Errorf("bind: element %s: %q is a namespace, not a value", elementID, trimmed)
 			}
-			resolved, err := lookupBound(params, path[1:], path, elementID, "params", "the supplied params")
+			resolved, err := lookupBound(scope.params, path[1:], path, elementID, "params", "the supplied params")
+			if err != nil {
+				return "", nil, err
+			}
+			record(resolved)
+			continue
+		}
+
+		// Story 3.1 / AC1-AC4 / D-3.1.1: when a row scope is active and
+		// the FIRST segment equals the region's declared alias, the row
+		// root is selected — evaluated AFTER params (AC4: params "can
+		// be shadowed by nothing", including by a row) and BEFORE the
+		// data root (AC3: a row never shadows the document root). The
+		// rootName passed to lookupBound is the LITERAL "row" — the
+		// root CLASS, never scope.rowAlias, which is document data and
+		// would trip TestBindResolutionRootsAreClosed's non-literal
+		// Fatalf (D-3.1.1). fullPath (path, unchanged) still carries
+		// the author's own alias spelling, so error text reads
+		// "transaction.amount", not "row.amount" (AD-11's own
+		// rationale for why the alias is worth having at all).
+		if scope.rowSet && path[0] == scope.rowAlias {
+			if len(path) == 1 {
+				// Mirrors AC17's bare-"params" rule: a bare row alias
+				// names a namespace, not a value.
+				return "", nil, fmt.Errorf("bind: element %s: %q is a namespace, not a value", elementID, trimmed)
+			}
+			resolved, err := lookupBound(scope.row, path[1:], path, elementID, "row", "the current row")
 			if err != nil {
 				return "", nil, err
 			}
@@ -212,7 +263,7 @@ func BindTextSpans(text string, data, params Value, elementID string) (string, [
 		// construction, and TestAD14Triple (which already exercises
 		// this branch for the data root) covers lookupBound directly
 		// rather than the abandoned inline copy.
-		resolved, err := lookupBound(data, path, path, elementID, "data", "the report data")
+		resolved, err := lookupBound(scope.data, path, path, elementID, "data", "the report data")
 		if err != nil {
 			return "", nil, err
 		}

@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/bind"
 	"github.com/panitw/folio/folio-go/internal/fontset"
@@ -230,6 +231,82 @@ func documentBands(doc *Template) ([]bandWithOrigin, error) {
 		{doc.doc.Bands.Content, origins.Content},
 		{doc.doc.Bands.PageFooter, origins.PageFooter},
 	}, nil
+}
+
+// resolvedRowAlias is source AC2: a repeating region's row-scope alias
+// is the author's declared "as", or the literal "row" when the region
+// omits it (AD-11). TableExt.As itself stays Presence-absent in the
+// parsed document — parse_bands.go and model.go are unchanged by this
+// story, so the round-trip fixed point roundtrip_test.go pins is
+// undisturbed — the default is applied HERE, at resolution time, never
+// at load.
+func resolvedRowAlias(as template.Presence[string]) string {
+	if as.Set {
+		return as.Value
+	}
+	return "row"
+}
+
+// checkTableBindings is source AC5, plus D-3.1.1's ruling on the
+// creator's flagged OD-1, both checked EARLY in renderDocument's
+// prologue (finding 8) — after documentBands, before collectImageRuns
+// — so a not-a-list binding or a colliding row alias fails before any
+// font work, and its error ordering is plain document order across all
+// three bands. Bands in documentBands order, elements in declaration
+// order; the FIRST offending table element is the one reported
+// (deterministic, never a map, D-1.3.5).
+//
+// The alias check is declaration-level and DATA-FREE (D-3.1.1, same
+// category as D-2.6.5/D-2.7.3): a region declaring "as": "params",
+// "as": "page" or "as": "pages" is a located template error naming the
+// element — "params" because AD-11 forbids shadowing it, "page"/
+// "pages" because AD-4 forbids that namespace forever and an alias
+// spelling them would create one through the side door.
+//
+// The collection-bind check needs data: one trailing "[]" is stripped
+// from bind if present, and the remainder is resolved as a bare dotted
+// path against the DATA ROOT ONLY — never params, never a row, since
+// bind is a root-relative collection path (AD-11). An absent path, an
+// explicit null, or any non-array value are all errors naming the
+// bind as authored and the element id; an empty array is not an error
+// (Story 4.2 owns what an empty collection renders as).
+func checkTableBindings(bands []bandWithOrigin, data bind.Value) error {
+	for _, b := range bands {
+		for _, el := range b.band.Elements {
+			if el.Type != template.ElementTable || !el.Table.Set {
+				continue
+			}
+			tbl := el.Table.Value
+
+			alias := resolvedRowAlias(tbl.As)
+			if alias == "params" || alias == "page" || alias == "pages" {
+				return fmt.Errorf(
+					"folio: Render: element %s: table's row alias %q collides with a reserved name — "+
+						"\"params\" can be shadowed by nothing (AD-11) and \"page\"/\"pages\" never acquire "+
+						"a namespace (AD-4)",
+					el.ID, alias,
+				)
+			}
+
+			collection := strings.TrimSuffix(tbl.Bind, "[]")
+			var segments []string
+			if collection != "" {
+				segments = strings.Split(collection, ".")
+			}
+			val, presence := data.Lookup(segments)
+			switch presence {
+			case bind.Absent:
+				return fmt.Errorf("folio: Render: element %s: table bind %q is absent from the report data", el.ID, tbl.Bind)
+			case bind.Null:
+				return fmt.Errorf("folio: Render: element %s: table bind %q is null, not an array", el.ID, tbl.Bind)
+			case bind.Present:
+				if val.Kind != bind.KindArray {
+					return fmt.Errorf("folio: Render: element %s: table bind %q resolved to a %s, not an array", el.ID, tbl.Bind, val.Kind)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // imageRunSource is one image element found while walking the
@@ -923,6 +1000,13 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 	bands, bandsErr := documentBands(t)
 	if bandsErr != nil {
 		return nil, nil, bandsErr
+	}
+	// Story 3.1, AC5 / D-3.1.1: checked here, before any font work
+	// (finding 8) — a not-a-list collection bind or a colliding row
+	// alias is a located error, never a plausible-looking document
+	// with the table silently missing.
+	if terr := checkTableBindings(bands, data); terr != nil {
+		return nil, nil, terr
 	}
 	geometry, gerr := pageGeometryOf(t)
 	if gerr != nil {

@@ -1,6 +1,6 @@
 # Story 3.1: Bind a repeating region to a collection with an explicit row scope
 
-Status: **ready-for-dev**
+Status: **done**
 
 **Covers:** FR16, FR17, FR21 · AD-11 · **first story in Epic 3** ("A Go developer can render
 computed, parameterised documents")
@@ -70,31 +70,34 @@ shell wrapper's pipes; the redirect is outside the proxied string):
 ## In plain terms (read this first if you just want the gist)
 
 A statement has a table of transactions. The author places that table once and the engine repeats it
-— one row per transaction. The moment there are rows, a question appears that the product has never
-answered in code: when the author writes a field name inside that region, which transaction does it
-mean, and what happens to names belonging to the document as a whole rather than to any one row?
+— one row per transaction. This story settled, in the running code, which transaction a field name
+written inside that table refers to, and what happens to names that belong to the whole document
+rather than to any one row.
 
-Guessing is the failure this story exists to prevent. A tool that infers the row's name from the
-collection's name, behind the author's back, will eventually disagree with the designer showing the
-author something else, and the same template will mean two things in two places. So the rule is
-written down and made mechanical: the author names the row; if they do not, it is called "row".
-Inside the region that name means the current row and nothing else. A plain,
-unqualified name always means the document as a whole, so a row can never quietly take over a name
-the rest of the document is using. Runtime parameters — the report date, the branch name, supplied
-by the calling program rather than by the data — keep their own namespace that nothing can take
-over, ever, including a row. And if the author binds a region to something that is not a list at
-all, the render stops and says which binding and which element, rather than printing a
-plausible-looking document with the table missing.
+The rule shipped as designed: the author names the row, or it is called "row" by default; a name
+written inside the table means the current row and nothing else; a plain, unqualified name always
+means the whole document, so a row can never quietly take over a name the rest of the document is
+already using; the runtime parameters supplied by the calling program — the report date, the branch
+name — keep a namespace that nothing can take over, not even a row; and if the author binds a table
+to something that turns out not to be a list at all, the render stops and says which binding and
+which element, rather than producing a plausible-looking document with the table silently missing.
 
-This story deliberately does **not** print any rows. Repeating a table, wrapping cells, breaking it
-over pages and totalling a column are all later stories. This one settles the meaning of a name.
-Done looks like: the naming rules hold under tests that would fail if any of them
-were reversed, the not-a-list render fails by name, and every existing document produces
-byte-identical output.
+An independent review then checked the work against its own tests, rather than taking the story's
+account of them on trust. It found the naming rule itself was sound throughout, but one of its
+tests — the one meant to prove that a row name colliding with a protected name is rejected and the
+offending name is reported back correctly — had been written loosely enough that it would have
+stayed green even if the reported name were wrong. That test has been tightened so it can actually
+fail on the claim it makes, and it was then run against the exact mistake the review demonstrated,
+to confirm it now catches it. Two smaller coverage gaps the review also flagged — one where a test
+could not distinguish two related rules from each other, one where a new error case had shipped
+with no test at all — were closed the same way, each checked against the specific defect it was
+meant to catch. A cosmetic record-keeping nit, tracing to files that exist only on the machine that
+did the work and never ship with the project, was investigated and left as is, with the reason
+written down.
 
-One thing will look wrong afterwards and is not: most of the new naming machinery has no visible
-effect on any page yet, because nothing generates rows until a later story. That is the intended
-shape, not an omission.
+No table actually prints a row yet — that remains true, and is intentional rather than an
+oversight. This story settles what a name means inside a table; producing rows on a page is a later
+story's job.
 
 ---
 
@@ -633,33 +636,33 @@ cd /Users/panitw/Projects/folio/folio-go && env CGO_ENABLED=0 GOWORK=off rtk pro
 
 ## Tasks
 
-1. **Restore the measurement fixture** above, run it, confirm the four recorded failures reproduce
+1. [x] **Restore the measurement fixture** above, run it, confirm the four recorded failures reproduce
    at `e7f3f9c`. If they do not, stop and report — the baseline moved.
-2. **Re-measure the two guard runs** in finding 5 (add the scratch third-root file to
+2. [x] **Re-measure the two guard runs** in finding 5 (add the scratch third-root file to
    `internal/bind`, run `TestBindResolutionRootsAreClosed`, remove the file, confirm clean) so the
    obstacle is observed and not merely read about.
-3. **AC0** — introduce the scope value in `internal/bind`, make it the single dispatch, and
+3. [x] **AC0** — introduce the scope value in `internal/bind`, make it the single dispatch, and
    re-point `BindText`, `BindTextSpans` and `collectBandTextRuns` onto it with **no** row set.
    Run `internal/bind`'s existing suite unedited; every message must be byte-identical.
-4. **AC1, AC2** — the alias branch and its default, with the two-row subject; capture both
+4. [x] **AC1, AC2** — the alias branch and its default, with the two-row subject; capture both
    red-proofs before the fix.
-5. **AC3** — the root-never-shadowed assertion with the colliding-key subject; capture its
+5. [x] **AC3** — the root-never-shadowed assertion with the colliding-key subject; capture its
    red-proof.
-6. **AC4** — the three-way collision assertion plus the no-row baseline case; capture its
+6. [x] **AC4** — the three-way collision assertion plus the no-row baseline case; capture its
    red-proof.
-7. **AC6** — widen `declaredResolutionRoots` to `{"data", "params", "row"}`; re-run both guard
+7. [x] **AC6** — widen `declaredResolutionRoots` to `{"data", "params", "row"}`; re-run both guard
    tests and record their `t.Logf` output.
-8. **AC5** — wire the collection-bind check into `renderDocument`'s prologue; re-home the scratch
+8. [x] **AC5** — wire the collection-bind check into `renderDocument`'s prologue; re-home the scratch
    fixture into a real test with all four cases plus the empty-array case; delete the scratch file.
-9. **Finding 4** — amend `bindTestTemplateJSON` and `TestRenderScopeFenceIgnoresTableBind`'s doc
+9. [x] **Finding 4** — amend `bindTestTemplateJSON` and `TestRenderScopeFenceIgnoresTableBind`'s doc
    comment as required; keep the column bind expression-shaped and keep the assertion strong.
-10. **AC7** — re-render and hash every committed golden and the matrix documents; record the
+10. [x] **AC7** — re-render and hash every committed golden and the matrix documents; record the
     comparison against `e7f3f9c`.
-11. **AC8** — full-suite run, delta itemised against both scopes, `TestCorpusMeetsP6ExerciseFloors`
+11. [x] **AC8** — full-suite run, delta itemised against both scopes, `TestCorpusMeetsP6ExerciseFloors`
     confirmed still red.
-12. **Record** the D-3.1.x ratification entry (*Ratification requested*) and any rulings received on
+12. [x] **Record** the D-3.1.x ratification entry (*Ratification requested*) and any rulings received on
     OD-1 in `folio-mvp-decision-log.md`; update `deferred-work.md` if anything is newly deferred.
-13. **Story file, decision log, sprint status → `review`** (`epic-3: in-progress`,
+13. [x] **Story file, decision log, sprint status → `review`** (`epic-3: in-progress`,
     `3-1-…: review`).
 
 **Stop here — do not commit, do not branch, do not set `done`.**
@@ -668,10 +671,554 @@ cd /Users/panitw/Projects/folio/folio-go && env CGO_ENABLED=0 GOWORK=off rtk pro
 
 ## Dev Agent Record
 
-*(to be completed by the developer)*
-
 ### Delivery Log
+
+- **Task 1** — restored `folio-go/zz_scratch_ac5_test.go` byte-for-byte and ran it at the story's
+  baseline (`a20f60e`, clean tree, D-3.1.1 already recorded but no code touched yet). All four
+  cases (absent, scalar, object, null) reproduced the exact recorded failure text. Removed the
+  scratch file afterwards (re-homed at task 8/9).
+- **Task 2** — added a scratch file to `internal/bind` containing one
+  `lookupBound(Value{}, nil, nil, "", "row", "the current row")` call, ran
+  `TestBindResolutionRootsAreClosed`, and reproduced the exact recorded `t.Fatalf`/`t.Errorf`
+  output (`declared resolution roots: [data params]; observed at 3 lookupBound call site(s): [data
+  params row]`). Removed the scratch file, confirmed `git status --short internal/bind/` clean.
+- **Task 3 (AC0)** — added `internal/bind/scope.go` (`Scope`, `NewScope`, `WithRow`). Renamed
+  `BindTextSpans`'s body to `Resolve(text string, scope Scope, elementID string)` (exported: a
+  future row-scoped caller, Story 4.2, needs it from package `folio`) and made `BindTextSpans` a
+  thin wrapper: `return Resolve(text, NewScope(data, params), elementID)`. Ran
+  `internal/bind`'s existing suite unedited — every test passed, every message byte-identical
+  (verified by full `-v` run, no text_test.go edits).
+- **Tasks 4–6 (AC1–AC4)** — added the row branch to `Resolve`'s dispatch, positioned after the
+  `params` branch and before the final data-root lookup (D-3.1.1's mandated order): `if
+  scope.rowSet && path[0] == scope.rowAlias { … lookupBound(scope.row, path[1:], path, elementID,
+  "row", "the current row") … }`. The literal `"row"` is passed as `rootName`; `scope.rowAlias`
+  (the author's own spelling) is carried only for the branch condition and left inside `fullPath`
+  for error text. New tests in `internal/bind/scope_test.go` (package `bind`, calling `Resolve`
+  directly) and `folio-go/row_scope_test.go` (package `folio`, exercising the real
+  `resolvedRowAlias` default function through the exported `bind.Resolve`/`bind.NewScope` API).
+- **Task 7 (AC6)** — widened `declaredResolutionRoots` to `{"data", "params", "row"}`. Re-ran both
+  guards; `t.Logf` output captured verbatim below.
+- **Task 8 (AC5)** — added `resolvedRowAlias` and `checkTableBindings` to `render.go`, wired into
+  `renderDocument` immediately after `documentBands`, before `collectImageRuns`. Re-homed the
+  scratch fixture into `folio-go/render_table_bind_test.go`
+  (`TestRenderTableBindNonArrayFailsRender`, all four cases, plus
+  `TestRenderTableBindEmptyArrayIsNotAnError`), then deleted `zz_scratch_ac5_test.go`. Also added
+  `TestRenderTableRowAliasCollidesWithReservedNameFailsRender` there, proving D-3.1.1's ruling on
+  the creator's OD-1 (Arm B: a located template error, data-free — the fixture supplies `{}` and
+  the alias failure is still reported, never the collection-bind failure).
+- **Task 9 (finding 4)** — amended `bindTestTemplateJSON` in `render_bind_test.go`:
+  `table.bind` changed from `"{{transactions[]}}"` to the bare collection path `"transactions[]"`,
+  data amended to supply a real `transactions` array; `columns[0].bind` left byte-for-byte
+  expression-shaped. Amended `TestRenderScopeFenceIgnoresTableBind`'s doc comment to say the fence
+  it now proves is the **column** fence, and that `table.bind` is read as a collection path from
+  this story on. No other change to the test's assertions.
+- **Task 10 (AC7)** — ran the full suite (`go test -count=1 -v ./...`) and confirmed every
+  golden/digest/byte-comparison test passes: `TestRenderMatchesGoldenFixture`,
+  `TestRenderMatchesFontTextGoldenFixture`, `TestRenderMatchesImageEmbedGoldenFixture`,
+  `TestMultiScriptFallbackGoldenFixture`, `TestMultiPageGoldenFixtureMatchesTheInRepoTemplate`,
+  `TestMultiPageGoldenMatchesTheCommittedArtifact`, `TestShapedTextGoldenFixture`,
+  `TestThreeBandPageGoldenFixture`, `TestWrappedTextGoldenFixture`,
+  `TestGoldenDigestAgreesAtEveryDeclaredSite`, `TestBoundaryGateDigestsAreWellFormed`,
+  `TestEveryGoldenPDFResolvesItsPageTree` (all subtests), `TestSerializeIDMatchesReDerivedDigest`,
+  `TestWorkedExampleMatchesGoldenFixture`, `TestAssetExampleMatchesGoldenFragment`,
+  `TestFirstBaselineSemanticAcceptanceAcrossEveryReRecordedGolden` (all subtests). No committed
+  golden contains a rendered table (finding 4 confirmed no artifact reaches the new render-time
+  checks except `worked-example.json`, which is only round-tripped/fence-compared, never
+  rendered) — every hash matched, zero delta, measured not inferred.
+- **Task 11 (AC8)** — full-suite run reported below.
+- **Task 12** — D-3.1.1 (the row-resolution-root ruling) and D-000.59 were already recorded in
+  `folio-mvp-decision-log.md` by the orchestrator before this story's code was touched (visible in
+  the working tree at story start). OD-1 is resolved as part of D-3.1.1 (Arm B). Nothing new was
+  deferred by this story; `deferred-work.md` unchanged.
+- **Task 13** — this update.
 
 ### Red-proofs captured
 
+All captured by temporarily mutating `internal/bind/text.go` / `folio-go/render.go`, confirming
+the test(s) redden with the exact reasoning the story specifies, then restoring the file from a
+saved copy (never `git checkout`) and re-confirming green.
+
+- **AC1** (`TestScopeRowAliasResolvesCurrentRow`): mutated the row branch to resolve against
+  `scope.data` instead of `scope.row`. Observed failure: `row1: unexpected error: bind: element
+  e2: row path "transaction.amount" is absent from the current row` (the mutated lookup ran
+  against an empty `data` root that has no `transaction`/`amount` path).
+- **AC2** (`TestRowAliasDefaultsToRowAtResolutionTime`): mutated `resolvedRowAlias` to return `""`
+  instead of `"row"` for an absent `as`. Observed failure: `AC2: an absent "as" must default the
+  alias to "row", got ""`.
+- **AC3** (`TestScopeRowNeverShadowsDocumentRoot`): inserted a mutation immediately before the
+  final data-root lookup that checks the row FIRST for any unqualified path (`if scope.rowSet { if
+  _, p := scope.row.Lookup(path); p != Absent { … resolve from row … } }`), reproducing "a row
+  shadows the root". Observed failure: `AC3: an unqualified colliding key must resolve to the
+  DOCUMENT ROOT's value, got "FROM-ROW" (want "FROM-ROOT")`.
+- **AC4** (`TestScopeParamsUnshadowableByRow`): disabled the params branch (`if false &&
+  path[0] == "params"`), forcing `params.reportDate` to fall through to the data root. Observed
+  failure on the UNCHANGED baseline (no row) case, as the story requires: `AC4 baseline:
+  {{params.reportDate}} with no row active must still resolve from params, got "FROM-DATA"`.
+- **AC5** (finding 3, inherited/reconfirmed): all four non-array cases (absent, scalar, object,
+  null) reproduced rendering SUCCESSFULLY at baseline (task 1's log above); after AC5's wiring,
+  all four fail with the correct located error (task 8).
+- **AC6** (finding 5, inherited/reconfirmed): the scratch third-root file reproduced
+  `TestBindResolutionRootsAreClosed`'s exact recorded failure at baseline (task 2's log above).
+
+### AC6 guard runs, `t.Logf` output verbatim (post-widening)
+
+```
+=== RUN   TestBindResolutionRootsAreClosed
+    resolution_roots_arch_test.go:197: declared resolution roots: [data params row]; observed at 3 lookupBound call site(s): [data params row]
+--- PASS: TestBindResolutionRootsAreClosed (0.00s)
+=== RUN   TestBindResolutionRootsClosureRedProof
+    resolution_roots_arch_test.go:244: red-proof: injecting lookupBound(..., "page", ...) is observed as [params row data page], outside declared [data params row] — the guard reddens
+--- PASS: TestBindResolutionRootsClosureRedProof (0.00s)
+```
+
+Three literal `lookupBound` call sites observed (`params`, `row`, `data`), zero dynamic — the
+guard's non-literal-`rootName` `Fatalf` never fired. `TestBindResolutionRootsClosureRedProof`
+still reddens on the widened list: `page` remains outside `{data, params, row}`, proving AD-4's
+fence survived the widening.
+
 ### Deltas against baseline
+
+Measured through `env CGO_ENABLED=0 GOWORK=off rtk proxy "go test -count=1 -v ./..."` inside
+`folio-go`, package scope `./...`:
+
+| Scope | Baseline (`e7f3f9c`) | This story | Delta |
+|---|---|---|---|
+| all-occurrence (`--- PASS` anywhere, subtests included) | 600 / 1 / 1 | **617 / 1 / 1** | +17 PASS |
+| top-level (`^--- PASS`) | 368 / 1 / 1 | **378 / 1 / 1** | +10 PASS |
+
+The one FAIL is still `TestCorpusMeetsP6ExerciseFloors` (REQUIRED red, D-000.17/D-000.57), with
+**byte-identical** stats: `P6 stats: {P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}` — same
+`corpus_test.go:189` message (`P6g (opaque names) floor not met: got 7, need >=20`). The one SKIP
+is still `TestXrefEntriesRejectsMalformedSubprocess`, unchanged.
+
+**Every delta, itemised** (10 new top-level tests, +7 more at all-occurrence from subtests = +17):
+
+1. `TestRenderTableBindNonArrayFailsRender` — new — AC5. +1 top-level +4 subtests
+   (`absent`/`scalar`/`object`/`null`) = 5.
+2. `TestRenderTableBindEmptyArrayIsNotAnError` — new — AC5's empty-array carve-out. +1.
+3. `TestRenderTableRowAliasCollidesWithReservedNameFailsRender` — new — D-3.1.1's OD-1 ruling. +1
+   top-level +3 subtests (`params`/`page`/`pages`) = 4.
+4. `TestScopeRowAliasResolvesCurrentRow` — new — AC1. +1.
+5. `TestScopeRowAliasFieldAbsentIsLocatedError` — new — AC1's AD-14 clause. +1.
+6. `TestScopeRowAliasDefaultsToRow` — new — AC2 (bind-package level). +1.
+7. `TestScopeRowNeverShadowsDocumentRoot` — new — AC3. +1.
+8. `TestScopeParamsUnshadowableByRow` — new — AC4. +1.
+9. `TestRowAliasDefaultsToRowAtResolutionTime` — new — AC2 through the real production
+   `resolvedRowAlias` default and the exported `bind.Resolve` API. +1.
+10. `TestRowAliasHonoursDeclaredAs` — new — AC1's counterpart to #9. +1.
+
+Total new: 10 top-level + 7 subtests = 17, matching the all-occurrence delta exactly.
+
+**`TestRenderScopeFenceIgnoresTableBind` — AMENDMENT, not a new test** (finding 4, itemised
+separately per AC8's own requirement, never folded into the count above): `table.bind` changed
+from the expression-shaped `"{{transactions[]}}"` (not a collection path, and the test's data
+supplied no `transactions`) to the bare collection path `"transactions[]"` with a real array
+supplied; `columns[0].bind` stays byte-for-byte expression-shaped. The test's own doc comment now
+says the fence it proves is the **column** fence. Still passes.
+
+**`go vet ./...`**: clean, no findings.
+
+**Lint suite** (`lint` module, `go test -count=1 ./...`): `TestManifestUpToDate`,
+`TestResolveAssetsIncludesWordlist` and `TestFontsAssetsNoticeRemovalRedProof` fail — all three
+pre-existing, unrelated to this story (`.font-sources` missing a `LICENSE*` file), confirmed
+present identically before any of this story's code changes were applied. Every rule this story's
+own scope fence touches is green: `TestAbsencesProductionScan` (confirms `internal/expr` and
+`internal/diag` are still absent — this story created neither), `TestFloatTypedProductionScan`
+(this story introduces no numeric type), `TestForbiddenImportsProductionScan`,
+`TestStageRankProductionScan` (no new import-rank violation). D-000.4: this story is not a matrix
+override; the cross-target matrix stays WRITTEN-not-run, due at Epic 3's close.
+
+**Lint suite wording — corrected by the finisher (Review Finding 4).** The paragraph above calls
+the three failures "pre-existing, unrelated to this story," which is true but incomplete in a way
+that misleads a later reader checking a clean checkout. The reviewer traced them to `/.font-sources/`
+— gitignored at `.gitignore:85`, three untracked font binaries with no `LICENSE*`/`NOTICE*` file,
+present only on this working machine. The finisher independently re-verified: `.font-sources/` is
+untracked (`git status --short --untracked-files=all -- .font-sources` empty of any tracked entry,
+`git check-ignore -v` confirms `.gitignore:85`), and re-running the lint suite reproduces the exact
+same three failures, all bottoming out in `.font-sources: contains a committed font binary but no
+LICENSE* file (AC25, AD-26)`. A fresh clone or CI checkout carries no `.font-sources/` directory at
+all, so the lint suite is green there — this is local machine state, not repository state, and no
+code or repository change addresses it.
+
+### Deltas against baseline (finisher re-measurement, post-fix)
+
+Measured through `env CGO_ENABLED=0 GOWORK=off go test -count=1 -json ./...` inside `folio-go`,
+package scope `./...`, parsed via `test2json` action fields (not a summary line):
+
+| Scope | Baseline (`72cfc6a`) | Developer handoff | This finisher's fixes | Delta (finisher → baseline) |
+|---|---|---|---|---|
+| all-occurrence | 600 / 1 / 1 | 617 / 1 / 1 | **619 / 1 / 1** | +19 PASS |
+| top-level | 368 / 1 / 1 | 378 / 1 / 1 | **380 / 1 / 1** | +12 PASS |
+
+The finisher added exactly 2 new top-level tests, 0 subtests, accounting for the +2/+2 over the
+developer's handoff numbers:
+
+1. `TestScopeParamsUnshadowableEvenByRowAliasedParams` (`internal/bind/scope_test.go`) — Finding 2's
+   fix. +1 top-level, +1 all-occurrence.
+2. `TestScopeRowAliasBareIsLocatedError` (`internal/bind/scope_test.go`) — Finding 3's fix. +1
+   top-level, +1 all-occurrence.
+
+Finding 1's fix strengthened an existing test's assertion (`TestRenderTableRowAliasCollidesWithReservedNameFailsRender`)
+without adding a test or subtest — 0 delta from that fix.
+
+`TestCorpusMeetsP6ExerciseFloors` is still the single FAIL, re-confirmed **byte-identical**:
+`P6 stats: {P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}` (D-000.17/D-000.57 — still REQUIRED
+red). The one SKIP is still `TestXrefEntriesRejectsMalformedSubprocess`.
+
+**`go build ./...` and `go vet ./...`**: both clean, re-run after the fixes.
+
+**AC7 re-verified after the fixes**: `git status --short --untracked-files=all` on
+`folio-go/testdata/` and `folio-go/fixtures/` is empty (no golden modified or added); every
+golden/digest test (`TestRenderMatchesGoldenFixture`, `TestGoldenDigestAgreesAtEveryDeclaredSite`,
+`TestBoundaryGateDigestsAreWellFormed`, `TestEveryGoldenPDFResolvesItsPageTree` and its 9 subtests,
+and the rest of the AC7 set the developer named) passes. Zero byte movement, measured after the
+finisher's edits — not merely inferred from "the fixes only touched test files."
+
+**Frozen-function check re-verified**: `parseBindingPath` and `isValidIdent`, extracted from
+`72cfc6a` and from the post-fix working tree, hash SHA-256 identical (`d421af844648f219…`,
+`77e4d9548f2a63c3…`) — matching the reviewer's recorded values exactly. No production code was
+touched by any of the three fixes; the finisher's diff is test-file-only.
+
+**Cross-target matrix**: written-not-run for this story, due at Epic 3's close (D-000.4). The
+finisher's fixes are test-only and not matrix-facing, so this status is unchanged by the finish
+pass.
+
+### File List
+
+- `folio-go/internal/bind/scope.go` — new — `Scope`, `NewScope`, `WithRow`.
+- `folio-go/internal/bind/scope_test.go` — new (dev), modified (finisher) — AC1-AC4 tests via
+  `bind.Resolve` directly; finisher added `TestScopeParamsUnshadowableEvenByRowAliasedParams`
+  (Finding 2) and `TestScopeRowAliasBareIsLocatedError` (Finding 3).
+- `folio-go/internal/bind/text.go` — modified — `declaredResolutionRoots` widened to
+  `{"data", "params", "row"}`; `BindTextSpans`'s body renamed/exported as `Resolve(text string,
+  scope Scope, elementID string)`; `BindTextSpans` now a thin wrapper; row-scope dispatch branch
+  added between the `params` branch and the final data-root lookup.
+- `folio-go/render.go` — modified — `resolvedRowAlias` and `checkTableBindings` added; the latter
+  wired into `renderDocument` right after `documentBands`, before `collectImageRuns`.
+- `folio-go/render_table_bind_test.go` — new (dev), modified (finisher) — AC5 (re-homed from the
+  scratch fixture) plus the empty-array carve-out and D-3.1.1's OD-1 alias-collision red-proof;
+  finisher strengthened `TestRenderTableRowAliasCollidesWithReservedNameFailsRender`'s assertion to
+  discriminate the interpolated alias from the message's static text (Finding 1).
+- `folio-go/render_bind_test.go` — modified — `bindTestTemplateJSON`'s `table.bind` amended to a
+  bare collection path with a real array supplied (finding 4);
+  `TestRenderScopeFenceIgnoresTableBind`'s doc comment amended to describe the column fence.
+- `folio-go/row_scope_test.go` — new — AC1/AC2 exercised through the real `resolvedRowAlias`
+  default and the exported `bind.Resolve`/`bind.NewScope` API.
+- `folio-go/zz_scratch_ac5_test.go` — added then removed (task 1's fixture, re-homed at task 8/9;
+  not present at handoff).
+- `_bmad-output/implementation-artifacts/3-1-bind-a-repeating-region-to-a-collection-with-an-explicit-row.md`
+  — this file — task checkboxes, Status, Dev Agent Record, Review Findings, Finding Resolutions
+  (finisher), plain-terms opener rewritten to state the result.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `epic-3: backlog` → `in-progress`
+  (dev); `3-1-…: ready-for-dev` → `review` (dev) → `done` (finisher). `epic-3` left `in-progress`
+  — the epic gate is not this story's to flip.
+- `_bmad-output/implementation-artifacts/folio-mvp-decision-log.md` — D-3.1.1/D-000.59 (and
+  three further Epic 3 rulings) already recorded by the orchestrator before this story's code was
+  touched; unedited by this story's own work or by the finisher (no new decision was needed to
+  dispose of any review finding).
+
+### Change Log
+
+- 2026-08-25 — Story 3.1 implemented: row-scope resolution (`internal/bind.Scope`) as a third
+  resolution root (`"row"`, D-3.1.1), the declared-alias/default-`row` dispatch (AC1/AC2), the
+  root-never-shadowed and params-unshadowable properties proved under a row scope (AC3/AC4), the
+  collection-bind not-an-array render check (AC5), and D-3.1.1's ruling on the creator's OD-1 (an
+  alias colliding with `params`/`page`/`pages` is a located template error). No row generation, no
+  expression evaluation, no aggregates — all deferred to their owning stories per the scope fence.
+- 2026-08-25 — Story 3.1 finished: adversarial review returned 1 Major, 2 Minor, 1 Nit. All four
+  resolved — three fixed with a captured red-proof each (a test whose assertion could not
+  discriminate a correct value from a wrong one, strengthened and confirmed to redden on the
+  reviewer's own mutation; two coverage gaps closed with new tests, each verified against the
+  specific defect it targets), one dismissed with independently re-verified evidence (a lint
+  wording issue traced to gitignored local machine state, not repository state). No production
+  code changed — every fix is test-file-only; `parseBindingPath`/`isValidIdent` re-verified
+  SHA-256-identical to `72cfc6a`. Full suite, `go vet`, `go build`, and the lint suite re-run;
+  `TestCorpusMeetsP6ExerciseFloors` re-confirmed the single REQUIRED red with byte-identical stats;
+  AC7 byte-identity re-verified. Status → `done`.
+
+---
+
+## Review Findings
+
+## Review Summary
+- **Reviewed by:** bmad-code-reviewer (adversarial, context isolated from the developer's)
+- **Date:** 2026-08-25
+- **Story Status Recommendation:** **Changes Requested**
+- **Blockers:** 0
+- **Majors:** 1
+- **Minors:** 2
+- **Nits:** 1
+
+Every number below was re-measured by the reviewer, not read from the Dev Agent Record. The
+working tree was mutated for red-proofs and restored **by hand** from saved copies (never
+`git checkout`); `render.go`, `internal/bind/text.go` and `internal/bind/scope_test.go` were
+re-verified SHA-256-identical afterwards and `git status --short --untracked-files=all` matches
+the pre-review snapshot exactly.
+
+### Independently verified — the reported measurements are accurate
+
+- **Counts confirmed.** Parsed from `go test -json` (test2json), not from a summary line.
+  Working tree: **617 PASS / 1 FAIL / 1 SKIP** all-occurrence, **378 / 1 / 1** top-level.
+  Baseline re-run by the reviewer in a **clean `git worktree` at `72cfc6a`**: **600 / 1 / 1** and
+  **368 / 1 / 1**. Delta **+17 / +10**, **zero tests removed**. The developer's itemisation of the
+  10 new top-level tests matches the measured added-name set exactly.
+- **CRITICAL INVARIANT HOLDS.** `TestCorpusMeetsP6ExerciseFloors` is **still the single FAIL**, with
+  stats **byte-identical**: `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`,
+  same `corpus_test.go:189` message. No floor was filled. The single SKIP is still
+  `TestXrefEntriesRejectsMalformedSubprocess`.
+- **D-3.1.1's freeze holds.** `parseBindingPath` and `isValidIdent` extracted from `72cfc6a` and
+  from the working tree and hashed: **SHA-256 identical** (`d421af844648f219`, `77e4d9548f2a63c3`).
+  No new accepted character or shape; **no second path matcher** anywhere; **no** function-call
+  special-case; `reservedPlaceholders` untouched (the alias was **not** added to it, per D-1.7.4);
+  the `rootName` passed to `lookupBound` is the **literal** `"row"` and `scope.rowAlias` is used
+  only for the branch condition and error text.
+- **AC6 re-run by the reviewer.** `TestBindResolutionRootsAreClosed` passes with
+  `[data params row]`, **3 literal call sites, 0 dynamic**;
+  `TestBindResolutionRootsClosureRedProof` still reddens on an injected `"page"`. AD-4's fence
+  survived the widening.
+- **The known guard weakness was NOT walked into.** The Story 2.5 review (Blocker 2) recorded that
+  `TestBindResolutionRootsAreClosed` can be defeated by a dispatch that early-returns without ever
+  calling `lookupBound`. The row branch's main arm (`len(path) >= 2`) **does** call
+  `lookupBound(scope.row, …, "row", …)`, and the guard demonstrably observes it. The closed-set
+  guard is **not** green-while-blind. (One narrow sub-case does early-return — see Finding 3.)
+- **AD-23.** No `float64`, `float32`, `big.Float` or `big.Rat` introduced in any changed or new
+  file (checked by eye, since D-3.1a.1 records the guard cannot see `math/big.Float`).
+- **`go vet ./...` clean; `go build ./...` clean** (both re-run).
+- **AC7 substantiated.** No file under `folio-go/testdata/` or `folio-go/fixtures/` is modified or
+  added (`git status --untracked-files=all` on those trees is empty), and every golden/digest test
+  passes. Byte identity is measured, not inferred.
+- **Check placement is correct and universal.** `checkTableBindings` sits immediately after
+  `documentBands` and before `pageGeometryOf`/`collectImageRuns`, as finding 8 requires.
+  `renderDocument` has exactly **one** call site (`render_entry.go:172`), through which **both**
+  `Render` and `RenderTo` pass — the check runs on every path that renders.
+- **The `render_bind_test.go` amendment did NOT weaken the fence.** Reviewer probe: feeding
+  `columns[0].bind`'s value through `bind.BindTextSpans` still errors
+  (`"formatNumber(transaction" is not a valid path segment`), so D-1.6.8's **column** fence retains
+  its teeth. The table half of the old claim is genuinely gone, and the amended doc comment says
+  so explicitly rather than papering over it. Assertion strength unchanged. No silent coverage loss.
+- **Degenerate collection binds are safe.** Reviewer probe of `""`, `"[]"`, `"transactions[][]"`,
+  `"transactions[].payee"`, `"."`, `"a..b"`: all produce located errors; none silently passes.
+
+---
+
+### Finding 1: The OD-1 alias-collision test cannot tell a correct alias from a wrong one
+- **Severity**: Major
+- **Category**: Tests
+- **Location**: `folio-go/render_table_bind_test.go:133-136` (assertion) against
+  `folio-go/render.go:280-286` (message construction)
+- **Observation**: The located error's **static** explanatory text enumerates all three reserved
+  names at once — `"params" can be shadowed by nothing (AD-11) and "page"/"pages" never acquire a
+  namespace (AD-4)`. The test asserts only `strings.Contains(msg, alias)`. Because every one of
+  `params`, `page`, `pages` appears in the constant text regardless of what `%q` interpolates, the
+  assertion is satisfied by the constant, not by the reported value.
+  **Red-proof captured by the reviewer**: replacing the interpolated `alias` argument with the
+  literal `"zzzWRONGzzz"` left **all three subtests PASSING**, logging
+  `table's row alias "zzzWRONGzzz" collides with a reserved name — "params" can be shadowed by …`.
+  A separate mutation disabling the alias check entirely **does** redden all three, so the check's
+  existence and its precedence over the collection-bind check are genuinely proved — it is
+  specifically the "names the colliding alias" claim that is unfalsifiable.
+- **Impact**: The Delivery Log (task 8) and the Change Log present this test as the red-proof of
+  D-3.1.1's OD-1 Arm B ruling. Arm B's literal wording is "a **located** template error naming the
+  **element**", and the element half (`e2`, sourced only from `el.ID`) does hold. But the test
+  advertises a stronger claim than it can support, and a future regression that reported the wrong
+  alias — or a constant one — would ship green. This is the project's own "a test that cannot fail
+  is not a test" rule applied to one of the two assertions in a new red-proof.
+- **Suggested Resolution**: Assert on the *interpolated* region rather than on any substring of the
+  whole message — e.g. require `msg` to contain `row alias "` + alias + `"` — or stop enumerating
+  all three reserved names in the constant text. Then re-run the `"zzzWRONGzzz"` mutation above and
+  confirm it reddens. **Not fixed by the reviewer.**
+- **Related AC**: OD-1 / D-3.1.1 (Arm B); AC5's neighbouring check
+
+### Finding 2: AC4's mandated third value is inert — the fixture cannot discriminate params-vs-row precedence
+- **Severity**: Minor
+- **Category**: Tests
+- **Location**: `folio-go/internal/bind/scope_test.go:115-137`
+  (`TestScopeParamsUnshadowableByRow`)
+- **Observation**: AC4's subject requirement is that report data, the current row **and** params
+  each carry a *different* `params.reportDate` value. The fixture supplies all three, but the row
+  is registered under the alias `"transaction"`, so `{{params.reportDate}}` can never select the
+  row branch under **any** dispatch order — `path[0]` is `"params"`, which never equals
+  `"transaction"`. The row's `FROM-ROW` value is therefore unreachable by construction.
+  **Red-proof captured by the reviewer**: replacing the row fixture with `{}` (no `params` key at
+  all) left the test **PASSING**. The third value contributes nothing falsifiable.
+- **Impact**: The property AC4 asserts *does* hold — a reviewer probe with the one input that could
+  falsify it, `WithRow(row, "params")`, returned `FROM-PARAMS` — so this is a coverage gap, not a
+  bug. But the test discriminates only params-vs-**data** (which is the pre-existing, pre-3.1
+  behaviour), not params-vs-**row**, which is the clause this story added. The subject requirement
+  is met in letter and not in substance. Worth noting that the alias ban lives in `render.go`'s
+  `checkTableBindings` while `bind.Scope.WithRow` accepts any alias string, so inside package
+  `bind` the branch **order** is the only thing protecting `params`.
+- **Suggested Resolution**: Either add the discriminating case at bind level
+  (`WithRow(row, "params")`, assert `FROM-PARAMS`) — the story forbade exactly this while OD-1 was
+  unruled, but OD-1 has since been ruled Arm B, so that prohibition has lapsed and was never
+  revisited — or record explicitly in the story that the row's value is inert and that the property
+  rests on branch order plus the render-level alias ban. **Not fixed by the reviewer.**
+- **Related AC**: AC4
+
+### Finding 3: The new bare-row-alias error path has no test and no AC
+- **Severity**: Minor
+- **Category**: Tests / AC Conformance
+- **Location**: `folio-go/internal/bind/text.go:242-245`
+- **Observation**: The row branch returns early when `len(path) == 1`, emitting
+  `bind: element e2: "transaction" is a namespace, not a value` (reviewer-confirmed by probe). No
+  test in the repository exercises it: the only test referencing that message
+  (`internal/bind/text_test.go:296-307`) covers the **params** twin at `text.go:218`. The behaviour
+  is not required by any of AC0–AC8 — the developer added it by analogy to AC17 — and it is not
+  listed among the 10 itemised new tests.
+- **Impact**: A new production error path ships unasserted. Separately, this sub-case is an early
+  return that never reaches `lookupBound` — the same shape the Story 2.5 review flagged as the
+  closed-set guard's blind spot. It does **not** defeat the guard here (the `len(path) >= 2` arm
+  supplies the observed `"row"` root, independently confirmed), but the story should say that
+  rather than let the guard's green imply the whole branch is covered.
+- **Suggested Resolution**: Add a one-line assertion mirroring `text_test.go:296-307` for the row
+  alias, or record the behaviour in the story as deliberate and knowingly unasserted. **Not fixed
+  by the reviewer.**
+- **Related AC**: AC1/AC2 (the row branch), AC6 (guard reach)
+
+### Finding 4: Three lint failures are attributed to the repository but come from gitignored local state
+- **Severity**: Nit
+- **Category**: Maintainability (record accuracy)
+- **Location**: Dev Agent Record, "Lint suite" paragraph
+- **Observation**: The record says `TestManifestUpToDate`, `TestResolveAssetsIncludesWordlist` and
+  `TestFontsAssetsNoticeRemovalRedProof` fail and are "pre-existing, unrelated to this story". The
+  "unrelated to this story" half is **correct and confirmed**. But the reviewer ran the lint module
+  in a clean worktree at `72cfc6a`, where it passes **85/85, exit 0**. The three failures are
+  produced by `/.font-sources/` — gitignored at `.gitignore:85`, three untracked font binaries with
+  no `LICENSE*`/`NOTICE*` file, present only in this working copy and absent from any fresh clone
+  or CI checkout.
+- **Impact**: A later reader reconciling this record against a clean checkout will find a green
+  lint suite and be unable to reproduce three "pre-existing" failures, or will wrongly conclude the
+  repository carries three broken lint tests.
+- **Suggested Resolution**: Reword to name the cause — untracked local `.font-sources/` — and note
+  that the lint suite is green on a clean tree. **Not fixed by the reviewer.**
+- **Related AC**: AC8 (delta reporting)
+
+### AC-by-AC disposition
+
+| AC | Disposition |
+|---|---|
+| **AC0** | **Satisfied.** One dispatch (`Resolve`); `BindText`/`BindTextSpans` are thin wrappers with no row; `internal/bind`'s existing suite passes **unedited** (`text_test.go` untouched — confirmed by diff) and every message is byte-identical. |
+| **AC1** | **Satisfied.** Two rows, different values for the same field, asserted against **both**, plus an explicit `got1 == got2` guard that fails if the current row was not consulted. AD-14's absent-field clause asserted with a located error naming the **author's** alias. |
+| **AC2** | **Satisfied.** Default applied at resolution time via the real production `resolvedRowAlias`, exercised with a genuinely absent `Presence`. `TableExt.As` is not defaulted at load; `parse_bands.go`/`model.go` unchanged; round-trip fixed point undisturbed. |
+| **AC3** | **Satisfied.** Both roots carry the colliding key with different values; the assertion is on the returned string equalling the **root's** value, and the nested two-segment case is covered. Non-vacuous. |
+| **AC4** | **Satisfied in substance, weakly proved — see Finding 2.** The property holds (reviewer-probed); the no-row baseline case is asserted as required; but the row's value in the fixture is inert. |
+| **AC5** | **Satisfied.** All four non-array shapes plus the empty-array carve-out, asserted on the returned error's **text** against the bind *as authored* and the element id (D-000.13/D-000.21 respected — no bare exit status, no intermediate struct). Reviewer confirmed all four were successful renders at baseline and are located errors now. |
+| **AC6** | **Satisfied.** Independently re-run: `[data params row]`, 3 literal sites, 0 dynamic; the `"page"` closure red-proof still reddens. |
+| **AC7** | **Satisfied.** Zero byte movement, measured: no golden/fixture file modified or added, every golden/digest test green. |
+| **AC8** | **Satisfied, with Finding 4 on the lint wording.** Counts, both scopes, the REQUIRED red and its byte-identical stats, the +17/+10 delta, and the `TestRenderScopeFenceIgnoresTableBind` amendment-not-a-new-test itemisation all independently reproduced. |
+
+### Scope-fence compliance (all confirmed clean)
+
+`internal/expr` and `internal/diag` were **not** created; **no absence rule was deleted or edited**
+(`TestAbsencesProductionScan` green); the path grammar was not extended; no aggregates, no locale
+formatting, no `visibleIf`, no CLI; no new load-time rule; `page`/`pages` remain reserved tokens
+resolved from neither root (reviewer probe: `{{page}}` under an active row aliased `"page"` still
+passes through literally as `{{page}}`); the row scope carries `bind.Value` with literal number
+text intact, so Story 3.3's exact-decimal option is preserved. The cross-target matrix was **not**
+run (written-not-run, due at Epic 3's close, per D-000.4); the new code is not matrix-facing.
+
+---
+
+## Finding Resolutions (finisher)
+
+Triage and disposition of each finding in *Review Findings* above, applied under orchestrator
+direction. All four are closed; nothing is deferred.
+
+### Finding 1 (Major) — the OD-1 alias-collision test cannot tell a correct alias from a wrong one
+
+**Decision: FIX.**
+
+**Rationale:** The reviewer's own red-proof (substituting the literal `"zzzWRONGzzz"` for the
+interpolated alias at `render.go:285` left all three subtests green) proves the assertion is
+satisfied by the message's static enumeration, not by the interpolated value. This test is presented
+in the Delivery Log as the red-proof of D-3.1.1's OD-1 ruling, which requires the message to name
+**the colliding alias** (AD-14/AC5's located-error discipline) — a test offered as that proof must be
+able to fail on that specific claim, per D-000.9.
+
+**Fix applied:** `folio-go/render_table_bind_test.go`, `TestRenderTableRowAliasCollidesWithReservedNameFailsRender` —
+the assertion now requires the exact substring `row alias "<alias>" collides`, which only a correct
+interpolation of `alias` can produce; the static enumeration of `params`/`page`/`pages` never
+contains this substring verbatim for a wrong value.
+
+**Red-proof (re-run, D-000.30):** restored the reviewer's own mutation — hand-edited `render.go`'s
+`checkTableBindings` to pass the literal `"zzzWRONGzzz"` instead of the interpolated `alias` as the
+`%q` argument, ran the test, and confirmed all three subtests (`params`/`page`/`pages`) now **FAIL**:
+
+```
+render_table_bind_test.go:148: error must name the colliding alias via interpolation
+  (want "row alias \"params\" collides");
+  got "folio: Render: element e2: table's row alias \"zzzWRONGzzz\" collides with a reserved name — …"
+```
+
+`render.go` was then restored from a saved copy (never `git checkout`) and verified SHA-256
+identical to its pre-mutation state; the tightened test passes green again on the restored file.
+
+### Finding 2 (Minor) — AC4's mandated third value is inert
+
+**Decision: FIX.**
+
+**Rationale:** The reviewer's probe (`WithRow(row, "params")` → `FROM-PARAMS`) confirmed the
+property AC4 asserts does hold; the gap is that the *existing* fixture (row aliased `"transaction"`)
+can never select the row branch when resolving `{{params.reportDate}}`, so it discriminates only
+params-vs-**data** (pre-existing, pre-3.1 behaviour), not params-vs-**row** (the clause this story
+added. The story's own text forbade constructing the discriminating case while OD-1 was unruled;
+OD-1 is now ruled (D-3.1.1, Arm B), so that prohibition has lapsed, exactly as the orchestrator's
+direction notes.
+
+**Fix applied:** `folio-go/internal/bind/scope_test.go`, new test
+`TestScopeParamsUnshadowableEvenByRowAliasedParams` — constructed at bind level (below
+`render.go`'s `checkTableBindings` alias ban, which does not exist inside package `bind`) with a row
+aliased literally `"params"`, proving that dispatch **order** — not the render-level alias ban — is
+what protects the params root from a row inside package `bind` itself.
+
+**Red-proof:** hand-swapped the order of the `params` and row dispatch branches in
+`internal/bind/text.go` (row checked before params) and ran the new test: it failed, returning
+`"FROM-ROW"` where `"FROM-PARAMS"` was required — confirming the test discriminates precedence, not
+merely presence. The existing `TestScopeParamsUnshadowableByRow` stayed green under the same
+mutation, confirming *that* test genuinely cannot see this defect (as Finding 2 observed). `text.go`
+was restored from a saved copy and verified SHA-256 identical to its pre-mutation state.
+
+### Finding 3 (Minor) — the new bare-row-alias error path has no test and no AC
+
+**Decision: FIX.**
+
+**Rationale:** A new production error path (a bare row alias, e.g. `{{transaction}}` with no dot)
+shipped unasserted. The reviewer additionally flagged that this is an early return that never
+reaches `lookupBound` — the shape Story 2.5's review flagged as able to defeat
+`TestBindResolutionRootsAreClosed`'s closed-set guard.
+
+**Fix applied:** `folio-go/internal/bind/scope_test.go`, new test
+`TestScopeRowAliasBareIsLocatedError`, mirroring the existing params twin
+(`TestBindTextParamsBareIsLocatedError`). Its doc comment states explicitly, per the orchestrator's
+direction, that this early return does **not** defeat the closed-set guard here: the row branch's
+other arm (`len(path) >= 2`) independently supplies the literal `"row"` rootName to `lookupBound`,
+so the guard's `[data params row]` observation does not depend on the bare-alias sub-case ever
+executing — it was simply unasserted by any AC0–AC8 obligation, now closed.
+
+**Red-proof:** disabled the bare-alias early return in `internal/bind/text.go` (`if false && len(path)
+== 1`) and ran the new test: it failed — the call fell through to `lookupBound` on an empty
+sub-path and produced a different (and still erroneous) message, `"…is a object, not a string —
+text bindings are never coerced"`, confirming the assertion actually depends on the early return
+existing. `text.go` was restored from a saved copy and verified SHA-256 identical to its
+pre-mutation state.
+
+### Finding 4 (Nit) — three lint failures attributed to the repository actually come from gitignored local state
+
+**Decision: DISMISS.**
+
+**Rationale:** Independently re-verified: `.font-sources/` is gitignored (`.gitignore:85`) and
+`git status --short --untracked-files=all -- .font-sources` shows it untracked; running the lint
+module here reproduces the reviewer's exact three failures
+(`TestManifestUpToDate`, `TestResolveAssetsIncludesWordlist`, `TestFontsAssetsNoticeRemovalRedProof`),
+all tracing to `.font-sources: contains a committed font binary but no LICENSE* file`. This is local
+machine state, not repository state — a fresh clone or CI checkout will not carry `.font-sources/` at
+all. The reviewer's own clean-worktree run at `72cfc6a` (85/85, exit 0) is taken as established; the
+finisher did not re-run a second clean-worktree check, since the untracked-file evidence above is
+independently sufficient to explain the divergence without one. No fix is applicable — "fixing" a
+gitignored local directory would not change repository state and is out of scope. The Dev Agent
+Record's "Lint suite" paragraph is corrected below to name the cause.
+
+**Record correction:** see the "Lint suite wording — corrected by the finisher" paragraph in the
+Dev Agent Record's *Deltas against baseline* section above, which replaces the "pre-existing,
+unrelated to this story" wording with the untracked `.font-sources/` cause and the clean-tree
+comparison.

@@ -6,17 +6,26 @@ import (
 )
 
 // bindTestTemplateJSON is a `.folio` document with one text element
-// bound to report data (AC15) and one table element whose bind/columns
-// are expression-shaped (M-4/AC20) — table.bind and columns[].bind are
-// never scanned by Render's binding (AC20's field-scope fence): only
-// text-element `value` interpolation is (D-1.6.5, D-1.6.8).
+// bound to report data (AC15) and one table element.
+//
+// Story 3.1 / finding 4: table.bind used to be "{{transactions[]}}" —
+// braces and all, which is not a collection path at all
+// (folio-format.md:211; D-2.4.1's "one path convention in the format,
+// not two" precedent) — and the data supplied no "transactions", which
+// source AC5 now makes a render error on its own. It is amended to the
+// bare collection path "transactions[]" with a real array supplied
+// below, while columns[0].bind STAYS expression-shaped exactly as it
+// was: this test's actual purpose (D-1.6.8's field-scope fence, "a
+// table's columns[].bind is never scanned by text binding") is
+// unchanged and still non-vacuous, because Story 3.1 does not evaluate
+// column binds either — that is Story 3.2.
 const bindTestTemplateJSON = `{
   "assets": {},
   "bands": {
     "content": {
       "elements": [
         {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "Statement for {{customer.name}}", "style": {"fontFamily": "body", "fontSize": 14}},
-        {"id": "e2", "type": "table", "x": 0, "y": 30, "bind": "{{transactions[]}}", "headerHeight": 20,
+        {"id": "e2", "type": "table", "x": 0, "y": 30, "bind": "transactions[]", "headerHeight": 20,
           "columns": [
             {"id": "e3", "label": "Amount", "width": 80, "bind": "{{formatNumber(transaction.amount, \"#,##0.00\")}}"}
           ]}
@@ -51,25 +60,33 @@ const bindTestTemplateJSON = `{
 }
 `
 
-// TestRenderScopeFenceIgnoresTableBind is AC20/D-1.6.8: a table's
-// bind/columns[].bind fields carry expression-shaped "{{…}}" content
-// (parentheses, a comma and quotes — three separate AC16 rejection
-// triggers) that would fail AC16's grammar if it were ever scanned.
-// Render succeeds anyway, because binding is scoped to text-element
-// `value` interpolation only (collectTextRuns skips every non-text
-// element, and is the ONLY call site of internal/bind.BindText) — this
-// is the shape M-4 found already living in the canonical golden
-// fixture (worked-example.json:19), reproduced here as a render-time
-// (not merely round-trip) proof.
+// TestRenderScopeFenceIgnoresTableBind is now the COLUMN fence,
+// AC20/D-1.6.8 (Story 3.1 amendment, finding 4): columns[0].bind
+// carries expression-shaped "{{…}}" content (parentheses, a comma and
+// quotes — three separate AC16 rejection triggers) that would fail
+// AC16's grammar if it were ever scanned as text. Render succeeds
+// anyway, because binding is scoped to text-element `value`
+// interpolation only (collectTextRuns skips every non-text element,
+// and is the ONLY call site of internal/bind.BindText) — this is the
+// shape M-4 found already living in the canonical golden fixture
+// (worked-example.json:19), reproduced here as a render-time (not
+// merely round-trip) proof.
+//
+// table.bind is READ, from this story on — as a collection path
+// (source AC5), never as interpolated text — so this template's
+// table.bind is now the bare path "transactions[]" with a real array
+// supplied, and does not, on its own, exercise AC20's fence; the fence
+// this test proves is columns[0].bind alone. Story 3.1 does not
+// evaluate column binds either — that stays Story 3.2's.
 func TestRenderScopeFenceIgnoresTableBind(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(bindTestTemplateJSON))
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	data := Data(`{"customer": {"name": "Ada Lovelace"}}`)
+	data := Data(`{"customer": {"name": "Ada Lovelace"}, "transactions": [{"amount": "1.00"}]}`)
 	res, err := Render(tpl, data, nil, testFontSet())
 	if err != nil {
-		t.Fatalf("Render must succeed despite the table's expression-shaped bind fields: %v", err)
+		t.Fatalf("Render must succeed despite the table column's expression-shaped bind field: %v", err)
 	}
 	if len(res.Bytes) == 0 {
 		t.Fatal("Render produced no bytes")
