@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	folio "github.com/panitw/folio/folio-go"
 )
@@ -79,8 +80,9 @@ import (
 // Story 2.5a moved these bytes precisely so that it is not asked for and
 // then invalidated (D-000.41).
 type goldenDigestSite struct {
-	// kind is one of "expected.json", "second-literal", "readme".
-	// The artifact itself is not listed: it is what gets hashed.
+	// kind is one of "expected.json", "second-literal", "readme",
+	// "signoff". The artifact itself is not listed: it is what gets
+	// hashed.
 	kind string
 	// relPath is repo-root-relative, or "" for "second-literal", which
 	// is this very declaration.
@@ -130,11 +132,21 @@ var goldenDigestRecord = []struct {
 	},
 	{
 		// Re-recorded by Story 2.5a. THE SIGN-OFF-BINDING FIXTURE.
+		//
+		// fixtures/shaped-text/thai-signoff.json was ADDED as a site here
+		// on the Epic 2 gate correction that followed the owner's
+		// sign-off (D-000.47): the record names this exact digest so a
+		// future re-record invalidates it by construction
+		// (shaped_signoff_matrix_test.go's assertSignOffMatchesFrozenHash
+		// enforces the SAME binding under -tags=matrix; this entry is
+		// what makes the completeness half of THIS guard, which runs in
+		// the ordinary suite, aware the site exists at all).
 		dir:    "shaped-text",
 		sha256: "6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370",
 		sites: []goldenDigestSite{
 			{kind: "expected.json", relPath: "fixtures/shaped-text/expected.json"},
 			{kind: "second-literal"},
+			{kind: "signoff", relPath: "fixtures/shaped-text/thai-signoff.json"},
 		},
 	},
 	{
@@ -332,6 +344,47 @@ func TestGoldenDigestAgreesAtEveryDeclaredSite(t *testing.T) {
 					t.Errorf("%s does not quote fixtures/%s's digest %s. A fixture's own documentation stating a digest the fixture no longer has is a silently lying artifact.\n%s", site.relPath, fx.dir, fx.sha256, goldenDigestRemedy)
 				}
 				checkedSites++
+			case "signoff":
+				// A human sign-off record — e.g.
+				// fixtures/shaped-text/thai-signoff.json — names, in its
+				// own "sha256" field, the exact digest the reader looked
+				// at. Read the same way as "expected.json" above (both
+				// are flat JSON objects with a top-level "sha256"
+				// string), but reported as what it is: a human record
+				// going stale, not a machine-derived fixture drifting.
+				path := filepath.Join(root, site.relPath)
+				body, rerr := os.ReadFile(path)
+				if rerr != nil {
+					t.Errorf("presence precondition: %s could not be read: %v", path, rerr)
+					continue
+				}
+				if len(body) == 0 {
+					t.Errorf("presence precondition: %s is empty", path)
+					continue
+				}
+				var raw map[string]any
+				if jerr := json.Unmarshal(body, &raw); jerr != nil {
+					t.Errorf("presence precondition: %s is not valid JSON: %v", path, jerr)
+					continue
+				}
+				field, present := raw["sha256"]
+				if !present {
+					t.Errorf("presence precondition: %s carries no \"sha256\" field — the property this test asserts does not live in this artifact", path)
+					continue
+				}
+				got, isString := field.(string)
+				if !isString {
+					t.Errorf("presence precondition: %s's \"sha256\" is %T, not a JSON string", path, field)
+					continue
+				}
+				if len(got) != 64 || strings.ToLower(got) != got {
+					t.Errorf("presence precondition: %s's \"sha256\" is %q, which is not 64 lowercase hex characters", path, got)
+					continue
+				}
+				if got != fx.sha256 {
+					t.Errorf("%s names digest %s, but fixtures/%s's declared digest is %s. The sign-off is STALE: the fixture moved since it was signed off, and D-2.3.5's anti-rot condition says that must invalidate the record, not survive it.", site.relPath, got, fx.dir, fx.sha256)
+				}
+				checkedSites++
 			default:
 				t.Errorf("%s declares a site of unknown kind %q", fx.dir, site.kind)
 			}
@@ -504,9 +557,9 @@ var declaredEpic2GateObligations = []string{
 // READ correctly" and "do these BREAK POINTS fall correctly" — and each
 // is tracked as its own deliberately-red gate-run test
 // (TestShapedTextThaiSemanticSignOffIsRecorded,
-// TestExpectedBreaksHumanSignOffIsRecorded). Each stays red until its
-// own sign-off file names a reader, a date, what they examined, and the
-// digest it certifies. No story creates either file — see (a).
+// TestExpectedBreaksHumanSignOffIsRecorded). Each stayed red until its
+// own sign-off file named a reader, a date, what they examined, and the
+// digest it certifies — see (a) for what this guard now does about it.
 //
 // D-000.26 (refined) is why they are two records and not one: a sign-off
 // binds to the artifact expressing the property judged. The reading
@@ -516,16 +569,56 @@ var declaredEpic2GateObligations = []string{
 func TestEpic2GateObligationsMatchTheDeclaredSet(t *testing.T) {
 	root := repoRootForByteNeutrality(t)
 
-	// (a) The sign-off obligations are still OUTSTANDING. If either file
-	//     appears, a human judgment has been given — a real event that
-	//     must be recorded deliberately by its owner, never as a side
-	//     effect of another story (D-000.28: a claim written before the
-	//     event it asserts is false from birth, and reads identically to
-	//     a true one).
-	signoff := filepath.Join(root, "fixtures", "shaped-text", "thai-signoff.json")
-	if _, err := os.Stat(signoff); err == nil {
-		t.Errorf("%s exists. No story may create it: it is D-2.3.5's outstanding gate obligation, and the record must name a real reader and a real date", signoff)
-	}
+	// (a) THE SIGN-OFF OBLIGATIONS ARE NOW DISCHARGED (Epic 2 gate
+	//     correction, following the owner's two sign-offs dated
+	//     2026-08-25). This block used to assert the OPPOSITE — that
+	//     fixtures/shaped-text/thai-signoff.json did not exist, because
+	//     no story is permitted to fabricate a human judgment
+	//     (D-000.28: a claim written before the event it asserts is
+	//     false from birth). That guard did its job: it stayed green
+	//     until a real sign-off landed, then failed the instant one did
+	//     — which was CORRECT, not a bug, because at that instant the
+	//     guard's premise ("this file must not exist yet") had just
+	//     become false. Its job is finished now that the premise it
+	//     policed no longer holds, and per the ruling binding this
+	//     correction — an absence guard is a placeholder for a presence
+	//     guard, and deleting it without landing the successor is how a
+	//     deferral is lost — it is REPLACED, not deleted, by a positive
+	//     assertion that each record is real and still binds.
+	//
+	//     "Still binds" is not "is present". A blank template or a
+	//     record left over a re-recorded fixture would both satisfy a
+	//     bare os.Stat and both are indistinguishable from nobody having
+	//     looked. So this checks the same three things
+	//     shaped_signoff_matrix_test.go and
+	//     expected_breaks_signoff_matrix_test.go check under
+	//     -tags=matrix — all four fields populated, the date parses as
+	//     ISO-8601, and the record's digest still equals what its
+	//     fixture hashes to NOW — in the ordinary suite, so a sign-off
+	//     going stale between gate runs is caught continuously rather
+	//     than only when the matrix build happens to run
+	//     (TestExpectedBreaksVectorIsPinnedInTheOrdinarySuite already
+	//     does this same "pin it in the ordinary suite, not only behind
+	//     the matrix tag" move for expected_breaks.json's digest itself,
+	//     D-2.6.4).
+	//
+	//     FINDING (D-000.42): the doc comment above this function used
+	//     to read "No story creates either file — see (a)". (a) never
+	//     covered both files — it only ever stat'd thai-signoff.json.
+	//     fixtures/expected-breaks/break-signoff.json was never checked
+	//     by this guard in either direction, which is exactly why its
+	//     arrival tripped nothing here: the comment overclaimed this
+	//     guard's reach for the entire time both sign-offs were
+	//     outstanding. Both records are checked below, symmetrically,
+	//     now that the gap is found.
+	assertSignOffIsRealAndStillBinding(t, root,
+		filepath.Join("fixtures", "shaped-text", "thai-signoff.json"),
+		liveShapedTextSignOffDigest(t, root),
+	)
+	assertSignOffIsRealAndStillBinding(t, root,
+		filepath.Join("fixtures", "expected-breaks", "break-signoff.json"),
+		liveExpectedBreaksDigest(t, root),
+	)
 
 	// (b) The OBSERVED obligation set, gathered from the tree itself.
 	moduleRoot := filepath.Join(root, "folio-go")
@@ -615,6 +708,114 @@ func TestEpic2GateObligationsMatchTheDeclaredSet(t *testing.T) {
 				o)
 		}
 	}
+}
+
+// assertSignOffIsRealAndStillBinding is (a)'s successor guard. It
+// asserts three things about the sign-off file at relPath, and reports
+// which one failed rather than a bare "invalid":
+//
+//  1. PRESENCE — the file exists and is valid JSON.
+//  2. COMPLETENESS — reader, date, examined and sha256 are all
+//     non-empty, and date parses as ISO-8601 (YYYY-MM-DD). A record
+//     missing any field is indistinguishable from no sign-off at all
+//     (the same bar shaped_signoff_matrix_test.go and
+//     expected_breaks_signoff_matrix_test.go hold their records to).
+//  3. STILL BINDING — the record's sha256 equals wantDigest, computed
+//     from the LIVE fixture at call time. A re-record moves wantDigest
+//     and this fails by construction (D-2.3.5's anti-rot condition),
+//     which is the entire reason the sign-off is checked against a
+//     recomputed value and not merely against its own past existence.
+func assertSignOffIsRealAndStillBinding(t *testing.T, root, relPath, wantDigest string) {
+	t.Helper()
+	path := filepath.Join(root, relPath)
+
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		t.Errorf("%s does not exist. Its own matrix-gated test (shaped_signoff_matrix_test.go or expected_breaks_signoff_matrix_test.go) still tracks that obligation as outstanding; this guard only asserts the record once it exists, so its absence here is not itself a failure of THIS guard — but if you expected it to be present, it is not.", relPath)
+		return
+	}
+	if err != nil {
+		t.Errorf("read %s: %v", relPath, err)
+		return
+	}
+
+	var rec struct {
+		Reader   string `json:"reader"`
+		Date     string `json:"date"`
+		Examined string `json:"examined"`
+		SHA256   string `json:"sha256"`
+	}
+	if uerr := json.Unmarshal(raw, &rec); uerr != nil {
+		t.Errorf("%s is not valid JSON: %v", relPath, uerr)
+		return
+	}
+
+	for _, f := range []struct{ name, value string }{
+		{"reader", rec.Reader},
+		{"date", rec.Date},
+		{"examined", rec.Examined},
+		{"sha256", rec.SHA256},
+	} {
+		if strings.TrimSpace(f.value) == "" {
+			t.Errorf("%s has an empty %q. A sign-off missing any field is indistinguishable from no sign-off at all.", relPath, f.name)
+		}
+	}
+	if _, derr := time.Parse("2006-01-02", rec.Date); derr != nil {
+		t.Errorf("%s's \"date\" %q does not parse as ISO-8601 (YYYY-MM-DD): %v", relPath, rec.Date, derr)
+	}
+	if rec.SHA256 != wantDigest {
+		t.Errorf(
+			"%s names digest %s, but the fixture it certifies now hashes to %s.\n\n"+
+				"The sign-off is STALE: the fixture moved since it was signed off, so the record applies to "+
+				"bytes nobody looked at. This is the anti-rot condition D-2.3.5 and D-2.4.3 both require — "+
+				"re-read the changed fixture and update both the digest and what was examined. Do not simply "+
+				"paste the new digest in.",
+			relPath, rec.SHA256, wantDigest)
+	}
+}
+
+// liveShapedTextSignOffDigest returns the digest fixtures/shaped-text's
+// Thai READING sign-off must currently name — read from
+// expected.json's own "sha256" field, the same value
+// shaped_signoff_matrix_test.go's assertSignOffMatchesFrozenHash binds
+// to. It is deliberately NOT sha256(expected.json)'s own bytes: the
+// field is the fixture's self-declared digest of expected.pdf, which is
+// the artifact the human sign-off is actually about.
+func liveShapedTextSignOffDigest(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "fixtures", "shaped-text", "expected.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var doc struct {
+		SHA256 string `json:"sha256"`
+	}
+	if uerr := json.Unmarshal(body, &doc); uerr != nil {
+		t.Fatalf("%s is not valid JSON: %v", path, uerr)
+	}
+	if strings.TrimSpace(doc.SHA256) == "" {
+		t.Fatalf("%s carries no sha256 to bind the sign-off to", path)
+	}
+	return doc.SHA256
+}
+
+// liveExpectedBreaksDigest returns the digest fixtures/expected-breaks's
+// BREAK sign-off must currently name — the sha256 of
+// expected_breaks.json's own bytes, computed fresh rather than read from
+// expectedBreaksDigest's literal in expected_breaks_digest_test.go. Two
+// independently-computed values agreeing is a stronger presence claim
+// than one value asserted twice, and the two guards exist for different
+// reasons (D-2.6.4 pins the fixture; this pins the sign-off to it).
+func liveExpectedBreaksDigest(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "fixtures", "expected-breaks", "expected_breaks.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
 }
 
 // hasMatrixBuildConstraint reports whether src carries an actual
