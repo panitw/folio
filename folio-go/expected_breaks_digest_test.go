@@ -62,7 +62,7 @@ import (
 // edit this line — and that edit is exactly the conversation this pin is
 // for, because the Thai break sign-off binds to the bytes this digest
 // names.
-const expectedBreaksDigest = "a545e04259033429d2cf8d1bba07f3137f6c0a106d635e918d31eabd599324de"
+const expectedBreaksDigest = "40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c"
 
 // TestExpectedBreaksVectorIsPinnedInTheOrdinarySuite is D-2.6.4.
 //

@@ -8,23 +8,52 @@
     "`expectedBreaks` is its arithmetic: the cumulative rune lengths of every word",
     "but the last. Check the WORDS; the numbers follow. Positions are RUNE indices.",
     "Every item is whitespace-free, so each break is zero-width and one position says",
-    "everything about it.",
+    "everything about it. `declaredAtomic: true` marks an item whose text is passed to",
+    "the engine as a DECLARED value (AD-25's third mechanism) rather than a bare",
+    "string - it is never split regardless of what a bare-string reading of the same",
+    "characters would propose.",
     "",
-    "A BREAK OPPORTUNITY IS NOT AN ETYMOLOGY. The first draft of this fixture split",
-    "thai-003..thai-010 into their historical morphemes - school as hall+study, train",
-    "as vehicle+fire - and labelled each seam as a break. That was wrong. Every one of",
-    "those eight is a single dictionary HEADWORD, and a reader no more breaks inside",
-    "them than an English reader breaks 'notebook' after 'note'. The labels were",
-    "corrected to one word each, on evidence independent of the engine's output",
-    "(headword membership in the shipped wordlist), and the eight now serve as the",
-    "fixture's negative controls: a lexicalised compound is NOT split. thai-001 and",
-    "thai-002 are the contrast - sequences that are NOT headwords, though both of",
-    "their parts are, and which therefore DO carry a break.",
+    "THERE IS NO RULE THAT PREDICTS THESE LABELS, AND THAT IS THE POINT. An earlier",
+    "revision of this file claimed thai-003..thai-010 were corrected to one word each",
+    "'on evidence independent of the engine's output (headword membership in the",
+    "shipped wordlist)'. The owner's 2026-08-24 hand-check falsified that claim:",
+    "measured against the shipped wordlist, thai-007/008/009 are headwords, so are",
+    "their split constituents, and so are all five items kept whole (thai-003/004/",
+    "005/006/010) and their constituents too. Headword membership does not, and",
+    "cannot, distinguish the three the owner split from the five they kept. These",
+    "labels are per-item native-speaker judgments. No rule derivable from the shipped",
+    "wordlist predicts them - this is AD-25's stated impossibility (the engine never",
+    "infers dictionary membership; it cannot, per the Surname Act argument), observed",
+    "here from the acceptability side rather than the surname side. The fixture is",
+    "the oracle BECAUSE no rule can replace it.",
     "",
-    "STATUS: authored by the Story 2.4 dev agent. The human hand-check is a SEPARATE,",
-    "PENDING Epic 2 gate obligation, bound to this file's own digest (D-2.4.3) and",
-    "distinct from the Thai RENDERING sign-off in fixtures/shaped-text/. A re-record",
-    "of either must invalidate exactly one of them."
+    "THREE STATES, RECORDED SEPARATELY - SILENCE IS NOT RATIFICATION.",
+    "Explicitly corrected by the owner's 2026-08-24 hand-check: thai-007, thai-008,",
+    "thai-009 (split - the engine's conservative 'no break' was too narrow for what a",
+    "reader accepts), and cjk-004, cjk-005, cjk-007 (declared unbreakable - a bare-",
+    "string reading proposed breaks a reader rejects for these specific values).",
+    "Explicitly declined: none remain - cjk-005 was re-asked with its actual break",
+    "positions shown (see its gloss) and the owner changed the answer.",
+    "Unremarked, therefore NOT ratified: thai-003, thai-004, thai-005, thai-006,",
+    "thai-010 (student, school, hospital, train, receipt) - never raised in the",
+    "hand-check, so their 'kept whole' labels stand only as the Story 2.4 agent's",
+    "original judgment, not as anything the owner has confirmed.",
+    "",
+    "AC14's exact-equality assertion has a small, enumerated, justified exception for",
+    "thai-007/008/009 - see TestS4ExpectedBreaksMatchTheEngine's s4ExpectedDivergences",
+    "in folio-go/internal/text/s4_expected_test.go. The engine cannot be made to",
+    "propose these breaks without inventing a heuristic (forbidden by AD-25) or",
+    "editing the shipped wordlist to make a real Thai word disappear (forbidden,",
+    "D-000.32) - the fixture stays the human oracle and the engine's conservative",
+    "shortfall is named and bounded instead of hidden inside a relaxed assertion.",
+    "",
+    "STATUS: authored by the Story 2.4 dev agent; corrected against the owner's",
+    "2026-08-24 hand-check (a standalone correction referencing Story 2.4, not a",
+    "reopening of it). The human SIGN-OFF is a SEPARATE, still-PENDING Epic 2 gate",
+    "obligation, requested only after this correction landed and bound to this",
+    "file's own (new) digest (D-2.4.3), distinct from the Thai RENDERING sign-off in",
+    "fixtures/shaped-text/. A re-record of either must invalidate exactly one of",
+    "them."
   ],
   "items": [
     {
@@ -91,28 +120,37 @@
       "id": "thai-007",
       "text": "หนังสือพิมพ์",
       "words": [
-        "หนังสือพิมพ์"
+        "หนังสือ",
+        "พิมพ์"
       ],
-      "expectedBreaks": [],
-      "gloss": "newspaper. Headword; book + print etymologically, ONE word for breaking."
+      "expectedBreaks": [
+        7
+      ],
+      "gloss": "newspaper. Headword — same as the five it was grouped with — but the owner's hand-check accepts a break here anyway. No property of the shipped wordlist predicts this: book + print are ALSO both headwords, exactly like the five kept whole. This is a per-item native-speaker judgment with no derivable rule behind it (D-2.4.10)."
     },
     {
       "id": "thai-008",
       "text": "วันเกิด",
       "words": [
-        "วันเกิด"
+        "วัน",
+        "เกิด"
       ],
-      "expectedBreaks": [],
-      "gloss": "birthday. Headword; day + born etymologically, ONE word for breaking."
+      "expectedBreaks": [
+        3
+      ],
+      "gloss": "birthday. Headword — same as the five it was grouped with — but the owner's hand-check accepts a break here anyway. No property of the shipped wordlist predicts this: day + born are ALSO both headwords, exactly like the five kept whole. This is a per-item native-speaker judgment with no derivable rule behind it (D-2.4.10)."
     },
     {
       "id": "thai-009",
       "text": "ที่อยู่",
       "words": [
-        "ที่อยู่"
+        "ที่",
+        "อยู่"
       ],
-      "expectedBreaks": [],
-      "gloss": "address. Headword; place + reside etymologically, ONE word for breaking."
+      "expectedBreaks": [
+        3
+      ],
+      "gloss": "address. Headword — same as the five it was grouped with — but the owner's hand-check accepts a break here anyway. No property of the shipped wordlist predicts this: place + reside are ALSO both headwords, exactly like the five kept whole. This is a per-item native-speaker judgment with no derivable rule behind it (D-2.4.10)."
     },
     {
       "id": "thai-010",
@@ -239,27 +277,21 @@
       "id": "cjk-004",
       "text": "北京",
       "words": [
-        "北",
-        "京"
+        "北京"
       ],
-      "expectedBreaks": [
-        1
-      ],
-      "gloss": "Beijing"
+      "expectedBreaks": [],
+      "declaredAtomic": true,
+      "gloss": "Beijing. The owner corrected this: a bare CJK run breaks between every character by rule (that IS correct for an undeclared string), but here the whole value is a place name and is DECLARED unbreakable — AD-25's third mechanism, a declared value is never split. This is a document-level fact about this value, not a property the engine infers from the characters."
     },
     {
       "id": "cjk-005",
       "text": "东京都",
       "words": [
-        "东",
-        "京",
-        "都"
+        "东京都"
       ],
-      "expectedBreaks": [
-        1,
-        2
-      ],
-      "gloss": "Tokyo Metropolis"
+      "expectedBreaks": [],
+      "declaredAtomic": true,
+      "gloss": "Tokyo Metropolis. Re-shown to the owner with its actual break positions (东|京|都, the break at rune 1 falling inside 东京/Tokyo itself) after the first question failed to discriminate 'treat like 北京' from 'breakable at the 都 boundary' — both readings implied the same words. The owner then gave this the same declared-unbreakable treatment as 北京."
     },
     {
       "id": "cjk-006",
@@ -279,19 +311,11 @@
       "id": "cjk-007",
       "text": "こんにちは",
       "words": [
-        "こ",
-        "ん",
-        "に",
-        "ち",
-        "は"
+        "こんにちは"
       ],
-      "expectedBreaks": [
-        1,
-        2,
-        3,
-        4
-      ],
-      "gloss": "hello - hiragana"
+      "expectedBreaks": [],
+      "declaredAtomic": true,
+      "gloss": "hello - hiragana. Flagged by the orchestrator and unremarked in the first hand-check; shown to the owner alongside cjk-005 (same shape as 北京 — every kana of a single word), and the owner gave it the same declared-unbreakable treatment."
     }
   ]
 }

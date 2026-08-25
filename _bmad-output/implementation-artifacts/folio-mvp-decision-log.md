@@ -8385,3 +8385,72 @@ until the correction lands.
 **For the gate note**: this is **the first time in the run that a mechanism produced a finding no agent
 could have reached.** Every other correction was found by an agent measuring something. **That is the
 argument for keeping scarce human sign-offs in the process at all.**
+
+---
+
+### D-2.4.12 — The owner's break hand-check applied: fixture corrected, both mechanisms exercised, sign-off requested
+
+*(mechanism: **applied**; discharges [[D-2.4.9]]/[[D-2.4.10]]/[[D-2.4.11]] against the fixture, does not
+reopen Story 2.4)*
+
+**Executed** (D-000.55, target `folio-go`): `fixtures/expected-breaks/expected_breaks.json` corrected
+against the owner's 2026-08-24 hand-check. `go build ./...`, `go test ./...` (600 PASS / 1 FAIL
+all-occurrences, 368/1 top-level, identical to the `91f0bd0` baseline including the sole expected
+`TestCorpusMeetsP6ExerciseFloors` shortfall), `go vet -tags matrix ./...`, and `go test -tags matrix
+./...` all run against the corrected tree.
+
+**Category A — [[D-2.4.9]]'s expressible direction, wired through the declaration channel it always
+had.** `cjk-004`, `cjk-005` (re-shown per [[D-2.4.11]]'s caveat, owner then declared it too) and
+`cjk-007` (shown, owner declared it) now carry `"declaredAtomic": true`. `s4_expected_test.go` passes
+it as `atomic` to `Opportunities` instead of `nil` — [[D-2.1.6]]'s channel gets its first fixture
+coverage. **Red-proved live**: with `cjk-004`'s declaration stripped, the engine reverts to proposing
+`[1]` and `TestS4ExpectedBreaksMatchTheEngine` reddens; file restored, confirmed byte-identical by
+diff.
+
+**Category B — [[D-2.4.9]]'s inexpressible direction, bounded by an enumerated divergence list.**
+`thai-007`/`008`/`009` relabelled (`words`, `expectedBreaks`, `gloss` — all three sites, [[D-000.48]]).
+AC14 gained `s4ExpectedDivergences`, asserted as **set equality** against the declared list
+([[D-2.5.1]]'s shape) — an undeclared mismatch still hard-fails, a declared entry that stops
+diverging hard-fails (stale-entry catch), and a declared entry whose engine-proposed positions are not
+a **subset** of the human label's hard-fails as **FAIL-OPEN and inadmissible**. **Red-proved live**: a
+bogus fail-open entry (engine proposing an extra break the label rejects) was added and rejected with
+the FAIL-OPEN message; both files restored, confirmed byte-identical by diff.
+
+**[[D-2.4.10]]'s falsification is now stated in the fixture itself, not just this log**: `_README` and
+`fixtures/expected-breaks/README.md` rewritten — no rule derivable from the shipped wordlist predicts
+these labels (measured: หนังสือพิมพ์/วันเกิด/ที่อยู่ and their constituents are ALL headwords, so are
+all five controls kept whole); the fixture is the oracle *because* no rule can replace it. Three
+states recorded: explicitly corrected (thai-007/008/009, cjk-004/005/007); explicitly declined (none
+remain); unremarked and NOT ratified (thai-003/004/005/006/010).
+
+**`folio-format.md` gained the stated, fail-closed capability limit** under [[D-000.6]]: no break
+falls inside a dictionary headword, including a lexicalised compound a native reader would accept
+breaking. `internal/template`'s doc-drift and worked-example golden tests were re-run and pass
+unaffected (the addition sits outside their fenced/tabular scan surfaces).
+
+**`expected_breaks_signoff_matrix_test.go`'s stale message corrected**: it no longer claims
+thai-003..thai-010 are uniformly "deliberately labelled as ONE word each" — it now names the
+thai-007/008/009 split and the cjk-004/005/007 declarations by ID.
+
+**The digest moved at its one declared, non-matrix-tagged site**
+(`folio-go/expected_breaks_digest_test.go`'s `expectedBreaksDigest`), from
+`a545e04259033429d2cf8d1bba07f3137f6c0a106d635e918d31eabd599324de` to
+`40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c`. **Confirmed, not assumed**:
+`byte_neutrality_test.go`'s `goldenDigestRemedy` message still tells the truth for this change — it
+governs `goldenDigestRecord`'s PDF-golden literals, none of which moved, and this artifact is
+deliberately outside that record's scope (it is not a PDF golden); `TestGoldenDigestAgreesAtEveryDeclaredSite`
+still passes. `TestS4ExpectedBreaksAreLabelsNotEngineOutput` confirmed to survive unchanged against the
+corrected fixture. `fixtures/shaped-text/expected.pdf`
+(`6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370`),
+`fixtures/multi-page/expected.pdf` and `fixtures/wrapped-text/expected.pdf` all confirmed unmoved by
+direct hash.
+
+**[[D-000.44]] discharged by construction, stated so rather than assumed**: the owner's hand-check IS
+the semantic acceptance step this re-recording owed — performed on the prior digest, and it is what
+this correction applies. Per [[D-000.41]]/[[D-000.43]] the sign-off is requested only now, against the
+new digest; `break-signoff.json` was **not** written by this work and
+`TestExpectedBreaksHumanSignOffIsRecorded` (`-tags matrix`) confirmed still red, naming the new digest.
+
+**Gate status, unchanged**: `epic-2: backlog` stays; six matrix obligations plus two sign-offs, one of
+which (the break sign-off) now names the corrected digest and awaits the owner's read. A single local
+commit referencing Story 2.4 carries this correction; Story 2.4 itself was not reopened.

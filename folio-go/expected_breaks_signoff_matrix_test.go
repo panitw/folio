@@ -105,8 +105,13 @@ func TestExpectedBreaksHumanSignOffIsRecorded(t *testing.T) {
 				"To resolve it: open fixtures/expected-breaks/expected_breaks.json and read the `words` "+
 				"field of each item — that is the label. For each one, ask only: would a Thai (or Chinese, "+
 				"or Japanese) reader accept a line ending at each of those seams, and NOT inside any of the "+
-				"words? Note especially thai-003..thai-010, which are lexicalised compounds deliberately "+
-				"labelled as ONE word each, and thai-001/thai-002, which are deliberately labelled as two. "+
+				"words? Note especially thai-003/004/005/006/010, which are lexicalised compounds "+
+				"labelled as ONE word each and never yet confirmed by a person; thai-007/008/009, which "+
+				"are ALSO lexicalised compounds but which the 2026-08-24 hand-check split anyway (no "+
+				"wordlist property distinguishes them from the five kept whole — see the fixture's "+
+				"_README); thai-001/thai-002, which are deliberately labelled as two words; and "+
+				"cjk-004/cjk-005/cjk-007, which carry `declaredAtomic: true` and are deliberately never "+
+				"split regardless of what a bare-string reading of the same characters would propose. "+
 				"Then write %s as:\n"+
 				"  {\n"+
 				"    \"reader\":   \"<your name>\",\n"+

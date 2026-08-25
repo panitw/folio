@@ -295,6 +295,12 @@ narrowing rather than an unfinished edge.
 hyphenation; a break at `-` or any other punctuation; the contextual pair rules that make up the
 bulk of the standard.
 
+**No break falls inside a dictionary headword, including a lexicalised compound a native reader
+would accept breaking.** The Thai engine matches against a shipped dictionary and never infers word
+membership; where a compound word happens to be a headword, it is kept whole even if some readers
+would break it. This is a stated capability limit, not a hidden one, and it is fail-closed: the
+compound moves to the next line whole and is never rendered with a break inside it.
+
 **Kinsoku is not implemented.** A CJK line may begin with `，` or `。` and may end with an opening
 bracket. Fullwidth punctuation and fullwidth digits are not break candidates at all.
 

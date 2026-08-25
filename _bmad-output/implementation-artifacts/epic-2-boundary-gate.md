@@ -483,3 +483,85 @@ noun: "a test" → the actual lint rule) but its obligation is not this story's.
   to each other and are not expected to be: each was taken at a different commit with a different
   method, and this story's own diff legitimately added new call sites (its own new test file). Named
   here per D-2.6.9 so the next reader does not inherit any of the three uncritically.
+
+## Standalone correction (references Story 2.4; not a reopening) — the owner's break hand-check applied
+
+**Executed** (D-000.55): `fixtures/expected-breaks/expected_breaks.json` was corrected against the
+owner's 2026-08-24 hand-check (recorded as D-2.4.8..D-2.4.11), and every declared digest site was
+updated to match, on target `folio-go` (`go build ./...`, `go test ./...`, and `go vet -tags matrix
+./...` / `go test -tags matrix ./...`, all run at this correction's own tree).
+
+### 1. Six corrections, two opposite mechanisms, applied per D-2.4.9's direction rule
+
+`cjk-004` (北京), `cjk-005` (东京都) and `cjk-007` (こんにちは) now carry `"declaredAtomic": true` —
+D-2.1.6's declaration channel (`internal/text/opportunity.go:94`'s `atomic` parameter) reaching this
+fixture for the first time. `thai-007` (หนังสือพิมพ์), `thai-008` (วันเกิด) and `thai-009` (ที่อยู่)
+were re-labelled with a break each (`words`, `expectedBreaks` AND `gloss`, all three sites per
+D-000.48). Both forbidden levers stayed forbidden: the shipped wordlist was not touched, and no
+heuristic was invented.
+
+### 2. The fixture's founding principle was falsified and is not replaced
+
+Measured against the shipped 62,107-entry `words_th.txt`: หนังสือพิมพ์, วันเกิด and ที่อยู่ are ALL
+headwords, so are their split constituents, and so are all five controls the owner kept whole
+(thai-003/004/005/006/010). Headword membership never predicted this. The `_README` and
+`fixtures/expected-breaks/README.md` were rewritten to state there is no derivable rule — AD-25's
+stated impossibility observed from the acceptability side.
+
+### 3. AC14 gained an enumerated, fail-closed-only divergence list
+
+`TestS4ExpectedBreaksMatchTheEngine` (`folio-go/internal/text/s4_expected_test.go`) now asserts set
+equality against `s4ExpectedDivergences` (D-2.5.1's shape) for thai-007/008/009, where the engine's
+conservative "no break" cannot be closed without an invented heuristic or a wordlist edit. The
+direction rule is enforced in code, not just documented: a divergence whose engine-proposed positions
+are not a subset of the human label's is rejected as FAIL-OPEN and fails the test. Both this rejection
+and the declaration-removal reversion (cjk-004 reverting to `[1]` once `declaredAtomic` is stripped)
+were red-proved live and reverted; the working tree was confirmed byte-identical afterward.
+
+### 4. Three states recorded, silence is not ratification
+
+Explicitly corrected: thai-007/008/009, cjk-004/005/007. Explicitly declined: none — cjk-005 was
+re-asked with its actual break positions shown and the owner changed the answer. Unremarked, NOT
+ratified: thai-003/004/005/006/010.
+
+### 5. `folio-format.md` gained a stated, fail-closed capability limit (D-000.6)
+
+The Line breaking section's existing UAX #14 narrowing now also states, as an outcome: no break falls
+inside a dictionary headword, including a lexicalised compound a native reader would accept breaking.
+
+### 6. The digest moved at its one declared, non-matrix-tagged site
+
+| digest | before | after |
+|---|---|---|
+| `fixtures/expected-breaks/expected_breaks.json` | `a545e04259033429d2cf8d1bba07f3137f6c0a106d635e918d31eabd599324de` | `40ba08f6da1bfadb4178d6f8d420454bee2f4f61ce7a1b3be584b84e7a1cf26c` |
+| `fixtures/shaped-text/expected.pdf` | `6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370` | **unchanged, confirmed** |
+| `fixtures/multi-page/expected.pdf` | `66ce0ee477fa1ce5e42d51bcc87d859bcddafb3d2bb2ca6ade3e35d3f895869b` | **unchanged, confirmed** |
+| `fixtures/wrapped-text/expected.pdf` | `07c38cf765a39d86376c1a3c78bfb6f0a96f089f19792c9bfeeaa1dc754269d6` | **unchanged, confirmed** |
+
+Updated at its only declared site, `folio-go/expected_breaks_digest_test.go`'s
+`expectedBreaksDigest` literal (this artifact is deliberately not folded into `goldenDigestRecord` —
+it is not a PDF golden — so `TestGoldenDigestAgreesAtEveryDeclaredSite`'s D-000.47 scan does not cover
+it; confirmed by re-running that test, which still passes). `byte_neutrality_test.go`'s
+`goldenDigestRemedy` "do not update this literal" message was checked (D-000.37) and still tells the
+truth for this change — it governs `goldenDigestRecord`'s PDF-golden literals, none of which moved
+here. `TestS4ExpectedBreaksAreLabelsNotEngineOutput` was confirmed, not assumed, to survive unchanged
+against the corrected fixture (still passes: 9 of 25 items partitioned).
+
+### 7. D-000.44 discharged by construction
+
+The re-recording owed a semantic acceptance step. The owner's hand-check IS that step — performed
+before this correction, on the prior digest, and it is what this correction applies. The sign-off
+itself (`break-signoff.json`) is REQUESTED ONLY NOW, against the new digest above, per D-000.41/43 —
+it does not exist and `TestExpectedBreaksHumanSignOffIsRecorded` (`-tags matrix`) confirmed still red,
+naming the new digest.
+
+### 8. Gate obligation count is unchanged: SIX matrix legs plus TWO sign-offs
+
+This correction touches only one of the two pending sign-offs' subject (the break labels), not the
+obligation count. `epic-2: backlog` stays. The all-occurrences baseline (`go test ./... -v`) is
+unchanged at 600 PASS / 1 FAIL (`TestCorpusMeetsP6ExerciseFloors`, stats
+`{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`, identical to the pre-correction baseline);
+368/1 at top level. Under `-tags matrix`, the three expected red gates are unchanged in kind: the
+break sign-off (now naming the new digest), the pre-existing shaped-text Thai reading sign-off
+(untouched, digest confirmed unmoved), and the pre-existing missing-font-sources reproduction gate
+(environmental, unrelated to this correction).
