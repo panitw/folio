@@ -8708,3 +8708,254 @@ how you get goldens that move for reasons nobody logged.
 interpreter, a container, a downloaded source, a daemon — must have its construction steps written
 where the gate procedure is written. Naming the env var is not enough; the reader needs the command
 that makes the env var's value exist.
+
+---
+
+## Epic 3 decisions — ruled before Story 3.1 opened
+
+### D-3.1.1 — The row alias is a third RESOLUTION ROOT, and the author's spelling may never be the root name
+**Lead ruling**, applied by the orchestrator. *(mechanism: binding)*
+
+**Verdict.** Story 3.1 may **not touch Story 1.6's bare-path matcher at all.** `parseBindingPath`
+(`internal/bind/text.go:277`) and `isValidIdent` (`:294`) are **frozen**: no new accepted character,
+no new accepted shape, no new call site. Row-scope alias resolution is built at the
+**resolution-root** layer instead — a different seam, and one that already exists.
+
+**The mechanism is dictated by shipped code, not chosen.** `lookupBound(root, subPath, fullPath,
+elementID, rootName, rootDesc)` (`text.go:239`) already dispatches over roots, and [[D-1.7.4]]
+established the precedent by making `params` a **second resolution root** rather than a reserved
+token. The alias is the **third** — same layer, same mechanism.
+
+**THE CONSTRAINT THAT DECIDES THE SHAPE, and it is enforced by a guard that already ships.**
+`TestBindResolutionRootsAreClosed` (`internal/bind/resolution_roots_arch_test.go:156`) asserts the set
+of `rootName` values is closed **and that every one is a string literal** — it `t.Fatalf`s outright on
+a computed `rootName`. An author-declared alias (`as: "transaction"`) is **data-dependent**.
+Therefore **the alias spelling may never become the `rootName`**:
+
+- `rootName` gains exactly one new **literal**: `"row"` — the **category**, not the author's spelling.
+  `declaredResolutionRoots` (`text.go:73`) widens from `{"data", "params"}` to
+  `{"data", "params", "row"}`, deliberately, in Story 3.1's own commit. The guard's message demands
+  this be a recorded ruling rather than a one-line edit; this entry is that ruling.
+- The author's spelling lives in `fullPath`, which is **error text only** — so an absent
+  `{{transaction.amount}}` still reports `transaction.amount` while the guard stays literal.
+- Selection is by first-segment equality against the declared alias (defaulting to `row`), evaluated
+  **after** `params` (AD-11: params "can be shadowed by nothing") and **before** the data root.
+- `TestBindResolutionRootsClosureRedProof` is **re-run after widening**, to prove AD-4's `page` fence
+  survived it. Widening a closed set is exactly when its fence needs re-proving.
+
+**In plain terms.** The template author picks a nickname for each row — `transaction`, `line`,
+whatever reads well. The engine must not let that nickname become part of its own fixed vocabulary,
+because the vocabulary is checked against a written list and a nickname is not knowable in advance.
+So the engine files every nickname under one permanent heading, `row`, and remembers the author's
+actual word only for the purpose of writing readable error messages. The list stays checkable; the
+errors stay honest.
+
+**Also ruled, because it is decidable at load time with no data at all** (same category as
+[[D-2.6.5]] and [[D-2.7.3]]): a repeating region declaring `as: "params"`, `as: "page"` or
+`as: "pages"` is a **located template error naming the element.** `params` because AD-11 forbids
+shadowing it; `page`/`pages` because **AD-4 forbids that namespace forever and an alias that spells
+them would create one through the side door.** Red-prove on a fixture, not by argument. This
+answers the question Story 3.1's creator independently flagged as OD-1, and it lands on the same arm
+the creator favoured, on [[D-2.4.1]]'s "a declaration that LOOKS honoured and silently is not"
+precedent. **Measured: zero committed documents declare such an alias**, so the violation sweep is
+empty — expected, and not a reason to skip the red-proof.
+
+**Guardrails — what counts as going too far, stated concretely so it is not a judgement call:**
+(1) editing `parseBindingPath`/`isValidIdent` to accept `(`, `)`, `[`, `]`, `,`, a quote, an operator
+or interior whitespace — **that is building 3.2's parser one character at a time**; (2) a second path
+matcher anywhere, under any name; (3) special-casing a function-call-shaped binding even to improve
+its error — 1.6's "not yet supported, see Epic 3" rejection is **deliberately dumb**; (4) adding the
+alias to `reservedPlaceholders` (`text.go:50`), which [[D-1.7.4]] prohibits by name; (5) any
+non-literal `rootName`. Growing `Value.Lookup`, `lookupBound` and the root dispatch **is in scope** —
+that is the seam, and 3.2's parser absorbs the dispatch without deleting it.
+
+**A known weakness, recorded so a green guard is not over-read.** That closed-set guard's own comments
+record (from Story 2.5's review, Blocker 2) that it **can be defeated by an early-return dispatch that
+never calls `lookupBound` at all.** If 3.1's dispatch takes that shape, the guard will not see it, and
+the story must say so rather than let a green imply coverage it does not have.
+
+### D-000.59 — An absence tripwire is discharged by REPLACEMENT, never by deletion
+**Lead ruling**, applied by the orchestrator. **Program-wide standing rule** *(mechanism: binding)*.
+
+> **A tripwire keyed on an absence is discharged by REPLACEMENT, never by deletion. The story that
+> makes the absence false must, in the same commit: (1) delete the absence rule, (2) land a positive
+> assertion of the obligation the absence was standing in for, and (3) demonstrate that positive
+> assertion failing with the obligation unmet. A commit that does (1) without (2) and (3) has retired
+> a forcing function, not discharged it.**
+
+**The load-bearing half is the anti-vacuity clause:** the replacement must assert the **obligation**,
+never the **event**. *"`internal/expr` exists"* is the **event** — asserting it is vacuous, because
+deleting the absence rule already proved it. *"the `footerOf` derivation is wired"* is the
+**obligation**. An absence rule is always a **proxy** for something nobody could yet assert directly
+([[D-000.15]]); the replacement is the moment the real thing becomes assertable, and that swap is the
+entire point.
+
+**In plain terms.** A tripwire across a doorway is not there to prove the doorway is empty — it is
+there because you cannot yet padlock the door. When someone finally installs the lock, they remove the
+tripwire *and fit the lock in the same visit*, and they try the handle to confirm it holds. Removing
+the tripwire and walking away leaves the doorway less guarded than before anyone came.
+
+**Why this generalisation was needed.** [[DW-6]] already names the hazard exactly — *"the cheapest fix
+to the red is to delete the rule, which would retire this forcing function silently and permanently"*
+— and already prescribes replace-rather-than-delete. **It writes it for `diag` alone.** Three
+tripwires fire in Epic 3 and the obligation was recorded for one of them.
+
+**What each of the three must actually assert** (stated as the assertion, because a vague obligation
+is discharged vacuously):
+
+| tripwire | fires at | the replacing positive assertion |
+|---|---|---|
+| `absence-expr-package` (`absences.go:96`) | **3.2** | [[DW-5]]'s obligation: a template whose `columns[].footer` is present with `footerOf` omitted, and whose `bind` is one of [[D-1.4.1]]'s two derivable shapes, **resolves to the derived `footerOf`**; any other `bind` shape is a **load error naming the column id**. **Assert both arms** — the derivable one fails vacuously if only the rejection is tested. AC44's currently-pinned "it simply loads" fixture is **re-pointed, not deleted**, so the gap's closure is visible in the diff. **Plus [[DW-8]]'s two, per [[D-3.2.1]].** |
+| `absence-diag-package` (`absences.go:101`) | **3.6** | Per DW-6, unchanged: the code registry **contains** `TABLE_FOOTER_SOURCE_UNRESOLVED` and `TABLE_FOOTER_SOURCE_FORBIDDEN`. Assert **membership in the registry as constructed**, not the existence of two string constants — a constant nothing registers is not a code. |
+| `absence-source-date-epoch` (`absences.go:118`) | **3.7** | [[DW-10]]'s obligation in three parts: (a) `cmd/folio render` reads `SOURCE_DATE_EPOCH` and passes it **as a parameter**, asserted through the params path, not by the env var appearing in source; (b) the library core still reads no environment variable — discharged by the **existing** AD-1 import lint, **cited by symbol, not re-implemented** ([[D-000.42]]: no redundant third guard); (c) with no date supplied by any route, `/CreationDate` and `/ModDate` are **absent from the produced PDF bytes**, read off the artifact ([[D-000.21]]), never off the params struct. |
+
+**The ordering trap, which must appear in all three story prompts:** obligation (3)'s red-proof must be
+captured **BEFORE** the obligation is wired, because wiring it closes the window permanently
+([[D-000.30]]). Per [[D-000.37]], each rule's `desc` names a story number — if the package arrives
+elsewhere, the `desc` is corrected in that same commit or deleted with the rule.
+
+**Grounding:** [[DW-6]]'s corrected anti-rot paragraph ([[D-2.8.4]]), generalised; [[D-000.15]] (key
+on the purpose, not a proxy); [[D-000.9]] (the deletion and the discharge must not produce the same
+signal); [[D-000.30]] (capture the proof before the fix).
+
+### D-3.1a.1 — AD-23's binary-float ban gets a real guard, in a story of its own, and NO type-shape check can provide it
+**Lead ruling**, applied by the orchestrator. **Includes a correction the lead made to its own
+grounding report of the same day.** *(mechanism: binding)*
+
+**The hole, stated plainly.** AD-23 bans binary floating point. Two guards enforce it: the syntactic
+AST scan (`internal/arch_test.go`, `findFloatOccurrences:49`) and the type-aware `lint` rule
+(`ScanFloatTypedValues`, `floattyped.go:205`, built at 2.3a under [[D-000.25]]). **Both key on
+`float32`/`float64`**; the type-aware one tests `*types.Basic` for `types.IsFloat`. **Neither can see
+`math/big.Float`** — it is a named struct type, so `types.IsFloat` never fires, and it is not spelled
+`float64`, so the syntactic scan never fires. `big.Float` is **arbitrary-precision binary floating
+point**: the exact thing Story 3.3's AC1 forbids **by name**. `internal/bind` **already imports
+`math/big`** (`decimal.go:20`, for `big.Int`), so the import is blessed and `big.Float` is one
+identifier away. Measured: `big.Float`/`big.Rat` occur at **zero sites repo-wide** — no use, no guard,
+**no mention**. The record's claim that AD-23 is enforced is **narrower than it reads**.
+
+**What creates the reach:** `sum` aligns N coefficients to a common exponent and adds them, where
+`int64` overflows long before AD-23's *literal* bound bites — **and AD-23 rules literal overflow
+explicitly while being silent on accumulator overflow.** That silence sits on the money path, in the
+story whose acceptance test is a bank statement. [[D-000.15]]'s failure shape (a guard keyed on a
+proxy rather than the purpose), unfired, on the epic that walks into it.
+
+**THE LEAD'S CORRECTION OF ITSELF, recorded because the wrong version is the intuitive one.** Its
+grounding report implied a **structural** type check would catch `big.Float`. **It would not.**
+`big.Float`'s mantissa is a `nat` (`[]Word`) — **it contains no float field**, so recursive
+float-containment finds nothing. It is binary floating point *semantically*, implemented over
+integers. **No type-shape check can catch it.** A successor inheriting the intuitive version would
+build a guard that passes while the hole stays open.
+
+**Verdict on ownership: a new inserted story 3.1a, between 3.1 and 3.2.** Not 3.2, not 3.3.
+[[D-000.25]] is directly on point — it inserted a dedicated story between 2.3 and 2.4 **for this same
+guard**, on three reasons that recur verbatim: (1) the next story adds the surface (3.2 creates
+`internal/expr` and performs [[DW-8]]'s `Decimal` move, the epic's most delicate code motion) —
+auditing first means it is written against a guard that already exists; (2) the next story is already
+heavy (3.3 builds **all** of `Decimal`'s arithmetic from nothing — `decimal.go` today has
+`NewDecimal` and no Add, Compare or Div, **verified**); (3) same subject: what AD-23 means by "binary
+floating point". **A fourth reason specific to this one:** landing it in 3.3 makes the developer
+writing `sum` the same developer deciding how strict the guard on `sum` is, **under delivery
+pressure** — [[D-000.15]]'s erosion dynamic with both roles held by one agent.
+
+**Where it lives: `lint`, not `internal/arch_test.go`, and not both.** `arch_test.go` is a pure AST
+walk with no type information; it cannot resolve a type identity, so extending it could only ever be a
+**name** match on `big.Float` — the proxy mechanism this ruling exists to stop. Putting it in both
+would be [[D-000.38]]'s *"two guards sharing a parser are one guard wearing two names"*.
+
+**The guard, in three honestly-labelled layers:**
+- **Layer 1 — behavioural, PRIMARY, has teeth.** An exactness oracle: `sum`/`avg` over a fixture
+  corpus compared against an independently produced expected total (Python `decimal` with an explicit
+  context, recorded as a golden — AD-25's one-time offline oracle shape, as [[D-2.3.1]] applied it to
+  shaping via `hb-shape`). **The subject is chosen so a `float64` implementation demonstrably
+  diverges** — that choice is the story's real work, and per [[D-000.50]] the population is checked
+  before the assertion is written. Red-proof: swap the accumulator to `float64` and watch it redden.
+- **Layer 2 — a type-identity DENYLIST, narrow, and labelled as one.** `lint` forbids `math/big.Float`
+  and `math/big.Rat` under `folio-go/internal/` by **resolved type identity**
+  (`Obj().Pkg().Path()` + `Obj().Name()`), never by source text — so an alias, a dot-import, a renamed
+  import, or a variable of that type all resolve the same. Per [[D-000.23]] it covers **those two
+  types, not the class**, and its coverage witness must say so **in those words**. It is **not**
+  counted as coverage for the property; Layer 1 is.
+- **Layer 3 — nothing.** Both existing guards stay exactly as they are, on their own axes.
+
+**Accumulator overflow is a located AD-14 Error, never a widening.** Concretely, reusing what ships:
+accumulate in `big.Int` (already blessed, already imported, exact) and narrow **once**, at the end,
+through the existing `IsInt64()` pattern at `decimal.go:119-128`. **Do not write a checked-add
+helper** — there is one narrowing site and it already exists. The error names the code, the data path
+and the element id (AD-14). **The alignment step is in scope**: bringing operands to a common exponent
+is where digits explode, so it is bounded by the same `maxDecimalExponentMagnitude` discipline
+(`decimal.go:65`), and a breach is an Error. This closes AD-23's silence in the direction AD-23
+already chose for literals.
+
+**`big.Rat` is banned for `avg` for a DIFFERENT reason, which is why Layer 1 alone is insufficient.**
+`big.Rat` is exact, so the behavioural oracle would **not** catch it. It is wrong because it carries an
+unrounded rational and thereby **dodges** AD-23's *"divides at a defined scale with round-half-to-even"*
+— and the scale is the **ruled** part, not an implementation detail. Hence its place in Layer 2.
+
+**`avg`'s scale: maximum operand scale + 4**, round-half-to-even; a result exceeding `Decimal`'s
+19-significant-digit bound is a located Error, never a silent narrowing. *(mechanism: **illustrative**
+for the `+4`; **binding** for all four of: it is declared once as a property of the operation and never
+derived from the data; it is not fitted to the shipped fixture set ([[D-000.32]]); it must exceed any
+precision `formatNumber` can request; and exhausting the digit budget is an Error.)*
+**The third is the forcing function: Story 3.4 asserts that no `formatNumber` pattern it accepts can
+request more fractional digits than `avg` produces.** That assertion is what keeps `+4` honest rather
+than arbitrary — if 3.4 finds a pattern that can, the constant moves, and the assertion is why we
+found out. **Lead's stated confidence: high on placement, mechanism and overflow; MEDIUM on the `+4`.**
+
+**Guardrails.** 3.1a is **not** a [[D-000.4]] matrix override (its criterion is a new source of
+cross-target divergence; a lint rule introduces none). Layer 1's golden is a first recording and owes
+[[D-000.22]]'s semantic acceptance step and [[D-000.53]]'s independent-reader step. Layer 2 red-proves
+with a real `big.Float` value expression per [[D-000.13]] — valid syntax, forbidden semantics,
+asserting on rule id and message, never on exit status.
+
+### D-3.2.1 — DW-8's `Decimal` move stays with Story 3.2, and the forcing function costs nothing new
+**Lead ruling**, applied by the orchestrator. **Contains a second correction the lead made to its own
+grounding report.** *(mechanism: binding)*
+
+**Verdict.** The `Decimal` move **stays in Story 3.2**, unchanged from [[DW-8]].
+
+**THE CORRECTION, which is what settles it.** The grounding report called 3.2 *"a move it does not
+itself consume"* and therefore deferrable. **That was wrong.** 3.2 **does** consume it: its AC requires
+a closed function table with exactly eight entries, and three of those (`sum`, `count`, `avg`) have
+**Decimal-typed signatures**, so declaring the table honestly requires referencing `Decimal`. A table
+that dodges this by being stringly-typed is its own defect, catchable on its own merits. **The move is
+load-bearing for 3.2's own deliverable, not a favour to 3.3** — and the "deferrable" framing does not
+survive contact with the AC.
+
+**Why deferring is worse than untidy.** If `Decimal` is still in `internal/bind` when 3.3 opens, 3.3's
+developer meets a **hard compile error** (the rank guard forbids `expr`→`bind`; a real import cycle
+once `bind`→`expr` exists) at the exact moment they are under pressure to deliver arithmetic. **The
+cheapest local fix is duplication — the scenario [[D-1.6.1]] wrote itself to prevent, created by
+deferral.**
+
+**Destination is forced, not chosen:** `internal/expr` (rank 3). It may import `template` (rank 2) for
+the module's one `SplitJSONNumber`; `bind` (rank 4) may then import it back. `geom` is excluded — AD-2
+makes it geometry-only and it imports nothing.
+
+**THE FORCING FUNCTION, which reuses [[D-000.59]] at zero cost.** The positive assertion replacing
+`absence-expr-package` **includes**:
+
+> **exactly ONE `Decimal` type declaration exists in the module, and it is in `internal/expr`.**
+
+Set equality over **AST-extracted type declarations** across the whole module ([[D-000.14]]: when a
+count is load-bearing, count by AST — never text, never a filtered pipe). **It cannot be satisfied
+while `Decimal` remains in `bind`, and it cannot be satisfied by duplicating. And it fires on creation
+of `internal/expr`** — so 3.2 cannot create the package without landing the move. *Written down*
+becomes *cannot be otherwise*, in the same commit, with no new machinery.
+
+**Second assertion, same commit, for DW-8's other half:** `parseBindingPath` and `isValidIdent` are
+**absent** once `internal/expr` exists — DW-8's own stated failure signal is *"a dotted-path matcher
+surviving alongside the expression parser after 3.2."*
+
+**Two shape notes, deliberate.** The `Decimal` check is **set-equality-plus-location**, not an
+extinction guard — *"nothing named `Decimal` survives"* would be false by construction, since the type
+must exist somewhere. **Location is the property; extinction is the wrong instrument here**, even
+though it is the right one for the matcher. And the two assertions are **not** [[D-000.38]] redundancy:
+they assert different facts about different symbols, and neither exists to cover the other. They share
+an AST extraction, so **if either is ever treated as corroborating the other, that is one guard wearing
+two names** — they are two obligations and the story must say so.
+
+**Guardrails.** The move breaks `bind/value.go:63` (`AsDecimal`), `bind/text.go:248` and their tests;
+that blast radius is expected and is **not** a reason to defer. Per [[D-000.34]], check whether any
+existing test's discriminating power depended on `Decimal` living in `bind` — **a test that passes
+only because the type was package-local dies silently at the move.** Capture the red-proof for both
+new assertions **before** the move lands ([[D-000.30]]); afterwards the window is shut.
