@@ -8959,3 +8959,42 @@ that blast radius is expected and is **not** a reason to defer. Per [[D-000.34]]
 existing test's discriminating power depended on `Decimal` living in `bind` — **a test that passes
 only because the type was package-local dies silently at the move.** Capture the red-proof for both
 new assertions **before** the move lands ([[D-000.30]]); afterwards the window is shut.
+
+### D-000.60 — A restriction adopted BECAUSE a question was open must be revisited when that question is answered
+**Orchestrator decision**, from Story 3.1's review (Minor 1). **Program-wide** *(mechanism: binding)*.
+
+**What happened, and it is small enough to be worth generalising precisely because it is small.**
+Story 3.1's creator hit a genuine open question (OD-1: what is `as: "params"`?) and did the right
+thing — it flagged rather than guessed, and it **forbade the test case that would have presupposed an
+answer.** Both correct. The question was then ruled ([[D-3.1.1]], Arm B). **Nobody went back.** The
+prohibition outlived its reason, and AC4 shipped to review with a third test value that **could not
+exercise the branch the story existed to add** — the reviewer proved it inert by replacing the row
+fixture with `{}` and watching the test still pass.
+
+> **A restriction adopted because a question was open is scoped to that question's lifetime. When the
+> ruling lands, whoever applies it must also ask what the open question was suppressing, and lift it
+> in the same act. A ruling that answers a question without releasing the restrictions taken out
+> against it leaves the work permanently shaped by an uncertainty that no longer exists.**
+
+**In plain terms.** You put a bucket under a leak and stop using that shelf. Someone fixes the roof.
+If nobody moves the bucket, the shelf stays empty forever — and the longer it stays empty, the more it
+looks like the shelf was never meant to be used. The person who fixes the roof is the one who has to
+remember the bucket, because they are the only one who knows the reason is gone.
+
+**Why it slipped, and the fix is structural rather than an exhortation to remember.** The suppression
+was recorded in the **story file**, as a scope note. The ruling was recorded in the **decision log**.
+Nothing joined them, so the ruling was applied faithfully to the *question* and never to its
+*consequences*. **The obligation therefore lands on the orchestrator, at the point of applying a
+ruling** — the only party that reads both artifacts:
+
+> **When applying a ruling that resolves a flagged question, search the story file for what that
+> question suppressed, and either lift it in the same story or record explicitly why it stays.**
+
+**Note what is NOT being criticised.** The creator's prohibition was **correct when made** — writing a
+test that presupposes an unruled answer is worse, and [[D-000.13]]'s discipline is exactly why it
+refused. This rule adds a step to the *ruling's application*; it does not make flagging-and-fencing a
+defect. The failure was in the handoff, and the handoff is mine.
+
+**Consequence** *(mechanism: binding)*: a story whose creator flagged a decision carries, in its
+Delivery Log, a line naming what the flag suppressed and whether the suppression was lifted. Silence
+there is now readable as an omission rather than as an absence of the situation.
