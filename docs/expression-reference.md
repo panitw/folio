@@ -128,8 +128,8 @@ statement total is correct to the last satang no matter how many rows it covers.
 **A total always covers the whole collection**, never just the rows printed on the current page.
 There is no per-page subtotal, and no expression anywhere can refer to the page it is on.
 
-On an empty collection, `sum` and `count` return zero. `avg` reports a diagnostic instead of
-dividing by zero, because the average of nothing is not zero — it does not exist.
+On an empty collection, `sum` and `count` return zero. `avg` reports an error instead of dividing by
+zero, because the average of nothing is not zero — it does not exist.
 
 ---
 
