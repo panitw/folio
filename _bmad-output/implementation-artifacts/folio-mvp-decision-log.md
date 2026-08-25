@@ -8206,3 +8206,182 @@ spelling.**
   representation** — otherwise two renders of the same document differ under `reflect.DeepEqual` while
   producing identical bytes, and every downstream test picks its own convention. **This is AD-9's
   one-canonical-form discipline arriving at the API surface, and it is cheap only if decided now.**
+
+---
+
+### D-2.4.8 — THE OWNER'S BREAK HAND-CHECK: four corrections, recorded verbatim before any file changes
+
+*(mechanism: **binding**; **the human oracle's judgment, not an agent's**)*
+
+**Recorded first, before a single file is edited**, because these four judgments existed only in a chat
+message and **no agent could have reached them.** Panit Wechasil performed Story 2.4's Thai/CJK break
+hand-check on **2026-08-24** against `expected_breaks.json` at digest
+`a545e04259033429d2cf8d1bba07f3137f6c0a106d635e918d31eabd599324de`. **It did not sign off. It found
+four wrong labels** — which is the outcome this gate exists to produce.
+
+| item | text | gloss | label as authored | **owner's correction** |
+|---|---|---|---|---|
+| `thai-007` | หนังสือพิมพ์ | newspaper | one word, no break | **split** → `["หนังสือ","พิมพ์"]`, break at rune **7** |
+| `thai-008` | วันเกิด | birthday | one word, no break | **split** → `["วัน","เกิด"]`, break at rune **3** |
+| `thai-009` | ที่อยู่ | address | one word, no break | **split** → `["ที่","อยู่"]`, break at rune **3** |
+| `cjk-004` | 北京 | Beijing | breakable at rune 1 | **never break** → `["北京"]`, `breaks=[]` |
+
+All three Thai splits reassemble to the original text **exactly** (orchestrator-verified rune
+arithmetic).
+
+**Three states, recorded separately — silence is NOT ratification** *(binding)*:
+- **Explicitly corrected**: `thai-007`, `thai-008`, `thai-009`, `cjk-004`.
+- **Explicitly declined**: `cjk-005` 东京都 — the owner was asked directly whether it needed 北京's
+  treatment and said the asymmetry was deliberate. **See the caveat in [[D-2.4.11]]: the question could
+  not discriminate the two readings, so this must be re-shown, not re-litigated.**
+- **Not raised, therefore UNREMARKED**: `cjk-007` こんにちは (flagged by the orchestrator, never
+  answered) and `thai-003/004/005/006/010` (student, school, hospital, train, receipt). **A reader who
+  finds a hand-checked fixture will otherwise take every row as ratified.**
+
+---
+
+### D-2.4.9 — The four corrections separate by DIRECTION; that is what resolves them
+
+*(mechanism: **binding**)*
+
+**They are not four instances of one thing. They are two categories with opposite mechanisms**, and
+[[D-2.1.2]]'s ruled criterion — **fail-closed versus fail-open** — separates them.
+
+| | direction | engine's status | mechanism |
+|---|---|---|---|
+| **`cjk-004`** 北京 | human wants **FEWER** breaks | proposes `[1]` — a break the reader rejects | **expressible today** |
+| **`thai-007/008/009`** | human wants **MORE** breaks | proposes `[]` — conservative | **not expressible by anything** |
+
+**`cjk-004` is NOT an engine defect and needs no new mechanism.** For a bare CJK string with no
+declaration, `[1]` is **correct** — CJK breaks between characters, and nothing in a bare string says
+*"this is a city name."* The owner's judgment is about **Beijing-as-a-name**, a **document-level fact**,
+and the project already ruled the mechanism: **AD-25's third constraint — *a declared value is never
+split*** — reaching the breaking stage as the `atomic` parameter.
+
+**Measured, and it is a coverage gap independent of this finding**:
+`Opportunities(dict *BytesTrie, s string, atomic []Span)` — `internal/text/opportunity.go:94` — **is**
+[[D-2.1.6]]'s declaration channel (*"reaches the breaking stage as a **parameter**, never through an
+import"*). **`internal/text/s4_expected_test.go:161` passes `nil` for every single item.** The
+mechanism has existed in the signature all along and **S4 has never exercised it**, so per [[D-000.50]]
+the fixture **cannot currently express the declared-unbreakable case at all.**
+
+**Ruled**: S4 items gain a **declaration field**; `cjk-004` carries it; the harness passes it as
+`atomic` instead of `nil`. The engine then reproduces `[]` **because it was told**, the label is honest,
+AC14's exact equality holds, and **AD-25's third mechanism gets its first fixture coverage. Nothing is
+inferred and nothing is invented.**
+
+**`thai-007/008/009` CANNOT be fixed and MUST NOT be faked.** Both levers are closed:
+- **The wordlist must not be edited.** หนังสือพิมพ์ **is** a Thai word. Removing it makes the shipped
+  asset **factually wrong**, changes breaking for **every document containing it, forever and
+  invisibly**, and is [[D-000.32]] exactly — *a constant fitted to the shipped sample is a hidden
+  dependency on the sample*. **It is [[D-000.17]]'s manufacture-the-data move wearing linguistics.**
+- **No heuristic may be invented.** **AD-25 verbatim**: *"The engine **never infers** membership. **It
+  cannot.**"*
+- **`atomic` cannot help**: a declaration can only **remove** opportunities, never add them. **The
+  direction is what makes this case unfixable.**
+
+**So stop asserting something now provably false.** AC14 asserts *"where the engine may break" == "where
+a reader accepts a break."* The owner's finding proves these are **two different predicates** that
+diverge on lexicalised compounds. **Keep `expectedBreaks` as the human judgment** — it is the oracle and
+the sign-off binds to it. Give AC14 an **enumerated, justified divergence list**, asserted as a **set
+equality against a declared list, never a count** ([[D-2.5.1]]'s shape), each entry naming the item, the
+engine's output, the human's label and the reason.
+
+**The list's direction rule, which is what keeps its teeth** *(binding)*: **only fail-closed divergences
+may be enumerated.** A **fail-open** divergence — the engine proposing a break the human rejects — is
+**never** admissible and is **always a defect**. Without that rule the list becomes the bucket
+[[D-000.24]] warns against; with it, **the guard is sharper than before**, because it now distinguishes
+two failure directions where it previously saw one.
+
+**Disclose the shortfall where the narrowing already lives** *(binding, [[D-000.6]])*:
+`folio-format.md`'s line-breaking section already narrows the UAX #14 claim **by name** — *no
+hyphenation, no break at `-`, no contextual pair rules*. Add, in the same register: **no break inside a
+dictionary headword, including lexicalised compounds a native reader would accept breaking.** A stated
+capability limit, not a hidden one — and **fail-closed**: the compound moves to the next line whole,
+never renders wrongly.
+
+---
+
+### D-2.4.10 — The README's principle is FALSIFIED, there is no derivable replacement, and saying so is the correct answer
+
+*(mechanism: **binding**)*
+
+The fixture's `_README` states its organizing principle: thai-003..thai-010 were corrected to one word
+each *"on evidence independent of the engine's output (**headword membership in the shipped
+wordlist**)"*.
+
+**Orchestrator-measured against the shipped 62,107-entry `folio-go/internal/text/wordlist/words_th.txt`:
+หนังสือพิมพ์, วันเกิด and ที่อยู่ are ALL headwords — and so are their constituents, and so are all five
+controls the owner accepted.** **Headword membership does not distinguish the three the owner split from
+the five they kept whole.** The principle the fixture is built on **does not predict the human's
+judgment.**
+
+**The falsification is worse than the README — it is restated PER ITEM, inside the data.**
+`thai-007`'s own gloss reads *"newspaper. Headword; book + print etymologically, **ONE word for
+breaking**."* Same for 008 and 009. **So each corrected item touches THREE sites — `words`,
+`expectedBreaks`, AND `gloss`** — plus the README and the sign-off test's message. Per [[D-000.48]], a
+sweep that misses the gloss **leaves the falsified rule asserted in the file it was supposed to
+correct.**
+
+**The replacement principle, and its ground: there is none, and AD-25 already said why.** Verbatim:
+
+> *"The engine **never infers** membership. **It cannot**: Thailand's Surname Act has every family coin a
+> unique surname out of ordinary dictionary words, so a surname and the common words it was built from
+> are character-for-character identical and **no dictionary-coverage rule can separate them**."*
+
+**The owner's finding is the same impossibility observed from the opposite direction**: eight strings,
+all headwords, all with headword constituents, and a native reader accepts a break in three and refuses
+it in five. **Headword membership was never capable of predicting this**, and neither is any other
+property in the shipped assets. The README states, in terms:
+
+> These labels are **per-item native-speaker judgments**. No rule derivable from the shipped wordlist
+> predicts them — this is AD-25's stated impossibility, observed from the **acceptability** side rather
+> than the surname side. **The fixture is the oracle BECAUSE no rule can replace it.**
+
+**A fixture admitting it has no rule is worth more than one claiming a rule it does not follow.**
+
+---
+
+### D-2.4.11 — Its own commit referencing Story 2.4; and two facts the owner must be SHOWN, not asked
+
+*(mechanism: **binding**)*
+
+**A standalone commit that references Story 2.4 and discharges the gate obligation. Do NOT reopen 2.4;
+do NOT let it into Story 2.8's commit.** 2.4 is closed and its four-target matrix certified its tree;
+reopening it to carry a correction found **by the gate 2.4's own work produced** would rewrite the
+attribution of both. [[D-000.4]]'s *"history is not rewritten"* and the log's append-only rule are the
+same discipline: **a correction appends.**
+
+- **The digest moves** — update it at **every declared site** from the declared list ([[D-000.47]]), and
+  per [[D-000.37]] check `byte_neutrality_test.go`'s *"Do not update this literal"* message still tells
+  the truth for this change.
+- **[[D-000.44]] is discharged by construction, and say so**: a re-recording owes a semantic acceptance
+  step, and **the human hand-check IS that step — the strongest form of it this run has had.**
+- **`TestS4ExpectedBreaksAreLabelsNotEngineOutput` survives unchanged** — it asserts the numbers follow
+  the words, and the corrections keep `words` and `expectedBreaks` consistent. **Confirm rather than
+  assume.**
+- **The sign-off is requested only AFTER this lands** ([[D-000.41]] — *never request a scarce human
+  sign-off while scheduled work will move the artifact*), and per [[D-000.43]] not until the legs agree
+  on the new digest.
+
+**Two facts for the re-review packet — SHOWN, not asked, because the frame they were asked under did not
+contain them.** This is **not** re-litigation:
+
+1. **`cjk-005` 东京都 records `expectedBreaks: [1, 2]` — 东|京|都. The break at rune 1 splits 东京
+   (Tokyo) itself.** The question put to the owner was whether it *"needed the same treatment as
+   北京"*; under **both** readings — *"yes, Tokyo is a name"* and *"no, 东京都 is breakable at the 都
+   boundary"* — the answer is the same words, so **the question could not discriminate them.** Under
+   [[D-2.4.9]] the asymmetry becomes **coherent** rather than contradictory — 北京 is *declared*
+   unbreakable, 东京都 is not — so present both side by side **with their actual break positions** and
+   let the owner decide whether 东京都 also carries the declaration.
+2. **`cjk-007` こんにちは breaks at `[1,2,3,4]`** — こ|ん|に|ち|は, every kana of a single word, **the
+   same shape as 北京**. Flagged but never answered, so it stands **unremarked, not ratified.** Show it
+   once, with its positions.
+
+**Gate status, unchanged and correct**: six matrix obligations plus **two** sign-offs.
+`break-signoff.json` is **absent** and the obligation is **open**. That is the honest state and it stays
+until the correction lands.
+
+**For the gate note**: this is **the first time in the run that a mechanism produced a finding no agent
+could have reached.** Every other correction was found by an agent measuring something. **That is the
+argument for keeping scarce human sign-offs in the process at all.**
