@@ -1,0 +1,6 @@
+{
+  "reader": "Panit Wechasil",
+  "date": "2026-08-25",
+  "examined": "Read all 26 break labels in expected_breaks.json at this digest — 6 sequences carrying seams (thai-001, thai-002, thai-007, thai-008, thai-009, cjk-008) and 20 labelled as single words that must never break. Checked that every marked seam falls between words and never inside one. Confirmed the 7 declared-unbreakable items (cjk-001, cjk-002, cjk-003, cjk-004, cjk-005, cjk-006, cjk-007) carry no interior break. Confirmed the 3 recorded divergences (thai-007, thai-008, thai-009), where the label is mine and the engine will not reproduce it. Every label is correct as written.",
+  "sha256": "f0848d4e89b950aae8c8fc4e21af37ff56f602f42075786575b00a7531cfb19e"
+}
