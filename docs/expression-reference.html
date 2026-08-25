@@ -1,0 +1,468 @@
+<title>Folio Expressions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  /* ---------------------------------------------------------------
+     Tokens lifted verbatim from the designer's DESIGN.md.
+     Two-accent grammar (UX-DR2): `select` cyan = structure / focus /
+     authority. `bind` amber = data, and ONLY data. Expressions are
+     data references, so every expression on this page is amber and
+     every structural affordance is cyan.
+     Zero-radius shape rule: no border-radius anywhere.
+     Committed dark: this page renders inside the designer, which is
+     dark-only. Every colour is painted explicitly.
+     --------------------------------------------------------------- */
+  :root {
+    --ground: #0D0F12;
+    --base: #15181C;
+    --panel: #1A1E23;
+    --raised: #22272D;
+    --row-focus: #1D2228;
+
+    --line-faint: #191D21;
+    --line-subtle: #22272D;
+    --line: #272C33;
+    --line-strong: #2F353D;
+    --edge: #3A4048;
+
+    --ink-high: #E6E9EC;
+    --ink: #AAB2BB;
+    --ink-low: #737C86;
+    --ink-faint: #5E666F;
+    --ink-ghost: #4E565F;
+
+    --select: #58A6C4;
+    --select-bright: #8FD0E4;
+    --select-fill: #1E3B46;
+    --select-tint: #16232A;
+    --select-edge: #2F4F5C;
+
+    --bind: #C9A758;
+    --bind-text: #E0C07A;
+    --bind-muted: #8A7440;
+    --bind-tint: #241F14;
+    --bind-tint-warm: #1E1B13;
+    --bind-edge: #4A3D1E;
+    --bind-edge-soft: #3A3118;
+
+    --sans: "Noto Sans", "Noto Sans Thai", system-ui, -apple-system, sans-serif;
+    --thai: "Noto Sans Thai", "Noto Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+  }
+
+  /* ---- masthead ---- */
+  header { border-bottom: 1px solid var(--line); padding-bottom: 28px; margin-bottom: 8px; }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+    font-weight: 500;
+  }
+
+  h1 {
+    font-size: 30px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: var(--ink-high);
+    margin: 0 0 14px;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+
+  .standfirst { margin: 0; max-width: 62ch; color: var(--ink); }
+  .standfirst code { font-family: var(--mono); font-size: 0.92em; color: var(--bind-text); }
+
+  /* ---- status notice ---- */
+  .notice {
+    margin: 28px 0 0;
+    padding: 16px 18px;
+    background: var(--select-tint);
+    border: 1px solid var(--select-edge);
+    border-left-width: 2px;
+    color: var(--ink);
+    font-size: 14px;
+  }
+  .notice strong { color: var(--select-bright); font-weight: 500; }
+
+  /* ---- index ---- */
+  nav {
+    margin: 36px 0 8px;
+    padding: 18px 0;
+    border-top: 1px solid var(--line-subtle);
+    border-bottom: 1px solid var(--line-subtle);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    align-items: baseline;
+  }
+  nav .navlabel {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-ghost);
+    margin-right: 6px;
+  }
+  nav a {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--bind-text);
+    text-decoration: none;
+    padding: 3px 9px;
+    background: var(--bind-tint-warm);
+    border: 1px solid var(--bind-edge-soft);
+  }
+  nav a:hover { border-color: var(--bind); color: var(--bind-text); background: var(--bind-tint); }
+  nav a:focus-visible { outline: 2px solid var(--select); outline-offset: 1px; }
+  nav a.pending { color: var(--ink-low); background: transparent; border-color: var(--line-strong); }
+  nav a.pending:hover { border-color: var(--edge); color: var(--ink); }
+
+  /* ---- sections ---- */
+  section { margin-top: 52px; }
+
+  h2 {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--select);
+    font-weight: 600;
+    margin: 0 0 22px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  h3 {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink-high);
+    margin: 34px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  h3:first-of-type { margin-top: 0; }
+  h3 .args { color: var(--ink-faint); }
+
+  .pill {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-low);
+    font-weight: 500;
+  }
+  .pill.live { color: var(--select); border-color: var(--select-edge); background: var(--select-tint); }
+
+  p { margin: 0 0 14px; max-width: 68ch; }
+  p:last-child { margin-bottom: 0; }
+
+  strong { color: var(--ink-high); font-weight: 500; }
+  em { color: var(--ink-high); font-style: normal; border-bottom: 1px solid var(--bind-edge); }
+
+  /* ---- expression samples ---- */
+  .sample {
+    margin: 16px 0 22px;
+    background: var(--base);
+    border: 1px solid var(--line);
+    overflow-x: auto;
+  }
+  .sample pre {
+    margin: 0;
+    padding: 16px 18px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.9;
+    color: var(--bind-text);
+    white-space: pre;
+  }
+  .sample .out { color: var(--ink-low); }
+  .sample .th { font-family: var(--thai); color: var(--ink); }
+  .sample .cmt { color: var(--ink-ghost); }
+  .sample .json { color: var(--ink); }
+  .sample .str { color: var(--ink-high); }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 18px 0 22px; border: 1px solid var(--line); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 460px; }
+  th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    padding: 11px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line-strong);
+    white-space: nowrap;
+  }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--line-faint); vertical-align: top; color: var(--ink); }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--row-focus); }
+  td code, th code { font-family: var(--mono); font-size: 0.9em; color: var(--bind-text); }
+  td .err { color: var(--ink-high); }
+
+  /* ---- caution ---- */
+  .caution {
+    margin: 22px 0;
+    padding: 16px 18px;
+    background: var(--bind-tint-warm);
+    border: 1px solid var(--bind-edge-soft);
+    border-left: 2px solid var(--bind);
+    font-size: 14px;
+  }
+  .caution p { max-width: none; }
+  .caution strong { color: var(--bind-text); font-weight: 500; }
+
+  /* ---- closing table ---- */
+  .roster td:first-child { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-ghost);
+    font-size: 13px;
+  }
+  footer code { font-family: var(--mono); color: var(--ink-faint); }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 40px 18px 72px; }
+    h1 { font-size: 25px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Folio · Template reference</p>
+    <h1>Expressions</h1>
+    <p class="standfirst">
+      Anything between double braces is an expression — <code>{{customer.name}}</code>. Folio evaluates
+      it when the report renders and substitutes the result into the document. There are
+      <strong>eight functions and no more</strong>: no loops, no variables, no arithmetic operators.
+      If you want a ninth, the calculation probably belongs in your data rather than in the template.
+    </p>
+  </header>
+
+  <div class="notice">
+    <strong>While the engine is being built.</strong> Every function below is described as specified.
+    Those marked <em>pending</em> are recognised by the template — the document still loads — but
+    calling one produces an error naming the element rather than a plausible-looking value. That is
+    deliberate: a <code>sum</code> that quietly returned <code>0</code> before it was real would be a
+    wrong total on a statement, and a wrong total is worse than an error.
+  </div>
+
+  <nav>
+    <span class="navlabel">Functions</span>
+    <a href="#upper">upper</a>
+    <a href="#upper">lower</a>
+    <a href="#if">if</a>
+    <a href="#totals" class="pending">sum</a>
+    <a href="#totals" class="pending">count</a>
+    <a href="#totals" class="pending">avg</a>
+    <a href="#format" class="pending">formatDate</a>
+    <a href="#format" class="pending">formatNumber</a>
+  </nav>
+
+  <section id="paths">
+    <h2>Reading values</h2>
+
+    <h3>A plain path</h3>
+    <p>Paths read from the data you supply with the report.</p>
+    <div class="sample"><pre>{{customer.name}}                 <span class="out">Somchai Srisuk</span>
+{{account.number}}                <span class="out">123-4-56789-0</span>
+{{statement.closingBalance}}      <span class="out">48250.75</span></pre></div>
+    <p>A path always reads from the top of your data, wherever in the document it appears.</p>
+
+    <h3>params.<span class="args">…</span></h3>
+    <p>
+      Values supplied separately from the report data — a run date, a branch code, a report title —
+      live in their own namespace.
+    </p>
+    <div class="sample"><pre>{{params.reportDate}}
+{{params.branchCode}}</pre></div>
+    <p>
+      <strong><code>params</code> can never be shadowed.</strong> A path beginning <code>params.</code>
+      always means the parameter you supplied, even inside a repeating region that happens to use the
+      same word.
+    </p>
+
+    <h3>Rows in a repeating region</h3>
+    <p>A repeating region binds to a collection and gives each row a name:</p>
+    <div class="sample"><pre><span class="json">{ "bind": "transactions[]", "as": "transaction" }</span></pre></div>
+    <p>Inside that region, the name you chose reads from the current row:</p>
+    <div class="sample"><pre>{{transaction.date}}
+{{transaction.description}}
+{{transaction.amount}}</pre></div>
+    <p>
+      Leave <code>as</code> out and the rows are called <code>row</code>. An unqualified path still
+      reads from the top of your data — <strong>a row never shadows the document root</strong>, so
+      <code>{{customer.name}}</code> inside a transaction row still means the customer, not a
+      <code>name</code> field on the transaction.
+    </p>
+    <p>
+      You cannot name a region <code>params</code>, <code>page</code>, or <code>pages</code>. Those
+      are reserved: <code>params</code> because it can never be shadowed, and <code>page</code> /
+      <code>pages</code> because nothing in a Folio template may ever refer to the page it sits on.
+      Using one is an error naming the element, raised <strong>when the report renders</strong>.
+    </p>
+  </section>
+
+  <section id="upper">
+    <h2>Text</h2>
+    <h3>upper<span class="args">(text)</span> · lower<span class="args">(text)</span> <span class="pill live">In progress</span></h3>
+    <div class="sample"><pre>{{upper(customer.name)}}          <span class="out">SOMCHAI SRISUK</span>
+{{lower(customer.email)}}         <span class="out">somchai@example.com</span></pre></div>
+  </section>
+
+  <section id="if">
+    <h2>Choosing between two values</h2>
+    <h3>if<span class="args">(condition, then, else)</span> <span class="pill live">In progress</span></h3>
+
+    <div class="sample"><pre>{{if(customer.isVip, <span class="str">"VIP"</span>, <span class="str">"Standard"</span>)}}
+{{if(hasDiscount, discount.amount, <span class="str">"N/A"</span>)}}</pre></div>
+
+    <p>
+      <strong>The condition must be true or false</strong> — an actual boolean in your data. Folio
+      does not treat <code>0</code>, <code>""</code>, or an empty list as false. A value of some other
+      kind is an error naming the element, not a guess about what you meant.
+    </p>
+
+    <p>Three cases worth knowing, because they differ:</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>The condition is</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td><code>true</code> or <code>false</code></td><td>takes that branch</td></tr>
+          <tr><td><strong>missing entirely</strong></td><td><span class="err">an error</span>, naming the element and the path — usually a typo</td></tr>
+          <tr><td>explicitly <code>null</code></td><td>treated as <strong>false</strong>, silently</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Only the branch actually taken is evaluated. That is what makes the second example work:
+      <code>discount.amount</code> does not exist on rows without a discount, and Folio never looks at
+      it on those rows.
+    </p>
+
+    <div class="caution">
+      <p>
+        <strong>The cost of that convenience:</strong> a mistake in the branch that is
+        <em>not</em> taken goes unnoticed. If
+        <code>{{if(hasDiscount, discount.amout, "N/A")}}</code> has a typo in the branch that only runs
+        for discounted rows, you will not hear about it until a discounted row renders. Validating the
+        template cannot catch it either — validation does not know which branch any given row will
+        take.
+      </p>
+    </div>
+  </section>
+
+  <section id="totals">
+    <h2>Totals</h2>
+    <h3>sum<span class="args">(collection.field)</span> · count<span class="args">(collection)</span> · avg<span class="args">(collection.field)</span> <span class="pill">Pending</span></h3>
+
+    <div class="sample"><pre>{{sum(transactions.amount)}}
+{{count(transactions)}}
+{{avg(transactions.amount)}}</pre></div>
+
+    <p>
+      <strong>Totals are exact.</strong> Folio adds money as decimal digits, never as binary floating
+      point, so a statement total is correct to the last satang no matter how many rows it covers.
+    </p>
+    <p>
+      <strong>A total always covers the whole collection</strong>, never just the rows printed on the
+      current page. There is no per-page subtotal, and no expression anywhere can refer to the page it
+      sits on.
+    </p>
+    <p>
+      On an empty collection, <code>sum</code> and <code>count</code> return zero. <code>avg</code>
+      reports a diagnostic instead of dividing by zero — the average of nothing is not zero, it does
+      not exist.
+    </p>
+  </section>
+
+  <section id="format">
+    <h2>Dates and numbers</h2>
+
+    <h3>formatDate<span class="args">(value, pattern)</span> <span class="pill">Pending</span></h3>
+    <div class="sample"><pre>{{formatDate(statement.date, <span class="str">"d MMMM yyyy"</span>)}}
+
+  <span class="cmt">locale th</span>    <span class="th">15 สิงหาคม 2569</span>   <span class="cmt">← Buddhist era</span>
+  <span class="cmt">locale en</span>    <span class="out">15 August 2026</span></pre></div>
+    <p>
+      The value must be either an RFC 3339 date string (<code>2026-08-15T00:00:00Z</code>) or a number
+      of milliseconds since the epoch. Anything else is an error.
+    </p>
+
+    <h3>formatNumber<span class="args">(value, pattern)</span> <span class="pill">Pending</span></h3>
+    <div class="sample"><pre>{{formatNumber(transaction.amount, <span class="str">"#,##0.00"</span>)}}   <span class="out">1,234.56</span>
+{{formatNumber(statement.balance,  <span class="str">"#,##0"</span>)}}      <span class="out">48,251</span></pre></div>
+
+    <h3>Locale</h3>
+    <p>
+      The document declares its locale and a fixed UTC offset. Folio ships tables for exactly four:
+      <code>en</code> · <code>th</code> · <code>zh-Hans</code> · <code>ja</code>. Any other tag is
+      reported when the template loads — Folio will not quietly fall back to something close.
+    </p>
+    <p>
+      <strong>The machine rendering the report never affects the output.</strong> Its locale, its time
+      zone and its clock are all ignored, so the same template and the same data produce the same bytes
+      anywhere.
+    </p>
+  </section>
+
+  <section id="all">
+    <h2>The whole list</h2>
+    <p>Eight, and the engine enforces that count.</p>
+    <div class="tablewrap">
+      <table class="roster">
+        <thead><tr><th>Group</th><th>Functions</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Text</td><td><code>upper</code> · <code>lower</code></td><td>In progress</td></tr>
+          <tr><td>Choice</td><td><code>if</code></td><td>In progress</td></tr>
+          <tr><td>Totals</td><td><code>sum</code> · <code>count</code> · <code>avg</code></td><td>Pending</td></tr>
+          <tr><td>Formatting</td><td><code>formatDate</code> · <code>formatNumber</code></td><td>Pending</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Adding a ninth is not a small change, and is not meant to be — the table is closed, and a new
+      entry has to be made deliberately and visibly.
+    </p>
+  </section>
+
+  <footer>
+    Source of truth: <code>docs/expression-reference.md</code>. Colours and the two-accent grammar are
+    the designer's own tokens — cyan for structure, amber for data.
+  </footer>
+
+</div>
