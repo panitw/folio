@@ -758,3 +758,42 @@ the failed-render presentation) — a case where `Render`/`RenderTo` returned a 
   `Warning`-only helper), and the render path silently returns it as a `Warning` — AD-14's
   disposition rule ("Error aborts the render, Warning accompanies a successful one") violated with no
   test catching it, because the zero value still reads as a valid, unremarkable `Warning`.
+
+### DW-19 — The lint asset resolver walks a GITIGNORED directory, so it fails in BOTH directions
+- **Deferred by:** Story 3.1a creator (finding F4), ruled out of scope for 3.1a by the engineering lead
+- **Owner:** whoever next touches `lint`'s asset resolution (`ResolveAssets`). Not Story 3.1a — it is
+  already building a kernel, a corpus, an oracle and a lint rule, and this is a different subject
+  ([[D-000.25]]'s reason for not folding the vendor audit into 2.4).
+- **Status:** open, with the fix shape SPECIFIED so it cannot be discharged vacuously
+
+**The defect, measured.** `ResolveAssets` walks `.font-sources/` — **gitignored** (`.gitignore:85`),
+**zero tracked files**, the owner's local variable-font scratch directory. Three lint tests
+(`TestManifestUpToDate`, `TestResolveAssetsIncludesWordlist`, `TestFontsAssetsNoticeRemovalRedProof`)
+**fail in this checkout and pass 85/85 in a clean detached worktree** at `b227dda`. Confirmed by
+running both.
+
+**Why this is [[D-000.9]] verbatim, at the infrastructure level.** *"The sources were not present"* and
+*"the assets are fine"* produce **the same signal**. And it fails in **both directions**, which is the
+worst property an instrument can have:
+
+- **Fails RED in a working checkout** — three lint tests red for an environmental reason. A developer
+  will correctly diagnose them as noise **and then learn to discount lint reds generally.** That is
+  [[D-000.15]]'s erosion dynamic aimed at the whole lint module.
+- **Fails GREEN in the dangerous direction** — because behaviour depends on an **untracked** directory's
+  contents, **anyone can make these tests pass by putting files there, and nothing in the repository
+  records that they did.**
+
+**The fix shape, stated so the entry cannot be closed vacuously.** The resolver must treat *"the asset
+root resolved to a path with **zero tracked files**"* as a **scan error** — returned and assessed
+**before any findings** ([[D-1.3.3]] (amended)'s shape, and [[D-000.58]]'s rule that a procedure
+depending on an environment existing only on one machine is not a procedure).
+
+**Explicitly NOT the fix:** adding files to `.font-sources/`, or making the three tests **skip**. Both
+trade a **loud** environmental failure for a **quieter** one — exactly what the Epic 2 gate declined to
+do for `.fontgen-venv` ([[D-000.58]]).
+
+**Story 3.1a's one-line obligation, already discharged in its prompt** ([[D-000.55]]): its Delivery Log
+names these three tests as failing for a known environmental reason **before** its run, with the
+reason — so 3.1a's red-proof figures stay attributable and nobody later reads three unexplained reds as
+evidence about the new denylist rule. **If any of the three is still red for a DIFFERENT reason after
+that, that is a finding.**

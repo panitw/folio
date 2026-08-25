@@ -8998,3 +8998,133 @@ defect. The failure was in the handoff, and the handoff is mine.
 **Consequence** *(mechanism: binding)*: a story whose creator flagged a decision carries, in its
 Delivery Log, a line naming what the flag suppressed and whether the suppression was lifted. Silence
 there is now readable as an omission rather than as an absence of the situation.
+
+### D-3.1a.1 (correction) — Layer 2 scans the `folio-go` MODULE ROOT, not `internal/`
+**Lead correction of its own ruling**, applied by the orchestrator. **Appended, not edited**, per this
+log's rule that corrections are visible. *(mechanism: binding)*
+
+**What the original said and why it was wrong.** [[D-3.1a.1]] scoped the `big.Float`/`big.Rat`
+denylist *"under `folio-go/internal/`"*. The lead took that from AD-23's Rule sentence (*"`float64`
+appears nowhere under `internal/`"`) **without reading the neighbouring guard's production caller** —
+its own stated recurring failure mode: **naming a scope or a mechanism before reading the code, which
+then reads as a contradiction to whoever implements it.** Story 3.1a's creator found the conflict,
+**widened and flagged rather than resolving it silently** ([[D-1.2.6]]), which is why it was caught
+before any code was written.
+
+**Verified live, because the whole correction turns on it.** `TestFloatTypedProductionScan`
+(`lint/internal/rules/floattyped_test.go:30`) calls `ScanFloatTypedValues(filepath.Join(root,
+"folio-go"), false)` — **the module root** — and its vacuity guard asserts coverage **by name** with
+`assertVisited(t, stats, ".", "internal/fontset")`. That `"."` **is the module-root package itself**
+(`render.go`, `render_entry.go`, `folio.go`, `diagnostic.go`): the public package is **asserted
+visited**, not incidentally scanned. `TestNoFloat64UnderInternal` (`internal/arch_test.go:222`) is the
+`internal/`-only one. **The two shipped AD-23 guards already have deliberately different scopes** —
+[[D-1.6.7]] pointed the type-aware checker at the whole module, going wider than AD-23's letter on
+purpose. The original wording would have made the new rule **the narrowest of the three.**
+
+**Why module root is right on the merits, not merely for symmetry:**
+1. **A guard strictly narrower than its neighbour, covering the same invariant, creates a gap that
+   reads as covered.** A reader who knows *"AD-23 is guarded at module root"* — true of the type-aware
+   rule — will assume the denylist reaches as far. [[D-000.38]]'s family: **advertised coverage that
+   does not exist is worse than an admitted hole.**
+2. **The module root is where the reach would actually happen.** `render.go` is the public entry, the
+   aggregate outputs surface there, and a "convenience" numeric-formatting helper lands there, not in
+   `internal/`.
+3. **It costs nothing** — `ScanFloatTypedValues` already type-checks the whole module; the denylist
+   rides the same loaded packages at zero marginal cost.
+4. **No false-positive pressure.** Measured: `big.Float`/`big.Rat` at **zero sites repo-wide**, so
+   module root is green today and this imports none of [[D-000.15]]'s erosion dynamic.
+
+**HARD GUARDRAIL — do not widen further, and the reason is load-bearing.** The boundary is the
+**`folio-go` module root, never the repository root.** `hashmatrix/` is deliberately a separate module
+precisely so AD-1 and the float guards exclude it **by construction** ([[D-000.6]] amendment, Story
+1.2) — the retained FMA probe **needs** floats and is the one place they are correct. A repo-root scan
+would redden it, and the cheapest fix would be an **exemption entry**, which that placement exists to
+make unnecessary. `lint/` is likewise out.
+
+### D-3.1a.2 — `SumDecimals([])` returns the identity; `AvgDecimals([])` errors. The asymmetry is the point.
+**Lead ruling**, correcting Story 3.1a's story file before development. *(mechanism: binding)*
+
+**Verdict.** `SumDecimals([])` returns the identity `{Coefficient: 0, Exponent: 0}` — **not an error.**
+`AvgDecimals([])` **keeps the error.**
+
+**Why the story file's error-on-empty kernel was wrong, and why "no test presupposes it" did not save
+it.** The creator scoped empty-input semantics to the kernel and correctly declined to rule on what the
+*expression-language* `sum()`/`avg()` do on an empty collection — that is Story 3.3's question. But
+**the collision is structural, not test-level**: Story 3.3's AC requires `sum` to return **zero** on an
+empty collection. An error-on-empty kernel forces **every caller** to write the same empty
+special-case — the expression `sum()`, and the table footer at 4.5, which [[D-1.4.1]] requires to use
+**the same aggregate evaluation** — **and the second one will get the scale wrong.**
+
+**In plain terms.** Adding up an empty list of amounts has an obvious right answer: zero. Averaging an
+empty list does not — there is genuinely no value to report. So the addition function answers it once,
+for everybody, and the averaging function refuses honestly. If instead the addition function refuses
+too, every place that adds things up has to invent its own "well, zero, and at what precision?" — and
+the second place to do it will pick a different precision from the first.
+
+**The asymmetry IS the content:** sum has an identity element; avg does not. Story 3.3's AC already
+says exactly this (*"`sum` and `count` return zero and `avg` reports a diagnostic rather than dividing
+by zero"*). **The exponent-on-empty question must be answered somewhere regardless; answering it once
+in the kernel beats answering it per call site.** Landed in 3.1a rather than left for 3.3 to discover
+as a bug.
+
+### D-3.1a.3 — A tripwire's location clause must be RELATIONAL when the thing it locates is scheduled to move
+**Lead ruling**, applied by the orchestrator. **Program-general in shape** *(mechanism: binding)*.
+
+**Verdict.** The reducer inventory asserts the two reducers live **in the same package as the `Decimal`
+type declaration** — not "in `internal/bind`", and not "in one package".
+
+**Why.** At Story 3.2, [[DW-8]] moves `Decimal` to `internal/expr` and the reducers travel with it. A
+tripwire naming `internal/bind` therefore **becomes a Story 3.2 edit — and a tripwire whose expected
+value has to be edited is one that gets edited wrongly.** Stated relationally it is checkable by AST
+today, **survives 3.2's move with no edit at all**, and gains a second real failure mode: **it also
+fails if someone moves `Decimal` and leaves the reducers behind**, which is a genuine way to end up
+with two accumulators.
+
+**The generalisation, worth keeping:** when a guard pins a location and that location is *scheduled to
+change*, pin it **relative to something that moves with it**. A literal path in a guard is a
+maintenance edit waiting to happen, and the moment of the edit is the moment the guard's meaning is
+most likely to be lost.
+
+Otherwise the tripwire's shape stands: set-equality over AST-extracted `[]Decimal → (Decimal, error)`
+reducers, exactly `{SumDecimals, AvgDecimals}` ([[D-000.14]]). It cannot be satisfied by a second
+accumulator inside `sum`, nor by duplication, and its red-proof is capturable **now** — the
+[[D-000.30]] window shuts once 3.3 exists.
+
+### D-000.61 — A red-proof against a floating-point implementation must vary the operand ORDER
+**Lead ruling** from Story 3.1a's population measurement. **Program-wide** *(mechanism: binding)*.
+
+> **A red-proof against a floating-point implementation must vary the operand ORDER, and must assert
+> that the exact implementation is order-INVARIANT while the mutant is not. Float addition is
+> order-dependent and exact addition is not, so a single-order proof can pass by luck.**
+
+**It did pass by luck, which is why this is a rule and not advice.** Measuring Story 3.1a's corpus, the
+**reversed `float64` pass landed on the exact answer by coincidence.** A single-order red-proof would
+have been green for the wrong reason, and nothing in it would have shown that.
+
+**The second clause is the valuable half.** Asserting order-invariance converts a lucky agreement from
+an **invisible near-miss** into a **positive property of the exact implementation.** Order-invariance
+is a real thing exactness buys, it is cheap to assert, and **it discriminates where a single-order
+value comparison does not.** It also supplies [[D-000.22]]'s semantic-acceptance step for Layer 1's
+golden **from a measured property rather than a restated hash** — which is what that step was always
+supposed to mean.
+
+**And the mutant must be honest, which is the other half of the same lesson.** The creator's mutant was
+*float64-accumulate-**then**-round-to-the-declared-scale*. **A mutant that skipped the rounding would
+diverge trivially — and would have ratified a corpus that cannot actually discriminate.**
+[[D-000.36]]'s hazard arriving *inside the red-proof itself*.
+
+**The measurement that produced this rule, recorded because it is the sharpest statement of
+[[D-000.50]] this run has produced.** Three candidate corpora, measured, not assumed:
+
+| corpus | discriminates `sum`? | discriminates `avg`? |
+|---|---|---|
+| A — `12345678901234.56` + 32×`0.01` | **yes** | **yes** |
+| B — mixed-scale, exercises alignment | no | no |
+| C — seven small 2-dp amounts | **no** | **no** |
+
+**Corpus C is the finding: it is exactly what a reasonable person writes for a bank-statement fixture,
+and it is BYTE-IDENTICAL under `float64`.** A team could write it, watch it pass, and conclude their
+decimal arithmetic was proven. It proves nothing. **Corpus B is the subtler trap** — pre-quantisation
+its `avg` *appears* to diverge, which reads like real precision loss, and rounding erases it. Both ship
+**labelled non-discriminating, as evidence** ([[D-000.29]]: settled, never carried) — they are the
+proof that the obvious fixture proves nothing.
