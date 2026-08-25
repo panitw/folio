@@ -9128,3 +9128,41 @@ decimal arithmetic was proven. It proves nothing. **Corpus B is the subtler trap
 its `avg` *appears* to diverge, which reads like real precision loss, and rounding erases it. Both ship
 **labelled non-discriminating, as evidence** ([[D-000.29]]: settled, never carried) — they are the
 proof that the obvious fixture proves nothing.
+
+### D-3.1a.4 — Story 3.1a finisher correction: the tripwire's claimed force was overstated
+
+*Filed 2026-08-25 by the story finisher, closing Story 3.1a's review Finding 11. Appended, not edited
+into [[D-3.1a.3]]: this log's header is explicit that entries are append-only and "a reversal is
+appended, never a rewrite". [[D-3.1a.3]]'s actual ruling — the tripwire's location clause must be
+RELATIONAL — is unaffected and remains correct; only one closing sentence describing what the
+instrument achieves was inaccurate.*
+
+**The over-claim.** [[D-3.1a.3]] closes: *"It cannot be satisfied by a second accumulator inside
+`sum`, nor by duplication..."* The story file's own "tripwire that makes Story 3.3 unable to skip the
+wiring" section repeats the same claim. Neither is true. The inventory (AC23,
+`reducer_inventory_arch_test.go`) checks that the module contains **exactly**
+`{SumDecimals, AvgDecimals}`, declared in the same package as `Decimal`. That is a true, valuable, and
+verified property. It is not the same property as "every `sum`-shaped function in the module routes
+its arithmetic through the kernel" — nothing anywhere asserts that any code **calls** `SumDecimals`/
+`AvgDecimals`. An inline `big.Int` accumulator written directly inside a future expression-language
+`sum()` function is not itself a `func([]Decimal) (Decimal, error)` top-level declaration, so it would
+never appear in the inventory at all, and the inventory would still report exactly the sanctioned two
+and pass. Verified: the only non-test references to either function name anywhere in `folio-go/` are
+inside `reduce.go` itself — nothing calls them yet, and nothing checks that anything ever will.
+
+**What the tripwire actually delivers, restated accurately.** It prevents a **second, differently-named
+top-level reducer function** of the same shape from being added silently — the "two accumulators"
+hazard in its most literal form. It does not, and structurally cannot without a call-graph check, force
+a *caller* to route through the sanctioned pair. AC23's own text ("the set of functions ... is exactly
+{SumDecimals, AvgDecimals}") already said the narrower, true thing; only the surrounding prose in
+D-3.1a.3 and the story file overstated its reach.
+
+**Resolution, per D-000.24 (an over-claim about a guard is corrected, not left standing) and the
+finisher's explicit remit here: narrow the prose, do not build call-graph enforcement in this story.**
+The story file's tripwire section and `reduce.go`'s doc comment are corrected in the same commit that
+files this entry, to state what the inventory checks (declaration-shape set-equality plus location)
+without claiming it forces routing. **Follow-up, owed to Story 3.3, not this one:** if routing
+enforcement is wanted, it needs an assertion that at least one call site outside `internal/bind`
+references each reducer — itself a [[D-000.30]] window that shuts the moment 3.3's `sum`/`avg` land.
+Story 3.3's own developer should read this entry before assuming the tripwire already covers that
+case.

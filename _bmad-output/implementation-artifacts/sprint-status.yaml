@@ -76,7 +76,7 @@ development_status:
   # 3-1a inserted between 3.1 and 3.2 per D-3.1a.1, on D-000.25's precedent (which
   # inserted 2.3a for this same guard). AD-23's float ban is keyed on float32/float64
   # and cannot see math/big.Float. Must land BEFORE 3.2 creates internal/expr.
-  3-1a-guard-ad-23-against-named-binary-float-types: ready-for-dev
+  3-1a-guard-ad-23-against-named-binary-float-types: done
   3-2-evaluate-the-expression-language: backlog
   3-3-aggregate-over-a-collection: backlog
   3-4-format-dates-and-numbers-by-declared-locale: backlog
