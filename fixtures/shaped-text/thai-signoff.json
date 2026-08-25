@@ -1,0 +1,6 @@
+{
+  "reader": "Panit Wechasil",
+  "date": "2026-08-25",
+  "examined": "Opened fixtures/shaped-text/expected.pdf and read all seven lines. Every Thai vowel and tone mark sits on the consonant it belongs to, including line 1 (ปั ฟั ที่ ป้ำ), the lowered-mark case this story exists to fix, where the mark over ฟ clears the ascender correctly. Line 3 (น้ำ า) shapes SARA AM into its two marks correctly. The mixed-script line (Ada ปั 结) renders each script in the right face with no fallback artefacts.",
+  "sha256": "6c040ef7a82a3604912fb3793324da72dcf421527db753ae59e5813ac6c85370"
+}
