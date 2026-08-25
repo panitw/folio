@@ -9166,3 +9166,44 @@ enforcement is wanted, it needs an assertion that at least one call site outside
 references each reducer — itself a [[D-000.30]] window that shuts the moment 3.3's `sum`/`avg` land.
 Story 3.3's own developer should read this entry before assuming the tripwire already covers that
 case.
+
+### D-000.61 (extension) — Introducing a float is not the same as introducing float ERROR
+**Orchestrator decision**, from verifying Story 3.1a's order-invariance assertion. **Program-wide**
+*(mechanism: binding)*. **This entry records the orchestrator's own flawed instrument.**
+
+**What happened.** Verifying that [[D-000.61]]'s order-invariance assertion had teeth, the orchestrator
+mutated `SumDecimals` to accumulate in `float64` and re-ran. **The order-invariance test stayed
+green.** The obvious reading — *the assertion is vacuous, D-000.61 shipped decorative* — was wrong, and
+reporting it would have been a false alarm of exactly the [[D-000.46]] shape already recorded against
+the orchestrator once.
+
+**The actual explanation, which is a property of the kernel worth writing down.** `SumDecimals` aligns
+every operand to a common exponent and then accumulates **integer coefficients**. Corpus A's total
+coefficient is ~1.23e15, **below `2^53` ≈ 9.007e15 — so `float64` represents it EXACTLY.** Accumulating
+those integers in `float64` introduces a float **type** and **no float error at all**. The mutant
+changed the machinery and left the arithmetic exact, so nothing could redden.
+
+> **A mutation aimed at a numeric property must introduce the ERROR the property is about, not merely
+> the type the property names. A float that happens to be exact over the test's inputs is not a
+> floating-point implementation for the purpose of a red-proof — it is the same computation wearing a
+> different type.**
+
+**Re-run with the HONEST mutant** — accumulating the decimal **values** (`coefficient × 10^exponent`,
+where `0.01` is inexact in binary) and re-quantising — **both** `TestDecimalReductionKernelMatchesGolden`
+**and** `TestDecimalReductionKernelIsOrderInvariant` redden. **D-000.61's assertion has real teeth**;
+the first instrument did not.
+
+**In plain terms.** To test whether a scale detects overloading, you must put something genuinely too
+heavy on it. Putting on a heavy-looking box that happens to be empty tells you nothing about the scale
+— and concluding "this scale is broken" from that test would be a claim about the box.
+
+**Two consequences** *(mechanism: binding)*:
+1. **This is why the align-then-integer-add design is correct**, and the reason belongs beside it: the
+   kernel is immune to coefficient-level float precision loss **by construction** while any operand
+   total stays under `2^53`. That is a real, statable property — not a lucky one — and it is separate
+   from the value-level exactness Layer 1's oracle measures.
+2. **Before reporting a guard vacuous, verify the MUTANT first.** A green under mutation has two
+   readings — the guard is blind, or the mutation did not implement the defect — and they are
+   indistinguishable without checking. [[D-000.19]]'s principle applied to mutation testing: **an
+   unexplained agreement is where a broken instrument hides**, and the instrument here was the
+   orchestrator's.
