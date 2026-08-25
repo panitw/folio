@@ -8507,3 +8507,67 @@ provenance pin** — name a commit.
 committed faces reproduce byte-for-byte from their recorded derivations under `SOURCE_DATE_EPOCH`, on
 Python **3.12.13** with fontTools **4.63.0** (an isolated `.fontgen-venv`, gitignored, reached through
 the existing `FOLIO_FONTGEN_PYTHON` override so **no system interpreter is modified**).
+
+---
+
+### D-2.4.13 — The owner's CJK queries are TEMPLATE-LEVEL declarations, not an engine defect; and the fixture gains an undeclared long run so the standard behaviour stays covered
+
+*(mechanism: **binding**; grounded in **researched external standards**, not in taste)*
+
+**The owner's second pass queried the remaining four per-character CJK items** — `cjk-001` 结算单,
+`cjk-002` 共三页, `cjk-003` 汉字, `cjk-006` 日本語 — having already had `cjk-004`, `cjk-005` and
+`cjk-007` declared unbreakable. That is **all seven CJK items**. Asked whether this was a claim about
+these strings or about CJK breaking in general, the owner answered **"these strings are units"**, and
+— *"Can you do your own research on CJK word breaking? I'm not an expert"* — **delegated the coverage
+question to research rather than adjudicating a typographic standard.** That delegation is correct and
+is why this ruling cites sources.
+
+**What the standards say** *(researched, not assumed)*:
+
+- **UAX #14 (Unicode Line Breaking Algorithm), class ID**: *"lines can ordinarily break before and
+  after and between pairs of ideographic characters."* Class ID covers CJK Unified Ideographs,
+  Hiragana and Katakana. **Per-character breaking is the Unicode standard for CJK.**
+- **W3C `clreq` (Requirements for Chinese Text Layout)**: regulates **where breaks are PROHIBITED**
+  (line-start/line-end rules, unbreakable marks) and **does not mention word-boundary-aware breaking
+  as a requirement or a recommendation.** Breaks between arbitrary Han characters are acceptable
+  except where a prohibition applies.
+- **W3C `jlreq` (Requirements for Japanese Text Layout)**: same shape — extensive **kinsoku**
+  line-start/line-end prohibitions, **character-level composition, no word-boundary recommendation.**
+  Breaking inside こんにちは is **permitted** by the Japanese standard.
+
+**Therefore the engine is CORRECT and unchanged.** `isCJKIdeographOrKana` breaking between every
+Han/kana pair implements exactly UAX #14 class ID. **The owner's seven declarations are
+template-level authoring facts** — *"this value is a unit, keep it together"* — carried by AD-25's
+third mechanism, the same channel [[D-2.4.9]] used for 北京. **Nothing about the engine's breaking
+model changes, and nothing is inferred.**
+
+**The coverage consequence, and the ruling on it.** With all seven declared, **no fixture subject
+would exercise CJK per-character breaking at all** — the engine's actual, standard-mandated behaviour
+would ship untested by S4 ([[D-000.50]]: ask whether any subject can express the case). **Ruled: add
+an undeclared long CJK run.**
+
+**The subject is attested, not invented** — it already exists in `fixtures/wrapped-text/input.folio`:
+
+> **`结算单共三页请核对每一行的金额与日期`** — 18 runes, **verified all `Lo`, no punctuation and no
+> digits** — *"statement, three pages in total; please check the amount and date on every line."*
+
+Added as **`cjk-008`, undeclared**, with breaks at every interior position `1..17`. **The label here is
+derivable from UAX #14 rather than a matter of native-speaker taste**, which is why it does not need
+the owner's judgment the way the Thai items did — and the ruling says so explicitly rather than
+letting a derived label sit unmarked among human ones.
+
+**It also demonstrates the mechanism.** `结算单` and `共三页` occur **inside** this run as substrings —
+the very strings declared atomic as standalone items. **That is not a contradiction: a declaration is
+a document-level fact about a VALUE, not a property of the characters.** Undeclared, the long run
+breaks per character; declared, a value does not. The fixture now carries both sides.
+
+**A narrowing to state, not to fix** *(binding, [[D-000.6]])*: the engine **does not implement
+kinsoku** — `opportunity.go` says so in terms, deliberately excluding fullwidth punctuation because
+*"deciding whether a line may end before 「，」 … is exactly the line-start / line-end prohibition this
+engine does not implement."* Both `clreq` and `jlreq` make those prohibitions central. **`cjk-008` was
+chosen punctuation-free so it exercises per-character breaking without straying into a prohibition the
+engine does not honour** — the item must not accidentally assert kinsoku compliance we do not have.
+The narrowing belongs in `folio-format.md` beside the existing line-breaking limits.
+
+**Sources**: UAX #14 (`unicode.org/reports/tr14/`), W3C `clreq` (`w3.org/TR/clreq/`), W3C `jlreq`
+(`w3.org/TR/jlreq/`).
