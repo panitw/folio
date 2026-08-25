@@ -75,15 +75,16 @@ func TestBindTextAcceptsBareDottedPath(t *testing.T) {
 	}
 }
 
-// TestBindTextRejectsExpressionSyntax is AC16/AC17: anything
-// expression-shaped is a located error naming the element id and
-// mentioning Epic 3.
-func TestBindTextRejectsExpressionSyntax(t *testing.T) {
+// TestBindTextRejectsGenuineSyntaxErrors is F10's re-point, first half:
+// Story 3.2 gives internal/bind a real expression grammar (D-1.6.5),
+// so 1.6's blanket "anything expression-shaped is rejected" test is
+// gone — these cases remain genuine SYNTAX errors under the new
+// grammar too (AC19: array index, a bare comma-list, a bare operator,
+// interior whitespace), and each error must still name the element id.
+func TestBindTextRejectsGenuineSyntaxErrors(t *testing.T) {
 	cases := []string{
-		`{{formatNumber(transaction.amount, "#,##0.00")}}`,
 		`{{a[0]}}`,
 		`{{a, b}}`,
-		`{{"literal"}}`,
 		`{{a + b}}`,
 		`{{a b}}`, // interior whitespace
 	}
@@ -97,9 +98,99 @@ func TestBindTextRejectsExpressionSyntax(t *testing.T) {
 		if !strings.Contains(err.Error(), "e1") {
 			t.Errorf("BindText(%q): error must name the element id, got: %v", c, err)
 		}
-		if !strings.Contains(err.Error(), "Epic 3") {
-			t.Errorf("BindText(%q): error must mention Epic 3, got: %v", c, err)
-		}
+	}
+}
+
+// TestBindTextRejectsExcessiveCallNestingAtRender is QA Finding 3's
+// (Blocker) render-entry-point half: BindText is the render-time
+// resolver, the other reachable path the finding named alongside
+// folio.ParseTemplate (load). Before internal/expr's maxCallDepth
+// existed, a value nesting ~800,000 function calls (~1.6MB, an
+// unremarkable size for a .folio file) drove unbounded recursion into
+// an unrecoverable runtime stack overflow reachable straight from a
+// render call. Now it must be an ordinary located error, like every
+// other rejected form.
+func TestBindTextRejectsExcessiveCallNestingAtRender(t *testing.T) {
+	data := mustDecode(t, `{}`)
+	deep := "{{" + strings.Repeat("a(", 800000) + "}}"
+	_, err := BindText(deep, data, noParams, "e1")
+	if err == nil {
+		t.Fatal("BindText: expected a located error; excessive call nesting must not risk a stack overflow")
+	}
+	if !strings.Contains(err.Error(), "e1") {
+		t.Errorf("error must name the element id, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "nests function calls too deeply") {
+		t.Errorf("error must name the depth limit specifically, got: %v", err)
+	}
+}
+
+// TestBindTextArrayPathIsLocatedNotScalarError is QA Finding 16(b)
+// (Minor): lookupBound's default arm — what makes an array or object
+// path a located error rather than a plausible value — had NO test at
+// all before this fix (a search for its message, "not a scalar value
+// usable in an expression", across every _test.go file returned
+// nothing). Both folio-format.md's own "### Expressions" section and
+// the (out-of-story) author-facing reference explicitly claim an
+// empty array [] as an if() condition is a located error; expr.Value
+// has no array kind, so that claim rested entirely on this previously
+// untested conversion arm.
+func TestBindTextArrayPathIsLocatedNotScalarError(t *testing.T) {
+	data := mustDecode(t, `{"tags": ["a", "b"]}`)
+	_, err := BindText(`{{tags}}`, data, noParams, "e1")
+	if err == nil {
+		t.Fatal("BindText: expected a located error — an array is not a scalar value usable in an expression")
+	}
+	if !strings.Contains(err.Error(), "e1") {
+		t.Errorf("error must name the element id, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "tags") {
+		t.Errorf("error must name the offending path, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "not a scalar") {
+		t.Errorf(`error must say "not a scalar", got: %v`, err)
+	}
+}
+
+// TestBindTextParsesExpressionButFailsAsUnimplemented is F10's
+// re-point, second half (D-000.9's signature-failure shape:
+// "err != nil" alone would pass identically whether formatNumber was
+// REJECTED as unsupported syntax, as it was at fde96b5, or PARSED and
+// then reported unimplemented, as it is now — so the message itself
+// must be asserted). Under Story 3.2, formatNumber(...) is registered,
+// parses, and derives successfully (AC15) but is not implemented until
+// Story 3.4 — a DIFFERENT located error from a syntax rejection, and
+// this test asserts the difference, not merely that err != nil.
+func TestBindTextParsesExpressionButFailsAsUnimplemented(t *testing.T) {
+	data := mustDecode(t, `{}`)
+	_, err := BindText(`{{formatNumber(transaction.amount, "#,##0.00")}}`, data, noParams, "e1")
+	if err == nil {
+		t.Fatal(`expected a located error: formatNumber is registered but not implemented until Story 3.4`)
+	}
+	if !strings.Contains(err.Error(), "e1") {
+		t.Errorf("error must name the element id, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "3.4") {
+		t.Errorf("error must name Story 3.4 as the owning story (AC15), got: %v", err)
+	}
+	if strings.Contains(err.Error(), "not a valid expression") {
+		t.Errorf("error must NOT read as a syntax rejection — formatNumber(...) is syntactically valid now, got: %v", err)
+	}
+}
+
+// TestBindTextAcceptsBareStringLiteral: AC3's grammar accepts a
+// double-quoted string literal as a standalone expression — Story 3.2
+// widens the binding grammar past bare paths, and a literal is one of
+// the four accepted primary forms, so "{{\"literal\"}}" now renders
+// its own content rather than being rejected (the pre-3.2 behaviour).
+func TestBindTextAcceptsBareStringLiteral(t *testing.T) {
+	data := mustDecode(t, `{}`)
+	got, err := BindText(`{{"literal"}}`, data, noParams, "e1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "literal" {
+		t.Errorf("got %q, want %q", got, "literal")
 	}
 }
 

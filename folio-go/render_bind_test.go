@@ -195,9 +195,13 @@ func TestRenderTrailingGarbageInParamsIsReportedAsParams(t *testing.T) {
 	}
 }
 
-// TestRenderRejectsExpressionSyntaxInTextValue is AC16/AC17 through the
-// public Render API.
-func TestRenderRejectsExpressionSyntaxInTextValue(t *testing.T) {
+// TestRenderRejectsUnimplementedFunctionInTextValue is F10's re-point
+// through the public Render API (Story 3.2): formatNumber(...) is now
+// registered, parses and derives successfully at load (AC15) — this
+// document loads fine — but is not implemented until Story 3.4, so
+// Render (evaluation) still produces a located error, now naming the
+// owning story rather than reading as a syntax rejection.
+func TestRenderRejectsUnimplementedFunctionInTextValue(t *testing.T) {
 	const tplJSON = `{
   "assets": {},
   "bands": {
@@ -223,10 +227,10 @@ func TestRenderRejectsExpressionSyntaxInTextValue(t *testing.T) {
 	}
 	_, err = Render(tpl, Data(`{}`), nil, testFontSet())
 	if err == nil {
-		t.Fatal("expected a located error naming the element id and Epic 3")
+		t.Fatal("expected a located error naming the element id and Story 3.4")
 	}
-	if !strings.Contains(err.Error(), "e1") || !strings.Contains(err.Error(), "Epic 3") {
-		t.Fatalf("error must name the element id and mention Epic 3, got: %v", err)
+	if !strings.Contains(err.Error(), "e1") || !strings.Contains(err.Error(), "3.4") {
+		t.Fatalf("error must name the element id and Story 3.4, got: %v", err)
 	}
 }
 

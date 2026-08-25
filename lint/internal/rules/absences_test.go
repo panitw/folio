@@ -77,7 +77,7 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 	// not decorative.
 }
 
-// TestAbsencesChecksIncludeAllFourEntries closes the shrunk-list gap
+// TestAbsencesChecksIncludeAllThreeEntries closes the shrunk-list gap
 // D-1.4.11 warned about and this story's finisher review (Finding 5,
 // Major) confirmed was still open: the witness above proves
 // ChecksEvaluated tracks the scanner's OWN loop, but nothing previously
@@ -90,13 +90,16 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 // check, "absence-source-date-epoch" (see absences.go's comment on
 // that row). Story 2.2 (AC5) removed "absence-fonts-dir" — the faces it
 // guarded against now ship, and ScanFontsAssets (fontsassets.go) is its
-// fail-closed replacement — bringing this list back down to four
-// entries; this test still pins them, by rule id, so both check kinds
-// are covered by the same shrunk-list protection.
-func TestAbsencesChecksIncludeAllFourEntries(t *testing.T) {
+// fail-closed replacement. Story 3.2 (D-000.59) DISCHARGED
+// "absence-expr-package" by replacement, not deletion alone: the same
+// commit that removes it here lands the positive assertions that take
+// over its job (folio-go/folio_expr_validate.go,
+// folio-go/internal/expr_arch_test.go) — bringing this list down to
+// three entries; this test still pins them, by rule id, so every check
+// kind stays covered by the same shrunk-list protection.
+func TestAbsencesChecksIncludeAllThreeEntries(t *testing.T) {
 	want := []string{
 		"absence-designer-project",
-		"absence-expr-package",
 		"absence-diag-package",
 		"absence-source-date-epoch",
 	}

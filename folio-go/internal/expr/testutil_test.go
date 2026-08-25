@@ -1,4 +1,4 @@
-package bind
+package expr
 
 // repoRootFromTest and mustReadFile mirror internal/template's helpers
 // of the same name (D-000.5/AD-21's shared pattern, duplicated because

@@ -1,4 +1,4 @@
-package bind
+package expr
 
 // SumDecimals and AvgDecimals are Story 3.1a's exact decimal reduction
 // KERNEL (AC1): pure arithmetic over []Decimal, reusing decimal.go's
@@ -112,7 +112,7 @@ func SumDecimals(items []Decimal) (Decimal, error) {
 	spread := new(big.Int).Sub(big.NewInt(int64(maxExp)), big.NewInt(int64(minExp)))
 	if spread.Cmp(big.NewInt(maxDecimalExponentMagnitude)) > 0 {
 		return Decimal{}, fmt.Errorf(
-			"bind: sum: alignment spread %s between operand exponents (min %d, max %d) exceeds %d",
+			"expr: sum: alignment spread %s between operand exponents (min %d, max %d) exceeds %d",
 			spread.String(), minExp, maxExp, maxDecimalExponentMagnitude,
 		)
 	}
@@ -129,7 +129,7 @@ func SumDecimals(items []Decimal) (Decimal, error) {
 
 	if !total.IsInt64() {
 		return Decimal{}, fmt.Errorf(
-			"bind: sum: accumulated coefficient %s does not fit int64 (%d operand(s), aligned to exponent %d)",
+			"expr: sum: accumulated coefficient %s does not fit int64 (%d operand(s), aligned to exponent %d)",
 			total.String(), len(items), minExp,
 		)
 	}
@@ -151,12 +151,12 @@ func SumDecimals(items []Decimal) (Decimal, error) {
 // empty-collection semantics (Story 3.3's question, Flag F5).
 func AvgDecimals(items []Decimal) (Decimal, error) {
 	if len(items) == 0 {
-		return Decimal{}, fmt.Errorf("bind: avg: cannot average 0 operands")
+		return Decimal{}, fmt.Errorf("expr: avg: cannot average 0 operands")
 	}
 
 	total, err := SumDecimals(items)
 	if err != nil {
-		return Decimal{}, fmt.Errorf("bind: avg: %w", err)
+		return Decimal{}, fmt.Errorf("expr: avg: %w", err)
 	}
 
 	// total.Exponent is already the maximum operand scale (SumDecimals'
@@ -192,7 +192,7 @@ func AvgDecimals(items []Decimal) (Decimal, error) {
 
 	if !quotient.IsInt64() {
 		return Decimal{}, fmt.Errorf(
-			"bind: avg: quotient coefficient %s does not fit int64 (%d operand(s))",
+			"expr: avg: quotient coefficient %s does not fit int64 (%d operand(s))",
 			quotient.String(), len(items),
 		)
 	}
@@ -209,7 +209,7 @@ func AvgDecimals(items []Decimal) (Decimal, error) {
 	resultExponent := total.Exponent - avgExtraScale
 	if resultExponent > maxDecimalExponentMagnitude || resultExponent < -maxDecimalExponentMagnitude {
 		return Decimal{}, fmt.Errorf(
-			"bind: avg: result exponent %d (sum exponent %d minus avgExtraScale %d) exceeds magnitude bound %d",
+			"expr: avg: result exponent %d (sum exponent %d minus avgExtraScale %d) exceeds magnitude bound %d",
 			resultExponent, total.Exponent, avgExtraScale, maxDecimalExponentMagnitude,
 		)
 	}

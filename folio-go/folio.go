@@ -5,6 +5,7 @@ package folio
 import (
 	"os"
 
+	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
 
@@ -31,6 +32,16 @@ import (
 // route.
 type Template struct {
 	doc *template.Document
+
+	// derivedFooters is Story 3.2/D-1.4.1's footerOf/footerFormat
+	// derivation result (R1, R2), keyed by column id — resolved
+	// ALONGSIDE doc, never written back into it (R2: internal/
+	// template/serialize.go emits "footerOf" whenever it is SET, so
+	// storing a derived value on doc would break D-1.4.3's P3 fixed
+	// point for every document that legitimately omits footerOf).
+	// Column ids are document-unique (AD-10), so a flat map keyed by
+	// column id alone is unambiguous.
+	derivedFooters map[template.ElementID]expr.DerivedFooter
 }
 
 // LoadTemplate reads path from disk and parses it as a `.folio`
@@ -51,10 +62,29 @@ func LoadTemplate(path string) (*Template, error) {
 // ParseTemplate parses b as a `.folio` document (AC1). It is the sole
 // bridge into internal/template's parser (AD-9: "internal/template
 // owns both the parser and the serializer").
+//
+// Story 3.2 (R1, forced by F2: internal/template, stage rank 2, can
+// never import internal/expr, stage rank 3 — D-1.6.1's pre-commitment
+// — so this validation cannot live in internal/template itself):
+// ParseTemplate is ALSO where every "{{ }}" expression in the document
+// (text elements' `value`, table columns' `bind`) is parsed and
+// statically checked (expr.Parse, expr.Check — syntax, arity, unknown
+// function names, literal-argument kind; R3: "syntax and arity at
+// load; execution at evaluation" — never a full evaluation, which
+// needs report data that does not exist yet), and where D-1.4.1's
+// footerOf/footerFormat derivation runs for every table column that
+// requests a sum/avg footer without naming footerOf explicitly
+// (AC21). A syntax error, an unknown/mis-aritied function, or a
+// non-derivable bind on a column that needed derivation are all load
+// errors from this public entry point — never deferred to Render.
 func ParseTemplate(b []byte) (*Template, error) {
 	doc, err := template.ParseDocument(b)
 	if err != nil {
 		return nil, err
 	}
-	return &Template{doc: doc}, nil
+	derived, err := validateAndDeriveExpressions(doc)
+	if err != nil {
+		return nil, err
+	}
+	return &Template{doc: doc, derivedFooters: derived}, nil
 }

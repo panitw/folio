@@ -213,9 +213,50 @@ designer and the engine disagree.
 | `headerHeight` | Height of the repeated header row, in points. Accounted for on **every** continuation page. |
 | `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. |
 | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
-| `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 1.4, this derivation is not yet implemented** — until Story 3.2 lands it, a `footer` with no `footerOf` simply loads, and the aggregate itself is not computed until Story 4.5. Story 3.6 mints the two diagnostic codes this eventually becomes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape) — neither exists yet. |
+| `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 3.2, this derivation runs at load time** (`folio.ParseTemplate`) and the derived value is resolved alongside the document, never written back into it — a document that omits `footerOf` still serializes without it. **The aggregate itself is not yet computed** — `sum`/`count`/`avg` are registered but unimplemented until Story 3.3, so evaluating one today is a located error naming the owning story; the footer cell's actual value is not rendered until Story 4.5. Story 3.6 mints the two diagnostic codes this eventually becomes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape) — neither exists yet. |
 | `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer value. Legal with all three `footer` operations. |
 | `altRowBackground` | *Optional.* Colour for alternating rows (FR28). Alternation follows the row's index in the collection, so it does not reset per page. |
+
+### Expressions
+
+A `{{ }}` binding holds one expression (Story 3.2, AD-9): a bare dotted path (`customer.name`), a
+function call over comma-separated arguments (`upper(customer.name)`), a double-quoted string
+literal, or a number literal — nesting to any depth
+(`formatNumber(sum(t.amount), "#,##0.00")`). The parser is hand-written recursive descent; there is
+no operator (`+`, `-`, `==`, `&&`, …) anywhere in the grammar, and none will be added without a
+direction change (AD-9, D-3.2.2 — every general-purpose expression library, including CEL, is
+rejected on its numeric model: no exact decimal type).
+
+There are, and will only ever be, **eight** named functions (FR18): `sum`, `count`, `avg`,
+`formatDate`, `formatNumber`, `upper`, `lower`, `if`. This count is mechanically pinned in the
+engine (`internal/expr`'s own closed table) — a ninth is a compile-time-enforced diff, not a runtime
+surprise. As of Story 3.2, only `upper`, `lower` and `if` are implemented; calling any of the other
+five is a located error naming the function and the story that implements it (`sum`/`count`/`avg` —
+Story 3.3; `formatDate`/`formatNumber` — Story 3.4), never a silently wrong value (a `sum` over zero
+rows is never a plausible zero — it is always reported as unimplemented until Story 3.3 lands it
+honestly).
+
+**`upper(x)` / `lower(x)`** apply Go's Unicode case mapping. `x` must resolve to a string; any other
+kind (including an absent or null path) is a located error, never coerced. A script with no case
+distinction (Thai, CJK) is unchanged, byte for byte.
+
+**`if(condition, then, else)`** takes exactly three arguments and evaluates only the branch it
+selects (the other is never evaluated at all — an unimplemented function or a mistyped path in the
+branch NOT taken produces no error). `condition` must resolve to a JSON **boolean** — there is no
+truthiness anywhere in this grammar: a JSON `0`, an empty string `""`, and an empty array `[]` are
+all the WRONG KIND for a condition, and each is a located error, exactly as any other wrong-kind
+value is (AD-14) — never treated as false.
+
+**An absent path as `condition` is a located error naming the path.** This is deliberately
+different from the next rule:
+
+**An explicit JSON `null` as `condition` silently selects the `else` branch — no error, no
+diagnostic, no warning.** This is the one behaviour in the engine that leaves no signal anywhere in
+its output: a reader of the rendered document cannot tell a section hidden by a null condition from
+one that was simply never authored. This trade was made deliberately, with that cost stated plainly,
+in preference to a warning that most template authors would never see. If a rendered document is
+missing a section you expected, and its visibility is driven by `if(row.someFlag, …)`, check whether
+`someFlag` can be `null` in your data — that is the one case this format will never flag for you.
 
 ### `style`
 

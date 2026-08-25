@@ -1,4 +1,4 @@
-package bind
+package expr
 
 // Layer 1's oracle test: the exact reduction kernel (SumDecimals,
 // AvgDecimals) compared against Story 3.1a's recorded golden

@@ -84,18 +84,19 @@ var absenceChecks = []absenceCheck{
 		rule:    "absence-designer-project",
 		desc:    "folio-designer/ must be absent until Story 5.1 creates the project and wires the JS licence half (DW-2)",
 	},
-	// The two entries below are Story 1.4's tripwires (AC48, AC49,
-	// D-1.4.2), added AFTER AC50/D-1.4.11 closed ScanAbsences' own
-	// coverage-witness gap (T2's ordering is load-bearing — "adding
-	// entries to a list whose emptiness passes is exactly how a
-	// tripwire becomes decorative"). Keyed on the DIRECTORY, per DW-2's
-	// recorded correction (an exact filename guess is a false-pass
-	// hazard a directory-level check does not have).
-	{
-		relPath: "folio-go/internal/expr",
-		rule:    "absence-expr-package",
-		desc:    "folio-go/internal/expr/ must be absent until Story 3.2 derives columns[].footerOf from bind (DW-5)",
-	},
+	// The entry below is one of Story 1.4's original tripwires (AC48,
+	// AC49, D-1.4.2), added AFTER AC50/D-1.4.11 closed ScanAbsences'
+	// own coverage-witness gap (T2's ordering is load-bearing —
+	// "adding entries to a list whose emptiness passes is exactly how
+	// a tripwire becomes decorative"). Keyed on the DIRECTORY, per
+	// DW-2's recorded correction (an exact filename guess is a
+	// false-pass hazard a directory-level check does not have). Its
+	// twin, "absence-expr-package" (folio-go/internal/expr/ absent),
+	// was DISCHARGED by Story 3.2 (D-000.59) — deleted in the SAME
+	// commit as the positive assertions that replace it
+	// (folio_expr_validate.go, internal/expr_arch_test.go): the
+	// obligation it stood in for is now asserted directly, never
+	// merely by this directory's continued absence.
 	{
 		relPath: "folio-go/internal/diag",
 		rule:    "absence-diag-package",

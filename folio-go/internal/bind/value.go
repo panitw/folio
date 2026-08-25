@@ -7,6 +7,8 @@ import (
 	"io"
 	"maps"
 	"slices"
+
+	"github.com/panitw/folio/folio-go/internal/expr"
 )
 
 // Kind is the discriminant of a Value.
@@ -57,14 +59,16 @@ type Value struct {
 	Obj  map[string]Value
 }
 
-// AsDecimal converts a KindNumber Value's literal into a Decimal
-// (AC1, AC6), reusing NewDecimal and, through it, the module's one
-// splitter.
-func (v Value) AsDecimal() (Decimal, error) {
+// AsDecimal converts a KindNumber Value's literal into an
+// internal/expr.Decimal (AC1, AC6), reusing expr.NewDecimal and,
+// through it, the module's one splitter. Decimal itself moved to
+// internal/expr at Story 3.2 (D-3.2.1, DW-8): bind (stage rank 4)
+// imports expr (rank 3) to reuse it, never the reverse.
+func (v Value) AsDecimal() (expr.Decimal, error) {
 	if v.Kind != KindNumber {
-		return Decimal{}, fmt.Errorf("bind: value is a %s, not a number", v.Kind)
+		return expr.Decimal{}, fmt.Errorf("bind: value is a %s, not a number", v.Kind)
 	}
-	return NewDecimal(v.Num)
+	return expr.NewDecimal(v.Num)
 }
 
 // Presence is the outcome of Lookup — AD-14's three cases (D-1.6.2,
@@ -112,9 +116,12 @@ func (v Value) Lookup(path []string) (Value, Presence) {
 		}
 		cur = child
 	}
-	// path is never empty at a real call site (parseBindingPath
-	// rejects an empty binding), but an empty path resolves to v
-	// itself for completeness rather than panicking.
+	// path is never empty at a real call site (internal/expr's parser
+	// rejects an empty binding, and exprResolver.Resolve — text.go —
+	// has its own len(path)==0 guard; parseBindingPath, the pre-3.2
+	// matcher this comment used to cite, was deleted by AC23), but an
+	// empty path resolves to v itself for completeness rather than
+	// panicking.
 	if v.Kind == KindNull {
 		return v, Null
 	}

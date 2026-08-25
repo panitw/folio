@@ -77,7 +77,7 @@ development_status:
   # inserted 2.3a for this same guard). AD-23's float ban is keyed on float32/float64
   # and cannot see math/big.Float. Must land BEFORE 3.2 creates internal/expr.
   3-1a-guard-ad-23-against-named-binary-float-types: done
-  3-2-evaluate-the-expression-language: backlog
+  3-2-evaluate-the-expression-language: done
   3-3-aggregate-over-a-collection: backlog
   3-4-format-dates-and-numbers-by-declared-locale: backlog
   3-5-hide-a-component-conditionally: backlog

@@ -1,15 +1,16 @@
-// This file implements AC15-AC21 (D-1.6.5): the accepted binding
-// grammar, its loud rejection of anything expression-shaped, and the
-// {{page}}/{{pages}} reservation. Scope (AC20): callers apply BindText
-// only to text-element `value` interpolation — table.bind and
-// columns[].bind belong to the table stories and Epic 3, and are never
-// passed here.
+// This file implements text-element "{{ }}" binding (D-1.6.5, replaced
+// at Story 3.2 by the expression language, D-1.6.5/D-3.2.1: "this
+// story's parser REPLACES 1.6's matcher — deleted, not kept
+// alongside"). Scope (AC20, unchanged since 1.6): callers apply
+// BindText only to text-element `value` interpolation.
 package bind
 
 import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/panitw/folio/folio-go/internal/expr"
 )
 
 // Substitution records one placeholder's contribution to BindTextSpans'
@@ -35,22 +36,28 @@ import (
 // "the signal rides on the value, never through an import").
 type Substitution struct {
 	// Path is the bare dotted path exactly as authored, including a
-	// leading "params" segment when it resolved against the params root.
+	// leading "params" segment when it resolved against the params
+	// root — or, for an expression that is not a bare path (a function
+	// call, Story 3.2), the expression's own raw source text.
 	Path string
 
 	// Start, End are rune indices into BindTextSpans' returned string.
 	Start, End int
 }
 
-// reservedPlaceholders are AD-4's page-number slots (D-1.6.5, AC18):
-// owned by Story 2.7, never resolved from data and never an error at
-// 1.6. A data document containing a top-level "page" key must not
-// change what {{page}} renders (AC19) — this reservation is checked
-// BEFORE any data lookup is attempted, so it can never be shadowed.
-var reservedPlaceholders = map[string]bool{
-	"page":  true,
-	"pages": true,
-}
+// AD-4's page-number slots (D-1.6.5, AC18) are owned by Story 2.7,
+// never resolved from data and never an error at 1.6. A data document
+// containing a top-level "page" key must not change what {{page}}
+// renders (AC19) — this reservation is checked BEFORE any data lookup,
+// or any parse attempt (AC4, Story 3.2), so it can never be shadowed.
+//
+// Resolve (below) gets this for free from expr.ScanPlaceholders'
+// Placeholder.Reserved field: reservation is decided exactly once, by
+// internal/expr.IsReserved (AD-13: one definition, not two)
+// — this file no longer needs, and no longer keeps, a local alias.
+// (QA Finding 5, Major: this file previously hand-rolled a byte-
+// identical second "{{"/"}}" search rather than calling
+// ScanPlaceholders, which its own doc comment claimed nothing did.)
 
 // declaredResolutionRoots is Story 2.7's AC3 closure, in the shape
 // internal/template/closedsets.go and declaredEpic2GateObligations
@@ -84,31 +91,28 @@ var reservedPlaceholders = map[string]bool{
 var declaredResolutionRoots = []string{"data", "params", "row"}
 
 // BindText resolves every "{{…}}" placeholder in text against data and
-// params (AC15-AC21, AC12-AC17, D-1.6.5, D-1.7.4), scoped to one text
-// element (elementID names it in every error, AC8/AC16/AC17). "{{page}}"
-// and "{{pages}}" pass through unchanged (AC18). Anything else that is
-// not a bare dotted path ("{{" ws? ident ("." ident)* ws? "}}", AC15) is
-// a located error naming elementID and mentioning Epic 3 (AC17) — this
-// is the mechanism that keeps 1.6 from becoming a second, partial
-// expression implementation (AC16).
+// params (Story 3.2's expression language, D-1.6.5, D-1.7.4), scoped to
+// one text element (elementID names it in every error). "{{page}}"
+// and "{{pages}}" pass through unchanged (AC4).
 //
-// AD-14's three cases (D-1.6.2, AC8-AC11): an absent path is an error
-// naming both the data path and elementID; an explicit JSON null
-// renders as empty and is not an error; a value of the wrong kind for
-// a text binding (anything but a string) is an error, never coerced.
+// AD-14's three cases (AC12/AC13, Story 3.2's if() ruling): an absent
+// path is an error naming both the data path and elementID; an
+// explicit JSON null renders as empty and is not an error; a value of
+// the wrong kind for a text binding (anything but a string) is an
+// error, never coerced.
 //
 // "params" is a SECOND resolution root, not a reserved token (Story
-// 1.7, AC12-AC17, D-1.7.4, verbatim): "params is a namespace — a
-// second resolution root resolved at bind time, alongside the data
-// root." A placeholder whose FIRST path segment is "params" ALWAYS
-// resolves against params, never against data (AC13) — regardless of
-// whether data itself happens to carry a top-level "params" key
-// (AC14/AC15): that key is ordinary, unreachable caller JSON. This is
-// deliberately NOT implemented by extending reservedPlaceholders below
-// (AC12): page/pages are reserved whole TOKENS, resolved from neither
-// root and owned by Story 2.7; params is a NAMESPACE, resolved from
-// its own root — conflating the two is how "page" would eventually
-// acquire a namespace, which AD-4 forbids forever.
+// 1.7, D-1.7.4, verbatim): "params is a namespace — a second
+// resolution root resolved at bind time, alongside the data root." A
+// placeholder whose FIRST path segment is "params" ALWAYS resolves
+// against params, never against data — regardless of whether data
+// itself happens to carry a top-level "params" key: that key is
+// ordinary, unreachable caller JSON. This is deliberately NOT
+// implemented by extending expr.IsReserved (page/pages are
+// reserved whole TOKENS, resolved from neither root and owned by Story
+// 2.7; params is a NAMESPACE, resolved from its own root — conflating
+// the two is how "page" would eventually acquire a namespace, which
+// AD-4 forbids forever).
 func BindText(text string, data, params Value, elementID string) (string, error) {
 	s, _, err := BindTextSpans(text, data, params, elementID)
 	return s, err
@@ -123,33 +127,34 @@ func BindText(text string, data, params Value, elementID string) (string, error)
 // spans cannot drift from the text they describe — the same "only one
 // derivation" discipline Story 2.3's Blocker 1 imposed on advances.
 //
-// Story 2.4 (D-2.1.10) needs this because a template may declare that
-// certain DATA PATHS are never to be split across lines, and honouring
-// that requires knowing which stretch of the bound string came from
-// which path. folio-format.md:130 lets a text `value` mix literal text
-// with bindings — both of the specification's own worked examples do
-// ("Statement for {{customer.name}}") — so "the whole element" is not a
-// usable answer: it would forbid breaking between "Statement" and
-// "for". The span is the unit, and this is where the span is known.
-//
 // {{page}} and {{pages}} produce NO Substitution. They are reserved
 // tokens owned by Story 2.7, resolved from neither root, and they name
 // no data path — so there is nothing a document could declare about
 // them.
 //
-// Story 3.1 / AC0: this is now a thin wrapper over Resolve,
-// constructing a Scope with NO row set — the pre-3.1 behaviour,
-// byte-identical. Resolve is the single dispatch AC0 requires;
-// a future row-scoped caller (Story 4.2) calls it directly with a
+// This is a thin wrapper over Resolve, constructing a Scope with NO row
+// set — the byte-identical pre-3.1 behaviour when no row is active. A
+// future row-scoped caller (Story 4.2) calls Resolve directly with a
 // Scope built through NewScope(...).WithRow(...).
 func BindTextSpans(text string, data, params Value, elementID string) (string, []Substitution, error) {
 	return Resolve(text, NewScope(data, params), elementID)
 }
 
-// Resolve is AC0's single dispatch: the one implementation of
-// the binding grammar's resolution-root traversal, taking a Scope
-// rather than bare data/params values, so BindText/BindTextSpans and
-// any future row-scoped caller share one traversal, never two.
+// Resolve is the one implementation of the binding grammar's
+// resolution-root traversal, taking a Scope rather than bare
+// data/params values, so BindText/BindTextSpans and any future
+// row-scoped caller share one traversal, never two.
+//
+// Story 3.2 (D-1.6.5, D-3.2.1): every non-reserved "{{ }}" occurrence
+// is parsed and checked by internal/expr (expr.Parse, expr.Check —
+// syntax, arity, unknown-function-name, literal-argument-kind), then
+// evaluated (expr.Eval) against a Resolver built from scope
+// (exprResolver, below) that dispatches each path to the data, params
+// or row root exactly as 1.6/3.1 did — the SAME lookupBound helper as
+// before, now returning a generic expr.Value rather than a
+// string-only result, so it can serve a path resolved from ANYWHERE
+// in an expression (a bare top-level path, or nested inside a function
+// argument), not only the top-level substitution case.
 func Resolve(text string, scope Scope, elementID string) (string, []Substitution, error) {
 	var out strings.Builder
 	// runesWritten tracks the rune length of out, maintained alongside
@@ -161,203 +166,180 @@ func Resolve(text string, scope Scope, elementID string) (string, []Substitution
 		out.WriteString(s)
 		runesWritten += utf8.RuneCountInString(s)
 	}
-	rest := text
-	for {
-		start := strings.Index(rest, "{{")
-		if start < 0 {
-			write(rest)
-			break
-		}
-		write(rest[:start])
-		afterOpen := rest[start+2:]
-		end := strings.Index(afterOpen, "}}")
-		if end < 0 {
-			return "", nil, fmt.Errorf("bind: element %s: unterminated \"{{\" (missing closing \"}}\")", elementID)
-		}
-		inner := afterOpen[:end]
-		rest = afterOpen[end+2:]
 
-		trimmed := strings.TrimSpace(inner)
-		if reservedPlaceholders[trimmed] {
-			// AC18: reserved for Story 2.7 — left byte-for-byte
+	// The "{{ }}" search itself is expr.ScanPlaceholders — AD-13's ONE
+	// tokenizer for this syntax (QA Finding 5, Major: this loop used to
+	// hand-roll its own byte-identical copy of ScanPlaceholders' scan,
+	// which scan.go's own doc comment claimed did not exist). literal[i]
+	// is the plain text immediately preceding placeholders[i]; trailing
+	// is whatever follows the last placeholder (the whole string, if
+	// there were none) — exactly the segmentation this loop needs to
+	// reassemble its output.
+	literal, placeholders, trailing, serr := expr.ScanPlaceholders(text)
+	if serr != nil {
+		return "", nil, fmt.Errorf("bind: element %s: %s", elementID, serr)
+	}
+	for i, ph := range placeholders {
+		write(literal[i])
+
+		trimmed := strings.TrimSpace(ph.Inner)
+		if ph.Reserved {
+			// AC4: reserved for Story 2.7 — left byte-for-byte
 			// unchanged, never resolved from data, never an error. It
 			// names no data path, so it yields no Substitution.
 			write("{{")
-			write(inner)
+			write(ph.Inner)
 			write("}}")
 			continue
 		}
 
-		path, perr := parseBindingPath(inner)
+		astExpr, perr := expr.Parse(ph.Inner)
 		if perr != nil {
 			return "", nil, fmt.Errorf(
-				"bind: element %s: %q is not a supported binding path (%s) — expression syntax is not yet supported (Epic 3)",
+				"bind: element %s: %q is not a valid expression: %s",
 				elementID, trimmed, perr,
 			)
 		}
-
-		// record wraps one resolved placeholder's write, capturing the
-		// rune span it occupies. Used by both roots below, so neither
-		// can acquire a different notion of where a substitution sits.
-		record := func(resolved *string) {
-			from := runesWritten
-			if resolved != nil {
-				write(*resolved)
-			}
-			subs = append(subs, Substitution{Path: strings.Join(path, "."), Start: from, End: runesWritten})
+		if cerr := expr.Check(astExpr); cerr != nil {
+			return "", nil, fmt.Errorf("bind: element %s: %s", elementID, cerr)
 		}
 
-		// AC12/AC13/D-1.7.4: the FIRST segment "params" always selects
-		// the params root, decided at the path-segment level (not on
-		// the trimmed literal string) so the whitespace-tolerant
-		// spelling "{{ params.x }}" is caught identically (M-6).
-		if path[0] == "params" {
-			if len(path) == 1 {
-				// AC17: "{{params}}" bare, no dot — params names a
-				// namespace, not a value.
-				return "", nil, fmt.Errorf("bind: element %s: %q is a namespace, not a value", elementID, trimmed)
-			}
-			resolved, err := lookupBound(scope.params, path[1:], path, elementID, "params", "the supplied params")
-			if err != nil {
-				return "", nil, err
-			}
-			record(resolved)
-			continue
+		resolver := exprResolver{scope: scope, elementID: elementID}
+		val, everr := expr.Eval(astExpr, resolver, elementID)
+		if everr != nil {
+			return "", nil, everr
 		}
 
-		// Story 3.1 / AC1-AC4 / D-3.1.1: when a row scope is active and
-		// the FIRST segment equals the region's declared alias, the row
-		// root is selected — evaluated AFTER params (AC4: params "can
-		// be shadowed by nothing", including by a row) and BEFORE the
-		// data root (AC3: a row never shadows the document root). The
-		// rootName passed to lookupBound is the LITERAL "row" — the
-		// root CLASS, never scope.rowAlias, which is document data and
-		// would trip TestBindResolutionRootsAreClosed's non-literal
-		// Fatalf (D-3.1.1). fullPath (path, unchanged) still carries
-		// the author's own alias spelling, so error text reads
-		// "transaction.amount", not "row.amount" (AD-11's own
-		// rationale for why the alias is worth having at all).
-		if scope.rowSet && path[0] == scope.rowAlias {
-			if len(path) == 1 {
-				// Mirrors AC17's bare-"params" rule: a bare row alias
-				// names a namespace, not a value.
-				return "", nil, fmt.Errorf("bind: element %s: %q is a namespace, not a value", elementID, trimmed)
-			}
-			resolved, err := lookupBound(scope.row, path[1:], path, elementID, "row", "the current row")
-			if err != nil {
-				return "", nil, err
-			}
-			record(resolved)
-			continue
+		from := runesWritten
+		switch val.Kind {
+		case expr.KindNull:
+			// AD-14: an explicit JSON null renders as empty, never an
+			// error.
+		case expr.KindString:
+			write(val.Str)
+		default:
+			return "", nil, fmt.Errorf(
+				"bind: element %s: %q resolved to a %s, not a string — text bindings are never coerced",
+				elementID, trimmed, val.Kind,
+			)
 		}
-
-		// This story's review, Finding 3 (Major): D-1.7.4's binding
-		// clause is "the same code path as absent data" — the data
-		// branch now routes through lookupBound, the SAME helper the
-		// params branch above uses, rather than a second inline copy
-		// of AD-14's three-case switch. The two copies were output-
-		// equivalent (rootName "data", rootDesc "the report data"
-		// reproduce the original messages byte-for-byte), so this is a
-		// pure de-duplication: AD-14's Null/wrong-kind cases and
-		// D-1.6.6's bound-value check now hold on BOTH roots by
-		// construction, and TestAD14Triple (which already exercises
-		// this branch for the data root) covers lookupBound directly
-		// rather than the abandoned inline copy.
-		resolved, err := lookupBound(scope.data, path, path, elementID, "data", "the report data")
-		if err != nil {
-			return "", nil, err
-		}
-		record(resolved)
+		subs = append(subs, Substitution{Path: substitutionPathFor(astExpr, trimmed), Start: from, End: runesWritten})
 	}
+	write(trailing)
 	return out.String(), subs, nil
 }
 
-// lookupBound resolves subPath against root — EITHER root, data or
-// params (this story's review, Finding 3: D-1.7.4's binding text is
-// "the same code path as absent data", so this is now the ONE
-// implementation of AD-14's three-case switch, called from both the
-// data branch and the params branch of BindText above, not a params-
-// only helper with an abandoned inline twin) — and returns the text to
-// append, or nil for a null value that renders as empty (AC9's rule).
-// fullPath is the ORIGINAL placeholder path (the full dotted path,
-// including a leading "params" segment when root is the params tree)
-// used only for error text, so an absent-params error names
-// "params.reportDate" (AC16) rather than the report-data phrasing
-// (M-6: "absent from the report data" is actively misleading for a
-// value that was never sought there at all) — rootName/rootDesc carry
-// that distinct wording ("data"/"the report data" or "params"/"the
-// supplied params").
-func lookupBound(root Value, subPath, fullPath []string, elementID, rootName, rootDesc string) (*string, error) {
+// substitutionPathFor reports the dotted path a resolved Substitution
+// names: the joined segments for a bare path (the common case, and the
+// only case before Story 3.2), or the expression's own raw source text
+// for anything else (a function call) — there is no single "path" a
+// general expression names, and the raw text is the most honest
+// available answer.
+func substitutionPathFor(e expr.Expr, trimmed string) string {
+	if p, ok := e.(*expr.PathExpr); ok {
+		return strings.Join(p.Segments, ".")
+	}
+	return trimmed
+}
+
+// exprResolver adapts a Scope to expr.Resolver (ast.go): it is the ONE
+// place root dispatch (data/params/row) happens for the WHOLE
+// expression tree being evaluated — including a path nested inside a
+// function argument, e.g. upper(params.name) — not only a bare
+// top-level path, which is why dispatch cannot be decided once before
+// calling into expr.Eval and must instead live inside Resolve itself.
+type exprResolver struct {
+	scope     Scope
+	elementID string
+}
+
+func (r exprResolver) Resolve(path []string) (expr.Value, error) {
+	if len(path) == 0 {
+		return expr.Value{}, fmt.Errorf("bind: element %s: empty path", r.elementID)
+	}
+
+	// AC12/AC13/D-1.7.4: the FIRST segment "params" always selects the
+	// params root, decided at the path-segment level (not on a
+	// trimmed literal string) so whitespace-tolerant spellings are
+	// caught identically.
+	if path[0] == "params" {
+		if len(path) == 1 {
+			// AC17 (1.7): "{{params}}" bare, no dot — params names a
+			// namespace, not a value.
+			return expr.Value{}, fmt.Errorf("bind: element %s: %q is a namespace, not a value", r.elementID, "params")
+		}
+		return lookupBound(r.scope.params, path[1:], path, r.elementID, "params", "the supplied params")
+	}
+
+	// Story 3.1/D-3.1.1: when a row scope is active and the FIRST
+	// segment equals the region's declared alias, the row root is
+	// selected — evaluated AFTER params (params "can be shadowed by
+	// nothing") and BEFORE the data root (a row never shadows the
+	// document root). The rootName passed to lookupBound is the
+	// LITERAL "row" — the root CLASS, never scope.rowAlias, which is
+	// document data and would trip TestBindResolutionRootsAreClosed's
+	// non-literal Fatalf.
+	if r.scope.rowSet && path[0] == r.scope.rowAlias {
+		if len(path) == 1 {
+			return expr.Value{}, fmt.Errorf("bind: element %s: %q is a namespace, not a value", r.elementID, path[0])
+		}
+		return lookupBound(r.scope.row, path[1:], path, r.elementID, "row", "the current row")
+	}
+
+	return lookupBound(r.scope.data, path, path, r.elementID, "data", "the report data")
+}
+
+// lookupBound resolves subPath against root — data, params or row
+// (internal/bind/resolution_roots_arch_test.go's structural guard
+// scans this exact call shape, rootName at argument index 4, and
+// D-3.1.1's declaredResolutionRoots above must observe exactly the
+// three literal strings passed here) — and converts a Present value to
+// a general expr.Value (Story 3.2: no longer string-only, so a path
+// resolved from inside a function argument — e.g. if(row.active, …) —
+// can carry a bool, not only text). fullPath is the ORIGINAL
+// placeholder path (the full dotted path, including a leading "params"
+// segment when root is the params tree) used only for error text.
+func lookupBound(root Value, subPath, fullPath []string, elementID, rootName, rootDesc string) (expr.Value, error) {
 	val, presence := root.Lookup(subPath)
 	switch presence {
 	case Absent:
-		return nil, fmt.Errorf("bind: element %s: %s path %q is absent from %s", elementID, rootName, strings.Join(fullPath, "."), rootDesc)
+		return expr.Value{}, fmt.Errorf("bind: element %s: %s path %q is absent from %s", elementID, rootName, strings.Join(fullPath, "."), rootDesc)
 	case Null:
-		return nil, nil
+		return expr.Value{Kind: expr.KindNull}, nil
 	case Present:
-		if val.Kind == KindNumber {
-			if _, derr := val.AsDecimal(); derr != nil {
-				return nil, fmt.Errorf(
+		switch val.Kind {
+		case KindString:
+			return expr.Value{Kind: expr.KindString, Str: val.Str}, nil
+		case KindBool:
+			return expr.Value{Kind: expr.KindBool, Bool: val.Bool}, nil
+		case KindNumber:
+			d, derr := val.AsDecimal()
+			if derr != nil {
+				return expr.Value{}, fmt.Errorf(
 					"bind: element %s: %s path %q: %w",
 					elementID, rootName, strings.Join(fullPath, "."), derr,
 				)
 			}
-		}
-		if val.Kind != KindString {
-			return nil, fmt.Errorf(
-				"bind: element %s: %s path %q is a %s, not a string — text bindings are never coerced",
+			return expr.Value{Kind: expr.KindNumber, Num: d}, nil
+		default:
+			return expr.Value{}, fmt.Errorf(
+				"bind: element %s: %s path %q is a %s, not a scalar value usable in an expression",
 				elementID, rootName, strings.Join(fullPath, "."), val.Kind,
 			)
 		}
-		s := val.Str
-		return &s, nil
 	}
-	return nil, nil
-}
-
-// parseBindingPath parses inner (the raw text between "{{" and "}}",
-// not yet trimmed) against AC15's grammar:
-//
-//	binding := "{{" ws? ident ( "." ident )* ws? "}}"
-//	ident   := [A-Za-z_][A-Za-z0-9_]*
-//
-// Only leading/trailing whitespace is tolerated (ws?); any interior
-// whitespace, or any character outside [A-Za-z0-9_.], is rejected
-// (AC16): "(", ")", "[", "]", ",", quotes, operators and interior
-// whitespace inside the path.
-func parseBindingPath(inner string) ([]string, error) {
-	s := strings.TrimSpace(inner)
-	if s == "" {
-		return nil, fmt.Errorf("empty binding")
-	}
-
-	segments := strings.Split(s, ".")
-	for _, seg := range segments {
-		if !isValidIdent(seg) {
-			return nil, fmt.Errorf("%q is not a valid path segment", seg)
-		}
-	}
-	return segments, nil
-}
-
-// isValidIdent reports whether s matches AC15's ident grammar:
-// [A-Za-z_][A-Za-z0-9_]*.
-func isValidIdent(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c == '_':
-			// legal anywhere
-		case c >= '0' && c <= '9':
-			if i == 0 {
-				return false // ident may not START with a digit
-			}
-		default:
-			return false
-		}
-	}
-	return true
+	// Unreachable given Presence's own closed three-value enum
+	// (Absent/Null/Present, all three handled above). QA Finding (Nit):
+	// this used to fall through to "return expr.Value{}, nil" — a
+	// silent KindNull with no error at all. evalIf reads a null
+	// condition as SILENTLY false (owner ruling), so if a fourth
+	// Presence state were ever added, this used to be the quietest
+	// possible failure mode: a whole section could disappear from a
+	// rendered document with no diagnostic anywhere. Kept as a located
+	// error instead, naming the unhandled value, so a future enum
+	// widening fails loudly here rather than silently downstream.
+	return expr.Value{}, fmt.Errorf(
+		"bind: element %s: internal: %s path %q resolved to an unhandled presence value %v",
+		elementID, rootName, strings.Join(fullPath, "."), presence,
+	)
 }

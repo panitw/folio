@@ -123,11 +123,27 @@ func TestFooterOfPrefixCheck(t *testing.T) {
 	}
 }
 
-// TestFooterWithoutFooterOfLoads is AC44: the known-gap permissiveness
-// guardrail. Until Story 3.2 derives footerOf from bind, a footer with
-// no footerOf simply loads — this fixture pins TODAY's behaviour so a
-// future author does not read the absence of a check as evidence none
-// was intended.
+// TestFooterWithoutFooterOfLoads is AC44, RE-FRAMED at Story 3.2
+// (Decision 1, this story): this is no longer a known gap pending a
+// future story — it is a DELIBERATE LAYER BOUNDARY. F2 proves
+// internal/template (stage rank 2) can never import internal/expr
+// (rank 3), so template.ParseDocument itself can never check whether a
+// footer's bind is derivable, and it never will: that check, and
+// D-1.4.1's footerOf/footerFormat derivation, live at the module root,
+// in folio.ParseTemplate (folio-go/folio_expr_validate.go's
+// validateAndDeriveExpressions/validateTableColumns, invoked from
+// ParseTemplate — folio-go/folio.go). template.ParseDocument staying
+// permissive here is that boundary's OTHER side, not a leftover hole:
+// internal/template's own callers (this package's own tests included)
+// get exactly the schema-level checks D-1.4.2 assigned to this layer
+// (AC43) and nothing about bind-shape derivability, which belongs one
+// layer up. See TestParseTemplateRejectsNonDerivableFooterBind and
+// TestParseTemplateDerivesFooterOfShape1/Shape2 (folio-go's own
+// folio_expr_validate_test.go) for the STRENGTHENED assertion added at
+// the root, alongside this one — this fixture is kept, not relocated,
+// because it remains a true statement about THIS layer (Decision 1,
+// this story: deleting it would unpin template's own permissiveness
+// and let a later story change the layering unnoticed).
 func TestFooterWithoutFooterOfLoads(t *testing.T) {
 	col := `            {
               "bind": "{{row.amount}}",

@@ -217,17 +217,26 @@ D-1.1.c fixes the public API at that tag — so it is also the moment the medium
 argument-packaging question becomes irreversible. Not due now; **must not evaporate.** If it is still
 unowned when Epic 4 is planned, it goes to the owner rather than being absorbed into a story.
 
-### DW-5 — Derivation validation of `columns[].footerOf` from `bind`
+### DW-5 — Derivation validation of `columns[].footerOf` from `bind` — **RETIRED at Story 3.2**
 - **Deferred by:** Story 1.4 (ruling D-1.4.2, AC43/AC44)
 - **Owner:** **Story 3.2**, backstop **Story 3.7** (`folio.Validate` must include it)
-- **Anti-rot mechanism:** a test asserts `folio-go/internal/expr` is **absent**. The day Story 3.2
-  (or any story) creates that package, the assertion goes red and forces the derivation logic to be
-  wired before the build can pass again.
+- **Retired (D-000.59, discharge by replacement, not deletion alone):** the derivation landed at
+  `internal/expr.DeriveFooterOf` (`folio-go/internal/expr/footer.go`), invoked from
+  `folio.ParseTemplate` (`folio-go/folio_expr_validate.go`) — forced up to the module root by F2:
+  `internal/template` (stage rank 2) can never import `internal/expr` (rank 3). Both derivable D-1.4.1
+  shapes resolve to the derived `footerOf` (and, for shape 2, `footerFormat`); any other `bind` shape
+  on a column requesting a `sum`/`avg` footer with `footerOf` omitted is now a load error naming the
+  column id. The derived value is resolved ALONGSIDE the document, never written back into it (R2 —
+  writing it back would break D-1.4.3's P3 fixed point for every document that legitimately omits
+  `footerOf`). The `absence-expr-package` lint tripwire that stood in for this obligation is DELETED
+  in the same commit, replaced by the positive assertions above plus D-3.2.1's own guards
+  (`folio-go/internal/expr_arch_test.go`). **The aggregate itself is still not computed — DW-7 is the
+  entry that tracks that, and it is untouched.**
 
-D-1.1's derivation rule (a bare row-scoped path, or a single `formatNumber(...)` call over one) needs
-the parsed expression tree to check `bind`'s shape — machinery Story 1.4 deliberately does not build
-(no `internal/expr` package exists yet). Until Story 3.2 lands it, a `footer` with no `footerOf`
-simply loads (AC44's known, fixture-pinned gap) rather than being derived or rejected.
+D-1.1's derivation rule (a bare row-scoped path, or a single `formatNumber(...)` call over one) needed
+the parsed expression tree to check `bind`'s shape — machinery Story 1.4 deliberately did not build
+(no `internal/expr` package existed yet). Before Story 3.2, a `footer` with no `footerOf` simply
+loaded (AC44's known, fixture-pinned gap) rather than being derived or rejected.
 
 ### DW-6 — The two footer diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` / `TABLE_FOOTER_SOURCE_FORBIDDEN`
 - **Deferred by:** Story 1.4 (ruling D-1.4.2)
@@ -261,11 +270,24 @@ Story 1.4's load failures are plain Go errors (D-1.4.2: *"1.4 must not mint them
 `{{sum(...)}}` family of expression functions — a single implementation, not two that can drift.
 Story 1.4 builds neither; nothing renders a table until Story 4.5.
 
-### DW-8 — `Decimal` moves to `internal/expr` (or a leaf) and 1.6's path matcher is deleted
+### DW-8 — `Decimal` moves to `internal/expr` (or a leaf) and 1.6's path matcher is deleted — **RETIRED at Story 3.2**
 - **Deferred by:** Story 1.6 (rulings D-1.6.1, D-1.6.5)
 - **Owner:** **Story 3.2** — the expression-language story
-- **Forcing function:** DW-5's existing `internal/expr`-absent tripwire reddens the moment that
-  package is created, which is what makes someone re-read this entry.
+- **Forcing function:** DW-5's existing `internal/expr`-absent tripwire reddened the moment that
+  package was created, which is what made someone re-read this entry.
+- **Retired.** Both obligations discharged in the same story:
+  1. `Decimal`, `NewDecimal`, `SumDecimals`, `AvgDecimals` and their unexported bounds
+     (`maxDecimalCoefficientDigits`, `maxDecimalExponentMagnitude`, `avgExtraScale`) MOVED from
+     `internal/bind` to `internal/expr` — never duplicated. `TestExactlyOneDecimalDeclarationInTheModule`
+     (`folio-go/internal/expr_arch_test.go`) asserts, by AST set-equality, that exactly one `Decimal`
+     type declaration exists in the module and it is in `internal/expr`. D-3.1a.3's reducer-inventory
+     tripwire (`folio-go/internal/reducer_inventory_arch_test.go`) — relational by design — followed
+     the move with ZERO edits, exactly as that ruling required.
+  2. `parseBindingPath` and `isValidIdent` (`internal/bind/text.go`) are DELETED — the expression
+     parser in `internal/expr` (AD-9: hand-written recursive descent, no generator, no third-party
+     dependency) is now the module's one grammar for `{{ }}` content.
+     `TestParseBindingPathAndIsValidIdentAreAbsent` (`folio-go/internal/expr_arch_test.go`) is an
+     extinction guard confirming both names are absent from the module.
 
 **Two obligations, one owner.**
 

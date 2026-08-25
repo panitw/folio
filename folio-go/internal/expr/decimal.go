@@ -1,19 +1,11 @@
-// Package bind is the report-data half of AD-23 (Story 1.6, D-1.6.1):
-// exact scaled-integer decimals over JSON literals, and the generic
-// value tree that report data (as opposed to the `.folio` document
-// itself) decodes into. It imports internal/template (Document ->
-// BoundTree is the correct direction, AC6) to reuse the module's ONE
-// number-literal splitter rather than duplicating it — internal/bind
-// never re-implements SplitJSONNumber.
-//
-// internal/bind inherits AD-1's full import ban in non-test files
-// (time, os, math/rand, net, math transcendentals) and D-1.3.1's exact
-// `_test.go` exemption (os, testing, path/filepath, embed — and
-// nothing else; time, math/rand and net stay banned in tests too,
-// AC29). It also inherits AD-23's float64 ban (AC5) automatically: the
-// second production caller this story adds to the existing checker
-// (AC5a) scans the whole module, internal/bind included.
-package bind
+// Decimal (D-1.6.1, moved here by Story 3.2/D-3.2.1, DW-8) is AD-23's
+// exact scaled-integer decimal: an int64 coefficient and an integral
+// decimal exponent, carrying a JSON number literal's own precision.
+// See doc.go for the package's own overview and D-3.2.1 for why this
+// type lives here rather than in internal/bind (the rank guard forces
+// it: internal/expr (3) may import internal/template (2) for the
+// module's one SplitJSONNumber; internal/bind (4) imports expr back).
+package expr
 
 import (
 	"fmt"
@@ -76,7 +68,7 @@ const maxDecimalExponentMagnitude = 100_000
 func NewDecimal(literal string) (Decimal, error) {
 	sign, intPart, fracPart, exp, err := template.SplitJSONNumber(literal)
 	if err != nil {
-		return Decimal{}, fmt.Errorf("bind: %w", err)
+		return Decimal{}, fmt.Errorf("expr: %w", err)
 	}
 
 	// AC3a: intPart+fracPart may strip to the EMPTY string (every
@@ -101,7 +93,7 @@ func NewDecimal(literal string) (Decimal, error) {
 	exponent := exp - len(fracPart)
 	if exponent > maxDecimalExponentMagnitude || exponent < -maxDecimalExponentMagnitude {
 		return Decimal{}, fmt.Errorf(
-			"bind: value %q: exponent magnitude exceeds %d", literal, maxDecimalExponentMagnitude,
+			"expr: value %q: exponent magnitude exceeds %d", literal, maxDecimalExponentMagnitude,
 		)
 	}
 
@@ -111,20 +103,20 @@ func NewDecimal(literal string) (Decimal, error) {
 
 	if len(sig) > maxDecimalCoefficientDigits {
 		return Decimal{}, fmt.Errorf(
-			"bind: value %q: coefficient has %d significant digits, exceeds %d (does not fit int64)",
+			"expr: value %q: coefficient has %d significant digits, exceeds %d (does not fit int64)",
 			literal, len(sig), maxDecimalCoefficientDigits,
 		)
 	}
 
 	coeff := new(big.Int)
 	if _, ok := coeff.SetString(sig, 10); !ok {
-		return Decimal{}, fmt.Errorf("bind: invalid numeric literal %q", literal)
+		return Decimal{}, fmt.Errorf("expr: invalid numeric literal %q", literal)
 	}
 	if sign < 0 {
 		coeff.Neg(coeff)
 	}
 	if !coeff.IsInt64() {
-		return Decimal{}, fmt.Errorf("bind: value %q: coefficient does not fit int64", literal)
+		return Decimal{}, fmt.Errorf("expr: value %q: coefficient does not fit int64", literal)
 	}
 
 	return Decimal{Coefficient: coeff.Int64(), Exponent: exponent}, nil
