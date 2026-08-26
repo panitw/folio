@@ -270,6 +270,26 @@ var maximalFixture = []byte(`{
             }
           ],
           "headerHeight": 16,
+          "headerStyle": {
+            "align": "center",
+            "background": "#DDDDDD",
+            "border": {
+              "color": "#333333",
+              "edges": [
+                "bottom"
+              ],
+              "width": 0.75
+            },
+            "fontFamily": "body",
+            "fontSize": 9,
+            "padding": {
+              "bottom": 3,
+              "left": 3,
+              "right": 3,
+              "top": 3
+            },
+            "valign": "middle"
+          },
           "id": "e1",
           "style": {
             "align": "left",

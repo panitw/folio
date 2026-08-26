@@ -631,6 +631,57 @@ func TestParseTemplateRejectsPlaceholderInAltRowBackground(t *testing.T) {
 	}
 }
 
+// TestParseTemplateRejectsPlaceholderInHeaderStyle is Story 4.1's
+// second Style attach point going through the SAME fence as
+// element.style and table.altRowBackground above: headerStyle reuses
+// template.Style verbatim, so a "{{ }}" placeholder inside one of its
+// string fields is a load error, not a silently-inert value.
+//
+// The fixture carries a "style" block as well as "headerStyle"
+// (finisher fix, Story 4.1 review Finding 5): without a sibling
+// "style" block, a message that (bug) names "style.background"
+// instead of "headerStyle.background" would satisfy this test just as
+// well as the correct one — the ambiguity Finding 5 found was
+// invisible precisely because the original fixture had no "style"
+// block to be confused with. Asserting "headerStyle" by name, not
+// merely "background", is what makes the assertion discriminate.
+func TestParseTemplateRejectsPlaceholderInHeaderStyle(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e2", "type": "table", "x": 0, "y": 0, "bind": "transactions[]", "headerHeight": 14,
+          "style": {"background": "#EFEFEF"},
+          "headerStyle": {"background": "{{if(customer.overdue, \"#FF0000\", \"#00FF00\")}}"},
+          "columns": [
+            {"id": "e3", "label": "Amount", "width": 80, "bind": "{{transaction.amount}}"}
+          ]}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	_, err := ParseTemplate([]byte(tplJSON))
+	if err == nil {
+		t.Fatal("expected a load error: table.headerStyle.background must not carry a \"{{ }}\" placeholder, same fence as element.style")
+	}
+	if !strings.Contains(err.Error(), "e2") {
+		t.Errorf("error must name the offending element id, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "headerStyle.background") {
+		t.Errorf("error must name the offending block AND field as \"headerStyle.background\" — a message naming the sibling \"style.background\" must NOT satisfy this, got: %v", err)
+	}
+}
+
 // TestParseTemplateAcceptsOrdinaryAltRowBackground is the companion
 // negative case: an ordinary altRowBackground value with no
 // placeholder — including a plain literal hex colour, which this check

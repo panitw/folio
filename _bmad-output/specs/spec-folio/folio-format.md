@@ -219,6 +219,7 @@ designer and the engine disagree.
 | `as` | The row-scope alias. Optional; defaults to `row`. Inside the table, `<alias>.field` is the current row; unqualified paths still resolve from the document root (AD-11). |
 | `headerHeight` | Height of the repeated header row, in points. Accounted for on **every** continuation page. |
 | `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. |
+| `headerStyle` | *Optional.* A `Style` block (same vocabulary as an element's own `style`, below) governing the header row ONLY — never a data row. A field the header style leaves absent falls back to the table's own `style` for that field, then to that field's documented default (Story 4.1). `columns[].align` still wins over both for that column's own header cell (see `style`, below). |
 | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
 | `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 3.2, this derivation runs at load time** (`folio.ParseTemplate`) and the derived value is resolved alongside the document, never written back into it — a document that omits `footerOf` still serializes without it. **As of Story 3.4, the aggregate itself computes** (`sum`/`count`/`avg`, Story 3.3) **and can be formatted** (`formatNumber`, Story 3.4) — but no table-rendering code path exists yet to place a computed, formatted footer value into an actual footer cell; the footer cell's actual value is not rendered until Story 4.5. Story 3.6 mints the two diagnostic codes this eventually becomes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape) — neither exists yet. |
 | `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer value. Legal with all three `footer` operations. |
@@ -285,7 +286,7 @@ Every field optional; omitted fields inherit the documented default.
 
 | Field | Default |
 |---|---|
-| `fontFamily` | the first key of `fonts` |
+| `fontFamily` | **none — required on any element carrying text** |
 | `fontSize` | `10` |
 | `bold`, `italic` | `false` |
 | `align` | `left` · also `center`, `right` |
@@ -296,6 +297,8 @@ Every field optional; omitted fields inherit the documented default.
 | `border.color` | `"#000000"` |
 | `border.edges` | all four; a subset draws only those edges |
 | `background` | absent — transparent |
+
+There is no font default. An element with text and no `style.fontFamily` is a located error naming the element. A default was documented here from the format's first draft and never implemented; `fonts` is a mapping with no authored key order, so "the first key" was never well-defined. If a default is added later it will name its rule explicitly.
 
 Colours are `#RRGGBB`. There is no colour-by-data: conditional *visibility* is in scope,
 conditional *formatting* is not. As of Story 3.5, a `{{ }}` placeholder found inside any

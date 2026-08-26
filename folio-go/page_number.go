@@ -66,7 +66,7 @@ import (
 // computeVisibility's own doc comment (Story 3.5 finisher review,
 // Finding 6 / Minor) before wiring one of those kinds' placement in a
 // future story: THAT story owns consulting isVisible for its own kind.
-func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource, visible visibilityVerdicts) []layout.ColumnItem {
+func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource, tableRects []tableRectSource, visible visibilityVerdicts) []layout.ColumnItem {
 	var items []layout.ColumnItem
 	for i := 0; i < len(contentRuns); i++ {
 		j := i
@@ -101,6 +101,26 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			Top:       r.y,
 			Bottom:    r.y + r.boxH,
 			Images:    []layout.ImageRef{layout.ImageRef(i)},
+		})
+	}
+	// Story 4.1: table header rects. collectBandTableRuns already
+	// filters to VISIBLE tables with >=1 column before returning
+	// tableRectSource values, so — unlike the image loop above — there
+	// is no isVisible check to repeat here. This function is used ONLY
+	// to learn the CONTENT band's pageCount before header/footer text
+	// exists (PHASE A); the actual RectRef values are never read back
+	// (that Pagination result is discarded except for len(Pages)), so
+	// they need only be non-empty, one per rect, to satisfy Paginate's
+	// exclusivity check.
+	for _, ts := range tableRects {
+		if ts.band != contentBandIndex {
+			continue
+		}
+		items = append(items, layout.ColumnItem{
+			ElementID: ts.elementID,
+			Top:       ts.top,
+			Bottom:    ts.bottom,
+			Rects:     make([]layout.RectRef, len(ts.rects)),
 		})
 	}
 	return items

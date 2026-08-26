@@ -38,6 +38,7 @@ var codePins = []struct {
 	{"CodeTextMissingGlyph", CodeTextMissingGlyph, "TEXT_MISSING_GLYPH"},
 	{"CodeInternalUnhandledCaveat", CodeInternalUnhandledCaveat, "INTERNAL_UNHANDLED_CAVEAT"},
 	{"CodeDocumentDateInvalid", CodeDocumentDateInvalid, "DOCUMENT_DATE_INVALID"},
+	{"CodeStyleColorInvalid", CodeStyleColorInvalid, "STYLE_COLOR_INVALID"},
 }
 
 // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by

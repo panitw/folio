@@ -26,6 +26,7 @@ const bindTestTemplateJSON = `{
       "elements": [
         {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "Statement for {{customer.name}}", "style": {"fontFamily": "body", "fontSize": 14}},
         {"id": "e2", "type": "table", "x": 0, "y": 30, "bind": "transactions[]", "headerHeight": 20,
+          "style": {"fontFamily": "body", "fontSize": 9},
           "columns": [
             {"id": "e3", "label": "Amount", "width": 80, "bind": "{{formatNumber(transaction.amount, \"#,##0.00\")}}"}
           ]}

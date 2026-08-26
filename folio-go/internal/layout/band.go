@@ -132,10 +132,11 @@ func PlaceInBand(bandOrigin, elementY geom.Length) geom.Length {
 // bands are this package's business and stop here, which is what AD-24's
 // "bands are placed on the page by internal/layout alone" means once
 // there is a page model to place them into.
-func ComposePage(g PageGeometry, runs []pagemodel.TextRun, images []pagemodel.ImagePlacement) pagemodel.Page {
+func ComposePage(g PageGeometry, runs []pagemodel.TextRun, images []pagemodel.ImagePlacement, rects []pagemodel.Rect) pagemodel.Page {
 	return pagemodel.Page{
 		Runs:       runs,
 		Images:     images,
+		Rects:      rects,
 		Width:      g.Width,
 		Height:     g.Height,
 		MarginTop:  g.MarginTop,

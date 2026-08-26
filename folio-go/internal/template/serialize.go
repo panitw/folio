@@ -271,6 +271,14 @@ func writeElement(dst []byte, depth int, e Element) []byte {
 		if t.AltRowBackground.Set {
 			fields = append(fields, kv{"altRowBackground", writeString(t.AltRowBackground.Value)})
 		}
+		if t.HeaderStyle.Set {
+			if t.HeaderStyle.Null {
+				fields = append(fields, kv{"headerStyle", writeNull()})
+			} else {
+				hs := t.HeaderStyle.Value
+				fields = append(fields, kv{"headerStyle", func(dst []byte, depth int) []byte { return writeStyle(dst, depth, hs) }})
+			}
+		}
 	}
 	fields = append(fields, extraKVs(e.Extra)...)
 	return writeObject(dst, depth, fields)

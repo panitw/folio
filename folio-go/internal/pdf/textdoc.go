@@ -223,10 +223,17 @@ func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace
 
 	// --- Per-page objects ---
 	for i, page := range pages {
-		content, cerr := buildTextContentStream(page, faces)
+		// Story 4.1: rects are drawn FIRST — a cell's background and
+		// border sit behind its label — so the content stream's
+		// prefix, not its suffix, carries them. Every pre-4.1 document
+		// has page.Rects == nil, so this appends zero bytes and every
+		// existing golden stays byte-identical.
+		content := appendRectContentStream(nil, page)
+		textContent, cerr := buildTextContentStream(page, faces)
 		if cerr != nil {
 			return nil, cerr
 		}
+		content = append(content, textContent...)
 		content, cerr = appendImageContentStream(content, page, imageIDs)
 		if cerr != nil {
 			return nil, cerr

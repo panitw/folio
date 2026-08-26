@@ -231,6 +231,17 @@ const DiagCodeInternalUnhandledCaveat = string(diag.CodeInternalUnhandledCaveat)
 // permanent.
 const DiagCodeDocumentDateInvalid = string(diag.CodeDocumentDateInvalid)
 
+// DiagCodeStyleColorInvalid names Story 4.1's own new render-time
+// condition: a style colour string (style.background, style.border.color,
+// or their headerStyle equivalents) that is not `#RRGGBB` — unvalidated
+// at load, and unreachable before this story because no colour was ever
+// consumed on any render path (D1). A malformed colour aborts the
+// render with a *RenderError carrying this code, naming the element.
+//
+// Additive only (AD-14): once shipped, this string's meaning is
+// permanent.
+const DiagCodeStyleColorInvalid = string(diag.CodeStyleColorInvalid)
+
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — over-tall rows (FR25, not yet built) and clipped
 // content (FR44, this story) — is expressed as a value of this type,

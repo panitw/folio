@@ -62,7 +62,7 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 			// checkStyleHasNoPlaceholders' own doc comment for the
 			// scope fence this check does NOT cross.
 			if el.Style.Set && !el.Style.Null {
-				if err := checkStyleHasNoPlaceholders(el.Style.Value, el.ID); err != nil {
+				if err := checkStyleHasNoPlaceholders(el.Style.Value, el.ID, "style"); err != nil {
 					return nil, err
 				}
 			}
@@ -92,6 +92,23 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 					// hand list.
 					if alt := el.Table.Value.AltRowBackground; alt.Set && !alt.Null {
 						if err := checkStyleStringHasNoPlaceholder(el.ID, "table.altRowBackground", alt.Value); err != nil {
+							return nil, err
+						}
+					}
+					// Story 4.1 (owner ruling): headerStyle is a SECOND
+					// Style attach point on the same document element,
+					// reusing template.Style verbatim — so it goes
+					// through the SAME checkStyleHasNoPlaceholders call
+					// el.Style already does, above. Its own string
+					// fields (align/background/fontFamily/valign/
+					// border.color/border.edges) are already covered by
+					// TestStyleStringFieldPopulationMatchesSchema via
+					// reflectStyleStringFields("Style", ...) — this is
+					// a second CALL SITE for the same schema fields,
+					// not a new field the population test needs to
+					// learn about.
+					if hs := el.Table.Value.HeaderStyle; hs.Set && !hs.Null {
+						if err := checkStyleHasNoPlaceholders(hs.Value, el.ID, "headerStyle"); err != nil {
 							return nil, err
 						}
 					}
@@ -247,37 +264,37 @@ func checkStyleStringHasNoPlaceholder(elementID template.ElementID, fieldPath, v
 // legitimately contain "{{", that is the assumption underlying this
 // ruling and belongs back to the lead — never resolved by weakening
 // this check.
-func checkStyleHasNoPlaceholders(st template.Style, elementID template.ElementID) error {
+func checkStyleHasNoPlaceholders(st template.Style, elementID template.ElementID, fieldPrefix string) error {
 	if st.Align.Set && !st.Align.Null {
-		if err := checkStyleStringHasNoPlaceholder(elementID, "style.align", st.Align.Value); err != nil {
+		if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".align", st.Align.Value); err != nil {
 			return err
 		}
 	}
 	if st.Background.Set && !st.Background.Null {
-		if err := checkStyleStringHasNoPlaceholder(elementID, "style.background", st.Background.Value); err != nil {
+		if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".background", st.Background.Value); err != nil {
 			return err
 		}
 	}
 	if st.FontFamily.Set && !st.FontFamily.Null {
-		if err := checkStyleStringHasNoPlaceholder(elementID, "style.fontFamily", st.FontFamily.Value); err != nil {
+		if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".fontFamily", st.FontFamily.Value); err != nil {
 			return err
 		}
 	}
 	if st.Valign.Set && !st.Valign.Null {
-		if err := checkStyleStringHasNoPlaceholder(elementID, "style.valign", st.Valign.Value); err != nil {
+		if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".valign", st.Valign.Value); err != nil {
 			return err
 		}
 	}
 	if st.Border.Set && !st.Border.Null {
 		b := st.Border.Value
 		if b.Color.Set && !b.Color.Null {
-			if err := checkStyleStringHasNoPlaceholder(elementID, "style.border.color", b.Color.Value); err != nil {
+			if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".border.color", b.Color.Value); err != nil {
 				return err
 			}
 		}
 		if b.Edges.Set && !b.Edges.Null {
 			for _, edge := range b.Edges.Value {
-				if err := checkStyleStringHasNoPlaceholder(elementID, "style.border.edges", edge); err != nil {
+				if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".border.edges", edge); err != nil {
 					return err
 				}
 			}

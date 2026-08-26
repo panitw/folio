@@ -98,11 +98,18 @@ type ColumnItem struct {
 	// Top, Bottom are the item's vertical extent. Bottom >= Top.
 	Top, Bottom geom.Length
 
-	// Runs and Images are the item's content. Exactly one is populated: an
-	// item is a line OR an image, never both, because the two have different
-	// atomicity arguments (a line is atomic by rule 3, an image by rule 4).
+	// Runs, Images and Rects are the item's content. Exactly one is
+	// populated: an item is a line, an image, OR a table's vector chrome,
+	// never more than one of the three — a line is atomic by rule 3, an
+	// image by rule 4, and a table's header rects (Story 4.1) are atomic
+	// for the same reason a header row does not split within this story
+	// (AC3/AC9). A table's HEADER LABELS are a separate item (kind
+	// "line", built the same way any text is) sharing this item's Top/
+	// Bottom — two items, same extent, is how they land on the same page
+	// without a fourth exclusivity case.
 	Runs   []TextRunRef
 	Images []ImageRef
+	Rects  []RectRef
 }
 
 // TextRunRef and ImageRef index the caller's own run/placement slices rather
@@ -113,6 +120,12 @@ type TextRunRef int
 
 // ImageRef indexes the caller's placement slice, for the same reason.
 type ImageRef int
+
+// RectRef indexes the caller's pagemodel.Rect slice (Story 4.1), for the
+// same reason ImageRef indexes the caller's placement slice: this
+// package never constructs or inspects a Rect's own fields, so it names
+// content only by position in a slice the caller owns.
+type RectRef int
 
 // BandContent is the page-header or page-footer band's finished content,
 // which is REPEATED VERBATIM on every page.
@@ -125,6 +138,7 @@ type ImageRef int
 type BandContent struct {
 	Runs   []TextRunRef
 	Images []ImageRef
+	Rects  []RectRef
 }
 
 // OverflowError is FR44's located diagnostic for an item that fits in NO
@@ -144,7 +158,7 @@ type OverflowError struct {
 	ElementID     string
 	ItemHeight    geom.Length
 	ContentHeight geom.Length
-	Kind          string // "line" or "image"
+	Kind          string // "line", "image" or "table" (Story 4.1)
 }
 
 // millipoints spells a geom.Length for a HUMAN-READABLE diagnostic. It is
@@ -185,12 +199,12 @@ type MixedItemError struct {
 
 func (e *MixedItemError) Error() string {
 	if e.Empty {
-		return "element " + e.ElementID + ": a column item carries neither a text run nor an image, " +
-			"so it would occupy column space while drawing nothing — an invisible item can push visible " +
-			"content onto another page"
+		return "element " + e.ElementID + ": a column item carries neither a text run, an image nor a " +
+			"table rect, so it would occupy column space while drawing nothing — an invisible item can " +
+			"push visible content onto another page"
 	}
-	return "element " + e.ElementID + ": a column item carries BOTH text runs and an image. " +
-		"A line and an image are atomic for different reasons and an overflow diagnostic about this " +
+	return "element " + e.ElementID + ": a column item carries MORE THAN ONE of {text runs, an image, " +
+		"table rects}. Each is atomic for a different reason and an overflow diagnostic about this " +
 		"item would name the wrong kind; build one item for each"
 }
 
@@ -239,6 +253,7 @@ type PageAssignment struct {
 	// document byte-identical to its pre-2.6 self.
 	ContentRuns   []TextRunRef
 	ContentImages []ImageRef
+	ContentRects  []RectRef
 }
 
 // Paginate slices the content column into windows and returns one assignment
@@ -274,10 +289,20 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 	// about a caller is exactly the kind that stops being true quietly. It
 	// is cheap to check here, so it is checked here.
 	for _, it := range items {
-		if len(it.Runs) > 0 && len(it.Images) > 0 {
+		populated := 0
+		if len(it.Runs) > 0 {
+			populated++
+		}
+		if len(it.Images) > 0 {
+			populated++
+		}
+		if len(it.Rects) > 0 {
+			populated++
+		}
+		if populated > 1 {
 			return Pagination{}, &MixedItemError{ElementID: it.ElementID}
 		}
-		if len(it.Runs) == 0 && len(it.Images) == 0 {
+		if populated == 0 {
 			return Pagination{}, &MixedItemError{ElementID: it.ElementID, Empty: true}
 		}
 	}
@@ -341,6 +366,9 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 			if len(it.Images) > 0 {
 				kind = "image"
 			}
+			if len(it.Rects) > 0 {
+				kind = "table"
+			}
 			return Pagination{}, &OverflowError{
 				ElementID:     it.ElementID,
 				ItemHeight:    itemHeight,
@@ -358,6 +386,7 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		p := pageOf[i]
 		pages[p].ContentRuns = append(pages[p].ContentRuns, items[i].Runs...)
 		pages[p].ContentImages = append(pages[p].ContentImages, items[i].Images...)
+		pages[p].ContentRects = append(pages[p].ContentRects, items[i].Rects...)
 	}
 
 	return Pagination{Pages: pages}, nil

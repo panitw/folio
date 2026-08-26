@@ -195,11 +195,13 @@ func TestComposePageCarriesPageAbsoluteContentUnchanged(t *testing.T) {
 		{Face: "Noto Sans", SourceText: "FOOTER BAND ONLY", X: 0, Y: PlaceInBand(Origins(g).PageFooter, 6000), FontSize: 8000},
 	}
 	images := []pagemodel.ImagePlacement{{AssetKey: "a", X: 1000, Y: 2000, DrawWidth: 3000, DrawHeight: 4000}}
+	rects := []pagemodel.Rect{{X: 5000, Y: 6000, W: 7000, H: 8000, HasFill: true, Fill: pagemodel.Color{R: 1, G: 2, B: 3}}}
 
-	page := ComposePage(g, runs, images)
+	page := ComposePage(g, runs, images, rects)
 
-	if len(page.Runs) != len(runs) || len(page.Images) != len(images) {
-		t.Fatalf("ComposePage carried %d runs and %d images, want %d and %d", len(page.Runs), len(page.Images), len(runs), len(images))
+	if len(page.Runs) != len(runs) || len(page.Images) != len(images) || len(page.Rects) != len(rects) {
+		t.Fatalf("ComposePage carried %d runs, %d images and %d rects, want %d, %d and %d",
+			len(page.Runs), len(page.Images), len(page.Rects), len(runs), len(images), len(rects))
 	}
 	for i := range runs {
 		// Compared field by field rather than with == : TextRun carries a
@@ -214,6 +216,9 @@ func TestComposePageCarriesPageAbsoluteContentUnchanged(t *testing.T) {
 	}
 	if page.Images[0] != images[0] {
 		t.Errorf("ComposePage altered the image placement: %+v, want %+v", page.Images[0], images[0])
+	}
+	if page.Rects[0] != rects[0] {
+		t.Errorf("ComposePage altered the rect: %+v, want %+v", page.Rects[0], rects[0])
 	}
 
 	// The geometry a renderer needs to reach its own space, and no band

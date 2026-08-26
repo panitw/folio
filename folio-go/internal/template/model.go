@@ -217,6 +217,16 @@ type TableExt struct {
 	Columns          []Column
 	HeaderHeight     geom.Length
 	AltRowBackground Presence[string]
+
+	// HeaderStyle is an OPTIONAL Style block governing the header row
+	// ONLY, never a data row — Story 4.1, the owner's ruling: the
+	// author controls how a header looks, reusing the existing Style
+	// vocabulary rather than a bespoke header-only schema. A field it
+	// leaves absent falls back to the table's own Style (above), then
+	// to that field's documented default. It is a deliberate, RULED
+	// extension of R5's otherwise-permanent TableExt field set (Story
+	// 4.1's Delivery Log records the ruling by name).
+	HeaderStyle Presence[Style]
 }
 
 // Column is one table column.

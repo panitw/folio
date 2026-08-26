@@ -1371,6 +1371,30 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 		return nil, nil, nil, nil, ierr
 	}
 
+	// Story 4.1: table header runs/rects, one call per band, BEFORE
+	// PHASE A — a table's column labels are plain strings (never
+	// {{page}}/{{pages}}-bearing), so collection needs no resolver and
+	// no pageCount, and can run once, ahead of the phase split PHASE
+	// A/B exists for. Order: header, content, footer — documentBands'
+	// own authored order — matching how PHASE B below appends its own
+	// three bands' text.
+	headerTableRuns, headerTableRects, headerTableDiags, htterr := collectBandTableRuns(t, bands, pageHeaderBandIndex, fs, cache, visible)
+	if htterr != nil {
+		return nil, nil, nil, nil, htterr
+	}
+	contentTableRuns, contentTableRects, contentTableDiags, ctterr := collectBandTableRuns(t, bands, contentBandIndex, fs, cache, visible)
+	if ctterr != nil {
+		return nil, nil, nil, nil, ctterr
+	}
+	footerTableRuns, footerTableRects, footerTableDiags, ftterr := collectBandTableRuns(t, bands, pageFooterBandIndex, fs, cache, visible)
+	if ftterr != nil {
+		return nil, nil, nil, nil, ftterr
+	}
+	var tableRects []tableRectSource
+	tableRects = append(tableRects, headerTableRects...)
+	tableRects = append(tableRects, contentTableRects...)
+	tableRects = append(tableRects, footerTableRects...)
+
 	// Story 2.7, PHASE A: the content band ALONE, under D-2.7.3's fence
 	// (contentBandResolver errors on {{page}}/{{pages}} rather than
 	// passing them through). This is the ONLY input layout.Paginate
@@ -1383,7 +1407,16 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	if cterr != nil {
 		return nil, nil, nil, nil, cterr
 	}
-	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns, visible))
+	// Table label runs are appended AFTER this band's own text runs
+	// (this story's own, stated D-2.8.6 deviation — see the Delivery
+	// Log's "D-2.8.6 deviation: table diagnostics after text
+	// diagnostics within a band" entry — from strict
+	// element-declaration order for the rare case a table's label
+	// carries a missing-glyph Warning and a text element in the SAME
+	// band also does; the ACTUAL page-model content is unaffected,
+	// only Result.Diagnostics' relative order between the two kinds).
+	contentRuns = append(contentRuns, contentTableRuns...)
+	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns, tableRects, visible))
 	if plerr != nil {
 		return nil, nil, nil, nil, wrapOverflowError(plerr)
 	}
@@ -1401,10 +1434,12 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	if herr != nil {
 		return nil, nil, nil, nil, herr
 	}
+	headerRuns = append(headerRuns, headerTableRuns...)
 	footerRuns, footerPending, footerDiags, ferr := collectBandTextRuns(t, bands, pageFooterBandIndex, data, params, fs, cache, headerFooterResolver(pageCount), visible)
 	if ferr != nil {
 		return nil, nil, nil, nil, ferr
 	}
+	footerRuns = append(footerRuns, footerTableRuns...)
 
 	// Story 2.8, D-2.8.6: Result.Diagnostics is DOCUMENT ORDER — band
 	// order, then element declaration order within a band — never map
@@ -1416,8 +1451,11 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// its own band (collectBandTextRuns' own doc comment on `diags`).
 	var diags []Diagnostic
 	diags = append(diags, headerDiags...)
+	diags = append(diags, headerTableDiags...)
 	diags = append(diags, contentDiags...)
+	diags = append(diags, contentTableDiags...)
 	diags = append(diags, footerDiags...)
+	diags = append(diags, footerTableDiags...)
 
 	headerOffset := 0
 	contentOffset := len(headerRuns)
@@ -1639,7 +1677,7 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// into /Count. Only the middle produced one. Content taller than the
 	// content band was still DRAWN — below the bottom edge of the sheet,
 	// with no error and no warning.
-	pages, perr := paginateDocument(geometry, runs, imageRuns, pdfRuns, pdfPlacements, visible)
+	pages, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible)
 	if perr != nil {
 		return nil, nil, nil, nil, perr
 	}
@@ -1684,6 +1722,7 @@ func paginateDocument(
 	geometry layout.PageGeometry,
 	runs []textRunSource,
 	imageRuns []imageRunSource,
+	tableRects []tableRectSource,
 	pdfRuns []pagemodel.TextRun,
 	pdfPlacements []pagemodel.ImagePlacement,
 	visible visibilityVerdicts,
@@ -1691,6 +1730,38 @@ func paginateDocument(
 	// The two repeated bands, and the content column's atomic items.
 	var header, footer layout.BandContent
 	var items []layout.ColumnItem
+
+	// Story 4.1: flatten every table's header-row rects into ONE slice
+	// this function owns (pdfRects, below) — the same "index into a
+	// caller-owned slice" shape imageRuns/pdfPlacements already use for
+	// images, so layout.RectRef needs no new machinery. Each
+	// tableRectSource contributes a CONTIGUOUS span; collectBandTableRuns
+	// already filtered to visible tables with >=1 column, so no
+	// isVisible check is repeated here (mirrors this file's own images
+	// loop below, which DOES re-check — imageRuns is unfiltered by
+	// design, see its own doc comment; tableRects is not).
+	var pdfRects []pagemodel.Rect
+	for _, ts := range tableRects {
+		lo := len(pdfRects)
+		pdfRects = append(pdfRects, ts.rects...)
+		refs := make([]layout.RectRef, 0, len(ts.rects))
+		for k := lo; k < len(pdfRects); k++ {
+			refs = append(refs, layout.RectRef(k))
+		}
+		switch ts.band {
+		case pageHeaderBandIndex:
+			header.Rects = append(header.Rects, refs...)
+		case pageFooterBandIndex:
+			footer.Rects = append(footer.Rects, refs...)
+		default:
+			items = append(items, layout.ColumnItem{
+				ElementID: ts.elementID,
+				Top:       ts.top,
+				Bottom:    ts.bottom,
+				Rects:     refs,
+			})
+		}
+	}
 
 	// Text. One line's runs are CONTIGUOUS in `runs` and share
 	// (band, elementID, lineIndex) — positionSegments emits them together —
@@ -1823,7 +1894,20 @@ func paginateDocument(
 			pageImages = append(pageImages, pdfPlacements[ref])
 		}
 
-		pages = append(pages, layout.ComposePage(geometry, pageRuns, pageImages))
+		pageRects := make([]pagemodel.Rect, 0, len(header.Rects)+len(assigned.ContentRects)+len(footer.Rects))
+		for _, ref := range header.Rects {
+			pageRects = append(pageRects, pdfRects[ref])
+		}
+		for _, ref := range assigned.ContentRects {
+			r := pdfRects[ref]
+			r.Y -= assigned.Shift
+			pageRects = append(pageRects, r)
+		}
+		for _, ref := range footer.Rects {
+			pageRects = append(pageRects, pdfRects[ref])
+		}
+
+		pages = append(pages, layout.ComposePage(geometry, pageRuns, pageImages, pageRects))
 	}
 	return pages, nil
 }

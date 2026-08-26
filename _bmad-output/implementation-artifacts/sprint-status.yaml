@@ -88,7 +88,7 @@ development_status:
   epic-3-retrospective: optional
 
   epic-4: backlog
-  4-1-lay-out-a-table-s-columns-header-and-cell-chrome: backlog
+  4-1-lay-out-a-table-s-columns-header-and-cell-chrome: done
   4-2-generate-rows-from-a-bound-collection: backlog
   4-3-break-a-table-across-pages-without-splitting-a-row: backlog
   4-4-repeat-the-table-header-on-every-continuation-page: backlog

@@ -201,7 +201,7 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 		if rawIsNull(styRaw) {
 			el.Style = presentNull[Style]()
 		} else {
-			st, err := decodeStyle(string(id), styRaw)
+			st, err := decodeStyle(string(id), styRaw, "style")
 			if err != nil {
 				return Element{}, err
 			}
@@ -317,6 +317,22 @@ func decodeTableExt(ctx *parseCtx, id string, obj map[string]json.RawMessage) (T
 			return TableExt{}, nil, newLoadError("altRowBackground", id, string(arbRaw), "must be a string: "+err.Error())
 		}
 		t.AltRowBackground = present(s)
+	}
+
+	// headerStyle (Story 4.1, owner ruling): same Style vocabulary and
+	// the same null-vs-absent handling as an element's own "style"
+	// above — a header-only override, never required.
+	if hsRaw, ok := obj["headerStyle"]; ok {
+		consumed["headerStyle"] = true
+		if rawIsNull(hsRaw) {
+			t.HeaderStyle = presentNull[Style]()
+		} else {
+			hs, err := decodeStyle(id, hsRaw, "headerStyle")
+			if err != nil {
+				return TableExt{}, nil, err
+			}
+			t.HeaderStyle = present(hs)
+		}
 	}
 
 	return t, consumed, nil
@@ -462,10 +478,20 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 	return col, nil
 }
 
-func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
+// decodeStyle decodes a Style block, whichever of the document's two
+// attach points it was read from: an element's own "style"
+// (fieldPrefix "style") or a table's "headerStyle" (fieldPrefix
+// "headerStyle", Story 4.1's owner-ruled scope addition). Every load
+// error this function (and decodePadding/decodeBorder, below) raises
+// names fieldPrefix rather than a hardcoded "style", so a mistyped
+// headerStyle field is located at headerStyle, not at its sibling
+// (finisher fix, Story 4.1 review Finding 5 — previously EVERY
+// diagnostic raised inside a headerStyle block named "style", sending
+// the template author to the wrong block).
+func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Style, error) {
 	obj, err := decodeObjectMap(raw)
 	if err != nil {
-		return Style{}, newLoadError("style", elementID, string(raw), "must be an object: "+err.Error())
+		return Style{}, newLoadError(fieldPrefix, elementID, string(raw), "must be an object: "+err.Error())
 	}
 	consumed := map[string]bool{}
 	var st Style
@@ -474,10 +500,10 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 		consumed["align"] = true
 		s, err := decodeStringRaw(r)
 		if err != nil {
-			return Style{}, newLoadError("style.align", elementID, string(r), "must be a string: "+err.Error())
+			return Style{}, newLoadError(fieldPrefix+".align", elementID, string(r), "must be a string: "+err.Error())
 		}
 		if !closedAligns[s] {
-			return Style{}, newLoadError("style.align", elementID, s, "not one of the closed set left, center, right")
+			return Style{}, newLoadError(fieldPrefix+".align", elementID, s, "not one of the closed set left, center, right")
 		}
 		st.Align = present(s)
 	}
@@ -485,10 +511,10 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 		consumed["valign"] = true
 		s, err := decodeStringRaw(r)
 		if err != nil {
-			return Style{}, newLoadError("style.valign", elementID, string(r), "must be a string: "+err.Error())
+			return Style{}, newLoadError(fieldPrefix+".valign", elementID, string(r), "must be a string: "+err.Error())
 		}
 		if !closedValigns[s] {
-			return Style{}, newLoadError("style.valign", elementID, s, "not one of the closed set top, middle, bottom")
+			return Style{}, newLoadError(fieldPrefix+".valign", elementID, s, "not one of the closed set top, middle, bottom")
 		}
 		st.Valign = present(s)
 	}
@@ -499,7 +525,7 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 		} else {
 			s, err := decodeStringRaw(r)
 			if err != nil {
-				return Style{}, newLoadError("style.background", elementID, string(r), "must be a string: "+err.Error())
+				return Style{}, newLoadError(fieldPrefix+".background", elementID, string(r), "must be a string: "+err.Error())
 			}
 			st.Background = present(s)
 		}
@@ -508,7 +534,7 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 		consumed["bold"] = true
 		b, err := decodeBoolRaw(r)
 		if err != nil {
-			return Style{}, newLoadError("style.bold", elementID, string(r), "must be a bool: "+err.Error())
+			return Style{}, newLoadError(fieldPrefix+".bold", elementID, string(r), "must be a bool: "+err.Error())
 		}
 		st.Bold = present(b)
 	}
@@ -516,7 +542,7 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 		consumed["italic"] = true
 		b, err := decodeBoolRaw(r)
 		if err != nil {
-			return Style{}, newLoadError("style.italic", elementID, string(r), "must be a bool: "+err.Error())
+			return Style{}, newLoadError(fieldPrefix+".italic", elementID, string(r), "must be a bool: "+err.Error())
 		}
 		st.Italic = present(b)
 	}
@@ -524,13 +550,13 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 		consumed["fontFamily"] = true
 		s, err := decodeStringRaw(r)
 		if err != nil {
-			return Style{}, newLoadError("style.fontFamily", elementID, string(r), "must be a string: "+err.Error())
+			return Style{}, newLoadError(fieldPrefix+".fontFamily", elementID, string(r), "must be a string: "+err.Error())
 		}
 		st.FontFamily = present(s)
 	}
 	if r, ok := obj["fontSize"]; ok {
 		consumed["fontSize"] = true
-		v, err := decodePointsRaw("style.fontSize", elementID, r)
+		v, err := decodePointsRaw(fieldPrefix+".fontSize", elementID, r)
 		if err != nil {
 			return Style{}, err
 		}
@@ -538,7 +564,7 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 	}
 	if r, ok := obj["padding"]; ok {
 		consumed["padding"] = true
-		pd, err := decodePadding(elementID, r)
+		pd, err := decodePadding(elementID, r, fieldPrefix+".padding")
 		if err != nil {
 			return Style{}, err
 		}
@@ -546,7 +572,7 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 	}
 	if r, ok := obj["border"]; ok {
 		consumed["border"] = true
-		b, err := decodeBorder(elementID, r)
+		b, err := decodeBorder(elementID, r, fieldPrefix+".border")
 		if err != nil {
 			return Style{}, err
 		}
@@ -555,17 +581,17 @@ func decodeStyle(elementID string, raw json.RawMessage) (Style, error) {
 
 	extra, err := extraFields(obj, consumed)
 	if err != nil {
-		return Style{}, fmt.Errorf("template: element %s style: %w", elementID, err)
+		return Style{}, fmt.Errorf("template: element %s %s: %w", elementID, fieldPrefix, err)
 	}
 	st.Extra = extra
 
 	return st, nil
 }
 
-func decodePadding(elementID string, raw json.RawMessage) (Padding, error) {
+func decodePadding(elementID string, raw json.RawMessage, fieldPrefix string) (Padding, error) {
 	obj, err := decodeObjectMap(raw)
 	if err != nil {
-		return Padding{}, newLoadError("style.padding", elementID, string(raw), "must be an object: "+err.Error())
+		return Padding{}, newLoadError(fieldPrefix, elementID, string(raw), "must be an object: "+err.Error())
 	}
 	var p Padding
 	consumed := map[string]bool{}
@@ -577,7 +603,7 @@ func decodePadding(elementID string, raw json.RawMessage) (Padding, error) {
 	} {
 		if r, ok := obj[kv.key]; ok {
 			consumed[kv.key] = true
-			v, err := decodePointsRaw("style.padding."+kv.key, elementID, r)
+			v, err := decodePointsRaw(fieldPrefix+"."+kv.key, elementID, r)
 			if err != nil {
 				return Padding{}, err
 			}
@@ -587,16 +613,16 @@ func decodePadding(elementID string, raw json.RawMessage) (Padding, error) {
 	}
 	extra, err := extraFields(obj, consumed)
 	if err != nil {
-		return Padding{}, fmt.Errorf("template: style.padding: %w", err)
+		return Padding{}, fmt.Errorf("template: %s: %w", fieldPrefix, err)
 	}
 	p.Extra = extra
 	return p, nil
 }
 
-func decodeBorder(elementID string, raw json.RawMessage) (Border, error) {
+func decodeBorder(elementID string, raw json.RawMessage, fieldPrefix string) (Border, error) {
 	obj, err := decodeObjectMap(raw)
 	if err != nil {
-		return Border{}, newLoadError("style.border", elementID, string(raw), "must be an object: "+err.Error())
+		return Border{}, newLoadError(fieldPrefix, elementID, string(raw), "must be an object: "+err.Error())
 	}
 	consumed := map[string]bool{}
 	var b Border
@@ -604,13 +630,13 @@ func decodeBorder(elementID string, raw json.RawMessage) (Border, error) {
 		consumed["color"] = true
 		s, err := decodeStringRaw(r)
 		if err != nil {
-			return Border{}, newLoadError("style.border.color", elementID, string(r), "must be a string: "+err.Error())
+			return Border{}, newLoadError(fieldPrefix+".color", elementID, string(r), "must be a string: "+err.Error())
 		}
 		b.Color = present(s)
 	}
 	if r, ok := obj["width"]; ok {
 		consumed["width"] = true
-		v, err := decodePointsRaw("style.border.width", elementID, r)
+		v, err := decodePointsRaw(fieldPrefix+".width", elementID, r)
 		if err != nil {
 			return Border{}, err
 		}
@@ -620,18 +646,18 @@ func decodeBorder(elementID string, raw json.RawMessage) (Border, error) {
 		consumed["edges"] = true
 		edges, err := decodeStringArrayRaw(r)
 		if err != nil {
-			return Border{}, newLoadError("style.border.edges", elementID, string(r), "must be an array of strings: "+err.Error())
+			return Border{}, newLoadError(fieldPrefix+".edges", elementID, string(r), "must be an array of strings: "+err.Error())
 		}
 		for _, e := range edges {
 			if !closedBorderEdges[e] {
-				return Border{}, newLoadError("style.border.edges", elementID, e, "not one of the closed set top, right, bottom, left")
+				return Border{}, newLoadError(fieldPrefix+".edges", elementID, e, "not one of the closed set top, right, bottom, left")
 			}
 		}
 		b.Edges = present(edges)
 	}
 	extra, err := extraFields(obj, consumed)
 	if err != nil {
-		return Border{}, fmt.Errorf("template: style.border: %w", err)
+		return Border{}, fmt.Errorf("template: %s: %w", fieldPrefix, err)
 	}
 	b.Extra = extra
 	return b, nil

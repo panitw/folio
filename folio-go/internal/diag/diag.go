@@ -137,6 +137,16 @@ const (
 	// (R7's own criterion) caught by both Render and Validate (D-3.7.1)
 	// before it ever reaches internal/pdf's date assembly. AC10.
 	CodeDocumentDateInvalid Code = "DOCUMENT_DATE_INVALID"
+
+	// CodeStyleColorInvalid names Story 4.1's own new condition: a
+	// style colour string reaching render that is not `#RRGGBB`
+	// (folio-format.md: "Colours are #RRGGBB") — unvalidated at load
+	// (folio_expr_validate.go's own scope fence: "hex colours...
+	// remain entirely unvalidated"), and unreachable before this story
+	// because no colour was ever CONSUMED before it (D1: "no fill or
+	// stroke anywhere in the PDF writer"). Minted here, at the point
+	// the condition first ships (R7/D-000.65), rather than in advance.
+	CodeStyleColorInvalid Code = "STYLE_COLOR_INVALID"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -156,6 +166,7 @@ var allCodes = []Code{
 	CodeTextMissingGlyph,
 	CodeInternalUnhandledCaveat,
 	CodeDocumentDateInvalid,
+	CodeStyleColorInvalid,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a

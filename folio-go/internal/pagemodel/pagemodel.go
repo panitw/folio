@@ -234,6 +234,47 @@ type ImagePlacement struct {
 	DrawWidth, DrawHeight geom.Length
 }
 
+// Color is a page-model colour: three channels, each 0..255, exactly the
+// `.folio` format's own `#RRGGBB` representation (folio-format.md). It
+// names no PDF concept — never a `rg`/`RG` operand, never a decimal, never
+// a float (AD-1/AD-23). Converting a channel into the PDF's 0..1 decimal
+// operand is internal/pdf's job, at the one site that emits it
+// (geom.ScaleRound(channel, 1000, 255), Story 4.1's AC5).
+type Color struct {
+	R, G, B uint8
+}
+
+// RectEdges selects which of a Rect's four sides are stroked. It is
+// meaningless when the carrying Rect has HasStroke == false.
+type RectEdges struct {
+	Top, Right, Bottom, Left bool
+}
+
+// Rect is the page model's first vector primitive (AD-5, AD-13, Story
+// 4.1): an axis-aligned, filled and/or stroked rectangle, PAGE-ABSOLUTE,
+// top-left origin, Y increasing DOWNWARD — the same convention as
+// TextRun.X/Y and ImagePlacement.X/Y above.
+//
+// Its fields name only geometry, an edge set, a stroke width and colour
+// channels — no PDF operator, no resource name, no object number (AD-5;
+// TestPageModelNamesNoPDFConcept). HasFill/HasStroke are plain booleans
+// rather than a nil-pointer "absent" convention because AD-1 already
+// forbids a float anywhere under internal/, and a *Color would invite one
+// (a caller reaching for a zero-value sentinel) for no benefit: the two
+// bits carry the same information a pointer would, without ever being
+// nil-dereferenced.
+type Rect struct {
+	X, Y, W, H geom.Length
+
+	HasFill bool
+	Fill    Color
+
+	HasStroke   bool
+	Stroke      Color
+	StrokeWidth geom.Length
+	Edges       RectEdges
+}
+
 // Page is one finished page: its content, page-absolute, plus the page
 // geometry a renderer needs to place that content in its own space.
 //
@@ -243,6 +284,7 @@ type ImagePlacement struct {
 type Page struct {
 	Runs                  []TextRun
 	Images                []ImagePlacement
+	Rects                 []Rect
 	Width, Height         geom.Length
 	MarginTop, MarginLeft geom.Length
 }

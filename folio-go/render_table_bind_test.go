@@ -15,7 +15,7 @@ const tableBindTestTemplateJSON = `{
   "bands": {
     "content": {"elements": [
       {"id": "e2", "type": "table", "x": 0, "y": 30, "bind": "transactions[]", "headerHeight": 20,
-        "as": "transaction",
+        "as": "transaction", "style": {"fontFamily": "body", "fontSize": 9},
         "columns": [{"id": "e3", "label": "Amount", "width": 80, "bind": "{{transaction.amount}}"}]}
     ]},
     "pageFooter": {"elements": [], "height": 20},

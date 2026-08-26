@@ -1,0 +1,880 @@
+package folio
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/pagemodel"
+)
+
+// tablePagesForTest renders straight to the page model so a test can
+// assert on pagemodel.Page.Rects/Runs directly (AC1's own literal
+// anchor) without decoding serialized PDF bytes. AC3's other half — a
+// byte-level assertion over the actual content stream — lives in
+// internal/pdf/rectdoc_test.go, this story's byte-level anchor for the
+// operators these pages' Rects ultimately produce.
+func tablePagesForTest(t *testing.T, tplJSON, dataJSON string) []pagemodel.Page {
+	t.Helper()
+	tpl, err := ParseTemplate([]byte(tplJSON))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	data := mustDecodeData(t, dataJSON)
+	params := mustDecodeParams(t)
+	pages, _, _, _, err := buildPageModel(tpl, data, params, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("buildPageModel: %v", err)
+	}
+	return pages
+}
+
+// tableHeaderDoc builds a minimal one-table `.folio` document. style is
+// injected verbatim (may be "", meaning no "style" key at all — R6,
+// amended: at least fontFamily must still be set for a non-empty
+// label, so callers pass one).
+func tableHeaderDoc(styleJSON, columnsJSON string) string {
+	styleField := ""
+	if styleJSON != "" {
+		styleField = `, "style": ` + styleJSON
+	}
+	return `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 20,
+        "columns": ` + columnsJSON + styleField + `}
+    ]},
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"latin": ["Noto Sans"], "thai": ["Noto Sans Thai"], "cjk": ["Noto Sans SC"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+}
+
+// tableHeaderDocFull is tableHeaderDoc's superset (finisher fix, Story
+// 4.1 review Blockers 1 and 2): it also injects a "headerStyle" block
+// and lets the caller declare headerHeight, since a valign assertion
+// needs a header box tall enough for "top"/"middle"/"bottom" to
+// produce visibly different label positions. styleJSON/headerStyleJSON
+// may each be "", meaning that key is omitted entirely.
+func tableHeaderDocFull(styleJSON, headerStyleJSON, columnsJSON string, headerHeight int) string {
+	styleField := ""
+	if styleJSON != "" {
+		styleField = `, "style": ` + styleJSON
+	}
+	headerStyleField := ""
+	if headerStyleJSON != "" {
+		headerStyleField = `, "headerStyle": ` + headerStyleJSON
+	}
+	return fmt.Sprintf(`{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": %d,
+        "columns": %s%s%s}
+    ]},
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"latin": ["Noto Sans"], "thai": ["Noto Sans Thai"], "cjk": ["Noto Sans SC"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`, headerHeight, columnsJSON, styleField, headerStyleField)
+}
+
+const twoColumnsNoAlign = `[
+  {"id": "e2", "label": "Date", "width": 100, "bind": "{{item.a}}"},
+  {"id": "e3", "label": "Amount", "width": 150, "bind": "{{item.b}}"}
+]`
+
+// TestTableHeaderNoStyleExceptFontFamilyRendersDocumentedDefaults is
+// R6, restated: padding 0, no border, transparent background, align
+// left, valign top — and the render succeeds (not an error, not a
+// panic, AD-14).
+func TestTableHeaderNoStyleExceptFontFamilyRendersDocumentedDefaults(t *testing.T) {
+	doc := tableHeaderDoc(`{"fontFamily": "latin", "fontSize": 9}`, twoColumnsNoAlign)
+	pages := tablePagesForTest(t, doc, `{"items": []}`)
+	if len(pages) != 1 {
+		t.Fatalf("got %d pages, want 1", len(pages))
+	}
+	rects := pages[0].Rects
+	if len(rects) != 2 {
+		t.Fatalf("got %d rects, want 2 (one per column cell)", len(rects))
+	}
+	for i, r := range rects {
+		if r.HasFill {
+			t.Errorf("rect %d: HasFill = true, want false (no background declared)", i)
+		}
+		if r.HasStroke {
+			t.Errorf("rect %d: HasStroke = true, want false (no border declared)", i)
+		}
+	}
+	if rects[0].X != 0 || rects[0].W != 100000 {
+		t.Errorf("rect 0: X=%d W=%d, want X=0 W=100000", rects[0].X, rects[0].W)
+	}
+	if rects[1].X != 100000 || rects[1].W != 150000 {
+		t.Errorf("rect 1: X=%d W=%d, want X=100000 W=150000", rects[1].X, rects[1].W)
+	}
+	// Y is band-relative-to-page-absolute: this fixture's pageHeader
+	// band is 20pt tall, so the content band's own origin is 20000, and
+	// the table's own Y=0 lands at exactly that (PlaceInBand — a
+	// translation, never an inversion).
+	if rects[0].Y != 20000 || rects[0].H != 20000 {
+		t.Errorf("rect 0: Y=%d H=%d, want Y=20000 H=20000", rects[0].Y, rects[0].H)
+	}
+	if len(pages[0].Runs) == 0 {
+		t.Fatal("expected label glyph runs, got none")
+	}
+	// Left/top defaults: the first run's X equals its column's own X
+	// (no padding, "left" align) and Y equals the table's own top (no
+	// padding, "top" valign) — before the ruled first-baseline offset,
+	// which BaselineOffset (not Y) carries (Story 2.5a's model).
+	if pages[0].Runs[0].X != 0 {
+		t.Errorf("first run X = %d, want 0 (left align, zero padding)", pages[0].Runs[0].X)
+	}
+	if pages[0].Runs[0].Y != 20000 {
+		t.Errorf("first run Y = %d, want 20000 (top valign, zero padding, content band origin)", pages[0].Runs[0].Y)
+	}
+}
+
+// TestTableHeaderBorderEdgesSubset is AC3's edges assertion: naming a
+// strict subset strokes exactly those edges.
+//
+// Mutation run (recorded in the Delivery Log): hardcode all four edges
+// regardless of style.border.edges — reds, asserted here by checking
+// Right/Left are explicitly false.
+func TestTableHeaderBorderEdgesSubset(t *testing.T) {
+	doc := tableHeaderDoc(`{"fontFamily": "latin", "border": {"edges": ["bottom", "top"], "color": "#112233", "width": 1}}`, twoColumnsNoAlign)
+	pages := tablePagesForTest(t, doc, `{"items": []}`)
+	for i, r := range pages[0].Rects {
+		if !r.HasStroke {
+			t.Fatalf("rect %d: HasStroke = false, want true", i)
+		}
+		if !r.Edges.Top || !r.Edges.Bottom {
+			t.Errorf("rect %d: Edges = %+v, want Top and Bottom set", i, r.Edges)
+		}
+		if r.Edges.Left || r.Edges.Right {
+			t.Errorf("rect %d: Edges = %+v, want Left and Right UNSET (edges is a strict subset)", i, r.Edges)
+		}
+		if r.Stroke != (pagemodel.Color{R: 0x11, G: 0x22, B: 0x33}) {
+			t.Errorf("rect %d: Stroke = %+v, want #112233", i, r.Stroke)
+		}
+		if r.StrokeWidth != 1000 {
+			t.Errorf("rect %d: StrokeWidth = %d, want 1000 (1pt)", i, r.StrokeWidth)
+		}
+	}
+}
+
+// TestTableHeaderBackgroundFill is AC3's background assertion.
+func TestTableHeaderBackgroundFill(t *testing.T) {
+	doc := tableHeaderDoc(`{"fontFamily": "latin", "background": "#00FF00"}`, twoColumnsNoAlign)
+	pages := tablePagesForTest(t, doc, `{"items": []}`)
+	for i, r := range pages[0].Rects {
+		if !r.HasFill {
+			t.Fatalf("rect %d: HasFill = false, want true", i)
+		}
+		if r.Fill != (pagemodel.Color{R: 0, G: 255, B: 0}) {
+			t.Errorf("rect %d: Fill = %+v, want #00FF00", i, r.Fill)
+		}
+		if r.HasStroke {
+			t.Errorf("rect %d: HasStroke = true, want false (no border declared)", i)
+		}
+	}
+}
+
+// TestTableHeaderPaddingInsetsLabel is AC3's padding assertion:
+// style.padding.left shifts the label's X by exactly that amount.
+//
+// Mutation run (recorded in the Delivery Log): drop the padding inset
+// (use cg.X instead of cg.X+padLeft) — reds, the two renders' first-run
+// X becomes equal.
+func TestTableHeaderPaddingInsetsLabel(t *testing.T) {
+	noPadding := tablePagesForTest(t, tableHeaderDoc(`{"fontFamily": "latin"}`, twoColumnsNoAlign), `{"items": []}`)
+	withPadding := tablePagesForTest(t, tableHeaderDoc(`{"fontFamily": "latin", "padding": {"left": 20}}`, twoColumnsNoAlign), `{"items": []}`)
+
+	if len(noPadding[0].Runs) == 0 || len(withPadding[0].Runs) == 0 {
+		t.Fatal("expected label runs in both renders")
+	}
+	got := withPadding[0].Runs[0].X - noPadding[0].Runs[0].X
+	if want := int64(20000); int64(got) != want {
+		t.Errorf("padding.left=20 shifted the label X by %d, want %d", got, want)
+	}
+}
+
+// TestColumnAlignWinsOverStyleAlign is AC4: the first column's OWN
+// align ("left") wins over style.align ("right"); the second column,
+// with no align of its own, falls back to style.align.
+//
+// Mutation run (recorded in the Delivery Log): make style.align win
+// unconditionally — reds on column 0 (its label would shift right).
+// A second mutation, ignoring style.align entirely (column align the
+// only source) — reds on column 1 (its label would stay flush left).
+func TestColumnAlignWinsOverStyleAlign(t *testing.T) {
+	cols := `[
+  {"id": "e2", "label": "A", "width": 100, "align": "left", "bind": "{{item.a}}"},
+  {"id": "e3", "label": "B", "width": 100, "bind": "{{item.b}}"}
+]`
+	doc := tableHeaderDoc(`{"fontFamily": "latin", "align": "right"}`, cols)
+	pages := tablePagesForTest(t, doc, `{"items": []}`)
+
+	// Column 0's cell is [0,100000); flush-left means its label X == 0.
+	// Column 1's cell is [100000,200000); flush-right means its label X
+	// is somewhere strictly greater than 100000 (its own cell's left
+	// edge) — a right-aligned short label never starts at the cell's
+	// own left edge.
+	var col0X, col1X *int64
+	for i := range pages[0].Runs {
+		r := &pages[0].Runs[i]
+		x := int64(r.X)
+		if x < 100000 && col0X == nil {
+			col0X = &x
+		}
+		if x >= 100000 && col1X == nil {
+			// not reachable this way once column 1 is right-aligned and
+			// therefore < 200000 but could still be >= 100000; kept
+			// simple since column 1's glyphs are the ONLY runs with
+			// X >= 100000 in this fixture.
+			v := x
+			col1X = &v
+		}
+	}
+	if col0X == nil || col1X == nil {
+		t.Fatalf("expected runs in both column cells, got %d total runs", len(pages[0].Runs))
+	}
+	if *col0X != 0 {
+		t.Errorf("column 0 (own align=left) label X = %d, want 0", *col0X)
+	}
+	if *col1X <= 100000 {
+		t.Errorf("column 1 (falls back to style.align=right) label X = %d, want > 100000 (right-aligned)", *col1X)
+	}
+}
+
+// TestHeaderStyleBackgroundWinsOverStyle is the finisher's fix for
+// Story 4.1 review Blocker 1 (Finding 2): headerStyle — this story's
+// owner-ruled scope addition — was inert to every test in the tree.
+// When a table declares BOTH style.background and a DIFFERENT
+// headerStyle.background, the header cell must carry headerStyle's
+// colour, never style's.
+//
+// Discriminating mutation (the reviewer's own mutation H, re-run
+// below and recorded in the story): replace resolveHeaderStyle's
+// hasHeader detection with `hasHeader := false` so headerStyle is
+// ignored entirely at render — reds, because the rect would then
+// carry style's RED background instead of headerStyle's GREEN one.
+func TestHeaderStyleBackgroundWinsOverStyle(t *testing.T) {
+	doc := tableHeaderDocFull(
+		`{"fontFamily": "latin", "background": "#FF0000"}`,
+		`{"background": "#00FF00"}`,
+		twoColumnsNoAlign, 20)
+	pages := tablePagesForTest(t, doc, `{"items": []}`)
+	for i, r := range pages[0].Rects {
+		if !r.HasFill {
+			t.Fatalf("rect %d: HasFill = false, want true", i)
+		}
+		if r.Fill != (pagemodel.Color{R: 0, G: 255, B: 0}) {
+			t.Errorf("rect %d: Fill = %+v, want #00FF00 (headerStyle.background must win over style.background=#FF0000)", i, r.Fill)
+		}
+	}
+}
+
+// TestHeaderStyleCascadesPerField is Blocker 1's second half: the
+// cascade is PER FIELD, not "headerStyle present means style is
+// ignored entirely". A table whose headerStyle sets ONLY border and
+// whose style sets ONLY padding must render with headerStyle's border
+// AND style's padding — the header falls through to style field by
+// field, exactly as resolveHeaderStyle's doc comment claims.
+func TestHeaderStyleCascadesPerField(t *testing.T) {
+	withHeaderStyle := tablePagesForTest(t, tableHeaderDocFull(
+		`{"fontFamily": "latin", "padding": {"left": 20}}`,
+		`{"border": {"edges": ["bottom"], "color": "#112233", "width": 1}}`,
+		twoColumnsNoAlign, 20), `{"items": []}`)
+	withoutPadding := tablePagesForTest(t, tableHeaderDocFull(
+		`{"fontFamily": "latin"}`,
+		`{"border": {"edges": ["bottom"], "color": "#112233", "width": 1}}`,
+		twoColumnsNoAlign, 20), `{"items": []}`)
+
+	// headerStyle's border must be drawn (headerStyle sets it, style
+	// does not).
+	for i, r := range withHeaderStyle[0].Rects {
+		if !r.HasStroke {
+			t.Fatalf("rect %d: HasStroke = false, want true (headerStyle.border)", i)
+		}
+		if r.Stroke != (pagemodel.Color{R: 0x11, G: 0x22, B: 0x33}) {
+			t.Errorf("rect %d: Stroke = %+v, want #112233 (from headerStyle.border, not a table default)", i, r.Stroke)
+		}
+	}
+	// style's padding must ALSO apply — falling through per field,
+	// rather than headerStyle's presence blanking style entirely.
+	if len(withHeaderStyle[0].Runs) == 0 || len(withoutPadding[0].Runs) == 0 {
+		t.Fatal("expected label runs in both renders")
+	}
+	got := withHeaderStyle[0].Runs[0].X - withoutPadding[0].Runs[0].X
+	if want := int64(20000); int64(got) != want {
+		t.Errorf("style.padding.left=20 shifted the label X by %d, want %d — headerStyle setting ONLY border must not suppress style's padding (per-field cascade)", got, want)
+	}
+}
+
+// TestColumnAlignWinsOverHeaderStyleAlign extends AC4's precedence one
+// level (the owner ruling's own words: "columns[].align still wins
+// over both"): a column's OWN align wins even when headerStyle (not
+// just style) sets a conflicting align.
+func TestColumnAlignWinsOverHeaderStyleAlign(t *testing.T) {
+	cols := `[
+  {"id": "e2", "label": "A", "width": 100, "align": "left", "bind": "{{item.a}}"},
+  {"id": "e3", "label": "B", "width": 100, "bind": "{{item.b}}"}
+]`
+	doc := tableHeaderDocFull(`{"fontFamily": "latin"}`, `{"align": "right"}`, cols, 20)
+	pages := tablePagesForTest(t, doc, `{"items": []}`)
+
+	var col0X, col1X *int64
+	for i := range pages[0].Runs {
+		r := &pages[0].Runs[i]
+		x := int64(r.X)
+		if x < 100000 && col0X == nil {
+			col0X = &x
+		}
+		if x >= 100000 && col1X == nil {
+			v := x
+			col1X = &v
+		}
+	}
+	if col0X == nil || col1X == nil {
+		t.Fatalf("expected runs in both column cells, got %d total runs", len(pages[0].Runs))
+	}
+	if *col0X != 0 {
+		t.Errorf("column 0 (own align=left) label X = %d, want 0 — must win over headerStyle.align=right", *col0X)
+	}
+	if *col1X <= 100000 {
+		t.Errorf("column 1 (falls back to headerStyle.align=right) label X = %d, want > 100000 (right-aligned)", *col1X)
+	}
+}
+
+// TestTableHeaderValignPlacement is the finisher's fix for Story 4.1
+// review Blocker 2 (Finding 3): style.valign reached no assertion
+// anywhere in the tree, and the byte-identity assertion in AC7 was
+// vacuous for that field. This renders the SAME table three times,
+// varying only style.valign, with a header box (headerHeight=100pt)
+// large relative to a 9pt label's own line height, and asserts the
+// three renders place the label at three DISTINCT, strictly ordered Y
+// positions: top < middle < bottom.
+//
+// "top" is asserted against a test-owned literal (20000 — the content
+// band's own origin in this fixture, zero padding: the same literal
+// TestTableHeaderNoStyleExceptFontFamilyRendersDocumentedDefaults
+// already pins for the documented default). "middle" and "bottom" are
+// asserted RELATIONALLY against "top" and each other (D-000.68: the
+// text block's own height in thousandths is a font-metrics fact this
+// test does not hardcode, so it anchors to strict ordering plus a
+// symmetry bound instead of duplicating resolveHeaderStyle's own
+// arithmetic) — both anchors the code under test cannot move by
+// re-deriving its own answer.
+//
+// Discriminating mutation (the reviewer's own mutation G, re-run below
+// and recorded in the story): delete the valign cascade so
+// resolveHeaderStyle's r.valign is permanently "top" — reds, because
+// "middle" and "bottom" then collapse onto the SAME Y as "top".
+func TestTableHeaderValignPlacement(t *testing.T) {
+	const headerHeight = 100 // pt — large relative to a 9pt label's line height
+	build := func(valign string) geom.Length {
+		doc := tableHeaderDocFull(
+			fmt.Sprintf(`{"fontFamily": "latin", "fontSize": 9, "valign": %q}`, valign),
+			"", twoColumnsNoAlign, headerHeight)
+		pages := tablePagesForTest(t, doc, `{"items": []}`)
+		if len(pages[0].Runs) == 0 {
+			t.Fatalf("valign=%s: expected label runs, got none", valign)
+		}
+		return pages[0].Runs[0].Y
+	}
+	top := build("top")
+	middle := build("middle")
+	bottom := build("bottom")
+
+	if top != 20000 {
+		t.Errorf("valign=top: Y = %d, want 20000 (content band origin, zero padding — the documented default's own literal)", top)
+	}
+	if !(top < middle && middle < bottom) {
+		t.Fatalf("valign placements are not strictly ordered top < middle < bottom: got top=%d middle=%d bottom=%d", top, middle, bottom)
+	}
+	// Symmetry bound: "middle" must sit within 1 thousandth-unit of the
+	// midpoint between "top" and "bottom" (round-half-to-even's own
+	// +/-1 tolerance) — this is what distinguishes a genuine midpoint
+	// placement from some other value that merely happens to fall
+	// between the two.
+	midpoint := (int64(top) + int64(bottom)) / 2
+	if d := int64(middle) - midpoint; d < -1 || d > 1 {
+		t.Errorf("valign=middle: Y = %d, want within 1 of the top/bottom midpoint %d", middle, midpoint)
+	}
+}
+
+// TestTableHeaderStyleColorInvalid mints DiagCodeStyleColorInvalid's
+// use: a malformed hex reaching render is a located error, not a panic.
+func TestTableHeaderStyleColorInvalid(t *testing.T) {
+	doc := tableHeaderDoc(`{"fontFamily": "latin", "background": "not-a-colour"}`, twoColumnsNoAlign)
+	tpl, err := ParseTemplate([]byte(doc))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	_, rerr := Render(tpl, Data(`{"items": []}`), nil, testShippedFontSet())
+	if rerr == nil {
+		t.Fatal("expected a render error for a malformed style.background colour")
+	}
+	var re *RenderError
+	if !errors.As(rerr, &re) {
+		t.Fatalf("expected a *RenderError, got %T: %v", rerr, rerr)
+	}
+	if re.Diagnostic.Code != DiagCodeStyleColorInvalid {
+		t.Errorf("Code = %q, want %q", re.Diagnostic.Code, DiagCodeStyleColorInvalid)
+	}
+}
+
+// TestTableHeaderNoFontFamilyIsLocatedError is R6's own negative half:
+// a table with a non-empty label and no resolvable style.fontFamily
+// (nor headerStyle.fontFamily) fails the render — the SAME failure
+// mode a text element with the same omission already has.
+func TestTableHeaderNoFontFamilyIsLocatedError(t *testing.T) {
+	doc := tableHeaderDoc(``, twoColumnsNoAlign)
+	tpl, err := ParseTemplate([]byte(doc))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	_, rerr := Render(tpl, Data(`{"items": []}`), nil, testShippedFontSet())
+	if rerr == nil {
+		t.Fatal("expected a render error: a table with no style at all and non-empty labels needs a resolvable font")
+	}
+}
+
+// TestTableHeaderVisibleIfFalseIsAbsentFromPageModel is AC8's
+// behavioural half: a hidden table contributes no header row, no
+// borders, no background — absent from the page model entirely.
+//
+// Mutation run (recorded in the Delivery Log): render the table
+// unconditionally, ignoring its visibility verdict — reds (Rects/Runs
+// would be non-empty).
+func TestTableHeaderVisibleIfFalseIsAbsentFromPageModel(t *testing.T) {
+	doc := `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 20,
+        "visibleIf": "customer.hasItems",
+        "style": {"fontFamily": "latin", "background": "#FF0000"},
+        "columns": ` + twoColumnsNoAlign + `}
+    ]},
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"latin": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	visible := tablePagesForTest(t, doc, `{"customer": {"hasItems": true}, "items": []}`)
+	if len(visible[0].Rects) == 0 || len(visible[0].Runs) == 0 {
+		t.Fatal("control: a visible table must produce rects and runs")
+	}
+	hidden := tablePagesForTest(t, doc, `{"customer": {"hasItems": false}, "items": []}`)
+	if len(hidden[0].Rects) != 0 {
+		t.Errorf("hidden table produced %d rects, want 0", len(hidden[0].Rects))
+	}
+	if len(hidden[0].Runs) != 0 {
+		t.Errorf("hidden table produced %d runs, want 0", len(hidden[0].Runs))
+	}
+}
+
+// TestTableRendersZeroDataRows is AC9's scope fence, made a test rather
+// than a sentence — expected to be REWRITTEN by Story 4.2 (marked here
+// so 4.2 has an unambiguous red-to-green to inherit).
+//
+// It renders a header row and asserts the render SUCCEEDS with a
+// non-empty items collection — an unrendered body is not an error at
+// 4.1 — while the ONLY runs the page model carries are the header
+// labels: this test would need to change the moment 4.2 adds row
+// output, which is the point.
+//
+// Finisher fix (Story 4.1 review Finding 14, Minor): the ORIGINAL
+// version of this test asserted only the RECT count. A row
+// implementation emitting cell TEXT with no cell RECTS — precisely
+// what 4.2 (row text) ships before 4.8 (row shading, which is what
+// would add rects) — would have left the rect-only fence green while
+// AC9's own "zero data rows" claim was already false. The run-count
+// assertion below, and the SourceText check that every run's text is
+// exactly one of the two column labels (never e.g. an item value like
+// "1".."5"), close that gap.
+func TestTableRendersZeroDataRows(t *testing.T) {
+	doc := tableHeaderDoc(`{"fontFamily": "latin"}`, twoColumnsNoAlign)
+	// Five items — AC9's own example shape — deliberately non-empty, so
+	// "zero rows" is a positive claim about THIS story, not merely an
+	// empty-collection accident.
+	pages := tablePagesForTest(t, doc, `{"items": [{"a":1},{"a":2},{"a":3},{"a":4},{"a":5}]}`)
+	if len(pages) != 1 {
+		t.Fatalf("got %d pages, want 1", len(pages))
+	}
+	// Exactly 2 rects (one per column's header cell) and the header
+	// labels' runs — nothing else. A data ROW would add more rects (one
+	// per data cell) and more runs; this count pins "header only".
+	if len(pages[0].Rects) != 2 {
+		t.Errorf("got %d rects, want 2 (header cells only, zero data rows)", len(pages[0].Rects))
+	}
+	// Exactly 2 runs — one per column's header label — and each run's
+	// text is exactly the column's own label, never any data-row
+	// content. A row implementation that emitted cell text WITHOUT
+	// cell rects would leave the assertion above green; this is what
+	// catches it.
+	if len(pages[0].Runs) != 2 {
+		t.Fatalf("got %d runs, want 2 (header labels only, zero data rows)", len(pages[0].Runs))
+	}
+	wantLabels := map[string]bool{"Date": true, "Amount": true}
+	seen := map[string]bool{}
+	for i, r := range pages[0].Runs {
+		if !wantLabels[r.SourceText] {
+			t.Errorf("run %d: SourceText = %q, want one of the two column labels %v (not data-row content)", i, r.SourceText, wantLabels)
+		}
+		seen[r.SourceText] = true
+	}
+	if len(seen) != len(wantLabels) {
+		t.Errorf("saw labels %v, want both of %v represented exactly once", seen, wantLabels)
+	}
+}
+
+// TestTableStyleFieldsAreNotDataDriven is AC7 Part A, for the fields
+// this story wires (border/padding/background/align/valign): two
+// report-data documents differing ONLY in a field the template does
+// not bind (exactly the shape a conditional-formatting implementation
+// would key on) must produce byte-identical output.
+//
+// This holds STRUCTURALLY for TWO of this story's three new functions:
+// resolveHeaderStyle and buildHeaderCellRect take NO data/params
+// parameter at all — there is no channel through which "overdue" could
+// reach a style decision through either of them without a signature
+// change visible in review. CORRECTED (finisher fix, Story 4.1 review
+// Finding 9 / Minor, and its Nit-18 duplicate): the claim as
+// originally written also named collectBandTableRuns as taking "no
+// data/params parameter at all", which is FALSE — its signature
+// carries `visible visibilityVerdicts`, a value COMPUTED FROM the
+// report data (render_visibility.go). That is not a style channel:
+// `visible` gates only WHETHER a table renders at all (AD-24's
+// Visibility clause, AC8), never HOW it looks once rendered — a
+// verdict has no colour, no width, no padding value to leak — but the
+// original sentence overstated what the type system alone guarantees
+// for that function. This test still runs the byte-identical
+// comparison for real, per D-000.9 (a structural argument is not a
+// substitute for a measurement), and
+// TestTableStyleFieldsAreNotDataDrivenControl (below) is now sensitive
+// to each of the five fields independently, not only `border.color`.
+func TestTableStyleFieldsAreNotDataDriven(t *testing.T) {
+	doc := tableHeaderDoc(`{"fontFamily": "latin", "border": {"edges": ["bottom"], "color": "#112233", "width": 1},
+		"padding": {"left": 5, "top": 2}, "background": "#EFEFEF", "align": "right", "valign": "middle"}`, twoColumnsNoAlign)
+	tpl, err := ParseTemplate([]byte(doc))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	resTrue, err := Render(tpl, Data(`{"items": [], "overdue": true}`), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("Render(overdue=true): %v", err)
+	}
+	resFalse, err := Render(tpl, Data(`{"items": [], "overdue": false}`), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("Render(overdue=false): %v", err)
+	}
+	if string(resTrue.Bytes) != string(resFalse.Bytes) {
+		t.Fatal("table style output differs between two datasets differing only in an unbound field — style must never be data-driven (AC7)")
+	}
+}
+
+// TestColumnGeometryNeverNegotiatesAgainstLabelContent is AC2's
+// end-to-end proof: two templates identical in every byte except their
+// MIDDLE column's label string — narrow vs a long Latin label, a long
+// Thai label with no spaces, and a long CJK label (all three shaping
+// paths, AC2's own requirement) — must produce IDENTICAL column
+// x-origins, widths and the table's total width (summed over its
+// rects — TableGeometry itself is not reachable from the page model).
+// The wide-label render's header text overflows its (padded) cell box
+// — asserted via ClipToBox — and NEVER widens the column, and never
+// shifts a LATER column's origin (AC2's own "never negotiated"
+// property has no way to show up on a single-column fixture: with
+// three columns, a widened middle column would visibly push column
+// 2's origin).
+//
+// Finisher fix (Story 4.1 review Finding 8, Minor): the ORIGINAL
+// version of this test (a) used a single column, so no x-origin
+// PROPAGATION was exercised — the one column's X is el.X and cannot
+// move under any defect; (b) never asserted the table's total width;
+// (c) used the WIDE render's own output as the NARROW render's
+// "expected" value (and vice versa) rather than a literal the test
+// owns, which is AC2's own stated anchor requirement. All three are
+// fixed below: three columns, TEST-OWNED literal expected {X,W} pairs
+// for each (read from neither render), and a literal expected total.
+//
+// Anchor: the three columns' widths (60/60/60) and the expected X/W
+// pairs and total they imply are literals this test owns — the SAME
+// literals for both the narrow and the wide render, since AC2's claim
+// is that content can NEVER move them (D-000.68).
+//
+// Control (D-000.9): narrow and wide renders must differ in their
+// glyph output — asserted via run count/SourceText — or the geometry
+// equality above would be vacuous (both could have rendered nothing).
+// threeColumnTableDoc is tableHeaderDoc's shape with "nextId" raised to
+// 5 (AD-10/AC37: nextId must exceed the highest element id present),
+// since this test's three columns claim ids up to "e4".
+func threeColumnTableDoc(styleJSON, columnsJSON string) string {
+	styleField := ""
+	if styleJSON != "" {
+		styleField = `, "style": ` + styleJSON
+	}
+	return `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 20,
+        "columns": ` + columnsJSON + styleField + `}
+    ]},
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"latin": ["Noto Sans"], "thai": ["Noto Sans Thai"], "cjk": ["Noto Sans SC"]},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+}
+
+func TestColumnGeometryNeverNegotiatesAgainstLabelContent(t *testing.T) {
+	cases := []struct {
+		name   string
+		narrow string
+		wide   string
+	}{
+		{"latin", "N", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		{"thai", "น", "กขคงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮกขคงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮ"},
+		{"cjk", "日", "日本語漢字書体文書作成印刷組版技術情報処理装置画面表示解像度改善対応方法検討委員会報告書提出期限厳守"},
+	}
+	// TEST-OWNED literal expected geometry for the three 60pt columns —
+	// identical for both the narrow and wide render, since AC2 claims
+	// content can never move it.
+	type wantRect struct{ x, w int64 }
+	want := []wantRect{{0, 60000}, {60000, 60000}, {120000, 60000}}
+	const wantTotal = int64(180000)
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fontFamily := c.name
+			cols := func(middleLabel string) string {
+				return `[
+  {"id": "e2", "label": "A", "width": 60, "bind": "{{item.a}}"},
+  {"id": "e3", "label": "` + middleLabel + `", "width": 60, "bind": "{{item.b}}"},
+  {"id": "e4", "label": "B", "width": 60, "bind": "{{item.c}}"}
+]`
+			}
+			narrowDoc := threeColumnTableDoc(`{"fontFamily": "`+fontFamily+`"}`, cols(c.narrow))
+			wideDoc := threeColumnTableDoc(`{"fontFamily": "`+fontFamily+`"}`, cols(c.wide))
+
+			narrowPages := tablePagesForTest(t, narrowDoc, `{"items": []}`)
+			widePages := tablePagesForTest(t, wideDoc, `{"items": []}`)
+
+			for _, pages := range []struct {
+				label string
+				pages []pagemodel.Page
+			}{{"narrow", narrowPages}, {"wide", widePages}} {
+				if len(pages.pages[0].Rects) != 3 {
+					t.Fatalf("%s/%s: expected exactly 3 rects, got %d", c.name, pages.label, len(pages.pages[0].Rects))
+				}
+				var total int64
+				for i, r := range pages.pages[0].Rects {
+					if int64(r.X) != want[i].x || int64(r.W) != want[i].w {
+						t.Errorf("%s/%s: column %d geometry = {X:%d,W:%d}, want {X:%d,W:%d} — content must never move it", c.name, pages.label, i, r.X, r.W, want[i].x, want[i].w)
+					}
+					total += int64(r.W)
+				}
+				if total != wantTotal {
+					t.Errorf("%s/%s: table total width (summed rects) = %d, want %d", c.name, pages.label, total, wantTotal)
+				}
+			}
+
+			// Control: the two renders must actually differ in glyph
+			// output (more glyphs for the wide label), or the equality
+			// above proves nothing.
+			if len(widePages[0].Runs) == 0 || len(narrowPages[0].Runs) == 0 {
+				t.Fatalf("%s: expected runs in both renders", c.name)
+			}
+			totalWideGlyphs, totalNarrowGlyphs := 0, 0
+			for _, r := range widePages[0].Runs {
+				totalWideGlyphs += len(r.Glyphs)
+			}
+			for _, r := range narrowPages[0].Runs {
+				totalNarrowGlyphs += len(r.Glyphs)
+			}
+			if totalWideGlyphs <= totalNarrowGlyphs {
+				t.Fatalf("%s: control failed — wide label produced %d glyphs, narrow produced %d; the two renders must differ", c.name, totalWideGlyphs, totalNarrowGlyphs)
+			}
+
+			// The wide label's header text overflows its own (zero-
+			// padding) box and is clipped, per AC2 — it never widens
+			// the column.
+			foundClip := false
+			for _, r := range widePages[0].Runs {
+				if r.ClipToBox {
+					foundClip = true
+					if r.ClipWidth != 60000 {
+						t.Errorf("%s: ClipWidth = %d, want 60000 (the column's own width)", c.name, r.ClipWidth)
+					}
+				}
+			}
+			if !foundClip {
+				t.Errorf("%s: expected the wide label's runs to carry ClipToBox (it overflows its declared 60pt column)", c.name)
+			}
+		})
+	}
+}
+
+// TestTableStyleFieldsAreNotDataDrivenControl is D-000.9's vacuity
+// control for the test above: it proves the byte-comparison mechanism
+// itself is sensitive at all — changing an ACTUAL style field (never
+// data) between two renders of the SAME template structure must
+// produce DIFFERENT bytes. Without this, a byte-identical assertion
+// could pass merely because nothing in the pipeline ever varies.
+//
+// Finisher fix (Story 4.1 review Finding 9, Minor): the ORIGINAL
+// version of this control varied ONLY border.color, proving the
+// byte-comparison is sensitive to exactly one of AC7's five fields.
+// The other four (padding/background/align/valign) were independently
+// observed elsewhere (TestTableHeaderPaddingInsetsLabel etc.), but
+// TestTableStyleFieldsAreNotDataDriven's OWN control did not cover
+// them — so a regression that made ONE of those four fields silently
+// stop reaching output (as valign's did, Blocker 2) would not have
+// been caught by this control even though it would have made that
+// field's slice of the byte-identity assertion vacuous. This is now a
+// table over all five fields: each varies ONE field between two
+// otherwise-identical renders and asserts the bytes differ.
+func TestTableStyleFieldsAreNotDataDrivenControl(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b string // style JSON, differing in exactly one field
+	}{
+		{"border", `{"fontFamily": "latin", "border": {"edges": ["bottom"], "color": "#FF0000", "width": 1}}`,
+			`{"fontFamily": "latin", "border": {"edges": ["bottom"], "color": "#00FF00", "width": 1}}`},
+		{"padding", `{"fontFamily": "latin", "padding": {"left": 5}}`,
+			`{"fontFamily": "latin", "padding": {"left": 25}}`},
+		{"background", `{"fontFamily": "latin", "background": "#FF0000"}`,
+			`{"fontFamily": "latin", "background": "#00FF00"}`},
+		{"align", `{"fontFamily": "latin", "align": "left"}`,
+			`{"fontFamily": "latin", "align": "right"}`},
+		{"valign", `{"fontFamily": "latin", "valign": "top"}`,
+			`{"fontFamily": "latin", "valign": "bottom"}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			docA := tableHeaderDoc(c.a, twoColumnsNoAlign)
+			docB := tableHeaderDoc(c.b, twoColumnsNoAlign)
+			tplA, err := ParseTemplate([]byte(docA))
+			if err != nil {
+				t.Fatalf("ParseTemplate(a): %v", err)
+			}
+			tplB, err := ParseTemplate([]byte(docB))
+			if err != nil {
+				t.Fatalf("ParseTemplate(b): %v", err)
+			}
+			resA, err := Render(tplA, Data(`{"items": []}`), nil, testShippedFontSet())
+			if err != nil {
+				t.Fatalf("Render(a): %v", err)
+			}
+			resB, err := Render(tplB, Data(`{"items": []}`), nil, testShippedFontSet())
+			if err != nil {
+				t.Fatalf("Render(b): %v", err)
+			}
+			if string(resA.Bytes) == string(resB.Bytes) {
+				t.Fatalf("control failed: two templates differing only in %s produced IDENTICAL bytes — the comparison mechanism cannot distinguish this field", c.name)
+			}
+		})
+	}
+}
+
+// TestTableInPageHeaderRepeatsIdenticallyAcrossPages is the finisher's
+// fix for Story 4.1 review Finding 12 (Minor): table rects in the
+// page-header/page-footer bands were new, entirely uncovered code
+// (render.go's `case pageHeaderBandIndex`/`case pageFooterBandIndex`
+// arms, and page_number.go's parallel `contentColumnItems` filter) —
+// no test placed a `table` element in either band, so a defect routing
+// those rects through the CONTENT path instead (subject to pagination
+// Shift, and appearing on only ONE page) went undetected.
+//
+// This renders a two-page document (a content text element long
+// enough to overflow one page, the same technique
+// multi_page_composition_test.go uses) with a small table in the
+// pageHeader band, and asserts the SAME rect geometry — X, Y, W, H —
+// appears on BOTH pages, with no Shift applied (a page-header/footer
+// item is placed identically on every page; only CONTENT items slide
+// by the pagination window's Shift).
+//
+// Discriminating mutation (the reviewer's own mutation I, re-run and
+// recorded in the story): route header/footer-band table rects into
+// `items` instead of `header.Rects`/`footer.Rects` — reds, because the
+// header table would then appear on at most one page (assigned to
+// whichever page its Y happens to fall on) instead of both.
+func TestTableInPageHeaderRepeatsIdenticallyAcrossPages(t *testing.T) {
+	const sentence = "The quick brown fox jumps over the lazy dog. "
+	// 25 repetitions: multi_page_composition_test.go's own measured
+	// boundaries put this comfortably inside the two-page window (20
+	// renders one page's worth plus a little; the next page-count
+	// boundary is 30) — the SAME geometry/font as that file, reused
+	// rather than re-derived, so this test does not need its own
+	// page-count arithmetic.
+	value := ""
+	for i := 0; i < 25; i++ {
+		value += sentence
+	}
+	doc := fmt.Sprintf(`{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e2", "type": "text", "x": 0, "y": 0, "width": 480, "height": 700, "value": %q, "style": {"fontFamily": "body", "fontSize": 24}}
+    ]},
+    "pageFooter": {"elements": [], "height": 24},
+    "pageHeader": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "rows[]", "headerHeight": 15,
+        "style": {"fontFamily": "body", "background": "#00FF00"},
+        "columns": [{"id": "e3", "label": "H", "width": 60, "bind": "{{row.n}}"}]}
+    ], "height": 18}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`, value)
+	pages := tablePagesForTest(t, doc, `{"rows": []}`)
+	if len(pages) < 2 {
+		t.Fatalf("presence precondition: got %d page(s), want at least 2 (this test needs a second page to prove the header repeats)", len(pages))
+	}
+	for i, p := range pages[:2] {
+		if len(p.Rects) != 1 {
+			t.Fatalf("page %d: got %d rects, want 1 (the pageHeader table's single column cell)", i, len(p.Rects))
+		}
+	}
+	r0, r1 := pages[0].Rects[0], pages[1].Rects[0]
+	if r0 != r1 {
+		t.Errorf("pageHeader table rect differs between page 1 and page 2: page1=%+v page2=%+v — a page-header item must repeat IDENTICALLY (no pagination Shift applies to it)", r0, r1)
+	}
+	if !r0.HasFill {
+		t.Fatal("presence precondition: the header rect must carry HasFill (style.background is declared)")
+	}
+}

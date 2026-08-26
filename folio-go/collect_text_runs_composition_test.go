@@ -65,7 +65,7 @@ func TestCollectTextRunsMatchesTheShippingBandComposition(t *testing.T) {
 	// construct, so headerFooterResolver's reservation logic never
 	// fires), but a real value from Paginate is used anyway so this
 	// test does not quietly depend on that being true forever.
-	plan, perr := layout.Paginate(mustPageGeometry(t, tpl), contentColumnItems(contentRuns, nil, nil))
+	plan, perr := layout.Paginate(mustPageGeometry(t, tpl), contentColumnItems(contentRuns, nil, nil, nil))
 	if perr != nil {
 		t.Fatalf("layout.Paginate: %v", perr)
 	}
