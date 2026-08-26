@@ -72,7 +72,7 @@ func TestPassTwoEmitsExactlyOnePageObjectPerInputPage(t *testing.T) {
 				}
 			}
 
-			out, err := SerializeTextDocument(pages, nil, nil)
+			out, err := SerializeTextDocument(pages, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("SerializeTextDocument(%d pages): %v", row.inputPages, err)
 			}
@@ -144,7 +144,7 @@ func TestPagesTreeKidsAreSeparated(t *testing.T) {
 		for i := range pages {
 			pages[i] = pagemodel.Page{Width: ptPageWidthMP, Height: ptPageHeightMP}
 		}
-		out, err := SerializeTextDocument(pages, nil, nil)
+		out, err := SerializeTextDocument(pages, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("SerializeTextDocument(%d pages): %v", n, err)
 		}

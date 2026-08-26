@@ -220,6 +220,17 @@ const DiagCodeContentUnlayoutable = string(diag.CodeContentUnlayoutable)
 // permanent.
 const DiagCodeInternalUnhandledCaveat = string(diag.CodeInternalUnhandledCaveat)
 
+// DiagCodeDocumentDateInvalid names Story 3.7's reserved params key
+// (D-3.7.2) — "documentDate" — carrying a value that is present but not
+// a valid RFC 3339 timestamp. FR41's own class (a template-author/
+// caller-actionable condition, R7): both Render and Validate reject it
+// with a *RenderError carrying this code (AC10), before it can ever
+// reach internal/pdf's date assembly.
+//
+// Additive only (AD-14): once shipped, this string's meaning is
+// permanent.
+const DiagCodeDocumentDateInvalid = string(diag.CodeDocumentDateInvalid)
+
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — over-tall rows (FR25, not yet built) and clipped
 // content (FR44, this story) — is expressed as a value of this type,

@@ -6,13 +6,13 @@ import (
 )
 
 // TestAbsencesProductionScan is AC21's production caller: at the real
-// repo root, neither DW-2 directory exists yet, so this must report
-// zero findings today — and go red the day either one lands.
+// repo root, the remaining DW-2 directory does not exist yet, so this
+// must report zero findings today — and go red the day it lands.
 //
-// Story 1.4 (AC50, D-1.4.11) adds the coverage-witness assertion: before
-// this story, "zero findings" was this test's entire success signal,
-// which is exactly what a scanner that silently evaluated nothing would
-// also print (M-5's live D-000.9 exposure). Failing on
+// Story 1.4 (AC50, D-1.4.11) added the coverage-witness assertion:
+// before that story, "zero findings" was this test's entire success
+// signal, which is exactly what a scanner that silently evaluated
+// nothing would also print (M-5's live D-000.9 exposure). Failing on
 // stats.ChecksEvaluated == 0 makes the "I could not look" case
 // distinguishable from "I looked and found nothing" — see
 // TestAbsencesZeroWitnessIsCaught below for the constructed red proof.
@@ -34,14 +34,6 @@ func TestAbsencesProductionScan(t *testing.T) {
 	if stats.ChecksEvaluated != len(absenceChecks) {
 		t.Fatalf("AC25b: ChecksEvaluated (%d) must equal the row count (%d) — a skipped row would still read as a healthy non-zero witness otherwise", stats.ChecksEvaluated, len(absenceChecks))
 	}
-	// Story 2.1's reopening, Finding 13: ChecksEvaluated counts ROWS, not
-	// WORK — a content-kind row whose scope directory does not exist (or
-	// exists but holds zero .go files) reports zero findings identically
-	// to a healthy scan. At the real repo root, folio-go/ exists and
-	// holds many .go files, so this must be non-zero.
-	if stats.ContentFilesScanned == 0 {
-		t.Fatalf("vacuity guard (Finding 13): the content-kind absence check reports it scanned zero .go files under folio-go/ at the real repo root — coverage witness failed")
-	}
 	if len(findings) > 0 {
 		t.Fatalf("DW-2 artifact(s) found present at the repo root — wire the matching licence half (AC21):\n%v", findings)
 	}
@@ -56,6 +48,13 @@ func TestAbsencesProductionScan(t *testing.T) {
 // shape): it swaps a package-level test double for the duration of one
 // test, in a gate that runs by default, and the assertion is on the
 // witness's own honesty rather than on any finding.
+//
+// This test is UNCHANGED by Story 3.7's removal of the content-check
+// mechanism (D-000.67 part 1): it is about ChecksEvaluated, the row
+// count, which Story 5.1 still owns bringing to zero by removing
+// ScanAbsences itself — never by emptying absenceChecks alone (that
+// state is exactly what this test proves reads as a healthy green
+// pass, not a red one).
 func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 	saved := absenceChecks
 	absenceChecks = nil
@@ -77,37 +76,32 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 	// not decorative.
 }
 
-// TestAbsencesChecksIncludeBothRemainingEntries closes the shrunk-list
-// gap D-1.4.11 warned about and this story's finisher review (Finding
-// 5, Major) confirmed was still open: the witness above proves
+// TestAbsencesChecksIncludeTheRemainingEntry closes the shrunk-list gap
+// D-1.4.11 warned about and Story 1.4's finisher review (Finding 5,
+// Major) confirmed was still open: the witness above proves
 // ChecksEvaluated tracks the scanner's OWN loop, but nothing previously
-// pinned WHICH checks the list holds — deleting just the two Story 1.4
-// tripwires left ChecksEvaluated == 2 (still non-zero) and the whole
-// suite green. This asserts the specific rule ids, so removing any one
-// entry — not only emptying the whole list — fails loudly. Story 1.7
-// (AC25, D-1.7.7) added a fifth entry as a path check,
-// "absence-cmd-dir"; Story 2.1 (D-2.1.x) re-keyed it to a CONTENT
-// check, "absence-source-date-epoch" (see absences.go's comment on
-// that row). Story 2.2 (AC5) removed "absence-fonts-dir" — the faces it
-// guarded against now ship, and ScanFontsAssets (fontsassets.go) is its
-// fail-closed replacement. Story 3.2 (D-000.59) DISCHARGED
-// "absence-expr-package" by replacement, not deletion alone. Story 3.6
-// (R6, AC2, D-000.59) DISCHARGED "absence-diag-package" the same way:
-// the same commit that removes it here lands internal/diag's own
-// positive assertion (TestRegistryIsAdditiveOnly) that the registry as
-// constructed contains TABLE_FOOTER_SOURCE_UNRESOLVED and
-// TABLE_FOOTER_SOURCE_FORBIDDEN — bringing this list down to TWO
-// entries; this test still pins them, by rule id, so every remaining
-// check kind stays covered by the same shrunk-list protection. Per the
-// schedule recorded in absences.go's own comment: 3 -> 2 (this story)
-// -> 1 (Story 3.7) -> 0 (Story 5.1, which must remove ScanAbsences and
-// its precondition TOGETHER — TestAbsencesZeroWitnessIsCaught above
-// proves the mechanism goes SLACK, not LOUD, at an empty list, so
-// reaching zero by decrementing this list alone is not a valid path).
-func TestAbsencesChecksIncludeBothRemainingEntries(t *testing.T) {
+// pinned WHICH check the list holds — deleting the sole remaining entry
+// would still leave ChecksEvaluated == 0, which the OTHER test above
+// already covers, but a swap-for-a-different-rule-id regression would
+// not be caught by either. Renamed a third time as the list shrank
+// 5 -> 4 -> 3 -> 2 -> 1 (DW-10's stale-name defect, D-000.37, fixed in
+// this same commit): Story 1.7 added a fifth entry as a path check,
+// "absence-cmd-dir"; Story 2.1 (D-2.1.x) re-keyed it to a content
+// check, "absence-source-date-epoch"; Story 2.2 (AC5) removed
+// "absence-fonts-dir"; Story 3.2/3.6 (D-000.59) discharged
+// "absence-expr-package" and "absence-diag-package" by replacement;
+// and Story 3.7 (AC13, D-000.67 part 1) discharged
+// "absence-source-date-epoch" by replacement, removing the entire
+// content-check mechanism it was the sole tenant of — bringing this
+// list down to its final ONE entry. Per the schedule recorded in
+// absences.go's own comment: 3 -> 2 -> 1 (this story) -> 0 (Story 5.1,
+// which must remove ScanAbsences and its precondition TOGETHER —
+// TestAbsencesZeroWitnessIsCaught above proves the mechanism goes
+// SLACK, not LOUD, at an empty list, so reaching zero by decrementing
+// this list alone is not a valid path).
+func TestAbsencesChecksIncludeTheRemainingEntry(t *testing.T) {
 	want := []string{
 		"absence-designer-project",
-		"absence-source-date-epoch",
 	}
 	if len(absenceChecks) != len(want) {
 		t.Fatalf("absenceChecks has %d entries, want %d (%v) — an entry was added or removed without updating this pin", len(absenceChecks), len(want), want)
@@ -132,16 +126,13 @@ func TestAbsencesChecksIncludeBothRemainingEntries(t *testing.T) {
 // containing those files red-proves them without creating them at their
 // real paths"). The violating/ fixture's folio-designer/ subtree
 // contains both a package-lock.json and a nested
-// third-party-notices/pdfjs-dist/NOTICE — Finding 8's fix (this story's
+// third-party-notices/pdfjs-dist/NOTICE — Finding 8's fix (Story 1.4's
 // QA review) keys the check on the folio-designer/ directory itself, so
-// both are caught by the SAME finding; want reflects that (two findings,
-// one per directory-level check, not three).
-// folio-go/internal/paramsdate/placeholder.go (Story 2.1, D-2.1.x —
-// replacing the old folio-go/cmd/placeholder.go after absence-cmd-dir
-// was re-keyed to the content check absence-source-date-epoch) makes
-// that proof permanent, alongside the two rows above: it is a real .go
-// file, anywhere under the fixture's folio-go/ subtree, whose content
-// contains the literal string SOURCE_DATE_EPOCH.
+// both are caught by the SAME finding; want reflects that (one finding).
+//
+// Story 3.7 (AC13, D-000.67 part 1) removed this fixture's second
+// finding, folio-go/internal/paramsdate/placeholder.go, along with the
+// content-check mechanism it existed solely to exercise.
 func TestAbsencesFixtureScan(t *testing.T) {
 	root := repoRootFromTest(t)
 	base := filepath.Join(root, "folio-go", "testdata", "lint", "absences")
@@ -156,7 +147,6 @@ func TestAbsencesFixtureScan(t *testing.T) {
 		}
 		want := []Finding{
 			{Path: "folio-designer", Rule: "absence-designer-project"},
-			{Path: "folio-go/internal/paramsdate/placeholder.go", Rule: "absence-source-date-epoch"},
 		}
 		assertExactFindings(t, got, want)
 	})
@@ -168,13 +158,6 @@ func TestAbsencesFixtureScan(t *testing.T) {
 		}
 		if stats.ChecksEvaluated == 0 {
 			t.Fatalf("expected a non-zero coverage witness (AC50)")
-		}
-		// Finding 13 (this story's reopening): compliant/ now carries a
-		// real folio-go/ subtree with one clean .go file, so this leg's
-		// zero findings is EARNED (a real scan found nothing), not a
-		// scope directory silently absent.
-		if stats.ContentFilesScanned == 0 {
-			t.Fatalf("vacuity guard (Finding 13): compliant/'s content-kind check reports scanning zero files — its zero findings would be indistinguishable from an absent scope directory")
 		}
 		if len(got) > 0 {
 			t.Fatalf("compliant/ must report zero findings, got %v", got)

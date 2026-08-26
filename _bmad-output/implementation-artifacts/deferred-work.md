@@ -217,6 +217,12 @@ D-1.1.c fixes the public API at that tag — so it is also the moment the medium
 argument-packaging question becomes irreversible. Not due now; **must not evaporate.** If it is still
 unowned when Epic 4 is planned, it goes to the owner rather than being absorbed into a story.
 
+**Ledger entry (Story 3.7, D-3.7.2):** `documentDate` is now a reserved top-level `params` key
+(RFC 3339 string, setting both `/CreationDate` and `/ModDate`) — public contract, frozen at
+`folio-go/v0.1.0` alongside the API signatures this entry already tracks. The `params` namespace now
+has one reserved name in it; a future story adding a second one should append its own line here
+rather than letting this ledger go stale.
+
 ### DW-5 — Derivation validation of `columns[].footerOf` from `bind` — **RETIRED at Story 3.2**
 - **Deferred by:** Story 1.4 (ruling D-1.4.2, AC43/AC44)
 - **Owner:** **Story 3.2**, backstop **Story 3.7** (`folio.Validate` must include it)
@@ -247,8 +253,9 @@ loaded (AC44's known, fixture-pinned gap) rather than being derived or rejected.
   `validateTableColumns`, the `!derivable` branch) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (attached at
   `folio-go/internal/template/parse_bands.go`'s two sites — `newLoadErrorCoded`, one code, two sites,
   because the code names the condition, not the line). Both travel wrapped in `*folio.RenderError`
-  (D-3.6.3), never merely as a bare error. `TestAbsencesChecksIncludeBothRemainingEntries`
-  (`absences_test.go`) now pins the two remaining rows.
+  (D-3.6.3), never merely as a bare error. `TestAbsencesChecksIncludeTheRemainingEntry`
+  (`absences_test.go`, renamed again at Story 3.7 when the list shrank to one entry) pins the
+  remaining row.
 - **Deferred by:** Story 1.4 (ruling D-1.4.2)
 - **Owner:** **whichever story first creates `folio-go/internal/diag`** — expected to be Story 3.6,
   but the obligation attaches to the condition, not the story number (D-2.8.4)
@@ -438,6 +445,36 @@ plus any existing fixture that opts in — **not the corpus**.
 
 **How we'd know it was forgotten.** `cmd/folio` existing while `/CreationDate` is still emitted
 unconditionally-absent with no params date path.
+
+**DISCHARGED at Story 3.7 (D-000.59, AC13).** All three of D-000.59's parts are now positively
+asserted, and `absence-source-date-epoch` — the forcing function above — was removed by
+REPLACEMENT in the same commit, together with the ENTIRE content-check mechanism it was the sole
+tenant of (D-000.67 part 1: that mechanism carried a second presence precondition,
+`AbsencesStats.ContentFilesScanned`, that the roadmap's own 3→2→1→0 schedule never tracked — see
+`lint/internal/rules/absences.go`'s doc comment for the full account). Where each part now lives:
+
+- **(a)** `cmd/folio render` reads `SOURCE_DATE_EPOCH` and passes it in as the `documentDate`
+  parameter — asserted through the params path, via a genuine subprocess with the env var set in
+  the child's own environment, reading the formatted date off the produced PDF bytes:
+  `folio-go/cmd/folio/main_subprocess_test.go`'s `TestRenderReadsSourceDateEpochFromEnvironment` and
+  `TestRenderSourceDateEpochValueIsHonoured`.
+- **(b)** the library core still reads no environment variable — cited, not re-implemented:
+  `TestForbiddenImportsProductionScan` (unchanged) and `TestRenderEntryFileHasNoForbiddenImports`,
+  widened at Story 3.7 to a test-owned literal set of pure entry points, `{Render, RenderTo,
+  Validate}` (`lint/internal/rules/forbiddenimports_test.go`'s `pureEntryPointNames`), with its own
+  non-firing control, `TestFindRenderDeclaringFilesExcludesFolioGo`.
+- **(c)** with no date supplied by any route, `/CreationDate` and `/ModDate` are absent from the
+  produced bytes — `folio-go/render_test.go`'s `TestRenderWithNoDateInParamsOmitsCreationAndModDate`
+  (unweakened, all three original cases plus its full forbidden-key list) with a fourth case added
+  at Story 3.7 (the CLI run with `SOURCE_DATE_EPOCH` unset, byte-identical to no params at all):
+  `folio-go/cmd/folio/main_subprocess_test.go`'s
+  `TestRenderWithSourceDateEpochUnsetIsByteIdenticalToNoParams`.
+
+The stale test name this entry's own prose carried (`TestAbsencesChecksIncludeAllFourEntries`) was
+already renamed twice more by the time Story 3.7 opened it (five → four → three → two entries); it
+is `TestAbsencesChecksIncludeTheRemainingEntry` as of this discharge, pinning the ONE entry
+`absenceChecks` now holds (`absence-designer-project`) — DW-2's own remaining artifact, unrelated to
+this entry.
 
 ### DW-11 — S4's opaque-name coverage is thin: 2 genuinely-uncoverable sourced items on its most fragile path
 - **Raised by:** Story 2.1's re-measurement under D-000.17 (a floor reported unmet, not filled)
@@ -831,6 +868,24 @@ DW-17's three owners is first to present this Warning to a human must decide the
 (per-rune, per-distinct-rune, or per-element) as part of that presentation design — do not inherit
 per-occurrence silently by copying the raw diagnostic list.
 
+**Amended at Story 3.7 (D-3.7.3, this story's own DECISION-3, OVERRULING its creator's
+presentation-layer recommendation): the granularity question above is now ANSWERED, in the ENGINE,
+as a BEHAVIOUR PRECEDENT — not amortised across three separate presentation-layer implementations.**
+`shapeSegments` (`folio-go/render.go`) now coalesces to ONE `Diagnostic` per (element, distinct
+rune), in FIRST-OCCURRENCE order (a slice with a linear scan, never a map — AD-1, D-2.8.6's
+determinism guarantee on the diagnostics slice's order). No count field, no public type change: the
+actionable unit was always the font chain, not the occurrence count. The reasoning for landing this
+in the engine rather than leaving it to each of DW-17's three presenters: three implementations of
+one rule is precisely the drift hazard this very entry's header names, and the moment to fix it is
+NOW, before any presenter exists — after three presenters have each independently coalesced, it is
+four places and three conventions to reconcile instead of one. **Story 3.7's OWN presented-output
+half of DW-17 (the CLI printing every `Diagnostic` it receives, asserted on stdout/stderr content)
+is discharged**: `folio-go/cmd/folio/main.go`'s `printDiagnostics`, tested in
+`folio-go/cmd/folio/main_test.go`'s `TestDiagnosticsPrintedOnStderr` (including the missing-glyph
+case and its negative control — a clean render prints nothing). **Story 5.12 and Story 6.6 inherit
+the coalesced, first-occurrence-ordered form as a property of the `Diagnostic` slice itself** — they
+owe only their OWN presentation of it, never a re-decision of its granularity.
+
 ### DW-18 — `Severity`'s zero value is a VALID severity, so no test can prove the field was ever explicitly set — **RETIRED by Story 3.6 (AC6, R10)**
 - **Retired at:** Story 3.6. `severityUnset Severity = iota` now precedes `SeverityWarning` in
   `folio-go/diagnostic.go`, so `SeverityWarning` is **1** and `SeverityError` is **2** — the zero value
@@ -953,3 +1008,32 @@ names these three tests as failing for a known environmental reason **before** i
 reason — so 3.1a's red-proof figures stay attributable and nobody later reads three unexplained reds as
 evidence about the new denylist rule. **If any of the three is still red for a DIFFERENT reason after
 that, that is a finding.**
+
+---
+
+### DW-20 — `folio-go/render_arch_test.go`'s call-graph walker resolves methods and func-typed vars by AST NAME-MATCHING only; a `go/types`-precise version is owed before the `folio-go/v0.1.0` tag
+
+- **Raised at:** Story 3.7, finisher pass, resolving the engineering lead's ruling D-3.7.9(a) on this
+  story's review Finding 2.
+- **The residual, stated precisely.** `buildFolioCallGraph` (`render_arch_test.go`) now treats every
+  method declaration in package `folio` as a graph node keyed by method NAME ALONE, merged across every
+  receiver type declaring that name, and resolves a selector call `x.Foo()` to every method named `Foo`
+  regardless of `x`'s static or dynamic type. This is a deliberate, safe over-approximation — a spurious
+  edge only makes `TestValidateNeverReachesRenderOrInternalPDF` and
+  `TestExactlyOneDocumentByteProducerAndBothEntryPointsRouteThroughIt` STRICTER, never looser — but it
+  is not the precise property AC1's doc comment describes. A `go/types`-checked version would resolve
+  `x`'s actual type and only add the edge that is really there.
+- **Why deferred rather than built now.** At Story 3.7, `buildFolioCallGraph` is a `_test.go`-only tool
+  scoped to package `folio`'s own root files (D-000.42: no second call-graph builder), and the
+  over-approximation costs nothing today — measured, zero methods in package `folio` at HEAD call into
+  `internal/pdf`, so the merge-by-name behaviour changes no test's verdict. Building a `go/types` version
+  now would be effort spent before the property it protects (`Validate`'s public contract) has frozen.
+- **The real trigger, not a vague "eventually."** **Before `folio-go/v0.1.0` is tagged** (AD-22:
+  `version.go`'s `Version = "0.0.0-dev"`, no `git tag` naming `folio-go/v*` yet) — because that tag is
+  the point at which `Validate`'s public contract (and everything reachable from it) freezes, and a
+  `lint` rule over `go/types` is the complete, non-over-approximating version the lead named as the
+  eventual replacement (D-3.7.9's own words: *"both guards that actually held this story live in
+  `lint`, which type-checks the module; both that leaked are in-module AST scans"*).
+- **Owner:** whoever cuts `folio-go/v0.1.0` (see DW-4's own open ownership question — the same story
+  that cuts the tag should discharge this, or explicitly re-defer it with a fresh trigger).
+- **Status:** open, deferred with the trigger above.

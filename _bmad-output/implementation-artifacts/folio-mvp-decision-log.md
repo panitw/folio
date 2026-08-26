@@ -146,10 +146,19 @@ What shipped is `TestNumberFormattingIsConfinedToNumbersGo` in
   and the supported version"*. The idiomatic `fmt.Errorf` in `internal/template` is currently a
   build-red.
 - Fires hard at **Story 3.6** (`internal/diag`, whose whole job is formatting values into message
-  text — the case AD-3 names as *not covered*) and **Story 3.7** (`cmd/folio`, a CLI that must print).
+  text — the case AD-3 names as *not covered*).
 - The reviewer's own Finding 15 flagged that the file comment overstated the guard's reach; the
   finisher fixed the comment by *widening the guard to match it*, which is the wrong direction
   relative to the ruling.
+- **Correction (D-000.49, Story 3.7):** this entry's own prediction that the guard "fires hard at
+  … Story 3.7 (`cmd/folio`, a CLI that must print)" is a DEFECT IN THE RECORD, not merely stale.
+  `D-1.3.2` (below) narrowed the scanner to `TestNumberFormattingIsConfinedToNumbersGo`, scoped
+  **exactly** to `folio-go/internal/pdf/` — its own doc comment states this and its production
+  caller is `scanNumericFormatting(filepath.Join(root, "folio-go", "internal", "pdf"))` — and
+  **deleted the module-wide second half outright**. `cmd/folio` is outside that scanned root, so a
+  CLI printing with `fmt.Printf`/`fmt.Fprintln`/`strconv.Itoa` builds clean and no guard in this
+  repo objects. The prediction cannot occur at HEAD; Story 3.7 corrects this record rather than
+  widening the guard to make the prediction true (D-000.46).
 
 The lead's read: a **scope defect, not a scope decision**, to be fixed before Story 1.4 opens.
 Related open point: D-1.1.b also requires the guard to ship *"with a retained violating fixture."*
@@ -1521,8 +1530,15 @@ paraphrase did. It is a canonical document contradicting a ruling, which is D-00
 the amendment must land on the **AC text** in `epics.md` and the story file, not merely on the
 guard. It goes red at Story **1.4** (whose AC requires an error naming the declared and supported
 versions — idiomatically `fmt.Errorf`), and hard at **3.6** (`internal/diag`, whose entire job is
-formatting values into message text — the case AD-3 names as *not covered*) and **3.7** (a CLI that
-must print).
+formatting values into message text — the case AD-3 names as *not covered*).
+
+**Correction (D-000.49, Story 3.7):** this entry's own prediction that the guard "goes … hard at
+… 3.7 (a CLI that must print)" is a DEFECT IN THE RECORD, not merely stale — the same defect as
+`:149` above, corrected there in the same words. `D-1.3.2` narrowed
+`TestNumberFormattingIsConfinedToNumbersGo` to exactly `folio-go/internal/pdf/` and deleted the
+module-wide half this entry's prediction depended on; `cmd/folio` sits outside that scanned root,
+so the prediction cannot occur at HEAD, and Story 3.7 corrects the record rather than widening the
+guard to make it true.
 
 **The generalizable lesson, for every story creator from here on.** A ruling's scope words and
 carve-outs read like qualifiers, so a paraphrase drops them first — and the paraphrase is what gets
@@ -11119,3 +11135,208 @@ does not disturb that.
 
 **How we'd know it was wrong.** A future reader treating `internal/diag/` as the place to find
 `Diagnostic`/`Severity`/`Result`, and being surprised to find them at the module root instead.
+
+---
+
+## Epic 3 decisions — Story 3.7
+
+### D-000.67 (amendment) — The rule fires TWICE, and a mechanism can carry more than one presence precondition
+**Lead's amendment to its own entry**, on a divergence the Story 3.7 creator measured. Confidence high.
+
+**The gap.** [[D-000.67]] and the session-5 grounding both tracked the `absenceChecks` mechanism's `ChecksEvaluated` witness — 3 → 2 at 3.6, → 1 at 3.7, → **0 at 5.1**, where [[D-3.4.4]] requires the mechanism be **removed, not decremented**. **Neither looked at `ContentFilesScanned`.**
+
+Measured by the creator, via package-local list substitution (the shape the repo's own zero-witness test uses), probe deleted afterwards:
+
+```
+findings=[] stats={ChecksEvaluated:1 ContentFilesScanned:0}
+```
+
+`absence-source-date-epoch` is the **only** `absenceKindContent` row, so removing it drives a **second** precondition to zero **at Story 3.7 — one story before the one that was written down** — and `TestAbsencesProductionScan` **fatals** on it. `absences.go`'s own forward comment records the 5.1 arrival and not this one.
+
+**The transferable form, which is the point of the amendment:**
+
+> **A mechanism can carry more than one presence precondition, each keyed on a different population. Check every witness the mechanism reports, not the one the roadmap made you think of.**
+
+**In simple terms.** We knew a counter would hit zero at a known date and planned for it. The same mechanism was quietly keeping a *second* tally, of a different thing, and that one hit zero first. Nobody looked, because the roadmap had taught everyone to watch the other number.
+
+**Consequences.** Story 3.7 removes the `absenceKindContent` mechanism **together with both preconditions and its two fixtures** — removal, never relaxation — and must **not** keep the kind "for later", since an empty check kind is precisely the zero-candidate scan [[D-000.67]] exists to prevent. Story 5.1's brief keeps its own removal obligation for `ChecksEvaluated`; the two are separate arrivals of one rule.
+
+**How we'd know it was wrong.** A third witness on the same mechanism nobody has enumerated — which is exactly what this amendment says to go and check for.
+
+---
+
+### D-3.7.1 — `Validate(b []byte, d Data, p Params, f FontSet) ([]Diagnostic, error)`, and it predicts Render FOR THE INPUTS GIVEN
+**Lead's ruling.** Confidence high.
+
+**Verdict.** One entry point. Bytes are forced by the subject — malformed input is not a `*Template` — and by [[D-1.4.6]]'s precedent, which put the `os` boundary at the package boundary and shipped `ParseTemplate([]byte)` for this reason. `([]Diagnostic, error)` matches `RenderTo`'s shape under [[D-2.8.6]]; `Validate` produces no bytes, so there is no `Result`. Data, params and fonts are required by the dry-run-predictor clause, and keeping `os` out is what makes AC5's widened import fence honest rather than a fence around a file that legitimately breaches it.
+
+**The usability trap, and it must be documented in these words.** `Validate` predicts `Render` **for the inputs given**. A caller passing empty `Data` gets absent-path Errors that are **correct predictions of a render with empty data**, not template defects. Unstated, a CI user reads the first as the second and concludes the validator is broken.
+
+**And the tempting fix is refused.** **Do not add a second, structural-only entry point.** Two entry points is the public-surface growth [[D-1.1.c]] and counter-metric C1 exist to prevent; a documented sentence plus a pinning test costs nothing and does not widen the API before `folio-go/v0.1.0`.
+
+**How we'd know it was wrong.** Users routinely calling `Validate` with synthetic empty data to get a "structure only" answer — which would mean the single entry point is not serving the use case and the question reopens.
+
+---
+
+### D-3.7.2 — The reserved params key is `documentDate`, RFC 3339, setting BOTH `/CreationDate` and `/ModDate`
+**Lead's ruling.** Confidence **high on the shape, MEDIUM on the spelling.**
+
+**Verdict.** A reserved params key **`documentDate`** carrying an **RFC 3339 string**, setting **both** metadata dates. **Epoch → RFC 3339 conversion happens in the CLI**, using `time`; the engine parses with `expr`'s shipped RFC 3339 validation and integer calendar, so **no `time` enters `internal/`**. A present-but-non-RFC-3339 value is a **located Error**, consistent with Story 3.4's `formatDate` rule (*"only an RFC 3339 string or an epoch-millisecond number is accepted; anything else is an error"*) — and precisely the class [[D-3.7.1]]'s four-argument `Validate` exists to catch before production.
+
+**Why reserving a name inside an author-controlled namespace is safe here.** The obvious hazard is a collision. It dissolves because **sharing the key is benign, not a hijack**: if an author prints `{{params.documentDate}}` in a footer, the value in the metadata **is** the value on the page — which is what anyone would want. That is a property of choosing a name that means what it does. **`reportDate` is deliberately not used**: Story 6.3's AC already spends it as the author's own example, and reserving a key the documentation teaches people to invent would surprise.
+
+**The medium-confidence half, with its flip condition.** The assumption that would flip the spelling is an existing template or planning document already using `documentDate` for something else. **The developer greps before implementing and returns if it hits.**
+
+**Consequence for DW-4's ledger.** This key is **public contract**, frozen at `folio-go/v0.1.0` alongside the API signatures. Whoever answers *"what ships with the tag"* must know **the params namespace now contains a reserved name.**
+
+**How we'd know it was wrong.** An author needing `documentDate` for an unrelated purpose and finding it silently overridden.
+
+**Correction (D-000.49; see [[D-3.7.6]]).** This story's review measured exactly the falsifier text above: with `SOURCE_DATE_EPOCH` set and an explicit `documentDate` also supplied through `-params`, the environment silently won. **Logged here as a GAP in this ruling, not as its falsifier having fired against a wrong verdict.** This ruling's own subject was the KEY — spelling, value shape, both-dates-together — and that verdict is unchanged and still correct. What it never addressed is a SEPARATE question: precedence between the two engine-sanctioned ROUTES to that one key (an explicit param, and the CLI's own environment-reading convenience). Logging this as "the falsifier fired" would read as "reopen D-3.7.2" when the key, its spelling and its shape are all still right; the actual defect — and its fix — live in [[D-3.7.6]].
+
+---
+
+### D-3.7.3 — Missing-glyph Warnings coalesce in the ENGINE, one per (element, distinct rune). Presentation-layer coalescing is OVERRULED.
+**Lead's ruling**, overruling the story creator's recommendation. Confidence high.
+
+**Verdict.** The engine emits **one Diagnostic per (element, distinct rune)**, not one per rune occurrence. Confirmed live at `render.go:1046-1052`.
+
+**Why not at presentation, which is what was recommended.** Presentation-layer coalescing has **three implementers** — Story 3.7's CLI, 5.12's interface, 6.6's failure card — and **three implementations of one rule is the drift hazard DW-7 exists to name**. Recording a precedent in DW-17 helps, but **a precedent is a wish; one implementation is a fact.**
+
+**And it costs less than the recommendation assumed, because the count is decoration.** The actionable unit is **(element, distinct rune)** — an author fixes the font chain, not the 400th occurrence — so **no count field is needed and no public type changes**. Fewer Diagnostics, not a different shape. **No golden moves** (diagnostics are not in the PDF bytes) and **no existing consumer breaks**, because Story 3.6 shipped this Warning last story.
+
+**The moment is the argument.** Now, before any presenter exists, it is a small change at one site. After three presenters have each coalesced, it is four places to change and three conventions to reconcile.
+
+**The guardrail that would bite.** De-duplication must **not use map iteration** — AD-1 forbids it where it can reach an output, and [[D-2.8.6]] made the diagnostics slice's **order a determinism guarantee**. The distinct-rune population per element is tiny, so **a slice with a linear scan** is correct and obviously ordered, with **first-occurrence position determining order. Assert the ordering, not merely the count.**
+
+**Amendment (this story's review, Finding 7; see [[D-3.7.8]]).** The guardrail holds — a map-ranged de-duplication that still gets the count right IS caught, deterministically, every run — but the mechanism that catches it is `lint`'s **`TestMapRangeUnderModule`** (`lint/internal/rules/maprange_test.go`, scanning the whole module for `range over a map value`), not the in-module ordering assertion above: over a **two**-distinct-rune population, Go's randomised map-iteration start reproduces the "correct" order on only about half of runs, so that assertion alone is a coin flip. Record the deterministic guard by name here, in the test's own comment, and in the Delivery Log — the property was never undefended, but the record previously credited the wrong mechanism.
+
+**Recorded in DW-17 as a BEHAVIOUR precedent, not a presentation convention** — so Stories 5.12 and 6.6 inherit a property they can rely on rather than a rule each must re-implement.
+
+**How we'd know it was wrong.** A presenter needing per-occurrence positions — which would mean the actionable unit is finer than (element, rune).
+
+---
+
+### D-3.7.4 — A Warning exits 0; and `--strict` ships, because D-3.6.8 made the page silent
+**Lead's ruling.** Confidence high. **This adds a deliverable the source AC does not name.**
+
+**Verdict.** Exit **0** on success including Warnings; **1** for a failed render or validation; **2** for usage errors. Diagnostics to **stderr, always**. Bytes to **stdout only when no output path is given** — and **when bytes go to stdout, nothing else may**. Plus: **a `--strict` flag under which any Warning exits non-zero, off by default.**
+
+**Why a Warning exits 0 by default.** AD-14 is explicit — *"`Warning` accompanies a successful render… never silent and never fatal."* Making warnings fatal by default would make FR44's clip fatal, and FR44's entire point is that the render succeeds.
+
+**Why `--strict` is not scope growth, and the lead's own words for it.** FR42's stated purpose is *"reject a malformed template in CI before production."* [[D-3.6.8]] ruled an uncovered rune is **omitted with no in-band page signal** — so under warnings-never-fail, **a customer's name can silently lose a character and no pipeline can ever catch it.**
+
+> *"I made the page silent; I owe a route by which the silence can fail a build."*
+
+One flag, standard, off by default so AD-14 still binds the default. **It is the difference between the CLI serving FR42's use case and merely printing.** Recorded as an instance of a ruling's author tracing its own consequence forward rather than waiting for the gap to be reported.
+
+**In simple terms.** We decided a document with an undrawable character still prints, with nothing on the page to show it. That is right for a human who needs the statement. It is wrong for an automated pipeline whose whole job is to catch bad output before a customer sees it. So the pipeline gets a switch that says "treat every caveat as a failure" — off unless asked for.
+
+**The stream clause that prevents a real bug.** *"When bytes go to stdout, nothing else may"* is stated explicitly because **a later "helpful" progress or summary line on stdout silently corrupts `folio render > out.pdf`.** And exit **2** for usage errors keeps *"your template is bad"* distinguishable from *"you called me wrong"*, which is what a person triaging a red CI job actually needs.
+
+**DW-17's first discharge lands here:** the CLI must print the diagnostics it receives, **asserted on stdout/stderr content**, not on the returned slice ([[D-000.21]] — the property belongs to the artifact that carries it).
+
+**How we'd know it was wrong.** `--strict` being universally enabled in practice, which would mean the default is wrong; or a piping corruption report, which would mean the stdout clause was not enforced.
+
+---
+
+### D-3.7.5 — No matrix document for Story 3.7 — declined on the CRITERION, and NOT on the cost
+**Lead's ruling**, correcting part of the orchestrator's own reasoning. Confidence high.
+
+**Verdict.** No new `fixtures/` golden and no `matrixDocuments` entry, consistent with [[D-3.5.6]]. A `/Info` dictionary assembled from an author-supplied RFC 3339 parameter through the existing `numbers.go` idiom introduces **no new source of cross-target divergence**, and the CLI's `time` use is in the shell, not `internal/`.
+
+**The correction, and it matters more than the ruling.** The orchestrator added *"registering one adds four legs to a gate already owing three"* as a supporting reason. **That is a true cost and must not be part of the grounds.**
+
+> [[D-000.4]]'s own warning is that on a weaker trigger *"nearly every story would qualify and the trade would erode to nothing."* **The mirror is that declining on expense erodes it from the other side, until the criterion becomes whatever the gate can afford.**
+
+Decline because it does not meet the criterion. **The cost is a reason to be glad, not a reason to decide.**
+
+**Two requirements attached.**
+1. *"When no date is supplied nothing is emitted and bytes are unchanged"* must be a **measured byte-identity result over the existing corpus, with the command recorded** — not an expectation. Same condition as Story 3.5's hidden-image count, for the same reason ([[D-000.9]]).
+2. The **with-date** path then has **no cross-target coverage at all**, and that must be stated as a **construction argument, not a measurement**: the input is an identical parameter on every target and the assembly is integer/ASCII, so the bytes cannot differ. [[D-000.24]]'s labelled category used correctly — **a forward property with its reason, never "we checked."**
+
+**How we'd know it was wrong.** An Epic 4 boundary matrix failure bisecting to the `/Info` dictionary.
+
+---
+
+### D-000.9 (extension) — Recorded EVIDENCE is subject to the same rule as a guard, and it is worse when it fails
+**Standing rule extension**, from the fourth instance this epic of an instrument passing while unable to fail. Aimed squarely at Epic 4's boundary gate, which **reads these records instead of re-running them**.
+
+**The rule.**
+
+> **A measurement offered in a Delivery Log as evidence for an AC must name the command, name the mutation under which it reddens, and confirm the mutation was run. A record naming tests that cannot fail on the property is the same defect as a guard that cannot fail — and it is worse, because the gate trusts the record.**
+
+**The incident.** Story 3.7's AC14 required a *measured* corpus byte-identity result for *"no date supplied → nothing emitted, bytes unchanged."* The three tests the Delivery Log recorded **re-hash committed `expected.pdf` files and never call a renderer.** A one-byte trailer mutation in `builder.finish` left **all three passing at rc 0** while **seven genuine render-and-compare goldens reddened.** The property held; the recorded proof of it could not fail.
+
+**In simple terms.** Someone was asked to weigh the parcel and write down the number. They wrote down the number on the label. It happened to be right — and it would have been written down identically if the parcel had been empty.
+
+**Why it is worse than a vacuous guard.** A vacuous guard fails to catch a defect in **its own story**, where a reviewer is looking. A vacuous **record** is consumed later by a **gate** whose whole design is to trust prior stories' evidence rather than re-derive it ([[D-000.4]]'s per-epic cadence exists precisely so the gate does not re-run everything). The record is the interface between a story and the gate, and [[D-000.69]] already established that an interface is what gets quoted.
+
+**The correct repair, stated because the obvious one reproduces the defect.** Swapping in the seven genuine goldens **without re-running the mutation** produces the same failure with better-looking names. **Re-record it as a measurement**: the command, the mutation, the tests that reddened, the count.
+
+**Consequences.** Every Delivery Log measurement offered as AC evidence carries its mutation. The epic-boundary gate's checklist gains a step: **for each inherited evidence claim, confirm the record names a mutation** — a record that names only tests and counts is not evidence, it is a report of a run. This is the fourth instrument this epic that passed while unable to fail ([[D-3.4.6]]'s tautological token set, [[D-3.6.4]]'s permutation-invariant registry pin, 3.7's prefix-only stdout check, and now the AC14 record itself), and the first where the failure is in the **record** rather than the code.
+
+**How we'd know it was wrong.** Delivery Logs growing mutation boilerplate nobody reads — which would mean the requirement has become ceremony and needs narrowing to load-bearing ACs only.
+
+---
+
+### D-3.7.6 — `SOURCE_DATE_EPOCH` FILLS an absent `documentDate`; it never overwrites one the caller supplied. Both subcommands see identical inputs.
+**Lead's ruling**, resolving this story's review Findings 5 and 6. Confidence high.
+
+**Verdict.** Three parts. (1) `injectDocumentDateFromEnv` is FILL-ONLY: it returns params unchanged if `documentDate` is already present — regardless of value, including an explicit `null`. Presence, not truthiness, is the test. (2) `folio validate` and `folio render` run through the identical input-assembly step (`resolveInputs`), so nothing between flag parsing and the `Validate`/`Render` dispatch may diverge by subcommand — `folio validate` must never accept an environment combination `folio render` would refuse, or vice versa. (3) A malformed `SOURCE_DATE_EPOCH` is exit **2** on both subcommands, not 1 — the code's own criterion at its exit-code constants is *"your template is bad"* (1) vs. *"you called me wrong"* (2), and a non-integer environment variable is squarely the second.
+
+**The grounding.** The reproducible-builds convention defines `SOURCE_DATE_EPOCH` as a replacement for **the current date and time**. Folio never reads the current time — AD-7 omits the date unless one arrives through params — so **there is no "current time" for the variable to override.** Its only coherent role here is to supply a date where the caller supplied none. Env-wins is not the convention's intent; it is a misreading of it, and a silent content edit — the class this project rejects everywhere. Exit-2-on-both-supplied was considered and rejected empirically: `SOURCE_DATE_EPOCH` is commonly set **process-wide by the build environment**, so "both supplied" is a normal CI state, and exit 2 would fire on correct usage.
+
+**Why silence is right here, unlike the missing glyph.** No diagnostic is raised for an ignored environment value. The property `SOURCE_DATE_EPOCH` protects is reproducibility, and an explicit `documentDate` already satisfies it — the build is still bit-reproducible, nothing is lost. Contrast the missing glyph ([[D-3.6.8]]), where the property (the customer's name is intact) **is** violated with no signal. **Silence is acceptable exactly when the property the mechanism protects is still satisfied by the path that won** — this is the general form, worth carrying forward.
+
+**The namespace precedent, stated generally because it will be read as the rule.** Tooling may FILL an absent reserved key; it may never OVERWRITE a key the caller supplied.
+
+**Guardrails.** Parity is asserted by a table PARAMETERISED OVER THE SUBCOMMAND (`documentDateParityCase`, `cmd/folio/subcommand_parity_test.go`), covering (params-has-date × env absent/valid/malformed), run against both `validate` and `render`, asserting equal exit codes (and, where the failure is shared, byte-identical stderr). The subcommand set itself is a test-owned literal (`subcommandNames`) asserted AST-equal to the case set of `run`'s own `switch args[0]` (`TestSubcommandNamesMatchRunSwitch`) — a third subcommand reds that assertion rather than quietly falling outside the parity table. Both polarities are asserted: env fills an absent date; env-with-a-supplied-param produces the CALLER's value. Red-proved: restoring the old unconditional `obj["documentDate"] = encodedDate` reddens every "params documentDate SUPPLIED" cell on BOTH subcommands.
+
+**Documentation.** The precedence is stated in `folio`'s own `-h`/usage text (`cmd/folio/main.go`'s `printUsage`): "An explicit -params documentDate is never overwritten by the environment."
+
+**How we'd know it was wrong.** A build pipeline that sets `SOURCE_DATE_EPOCH` process-wide reporting that an author's explicit per-report date stopped taking effect — which would mean fill-only was implemented backwards.
+
+---
+
+### D-3.7.7 — The date-injection step must not parse params it has nothing to add to, and must never pre-empt the engine's own diagnostic
+**Lead's ruling**, a THIRD defect found reading `injectDocumentDateFromEnv` while resolving [[D-3.7.6]]. Confidence high.
+
+**Verdict.** The shared input-assembly step (`resolveInputs` → `injectDocumentDateFromEnv`) must not decode `-params` JSON AT ALL when `SOURCE_DATE_EPOCH` is absent — there is nothing to inject, so there is no reason to touch the caller's bytes. When the variable IS set, a params decode failure is NOT this function's error to raise: it returns the ORIGINAL bytes unchanged, and `Validate`/`Render` produces FR41's located diagnostic over the caller's own byte offsets, exactly as it would with the variable unset.
+
+**The two consequences this closes, both gated on the environment before the fix.** (1) Malformed `-params` produced a DIFFERENT message depending on whether `SOURCE_DATE_EPOCH` happened to be set — with it set, `json.Unmarshal` failed inside the CLI (`"folio: params: ..."`), pre-empting the engine's own located diagnostic; without it, the same bytes reached the engine untouched. This is [[D-3.7.6]]'s Finding 6 defect recurring on a second axis, and fill-only alone does not fix it, because a caller who supplies no `documentDate` still took the re-marshal path whenever the variable was set. (2) Re-marshalling normalises key order and strips whitespace, so a params-located diagnostic's byte offset no longer points at the caller's own file.
+
+**The rule, stated generally.** The CLI's job is to add a key, never to validate JSON.
+
+**Guardrail (covers this and this story's review Finding 6 together).** `TestMalformedParamsProduceIdenticalOutcomeRegardlessOfEnvironment` (`cmd/folio/subcommand_parity_test.go`) asserts `folio render -params <malformed>` and `folio validate -params <malformed>` produce byte-identical stderr and equal exit codes, with `SOURCE_DATE_EPOCH` both set and unset — four combinations, one shared outcome.
+
+**How we'd know it was wrong.** A bug report citing a params-file line number that does not match the actual file on disk — which would mean a re-marshalled copy, not the caller's own bytes, produced the diagnostic.
+
+---
+
+### D-3.7.8 — The coalescing order assertion must not depend on map-iteration luck; add a repetition guard that does not care about population size
+**Lead's ruling**, following this story's review Finding 7. Confidence high.
+
+**Verdict.** `missing_glyph_coalesce_test.go`'s ordering assertion is amended, not replaced, with a SECOND, independent guard: run the coalescing at least 64 times in-process on the same input and assert every result is IDENTICAL to the first (`TestMissingGlyphWarningsCoalescingIsDeterministicAcrossRepeatedRuns`). Go re-randomises a map's iteration start PER ITERATION, not per process, so in-process repetition genuinely varies it — this asserts AD-1's real property (same input, same output) directly, with discriminating power `1 − 2⁻ⁿ` independent of the rune population, rather than pinning one golden order a two-element map-ranged implementation can satisfy on any given run by chance.
+
+**Why the existing ordering assertion is kept, not dropped.** It pins the correct order, which the repetition guard cannot — the two share no mechanism ([[D-000.38]]): one compares against a literal, the other compares runs against each other.
+
+**The attribution correction (see [[D-3.7.3]]'s amendment).** The map-ranged-with-correct-count mutation IS caught, deterministically, every run — but by `lint`'s `TestMapRangeUnderModule`, not by the in-module ordering assertion, which caught it only on roughly half of 10 runs (a two-element population gives Go's randomised map iteration the expected order about half the time). Neither the test comment, D-3.7.3, nor the Delivery Log named the deterministic guard before this correction.
+
+**Red-proof.** The map-ranged de-duplication reds the repetition assertion on every run of 10 (measured); it reds the in-module ordering assertion on roughly half.
+
+**How we'd know it was wrong.** The repetition guard flaking on CI — which would mean Go's map-randomisation guarantee (varies per iteration, not merely per process) does not hold on some platform, and a different discriminator is needed.
+
+---
+
+### D-3.7.9 — Two guards from this story must FAIL CLOSED, not merely admit their residual; the pattern is that the guards holding this story live in `lint` (which type-checks), and the ones that leaked are in-module AST scans
+**Lead's ruling**, overruling the story finisher's initial "state the residual honestly" fix for this story's review Findings 2 and 4. Confidence high.
+
+**Verdict, part (a) — the call graph (`buildFolioCallGraph`, `render_arch_test.go`).** Skipping every method declaration (`fd.Recv != nil`) and resolving only bare-identifier calls was not a coverage gap to disclose — it is [[D-000.9]] inside the walker itself: a call site the walker cannot resolve was being reported as a call site that is clean. The walker now makes THREE kinds of top-level callable a graph node: a receiverless function (unchanged), a top-level `var v = func(...) {...}` (closes the func-typed-variable escape route), and a METHOD, keyed by name alone and merged across every receiver type declaring that name (closes the method-value escape route, and covers interface dispatch for free, because the match is on the selector name only — X's type is never consulted). Name-matching over-approximates, which is the SAFE direction: a spurious edge only makes the guard stricter, never looser. A selector matching neither the `internal/pdf` alias nor any locally-declared method name is, by construction, not a call to anything package `folio` declares, which is why no separate "unresolved call" bucket was needed — every call site resolves to one of: a same-package function, a same-package func-var, a same-package method (by name), an `internal/pdf` call, or definitionally-external. Both of the review's own red-proof mutations (a method, `sneakyRenderer{}.emit()`; a func-typed var, `sneakyEmit()`) now redden `TestValidateNeverReachesRenderOrInternalPDF`, measured live. **The pre-stated fallback did not fire**: zero sites required allowlisting, because the resolution scheme above accounts for both escape routes directly rather than needing an enumerated exception list.
+
+**The one acknowledged residual, deferred with a real trigger.** Precise receiver-type resolution needs `go/types`, not AST alone. Deferred to a `lint` rule over `go/types`, due **before the `folio-go/v0.1.0` tag** — the point at which `Validate`'s contract freezes publicly (see `deferred-work.md`).
+
+**Verdict, part (b) — the import fence (`forbiddenimports_test.go`).** Do NOT widen `pureEntryPointNames` further (this story's review Finding 4 showed that anchor — a name someone must remember to add — is exactly the anchor problem [[D-000.68]] names). INVERT the population instead: every non-test `.go` file directly under `folio-go/` is now scanned UNLESS it is named in `allowedWorldReadingFiles`, a test-owned exception map with one entry (`folio.go`) carrying its reason. A fourth public entry point (`preview.go`, importing `os`) is now fenced THE DAY IT IS CREATED, with no test edit — red-proved live: the guard fires on it with zero changes to `forbiddenimports_test.go`.
+
+**The pattern worth carrying forward.** Both guards that held this story unmodified live in `lint`, which type-checks the module (`TestMapRangeUnderModule`, [[D-3.7.8]]; `TestForbiddenImportsProductionScan`). Both that leaked were in-module AST scans reasoning about names and selectors without types. AST-only scans over `folio-go/` are a weaker instrument than a `lint` rule over `go/types`, and should be treated as provisional wherever a `lint`-side equivalent is affordable.
+
+**How we'd know it was wrong.** A future entry point escaping BOTH guards despite this fix — which would mean the over-approximation reasoning in part (a) or the inversion in part (b) has a hole neither red-proof exercised.

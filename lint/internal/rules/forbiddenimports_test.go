@@ -2,7 +2,6 @@ package rules
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -215,14 +214,13 @@ func TestForbiddenImportsMessageContent(t *testing.T) {
 // (D-1.6.3): "the file declaring Render and RenderTo imports none of
 // os, time, net, math/rand" is asserted here by REUSING
 // ScanForbiddenImports — never a newly invented scanner (AC13) —
-// pointed at whichever file (or files) under folio-go/ actually declare
-// Render/RenderTo (found by AST, findRenderDeclaringFiles below), not
-// at a hard-coded path (filepath.WalkDir, which
-// ScanForbiddenImports/walkGoFiles are built on, visits a non-directory
-// root exactly once, so this is the existing checker at file scope, not
-// a second checker).
+// pointed at whichever files under folio-go/ this guard's target set
+// names (findFolioGoScanTargets below), not at a hard-coded path
+// (filepath.WalkDir, which ScanForbiddenImports/walkGoFiles are built
+// on, visits a non-directory root exactly once, so this is the
+// existing checker at file scope, not a second checker).
 //
-// QA Finding 1 (this story's review, Blocker): the original version
+// QA Finding 1 (Story 1.7's review, Blocker): the original version
 // hard-coded folio-go/render_entry.go as the target. Moving func Render
 // back into folio.go (which imports "os"), leaving render_entry.go in
 // place holding only type Data and a doc comment, left this test
@@ -230,72 +228,101 @@ func TestForbiddenImportsMessageContent(t *testing.T) {
 // declares Render. D-1.6.3's own justification ("fails the moment
 // someone adds a convenience os.Getenv to the render entry point") was
 // false the moment the entry point moved, which is exactly what Story
-// 1.7 does when it adds RenderTo. The property now derives from the
-// function declaration, not the other way round.
+// 1.7 does when it adds RenderTo. Story 1.7 fixed this by deriving the
+// target set from an AST lookup for the name set {Render, RenderTo}
+// (later {Render, RenderTo, Validate} at Story 3.7, AC12(b)).
 //
-// This is deliberately NOT a scan of the whole module-root package:
-// folio-go/folio.go (same package, different file) legitimately
-// imports "os" for LoadTemplate (D-1.4.6's os boundary is the package,
-// not this file) — AC12's property is a FILE-level fact, and asserting
-// it at package granularity would either false-positive on folio.go or
-// require inventing a per-file exemption this story does not need.
-//
-// Story 1.7's AC9-AC11 (D-1.7.3): this guard now covers BOTH Render
-// and RenderTo (findRenderDeclaringFiles below returns every declaring
-// file, sorted). Its residual gap is RECORDED, not papered over —
-// measured, not merely predicted (M-5): a DELIBERATE cross-file route
-// (RenderTo staying in the clean file while calling an os.WriteFile
-// helper declared in folio.go) still builds and this guard still
-// passes. That is accepted: the guard is a CAPABILITY fence ("the file
-// that declares the render entry points imports none of the four
-// banned packages"), not a proof that no code path anywhere in the
-// package ever touches disk. A filesystem-snapshot check to close that
-// gap is deliberately not built — disproportionate, and it would test
-// the OS rather than this library.
+// QA Finding 4 (Story 3.7's review, Major) / D-3.7.9(b): that
+// NAME-DRIVEN anchor was itself an anchor the code could move — a
+// fourth public function (e.g. Preview) reading the environment built
+// and passed every test, because nothing scans a file until its
+// declared name is added to the literal set first. The engineering
+// lead's ruling: do NOT widen the name set further; INVERT the
+// population. Every non-test .go file directly under folio-go/ is now
+// scanned UNLESS it is named in allowedWorldReadingFiles below, each
+// entry carrying its reason — so a brand-new file (Preview or
+// anything else) is fenced THE DAY IT IS CREATED, by default, with no
+// test edit required. Only a file deliberately added to the allowlist
+// may import the world; the burden of proof is now on the exception,
+// not on remembering to name the rule.
 //
 // Vacuity guard (AC25/D-000.9, sharpened by D-000.13 — Finding 1):
-// findRenderDeclaringFiles itself fails the test if no file under
-// folio-go/ declares Render or RenderTo, so a run that finds nothing
-// cannot read as "zero findings, pass". For each declaring file found,
+// findFolioGoScanTargets itself fails the test if every non-test file
+// under folio-go/ is allowlisted, so a run that finds nothing to scan
+// cannot read as "zero findings, pass". For each target file,
 // filesSeen == 1 is asserted explicitly, and a missing file is already
 // a walk error surfaced by ScanForbiddenImports itself (D-1.3.3
 // amended: a target that cannot be read is never silently "zero
 // findings").
 func TestRenderEntryFileHasNoForbiddenImports(t *testing.T) {
 	root := repoRootFromTest(t)
-	renderFiles := findRenderDeclaringFiles(t, root)
+	targets := findFolioGoScanTargets(t, root)
 
-	for _, renderEntryFile := range renderFiles {
-		findings, stats, err := ScanForbiddenImports(renderEntryFile)
+	for _, target := range targets {
+		findings, stats, err := ScanForbiddenImports(target)
 		if err != nil {
-			t.Fatalf("scan %s: %v (AC12: the render entry file must exist and be readable)", renderEntryFile, err)
+			t.Fatalf("scan %s: %v (AC12: every non-allowlisted file under folio-go/ must exist and be readable)", target, err)
 		}
 		if stats.FilesSeen != 1 {
-			t.Fatalf("vacuity guard: expected exactly 1 file seen (the render entry file itself), got %d — stats: %+v", stats.FilesSeen, stats)
+			t.Fatalf("vacuity guard: expected exactly 1 file seen (%s itself), got %d — stats: %+v", target, stats.FilesSeen, stats)
 		}
 		if len(findings) > 0 {
 			var msgs []string
 			for _, f := range findings {
 				msgs = append(msgs, f.Message)
 			}
-			t.Fatalf("AC12: the file declaring Render must import none of os/time/net/math/rand, found:\n%s", strings.Join(msgs, "\n"))
+			t.Fatalf("AC12: %s must import none of os/time/net/math/rand (or be added to allowedWorldReadingFiles WITH a reason), found:\n%s", target, strings.Join(msgs, "\n"))
 		}
 	}
 }
 
-// findRenderDeclaringFiles locates every file directly under folio-go/
-// (the module-root package, non-test files only) that declares a
-// top-level function named Render or RenderTo — D-1.6.3's actual
-// property ("the file declaring Render and RenderTo"), located by
-// parsing the AST rather than assumed from a filename (QA Finding 1).
-// today this returns exactly one path (render_entry.go); if Story 1.7
-// ever splits Render and RenderTo across two files, both are scanned.
+// TestFindRenderDeclaringFilesExcludesFolioGo is AC12(b)'s NON-FIRING
+// CONTROL (D-000.68, D-3.7.9(b): "the same instrument as 3.6's
+// add-with-pin mutation"). folio.go legitimately imports "os" for
+// LoadTemplate (D-1.4.6's os boundary is the package, not this file),
+// so it must be — and stay — the one entry in allowedWorldReadingFiles,
+// and findFolioGoScanTargets must NEVER return it. A guard that (by
+// accident of a future refactor) started scanning folio.go would turn
+// a legitimate import into a false positive (D-000.15's erosion path);
+// this control catches that before it ever reaches ScanForbiddenImports.
+func TestFindRenderDeclaringFilesExcludesFolioGo(t *testing.T) {
+	if _, ok := allowedWorldReadingFiles["folio.go"]; !ok {
+		t.Fatalf("allowedWorldReadingFiles no longer names folio.go — LoadTemplate's legitimate \"os\" import has no exemption and TestRenderEntryFileHasNoForbiddenImports will now (correctly) fail on it; this control exists to catch the OPPOSITE mistake, not to be silenced by this one")
+	}
+	root := repoRootFromTest(t)
+	targets := findFolioGoScanTargets(t, root)
+	for _, f := range targets {
+		if strings.HasSuffix(f, string(filepath.Separator)+"folio.go") {
+			t.Fatalf("findFolioGoScanTargets returned folio.go, which is allowlisted and legitimately imports \"os\" — the guard has been widened into a false positive: %v", targets)
+		}
+	}
+}
+
+// allowedWorldReadingFiles is the test-owned EXCEPTION list D-3.7.9(b)
+// requires (QA Finding 4): every non-test .go file directly under
+// folio-go/ is forbidden os/time/net/math/rand UNLESS it is named
+// here, WITH its reason. This is the closed set today; adding a
+// second entry is a deliberate, reviewable edit, exactly as adding to
+// the old pureEntryPointNames literal was — the difference is that an
+// OMISSION here (forgetting to allowlist a new legitimately
+// world-reading file) fails the build loudly, where an omission from
+// the old name-driven list failed silently.
+var allowedWorldReadingFiles = map[string]string{
+	"folio.go": "declares LoadTemplate, which reads a template from a caller-supplied file path — D-1.4.6's os boundary is the package, not this file",
+}
+
+// findFolioGoScanTargets locates every non-test .go file directly
+// under folio-go/ (the module-root package) that is NOT named in
+// allowedWorldReadingFiles — D-3.7.9(b)'s inverted anchor, replacing
+// Story 3.7's name-driven findRenderDeclaringFiles (QA Finding 4): the
+// population is now "everything, minus a reviewed exception list",
+// never "everything matching a name someone remembered to add".
 //
-// Vacuity guard (D-000.9/D-000.13): zero declaring files is a hard
-// failure here, not a scan that silently found nothing to check — the
-// caller must never be able to read an empty result as "the property
-// holds".
-func findRenderDeclaringFiles(t *testing.T, root string) []string {
+// Vacuity guard (D-000.9/D-000.13): every file allowlisted (i.e. zero
+// scan targets) is a hard failure here, not a scan that silently found
+// nothing to check — the caller must never be able to read an empty
+// result as "the property holds".
+func findFolioGoScanTargets(t *testing.T, root string) []string {
 	t.Helper()
 	folioGoDir := filepath.Join(root, "folio-go")
 	entries, err := os.ReadDir(folioGoDir)
@@ -303,36 +330,20 @@ func findRenderDeclaringFiles(t *testing.T, root string) []string {
 		t.Fatalf("read %s: %v", folioGoDir, err)
 	}
 
-	fset := token.NewFileSet()
-	seen := map[string]bool{}
+	var files []string
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		path := filepath.Join(folioGoDir, name)
-		file, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if perr != nil {
-			t.Fatalf("parse %s: %v", path, perr)
+		if _, allowed := allowedWorldReadingFiles[name]; allowed {
+			continue
 		}
-		for _, decl := range file.Decls {
-			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || fd.Recv != nil {
-				continue
-			}
-			if fd.Name.Name == "Render" || fd.Name.Name == "RenderTo" {
-				seen[path] = true
-				break
-			}
-		}
+		files = append(files, filepath.Join(folioGoDir, name))
 	}
 
-	if len(seen) == 0 {
-		t.Fatalf("vacuity guard: no non-test file directly under %s declares Render or RenderTo — AC12's property is unassertable (D-000.9/D-000.13)", folioGoDir)
-	}
-	files := make([]string, 0, len(seen))
-	for f := range seen {
-		files = append(files, f)
+	if len(files) == 0 {
+		t.Fatalf("vacuity guard: every non-test file directly under %s is allowlisted in allowedWorldReadingFiles — AC12's property is unassertable (D-000.9/D-000.13)", folioGoDir)
 	}
 	sort.Strings(files)
 	return files

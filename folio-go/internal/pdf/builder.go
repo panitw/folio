@@ -9,7 +9,10 @@ import "github.com/panitw/folio/folio-go/internal/geom"
 // number goes through appendLength, every count/offset/object/generation
 // number through appendInt/appendIntPadded (AD-3), classic
 // (non-stream) cross-reference table, content-derived /ID (AD-7), no
-// compression, no /Info, no /CreationDate or /ModDate.
+// compression. /Info (with /CreationDate and /ModDate) is emitted, as
+// exactly one object referenced from the trailer, ONLY when a caller
+// of finish (below) supplies a non-zero infoID (D-3.7.2, Story 3.7) —
+// absent by default, exactly as before this story.
 type builder struct {
 	body    []byte
 	offsets []int // offsets[objNum], index 0 unused (the free entry)
@@ -71,8 +74,13 @@ func (b *builder) writeLength(v geom.Length) {
 }
 
 // finish appends the classic cross-reference table and trailer (with a
-// content-derived /ID, AD-7) and returns the complete document.
-func (b *builder) finish() []byte {
+// content-derived /ID, AD-7) and returns the complete document. infoID
+// is the /Info dictionary's object number, or 0 when none was reserved
+// (D-3.7.2: no date supplied by any route means no /Info dictionary at
+// all, not merely one missing its date entries — AC11 reads this off
+// the produced bytes, never off whether the caller happened to pass a
+// date).
+func (b *builder) finish(infoID int64) []byte {
 	xrefOffset := len(b.body)
 	b.body = appendXrefGeneral(b.body, b.offsets)
 
@@ -81,6 +89,10 @@ func (b *builder) finish() []byte {
 	b.body = appendInt(b.body, size)
 	b.body = append(b.body, " /Root "...)
 	b.body = appendRef(b.body, 1)
+	if infoID != 0 {
+		b.body = append(b.body, " /Info "...)
+		b.body = appendRef(b.body, infoID)
+	}
 	b.body = append(b.body, ' ')
 
 	idHex := computeID(b.body)

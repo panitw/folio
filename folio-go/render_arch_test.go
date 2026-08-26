@@ -45,18 +45,73 @@ import (
 	"testing"
 )
 
-// funcSet is a package-folio-scoped call graph: for each top-level
-// function declared in a non-test file directly under folio-go/, the
-// set of other top-level (same-scope) functions it calls directly,
-// plus whether its body calls into internal/pdf at all.
+// funcSet is a package-folio-scoped call graph: for each callable node
+// declared in a non-test file directly under folio-go/, the set of
+// other same-package callable nodes it calls directly, plus whether
+// its body calls into internal/pdf at all.
 type funcCallInfo struct {
 	callsProducerPkg bool            // body calls into internal/pdf directly (any selector)
-	calls            map[string]bool // names of same-package functions called directly
+	calls            map[string]bool // keys of same-package callable nodes called directly
 }
 
 // buildFolioCallGraph parses every non-test .go file directly under
-// dir (the module-root package "folio") and returns, per top-level
-// function name, its direct-call info.
+// dir (the module-root package "folio") and returns, per callable
+// node, its direct-call info.
+//
+// THREE kinds of top-level callable are nodes (D-3.7.9(a), QA Finding
+// 2, superseding this story's original "state the residual" fix — the
+// engineering lead ruled the walker must FAIL CLOSED, not merely admit
+// what it misses):
+//
+//   - a receiverless function, keyed by its own name (unchanged since
+//     Story 1.7);
+//   - a top-level var initialised directly to a function literal
+//     (`var v = func(...) {...}`), keyed by the var's name — closes
+//     the "func-typed variable" escape route the review measured
+//     (a package-level `sneakyEmit` reaching internal/pdf was
+//     previously a call edge to a node that DID NOT EXIST, which
+//     `reaches`/the walk in TestValidateNeverReachesRenderOrInternalPDF
+//     silently treated as "nothing further to see" rather than as an
+//     unresolved, and therefore suspect, call target);
+//   - a METHOD (fd.Recv != nil), keyed by "."+methodName, WITHOUT
+//     regard to its receiver type. An AST-only scan cannot resolve a
+//     selector expression's static receiver type without go/types (the
+//     lead's own note: the COMPLETE version of this check is a lint
+//     rule over go/types, deferred with a real trigger — before the
+//     folio-go/v0.1.0 tag, since that is when Validate's contract
+//     freezes publicly). Until then, a call `x.Foo()` is treated as
+//     reaching EVERY method named Foo declared anywhere in package
+//     folio — "name-matching over-approximates, which is the safe
+//     direction: a spurious edge only makes the guard stricter"
+//     (D-3.7.9(a), verbatim). This closes the "method value" escape
+//     route the review measured (a `sneakyRenderer{}.emit()` call was
+//     previously invisible: methods were not graph nodes at all,
+//     fd.Recv != nil was skipped outright), and the same reasoning
+//     covers interface dispatch (`var r Renderer = sneakyRenderer{};
+//     r.emit()`) for free, because the match is on the SELECTOR NAME
+//     alone — X's type, static or dynamic, is never consulted. Nodes
+//     sharing a method name are MERGED (union of calls and
+//     callsProducerPkg), because the over-approximation cannot tell
+//     them apart anyway.
+//
+// A selector call fn.Sel.Name that matches neither the internal/pdf
+// import alias nor any locally-declared method name is, BY
+// CONSTRUCTION, not a call to anything package folio declares: it is
+// necessarily some other package's exported function or method (fmt,
+// strings, a stdlib type, another internal/* package, ...), which is
+// why no separate "unresolved call" bucket is needed to fail the walk
+// closed. Every call site directly under folio-go/ resolves to exactly
+// one of: (a) a same-package function, (b) a same-package func-typed
+// var, (c) a same-package method (by name), (d) an internal/pdf call
+// (tracked separately as callsProducerPkg), or (e)
+// definitionally-external — case (e) being safe by this reasoning, not
+// by omission. (At HEAD, measured: package folio declares exactly
+// seven methods — Severity.String, RenderError.Error,
+// RenderError.Unwrap, fontCache.get, and faceSegment's
+// segmentLocal/glyphRangeForRunes/advance1000 — none of which call
+// into internal/pdf, and zero top-level func-typed vars, so this
+// change does not alter TestExactlyOneDocumentByteProducerAndBothEntryPointsRouteThroughIt's
+// producer count.)
 func buildFolioCallGraph(t *testing.T, dir string) map[string]funcCallInfo {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -65,8 +120,17 @@ func buildFolioCallGraph(t *testing.T, dir string) map[string]funcCallInfo {
 	}
 
 	fset := token.NewFileSet()
-	graph := map[string]funcCallInfo{}
+	type parsedFile struct {
+		file     *ast.File
+		pdfAlias string
+	}
+	var files []parsedFile
 
+	// Pass 1: parse every file and collect the COMPLETE, package-wide
+	// set of method names — the selector-resolution step below needs
+	// the full set, not just whatever the current file happens to
+	// declare.
+	methodNames := map[string]bool{}
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
@@ -94,36 +158,94 @@ func buildFolioCallGraph(t *testing.T, dir string) map[string]funcCallInfo {
 			}
 			pdfAlias = alias
 		}
+		files = append(files, parsedFile{file: file, pdfAlias: pdfAlias})
 
 		for _, decl := range file.Decls {
-			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || fd.Recv != nil || fd.Body == nil {
-				continue
+			if fd, ok := decl.(*ast.FuncDecl); ok && fd.Recv != nil {
+				methodNames[fd.Name.Name] = true
 			}
-			info := funcCallInfo{calls: map[string]bool{}}
-			ast.Inspect(fd.Body, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
+		}
+	}
+
+	inspectBody := func(body *ast.BlockStmt, pdfAlias string) funcCallInfo {
+		info := funcCallInfo{calls: map[string]bool{}}
+		ast.Inspect(body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch fn := call.Fun.(type) {
+			case *ast.Ident:
+				// A same-package function, or func-typed var, call —
+				// the fact that matters for "routes through it".
+				info.calls[fn.Name] = true
+			case *ast.SelectorExpr:
+				// Finding 1 (Story 1.7's review): match ANY call
+				// resolved through the internal/pdf import alias, not
+				// a single named selector — a whitelisted function
+				// name is a property about that one function, not
+				// about "produces the document bytes".
+				if pkgIdent, ok := fn.X.(*ast.Ident); ok && pkgIdent.Name == pdfAlias && pdfAlias != "" {
+					info.callsProducerPkg = true
 					return true
 				}
-				switch fn := call.Fun.(type) {
-				case *ast.Ident:
-					// A same-package function call — the fact that
-					// matters for "routes through it".
-					info.calls[fn.Name] = true
-				case *ast.SelectorExpr:
-					// Finding 1: match ANY call resolved through the
-					// internal/pdf import alias, not a single named
-					// selector — a whitelisted function name is a
-					// property about that one function, not about
-					// "produces the document bytes".
-					if pkgIdent, ok := fn.X.(*ast.Ident); ok && pkgIdent.Name == pdfAlias && pdfAlias != "" {
-						info.callsProducerPkg = true
-					}
+				// D-3.7.9(a): over-approximate any selector whose
+				// name matches a locally-declared method, regardless
+				// of X's type (see the doc comment above).
+				if methodNames[fn.Sel.Name] {
+					info.calls["."+fn.Sel.Name] = true
 				}
-				return true
-			})
-			graph[fd.Name.Name] = info
+			}
+			return true
+		})
+		return info
+	}
+
+	graph := map[string]funcCallInfo{}
+	merge := func(key string, info funcCallInfo) {
+		existing, ok := graph[key]
+		if !ok {
+			graph[key] = info
+			return
+		}
+		existing.callsProducerPkg = existing.callsProducerPkg || info.callsProducerPkg
+		for c := range info.calls {
+			existing.calls[c] = true
+		}
+		graph[key] = existing
+	}
+
+	// Pass 2: build the graph. Every FuncDecl (function or method) and
+	// every top-level `var v = func(...) {...}` becomes a node.
+	for _, pf := range files {
+		for _, decl := range pf.file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Body == nil {
+					continue
+				}
+				info := inspectBody(d.Body, pf.pdfAlias)
+				if d.Recv != nil {
+					merge("."+d.Name.Name, info)
+				} else {
+					merge(d.Name.Name, info)
+				}
+			case *ast.GenDecl:
+				if d.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range d.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Names) != 1 || len(vs.Values) != 1 {
+						continue
+					}
+					lit, ok := vs.Values[0].(*ast.FuncLit)
+					if !ok {
+						continue
+					}
+					merge(vs.Names[0].Name, inspectBody(lit.Body, pf.pdfAlias))
+				}
+			}
 		}
 	}
 	return graph
@@ -197,5 +319,92 @@ func TestExactlyOneDocumentByteProducerAndBothEntryPointsRouteThroughIt(t *testi
 	}
 	if len(missing) > 0 {
 		t.Fatalf("AC4: %v does not route through the single document-byte producer %q — Render and RenderTo must both route through it", missing, producer)
+	}
+}
+
+// TestValidateNeverReachesRenderOrInternalPDF is Story 3.7's AC1: "no
+// render is attempted" is a STRUCTURAL property of Validate, asserted
+// by AST over package folio's own top-level functions — never inferred
+// from the absence of returned bytes, which a Validate that renders
+// and throws the bytes away would also satisfy. Reuses
+// buildFolioCallGraph (this file, D-000.42: no second call-graph
+// builder) rather than writing a new one.
+//
+// Two independent checks, both required:
+//
+//  1. Validate's call graph never reaches the two NAMED functions that
+//     can produce document bytes today — "renderDocument" and
+//     "buildPageModel" — by same-package call. (predictDocument, the
+//     function Validate DOES call and shares with buildPageModel, is
+//     deliberately NOT on this forbidden list: it is the shared
+//     derivation D-000.42 requires, and it is covered by check 2
+//     instead, which is the stronger, name-independent property.)
+//  2. Nothing reachable from Validate — including Validate itself —
+//     calls into internal/pdf at all (any selector through the pdf
+//     import alias), per funcCallInfo.callsProducerPkg. This is the
+//     real, name-independent form of "no render is attempted": it
+//     catches a render call added under ANY name, not just the two
+//     named above.
+//
+// QA Finding 2 (this story's review, Major) / D-3.7.9(a): check 2's
+// claim was TRUE OF THE INTENT but not yet of the CODE — the review
+// measured that buildFolioCallGraph skipped every method declaration
+// (fd.Recv != nil) outright and only ever resolved a bare identifier
+// call, so a same-package METHOD (`sneakyRenderer{}.emit()`) or a
+// package-level FUNC-TYPED VARIABLE (`sneakyEmit()`) reaching
+// internal/pdf from inside Validate built, ran, and left this test
+// GREEN. buildFolioCallGraph now resolves both (see its own doc
+// comment: methods become graph nodes, matched by name across every
+// receiver type, deliberately over-approximating; func-typed vars
+// become graph nodes too) — "under ANY name" is now true BY
+// CONSTRUCTION, not by claim. The one acknowledged residual is
+// go/types-precision receiver resolution, deferred to a lint rule
+// before the folio-go/v0.1.0 tag (see buildFolioCallGraph's comment);
+// it can only produce SPURIOUS (over-approximating) edges, never miss
+// a real one, so it cannot make this guard pass when it should fail.
+func TestValidateNeverReachesRenderOrInternalPDF(t *testing.T) {
+	root, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("resolve module root: %v", err)
+	}
+	graph := buildFolioCallGraph(t, root)
+
+	if _, ok := graph["Validate"]; !ok {
+		t.Fatalf("vacuity guard: Validate not found among package folio's top-level functions")
+	}
+
+	for _, forbidden := range []string{"renderDocument", "buildPageModel"} {
+		if _, ok := graph[forbidden]; !ok {
+			t.Fatalf("vacuity guard: %q not found among package folio's top-level functions — AC1's property is unassertable", forbidden)
+		}
+		if reaches(graph, "Validate", forbidden, map[string]bool{}) {
+			t.Errorf("AC1: Validate's call graph reaches %q — Validate must never attempt a render", forbidden)
+		}
+	}
+
+	// Check 2: walk Validate's own reachable set and assert none of
+	// them call into internal/pdf.
+	visited := map[string]bool{}
+	var walk func(fn string)
+	var offenders []string
+	walk = func(fn string) {
+		if visited[fn] {
+			return
+		}
+		visited[fn] = true
+		info, ok := graph[fn]
+		if !ok {
+			return
+		}
+		if info.callsProducerPkg {
+			offenders = append(offenders, fn)
+		}
+		for callee := range info.calls {
+			walk(callee)
+		}
+	}
+	walk("Validate")
+	if len(offenders) > 0 {
+		t.Errorf("AC1: Validate's call graph reaches internal/pdf through %v — no render may be attempted", offenders)
 	}
 }

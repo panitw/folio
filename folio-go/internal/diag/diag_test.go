@@ -37,6 +37,7 @@ var codePins = []struct {
 	{"CodeContentUnlayoutable", CodeContentUnlayoutable, "CONTENT_UNLAYOUTABLE"},
 	{"CodeTextMissingGlyph", CodeTextMissingGlyph, "TEXT_MISSING_GLYPH"},
 	{"CodeInternalUnhandledCaveat", CodeInternalUnhandledCaveat, "INTERNAL_UNHANDLED_CAVEAT"},
+	{"CodeDocumentDateInvalid", CodeDocumentDateInvalid, "DOCUMENT_DATE_INVALID"},
 }
 
 // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by

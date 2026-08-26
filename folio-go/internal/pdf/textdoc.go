@@ -103,13 +103,28 @@ type ImageXObject struct {
 // here). It follows Story 1.1/1.4's determinism rules: every geometric
 // number goes through appendLength, every count/offset/object number
 // through appendInt/appendIntPadded (AD-3), and /ID is derived from the
-// document's own content (AD-7) — no compression, no /Info dictionary,
-// no /CreationDate or /ModDate.
-func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace, images map[string]ImageXObject) ([]byte, error) {
+// document's own content (AD-7) — no compression.
+//
+// date is D-3.7.2's /Info dictionary: nil when no documentDate was
+// supplied by any route, in which case NO /Info object is emitted at
+// all (AC11 — absent, never a present-but-empty dictionary, and never
+// a defaulted date) and neither /CreationDate nor /ModDate appears
+// anywhere in the produced bytes. When date is non-nil, ONE /Info
+// object is emitted carrying BOTH /CreationDate and /ModDate set to
+// the SAME value (D-3.7.2: "one value, two keys") and referenced from
+// the trailer's /Info entry. date arrives already parsed and validated
+// (R4: "the date value must ride into internal/pdf as a VALUE, never
+// as an import") — this package never parses an RFC 3339 string and
+// never imports internal/expr or "time".
+func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace, images map[string]ImageXObject, date *DocumentDate) ([]byte, error) {
 	b := newBuilder()
 
 	catalogID := b.reserve()
 	pagesID := b.reserve()
+	var infoID int64
+	if date != nil {
+		infoID = b.reserve()
+	}
 
 	// Images are emitted in SORTED resource-name order (same
 	// ScanMapRange-compliant idiom as faces below): deterministic
@@ -194,6 +209,17 @@ func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace
 	b.writeInt(int64(len(pages)))
 	b.write([]byte(" >>"))
 	b.end()
+
+	// --- Info (D-3.7.2, AC8-AC11) — emitted ONLY when date != nil ---
+	if date != nil {
+		b.begin(infoID)
+		b.write([]byte("<< /CreationDate "))
+		b.write(appendPDFDate(nil, *date))
+		b.write([]byte(" /ModDate "))
+		b.write(appendPDFDate(nil, *date))
+		b.write([]byte(" >>"))
+		b.end()
+	}
 
 	// --- Per-page objects ---
 	for i, page := range pages {
@@ -487,7 +513,7 @@ func SerializeTextDocument(pages []pagemodel.Page, faces map[string]EmbeddedFace
 		b.end()
 	}
 
-	return b.finish(), nil
+	return b.finish(infoID), nil
 }
 
 // pdfNameEscape returns name with characters outside a conservative safe

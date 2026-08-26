@@ -130,6 +130,13 @@ const (
 	// caller, so the only choice is between a coded one and a codeless
 	// one, never between a coded one and a plain error.
 	CodeInternalUnhandledCaveat Code = "INTERNAL_UNHANDLED_CAVEAT"
+
+	// CodeDocumentDateInvalid names Story 3.7's reserved params key
+	// (D-3.7.2) carrying a value that is present but not a valid RFC
+	// 3339 timestamp — a template author/caller-actionable condition
+	// (R7's own criterion) caught by both Render and Validate (D-3.7.1)
+	// before it ever reaches internal/pdf's date assembly. AC10.
+	CodeDocumentDateInvalid Code = "DOCUMENT_DATE_INVALID"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -148,6 +155,7 @@ var allCodes = []Code{
 	CodeContentUnlayoutable,
 	CodeTextMissingGlyph,
 	CodeInternalUnhandledCaveat,
+	CodeDocumentDateInvalid,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a

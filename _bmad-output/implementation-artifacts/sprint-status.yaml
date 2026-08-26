@@ -82,7 +82,7 @@ development_status:
   3-4-format-dates-and-numbers-by-declared-locale: done
   3-5-hide-a-component-conditionally: done
   3-6-fail-with-located-actionable-diagnostics: done
-  3-7-validate-a-template-and-render-it-from-the-command-line: backlog
+  3-7-validate-a-template-and-render-it-from-the-command-line: done
   epic-3-retrospective: optional
 
   epic-4: backlog

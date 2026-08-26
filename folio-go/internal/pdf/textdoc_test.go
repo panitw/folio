@@ -63,7 +63,7 @@ func TestSerializeTextDocumentEmbedsOneFontFileForTwoPages(t *testing.T) {
 	faces := map[string]EmbeddedFace{"Body": fakeFace("Body")}
 	pages := []pagemodel.Page{onePageWithText("Body"), onePageWithText("Body")}
 
-	out, err := SerializeTextDocument(pages, faces, nil)
+	out, err := SerializeTextDocument(pages, faces, nil, nil)
 	if err != nil {
 		t.Fatalf("SerializeTextDocument: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestSerializeTextDocumentEmbedsOneFontFileForTwoPages(t *testing.T) {
 // stream.
 func TestSerializeTextDocumentMissingFaceIsLocatedError(t *testing.T) {
 	pages := []pagemodel.Page{onePageWithText("DoesNotExist")}
-	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{}, nil)
+	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{}, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for a run naming a face absent from the face set")
 	}
@@ -113,7 +113,7 @@ func TestSerializeTextDocumentUnknownCIDIsLocatedError(t *testing.T) {
 		Width:  595276,
 		Height: 841890,
 	}}
-	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{"Body": face}, nil)
+	_, err := SerializeTextDocument(pages, map[string]EmbeddedFace{"Body": face}, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for a CID with no width in the embedded face")
 	}

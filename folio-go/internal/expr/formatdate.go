@@ -121,6 +121,20 @@ func decimalExactMilliseconds(d Decimal) (int64, error) {
 // day that does not round-trip is a day that does not exist in that
 // (year, month), including every leap-year case, for free.
 func validateCivilRanges(year int64, month, day, hour, minute, second int) error {
+	// QA Finding 14 (Story 3.7's review, Minor): R5 records the
+	// calendar as "bounded to years 1-9999" (the exhaustive round-trip
+	// measurement above is over exactly that range), but nothing
+	// enforced the lower bound — year 0000 round-tripped through
+	// civilFromDays(daysFromCivil(...)) cleanly, since the proleptic
+	// Gregorian calendar is happy to represent it, and reached
+	// ParseRFC3339's caller as a valid civil date outside ISO 32000-1's
+	// representable calendar (PDF's D:YYYYMMDD... date string has no
+	// defined meaning for a non-positive year). Checked first, before
+	// month, so an out-of-range year is never masked by a month/day
+	// message that assumes a representable year.
+	if year < 1 || year > 9999 {
+		return fmt.Errorf("year %04d is out of range 1-9999", year)
+	}
 	if month < 1 || month > 12 {
 		return fmt.Errorf("month %d is out of range 1-12", month)
 	}
@@ -137,6 +151,58 @@ func validateCivilRanges(year int64, month, day, hour, minute, second int) error
 		return fmt.Errorf("second %d is out of range 0-59", second)
 	}
 	return nil
+}
+
+// Civil is a parsed RFC 3339 timestamp's civil (calendar) components,
+// as exact integers — never seconds-since-epoch, never a time.Time.
+// Story 3.7 (D-3.7.2, R5): this is the shipped RFC 3339 parser and
+// integer calendar's public face, reused by package folio to validate
+// and resolve the reserved `documentDate` params key without a second
+// parser existing anywhere in the module (D-000.42), and without
+// "time" ever entering any internal/ package (AD-1).
+type Civil struct {
+	Year                 int64
+	Month, Day           int
+	Hour, Minute, Second int
+	// OffsetMinutes is signed, minutes east of UTC (0 for both "Z" and
+	// "+00:00" — the two are indistinguishable once parsed).
+	OffsetMinutes int
+}
+
+// ParseRFC3339 parses s as an RFC 3339 timestamp (its own offset or
+// "Z"), validating both its shape and its civil range (a real
+// calendar date/time, not merely digit-shaped) exactly as formatDate's
+// own operand parsing does (rfc3339Pattern, validateCivilRanges,
+// parseUTCOffsetMinutes) — this function does not duplicate that
+// logic, it exposes it. Fractional seconds, if present, are accepted
+// but discarded: Civil's granularity (and the PDF date syntax
+// D-3.7.2 assembles it into) is whole seconds.
+func ParseRFC3339(s string) (Civil, error) {
+	m := rfc3339Pattern.FindStringSubmatch(s)
+	if m == nil {
+		return Civil{}, fmt.Errorf("expr: %q is not a valid RFC 3339 timestamp", s)
+	}
+	year, _ := strconv.Atoi(m[1])
+	month, _ := strconv.Atoi(m[2])
+	day, _ := strconv.Atoi(m[3])
+	hour, _ := strconv.Atoi(m[4])
+	minute, _ := strconv.Atoi(m[5])
+	second, _ := strconv.Atoi(m[6])
+
+	if verr := validateCivilRanges(int64(year), month, day, hour, minute, second); verr != nil {
+		return Civil{}, fmt.Errorf("expr: %q is not a valid RFC 3339 timestamp: %s", s, verr)
+	}
+
+	offsetMin, err := parseUTCOffsetMinutes(m[8])
+	if err != nil {
+		return Civil{}, fmt.Errorf("expr: %q is not a valid RFC 3339 timestamp: %w", s, err)
+	}
+
+	return Civil{
+		Year: int64(year), Month: month, Day: day,
+		Hour: hour, Minute: minute, Second: second,
+		OffsetMinutes: offsetMin,
+	}, nil
 }
 
 // instantMsFromValue is AC7: accepts an RFC 3339 string (its own

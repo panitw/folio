@@ -1038,18 +1038,38 @@ func shapeSegments(elementID string, chain []string, elementText string, fs Font
 	}
 	var segments []segment
 	var diags []Diagnostic
+	// seenMissingRunes is D-3.7.3's engine-side coalescing (OVERRULING
+	// the creator's presentation-layer recommendation, AC7): one
+	// Diagnostic per (element, distinct rune), never one per
+	// occurrence. A SLICE with a linear scan, deliberately never a map
+	// — AD-1 forbids map iteration where order can reach an output, and
+	// D-2.8.6 made the diagnostics slice's order a determinism
+	// guarantee. The population is the distinct uncovered runes in ONE
+	// element's text, which is tiny, so the linear scan costs nothing
+	// that matters. First-occurrence position determines order.
+	var seenMissingRunes []rune
 	for _, r := range elementText {
 		face, found, err := resolveRuneFace(chain, r, fs, cache)
 		if err != nil {
 			return nil, nil, err
 		}
 		if !found {
-			diags = append(diags, Diagnostic{
-				Severity:  SeverityWarning,
-				Code:      DiagCodeTextMissingGlyph,
-				ElementID: elementID,
-				Message:   missingGlyphMessage(elementID, r, chain),
-			})
+			alreadySeen := false
+			for _, sr := range seenMissingRunes {
+				if sr == r {
+					alreadySeen = true
+					break
+				}
+			}
+			if !alreadySeen {
+				seenMissingRunes = append(seenMissingRunes, r)
+				diags = append(diags, Diagnostic{
+					Severity:  SeverityWarning,
+					Code:      DiagCodeTextMissingGlyph,
+					ElementID: elementID,
+					Message:   missingGlyphMessage(elementID, r, chain),
+				})
+			}
 			if n := len(segments); n > 0 && segments[n-1].missing {
 				segments[n-1].runes = append(segments[n-1].runes, r)
 				continue
@@ -1218,25 +1238,102 @@ func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baseline
 // KNOWINGLY rather than as an unnoticed by-product of where a phase
 // boundary happens to fall — not so a caller can depend on it.
 func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, []Diagnostic, error) {
+	date, derr := resolveDocumentDate(params)
+	if derr != nil {
+		return nil, nil, derr
+	}
 	pages, embedded, pdfImages, diags, err := buildPageModel(t, data, params, fs)
 	if err != nil {
 		return nil, nil, err
 	}
-	b, serr := pdf.SerializeTextDocument(pages, embedded, pdfImages)
+	b, serr := pdf.SerializeTextDocument(pages, embedded, pdfImages, date)
 	if serr != nil {
 		return nil, nil, serr
 	}
 	return b, diags, nil
 }
 
-// buildPageModel is renderDocument's body up to, but not including,
-// PDF serialization — split out so a package-internal test can assert
-// directly on pagemodel.Page.Runs/Images (AC1, Story 3.5) rather than
-// decoding serialized PDF bytes to recover the same count. This is the
-// SAME derivation renderDocument uses, not a second one (D-000.42):
-// renderDocument (above) is now a two-line wrapper over this function
-// plus pdf.SerializeTextDocument.
+// resolveDocumentDate is D-3.7.2's reserved params key, "documentDate":
+// an RFC 3339 timestamp string that, when present, sets BOTH
+// /CreationDate and /ModDate to the same value (R4: it rides into
+// internal/pdf as a plain VALUE, never as an import — internal/pdf
+// never parses a date string or imports internal/expr). Absent from
+// params (or params carrying no "documentDate" key at all — the
+// ordinary case for every caller before this story and for every
+// caller after it that never supplies one) returns (nil, nil): no
+// /Info dictionary is emitted at all (AC11), not a defaulted or
+// present-but-empty one.
+//
+// A present value that is not a string, or a string that is not a
+// valid RFC 3339 timestamp, is a located Error (AC10) — the concrete
+// case D-3.7.1's four-argument Validate exists to catch before
+// production, consistent with Story 3.4's formatDate rule for the same
+// malformed-timestamp shape.
+func resolveDocumentDate(params bind.Value) (*pdf.DocumentDate, error) {
+	if params.Kind != bind.KindObject {
+		return nil, nil
+	}
+	v, ok := params.Obj[documentDateParamKey]
+	if !ok {
+		return nil, nil
+	}
+	if v.Kind != bind.KindString {
+		return nil, newRenderError(
+			DiagCodeDocumentDateInvalid, "", "",
+			fmt.Errorf("folio: params.%s must be an RFC 3339 timestamp string, got %s", documentDateParamKey, v.Kind),
+		)
+	}
+	civil, err := expr.ParseRFC3339(v.Str)
+	if err != nil {
+		return nil, newRenderError(
+			DiagCodeDocumentDateInvalid, "", "",
+			fmt.Errorf("folio: params.%s: %w", documentDateParamKey, err),
+		)
+	}
+	return &pdf.DocumentDate{
+		Year: civil.Year, Month: civil.Month, Day: civil.Day,
+		Hour: civil.Hour, Minute: civil.Minute, Second: civil.Second,
+		OffsetMinutes: civil.OffsetMinutes,
+	}, nil
+}
+
+// documentDateParamKey is D-3.7.2's reserved top-level params key.
+// "reportDate" is deliberately NOT used: Story 6.3's AC already spends
+// it as the author's own worked example. This spelling is public
+// contract, frozen at folio-go/v0.1.0 alongside the API signatures
+// (AD-22) — the params namespace now has one reserved name in it.
+const documentDateParamKey = "documentDate"
+
+// buildPageModel is renderDocument's body up to, but not including, PDF
+// serialization — a one-line wrapper over predictDocument (below),
+// which is the SAME derivation renderDocument uses, not a second one
+// (D-000.42). Split into its own name at Story 3.7 (D-3.7.1, AC1) so
+// that folio.Validate can call predictDocument directly and this
+// package's own AST guard (TestValidateNeverReachesRenderOrInternalPDF,
+// render_arch_test.go) can assert, by name, that Validate's call graph
+// never reaches buildPageModel OR renderDocument OR internal/pdf: the
+// three ways this module's render pipeline can ever produce document
+// bytes.
 func buildPageModel(t *Template, data, params bind.Value, fs FontSet) ([]pagemodel.Page, map[string]pdf.EmbeddedFace, map[string]pdf.ImageXObject, []Diagnostic, error) {
+	return predictDocument(t, data, params, fs)
+}
+
+// predictDocument is buildPageModel's actual body (AC1, Story 3.5's
+// original split point, renamed at Story 3.7): it derives everything a
+// render needs UP TO AND INCLUDING page composition — collecting bands,
+// checking table bindings, resolving visibility, collecting and shaping
+// text and image runs, subsetting fonts, decoding and validating image
+// assets, and paginating — every step of Render's pipeline that can
+// produce a located error or Diagnostic. It makes ZERO calls into
+// internal/pdf (only pdf.EmbeddedFace/pdf.ImageXObject struct literals,
+// package-local data shapes, never a call through the pdf import
+// alias) — folio.Validate (D-3.7.1) calls this function directly,
+// discarding the page model/embedded-face/image-XObject values and
+// keeping only diags and err, which is exactly what makes "Validate
+// predicts Render" (D-3.7.1) true by construction rather than by two
+// independently-maintained implementations agreeing by coincidence
+// (D-000.42).
+func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemodel.Page, map[string]pdf.EmbeddedFace, map[string]pdf.ImageXObject, []Diagnostic, error) {
 	// cache is shared between collection (coverage checks, AC4) and
 	// embedding (subsetting) below, so a face is ever parsed at most
 	// once per render regardless of how many chain members or runes
