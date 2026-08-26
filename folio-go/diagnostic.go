@@ -86,6 +86,28 @@ func itoa(n int) string {
 // breaking change"): once shipped, this string's meaning is permanent.
 const DiagCodeTextClippedWidth = "TEXT_CLIPPED_WIDTH"
 
+// DiagCodeEmptyAverage is the closed registry's second code (Story
+// 3.3, DECISION-5/R9): avg() evaluated over a present-but-empty
+// collection. D-3.1a.2's kernel has no identity element for an average
+// of zero operands and refuses honestly; Story 4.2's own AC requires
+// an empty-collection table to render successfully, so the render
+// proceeds — the aggregate resolves to empty — and this Warning is how
+// a reader learns why a total column shows nothing, rather than the
+// render simply failing (which would make Story 4.2's AC
+// unsatisfiable) or the blank column looking unremarkable (which it is
+// not: an ALL-NULL collection is a real average and renders a number,
+// R7.3 — only a genuinely EMPTY collection reaches this code).
+//
+// Minted here, in the module-root folio package, following
+// DiagCodeTextClippedWidth's own precedent (D-2.8.1): D-1.4.2 forbids
+// minting a code AHEAD of the condition it names, never minting one in
+// this package before internal/diag exists (Story 3.6) — the condition
+// ships in this story, which is exactly when 2.8 minted.
+//
+// Additive only (AD-14, verbatim: "changing a code's meaning is a
+// breaking change"): once shipped, this string's meaning is permanent.
+const DiagCodeEmptyAverage = "AGGREGATE_EMPTY_AVERAGE"
+
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — over-tall rows (FR25, not yet built) and clipped
 // content (FR44, this story) — is expressed as a value of this type,

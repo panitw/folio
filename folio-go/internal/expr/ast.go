@@ -124,6 +124,37 @@ type Value struct {
 // this story) depends on that: a null CONDITION is a legal value that
 // evaluates to the else branch, silently, and can only do that if
 // resolving it did not already fail.
+// CollectionLength and ProjectCollection (Story 3.3, R1) are the
+// COLLECTION seam, split from Resolve into two methods rather than
+// widening Value with an array kind: Value stays scalar, deliberately
+// (its own doc comment above), and a collection value never crosses
+// this interface at all — only an int (a count) or a []Value (one
+// scalar per element) ever does.
+//
+// Neither method takes a range, offset, index or limit (R1): every
+// call is over the WHOLE collection a path names, never a page or a
+// window of it — the mechanism AD-11's "never over the rows on the
+// current page" is built on (R3).
+//
+// path is root-relative in the same sense Resolve's path is — resolved
+// against whichever root (params/row/data) the FIRST segment selects —
+// except that AD-11 forces an aggregate to bypass the row root even
+// when the row scope's own declared alias equals path's first segment
+// (R3): the only root a collection ever resolves through, once row is
+// excluded, is params or the document root, never a narrower row scope.
 type Resolver interface {
 	Resolve(path []string) (Value, error)
+
+	// CollectionLength reports the number of elements in the
+	// collection path names (AC1, AC3): count()'s only operation.
+	// count is STRUCTURALLY unable to reach a projected value (AC3) —
+	// this method's signature has no way to return one.
+	CollectionLength(path []string) (int, error)
+
+	// ProjectCollection returns exactly one Value per element of the
+	// collection path's array prefix names, in DATA ORDER — never
+	// sorted, deduplicated or filtered (AC2) — projecting the
+	// remaining segments of path against each element in turn. sum()
+	// and avg() are its only two callers.
+	ProjectCollection(path []string) ([]Value, error)
 }

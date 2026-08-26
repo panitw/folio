@@ -320,6 +320,149 @@ func TestExprFunctionTableRedProofNinthEntry(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------
+// AC22 (Story 3.3) — no per-page vocabulary, asserted by SET EQUALITY
+// over expr.Resolver's method set, not a name list (a name list dies
+// to the first synonym — AD-4's page/pages fence).
+// ---------------------------------------------------------------------
+
+// exprResolverMethodNames is the closed set R1/AC22 declares — pinned
+// here, independently of internal/expr/ast.go's own source, exactly
+// the same "two independently-stated lists" discipline
+// exprEightFunctionNames above uses.
+var exprResolverMethodNames = map[string]bool{
+	"Resolve": true, "CollectionLength": true, "ProjectCollection": true,
+}
+
+// extractResolverInterfaceMethods AST-extracts the method names of the
+// interface type named "Resolver" declared in file, or nil if this
+// file does not declare one.
+func extractResolverInterfaceMethods(file *ast.File) []string {
+	var names []string
+	for _, decl := range file.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok || ts.Name.Name != "Resolver" {
+				continue
+			}
+			iface, ok := ts.Type.(*ast.InterfaceType)
+			if !ok {
+				continue
+			}
+			for _, m := range iface.Methods.List {
+				for _, n := range m.Names {
+					names = append(names, n.Name)
+				}
+			}
+		}
+	}
+	return names
+}
+
+// TestExprResolverMethodSetIsClosed is Story 3.3's AC22: expr.Resolver
+// declares EXACTLY {Resolve, CollectionLength, ProjectCollection} —
+// never a fourth method (a page-scoped variant, under any spelling,
+// AD-4) — checked by AST set equality against exprResolverMethodNames,
+// in the SAME instrument (this file, walkGoFiles over the whole module
+// root) as TestExprFunctionTableIsExactlyEight above.
+func TestExprResolverMethodSetIsClosed(t *testing.T) {
+	root := moduleRoot(t)
+	fset := token.NewFileSet()
+	var filesParsed int
+	var found bool
+	var names []string
+	err := walkGoFiles(fset, root, func(rel string, file *ast.File) error {
+		filesParsed++
+		if filepath.ToSlash(filepath.Dir(rel)) != exprPkgRelDir || strings.HasSuffix(rel, "_test.go") {
+			return nil
+		}
+		got := extractResolverInterfaceMethods(file)
+		if got != nil {
+			found = true
+			names = append(names, got...)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+	if filesParsed == 0 {
+		t.Fatal("vacuity guard (D-000.9): zero files parsed under the module root")
+	}
+	if !found {
+		t.Fatal("AC22 presence precondition: the Resolver interface declaration was never found")
+	}
+	if len(names) == 0 {
+		t.Fatal("AC22 presence precondition (D-000.9): zero methods extracted from the Resolver interface")
+	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		if seen[n] {
+			t.Errorf("duplicate method name %q in Resolver's method set", n)
+		}
+		seen[n] = true
+		if !exprResolverMethodNames[n] {
+			t.Errorf("unexpected method %q on expr.Resolver — AC22's closed set is %v; a page-scoped "+
+				"aggregate variant under any spelling is a direction change under AD-4, not a one-line edit here", n, exprResolverMethodNames)
+		}
+	}
+	for want := range exprResolverMethodNames {
+		if !seen[want] {
+			t.Errorf("expr.Resolver is missing method %q", want)
+		}
+	}
+}
+
+// TestExprResolverMethodSetRedProofFourthMethod is AC22's own red-proof
+// (D-000.52), same discipline as TestExprFunctionTableRedProofNinthEntry
+// above: inject a FOURTH method onto a SCRATCH COPY of ast.go's
+// Resolver interface declaration and confirm the extraction above
+// would observe it (and so TestExprResolverMethodSetIsClosed would
+// redden), never touching the committed file.
+func TestExprResolverMethodSetRedProofFourthMethod(t *testing.T) {
+	root := moduleRoot(t)
+	path := filepath.Join(root, exprPkgRelDir, "ast.go")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	marker := "ProjectCollection(path []string) ([]Value, error)"
+	if !strings.Contains(string(src), marker) {
+		t.Fatalf("presence precondition: ast.go no longer contains the expected ProjectCollection method line — this red-proof's injection point is stale")
+	}
+	injected := "PageCollectionLength(path []string) (int, error)"
+	mutated := strings.Replace(string(src), marker, marker+"\n\t"+injected, 1)
+
+	fset := token.NewFileSet()
+	file, perr := parser.ParseFile(fset, "ast.go", mutated, 0)
+	if perr != nil {
+		t.Fatalf("the mutated source failed to parse — the injection is malformed: %v", perr)
+	}
+	got := extractResolverInterfaceMethods(file)
+
+	found4 := false
+	for _, n := range got {
+		if n == "PageCollectionLength" {
+			found4 = true
+		}
+	}
+	if !found4 {
+		t.Fatalf("presence precondition: mutation was supposed to add \"PageCollectionLength\" but extraction over the mutated source observed %v", got)
+	}
+	for _, n := range got {
+		if !exprResolverMethodNames[n] {
+			t.Logf("red-proof: mutated Resolver interface now has method %q outside the closed set %v — TestExprResolverMethodSetIsClosed's own comparison would fail on this source, exactly as AC22 requires", n, exprResolverMethodNames)
+			return
+		}
+	}
+	t.Fatal("RED-PROOF FAILED: a fourth Resolver method did not appear outside the declared closed set — AC22's guard would not catch it")
+}
+
+// ---------------------------------------------------------------------
 // AC6 — no exported registration path over the closed table
 // ---------------------------------------------------------------------
 

@@ -84,9 +84,9 @@ type funcEntry struct {
 // functionTable is FR18's closed eight, keyed by name (AC5). Ordering
 // here is source order, not significant to any guard.
 var functionTable = [8]funcEntry{
-	{name: "sum", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: false, owningStory: "3.3"},
-	{name: "count", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: false, owningStory: "3.3"},
-	{name: "avg", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: false, owningStory: "3.3"},
+	{name: "sum", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: true},
+	{name: "count", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: true},
+	{name: "avg", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: true},
 	{name: "formatDate", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}, implemented: false, owningStory: "3.4"},
 	{name: "formatNumber", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}, implemented: false, owningStory: "3.4"},
 	{name: "upper", arity: 1, args: []argKind{argAny}, ret: returnString{}, implemented: true},

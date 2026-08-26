@@ -2,7 +2,9 @@ package arch
 
 // Story 3.1a's AC23/AC24: the reducer inventory tripwire that makes
 // Story 3.3 unable to skip routing sum/avg through the exact kernel
-// this story builds (internal/bind's SumDecimals/AvgDecimals).
+// this story builds (internal/expr's SumDecimals/AvgDecimals — moved
+// there from internal/bind at Story 3.2/D-3.2.1; F12, Story 3.3: this
+// comment named the pre-3.2 location and was never updated).
 //
 // D-3.1a.3 (the ruling this file exists to satisfy): the tripwire's
 // location clause is RELATIONAL — "the same package as the Decimal type

@@ -28,29 +28,14 @@ func TestLegalFunctionNamesIsExactlyEight(t *testing.T) {
 	}
 }
 
-// TestThreeImplementedFunctions and TestFiveUnimplementedFunctions pin
-// which of the eight are implemented at this story (AC12-AC18) —
-// exactly three, never more, never fewer.
-func TestThreeImplementedFunctions(t *testing.T) {
-	for _, name := range []string{"upper", "lower", "if"} {
-		e, ok := lookupFunc(name)
-		if !ok || !e.implemented {
-			t.Errorf("%s: expected implemented=true", name)
-		}
-	}
-}
-
-func TestFiveUnimplementedFunctions(t *testing.T) {
-	for _, name := range []string{"sum", "count", "avg", "formatDate", "formatNumber"} {
-		e, ok := lookupFunc(name)
-		if !ok || e.implemented {
-			t.Errorf("%s: expected implemented=false", name)
-		}
-		if e.owningStory == "" {
-			t.Errorf("%s: unimplemented entry must name its owning story", name)
-		}
-	}
-}
+// TestThreeImplementedFunctions/TestFiveUnimplementedFunctions moved to
+// table_derivational_test.go (Story 3.3, AC29, F11/D-3.1a.3): those two
+// tests were hard-coded name lists that this story's own edit (three
+// names flip) and Story 3.4's (the remaining two) would each have had
+// to edit in the same diff as the thing being guarded — "a guard whose
+// expected value must be edited is one that gets edited wrongly."
+// TestImplementedEntriesMatchEvalCallSwitch derives the same coverage
+// from eval.go's own switch statement instead.
 
 // TestAggregationEntriesDeclareDecimalReturn is AC9: sum/count/avg's
 // table entries declare a Decimal-typed signature (a compile-time

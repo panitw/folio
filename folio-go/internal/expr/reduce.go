@@ -67,14 +67,16 @@ func tenPow(n int) *big.Int {
 // (equivalently, the MAXIMUM operand scale — D-1.6.1's AC2 distinctness,
 // "1.50" != "1.5", survives addition because the result's Exponent is
 // never coarser than any operand's), accumulated in big.Int (already
-// blessed and imported, decimal.go:20 — exact, no intermediate
-// rounding), and narrowed EXACTLY ONCE, at the end, through the SAME
-// IsInt64() pattern decimal.go:119-128 already uses for NewDecimal's own
-// coefficient. No checked-add helper is written: there is one narrowing
-// site, and it is this one.
+// blessed and imported, decimal.go's own "math/big" import — F12,
+// Story 3.3: prefer this symbol reference over a line cite, which has
+// already gone stale here twice — exact, no intermediate rounding),
+// and narrowed EXACTLY ONCE, at the end, through the SAME IsInt64()
+// pattern NewDecimal's own coefficient narrowing already uses
+// (decimal.go). No checked-add helper is written: there is one
+// narrowing site, and it is this one.
 //
 // AC6: the alignment spread (maximum exponent minus minimum exponent)
-// is checked against maxDecimalExponentMagnitude (decimal.go:65) BEFORE
+// is checked against maxDecimalExponentMagnitude (decimal.go) BEFORE
 // any shift is computed. Computing a shift whose magnitude is itself
 // what the bound exists to forbid — e.g. a request to align across a
 // spread of tens of millions — is exactly the cost this ordering

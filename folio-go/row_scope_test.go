@@ -30,7 +30,7 @@ func TestRowAliasDefaultsToRowAtResolutionTime(t *testing.T) {
 	}
 	scope := bind.NewScope(data, bind.Value{Kind: bind.KindObject}).WithRow(row, alias)
 
-	got, _, rerr := bind.Resolve("{{row.amount}}", scope, "e2")
+	got, _, _, rerr := bind.Resolve("{{row.amount}}", scope, "e2")
 	if rerr != nil {
 		t.Fatalf("AC2: unexpected error: %v", rerr)
 	}

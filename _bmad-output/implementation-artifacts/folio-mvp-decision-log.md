@@ -347,6 +347,277 @@ nothing said so until now. Highest-probability quiet loss in the epic.
 Story 2.4 AC5), now bound by [[D-000.57]]. Epic 4 is the C4 hard gate. **[[D-2.1.6]] is untouched** —
 no Epic 3 story reaches segmentation, and nothing here may reopen it.
 
+### Grounding refresh — session 5, 2026-08-25 at HEAD `b875582` (Epic 3 mid-epic → run to 6.7)
+
+Fifth lead, re-grounded per [[D-000.8]] from this log rather than from the spine. **The four prior
+grounding sections still hold and are NOT rewritten.** Read in full: all four grounding sections; all
+**62** `D-000.*` standing rules (D-000.62 was appended this session); every Epic 3 entry `D-3.1.1` →
+`D-3.2.2`; `sprint-status.yaml`; `epics.md` §Story 3.3 → §Story 6.7 (the 32 remaining stories) plus
+§Requirements Inventory, §UX Design Requirements and §Epic List; `deferred-work.md` DW-1…DW-19.
+**And, for the first time in this run, the UX docs** — `DESIGN.md`, `EXPERIENCE.md`,
+`review-token-fidelity.md`, `.memlog.md` and all five mockups. Spine re-read only where Epics 5–6
+hinge on it and no predecessor had cause to: AD-14…AD-26, §Consistency Conventions, §Stack,
+§Containers, §Deployment and environments, §Source tree, §Deferred.
+
+#### 1. Verified live rather than inherited
+
+| claim | verified against | result |
+|---|---|---|
+| working tree clean | `git status --porcelain` | **FALSE as briefed** — `folio-mvp-decision-log.md` is modified (D-000.62, appended this session). No Go source is dirty. Stated because a lead who reports "clean" without looking is the [[D-000.51]] shape. |
+| `internal/expr` exists, `internal/diag` does not | `find folio-go/internal -maxdepth 1 -type d` | confirmed — 9 packages, `expr` present, **no `diag`** |
+| `Decimal` moved, exactly one declaration | `internal/expr/decimal.go:27`; `TestExactlyOneDecimalDeclarationInTheModule` (`internal/expr_arch_test.go:546`) | confirmed. `internal/bind` survives (`scope.go`, `text.go`, `value.go`); only the decimal symbols left it |
+| `parseBindingPath` / `isValidIdent` deleted | module-wide grep | confirmed — **zero function declarations**; 5 residual hits are the extinction guard itself plus one prose comment |
+| D-3.1a.1 (correction): Layer 2 scans the **module root** | `lint/internal/rules/bigfloattype.go:89`, callers at `bigfloattype_test.go:49` and `:100` pass `filepath.Join(repoRoot, "folio-go")`; witness asserts `"."` and `"internal/bind"` by name | **confirmed live and correct** — rule `no-bigfloat-type`, denylist `{math/big,Float}` + `{math/big,Rat}` by resolved identity, `types.Unalias` applied |
+| `big.Float`/`big.Rat` population | repo-wide grep excluding the rule and its testdata | **zero sites**. `math/big` is used for `big.Int` only (`decimal.go:12`, `reduce.go:30`) |
+| the required red | `go test ./... -count=1` in `folio-go` | `TestCorpusMeetsP6ExerciseFloors` red, `P6g got 7, need >=20`, stats `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}` — **byte-identical to the declared baseline**. [[D-000.57]] satisfied. Everything else green |
+| DW-19's three lint reds | `go test ./... -count=1` in `lint` | **still red, root cause confirmed live**: `.font-sources/` (gitignored) holds three VF `.ttf` files and no `LICENSE*` |
+
+**Session 4's record HELD in full.** Its highest-value finding (the `big.Float` hole) was closed by
+3.1a exactly as ruled; its `Decimal`-has-no-arithmetic finding is *still true* and is now the
+sharpest thing in front of Story 3.3 (see §2). **One inherited claim came back FALSE, and it is the
+orchestrator's, not a predecessor's** — the launch brief's "working tree clean".
+
+**Four overstatements found in shipped comments and one in this log**, all [[D-000.35]]/[[D-000.46]]
+shape (a false map is reasoned from):
+1. `reducer_inventory_arch_test.go:5` still says *"internal/bind's SumDecimals/AvgDecimals"* — false since 3.2.
+2. `internal/template/decimal.go:81`, `:121`, `:136` cite `internal/bind.NewDecimal` / `internal/bind.Decimal` / `internal/bind.maxDecimalExponentMagnitude` — all three name a package that no longer declares them.
+3. `internal/expr/reduce.go:69-77` carries three post-move line cites that are all wrong (`decimal.go:20`→12, `:119-128`→111-122, `:65`→57). [[D-000.56]]'s lesson at the comment layer; prefer symbol references, per the grounding-fact shelf-life rule.
+4. `bigfloattype.go:66` claims the scope was verified against `ScanFloatTypedValues`' *"shipped production caller"*. **There is no production caller of either scanner outside `_test.go`** — both are Go tests that scan the real tree, run by CI's `lint` job. The *scope* claim is correct; the word "shipped" is not.
+
+#### 2. Epic 3's open threads — state of each
+
+| thread | status |
+|---|---|
+| **The `big.Float`/`big.Rat` hole** | **CLOSED.** `no-bigfloat-type`, module-root scope, resolved type identity, three violating fixtures, red-proved. Layer 1's exactness oracle and the order-invariance assertion ship with real teeth ([[D-000.61]] extension). |
+| **`Decimal` arithmetic post-3.2** | **STILL OPEN, and narrower than "no arithmetic".** There are **no methods on `Decimal` at all** (zero hits for any receiver). The only arithmetic in the module is *inside* `SumDecimals`/`AvgDecimals`, in `big.Int`, unexposed. 3.3 needs comparison for `if`-style predicates and for `formatNumber` at 3.4; neither exists. |
+| **Nothing calls the kernel — the largest live gap** | `SumDecimals`/`AvgDecimals` have **zero non-test call sites outside `internal/expr` itself** (`AvgDecimals`→`SumDecimals` at `reduce.go:157` is the only one). `eval.go:52-67` *explicitly refuses* to wire `sum`. [[D-3.1a.4]] already admitted the reducer inventory is a declaration-shape check, not a call-graph one; **that is now measured, not argued.** Story 3.3 is the story that must both wire it and prove it wired, and the [[D-000.30]] window for the routing red-proof shuts the instant it does. |
+| **Accumulator overflow (AD-23's silence)** | **CLOSED in code, OPEN against AD-14.** `SumDecimals` bounds the alignment spread in `big.Int` *before* any shift, accumulates in `big.Int`, narrows once through `IsInt64()`, and returns a **located error** — never a wrap, never a panic. `AvgDecimals` implements max-operand-scale + `avgExtraScale = 4` with genuine round-half-to-even (`QuoRem`, `2·\|rem\| vs \|div\|`, tie→even). **But every one of these is a bare `fmt.Errorf` with no code, no sentinel and no wrapped type** (Flag F2: `internal/diag` does not exist). AD-14 requires a stable code from a closed registry for every failure mode. So Epic 3 is accumulating AD-14-noncompliant errors that **Story 3.6 must adopt — and DW-6 names only the two `TABLE_FOOTER_*` codes, not these.** Recorded here so 3.6's scope is not read off DW-6 alone. |
+| **The eight-function-table contradiction** | **RESOLVED, and better than expected.** 3.2 split *registration* from *implementation* under R3: syntax and arity at load, execution at evaluation. `functionTable` is a fixed `[8]funcEntry` (no `Register` path, asserted by AST), 3 implemented (`upper`/`lower`/`if`), 5 carrying `implemented: false` + `owningStory`. An unimplemented call produces a **located error naming the function, element id, expression text and owning story** — *not* a plausible zero. **Session 4's hazard #2 is closed by construction.** |
+| **The three absence tripwires** | `absence-expr-package` **DELETED and REPLACED** at 3.2 — [[D-000.59]] honoured (`folio_expr_validate.go:22` wires `DeriveFooterOf` from `ParseTemplate`, plus 10 standing guards in `internal/expr_arch_test.go`). DW-5 and DW-8 both **RETIRED**. Two remain live: `absence-diag-package` (**3.6**) and `absence-source-date-epoch` (**3.7**). A third, unrecorded in any prior grounding, fires in Epic 5: `absence-designer-project` (**5.1**, DW-2). |
+
+**What 3.2 obliges 3.3 and 3.4 to do**, named so it is not re-derived:
+- **3.3** — flip three `implemented` flags, add three `evalCall` branches, route them through
+  `SumDecimals`/`AvgDecimals` *and prove the routing*; answer empty-**collection** semantics (Flag F5
+  — distinct from [[D-3.1a.2]]'s empty-**slice** kernel ruling, which is settled); add runtime
+  kind-checking of path arguments (FLAG-2, deferred from 3.2 by name).
+- **3.4** — cite `avgExtraScale` **by symbol, never as the literal `4`**, and assert that no
+  `formatNumber` pattern it accepts can request more fractional digits than `avg` produces. That
+  assertion is [[D-3.1a.1]]'s only forcing function for the `+4`, which shipped flagged MEDIUM.
+- **Both** — `TestThreeImplementedFunctions` / `TestFiveUnimplementedFunctions`
+  (`internal/expr/table_test.go:34`, `:43`) are the real implementation guards, and **both must be
+  edited by 3.3 and again by 3.4.** [[D-3.1a.3]]'s generalisation applies verbatim: a guard whose
+  expected value must be edited is one that gets edited wrongly. Restate them **derivationally** —
+  *every entry with `implemented: false` names an `owningStory`; every entry with `implemented: true`
+  has an `evalCall` branch* — so they survive both edits with none.
+- `docs/expression-reference.md` (landed `5c94bae`, corrected `b875582`) describes 3.3/3.4 behaviour
+  that does not exist. [[D-000.28]]'s anticipatory-boilerplate class. 3.3 and 3.4 each re-read their
+  own section against the shipped code.
+
+#### 3. Epic 4 — the C4 gate
+
+**The measurement that frames the whole epic: `grep -rl '"table"' fixtures/` returns nothing. No
+fixture in the repository contains a table.** By [[D-000.50]], *no existing subject can express any
+Epic 4 defect* — every story from 4.1 builds its own. Also measured: `fixtures/page-count-{1,5,20,50}/`
+are **Story 2.7's** all-Latin `Page X of Y` documents, not 4.7's golden report; only `page-count-20`
+carries a recorded golden (sanctioned by [[D-2.7.4]]) and all four are exercised from Go constants in
+`page_count_matrix_test.go`. **4.7's four page counts are a fifth, new fixture family** — four first
+recordings, each owing [[D-000.22]], [[D-000.44]], [[D-000.53]] and [[D-000.54]].
+
+Where I expect the decisions:
+
+- **4.5 (footer aggregates)** — the schema half the first grounding flagged is **already settled**:
+  [[D-1.4.1]] fixed `footerOf`, and DW-5's derivation landed at 3.2 (`internal/expr.DeriveFooterOf`,
+  invoked from `folio.ParseTemplate`). What is left at 4.5 is **DW-7 — "the footer uses the *same*
+  aggregate evaluation as `{{sum(...)}}`" — which DW-7 itself records as having no anti-rot
+  mechanism, the weakest of the three.** With `SumDecimals` still uncalled by anything, 4.5 is the
+  second half of the routing problem 3.3 opens. Lead's, and the ruling is forced: one evaluation
+  path, asserted behaviourally (a column footer and an equivalent `{{sum(...)}}` over the same
+  collection produce identical output) *and* structurally.
+- **4.6 (a row taller than the page)** — **Owner's, and [[D-2.6.5]] pre-reserved it in those words**:
+  *"If, once 2.8 has built a non-fatal channel, anyone wants page-edge overflow reclassified as
+  clip-and-continue, that is the owner's call, not a re-ruling."* 2.8 built that channel
+  ([[D-2.8.3]]/[[D-2.8.6]]), so D-2.6.5's Ground 3 ("clip AND diagnose is not expressible today")
+  **has expired** — [[D-000.60]] exactly. And the spine now cuts the other way: **AD-14 names FR25's
+  over-tall rows by name as `Warning`s returned alongside PDF bytes, never silent and never fatal**,
+  which is precisely what 4.6's AC requires and the opposite of D-2.6.5's disposition. The lead
+  declined to rule it: a lead ruling that reads as overriding a prior ruling's explicit
+  owner-reservation is how settled rules get quietly reopened. One terminal question, near-forced answer.
+- **4.7** — hash-shaped, already on [[D-000.4]]'s override list. Owes DW-11 a written answer (its
+  owner window names "Epic 4's golden-report work"). **Decision: does 4.7's Thai reuse strings already
+  frozen in `fixtures/expected-breaks/expected_breaks.json`, or introduce new ones?** Reuse costs
+  nothing and keeps AC4 a mechanical comparison; new strings mint a **third human sign-off** under
+  [[D-000.26]] (refined) and [[D-000.41]]. Lead's; will rule reuse.
+- **4.8 (alternating rows)** — **Owner's**, unchanged from the first grounding. Note its AC3 makes the
+  cut criterion explicit ("cut before any of 4.1–4.7 is compromised"), so the question only reaches
+  the owner if 4.1–4.7 actually slip.
+
+**Three deferrals detonate inside Epic 4, and two of them are cheap now and expensive later:**
+
+- **DW-14 (`/ToUnicode` capped at 100 entries per section).** Largest recorded section is **45**, on a
+  two-page single-face document; the entry source is per-(glyph, cluster text). The golden report is
+  **50 pages of Latin + Thai + CJK in one table**. It will breach the cap.
+  `assertToUnicodeSectionsUnderCap` says stop-and-escalate — and **it is wired at exactly two call
+  sites** (`wrapped_text_fixture_test.go:192`, `multi_page_fixture_test.go:775`), so Epic 4's new
+  fixtures get no coverage unless a story wires them; [[D-000.47]] (declare the list once, have the
+  check read it) is the fix. Critically: **the chunking fix is hash-neutral today because nothing is
+  over the cap.** Land it before the first Epic 4 fixture is recorded and it costs zero re-records;
+  land it at 4.7 and it moves goldens the same story just recorded. Lead's, ruling it into **4.2**,
+  with the red-proof captured first ([[D-000.30]] — the oversized-section subject stops being
+  constructible once chunking lands).
+- **DW-16 (`pagemodel.ShapedGlyph.CID` carries two kinds of value).** Its stated owner is *"the first
+  non-PDF renderer story"* — and the spine's §Deferred says **"Non-PDF renderers (PNG, SVG, HTML)…
+  No second renderer is designed here."** **That story does not exist in this program, so DW-16 has no
+  forcing function at all.** Its own text says the cheap window closes "as soon as more producers
+  write the field", and today there is exactly one (`buildShapedPDFRuns`). **Table cell text at
+  4.1/4.2 is the candidate second producer.** Lead's ruling due *before* 4.1.
+- **DW-4 (who cuts `folio-go/v0.1.0`, and what ships with it).** **Owner's, due at Epic 4 planning by
+  its own terms, and still unowned.** DW-3 (publishing the licence manifest) depends on it, and
+  [[D-1.7.1]] fixes the public API at that tag. Two facts the owner needs at that moment, neither
+  recorded anywhere: **Epic 5 adds public API after the tag** — AD-17 names an *"engine measure API"*
+  that does not exist, and AD-18 requires an **engine version** and a **`FontSet` identity** the
+  package does not expose. All three are additive, so semver survives; but "the API is frozen at
+  v0.1.0" is not true as stated.
+
+#### 4. Epics 5 and 6 — new ground
+
+The engine is Go; the designer is a browser app; five spine invariants cross the boundary and each
+one determines a decision a story would otherwise take alone.
+
+- **AD-15 / AD-16 — the engine owns the document.** No TypeScript model of a `.folio` document; the UI
+  holds an immutable snapshot and sends committed mutations as commands; **undo/redo are engine-side
+  history over committed commands**. Forced consequence, ruled now so 5.2 does not discover it:
+  **command history is mutable state and therefore lives in `folio-go/wasm/` (shell), never under
+  `internal/`** — AD-1 forbids package-level mutable state there, and the spine's §Source tree already
+  puts the command channel in `wasm/`. Second forced consequence: **the command channel transports
+  bytes/JSON, never JavaScript numbers.** `syscall/js`'s `Value.Float()` is `float64`, `wasm/` is
+  inside the `folio-go` module root, and the module root is exactly the scope [[D-3.1a.1]] (corrected)
+  chose for the float denylist — a numeric command argument read as a JS number would trip AD-23's
+  guard at the boundary. Bytes-only is also what AD-16 already requires of the render entry point and
+  what AD-23's `UseNumber` discipline requires of the data path, so this costs nothing.
+- **AD-17 — the browser never measures.** Requires an **engine measure API** that does not exist
+  today. New public surface (see DW-4 above). 5.9's AC also retires 5.7's single-line painting
+  explicitly — *"no code path remains in which the browser decides where a line ends"* — which is an
+  extinction guard on TypeScript, a shape this project has only ever built in Go.
+- **AD-18 — preview identity.** `hash(template ∥ data ∥ params ∥ engine version ∥ FontSet identity)`.
+  Two of the five inputs are not exposed by `folio-go`. The identity must be computed **by the
+  engine**, not by the UI, or 5.2's no-TS-model rule is violated to satisfy 5.11.
+- **AD-24 — coordinates.** *"`PageModel` is top-left origin with Y increasing downward — the same
+  sense as the canvas."* Forced consequence: **the designer performs no flip.** It works in the same
+  band-relative, Y-down coordinates the `.folio` file stores; the single flip stays in `internal/pdf`.
+  [[D-1.8.10]] already gave AD-24's single-flip clause its first test; 5.6/5.7 are where a second one
+  would be added by a well-meaning commit.
+- **The 5.10 ↔ 6.3 wrinkle the first grounding predicted — the spine settles it, and against the cheap
+  arm.** AD-16 verbatim: *"A preview render takes **three** inputs, not two: the serialized template,
+  the sample data document, and **a parameter document the author edits** — without the third, the
+  golden report's generated date cannot be previewed at all (FR21, FR43) and S5 is undemonstrable."*
+  So 5.10 may **not** hard-code `{}`. The split is: **5.10 ships a raw, editable parameter document (a
+  JSON buffer the author edits, passed as the third input); 6.3 upgrades it to a parameter-*aware*
+  surface** that lists the parameters the template references and produces AC3's located failure for a
+  missing one. Lead's, grounded, and it dissolves the wrinkle rather than sequencing around it.
+
+**What the UX docs settle, and what they contradict.** They are in good order —
+`review-token-fidelity.md` raised 41 findings and the lead verified the fixes landed: 11 of 12 unnamed
+hexes are gone from the mockups, `#7cc0da` is now `select-hover`, `row-focus` was promoted, the `tints`
+block was added, the default type size was corrected 11px→10px, `page-fine`/`band-tab`/`brand-load`
+roles were added, the phantom `rounded.full` was removed, and the gradient rule was reworded. Two open
+items survive by design and are correctly owned: `colors.danger` and `error-card` are marked
+*"specified, not mocked"* and belong to **Story 6.6**, whose AC names them; **UX5** (*"how is row scope
+expressed in the binding UI?"*, recorded as blocked upstream on PRD Q3) is **unblocked** — AD-11 and
+[[D-3.1.1]] settled the engine rule, and Story 6.5's AC already states the UI consequence (*"the fields
+offered are those of the row scope, expressed through the region's declared alias"*). UX2/UX3/UX4 stand
+as the first grounding ruled them: sample-JSON path not persisted, missing-glyph discovery is
+post-render, undo history dies on reload — the last now positively grounded, since AD-15 gives history
+over *committed commands* and says nothing about persistence.
+
+#### 5. Predicted decision points, 32 stories
+
+| Story | Decision | Whose |
+|---|---|---|
+| **3.3** | Wire `sum`/`count`/`avg` **and prove the routing** — nothing today asserts any caller reaches the kernel ([[D-3.1a.4]], now measured). Red-proof before wiring. Empty-**collection** semantics (Flag F5). Runtime kind-checking of path arguments (FLAG-2). Comparison on `Decimal`, which does not exist. Restate `TestThree`/`FiveUnimplementedFunctions` derivationally. Fix the four stale `internal/bind` comments. | Lead's |
+| **3.4** | Locale table for exactly `en`/`th`/`zh-Hans`/`ja` — **AD-12's `ja` gap is now due for real** (no Japanese face; the cheap arm is dropping `ja`, the expensive one breaks 5.4's payload numbers). `formatNumber`'s max fractional digits vs `avgExtraScale`, **cited by symbol**. Integer power-of-ten table, never `math.Pow`. | **Owner's** for the `ja` arm; Lead's for the rest |
+| **3.5** | Visibility on elements only; a row-level condition is a load error (AD-24 states it). Hidden = absent from `PageModel`, displaces nothing. | Lead's |
+| **3.6** | `internal/diag`'s registry shape; discharge `absence-diag-package` by replacement; **adopt Epic 3's bare `fmt.Errorf` overflow/scale errors into the registry** (not in DW-6's list); **DW-18** — make `Severity`'s zero value invalid, which renumbers a public constant. Pre-v0.1.0, so free now and never again. Also the natural home for **DW-19**. | Lead's |
+| **3.7** | `cmd/folio` shape; discharge `absence-source-date-epoch` by replacement (DW-10's three-part obligation); **DW-17** — the CLI must print the diagnostics it receives, asserted on stdout. | Lead's |
+| **4.1** | Table geometry derived from column widths, nothing stored (AD-13). **DW-16 — does table text add a second `ShapedGlyph` producer?** Rule before the answer becomes expensive. | Lead's |
+| **4.2** | **DW-14 — chunk `/ToUnicode` into ≤100-entry sections while it is still hash-neutral**, and make the cap check declarative ([[D-000.47]]) rather than two hand-wired call sites. | Lead's |
+| **4.3** | Row-atomic pagination against [[D-2.6.1]]'s sliding window. | Lead's |
+| **4.4** | Repeated header's height consumed on every continuation page. | Lead's |
+| **4.5** | **DW-7** — one aggregate evaluation shared with `{{sum(...)}}`, asserted, with no tripwire available. Orphan rule vs [[D-2.6.5]]. | Lead's |
+| **4.6** | **Reclassify page-edge overflow as clip-and-continue for FR25 rows?** [[D-2.6.5]] reserved this to the owner; AD-14 names FR25 rows as `Warning`s. | **Owner's** |
+| **4.7** | Reuse frozen Thai strings vs mint a third sign-off. DW-11's written answer. Four first goldens. Matrix override (already listed). | Lead's |
+| **4.8** | Cut, or build? | **Owner's** |
+| *Epic 4 close* | **DW-4 — who cuts `folio-go/v0.1.0` and what ships with it** (DW-3 depends on it). **DW-13 — font-stream compression**, sizing owed, adoption the owner's. | **Owner's** (both) |
+| **5.1** | Discharge `absence-designer-project` by replacement — and note this takes `absenceChecks` to **zero**, so the mechanism must be retired, not left as a scan with no candidates ([[D-000.9]]: zero candidates is a failure, not a pass). **DW-2's JS licence half over a ~300-package npm graph** at AD-26's "any depth" — the Go side had one dependency. Correct AC3's token counts (§6). No JS toolchain pin is needed: the designer's bytes never reach the PDF. | Lead's |
+| **5.2** | Command-channel wire format (**bytes, not JS numbers**); history in `wasm/`, not `internal/`; the guard that enforces "no TypeScript model of a `.folio` document" — and where the line sits between a permitted *snapshot* and a forbidden *model*, because 6.4's column matrix is exactly where that line gets crossed. | Lead's |
+| **5.3** | AD-19's brotli + immutable-header clause names a **serving** property and the spine's §Deployment says *"static files on any host"* with no host chosen. Rule it as a build-output obligation (precompressed artifacts under content-hashed names + a committed host config, asserted by test), serving out of scope. | Lead's |
+| **5.4** | **The payload figures are stale** — AC2's `0.4 + 0.1 + 7.4 = 7.9 MB` of fonts is contradicted by Story 2.2's measured **5.07 MB at `brotli -q 11`**, and the 1.5 MB engine figure is unmeasured. AC3 demands *real* sizes; [[D-000.21]] demands they be read off the artifact. Re-measure and amend `epics.md` + UX-DR5 under [[D-000.6]]. | Lead's |
+| **5.5** | AD-20's two tiers behind one interface, one capability check. No autosave, both tiers. | Lead's |
+| **5.6 / 5.7** | **AD-24: the designer performs no flip.** Band drop-targeting (UX-DR11's "most consequential ambiguity"). Closed five-component palette. | Lead's |
+| **5.8** | Committed-vs-transient property edits (AD-15). | Lead's |
+| **5.9** | The **engine measure API** — new public surface, must share the shaping/breaking path `Render` uses or NFR2 is unprovable. Extinction guard retiring 5.7's browser-wrapped painting. | Lead's |
+| **5.10** | **The third input is an author-edited parameter document, raw at 5.10** (AD-16, above). `pdfjs-dist` 6.2.x + its Apache-2.0 NOTICE through AD-26. | Lead's |
+| **5.11** | Expose **engine version** and **`FontSet` identity**; identity computed engine-side. | Lead's |
+| **5.12** | **DW-17** on the driven interface. Undo scope; sample-data load not undoable. Shape-before-colour. | Lead's |
+| **6.1 / 6.2** | Sample-JSON path **not persisted** (UX2, standing). Bind-by-picking; cyan handles on a bound element (UX-DR2, and the mockup was corrected to match). | Lead's |
+| **6.3** | Parameter-**aware** surface over 5.10's raw document; located failure for a referenced-but-absent parameter. | Lead's |
+| **6.4** | Column matrix — and the snapshot-vs-model line from 5.2, tested here. | Lead's |
+| **6.5** | Row-scope binding through the declared alias ([[D-3.1.1]]) — **this closes UX5**. Per-column footer aggregate wired to 4.5's single evaluation. | Lead's |
+| **6.6** | **DW-17** on the failed-render presentation; `error-card` and `colors.danger`, both *"specified, not mocked"* — the first artifact of a shape no mockup validates. | Lead's |
+| **6.7** | A fifth golden family, designer-authored, owing [[D-000.22]]/[[D-000.53]]/[[D-000.54]]. *"Every error case in the diagnostic registry produces a located message"* — a set-equality obligation against 3.6's registry, and the only thing that will ever sweep it. | Lead's |
+
+#### 6. Conflicts found now, rather than at Story 5.1
+
+1. **`DESIGN.md`'s token counts are wrong in three places, and Story 5.1's AC repeats them.** Measured
+   mechanically from the frontmatter: **52 colour tokens, 6 tint washes, 17 typography roles, 10
+   numbered spacing steps (+3 named), 18 component specs.** Story 5.1 AC3, UX-DR1 and `epics.md:192`
+   all say **"60 colour tokens, 13 typography roles, 15 component specs"**. The tint count (6) and the
+   spacing count (10) are right; the other three are not. **The diagnosis is provable**: `.memlog.md`
+   recorded "60 colour tokens, 13 type roles" at distillation, *then* the token-fidelity review changed
+   the file (added the `tints` block, added `band-tab`/`brand-load`/`page-fine`, promoted
+   `row-focus`/`select-hover`, deleted `rounded.full`) — and the tint figure is right precisely because
+   it postdates the review. A developer told "60" will invent eight tokens; told "13 roles" will drop
+   four. **`DESIGN.md` governs by its own header** (*"Where this file and any mockup disagree, this file
+   wins"*). Fix under [[D-000.6]], and prefer [[D-000.47]]'s shape over a corrected number: assert
+   **set equality by name between `DESIGN.md`'s frontmatter and the implemented token set**, so no
+   count is ever narrated again ([[D-000.14]] extended).
+2. **Story 5.3 AC3 cannot be satisfied by any artifact this program produces.** *"Assets carry brotli
+   compression and immutable long-lived cache headers"* is a property of a server; §Deployment says
+   *"static files on any host"* and Folio operates nothing. Restate as a build-output obligation or the
+   AC is unfalsifiable.
+3. **Story 5.4's payload itemisation is falsified by Story 2.2's own measurement** (7.9 MB of fonts
+   stated vs 5.07 MB measured at `brotli -q 11`). The mockup's "of 9.5 MB" inherits it.
+4. **DW-16's owner does not exist.** The spine's §Deferred rules out a second renderer in this program;
+   the deferral's forcing function can never fire.
+5. **`epics.md:133` and `:176` still say `designer/` and a root Go module** — long settled by
+   [[D-000.5]] in favour of `folio-designer/` and `folio-go/`, but the stale text is what an Epic 5
+   creator reads first. Cosmetic, but it is the *third* document to carry the wrong spelling.
+6. **UX-DR20 (undo) is listed under Epic 6's UX-DR set while Story 5.12's `Covers` line claims it.**
+   5.12's AC is the one with the undo criteria; Epic 6's header is wrong.
+7. **The `absenceChecks` counter is edited three more times and ends at zero.**
+   `TestAbsencesChecksIncludeAllThreeEntries` pins both the count and the exact ids, so 3.6 → 2, 3.7 →
+   1, 5.1 → 0. At zero, a scan reporting "no findings" over no candidates is [[D-000.9]]'s failure mode
+   wearing a green. **Story 5.1 must retire the mechanism, not decrement it.**
+
+#### 7. The top sequencing risk
+
+**Five deferrals converge on Epic 4, which is also the hard gate holding back nineteen stories.**
+DW-14's `/ToUnicode` cap detonates on exactly the document 4.7 records, and its fix is free *now* and a
+full re-record *then*; DW-16's cheap window closes the moment 4.1 adds a second producer of
+`ShapedGlyph.CID`, and its nominal owner does not exist in this program; DW-7 lands at 4.5 with the
+project's only explicitly *impossible* anti-rot mechanism, on top of a reduction kernel that **nothing
+in the render path calls today**; DW-11 owes a written answer at 4.7; and DW-4 — an owner decision due
+"at Epic 4 planning" by its own terms — is still unowned while two of the things it fixes (the public
+API surface, the licence manifest as a release artifact) are about to be extended by Epic 5. None of
+these is hard. What makes them a risk is that **four of the five are cheapest before 4.1 opens and most
+expensive at 4.7**, which is the one story in the epic already carrying an override, four first
+goldens, a Thai sign-off question and the C4 gate itself. The mitigation is scheduling, not
+engineering: rule DW-16 before 4.1, land DW-14 at 4.2, put DW-4 and DW-13 to the owner in the same
+terminal turn as 4.6 and 4.8 rather than four separate interruptions, and do not let 4.7 be the story
+that discovers any of them. The runner-up is Epic 5: twelve stories under [[D-000.4]]'s per-epic
+cadence, with a designer e2e suite that does not exist until someone writes it — precisely D-000.4's
+own stated signal for moving to per-story, and the epic where a red would take more than one bisect
+step to attribute.
+
 ---
 
 ## Standing decisions (set at run start, 2026-08-23)
@@ -8774,6 +9045,22 @@ record (from Story 2.5's review, Blocker 2) that it **can be defeated by an earl
 never calls `lookupBound` at all.** If 3.1's dispatch takes that shape, the guard will not see it, and
 the story must say so rather than let a green imply coverage it does not have.
 
+**CORRECTED BY APPEND at Story 3.3 ([[D-3.3.1]]).** The paragraph immediately above is now FALSE, and
+is corrected here rather than edited in place (the decision log is append-only). Story 3.3 extracted
+root selection out of `lookupBound`'s caller into one shared function, `selectRoot`
+(`internal/bind/text.go`), that the scalar dispatch and BOTH new collection methods
+(`CollectionLength`, `ProjectCollection`) call — `lookupBound`'s own `rootName` argument is now that
+function's return VALUE at every call site, never a literal, so the guard's original proxy (scanning
+`lookupBound` call sites for a literal) stopped carrying any signal the moment the extraction landed.
+`TestBindResolutionRootsAreClosed` (`internal/bind/resolution_roots_arch_test.go`) is RE-POINTED at
+`selectRoot`'s own return statements instead — still one closed-set guard, key moved from the proxy to
+the purpose. This is no longer "a known weakness, recorded so a green guard is not over-read": the
+early-return dispatch the weakness described (a collection method resolving a root without ever
+calling `lookupBound`) is now exactly the shape both collection methods take, and the guard sees it
+anyway, because it no longer depends on `lookupBound` being called at all. `TestBindResolutionRootsClosureRedProof`
+was re-run against the re-pointed guard and still reddens on an injected fourth root, proving AD-4's
+`page` fence survived the move.
+
 ### D-000.59 — An absence tripwire is discharged by REPLACEMENT, never by deletion
 **Lead ruling**, applied by the orchestrator. **Program-wide standing rule** *(mechanism: binding)*.
 
@@ -9256,3 +9543,881 @@ half the product is actually about.
 **What would reopen this** *(mechanism: binding)*: CEL gaining a first-class exact-decimal type in its
 own type system — not a custom extension we register, which is the steelman already rejected above.
 Until then, a proposal to adopt CEL should be answered with this entry rather than re-derived.
+
+---
+
+## Session 5 — 2026-08-25 (continuation: Story 3.3 → 6.7)
+
+### D-000.62 — The four standing decisions carry forward unchanged into session 5, and the run's remaining target is the whole of Epics 3–6
+**Owner decision** (all four re-confirmed at the terminal at session open), recorded because a
+32-story run is long enough that "we never changed it" stops being a safe assumption a year later.
+
+**Verdict.** [[D-000.1]] (numeric build order, every story named explicitly to the creator),
+[[D-000.2]] (the owner answers **at the terminal**, not over Telegram), [[D-000.3]] (run
+continuously; pause only at a genuine design decision) and [[D-000.4]] (heavy tests per epic
+boundary, with the determinism override for hash-shaped stories) are all carried into session 5
+**verbatim**. The delivery target for this session is `3.3 → 3.7, 4.1 → 4.8, 5.1 → 5.12,
+6.1 → 6.7` — **32 stories**, closing Epics 3, 4, 5 and 6 and with them the MVP.
+
+**Situation.** Sessions 1–4 delivered 21 stories: Epic 1 (`done`), Epic 2 (`done`, closed over one
+REQUIRED red per [[D-000.57]]), and Epic 3's `3.1`, `3.1a`, `3.2`. HEAD is `b875582`, the working
+tree clean. Sub-agents do not survive a session, so session 5 opens with a new engineering lead
+re-grounding under [[D-000.8]] — but the *standing* decisions are the owner's, not the lead's, and
+they are not re-derived. They were re-put to the owner because two of the four have materially
+different economics at this point in the program than they had at Story 1.1, and the owner should
+get the chance to change their mind with that information rather than inherit a choice by default.
+
+**In simple terms.** Four choices were made when the repo was empty: who gets asked, how often we
+stop, in what order we build, and how often we run the slow tests. Twenty-one stories later, two of
+those choices cost more than they did on day one — the run is now long enough that the owner may not
+want to sit at the keyboard for it, and Epic 5 is twelve stories wide, so a slow-test failure there
+is a twelve-commit hunt rather than the two- or three-commit hunt the cadence was priced against.
+The owner was shown both of those specifically and kept all four settings anyway.
+
+**Options put to the owner, and what they declined.**
+- *Answer channel.* Telegram was offered explicitly, with the reason: 32 stories is likely many
+  hours and every escalation blocks on the owner being present. **Declined** — [[D-000.2]] stands.
+  The operational consequence is unchanged and now larger: the orchestrator must rule with the lead
+  on everything the direction determines and escalate only genuine forks, because each escalation
+  now costs the owner's presence across a much longer run.
+- *Checkpoint cadence.* Per-epic and per-story pauses were both offered, with the note that Epic 4
+  is the C4 hard gate regardless. **Declined** — [[D-000.3]] stands. Epic-boundary summaries are
+  still reported; they simply do not block. Note this does **not** weaken the C4 gate: that gate is
+  a *test* gate on Epic 4's result, not a checkpoint on the owner's attention, and it holds whether
+  or not the run pauses there.
+- *Heavy-test cadence.* A third arm was offered that did not exist at run start: **per-epic for
+  Epics 3, 4 and 6 but every-story for Epic 5**, on the reasoning that twelve stories is the worst
+  bisect window in the program and the designer/e2e surface is brand new in that epic — the two
+  conditions that make a deferred run most expensive. Also offered: every-story throughout.
+  **Both declined** — [[D-000.4]] stands unchanged, per-epic plus the determinism override.
+
+**Why this wins.** The owner has now priced the same trade twice, at opposite ends of the program,
+and chosen the same way both times; that is a settled preference rather than an unexamined default,
+and it is worth more than a marginally safer cadence. The accepted downside is stated plainly and is
+the largest single risk this session carries: **a cross-target hash divergence introduced by any
+non-overridden Epic 5 story is attributable only to a twelve-commit window.** The mitigation is not
+a different cadence — it is [[D-000.4]]'s override clause, which the orchestrator is obliged to
+*use* rather than merely record. Any Epic 5 story that touches the render path, the wasm target, or
+the preview bytes runs the matrix in its own story, logged with its reason, without asking.
+
+**Consequences.** Escalations use `AskUserQuestion` for the whole session. No pause at story or
+epic boundaries; the epic summary is the owner's observation point and must therefore carry its
+heavy-test result rather than promising one. Every Delivery Log entry names the suites it actually
+measured and names the unrun ones explicitly. `epic-<n>: done` is not written until that epic's
+catch-up matrix run passes. The override list inherited from [[D-000.4]] gains Epic 5 candidates as
+the lead's session-5 grounding identifies them, and **4.7 remains a named override** — the golden
+report *is* the recorded hash.
+
+**How we'd know it was wrong.** The owner asking mid-run to batch the escalations, or an
+epic-boundary matrix run in Epic 5 that goes red and cannot be attributed in one bisect step. Either
+signal reverses the corresponding arm for the remainder of the run, appended here as a reversal.
+
+---
+
+## Epic 3 decisions — Story 3.3 (ruled before the developer opened)
+
+### D-3.2.3 — `if(null)` is silently FALSE (owner decision, filed retroactively from the Story 3.2 file)
+**Owner decision**, made during Story 3.2 and recorded there. Filed here at Story 3.3 because it
+was never given a number, and an unnumbered ruling is invisible to the only process that carries
+decisions across sessions. See [[D-000.63]] for the general rule this incident produced.
+
+**Verdict.** In `if(cond, a, b)`, a condition that resolves to an explicit JSON `null` is **FALSE,
+silently** — no diagnostic of any severity. An **absent** condition path, by contrast, is a located
+Error. The pair is deliberate.
+
+**Provenance, verified before filing.** `3-2-evaluate-the-expression-language.md` §*Decisions
+applied*: *"`if(null)` is FALSE, silently — owner decision, no diagnostic."* Implemented in
+`internal/expr/eval.go`'s `evalIf`; tested by `TestIfNullConditionIsSilentlyFalse`, paired
+deliberately with `TestIfAbsentConditionIsLocatedError`; documented in `folio-format.md`'s
+`### Expressions` section as the [[D-000.6]]-pattern stated-behaviour entry the ruling required.
+The orchestrator confirmed all of this against the shipped tree rather than taking the report on
+trust, and confirmed the string `if(null)` appeared **zero** times in this log before this entry.
+
+**In simple terms.** The template says "if this flag is set, show the overdue notice". Two different
+things can go wrong with the flag. Either the data explicitly says "this field has no value"
+(`null`) — the author's data is well-formed and simply says nothing — or the field the template
+names **is not in the data at all**, which usually means the template and the data disagree about
+what the data looks like. The first is a fact about this record; the second is a bug in the setup.
+So the first quietly means "no, don't show it" and the second stops and says which path it could
+not find.
+
+**Why it matters at 3.3, which is why it surfaced.** Story 3.3 was about to re-escalate the same
+axis — what an explicit `null` means — for `sum`/`avg`. Without this entry the engineering lead,
+re-grounding under [[D-000.8]] **from this log**, had no way to know the owner had already ruled on
+null's disposition once. It found the ruling only by reading the Story 3.2 file directly, which is
+not something a lead is required to do for every prior story and will not scale across 50.
+
+**Consequences.** Null-is-lenient is settled direction, not an open question, and it framed
+[[D-3.3.3]]'s escalation as being about *arithmetic* rather than about *leniency*. Note that
+[[D-3.3.3]] then went **further** than this entry's leniency — see there.
+
+**How we'd know it was wrong.** An author reporting that a genuinely missing flag silently hid a
+section, or that a `null` flag produced an error. Either would mean the two cases had been swapped.
+
+---
+
+### D-000.63 — An owner decision recorded only in a story file does not exist; it must be numbered here
+**Orchestrator decision**, on the engineering lead's finding. Routine in shape, load-bearing in
+effect.
+
+**Verdict.** Every **owner** decision gets a numbered entry in this log, in the session it is made.
+A story file's `## Delivery Log` or *Decisions applied* section may **describe** it, but that
+description is a copy, never the record. The same applies to a lead ruling that binds a later story.
+
+**Situation.** The `if(null)` ruling ([[D-3.2.3]]) was a real owner decision, correctly implemented,
+correctly tested and correctly documented in `folio-format.md` — and completely absent from this
+log. [[D-000.8]] requires each session's new lead to re-ground **from this log** rather than
+re-deriving the program. So a ruling that lives only in a story file is, by construction, invisible
+to every future lead. The fifth lead found it only because it happened to read the Story 3.2 file
+for another reason, and it was about to be re-escalated to the owner as an open question at 3.3.
+
+**In simple terms.** The story files are the site diary of what was built. This log is the rulebook.
+Writing a new rule in Monday's diary entry and nowhere else means that on Friday, a different person
+reading the rulebook builds to the old rule — and nobody notices, because Monday's diary was
+perfectly accurate about Monday.
+
+**Options considered.** (a) *Require every new lead to read every prior story file* — the honest
+alternative, and rejected on cost: the story files total several megabytes and this is exactly the
+re-derivation [[D-000.8]] exists to prevent. (b) *A tripwire asserting story files contain no
+"owner decision" string that has no matching log entry* — attractive, and rejected for now as
+keyed on a proxy (the phrasing), which [[D-000.15]] warns against; it would be defeated by any
+paraphrase. (c) *A discipline enforced at the orchestrator, stated here* — chosen, with the honest
+admission that it has no mechanism.
+
+**Why this wins.** It puts the obligation on the one party that is present at every escalation. The
+accepted cost is real and worth stating plainly: **this rule has no anti-rot mechanism**, exactly
+like DW-7's footer half. It relies on the orchestrator, and it will fail the first time an owner
+decision is taken and logged only in a story. The mitigation is that owner decisions are rare — this
+is the third in Epic 3 — and each one passes through a single `AskUserQuestion` call.
+
+**Consequences.** The orchestrator files the entry in the same turn it receives the owner's answer,
+before fanning the answer out to the sub-agents. A lead that finds an unnumbered owner ruling
+reports it as a finding rather than silently absorbing it — which is what happened here and is the
+behaviour to keep.
+
+**How we'd know it was wrong.** A future lead re-escalating a question the owner has already
+answered. That is the exact near-miss that produced this rule.
+
+---
+
+### D-3.3.1 — The collection seam is TWO methods on `expr.Resolver`, and the closed-root guard is RE-POINTED, not duplicated
+**Lead's ruling.** Confidence high on the split and the re-point; medium on the extraction being
+clean.
+
+**Verdict.** `expr.Value` stays **scalar**. The collection seam is two operations, not one:
+
+```go
+CollectionLength(path []string) (int, error)      // count
+ProjectCollection(path []string) ([]Value, error) // sum, avg — one Value per element, in data order
+```
+
+*Binding:* the two-operation split, the one-Value-per-element-in-data-order contract, and `count`
+being **structurally unable** to reach a projected value. *Illustrative:* the two spellings.
+
+And the guard: **extract root selection out of `lookupBound` into one shared helper that both the
+scalar dispatch and the two collection methods call, then re-point
+`TestBindResolutionRootsAreClosed` at that helper.** One guard, now covering both dispatches.
+
+**Situation.** The Story 3.3 creator probed the shipped code rather than reading the record, and
+found that `sum(transactions.amount)` **cannot obtain its operands at all**: `bind.Value.Lookup`
+returns `Absent` for a projection path, and `exprResolver.Resolve` rejects a collection path with
+*"is a array, not a scalar value usable in an expression"*. `expr.Value` is scalar **by
+construction** — its own doc comment says *"a scalar, deliberately"* — and `expr.Resolver` has
+exactly one scalar-returning method. Every upstream description of 3.3, including the
+orchestrator's launch brief, called it "wire three registered table entries to reducers that already
+exist". That was wrong: the story's real content is a **new resolution capability**.
+
+**In simple terms.** Everyone thought this story was plugging in three appliances. The wiring turned
+out not to reach the room. The appliances (the adding machinery) really do exist and really are
+finished — but there is no socket, and nothing in the record said so, because every description was
+written from the appliance end.
+
+**Why two methods rather than one.** Because the shipped code already draws this line and would
+otherwise contradict itself. DW-5's discharge makes a column requesting a `sum`/`avg` footer with
+`footerOf` omitted a **load error**, while a `count` footer is fine without one. The footer layer is
+already saying *sum and avg need a numeric source; count needs only the collection.* A single
+`ResolveCollection` serving both would have to return `[]Value` for a bare collection path — and a
+collection element is not a scalar, which puts the array kind back through the side door that
+keeping `Value` scalar exists to close. Splitting makes `count`'s independence from field values a
+**property of the seam** rather than a discipline the implementer has to maintain. Same move as
+[[D-000.15]]: enforce the invariant, don't rely on the caller not reaching.
+
+**Why not widen `expr.Value` with an array kind.** It makes three shipped rejection sites
+reachable-but-wrong, forces a new `argKind` in `table.go`, turns `upper(transactions)` from a
+structural question into a runtime one, and spreads collection handling across every `Value`
+consumer — when Story 4.5 under DW-7 needs exactly **one** seam to reuse.
+
+**The guard is the harder half, and the creator found the trap.** [[D-3.1.1]] already records that
+`TestBindResolutionRootsAreClosed` is **blind to a dispatch that never calls `lookupBound`** — which
+is precisely the shape of a new collection method. So the seam as first drawn would have stepped
+quietly outside an existing closed-set guard. The rejected remedy was to land a second guard and
+amend the first with a coverage disclaimer: that trades a known blind spot for
+advertised-coverage-that-does-not-exist ([[D-000.38]]) and leaves D-3.1.1's recorded weakness
+permanently open **while looking closed**. Re-pointing instead moves the guard's key from the
+**proxy** (`lookupBound` call sites) to the **purpose** (the one place a resolution root is chosen)
+— [[D-000.15]] applied to the very guard D-3.1.1 flagged as proxy-keyed.
+
+**Consequences.** Root selection becomes one function; precedence stays **`params` → row alias →
+data** ([[D-3.1.1]]), unchanged and unchangeable. `rootName` values stay string literals
+`{"data", "params", "row"}` — **no fourth root**. The red-proof (a fourth literal root reachable
+only from the collection path) is captured **before** the collection methods are wired
+([[D-000.30]]); the window shuts once the extraction lands.
+`TestBindResolutionRootsClosureRedProof` is **re-run after the re-point** — moving a closed set's
+fence is exactly when the fence needs re-proving, and it is AD-4's `page` fence.
+`parseBindingPath`/`isValidIdent` stay dead; the extinction guard is not weakened to make room.
+`internal/expr` may not import `internal/bind` (rank 3 < 4), so the methods are **declared** on
+`expr.Resolver` and **implemented** in `bind`. Neither method may take a range, offset, index or
+limit ([[D-3.3.5]]). **D-3.1.1's "a known weakness, recorded so a green guard is not over-read"
+paragraph becomes FALSE** and is corrected by append.
+
+**Fallback, stated so it is not improvised.** If root selection proves inseparable from
+`lookupBound` without changing a signature D-3.1.1 froze, the fallback is the two-guard remedy
+**with the uncovered surface named in the assertion's own text** as [[D-000.24]]'s labelled
+category — never a silent narrowing — and it returns to the lead as a finding, not a workaround.
+
+**How we'd know it was wrong.** A fourth resolution root appearing anywhere, or a collection method
+growing a positional argument. Either means the seam leaked.
+
+---
+
+### D-3.3.2 — Absent and wrong-kind elements are located Errors; `count` succeeding where `sum` fails is ratified as FORCED
+**Lead's ruling.** Confidence high.
+
+**Verdict.** Within a projection being aggregated: an **absent** field is a **located Error**
+(AD-14 verbatim: *"an absent path is an `Error` carrying the path"*); a **wrong-kind** value —
+present but not a number — is a **located Error, never a coercion** (AD-14 verbatim, and AD-23 makes
+coercion impossible anyway). Both carry the **collection path**, the **zero-based element index**,
+the **projected field path**, and the **element id**.
+
+**On the element index.** This was the story creator's addition and it is adopted. Without it the
+message locates the *template* but not the *datum*, and FR41's *"names which element and which data
+path"* is only half met — on a 400-row statement, "some amount is not a number" is not a diagnostic,
+it is a search task.
+
+**`count` succeeding where `sum` fails is RATIFIED, and it is forced rather than chosen.** Under
+[[D-3.3.1]] `count` calls `CollectionLength` and **cannot reach a field value**, so defective
+projected data cannot fail it. This is the **third** independent place `count` separates from
+`sum`/`avg` for one structural reason: [[D-3.1a.2]] (sum has an identity element, avg does not,
+count is neither question), DW-5's discharge (sum/avg require `footerOf`, count does not), and now
+the seam. The story states the reason as a sentence — *count is a property of the collection; sum
+and avg are properties of a projection over it* — so the asymmetry reads as a consequence rather
+than an inconsistency somebody later "harmonises".
+
+**Arity and argument form, confirmed against `functionTable`.** `count` is arity 1, `argNotLiteral`,
+and its argument is the **collection** path — not a projection; that is what the table already
+declares and what DW-5's discharge already assumes. `sum`/`avg` are arity 1, `argNotLiteral`, and
+their argument is a **projection** path (collection plus at least one trailing segment). A bare
+collection path passed to `sum`/`avg` is a **located Error at evaluation, not a load error**,
+because whether a path names a collection is data-dependent and unknowable at parse time.
+
+**Consequences.** Errors are wrapped with **`%w`**, never re-formatted — Story 3.6 must retrofit
+AD-14 registry codes onto exactly these failures, and a re-formatted message forces it to re-plumb
+every site or match on message text, which AD-14 forbids callers from doing. The story must not
+report only the first defective element without saying so: collect and report, or state explicitly
+that it is first-failure and why.
+
+**How we'd know it was wrong.** A wrong-kind amount reaching the kernel and being coerced, or a
+diagnostic that names a template element but no row.
+
+---
+
+### D-3.3.3 — OWNER DECISION: an explicit `null` in a numeric aggregate is a ZERO OBSERVATION
+**Owner decision**, taken against the engineering lead's stated recommendation, with the lead's
+disclosure of its own prior position in front of the owner at the time.
+
+**Verdict.** A `null` element contributes **`0` to `sum`** and **counts 1 in `avg`'s divisor**.
+`avg([1, null, 3])` = **1.33**. `count` = 3. This binds `sum` and `avg` together and is inherited by
+Story 4.5's table footers, which [[D-1.4.1]] requires to use the same evaluation.
+
+**Situation.** AD-14 pre-settles that an explicit JSON `null` *"renders as empty and is not an
+error"*, and [[D-3.2.3]] extended that leniency beyond rendering. So *whether null is lenient* was
+settled. What no document determined is the **arithmetic**: "empty" has an obvious additive reading
+(contributes nothing) and **no reading at all** for a divisor. AD-23 defines `avg`'s *scale*, never
+its *denominator*; the epic AC says only that `avg` must not divide by zero.
+
+**In simple terms.** Three transactions: 1, nothing-recorded, 3. The total is 4 whichever way you
+read the blank — which is exactly why this looks settled and is not. The *average* is where the
+blank has to mean something. Is it two transactions averaging 2, or three transactions averaging
+1.33, one of which happened to be zero? Both are honest readings of "the average amount", they
+print different numbers on a bank statement, and nothing in the specification chooses.
+
+**Options put to the owner, verbatim in structure.**
+1. *Null is not an observation* — excluded from `sum`, excluded from `avg`'s divisor; `avg` over
+   all-null falls to the empty-collection diagnostic. **The lead's recommendation.** Cost: the
+   divisor becomes data-dependent, so two columns of one table can average over different
+   denominators with nothing on the page disclosing it.
+2. *Option 1 plus a `Warning`* naming the collection path and null indices — the only arm where the
+   reader of the PDF can find out. Cost: a diagnostic on documents where nulls are routine, which is
+   [[D-000.15]]'s false-positive erosion aimed at the warning channel.
+3. *Null is a zero observation* — **chosen.** Cost, as the lead stated it and the owner accepted it:
+   *"this is the coercion AD-14 forbids in spirit — it turns 'no value' into 'the value zero' — and
+   drags every average toward zero by exactly as many nulls as the data happens to carry."*
+4. *Any null in a numeric aggregate is a located Error* — the story creator's proposal. Cost:
+   departs from AD-14's null clause and from [[D-3.2.3]], and fails a 400-row statement over one
+   missing field.
+
+**The lead's disclosure, recorded because it is what makes this decision informed.** The lead
+volunteered, unprompted, that it had recommended option 2's shape (lenient plus a Warning) for
+`if(null)` at Story 3.2 and that the owner had declined the Warning and chosen silence. It
+recommended option 1 as the arm consistent with that precedent **rather than re-litigating**, while
+noting that the consequence had changed from *a section is absent* to *a printed number is wrong*.
+The owner had the recommendation, the disclosure and the stated cost of option 3, and chose option 3.
+
+**Why the owner's answer beats the lead's.** Not recorded as reasoning the owner gave, but the
+choice is coherent and worth stating so it is not read as an oversight: option 1's accepted cost is
+an **undisclosed, data-dependent divisor** — the page says "average" and the reader cannot know what
+it averaged over. Option 3's accepted cost is a **known, uniform bias** whose rule a reader can be
+told once. On a document whose whole purpose is to be reconciled against another record, a
+denominator that silently varies per column is arguably the worse failure, and option 3 makes
+`count` and `avg`'s divisor the same number — which is the property a reader will assume anyway.
+
+**Consequences, two of which changed acceptance criteria.**
+1. **The all-null projection stops being a fence and gets an answer.** Both the lead's escalation and
+   its empty-collection ruling had fenced all-null as riding on this decision. Under option 3 it is
+   `N` zero observations: `sum` = 0, `count` = N, `avg` = **0** — a real value, not the
+   empty-collection Warning. Zero-length and all-null are therefore **different outcomes**, which
+   makes them two distinct test subjects and is sharper than either alone. Per [[D-000.60]] the
+   fence is **dissolved in the same act as the answer**, not carried.
+2. **`avg`'s divisor is always `CollectionLength`** and is never data-dependent. That promotes
+   `len(ProjectCollection(p)) == CollectionLength(collectionOf(p))` from a worthwhile assertion to a
+   **load-bearing** one: it is now the thing that guarantees the divisor is right.
+3. A null element must still **not** be conflated with an absent one ([[D-3.3.2]]) or with an absent
+   *collection* ([[D-3.3.4]]). That distinction is now arithmetically load-bearing in a way it was
+   not before this ruling.
+
+**How we'd know it was wrong.** An author reporting that averages read low on data they consider
+complete — the exact bias the owner accepted — or a support pattern where authors pre-clean nulls
+out of their data before binding it. Either would mean the uniform-bias trade was the wrong side.
+
+---
+
+### D-3.3.4 — Empty COLLECTION is not empty SLICE: four states must be discriminated before the kernel, and `avg`-over-empty is a Warning, not a fatal
+**Lead's ruling**, raised against the story file rather than in answer to a question. Confidence
+high.
+
+**Verdict, part 1.** [[D-3.1a.2]] ruled the **kernel's slice argument** and is safe only because
+that argument has already been proven to be a real collection that happens to be empty. At the
+expression layer, `sum(transactions.amount)` has **four** distinct states that all reduce to a
+zero-length projection if nothing stops them:
+
+| state of `transactions` | disposition | source |
+|---|---|---|
+| `[]` — present, empty | `sum`→0, `count`→0, `avg`→ Warning (part 2) | epic AC4; [[D-3.1a.2]] |
+| **absent from the data** | **located Error** | AD-14 verbatim |
+| explicit **`null`** | zero observations | [[D-3.3.3]] |
+| present, **not an array** | **located Error, never a coercion** | AD-14 verbatim |
+
+**Binding:** `ProjectCollection` and `CollectionLength` discriminate all four **before** the kernel
+is reached; a zero-length return means *"present and empty"* and nothing else.
+
+**In simple terms.** Four different situations — the ledger is there and empty, the ledger is
+missing entirely, the ledger says "none recorded", and the thing named "ledger" turns out to be a
+single date rather than a list. Hand all four to an adding machine and it reports 0.00 for every
+one, and the statement prints a total of zero that looks exactly like a real total of zero. Three of
+those four are somebody's mistake, and the machine is the wrong place to find that out.
+
+**Why this needed saying.** It is F6's silent-zero hazard reappearing **one layer above** where
+Story 3.2 killed it, and [[D-3.1a.2]]'s identity return is precisely what makes it invisible. The
+story file had treated the epic's fourth AC as already answered by D-3.1a.2 — a conflation the
+orchestrator had flagged as a risk and the lead confirmed, in its own words, as *"wrong in the way
+you predicted: it ships looking right."*
+
+**Verdict, part 2 — `avg` over an empty collection is a `Warning` that renders empty, NOT a
+render-aborting Error. This is forced by Epic 4, not chosen.** Story 4.2's AC is explicit: *"Given a
+table bound to an empty collection … the header renders, no data rows are produced, **and the render
+succeeds**."* If `AvgDecimals([])`'s error propagated as an AD-14 `Error`, **any table carrying an
+`avg` footer over an empty collection would abort the render** and Story 4.2's AC would be
+unsatisfiable. So: the **kernel** keeps its error unchanged — [[D-3.1a.2]] stands, and it is the
+honest kernel contract, because there genuinely is no value to report. The **expression layer**
+catches it and emits a **`Warning`** on the existing `Result` channel ([[D-2.8.3]]/[[D-2.8.6]])
+naming the collection path and element id, with the aggregate resolving to **empty** — AD-14's
+`null`-renders-as-empty shape, which is exactly what an unavailable average is.
+
+The epic AC's own word already said this: it asks for *"a **diagnostic** rather than dividing by
+zero"*, and `EXPERIENCE.md` §Voice defines the vocabulary — *"errors (render cannot proceed)"*
+versus *"diagnostics (render proceeded, with a caveat)"*. **The AC was right and the kernel's Go
+`error` return is an implementation detail beneath it.** Severity is the expression layer's to
+assign, which is where AD-14 puts it.
+
+**Verdict, part 3 — one line so nobody "fixes" it.** `SumDecimals([])` returns exponent **0**, so an
+empty-collection `sum` in a money column renders as `0`, not `0.00`. Correct and deliberate: scale
+on presentation is `formatNumber`/`footerFormat`'s job at Story 3.4 and DW-5's discharge, not the
+kernel's. A developer who "corrects" the empty-sum exponent to match the column's other values has
+re-decided the empty scale at a call site — the precise failure [[D-3.1a.2]] exists to prevent.
+
+**Consequences.** A fixture per state, red-proved; the absent and wrong-kind arms must go red
+**without the kernel being called at all** ([[D-000.9]]: the all-clear must not share a code path
+with the could-not-look). `AvgDecimals`' contract is **not** widened to return a sentinel-empty —
+the asymmetry D-3.1a.2 ruled is the content, and moving it into the kernel puts the severity
+decision below the layer that knows the element id.
+
+**How we'd know it was wrong.** A zero total on a statement whose collection was misspelled in the
+template, or a render aborting on an empty table.
+
+---
+
+### D-3.3.5 — AC17–19 bind AD-11 now; AC19's instrument is replaced with AST set-equality; DW-7 is amended in place
+**Lead's ruling.** Confidence high.
+
+**Verdict.** Bind AD-11's *"over the whole collection, never the rows on the current page"* **now**,
+in Story 3.3, rather than deferring it to Epic 4. The alternative is worse: an AC deferred to an
+epic that does not yet have the concept it would be tested against is how a stated deliverable
+evaporates, and [[D-000.50]] puts *"can any subject express this defect"* **before** the assertion,
+not instead of it.
+
+- **AC17 — as written.** A row alias **literally shadowing the collection name**, with a row-root
+  red-proof, is the sharpest available subject for AD-11's *"a row never shadows the root"* clause,
+  and the one that would silently pass on a benign fixture.
+- **AC18 — accepted with one binding addition.** The injected contiguous-slice resolver must redden
+  **on the value**, not merely differ: assert the **hand-computed whole-collection total as a
+  literal**, and choose the slice so the sliced total *provably* differs. A contiguous slice whose
+  total happens to equal the whole is [[D-000.61]]'s corpus-C trap in a new costume — the mutant
+  must introduce the **defect**, not merely the mechanism ([[D-000.61]] extension). Per
+  [[D-000.45]], assert the computed value from a declarative table, never a direction.
+- **AC19 — intent accepted, instrument REJECTED as drawn.** *"Nothing on the aggregate path accepts
+  a page index / bounds / offset / limit"* is a **name list**, and a name list dies to the first
+  synonym; it is keyed on a proxy for the property. Restated as **set equality by AST over
+  `expr.Resolver`'s method set** — exactly `{Resolve, CollectionLength, ProjectCollection}` — in the
+  same instrument as `TestExprFunctionTableIsExactlyEight`. A page-scoped variant then cannot be
+  added under **any** spelling without reddening, and the guard cannot be defeated by renaming.
+  [[D-000.14]] (when a count or a set is load-bearing, take it by AST) and [[D-000.15]].
+
+**The routing assertion — ratified as the creator drew it, with two obligations attached.** The
+creator found, independently of the lead's own measurement, that **a developer can implement `sum()`
+with an inline loop and every existing guard stays green**: [[D-3.1a.4]] already corrected 3.1a's
+over-claim, and the reducer inventory is a declaration-shape set-equality check that asserts nothing
+*calls* the reducers. The lead's grounding measured the same thing from the other end —
+`SumDecimals`/`AvgDecimals` have **zero non-test call sites** outside `internal/expr` itself. So:
+(1) the inline-accumulator red-proof is captured **BEFORE** `sum` is wired ([[D-000.30]]; the window
+shuts the moment 3.3 lands), and (2) the result is appended to DW-7 in this story's commit.
+
+**DW-7: ownership correct, scope statement now wrong.** The creator was right to **decline** to
+claim it had improved DW-7's forcing function — DW-7's own text says *"anti-rot mechanism: none
+possible"* — and that restraint is credited as [[D-000.24]]/[[D-000.49]] discipline. But it *does*
+improve it, and saying nothing leaves the record **understating** what ships. After 3.3, "none
+possible" is false for one of DW-7's two halves. So 3.3 **appends to DW-7** — the way DW-11 was
+answered at 2.4 and 2.6 — naming what landed (the expression-layer routing assertion and its
+red-proof, which is exactly the mechanism [[D-3.1a.4]] deferred to Story 3.3 by name), what remains
+(the **footer** half: that `columns[].footer` evaluates through the same path, still owned by
+**Story 4.5**, still with no available mechanism), and correcting *"none possible"* to *"none
+possible for the footer half"*. [[D-000.29]]: a row ends settled or narrowed with the reason, never
+carried unchanged while the world moves under it.
+
+**How we'd know it was wrong.** A page-scoped aggregate shipping under a name AC19 does not
+enumerate, or Story 4.5 building a second aggregate evaluation because 3.3's seam did not fit.
+
+---
+
+### D-000.64 — The per-story gate runs BOTH Go modules, and DW-19's three reds are local-only
+**Orchestrator decision**, on the engineering lead's finding. Routine, and recorded because it
+silently changes what "green" has meant for 21 stories.
+
+**Verdict.** Every story's gate runs `go test ./... -count=1` in **`folio-go` AND `lint`**. The
+declared baseline for the remainder of the run is: `folio-go` **740 pass / 1 fail / 1 skip** across
+15 packages, the one failure being the REQUIRED red `TestCorpusMeetsP6ExerciseFloors` (P6g 7 < 20,
+per [[D-000.17]] / [[D-2.1.14]] / [[D-000.57]]); and `lint` **89 pass / 3 fail** across 4 packages,
+all three failures one root cause — **DW-19**.
+
+**The three `lint` reds are LOCAL-ONLY, and that is why nobody saw them.** `.font-sources/` is
+gitignored (`.gitignore:85`) and holds three variable-font `.ttf` files (`NotoSans-VF`,
+`NotoSansSC-VF`, `NotoSansThai-VF`) with no `LICENSE*`. The lint asset resolver walks it and fails.
+CI never sees the directory, so CI is green; this machine is red. Verified by the orchestrator
+directly, not taken from the report.
+
+**In simple terms.** The test gate has been checking one of the two workshops. The second one has
+had three broken windows for a while — but only in this building, because the thing that breaks them
+is a box of materials that never gets shipped. Nobody was wrong to see green; they were looking at
+one room.
+
+**Why it matters more than three known failures.** A standing red is a hiding place. For the
+remaining 32 stories, a genuine `lint` regression would land behind these three and read as "the
+DW-19 failures, as expected". The erosion risk runs the other way too: an agent that sees three reds
+and wants a clean gate has an obvious cheap fix available — weaken the rule that walks the directory
+— which would retire a real guard to silence a local environment problem. That is [[D-000.59]]'s
+delete-the-rule failure in a new place.
+
+**Consequences.** Every developer, reviewer and finisher prompt from Story 3.3 onward carries this
+baseline explicitly, states that DW-19's three reds are local-only and expected, and states that
+**fixing them by weakening the rule is forbidden**. Any *fourth* `lint` failure, or any change in the
+three, is a regression owned by the story that produced it. DW-19 itself remains owned as the lead's
+grounding placed it — Story 3.6 is its natural home.
+
+**How we'd know it was wrong.** A `lint` failure count that drifts without a story claiming it, or
+a commit touching the asset resolver's directory walk.
+
+---
+
+### D-3.3.3 (addendum) — The red-proof for the owner's null ruling is the REJECTED option, and `sum` cannot see it
+**Lead's confirmation**, appended rather than folded in, because [[D-3.3.3]] is an owner decision and
+its entry is not rewritten.
+
+**The finding, and it is the sharpest thing in this story.** A `ProjectCollection` implementing the
+**rejected** option 1 (omit null elements) returns `N−k` values instead of `N`. **`sum` is
+byte-identical either way** — under the owner's option 3 a null contributes `0`, under option 1 it is
+absent, and adding zero changes nothing. So:
+
+- the `sum` assertion **cannot distinguish the owner's ruling from the arm they rejected**;
+- **only `avg` can**;
+- so the mutant *"implement option 1"* reddens the length invariant and the `avg` assertion, **and
+  nothing else**.
+
+That is precisely the honest mutant [[D-000.61]] (extension) demands: it introduces the **actual
+error** — a wrong average — rather than merely a different mechanism.
+
+**In simple terms.** The owner chose between two ways of handling a blank in a column of figures.
+Both ways add up to the same total, every time, on every possible set of data — so the totals row can
+never tell you which one was built. Only the average row can. A test suite that checks the totals and
+declares the rule proven has proven nothing at all, and would go on passing if someone quietly rebuilt
+the rejected version years later.
+
+**Two obligations this puts on the story.**
+1. **Name option 1 as the mutation, in those words**, in the red-proof — so the guard's teeth are
+   visibly the owner's decision, and a later drift back to option 1 reddens the build instead of
+   silently changing every average in the product.
+2. **Any corpus exercising the null rule must contain a null element AND assert `avg`.** A fixture
+   that exercises nulls and checks only `sum` is [[D-000.61]]'s corpus-C in a new costume: it looks
+   like it proves the null rule and proves nothing, because the two candidate implementations agree
+   on every `sum` it can compute. [[D-000.50]] — check the population before writing the assertion.
+
+**Coverage honesty, so two reds are not read as two proofs.** AC18's contiguous-slice resolver
+**also** reddens the length invariant, so AC18's mutant and the option-1 mutant are **not independent
+evidence** ([[D-000.38]]). Both are worth having and they test different properties — but the length
+invariant's *independent* teeth come from the option-1 mutant specifically, because that is the one
+that leaves `sum` green.
+
+**Three implementation consequences, recorded so nobody "fixes" them.**
+- A null element resolves to the additive identity **`{Coefficient: 0, Exponent: 0}`** — the same
+  value [[D-3.1a.2]] ruled `SumDecimals([])` returns. Not the column's scale, not the projection's
+  max scale. Consequence: an **all-null `avg` renders `0.0000`** (max operand scale 0 plus
+  `avgExtraScale`) while an **empty-collection `sum` renders `0`**. Two adjacent cases, two
+  differently-shaped zeros, both correct, both presentation's problem at 3.4 and DW-5's discharge.
+- Under option 3, `[null, null, null]` and `[0, 0, 0]` are **indistinguishable** in `sum` and `avg`,
+  and `count` does not disambiguate them either. **That is the decision, not a defect** — stated so
+  no test asserts against it and no reviewer files it.
+- **`avg`'s divisor comes from `len(projected)`, never from a second `CollectionLength` call**, and
+  this is forced rather than stylistic: [[D-3.1a.3]]'s shipped reducer inventory pins the signature
+  `func([]Decimal) (Decimal, error)`, so **adding a divisor parameter to `AvgDecimals` trips the
+  tripwire**. The property "the divisor is always the collection length" is therefore carried
+  entirely by the binding invariant
+  `len(ProjectCollection(p)) == CollectionLength(collectionOf(p))` — which is now the only thing
+  standing between the owner's ruling and a wrong average. A second resolver call for the same
+  collection would also be a second chance to disagree.
+
+**The sharpest available fixture, which collapses four into one.** A projection containing a **null**
+element yields a number; a projection containing an element whose field is **absent** yields a located
+Error ([[D-3.3.2]]). So one fixture holding **one null element and one field-absent element in the
+same projection**, asserting *number* for the first and *Error* for the second, proves the seam
+discriminates the two states a sloppy resolver would conflate. It is also the only place where getting
+it wrong is invisible: `{"amount": null}` and `{}` are shapes most JSON producers treat as
+interchangeable.
+
+**Routed, not ruled — a referent for Epic 6.** The same cliff means an author who binds a column to a
+field that is `null` in some rows sees a number, while one *absent* in some rows sees a **render
+abort**. AD-14 working as designed, but **Story 6.6** must present it honestly (*"names the element and
+the data path"*) and **Story 6.1/6.2**'s binding tree is where the author would ideally have seen it
+coming. Nothing owed by 3.3; recorded so those stories inherit it.
+
+---
+
+### D-3.3.6 — The `avg`-over-empty caveat travels on a THIRD RETURN, not on `bind.Substitution`; and it is two signature changes
+**Lead's ruling**, issued as a correction to its own [[D-3.3.4]] part-2 verdict. Confidence high.
+
+**The correction, recorded first because the lead volunteered it.** [[D-3.3.4]] part 2 ruled that the
+expression layer *"emits a `Warning` on the existing `Result` channel"* — naming a mechanism the lead
+had not read the caller for. The Story 3.3 creator, implementing that ruling, found the channel does
+not reach: `Diagnostic`/`Severity`/`DiagCodeTextClippedWidth` are declared in the **module-root
+`folio` package**, the only shipped Warning is minted at `folio/render.go:611`, `expr.Eval` returns
+`(Value, error)`, `bind.Resolve` returns `(string, []Substitution, error)`, and **neither may import
+`folio`** — that is backwards in the rank table. The lead identified this as its own recurring failure
+mode (*"the second time this run I have named a seam before reading its caller — same class as the
+[[D-3.1a.1]] correction"*). **The outcome of D-3.3.4 part 2 stands and is not reopened**: the
+aggregate must not abort the render, because Story 4.2's AC forces it. Only the wire is replaced.
+
+**Verdict.** An exported **sentinel in `expr`**; the aggregate resolves to **empty**; a **third return
+carrying typed caveats**; and `folio` mints **one** new code. Four bindings:
+
+1. **Two signature changes, not one.** `BindTextSpans` (`internal/bind/text.go:139`) is a one-line
+   delegate — `return Resolve(text, NewScope(data, params), elementID)` — and **it, not `Resolve`, is
+   what the root calls** (`render.go:536`, the only production call site of either). A third return
+   that stops at `Resolve` reaches nobody. Both move together.
+2. **The caveat kind is declared in `expr`** — the condition is `expr`'s, and `bind` already imports
+   `expr` (rank 4 → 3), so no new edge. Whether the slice element type lives in `expr` or `bind` is
+   the developer's call, **recorded with its reason**; the lead declined to name a second type it had
+   not read the surrounding code for.
+3. **It is a typed value, never an error.** The tempting zero-signature-change route — return the
+   sentinel as `Resolve`'s existing `error` alongside a usable string — is rejected on the root's own
+   documented contract: `folio/diagnostic.go` says *"a non-nil error is the only signal a caller needs"*
+   for whether `Bytes` is valid, so every future caller's default `if err != nil { return err }` would
+   turn a Warning into a **render abort**. Fail-dangerous default.
+4. **Ordering is a determinism guarantee** ([[D-2.8.6]]). Within an element, bind-stage caveats
+   precede the layout-stage clip Warning — pipeline-stage order. Across elements, unchanged: band
+   order then declaration order. Empty is `nil`.
+
+**The finding that decided it, and it is a bug caught before it was written.** The lead's own
+preference was to hang the caveat on `bind.Substitution`, which already flows root-ward and already
+carries a **zero-length** entry for the analogous case (`Resolve`'s `case expr.KindNull:` writes
+nothing, then appends `Substitution{Start: from, End: runesWritten}` with `from == runesWritten`). The
+precedent exists and the arm looks free. It is not:
+
+> **`shiftSubstitutions` (`page_number.go:320`) reconstructs the struct field by field** —
+> `out[i] = bind.Substitution{Path: s.Path, Start: s.Start + delta, End: s.End + delta}` — **so a new
+> field is silently dropped for any element containing `{{page}}` or `{{pages}}`.**
+
+**In simple terms.** The obvious place to put the note was in an envelope that already travels to the
+right desk. But one office along the route doesn't forward envelopes — it copies out the three fields
+it cares about onto a fresh envelope and forwards that. Anything else you wrote on the original is
+gone, and only for mail that happens to pass through that one office: page headers and footers, only
+when a page number shares the element. A warning that vanishes in exactly the places nobody
+tests.
+
+The structural reason beyond the bug: `Substitution` is a record about **text spans**, and its four
+consumers (`shiftSubstitutions`, `runeRangeOverlapsSubstitution`, `resolvePageTokens`,
+`atomicSpansFor`) read spans and nothing else. **A payload none of them reads but all of them must
+preserve is a payload that gets dropped** — and `shiftSubstitutions` is the proof, already written. A
+separate return bypasses the span-rewriting machinery entirely.
+
+**Consequences.** Nothing pins either signature — verified: no arch test asserts them; the only
+arch-test occurrence is a **doc comment** at `internal/bind/resolution_roots_arch_test.go:8-9`
+(*"BindTextSpans' resolution-root dispatch"*), which is prose, not an assertion, and which cites the
+dispatch this story extracts — corrected in the same commit ([[D-000.48]], [[D-000.35]]). Contrast
+[[D-3.1a.3]]'s reducer inventory, which genuinely pins `func([]Decimal) (Decimal, error)` by AST
+set-equality and is why `AvgDecimals` could not take a divisor parameter; no equivalent exists here.
+**Sequencing is binding:** `Resolve` is also where [[D-3.3.1]] re-points the closed-root guard, so the
+extraction and its red-proof land **first**, then the caveat return — the red-proof window belongs to
+the first edit. This is the module's **first** `errors.Is`/`errors.New` sentinel under `internal/`
+(there are zero today), so it is also the first exercise of the `%w` obligation and the two must agree
+rather than being invented twice.
+
+**How we'd know it was wrong.** A caveat that arrives for body text but not for a page header, or a
+caller treating the third return as an error.
+
+---
+
+### D-000.65 — A diagnostic code is minted when its CONDITION first ships, not when `internal/diag` exists
+**Lead's ruling**, on the story creator's precedent argument. Binds 3.4, 3.5, 3.6 and everything after.
+
+**Verdict.** A diagnostic code is minted by **the story in which its condition can first occur in a
+real document**, and it is minted **where the `Diagnostic` is constructed** — today the root `folio`
+package. [[D-1.4.2]] forbids minting **ahead of a condition**; it does not forbid minting **before
+`internal/diag`**.
+
+**Grounding, from D-1.4.2's own words rather than its summary.** Its deferral row reads: *"Diagnostic
+codes `TABLE_FOOTER_SOURCE_UNRESOLVED` / `TABLE_FOOTER_SOURCE_FORBIDDEN` → Story 3.6; 1.4 must not
+mint them early"* — and the same table routes the condition those codes describe (*"footer uses the
+same aggregate evaluation"*) to **Story 4.5**, because *"nothing renders a table until 4.5"*. So the
+prohibition is: **do not mint a code for a condition that cannot yet occur.** It names two specific
+codes, for one absent condition.
+
+**The positive precedent is already shipped.** [[D-2.8.1]]'s `DiagCodeTextClippedWidth` was minted in
+`folio/diagnostic.go` **with `internal/diag` absent**, at the moment FR44's clip became reachable. The
+shipped pattern is already mint-when-the-condition-ships-at-the-root.
+
+**In simple terms.** The rule was read as "don't print warning labels until the label printer
+arrives". It actually says "don't print a warning for a hazard that doesn't exist yet". We already
+have a hazard, and we already printed one label by hand last month.
+
+**The sharper point, which explains why the rule read wrongly.** D-1.4.2 attached its tripwire to
+*"`internal/diag` does not exist"* — but the obligation was *"the footer condition has not shipped"*.
+**That is [[D-000.15]] exactly: a guard keyed on a proxy rather than on its purpose**, where the proxy
+is *broader* than the purpose, which is why it came to read as a prohibition on an axis nobody
+intended. The tripwire remains correct for `diag`'s own arrival; it was never a rule about codes.
+
+**Consequences, one of which reverses a reading.** Under this ruling **DW-6's two footer codes are
+already overdue, not early**: DW-5's discharge at Story 3.2 shipped *"a load error naming the column
+id"* for a column requesting a `sum`/`avg` footer with `footerOf` omitted, so both conditions occur in
+real documents **today**, as bare Go errors. DW-6's replacement assertion for `absence-diag-package`
+is therefore satisfiable at 3.6 exactly as written, and 3.6 is minting **late** rather than on time.
+Not a defect — but nobody should read DW-6 as evidence the codes were correctly withheld.
+
+**How we'd know it was wrong.** A code minted for a condition no document can reach — the thing
+D-1.4.2 was actually protecting against.
+
+---
+
+### D-3.6.0 (advance notice) — Story 3.6's scope is an INVENTORY of six, and DW-6 names one of them
+**Lead's ruling**, filed ahead of the story so 3.6's brief is not written from DW-6 alone.
+
+**Verdict.** Story 3.6 is the most-loaded story in Epic 3. Its brief is written from this inventory:
+
+| # | 3.6 inherits | from |
+|---|---|---|
+| 1 | `TABLE_FOOTER_SOURCE_UNRESOLVED` / `TABLE_FOOTER_SOURCE_FORBIDDEN` folded into the registry — the replacement assertion discharging `absence-diag-package` under [[D-000.59]] | DW-6 (conditions already live — [[D-000.65]]) |
+| 2 | **Epic 3's bare `fmt.Errorf` errors** — overflow, alignment-spread breach, digit-budget breach, per-element absent/wrong-kind — none carrying a code, sentinel or wrapped type | session-5 grounding §2 |
+| 3 | **From 3.3: one minted `folio` code + one exported `expr` sentinel + the root's kind→code mapping.** 3.6's job is **absorption, not re-plumbing** — fold the code into the registry, move the mapping into `internal/diag`, and **leave the sentinel in `expr`**, which is its condition's home and what `diag` keys on | [[D-3.3.6]] |
+| 4 | **DW-18** — `Severity`'s zero value is a valid severity, so no test can prove the field was ever set. The fix renumbers a public constant: free before `folio-go/v0.1.0` and never again | DW-18 |
+| 5 | **DW-17** — a `Diagnostic` reaching a human, asserted on presented output (3.6 mints; 3.7's CLI makes it observable) | DW-17 |
+| 6 | **DW-19** — the `lint` asset resolver, if still red; 3.6 is the first story that touches `lint` | session-5 grounding §1, [[D-000.64]] |
+
+**Why this is filed early.** Items 2 and 3 are recorded nowhere else. Item 3 especially: **if 3.6's
+brief reads as "build the diagnostic channel", it will re-open 3.3's wire** — which is exactly the
+duplication [[D-3.3.6]]'s `%w` obligation exists to make unnecessary.
+
+---
+
+### D-3.3.7 — AD-23 bans a COMMITTED float, not an APPLIED one; AC10's demonstration lives in `hashmatrix/`
+**Lead ruling**, resolving Story 3.3's review Finding 4 (Major), issued to the finisher mid-pass.
+*(mechanism: binding)*
+
+> **A mutation red-proof is a measurement, not an artifact. AD-23's two-layer guard forbids
+> `float32`, `float64` and `math/big.Float` from being COMMITTED anywhere under the `folio-go`
+> module root; it has never forbidden applying a mutant to the working tree, measuring it, recording
+> the figures, and reverting. [[D-000.61]] (extension) was itself produced exactly that way. An AC
+> that requires a mutant to redden an assertion is therefore satisfiable, and is discharged by the
+> measurement being PERFORMED IN THE RUN and recorded — never by a citation to another story's run.**
+
+**Finding 4's premise, corrected.** The developer's ground — "AD-23 forbids `float64` under
+`internal/`, so AC10 cannot be written" — conflates landing with applying. It is right about landing
+and wrong about applying, and the second half is what AC10 asked for.
+
+**Guard scope, measured (both layers walk the whole `folio-go` module, no allowlist mechanism).**
+Layer 1 (`folio-go/internal/arch_test.go`) walks every `.go` file under `folio-go/` including
+`_test.go`, flags the bare identifier `float64`/`float32` and any `token.FLOAT` literal, skips only
+directories named `testdata` and dot-directories, parses with `parser.ParseFile` — so build tags are
+invisible to it — and has no allowlist mechanism whatsoever. Layer 2
+(`lint/internal/rules/floattyped.go`/`bigfloattype.go`) is pointed at the `folio-go` module root in
+both scopes; its handful of sanctioned test sites survive layer 1 only because each is a float-TYPED
+value with no float SYNTAX. **Conclusion: there is no location under `folio-go/` where a landed,
+executing float mutant can live.** Adding an exemption to either layer to make room is forbidden —
+[[D-3.1a.1]] (corrected), [[D-000.24]].
+
+**Where the demonstration lives instead: `hashmatrix/floatdiscrimination/`.** The precedent and its
+rationale are already written, at `hashmatrix/probe/main.go`'s own doc comment (Story 1.2, AC8) — that
+module has no `require`, no `replace` and no `go.work` entry naming `folio-go`, and is never imported
+by it, so it is outside AD-23's scope BY CONSTRUCTION, and both guard layers name `folio-go/`
+positively with nothing to exempt (`lint/internal/rules/bigfloattype.go`: *"never the repository root:
+hashmatrix/ is …"*). The new package re-declares D-000.61's corpus A as plain integer
+(coefficient, exponent) pairs and imports nothing from `folio-go` — the zero dependency IS the
+legality argument. It pins the exact total as the same literal
+`folio-go/internal/bind/aggregate_precision_test.go` asserts —
+`{Coefficient: 1234567890123488, Exponent: -2}` — two independent producers agreeing on one pinned
+side, never two live computations compared against each other ([[D-000.19]]'s shape).
+
+**`hashmatrix`'s CI job ran no `go test`, and a test nobody runs is not a guard.**
+`.github/workflows/ci.yml`'s `hashmatrix` job ran `go vet`, the probe build and `gofmt -l` and never
+`go test`. A `go test -count=1 ./...` step is added in the same commit, and `hashmatrix` joins the
+per-story gate table below.
+
+**Measured live in this run (the finisher's own figures, not the lead's throwaway module — they
+agree exactly).** SumDecimals was mutated in the working tree (never committed) to accumulate each
+operand's own decimal VALUE — coefficient x 10^exponent, e.g. the number 0.01 itself, not a
+pre-scaled integer — as a `float64`, then re-quantised, and reverted immediately after measuring;
+`git diff`/`diff` against the pre-mutation copy confirmed byte-identical restoration. On D-000.61's
+corpus A (`12345678901234.56` + 32×`0.01`, exact total `12345678901234.88`):
+
+| accumulation | got | vs exact |
+|---|---|---|
+| honest, DECLARED (forward) order | `{Coefficient: 1234567890123487, Exponent: -2}` | **off by one satang** |
+| honest, REVERSED order | `{Coefficient: 1234567890123488, Exponent: -2}` | **exact — passes by luck** |
+| coefficient-level (already-aligned integers), either order | `{Coefficient: 1234567890123488, Exponent: -2}` | exact, order-invariant |
+
+`TestSumIsExactOnD00061CorpusA` failed under the honest mutant with exactly `got
+{Coefficient:1234567890123487 Exponent:-2}, want {Coefficient:1234567890123488 Exponent:-2}
+(12345678901234.88)`; `TestSumOrderInvarianceOnD00061CorpusA` failed with exactly `AC9 VIOLATED: order
+1 produced {Coefficient:1234567890123488 Exponent:-2}, want the same {Coefficient:1234567890123487
+Exponent:-2} as the original order`. The coefficient-level mutant left both tests green, unchanged.
+
+**AC10's text was wrong on one clause, and the error is [[D-000.61]]'s own lesson recurring.** So:
+**the order-invariance assertion reddens unconditionally (forward != reversed); the VALUE assertion
+reddens in the declared order and passes by luck in reverse.** AC10's "both … must redden" is true
+only once the order is named. This is [[D-000.61]]'s founding measurement — the reversed `float64`
+pass landing on the exact answer by coincidence — reproducing itself one layer up, which is the
+strongest available argument that the order-invariance clause, not the value clause alone, is the
+load-bearing half. The coefficient-level mutant reddens nothing, confirming [[D-000.61]] (extension)
+unchanged; it is now an executing assertion in `hashmatrix/floatdiscrimination/` rather than a comment
+that can decay silently.
+
+**AC9's shipped test comment is corrected too.** It stated the guard forbids float64 "including
+inside a test that would merely DEMONSTRATE the discrimination" and concluded the discrimination is
+"cited rather than re-derived here". The first half is true of a LANDED demonstration only; the
+second no longer holds — replaced with a pointer to `hashmatrix/floatdiscrimination/` and to this
+entry's measured figures.
+
+**AC10 is NOT retired and is NOT downgraded to a bare citation obligation.** A citation to another
+story's run is not a measurement ([[D-000.26]]), and the table above shows why a citation alone would
+have been actively misleading here: a forward-order-only figure does not by itself establish the
+order-invariance property AC10 also requires.
+
+**Guardrails.** No allowlist or exemption is added to either float layer. `hashmatrix` gains no
+dependency on `folio-go` — the zero-dependency property is the legality argument. The reverse-order
+pass-by-luck is not "fixed" by changing the corpus.
+
+---
+
+### D-3.3.8 — D-3.1.1's weakness was RELOCATED by D-3.3.1's re-point, not closed, and both directions now close only by moving the invariant onto a TYPE
+**Finisher's correction**, resolving Story 3.3's review Finding 1 (Blocker). Appended, per this log's
+own rule, rather than edited into [[D-3.1.1]] or [[D-3.3.1]] in place.
+
+**What Finding 1 measured.** `text.go`'s `selectRoot` doc comment, written at [[D-3.3.1]]'s re-point,
+states the guard's purpose *"has one place it can now be introduced, and this is it"*. The reviewer
+injected a new dispatch method bypassing `selectRoot` entirely, calling `lookupBound` with a literal
+`"page"` root name directly. It compiled, and the re-pointed `TestBindResolutionRootsAreClosed`
+**passed**. The identical injection applied to a clean, pre-3.3 (`b875582`) worktree **failed** the
+same-named test. **The re-point did not close D-3.1.1's recorded blind spot — it relocated it, and
+the new blind spot is the EXACT case the old, pre-3.3 guard caught: a caller reaching `lookupBound`
+without going through the function the guard is keyed on.**
+
+**The hole was self-documented, not merely undetected.** `resolution_roots_arch_test.go`'s own
+pre-finisher-pass comment stated the guard's coverage held *"once `lookupBound`'s own rootName
+argument becomes `selectRoot`'s return value (a variable) at every call site"* — a precondition
+nothing in the shipped code asserted. Nothing stopped a call site from never going through
+`selectRoot` at all, exactly as [[D-3.1.1]]'s original weakness paragraph (quoting Story 2.5's review
+Blocker 2) already warned.
+
+**The fix, and why it is a type change rather than a stronger scan.** The reviewer's own suggested
+resolution — assert every `lookupBound` `rootName` argument is non-literal — was **declined on
+measurement**: `r := "page"; lookupBound(..., r, ...)` satisfies "non-literal" while still smuggling a
+literal root name through one assignment. Non-literal is a property of the expression, not the value.
+The engineering lead ruled instead that `rootName`/`rootDesc` become **one defined type, `rootKind`**
+(`internal/bind/text.go`), with exactly three package-level instances (`kindData`, `kindParams`,
+`kindRow`). This closes the property in two parts, by two different instruments, not one:
+
+1. **Can a root name be introduced anywhere other than a declaration?** Now **NO, and the compiler
+   says so**: `lookupBound`'s `kind` parameter is `rootKind`, not `string`, so
+   `lookupBound(..., "page")` — an untyped string constant — does not compile. This is the direction
+   the re-point lost, and it cannot be relocated again: there is no string-typed parameter left on the
+   call path for a literal to be smuggled through. Demonstrated as a compile-time property, not a
+   test: a scratch file (`internal/bind/zzscratch_redproof.go`, never committed) was added, declaring
+   `func (r exprResolver) zzPageScopedLookup(path []string) (expr.Value, error) { return
+   lookupBound(r.scope.data, path, path, r.elementID, "page") }` — the reviewer's exact injection,
+   translated to the new signature. `go build ./...` was run inside `folio-go/` and produced, VERBATIM:
+   `internal/bind/zzscratch_redproof.go:6:60: cannot use "page" (untyped string constant) as rootKind
+   value in argument to lookupBound`, exit status 1. The scratch file was then deleted and `go build
+   ./...` re-run clean. This property is not asserted anywhere — it is enforced by the type system,
+   and that is the point.
+2. **Is the set of declared roots closed?** `resolution_roots_arch_test.go`'s
+   `TestBindResolutionRootsAreClosed` is re-pointed a second time, from scanning `selectRoot`'s return
+   statements to AST set-equality over **every `rootKind` composite literal in the module** (in
+   practice, package `bind`'s own directory — `rootKind` is unexported, so nowhere else can construct
+   one). This is **strictly wider** than the property it replaces: it sees a fourth root wherever
+   declared, whether or not `selectRoot` ever returns it and whether or not it ever reaches
+   `lookupBound` — which is exactly the generality the selectRoot-keyed proxy lacked, and lacking it
+   is what made Finding 1 possible.
+
+**Per [[D-000.49]], a record that overstates is a defect, and this entry does not repeat that
+mistake: the weakness is not declared closed by declaration alone.** Both instruments above were
+themselves red-proven in this pass — property 2 by injecting a fourth `rootKind` composite literal
+into a scratch copy of `text.go` and confirming `TestBindResolutionRootsAreClosed` reddens; property 1
+by the compile failure above, which is a compile-time fact, not a test, and is labelled as such
+(D-000.24). **This entry corrects [[D-3.1.1]]'s append-at-[[D-3.3.1]] paragraph, which asserted "the
+guard sees it anyway" as an unqualified, now-measured-false claim — that paragraph's specific claim is
+false; this entry states what closes the gap instead, not a second unqualified "now closed."**
+
+**`text.go`'s stale claim is also corrected in the same commit.** The sentence *"has one place it can
+now be introduced, and this is it"*, which Finding 1 quoted as the false claim, is rewritten to
+describe the two-part mechanism above rather than repeating the single-scan claim that was falsified.
+
+---
+
+### D-3.3.9 — D-3.3.5's own heading says "amended in place"; its body and AC23 require an append, and the append shipped correctly
+**Finisher's correction**, resolving Story 3.3's review Finding 20 (Nit). Appended, never edited into
+[[D-3.3.5]] in place.
+
+[[D-3.3.5]]'s heading reads *"DW-7 is amended in place"*. Its own body, and the story's AC23, both
+require DW-7 be discharged by **append** (D-000.59's replacement discipline applied to a deferred-work
+entry, not an edit). The shipped `deferred-work.md` change **is** a correct append: DW-7's original
+*"anti-rot mechanism: none possible"* paragraph is left byte-for-byte intact, and a new paragraph is
+added stating what landed (the expression-layer routing assertion and its captured red-proof), what
+remains (the footer half, still Story 4.5), and the correction *"none possible"* → *"none possible for
+the footer half."* Ownership is unchanged. This was a wording slip in the ruling's heading, not a
+discipline breach, and is recorded here rather than edited into [[D-3.3.5]] in place, per this log's
+own append-only rule.

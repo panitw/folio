@@ -112,24 +112,57 @@ take.
 
 ---
 
-## Totals *(not yet implemented — Story 3.3)*
+## Totals
 
 ### `sum(collection.field)` · `count(collection)` · `avg(collection.field)`
 
+`sum` and `avg` take a **projection path**: a collection, followed by the field to add up or
+average across every element. `count` takes the **collection path alone** — it never looks at any
+field, so an element missing the field `sum`/`avg` would need still counts.
+
+**An aggregate is a number, and a number must be formatted before it can appear in text.** A bare
+`{{sum(transactions.amount)}}` is an **error** — text bindings are never coerced (the same rule that
+makes a bare `{{transactions.amount}}` an error today):
+
 ```
-{{sum(transactions.amount)}}
-{{count(transactions)}}
-{{avg(transactions.amount)}}
+{{sum(transactions.amount)}}    Error — a number is never coerced to text
+{{avg(transactions.amount)}}    Error — same rule
+{{count(transactions)}}         12    (an exception, see below)
 ```
 
+A number-valued aggregate must be wrapped in `formatNumber(...)` *(not yet implemented — Story 3.4)*
+before it can appear in text; that worked example belongs to Story 3.4, not here. `count` is the one
+exception: it is already a plain non-negative whole number, and needs no formatting to render as
+text.
+
 **Totals are exact.** Folio adds money as decimal digits, never as binary floating point, so a
-statement total is correct to the last satang no matter how many rows it covers.
+statement total is correct to the last satang no matter how many rows it covers. `avg` divides at
+the greatest number of decimal places any operand carries, plus a fixed number of extra digits —
+four today; **the constant is illustrative, the rule is not** — with round-half-to-even, so a
+repeating average never silently loses the tie-breaking digit.
 
 **A total always covers the whole collection**, never just the rows printed on the current page.
 There is no per-page subtotal, and no expression anywhere can refer to the page it is on.
 
-On an empty collection, `sum` and `count` return zero. `avg` reports an error instead of dividing by
-zero, because the average of nothing is not zero — it does not exist.
+**An explicit `null` value is a zero observation, not a missing one.** A row whose amount is JSON
+`null` contributes zero to `sum` and counts as one observation in `avg`'s divisor — it pulls the
+average down, exactly as a real zero would. A row whose amount is **absent entirely** is a different
+thing: that is an error, naming the row and the field, because the document genuinely does not say
+what belongs there. Two rows that look almost the same in JSON — `{"amount": null}` and `{}` — are
+treated very differently for exactly this reason.
+
+**The same rule extends to the collection itself.** A document where `transactions` is JSON `null`
+(rather than a missing key, and rather than an empty list) is treated as one zero observation, the
+same as a single `null` row would be: `sum` is `0`, `count` is `1`, and `avg` is `0` at its usual
+scale. This is different again from `transactions` being genuinely **absent** from the data, which
+is still an error.
+
+**On an empty collection**, `sum` and `count` are legitimately zero. `avg` cannot divide by zero
+observations, so it is not a number — but this is a **caveat the render survives**, not a failure:
+the total column renders blank, and the render notes why, rather than refusing to produce the
+document at all. This is different from an all-null collection, whose average **is** a real number
+(zero, at the scale the rule above derives) — a collection with rows that happen to be blank and a
+collection with no rows at all are not the same subject, and render differently on purpose.
 
 ---
 
@@ -174,7 +207,7 @@ Eight, and the engine enforces that count.
 |---|---|---|
 | Text | `upper` · `lower` | in progress |
 | Choice | `if` | in progress |
-| Totals | `sum` · `count` · `avg` | not yet implemented |
+| Totals | `sum` · `count` · `avg` | in progress |
 | Formatting | `formatDate` · `formatNumber` | not yet implemented |
 
 Adding a ninth is not a small change and is not meant to be — the table is closed, and a new entry

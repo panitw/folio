@@ -388,15 +388,38 @@
 
   <section id="totals">
     <h2>Totals</h2>
-    <h3>sum<span class="args">(collection.field)</span> · count<span class="args">(collection)</span> · avg<span class="args">(collection.field)</span> <span class="pill">Pending</span></h3>
+    <h3>sum<span class="args">(collection.field)</span> · count<span class="args">(collection)</span> · avg<span class="args">(collection.field)</span></h3>
 
-    <div class="sample"><pre>{{sum(transactions.amount)}}
-{{count(transactions)}}
-{{avg(transactions.amount)}}</pre></div>
+    <p>
+      <code>sum</code> and <code>avg</code> take a <strong>projection path</strong>: a collection,
+      followed by the field to add up or average across every element. <code>count</code> takes the
+      <strong>collection path alone</strong> — it never looks at any field, so an element missing the
+      field <code>sum</code>/<code>avg</code> would need still counts.
+    </p>
+    <p>
+      <strong>An aggregate is a number, and a number must be formatted before it can appear in
+      text.</strong> A bare <code>{{sum(transactions.amount)}}</code> is an <strong>error</strong> —
+      text bindings are never coerced (the same rule that makes a bare
+      <code>{{transactions.amount}}</code> an error today):
+    </p>
 
+    <div class="sample"><pre>{{sum(transactions.amount)}}    Error — a number is never coerced to text
+{{avg(transactions.amount)}}    Error — same rule
+{{count(transactions)}}         12    (an exception, see below)</pre></div>
+
+    <p>
+      A number-valued aggregate must be wrapped in <code>formatNumber(...)</code>
+      <span class="pill">Pending</span> before it can appear in text; that worked example belongs to
+      Story 3.4, not here. <code>count</code> is the one exception: it is already a plain
+      non-negative whole number, and needs no formatting to render as text.
+    </p>
     <p>
       <strong>Totals are exact.</strong> Folio adds money as decimal digits, never as binary floating
       point, so a statement total is correct to the last satang no matter how many rows it covers.
+      <code>avg</code> divides at the greatest number of decimal places any operand carries, plus a
+      fixed number of extra digits — four today; <strong>the constant is illustrative, the rule is
+      not</strong> — with round-half-to-even, so a repeating average never silently loses the
+      tie-breaking digit.
     </p>
     <p>
       <strong>A total always covers the whole collection</strong>, never just the rows printed on the
@@ -404,9 +427,31 @@
       sits on.
     </p>
     <p>
-      On an empty collection, <code>sum</code> and <code>count</code> return zero. <code>avg</code>
-      reports an error instead of dividing by zero — the average of nothing is not zero, it does
-      not exist.
+      <strong>An explicit <code>null</code> value is a zero observation, not a missing one.</strong> A
+      row whose amount is JSON <code>null</code> contributes zero to <code>sum</code> and counts as one
+      observation in <code>avg</code>'s divisor — it pulls the average down, exactly as a real zero
+      would. A row whose amount is <strong>absent entirely</strong> is a different thing: that is an
+      error, naming the row and the field, because the document genuinely does not say what belongs
+      there. Two rows that look almost the same in JSON — <code>{"amount": null}</code> and
+      <code>{}</code> — are treated very differently for exactly this reason.
+    </p>
+    <p>
+      <strong>The same rule extends to the collection itself.</strong> A document where
+      <code>transactions</code> is JSON <code>null</code> (rather than a missing key, and rather than
+      an empty list) is treated as one zero observation, the same as a single <code>null</code> row
+      would be: <code>sum</code> is <code>0</code>, <code>count</code> is <code>1</code>, and
+      <code>avg</code> is <code>0</code> at its usual scale. This is different again from
+      <code>transactions</code> being genuinely <strong>absent</strong> from the data, which is still
+      an error.
+    </p>
+    <p>
+      <strong>On an empty collection</strong>, <code>sum</code> and <code>count</code> are
+      legitimately zero. <code>avg</code> cannot divide by zero observations, so it is not a number —
+      but this is a <strong>caveat the render survives</strong>, not a failure: the total column
+      renders blank, and the render notes why, rather than refusing to produce the document at all.
+      This is different from an all-null collection, whose average <strong>is</strong> a real number
+      (zero, at the scale the rule above derives) — a collection with rows that happen to be blank and
+      a collection with no rows at all are not the same subject, and render differently on purpose.
     </p>
   </section>
 
@@ -449,7 +494,7 @@
         <tbody>
           <tr><td>Text</td><td><code>upper</code> · <code>lower</code></td><td>In progress</td></tr>
           <tr><td>Choice</td><td><code>if</code></td><td>In progress</td></tr>
-          <tr><td>Totals</td><td><code>sum</code> · <code>count</code> · <code>avg</code></td><td>Pending</td></tr>
+          <tr><td>Totals</td><td><code>sum</code> · <code>count</code> · <code>avg</code></td><td>In progress</td></tr>
           <tr><td>Formatting</td><td><code>formatDate</code> · <code>formatNumber</code></td><td>Pending</td></tr>
         </tbody>
       </table>

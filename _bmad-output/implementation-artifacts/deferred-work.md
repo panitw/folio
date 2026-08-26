@@ -270,6 +270,26 @@ Story 1.4's load failures are plain Go errors (D-1.4.2: *"1.4 must not mint them
 `{{sum(...)}}` family of expression functions — a single implementation, not two that can drift.
 Story 1.4 builds neither; nothing renders a table until Story 4.5.
 
+**APPENDED at Story 3.3** (append-only, per D-000.29/D-3.1.1's own discipline — the paragraph above
+is never edited in place):
+
+- **What landed:** Story 3.3 builds the one aggregate evaluation `columns[].footer` must eventually
+  reuse — `internal/expr`'s `evalSum`/`evalCount`/`evalAvg` (`aggregate.go`), routing through
+  `SumDecimals`/`AvgDecimals` via a **positive routing assertion**, not merely the reducer inventory's
+  declaration-shape check (`TestSumRoutesThroughSumDecimals`/`TestAvgRoutesThroughAvgDecimals`,
+  `internal/expr/routing_arch_test.go`), with a **captured red-proof**
+  (`TestSumRoutingRedProofInlineAccumulator`) showing an inline `big.Int` accumulator — which passed
+  every guard that existed before this story (D-3.1a.4) — reddens this new assertion. This discharges
+  D-3.1a.4's own follow-up, owed to Story 3.3 by name.
+- **What remains:** the **footer half** is untouched — `columns[].footer` does not exist yet
+  (Story 4.5's own field), and nothing calls `evalSum`/`evalCount`/`evalAvg` except the
+  `{{sum(...)}}` family of expression functions. Story 4.5 still owns wiring the footer to this same
+  evaluation, and still owns proving it did.
+- **Correction:** *"Anti-rot mechanism: none possible"* is now **"none possible for the footer
+  half."** The `{{...}}` half gained a real anti-rot mechanism this story (the routing assertion
+  above); the footer half gained none, because there is still nothing to key one on until Story 4.5
+  gives `columns[].footer` a shape. Ownership of the footer half is unchanged: **Story 4.5**, by name.
+
 ### DW-8 — `Decimal` moves to `internal/expr` (or a leaf) and 1.6's path matcher is deleted — **RETIRED at Story 3.2**
 - **Deferred by:** Story 1.6 (rulings D-1.6.1, D-1.6.5)
 - **Owner:** **Story 3.2** — the expression-language story

@@ -5,7 +5,12 @@ import (
 	"strings"
 )
 
-// Eval walks e against resolver, computing a Value (AC12-AC18).
+// Eval walks e against resolver, computing a Value (AC12-AC18), and
+// alongside it every Caveat (Story 3.3, DECISION-5) the walk produced
+// — non-error conditions the render survives (avg()-on-empty, R9).
+// caveats is nil whenever none occurred; it is never a non-nil empty
+// slice (D-2.8.6's "empty is nil, one representation", applied here so
+// a caller can compare without special-casing the length-0 case).
 // elementID names the binding site in every located error this
 // produces, matching AD-14's convention throughout the rest of the
 // codebase.
@@ -15,35 +20,36 @@ import (
 // unknown-function/arity mismatch is still handled below, cheaply, in
 // case a caller ever reaches Eval without calling Check first, but the
 // authoritative, located version of those errors is Check's).
-func Eval(e Expr, resolver Resolver, elementID string) (Value, error) {
+func Eval(e Expr, resolver Resolver, elementID string) (Value, []Caveat, error) {
 	switch n := e.(type) {
 	case *PathExpr:
-		return resolver.Resolve(n.Segments)
+		v, err := resolver.Resolve(n.Segments)
+		return v, nil, err
 	case *StringLit:
-		return Value{Kind: KindString, Str: n.Value}, nil
+		return Value{Kind: KindString, Str: n.Value}, nil, nil
 	case *NumberLit:
 		d, err := NewDecimal(n.Literal)
 		if err != nil {
-			return Value{}, fmt.Errorf("expr: element %s: invalid number literal %q: %w", elementID, n.Literal, err)
+			return Value{}, nil, fmt.Errorf("expr: element %s: invalid number literal %q: %w", elementID, n.Literal, err)
 		}
-		return Value{Kind: KindNumber, Num: d}, nil
+		return Value{Kind: KindNumber, Num: d}, nil, nil
 	case *CallExpr:
 		return evalCall(n, resolver, elementID)
 	default:
-		return Value{}, fmt.Errorf("expr: element %s: internal: unrecognised expression node %T", elementID, e)
+		return Value{}, nil, fmt.Errorf("expr: element %s: internal: unrecognised expression node %T", elementID, e)
 	}
 }
 
-func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, error) {
+func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, []Caveat, error) {
 	entry, ok := lookupFunc(call.Name)
 	if !ok {
-		return Value{}, fmt.Errorf(
+		return Value{}, nil, fmt.Errorf(
 			"expr: element %s: unknown function %q — the eight legal names are %s: %s",
 			elementID, call.Name, strings.Join(LegalFunctionNames(), ", "), call.Raw,
 		)
 	}
 	if len(call.Args) != entry.arity {
-		return Value{}, fmt.Errorf(
+		return Value{}, nil, fmt.Errorf(
 			"expr: element %s: %s() takes %d argument(s), got %d: %s",
 			elementID, entry.name, entry.arity, len(call.Args), call.Raw,
 		)
@@ -52,15 +58,10 @@ func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, error
 	if !entry.implemented {
 		// AC15/AC17/AC18: a registered-but-unimplemented function is a
 		// LOCATED error, never a plausible value — this is the guard
-		// against F6's hazard: the "sum" entry above declares its
-		// Decimal-typed signature (AC9, table.go) but is never wired
-		// to SumDecimals here. Neither sum's nor any of the other four
-		// unimplemented entries' arguments are evaluated at all before
-		// this error is returned, so a mistyped or absent path buried
-		// in an unimplemented call's argument is not additionally
-		// reported (that would be Story 3.3/3.4's own evaluation, once
-		// implemented).
-		return Value{}, fmt.Errorf(
+		// against F6's hazard. Neither its arguments nor any other
+		// unimplemented entry's are evaluated at all before this error
+		// is returned.
+		return Value{}, nil, fmt.Errorf(
 			"expr: element %s: function %q is not yet implemented (coming in Story %s): %s",
 			elementID, entry.name, entry.owningStory, call.Raw,
 		)
@@ -68,15 +69,23 @@ func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, error
 
 	switch entry.name {
 	case "upper", "lower":
-		return evalUpperLower(entry.name, call, resolver, elementID)
+		v, err := evalUpperLower(entry.name, call, resolver, elementID)
+		return v, nil, err
 	case "if":
 		return evalIf(call, resolver, elementID)
+	case "sum":
+		return evalSum(call, resolver, elementID)
+	case "count":
+		v, err := evalCount(call, resolver, elementID)
+		return v, nil, err
+	case "avg":
+		return evalAvg(call, resolver, elementID)
 	default:
 		// Unreachable given functionTable's own entries (table.go):
 		// every implemented entry is handled above. Kept as a located
 		// error, not a panic, per AC20's "plain Go errors" discipline
 		// and AD-14's "never a panic" (AC11).
-		return Value{}, fmt.Errorf("expr: element %s: internal: %q is marked implemented but has no evaluator", elementID, entry.name)
+		return Value{}, nil, fmt.Errorf("expr: element %s: internal: %q is marked implemented but has no evaluator", elementID, entry.name)
 	}
 }
 
@@ -86,7 +95,7 @@ func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, error
 // is a located error, never a coerced stringification (AD-14's
 // wrong-kind case, never a coercion, AD-14 verbatim).
 func evalUpperLower(name string, call *CallExpr, resolver Resolver, elementID string) (Value, error) {
-	v, err := Eval(call.Args[0], resolver, elementID)
+	v, _, err := Eval(call.Args[0], resolver, elementID)
 	if err != nil {
 		return Value{}, err
 	}
@@ -131,10 +140,15 @@ func evalUpperLower(name string, call *CallExpr, resolver Resolver, elementID st
 // function called from the branch that was NOT selected must not
 // surface at all. This is not a special case here either: the
 // unselected call.Args[1]/[2] element is simply never passed to Eval.
-func evalIf(call *CallExpr, resolver Resolver, elementID string) (Value, error) {
-	condVal, err := Eval(call.Args[0], resolver, elementID)
+//
+// A Caveat from cond's OWN evaluation (e.g. avg() used, unusually, as
+// a condition and landing on the empty-average caveat before erroring
+// on its non-boolean kind) still propagates — evalIf never discards a
+// caveat it collected on the way to a result, selected branch or not.
+func evalIf(call *CallExpr, resolver Resolver, elementID string) (Value, []Caveat, error) {
+	condVal, condCaveats, err := Eval(call.Args[0], resolver, elementID)
 	if err != nil {
-		return Value{}, err
+		return Value{}, nil, err
 	}
 
 	var branch Expr
@@ -148,10 +162,30 @@ func evalIf(call *CallExpr, resolver Resolver, elementID string) (Value, error) 
 	case KindNull:
 		branch = call.Args[2] // OWNER RULING: silent false, no diagnostic.
 	default:
-		return Value{}, fmt.Errorf(
+		return Value{}, nil, fmt.Errorf(
 			"expr: element %s: if() condition must be a boolean, got %s (no truthiness — AD-14): %s",
 			elementID, condVal.Kind, call.Raw,
 		)
 	}
-	return Eval(branch, resolver, elementID)
+	branchVal, branchCaveats, err := Eval(branch, resolver, elementID)
+	if err != nil {
+		return Value{}, nil, err
+	}
+	return branchVal, appendCaveats(condCaveats, branchCaveats), nil
+}
+
+// appendCaveats concatenates a and b, preserving D-2.8.6's "empty is
+// nil, one representation": nil in, nil out, never a non-nil empty
+// slice manufactured along the way.
+func appendCaveats(a, b []Caveat) []Caveat {
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	out := make([]Caveat, 0, len(a)+len(b))
+	out = append(out, a...)
+	out = append(out, b...)
+	return out
 }

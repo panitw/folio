@@ -74,11 +74,13 @@ func decodePoints(literal string) (geom.Length, error) {
 // encoding/json's own number scanner (via json.Number), which already
 // guarantees that.
 //
-// This is the module's ONE splitter (AC6, D-1.6.1): internal/bind's
-// Decimal (Story 1.6) reuses it rather than duplicating it, which is
-// why it is exported — internal/bind importing internal/template is
-// the correct direction (Document -> BoundTree). Both consumers
-// (decodePoints here, and internal/bind.NewDecimal) share the exponent
+// This is the module's ONE splitter (AC6, D-1.6.1): internal/expr's
+// Decimal (Story 1.6; moved to internal/expr at Story 3.2/D-3.2.1 — F12,
+// Story 3.3, corrects this comment's stale internal/bind citation)
+// reuses it rather than duplicating it, which is why it is exported —
+// internal/expr importing internal/template is the correct direction
+// (Document -> BoundTree). Both consumers
+// (decodePoints here, and internal/expr.NewDecimal) share the exponent
 // bound this function enforces (see parseDecimalExponent) and each
 // layers its own tighter check on top (AC4b, D-1.6.6).
 func SplitJSONNumber(literal string) (sign int, intPart, fracPart string, exp int, err error) {
@@ -118,7 +120,7 @@ func SplitJSONNumber(literal string) (sign int, intPart, fracPart string, exp in
 // is deliberately the WIDER of this module's two known consumer
 // bounds — decodePoints' implicit millipoint range (a handful of
 // significant digits, always far inside this bound) and
-// internal/bind.Decimal's own maxDecimalExponentMagnitude (100,000) —
+// internal/expr.Decimal's own maxDecimalExponentMagnitude (100,000) —
 // so this shared splitter never refuses a literal either consumer
 // could legally represent (AC4b): each consumer then applies its own
 // tighter check on top of what this bound already let through.
@@ -133,8 +135,9 @@ func SplitJSONNumber(literal string) (sign int, intPart, fracPart string, exp in
 // "rejected BEFORE any big.Int scaling is attempted" was only true
 // above the old bound, and the decade of headroom was pure attack
 // surface no consumer could use. Set to exactly
-// internal/bind.maxDecimalExponentMagnitude, the wider of the two
-// known consumers today.
+// internal/expr.maxDecimalExponentMagnitude (moved there from
+// internal/bind at Story 3.2/D-3.2.1 — F12, Story 3.3), the wider of
+// the two known consumers today.
 //
 // The specific number is illustrative (AC4, mechanism note); that a
 // bound exists, is enforced before any big.Int scaling is attempted,

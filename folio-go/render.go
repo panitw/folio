@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/bind"
+	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/layout"
@@ -494,6 +495,40 @@ func headerFooterResolver(pageCount int) elementTokenResolver {
 	}
 }
 
+// diagnosticFromCaveat turns one internal/expr.Caveat (Story 3.3,
+// DECISION-5) into a Diagnostic: expr may not import folio (the rank
+// is backwards), so expr reports the raw condition and THIS function —
+// the module root, where Diagnostic itself is declared — is what
+// mints a code for it, following DiagCodeTextClippedWidth's own
+// precedent (D-2.8.1: a code is minted where the condition first ships,
+// not where internal/diag happens to exist yet).
+func diagnosticFromCaveat(elementID string, c expr.Caveat) Diagnostic {
+	switch c.Kind {
+	case expr.CaveatEmptyAverage:
+		return Diagnostic{
+			Severity:  SeverityWarning,
+			Code:      DiagCodeEmptyAverage,
+			ElementID: elementID,
+			DataPath:  c.Path,
+			Message: fmt.Sprintf(
+				"element %s: avg(%s) has no operand — the collection is present and empty — so it resolves to empty rather than aborting the render (Story 4.2 requires an empty-collection table to render successfully)",
+				elementID, c.Path,
+			),
+		}
+	default:
+		// Unreachable given expr.CaveatKind's own closed set (caveat.go)
+		// — kept as a located, honest Diagnostic rather than a panic
+		// (AD-14: never a panic), naming the unhandled kind so a future
+		// caveat added there without a matching arm here fails loudly.
+		return Diagnostic{
+			Severity:  SeverityWarning,
+			ElementID: elementID,
+			DataPath:  c.Path,
+			Message:   fmt.Sprintf("element %s: internal: unhandled expr.Caveat kind %v", elementID, c.Kind),
+		}
+	}
+}
+
 // collectBandTextRuns is collectTextRuns' body, generalised over ONE
 // band and one elementTokenResolver — the single implementation
 // collectTextRuns (legacy, all bands, pass-through) and Story 2.7's
@@ -533,9 +568,20 @@ func collectBandTextRuns(
 		if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
 			continue
 		}
-		boundText, subs, berr := bind.BindTextSpans(el.Value.Value, data, params, string(el.ID))
+		boundText, subs, caveats, berr := bind.BindTextSpans(el.Value.Value, data, params, string(el.ID))
 		if berr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: %w", berr)
+		}
+		// Story 3.3/DECISION-5: a bind-stage Caveat (today, only
+		// avg()-on-empty) becomes a Diagnostic HERE, before this
+		// element's own layout-stage clip Warning (below) — D-2.8.6's
+		// ordering guarantee applies pipeline-stage-first WITHIN one
+		// element, and this loop already walks elements in band/
+		// declaration order, so appending here in caveat order (the
+		// order Resolve encountered them) keeps the whole diags slice
+		// in the one required order without any separate sort.
+		for _, c := range caveats {
+			diags = append(diags, diagnosticFromCaveat(string(el.ID), c))
 		}
 
 		resolvedText, resolvedSubs, slots, rerr := resolve(string(el.ID), boundText, subs)

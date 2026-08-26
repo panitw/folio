@@ -5,10 +5,13 @@
 // dotted path, a function call over comma-separated arguments, a
 // double-quoted string literal, or a number literal — plus the eight
 // named functions FR18 promises (sum, count, avg, formatDate,
-// formatNumber, upper, lower, if), of which only upper/lower/if are
-// implemented at this story; the other five are registered, parse and
-// derive successfully, and fail loudly at evaluation, naming the
-// story that implements them (AC15-AC18).
+// formatNumber, upper, lower, if), of which upper/lower/if (Story 3.2)
+// and, as of Story 3.3, sum/count/avg are implemented; formatDate and
+// formatNumber remain registered, parse and derive successfully, and
+// fail loudly at evaluation, naming the story that implements them
+// (AC15-AC18, Story 3.2; AC30, Story 3.3, restates the guard
+// derivationally rather than by a hard-coded name list once three of
+// the five move).
 //
 // internal/expr is rank 3 in the stage-rank table
 // (lint/internal/rules/stagerank.go): it may import internal/template
@@ -38,13 +41,16 @@
 // (Decision 3: arity and literal-argument-kind are both decidable
 // without data, so both are 3.2's to check; a PATH argument's runtime
 // kind is not decidable without data and is explicitly NOT 3.2's
-// obligation — owed at evaluation by Story 3.3 (sum/count/avg) and
-// Story 3.4 (formatDate/formatNumber)). Eval walks the AST against a
-// Resolver (evaluation-time data lookup) and actually computes a
-// result, calling only the branch of an if() that was selected
-// (AC14's short-circuit) and reporting a registered-but-unimplemented
-// function as a LOCATED error, never a plausible value (AC15,
-// guarding directly against F6/AC17's SumDecimals(nil) == {0,0}
-// hazard: the "sum" table entry is never wired to SumDecimals in this
-// story at all).
+// obligation — owed at evaluation by Story 3.3 (sum/count/avg, done)
+// and Story 3.4 (formatDate/formatNumber, still owed)). Eval walks the
+// AST against a Resolver (evaluation-time data lookup) and actually
+// computes a result, calling only the branch of an if() that was
+// selected (AC14's short-circuit) and reporting a
+// registered-but-unimplemented function as a LOCATED error, never a
+// plausible value (AC15, guarding directly against F6/AC17's
+// SumDecimals(nil) == {0,0} hazard). Story 3.3 additionally proves
+// sum()/avg() actually ROUTE through SumDecimals/AvgDecimals rather
+// than merely producing an equal-looking answer some other way
+// (routing_arch_test.go; D-3.1a.4's own correction that the reducer
+// inventory alone cannot force this).
 package expr

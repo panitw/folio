@@ -11,11 +11,12 @@ package bind
 // The row's ALIAS (the author's "as" spelling, or the literal "row"
 // when the region omits it, AC2) is carried on the Scope as ordinary
 // data used for dispatch and for error text — never as a lookupBound
-// rootName. TestBindResolutionRootsAreClosed
-// (resolution_roots_arch_test.go) asserts every rootName is a string
-// literal; an author's alias is data-dependent and would trip that
-// guard's non-literal Fatalf. D-3.1.1 records this: the root-CLASS
-// name passed to lookupBound is always the literal "row".
+// rootKind. lookupBound's rootKind parameter is a named struct type
+// (text.go), not a string, so there is no code path by which the
+// author's own alias spelling could be passed there even as an
+// argument type error, let alone smuggled past as a literal (Story 3.3
+// finisher pass, Finding 1). D-3.1.1 records this: the root-CLASS name
+// is always kindRow, whose own name field is the literal "row".
 type Scope struct {
 	data, params Value
 

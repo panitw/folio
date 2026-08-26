@@ -77,6 +77,9 @@ jobs:
         run: |
           mkdir -p /tmp/hashmatrix-build
           go build -o /tmp/hashmatrix-build/probe ./probe
+      - name: go test ./... (Story 3.3, D-3.3.7: floatdiscrimination/ is a real guard only if this runs it)
+        working-directory: hashmatrix
+        run: go test -count=1 ./...
       - name: gofmt -l (must be empty)
         working-directory: hashmatrix
         run: test -z "$(gofmt -l .)"

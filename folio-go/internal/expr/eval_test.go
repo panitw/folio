@@ -21,6 +21,20 @@ func (r mapResolver) Resolve(path []string) (Value, error) {
 	return v, nil
 }
 
+// CollectionLength/ProjectCollection: mapResolver is a flat map keyed
+// by dotted path — it has no notion of a collection at all, so both
+// methods simply report "absent", the same outcome Resolve gives any
+// other unmapped path. Tests that need real collection behaviour use
+// internal/bind's exprResolver directly (bind_test.go-adjacent tests)
+// or sliceResolver (below), never mapResolver.
+func (r mapResolver) CollectionLength(path []string) (int, error) {
+	return 0, fmt.Errorf("test: collection path %q is absent from the test resolver", strings.Join(path, "."))
+}
+
+func (r mapResolver) ProjectCollection(path []string) ([]Value, error) {
+	return nil, fmt.Errorf("test: collection path %q is absent from the test resolver", strings.Join(path, "."))
+}
+
 func mustEval(t *testing.T, src string, resolver Resolver) Value {
 	t.Helper()
 	e, err := Parse(src)
@@ -30,7 +44,7 @@ func mustEval(t *testing.T, src string, resolver Resolver) Value {
 	if err := Check(e); err != nil {
 		t.Fatalf("Check(%q): %v", src, err)
 	}
-	v, err := Eval(e, resolver, "e1")
+	v, _, err := Eval(e, resolver, "e1")
 	if err != nil {
 		t.Fatalf("Eval(%q): unexpected error: %v", src, err)
 	}
@@ -102,7 +116,7 @@ func TestUpperLowerNonStringOperandIsLocatedError(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("upper(x)"): unexpected syntax error: %v`, perr)
 	}
-	_, err := Eval(e, r, "e7")
+	_, _, err := Eval(e, r, "e7")
 	if err == nil {
 		t.Fatal("expected a located error for a non-string operand")
 	}
@@ -141,7 +155,7 @@ func TestIfAbsentConditionIsLocatedError(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("if(cond, a, b)"): unexpected syntax error: %v`, perr)
 	}
-	_, err := Eval(e, r, "e9")
+	_, _, err := Eval(e, r, "e9")
 	if err == nil {
 		t.Fatal("an absent condition path must be a located Error, never false")
 	}
@@ -190,7 +204,7 @@ func TestIfEmptyStringConditionIsLocatedErrorNoTruthiness(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("if(cond, a, b)"): unexpected syntax error: %v`, perr)
 	}
-	_, err := Eval(e, r, "e1")
+	_, _, err := Eval(e, r, "e1")
 	if err == nil {
 		t.Fatal("an empty-string condition must be a located error — no truthiness")
 	}
@@ -206,7 +220,7 @@ func TestIfZeroConditionIsLocatedErrorNoTruthiness(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("if(cond, a, b)"): unexpected syntax error: %v`, perr)
 	}
-	_, err := Eval(e, r, "e1")
+	_, _, err := Eval(e, r, "e1")
 	if err == nil {
 		t.Fatal("a zero condition must be a located error — 0 is not false (no truthiness)")
 	}
@@ -242,7 +256,14 @@ func TestIfShortCircuitsAbsentPathInUnselectedBranch(t *testing.T) {
 	}
 }
 
-// --- AC15-AC18: the five unimplemented functions ---
+// --- AC15/AC18/AC30: the two functions this story leaves unimplemented ---
+//
+// AC30 (D-000.59's shape): sum/count/avg are DROPPED from this table —
+// they are Story 3.3's own positive assertions now (below, and
+// aggregate_test.go) — in the SAME commit that adds the three of them
+// to TestImplementedEntriesMatchEvalCallSwitch's derived set
+// (table_derivational_test.go). formatDate/formatNumber remain, still
+// proving the located-error arm Story 3.4 will one day retire in turn.
 
 func TestUnimplementedFunctionsAreLocatedErrors(t *testing.T) {
 	r := mapResolver{"x": {Kind: KindString, Str: "irrelevant"}}
@@ -251,9 +272,6 @@ func TestUnimplementedFunctionsAreLocatedErrors(t *testing.T) {
 		name  string
 		story string
 	}{
-		{"sum(x)", "sum", "3.3"},
-		{"count(x)", "count", "3.3"},
-		{"avg(x)", "avg", "3.3"},
 		{`formatDate(x, "yyyy-MM-dd")`, "formatDate", "3.4"},
 		{`formatNumber(x, "#,##0.00")`, "formatNumber", "3.4"},
 	}
@@ -264,7 +282,7 @@ func TestUnimplementedFunctionsAreLocatedErrors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(%q): %v", c.src, err)
 		}
-		_, err = Eval(e, r, "e5")
+		_, _, err = Eval(e, r, "e5")
 		if err == nil {
 			t.Fatalf("%s: expected a located error, got none", c.src)
 		}
@@ -286,25 +304,28 @@ func TestUnimplementedFunctionsAreLocatedErrors(t *testing.T) {
 			t.Errorf("%s: error must carry the offending expression text verbatim, got: %v", c.src, err)
 		}
 	}
-	if seen != 5 {
-		t.Fatalf("AC16: expected exactly 5 assertions, ran %d", seen)
+	if seen != 2 {
+		t.Fatalf("AC30: expected exactly 2 assertions (formatDate, formatNumber), ran %d", seen)
 	}
 }
 
 // TestSumOverEmptyOperandIsNeverASilentZero is AC17: THE
-// VENDOR-DEFAULT RED-PROOF (F6, D-000.25). Evaluating sum() must
-// return an error, and specifically must never return a Decimal of
-// value zero — the hazard being guarded against is
-// SumDecimals(nil) == Decimal{0,0} (D-3.1a.2, reduce.go), which the
-// sum table entry is never wired to in this story (eval.go: every
-// unimplemented entry errors before evaluating or reducing anything).
+// VENDOR-DEFAULT RED-PROOF (F6, D-000.25). Evaluating sum() over an
+// ABSENT collection must return an error, and specifically must never
+// return a Decimal of value zero — the hazard being guarded against is
+// SumDecimals(nil) == Decimal{0,0} (D-3.1a.2, reduce.go): a
+// ProjectCollection that silently reported "no elements" for an absent
+// collection (rather than the located Error R8 requires) would feed
+// SumDecimals nothing and get that exact identity back, a plausible-
+// looking zero total on a bank statement whose collection was never
+// there at all.
 func TestSumOverEmptyOperandIsNeverASilentZero(t *testing.T) {
 	r := mapResolver{"transactions": {Kind: KindString, Str: "irrelevant — never reached"}}
 	e, err := Parse("sum(transactions.amount)")
 	if err != nil {
 		t.Fatalf("unexpected syntax error: %v", err)
 	}
-	v, err := Eval(e, r, "e17")
+	v, _, err := Eval(e, r, "e17")
 	// QA Finding 8 (Minor): the value check must live on the SUCCESS
 	// path. t.Fatal calls runtime.Goexit, so the old ordering (value
 	// check unconditionally after the err==nil check) could only ever
@@ -327,17 +348,19 @@ func TestUnimplementedAndUnknownFunctionErrorsAreDistinguishable(t *testing.T) {
 	r := mapResolver{"x": {Kind: KindString, Str: "v"}}
 
 	// QA Finding 15 (Minor): fail each parse explicitly.
-	e1, perr1 := Parse("sum(x)")
+	// AC30: sum() is implemented as of this story — formatDate() is
+	// now the unimplemented example (owned by Story 3.4).
+	e1, perr1 := Parse(`formatDate(x, "yyyy-MM-dd")`)
 	if perr1 != nil {
-		t.Fatalf(`Parse("sum(x)"): unexpected syntax error: %v`, perr1)
+		t.Fatalf(`Parse("formatDate(...)"): unexpected syntax error: %v`, perr1)
 	}
-	_, err1 := Eval(e1, r, "e1")
+	_, _, err1 := Eval(e1, r, "e1")
 
 	e2, perr2 := Parse("frobnicate(x)")
 	if perr2 != nil {
 		t.Fatalf(`Parse("frobnicate(x)"): unexpected syntax error: %v`, perr2)
 	}
-	_, err2 := Eval(e2, r, "e1")
+	_, _, err2 := Eval(e2, r, "e1")
 
 	if err1 == nil || err2 == nil {
 		t.Fatalf("expected both to error, got err1=%v err2=%v", err1, err2)
@@ -345,10 +368,10 @@ func TestUnimplementedAndUnknownFunctionErrorsAreDistinguishable(t *testing.T) {
 	if err1.Error() == err2.Error() {
 		t.Fatal("AC18: the unimplemented-function error and the unknown-function error must not collapse to the same message")
 	}
-	if !strings.Contains(err1.Error(), "3.3") {
-		t.Errorf("unimplemented error should name Story 3.3, got: %v", err1)
+	if !strings.Contains(err1.Error(), "3.4") {
+		t.Errorf("unimplemented error should name Story 3.4, got: %v", err1)
 	}
-	if strings.Contains(err2.Error(), "3.3") {
+	if strings.Contains(err2.Error(), "3.4") {
 		t.Errorf("unknown-function error must not claim an owning story, got: %v", err2)
 	}
 }
@@ -368,7 +391,7 @@ func TestEvalPathPropagatesResolverError(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("missing.path"): unexpected syntax error: %v`, perr)
 	}
-	_, err := Eval(e, mapResolver{}, "e1")
+	_, _, err := Eval(e, mapResolver{}, "e1")
 	if err == nil {
 		t.Fatal("expected the resolver's own absent error to propagate")
 	}

@@ -65,7 +65,7 @@ func elementLayouts(t *testing.T, tpl *Template, dataJSON string) []elementLayou
 			if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
 				continue
 			}
-			boundText, subs, berr := bind.BindTextSpans(el.Value.Value, d, p, string(el.ID))
+			boundText, subs, _, berr := bind.BindTextSpans(el.Value.Value, d, p, string(el.ID))
 			if berr != nil {
 				t.Fatalf("bind %s: %v", el.ID, berr)
 			}
