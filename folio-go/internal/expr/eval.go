@@ -151,27 +151,54 @@ func evalIf(call *CallExpr, resolver Resolver, fc FormatContext, elementID strin
 		return Value{}, nil, err
 	}
 
-	var branch Expr
-	switch condVal.Kind {
-	case KindBool:
-		if condVal.Bool {
-			branch = call.Args[1]
-		} else {
-			branch = call.Args[2]
-		}
-	case KindNull:
-		branch = call.Args[2] // OWNER RULING: silent false, no diagnostic.
-	default:
-		return Value{}, nil, fmt.Errorf(
-			"expr: element %s: if() condition must be a boolean, got %s (no truthiness — AD-14): %s",
-			elementID, condVal.Kind, call.Raw,
-		)
+	// D-3.2.3's true/false/null-is-false/no-truthiness axis lives in
+	// ConditionValue (below), shared verbatim with Story 3.5's
+	// visibility — this call site does not re-derive it.
+	isTrue, cerr := ConditionValue(condVal, "if() condition", call.Raw, elementID)
+	if cerr != nil {
+		return Value{}, nil, cerr
+	}
+	branch := call.Args[2]
+	if isTrue {
+		branch = call.Args[1]
 	}
 	branchVal, branchCaveats, err := Eval(branch, resolver, fc, elementID)
 	if err != nil {
 		return Value{}, nil, err
 	}
 	return branchVal, appendCaveats(condCaveats, branchCaveats), nil
+}
+
+// ConditionValue applies D-3.2.3's owner-ruled axis for interpreting v
+// as a boolean condition: JSON true/false decide the boolean directly;
+// an explicit JSON null is silently false (no diagnostic, of any
+// severity); any other kind — a string or a number, however falsy it
+// looks ("", 0, "false") — is a located error, because AD-14 admits no
+// truthiness.
+//
+// This is the ONE place that axis is decided. evalIf (above) and
+// Story 3.5's element visibility (internal/bind.EvaluateCondition's
+// caller, in package folio) both need exactly this rule and must never
+// acquire two independently-written copies of it (D-000.38) — the
+// obvious wrong implementation of either feature is a falsy-check, and
+// nothing in the grammar itself forbids writing one by hand at a
+// second call site.
+//
+// label names the caller's own condition slot for the error text
+// (e.g. "if() condition", "visibleIf"); raw is the offending
+// expression's own source text, verbatim, as the author wrote it.
+func ConditionValue(v Value, label, raw, elementID string) (bool, error) {
+	switch v.Kind {
+	case KindBool:
+		return v.Bool, nil
+	case KindNull:
+		return false, nil // OWNER RULING (D-3.2.3): silent false, no diagnostic.
+	default:
+		return false, fmt.Errorf(
+			"expr: element %s: %s must be a boolean, got %s (no truthiness — AD-14): %s",
+			elementID, label, v.Kind, raw,
+		)
+	}
 }
 
 // appendCaveats concatenates a and b, preserving D-2.8.6's "empty is

@@ -437,6 +437,21 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 		col.FooterFormat = present(s)
 	}
 
+	// Story 3.5, AC3: a pure field-presence check, alongside the three
+	// AC43 column checks above. Without it, "visibleIf" on a column
+	// falls through into Extra below (extraFields absorbs any unknown
+	// key opaquely) and round-trips silently — verified by execution at
+	// this story's creation, not assumed. AD-24 permits a condition on
+	// an ELEMENT only, never on a table ROW: a column IS one row's
+	// per-record slice, so a column-level visibleIf is exactly the
+	// row-level visibility AD-24 forbids, because it would make
+	// pagination a function of data in a way FR25 does not define.
+	// folio-format.md has said "Not valid on a table column" since the
+	// format was written; this is the first place anything enforces it.
+	if _, ok := obj["visibleIf"]; ok {
+		return Column{}, newLoadError("visibleIf", string(id), "", "visibility applies to elements only, never a table column/row (AD-24) — a condition here would make pagination a function of data")
+	}
+
 	extra, err := extraFields(obj, consumed)
 	if err != nil {
 		return Column{}, fmt.Errorf("template: table %s column %s: %w", tableID, id, err)

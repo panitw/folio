@@ -558,6 +558,36 @@ func captureMultiPageRender(t *testing.T, target matrixTarget, binPath string) [
 	return runOnTarget(t, target, binPath, map[string]string{subprocessMultiPageEnvVar: "1"})
 }
 
+// captureHiddenImageRender runs binPath with
+// FOLIO_SUBPROCESS_RENDER_HIDDENIMAGE=1 — Story 3.5's TENTH selector,
+// rendering the hidden-image document (fixtures/hidden-image/) through
+// the public Render path.
+func captureHiddenImageRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessHiddenImageEnvVar: "1"})
+}
+
+// requireNoImageXObject is hidden-image's extraGuard (Story 3.5
+// finisher review, Finding 1 / Blocker) — the mirror image of
+// requireImageXObject's vacuity check (AC23), applied in the direction
+// THIS document exists to prove: a hidden image element must be absent
+// from the PDF entirely, on every target, not merely absent from
+// pagemodel.Page.Images on the host this story measured it on.
+// containsImageXObject is the same helper the positive case
+// (image-embed) already uses — reused for the negative assertion, not
+// duplicated.
+func requireNoImageXObject(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	if containsImageXObject(raw) {
+		t.Fatalf(
+			"target %s: hidden-image document's rendered output CONTAINS an image XObject "+
+				"(/Subtype /Image) — a hidden image element must be byte-absent from the PDF, "+
+				"not merely absent from the PageModel (Story 3.5 finisher review, Finding 1 / Blocker)",
+			target.name,
+		)
+	}
+}
+
 // matrixKidsArrayRE and matrixWellFormedRefRE are this file's OWN copies of
 // golden_structural_validity_test.go's kidsArrayRE / wellFormedRefRE, not a
 // shared import: that file is package folio_test (external), this one is
@@ -1189,6 +1219,34 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requirePageCount20HasCorrectPageNumbers,
 		wantPages:        20,
+	},
+	{
+		// Story 3.5 finisher review, Finding 1 (Blocker) / D-000.54.
+		// AD-21 binds every feature to ship its cross-target golden, and
+		// this is the first document able to falsify the blocker's fix
+		// in the direction that matters: assetKeys/pdfImages used to be
+		// built from EVERY image run before visibility was consulted, so
+		// a hidden image's /XObject stayed embedded in the PDF even
+		// though pagemodel.Page.Images correctly showed zero images.
+		//
+		// ITS NATIVE LEG (host target only) IS RUN BY THIS STORY, per
+		// D-000.54 — a SEQUENCING fix, not a D-000.4 cadence override:
+		// building pdfImages from visible-only asset keys is integer/set
+		// work over already-decoded JSON (no float, no vendor call, no
+		// compressor, no new dependency), so it introduces no NEW source
+		// of cross-target divergence. D-000.4's own criterion — "a new
+		// SOURCE of cross-target divergence... not merely because it
+		// records a new golden" — is exactly Story 2.5/2.6/2.7's
+		// reasoning above, applied here. The other three targets' legs
+		// are DEFERRED to the Epic 3 boundary gate (due after 3.7), same
+		// as three-band-page/multi-page/page-count-20.
+		label:               "hidden-image (visibleIf on an image, byte-absent not merely PageModel-absent)",
+		slug:                "hidden-image",
+		capture:             captureHiddenImageRender,
+		fixtureRelPath:      []string{"fixtures", "hidden-image", "expected.json"},
+		requireFontFile2:    true,
+		requireImageXObject: false,
+		extraGuard:          requireNoImageXObject,
 	},
 }
 

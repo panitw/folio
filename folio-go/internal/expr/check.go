@@ -110,14 +110,38 @@ func checkCall(call *CallExpr) error {
 	return nil
 }
 
+// IsLiteralExpr reports whether e is, at its own top level, a string or
+// number literal — the ONE predicate answering "is this expression
+// usable as a condition/non-literal argument slot?" (Story 3.5,
+// DECISION-2). The grammar has no boolean literal, so a bare literal
+// can never resolve to true/false/an array; that is decidable with NO
+// data at all, exactly like arity (checkNumberLit's own precedent).
+//
+// This is shared, not duplicated, between two call sites that both
+// need exactly this answer: checkArgKind's argNotLiteral case below
+// (if()'s condition slot, entry.args[0]) and folio's
+// checkVisibleIfExpression (visibility's bare-expression condition,
+// which is never a CallExpr argument, so argNotLiteral's own
+// enforcement — scoped to a call's arguments — never reaches it). A
+// second, independently-written literal check at the visibility call
+// site would be two predicates for one property (D-000.38) — exactly
+// the shape that lets the two drift apart over time.
+func IsLiteralExpr(e Expr) bool {
+	switch e.(type) {
+	case *StringLit, *NumberLit:
+		return true
+	default:
+		return false
+	}
+}
+
 func checkArgKind(entry funcEntry, index int, arg Expr, callRaw string) error {
 	kind := entry.args[index]
 	switch kind {
 	case argAny:
 		return nil
 	case argNotLiteral:
-		switch arg.(type) {
-		case *StringLit, *NumberLit:
+		if IsLiteralExpr(arg) {
 			return fmt.Errorf(
 				"%s(): argument %d must not be a literal (expected a data path or a nested call), got %s: %s",
 				entry.name, index+1, arg.Text(), callRaw,

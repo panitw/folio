@@ -546,6 +546,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: three-band-page",       // Story 2.5 — legs DEFERRED to the gate (D-2.5.1; D-000.4 override criterion DECLINED)
 	"matrix-document: multi-page",            // Story 2.6 — the gate's FIFTH obligation, SANCTIONED by D-2.6.2; legs DEFERRED to the gate (D-000.4 override criterion DECLINED)
 	"matrix-document: page-count-20",         // Story 2.7 — the gate's SIXTH obligation, SANCTIONED by D-2.7.4 (D-2.6.2's criterion: FR31 had no cross-target artifact before this entry); legs DEFERRED to the gate (D-000.4 override criterion DECLINED, D-2.7.4)
+	"matrix-document: hidden-image",          // Story 3.5 finisher (Finding 1 / Blocker) — D-000.54: native leg (host target) RUN by this story; the other three DEFERRED to the Epic 3 boundary gate (D-000.4 override criterion DECLINED — integer/set work, no new source of cross-target divergence)
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

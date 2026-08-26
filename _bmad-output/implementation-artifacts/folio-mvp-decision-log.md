@@ -347,6 +347,28 @@ nothing said so until now. Highest-probability quiet loss in the epic.
 Story 2.4 AC5), now bound by [[D-000.57]]. Epic 4 is the C4 hard gate. **[[D-2.1.6]] is untouched** —
 no Epic 3 story reaches segmentation, and nothing here may reopen it.
 
+#### Correction to §3, appended 2026-08-26 at Story 3.5 (the lead's own, self-reported)
+
+§3 above states: *"Measured: `grep -rl '"table"' fixtures/` returns nothing. **No fixture in the
+repository contains a table.**"* **The grep is right; the sentence overstates it, and so does the
+conclusion drawn from it.** Table subjects exist in `internal/template/fixtures_test.go` —
+`ElementTable`, `TableExt` and `Column` load, validate and round-trip **today**. Correctly stated:
+
+> **No *golden* fixture contains a table, so Epic 4's rendering and pagination stories have no
+> existing golden subject. Schema-level table subjects DO exist, so Epic 4's schema-adjacent work
+> does.**
+
+That narrows §3's [[D-000.50]] conclusion for Epic 4 from *"every story from 4.1 builds its own
+subject"* to **"every story that renders one does."** Found by the Story 3.5 creator, which
+falsified the orchestrator's brief on four counts by measurement — including writing, running and
+removing a probe proving a table column carrying `visibleIf` loads clean today, which is what made
+that story's AC3 red-proof constructible at all.
+
+Per [[D-000.49]] a record that **overstates a risk is a defect even when it errs toward caution** —
+it spends attention at the gate and erodes the record's authority. The lead recorded this as the
+same failure class as measuring `folio-go` and reporting on `lint` ([[D-000.64]]): **a correct
+measurement over the wrong population, reported as a conclusion about the whole.**
+
 ### Grounding refresh — session 5, 2026-08-25 at HEAD `b875582` (Epic 3 mid-epic → run to 6.7)
 
 Fifth lead, re-grounded per [[D-000.8]] from this log rather than from the spine. **The four prior
@@ -10691,3 +10713,146 @@ Neither Noto Sans nor Noto Sans Thai carries a single kana, so the CJK face is t
 > **As of Story 3.4, the aggregate itself computes** (`sum`/`count`/`avg`, Story 3.3) **and can be formatted** (`formatNumber`, Story 3.4) — but no table-rendering code path exists yet to place a computed, formatted footer value into an actual footer cell; the footer cell's actual value is not rendered until Story 4.5.
 
 **How we'd know it was wrong.** Story 4.5 landing and this sentence still reading as though `sum`/`count`/`avg`/`formatNumber` were the open question, rather than table placement.
+
+---
+
+## Epic 3 decisions — Story 3.5
+
+### D-3.5.1 — A literal `visibleIf` is rejected at load, and the predicate is HOISTED so one function serves both condition slots
+**Lead's ruling**, on a scope question the story creator and the story developer each raised independently, from separate contexts, having each measured the same root cause. Confidence high.
+
+**Verdict.** `"visibleIf": "42"` and `"visibleIf": "'x'"` are **located load errors**. And the fix **hoists the predicate**: one function answering *"is this expression usable as a condition?"*, called by **both** `checkVisibleIfExpression` and `if()`'s argument check. **Not** a second literal-check written inside `checkVisibleIfExpression`.
+
+**Situation.** `if()`'s condition slot is `argNotLiteral` and rejects a bare literal at load. `checkVisibleIfExpression` does not — because **`argNotLiteral` is a property of a `CallExpr`'s arguments, and a top-level `NumberLit` is not one**. So the same malformed condition is caught in one position and waved through in the other.
+
+**In simple terms.** The form says "this box must contain a yes/no answer, not a number." The clerk checking answers *inside* a formula enforces it. The clerk checking the standalone box does not — not from laziness, but because the rule was written as *"arguments must not be literals"* and a standalone box has no arguments. Same rule, same intent, one of the two places it was never wired to.
+
+**Why it is in scope rather than a scope addition** — four grounds, the third settling it:
+1. **The code already claims the behaviour.** `folio_expr_validate.go:35-42` says a literal condition must not load. It does. A comment asserting a property nothing enforces — [[D-000.46]]'s false map, in the file that exists to prevent exactly this.
+2. **It is [[D-2.4.1]]'s class**, which [[D-3.1.1]] already applied to `as: "params"`: *a declaration that looks honoured and silently is not.*
+3. **It violates `Validate` predicts `Render`.** A literal condition can **never** evaluate to a JSON boolean, so it is a **guaranteed** render-time error — and a template that will always fail at render currently loads clean. **An existing invariant being broken, not a new rule.**
+4. **3.5 is where it is cheap.** Story 3.7 owns `folio.Validate` and would otherwise inherit it as a surprise, in the story whose entire job is that the two agree.
+
+**Why hoist rather than patch.** Two predicates for one property is [[D-000.38]] — and it is **the same mistake the lead made re-pointing the root guard at 3.3** ([[D-3.3.8]]), where patching one side *relocated* the hole instead of closing it. Named as a repeat rather than a fresh insight.
+
+**Scope fence.** Reject a **literal top-level condition of any kind**. Do **not** extend to "an expression that cannot be a boolean" generally — a path's kind is data-dependent and remains AD-14's wrong-kind Error at eval.
+
+**Red-proof.** Both literal spellings red at load, **and** the corresponding `if(42, …)` case still reds — proving one predicate serves both rather than two agreeing by luck.
+
+**How we'd know it was wrong.** A third condition slot appearing that does not route through the hoisted predicate.
+
+---
+
+### D-3.5.2 — A `{{ }}` in a style field is REJECTED at load, detected by running `ScanPlaceholders` — never by matching braces
+**Lead's ruling**, **against** the story creator's and the developer's shared recommendation. Confidence high.
+
+**Verdict.** A placeholder in any style string field is a **located load error naming the element, the field and the placeholder**. Detection runs **`expr.ScanPlaceholders`** — the module's one tokenizer for `{{ }}` (AD-13, *"one definition, not two"*, and what `bind.Resolve` itself calls). **Never `strings.Contains`.**
+
+**What both agents recommended, and why it was overridden.** Both independently measured that style string fields are entirely unvalidated (`parse_bands.go:479-490`; no hex-colour check exists anywhere), so `"background": "{{if(...)}}"` loads clean and renders inertly. Both recommended asserting **inertness only**, on two grounds: the source AC says *"unsupported"*, not *"rejected"*; and a brace-spelling fence anchors on a **proxy** rather than a property ([[D-000.15]]).
+
+**Ground 2 is right about `strings.Contains` and wrong about the check.** A brace match *would* be proxy-anchored. But running `ScanPlaceholders` **is not reading a spelling — it is running the very mechanism that decides what a placeholder is.** [[D-000.68]]'s anchor requirement is met in its strongest available form: if `ScanPlaceholders` says it is a binding, it is a binding, **by the same authority the render path uses**. The distinction between these two implementations is the whole ruling.
+
+**Ground 1 loses to the project's settled posture on that exact ambiguity.** [[D-2.4.1]] ruled that a declaration which looks honoured and silently is not is a load error; [[D-3.1.1]] applied it again. And `closedsets.go`'s own comment states the governing rule: *"an unknown KEY passes through opaquely; a recognised key carrying an unlisted VALUE is still a load error."* A style field is a **recognised key**; a placeholder in it is an invalid value. **Rejecting is the consistent posture, not a new one.**
+
+**[[D-000.15]]'s actual test is passed: the false-positive population is empty.** No legitimate colour, length, alignment token or font-family name contains `{{`. The key is not broader than the purpose.
+
+**In simple terms.** An author writes a colour as "whatever `if(overdue, red, black)` says." That will never work — the colour box is not wired to the expression engine and never will be. The choice was between letting it through and printing the literal text as if nothing happened, or saying so at load. We say so. And we decide *"is that an expression?"* by asking the same component that answers that question everywhere else, rather than by looking for two curly braces.
+
+**Two guardrails, both load-bearing.**
+- **Label it precisely, in the assertion's own text.** This is **not** style-field validation and must not read as it — **hex colours remain unvalidated, deliberately**. Per [[D-000.24]], a check that reads broader than it is, is worse than an admitted hole; *"style fields are validated"* is the wrong inference for a future reader to draw.
+- **It collides with AC4 and the story must not discover that at implementation.** If a style field containing `{{ }}` no longer loads, **AC4's behavioural subject (two data sets → byte-identical output) becomes unconstructible for that template.** AC4 is **kept** — it proves that no style field varies with data by **any** route, which the rejection does not prove — but its subject must be a template **without** placeholders in style fields. Two ACs, two properties, one newly unbuildable as drafted.
+
+**The asymmetry this avoids.** Under the recommended arm we would reject a literal `visibleIf` ([[D-3.5.1]]) while silently swallowing an attempted conditional colour — **a distinction with no principle behind it**, which the story would then owe an explanation for. Both rulings now reject the same thing: an author's statement that could never do what they meant.
+
+**How we'd know it was wrong.** A legitimate style value containing `{{`. None exists; if one is found it returns to the lead rather than being resolved by weakening the check.
+
+---
+
+### D-3.6.1 (advance notice) — `SeverityError` is DECLARED and never CONSTRUCTED, so AD-14's "Error aborts the render" half is architecturally unbuilt
+**Lead's ruling**, filed ahead of Story 3.6 so its brief carries it rather than discovering it.
+
+**The measurement.** `SeverityError` is declared at `folio/diagnostic.go:36`. **Nothing in the module constructs an error-severity `Diagnostic`.** Errors travel as plain Go errors, and [[D-2.8.3]]'s `Result` carries **warnings only**. Found by the Story 3.5 creator while establishing that 3.5 mints no code.
+
+**Why it matters more than a code count.** AD-14 defines a `Diagnostic` type with a severity axis whose **error half has never been exercised**. So Story 3.6 faces a design question, not a registry question: **either give `SeverityError` a first constructor, or label it honestly as unexercised.** What 3.6 must **not** do is mint codes onto a severity nothing produces — that would be [[D-000.9]]'s shape at the type level, a channel reported as covered because it is declared.
+
+**Consequences.** Added to [[D-3.6.0]]'s inventory as a **seventh** item, and it outranks several: it is the only one that could change 3.6's shape rather than its contents. [[D-000.63]] applies — this is recorded here, numbered, rather than left in a story file where a log-first re-grounding would never see it.
+
+**How we'd know it was wrong.** An error-severity `Diagnostic` turning up in the tree before 3.6 opens — which would mean some story minted one without the design question being answered.
+
+---
+
+### D-3.5.3 — AC9's compile-time anchor was NOT CONSTRUCTIBLE; the signature is pinned by set-equality to a test-owned literal
+**Lead's ruling**, correcting its own AC9 instruction. Confidence high.
+
+**The correction, self-reported.** The lead ruled AC9 must be *"a pre-phase-A signature that **cannot receive** page-derived state — a compile-time anchor rather than a comment."* **No type system forbids adding a parameter to a function.** The orchestrator's fallback — a distinct input type that page-derived state cannot inhabit — does not close it either: `pageCount` is an `int`, and nothing stops someone adding `pageCount int` to a struct or signature. **A mechanism was specified before it was established to be buildable — the third time this run** ([[D-3.1a.1]]'s scope, [[D-3.3.1]]'s re-point, now this), each the same failure: naming the mechanism before checking it exists. What shipped was, accordingly, a **comment**; the reviewer found no signature assertion anywhere.
+
+**Verdict.** In **`lint`**, using the `go/types` machinery landed at 3.3: **assert `computeVisibility`'s parameter type list equals a literal the test owns.** Not *"transitively cannot reach `pageCount`"* — a reachability analysis rots and answers a narrower question. Pinning the **whole signature** means **any** input growth reddens, page-derived or not, which is the real property: **this computation's inputs are closed.**
+
+**Why a literal, given [[D-3.1a.3]].** [[D-000.68]]'s discriminator: **pin when the set is permanent; state it relationally when the roadmap is scheduled to move it.** Nothing in Epics 4–6 grows visibility's inputs — AD-24 forbids row-level visibility outright — so growth **should** require deliberately editing a test that says these inputs are closed. **That edit is the point, not the hazard.**
+
+**The stronger arm, declined with its reason.** A genuine compiler fence needs page state to become a defined type in a package the visibility input cannot import. Constructible — but a refactor of the page-state representation to guard a change nothing schedules. If page state later moves behind a type for other reasons, upgrade this guard then.
+
+**The behavioural half was blind, for a specific reason.** `len(p.Runs) == 0` **cannot** discriminate, because content runs land on every page — it measures the wrong thing, not the right thing weakly. Proved: making header/footer page-dependent (`if pageNum == 1`) left `TestVisibilityIsConsistentAcrossPages` **green**. Replacement: **per-page element-id set identity** — for each page extract the set of element ids in its runs; assert the header/footer band's set is **identical across all pages**. That mutation then reddens. **Assert the sets, not a count.**
+
+**How we'd know it was wrong.** The literal needing an edit for a reason other than a deliberate input change.
+
+---
+
+### D-3.5.4 — AC4's property is unprovable today for EIGHT of TEN style fields, and that is a fact about the population
+**Lead's ruling**, replacing all three arms the orchestrator offered. Confidence high.
+
+**The measurement that dissolved the question.** Non-test references to each style field **outside `internal/template`**:
+
+| field | non-test consumers outside `internal/template` |
+|---|---|
+| `Background`, `Align`, `Valign`, `Border` | **only `folio_expr_validate.go`** — the rejection check itself. **Nothing renders them.** |
+| `Bold`, `Italic`, `Padding`, `AltRowBackground` | **zero references anywhere** |
+| `FontSize` | renders — but it is `Presence[geom.Length]`, so a `{{ }}` string **cannot inhabit it** |
+| `FontFamily` | **renders, and is a string** |
+
+The reviewer's finding was **not** that AC4's replacement subject was badly chosen: **almost no style field has a render consumer at all.** For eight of ten, *"style does not vary with data"* is true **because the field is inert**, and no assertion over them can have teeth until something reads them.
+
+**In simple terms.** We set out to prove no styling changes with the data. It turns out that for eight of the ten style settings, nothing in the program currently *reads* them — they load, they round-trip, and they reach no output. Proving they don't vary with data is like proving a disconnected switch doesn't turn on a light: true, and evidence of nothing. The honest move is to say which switches are wired, prove it for those, and **count** the rest.
+
+**Verdict — three parts.**
+1. **AC4's subject is `fontFamily`** — the one style field that is both a string and reaches output. Two data documents **differing only in a field the template does not bind** (`{"name":"X","overdue":true}` vs `…false`), so rendered text is identical and byte-identity is a meaningful claim. `overdue` is exactly what a conditional-formatting implementation would key on. **Red-proof:** make font selection depend on that value; it reddens.
+2. **State the bound as a measured population, not an apology:** *"Asserted for the style fields that reach output today — `fontFamily`, and `fontSize` by type-impossibility. The remaining eight have no render consumer, measured, so the property holds vacuously for them and cannot yet be asserted."* [[D-000.24]]'s labelled category used correctly — **not** *"we could not prove it"* but *"there is nothing here to prove yet, and here is the count."*
+3. **The remainder is owed by the stories that create the consumers.** Story **4.1**'s AC requires *"cell borders and cell padding are produced per the template's styling"*; Story **4.8** renders `altRowBackground`. **They inherit AC4's property for the other eight fields.**
+
+**A consequence that strengthens [[D-3.5.2]].** With the fields inert **and** unvalidated, an author's conditional-formatting attempt is **maximally silent** today — so [[D-3.5.2]]'s load error is the only signal available anywhere. That ruling does more work than it was credited with.
+
+**How we'd know it was wrong.** A style field gaining a render consumer without AC4's population statement being updated.
+
+---
+
+### D-3.5.5 — The style-field list is derived from the SCHEMA; and the same rule gives the OPPOSITE instrument from D-3.5.3
+**Lead's ruling.** Confidence high.
+
+**The defect.** [[D-3.5.2]]'s rejection enumerates style fields from a **hand-written list** at `folio_expr_validate.go:205-226` — anchored to something the code can move. Measured consequence: **`table.altRowBackground` accepts a `{{ }}` placeholder at load**, while the comment claims *"every style field a document can declare TODAY is checked."* A [[D-000.46]] false map **inside the check [[D-3.5.2]] just ruled**, found one story later.
+
+**Verdict.** **Enumerate the string-typed style fields from the schema** — `template.Style`, `Border`, and the table's style struct — and assert the check's covered set **equals** it. **Not a literal.**
+
+**Why not a literal, when [[D-3.5.3]] one entry above mandates exactly that.** [[D-000.68]]'s discriminator decides, and decides oppositely: **the style-field set is scheduled to grow** (Epic 4 tables, 4.8's alternating rows), so it is **relational**, derived from the struct. AC9's signature is permanent, so it gets a literal.
+
+> **Same rule, opposite instruments, and the roadmap is what decides.**
+
+Keep this pair together in the record: read separately they look inconsistent; read together they are the clearest available illustration of the discriminator.
+
+**How we'd know it was wrong.** A style field added to the schema without the rejection covering it — which the schema-derived assertion makes impossible rather than merely unlikely.
+
+---
+
+### D-3.5.6 — Matrix override DECLINED for Story 3.5: bytes MOVING is not bytes DIVERGING
+**Lead's ruling**, on an orchestrator question. Confidence high.
+
+**Verdict.** Story 3.5 does **not** get a [[D-000.4]] determinism override, despite moving render-path bytes.
+
+**Grounds.** D-000.4's criterion is *"a new **source of cross-target divergence** — float arithmetic, a vendor call, a compressor, a new dependency — **not merely** because it records a new golden."* Building `pdfImages` from visible runs is **integer and set work**: no float, no vendor call, no compressor, no dependency. [[D-2.5]]'s override was declined on exactly this distinction.
+
+**In simple terms.** The override exists for changes that could make two machines disagree. This change makes every machine produce a *different but identical* answer. Those are not the same risk, and conflating them would qualify nearly every story — quietly undoing the wall-clock trade the owner made deliberately at run start.
+
+**The condition that makes deferral safe.** The golden statement must be a **measured zero, not an expectation**: *"N golden fixtures contain an element with `visibleIf` set and an image; N = 0, measured by `<command>`"*, with the command recorded. The orchestrator's reasoning that `visibleIf` was inert until this story is almost certainly right — and *"I expect none"* versus *"none, counted"* are the two readings [[D-000.9]] exists to separate.
+
+**A correction on how a related step must be logged.** If 3.5 registers a **new matrix document** for the hidden-image subject — which it probably should — then **[[D-000.54]] applies: its native leg runs at registration, host target only, before the story reaches `done`.** That is a **sequencing** requirement and **must not be logged as a D-000.4 override**; doing so spends the owner's trade to buy something the override was never for.
+
+**How we'd know it was wrong.** An Epic 3 boundary matrix failure bisecting to 3.5.

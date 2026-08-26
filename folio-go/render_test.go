@@ -584,6 +584,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessHiddenImageEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(hiddenImageTestTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(`{"flag": false}`), nil, testFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	os.Exit(m.Run())
 }
 
@@ -597,6 +610,72 @@ func TestMain(m *testing.M) {
 // (1, 5, 50 pages) are verified behaviourally in the ordinary suite
 // (page_count_matrix_test.go) without a separate matrix leg.
 const subprocessPageCount20EnvVar = "FOLIO_SUBPROCESS_RENDER_PAGECOUNT20"
+
+// subprocessHiddenImageEnvVar is Story 3.5's TENTH selector, rendering
+// hiddenImageTestTemplateJSON in a FRESH process. Story 3.5 finisher
+// review, Finding 1 (Blocker): a hidden image element's `/XObject`
+// stayed embedded in the PDF even though pagemodel.Page.Images
+// correctly showed zero images (AC1/AC2) — assetKeys/pdfImages were
+// built from every image run BEFORE visibility was consulted. AD-21
+// binds every feature to ship its cross-target golden, and this is the
+// first document able to falsify the fix in the direction that matters:
+// its rendered output must NOT contain an image XObject on any target,
+// not merely on the host this story was fixed and measured on
+// (matrix_test.go's requireNoImageXObject is this document's
+// extraGuard). A fresh process, for the same reason multi-page and
+// page-count-20 needed one: a golden recorded from one process pins
+// whatever that process happened to do.
+const subprocessHiddenImageEnvVar = "FOLIO_SUBPROCESS_RENDER_HIDDENIMAGE"
+
+// hiddenImageTestTemplateJSON reuses imageTestTemplateJSON's own
+// non-square 3x2 PNG asset (imageTestAssetKey) on an image element
+// carrying `visibleIf`, plus an always-visible text sibling on the same
+// face fontTestTemplateJSON already exercises ("body" -> Roboto-
+// Regular) — so the rendered output has real, observable content
+// (a FontFile2) alongside the asset that must NOT appear.
+const hiddenImageTestTemplateJSON = `{
+  "assets": {
+    "` + imageTestAssetKey + `": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAGElEQVR42mL6z8DAAMZMEOo/AwMg",
+        "AAD//zwUBf/NjsW5AAAAAElFTkSuQmCC"
+      ],
+      "mediaType": "image/png"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "image", "asset": "` + imageTestAssetKey + `", "x": 0, "y": 0, "width": 100, "height": 60, "visibleIf": "flag"},
+        {"id": "e2", "type": "text", "x": 0, "y": 100, "width": 200, "height": 20, "value": "Always visible", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
 
 // writeToStdoutOrDie writes b to stdout in full and exits 0, or reports a
 // short/failed write and exits 1. A short write here would otherwise be

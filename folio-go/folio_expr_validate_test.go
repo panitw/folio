@@ -2,6 +2,7 @@ package folio
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -392,5 +393,395 @@ func TestParseTemplateAcceptsCanonicalGolden(t *testing.T) {
 	}
 	if !got.HasFooterFormat || got.FooterFormat != "#,##0.00" {
 		t.Errorf("expected footerFormat to default to #,##0.00, got %+v", got)
+	}
+}
+
+// TestParseTemplateRejectsLiteralVisibleIf is Story 3.5's AC6/
+// DECISION-2: a bare literal condition can NEVER resolve to a
+// boolean — the grammar has no boolean literal — so it is rejected at
+// LOAD, closing the asymmetry with if()'s own condition slot
+// (argNotLiteral). Both a number literal and a string literal are
+// checked, matching the story's own two named subjects.
+func TestParseTemplateRejectsLiteralVisibleIf(t *testing.T) {
+	tplJSON := func(literal string) string {
+		return `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "static text", "visibleIf": ` + literal + `, "style": {"fontFamily": "body", "fontSize": 14}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	}
+
+	cases := []struct {
+		name    string
+		literal string // JSON string VALUE for visibleIf: e.g. "\"42\"" encodes the bare expression 42
+	}{
+		{name: "number literal", literal: `"42"`},
+		{name: "string literal", literal: `"\"hello\""`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := ParseTemplate([]byte(tplJSON(c.literal)))
+			if err == nil {
+				t.Fatalf("expected a load error: a bare literal condition can never be a boolean")
+			}
+			if !strings.Contains(err.Error(), "e1") {
+				t.Errorf("error must name the element id, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), "literal") {
+				t.Errorf("error must identify the literal as the defect, got: %v", err)
+			}
+		})
+	}
+}
+
+// TestIfConditionStillRejectsLiteralAfterVisibleIfSharesThePredicate is
+// AC6's red-proof second half: if()'s OWN literal-condition rejection
+// must still fire after checkVisibleIfExpression starts sharing
+// expr.IsLiteralExpr with it — proving the hoisted predicate serves
+// BOTH call sites rather than one having quietly regressed.
+func TestIfConditionStillRejectsLiteralAfterVisibleIfSharesThePredicate(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "{{if(42, \"a\", \"b\")}}", "style": {"fontFamily": "body", "fontSize": 14}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	_, err := ParseTemplate([]byte(tplJSON))
+	if err == nil {
+		t.Fatal("expected a load error: if()'s condition slot must still reject a bare literal")
+	}
+	if !strings.Contains(err.Error(), "must not be a literal") {
+		t.Errorf("error must carry if()'s own argNotLiteral wording, got: %v", err)
+	}
+}
+
+// TestParseTemplateRejectsVisibleIfOnTableColumn is AC3: a load error
+// naming the column id, closing the live spec/code divergence measured
+// at this story's creation (a column-level visibleIf loaded clean,
+// absorbed opaquely into Column.Extra).
+func TestParseTemplateRejectsVisibleIfOnTableColumn(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e2", "type": "table", "x": 0, "y": 0, "bind": "transactions[]", "headerHeight": 14,
+          "columns": [
+            {"id": "e3", "label": "Amount", "width": 80, "bind": "{{transaction.amount}}", "visibleIf": "transaction.isVisible"}
+          ]}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	_, err := ParseTemplate([]byte(tplJSON))
+	if err == nil {
+		t.Fatal("expected a load error: visibility applies to elements only, never a table column")
+	}
+	if !strings.Contains(err.Error(), "e3") {
+		t.Errorf("error must name the offending column id, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "elements only") {
+		t.Errorf("error should state the reason (visibility applies to elements only), got: %v", err)
+	}
+}
+
+// TestParseTemplateRejectsPlaceholderInStyleField is DECISION-1
+// (ruled): a "{{ }}" placeholder inside a style string field is a
+// located load error, naming the element and the field — NOT style-
+// field validation in general (hex colours remain unvalidated).
+func TestParseTemplateRejectsPlaceholderInStyleField(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "static text",
+          "style": {"fontFamily": "body", "fontSize": 14, "background": "{{if(customer.overdue, \"#FF0000\", \"#00FF00\")}}"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	_, err := ParseTemplate([]byte(tplJSON))
+	if err == nil {
+		t.Fatal("expected a load error: conditional/data-driven styling is not supported")
+	}
+	if !strings.Contains(err.Error(), "e1") {
+		t.Errorf("error must name the element id, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "background") {
+		t.Errorf("error must name the offending style field, got: %v", err)
+	}
+}
+
+// TestParseTemplateAcceptsOrdinaryStyleValues is the companion negative
+// case: ordinary style values with no placeholder — including a plain
+// literal hex colour, which this check does NOT validate — must still
+// load clean.
+func TestParseTemplateAcceptsOrdinaryStyleValues(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "static text",
+          "style": {"fontFamily": "body", "fontSize": 14, "background": "not-a-real-colour-but-unvalidated", "align": "left"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	if _, err := ParseTemplate([]byte(tplJSON)); err != nil {
+		t.Fatalf("style fields remain otherwise unvalidated; expected no error, got: %v", err)
+	}
+}
+
+// TestParseTemplateRejectsPlaceholderInAltRowBackground is Story 3.5
+// finisher review, Finding 4 (Major): D-3.5.2's ruling covers "any
+// style string field", not "any style.* string field", and
+// table.altRowBackground (FR28, folio-format.md's ONLY colour field
+// outside element.style) loaded clean before this fix — the exact
+// worked example D-3.5.2 itself gave ("a colour as 'whatever
+// if(overdue, red, black) says'").
+func TestParseTemplateRejectsPlaceholderInAltRowBackground(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e2", "type": "table", "x": 0, "y": 0, "bind": "transactions[]", "headerHeight": 14,
+          "altRowBackground": "{{if(customer.overdue, \"#FF0000\", \"#00FF00\")}}",
+          "columns": [
+            {"id": "e3", "label": "Amount", "width": 80, "bind": "{{transaction.amount}}"}
+          ]}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	_, err := ParseTemplate([]byte(tplJSON))
+	if err == nil {
+		t.Fatal("expected a load error: table.altRowBackground must not carry a \"{{ }}\" placeholder, same fence as element.style")
+	}
+	if !strings.Contains(err.Error(), "e2") {
+		t.Errorf("error must name the offending element id, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "altRowBackground") {
+		t.Errorf("error must name the offending field, got: %v", err)
+	}
+}
+
+// TestParseTemplateAcceptsOrdinaryAltRowBackground is the companion
+// negative case: an ordinary altRowBackground value with no
+// placeholder — including a plain literal hex colour, which this check
+// does NOT validate — must still load clean.
+func TestParseTemplateAcceptsOrdinaryAltRowBackground(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e2", "type": "table", "x": 0, "y": 0, "bind": "transactions[]", "headerHeight": 14,
+          "altRowBackground": "#EFEFEF",
+          "columns": [
+            {"id": "e3", "label": "Amount", "width": 80, "bind": "{{transaction.amount}}"}
+          ]}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	if _, err := ParseTemplate([]byte(tplJSON)); err != nil {
+		t.Fatalf("altRowBackground remains otherwise unvalidated; expected no error, got: %v", err)
+	}
+}
+
+// styleStringFieldExclusions is the ONLY hand-written list this
+// completeness test carries, and it is an EXCLUSION list, not an
+// inclusion list (Story 3.5 finisher review, Finding 4 / Major,
+// D-000.67): every Presence[string]/Presence[[]string] field on
+// template.Style, template.Border, template.TableExt and
+// template.Column is a CANDIDATE by construction (reflectStyleStringFields
+// below finds it automatically); a field is excluded from
+// checkStyleHasNoPlaceholders/table.altRowBackground's coverage only by
+// being named HERE, with a reason — so a schema field that is neither
+// checked nor excluded fails the test loudly instead of silently
+// passing uncovered, which is exactly how table.altRowBackground went
+// unchecked before this fix.
+var styleStringFieldExclusions = map[string]string{
+	"TableExt.As": "a row alias identifier (the table's own {{ }}-free binding namespace), " +
+		"not an appearance property — rejecting a placeholder here under \"conditional/data-driven " +
+		"styling is not supported\" would be the wrong message for the wrong reason",
+	"Column.Align": "governed by its own closed-set check (parse_bands.go: must be one of " +
+		"left/center/right) — a placeholder value is already rejected, just not under this message",
+	"Column.Footer":   "a closed enum (\"count\"/\"sum\"/\"avg\"), not a colour or appearance value",
+	"Column.FooterOf": "a column-id reference, not an appearance property",
+	"Column.FooterFormat": "a number/date format pattern (Story 3.4), not a colour — \"conditional " +
+		"formatting\" in AC4's sense is about appearance, not about which locale pattern a footer uses",
+}
+
+// reflectStyleStringFields walks structType (a struct value, not a
+// pointer) and returns "StructName.FieldName" for every exported field
+// whose declared type is the shape Presence[string] or
+// Presence[[]string] — detected STRUCTURALLY (a struct with bool Set,
+// bool Null and a Value field of the right kind), not by matching the
+// generic instantiation's printed name, so it is robust to Presence's
+// own internals moving. "Extra" (every one of these four structs' own
+// opaque-passthrough field) is skipped by name, the same way
+// extraFields' own callers already treat it as not a declared field.
+func reflectStyleStringFields(structName string, v any) []string {
+	t := reflect.TypeOf(v)
+	var found []string
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() || f.Name == "Extra" {
+			continue
+		}
+		ft := f.Type
+		if ft.Kind() != reflect.Struct {
+			continue
+		}
+		setF, ok1 := ft.FieldByName("Set")
+		nullF, ok2 := ft.FieldByName("Null")
+		valF, ok3 := ft.FieldByName("Value")
+		if !ok1 || !ok2 || !ok3 || setF.Type.Kind() != reflect.Bool || nullF.Type.Kind() != reflect.Bool {
+			continue // not a Presence[T] field at all
+		}
+		isString := valF.Type.Kind() == reflect.String
+		isStringSlice := valF.Type.Kind() == reflect.Slice && valF.Type.Elem().Kind() == reflect.String
+		if !isString && !isStringSlice {
+			continue // e.g. Presence[bool], Presence[geom.Length], Presence[Border]
+		}
+		found = append(found, structName+"."+f.Name)
+	}
+	return found
+}
+
+// TestStyleStringFieldPopulationMatchesSchema is Finding 4's actual
+// fix to D-000.67: it DERIVES the population of string-valued
+// style/appearance-shaped fields from the schema (template.Style,
+// template.Border, template.TableExt, template.Column) by reflection,
+// subtracts styleStringFieldExclusions (each named with a reason), and
+// asserts what remains is EXACTLY the set checkStyleHasNoPlaceholders
+// and the table.altRowBackground call in validateAndDeriveExpressions
+// together cover. An ELEVENTH Presence[string] field added to any of
+// the four structs in the future is neither checked nor excluded by
+// name, so it fails this test loudly — the schema is the source of
+// truth, never a hand-written inclusion list.
+func TestStyleStringFieldPopulationMatchesSchema(t *testing.T) {
+	var all []string
+	all = append(all, reflectStyleStringFields("Style", template.Style{})...)
+	all = append(all, reflectStyleStringFields("Border", template.Border{})...)
+	all = append(all, reflectStyleStringFields("TableExt", template.TableExt{})...)
+	all = append(all, reflectStyleStringFields("Column", template.Column{})...)
+
+	if len(all) == 0 {
+		t.Fatal("vacuity guard: reflection found zero Presence[string]/Presence[[]string] fields across all four structs — the walk itself is broken")
+	}
+
+	wantChecked := map[string]bool{
+		"Style.Align":               true,
+		"Style.Background":          true,
+		"Style.FontFamily":          true,
+		"Style.Valign":              true,
+		"Border.Color":              true,
+		"Border.Edges":              true,
+		"TableExt.AltRowBackground": true,
+	}
+
+	var uncategorized []string
+	for _, field := range all {
+		checked := wantChecked[field]
+		_, excluded := styleStringFieldExclusions[field]
+		if checked && excluded {
+			t.Errorf("%s is both checked AND excluded — pick one", field)
+			continue
+		}
+		if !checked && !excluded {
+			uncategorized = append(uncategorized, field)
+		}
+	}
+	if len(uncategorized) > 0 {
+		t.Fatalf("schema field(s) %v are neither checked by checkStyleHasNoPlaceholders/table.altRowBackground "+
+			"nor named in styleStringFieldExclusions with a reason — the sweep missed them (D-000.67)", uncategorized)
+	}
+	for field := range wantChecked {
+		found := false
+		for _, f := range all {
+			if f == field {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("wantChecked names %s but reflection over the schema did not find it — the checked-field list has drifted ahead of the schema", field)
+		}
 	}
 }

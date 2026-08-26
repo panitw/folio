@@ -31,6 +31,7 @@ import (
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/layout"
 	"github.com/panitw/folio/folio-go/internal/pagemodel"
+	"github.com/panitw/folio/folio-go/internal/template"
 )
 
 // contentColumnItems groups CONTENT-BAND-ONLY runs and images into
@@ -48,7 +49,24 @@ import (
 // not a second, divergent pagination, only the same deterministic
 // function evaluated on the same inputs before its result is needed a
 // second time with global refs.
-func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource) []layout.ColumnItem {
+// visible (Story 3.5, R3/AC7) filters ONLY imageRuns here: contentRuns
+// has already had every hidden text element's runs excluded upstream,
+// by collectBandTextRuns, strictly after that element's own validation
+// ran (render_visibility.go). imageRuns, by contrast, is DELIBERATELY
+// unfiltered up to this point (collectImageRuns' own doc comment) so
+// that every image element — hidden or not — still goes through
+// buildPageModel's asset-resolution pass; visible is consulted here,
+// at content-band PAGE-MODEL construction, which is the first point
+// after that pass where a hidden image's placement would otherwise be
+// built.
+//
+// Table/line/rect elements are not among contentRuns/imageRuns at all
+// today, so their visibility verdicts (computeVisibility computes one
+// for every kind) are not consulted here either — see
+// computeVisibility's own doc comment (Story 3.5 finisher review,
+// Finding 6 / Minor) before wiring one of those kinds' placement in a
+// future story: THAT story owns consulting isVisible for its own kind.
+func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource, visible visibilityVerdicts) []layout.ColumnItem {
 	var items []layout.ColumnItem
 	for i := 0; i < len(contentRuns); i++ {
 		j := i
@@ -68,6 +86,14 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource)
 	}
 	for i, r := range imageRuns {
 		if r.band != contentBandIndex {
+			continue
+		}
+		if !isVisible(visible, template.ElementID(r.elementID)) {
+			// AD-24/R3: absent from the page model entirely — no
+			// ColumnItem, no gap-filling substitute. r's own
+			// validation (width/height/asset presence, and asset
+			// resolution downstream of collectImageRuns) already ran
+			// unconditionally, regardless of this verdict.
 			continue
 		}
 		items = append(items, layout.ColumnItem{

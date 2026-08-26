@@ -330,6 +330,22 @@ type imageRunSource struct {
 // resolveImagePlacement's job (renderDocument), called once the union
 // of images the whole document uses is known, mirroring collectTextRuns/
 // resolveFace's split.
+//
+// collectImageRuns walks EVERY image element, visible or not (Story
+// 3.5, R2/AC7): a missing width/height box or a missing asset field is
+// a located error regardless of visibility, and — every image run this
+// returns still goes through buildPageModel's later, deduplicated
+// asset-resolution pass (asset key existence, decode) BEFORE this
+// story's visibility verdicts are consulted at all, because that pass
+// is keyed by DISTINCT asset key across the whole imageRuns slice, not
+// by element. Filtering a hidden image out HERE, before that pass
+// runs, would mean a hidden image naming an asset key absent from the
+// document's assets map loads and renders successfully instead of
+// erroring (AC7 subject (b)) — exactly the render.go:601-616 trap
+// (Story 2.5, QA Finding 5, Major) applied to images instead of text.
+// Visibility is instead consulted at PAGE-MODEL CONSTRUCTION —
+// contentColumnItems and paginateDocument (below) — strictly after
+// every validation an image element undergoes, never here.
 func collectImageRuns(doc *Template) ([]imageRunSource, error) {
 	bands, err := documentBands(doc)
 	if err != nil {
@@ -435,7 +451,10 @@ func collectTextRuns(doc *Template, data, params bind.Value, fs FontSet, cache *
 		// shaped_fixture_test.go) that assert on run geometry, not on
 		// overflow. renderDocument (below) is the one path that
 		// actually surfaces Story 2.8's Diagnostics through Render.
-		bandRuns, _, _, berr := collectBandTextRuns(doc, bands, bandIndex, data, params, fs, cache, passthroughResolver)
+		// visible=nil: this legacy walker never computes visibility
+		// (isVisible's nil-map case treats every element as visible),
+		// byte-identical to its own pre-3.5 behaviour.
+		bandRuns, _, _, berr := collectBandTextRuns(doc, bands, bandIndex, data, params, fs, cache, passthroughResolver, nil)
 		if berr != nil {
 			return nil, berr
 		}
@@ -540,6 +559,19 @@ func diagnosticFromCaveat(elementID string, c expr.Caveat) Diagnostic {
 // {{page}} occurrence resolved in this call — indices LOCAL to the
 // returned runs slice; the caller shifts them once the final combined
 // run order is known.
+// visible carries Story 3.5's pre-computed per-element visibility
+// verdicts (nil for collectTextRuns' legacy, pre-3.5 callers — isVisible
+// treats a nil map as "everything visible"). R2/AC7: every validation
+// call in this loop (bind.BindTextSpans' path resolution, fontChain,
+// shapeSegments' coverage resolution) runs UNCONDITIONALLY, whether the
+// element is visible or not — render.go:601-616 (Story 2.5, QA Finding
+// 5, Major) is the shipped precedent for what happens when a skip is
+// placed before validation instead of after it: "the SAME broken
+// template passing or failing depending on which report it was
+// handed." Only the OUTPUT this function produces for a hidden element
+// — its Diagnostics (AC8) and its textRunSource entries (AC1/AC2, R3)
+// — is suppressed, and only after every validation call above it in
+// this same loop iteration has already run and succeeded.
 func collectBandTextRuns(
 	doc *Template,
 	bands []bandWithOrigin,
@@ -548,6 +580,7 @@ func collectBandTextRuns(
 	fs FontSet,
 	cache *fontCache,
 	resolve elementTokenResolver,
+	visible visibilityVerdicts,
 ) ([]textRunSource, []pendingPageSlot, []Diagnostic, error) {
 	b := bands[bandIndex]
 	// fc (Story 3.4, R1) is the document's formatting context —
@@ -575,6 +608,11 @@ func collectBandTextRuns(
 		if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
 			continue
 		}
+		// Story 3.5, AC8: elVisible decides ONLY whether this
+		// element's OWN diagnostics/output are emitted below — it
+		// gates no validation call in this loop (R2/AC7).
+		elVisible := isVisible(visible, el.ID)
+
 		boundText, subs, caveats, berr := bind.BindTextSpans(el.Value.Value, data, params, fc, string(el.ID))
 		if berr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: %w", berr)
@@ -587,8 +625,14 @@ func collectBandTextRuns(
 		// declaration order, so appending here in caveat order (the
 		// order Resolve encountered them) keeps the whole diags slice
 		// in the one required order without any separate sort.
-		for _, c := range caveats {
-			diags = append(diags, diagnosticFromCaveat(string(el.ID), c))
+		//
+		// AC8: a hidden element emits NO diagnostic of its own,
+		// including a caveat-derived one — gated here, never by
+		// skipping the Caveat-producing evaluation above.
+		if elVisible {
+			for _, c := range caveats {
+				diags = append(diags, diagnosticFromCaveat(string(el.ID), c))
+			}
 		}
 
 		resolvedText, resolvedSubs, slots, rerr := resolve(string(el.ID), boundText, subs)
@@ -634,6 +678,21 @@ func collectBandTextRuns(
 		segs, serr := shapeSegments(chain, boundText, fs, cache)
 		if serr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
+		}
+		if !elVisible {
+			// AD-24: absent from the page model entirely. Every
+			// validation above this line has already run and
+			// succeeded for THIS element (bind.BindTextSpans' path
+			// resolution, fontChain, shapeSegments' coverage
+			// resolution) — R2/AC7 — so a hidden element with a
+			// broken font chain or an uncoverable rune still fails
+			// the render exactly as a visible one would. Everything
+			// below this line only computes OUTPUT (packed lines, the
+			// clip-width Diagnostic, positioned glyphs) for drawing,
+			// which a hidden element never needs and must never
+			// produce (AC1/AC2/AC8, R3: no run, no gap-filling
+			// substitute, no diagnostic).
+			continue
 		}
 		totalRunes := len([]rune(boundText))
 
@@ -1044,6 +1103,25 @@ func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baseline
 // KNOWINGLY rather than as an unnoticed by-product of where a phase
 // boundary happens to fall — not so a caller can depend on it.
 func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, []Diagnostic, error) {
+	pages, embedded, pdfImages, diags, err := buildPageModel(t, data, params, fs)
+	if err != nil {
+		return nil, nil, err
+	}
+	b, serr := pdf.SerializeTextDocument(pages, embedded, pdfImages)
+	if serr != nil {
+		return nil, nil, serr
+	}
+	return b, diags, nil
+}
+
+// buildPageModel is renderDocument's body up to, but not including,
+// PDF serialization — split out so a package-internal test can assert
+// directly on pagemodel.Page.Runs/Images (AC1, Story 3.5) rather than
+// decoding serialized PDF bytes to recover the same count. This is the
+// SAME derivation renderDocument uses, not a second one (D-000.42):
+// renderDocument (above) is now a two-line wrapper over this function
+// plus pdf.SerializeTextDocument.
+func buildPageModel(t *Template, data, params bind.Value, fs FontSet) ([]pagemodel.Page, map[string]pdf.EmbeddedFace, map[string]pdf.ImageXObject, []Diagnostic, error) {
 	// cache is shared between collection (coverage checks, AC4) and
 	// embedding (subsetting) below, so a face is ever parsed at most
 	// once per render regardless of how many chain members or runes
@@ -1052,22 +1130,33 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 
 	bands, bandsErr := documentBands(t)
 	if bandsErr != nil {
-		return nil, nil, bandsErr
+		return nil, nil, nil, nil, bandsErr
 	}
 	// Story 3.1, AC5 / D-3.1.1: checked here, before any font work
 	// (finding 8) — a not-a-list collection bind or a colliding row
 	// alias is a located error, never a plausible-looking document
 	// with the table silently missing.
 	if terr := checkTableBindings(bands, data); terr != nil {
-		return nil, nil, terr
+		return nil, nil, nil, nil, terr
 	}
 	geometry, gerr := pageGeometryOf(t)
 	if gerr != nil {
-		return nil, nil, gerr
+		return nil, nil, nil, nil, gerr
 	}
+
+	// Story 3.5 (R1/AC9): every element's visibility verdict, decided
+	// ONCE, before any collection pass, from the data/params scope
+	// alone — see computeVisibility's own doc comment (render_visibility.go)
+	// for why this must happen here and not per-band or per-phase.
+	fc := expr.NewFormatContext(t.doc.Locale, t.doc.UTCOffset)
+	visible, verr := computeVisibility(bands, data, params, fc)
+	if verr != nil {
+		return nil, nil, nil, nil, verr
+	}
+
 	imageRuns, ierr := collectImageRuns(t)
 	if ierr != nil {
-		return nil, nil, ierr
+		return nil, nil, nil, nil, ierr
 	}
 
 	// Story 2.7, PHASE A: the content band ALONE, under D-2.7.3's fence
@@ -1078,13 +1167,13 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 	// learn Y here, BEFORE the page-header/page-footer text exists,
 	// without becoming pass two's job: this is still pass one, just
 	// reordered within it.
-	contentRuns, _, contentDiags, cterr := collectBandTextRuns(t, bands, contentBandIndex, data, params, fs, cache, contentBandResolver)
+	contentRuns, _, contentDiags, cterr := collectBandTextRuns(t, bands, contentBandIndex, data, params, fs, cache, contentBandResolver, visible)
 	if cterr != nil {
-		return nil, nil, cterr
+		return nil, nil, nil, nil, cterr
 	}
-	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns))
+	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns, visible))
 	if plerr != nil {
-		return nil, nil, fmt.Errorf("folio: Render: %w", plerr)
+		return nil, nil, nil, nil, fmt.Errorf("folio: Render: %w", plerr)
 	}
 	pageCount := len(contentPlan.Pages)
 
@@ -1096,13 +1185,13 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 	// and therefore the identical CID allocation order
 	// (buildShapedPDFRuns is order-sensitive by design, AC7/D-2.3-Q1),
 	// this story's own change produced for every pre-existing document.
-	headerRuns, headerPending, headerDiags, herr := collectBandTextRuns(t, bands, pageHeaderBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
+	headerRuns, headerPending, headerDiags, herr := collectBandTextRuns(t, bands, pageHeaderBandIndex, data, params, fs, cache, headerFooterResolver(pageCount), visible)
 	if herr != nil {
-		return nil, nil, herr
+		return nil, nil, nil, nil, herr
 	}
-	footerRuns, footerPending, footerDiags, ferr := collectBandTextRuns(t, bands, pageFooterBandIndex, data, params, fs, cache, headerFooterResolver(pageCount))
+	footerRuns, footerPending, footerDiags, ferr := collectBandTextRuns(t, bands, pageFooterBandIndex, data, params, fs, cache, headerFooterResolver(pageCount), visible)
 	if ferr != nil {
-		return nil, nil, ferr
+		return nil, nil, nil, nil, ferr
 	}
 
 	// Story 2.8, D-2.8.6: Result.Diagnostics is DOCUMENT ORDER — band
@@ -1177,13 +1266,13 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 	for _, name := range faceNames {
 		font, ferr := cache.get(name, fs)
 		if ferr != nil {
-			return nil, nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet: %w", name, ferr)
+			return nil, nil, nil, nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet: %w", name, ferr)
 		}
 		// ONE subsetting call per font per document (AC9), over the
 		// union of shaped glyph ids collected above.
 		sub, serr := font.Subset(glyphsByFace[name])
 		if serr != nil {
-			return nil, nil, fmt.Errorf("folio: Render: %w", serr)
+			return nil, nil, nil, nil, fmt.Errorf("folio: Render: %w", serr)
 		}
 		subsets[name] = sub
 		metrics := font.Metrics()
@@ -1235,20 +1324,47 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 		firstElementIDByAssetKey[r.assetKey] = r.elementID
 	}
 	slices.Sort(assetKeys)
+	// visibleAssetKeys (Story 3.5 finisher review, Blocker 1): the set of
+	// asset keys reached by at least one VISIBLE image run. assetKeys
+	// itself stays derived from EVERY image run, hidden or not — every
+	// asset is still resolved and validated below (asset presence,
+	// DecodeAssetBytes, DecodeImageForRender), unconditionally, because
+	// AC7(b) requires a hidden image's broken asset to still error
+	// exactly as it would while visible (mutation M2 reddens if this
+	// validation is skipped for a hidden run). What must NOT happen
+	// unconditionally is EMBEDDING: an asset reached only by hidden runs
+	// must not enter pdfImages, or the PDF still carries the /XObject for
+	// an element AC1/AC2 say contributes zero entries to the page model.
+	visibleAssetKeys := make(map[string]bool, len(imageRuns))
+	for _, r := range imageRuns {
+		if isVisible(visible, template.ElementID(r.elementID)) {
+			visibleAssetKeys[r.assetKey] = true
+		}
+	}
 	for _, key := range assetKeys {
 		asset, ok := t.doc.Assets[key]
 		if !ok {
-			return nil, nil, fmt.Errorf("folio: Render: an image element references asset %q, which is not present in the document's assets map", key)
+			// Story 3.5 finisher review, Finding 7 (Minor): names the
+			// element too, not only the asset key — firstElementIDByAssetKey
+			// is already populated by the loop above, and AC7(b) itself
+			// requires this error "unchanged in text and in LOCATION"
+			// whether the referencing element is visible or hidden.
+			return nil, nil, nil, nil, fmt.Errorf("folio: Render: element %s: an image element references asset %q, which is not present in the document's assets map", firstElementIDByAssetKey[key], key)
 		}
 		raw, derr := template.DecodeAssetBytes(asset)
 		if derr != nil {
-			return nil, nil, fmt.Errorf("folio: Render: asset %q: %w", key, derr)
+			return nil, nil, nil, nil, fmt.Errorf("folio: Render: asset %q: %w", key, derr)
 		}
 		img, derr := template.DecodeImageForRender(asset.MediaType, raw, key, firstElementIDByAssetKey[key])
 		if derr != nil {
-			return nil, nil, fmt.Errorf("folio: Render: %w", derr)
+			return nil, nil, nil, nil, fmt.Errorf("folio: Render: %w", derr)
 		}
 		decodedByKey[key] = img
+		if !visibleAssetKeys[key] {
+			// Validated above like every other asset; not embedded,
+			// because nothing visible ever references it.
+			continue
+		}
 		pdfImages[key] = pdf.ImageXObject{
 			Width:            img.Width(),
 			Height:           img.Height(),
@@ -1278,7 +1394,7 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 
 	pdfRuns, cerr := buildShapedPDFRuns(runs, shapedRuns, clusterTexts, subsets, embedded, cache, fs)
 	if cerr != nil {
-		return nil, nil, cerr
+		return nil, nil, nil, nil, cerr
 	}
 
 	// Story 2.7, AC2's between-passes attachment point: buildShapedPDFRuns
@@ -1295,7 +1411,7 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 	for _, ps := range pending {
 		slot, serr := buildPageNumberSlot(pdfRuns[ps.runIndex].Face, pdfRuns[ps.digitTableIndex], ps)
 		if serr != nil {
-			return nil, nil, serr
+			return nil, nil, nil, nil, serr
 		}
 		pdfRuns[ps.runIndex].PageSlots = append(pdfRuns[ps.runIndex].PageSlots, *slot)
 	}
@@ -1311,16 +1427,12 @@ func renderDocument(t *Template, data, params bind.Value, fs FontSet) ([]byte, [
 	// into /Count. Only the middle produced one. Content taller than the
 	// content band was still DRAWN — below the bottom edge of the sheet,
 	// with no error and no warning.
-	pages, perr := paginateDocument(geometry, runs, imageRuns, pdfRuns, pdfPlacements)
+	pages, perr := paginateDocument(geometry, runs, imageRuns, pdfRuns, pdfPlacements, visible)
 	if perr != nil {
-		return nil, nil, perr
+		return nil, nil, nil, nil, perr
 	}
 
-	b, serr := pdf.SerializeTextDocument(pages, embedded, pdfImages)
-	if serr != nil {
-		return nil, nil, serr
-	}
-	return b, diags, nil
+	return pages, embedded, pdfImages, diags, nil
 }
 
 // contentBandIndex is documentBands' authored index for the content band —
@@ -1349,12 +1461,20 @@ const (
 // exactly the order the pre-2.6 code produced. That is what makes a document
 // which fits on one page emit the SAME BYTES as before this story, which
 // every one of the six existing goldens depends on.
+// visible (Story 3.5, R3/AC7) filters ONLY imageRuns here, for the same
+// reason contentColumnItems does (page_number.go's own doc comment):
+// runs (text) has already had every hidden element's runs excluded
+// upstream, strictly after that element's own validation ran, while
+// imageRuns stays deliberately unfiltered until this, the FINAL
+// page-model construction step, so every image element's asset
+// resolution already ran unconditionally before visible is consulted.
 func paginateDocument(
 	geometry layout.PageGeometry,
 	runs []textRunSource,
 	imageRuns []imageRunSource,
 	pdfRuns []pagemodel.TextRun,
 	pdfPlacements []pagemodel.ImagePlacement,
+	visible visibilityVerdicts,
 ) ([]pagemodel.Page, error) {
 	// The two repeated bands, and the content column's atomic items.
 	var header, footer layout.BandContent
@@ -1422,6 +1542,15 @@ func paginateDocument(
 	// already scaled the image to fit the box, so "does it fit on a page" is
 	// a question about the BOX the template declared (D-2.6.1, rule 4).
 	for i, r := range imageRuns {
+		if !isVisible(visible, template.ElementID(r.elementID)) {
+			// AD-24/R3: absent from the page model entirely. r's own
+			// validation (width/height/asset presence, and the
+			// deduplicated asset-resolution pass keyed by asset key,
+			// buildPageModel) already ran unconditionally regardless
+			// of this verdict — this is strictly the last step, page-
+			// model construction, and it never skips one.
+			continue
+		}
 		switch r.band {
 		case pageHeaderBandIndex:
 			header.Images = append(header.Images, layout.ImageRef(i))

@@ -181,7 +181,7 @@ Common to all five types:
 | `id` | `e` + the counter in lowercase base 36 — `e1`, `ea`, `e1z`. Opaque: never derived from position or content, never reused, never renumbered on save (AD-10). Every diagnostic that concerns an element carries this. |
 | `type` | `text` · `image` · `table` · `line` · `rect`. The set is closed (FR4); a sixth type is a load error. |
 | `x`, `y`, `width`, `height` | Band-relative position and size, in points. **A `table` declares `x` and `y` only** — see below. For a **text** element, `width` bounds the laid-out content: content wider than the declared `width` is clipped at the box's left/right edges, never reflowed and never dropped, and a diagnostic names the element (FR44, Story 2.8). `height` on a **text** element is **not** a clip bound — content taller than the declared `height` renders in full and no diagnostic is reported: no line-height key exists for an author to satisfy a vertical bound against, and no layout stage consults a text element's declared height. For an **image** element, `height` (together with `width`) is honoured: the image is scaled to fit the box and centred, never cropped and never stretched (AD-24), and is reserved for `valign` should a future story add one. |
-| `visibleIf` | *Optional.* An expression; the element is absent from the page model when it evaluates false, and its siblings do not move (FR20, AD-24). Not valid on a table column. |
+| `visibleIf` | *Optional.* A bare expression (no `{{ }}` wrapping — see Expressions, below); the element is absent from the page model when it evaluates false, and its siblings do not move (FR20, AD-24; Story 3.5). Evaluated during bind, before pagination — it can never depend on the page an element lands on (AD-4). Condition semantics are `if()`'s own, unchanged: `true`/`false` decide visibility directly; an explicit `null` result is silently `false` (no diagnostic); a path absent from the data is a located Error; a string or a number is a located Error (no truthiness). A **field that is absent, or present with the JSON value `null`** (`"visibleIf": null`) both mean "no condition declared" — the element is visible, and there is nothing to evaluate; this is a *different* null from the condition **resolving** to `null` at evaluation, which is what hides the element. A bare literal (e.g. `"visibleIf": "42"`) can never resolve to a boolean and is rejected at **load**, naming the element (Story 3.5, closing the same-shaped rejection `if()`'s own condition slot already has). **Not valid on a table column — rejected at load, naming the column id** (Story 3.5; row-level visibility would make pagination a function of data, which FR25 does not define). |
 | `style` | *Optional.* See below. |
 
 **`text`** — adds `"value"`, the string, which may contain `{{ }}` bindings.
@@ -222,7 +222,7 @@ designer and the engine disagree.
 | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
 | `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 3.2, this derivation runs at load time** (`folio.ParseTemplate`) and the derived value is resolved alongside the document, never written back into it — a document that omits `footerOf` still serializes without it. **As of Story 3.4, the aggregate itself computes** (`sum`/`count`/`avg`, Story 3.3) **and can be formatted** (`formatNumber`, Story 3.4) — but no table-rendering code path exists yet to place a computed, formatted footer value into an actual footer cell; the footer cell's actual value is not rendered until Story 4.5. Story 3.6 mints the two diagnostic codes this eventually becomes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape) — neither exists yet. |
 | `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer value. Legal with all three `footer` operations. |
-| `altRowBackground` | *Optional.* Colour for alternating rows (FR28). Alternation follows the row's index in the collection, so it does not reset per page. |
+| `altRowBackground` | *Optional.* Colour for alternating rows (FR28). Alternation follows the row's index in the collection, so it does not reset per page. Colour-by-data is out of scope for this field exactly as it is for `style`'s own colour fields (see "Colours are `#RRGGBB`" below): a `{{ }}` placeholder here is a **load error** naming the element, under the same rejection. |
 
 ### Expressions
 
@@ -298,7 +298,19 @@ Every field optional; omitted fields inherit the documented default.
 | `background` | absent — transparent |
 
 Colours are `#RRGGBB`. There is no colour-by-data: conditional *visibility* is in scope,
-conditional *formatting* is not.
+conditional *formatting* is not. As of Story 3.5, a `{{ }}` placeholder found inside any
+string-valued style field (`align`, `background`, `fontFamily`, `valign`, `border.color`,
+`border.edges`) — or in a table's own `altRowBackground` above, the format's one colour field
+outside `style` — is a **load error** naming the element and the field — a component's condition
+turns it on or off (`visibleIf`), it never changes how the component looks. This is not general
+style-field validation: a hex colour, an alignment token or a font-family name is still accepted
+with no format check at all — the rejection is narrowly "does this string contain a
+placeholder", nothing broader. The covered set of fields is derived from the document model at
+build time (every string-valued field of this shape on `Style`, `Border`, `TableExt` and
+`Column`, minus a short, individually-justified exclusion list for fields that are identifiers or
+closed enums rather than appearance properties — e.g. a column's own `align`, already governed by
+its closed left/center/right set) rather than maintained as a second, hand-written list that can
+silently drift from it.
 
 ## `assets`
 
