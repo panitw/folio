@@ -11545,3 +11545,185 @@ parallel and is not gated behind `folio-go`. The placement holds.
 editing the **spine** to match a table row they got wrong — the test enforces agreement, not
 correctness, and it names the table as authoritative precisely because agreement alone cannot tell
 which side is right.
+
+---
+
+### D-000.73 — An owner that is a story-that-may-never-exist is replaced by a mechanism that fires on the real condition, or the entry is retired on a measurement
+**Engineering lead ruling**, at the Epic 3 boundary gate, on DW-16. **The lead ruled the class, not the
+instance, because this is the third entry of the shape found in one day.**
+
+**The three instances.** [[DW-14]]'s owner was *"the Epic 2 boundary gate"* — **a spent event**; the
+gate ran and closed without re-owning it, which is how it survived a whole epic with nobody holding
+it. [[DW-13]]'s named the orchestrator but **no moment**, so it was never scheduled at all. DW-16's is
+*"the first non-PDF renderer story"* — **a story that does not exist**. Three different ways of
+writing an owner that cannot arrive, all of which read like an owner.
+
+**Verdict.** An owner that is a story-that-may-never-exist is replaced by **a mechanism that fires on
+the real condition**, or the entry is **retired on a measurement**. Not on the absence of a triggering
+story: *an entry nobody can trigger is not the same as an entry nobody needs.*
+
+**The premise correction that reframed it, and it was stale for three epics.** DW-16 states *"today
+there is exactly one [producer] (`buildShapedPDFRuns`), so option 1 is a local change."* True at Story
+2.5, **false since Story 2.7**. Two non-test construction sites, measured: `render.go:1954` (the
+allocator, minting both the base value at `:1917` and the synthetic one at `:1936`) and
+`page_number.go:520` (Story 2.7's page-number substitution). **Two groundings, a boundary gate, and
+the lead's own memory all carried the sentence forward unmeasured** — [[D-000.66]]'s shape in a
+sentence that announces itself as a dated measurement.
+
+**The closure is mild, which changes the pricing and not the answer.** The 2.7 site is a **copier, not
+an allocator**: `page_number.go:452-453` reads CIDs the allocator already minted. Under option 1 it
+needs a glyph id plus text, and digits are the one case where the text association is trivially known,
+so the change is mechanical. **Option 1 got slightly more expensive in the most benign way available.**
+
+**Stories 4.1 and 4.2 do not close the window** — both add *callers* of the existing shaper→pagemodel
+bridge, not construction sites. The gate assumed 4.1 was a deadline; there is more slack, not less.
+
+**The forcing function does not exist under any name — measured, not grepped.** The gate's audit
+grepped `epics.md` for PNG/SVG/HTML and found nothing, which establishes only that no story is *named*
+that. The lead read the two candidates: **Story 5.10**'s preview is a `pdfjs-dist` canvas consuming
+**the real PDF**; **Story 5.9**'s canvas paints pre-broken lines from engine metrics and never touches
+`TextRun.Glyphs`. Through Epic 6, **no consumer can be harmed by the defect.** Recorded as a
+**falsifier**, not a closure — it is conditional on the landing plan, not on the design.
+
+**The mechanism.** `TestGlyphIdentifierCensus`, with two pinned censuses:
+- **Producers, pinned at two.** A third construction site reddens — the event that re-prices DW-16,
+  made mechanical instead of narrated, since it already happened once unnoticed.
+- **Readers, pinned to `internal/pdf` and the copier's own package.** A read from anywhere else
+  reddens, **and that red IS the non-PDF-renderer forcing function arriving.**
+
+**In simple terms.** Every glyph carries a number. Usually it means "which picture in the font", which
+anyone with the font can draw. But when one picture stands for two different pieces of text in one
+document, PDF needs a second number for the second meaning so copy-paste works — and that number is
+not a font position at all, it is a row in a private PDF-only table. Both kinds live in the same field
+and nothing in the type tells them apart. Nobody is hurt today because only the PDF writer reads it.
+The entry sat open for three epics waiting for a reader that was never scheduled to exist. Now the
+build itself watches for one.
+
+**Deviation from the ruling, recorded because it was the orchestrator's and not the lead's.** The lead
+placed the guard at `folio-go/glyphid_arch_test.go`. The orchestrator placed it in **`lint`** instead:
+`lint` already loads the whole `folio-go` module through `packages.Load` with full type information
+(`floattyped.go:107-114`), while `folio-go` has no `go/types` path and cannot gain `x/tools` without
+breaking [[D-1.3.6]]'s invariant (b). [[D-3.7.9]]'s own lesson points the same way — AST-only scans
+over `folio-go/` are the weaker instrument *"wherever a lint-side equivalent is affordable"* — and
+`lint`'s CI job is the green, independently-scheduled one. **Substance unchanged; instrument
+strictly stronger.** Surfaced to the lead rather than left to be discovered.
+
+**Anchors** ([[D-000.68]]), both, and neither is the code's own spelling:
+- **Test-owned literals** for the two censuses. **Pinned, not relational**, deliberately: growth of
+  either set *should* require editing a file that says the set is closed. [[D-3.1a.3]] is relational
+  because its set is expected to move; this one is frozen by design.
+- **Field identity resolved through `go/types`** to the single `*types.Var` declared by
+  `internal/pagemodel`, never by matching the name `CID`. **This is not a hypothetical.**
+  `internal/text` declares its **own** `ShapedGlyph` with its own `CID` field
+  (`internal/text/shape.go:161`), and package `folio` reads `.CID` off `pdf.CIDText`
+  (`render.go:1993`). **A spelling-based instrument reports three producers and eight consumers on
+  this tree; the type checker reports two and two.** The near-miss is the argument for the instrument,
+  in one line.
+
+**The three red-proofs, run and recorded** (each mutation applied, test run, tree restored; `git
+status` clean afterwards):
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | a third `pagemodel.ShapedGlyph{}` construction site in `internal/layout` | **RED**, naming both the site *and* the new reader package |
+| 2 | a bare read of the field from `internal/layout` | **RED**, naming the package and saying not to silence it by widening the set |
+| 3 | rename the field in `internal/pagemodel` | **FATAL on the type-information path**, listing all eight now-broken references — never an empty census reported as clean ([[D-1.3.11]], [[D-000.9]]) |
+
+**Still with the project owner:** option 1 (move the PDF-specific numbering out of the shared data) vs
+option 2 (narrow what the page model promises, amending AD-5). The lead declined to take it —
+option 2 narrows a **PRD §5.4-backed product promise**, which [[D-000.6]]'s fourth consequence puts
+outside a lead's amendment power — and recommended **option 3: guard now, fork later, with a trigger
+that can actually fire.** Batched into Epic 4 planning with DW-4 and DW-13.
+
+**How we'd know it was wrong.** A fourth entry turning up with an unreachable owner that this rule
+does not catch, because the rule keys on *the owner being a story* and the next one will be phrased
+some third way.
+
+---
+
+### D-000.74 — A known-red accommodation is authorised for exactly ONE named failure, keyed on its identity AND its numbers; never a list, never a pattern, never a job-level `continue-on-error`
+**Engineering lead ruling**, referred by the orchestrator once [[D-000.71]] established that CI has
+never run and that the first push would go red by design.
+
+**The reframe that did the work, and it removed most of the build.** The orchestrator asked *"where do
+we report the known red so a new failure is distinguishable?"* **[[D-000.57]] already answers that**,
+and names the right discriminator in its own text: *"the test name stays red while what it measures
+silently drifts — `P6g:7` quietly becoming `P6g:3` would still present as 'the same known failure',
+and a real regression would ride in under the cover of a sanctioned one."* **So the discriminator is
+not colour, it is the numbers, and it was already required.** What was missing is that it was
+**narrated rather than executed** — checked by a human reading a log line once per epic. Nothing
+needed inventing; a rule needed a mechanism, which is the same gap [[D-000.72]] closed hours earlier.
+
+**The standing rule** *(mechanism: binding)*:
+
+> **A known-red accommodation is authorised for exactly the one failure named in the decision that
+> mandated the red, keyed on that failure's identity AND its declared numbers. It is never a list,
+> never a pattern, and never a job-level `continue-on-error`. A second expected red requires its own
+> owner decision and its own accommodation; it may not be added to an existing one.**
+
+**Three mechanical consequences, because a rule with no mechanism is what got us here:**
+1. **The quarantined test is declared as a single scalar, not a collection** — a second entry must
+   change the declaration's *shape*, not append a line ([[D-3.4.6]]'s fixed-bound idiom, applied to a
+   CI allowlist).
+2. **No `continue-on-error: true` on the green job, ever.** That makes *every* failure in the job
+   non-fatal — precisely "a mechanism for making other reds expected", with no per-failure decision.
+3. **Do not launder the badge green** by putting `continue-on-error` on the known-red job either. The
+   badge is the most-read surface in the repo and the last place to report an unmet floor as met.
+   **Two greens and one red whose name explains itself is the honest display.**
+
+**The four changes, landed in the required order — (2) before (3), so the green job never existed
+without its drift detector:**
+
+**(1) Seven verdicts instead of one.** Each floor now runs in its own `t.Run` subtest. All seven
+already evaluated (one `t.Errorf` each, no short-circuit) but landed in one verdict, so P6a–P6f were
+**green facts reported under a red name** — [[D-000.70]]'s masking shape one level below CI. Now:
+six named PASS, one named `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` FAIL. **No floor value
+moved; the floor is reported unmet, and more precisely than before.**
+
+**(2) `TestCorpusP6StatsMatchDeclaredBaseline` — new, GREEN, and in the job that must stay green.**
+Asserts all seven stats against D-000.57's baseline as **test-owned literals**. **Non-vacuous by
+construction**: a `computeP6Stats` that stopped computing returns the zero struct, and `0 ≠ 64` fails
+— there is no state in which it passes without the corpus having been read, which is the property
+[[D-000.9]] usually costs a separate guard. **It reddens on improvement too, and that is correct**:
+D-2.1.14 says if more opaque names are sourced *"they are added"*, and that must be a deliberate,
+reviewable baseline edit with a gate-document note, never a number that slides ([[D-000.19]]).
+Baseline transcribed from D-000.57 **and** verified against a live run; both agree. Red-proved:
+`baselineP6g 7 → 6` reddens with a message that distinguishes itself from a floor check in its own
+text.
+
+**(3) The job split.** `folio-go` runs build, vet, both `-tags=matrix` steps, gofmt and
+`go test -count=1 -skip "$KNOWN_RED_TEST" ./...` — **EXIT=0, 921 pass**. `folio-go-known-red` runs the
+one test, EXIT=1, **and the job name is the disclosure**: this job going *green* is the surprising
+event. The unmet floor is now reported unmet in **three** places — the test output, the job name, and
+the gate document.
+
+**On the `t.Skip` objection, answered precisely.** [[D-000.58]] declined a `t.Skip` because it would
+*"trade a loud environmental failure for a quieter one"* — an **absence reading as a pass**. Here the
+test still runs to a **visible red in a job named for it**; no absence reads as a pass. The `-skip`
+only removes it from the job whose question is *"is anything NEW broken."*
+
+**(4) The ratchet — REJECTED.** A ratchet against 7 **is** amending the floor: D-2.1.14 refused 20→8
+with a good argument, and a ratchet is 20→7 with a *dynamic* one, which is worse — it also removes the
+shortfall from view by going green in between, violating [[D-000.17]] at the reporting layer instead
+of the sampling layer. **Its good half is free**: change (2) catches a regression below 7 **and**
+catches P6a–P6f drifting **and** catches improvement, without touching any pre-committed number.
+Strictly stronger on every axis the ratchet was proposed for. *Only the amendment is lost, and the
+amendment was the objection.*
+
+**THE ORCHESTRATOR'S FINDING, which is the part of this entry most worth re-reading.** The lead's one
+flagged assumption was that `-skip` fails safe under a rename. **It does not.** Go's `-run`/`-skip`
+take **unanchored** regexps. Measured: renaming the test to `...FloorsRenamed` and running the ruled
+green-job command verbatim gives **`ok`** — the pattern matches the new name as a substring, so any
+rename that *extends* the name keeps the quarantine and **the green job stays green over a red nobody
+is looking at.** Fixed by anchoring to `^TestCorpusMeetsP6ExerciseFloors$`, verified both ways:
+unmutated → 921 pass; renamed → FAIL. Anchoring does not cost the subtests, since the parent matches
+and suppresses all seven.
+
+**Name what that was: [[D-000.68]] in a CI flag.** The accommodation was anchored to *a substring of
+the code's own spelling* — the exact anchor class the rule forbids — and it read as safe to the lead
+and to the orchestrator both. **Only running the mutation caught it**, which is why a flagged
+assumption is a red-proof to run and not a caveat to record.
+
+**How we'd know it was wrong.** A second sanctioned red arriving and being absorbed into
+`KNOWN_RED_TEST` by turning the scalar into a list without an owner decision — the mechanism is
+designed to make that visible, not impossible, and it depends on a reviewer noticing a shape change.

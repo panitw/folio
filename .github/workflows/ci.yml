@@ -35,6 +35,24 @@ on:
 env:
   GO_VERSION: "1.26.0"
 
+  # D-000.74: the ONE test this repository is permitted to expect red, as a
+  # SINGLE SCALAR and deliberately not a list. A second expected red requires
+  # its own owner decision and its own accommodation; it may not be appended
+  # here, because turning this scalar into a collection is a change of SHAPE
+  # that a reviewer sees, where appending a line is not (D-3.4.6's fixed-bound
+  # idiom, applied to a CI allowlist).
+  #
+  # The red is TestCorpusMeetsP6ExerciseFloors — P6g's opaque-name floor,
+  # mandated unmet by D-000.17 / D-2.1.14 / D-000.57 and never to be "fixed",
+  # amended or ratcheted. It runs, visibly, in the folio-go-known-red job below.
+  #
+  # THE ANCHORS ARE LOAD-BEARING. Go's -run/-skip take UNANCHORED regexps, so
+  # the unanchored form silently also skips TestCorpusMeetsP6ExerciseFloorsFoo:
+  # measured, and it is why this is written ^...$. Anchored, a rename stops
+  # matching, the test runs in the green job, and the green job reddens —
+  # which is the fail-safe direction. Verified both ways before this landed.
+  KNOWN_RED_TEST: "^TestCorpusMeetsP6ExerciseFloors$"
+
 jobs:
   folio-go:
     runs-on: ubuntu-24.04
@@ -58,9 +76,40 @@ jobs:
       - name: gofmt -l (must be empty)
         working-directory: folio-go
         run: test -z "$(gofmt -l .)"
-      - name: go test -count=1 ./... (includes the two existing guards + DW-1)
+      # D-000.74 (3): the green job asks ONE question — "is anything NEW
+      # broken?" — so the single sanctioned red is excluded from it and
+      # nothing else is. No continue-on-error on this job, ever: that would
+      # make EVERY failure here non-fatal, which is the mechanism that grows.
+      - name: go test -count=1 -skip "$KNOWN_RED_TEST" ./... (must be GREEN)
         working-directory: folio-go
-        run: go test -count=1 ./...
+        run: go test -count=1 -skip "$KNOWN_RED_TEST" ./...
+
+  # RED BY DESIGN. The job name is the disclosure: this job going GREEN is the
+  # surprising event, not this job going red. It is quarantined into a job of
+  # its own rather than skipped or silenced, so the unmet floor is reported
+  # unmet in three places at once — the test output, this job's name, and the
+  # epic gate document (D-000.17: a floor that is not met is reported as
+  # unmet; it is never filled).
+  #
+  # No continue-on-error here either. Laundering this green would put an unmet
+  # floor behind a green badge, and the badge is the most-read surface in the
+  # repository. Two greens and one red whose name explains itself is honest;
+  # three greens is not.
+  #
+  # What guards the NUMBERS rather than the colour is
+  # TestCorpusP6StatsMatchDeclaredBaseline, which is green and runs in the
+  # folio-go job above, NOT here — D-000.57's third clause, executed instead of
+  # narrated. Without it, a green job would stay green through P6g:7 -> 3.
+  folio-go-known-red:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go test -count=1 -run "$KNOWN_RED_TEST" (EXPECTED RED — D-000.17/D-2.1.14/D-000.57)
+        working-directory: folio-go
+        run: go test -count=1 -run "$KNOWN_RED_TEST" ./internal/text/
 
   hashmatrix:
     runs-on: ubuntu-24.04

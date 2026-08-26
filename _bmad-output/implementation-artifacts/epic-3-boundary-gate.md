@@ -705,3 +705,71 @@ pass. `lint` moves 112 → **113 passing, 0 failing**; `gofmt -l` empty.
 **Retired for free by this edit:** the carried-forward item *"`:75` — `TXT --> FSET` points the wrong
 way"*. The arrow no longer exists. Carried-forward count drops from twelve to eleven, and the eleven
 fictional arrows carry forward as nothing at all.
+
+---
+
+## Post-gate addendum — Item 5 and DW-16, both closed after `epic-3: done`
+
+Recorded here rather than in Epic 4's gate because both are dispositions of **findings this gate
+raised**, and the next reader of Item 5 should not have to follow a forward reference to learn it was
+answered.
+
+### Item 5's known red is now mechanised — **D-000.57 clause 3 is executed, not narrated**
+
+The carried-forward item said the `folio-go` CI job had been standing-red for two epics with
+`go build/vet -tags=matrix` unreached behind it, and Finding O.1 corrected that to standing-**unrun**.
+The engineering lead ruled the disposition (**D-000.74**), and the reframe removed most of the work:
+**D-000.57 already required the discriminator** — *"the test name stays red while what it measures
+silently drifts"* — and already identified that the discriminator is the **numbers**, not the colour.
+It was being checked by a human reading a log line once per epic. It is now a test.
+
+| Change | State |
+|---|---|
+| Seven `t.Run` subtests, one verdict per floor | six named PASS, one named `…/P6g_(opaque_names)` FAIL. No floor value touched |
+| `TestCorpusP6StatsMatchDeclaredBaseline` — green, in the green job | baseline transcribed from D-000.57 **and** verified against a live run; both agree. Red-proved at `7 → 6` |
+| `ci.yml` split into `folio-go` and `folio-go-known-red` | green job **EXIT=0, 921 pass**; known-red job EXIT=1, its name the disclosure |
+| The ratchet against 7 | **rejected** — it is D-2.1.14's amendment wearing a dynamic hat, and its only real motivation is already free from the drift detector |
+
+**`KNOWN_RED_TEST` is a single workflow-level scalar, not a list**, so a second sanctioned red requires
+changing the declaration's shape rather than appending a line. No `continue-on-error` on either job —
+including the known-red one, because laundering the badge green would report an unmet floor as met on
+the repo's most-read surface.
+
+**One defect found in the ruling itself, by running the mutation it flagged as an assumption.** The
+lead held that `-skip` fails safe under a rename. It does not: Go's `-run`/`-skip` are **unanchored**
+regexps, so renaming the test to `…FloorsRenamed` and running the ruled command verbatim returns
+**`ok`** — the quarantine survives the rename and the green job stays green over a red nobody is
+watching. Anchoring to `^TestCorpusMeetsP6ExerciseFloors$` fixes it; verified both ways (unmutated →
+921 pass; renamed → FAIL), and the anchors carry their reason at the declaration. **This was D-000.68
+in a CI flag** — an accommodation anchored to a substring of the code's own spelling, which read as
+safe to two readers and was caught only by executing it.
+
+**Consequence for the next gate:** cite `TestCorpusP6StatsMatchDeclaredBaseline` as the discharge of
+D-000.57's third clause instead of re-measuring the stats by hand. That is a reduction in gate work,
+not an addition.
+
+### DW-16's untriggerable owner is replaced by a mechanism — **D-000.73**
+
+Carried item 2 said DW-16's forcing function does not exist in the roadmap. The lead confirmed it by
+**measurement rather than by grep** — Story 5.10's preview consumes the real PDF, Story 5.9's canvas
+paints pre-broken lines and never touches `TextRun.Glyphs` — and corrected a premise this gate had
+also missed: DW-16's *"exactly one producer"* has been **false since Story 2.7**. There are two, and
+the second is a copier, so option 1 is more expensive but not foreclosed. **Stories 4.1 and 4.2 do not
+close the window**; the gate's assumption that 4.1 was a deadline was wrong in the direction of more
+slack, not less.
+
+`TestGlyphIdentifierCensus` now pins both censuses — producers at two, readers to `internal/pdf` plus
+the copier — with field identity resolved through `go/types` rather than the name `CID`, because
+`internal/text` declares its own `ShapedGlyph.CID` and a spelling-based instrument reports three
+producers and eight consumers where the type checker reports two and two. **A read from anywhere else
+reddens, and that red is the forcing function arriving.** Three red-proofs run; the field-rename case
+fails **Fatal on the type-information path**, never as an empty census reported clean.
+
+Placed in `lint` rather than `folio-go`, a deviation from the ruling that was surfaced to the lead
+rather than left to be found: `lint` already type-checks the whole `folio-go` module, `folio-go`
+cannot gain `x/tools` without breaking D-1.3.6's invariant (b), and D-3.7.9's lesson prefers the
+lint-side instrument wherever one is affordable.
+
+**Carried-forward count: eleven → nine.** Items 2 and 9 are closed. The option 1 / option 2 fork on
+what the page model promises is **with the project owner**, batched into Epic 4 planning with DW-4 and
+DW-13.

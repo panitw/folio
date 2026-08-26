@@ -775,8 +775,12 @@ section — that fixture repeats a template. Do not read its green as headroom f
 
 ### DW-16 — `pagemodel.ShapedGlyph.CID` is not always a glyph id, and the table needed to interpret it is not in the page model
 
-**Owner:** **engineering lead to rule on the shape**; the fix lands in **the first non-PDF renderer
-story**, which is its natural forcing function.
+**Owner:** ~~the first non-PDF renderer story, which is its natural forcing function~~ —
+**RE-OWNED at the Epic 3 boundary gate (D-000.73).** That owner is a story that does not exist and is
+not scheduled: measured through Epic 6, not merely grepped for. The owner is now the **guard** at
+`folio-go/glyphid_arch_test.go`, which fires on the real condition. **The shape ruling landed**
+(D-000.73); the **option 1 / option 2 fork is with the project owner**, batched into Epic 4 planning
+with DW-4 and DW-13.
 **Raised at:** Story 2.5 (reviewer Finding 2, a Major; finisher DEFER — recorded, not re-architected).
 **Nothing regressed.** The allocation is Story 2.3's [[D-2.3.2]], unchanged. Story 2.5's type move
 relocated it into `internal/pagemodel` and thereby made it visible.
@@ -819,9 +823,51 @@ perfectly legitimate subset glyph id. There is no lint that closes this; only a 
    Cheaper, and honest, but it narrows what the page model promises.
 
 **Why it is worth an entry rather than a passing mention.** The window in which this is cheap to see
-closes as soon as **more producers write the field**. Today there is exactly one
-(`buildShapedPDFRuns`), so option 1 is a local change. Every additional producer makes both options
+closes as soon as **more producers write the field**. ~~Today there is exactly one
+(`buildShapedPDFRuns`), so option 1 is a local change.~~ Every additional producer makes both options
 more expensive, and makes the field's dual meaning harder to establish from the code.
+
+**CORRECTION, Epic 3 boundary gate (D-000.6 — the false clause is amended in place, the rest stands).
+"Exactly one producer" was true when written at Story 2.5 and has been FALSE since Story 2.7.** There
+are **two** non-test construction sites of `pagemodel.ShapedGlyph`, measured:
+
+- `folio-go/render.go:1954` — `buildShapedPDFRuns`, **the allocator.** It mints both kinds: the base
+  value (`cid = newGID`, `:1917`) and the synthetic one (`sub.NumGlyphs + len(state.extras)`, `:1936`).
+- `folio-go/page_number.go:520` — `resolvePageRunForPage`, Story 2.7's page-number substitution.
+
+**Two groundings, a boundary gate and the engineering lead's own memory all carried the "exactly one"
+sentence forward unmeasured** — [[D-000.66]]'s shape in a sentence that announces itself, a dated
+measurement re-read as a standing fact.
+
+**The closure is mild, and that changes the pricing rather than the answer.** The 2.7 site is a
+**copier, not an allocator**: `buildPageNumberSlot` (`page_number.go:452-453`) reads
+`cids[d] = dt.Glyphs[d].CID` out of a digit-table run the allocator already produced. Under option 1
+it needs a `GlyphID` plus text instead — and digits are the one case where the text association is
+trivially known (*"the digit d"*), so `DigitCID [10]uint16` becomes `DigitGID [10]uint16` and the text
+comes free. **Option 1 got slightly more expensive in the most benign way available. It is not
+foreclosed.**
+
+**The near-miss worth recording:** `internal/text/shape.go:161` also constructs a `ShapedGlyph{`, and
+it is **not** one of the two — it is `text.ShapedGlyph`, a different type in a different package.
+`render.go:1993` likewise matches `.CID` but on `pdf.CIDText`. A name-matching instrument reports
+three producers and eight consumers here; a `go/types` one reports two and six. This is why the guard
+below resolves field identity through the type checker rather than through the spelling `CID`
+([[D-000.68]]).
+
+**The forcing function does not exist under any name — measured, not grepped.** The gate's audit
+grepped `epics.md` for PNG/SVG/HTML/non-PDF and found zero hits, which only establishes that no story
+is *named* that. The lead read the two roadmap stories that could be a non-PDF renderer under another
+name: **Story 5.10**'s preview is a controlled `pdfjs-dist` canvas that consumes **the real PDF** and
+must hash-match a native render; **Story 5.9**'s canvas paints **pre-broken lines of text** from
+engine metrics and *"the browser contributes rasterization only"* — it never touches `TextRun.Glyphs`.
+**Through Epic 6 there is no consumer that can be harmed by this defect.** That is what a retirement
+would have to rest on — but it is conditional on the landing plan rather than on the design, so it is
+recorded as a **falsifier**, not as a closure.
+
+**Stories 4.1 and 4.2 do NOT close the window.** Both add *callers* of the existing shaper→pagemodel
+bridge, not new construction sites; a new site would be a deliberate second bridge and neither story's
+ACs ask for one. 4.1's borders and padding are rects, not glyphs. There is more slack here than the
+gate assumed, not less.
 
 **Do not** "fix" this by adding `cid` to `pdfConceptSubstrings`, and do not re-architect
 `buildShapedPDFRuns` opportunistically — neither Story 2.5's AC1 nor its Task 4 asked for it, and the

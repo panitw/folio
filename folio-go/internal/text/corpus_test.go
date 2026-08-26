@@ -184,12 +184,97 @@ func TestCorpusMeetsP6ExerciseFloors(t *testing.T) {
 		{"P6f (decomposable names)", stats.P6f, 90},
 		{"P6g (opaque names)", stats.P6g, 20},
 	}
+	// D-000.74 change (1): each floor gets its OWN verdict. All seven
+	// still evaluate — they always did, one t.Errorf each with no
+	// short-circuit — but P6a through P6f were green facts reported
+	// under a red parent name, which is D-000.70's masking shape one
+	// level below CI. Nothing about D-000.17 or D-2.1.14 moves here: the
+	// floor is still reported unmet, and now reported more precisely.
 	for _, c := range checks {
-		if c.got < c.want {
-			t.Errorf("%s floor not met: got %d, need >=%d", c.name, c.got, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			if c.got < c.want {
+				t.Errorf("%s floor not met: got %d, need >=%d", c.name, c.got, c.want)
+			}
+		})
 	}
 	t.Logf("P6 stats: %+v", stats)
+}
+
+// TestCorpusP6StatsMatchDeclaredBaseline executes D-000.57's third
+// clause instead of narrating it (D-000.74 change (2)).
+//
+// D-000.57 lets an epic gate close over a red, but ONLY over one whose
+// "reported numbers are byte-identical to the declared baseline", and it
+// says in its own text why: "the test name stays red while what it
+// measures silently drifts — P6g:7 quietly becoming P6g:3 would still
+// present as 'the same known failure', and a real regression would ride
+// in under the cover of a sanctioned one." That clause has been checked
+// by a human reading a log line once per epic. This test checks it on
+// every run.
+//
+// THIS TEST IS GREEN, and it lives in the CI job that must stay green.
+// TestCorpusMeetsP6ExerciseFloors above is red by design (D-000.17,
+// D-2.1.14) and is quarantined into its own job; the drift detector is
+// deliberately NOT quarantined with it, because a green job with no
+// drift detector in it would stay green through exactly the P6g:7 -> 3
+// slide D-000.57 describes.
+//
+// ANCHOR (D-000.68): a literal this test owns. Pinned rather than stated
+// relationally, deliberately — the corpus is S4, "consulted for the life
+// of the project" (D-000.17), so the set is frozen by design and growth
+// SHOULD require editing a test that says so. D-3.1a.3 is relational
+// because its set is expected to move; this one is not.
+//
+// NON-VACUOUS BY CONSTRUCTION: a computeP6Stats that stopped computing
+// returns the zero struct, and 0 != 64 fails. There is no state in which
+// this test passes without the corpus having actually been read and
+// measured — the property D-000.9 usually costs a separate guard.
+//
+// IT REDDENS ON IMPROVEMENT TOO, AND THAT IS CORRECT. D-2.1.14 says that
+// if more genuinely-opaque names are sourced "they are added" — that
+// must be a deliberate, reviewable baseline edit with a gate-document
+// note, never a number that slides. An unexplained delta between two
+// computations is where a calibration hides (D-000.19).
+//
+// The literals below were transcribed from D-000.57's recorded stats and
+// then verified against a live run at HEAD ba24e52; both agree. If a
+// future reader finds them disagreeing with either source, that
+// disagreement is the finding.
+func TestCorpusP6StatsMatchDeclaredBaseline(t *testing.T) {
+	const (
+		baselineP6a = 64
+		baselineP6b = 63
+		baselineP6c = 16
+		baselineP6d = 20
+		baselineP6e = 284
+		baselineP6f = 115
+		baselineP6g = 7
+	)
+
+	items := loadCorpus(t)
+	dict := Dictionary()
+	got := computeP6Stats(t, items, dict)
+
+	for _, c := range []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"P6a", got.P6a, baselineP6a},
+		{"P6b", got.P6b, baselineP6b},
+		{"P6c", got.P6c, baselineP6c},
+		{"P6d", got.P6d, baselineP6d},
+		{"P6e", got.P6e, baselineP6e},
+		{"P6f", got.P6f, baselineP6f},
+		{"P6g", got.P6g, baselineP6g},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s drifted from D-000.57's declared baseline: got %d, baseline %d.\n"+
+				"This is NOT a floor check — no floor moved and none may (D-000.17, D-2.1.14). It is D-000.57's byte-identity clause, executed.\n"+
+				"If the corpus legitimately changed, the baseline is edited HERE, deliberately, in the same commit, and the change is named in the next gate document. If it did not, a regression is riding in under cover of a sanctioned red.",
+				c.name, c.got, c.want)
+		}
+	}
 }
 
 // hasLatinOrDigit reports whether runes contains at least one ASCII
