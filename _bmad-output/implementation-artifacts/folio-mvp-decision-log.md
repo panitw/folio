@@ -12391,3 +12391,138 @@ is a false all-clear a future reader will trust without opening it. **That is th
 the other six, occurring inside the machinery built to prevent them** — which is the strongest
 available evidence that this is a systematic blind spot in self-checking rather than developer
 carelessness. Fix it to exercise the real test, or delete it. **Never leave it renamed-but-hollow.**
+
+---
+
+### D-000.80 — When a property might already hold for the wrong reason, the red-proof needs a part (a): remove the accidental cause and the test must STILL PASS
+**General instrument**, produced by Story 4.3's creator under [[D-000.79]] and named by the engineering
+lead as reusable. **Program-wide** *(mechanism: binding where it applies)*.
+
+**The situation that produces it.** Story 4.3 was written to make a table row move whole to the next
+page rather than split. **The property already held at HEAD, by accident, and nothing asserted it.**
+A data row's chrome rect is one `ColumnItem` spanning `rowTop..rowBottom`; every line item lies inside
+it; `paginateDocument` appends rects **before** text, so the stable sort visits the chrome first on a
+tie. **The chrome is an atomic proxy for the row** — it fails the fit test, slides the window, and
+drags the row's lines with it.
+
+**So a naive test passes with zero implementation, and a naive deletion mutation stays green.** That
+is [[D-000.79]]'s Class A trap in its most dangerous form: not an absent guard, but a guard that
+appears to work and is measuring something else entirely.
+
+**The instrument:**
+
+> **Part (a) — remove the ACCIDENTAL cause. The test must STILL PASS.**
+> **Part (b) — on top of (a), remove the intended mechanism. The suite must REDDEN.**
+
+**(a) is a test of the test.** It is the only way to distinguish *"the test observes a mechanism"*
+from *"the test observes the accident."* **Part (a) passing is the load-bearing half** — a story
+reporting only (b) has reported the easy one, because (b) can pass while the test is still watching
+the accident.
+
+**Apply it whenever a property might already hold for a reason other than the one being built.** The
+tell is a green test written before the implementation.
+
+**The lead's own negative check, reported rather than buried.** It suspected a **fourth** precondition
+already broken — that an unstyled table (no border, background or padding) would emit no chrome rect,
+so the atomic proxy would evaporate for a whole class of documents today. **Wrong.**
+`table_render.go:706-723` appends the `tableRectSource` **unconditionally** for every data row;
+`buildCellRect` takes `hasBackground`/`hasBorder` as arguments and the rect is added regardless. **The
+accident is more robust than guessed, and the argument is not one item stronger than the creator wrote
+it.** Recorded because a check that comes back negative is evidence, and burying it would leave the
+next reader to re-run it.
+
+### D-4.3.1 — Build the grouping mechanism; the red-proof itself is unrunnable without it
+**Engineering lead ruling** on DECISION-2, which the Story 4.3 creator flagged and recommended.
+
+**The question.** Given [[D-000.80]]'s accident means row atomicity *already works*, should 4.3 build
+anything at all, or merely assert the existing behaviour?
+
+**Verdict: build.** Three grounds, and **the clincher is one nobody had stated:**
+
+> **The creator's own two-part red-proof is unrunnable without the mechanism.** Part (a) requires
+> removing the chrome and having AC1 **still pass**. With nothing built, removing the chrome *breaks
+> the property*, so (a) cannot be run — **and there is no way to demonstrate the test measures
+> anything.** Declining to build **forecloses the only available proof that the AC is guarded.**
+
+That converts *"is this work necessary"* into *"is this AC assertable at all,"* and the answer is no.
+
+**Ground 1 settles it independently, and it is the lead's own ruling coming due.** [[D-4.2.2]]
+required the row identity be carried **and its content asserted**, naming Story 4.3 as the consumer,
+precisely so it would not be inert. `isDataRow`/`isTableRowLine`/`rowIndex` have **no production
+reader** today. **Declining would manufacture a seventh inert field in the epic that has produced six
+— inside the story written to prevent them.** *"Don't build" is not the neutral option here; it
+actively creates the defect.*
+
+**Ground 3 dates it.** Stories 4.5 (footer aggregates) and 4.8 (alternating backgrounds) both add
+items into a row's span, so the accident's preconditions are scheduled to be disturbed **inside this
+epic**. *An accident with an expiry date inside its own epic is not a property.*
+
+**On the counter — [[D-4.2.3]]'s "a passing test must not be mistaken for a decision" — it cuts the
+other way.** The accident **is** a passing test being mistaken for a mechanism. Building is what stops
+the mistake.
+
+**Four guardrails:**
+1. **Build the minimum that makes row atomicity mechanical.** Do not generalise into a keep-together
+   framework for 4.5/4.6 — those stories are not designed, and the lead has declined speculative
+   mechanism three times this epic.
+2. **But do not foreclose them.** The shape must not be such that 4.5's footer-orphan rule requires
+   tearing it out. Grouping only *rows* is fine; hard-coding *"a group is exactly one row's chrome
+   plus its lines"* may not be.
+3. **Run both parts and record both.** Part (a) passing is the load-bearing half.
+4. **Assert the three preconditions, or delete the dependence on them.** If the mechanism makes
+   rects-before-text, stable-sort and full-extent-chrome irrelevant, **say so and prove it with (a)**.
+   Otherwise each surviving one gets an assertion. **An unstated precondition is how this became
+   invisible in the first place.**
+
+### D-4.3.2 — Two passes that silently disagree is the defect, not two passes; and the guard lands BEFORE the first multi-page table golden
+**Engineering lead ruling** on DECISION-3, **redirecting the orchestrator's proposed deferral** and
+escalating an urgency neither party had spotted.
+
+**What was measured.** `page_number.go:44-52` claims the two pagination passes are position-identical.
+**They are not.** They build `items` in different orders, and at the **default zero top padding** a
+rect ties its first line on `Top`, so **PHASE A splits the boundary row** while PHASE B does not.
+
+**The deferral is refused on the lead's own standing rule.** *"Revisit at the Epic 4 boundary"* is a
+**milestone trigger** — the weak form ruled against three times this week, most recently in the
+[[D-000.73]] work. And the framing was wrong:
+
+> **The defect is not that there are two passes. It is that two passes silently disagree.** The
+> two-pass shape may be **irreducible** — PHASE A must know the page count before `Page X of Y` can be
+> substituted, and PHASE B runs after substitution. That is a genuine chicken-and-egg, not
+> duplication somebody failed to clean up. *"Should it collapse"* may have the answer *"it cannot,"*
+> and a boundary review would have been spent discovering that.
+
+**Verdict: replace the deferral with a guard.** Story 4.3 asserts the two passes produce **identical
+pagination — the same page count AND the same page boundaries**, not merely the same `len(Pages)`.
+Divergence then reddens at the commit that causes it, and the collapse question becomes an
+**optimisation** needing no entry and no owner. **Recorded as an observation, never as a fourth item
+with a milestone owner** on a list that took this week to clean up.
+
+**THE URGENT PART, and it is a sequencing constraint rather than an architectural one.** Two facts
+meet: **PHASE A's count is what `Page X of Y` prints**, and **Story 4.3 adds the repository's first
+multi-page table fixture**. A boundary-row split in PHASE A and not PHASE B means **`Y` is wrong in
+the emitted document** — user-visible incorrect output, not latent untidiness. It is harmless today
+only because nothing in the corpus triggers it, **and a multi-page table is exactly the input that
+would.**
+
+> **Therefore the AC3 repair and the agreement guard land BEFORE any golden is recorded from the new
+> fixture.** Record a reference render from a document whose printed *"of Y"* is wrong and we enshrine
+> it across four targets, defended by every guard we own. **Same hazard as [[D-4.2.4]]'s DW-14
+> finding, live in this story rather than three stories out.**
+
+**D1 — a correction the lead owned as its own.** It had written that `MixedItemError` *"rejects
+anything that is not exactly one line,"* and both it and the orchestrator built on that. **It is
+wrong**: the check enforces **exactly one KIND** among `{Runs, Images, Rects}`, and a multi-run item
+is legal and normal — one physical line of an N-column table is one item with N runs. The lead read a
+truncated comment and **claimed to have confirmed it in code**; per [[D-000.75]] it owed that check
+and did not make it. **The correction strengthens [[D-4.2.2]]'s fence rather than weakening it**:
+the prohibition on collapsing a row into one item now rests on the code's own one-kind-per-item rule
+instead of on the lead's say-so.
+
+**D4, and what it retro-confirms.** No golden fixture currently renders a table (`worked-example.json`
+is round-tripped, never rendered), so byte-neutrality exposure is confined to non-table documents —
+**and DW-14's measured corpus maximum of 45 sections was therefore taken over table-free documents
+only.** Story 4.3's fixture is the first real input to that property and Story 4.7's five-column
+statement is the second. [[D-4.2.4]]'s corpus guard will pick up any crossing automatically through
+its observed-maximum log — **the property doing exactly the job it was added for, one story earlier
+than predicted.**

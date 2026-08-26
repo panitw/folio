@@ -846,6 +846,15 @@ func TestTableStyleFieldsAreNotDataDrivenControl(t *testing.T) {
 // `items` instead of `header.Rects`/`footer.Rects` — reds, because the
 // header table would then appear on at most one page (assigned to
 // whichever page its Y happens to fall on) instead of both.
+//
+// MUST NOT BE "FIXED" (Story 4.3, "things the schema and the record
+// could not resolve" note 3). A table declared in the pageHeader/
+// pageFooter band is repeated VERBATIM on every page and never
+// paginates — that is BandContent's own contract (D-2.6.1/AD-24), and
+// its rows sit entirely outside Story 4.3's grouping. A future story
+// that makes a header/footer table "paginate like a content table"
+// would have to change this test on purpose; it must never go red as a
+// side effect of touching row-atomicity code.
 func TestTableInPageHeaderRepeatsIdenticallyAcrossPages(t *testing.T) {
 	const sentence = "The quick brown fox jumps over the lazy dog. "
 	// 25 repetitions: multi_page_composition_test.go's own measured

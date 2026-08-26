@@ -68,6 +68,7 @@ package layout
 // CONSUMES it and no item's measurement reaches it.
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 
@@ -103,13 +104,67 @@ type ColumnItem struct {
 	// never more than one of the three — a line is atomic by rule 3, an
 	// image by rule 4, and a table's header rects (Story 4.1) are atomic
 	// for the same reason a header row does not split within this story
-	// (AC3/AC9). A table's HEADER LABELS are a separate item (kind
-	// "line", built the same way any text is) sharing this item's Top/
-	// Bottom — two items, same extent, is how they land on the same page
-	// without a fourth exclusivity case.
+	// (AC3/AC9). A table's row LABELS/CELLS are separate items (kind
+	// "line", built the same way any text is): Story 4.1 gave the header
+	// row and its label the SAME extent so the two land on the same page
+	// as a side effect, with no fourth exclusivity case; Story 4.3's
+	// Group field (below) is the GENERAL mechanism that keeps a row's
+	// chrome and every one of its (possibly several) physical lines
+	// together, whether or not their extents happen to coincide.
 	Runs   []TextRunRef
 	Images []ImageRef
 	Rects  []RectRef
+
+	// Group is Story 4.3's grouping concept (DECISION-1), ORTHOGONAL to
+	// the Runs/Images/Rects exclusivity check above (R1): it is a
+	// SEPARATE statement about which items must land on the same page,
+	// never a relaxation of "exactly one kind per item". The zero value,
+	// ItemGroup{}, means "not grouped" (Present is false), so every item
+	// built before this story — and every item this story's callers do
+	// not themselves tag — is completely unaffected (R2).
+	//
+	// The identity is copied VERBATIM from the row-generating code's own
+	// output (package folio's tableRectSource/textRunSource), never
+	// reconstructed from ElementID, extent or emission order (D-4.2.2,
+	// R3). A table's HEADER row is one group and each DATA row is its
+	// own group — "a row", not "a run of rows" (4.5 is a different rule
+	// and stays out, R7's own scoping).
+	Group ItemGroup
+}
+
+// ItemGroup names the set of ColumnItems that Paginate must place on one
+// page TOGETHER (Story 4.3, DECISION-1): if the window does not entirely
+// contain the group's FULL extent (the union of every member's Top..Bottom,
+// resolved in the code comment "Things the schema and record could not
+// resolve" — the union rather than any one member's own chrome rect,
+// because the two are indistinguishable at this commit but only the union
+// stays correct once they diverge), the window slides to the group's
+// EARLIEST Top and every member is re-tested against it — so a group
+// behaves, for placement purposes, like one atomic item spanning from its
+// earliest Top to its latest Bottom, without becoming one ColumnItem and
+// without touching MixedItemError (R1).
+type ItemGroup struct {
+	// Present distinguishes "grouped" from the zero value: an ungrouped
+	// item (Present == false) is placed exactly as before this story,
+	// regardless of what Key holds.
+	Present bool
+
+	// Key names one group. Two grouped items with equal Key belong to the
+	// same group. It is a plain comparable struct — never fed to a map
+	// whose ITERATION would reach output order (R5); Paginate looks keys
+	// up, it never ranges over a map of them to decide emission order.
+	Key ItemGroupKey
+}
+
+// ItemGroupKey is one group's identity: a table element scopes it to one
+// table (two different tables' "row 0" never collide), and IsHeader/Index
+// scope it to one row within that table's own rows. Index is meaningless
+// (and always the zero value) when IsHeader is true — the header is one
+// row, not an indexed member of a family of headers.
+type ItemGroupKey struct {
+	ElementID string
+	IsHeader  bool
+	Index     int
 }
 
 // TextRunRef and ImageRef index the caller's own run/placement slices rather
@@ -327,6 +382,62 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		}
 	})
 
+	// GROUPING (Story 4.3, DECISION-1), computed ONCE here rather than
+	// re-derived per item in the sweep below.
+	//
+	// groupExtent is one group's UNION extent across every member
+	// (earliest Top, latest Bottom) — the "Things the schema and record
+	// could not resolve" note's choice, taken because it stays correct
+	// once a group's members no longer share one rect's own bounds
+	// (4.5/4.8 are both about to add items into a row's span). Today the
+	// union and a data row's own chrome rect ARE equal by construction
+	// (table_render.go: rowBottom = last line's bottom + padBottom), so
+	// no fixture at this commit can distinguish the two choices — this
+	// picks the one that keeps working when that stops being true.
+	//
+	// R7's ORIGINAL PREMISE — "a group's members are contiguous in column
+	// order by construction" — is FALSE for real templates (this story's
+	// own finisher review, Finding 1, measured against a legal document:
+	// a caption, or a second table, sharing a row's own Top sorts BETWEEN
+	// two of that row's members on the stable sort's tie order, which is
+	// ordinary authoring, not a caller bug). Enforcing contiguity as a
+	// render-time internal error therefore rejected legal input.
+	//
+	// The fix removes the DEPENDENCE on contiguity instead of asserting a
+	// premise that does not hold. This pre-pass needs only each group's
+	// UNION EXTENT, a property of the group's own members regardless of
+	// what else the sweep visits between them, so it is computed by one
+	// scan over `items` with no ordering requirement at all. It is the
+	// SWEEP below (not this pre-pass) that then makes interleaving
+	// harmless: a group's page is resolved ONCE, at whichever member the
+	// column-order sweep visits FIRST, and every later-visited member of
+	// the same group is assigned that SAME page directly, without
+	// re-running the fit test — so an intervening item (grouped or not)
+	// that ties a member's Top and sorts between two members can advance
+	// the window/page for ITSELF without ever being able to split the
+	// group.
+	type groupExtent struct {
+		top, bottom geom.Length
+	}
+	groups := make(map[ItemGroupKey]*groupExtent)
+	for i := range items {
+		g := items[i].Group
+		if !g.Present {
+			continue
+		}
+		e, ok := groups[g.Key]
+		if !ok {
+			groups[g.Key] = &groupExtent{top: items[i].Top, bottom: items[i].Bottom}
+			continue
+		}
+		if items[i].Top < e.top {
+			e.top = items[i].Top
+		}
+		if items[i].Bottom > e.bottom {
+			e.bottom = items[i].Bottom
+		}
+	}
+
 	// pageOf[i] is the page authored-item i landed on. Filled by the sweep,
 	// read by the emission below — which is what lets the sweep run in column
 	// order while emission runs in authored order.
@@ -336,12 +447,55 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 	page := 0
 	pageHasItem := false
 
+	// groupPage records, for each group the sweep has already resolved,
+	// the page every one of its members lands on. It is what replaces
+	// R7's contiguity requirement (Finding 1): a group's page is decided
+	// ONCE, at whichever member the column-order sweep visits FIRST, and
+	// every LATER-visited member of the same group — however far away in
+	// column order, and whatever else the sweep visited in between — is
+	// assigned that same page directly below, without re-running the fit
+	// test. An intervening item (grouped or not) that happens to tie a
+	// member's Top can advance the window/page for ITSELF; it can never
+	// split the group, because the group's remaining members never ask
+	// the window a second question.
+	groupPage := make(map[ItemGroupKey]int, len(groups))
+
 	for _, idx := range order {
 		it := items[idx]
 
-		// Does this item fit ENTIRELY in the window as it currently stands?
-		if it.Bottom > windowStart+height {
-			// It does not. The window slides to begin at THIS ITEM'S TOP.
+		if it.Group.Present {
+			if p, ok := groupPage[it.Group.Key]; ok {
+				// This group's page was already decided at an
+				// earlier-visited member. Ride along on that page
+				// without touching window state — that is precisely
+				// what keeps an interleaved, non-contiguous member (or
+				// an unrelated item sorting between two members) from
+				// being able to move this item anywhere else.
+				pageOf[idx] = p
+				continue
+			}
+		}
+
+		// effectiveTop/effectiveBottom are the quantity the fit test and
+		// the overflow test use: the ITEM's own extent, unless it belongs
+		// to a group, in which case it is the GROUP's union extent —
+		// computed above with no ordering requirement on the group's
+		// members. This branch runs only for the FIRST-visited member of
+		// a group (or for an ungrouped item), by construction of the
+		// short-circuit above.
+		effectiveTop, effectiveBottom := it.Top, it.Bottom
+		if it.Group.Present {
+			e := groups[it.Group.Key]
+			effectiveTop, effectiveBottom = e.top, e.bottom
+		}
+
+		// Does this item (or its group) fit ENTIRELY in the window as it
+		// currently stands?
+		if effectiveBottom > windowStart+height {
+			// It does not. The window slides to begin at THIS ITEM'S TOP
+			// — or, grouped, at the GROUP'S earliest Top, which is what
+			// keeps a wrapped row's continuation lines from starting a
+			// window that excludes the row's own first line.
 			//
 			// The page only advances if the current page already carries
 			// something. That single condition is what guarantees no page is
@@ -354,14 +508,19 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 				pages = append(pages, PageAssignment{})
 				pageHasItem = false
 			}
-			windowStart = it.Top
+			windowStart = effectiveTop
 			pages[page].Shift = windowStart - contentTop
 		}
 
 		// The residual case, and the ONLY one left once the window can
-		// slide: the item is taller than the window itself, so no window of
-		// any position contains it. FR44's located diagnostic.
-		if itemHeight := it.Bottom - it.Top; itemHeight > height {
+		// slide: the item (or, grouped, the group as a whole) is taller
+		// than the window itself, so no window of any position contains
+		// it. FR44's located diagnostic — AC4 (Story 4.3): a row too tall
+		// for any window fails EXACTLY as an ungrouped item does, naming
+		// the item the sweep was visiting when it discovered the group's
+		// total height exceeds the window. Story 4.6 owns clipping this
+		// case to a fresh page; this story changes nothing about it.
+		if itemHeight := effectiveBottom - effectiveTop; itemHeight > height {
 			kind := "line"
 			if len(it.Images) > 0 {
 				kind = "image"
@@ -379,6 +538,30 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 
 		pageOf[idx] = page
 		pageHasItem = true
+		if it.Group.Present {
+			groupPage[it.Group.Key] = page
+		}
+	}
+
+	// R6, belt and suspenders: every member of a group landed on the SAME
+	// page. The short-circuit above makes this true BY CONSTRUCTION now
+	// (a group's page is decided once and every other member copies it,
+	// with no dependence on contiguity — Finding 1) — checked anyway,
+	// once more, in a single forward pass over `order`, because a
+	// caller-visible invariant this central deserves an assertion rather
+	// than only an argument in a comment.
+	for pos, idx := range order {
+		g := items[idx].Group
+		if !g.Present {
+			continue
+		}
+		if p := groupPage[g.Key]; p != pageOf[idx] {
+			return Pagination{}, fmt.Errorf(
+				"layout: Paginate: internal error: group %+v split across pages %d and %d at column "+
+					"position %d (element %q) — row atomicity failed despite the group-page short-circuit; "+
+					"this should be unreachable",
+				g.Key, p, pageOf[idx], pos, items[idx].ElementID)
+		}
 	}
 
 	// Emission, in AUTHORED order per page. See PageAssignment.ContentRuns.

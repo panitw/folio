@@ -59,6 +59,33 @@ type tableRectSource struct {
 	// consumer.
 	isDataRow bool
 	rowIndex  int
+
+	// isHeaderRow — Story 4.3: the header's OWN grouping identity,
+	// parallel to isDataRow/rowIndex above but for the one header row a
+	// table has. AC5 extends "a row moves whole to the next page" to the
+	// header without special-casing it: the header's chrome and its
+	// column labels are one group, exactly as a data row's chrome and
+	// its physical lines are one group. Set true ONLY on the header's own
+	// tableRectSource (isDataRow stays false there, unchanged); never set
+	// alongside isDataRow.
+	isHeaderRow bool
+}
+
+// chromeRowGroup derives this rect source's layout.ItemGroup — Story 4.3's
+// grouping identity — by DIRECT FIELD LOOKUP from isDataRow/isHeaderRow/
+// rowIndex, never by reconstruction (D-4.2.2, R3). Not grouped
+// (layout.ItemGroup{}) for a table with neither: unreachable in practice
+// (every tableRectSource is either the header's own or a data row's,
+// never neither), but stated rather than assumed.
+func (r tableRectSource) chromeRowGroup() layout.ItemGroup {
+	switch {
+	case r.isHeaderRow:
+		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, IsHeader: true}}
+	case r.isDataRow:
+		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, Index: r.rowIndex}}
+	default:
+		return layout.ItemGroup{}
+	}
 }
 
 // resolvedHeaderStyle is a table's header-row style, cascaded ONCE per
@@ -488,6 +515,7 @@ func collectBandTableRuns(
 				placed[j].lineIndex = 0
 				placed[j].itemTop = tableTop
 				placed[j].itemBottom = tableBottom
+				placed[j].isHeaderLabel = true
 				if overflows {
 					// AC2: the wide-label render's header text is
 					// clipped, per its declared (padded) box — it
@@ -503,11 +531,12 @@ func collectBandTableRuns(
 		}
 
 		rectSources = append(rectSources, tableRectSource{
-			band:      bandIndex,
-			elementID: string(el.ID),
-			top:       tableTop,
-			bottom:    tableBottom,
-			rects:     rects,
+			band:        bandIndex,
+			elementID:   string(el.ID),
+			top:         tableTop,
+			bottom:      tableBottom,
+			rects:       rects,
+			isHeaderRow: true,
 		})
 
 		// --- Story 4.2: data rows ---

@@ -41,14 +41,32 @@ import (
 // (Y) from layout.Paginate BEFORE the page-header/page-footer bands are
 // collected — D-2.7.2's reservation is a function of Y, so Y must be
 // known first. paginateDocument re-derives the FINAL, globally-indexed
-// items once every run is known and re-runs layout.Paginate; the two
-// calls agree on page COUNT and each item's SHIFT because content items
-// are POSITION-IDENTICAL between them — Y is independent of
-// header/footer text (internal/layout/band.go's ContentHeight takes
-// page geometry alone, finding 2 of this story's creation) — so this is
-// not a second, divergent pagination, only the same deterministic
-// function evaluated on the same inputs before its result is needed a
-// second time with global refs.
+// items once every run is known and re-runs layout.Paginate.
+//
+// CORRECTED CLAIM (Story 4.3, D3 — the previous wording here was measured
+// FALSE and must not be reintroduced). This function and paginateDocument
+// do NOT build `items` in the same order: this one appends text, then
+// images, then table rects; paginateDocument appends rects, then text,
+// then images. layout.Paginate's sort is stable, so that difference breaks
+// ties on Top — and a data row's chrome item ties its first line's Top
+// EXACTLY when the body style's top padding is zero (the documented
+// default). Before this story that was harmless: this pass's Pagination is
+// discarded except for len(Pages), and the two passes' page COUNTS still
+// agreed in every configuration measured, because nothing here read the
+// per-item partition. It stopped being harmless the moment a table's rows
+// gained a grouping identity (this story's Group field): if only one of
+// the two builders carried it, the two passes could disagree on Y itself
+// — the value {{page}}/{{pages}} print (D-2.7.2) — for a boundary row.
+//
+// WHAT IS ACTUALLY GUARANTEED NOW. Both builders attach the SAME
+// layout.ItemGroup to a row's items (tableRectSource.chromeRowGroup /
+// textRunSource.lineRowGroup, direct field lookup, R3), so a boundary row
+// moves as one unit in BOTH passes regardless of which order tied it
+// against its own chrome. TestBothPaginationPassesAgreeOnRowPartition
+// (page_number_test.go) asserts the stronger fact directly — same page
+// COUNT and same per-page rowIndex partition — rather than relying on an
+// argument about tie order, because a tie-order argument is exactly what
+// went stale here once before.
 // visible (Story 3.5, R3/AC7) filters ONLY imageRuns here: contentRuns
 // has already had every hidden text element's runs excluded upstream,
 // by collectBandTextRuns, strictly after that element's own validation
@@ -74,6 +92,11 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			ElementID: contentRuns[i].elementID,
 			Top:       contentRuns[i].itemTop,
 			Bottom:    contentRuns[i].itemBottom,
+			// Story 4.3, AC3: row identity by DIRECT FIELD LOOKUP (R3),
+			// carried through to THIS builder too — not only
+			// paginateDocument's — so the page-count-only pass (PHASE A)
+			// sees the same grouping the final pass (PHASE B) does.
+			Group: contentRuns[i].lineRowGroup(),
 		}
 		for j < len(contentRuns) &&
 			contentRuns[j].elementID == contentRuns[i].elementID &&
@@ -121,6 +144,11 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			Top:       ts.top,
 			Bottom:    ts.bottom,
 			Rects:     make([]layout.RectRef, len(ts.rects)),
+			// Story 4.3, AC3: same grouping identity as the final pass —
+			// this pass's Pagination.Pages length is what {{pages}}/
+			// {{page}} resolve against (D-2.7.2), so it must agree with
+			// paginateDocument's own partition, not merely its count.
+			Group: ts.chromeRowGroup(),
 		})
 	}
 	return items

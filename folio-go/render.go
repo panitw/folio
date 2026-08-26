@@ -173,6 +173,28 @@ type textRunSource struct {
 	// before this story.
 	isTableRowLine bool
 	rowIndex       int
+
+	// isHeaderLabel — Story 4.3: mirrors tableRectSource.isHeaderRow,
+	// carried on a table's column-label runs so the header's chrome and
+	// its labels form ONE group (AC5), the same mechanism a data row's
+	// chrome and lines use. Never true alongside isTableRowLine.
+	isHeaderLabel bool
+}
+
+// lineRowGroup derives this run's layout.ItemGroup — Story 4.3's grouping
+// identity — by DIRECT FIELD LOOKUP from isTableRowLine/isHeaderLabel/
+// rowIndex, never by reconstruction (D-4.2.2, R3). Mirrors
+// tableRectSource.chromeRowGroup exactly, so a table's rect and line items
+// compute the SAME Key for the same row from each type's own fields.
+func (r textRunSource) lineRowGroup() layout.ItemGroup {
+	switch {
+	case r.isHeaderLabel:
+		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, IsHeader: true}}
+	case r.isTableRowLine:
+		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, Index: r.rowIndex}}
+	default:
+		return layout.ItemGroup{}
+	}
 }
 
 // textRunPageSlot is one {{page}} reservation's glyph range within the
@@ -1805,6 +1827,10 @@ func paginateDocument(
 				Top:       ts.top,
 				Bottom:    ts.bottom,
 				Rects:     refs,
+				// Story 4.3, AC1/AC5, DECISION-1: the row's grouping
+				// identity, by direct field lookup (R3) — never
+				// reconstructed from ElementID/extent/order.
+				Group: ts.chromeRowGroup(),
 			})
 		}
 	}
@@ -1854,6 +1880,10 @@ func paginateDocument(
 			ElementID: runs[i].elementID,
 			Top:       runs[i].itemTop,
 			Bottom:    runs[i].itemBottom,
+			// Story 4.3, AC1/AC5, DECISION-1: see the rects loop above —
+			// same identity, same direct-lookup rule, for a row's line
+			// items.
+			Group: runs[i].lineRowGroup(),
 		}
 		for j < len(runs) &&
 			runs[j].band == contentBandIndex &&
