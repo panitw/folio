@@ -649,6 +649,39 @@ cadence, with a designer e2e suite that does not exist until someone writes it �
 own stated signal for moving to per-story, and the epic where a red would take more than one bisect
 step to attribute.
 
+### Refresh — 2026-08-26 (session 6 lead, at the Epic 3 boundary gate)
+
+*Appended, not a rewrite. Everything above stands; sections 1–7 were re-read, not re-derived
+([[D-000.8]]). This refresh records only what session 6 changed or measured.*
+
+**What has changed since the session-5 grounding.** Epic 3's eight stories are `done` and the
+cross-target hash matrix passed on all four targets across ten documents, with a mutated-hash
+red-proof. Six new standing rules landed and I rule from them as written: [[D-000.65]],
+[[D-000.66]], [[D-000.67]] (and its amendment), [[D-000.68]], [[D-000.69]], [[D-000.70]]. Test
+state at `ba24e52`: `folio-go` 920/1 required red/1 skip, `lint` 112/0, `hashmatrix` 3.
+
+**Measured this session, contradicting a document.** The spine's dependency-direction section
+(`ARCHITECTURE-SPINE.md:56-90`) is wrong in *both* directions, and by more than the gate's Finding
+2.3 reports. Measured with `go list` over `./...`: of the **24 arrows the mermaid graph draws, 11
+name edges that do not exist**, and **13 real first-party edges are undrawn** (10 excluding the
+three codegen tools). The gate counted only the undrawn half. See D-3.G.1 for the ruling.
+
+**Debt collected ([[D-000.66]]).** The gate's Finding 2.3 raised a live worry that
+`layout ↛ pdf` might be written down *only* in the diagram. **Collected, and false.** It is
+enforced by `stageRankTable` (`lint/internal/rules/stagerank.go:57-68`, layout 7 / pdf 8) under the
+strictly-lower comparison at `:239`; asserted over the real tree by `TestStageRankProductionScan`
+(`stagerank_test.go:38`, whose vacuity guard names `layout` and `pdf` at `:48`); red-proved for this
+exact instance by the retained violating fixture
+`folio-go/testdata/lint/stage-rank/layout/violating_pdf_import.go` via `TestStageRankFixtureScan`
+(`:94`) and `TestStageRankMessageNamesAD5sArrow` (`:121`); and run in CI's **`lint` job**
+(`.github/workflows/ci.yml:87-110`), which is a *separate job* from the standing-red `folio-go` one,
+so carried-forward item 9 does not mask it.
+
+**Debt re-stated, not collected.** DW-16's forcing function still does not exist in the roadmap
+(gate carried-forward item 2, owner: engineering lead). Not collected here because it is an Epic 4
+sequencing question, not an Epic 3 gate question; per section 7 above it must be **ruled before 4.1
+opens**, and I am holding it as my first Epic 4 item rather than my last.
+
 ---
 
 ## Standing decisions (set at run start, 2026-08-23)
@@ -11340,3 +11373,175 @@ Decline because it does not meet the criterion. **The cost is a reason to be gla
 **The pattern worth carrying forward.** Both guards that held this story unmodified live in `lint`, which type-checks the module (`TestMapRangeUnderModule`, [[D-3.7.8]]; `TestForbiddenImportsProductionScan`). Both that leaked were in-module AST scans reasoning about names and selectors without types. AST-only scans over `folio-go/` are a weaker instrument than a `lint` rule over `go/types`, and should be treated as provisional wherever a `lint`-side equivalent is affordable.
 
 **How we'd know it was wrong.** A future entry point escaping BOTH guards despite this fix — which would mean the over-approximation reasoning in part (a) or the inversion in part (b) has a hole neither red-proof exercised.
+
+---
+
+### D-000.71 — A signal that has never run cannot be cited; "CI green" was an inference this program wrote in the grammar of an observation
+**Orchestrator decision**, taken at the Epic 3 boundary gate. Found by the orchestrator while
+verifying a gate auditor's finding, which had understated it.
+
+**Verdict.** Before any claim about continuous integration is written into the record, the claim must
+name whether CI **ran**. Red versus green is the second question; **ran versus did not run is the
+first**, and this program has been answering only the second for three epics. Where CI has not run,
+the sound local argument may still be made — it must simply be labelled as the construction argument
+it is, in the form Story 3.7 already used: *"stated as a construction argument, not measured."*
+
+**What was measured.** At `ba24e52`, with `gh` authenticated as the repo owner and holding `workflow`
+scope, against a public repo whose default branch is `main`:
+
+```
+gh run list --limit 5           → []          ← zero workflow runs, ever
+git ls-remote --heads origin    → main = f2aa8c0
+git log --oneline origin/main..HEAD | wc -l → 50
+```
+
+**Fifty commits — every commit of Epics 1, 2 and 3 — are local only.** `.github/workflows/ci.yml` and
+`.github/workflows/matrix.yml` have never executed. Not once.
+
+**Why this is not a defect anyone introduced.** The run's standing instruction is *never push*, and
+that instruction has been honoured exactly. Nothing here is a slip. The finding is about **what the
+record says**, not about what was done.
+
+**The class of sentence at fault.** [[D-000.64]] disposed of DW-19's three licence reds as
+*"local-only; CI green."* The reasoning is **sound** — `.font-sources/` is gitignored at
+`.gitignore:85`, so a fresh checkout genuinely does not contain the three unlicensed variable fonts,
+and the licence rule genuinely cannot fire on files that are not there. I re-confirmed the ignore
+entry at this gate. The conclusion is correct. **The grammar is not.** "CI green" states an
+observation of a system that has produced no observations. Had the ignore entry been removed at some
+point in Epic 2, the sentence would have read exactly the same and been false, and nothing in the
+program would have caught it — which is [[D-000.9]]'s test verbatim: *"all clear" must never be
+indistinguishable from "could not look."*
+
+**In simple terms.** We have been saying "the build passes on the server." There is no build on the
+server. There is a very good reason to believe it *would* pass, and we should say that sentence
+instead — it is nearly as useful and it is true.
+
+**Why the fix is not "push it and find out".** The owner's instruction stands and is not reinterpreted
+by a finding. Pushing is also not free of consequence here: the first push would run `ci.yml` for the
+first time against fifty commits at once, and the `folio-go` job would go **red immediately** on
+[[D-2.1.14]]'s deliberately-unmet P6g floor — a first-ever CI run that fails by design, with fifty
+commits of surface area behind it, is close to the worst possible first signal. **That ordering
+problem is real and is now recorded**; it belongs to whoever decides the push, not to this gate.
+
+**Consequences** *(mechanism: binding)*:
+- **Any future sentence asserting a CI outcome must first assert that CI ran**, or be written as a
+  construction argument. This applies to gate reports, Delivery Logs and decision entries alike.
+- **[[D-000.64]]'s DW-19 disposition is corrected in grammar, not in conclusion** — the reds remain
+  local-only and the reasoning remains sound. Per [[D-000.49]], the original stands and this is the
+  appended correction.
+- **The unrun-CI fact is itself now a carried item with an owner** (the project owner, at the point
+  the push is decided), because its cost grows with every commit added to the fifty.
+- One casualty of the same structure was fixed at this gate rather than merely recorded: `ci.yml`'s
+  two `-tags=matrix` steps sat **after** the guaranteed-failing test step and were therefore
+  unreachable even once CI does run. They now sit beside their untagged siblings, ahead of the test
+  step. Both verified green locally at HEAD. See [[D-000.70]] — this is that rule's own shape, at the
+  scale of the whole signal rather than one package.
+
+**What this does NOT settle.** *Where* an intentionally-unmet floor should be reported so that CI can
+distinguish it from a regression. [[D-2.1.14]] settled that the floor stays unmet and refused to amend
+it — that is not reopened. It never decided the reporting question, because CI has never run and so
+the question never presented itself. It is with the engineering lead.
+
+**How we'd know it was wrong.** A push whose first CI run comes back green on the `folio-go` job —
+which would mean the P6g floor is somehow not evaluated on a fresh checkout, and that the local
+measurement and the CI measurement disagree about what the test suite even contains. That would be a
+worse finding than this one, not a refutation of it.
+
+---
+
+### D-000.72 — The spine states the RULE and the RANKS and draws no edges; a hand-drawn copy of a compiler-held fact is correct for exactly one commit
+**Engineering lead ruling**, issued at the Epic 3 boundary gate on the orchestrator's referral of gate
+Finding 2.3. Both arms landed in the gate's own commit. **The orchestrator referred this with the
+right instinct and the wrong reason, and the record keeps both** ([[D-000.49]]).
+
+**Verdict.** `ARCHITECTURE-SPINE.md`'s mermaid dependency graph is **deleted**. In its place the
+section states the strictly-forward rank rule in prose, names `stageRankTable`
+(`lint/internal/rules/stagerank.go`, [[D-000.16]]) as **the single declaration**, and renders the
+ranks as a fenced markdown ladder that a new test holds to that table. **No edge list, for either
+half of the tree.**
+
+**What was measured, and why it is worse than the finding said.** The gate measured one direction: ten
+real import edges the diagram did not draw. The lead measured the other and found the diagram **draws
+24 arrows of which 11 name edges that do not exist** — `layout→bind`, `layout→text`, `layout→diag`,
+`bind→template`, `bind→geom`, `text→fontset` (**backwards**), `text→geom`, `text→diag`,
+`pdf→fontset`, `expr→geom`, `expr→diag`. The real internal graph is **12 edges**. The diagram drew 24
+and got 13 of them wrong, and had done so across three epics with nothing asserting otherwise.
+
+**Why "the diagram is illustrative, stagerank.go is normative" was rejected** — this was the auditor's
+recommendation and the orchestrator was about to apply it. It is **asymmetric**: it excuses the
+omissions while leaving eleven fictional dependencies standing in the architecture document, now
+blessed as officially non-binding rather than removed. A reader reasons from what is **drawn** —
+*"layout depends on text, so I'll route this through layout"* — and every one of those inferences is
+false. The move would ratify a false map at the exact moment we congratulate ourselves for honesty.
+
+**Why redrawing it accurately was also rejected.** A hand-maintained edge list beside a
+compiler-derived fact buys correctness for **one commit** and re-rots at the next import, with nothing
+asserting otherwise. It already rotted this way. That is [[D-000.68]]'s failure shape applied to a
+document rather than to a guard.
+
+**The orchestrator's stated fear was disproven, and the disproof is the reusable part.** The referral
+argued that demoting the diagram would delete the only written home of the `layout ↛ pdf` prohibition
+the spine calls load-bearing. **It is enforced three ways over, all executed, none of them the
+diagram** — verified by the lead and re-verified independently by the orchestrator before applying:
+
+- `stagerank.go:66-67` ranks `layout` 7 and `pdf` 8; the comparison at `:239` is
+  `if targetRank < ownRank { continue }` — **strictly lower**, so equal-or-higher is a finding.
+- `TestStageRankProductionScan` (`stagerank_test.go:38`) scans the real `folio-go/internal/` tree with
+  a [[D-000.9]] vacuity guard at `:48` naming `layout` and `pdf` in the scanner's own
+  `PackagesVisited`.
+- A **retained violating fixture** for this exact instance:
+  `folio-go/testdata/lint/stage-rank/layout/violating_pdf_import.go`, whose doc comment quotes the
+  spine's own sentence and whose body imports `internal/pdf` from package `layout`.
+
+**In simple terms.** We had a picture of which parts of the program are allowed to call which. The
+picture was wrong about half of what it showed, in both directions, and had been for months. The
+first instinct was to caption it "for illustration only" — which fixes the sentence underneath and
+leaves eleven wrong lines on the page. The real rule was never in the picture anyway: it is eleven
+numbers in a file, and a test that fails if any code disagrees with them. So the picture is gone and
+the numbers are printed instead, with a test that fails if the printed copy drifts from the real one.
+
+**Arm B, the guard, and its anchor** ([[D-000.68]]):
+`TestSpineStageLadderMatchesStageRankTable` in `lint/internal/rules/stagerank_test.go`. Its **anchor
+is the spine markdown file itself** — authored outside both Go modules, and neither `stagerank.go` nor
+any code under test can move, rename or reword it. Not the compiler and not the type system: the
+third anchor, *a literal the test does not own but the code cannot edit*. It asserts **ordered
+equality** and reports the difference **both ways by name and rank**, never as a count — *"11 rows,
+want 11"* hides a swap, and *"1 difference"* does not tell the reader which document to edit.
+
+**Two [[D-000.9]] Fatal paths, not zero-finding paths**: a missing spine file, and a missing or
+renamed fence marker. A reformat that defeats the extractor must not read as agreement. A third guard
+covers the shape of what was extracted — fewer than 10 parsed rows is Fatal, because an extractor that
+silently returns nothing produces exactly the "no differences" all-clear a healthy one does.
+
+**The four red-proofs, run and recorded** (each mutation applied, test run, file restored from backup;
+`git diff` confirms the tree unchanged afterwards):
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | delete the `internal/bind` row from the fenced ladder | **RED** — `stagerank_test.go:296` names `{"bind", 4}` and says which document to edit |
+| 2 | change `internal/layout`'s rank in the ladder to 9 | **RED** — reports **both** ways (`:293` and `:296`), so a swap surfaces as one row added and one removed |
+| 3 | add `{"newstage", 9}` to `stageRankTable`, spine untouched | **RED** — `:296` |
+| 4 | rename the `:begin` marker | **RED on the Fatal path** at `:269`, *not* a silent pass |
+
+**Consequences** *(mechanism: binding)*:
+- The gate's carried-forward spine item *"`:75` — `TXT --> FSET` points the wrong way"* is **retired
+  for free**: the arrow no longer exists. Recorded as retired in the gate's table rather than left
+  listed.
+- **Both arms shipped together**, per the lead's guardrail: Arm A's clause *"held in agreement with
+  that table by a test"* would be [[D-000.28]]'s anticipatory boilerplate — false from birth, reading
+  identically to a true one — for as long as Arm B did not exist.
+- AD-5's own invariant block was **not touched**; this section is prose *about* the rule and the
+  `Binds`/`Prevents` lines stay frozen ([[D-000.6]] consequence 4).
+- `lint` moves from 112 to **113 passing**, 0 failing.
+- The ranks in the fenced ladder were read from `stagerank.go:57-80` at write time rather than copied
+  from the ruling, per the lead's own guardrail 3.
+
+**The lead's stated assumption, checked and confirmed.** It flagged that its placement of Arm B in
+`lint` depends on `lint`'s CI job being independently scheduled from the standing-red `folio-go` job.
+Verified at `.github/workflows/ci.yml:87-110`: the `lint` job declares **no `needs:`**, so it runs in
+parallel and is not gated behind `folio-go`. The placement holds.
+
+**How we'd know it was wrong.** Someone adding a stage to `stageRankTable`, hitting this test, and
+editing the **spine** to match a table row they got wrong — the test enforces agreement, not
+correctness, and it names the table as authoritative precisely because agreement alone cannot tell
+which side is right.

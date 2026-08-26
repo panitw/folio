@@ -346,15 +346,17 @@ would quietly undo the pin this section is about.)
   Simplified-Chinese glyph shapes) — see "A known limitation: Japanese
   glyph forms" above. A Noto Sans JP face would fix the shapes at the cost
   of roughly 7 MB more in every consumer's download.
-- **Page numbering.** `{{page}}` and `{{pages}}` are reserved placeholder
-  names — they parse and pass through a template untouched — but nothing
-  resolves them yet.
-- **A `/CreationDate` or `/ModDate` in the output PDF.** No PDF metadata
-  date is emitted by this version of the library at all: rendering with no
-  date supplied by any route produces a document with no `/CreationDate`,
-  `/ModDate`, or `/Info` dictionary, by design (AD-7). Wiring
-  `SOURCE_DATE_EPOCH` through the command-line tool arrives with `cmd/folio`
-  in a later story.
+- **A PDF metadata date that nobody asked for.** This is a deliberate
+  absence, not a missing feature. Render with no date supplied by any route
+  and you get a document with no `/CreationDate`, no `/ModDate` and no
+  `/Info` dictionary at all (AD-7) — that is what makes two renders of the
+  same input byte-identical. Supply one and it is emitted: pass a
+  `documentDate` param, or set `SOURCE_DATE_EPOCH` in the environment and
+  let the `folio` command-line tool fill the param for you. The environment
+  route is **fill-only** — a `documentDate` you supplied yourself, including
+  an explicit `null`, is never displaced by `SOURCE_DATE_EPOCH`.
 - **The cross-platform byte-identity matrix** (Linux amd64/arm64, WASM under
-  Node, compared against local `darwin/arm64`) is verified at the Epic 1
-  boundary, not on every change — see `hashmatrix/`.
+  Node, compared against local `darwin/arm64`) is verified **at each epic
+  boundary**, not on every change — most recently at the Epic 3 boundary,
+  over ten documents on all four targets. See `hashmatrix/` and
+  `matrix_test.go`.

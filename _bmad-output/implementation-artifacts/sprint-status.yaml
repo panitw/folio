@@ -71,7 +71,9 @@ development_status:
   2-8-clip-overflowing-content-and-say-so: done
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  # Boundary gate passed 2026-08-26: matrix green on 4 targets x 10 documents,
+  # 4 blockers closed, 11 items carried forward. See epic-3-boundary-gate.md.
+  epic-3: done
   3-1-bind-a-repeating-region-to-a-collection-with-an-explicit-row: done
   # 3-1a inserted between 3.1 and 3.2 per D-3.1a.1, on D-000.25's precedent (which
   # inserted 2.3a for this same guard). AD-23's float ban is keyed on float32/float64

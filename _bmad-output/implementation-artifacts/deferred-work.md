@@ -652,13 +652,28 @@ programs and content streams ship uncompressed, so Folio's PDFs are deliberately
 producer's.* The document already records the **reason**; what is missing is what follows from it,
 which is the sentence someone will otherwise re-derive — or "fix".
 
+**SCHEDULED at the Epic 3 boundary gate.** The Epic 3 gate found this entry had never been scheduled
+at all, despite naming the orchestrator as the owner of scheduling it — an owner line that names a
+role but no moment is the same failure DW-14 hit with an owner that named an event. **The sizing runs
+during Story 4.7**, which is the first document in the programme with real CJK content in volume (its
+own AC requires *"Latin, Thai and CJK text in the same table"* at 1, 5, 20 and 50 pages) — that is the
+measurement this entry has been asking for, and 4.7 produces it as a by-product whether or not anyone
+asks. **The adoption decision then goes to the project owner batched with the other Epic 4 owner
+decisions, not as a separate interruption.** If 4.7's 50-page CJK payload comes back in the tens of KB
+rather than the hundreds, the honest recommendation is "leave it", and this entry closes cheaply.
+
 
 ---
 
 ### DW-14 — `/ToUnicode` emits one unbounded `beginbfchar` section; the spec caps a section at 100
 
 **Raised by:** Story 2.3's QA review (Finding 7, Nit). **Deferred by:** Story 2.3's finisher.
-**Owner:** the Epic 2 boundary gate, or Story 2.4 if its corpora reach the limit first.
+**Owner:** ~~the Epic 2 boundary gate, or Story 2.4 if its corpora reach the limit first~~ —
+**RE-OWNED at the Epic 3 boundary gate to Story 4.2.** Both original owners are spent events: Story
+2.4 measured and did not trigger (below), and the Epic 2 boundary gate **ran and closed without
+re-owning this entry**, which is how it survived a whole epic with nobody holding it. Recorded as
+D-000.71's neighbour class: an owner that is an event, rather than a person or a story, stops existing
+the moment the event passes, and nothing notices.
 
 **What.** `internal/pdf.buildToUnicodeCMap` emits the whole CMap as a single
 `N beginbfchar … endbfchar` block with `N = len(face.ToUnicode)`. The ToUnicode CMap specification
@@ -734,6 +749,25 @@ both this story's; only the fix is not.
 **Fix when taken:** chunk into sections of at most 100 entries. It is a local change to one emitter
 with no effect on any document currently under the cap — but it **will move every golden hash of any
 document that exceeds it**, so it wants to land with a deliberate re-record rather than as a drive-by.
+
+**Epic 3 boundary gate — the trigger is no longer foreseeable, it is scheduled.** Story 4.7 renders the
+golden Customer Account Statement at **1, 5, 20 and 50 pages**, with *"Latin, Thai and CJK text in the
+same table"* (4.7's own AC), on data that varies row by row. Entries are allocated per
+**(glyph, cluster text)** pair since Story 2.3, so distinct content — not page count — is what fills a
+section; a 50-page statement of varying transaction descriptions across three faces is the document
+this entry has been waiting for since 2.3.
+
+**This is why the owner is 4.2 and not 4.7.** Chunking is byte-identical for every document already
+under the cap, so landing it **before any golden fixture is recorded costs zero re-record**. Landing it
+at 4.7 instead means re-recording the golden report's hashes at four page counts across four targets —
+inside the story that **is the C4 gate**, where a hash re-record is the single most expensive edit in
+the programme. The fix does not get cheaper by waiting and it is about to get much more expensive:
+**land it at 4.2, with the existing `assertToUnicodeSectionsUnderCap` as the witness that nothing
+moved.**
+
+**One thing 4.2 must measure rather than assume:** `fixtures/page-count-20/` is a 20-page document
+already in the matrix's ten and its assert is green, so page count alone plainly does not fill a
+section — that fixture repeats a template. Do not read its green as headroom for 4.7's varied data.
 
 **Do not** "fix" this by capping the number of CIDs; the CID allocation is D-2.3.2 and is correct.
 

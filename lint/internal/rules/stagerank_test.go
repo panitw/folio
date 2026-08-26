@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -212,4 +213,173 @@ func TestStageRankUnrankedMessageNamesASymbolThatExists(t *testing.T) {
 	if !strings.Contains(string(src), "var "+wantSymbol+" = ") {
 		t.Fatalf("the remedy names %q, but %s declares no such variable — a tripwire whose remedy points at a symbol that does not exist is not executable by a human (D-000.37)", wantSymbol, srcPath)
 	}
+}
+
+// spineRelPath is the architecture spine, relative to the repo root. It
+// is the ANCHOR for TestSpineStageLadderMatchesStageRankTable below
+// (D-000.68): a markdown file authored outside BOTH Go modules, which
+// neither stagerank.go nor any code under test can move, rename or
+// reword. Not the compiler and not the type system — the third anchor,
+// a literal the test does not own but the code cannot edit.
+var spineRelPath = filepath.Join(
+	"_bmad-output", "planning-artifacts", "architecture",
+	"architecture-folio-2026-08-23", "ARCHITECTURE-SPINE.md",
+)
+
+const (
+	spineLadderBegin = "<!-- stage-rank-table:begin -->"
+	spineLadderEnd   = "<!-- stage-rank-table:end -->"
+)
+
+// TestSpineStageLadderMatchesStageRankTable holds ARCHITECTURE-SPINE.md's
+// stage ladder to stageRankTable, in order, both ways.
+//
+// WHY THIS EXISTS (Epic 3 boundary gate, Finding 2.3). The spine used to
+// carry a hand-drawn mermaid dependency graph over this same rule, above
+// the sentence "Anything not drawn is forbidden". Measured at the gate,
+// that graph drew 24 arrows: it OMITTED 13 edges that existed and
+// INVENTED 11 that did not — including `text --> fontset`, which is
+// backwards. It had rotted in both directions across three epics with
+// nothing asserting otherwise, because a hand-maintained second copy of
+// a fact the compiler already holds is correct for exactly one commit.
+// The graph is deleted. What replaced it is a ladder of the ranks
+// themselves, and this test is the reason the spine is allowed to state
+// that the ladder "is held in agreement with that table by a test".
+// Without this test that sentence is D-000.28's anticipatory
+// boilerplate: false from birth and reading identically to a true one.
+//
+// The table is authoritative; the ladder is a reading copy. If they
+// disagree, this test is red and stageRankTable is right.
+func TestSpineStageLadderMatchesStageRankTable(t *testing.T) {
+	root := repoRootFromTest(t)
+	spinePath := filepath.Join(root, spineRelPath)
+
+	// D-000.9: a spine that cannot be read must never report as
+	// agreement. A moved or renamed spine is a red somebody fixes
+	// deliberately, never a skip.
+	raw, err := os.ReadFile(spinePath)
+	if err != nil {
+		t.Fatalf("read the architecture spine at %s: %v — this test's anchor is that file's existence; if the spine moved, update spineRelPath deliberately rather than letting the ladder go unchecked", spinePath, err)
+	}
+	doc := string(raw)
+
+	begin := strings.Index(doc, spineLadderBegin)
+	end := strings.Index(doc, spineLadderEnd)
+	if begin < 0 || end < 0 || end < begin {
+		t.Fatalf("could not locate the fenced stage ladder in %s (begin marker %q found=%t, end marker %q found=%t) — a reformat that defeats the extractor must not read as agreement (D-000.9)",
+			spinePath, spineLadderBegin, begin >= 0, spineLadderEnd, end >= 0)
+	}
+
+	got := parseSpineLadder(t, doc[begin+len(spineLadderBegin):end])
+
+	// A second vacuity guard, on the SHAPE of what was extracted rather
+	// than on the extraction succeeding: an extractor that silently
+	// returns nothing produces exactly the "no differences" all-clear a
+	// healthy one does when the table is also empty.
+	if len(got) < 10 {
+		t.Fatalf("the fenced stage ladder in %s parsed to only %d row(s): %v — the ladder must carry every stage, and a parse that collapses to near-nothing is a broken extractor, not agreement (D-000.9)",
+			spinePath, len(got), got)
+	}
+
+	// Ordered equality, reported BOTH ways and by NAME. A count is a
+	// lossy set (D-000.68): "11 rows, want 11" hides a swap, and
+	// "1 difference" does not tell the reader which document to edit.
+	want := make([]stageRank, len(stageRankTable))
+	copy(want, stageRankTable)
+
+	inDocNotInTable := diffStageRanks(got, want)
+	inTableNotInDoc := diffStageRanks(want, got)
+	for _, r := range inDocNotInTable {
+		t.Errorf("the spine's ladder carries {%q, %d}, which stageRankTable does not — the TABLE is authoritative, so this row in %s is wrong", r.Name, r.Rank, spinePath)
+	}
+	for _, r := range inTableNotInDoc {
+		t.Errorf("stageRankTable carries {%q, %d}, which the spine's ladder does not — add it to the fenced block in %s", r.Name, r.Rank, spinePath)
+	}
+	if len(inDocNotInTable) > 0 || len(inTableNotInDoc) > 0 {
+		return // ordering is meaningless once the sets differ
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("stage ladder row %d is {%q, %d} in the spine but {%q, %d} in stageRankTable — the ladder reads in pipeline order and that order is part of what it documents",
+				i, got[i].Name, got[i].Rank, want[i].Name, want[i].Rank)
+		}
+	}
+}
+
+// parseSpineLadder reads the markdown rows of the fenced ladder into the
+// same representation stageRankTable uses, so the comparison is between
+// two []stageRank and not between a table and a prose blob.
+//
+// The first cell names the stage as the spine writes it — "`internal/geom`"
+// — and the scan root as "`internal/` — the scan root itself; …". The
+// leading backticked token is what carries the name in both shapes, so
+// that is what is read; the trailing prose in the scan-root row is
+// deliberately free text, because it is documentation and nothing should
+// force it to stay one particular sentence.
+func parseSpineLadder(t *testing.T, block string) []stageRank {
+	t.Helper()
+
+	var out []stageRank
+	for _, line := range strings.Split(block, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "|") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		if len(cells) != 2 {
+			continue
+		}
+		nameCell := strings.TrimSpace(cells[0])
+		rankCell := strings.TrimSpace(cells[1])
+
+		// Skip the markdown header and its separator rather than
+		// failing on them: they are structure, not data.
+		if nameCell == "Stage" || strings.HasPrefix(nameCell, "---") {
+			continue
+		}
+
+		name, ok := firstBackticked(nameCell)
+		if !ok {
+			t.Fatalf("stage ladder row %q has no backticked stage name in its first cell", line)
+		}
+		name = strings.TrimPrefix(name, "internal/")
+		if name == "" {
+			name = "." // the scan root row, spelled "`internal/`" in the spine
+		}
+
+		rank, err := strconv.Atoi(rankCell)
+		if err != nil {
+			t.Fatalf("stage ladder row %q has a non-integer rank %q: %v", line, rankCell, err)
+		}
+		out = append(out, stageRank{Name: name, Rank: rank})
+	}
+	return out
+}
+
+// firstBackticked returns the contents of the first `…` span in s.
+func firstBackticked(s string) (string, bool) {
+	open := strings.Index(s, "`")
+	if open < 0 {
+		return "", false
+	}
+	rest := s[open+1:]
+	closeAt := strings.Index(rest, "`")
+	if closeAt < 0 {
+		return "", false
+	}
+	return rest[:closeAt], true
+}
+
+// diffStageRanks returns the rows of a that do not appear anywhere in b,
+// compared as whole {name, rank} pairs so that a rank change surfaces as
+// one row missing and one row added rather than as silence.
+func diffStageRanks(a, b []stageRank) []stageRank {
+	var out []stageRank
+	for _, x := range a {
+		if !slices.Contains(b, x) {
+			out = append(out, x)
+		}
+	}
+	return out
 }

@@ -49,18 +49,18 @@ jobs:
       - name: go vet
         working-directory: folio-go
         run: go vet ./...
-      - name: gofmt -l (must be empty)
-        working-directory: folio-go
-        run: test -z "$(gofmt -l .)"
-      - name: go test -count=1 ./... (includes the two existing guards + DW-1)
-        working-directory: folio-go
-        run: go test -count=1 ./...
       - name: go build -tags=matrix (compiles; does not run the matrix, D-000.4)
         working-directory: folio-go
         run: go build -tags=matrix ./...
       - name: go vet -tags=matrix
         working-directory: folio-go
         run: go vet -tags=matrix ./...
+      - name: gofmt -l (must be empty)
+        working-directory: folio-go
+        run: test -z "$(gofmt -l .)"
+      - name: go test -count=1 ./... (includes the two existing guards + DW-1)
+        working-directory: folio-go
+        run: go test -count=1 ./...
 
   hashmatrix:
     runs-on: ubuntu-24.04

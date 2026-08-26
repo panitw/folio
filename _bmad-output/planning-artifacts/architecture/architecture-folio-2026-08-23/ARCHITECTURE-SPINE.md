@@ -55,39 +55,52 @@ graph LR
 
 ### Dependency direction
 
-Arrows point at what a package may import. Anything not drawn is forbidden. The absence of
-an arrow from `layout` to `pdf` is the load-bearing one — it is what keeps PNG, SVG, and
-HTML renderers possible later (PRD §5.4).
+The pipeline is **strictly forward**. Every package under `internal/` carries a **stage rank**, and
+a package may import only a **strictly lower** rank; equal ranks may not import each other, and a
+package carrying no rank at all is a build failure rather than a pass. A stage that needs something
+from a later stage **receives it as a parameter** — the signal rides on the value, never through an
+import.
 
-```mermaid
-graph TD
-  CLI["cmd/folio"] --> API["folio · public API"]
-  WASMENTRY["wasm · js build tag"] --> API
-  API --> TPL["internal/template"]
-  API --> LAY["internal/layout"]
-  API --> PDFP["internal/pdf"]
-  API --> DIAG["internal/diag"]
-  LAY --> BND["internal/bind"]
-  LAY --> TXT["internal/text"]
-  LAY --> PM["internal/pagemodel"]
-  BND --> EXPR["internal/expr"]
-  BND --> TPL
-  TXT --> FSET["internal/fontset"]
-  PDFP --> PM
-  PDFP --> FSET
-  TPL --> GEOM["internal/geom"]
-  EXPR --> GEOM
-  BND --> GEOM
-  LAY --> GEOM
-  TXT --> GEOM
-  PM --> GEOM
-  PDFP --> GEOM
-  FSET --> GEOM
-  TPL --> DIAG
-  EXPR --> DIAG
-  LAY --> DIAG
-  TXT --> DIAG
-```
+The absence of an arrow from `layout` to `pdf` is the load-bearing one — it is what keeps PNG, SVG,
+and HTML renderers possible later (PRD §5.4). It falls out of the ranks by construction: `layout`
+is 7, `pdf` is 8, and 7 may not import 8. So does `expr ↛ bind` (D-1.6.1), and so does the entire
+category of arrows nobody has thought of yet, which is what a rank table buys over a named arrow.
+
+**The rule is executable, and this document is not where it is declared.** The single declaration is
+`stageRankTable` in `lint/internal/rules/stagerank.go` (D-000.16). It is enforced over the real tree
+by `TestStageRankProductionScan`, and red-proved for the `layout → pdf` instance specifically by the
+retained violating fixture at
+`folio-go/testdata/lint/stage-rank/layout/violating_pdf_import.go` — both run in CI's `lint` job.
+The ladder below is held in agreement with that table by a test, not by hand; if they ever disagree,
+the table is right and the test is red.
+
+<!-- stage-rank-table:begin -->
+| Stage | Rank |
+| --- | --- |
+| `internal/geom` | 0 |
+| `internal/diag` | 1 |
+| `internal/pagemodel` | 1 |
+| `internal/template` | 2 |
+| `internal/expr` | 3 |
+| `internal/bind` | 4 |
+| `internal/text` | 5 |
+| `internal/fontset` | 6 |
+| `internal/layout` | 7 |
+| `internal/pdf` | 8 |
+| `internal/` — the scan root itself; not a stage, and may import no first-party package | -1 |
+<!-- stage-rank-table:end -->
+
+`text` precedes `fontset` for a reason and not merely for compatibility: subsetting needs the union
+of glyphs used, and that union comes from shaping (AD-8). SHAPE → COLLECT → SUBSET is the true
+order; metrics reach `text` as values, not imports.
+
+**What the ranks do not cover.** The rule governs `internal/` only. The shell — `folio` (the public
+API), `cmd/folio`, `folio-go/fonts`, `wasm/`, `folio-designer/` — sits outside it: the public API
+composes the whole pipeline and imports every stage by design, and `cmd/folio` and `fonts` depend on
+the public API. This section deliberately keeps **no drawn edge list**, for either half. A
+hand-drawn graph is a second copy of a fact the compiler already holds, and the one that stood here
+until Epic 3's boundary gate had drifted from the code in both directions — drawing eleven edges
+that did not exist while omitting thirteen that did.
 
 ### AD-1 — The determinism boundary is a directory boundary
 
@@ -631,15 +644,28 @@ folio/                                # github.com/panitw/folio — monorepo
     src/panels/                       # palette, properties, binding tree, table editor
     src/preview/                      # pdf.js surface, diagnostics overlay (AD-18)
     src/file/                         # the two-tier file interface (AD-20)
+  docs/                               # template-author documentation, shipped in the repo:
+                                      #   expression-reference.md (+ .html) — the eight functions,
+                                      #   the closed locale set and the two pattern grammars
+                                      #   (Story 3.2, extended at 3.4). Hand-written, NOT derived
+                                      #   from the code, so it can be — and has been — wrong: it is
+                                      #   a second statement of the contract and is never evidence
+                                      #   for a decision about what the engine does (D-3.4.3)
   fixtures/                           # golden templates, data, params, recorded hashes (AD-21).
                                       #   Repo-level, not per-SDK: read at test runtime, so every
                                       #   future SDK conforms against the same bytes.
-  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — holds the
-                                      #   retained FMA contraction probe alone; the cross-target
-                                      #   matrix driver stays in folio-go/matrix_test.go (D-1.2.3
-                                      #   amended). Deliberately outside folio-go so AD-1 and the
-                                      #   float64 AST guard exclude the probe by construction
-                                      #   (D-000.6, Story 1.2)
+  hashmatrix/                         # module github.com/panitw/folio/hashmatrix — holds the two
+                                      #   landed float probes, and nothing else:
+    probe/                            #   the retained FMA contraction probe (Story 1.2)
+    floatdiscrimination/              #   Story 3.3's AC10 demonstration that value-level and
+                                      #   coefficient-level float64 summation disagree (D-3.3.7)
+                                      #   The cross-target matrix driver stays in
+                                      #   folio-go/matrix_test.go (D-1.2.3 amended). Deliberately
+                                      #   outside folio-go so AD-1 and the float64 AST guard exclude
+                                      #   BOTH probes by construction: neither guard has an allowlist
+                                      #   and neither ever gains one, so a landed, executing float64
+                                      #   mutant has nowhere to live under folio-go/ at all
+                                      #   (D-000.6, D-000.24, Stories 1.2 and 3.3)
   tools/fontgen/                      # Python: derives the shipped STATIC faces from their upstream
                                       #   VARIABLE builds, ahead of the build. Its OUTPUT is
                                       #   committed under folio-go/fonts/ — generating at build time
