@@ -126,7 +126,11 @@ jobs:
         run: |
           mkdir -p /tmp/hashmatrix-build
           go build -o /tmp/hashmatrix-build/probe ./probe
-      - name: go test ./... (Story 3.3, D-3.3.7: floatdiscrimination/ is a real guard only if this runs it)
+      # NOTE: this name is QUOTED because it contains ": ". An unquoted YAML
+      # plain scalar may not contain a colon-space; it made this whole file
+      # unparseable, and therefore ci.yml had NEVER run, from Story 3.3 until
+      # the first push (D-000.71: a signal that has never run cannot be cited).
+      - name: "go test ./... (Story 3.3, D-3.3.7: floatdiscrimination/ is a real guard only if this runs it)"
         working-directory: hashmatrix
         run: go test -count=1 ./...
       - name: gofmt -l (must be empty)
@@ -149,7 +153,9 @@ jobs:
       - name: gofmt -l (must be empty)
         working-directory: lint
         run: test -z "$(gofmt -l .)"
-      - name: go mod download all (D-1.3.11: populates the module cache for lint's WHOLE module graph, not just the packages it imports directly, so the GOPROXY=off step below can resolve every dependency's LICENSE file offline)
+      # QUOTED for the same reason as above — this one has carried the defect
+      # since Story 1.3.
+      - name: "go mod download all (D-1.3.11: populates the module cache for lint's WHOLE module graph, not just the packages it imports directly, so the GOPROXY=off step below can resolve every dependency's LICENSE file offline)"
         working-directory: lint
         run: go mod download all
       # D-000.75. lint's packages.Load type-checks the SIBLING module folio-go
