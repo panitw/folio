@@ -158,6 +158,30 @@ window is page height minus the declared margins and band heights. So this is a 
 document, reported the same way to everyone who renders it, and not something one report's data can
 trigger and another's cannot.
 
+**A table row taller than the page is clipped, not refused — and the reason is authorship.** A row's
+height is not something the author typed; it is whatever the record made it. One customer's address
+runs to nine lines while every other customer's runs to two, and a statement run of a hundred
+thousand documents can contain exactly one record that no page could hold. Refusing that document
+would take down the run for a fault the author could not have seen when designing the template. So
+an over-tall **table row** — a header row, a data row, or the footer row — is placed alone on a
+fresh page, drawn as far down as the page has room for, and cut off there. The render **succeeds**
+and returns the finished document, with a warning (`TABLE_ROW_CLIPPED_HEIGHT`) naming the table,
+which row, the row's height and the height it was measured against. Whole lines are dropped, never
+half of one, and the row's own rectangle stops at the page's content bottom.
+
+The line between the two answers is therefore **who is responsible for the height**:
+
+| the thing that is too tall | where its height came from | what happens |
+|---|---|---|
+| a table row (header, data or footer) | the **data** — the author may never have seen the record | clipped to a page of its own, **warning**, document produced |
+| a line of a text element | the **author's** declared font size | **error**, no document |
+| an image | the **author's** declared box | **error**, no document |
+
+Folio absorbs what the data made too tall, and refuses what the author typed too tall. A typo in a
+template should be found by the person who can fix it, at the moment they can fix it; a pathological
+record should not be able to stop a print run. Nothing is silent in either direction — the clip
+always carries its warning, and the refusal always names its element.
+
 There is no page-break key, no `keepTogether`, and no widow or orphan control. Where the pages fall
 is derived from the four rules above and from nothing an author writes.
 

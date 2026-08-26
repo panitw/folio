@@ -271,6 +271,30 @@ const DiagCodeTableHeaderRepeatSuppressed = string(diag.CodeTableHeaderRepeatSup
 // Additive only (AD-14): once shipped, this string's meaning is permanent.
 const DiagCodeTableFooterOrphanSuppressed = string(diag.CodeTableFooterOrphanSuppressed)
 
+// DiagCodeTableRowClippedHeight names Story 4.6's own new condition (FR25,
+// AD-14, D-4.6.3 as ruled by the engineering lead): a table group — a header
+// row, a data row, or the footer row — is by itself taller than the whole
+// content window, so no page in the document could hold it. It is placed
+// alone on a fresh page and CUT OFF at that page's content bottom; the lines
+// that fell past the bottom are absent from the document permanently. The
+// render still completes and returns bytes, and this Warning travels on
+// Result.Diagnostics (never wrapped in a *RenderError) as the sole record
+// that content was destroyed.
+//
+// Distinct from DiagCodeContentUnlayoutable, which is still what an
+// UNGROUPED over-tall item produces — a line whose font size exceeds the
+// content band, or an image whose declared box does. That asymmetry is
+// D-4.6.2's ruling and AD-13's line: a row's height is derived from DATA the
+// author may never have seen, while a font size and an image box are things
+// the author typed. Distinct from DiagCodeTextClippedWidth, which D-2.8.1
+// scopes to the horizontal axis at a box edge. Distinct from
+// DiagCodeTableHeaderRepeatSuppressed (which drops a redrawn copy) and
+// DiagCodeTableFooterOrphanSuppressed (which leaves everything present):
+// this one is the only diagnostic in the family that reports LOST CONTENT.
+//
+// Additive only (AD-14): once shipped, this string's meaning is permanent.
+const DiagCodeTableRowClippedHeight = string(diag.CodeTableRowClippedHeight)
+
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — over-tall rows (FR25, not yet built) and clipped
 // content (FR44, this story) — is expressed as a value of this type,

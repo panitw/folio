@@ -1313,16 +1313,32 @@ func TestFooterOrphanTieHoldsAcrossHundredsOfPagesWithByteStability(t *testing.T
 // runtime bypass condition — written anyway, as the story's own rulings
 // require, so a future change to this file that widens the catch reddens
 // here rather than being discovered by Story 4.6.
-// TestFooterAloneTooTallForTheWindowTerminatesRatherThanHangs is
-// D-4.5.2's own ruling: "place it alone" assumes the footer FITS alone.
-// When the footer itself (its own solo group — chrome plus value lines)
-// is taller than the content window, this story declares that Story
-// 4.6's subject (a row taller than a page) rather than inventing a
-// second relocation floor — it terminates via the EXISTING
-// layout.OverflowError (pass 1 of paginateWithFooterOrphanFix returns it
-// directly, before any merge is even attempted), never a hang and never
-// an undefined state.
-func TestFooterAloneTooTallForTheWindowTerminatesRatherThanHangs(t *testing.T) {
+// TestFooterAloneTooTallForTheWindowIsClippedRatherThanFatal is Story
+// 4.5's own deferral, DISCHARGED HERE by Story 4.6 — the story 4.5 named.
+//
+// D-4.5.2 ruled that "'place it alone' assumes the footer FITS alone",
+// and gave two acceptable answers when it does not: route it to FR44's
+// clip, or declare it Story 4.6's subject. Story 4.5 took the second and
+// guaranteed only TERMINATION, via the existing layout.OverflowError.
+// Story 4.6 owns the answer, and it is the first of the two: AD-14 makes
+// an over-tall table group a Warning beside the bytes, never fatal, and
+// a footer row is a row in FR25's own wording. The deferral is closed;
+// the test is rewritten rather than deleted so the inversion reads as
+// planned.
+//
+// TWO OBSERVABLES, kept apart: (i) the footer CLIPS rather than erroring;
+// (ii) the clip record identifies it as the FOOTER — not as data row
+// index -1, which is footerGroupIndex's wire sentinel leaking at a
+// reader. The message half of (ii) is asserted directly against the
+// production message builder in
+// TestClippedGroupDiagnosticNamesTheRoleNeverTheSentinel.
+//
+// AND THE ORPHAN TIE STANDS DOWN. A clipped footer is alone on a fresh
+// page BY DESIGN, not orphaned, so paginateWithFooterOrphanFix must not
+// merge it into the preceding row: the merged group is taller still, it
+// would clip too, and the Warning would then name the PRECEDING ROW's
+// index instead of the footer. That is asserted here as part of (ii).
+func TestFooterAloneTooTallForTheWindowIsClippedRatherThanFatal(t *testing.T) {
 	g := layout.PageGeometry{
 		Width: 200_000, Height: 150_000,
 		MarginTop: 10_000, MarginBottom: 10_000, MarginLeft: 10_000, MarginRight: 10_000,
@@ -1331,31 +1347,54 @@ func TestFooterAloneTooTallForTheWindowTerminatesRatherThanHangs(t *testing.T) {
 	// contentHeight = 150,000 - 10,000*2 - 10,000*2 = 110,000mp. A footer
 	// group taller than that (chrome rect + one line, both 200,000mp
 	// tall) fits no window at all.
+	footerKey := layout.ItemGroupKey{ElementID: "e1", Index: footerGroupIndex}
 	items := []layout.ColumnItem{
 		{ElementID: "row0", Top: 0, Bottom: 10_000, Rects: []layout.RectRef{0}, Group: layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: "e1", Index: 0}}},
-		{ElementID: "e1", Top: 10_000, Bottom: 210_000, Rects: []layout.RectRef{1}, Group: layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: "e1", Index: -1}}},
-		{ElementID: "e1", Top: 10_000, Bottom: 210_000, Runs: []layout.TextRunRef{0}, Group: layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: "e1", Index: -1}}},
+		{ElementID: "e1", Top: 10_000, Bottom: 210_000, Rects: []layout.RectRef{1}, Group: layout.ItemGroup{Present: true, Key: footerKey}},
+		{ElementID: "e1", Top: 10_000, Bottom: 210_000, Runs: []layout.TextRunRef{0}, Group: layout.ItemGroup{Present: true, Key: footerKey}},
 	}
 	targets := []footerOrphanTarget{{
 		elementID:    "e1",
-		footerKey:    layout.ItemGroupKey{ElementID: "e1", Index: -1},
+		footerKey:    footerKey,
 		precedingKey: layout.ItemGroupKey{ElementID: "e1", Index: 0},
 	}}
 
-	done := make(chan struct {
-		err error
-	}, 1)
+	// The bound is kept from Story 4.5's own test: a hang here is not a
+	// red, it is a stuck package, and the select is what turns "it
+	// returns" into an observable at all.
+	type outcome struct {
+		plan  layout.Pagination
+		diags []Diagnostic
+		err   error
+	}
+	done := make(chan outcome, 1)
 	go func() {
-		_, _, err := paginateWithFooterOrphanFix(g, items, targets)
-		done <- struct{ err error }{err}
+		p, d, err := paginateWithFooterOrphanFix(g, items, targets)
+		done <- outcome{p, d, err}
 	}()
 	select {
 	case r := <-done:
-		if r.err == nil {
-			t.Fatal("expected an error (the footer alone does not fit any window); got nil")
+		// (i) it clips.
+		if r.err != nil {
+			t.Fatalf("paginateWithFooterOrphanFix returned %T: %v — D-4.5.2's deferral is discharged: an over-tall footer group is CLIPPED (AD-14, never fatal), not an error", r.err, r.err)
 		}
-		if _, ok := r.err.(*layout.OverflowError); !ok {
-			t.Fatalf("expected *layout.OverflowError, got %T: %v", r.err, r.err)
+		if len(r.plan.Clipped) != 1 {
+			t.Fatalf("plan.Clipped = %+v; want exactly one record for the one over-tall group", r.plan.Clipped)
+		}
+		c := r.plan.Clipped[0]
+
+		// (ii) and the record says FOOTER, not "row -1".
+		if c.Key != footerKey {
+			t.Errorf("the clip record names group %+v; want the FOOTER's own key %+v.\nA record naming the preceding data row means the orphan tie merged a clipped footer into it — a clipped group is alone on its page by design, not orphaned, and merging it makes the Warning name the wrong row.", c.Key, footerKey)
+		}
+		if c.ItemHeight != 200_000 || c.ContentHeight != 110_000 {
+			t.Errorf("clip reports %dmp against %dmp; want the footer group's own 200,000mp against the 110,000mp window", c.ItemHeight, c.ContentHeight)
+		}
+		// No orphan Warning: the footer was not orphaned, it was cut.
+		for _, d := range r.diags {
+			if d.Code == DiagCodeTableFooterOrphanSuppressed {
+				t.Errorf("a %s Warning was emitted for a CLIPPED footer: %s\nThe orphan rule is not what failed here — the footer fits no page at all.", d.Code, d.Message)
+			}
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("paginateWithFooterOrphanFix did not return within 5s — D-4.5.2 requires termination, never a hang")

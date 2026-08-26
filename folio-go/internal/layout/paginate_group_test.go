@@ -14,7 +14,6 @@ package layout
 // here is evidence of the Group mechanism, not of D2's accident.
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -323,35 +322,62 @@ func TestPaginateGroupSurvivesAnInterveningPageAdvance(t *testing.T) {
 	}
 }
 
-// TestPaginateGroupTallerThanWindowReturnsLocatedOverflow is AC4's
-// residual case: a row (group) whose UNION extent exceeds the content
-// window fails EXACTLY as an ungrouped item does — the located
-// *OverflowError, Kind "table" (the chrome rect is visited first: it
-// ties the line on Top, and stable-sorts to the position it was
-// APPENDED at, first) — and the sweep TERMINATES (this call returns; it
-// does not hang).
-func TestPaginateGroupTallerThanWindowReturnsLocatedOverflow(t *testing.T) {
+// TestPaginateGroupTallerThanWindowIsClippedRatherThanFatal is Story
+// 4.3's AC4 residual case, INVERTED ON PURPOSE by Story 4.6.
+//
+// Story 4.3 placed this test asserting a located *OverflowError with Kind
+// "table" for a group taller than the window, and said in its own comment
+// that "Story 4.6 owns clipping this case to a fresh page". This is that
+// story. AD-14 rules the case never fatal — "over-tall rows (FR25) and
+// clipped content (FR44) are Warnings returned alongside PDF bytes" — so
+// the group is now placed alone on a fresh page and cut off at that
+// page's content bottom, and Paginate returns no error at all.
+//
+// The inversion is planned, not a regression. What did NOT invert is the
+// quantity: ItemHeight is still the GROUP's UNION height, not any one
+// member's own, which is the part of Story 4.3's assertion that was about
+// grouping rather than about erroring.
+func TestPaginateGroupTallerThanWindowIsClippedRatherThanFatal(t *testing.T) {
 	g := testGeometry()
 	key := ItemGroupKey{ElementID: "e9", Index: 0}
 	group := ItemGroup{Present: true, Key: key}
 	// Group union height: 150,000, which exceeds the 100,000 window.
+	// The chrome rect spans the whole group; the line member ends at
+	// +30,000, well inside the window, so the two land on opposite
+	// sides of the clip and the kept/dropped split is a real one.
 	items := []ColumnItem{
 		{ElementID: "e9", Top: testContentTop, Bottom: testContentTop + 150000, Rects: []RectRef{0}, Group: group},
 		{ElementID: "e9", Top: testContentTop, Bottom: testContentTop + 30000, Runs: []TextRunRef{0}, Group: group},
 	}
-	_, err := Paginate(g, items)
-	if err == nil {
-		t.Fatal("Paginate accepted a group taller than the content window — FR44's diagnostic must fire for a group exactly as it does for a single item")
+	plan, err := Paginate(g, items)
+	if err != nil {
+		t.Fatalf("Paginate returned %T: %v — AD-14 makes an over-tall GROUP a clip with a Warning, never an error. An UNGROUPED over-tall item still errors; see TestPaginateOverflowingItemReturnsLocatedError", err, err)
 	}
-	var overflow *OverflowError
-	if !errors.As(err, &overflow) {
-		t.Fatalf("Paginate returned %T; want *OverflowError", err)
+
+	if len(plan.Clipped) != 1 {
+		t.Fatalf("plan.Clipped = %+v; want exactly one record for the one over-tall group", plan.Clipped)
 	}
-	if overflow.Kind != "table" {
-		t.Errorf("overflow.Kind = %q, want %q (the chrome rect member, visited first)", overflow.Kind, "table")
+	c := plan.Clipped[0]
+	if c.Key != key {
+		t.Errorf("the clip record names group %+v; want %+v — the record carries the group's identity VERBATIM so a caller reads the row index off it rather than re-deriving one", c.Key, key)
 	}
-	if overflow.ItemHeight != 150000 {
-		t.Errorf("overflow.ItemHeight = %d, want the GROUP's union height, 150,000 (not any one member's own height)", overflow.ItemHeight)
+	if c.ItemHeight != 150000 {
+		t.Errorf("clip.ItemHeight = %d, want the GROUP's union height, 150,000 (not any one member's own height)", c.ItemHeight)
+	}
+	if c.ContentHeight != ContentHeight(g) {
+		t.Errorf("clip.ContentHeight = %d, want the content window's own height %d", c.ContentHeight, ContentHeight(g))
+	}
+
+	// The cut, asserted as the two halves it actually is: the chrome
+	// rect is TRUNCATED (present, bounded at the content bottom) and
+	// the line that fits is KEPT. Nothing straddles.
+	pa := plan.Pages[c.Page]
+	wantBound := testContentTop + ContentHeight(g)
+	if len(pa.ClippedRects) != 1 || pa.ClippedRects[0] != (RectClip{Ref: 0, Bottom: wantBound}) {
+		t.Errorf("page %d's ClippedRects = %+v; want [{Ref:0 Bottom:%d}] — the row's chrome is truncated at the content bottom, not drawn to its untruncated height", c.Page, pa.ClippedRects, wantBound)
+	}
+	if len(pa.ContentRuns) != 1 || pa.ContentRuns[0] != 0 {
+		t.Errorf("page %d's ContentRuns = %v; want [0] — the group's one line ends inside the window and is kept whole", c.Page, pa.ContentRuns)
 	}
 }
 
@@ -508,4 +534,82 @@ func TestPaginateHeaderGroupMovesWholeEvenWhenChromeAndLabelExtentsDiffer(t *tes
 			t.Fatalf("page 1's rects = %v, want [0] (the chrome, which does NOT fit window 0 alone) — if this fixture does not split ungrouped, it cannot witness the grouped case above either", plan.Pages[1].ContentRects)
 		}
 	})
+}
+
+// TestPaginateOverTallHeaderGroupClipsAndIsRecordedAsTheHeader closes the
+// third arm of D-4.6.3 (this story's reviewer, Finding 9).
+//
+// D-4.6.3's headline is "ONE CODE FOR ALL THREE GROUP ROLES", and that
+// merging — rather than splitting — is the ruling's novelty. At review the
+// data-row arm had four end-to-end tests and the footer arm had
+// TestFooterAloneTooTallForTheWindowIsClippedRatherThanFatal, but the
+// HEADER arm had nothing that ran through Paginate at all: its only
+// witness called the message builder directly with a synthetic record,
+// which cannot see a pagination-level regression.
+//
+// It also pins the one thing the header arm does DIFFERENTLY, and it is
+// the reason D-4.6.4's repeat block is guarded on !IsHeader: a table's
+// header is never repeated above ITSELF (DECISION-1), so the clipped
+// header's own page carries no repeat — while the next page, which now has
+// a header far too tall to reserve, falls to DECISION-2 arm (c) and is
+// recorded there.
+func TestPaginateOverTallHeaderGroupClipsAndIsRecordedAsTheHeader(t *testing.T) {
+	g := testGeometry()
+	hdrKey := ItemGroupKey{ElementID: "e9", IsHeader: true}
+	rowKey := ItemGroupKey{ElementID: "e9", Index: 0}
+	hdr := ItemGroup{Present: true, Key: hdrKey}
+
+	// The header group's union height is 150,000 against a 100,000
+	// window, so it fits no window at all. Its line member ends well
+	// inside the window, so the kept/dropped split is a real one.
+	items := []ColumnItem{
+		{ElementID: "e9", Top: testContentTop, Bottom: testContentTop + 150000, Rects: []RectRef{0}, Group: hdr},
+		{ElementID: "e9", Top: testContentTop, Bottom: testContentTop + 30000, Runs: []TextRunRef{0}, Group: hdr},
+		{ElementID: "e9", Top: testContentTop + 150000, Bottom: testContentTop + 160000, Rects: []RectRef{1},
+			Group: ItemGroup{Present: true, Key: rowKey}},
+	}
+
+	plan, err := Paginate(g, items)
+	if err != nil {
+		t.Fatalf("Paginate returned %T: %v — an over-tall HEADER group is a table group like any other: AD-14 makes it a clip, never an error", err, err)
+	}
+
+	if len(plan.Clipped) != 1 {
+		t.Fatalf("plan.Clipped = %+v; want exactly one record — the header group is the only over-tall group here", plan.Clipped)
+	}
+	c := plan.Clipped[0]
+
+	// THE ROLE, which is the whole point: the record identifies the
+	// group as the HEADER, so the caller's message builder renders "the
+	// header row" rather than a row index.
+	if !c.Key.IsHeader {
+		t.Errorf("the clip record's Key is %+v; want IsHeader true — D-4.6.3 gives all three group roles ONE code and carries the ROLE in the record, so a caller can name it without re-deriving it", c.Key)
+	}
+	if c.Key != hdrKey {
+		t.Errorf("the clip record names group %+v; want %+v", c.Key, hdrKey)
+	}
+	if c.ItemHeight != 150000 {
+		t.Errorf("clip.ItemHeight = %d, want the GROUP's union height, 150,000", c.ItemHeight)
+	}
+
+	// A HEADER IS NEVER REPEATED ABOVE ITSELF (DECISION-1), so the clip
+	// on this page reserves nothing and cuts at the full window bottom.
+	if got := len(plan.Pages[c.Page].HeaderRepeats); got != 0 {
+		t.Errorf("the clipped header's own page carries %d repeated header(s); want 0 — a table's header is not repeated above itself", got)
+	}
+	wantBound := testContentTop + ContentHeight(g)
+	if len(plan.Pages[c.Page].ClippedRects) != 1 || plan.Pages[c.Page].ClippedRects[0] != (RectClip{Ref: 0, Bottom: wantBound}) {
+		t.Errorf("page %d's ClippedRects = %+v; want [{Ref:0 Bottom:%d}] — with no repeat to reserve for, the cut is the window's own bottom",
+			c.Page, plan.Pages[c.Page].ClippedRects, wantBound)
+	}
+
+	// AND THE NEXT PAGE'S REPEAT IS SUPPRESSED AND RECORDED. The header
+	// is 150,000 tall; reserving it on the data row's page leaves nothing
+	// at all. That is DECISION-2 arm (c) on its own terms — never silent.
+	if len(plan.Suppressed) != 1 {
+		t.Fatalf("plan.Suppressed = %+v; want exactly one record — the data row's page cannot reserve a 150,000mp header inside a 100,000mp window, and AD-14 says nothing is silent", plan.Suppressed)
+	}
+	if s := plan.Suppressed[0]; s.ElementID != "e9" || s.HeaderHeight != 150000 {
+		t.Errorf("the suppression record is %+v; want element e9 with HeaderHeight 150,000", s)
+	}
 }

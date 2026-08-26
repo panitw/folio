@@ -170,6 +170,32 @@ func pageOfGroup(items []layout.ColumnItem, key layout.ItemGroupKey, rectPage ma
 	return 0, false
 }
 
+// groupWasClipped reports whether Paginate cut this group off (Story
+// 4.6). A single SLICE WALK over a list that is EMPTY for every document
+// with no over-tall group — never a map range (R5).
+func groupWasClipped(clipped []layout.TableRowClipped, key layout.ItemGroupKey) bool {
+	for _, c := range clipped {
+		if c.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// anyTieWasClipped reports whether the merged pagination CLIPPED any of
+// the ties it was asked to try (Story 4.6). A merged group is identified
+// by the target's precedingKey, because applyFooterMerge re-keys the
+// footer ONTO the preceding row — so the tie, if it exists at all, exists
+// under that key.
+func anyTieWasClipped(plan layout.Pagination, targets []footerOrphanTarget) bool {
+	for _, t := range targets {
+		if groupWasClipped(plan.Clipped, t.precedingKey) {
+			return true
+		}
+	}
+	return false
+}
+
 // paginateWithFooterOrphanFix runs layout.Paginate, then AC5's orphan
 // check, then — only for a table that is actually orphaned — a second
 // Paginate call with that ONE table's footer temporarily tied to its
@@ -201,6 +227,18 @@ func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnIte
 
 	var toMerge []footerOrphanTarget
 	for _, t := range targets {
+		// Story 4.6, AC5: a footer group that was CLIPPED is alone on a
+		// fresh page BY DESIGN, not orphaned. D-4.5.2's own words —
+		// "'place it alone' assumes the footer FITS alone" — are the
+		// reason: this one fits nowhere, and tying it to the preceding
+		// row cannot help (the merged group is strictly taller still, so
+		// it clips too, and the clip's Warning would then name the
+		// PRECEDING ROW's index instead of the footer). Standing the
+		// orphan tie down here is what keeps the diagnostic naming the
+		// group that was actually cut.
+		if groupWasClipped(plan.Clipped, t.footerKey) {
+			continue
+		}
 		fp, fok := pageOfGroup(items, t.footerKey, rectPage, runPage)
 		pp, pok := pageOfGroup(items, t.precedingKey, rectPage, runPage)
 		if !fok || !pok {
@@ -220,18 +258,29 @@ func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnIte
 	}
 
 	plan2, err2 := layout.Paginate(g, applyFooterMerge(items, toMerge))
-	if err2 == nil {
+	if err2 == nil && !anyTieWasClipped(plan2, toMerge) {
 		return plan2, nil, nil
 	}
 
 	var of *layout.OverflowError
-	if !errors.As(err2, &of) {
+	if err2 != nil && !errors.As(err2, &of) {
 		return layout.Pagination{}, nil, err2
 	}
 
 	// DECISION-2(b), as ruled: SOME merged group's preceding row and
 	// footer together exceed the content window. Never error for this —
 	// place that footer ALONE and record it.
+	//
+	// STORY 4.6 CHANGED THE SIGNAL, NOT THE RULE. "The tie does not fit"
+	// used to arrive here as a *layout.OverflowError; an over-tall GROUP
+	// is now CLIPPED instead, so a merged group that does not fit comes
+	// back as a Pagination that succeeded and clipped the tie. Both
+	// spellings mean the same thing and both must revert the tie — and
+	// reverting is not a formality here: the footer ALONE fits perfectly
+	// well, so accepting the clipped tie would DESTROY content that had
+	// somewhere to go, purely as an artefact of an optimisation attempt.
+	// D-4.5.2's ruling stands unchanged: place the footer alone, record
+	// the suppression.
 	//
 	// PER TABLE, NEVER FOR THE WHOLE CALL (this story's review, Finding
 	// 9). The single Paginate call above merges EVERY orphaned table's
@@ -251,8 +300,12 @@ func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnIte
 		trial := append(append([]footerOrphanTarget(nil), accepted...), c)
 		p, err := layout.Paginate(g, applyFooterMerge(items, trial))
 		switch {
-		case err == nil:
+		case err == nil && !groupWasClipped(p.Clipped, c.precedingKey):
 			accepted, best = trial, p
+		case err == nil:
+			// Story 4.6: the tie fit no window and was clipped. Same
+			// verdict as the OverflowError below — revert and record.
+			suppressed = append(suppressed, c)
 		case errors.As(err, &of):
 			suppressed = append(suppressed, c)
 		default:

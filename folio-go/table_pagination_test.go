@@ -14,8 +14,8 @@ package folio
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/layout"
@@ -522,22 +522,20 @@ func TestBothPaginationPassesAgreeOnRowPartition(t *testing.T) {
 	}
 }
 
-// TestRowTallerThanContentWindowStillReturnsLocatedTableOverflow is AC4,
-// scoped EXPLICITLY to itemsForTest's own item order (PHASE B: rects
-// before text — Finding 4, this story's finisher review): a row (its own
-// chrome+lines UNION) taller than the whole content window fails EXACTLY
-// as at 903bf8f on THIS ordering — a located *layout.OverflowError, Kind
-// "table" (the chrome rect, visited first under PHASE B's order, sets
-// Kind) — and the call RETURNS (it does not hang). Story 4.6 owns the
-// real answer (clip to a fresh page, report a Diagnostic); THIS test
-// records CURRENT behaviour and does not endorse it.
+// STORY 4.6 REWROTE THE TWO TESTS BELOW, and it is the story Story 4.3
+// named in writing when it placed them: "Story 4.6 owns the real answer
+// (clip to a fresh page, report a Diagnostic); THIS test records CURRENT
+// behaviour and does not endorse it."
 //
-// This is deliberately NOT the ordering the shipped path uses — see
-// TestRowTallerThanContentWindowReturnsLocatedOverflowThroughRender
-// immediately below, which pins the OTHER arm (PHASE A, via the public
-// Render(), Kind "line") that Finding 4 found unmeasured. Do not leave
-// one arm pinned and the other unmeasured — both are recorded, and 4.6
-// is told which one its own users will actually see.
+// Story 4.3 pinned BOTH orderings — PHASE B (itemsForTest: rects before
+// text, Kind "table") and PHASE A (the shipped path via Render: text
+// before rects, Kind "line") — because the two disagreed about Kind and
+// leaving one unmeasured would have hidden that. The clip makes the
+// disagreement moot, and this pair now says so: the clip is keyed on the
+// GROUP, whose union extent is a property of the group's members and not
+// of the order the sweep visits them in, so both orderings produce the
+// SAME clip on the SAME document. That agreement is asserted rather than
+// assumed, which is what these two tests are still for.
 // tooTallRowDoc's fontSize 200pt makes a single physical line's own
 // height alone exceed the ~100,000mp content window this fixture's
 // 150pt-tall page leaves (150-10-10-10-10 = 110pt content height): the
@@ -567,7 +565,7 @@ func tooTallRowDoc() string {
 `
 }
 
-func TestRowTallerThanContentWindowStillReturnsLocatedTableOverflow(t *testing.T) {
+func TestRowTallerThanContentWindowIsClippedUnderPhaseBOrdering(t *testing.T) {
 	doc := tooTallRowDoc()
 	data := multiRowTableData(1, -1)
 
@@ -597,7 +595,7 @@ func TestRowTallerThanContentWindowStillReturnsLocatedTableOverflow(t *testing.T
 	contentRuns = append(textRuns, contentRuns...)
 
 	// Presence precondition: the row's own chrome really is taller than
-	// the content window, or the overflow case is not exercised.
+	// the content window, or the clip case is not exercised.
 	contentHeight := layout.ContentHeight(geometry)
 	var rowHeight int64
 	for _, r := range tableRects {
@@ -606,61 +604,92 @@ func TestRowTallerThanContentWindowStillReturnsLocatedTableOverflow(t *testing.T
 		}
 	}
 	if rowHeight <= int64(contentHeight) {
-		t.Fatalf("presence precondition: the row is %dmp tall, which FITS the %dmp window — the overflow case is not exercised", rowHeight, contentHeight)
+		t.Fatalf("presence precondition: the row is %dmp tall, which FITS the %dmp window — the clip case is not exercised", rowHeight, contentHeight)
 	}
 
-	// No explicit timeout wrapper: the sweep is a SINGLE forward pass
-	// (R6) — if this call ever hangs, the test binary's own default
-	// timeout fails the package, which is itself the "did it hang or
-	// did it answer wrong" information 4.6 wants recorded (see the
-	// Delivery Log).
-	_, perr := layout.Paginate(geometry, itemsForTest(contentRuns, tableRects))
-	if perr == nil {
-		t.Fatal("Paginate accepted a row taller than the content window; FR44's diagnostic must fire for a too-tall ROW exactly as it does for a too-tall LINE")
+	// No explicit timeout wrapper here: the sweep is a SINGLE forward
+	// pass (R6), and the bounded-return assertion this story owes AC6
+	// lives in TestOverTallGroupPaginationTerminatesWithinABound, which
+	// wraps the PUBLIC entry point in a select/time.After.
+	plan, perr := layout.Paginate(geometry, itemsForTest(contentRuns, tableRects))
+	if perr != nil {
+		t.Fatalf("Paginate returned %T: %v — Story 4.6 clips an over-tall ROW instead of erroring (AD-14: never fatal)", perr, perr)
 	}
-	var overflow *layout.OverflowError
-	if !errors.As(perr, &overflow) {
-		t.Fatalf("Paginate returned %T, want *layout.OverflowError", perr)
+	if len(plan.Clipped) != 1 {
+		t.Fatalf("plan.Clipped = %+v; want exactly one record for the document's one over-tall row", plan.Clipped)
 	}
-	if overflow.Kind != "table" {
-		t.Errorf("overflow.Kind = %q, want %q", overflow.Kind, "table")
+	c := plan.Clipped[0]
+	if c.ElementID != "e1" {
+		t.Errorf("clip.ElementID = %q, want %q", c.ElementID, "e1")
 	}
-	if overflow.ElementID != "e1" {
-		t.Errorf("overflow.ElementID = %q, want %q", overflow.ElementID, "e1")
+	if c.Key != (layout.ItemGroupKey{ElementID: "e1", Index: 0}) {
+		t.Errorf("clip.Key = %+v, want the table's row 0 — the row index the diagnostic names comes from here", c.Key)
+	}
+	if int64(c.ItemHeight) != rowHeight || c.ContentHeight != contentHeight {
+		t.Errorf("clip reports %dmp against %dmp; want the row's measured height %dmp against the content window %dmp",
+			c.ItemHeight, c.ContentHeight, rowHeight, contentHeight)
 	}
 }
 
-// TestRowTallerThanContentWindowReturnsLocatedOverflowThroughRender is
-// AC4's OTHER arm — Finding 4 (this story's finisher review, Major): the
-// shipped path reaches layout.Paginate through PHASE A first
-// (contentColumnItems, page_number.go), which appends TEXT before RECTS,
-// so at the default zero top padding the row's first LINE item ties the
-// chrome on Top and is visited first — Kind comes out "line", not
-// "table". This is NOT a regression (the identical probe at a 903bf8f
-// worktree produces the identical message), but the pin in the sibling
-// test above asserts an ordering production never reaches. This test
-// goes through the actual public Render(), the same entry point AC4's
-// own "exactly as at 903bf8f" claim is about, and pins what a caller of
-// this library actually observes — the pin 4.6 must build its
-// clip-and-diagnose behaviour against.
-func TestRowTallerThanContentWindowReturnsLocatedOverflowThroughRender(t *testing.T) {
+// TestRowTallerThanContentWindowIsClippedThroughRender is the OTHER arm
+// — the shipped path, PHASE A (contentColumnItems appends TEXT before
+// RECTS), through the actual public Render(). Story 4.3 called this "the
+// pin 4.6 must build its clip-and-diagnose behaviour against", and this
+// is 4.6 building against it.
+//
+// Story 4.3's pin here was Kind "line" for a table row — a mislabelling
+// it recorded and routed to this story. It is discharged BY
+// CONSTRUCTION rather than by relabelling: the clip is keyed on
+// ItemGroup.Present, which is exactly what Kind could not distinguish
+// (measured at 45cf812: an over-tall table row and an over-tall plain
+// text element were byte-identical at this entry point — both 0 bytes,
+// both CONTENT_UNLAYOUTABLE, both Kind "line"). A table row no longer
+// reaches OverflowError at all, so it no longer carries a Kind to be
+// wrong about. See layout.OverflowError's own doc comment for the
+// reachability record (AC8).
+//
+// AND THE AGREEMENT BETWEEN THE TWO ORDERINGS, asserted rather than
+// assumed: this test and the PHASE B one above run the SAME document and
+// must produce the SAME clip, because a group's union extent does not
+// depend on the order its members are visited in.
+func TestRowTallerThanContentWindowIsClippedThroughRender(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(tooTallRowDoc()))
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, rerr := Render(tpl, Data(multiRowTableData(1, -1)), nil, testShippedFontSet())
-	if rerr == nil {
-		t.Fatal("Render accepted a document whose only row is taller than the content window; FR44's diagnostic must fire")
+	res, rerr := Render(tpl, Data(multiRowTableData(1, -1)), nil, testShippedFontSet())
+	if rerr != nil {
+		t.Fatalf("Render returned %T: %v — a document whose only row is taller than the content window now renders (AD-14: never fatal)", rerr, rerr)
 	}
-	var overflow *layout.OverflowError
-	if !errors.As(rerr, &overflow) {
-		t.Fatalf("Render returned %T (chain: %v), want an error wrapping *layout.OverflowError", rerr, rerr)
+	if len(res.Bytes) == 0 {
+		t.Fatal("Render returned a nil error and zero bytes")
 	}
-	if overflow.Kind != "line" {
-		t.Errorf(`overflow.Kind = %q, want %q — this is the ordering (PHASE A, text before rects) the shipped path actually uses; the mislabelling ("line" rather than "table" for a table row) predates this story and belongs to 4.6, not this test`, overflow.Kind, "line")
+
+	var got []Diagnostic
+	for _, d := range res.Diagnostics {
+		if d.Code == DiagCodeTableRowClippedHeight {
+			got = append(got, d)
+		}
 	}
-	if overflow.ElementID != "e1" {
-		t.Errorf("overflow.ElementID = %q, want %q", overflow.ElementID, "e1")
+	if len(got) != 1 {
+		t.Fatalf("Result.Diagnostics carries %d %s diagnostic(s); want exactly 1. All: %+v", len(got), DiagCodeTableRowClippedHeight, res.Diagnostics)
+	}
+	if got[0].ElementID != "e1" {
+		t.Errorf("ElementID = %q, want %q", got[0].ElementID, "e1")
+	}
+	// The row index — the data HEAD's *layout.OverflowError never
+	// carried at all (its ElementID was the TABLE's id and there was no
+	// row index in the type).
+	if !strings.Contains(got[0].Message, "row 0 of the bound collection") {
+		t.Errorf("the message does not name the row: %s", got[0].Message)
+	}
+	// PHASE A and PHASE B agree. The heights below are the same ones
+	// TestRowTallerThanContentWindowIsClippedUnderPhaseBOrdering reads
+	// off layout.Paginate directly, under the opposite item order.
+	for _, want := range []string{"272400mp", "110000mp"} {
+		if !strings.Contains(got[0].Message, want) {
+			t.Errorf("the message does not contain %q — PHASE A and PHASE B must clip the SAME group by the SAME arithmetic; the group's union extent does not depend on visit order.\ngot: %s", want, got[0].Message)
+		}
 	}
 }
 

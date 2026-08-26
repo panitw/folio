@@ -13026,3 +13026,478 @@ still absent, and the next wrong default is invisible in exactly the same way.
 **Generalised:** for any fallback, ask *"which fixture reaches this, and would it look different if the
 fallback were wrong?"* If the answer is no fixture, the fallback is unobserved regardless of how many
 tests pass through it.
+
+---
+
+### D-4.6.1 — The over-tall row fork is closed by ELIMINATION, not preference: AD-14 forbids fatal and Story 4.3 forbids split, so clip is what remains — and HEAD violates a ratified invariant
+
+**The orchestrator's brief invited Story 4.6's creator to frame clip-vs-split-vs-error with arms and a
+recommendation. The creator REFUSED, and was right to.**
+
+`ARCHITECTURE-SPINE.md:319-320` (the body; **not** `:311`, which is AD-14's heading — cite the line the
+text sits on, per this programme's own title-versus-body lesson) says verbatim:
+
+> *"Over-tall rows (FR25) and clipped content (FR44) are `Warning`s returned alongside PDF bytes, never
+> silent and never fatal."*
+
+AD-14's **Binds** line names FR25 and FR44 explicitly, so this is squarely in its scope. **Framing arms
+would have asked the lead to re-decide a ratified invariant** — which [[D-000.6]] routes to the owner,
+not to the lead. Presenting a settled question as open is a real failure mode, and the brief was the
+orchestrator's.
+
+**The stronger form, which the lead supplied and the creator did not:** AD-14 forbids **fatal**, and
+Story 4.3's *"no row is ever split"* forbids **split**. Two ratified constraints; **clip is what
+remains.** The fork is closed by elimination rather than by preference — so there was never an arm to
+frame at all. This is a better grounding than AD-14 alone and belongs in the story.
+
+**Measured at HEAD, through the public `Render`:**
+
+```
+Result.Bytes  length 0
+*RenderError  code CONTENT_UNLAYOUTABLE
+              wrapping OverflowError{ElementID:"e1", Kind:"line",
+                                     ItemHeight:272400, ContentHeight:110000}
+```
+
+**Zero bytes and a fatal error, where the spine requires bytes plus a Warning. HEAD is in violation of a
+ratified invariant**, and closing that gap is what Story 4.6 is.
+
+---
+
+### D-4.6.2 — Clip only grouped (table-row) items: AD-14's own noun is "rows", and leniency follows AUTHORSHIP — with a tripwire because `Group.Present` is only accidentally co-extensive with "table row"
+
+**The measurement that forces the question.** An over-tall **table row** and an over-tall **plain text
+element** are **byte-identical at the public API** — both 0 bytes, both `CONTENT_UNLAYOUTABLE`, both
+`Kind:"line"`. **An implementation keyed on `Kind == "table"` clips nothing.** The working discriminator
+is `ItemGroup.Present`, verified empirically, and `Key.Index` is exactly the row index the epic requires
+be named.
+
+**Ruled: Arm A — clip only `Group.Present` items (table header, data and footer rows). Ungrouped lines
+and images keep erroring.**
+
+**The creator grounded this on AD-13** — *a row's height is derived from data the author cannot audit,
+while an image box and a font size are typed by the author.* Good reason. **The lead supplied a better
+one sitting in the same sentence already quoted:** AD-14 says **"Over-tall ROWS"** — not "over-tall
+content", not "over-tall elements". **The leniency is scoped to rows in the ratified text.** Arm A
+implements what AD-14 says; **Arm B would extend it beyond what any invariant grants**, on top of
+reversing [[D-2.6.1]], killing `OverflowError`'s contract, and reddening [[D-4.5.4]]'s fence one story
+after it was placed.
+
+**Correction to the cost as the creator stated it.** *"The two symptoms look identical to an author"* is
+true **at HEAD and false after this story** — that is exactly what the new code fixes. Afterwards an
+over-tall row returns bytes plus `TABLE_ROW_CLIPPED_HEIGHT`; an over-tall text element still returns
+`CONTENT_UNLAYOUTABLE` and no bytes. **The residual cost is narrower:** an author may not understand why
+one is forgiven and the other is not.
+
+**That residual is a DOCUMENTATION obligation, and it converts the asymmetry into a feature.**
+`folio-format.md` must say that leniency follows **authorship**: *Folio absorbs what the data made too
+tall, and refuses what the author typed too tall.*
+
+**Tripwire, required by the same ruling.** Arm A keys the carve-out on `Group.Present`, which **today**
+is co-extensive with "table row" — **accidentally, not by construction**. If a future story creates a
+non-table `ItemGroup`, it becomes **silently clippable**. **Assert that `Group.Present` implies a table
+row**, so the day that stops holding the build says so rather than the carve-out quietly widening. Same
+shape as the census guards, and cheap.
+
+---
+
+### D-4.6.3 — Mint `TABLE_ROW_CLIPPED_HEIGHT`, and SHARE it across header and footer rows: the first time D-4.5.1's discriminator has merged rather than split
+
+**[[D-4.5.1]]'s test applied in BOTH directions by the creator, rather than reflexing either way.**
+
+> Two conditions share a code only if the author would take the same action AND the same thing happened
+> to their document. Same remedy is not sufficient.
+
+**Against 4.4 and 4.5 — the first limb fails, so MINT:**
+
+| story | what the document is left with |
+| --- | --- |
+| 4.4 | the element is **absent** |
+| 4.5 | the element is **present and moved** |
+| 4.6 | the element is **present and truncated** |
+
+Three different things happened to the document, **regardless of remedy overlap.** `TEXT_CLIPPED_WIDTH`
+being axis-scoped by [[D-2.8.1]] is a second, independent reason it is unavailable.
+
+**Within 4.6 — both limbs satisfied, so SHARE.** An over-tall **header** row and an over-tall **footer**
+row are both truncated, with the same author action and the same thing having happened. One code covers
+both.
+
+**Why this instance matters beyond the code.** This is the **first time the discriminator has been used
+to MERGE rather than to split.** A discriminator that only ever splits is **a licence to mint** — which
+is precisely the reflex the ruling was written to check. Running it in the direction that produced the
+**less convenient** answer is what demonstrates it is a test rather than a rationale.
+
+**The name parallels `TEXT_CLIPPED_WIDTH` with its axis in it, and header and footer rows are rows.**
+
+---
+
+### D-4.5.4 (amendment) — the fence's FIXTURE was right and the ruling's WORDS were wrong; a red-proof proves a guard FIRES, not that its SCOPE matches the ruling
+
+**A correction that runs the opposite way from the obvious one.**
+
+D-4.5.4 ruled that Story 4.5 must assert *"an over-tall **GROUP** which is not a footer-plus-row still
+produces `OverflowError`."* The shipped fixture (`table_footer_test.go:1367`) **sets no `Group` field at
+all** — it is an **ungrouped** item. The orchestrator relayed the ruling's words and the reviewer
+verified the red-proof, so the mismatch survived both.
+
+**Do NOT widen the fixture to match the ruling. Amend the ruling to match the fixture.** Had the fixture
+matched the words, **Story 4.6 would have to invert it immediately** — because [[D-4.6.2]]'s Arm A
+deliberately makes grouped over-tall items non-erroring. **The ungrouped fixture is the invariant that
+survives the roadmap; the ruling's wording is not.**
+
+**Post-4.6 the fence reads:** *an **ungrouped** over-tall item still produces `OverflowError`* — exactly
+what it tests and exactly what remains true.
+
+**The reusable half, and it cost a week of false confidence in one line:**
+
+> **A red-proof proves a guard FIRES. It does not prove its SCOPE matches the ruling. Two different
+> checks, and only the first is ever run.**
+
+**Therefore: when reporting a fence in place, relay the FIXTURE, not the ruling's words.** The fence was
+never hollow — it reddened six top-level tests including Story 4.3's own. It simply guarded a narrower
+case than it was described as guarding, and nothing in the pipeline was looking at that.
+
+---
+
+### D-000.86 — The "already true at HEAD for an unrelated reason" accident is the DOMINANT defect shape in this programme, not a one-off: three occurrences in four stories
+
+**Recorded because [[D-000.80]] was written as though it described an incident, and the frequency data
+now says otherwise.**
+
+| story | the accidental cause |
+| --- | --- |
+| 4.3 | the chrome rect as an atomic proxy — the central property already held at HEAD |
+| 4.5 | `footerOrphanTargetsFrom` read footer-ness out of the chrome producer |
+| 4.6 | *"at the top of a fresh page"* is automatically true for any fixture whose over-tall row is first in the band — **page 0 is always fresh** |
+
+**Three in four stories.** D-000.80's part (a) — *remove the accidental cause and the test must STILL
+PASS* — is therefore **not** a specialised instrument for an unusual case; it is **the default check for
+any AC asserting a positional or structural property.**
+
+**The 4.6 instance was caught at CREATION rather than at review**, alongside a [[D-4.5.5]] instance in
+the same story (a single-line fixture makes *"clip to the window"* and *"drop all the row's text"*
+render **identically**). Both are the same underlying question — *what would this test do if the
+mechanism were absent?* — asked before the code exists rather than after.
+
+---
+
+### D-000.84 (amendment) — WITHDRAWN in half: the screen's population and the ledger's population were different, so the series could not have answered the question either way
+
+**Raised by Story 4.6's developer, escalated by the orchestrator without touching this entry, amended by
+the party whose result it damages.**
+
+**The finding.** A D-000.67 part-2 sweep of `diag_bridge_test.go` established that **Stories 4.4 and 4.5
+shipped their minted diagnostic codes with no literal pin at the bridge.** Their only witnesses compared
+a `Diagnostic.Code` against **the bridged constant — trivially equal to itself.** A guard that cannot
+fail, in two shipped stories.
+
+**Correction to the orchestrator's own report of it.** The orchestrator relayed this as *"undetected by
+both reviews."* **That is not what happened**, and the record is more interesting:
+
+- At `b5e6512` (Story 4.4), `diag_bridge_test.go` carries **no pin** for
+  `DiagCodeTableHeaderRepeatSuppressed`. Confirmed in git.
+- **Story 4.4's own commit message reads:** *"deferred the pre-existing diag-bridge coverage hole (named
+  as out of scope by the review itself)."* **4.4's review FOUND it and classified it out-of-scope as
+  pre-existing.**
+- The class was already on the books: the **Epic 3 gate** recorded *"the public→internal `DiagCode`
+  bridge is pinned for 2 of 11; a repointed constant compiles and passes,"* owner **"before the tag."**
+
+**Measured now: 15 public codes, 5 pinned.** At the Epic 3 gate it was **2 of 11**. Nine unpinned then,
+**ten unpinned now** — Story 4.6 pinned three while four were minted. **The deferred item got worse
+while deferred**, which is the re-price-when-the-Nth-instance-arrives failure already ruled on twice
+this month.
+
+*Not established, and deliberately not asserted:* whether 4.4's review named **4.4's own new code**
+specifically or only the pre-existing 2-of-11. It shifts attribution slightly and changes nothing below.
+
+## The amendment, on three counts
+
+**1. The 4.4 row is corrected from 0 to ≥1.** The governing distinction:
+
+> **A pre-existing CLASS is not a pre-existing INSTANCE.**
+
+Story 4.4 minted a **new** code and shipped it with a witness comparing a constant to itself. That the
+class was old does not make that instance old. ***"Out of scope, pre-existing"* is the sentence that hid
+it** — the same sentence shape as every other absorption caught this epic.
+
+**2. The screen's remit is stated.** The deletion screen operates on **AC observables**. A bridge pin is
+a property of a **constant's declaration** and was never in its domain.
+
+**3. What (1) and (2) together mean — and this is a defect in the instrument, not a data error.**
+
+> **The screen's population and the ledger's population were DIFFERENT.** The screen examined AC
+> observables; the ledger counted Class A defects found **anywhere in the story**. A defect outside the
+> screen's domain incremented the same counter as one inside it.
+
+**The series was therefore never a measurement of the screen's effect.** The orchestrator's observation
+that the remit-argument "cuts both ways" is right and cuts harder than it was put: it is not that the
+remit is narrower than the sentence implies — **the number could not have answered the question in
+either direction.**
+
+## The conclusion splits; only one half survives
+
+- **"Does not cover compound observables or prose claims" — STANDS.** It was established by **directly
+  diagnosing Story 4.5's two blockers by mechanism** (one AC, two observables, one boolean), not by
+  counting. **A conclusion reached by mechanism survives a counting error.**
+- **"The screen works for the class it was designed for" — WITHDRAWN.** It rested on a single story's
+  zero, over an **undefined population**, and that zero is now known to exclude a defect **its own review
+  found**. There is **no surviving support** for it. **Not "weakened" — withdrawn.** A hedge here would
+  be the ruling's author defending their own result.
+
+## The reusable lesson
+
+> **Pre-registration protects against moving the goalposts. It does not protect against measuring the
+> wrong thing.**
+
+The n and the falsification criterion were pre-registered correctly. **The statistic's denominator was
+never defined.**
+
+**What accidentally fixed it is worth seeing.** [[D-000.85]]'s per-observable revision forces each story
+to declare its **observable count** — so Story 4.6 reports **3 of 15**, not **3**. **A rate has a
+denominator; a count does not.** That is [[D-000.68]]'s lossy-set corollary and the
+all-clear-versus-could-not-look rule applied to the instrument of the party who had invoked both against
+others four times in the same week. **D-000.85 is the first version of this measurement capable of
+answering the question** — which is the honest good news, and still n=1, and still held.
+
+---
+
+### D-000.87 — Close the CLASS, not the instances: the `DiagCode` bridge gets a census guard, replacing a distant-event owner that absorbed four new instances while deferred
+
+**The Epic 3 gate deferred the bridge-pin hole with the owner *"before the tag"*. The tag is now after
+Epic 6.** In the interval, four new codes were minted and the hole widened from 2-of-11 pinned to
+5-of-15. **A distant-event owner is a single point of silent absorption** — the same failure as
+[[DW-14]]'s gate-as-owner and [[DW-21]]'s two-owner remedy.
+
+**Ruled: replace the deferral with a guard that cannot be absorbed.**
+
+> **Enumerate every public `DiagCode*` constant and require each to have a literal pin. The guard fires
+> the moment a code is minted without one.**
+
+That is exactly what Stories 4.4 and 4.5 needed and nobody had. The ten currently unpinned constants get
+pinned when it lands.
+
+**Construction requirements**, same shape as the existing census guards:
+- The anchor is a **test-owned literal per constant** — never a comparison against the constant itself,
+  which is the defect being closed.
+- **The enumeration must fail loudly if it finds ZERO constants.** A census whose population silently
+  empties is the inert-guard defect wearing the census's clothes.
+
+**Owner: Story 4.6's finisher.** Story 4.6 already swept `diag_bridge_test.go` under D-000.67 part 2 and
+pinned three of fifteen — **a partial sweep**. The story that opened the file finishes it, on the same
+principle as [[D-4.5.4]]'s *the story that carves the exception is the story that fences it.*
+
+---
+
+### D-4.7.0 — Story 4.7's AC is partly CIRCULAR for table content, and cross-target identity proves determinism rather than correctness; three obligations recorded now so 4.7's creator has them at creation
+
+**Raised by Story 4.6's AC7 measurement and sharpened by the lead. Recorded before Story 4.7 exists so it
+is available at creation rather than discovered at a gate.**
+
+**The measurement.** Story 4.6's AC7 mutation — fire the row clip unconditionally — **reddened not a
+single recorded golden.** It reddened **46 top-level tests, all in the table behaviour suite.** Cause:
+
+> **The committed golden corpus contains NO document with a table group.**
+> (`font-text`, `image-embed`, `minimal-rect`, `multi-page`, `multi-script-fallback`, `page-count-20`,
+> `shaped-text`, `three-band-page`, `wrapped-text`.)
+
+**Why this is sharper than "a coverage gap to close."** Story 4.7's AC says the report *"renders
+correctly against recorded reference renders"* — but **there are no recorded reference renders for
+tables, so 4.7 creates them and then compares against what it just created.** That limb is circular on
+first recording.
+
+**And the non-circular guarantee does not cover correctness.** Cross-target hash identity ([[AD-21]])
+proves **determinism**: *a wrong document hashes identically on all four targets.*
+
+> **Story 4.7 is the first byte-pinning of five stories' worth of table behaviour, recorded in one
+> commit, and its correctness rests entirely on a semantic acceptance step that nothing forces.**
+
+That is [[DW-14]]'s hazard, arriving at the C4 gate at maximum stakes.
+
+**Three obligations for 4.7's brief:**
+
+1. **An explicit semantic acceptance step, named as an AC** — a human confirming the rendered document is
+   **right**, not merely **stable**. It is the only non-circular check on the first recording, and **once
+   recorded, every guard we own will defend whatever was recorded.**
+2. **The 46 table-behaviour tests are NOT superseded by the golden.** Once a golden exists there is a
+   real pull to treat it as *the* guarantee and let behaviour tests rot. They are a **second independent
+   producer** — keep both, and say so in the story, because that construction is the one thing that has
+   reliably worked all programme.
+3. **Record that the golden corpus had no table before this story**, so the next reader knows the
+   coverage claim's history rather than re-deriving it at a gate.
+
+---
+
+### D-4.6.4 — The header REPEATS on a clipped row's page: Story 4.4's remedy was being applied where Story 4.4's trigger never fired
+
+**The review found, off-list, that a clipped row's page silently loses its repeated table header** —
+measured `headerRepeats=0` on page 2 with pages 1 and 3 carrying it, and **`plan.Suppressed` empty.**
+The clip branch `continue`s **before** Story 4.4's DECISION-2 block.
+
+**The orchestrator routed this as "fix the recording." That was wrong, and the lead overturned it.**
+
+**It is not a recording bug.** Story 4.4's suppression has a **stated trigger**: *reserving the header
+leaves no room for a data row.* **That condition is not met here.** There **is** a row — over-tall and
+being clipped, but present and occupying the page. So **4.4's REMEDY was being applied where 4.4's
+TRIGGER never fired**, and recording it would have documented a suppression that should not be
+happening at all.
+
+> **A remedy applied outside its own trigger is not made correct by recording it.**
+
+**The substance points the same way.** FR26 exists so a continuation page's rows are readable. **A
+clipped row is already degraded; stripping its column headers makes the surviving content
+uninterpretable.** Of every page in the document, the one carrying a truncated row is the one that most
+needs its header.
+
+**The correct composition, and it terminates:** repeat the header, then clip the row to the remaining
+space. **If reserving the header leaves no room for even one line, Story 4.4's suppression fires ON ITS
+OWN TERMS** and is recorded through 4.4's existing path — which is what that path is for. **Two rules
+composing, rather than one short-circuiting the other.**
+
+**Expected free on hashes** — no committed golden contains a table, so changing the clip extent moves
+nothing. To be confirmed by measurement, not assumed.
+
+**And it disposes of the falsification rather than reconciling it.** With the header repeating there is
+no silent suppression, so Story 4.4's *"recorded, never silent"*, [[AD-14]]'s *never silent*, and the
+story's own new `folio-format.md` sentence *"Nothing is silent in either direction"* all become **true**.
+
+> **The story's DOCUMENTATION was right and its CODE was wrong — the rarer and better direction for that
+> pair to disagree in.** The documentation is not weakened to match the code.
+
+---
+
+### D-000.88 — The observable declaration is a REVIEWED artifact, and the ledger records THREE numbers rather than one ratio: declared, audited, Class A
+
+**[[D-000.85]]'s n=1 came back with its own first data point wrong**, and fixing it exposed a defect in
+the instrument specified one day earlier.
+
+**What the review found.** Story 4.6's AC2 declared **two** observables. Removing the fresh-page step
+reddens **both** AC2 tests, and **no mutation reddens (ii) alone.** The test file even *discloses* that
+it replaced the story's original AC2(ii) formulation and asserts of the replacement *"This one can, and
+does"* stay green — **it does not.** Story declared **3 of 15** Class A; the reviewer measured **at least
+5 of 15**.
+
+**Ruled: n=1 is KEPT, corrected, and the correction is recorded as reviewer-forced.**
+
+**Why keeping it is the ruling rather than a concession.** If a data point is dropped **because it came
+out wrong** — even wrong in a way that was caught — the series ends up containing **only points whose
+self-report was right first time.** That is a selection effect biasing the series **favourably**: the
+same family as [[D-000.84]]'s withdrawn conclusion, with the thumb on the other side of the scale.
+**That a self-report was wrong is itself data about the instrument, and it is the data most needed.**
+
+**The structural defect the orchestrator identified, and it needed a structural answer rather than a
+promise of honesty:**
+
+> **The story declares the DENOMINATOR and review finds the NUMERATOR.** Under-declaring shrinks both,
+> favourably — and a story that discovers its own count was inflated has an honest-looking reason to
+> lower it.
+
+**Two fixes, in force from Story 4.7:**
+
+**1. The observable declaration is a reviewed artifact.** The reviewer audits the **count**, not only the
+witnesses. **The finisher does not correct its own denominator — it PROPOSES; the reviewer
+ADJUDICATES.** Declaring AC2 as one observable may well be right; **that call is not the measured
+party's to make.**
+
+**2. Record three numbers, never one ratio: DECLARED, AUDITED, CLASS A.** Story 4.6's entry is therefore
+of the form *declared 15, audited 14, Class A ≥5*.
+
+> **The declared-vs-audited delta is the ANTI-GAMING metric: it measures whether the screen's INPUT is
+> honest, and it is immune to the favourable-correction incentive because lowering the denominator
+> RAISES the delta.**
+
+Three facts, none of which can be improved by moving another.
+
+---
+
+### D-000.89 — Report pass / fail / skip SEPARATELY, with the exact invocation, every time: `rtk`'s PASSED count was being consumed as a TOTAL, and a `-skip` figure was paired with a no-`-skip` one
+
+**The fourth instance this week of a count losing the thing that made it meaningful — after
+[[D-000.81]] (skips), [[DW-21]] (a re-based denominator) and [[D-000.83]] (units). This one was in the
+orchestrator's own relay, and in the lead's consumption of it.**
+
+**What was actually wrong.** Reported *"707 / 1076"* and *"699 / 1055"*:
+
+- **Both are `rtk`'s PASSED counts, presented as TOTALS.**
+- **True HEAD: 712 top-level (707 pass / 1 fail / 4 skip); 1082 including subtests.**
+- The **1049 ↔ 1055 drift** was **not** the subtest-counting convention the developer offered.
+  Story 4.5's *699 / 1049* is exactly reproducible **under its own `-skip` invocation**; Story 4.6 paired
+  a **`-skip` figure (699)** with a **no-`-skip` figure (1055)**. The delta is precisely the **six
+  passing subtests of `TestCorpusMeetsP6ExerciseFloors`**, the red-by-design test.
+
+**Attribution, and the lead's own correction of the orchestrator's over-claim.** The orchestrator filed
+this as its own relay error. The lead declined that framing:
+
+> *"I have been the consumer of those numbers all epic and I never once asked under what invocation they
+> were produced. I quoted `965/0/1`, `987/0/1` and `1022/0/3` back approvingly — from a wrapper I knew
+> rewrites commands. **A relay error that four consecutive readers accept is not one party's.**"*
+
+**Standing form, both directions, from here:**
+
+> **pass / fail / skip separately, with the exact invocation, every time. If a number arrives without an
+> invocation, the right response is to ASK — not to reason from it.**
+
+**And the specific trap to remember:** a wrapper that summarises test output may report **passed** where
+a reader assumes **total**, and the two differ by exactly the failures and skips that matter most.
+
+---
+
+### D-4.6.5 — Story 4.6's finisher measurements: the census population is SEVEN, and two more compound observables were found by measuring rather than by review
+
+**Appended by Story 4.6's finisher, not by the lead.** The log is append-only, so [[D-000.87]]'s and
+[[D-000.88]]'s entries are left exactly as written and corrected here instead. Nothing below changes
+the substance of either ruling; both are discharged as ruled.
+
+**1. [[D-000.87]]'s "ten currently unpinned" was an unmeasured figure. The measured number is SEVEN.**
+Bisected by the finisher at its own final baseline — each of the fifteen exported `DiagCode*` bridges
+rewritten in turn to a wrong literal, the whole suite re-run, the tree restored and SHA-256 verified —
+**seven redden nothing at all**, reproducing the reviewer's set exactly:
+
+`DiagCodeTableFooterSourceForbidden` · `DiagCodeTemplateMalformed` · `DiagCodeBindingPathAbsent` ·
+`DiagCodeExpressionInvalid` · **`DiagCodeContentUnlayoutable`** · `DiagCodeDocumentDateInvalid` ·
+`DiagCodeStyleColorInvalid`
+
+The ruling's ten came from arithmetic over a name-grep. **"Not literally pinned" and "reddens nothing
+under mutation" are different properties, and only the second is what a census is for** — three of the
+ten (`TextMissingGlyph`, `TableFooterSourceUnresolved`, `InternalUnhandledCaveat`) are caught
+indirectly, confirmed by the same bisect.
+
+> **A population figure that was never mutated is a guess about coverage, not a measurement of it.**
+
+**And the census is not tidying.** `DiagCodeContentUnlayoutable` names the **refused** half of
+[[D-4.6.2]]'s authorship asymmetry — rows forgiven because their height came from data the author
+never saw, typed content refused. It could have been repointed at an arbitrary string with the entire
+suite green. The census closes a hole sitting directly under this story's own argument. All seven now
+redden; the guard's three limbs (mint-without-pin, stale pin, zero population) are each red-proved.
+
+**2. [[D-4.6.4]] is implemented as ruled, and its hash prediction HELD — measured, not assumed.**
+`git status --porcelain fixtures/ folio-go/testdata/` empty; all nine `expected.pdf` digests recomputed
+live and unchanged; every golden and byte-neutrality test green by name. Both arms of the composition
+are witnessed by real documents differing in exactly the property the branch keys on: the multi-line
+fixture repeats its header (nine of fourteen lines survive under the reservation), and the
+single-200pt-line fixture survives neither cut, so [[D-4.4.x]]'s DECISION-2 arm (c) fires on its own
+terms and is recorded through the existing channel.
+
+**3. Two MORE compound observables, found by measurement rather than by review — and one of
+[[D-000.88]]'s premises is narrowed by the same measurement.**
+
+- **AC1 (ii)** — "the bytes are non-empty and structurally valid" — is **not separably witnessed**, and
+  this was **not** in the review. AC1's own named deletion (clip to zero height, so the over-tall group
+  contributes nothing) leaves both of its subtests **green**: a document that destroyed one row is
+  still a well-formed document with bytes and a resolving page tree.
+- **AC2 (ii)** — the band-containment property — **IS** separably witnessed after all, contrary to the
+  review's "nor is there any other mutation that reddens (ii) alone". Setting the clip's header
+  reservation to zero reddens it with AC2 (i) **green**. **The reviewer was right about the code as it
+  stood**: that mutation exists only because [[D-4.6.4]]'s fix introduced the reservation, and it is
+  observable only because the finisher also fixed the containment check to read the per-table row
+  displacement rather than the page shift alone. **AC2 (i) remains Class A** — two mutations tried,
+  both redden containment too, because both change the page's shift.
+
+**Recorded per [[D-000.88]]: declared 15, audited 14, Class A 6** — three compound/prose entries among
+the declared observables, three undeclared unwitnessed mechanisms (all three now closed). **The
+correction was reviewer-forced, not self-caught**, and that is on the record as data about the
+instrument rather than about this story.
+
+> **The finisher PROPOSES 13 as the corrected declared count and does NOT apply it.** [[D-000.88]]
+> forbids the measured party from moving its own denominator; the story file keeps 15 and the delta
+> stays visible for the reviewer to adjudicate.

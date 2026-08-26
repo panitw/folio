@@ -1996,6 +1996,13 @@ func paginateDocument(
 		})
 	}
 
+	// Story 4.6 (FR25/AD-14/D-4.6.3): one Warning per clipped group,
+	// built straight from Paginate's OWN decision — never a second,
+	// independent re-run of the fit arithmetic (D-4.2.2).
+	for _, c := range plan.Clipped {
+		repeatDiags = append(repeatDiags, clippedRowDiagnostic(c))
+	}
+
 	pages := make([]pagemodel.Page, 0, len(plan.Pages))
 	for pageIdx, assigned := range plan.Pages {
 		// Story 2.7, AC2's between-passes step: pageNum is THIS page's
@@ -2071,6 +2078,19 @@ func paginateDocument(
 		}
 		for _, ref := range assigned.ContentRects {
 			r := pdfRects[ref]
+			// Story 4.6: this rect belongs to a group taller than the
+			// page, so its bottom edge is cut off at the content
+			// bottom. Applied in COLUMN space, BEFORE the shift, because
+			// layout.RectClip.Bottom is a column coordinate exactly like
+			// a ColumnItem's own Top/Bottom — and applied as
+			// min(rect's own bottom, the bound), so a group of several
+			// rects with different extents is correct with one number
+			// and a rect that already ends above the cut is untouched.
+			// No PDF clip path is involved: truncating a rectangle is a
+			// change to a rectangle (AD-5).
+			if bottom, clip := rectClipBottomFor(assigned.ClippedRects, ref); clip && r.Y+r.H > bottom {
+				r.H = bottom - r.Y
+			}
 			r.Y -= assigned.Shift
 			if rectIsDataRow[ref] {
 				r.Y += rowDisplacementFor(assigned.RowDisplacement, rectElementID[ref])
@@ -2084,6 +2104,56 @@ func paginateDocument(
 		pages = append(pages, layout.ComposePage(geometry, pageRuns, pageImages, pageRects))
 	}
 	return pages, repeatDiags, nil
+}
+
+// rectClipBottomFor returns the column-space bottom bound (Story 4.6) a
+// page's ClippedRects imposes on ref — found by a single SLICE WALK
+// (never a map range, R5), for the same reason rowDisplacementFor is one:
+// the list is empty on every page of every document with no over-tall
+// group, and holds one clipped group's rects otherwise.
+func rectClipBottomFor(list []layout.RectClip, ref layout.RectRef) (geom.Length, bool) {
+	for _, c := range list {
+		if c.Ref == ref {
+			return c.Bottom, true
+		}
+	}
+	return 0, false
+}
+
+// clippedRowDiagnostic turns ONE of Paginate's clip decisions into the
+// located Warning AD-14 requires (Story 4.6, AC4/AC5). It is a named
+// function rather than an inline literal so the ROLE rendering — the one
+// thing that must never leak a wire value at an author — is assertable
+// directly for all three group roles, including the footer's Index -1
+// sentinel, without needing a document that produces each.
+//
+// The message names the table, the row (BY ROLE, never by the sentinel),
+// the row's own height, the content height it was measured against, and
+// the three levers a template author actually has (D-000.37, "executable
+// by a human") — the same three the sibling TABLE_HEADER_REPEAT_SUPPRESSED
+// and TABLE_FOOTER_ORPHAN_SUPPRESSED messages name.
+func clippedRowDiagnostic(c layout.TableRowClipped) Diagnostic {
+	// The row index the epic requires named — read straight off the
+	// group's own Key (D-4.2.2: never re-derived from extent or order).
+	// footerGroupIndex is -1, a WIRE VALUE: a message that printed it
+	// verbatim would put "row -1" in front of a human.
+	var row string
+	switch {
+	case c.Key.IsHeader:
+		row = "the header row"
+	case c.Key.Index == footerGroupIndex:
+		row = "the footer row"
+	default:
+		row = fmt.Sprintf("row %d of the bound collection", c.Key.Index)
+	}
+	return Diagnostic{
+		Severity:  SeverityWarning,
+		Code:      DiagCodeTableRowClippedHeight,
+		ElementID: c.ElementID,
+		Message: fmt.Sprintf(
+			"folio: Render: element %s: %s is %s tall, which is taller than the whole %s content window, so it fits on no page — it was placed alone on page %d and CLIPPED at that page's content bottom, and the content past the bottom is absent from this document (FR25). Reduce this row's height (font size or cell padding), shorten the data in it, or increase the page's content height (smaller margins, or a smaller page-header/page-footer)",
+			c.ElementID, row, millipointsForDiag(c.ItemHeight), millipointsForDiag(c.ContentHeight), c.Page+1),
+	}
 }
 
 // rowDisplacementFor returns the extra downward displacement (Story 4.4)

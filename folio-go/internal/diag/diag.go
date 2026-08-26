@@ -179,6 +179,45 @@ const (
 	// same thing must have happened to the document"). Minted here, at
 	// the point the condition first ships (R7/D-000.65).
 	CodeTableFooterOrphanSuppressed Code = "TABLE_FOOTER_ORPHAN_SUPPRESSED"
+
+	// CodeTableRowClippedHeight names Story 4.6's own new condition
+	// (FR25, AD-14, D-4.6.3 as ruled): a table GROUP — a header row, a
+	// data row, or the footer row — is by itself taller than the whole
+	// content window, so no page anywhere in the document could hold
+	// it. AD-14 rules this never fatal, so the group is placed alone on
+	// a fresh page and CUT OFF at that page's content bottom: whole
+	// lines past the bottom are absent from the document forever, and
+	// this Warning is the only record that they existed.
+	//
+	// MINTED rather than widened, on D-4.5.1's discriminator ("two
+	// conditions share a code only if the author would take the same
+	// action AND the same thing happened to their document"), against
+	// all three neighbours:
+	//
+	//   - CodeTextClippedWidth (Story 2.8) is scoped by D-2.8.1 to the
+	//     HORIZONTAL axis and to a box edge; it never reads a height.
+	//     This is vertical, at a PAGE edge, and it destroys whole lines
+	//     rather than the tail of one.
+	//   - CodeTableHeaderRepeatSuppressed (Story 4.4) DROPS a redrawn
+	//     copy of something still present elsewhere in the document.
+	//   - CodeTableFooterOrphanSuppressed (Story 4.5) MOVES nothing and
+	//     leaves everything present.
+	//
+	// This one DESTROYS content — a third thing, and the only one of
+	// the three a reader can suffer without noticing, because a row
+	// ending at the bottom of a page is exactly what a normal page
+	// break looks like.
+	//
+	// ONE CODE FOR ALL THREE GROUP ROLES, and that is the test cutting
+	// the other way rather than a reflex: an over-tall header row, an
+	// over-tall data row and an over-tall footer row are the same thing
+	// happening to the document (a table group taller than the window,
+	// clipped, content destroyed) with the same remedy (shorten it, or
+	// enlarge the page). Both limbs of D-4.5.1 are satisfied, so the
+	// ROLE and the row index travel in the message, not in the code.
+	// Minted here, at the point the condition first ships (R7/D-000.65,
+	// D-1.4.2: never ahead of it).
+	CodeTableRowClippedHeight Code = "TABLE_ROW_CLIPPED_HEIGHT"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -201,6 +240,7 @@ var allCodes = []Code{
 	CodeStyleColorInvalid,
 	CodeTableHeaderRepeatSuppressed,
 	CodeTableFooterOrphanSuppressed,
+	CodeTableRowClippedHeight,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a

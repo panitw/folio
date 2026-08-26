@@ -32,6 +32,17 @@ package layout
 //     statement about the BOX — a template error with a located message,
 //     never a silent clip and never a straddle.
 //
+// ONE EXCEPTION, AND IT IS RULED RATHER THAN CHOSEN (Story 4.6, AD-14,
+// D-4.6.2). A GROUP (Story 4.3's ItemGroup — a table row) taller than the
+// window is not a template error: AD-14 says over-tall rows are Warnings
+// returned alongside PDF bytes, never fatal. Such a group is given a page
+// of its own and CLIPPED at that page's content bottom, recorded in
+// Pagination.Clipped. Rules 1-4 are untouched by it: the column is not
+// mutated, no line is split (whole lines are dropped, never halves), no
+// sibling moves, and the exception is scoped to grouped items because a
+// row's height comes from DATA while a font size and an image box come
+// from the author's own keyboard.
+//
 // WHY THE WINDOW SLIDES RATHER THAN SITTING ON A FIXED GRID, recorded
 // because the rejected alternatives are the ones a reader will re-propose:
 //
@@ -200,15 +211,42 @@ type BandContent struct {
 // window — the residual case once the window can slide, and therefore
 // exactly "the item is taller than the content window".
 //
-// ONE OVERFLOW RULE, TWO SUBJECTS. D-2.6.1 ruled the image case: an image
-// whose declared box exceeds the content window "fits nowhere", and that is
-// a TEMPLATE error with a located message rather than a render-time
-// surprise. A LINE taller than the window (reachable with a font size larger
-// than the content band) is the same case and gets the same answer, so the
-// implementation is never left to split, loop or panic.
+// ONE OVERFLOW RULE, TWO SUBJECTS — AND, SINCE STORY 4.6, ONE SUBJECT ONLY.
+// D-2.6.1 ruled the image case: an image whose declared box exceeds the
+// content window "fits nowhere", and that is a TEMPLATE error with a located
+// message rather than a render-time surprise. A LINE taller than the window
+// (reachable with a font size larger than the content band) is the same case
+// and gets the same answer, so the implementation is never left to split,
+// loop or panic. Both of those subjects are UNGROUPED items, and both keep
+// this error verbatim.
+//
+// What is NO LONGER a subject of this error is a GROUPED item — a table row
+// (Story 4.3's ItemGroup). AD-14 rules that "over-tall rows (FR25) and
+// clipped content (FR44) are Warnings returned alongside PDF bytes, never
+// silent and never fatal", and Story 4.6 brought the code to that spine: an
+// over-tall GROUP is clipped to a fresh page and recorded in
+// Pagination.Clipped, from which package folio builds a Warning
+// (TABLE_ROW_CLIPPED_HEIGHT). The distinction is AD-13's own line and D-4.6.2's
+// ruling: a row's height is DERIVED FROM DATA the author may never have seen,
+// while an image's declared box and a font size are things the author TYPED.
+// A failure derived from unauditable data must not be fatal; a typo should be.
 //
 // NEVER A STRADDLE AND NEVER A SILENT CLIP: both are what this error exists
-// to prevent.
+// to prevent, and Story 4.6's clip weakens neither. It is not a straddle (it
+// drops WHOLE lines and truncates a chrome rectangle's coordinate — no line
+// is ever drawn in halves, AD-24) and it is not silent (every clip carries a
+// located Warning on Result.Diagnostics). "Never a silent clip" was always
+// the operative word; the clip that arrived is loud.
+//
+// REACHABILITY OF Kind, recorded so a future reader does not treat a dead
+// branch as live (Story 4.6, AC8). Kind == "table" is produced only for an
+// item carrying Rects, and every tableRectSource in package folio is built at
+// exactly one of three sites (table_render.go's header, data-row and footer
+// constructors), all three of which carry a PRESENT ItemGroup — so every item
+// that could set Kind "table" now takes the clip branch instead. Kind ==
+// "table" is therefore NO LONGER PRODUCED FROM PACKAGE FOLIO. It remains
+// constructible by a direct caller of this package that builds an ungrouped
+// Rects item, which is why the derivation is kept rather than deleted.
 type OverflowError struct {
 	ElementID     string
 	ItemHeight    geom.Length
@@ -296,6 +334,72 @@ type Pagination struct {
 	// Appended in the sweep's own deterministic order (a slice, never a
 	// map ranged for emission — R5).
 	Suppressed []TableHeaderSuppressed
+
+	// Clipped records every GROUP that was taller than the content
+	// window and was therefore placed alone on a fresh page and cut off
+	// at that page's content bottom (Story 4.6, FR25/AD-14). One entry
+	// per clipped group, appended in the sweep's own deterministic order
+	// (a slice, never a map ranged for emission — R5).
+	//
+	// This is DATA for a caller to build a located Warning from, exactly
+	// as Suppressed is: the group's identity, its own height and the
+	// height it was measured against are carried here straight from the
+	// comparison that decided the clip, so a caller never re-derives the
+	// fit arithmetic a second time (D-4.2.2). The MESSAGE is built in
+	// package folio — this package has no author-facing prose in it and
+	// does not know a footer sentinel from a row index.
+	//
+	// An UNGROUPED over-tall item is not here: it still returns
+	// *OverflowError, per D-4.6.2 and OverflowError's own doc comment.
+	Clipped []TableRowClipped
+}
+
+// TableRowClipped is Pagination.Clipped's element type — one group that
+// did not fit any window and was cut off (Story 4.6).
+type TableRowClipped struct {
+	// ElementID names the element the clipped group belongs to — the
+	// TABLE's id for a table row, which is what the group's own members
+	// carry.
+	ElementID string
+
+	// Key is the group's identity, carried VERBATIM rather than
+	// re-derived (D-4.2.2), so a caller reads the row index and the
+	// header/footer role straight off the group that was clipped. This
+	// package attaches no meaning to Index's value beyond equality —
+	// the footer's sentinel is package folio's own convention.
+	Key ItemGroupKey
+
+	// ItemHeight is the group's UNION height (latest Bottom minus
+	// earliest Top) — the quantity that exceeded the window, not any one
+	// member's own height.
+	ItemHeight geom.Length
+
+	// ContentHeight is the content window's height it was measured
+	// against. A caller's message can state both directly.
+	ContentHeight geom.Length
+
+	// Page is the page the clipped group landed on, 0-based (a caller
+	// adds one to speak to a human, exactly as the Suppressed loop does).
+	Page int
+}
+
+// RectClip truncates ONE rect's bottom edge on ONE page (Story 4.6): the
+// caller draws the rect it already owns, but no lower than Bottom.
+//
+// It is a COORDINATE, in the same page-absolute column space every other
+// extent in this package uses, and it is a BOUND rather than a height:
+// the caller applies `min(rect.Bottom, Bottom)` against the rect's own
+// geometry, which this package never inspects (RectRef's whole contract).
+// That keeps a group of several rects with different extents correct with
+// one number, and keeps AD-5 intact — no PDF clip path is implied or
+// needed, because truncating a rectangle is a change to a rectangle.
+//
+// Apply it BEFORE PageAssignment.Shift: Bottom is a column coordinate,
+// like Top/Bottom on a ColumnItem, and Shift is what moves column space
+// into page space.
+type RectClip struct {
+	Ref    RectRef
+	Bottom geom.Length
 }
 
 // TableHeaderRepeat is one continuation page's redrawn copy of a table's
@@ -419,6 +523,13 @@ type PageAssignment struct {
 	// walked by a caller in declared order — never a map ranged for
 	// emission (R5).
 	RowDisplacement []TableRowDisplacement
+
+	// ClippedRects — Story 4.6: the rects on this page whose bottom edge
+	// must be truncated because the group they belong to was taller than
+	// the window. Empty for every page that carries no clipped group,
+	// which is every page of every document that has none. Appended in
+	// the sweep's own deterministic order.
+	ClippedRects []RectClip
 }
 
 // Paginate slices the content column into windows and returns one assignment
@@ -585,6 +696,24 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 	// — never re-derived (D-4.2.2).
 	reservation := make(map[tablePageKey]geom.Length)
 	var suppressed []TableHeaderSuppressed
+	var clipped []TableRowClipped
+
+	// dropped[i] marks an authored item whose RUNS AND IMAGES the Story
+	// 4.6 clip DESTROYED: a line (or image) of an over-tall group whose
+	// own extent lies past the content bottom of the one page that group
+	// could be given. The emission below omits them — leaving a ref out
+	// of a page's ContentRuns/ContentImages IS the drop, since those
+	// slices are already a per-page SUBSET of the caller's own slices
+	// (AD-5: this package decides pages, it never rebuilds content).
+	//
+	// It does NOT gate the item's Rects. A rectangle is a coordinate and
+	// is TRUNCATED (ClippedRects) rather than dropped, so the row still
+	// reads as a row; only a line, which is atomic, is destroyed whole.
+	//
+	// It is a []bool indexed by AUTHORED position, not a set, so the
+	// emission loop reads it by direct index and no iteration order is
+	// introduced (R5).
+	dropped := make([]bool, len(items))
 
 	// pageOf[i] is the page authored-item i landed on. Filled by the sweep,
 	// read by the emission below — which is what lets the sweep run in column
@@ -635,6 +764,193 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		if it.Group.Present {
 			e := groups[it.Group.Key]
 			effectiveTop, effectiveBottom = e.top, e.bottom
+		}
+
+		// STORY 4.6 (FR25, AD-14): the group is taller than the window
+		// itself, so no window of any position contains it. AD-14 rules
+		// this NEVER FATAL — "over-tall rows (FR25) and clipped content
+		// (FR44) are Warnings returned alongside PDF bytes" — so the
+		// group is given a page of its own and cut off at that page's
+		// content bottom, and the render carries on.
+		//
+		// This is tested BEFORE the fit test and the FR26 reservation
+		// below, and it does its own page advance, because both of those
+		// are answers to "which window does this fit in?" and this group
+		// fits none: the fresh page is not a window decision the slide
+		// happens to make, it is this branch's own first step, and it is
+		// deletable on its own (D-000.85's per-observable screen).
+		//
+		// Keyed on Group.Present, and NOT on the item's kind: measured
+		// at 45cf812, an over-tall table row and an over-tall plain text
+		// element are indistinguishable at the public API (both 0 bytes,
+		// both CONTENT_UNLAYOUTABLE, both Kind "line"), because the
+		// shipped path appends text before rects and the row's first
+		// LINE ties the chrome on Top. A branch keyed on Kind == "table"
+		// would clip nothing (D-4.6.2).
+		if it.Group.Present {
+			if itemHeight := effectiveBottom - effectiveTop; itemHeight > height {
+				// (1) A FRESH PAGE FOR THE GROUP. The same
+				// no-empty-page condition the slide uses: a page that
+				// carries nothing yet IS the fresh page.
+				if pageHasItem {
+					page++
+					pages = append(pages, PageAssignment{})
+					pageHasItem = false
+				}
+				windowStart = effectiveTop
+				pages[page].Shift = windowStart - contentTop
+
+				// (1b) THE REPEATED HEADER THIS PAGE STILL GETS
+				// (FR26/DECISION-3 composed with the clip, D-4.6.4).
+				//
+				// This branch used to `continue` past Story 4.4's whole
+				// DECISION-2/DECISION-3 block below, so a clipped row's
+				// page silently lost its column headers. That was not a
+				// missing RECORD — it was 4.4's REMEDY applied where
+				// 4.4's TRIGGER never fired. DECISION-2 arm (c)
+				// suppresses a repeat precisely when reserving the
+				// header would leave no room for a row; here there IS a
+				// row on the page. And the substance runs the same way:
+				// FR26 exists so a continuation page stays readable, and
+				// of every page in the document the one carrying a
+				// TRUNCATED row is the one that can least afford to lose
+				// the labels that say what its surviving cells mean.
+				//
+				// So the two rules COMPOSE rather than one
+				// short-circuiting the other: repeat the header, then
+				// clip the row into what is left below it. The
+				// reservation narrows the cut by exactly the header's
+				// own height, which is why `contentBottom` is computed
+				// from `reserved` rather than from `height` alone.
+				//
+				// The composition terminates, and its floor is 4.4's
+				// own: if reserving the header leaves room for not even
+				// ONE of the row's lines, the repeat buys nothing and
+				// costs a line, so DECISION-2 arm (c) fires on its own
+				// terms — suppressed, and RECORDED through the very
+				// TableHeaderSuppressed channel 4.4 built for it.
+				reserved := geom.Length(0)
+				if !it.Group.Key.IsHeader {
+					// The table whose row this is, and whose header is
+					// already placed on an EARLIER page — DECISION-2's
+					// own condition, computed here because `table`
+					// below is not yet in scope. An over-tall HEADER is
+					// never its own repeat, hence the IsHeader guard.
+					tbl := it.Group.Key.ElementID
+					hdr, hasHeader := headerExtent(tbl)
+					hp, headerPlaced := headerPageOf[tbl]
+					if _, decided := reservation[tablePageKey{tbl, page}]; hasHeader && headerPlaced && hp != page && !decided {
+						hh := hdr.bottom - hdr.top
+
+						// Does even one of the row's own lines survive
+						// the narrowed cut? A chrome rect is not a
+						// line: it is truncated either way, so it can
+						// never be the thing that justifies the
+						// reservation.
+						reservedBottom := windowStart + height - hh
+						linesUnderReservation := 0
+						for j := range items {
+							if !items[j].Group.Present || items[j].Group.Key != it.Group.Key {
+								continue
+							}
+							if len(items[j].Rects) == 0 && items[j].Bottom <= reservedBottom {
+								linesUnderReservation++
+							}
+						}
+
+						if linesUnderReservation > 0 {
+							// DECISION-3, honoured on a clipped page.
+							reserved = hh
+							reservation[tablePageKey{tbl, page}] = hh
+							hdrRects, hdrRuns := headerContentOf(items, tbl)
+							pages[page].RowDisplacement = append(pages[page].RowDisplacement,
+								TableRowDisplacement{ElementID: tbl, Amount: hh})
+							pages[page].HeaderRepeats = append(pages[page].HeaderRepeats,
+								TableHeaderRepeat{
+									ElementID: tbl,
+									Rects:     hdrRects,
+									Runs:      hdrRuns,
+									Shift:     hdr.top - effectiveTop + pages[page].Shift,
+								})
+						} else {
+							// DECISION-2 arm (c), on its own terms and
+							// through its own path. Recorded, never
+							// silent.
+							reservation[tablePageKey{tbl, page}] = 0
+							suppressed = append(suppressed, TableHeaderSuppressed{
+								ElementID:    tbl,
+								Page:         page,
+								RowHeight:    itemHeight,
+								Available:    height,
+								HeaderHeight: hh,
+							})
+						}
+					}
+				}
+
+				// (2) THE CUT. Everything at or above contentBottom is
+				// kept; everything crossing or below it is destroyed.
+				// FIT ENTIRELY (rule 3) is unchanged and is exactly what
+				// makes this a clip rather than a straddle: a line whose
+				// extent CROSSES the bottom is dropped whole, never drawn
+				// in halves. A chrome rect is not a line — it is a
+				// coordinate, and it is truncated (RectClip) rather than
+				// dropped, so the row still reads as a row.
+				contentBottom := windowStart + height - reserved
+				for j := range items {
+					if !items[j].Group.Present || items[j].Group.Key != it.Group.Key {
+						continue
+					}
+					pageOf[j] = page
+					if items[j].Bottom <= contentBottom {
+						continue
+					}
+					// A MEMBER'S RECTS AND ITS RUNS ARE ANSWERED
+					// INDEPENDENTLY, never as an either/or. Each kind
+					// gets the treatment its own nature admits: a
+					// rectangle is a coordinate, so it is TRUNCATED; a
+					// line is atomic, so it is DROPPED WHOLE (AD-24
+					// forbids drawing half of one).
+					//
+					// This used to short-circuit — `if len(Rects) > 0 {
+					// …; continue }` — so a member carrying BOTH had its
+					// rects bounded and its runs KEPT, drawn past the
+					// content bottom. Content retained silently, on the
+					// one code path whose entire job is destroying
+					// content deliberately. Unreachable today
+					// (paginateDocument and itemsForTest both build
+					// rect-items and run-items disjointly), and handling
+					// the two kinds separately is cheaper than asserting
+					// the disjointness the old shape assumed (this
+					// story's reviewer, Finding 11).
+					for _, ref := range items[j].Rects {
+						pages[page].ClippedRects = append(pages[page].ClippedRects,
+							RectClip{Ref: ref, Bottom: contentBottom})
+					}
+					dropped[j] = true
+				}
+
+				// (3) RECORDED, NEVER SILENT. The caller turns this into
+				// a located Warning; this package builds no prose.
+				clipped = append(clipped, TableRowClipped{
+					ElementID:     it.ElementID,
+					Key:           it.Group.Key,
+					ItemHeight:    itemHeight,
+					ContentHeight: height,
+					Page:          page,
+				})
+
+				// (4) PLACED. Marking the group resolved is what makes
+				// this a single forward pass: every later-visited member
+				// takes the groupPage short-circuit at the top of the
+				// loop and never asks the window a second question.
+				pageHasItem = true
+				groupPage[it.Group.Key] = page
+				if it.Group.Key.IsHeader {
+					headerPageOf[it.Group.Key.ElementID] = page
+				}
+				continue
+			}
 		}
 
 		// Story 4.4: is this item one of table T's OWN ROWS (never the
@@ -746,13 +1062,16 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		}
 
 		// The residual case, and the ONLY one left once the window can
-		// slide: the item (or, grouped, the group as a whole) is taller
-		// than the window itself, so no window of any position contains
-		// it. FR44's located diagnostic — AC4 (Story 4.3): a row too tall
-		// for any window fails EXACTLY as an ungrouped item does, naming
-		// the item the sweep was visiting when it discovered the group's
-		// total height exceeds the window. Story 4.6 owns clipping this
-		// case to a fresh page; this story changes nothing about it.
+		// slide: the item is taller than the window itself, so no window
+		// of any position contains it. FR44's located diagnostic.
+		//
+		// Story 4.6 narrowed this to UNGROUPED items only — a grouped
+		// item took the clip branch above and never reaches here. What
+		// remains is D-2.6.1's own two subjects: a line whose font size
+		// exceeds the content band, and an image whose DECLARED BOX
+		// does. Both are things the author TYPED, and both stay a
+		// located template error rather than a silent truncation of a
+		// picture (D-4.6.2, AD-13).
 		if itemHeight := effectiveBottom - effectiveTop; itemHeight > height {
 			kind := "line"
 			if len(it.Images) > 0 {
@@ -801,14 +1120,30 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 	}
 
 	// Emission, in AUTHORED order per page. See PageAssignment.ContentRuns.
+	//
+	// Story 4.6: a dropped item's RUNS AND IMAGES contribute nothing to
+	// any page. That is the whole of the drop — there is no second
+	// channel and no marker left behind, because a page's content refs
+	// are already a per-page subset of the caller's slices and an absent
+	// ref is an absent line.
+	//
+	// Its RECTS still emit, because a rect is never dropped: the clip
+	// bounds it (ClippedRects) and the caller applies that bound. The
+	// distinction is inert for every input this module builds today —
+	// nothing carries both kinds — and it is spelled out anyway so that
+	// the day something does, a rectangle is truncated and a line is
+	// destroyed, rather than whichever the branch order happened to pick
+	// (this story's reviewer, Finding 11).
 	for i := range items {
 		p := pageOf[i]
-		pages[p].ContentRuns = append(pages[p].ContentRuns, items[i].Runs...)
-		pages[p].ContentImages = append(pages[p].ContentImages, items[i].Images...)
+		if !dropped[i] {
+			pages[p].ContentRuns = append(pages[p].ContentRuns, items[i].Runs...)
+			pages[p].ContentImages = append(pages[p].ContentImages, items[i].Images...)
+		}
 		pages[p].ContentRects = append(pages[p].ContentRects, items[i].Rects...)
 	}
 
-	return Pagination{Pages: pages, Suppressed: suppressed}, nil
+	return Pagination{Pages: pages, Suppressed: suppressed, Clipped: clipped}, nil
 }
 
 // headerContentOf returns table's header ColumnItem(s)' own Rects and Runs,
