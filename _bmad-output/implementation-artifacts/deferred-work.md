@@ -151,6 +151,33 @@ sign-off is unaffected, and that is now **measured** rather than assumed: no bre
 
 ---
 
+### DW-3 — Publishing the third-party licence manifest as a release artifact — **RETIRED at Epic 4 planning (D-4.0.1)**
+
+**Retired, not completed, and the distinction is the point.** AD-26's substance shipped at Story 1.3
+and is guarded continuously: every module in the resolved graph carries a resolved licence, an
+unresolvable one fails the build, and `TestManifestUpToDate` fails if the committed
+`lint/MANIFEST.md` drifts from what the generator produces. What remained was *"attach it to a
+release"* — **a line item in a procedure that did not exist**, not deferred engineering. Leaving it
+under `## Open` asserted that something remained to be **built**. A record that overstates is a defect
+even when it errs toward caution ([[D-000.49]]); this one spent attention at three consecutive gates.
+
+**The two disagreeing owners were the tell.** *"Epic 4 close"* and *"the `folio-go/v0.1.0` tag"* were
+one moment when written and are three epics apart since [[D-000.78]]. The lead declined to fix that by
+picking one, because either choice keeps finished work in a backlog.
+
+**Discharged by replacement** ([[D-000.59]]): the obligation now lives in **`RELEASING.md`** at the
+repository root, item 1 — *where the story that cuts the tag must necessarily read it*, rather than in
+a list that story has no reason to open. `TestReleasingDocNamesTheGuardedManifest`
+(`lint/internal/manifest/releasing_test.go`) holds the two halves together: every `MANIFEST.md` path
+the document names must equal `manifest.CommittedRelPath` — **the single declaration**, which
+`TestManifestUpToDate` now also reads — and that file must exist. **Zero paths extracted is a Fatal**,
+never a pass, so a document that quietly stops naming the manifest cannot silently un-retire this.
+
+Red-proved three ways: the document naming a different path → red; the document naming no manifest at
+all → **Fatal** on the vacuity path; moving the single declaration → **both** tests red.
+
+**Owner: none. There is nothing left to own.**
+
 ## Open
 
 ### DW-2 — The licence check's JS half: `folio-designer/`'s lockfile
@@ -197,15 +224,6 @@ and the pdfjs-dist NOTICE's): both artifacts live inside `folio-designer/`, so a
 there — regardless of name — now trips the same finding. This still fully implements this
 paragraph's "same treatment, same story, same mechanism" for the OFL text and the pdfjs-dist
 NOTICE; it does not narrow anything DW-2 promises.
-
-### DW-3 — Publishing the third-party licence manifest as a release artifact
-- **Deferred by:** Story 1.3 (ruling D-1.3.4)
-- **Owner:** **Epic 4 close** — the `folio-go/v0.1.0` tag
-
-Story 1.3 ships the manifest **generated and asserted complete**: every module in the resolved graph
-appears with a resolved licence, and an unknown or unresolvable licence fails the build. That is the
-substance of AD-26. What is deferred is *publication* — attaching it to a release — because no
-release process exists yet.
 
 ### DW-4 — Nobody owns cutting `folio-go/v0.1.0` — **owner decision when Epic 4 is planned**
 - **Raised by:** the engineering lead during Story 1.3 rulings
@@ -1114,6 +1132,52 @@ that, that is a finding.**
   `lint` rule over `go/types` is the complete, non-over-approximating version the lead named as the
   eventual replacement (D-3.7.9's own words: *"both guards that actually held this story live in
   `lint`, which type-checks the module; both that leaked are in-module AST scans"*).
-- **Owner:** whoever cuts `folio-go/v0.1.0` (see DW-4's own open ownership question — the same story
-  that cuts the tag should discharge this, or explicitly re-defer it with a fresh trigger).
-- **Status:** open, deferred with the trigger above.
+- **Owner:** ~~whoever cuts `folio-go/v0.1.0`~~ — **RE-OWNED at Epic 4 planning (D-4.0.2) to
+  `TestFolioMethodNamesAreInjective`** (`folio-go/render_arch_test.go`, beside the walker whose
+  precondition it asserts). [[D-000.78]] moved the tag to after Epic 6, which would have left this
+  keyed to an event three epics away — the fourth instance of the owner shape [[D-000.73]] ruled
+  against. `RELEASING.md` item 3 carries it as a **backstop**, never as the trigger.
+- **Status:** open, with a mechanical trigger.
+
+**AMENDED at Epic 4 planning — the cost argument above rests on the wrong fact, and the right one was
+free all along.** Measured over package `folio`'s non-test root files: **seven methods, and every name
+is distinct** — `Severity.String`, `(*RenderError).Error`, `(*RenderError).Unwrap`,
+`(*fontCache).get`, `faceSegment.segmentLocal`, `faceSegment.glyphRangeForRunes`,
+`faceSegment.advance1000`. So the name→receiver map is **injective**, the merge-by-name is
+**lossless**, and `buildFolioCallGraph` **over-approximates nothing at HEAD**. It is not
+"safe but loose." It is exact.
+
+That matters because the two facts are not equally durable:
+
+| fact | what it buys | when it expires |
+|---|---|---|
+| *"zero methods call into `internal/pdf`"* (the entry's original argument) | the imprecision is **unobservable** — no edges, so nothing merges wrongly | **the first time any method touches `pdf`** |
+| **injectivity** (the amendment) | the imprecision is **absent** — nothing could merge wrongly | only when two receiver types share a method name — and it **keeps holding after** methods start reaching `pdf` |
+
+The original is also a **dated measurement of the current tree**, which is precisely the shape
+DW-16's *"exactly one producer"* had when it went stale for three epics unnoticed. **Injectivity is
+the condition; the zero is not, and it comes out of this entry as the cost argument.**
+
+**The hazard framing above is also corrected.** *"A spurious edge only makes the tests STRICTER,
+never looser"* is true and is **not** the reassurance it reads as. The failure mode is not a missed
+defect — it is a **legitimate commit blocked by an edge that is not really there**, then "fixed" by
+someone loosening `TestValidateNeverReachesRenderOrInternalPDF`. **The safe direction is the dangerous
+one here**, and the pin is what stops it arriving unannounced.
+
+**The guard's anchor is structural, not a name list** ([[D-000.68]]): it asserts a **property** of the
+map — injectivity — so it cannot rot as methods are added, removed or renamed, and it reddens only on
+the condition that re-prices this entry. That is deliberately the opposite choice from this
+programme's other two censuses, which pin literal sets because those sets are frozen by design; this
+set is expected to grow, so a pinned member list would be [[D-3.1a.3]]'s relational case handled
+wrongly. Vacuity is covered separately by a floor on the walk's own method count, because an empty map
+is trivially injective and reports the same all-clear a healthy one does.
+
+**Red-proved:** a second `String()` on another receiver type → **red**, naming the method and both
+receivers with their files; the census floor raised above the true count → **Fatal** on the vacuity
+path.
+
+**The replacement is pre-priced, so the next reader need not re-derive it as greenfield.** `lint`
+reaches across the module boundary with `packages.Load` today — [[D-000.73]]'s census and the
+type-checking rules of [[D-000.75]] — so when this trigger fires, a `go/types` walker is a **marginal
+cost on working infrastructure**, exactly as [[D-3.7.9]] anticipated: *"both guards that actually held
+this story live in `lint`, which type-checks the module; both that leaked are in-module AST scans."*

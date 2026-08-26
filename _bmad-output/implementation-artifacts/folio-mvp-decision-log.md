@@ -11814,3 +11814,339 @@ property owes the mutation, whoever wrote the clause.**
 first real push — which would mean the local simulation is missing something about the runner
 (`ubuntu-24.04` versus `darwin/arm64`, `actions/setup-go`'s own cache restore) that this rule assumes
 away. The simulation is not the runner; it is much closer than a warm dev machine.
+
+---
+
+## Epic 4 planning — the owner's batch
+
+Three decisions put to the project owner in a single terminal turn at Epic 4 planning, batched rather
+than raised as four separate interruptions ([[D-000.62]]'s standing arrangement, and the lead's
+predecessor's section 7 request). Two more were held back as **not ripe**: DW-13's compression
+adoption, which needs Story 4.7's CJK payload measurement before the question means anything, and
+Story 4.8's cut, which is a capacity judgement at the epic's end. Presenting an unripe decision spends
+an owner turn to receive a guess.
+
+### D-000.76 — OWNER DECISION: a table gets a `headerStyle` block; the template author decides how a header looks, not Folio
+**Owner decision**, on the engineering lead's recommendation, taken at Epic 4 planning.
+
+**Verdict.** The `.folio` table element gains a **`headerStyle`** block, reusing the style vocabulary
+that already exists (`background`, `border`, `bold`, `padding`, and the rest of `Style`'s nine
+fields). The **author** controls the header's appearance the same way they control everything else.
+
+**The premise that was corrected on the way, and it changed the arms.** Story 4.1's creator reported
+that *"the `.folio` schema cannot express a visually distinct header row."* **That is false**, and the
+lead measured it: `Style` (`internal/template/model.go:239-251`) carries **nine** fields —
+`Align`, `Background`, `Bold`, `Italic`, `Border`, `FontFamily`, `FontSize`, `Padding`, `Valign` — all
+parsed, all round-tripped, all documented with defaults at `folio-format.md:290-299`. Verified
+independently by the orchestrator before the question was put to the owner.
+
+**Two different gaps had been conflated**, and separating them is the reusable part:
+1. **No consumer.** The renderer reads **two** of the nine — `FontSize` and `FontFamily`. The other
+   seven load, round-trip, and reach no output. **This half was already assigned to Story 4.1** by
+   [[D-3.5.4]] part 3, so it was never the owner's question.
+2. **No attach point.** `Style` hangs off the Element — the whole table. `Column`
+   (`model.go:222-234`) has no `Style`, and there is no header-row subject. **This half is what
+   `headerStyle` buys**, and it is the only half that needed an owner.
+
+**Why the owner and not the lead.** It is a format change, and the format is versioned under AD-22 —
+so it is cheapest now and a **breaking change for every downstream hash** at any later point. That
+cost profile, not the design, is what made the timing argument decisive.
+
+**In simple terms.** Folio's file format can already say "bold", "shaded background", "border" — those
+words exist and are documented. Two things stopped them making a header look different. The engine
+ignored most of them, which Story 4.1 is fixing anyway. And styling attaches to a whole table, so
+there was nowhere to say *"shade this row."* That second gap is the one being closed.
+
+**Options considered.**
+1. **`headerStyle` — chosen.**
+2. *Accept it for now.* Rejected on Story 4.7: the golden Customer Account Statement is the artifact
+   that exists to demonstrate the MVP's central claim, and a header typographically identical to its
+   data rows reads as unfinished there.
+3. *A built-in header look*, hardcoded, using the vector primitive 4.1 adds anyway. **The lead named
+   this the arm it would most regret**, and refused it in its ruling to the developer independently
+   of the owner's answer: a treatment no document expresses is invisible to the format,
+   un-overridable by any author, and — once 4.7 records reference renders across four targets —
+   **permanent in every golden hash**. It is a product decision taken silently inside a layout story,
+   which is worse than either arm it substitutes for.
+4. *Ship a bold face.* Deferred, not rejected. It stays fully available, and `headerStyle` is where
+   `bold` lands when it arrives. It is also the only arm that would make `style.bold` mean anything
+   anywhere — the shipped set has no bold face (`fontset.go:721`) and HarfBuzz's synthetic
+   bold/slant is never called (`text/shape.go:70`).
+
+**Not yet settled:** whether `headerStyle` lands in Story 4.1 or 4.2. 4.1 is parked mid-story on a
+separate font-resolution defect and has already absorbed one scope correction; the orchestrator's
+inclination is 4.2, on convergence grounds. With the lead.
+
+**How we'd know it was wrong.** Authors setting `headerStyle` on every table with the same values —
+which would mean the header treatment is a document-level or product-level default wearing a
+per-table field, and arm 3 was right after all.
+
+### D-000.77 — OWNER DECISION: the page model keeps its non-PDF-renderer promise; the guard is the trigger
+**Owner decision**, on the engineering lead's recommendation. Resolves the fork left open by
+[[D-000.73]].
+
+**Verdict.** **Option 3 — guard now, fork later.** AD-5's promise and the code are both unchanged.
+`TestGlyphIdentifierCensus` is the mechanism: the day anything outside `internal/pdf` and the copier
+reads `ShapedGlyph.CID`, the build reddens and this question returns **with a real deadline**. Options
+1 (move the PDF numbering out of the shared data), 2 (narrow the promise and amend AD-5) and 4 (retire
+it) all remain open at the moment the question first costs something.
+
+**Why this is not the deferral it resembles.** The defect is currently **unobservable** — no consumer
+exists or is scheduled through Epic 6, measured by reading Stories 5.9 and 5.10 rather than by
+grepping for a name. What had been wrong for three epics was never the choice; it was that the entry
+had **no trigger**, so "later" meant "never." That is the part this fixes.
+
+**The accepted cost, stated plainly:** the field keeps a name that has already misled two readings of
+its own entry, and whoever picks the fork up later pays whatever option 1 costs then — which has
+already risen once, from one producer to two, without anyone noticing.
+
+### D-000.78 — OWNER DECISION: `folio-go/v0.1.0` is cut after Epic 6, at the end of the MVP
+**Owner decision**, taken at Epic 4 planning, **against the orchestrator's recommendation** of "after
+Epic 4's gate passes." Recorded as a disagreement resolved by the owner, per this log's standing
+practice of keeping the rejected reasoning rather than tidying it away.
+
+**Verdict.** The tag is cut **after Epic 6**. The public Go API therefore stays unfrozen through the
+designer work (Epic 5) and the data-binding work (Epic 6), so anything the browser side turns out to
+need can still be added without a breaking change. [[DW-4]] is answered.
+
+**The orchestrator's rejected argument, kept because it names the risk that remains.** Epic 4 is the
+C4 gate, and the epics doc already treats it as the point where the engine is complete enough for
+designer work to begin; the golden report exercises the whole API end to end there. Tagging then would
+have given [[DW-3]] and [[DW-20]] a date three epics closer.
+
+**The consequence the orchestrator owns, and it is real.** DW-3, DW-4 and DW-20 are now **all keyed to
+an event three epics away** — which is precisely the owner shape [[D-000.73]] ruled against **on the
+same day**, three-for-three against in this programme's own record: a spent event, a role with no
+moment, and a story that does not exist. *"Due before a tag after Epic 6"* is the fourth of that
+family unless something holds it. **An intermediate checkpoint is owed and is with the engineering
+lead**; this entry is not closed until one exists.
+
+**How we'd know it was wrong.** Epic 5 or 6 adding nothing to the public API — which would mean the
+API was in fact settled at Epic 4 and three epics of freeze-deferral bought nothing, at the cost of
+three deferrals floating.
+
+---
+
+### D-4.1.1 — There is no font default; `folio-format.md` documented one that never existed and could not exist as written
+**Engineering lead ruling**, on a `DECISION NEEDED` parked by Story 4.1's developer. **The
+orchestrator proposed a fourth arm and the lead rejected it; the rejection is the valuable half and is
+recorded as the orchestrator's error, not the lead's.**
+
+**Verdict.** `.folio` has **no font default**. An element carrying text with no `style.fontFamily` is a
+located error naming the element — which is what `fontChain` (`render.go:903`) has always done.
+**Story 4.1 implements nothing.** `folio-format.md:288` is amended in place, and Story 4.1's own R6 is
+**restated**, not annotated.
+
+**What the developer found, verified independently before it went to the lead.**
+`folio-format.md:288` reads ``| `fontFamily` | the first key of `fonts` |``. **That default is
+implemented nowhere.** `fontChain` hard-errors whenever the field is absent, and it runs for **every**
+text element — not just tables — before the empty-text short-circuit (moved there deliberately at
+Story 3.6 QA Finding 5). Story 4.1's R6 requires a table with no style at all to render its labels,
+which against the shipped contract cannot happen. So a documented format default has never existed,
+and 4.1's own ruling was the first thing to trip over it.
+
+**The orchestrator's rejected fourth arm, and why it fails.** The developer said implementing the
+default would need new order-preservation, since `Fonts` is `map[string][]string`. The orchestrator
+proposed that the format **already** has a canonical key order — `model.go:145-146`: *"only the map's
+keys are sorted at serialize time (AC18)"* — so *"the first key"* could mean the first in **sorted**
+order: deterministic, no new field, no parse change, no map iteration reaching output. The
+orchestrator flagged its own uncertainty and asked the lead to check the step. **The lead rejected
+it, decisively:**
+
+- **AC18's sort is scoped to serialize time** and serves AD-10's byte-canonicality. Nothing states it
+  carries semantic weight. Promoting it to a render-time semantic is not implementing the format, it
+  is **a new promise**.
+- **The new promise is a bad one.** Under it, **renaming a font chain silently changes which font a
+  style-less element renders in.** `{"body":…, "mono":…}` defaults to `body`; rename `body` → `text`
+  and the default becomes `mono` — no error, no diff at the element, a different PDF. **A silent
+  output change keyed on alphabetical accident.**
+- **Determinism is necessary, not sufficient.** Sorted order is perfectly deterministic and perfectly
+  arbitrary from the author's point of view. *"The first key of `fonts`"* reads to any author as
+  *"the one I wrote first"* — exactly the order the map discards at parse. **The arm did not
+  implement the documented default; it quietly redefined it** to something no reader of `:288` would
+  predict.
+
+**The finding is bigger than any of the four arms.** The document is the defect. Authored key order is
+destroyed at parse, so `:288` documents something that **cannot exist as written** — [[D-000.28]]'s
+class: documentation for behaviour that was never built, **false from birth and reading identically to
+a true one**. **This programme has been here.** [[D-3.4.3]]'s near-miss was `expression-reference.md`
+documenting un-shipped behaviour and nearly being taken as a product decision. **A line in
+`folio-format.md` is not a ruled product decision and obliges nobody.**
+
+**The three actions.**
+1. **No default implemented**, in `fontChain` or on the table header path. A shared-`fontChain` change
+   launched from a table story is a sweep launched from a targeted story ([[D-000.67]] part 2 read
+   backwards), and it would turn a class of template that errors today into one that renders — an
+   **output** decision, not a layout one.
+2. **`folio-format.md:288` amended in 4.1's commit** ([[D-000.6]]), to
+   ``| `fontFamily` | **none — required on any element carrying text** |`` plus a sentence recording
+   that a default was documented from the format's first draft, never implemented, and never
+   well-defined. Before/after logged verbatim per D-000.6's third consequence.
+3. **R6 restated with its precondition**, not annotated "untested". R6 as written is **false against
+   the shipped contract**, so the requirement is wrong rather than merely uncovered. **"Documented as
+   untested" is how a knowingly-unmet requirement gets carried forward as a fact** — [[D-000.66]]'s
+   exact class, with four sessions of evidence for what it costs. Arm C — *"a DW entry owned by
+   whoever next needs it"* — was rejected as [[D-000.73]]'s shape, which this programme is
+   three-for-three against.
+
+**THE ASYMMETRY, which is why this is a lead call and not an owner one.** The two moves are not
+symmetric in cost:
+
+| move | consequence |
+|---|---|
+| **require now, add a default later** | every template that renders today renders identically; templates that error today would start rendering. **No recorded hash moves.** Purely additive. |
+| **ship a default now, change it later** | every style-less element's font changes. **Every recorded hash moves.** Breaking. |
+
+**The irreversible move is the one that looks like progress.** Requiring the field is the conservative
+arm, so there is no cheap window and nothing to escalate under time pressure. **This inverts the AD-22
+timing argument the lead itself made for [[D-000.76]]** — there, deciding late was expensive; here,
+deciding late is free and deciding early is what forecloses. Two format questions ruled the same day
+in opposite directions, for the same reason correctly applied.
+
+**In simple terms.** Our own file-format document promises that if you don't name a font, Folio picks
+"the first one you listed." Folio has never done that, and it cannot: the moment we read the file we
+throw away which one you listed first. We nearly "fixed" the code to match the document by picking the
+alphabetically-first font instead — which would have meant that renaming a font silently changes what
+your report looks like. The document was wrong. We fixed the document.
+
+**One consequence that evaporates.** The orchestrator had asked that a shared fix be verified not to
+move golden bytes rather than assumed. **The ruling makes it moot — no behaviour changes, so there is
+nothing to verify.** A point in the ruling's favour rather than a coincidence.
+
+**Deferred to the owner, unhurried and blocking nothing:** *should `.folio` have a font default at
+all, and if so what rule?* Candidates named but not recommended between, because nothing forces a
+choice: required (today's behaviour, now documented); a document-level `defaultFontFamily`; or *"if
+`fonts` declares exactly one chain, that is the default, otherwise `fontFamily` is required"* —
+well-defined, needs no ordering, and matches what an author means.
+
+**How we'd know it was wrong.** Authors hitting the required-`fontFamily` error often enough that it
+reads as friction rather than as a caught mistake — which would make the deferred owner question
+urgent rather than optional.
+
+### D-4.1.2 — `headerStyle` lands in Story 4.1, not 4.2
+**Engineering lead ruling**, narrowly overruling the orchestrator.
+
+**The orchestrator's position:** move [[D-000.76]]'s `headerStyle` to Story 4.2 on delivery grounds —
+4.1 was parked mid-story and had already absorbed one scope correction, and stacking a format change
+on a blocked story is how a story stops converging.
+
+**Overruled, and the reason only holds because of [[D-4.1.1]]:** **4.1's parking reason is gone.** It
+was blocked on a font question just ruled not to be its problem — no default, no shared change, one
+document amendment and one restated requirement. And **4.1 is the header story**: `headerStyle`'s
+subject is the header row, 4.2's subject is data rows, and 4.1 is already touching every path
+`headerStyle` needs — the style attach point, the fill and stroke primitives, header-row layout. 4.2
+would have to re-open all three to add a feature about a row it does not otherwise handle, and in six
+months *"the header style feature is in the rows story"* reads as arbitrary. The correction 4.1
+absorbed was **one operator** (`background`) on work already in flight, not a new axis.
+
+**The out, delegated rather than reserved:** if 4.1's developer reports non-convergence **after** the
+unpark, the orchestrator moves `headerStyle` to 4.2 on delivery grounds **without returning to the
+lead** — a scheduling call, not a re-litigation. What was ruled against is moving it **pre-emptively**,
+while the only stated blocker has just been removed.
+
+---
+
+### D-4.0.1 — DW-3 is retired, not scheduled: what remained was a line in a procedure that did not exist, and the fix is to write the procedure
+**Engineering lead ruling**, at Epic 4 planning, after [[D-000.78]] left three deferrals keyed to a
+tag three epics away.
+
+**Verdict.** DW-3 is **retired** and moved to `## Done`. Its residual moves into a new
+**`RELEASING.md`** at the repository root, under a guard that stops the two drifting.
+
+**Why retiring beats re-owning.** DW-3 carried **two owners that disagree** — *"Epic 4 close"* and
+*"the `folio-go/v0.1.0` tag"* — one moment when written, three epics apart now. Picking one would keep
+**finished work** in a backlog for three epics. AD-26's substance shipped at Story 1.3: the manifest
+is generated, every module in the resolved graph carries a resolved licence, an unresolvable one fails
+the build, and `TestManifestUpToDate` guards it live — confirmed real and executing by
+[[D-000.75]]'s clean-cache run, where it was one of the twelve that failed loudly. **The residual is
+"attach it to a release", and there is no release process to attach it to.** That is not deferred
+engineering. Leaving it under `## Open` asserted something remained to be **built**, and
+[[D-000.49]] already ruled that a record which overstates is a defect even when it errs toward
+caution — this one spent attention at three consecutive gates.
+
+**Discharge by replacement** ([[D-000.59]]), three parts:
+1. **`RELEASING.md` written now**, deliberately incomplete, with the manifest as item 1. *"An
+   incomplete procedure that names an obligation is strictly better than a complete-looking backlog
+   nobody opens at the moment of release."* It is [[D-000.58]]'s rule one level up: **a release with
+   no written procedure is not a release**.
+2. **Guarded both ways.** `TestReleasingDocNamesTheGuardedManifest` asserts every `MANIFEST.md` path
+   the document names equals `manifest.CommittedRelPath`, and that the file exists. **Zero paths
+   extracted is a Fatal**, not a pass — a document that quietly stops naming the manifest must not
+   silently un-retire the entry.
+3. **Moved to `## Done`** with no owner, because nothing is left to own.
+
+**The lead named what it had not verified, and it mattered.** It flagged that it had *not* read
+`TestManifestUpToDate` to learn which path that test guards, and instructed that whoever lands the
+guard establish the path **from the test's own source of truth rather than copying a literal from
+me**. Measured: the test built the path inline as `filepath.Join(root, "lint", "MANIFEST.md")` — **a
+hand-written literal, with no shared declaration.** So a second literal in the new guard would have
+been [[D-000.68]]'s forbidden anchor twice over. Instead `manifest.CommittedRelPath` was introduced as
+the **single declaration** and `TestManifestUpToDate` was changed to read it, making the compiler the
+thing that keeps the two sides pointing at one string.
+
+**Red-proved:** the document naming a different path → red; naming no manifest at all → **Fatal** on
+the vacuity path; moving the single declaration → **both** tests red.
+
+**In simple terms.** We had a to-do item saying "ship the licence list with the release." The licence
+list has been finished and guarded for months; the only thing missing was a release procedure to put
+it in. Keeping a to-do for that made it look like unfinished engineering at three separate reviews. So
+we wrote the procedure — one short file — put the obligation in it, and added a test that fails if the
+file and the code ever disagree about where the licence list lives.
+
+### D-4.0.2 — DW-20's trigger is method-name injectivity; the entry had priced the deferral on the weaker of two available facts
+**Engineering lead ruling**, at Epic 4 planning. **The lead measured this rather than reasoning from
+the entry, and the measurement inverted the entry's own argument.**
+
+**Verdict.** DW-20's owner — *"whoever cuts `folio-go/v0.1.0`"* — is replaced by
+**`TestFolioMethodNamesAreInjective`**, in `render_arch_test.go` **beside the walker whose
+precondition it is**. `RELEASING.md` item 3 carries it as a **backstop, never the trigger**.
+
+**The measurement.** Package `folio`'s non-test root files declare **seven methods, and every name is
+distinct**: `Severity.String`, `(*RenderError).Error`, `(*RenderError).Unwrap`, `(*fontCache).get`,
+`faceSegment.segmentLocal`, `faceSegment.glyphRangeForRunes`, `faceSegment.advance1000`. Verified
+independently by the orchestrator. **So the name→receiver map is injective, the merge-by-name is
+lossless, and `buildFolioCallGraph` over-approximates nothing at HEAD. It is not "safe but loose." It
+is exact.**
+
+**Why that reprices the entry.** DW-20 rested on *"zero methods in package `folio` call into
+`internal/pdf`"*. That fact makes the imprecision **unobservable** — no edges, so nothing merges
+wrongly — and **expires the first time any method touches `pdf`**. It is also a dated measurement of
+the current tree, [[DW-16]]'s shape exactly, and DW-16's went stale for three epics unnoticed.
+**Injectivity makes the imprecision absent rather than unobservable, and keeps holding after methods
+start reaching `internal/pdf`**, because a uniquely-named method resolves to exactly one receiver
+whether or not it has edges. **The stronger condition was free and true all along; nobody had looked.**
+
+**The hazard framing was also wrong, and this is the part worth carrying.** DW-20 says a spurious edge
+*"only makes the tests STRICTER, never looser."* True — **and not the reassurance it reads as.** The
+failure mode is not a missed defect. It is **a legitimate commit blocked by an edge that is not really
+there, then "fixed" by someone loosening `TestValidateNeverReachesRenderOrInternalPDF`.** *The safe
+direction is the dangerous one here*, and an unannounced arrival is what the pin prevents.
+
+**The anchor is structural, and deliberately unlike this programme's other two censuses**
+([[D-000.68]]). It asserts a **property** — injectivity — not a member list, so it cannot rot as
+methods are added, removed or renamed, and it reddens only on the condition that re-prices the entry.
+`TestGlyphIdentifierCensus` and the public-surface census pin literal sets because those sets are
+**frozen by design**; this set is **expected to grow**, so pinning members would be [[D-3.1a.3]]'s
+relational case handled wrongly. Vacuity is covered separately by a floor on the walk's own count,
+because **an empty map is trivially injective** and reports the same all-clear a healthy one does.
+
+**Red-proved:** a second `String()` on another receiver type → red, naming the method and both
+receivers with their files; the census floor raised above the true count → Fatal on the vacuity path.
+
+**It dissolves a question the orchestrator had raised and could not answer.** The orchestrator noted
+Epic 5's designer consumes the engine through `wasm/` and might add methods or new paths into
+`internal/pdf`, but declined to assert it without measuring. **With injectivity pinned, the
+measurement is unnecessary**: if Epic 5 adds a colliding method the guard fires at that commit, and if
+it does not, the walker stays exact and nothing is owed. *That is the whole reason to key on the
+condition instead of the epic — it removes the obligation to predict.*
+
+**And the remedy is pre-priced**, recorded so the next reader does not re-derive it as greenfield:
+`lint` reaches across the module boundary with `packages.Load` today ([[D-000.73]]'s census and
+[[D-000.75]]'s type-checking rules), so a `go/types` walker is a marginal cost on working
+infrastructure — exactly what [[D-3.7.9]] anticipated.
+
+**One shape refused explicitly, because it is the tempting answer.** *"Each epic gate reports the
+three items' status"* is the **weak form** — a process rule with no mechanism, the class [[D-000.66]]
+admits it belongs to and [[D-000.63]] already showed decaying. **Use it as a backstop alongside a real
+trigger, never instead of one.** A gate obligation depends on a human remembering to look; a pinned
+condition fires at the keystroke that creates the risk.

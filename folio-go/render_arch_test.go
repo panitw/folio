@@ -41,6 +41,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -406,5 +407,131 @@ func TestValidateNeverReachesRenderOrInternalPDF(t *testing.T) {
 	walk("Validate")
 	if len(offenders) > 0 {
 		t.Errorf("AC1: Validate's call graph reaches internal/pdf through %v — no render may be attempted", offenders)
+	}
+}
+
+// TestFolioMethodNamesAreInjective pins the PRECONDITION that makes
+// buildFolioCallGraph exact, and it is DW-20's trigger (ruled at Epic 4
+// planning).
+//
+// WHAT THE WALKER DOES. buildFolioCallGraph keys every method declaration
+// in package folio by its NAME ALONE, merged across every receiver type
+// declaring that name, and resolves a selector call x.Foo() to every
+// method named Foo regardless of x's type. DW-20 deferred a go/types
+// version of that and priced the deferral on this fact: "zero methods in
+// package folio call into internal/pdf, so the merge-by-name behaviour
+// changes no test's verdict."
+//
+// THAT WAS THE WEAKER OF TWO AVAILABLE FACTS, and the entry has been
+// amended. The zero only makes the imprecision UNOBSERVABLE — there are
+// no edges, so nothing is merged wrongly — and it expires the first time
+// any method touches internal/pdf. It is also a dated measurement of the
+// current tree, which is exactly the shape DW-16's "exactly one producer"
+// had when it went stale for three epics unnoticed (D-000.73).
+//
+// INJECTIVITY makes the imprecision ABSENT rather than unobservable: if
+// no two receiver types share a method name, the name -> receiver map is
+// one-to-one, the merge is lossless, and the walker over-approximates
+// NOTHING. Crucially it keeps holding AFTER methods start reaching
+// internal/pdf, because a uniquely-named method resolves to exactly one
+// receiver whether or not it has edges. It was free and true all along.
+//
+// AND THE HAZARD IS NOT THE ONE THE ENTRY DESCRIBED. DW-20 said a
+// spurious edge "only makes the tests STRICTER, never looser." True, and
+// not the reassurance it reads as: the failure mode is a LEGITIMATE
+// commit blocked by an edge that is not really there, followed by
+// somebody "fixing" it by loosening
+// TestValidateNeverReachesRenderOrInternalPDF. The safe direction is the
+// dangerous one, and this guard is what stops that arriving unannounced.
+//
+// ANCHOR (D-000.68): structural, not a name list. The assertion is a
+// PROPERTY of the map — injectivity — so it cannot rot as methods are
+// added, removed or renamed, and it reddens only on the condition that
+// actually re-prices DW-20. Contrast the census guards elsewhere in this
+// programme, which pin literal sets because their sets are frozen by
+// design; this set is expected to grow, so pinning its members would be
+// D-3.1a.3's relational case and a pinned list would be wrong here.
+//
+// When this does fire, the replacement is already cheap: lint reaches
+// across the module boundary with packages.Load today (D-000.73's census
+// and the type-checking rules of D-000.75), so a go/types version is a
+// marginal cost on working infrastructure, not greenfield — which is what
+// D-3.7.9 anticipated when it observed that "both guards that actually
+// held this story live in lint, which type-checks the module."
+func TestFolioMethodNamesAreInjective(t *testing.T) {
+	root, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("resolve module root: %v", err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read %s: %v", root, err)
+	}
+
+	fset := token.NewFileSet()
+	// method name -> the receiver type names declaring it, in encounter
+	// order. A name with more than one entry is the collision.
+	byName := map[string][]string{}
+	total := 0
+
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join(root, name)
+		file, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			t.Fatalf("parse %s: %v", path, perr)
+		}
+		for _, d := range file.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Recv == nil || len(fd.Recv.List) == 0 {
+				continue
+			}
+			total++
+			recv := receiverTypeName(fd.Recv.List[0].Type)
+			byName[fd.Name.Name] = append(byName[fd.Name.Name], recv+" ("+name+")")
+		}
+	}
+
+	// VACUITY GUARD (D-000.9), and it reads the walk's OWN count rather
+	// than re-deriving the population a second way: a scan that entered
+	// no files produces an empty map, and an empty map is trivially
+	// injective — the same all-clear a healthy scan gives.
+	const seenAtEpic4Planning = 7
+	if total < seenAtEpic4Planning {
+		t.Fatalf("vacuity guard: the method census found only %d method declaration(s) in package folio's root files; %d were measured at Epic 4 planning and the set only grows. An empty or truncated walk is trivially injective and reports exactly the all-clear a healthy one does (D-000.9)",
+			total, seenAtEpic4Planning)
+	}
+
+	for methodName, receivers := range byName {
+		if len(receivers) > 1 {
+			slices.Sort(receivers)
+			t.Errorf("buildFolioCallGraph merges methods by NAME; %d receiver types now declare %q — %v.\n"+
+				"The merge is therefore lossy: a selector call to %q resolves to all of them, and a spurious edge can block a legitimate commit (which is then 'fixed' by loosening the guard).\n"+
+				"DW-20's deferral is re-priced. Either give the methods distinct names, or take DW-20 now — lint already type-checks this module through packages.Load, so a go/types walker is a marginal cost.",
+				len(receivers), methodName, receivers, methodName)
+		}
+	}
+}
+
+// receiverTypeName renders a method receiver's type as written —
+// "Severity", "*RenderError", "faceSegment" — without resolving it. This
+// census asserts injectivity of NAMES, so the receiver is needed only to
+// report WHICH types collide; nothing depends on resolving it to a
+// declaration.
+func receiverTypeName(e ast.Expr) string {
+	switch t := e.(type) {
+	case *ast.StarExpr:
+		return "*" + receiverTypeName(t.X)
+	case *ast.Ident:
+		return t.Name
+	case *ast.IndexExpr: // generic receiver, e.g. Foo[T]
+		return receiverTypeName(t.X)
+	case *ast.IndexListExpr:
+		return receiverTypeName(t.X)
+	default:
+		return "<unrecognised receiver>"
 	}
 }

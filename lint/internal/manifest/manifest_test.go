@@ -51,7 +51,7 @@ func TestManifestUpToDate(t *testing.T) {
 	}
 	want := Render(rows) + RenderAssets(assetRows)
 
-	committedPath := filepath.Join(root, "lint", "MANIFEST.md")
+	committedPath := filepath.Join(root, filepath.FromSlash(CommittedRelPath))
 	got, err := os.ReadFile(committedPath)
 	if err != nil {
 		t.Fatalf("read committed manifest %s: %v (run `cd lint && go run ./cmd/genmanifest`)", committedPath, err)

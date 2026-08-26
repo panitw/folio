@@ -32,6 +32,16 @@ type servedModule struct {
 // AD-26 binds all three named modules explicitly (D-1.3.9), and a
 // silently-discovered fourth module must not silently join the ban's
 // scope without a developer noticing it in a diff.
+// CommittedRelPath is the repository-relative path of the committed
+// third-party licence manifest, and it is the SINGLE declaration of that
+// path (D-3.7.8's one-declaration discipline). Two independent things
+// must agree about where the manifest lives — TestManifestUpToDate, which
+// asserts the committed file matches what Generate/Render produce, and
+// RELEASING.md, which names it as a release obligation (DW-3, retired at
+// Epic 4 planning). Both read it from here, so a rename is one edit and
+// cannot leave one side pointing at a file that no longer exists.
+const CommittedRelPath = "lint/MANIFEST.md"
+
 var servedModules = []servedModule{
 	{dirName: "folio-go", name: "folio-go", shippedBy: "shipped"},
 	{dirName: "hashmatrix", name: "hashmatrix", shippedBy: "build-time-only"},
