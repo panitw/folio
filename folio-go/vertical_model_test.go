@@ -379,17 +379,30 @@ func TestVerticalModelRefusesANonPositiveLineHeight(t *testing.T) {
 //
 //   - verticalModel's len(metrics) == 0 path — AC4 names it
 //     "present == 0", which is a CONDITION and not a symbol; the
-//     production spelling is len(metrics) == 0 in wrap.go — is
-//     UNREACHABLE through folio.Render. The call sits
-//     AFTER shapeSegments has already succeeded on non-empty text, and
-//     shapeSegments resolves every rune through resolveRuneFace, which
-//     is a located error when NO chain member present in the FontSet has
-//     a glyph for a rune. So a chain with no present face fails there
-//     first, and the symbol that fails first is resolveRuneFace. An
-//     element with EMPTY text never reaches either: collectTextRuns
-//     short-circuits on boundText == "" one branch earlier, and it does
-//     so AFTER fontChain has validated the chain — so the widening
-//     cannot turn a previously-rendering empty element into an error.
+//     production spelling is len(metrics) == 0 in wrap.go — WAS
+//     unreachable through folio.Render before Story 3.6, and STORY 3.6
+//     CHANGED THIS, measured rather than assumed exactly as this test's
+//     own philosophy demands. Before 3.6, the call sat AFTER
+//     shapeSegments had already succeeded on non-empty text, and
+//     shapeSegments resolved every rune through resolveRuneFace, which
+//     was a located ERROR when NO chain member present in the FontSet
+//     had a glyph for a rune — so a chain with no present face failed
+//     there first. Story 3.6 (OPEN-1, divergence 6) made that condition
+//     a WARNING instead (FR41's fifth mode: the render omits the rune —
+//     no glyph, no advance — rather than aborting), so resolveRuneFace
+//     no longer fails there. When EVERY declared chain member is absent
+//     from the supplied FontSet, every rune in the element is now
+//     omitted and the element contributes NO face metrics at all to its
+//     line — reaching verticalModel's len(metrics) == 0 path for real,
+//     through the public entry point, for the first time. This is not a
+//     regression: it is the same located error as before
+//     (TestVerticalModelRefusesAChainWithNoPresentFace, above), now
+//     reachable one level higher because the layer that used to fail
+//     first no longer does for this particular cause. An element with
+//     EMPTY text never reaches either: collectTextRuns short-circuits on
+//     boundText == "" one branch earlier, and it does so AFTER fontChain
+//     has validated the chain — so the widening cannot turn a
+//     previously-rendering empty element into an error.
 //
 //   - verticalModel's units <= 0 path — AC4 names it "maxUnits <= 0";
 //     the production variable is units, and there is no maxUnits
@@ -407,10 +420,15 @@ func TestVerticalModelRefusesANonPositiveLineHeight(t *testing.T) {
 // through the public entry point. Neither half alone is the honest
 // statement.
 func TestVerticalModelErrorPathsAreUnreachableThroughRender(t *testing.T) {
-	// (1) A chain with NO member present in the FontSet fails in
-	//     resolveRuneFace, not in the vertical model. Asserting WHICH
-	//     error comes back is the measurement; asserting merely that
-	//     "an error came back" would pass either way.
+	// (1) Story 3.6 changed this measurement's outcome (see the doc
+	//     comment above): a chain with NO member present in the FontSet
+	//     no longer fails in resolveRuneFace (that condition is now
+	//     FR41's fifth-mode WARNING, not an error) — it now fails one
+	//     level higher, in the vertical model itself, once every rune in
+	//     the element has been omitted and no face metrics remain to
+	//     derive a line height from. Asserting WHICH error comes back is
+	//     the measurement; asserting merely that "an error came back"
+	//     would pass either way.
 	tpl, err := ParseTemplate([]byte(multiScriptTestTemplateJSON))
 	if err != nil {
 		t.Fatalf("parse template: %v", err)
@@ -419,11 +437,11 @@ func TestVerticalModelErrorPathsAreUnreachableThroughRender(t *testing.T) {
 	if rerr == nil {
 		t.Fatal("presence precondition: rendering against a FontSet supplying none of the declared chain must fail, or this measurement has no subject")
 	}
-	if strings.Contains(rerr.Error(), "no line height can be derived from it") {
-		t.Errorf("the render failed in the VERTICAL MODEL (%q) — this test records that resolveRuneFace fails first, and that is no longer true", rerr.Error())
+	if strings.Contains(rerr.Error(), "has a glyph for rune") {
+		t.Errorf("the render failed in resolveRuneFace (%q) — Story 3.6 made that condition a Warning, not an error, so this is no longer where a chain-with-no-present-face fails", rerr.Error())
 	}
-	if !strings.Contains(rerr.Error(), "has a glyph for rune") {
-		t.Errorf("expected resolveRuneFace's located coverage error, got %q", rerr.Error())
+	if !strings.Contains(rerr.Error(), "no line height can be derived from it") {
+		t.Errorf("expected verticalModel's located len(metrics)==0 error, got %q", rerr.Error())
 	}
 
 	// (2) A chain with SOME members absent still renders — the model
@@ -458,7 +476,7 @@ func TestVerticalModelErrorPathsAreUnreachableThroughRender(t *testing.T) {
 	if rendered != len(baselineAcceptanceFixtures) {
 		t.Fatalf("presence precondition: %d of %d fixtures rendered", rendered, len(baselineAcceptanceFixtures))
 	}
-	t.Logf("AC4: verticalModel's two error paths — len(metrics)==0 (AC4's \"present==0\") and units<=0 (AC4's \"maxUnits<=0\") — are UNREACHABLE through folio.Render (resolveRuneFace fails first; no committed face is degenerate) and PROVEN at the verticalModel seam over fabricated metrics. %d fixtures re-rendered without error.", rendered)
+	t.Logf("AC4 (as amended by Story 3.6): verticalModel's units<=0 path (AC4's \"maxUnits<=0\") is UNREACHABLE through folio.Render (no committed face is degenerate); its len(metrics)==0 path (AC4's \"present==0\") IS now reachable, when every chain member is absent from the FontSet (case 1, above) — both are PROVEN at the verticalModel seam over fabricated metrics regardless. %d fixtures re-rendered without error.", rendered)
 }
 
 // TestChainVerticalModelIsOneWalkFeedingBothSpans is AC1's assertion, in

@@ -5,9 +5,11 @@
 package manifest
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -185,8 +187,47 @@ func ResolveAssets(repoRoot string) ([]AssetRow, error) {
 
 	sort.Strings(dirOrder)
 
+	// Story 3.6, AC10/D-3.6.5 (DW-19, fixed at its specified shape,
+	// D-000.58): a directory holding a real font file on disk but ZERO
+	// files git actually TRACKS is a local, untracked scratch folder —
+	// an ENVIRONMENTAL artifact of THIS machine's working tree, never
+	// a licensing violation — and this resolver's own prior wording
+	// ("contains a committed font binary but no LICENSE*") was FALSE
+	// for exactly that directory: nothing in it is committed, so it is
+	// not a redistributed asset this resolver has any business
+	// assessing at all.
+	//
+	// THE SCAN-ERROR CONDITION IS ASSESSED HERE, BEFORE ANY FINDING IS
+	// COMPUTED for the directory (git's own index — a fact the
+	// directory's on-disk contents cannot move — is consulted first,
+	// never after a LICENSE/NOTICE read has already run): a directory
+	// that fails this check is EXCLUDED from the findings loop below
+	// entirely — skipped, not flagged as a content violation, and
+	// never silently promoted into an AssetRow either. This is why the
+	// mutation naming a REAL violation in a TRACKED directory (AC10)
+	// still fires correctly regardless of sort order between the two:
+	// an untracked directory contributes nothing — neither a row nor
+	// an error — so it can never mask, or be masked by, a tracked
+	// directory's genuine LICENSE/NOTICE finding elsewhere in
+	// dirOrder. A silent EXCLUSION here is not the "quiet failure"
+	// D-000.58 declined (t.Skip-ing a test, or fabricating committed
+	// files under .font-sources/ to make the premise true) — those
+	// traded a real problem for the appearance of none; excluding a
+	// directory git never tracked reflects what ResolveAssets is
+	// actually FOR (AD-26: assets this repository REDISTRIBUTES),
+	// which an untracked local cache is not.
 	var rows []AssetRow
+	sawTrackedDirectory := false
 	for _, dir := range dirOrder {
+		tracked, terr := gitTrackedFileCount(repoRoot, dir)
+		if terr != nil {
+			return nil, fmt.Errorf("check git-tracked files under %s: %w", dir, terr)
+		}
+		if tracked == 0 {
+			continue
+		}
+		sawTrackedDirectory = true
+
 		fontFiles := append([]string(nil), fontsByDir[dir]...)
 		sort.Strings(fontFiles)
 
@@ -247,6 +288,24 @@ func ResolveAssets(repoRoot string) ([]AssetRow, error) {
 				Serves:    serves,
 			})
 		}
+	}
+
+	// D-3.6.5 amendment (Story 3.6, AC10 — "Required"): finding at
+	// least one candidate font directory (dirOrder non-empty) but
+	// EVERY one of them resolving to zero git-tracked files is not
+	// "nothing to report" — it is "could not look," and D-000.9 makes
+	// that indistinguishable from "all clear" unless it is surfaced as
+	// its own scan error, assessed before any finding is returned.
+	// Deliberately narrow: dirOrder being EMPTY (no font-extensioned
+	// file exists anywhere on disk) stays legitimately empty — that
+	// was true of this repository before fonts shipped, and nothing
+	// about an absent candidate is a scan failure. Only "candidates
+	// exist and NONE of them is tracked" trips this — the shape a
+	// directory rename, a wrong repoRoot, or a layout refactor would
+	// produce, and the shape the two directory-scoped tests above
+	// cannot see because each holds at least one tracked directory.
+	if len(dirOrder) > 0 && !sawTrackedDirectory {
+		return nil, fmt.Errorf("scan error: found %d font-bearing director(ies) on disk (%s) but git tracks zero files in any of them — cannot assess licensing (D-3.6.5 amendment, AC10)", len(dirOrder), strings.Join(dirOrder, ", "))
 	}
 
 	// The CC0 wordlist (Story 2.1, AC9, AD-26) is a second, distinct
@@ -383,4 +442,28 @@ func Render(rows []Row) string {
 		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", r.Module, r.Version, r.Licence, r.Serves, r.ShippedBy)
 	}
 	return b.String()
+}
+
+// gitTrackedFileCount reports how many files git actually tracks under
+// dir (a slash-form path relative to repoRoot) — DW-19's fix (Story
+// 3.6, AC10, D-3.6.5). git's own index is the anchor: the resolver's
+// own walk (above) already found real files on disk under dir; this
+// asks the ONE independent source of truth for whether any of them
+// were ever committed, rather than trusting the walk's own premise
+// that "present on disk" means "shipped".
+func gitTrackedFileCount(repoRoot, dir string) (int, error) {
+	cmd := exec.Command("git", "-C", repoRoot, "ls-files", "--", filepath.FromSlash(dir))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		return 0, fmt.Errorf("git ls-files -- %s: %w (%s)", dir, err, out.String())
+	}
+	count := 0
+	for _, line := range strings.Split(out.String(), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count, nil
 }

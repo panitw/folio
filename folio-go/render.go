@@ -539,8 +539,23 @@ func diagnosticFromCaveat(elementID string, c expr.Caveat) Diagnostic {
 		// — kept as a located, honest Diagnostic rather than a panic
 		// (AD-14: never a panic), naming the unhandled kind so a future
 		// caveat added there without a matching arm here fails loudly.
+		//
+		// Story 3.6, R12/D-3.6.7: this arm previously returned a
+		// Diagnostic with an EMPTY Code — a construction AD-14 forbids
+		// (every Diagnostic carries "a stable string code from a
+		// closed registry"), and one that a caller could not tell
+		// apart from a real, handled caveat except by a blank field
+		// nobody notices. This is NOT R7's criterion being relaxed for
+		// an internal condition: the arm already produces a Diagnostic
+		// that is ALREADY RETURNED to a caller, so the choice is
+		// between a coded one and a codeless one, never between a
+		// coded one and a plain error. Giving it
+		// DiagCodeInternalUnhandledCaveat makes an unmapped caveat
+		// LOUD rather than blank, while the arm itself is retained
+		// (AD-14: never a panic).
 		return Diagnostic{
 			Severity:  SeverityWarning,
+			Code:      DiagCodeInternalUnhandledCaveat,
 			ElementID: elementID,
 			DataPath:  c.Path,
 			Message:   fmt.Sprintf("element %s: internal: unhandled expr.Caveat kind %v", elementID, c.Kind),
@@ -615,7 +630,12 @@ func collectBandTextRuns(
 
 		boundText, subs, caveats, berr := bind.BindTextSpans(el.Value.Value, data, params, fc, string(el.ID))
 		if berr != nil {
-			return nil, nil, nil, fmt.Errorf("folio: Render: %w", berr)
+			// Story 3.6, AC4/AC8, R9: FR41's "unresolvable binding"
+			// mode — internal/bind/text.go's lookupBound reports an
+			// absent path (AD-14's own "an absent path is an Error
+			// carrying the path"); this is the one site R9 names for
+			// this mode.
+			return nil, nil, nil, newRenderError(DiagCodeBindingPathAbsent, string(el.ID), "", fmt.Errorf("folio: Render: %w", berr))
 		}
 		// Story 3.3/DECISION-5: a bind-stage Caveat (today, only
 		// avg()-on-empty) becomes a Diagnostic HERE, before this
@@ -675,7 +695,7 @@ func collectBandTextRuns(
 		// runes sharing the same resolved face. Shaped ONCE here;
 		// every line below is a SLICE of these glyphs, never a
 		// re-shape of a shorter string (Story 2.4, AC10).
-		segs, serr := shapeSegments(chain, boundText, fs, cache)
+		segs, glyphDiags, serr := shapeSegments(string(el.ID), chain, boundText, fs, cache)
 		if serr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}
@@ -685,15 +705,28 @@ func collectBandTextRuns(
 			// succeeded for THIS element (bind.BindTextSpans' path
 			// resolution, fontChain, shapeSegments' coverage
 			// resolution) — R2/AC7 — so a hidden element with a
-			// broken font chain or an uncoverable rune still fails
-			// the render exactly as a visible one would. Everything
-			// below this line only computes OUTPUT (packed lines, the
-			// clip-width Diagnostic, positioned glyphs) for drawing,
-			// which a hidden element never needs and must never
-			// produce (AC1/AC2/AC8, R3: no run, no gap-filling
-			// substitute, no diagnostic).
+			// broken font chain still fails the render exactly as a
+			// visible one would; an uncoverable rune (Story 3.6:
+			// no longer a failure, a Warning) is likewise still
+			// DETECTED here, but its Diagnostic is discarded rather
+			// than reported, matching AC8's rule for the bind-stage
+			// caveat diagnostics above: a hidden element emits NO
+			// diagnostic of its own. Everything below this line only
+			// computes OUTPUT (packed lines, the clip-width
+			// Diagnostic, positioned glyphs) for drawing, which a
+			// hidden element never needs and must never produce
+			// (AC1/AC2/AC8, R3: no run, no gap-filling substitute, no
+			// diagnostic).
 			continue
 		}
+		// Story 3.6, AC4/AC8: a missing-glyph Warning is appended in
+		// the SAME position a caveat-derived Diagnostic would be —
+		// this element's own diagnostics, in the order this element's
+		// pipeline stages produced them (bind-stage caveats above,
+		// then shaping-stage missing-glyph warnings here) — keeping
+		// the whole diags slice in D-2.8.6's required document order
+		// without a separate sort.
+		diags = append(diags, glyphDiags...)
 		totalRunes := len([]rune(boundText))
 
 		// Story 2.4: where may this element break, and what may it
@@ -919,21 +952,56 @@ func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 // whose cmap actually contains a glyph for r (never a proxy such as
 // "the locale is ja" or "the face is not the preferred one for this
 // script" — D-2.2-D4). A chain member absent from fs is skipped, not an
-// error by itself — only "no member of the chain covers r" is.
-func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (string, error) {
+// error by itself.
+//
+// Story 3.6 (divergence 6, OPEN-1 ruled): "no face in chain covers r"
+// is NO LONGER an error here — a rune uncovered by every face in its
+// element's declared chain is FR41's fifth mode, ruled a WARNING
+// (AD-8, EXPERIENCE.md:216, UX-DR22, Story 5.12's first AC), not an
+// aborting failure. found reports whether coverage was located; when
+// it is false and err is nil, the caller (shapeSegments) is the one
+// that turns the absence into a Diagnostic and OMITS the rune (OPEN-1's
+// ruling: no glyph, no advance — never `.notdef`, never a substituted
+// replacement glyph). err is reserved for a genuine hard failure
+// (today, only cache.get's face-parse error) that still aborts the
+// render — that is a different condition from "no coverage" and must
+// not be folded into it.
+func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (name string, found bool, err error) {
 	for _, name := range chain {
 		if _, present := fs[name]; !present {
 			continue
 		}
-		f, err := cache.get(name, fs)
-		if err != nil {
-			return "", err
+		f, ferr := cache.get(name, fs)
+		if ferr != nil {
+			return "", false, ferr
 		}
 		if f.HasGlyph(r) {
-			return name, nil
+			return name, true, nil
 		}
 	}
-	return "", fmt.Errorf("no font in chain %v has a glyph for rune %U — a located failure, not a blank box (AC4)", chain, r)
+	return "", false, nil
+}
+
+// formatFontChain renders chain as AD-8's Rule names it for a human
+// reader — "[Noto Sans, Noto Sans Thai]" — so a missing-glyph
+// Diagnostic's message tells its reader not just what is wrong but
+// what was actually searched (D-000.37: an actionable diagnostic names
+// the chain, not only the rune).
+func formatFontChain(chain []string) string {
+	return "[" + strings.Join(chain, ", ") + "]"
+}
+
+// missingGlyphMessage is the one construction site for FR41's fifth
+// mode's Diagnostic message (Story 3.6, OPEN-1's ruling): the element
+// id, the rune as BOTH its U+XXXX form and its literal character, and
+// the exact chain that was searched — naming the chain is what turns
+// "something is wrong" into "here is what to fix" (D-000.37).
+func missingGlyphMessage(elementID string, r rune, chain []string) string {
+	return fmt.Sprintf(
+		"no face in chain %s covers %U (%c) in element %s — the rune is omitted from the rendered output (no glyph, no advance); "+
+			"it is not substituted or drawn as a blank box (AD-8)",
+		formatFontChain(chain), r, r, elementID,
+	)
 }
 
 // shapeSegments performs Story 2.2's per-rune coverage resolution and
@@ -947,18 +1015,49 @@ func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (stri
 // legitimately produce different glyphs at the new boundary, and a
 // second derivation of the same quantity is exactly what Story 2.3's
 // Blocker 1 removed.
-func shapeSegments(chain []string, elementText string, fs FontSet, cache *fontCache) ([]faceSegment, error) {
+//
+// Story 3.6 (divergence 6, OPEN-1 ruled): a rune covered by no face in
+// chain is no longer an error. It is FR41's fifth mode — a Warning,
+// never fatal — collected here in the SAME shape BindTextSpans already
+// uses for its own non-error condition (a third return, never an
+// error): elementID is now required, so the Diagnostic can carry AD-10's
+// element id alongside the rune and the chain that was searched
+// (D-000.37). Per OPEN-1's ruling, the render OMITS the rune entirely
+// — no glyph, no advance, never `.notdef` and never a substituted
+// replacement — but its slot in the ELEMENT-GLOBAL rune index space is
+// preserved as an empty (zero-glyph) faceSegment, so runeStart/runeEnd
+// bookkeeping downstream (packLines, measureRuneRange,
+// positionSegments — all of which count rune positions against the
+// ORIGINAL elementText, via totalRunes) never silently renumbers a
+// later rune's position because an earlier one was dropped.
+func shapeSegments(elementID string, chain []string, elementText string, fs FontSet, cache *fontCache) ([]faceSegment, []Diagnostic, error) {
 	type segment struct {
-		face  string
-		runes []rune
+		face    string
+		runes   []rune
+		missing bool // true: no face in chain covers these rune(s) (OPEN-1)
 	}
 	var segments []segment
+	var diags []Diagnostic
 	for _, r := range elementText {
-		face, err := resolveRuneFace(chain, r, fs, cache)
+		face, found, err := resolveRuneFace(chain, r, fs, cache)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if n := len(segments); n > 0 && segments[n-1].face == face {
+		if !found {
+			diags = append(diags, Diagnostic{
+				Severity:  SeverityWarning,
+				Code:      DiagCodeTextMissingGlyph,
+				ElementID: elementID,
+				Message:   missingGlyphMessage(elementID, r, chain),
+			})
+			if n := len(segments); n > 0 && segments[n-1].missing {
+				segments[n-1].runes = append(segments[n-1].runes, r)
+				continue
+			}
+			segments = append(segments, segment{missing: true, runes: []rune{r}})
+			continue
+		}
+		if n := len(segments); n > 0 && !segments[n-1].missing && segments[n-1].face == face {
 			segments[n-1].runes = append(segments[n-1].runes, r)
 			continue
 		}
@@ -968,9 +1067,25 @@ func shapeSegments(chain []string, elementText string, fs FontSet, cache *fontCa
 	out := make([]faceSegment, 0, len(segments))
 	runeStart := 0
 	for _, seg := range segments {
+		if seg.missing {
+			// OPEN-1: no glyph, no advance. An empty faceSegment still
+			// claims this rune's slot in the element-global index
+			// space (runeStart/runeEnd), so it is skipped, not erased,
+			// by every downstream consumer — glyphRangeForRunes
+			// naturally returns an empty range for it (no glyphs to
+			// find), so measureRuneRange contributes zero width and
+			// positionSegments emits no run.
+			out = append(out, faceSegment{
+				runeStart: runeStart,
+				runeEnd:   runeStart + len(seg.runes),
+			})
+			runeStart += len(seg.runes)
+			continue
+		}
+
 		f, err := cache.get(seg.face, fs)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// AC1/AC8: one buffer per FACE-SEGMENT, never per element and
@@ -981,11 +1096,11 @@ func shapeSegments(chain []string, elementText string, fs FontSet, cache *fontCa
 		segText := string(seg.runes)
 		glyphs, serr := f.Shaper().Shape(segText)
 		if serr != nil {
-			return nil, serr
+			return nil, nil, serr
 		}
 		texts, terr := text.ClusterTexts(segText, glyphs)
 		if terr != nil {
-			return nil, fmt.Errorf("face %q: %w", seg.face, terr)
+			return nil, nil, fmt.Errorf("face %q: %w", seg.face, terr)
 		}
 
 		out = append(out, faceSegment{
@@ -999,7 +1114,7 @@ func shapeSegments(chain []string, elementText string, fs FontSet, cache *fontCa
 		})
 		runeStart += len(seg.runes)
 	}
-	return out, nil
+	return out, diags, nil
 }
 
 // positionSegments turns the element-global rune range [from, to) of a
@@ -1173,7 +1288,7 @@ func buildPageModel(t *Template, data, params bind.Value, fs FontSet) ([]pagemod
 	}
 	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns, visible))
 	if plerr != nil {
-		return nil, nil, nil, nil, fmt.Errorf("folio: Render: %w", plerr)
+		return nil, nil, nil, nil, wrapOverflowError(plerr)
 	}
 	pageCount := len(contentPlan.Pages)
 
@@ -1568,7 +1683,7 @@ func paginateDocument(
 
 	plan, err := layout.Paginate(geometry, items)
 	if err != nil {
-		return nil, fmt.Errorf("folio: Render: %w", err)
+		return nil, wrapOverflowError(err)
 	}
 
 	pages := make([]pagemodel.Page, 0, len(plan.Pages))

@@ -82,10 +82,22 @@ func TestCoverageBasedFallbackSpansAllThreeShippedFaces(t *testing.T) {
 	}
 }
 
-// TestMissingGlyphDiagnosticFiresOnUncoveredRune is V8: the fixture
-// must contain a rune genuinely covered by NO face in the chain, and
-// the failure must name both the element id and the offending rune —
-// never a silently emitted blank box.
+// TestMissingGlyphDiagnosticFiresOnUncoveredRune is V8, UPDATED by
+// Story 3.6 (divergence 6, OPEN-1 ruled): the fixture must contain a
+// rune genuinely covered by NO face in the chain, and — per this
+// story's ruling — the render must now SUCCEED, returning complete
+// bytes, with a Warning naming the element id, the offending rune (both
+// U+XXXX and its literal form) and the searched chain, never a silently
+// emitted blank box and never an aborted render.
+//
+// This is the SYNTHETIC, test-only subject the lead's OPEN-1 ruling
+// required: nothing in the committed corpus/fixture set exercises this
+// path (measured at story creation: `grep -rn "no font in chain"`
+// returned exactly one hit, the production site), and this story's new
+// corpus-wide assertion (TestCorpusFixturesProduceNoMissingGlyphWarnings,
+// missing_glyph_corpus_test.go) requires that no committed fixture ever
+// does — so the subject has to be built here, inline, never added to a
+// retained fixture directory.
 func TestMissingGlyphDiagnosticFiresOnUncoveredRune(t *testing.T) {
 	const singleFaceTemplateJSON = `{
   "assets": {},
@@ -111,19 +123,43 @@ func TestMissingGlyphDiagnosticFiresOnUncoveredRune(t *testing.T) {
 		t.Fatalf("parse template: %v", err)
 	}
 
-	// "ก" (Thai) has no glyph in Noto Sans, and the chain has no other
-	// member to fall back to — this MUST fail, never silently render a
-	// blank box in its place.
+	// "ก" (Thai) has no glyph in Noto Sans, and the declared chain names
+	// no other member to fall back to — fonts.Shipped() supplies Noto
+	// Sans Thai too, but it is irrelevant here because it is not part of
+	// THIS document's declared chain (AD-8: the chain is
+	// document-declared).
 	data := folio.Data(`{"name": "ก"}`)
-	_, err = folio.Render(tpl, data, folio.Params(`{}`), fonts.Shipped())
-	if err == nil {
-		t.Fatal("expected an error for a rune with no coverage in any chain member; render succeeded instead")
+	res, err := folio.Render(tpl, data, folio.Params(`{}`), fonts.Shipped())
+	if err != nil {
+		t.Fatalf("Render() error: %v — a rune with no coverage in any chain member is a Warning (Story 3.6), not a render failure", err)
 	}
-	if !strings.Contains(err.Error(), "e1") {
-		t.Errorf("error does not name the element id (e1): %v", err)
+	if len(res.Bytes) == 0 {
+		t.Fatal("a missing-glyph Warning must accompany a SUCCESSFUL render (AD-14): Bytes must be non-empty")
 	}
-	if !strings.Contains(err.Error(), `U+0E01`) {
-		t.Errorf("error does not name the offending rune (U+0E01, ก): %v", err)
+	if len(res.Diagnostics) != 1 {
+		t.Fatalf("want exactly 1 Diagnostic, got %d: %+v", len(res.Diagnostics), res.Diagnostics)
+	}
+	d := res.Diagnostics[0]
+	if d.Severity != folio.SeverityWarning {
+		t.Errorf("Severity = %v, want SeverityWarning (FR41's fifth mode is the one Warning among five Error modes)", d.Severity)
+	}
+	if d.Code != folio.DiagCodeTextMissingGlyph {
+		t.Errorf("Code = %q, want %q", d.Code, folio.DiagCodeTextMissingGlyph)
+	}
+	if d.ElementID != "e1" {
+		t.Errorf("ElementID = %q, want %q", d.ElementID, "e1")
+	}
+	if !strings.Contains(d.Message, "e1") {
+		t.Errorf("Message does not name the element id (e1): %v", d.Message)
+	}
+	if !strings.Contains(d.Message, `U+0E01`) {
+		t.Errorf("Message does not name the offending rune (U+0E01, ก): %v", d.Message)
+	}
+	if !strings.Contains(d.Message, "ก") {
+		t.Errorf("Message does not carry the rune's literal form (ก), only its U+XXXX form: %v", d.Message)
+	}
+	if !strings.Contains(d.Message, "Noto Sans") {
+		t.Errorf("Message does not name the chain that was searched (D-000.37: naming the chain tells the reader what to fix): %v", d.Message)
 	}
 }
 

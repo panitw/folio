@@ -11,6 +11,8 @@
 // for the grounds — they are not re-argued here.
 package folio
 
+import "github.com/panitw/folio/folio-go/internal/diag"
+
 // Severity classifies a Diagnostic (AD-14, verbatim): "Error aborts the
 // render, Warning accompanies a successful one." A Diagnostic with
 // SeverityError is never returned from Render/RenderTo alongside bytes
@@ -22,17 +24,47 @@ package folio
 type Severity int
 
 const (
+	// severityUnset is the zero value of Severity, and it is NOT a
+	// valid severity (DW-18, R10/AC6, Story 3.6). Before this story,
+	// SeverityWarning WAS the zero value, so a Diagnostic{} literal
+	// that omitted its Severity field was silently indistinguishable
+	// from a genuine Warning — harmless while SeverityWarning was the
+	// only severity ever constructed, but the moment Story 3.6 mints
+	// the first SeverityError values (AC8), that same omission would
+	// silently downgrade an Error to a Warning: AD-14's disposition
+	// rule violated with nothing able to catch it. This constant closes
+	// the window by construction: a Diagnostic built without an
+	// explicit Severity now carries a value String() reports honestly
+	// as unset, never one a caller could mistake for Warning.
+	//
+	// Unexported: it exists to make the zero value visibly wrong, not
+	// to be constructed on purpose by any caller, in or out of this
+	// module.
+	//
+	// Renumbering DW-18's own recorded "how we'd know it was forgotten"
+	// failure mode is safe ONLY because it happens before this story
+	// ever constructs a SeverityError value (Task 8 precedes Task 10,
+	// by construction, not diligence) and because nothing downstream
+	// can have pinned the previous integer values: folio-go/version.go
+	// declares Version = "0.0.0-dev" and `git tag` names no
+	// folio-go/v* tag yet (AD-22). Once folio-go/v0.1.0 is cut,
+	// renumbering a public constant here becomes a breaking change
+	// requiring folio-go/v2 — this is free now and never again.
+	severityUnset Severity = iota
+
 	// SeverityWarning accompanies a successful render: the PDF bytes
 	// are complete and correct for what they contain, but something the
 	// author asked for could not be honoured exactly as declared (FR44:
-	// content clipped at its box boundary).
-	SeverityWarning Severity = iota
+	// content clipped at its box boundary; FR41's fifth mode, a missing
+	// glyph, Story 3.6).
+	SeverityWarning
 
-	// SeverityError is reserved for a future Diagnostic-shaped error
-	// path (AD-14's other half). Nothing in this story constructs one;
-	// today's located errors (e.g. layout.OverflowError, D-2.6.5) stay
-	// plain Go errors, unchanged, and are not routed through this type
-	// here (see "Do not re-open" in Story 2.8).
+	// SeverityError aborts the render (AD-14): a Diagnostic carrying
+	// this severity is never returned from Render/RenderTo alongside
+	// bytes — it travels as Go's ordinary error return instead, wrapped
+	// by Story 3.6's RenderError (D-3.6.3, AC8). Every production
+	// construction site sets Severity explicitly; there is no site in
+	// this module that relies on the zero value meaning this.
 	SeverityError
 )
 
@@ -42,6 +74,8 @@ const (
 // that purpose the first time someone printed one.
 func (s Severity) String() string {
 	switch s {
+	case severityUnset:
+		return "Severity(unset)"
 	case SeverityWarning:
 		return "Warning"
 	case SeverityError:
@@ -76,15 +110,22 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
-// DiagCodeTextClippedWidth is the closed registry's one code this story
-// mints (AD-14: "a stable string code from a closed registry"; D-2.8.1:
+// DiagCodeTextClippedWidth is the closed registry's one code Story 2.8
+// minted (AD-14: "a stable string code from a closed registry"; D-2.8.1:
 // FR44's only subject is the horizontal axis). It names a text
 // element's widest packed line exceeding its declared width, clipped at
 // the box boundary rather than reflowed or dropped (AC1/AC2/AC6).
 //
+// Story 3.6, AC3/D-3.6.4: bridged to internal/diag.CodeTextClippedWidth
+// — the exported NAME and its exact STRING both stay byte-identical
+// (asserted as a literal, not merely that this line compiles: a bridge
+// that alters one byte of the string is AD-14's breaking change wearing
+// a refactor). internal/diag now holds the registry; this constant is
+// the public API's continued spelling of the same code.
+//
 // Additive only (AD-14, verbatim: "changing a code's meaning is a
 // breaking change"): once shipped, this string's meaning is permanent.
-const DiagCodeTextClippedWidth = "TEXT_CLIPPED_WIDTH"
+const DiagCodeTextClippedWidth = string(diag.CodeTextClippedWidth)
 
 // DiagCodeEmptyAverage is the closed registry's second code (Story
 // 3.3, DECISION-5/R9): avg() evaluated over a present-but-empty
@@ -104,9 +145,80 @@ const DiagCodeTextClippedWidth = "TEXT_CLIPPED_WIDTH"
 // this package before internal/diag exists (Story 3.6) — the condition
 // ships in this story, which is exactly when 2.8 minted.
 //
+// Story 3.6, AC3/D-3.6.4: bridged to internal/diag.CodeEmptyAverage —
+// name and exact string both byte-identical, asserted as a literal.
+//
 // Additive only (AD-14, verbatim: "changing a code's meaning is a
 // breaking change"): once shipped, this string's meaning is permanent.
-const DiagCodeEmptyAverage = "AGGREGATE_EMPTY_AVERAGE"
+const DiagCodeEmptyAverage = string(diag.CodeEmptyAverage)
+
+// DiagCodeTextMissingGlyph names FR41's fifth mode (Story 3.6, AC4):
+// a rune covered by no face in its element's declared font chain.
+// AD-8 forbids drawing `.notdef` ("never a blank box"), and OPEN-1's
+// ruling (a byte-output decision, entering a golden hash under
+// AD-21/AD-22) forbids substituting a visible replacement glyph too —
+// a document's declared chain is not guaranteed to cover any
+// particular substitute, and a silent substitution is the exact class
+// of edit AD-8 rejects elsewhere (fontset.go's own "never a silent
+// substitution"). So the render OMITS the rune — no glyph, no advance
+// — and this Warning is the SOLE record that it happened: it names the
+// element id, the rune (as U+XXXX and its literal form), and the exact
+// chain that was searched, because naming the chain tells its reader
+// what to fix, not only that something is wrong (D-000.37).
+//
+// Unlike FR41's other four modes, this one is a WARNING, not an Error
+// (divergence 6, four independent sources: AD-8, EXPERIENCE.md:216,
+// UX-DR22, Story 5.12's first AC) — it travels on the EXISTING
+// Result.Diagnostics channel (D-2.8.3's wire), never on D-3.6.3's
+// error type.
+//
+// Additive only (AD-14, verbatim: "changing a code's meaning is a
+// breaking change"): once shipped, this string's meaning is permanent.
+const DiagCodeTextMissingGlyph = string(diag.CodeTextMissingGlyph)
+
+// DiagCodeTableFooterSourceUnresolved and DiagCodeTableFooterSourceForbidden
+// are DW-6's two long-owed codes (D-1.4.2, R8), minted here now that
+// internal/diag exists and both conditions ship (R5, D-000.65: mint
+// where the Diagnostic is constructed, when the condition can occur —
+// both occur in real documents today). CodeTableFooterSourceUnresolved
+// names a table column requesting a sum/avg footer with footerOf
+// omitted and a bind that is not one of D-1.4.1's two derivable shapes
+// (folio_expr_validate.go). CodeTableFooterSourceForbidden names
+// footerOf paired with footer: "count", or a footer field present with
+// no footer at all (internal/template/parse_bands.go, two sites, one
+// code — the code names the condition, not the line).
+//
+// Additive only (AD-14): once shipped, these strings' meanings are
+// permanent.
+const DiagCodeTableFooterSourceUnresolved = string(diag.CodeTableFooterSourceUnresolved)
+const DiagCodeTableFooterSourceForbidden = string(diag.CodeTableFooterSourceForbidden)
+
+// DiagCodeTemplateMalformed, DiagCodeBindingPathAbsent,
+// DiagCodeExpressionInvalid and DiagCodeContentUnlayoutable are FR41's
+// four ERROR modes (AC4/AC8, R9) — the failure aborts the render, and
+// the Diagnostic travels wrapped in a *RenderError (D-3.6.3, arm A),
+// never on Result.Diagnostics.
+//
+// Additive only (AD-14): once shipped, these strings' meanings are
+// permanent.
+const DiagCodeTemplateMalformed = string(diag.CodeTemplateMalformed)
+const DiagCodeBindingPathAbsent = string(diag.CodeBindingPathAbsent)
+const DiagCodeExpressionInvalid = string(diag.CodeExpressionInvalid)
+const DiagCodeContentUnlayoutable = string(diag.CodeContentUnlayoutable)
+
+// DiagCodeInternalUnhandledCaveat names diagnosticFromCaveat's
+// `default:` arm (R12/D-3.6.7, AC7): an internal/expr.Caveat whose Kind
+// has no matching arm here — unreachable given expr.CaveatKind's
+// current single member, but a live construction site whose output
+// must never carry an empty Code (AD-14). This is NOT R7's criterion
+// relaxed for an internal condition: the arm already produces a
+// Diagnostic that is already returned to a caller (SeverityWarning, on
+// Result.Diagnostics), so the choice is between a coded one and a
+// codeless one, never between a coded one and a plain error.
+//
+// Additive only (AD-14): once shipped, this string's meaning is
+// permanent.
+const DiagCodeInternalUnhandledCaveat = string(diag.CodeInternalUnhandledCaveat)
 
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — over-tall rows (FR25, not yet built) and clipped

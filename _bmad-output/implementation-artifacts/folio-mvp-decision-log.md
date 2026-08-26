@@ -10856,3 +10856,266 @@ Keep this pair together in the record: read separately they look inconsistent; r
 **A correction on how a related step must be logged.** If 3.5 registers a **new matrix document** for the hidden-image subject — which it probably should — then **[[D-000.54]] applies: its native leg runs at registration, host target only, before the story reaches `done`.** That is a **sequencing** requirement and **must not be logged as a D-000.4 override**; doing so spends the owner's trade to buy something the override was never for.
 
 **How we'd know it was wrong.** An Epic 3 boundary matrix failure bisecting to 3.5.
+
+---
+
+## Epic 3 decisions — Story 3.6
+
+### D-000.69 — A ruling's VERDICT LINE is what later briefs quote; keep mechanism words out of it, or the bindings are lost
+**Standing rule**, from the lead's own self-correction at Story 3.6.
+
+**Verdict.** A ruling's **verdict line** must not contain a mechanism word that its **bindings** then qualify or contradict. Where an existing entry has that tension, the fix is to **append a clause saying which half governs** — never to leave a reader to choose.
+
+**The incident.** [[D-3.3.6]]'s verdict line says *"an exported **sentinel** in `expr`"*. Its **binding 3** says *"it is a typed value, **never an error**"*, with the reasoning that a sentinel returned as `error` would make every caller's default `if err != nil` turn a Warning into a render abort — on `folio/diagnostic.go`'s own documented contract. **The binding shipped, correctly**: `expr.Caveat` / `CaveatKind` / `CaveatEmptyAverage`. In Go, *"sentinel"* means `var ErrX = errors.New(...)` — **precisely the shape binding 3 forbade.** The word should have been **marker**.
+
+Then the lead's [[D-3.6.0]] inventory quoted the **verdict line**, the orchestrator's Story 3.6 brief inherited it, and the Story 3.6 creator went looking for a sentinel. `grep 'Err[A-Z]'` over `internal/expr` returned **nothing**, and the creator reported the entry as self-contradictory. It was not contradictory — it was **mis-summarised by its own first sentence.**
+
+**In simple terms.** The headline of the ruling said one thing and the fine print said the opposite, with all the reasoning in the fine print. Everyone downstream quoted the headline, because a headline is what you quote. Two documents later, people were hunting for a thing the ruling had specifically decided not to build.
+
+**Why this is worth a rule.** [[D-000.8]] makes the log the medium every later session re-grounds from, and a re-grounding lead reads **verdict lines** at scale and **bindings** selectively. So the verdict line is not a summary — **it is the interface.** A mechanism word there propagates whether or not the bindings agree with it, and the reasoning that would have corrected it is exactly what does not get quoted.
+
+**Consequences.** Verdict lines state **what is decided**, not the implementation noun. Where a mechanism must appear, it matches the bindings **exactly** or the entry is amended. [[D-3.3.6]] is corrected by this entry rather than rewritten ([[D-000.49]], append-only). Note this is a *sibling* of [[D-000.68]] rather than an instance: D-000.68 governs guards anchored to something movable; this governs **records** whose summary can drift from their content.
+
+**How we'd know it was wrong.** Verdict lines becoming so abstract they cannot be acted on without reading every binding — which would move the cost rather than remove it.
+
+---
+
+### D-3.6.2 — Missing glyph is a WARNING; Story 3.6 covers four Error modes and one Warning mode
+**Lead's ruling**, correcting a premise in the Story 3.6 creator's own analysis. Confidence high.
+
+**Verdict.** Of FR41's five named failure modes, **four are Errors and one — missing glyph — is a Warning.**
+
+**Grounds, four independent and all pre-existing.**
+- **AD-8 verbatim:** *"A glyph covered by no font in the chain is a **diagnostic** (AD-14) with the element id and the offending rune, never a blank box."*
+- **EXPERIENCE.md** §State Patterns lists *"clipped content, over-tall row, **missing glyph**"* under **Diagnostic — render succeeded with caveats**. **UX-DR22** the same.
+- **Story 5.12's AC names it a warning:** *"a render returning warnings — clipped content, an over-tall row, **a glyph with no coverage**."*
+- **FR41's own sentence** carries the tension and resolves it in its last clause: *"Non-fatal diagnostics are reported without failing the render."*
+
+**In simple terms.** Four of the five things that can go wrong stop the document being produced at all — a template that will not parse, a binding that names nothing, an expression that cannot be evaluated, content that cannot be laid out. The fifth is different in kind: the document renders perfectly, and one character in it has no font that can draw it. That is worth telling someone about and is not worth throwing the document away for.
+
+**The consequence that changes the work.** The story's largest code change — threading an element id through `resolveRuneFace` (`render.go:934`), which carries the rune and the chain but no element id, leaving AD-8 unmet today — **feeds the EXISTING `Result` warnings channel** ([[D-2.8.3]] / [[D-2.8.6]]), **not** the new error type from [[D-3.6.3]]. That is a materially smaller job than routing it through new machinery, and getting it wrong would have built a second wire.
+
+**A second consequence:** it makes [[D-3.6.3]]'s arm B *more* falsified, not less — AC2's *"Error aborts it"* has **four** subjects rather than zero.
+
+**How we'd know it was wrong.** A render aborting on an uncoverable glyph, which would contradict AD-8, EXPERIENCE.md, UX-DR22 and Story 5.12 simultaneously.
+
+---
+
+### D-3.6.3 — `SeverityError` gets a first constructor: a public `Diagnostic`-carrying error type. FORCED by AD-14, and NOT an owner question.
+**Lead's ruling.** Confidence high.
+
+**Verdict.** Arm **A**: a public `Diagnostic`-carrying error type wrapping each FR41 **Error** mode with `%w`. Additive, `errors.As`-recoverable, leaves `Result` warnings-only, leaves [[D-3.3.6]]'s wire untouched, free before `folio-go/v0.1.0`.
+
+**Grounds are rule text, not judgement.** AD-14: *"one `Diagnostic` value carries `Severity`… a stable string code from a closed registry… **Every failure mode named in FR41 has a code** and a test asserting it."* A code is a field of `Diagnostic`; a bare `fmt.Errorf` has none. So FR41's modes must produce `Diagnostic`s, and the aborting ones must carry `SeverityError`. **A is the reconciliation of AD-14 with the Go-error return convention, not a departure from either.**
+
+**Why arm B did not go to the owner, recorded because the orchestrator offered to take it.** B — *"label `SeverityError` unexercised"* — needs **a scope cut and an AD-14 amendment**. [[D-000.2]] makes every escalation a block on the owner's presence, and this one would ask them to choose between following the architecture and amending it **with no reason on the table to amend**. That is not a decision, it is an interruption. **The bar for reaching the owner is that the direction genuinely under-determines the answer; here it over-determines it.** If arm A proves infeasible, that returns to the lead as a finding and escalates then.
+
+**DW-18 becomes NON-OPTIONAL and is coupled to this ruling.** `SeverityWarning` is `iota` = 0, which is also `Diagnostic{}`'s zero value. **The moment 3.6 constructs `SeverityError` values, a copy-paste omitting the field silently downgrades an Error to a Warning** — DW-18's own stated failure mode, arriving exactly when arm A lands. The renumbering is a public-constant change and is **free only until the tag**.
+
+**How we'd know it was wrong.** An FR41 Error reaching a caller without a code, or `Result` acquiring an error-severity entry (which would mean the two channels had merged).
+
+---
+
+### D-3.6.4 — `internal/diag` is a RANK-1 registry leaf with zero first-party imports; the mapping stays in `render.go`
+**Lead's ruling**, on the creator's recommendation, which it judged *"right and stronger than it states it."* Confidence high.
+
+**Verdict.** `internal/diag` holds `type Code string`, the code constants, and the constructed registry — **zero first-party imports**. `Diagnostic`, `Severity` and `Result` stay in the **root `folio`** package. The kind→code mapping stays in **`render.go`**. The two shipped constants bridge as `= string(diag.CodeX)`.
+
+**Why the low rank is the requirement rather than a convenience.** AC4 requires all five FR41 modes to name a code, and those conditions arise in **`template`(2), `expr`(3), `bind`(4), `fontset`(6) and `layout`(7)** — five packages spanning the whole rank range. **Only a rank-0/1 leaf is importable by all of them.** Every higher placement forbids exactly the imports AC4 needs.
+
+**And the inventory instruction it replaces was not buildable.** [[D-3.6.0]] item 3 said *"move the mapping into `internal/diag`."* Measured: `stagerank.go:57-68` puts `diag` at **1** and `expr` at **3**; the mapping switches on `expr.CaveatKind` **and** constructs a `folio.Diagnostic` — a backwards edge **and** a root import. The lead recorded this as **the third rank-wall collision this epic** ([[D-3.2.1]]'s `DeriveFooterOf`, [[D-3.4.2]]'s locale set, now this) and **the second time it wrote a placement without checking the rank table first.**
+
+**Two guardrails, both as ACs.**
+- **The bridge must preserve the EXACT string values** of `DiagCodeTextClippedWidth` and its sibling. AD-14 makes changing a code's meaning a breaking change, and **a bridge that alters one byte is that change wearing a refactor**. Assert the literal strings, not merely that it compiles.
+- **Assert `diag`'s zero first-party imports.** That property is what keeps it importable by all five call sites; the first import added quietly forecloses one.
+
+**Divergence 3 — the spine is amended in this story's commit** under [[D-000.6]]. `:613` says `diag/` holds *"Diagnostic, Severity, the code registry (AD-14)"*; [[D-2.8.3]] was an **owner decision** placing the first two at the module root, and the tree line was never updated. Corrected: `diag/` holds **the closed code registry (AD-14)**; `Diagnostic`, `Severity` and `Result` live in root `folio`. Option C — move the public types and alias — is rejected: it would **reopen an owner decision to satisfy a stale document.**
+
+**How we'd know it was wrong.** A first-party import appearing in `diag`, or a code string changing value under a refactor.
+
+---
+
+### D-3.6.5 — Story 3.6 fixes DW-19; the fix is a SCAN ERROR, never a skip
+**Lead's ruling.** Confidence high.
+
+**Verdict.** Story 3.6 discharges **DW-19**. The fix: *"the asset root resolved to a path with zero tracked files"* is a **scan error**, returned and assessed **before any findings**. **Explicitly not** adding files to `.font-sources/`, and **not `t.Skip`** — both trade a loud environmental failure for a quiet one, which [[D-000.58]] already declined for `.fontgen-venv`.
+
+**Superseded in part — see the amendment below ([[D-3.6.5]] (amendment), `:11023`).** This verdict's *mechanism* ("a scan error, before any findings," read as a global pre-pass) is **not** what shipped and is **not** what governs: the amendment ratifies a different mechanism (exclude an untracked directory from the findings loop; treat "every candidate directory untracked" as its own, narrower scan error) after the literal reading was implemented and measured strictly worse. This verdict's *goal* — DW-19 discharged in Story 3.6, never by adding files or by `t.Skip` — still governs and was met. Per [[D-000.69]]: where a verdict line and a later amendment diverge, the amendment's mechanism governs; this verdict's outcome/ownership clauses stand.
+
+**Why 3.6 rather than its nominal owner.** DW-19's owner clause names *"whoever next touches `ResolveAssets`"* — a **category no story is scheduled to enter**, which is the unowned-deferral shape already recorded against DW-16. The session-5 grounding routed it to *"the first Epic 3 story that touches `lint`"*, and 3.6 is that story; the `rules/`-vs-`manifest/` package distinction is a technicality against a deferral with no real owner.
+
+**[[D-000.55]]'s attributability argument decides it.** 3.6 lands substantive new `lint` rules, and **its own lint measurements are unattributable while three unrelated reds stand.**
+
+**And the resolver's message is itself false.** It says the directory *"contains a **committed** font binary"* — measured, `git ls-files .font-sources` returns **zero tracked files** (`.gitignore:85`). So the message is a [[D-000.46]] false map **independent of the outcome**: it misdescribes the condition it is reporting, which is why the three reds have read as environmental noise rather than as a real defect for five stories.
+
+**How we'd know it was wrong.** A fourth `lint` red, or the scan error firing in CI, where the directory does not exist at all.
+
+---
+
+### D-3.6.6 — A code exists for a failure mode a CALLER CAN ACT ON; internal-invariant violations stay plain errors
+**Lead's ruling**, supplying the criterion behind Story 3.6's refusal to sweep. Confidence high.
+
+**Verdict.**
+
+> **A code exists for a failure mode a caller can act on — FR41's five, plus conditions a template author can cause and fix. An internal-invariant violation ("this should never happen") stays a plain error.**
+
+**Why this is a ruling and not a note.** `internal/bind` and `internal/expr` carry **60+ non-test `fmt.Errorf` sites**. Story 3.6's R7 forbids sweeping them — correctly: [[D-3.6.0]] item 2 named **four specific categories** (the reduction kernel's overflow, alignment-spread and digit-budget errors, plus the per-element absent/wrong-kind aggregate errors), which is the **Epic 3 arithmetic surface**, not every error in two packages.
+
+**But a bound without a principle reads as debt.** *"We are not sweeping the rest"* invites re-litigation every story and eventually gets swept by someone tidying. Stated as a criterion, the 60+ are **a different category** — not an accepted gap, not a backlog — and the refusal is **principled rather than pragmatic**.
+
+**In simple terms.** A code is a promise to the person calling the library: *this specific thing went wrong, you can branch on it, and it will still be called that next release.* That promise is worth making for the failures a caller can do something about — a malformed template, a binding that names nothing. It is not worth making for "an invariant we maintain internally was violated," because the only correct response to that is a bug report, and a stable code implies a supported branch.
+
+**Consequences.** Every future story adding an error asks the criterion rather than a convention. [[D-000.29]] applies to the remainder: it ends **narrowed with a reason**, not carried unchanged.
+
+**How we'd know it was wrong.** A caller needing to branch on something the criterion classified as internal.
+
+---
+
+### D-3.6.7 — The codeless `Diagnostic` is a FALLBACK-BUCKET defect; the fix is a positive assertion, not a repaired instance
+**Lead's ruling**, on a divergence the creator measured in shipped code. Confidence high.
+
+**The defect, live today.** `diagnosticFromCaveat`'s `default:` arm constructs a `Diagnostic` and **sets no `Code`**, so a codeless `Diagnostic` can already reach a caller. **Story 3.6's AC1 is violated in shipped code before the story starts.**
+
+**Why it is a class, not an instance.** It is the **fallback-bucket** shape: an unhandled case conflated with a handled one, **failing open**. Giving the default arm a code is necessary and **not sufficient** — it repairs the instance and leaves the class.
+
+**Verdict — three parts.**
+1. Give the `default:` arm a code.
+2. **Land the positive assertion that no `Diagnostic` reachable from `Render`/`RenderTo` can carry an empty `Code`.** That is what gives AC1 teeth.
+3. **Make the default arm's code a real registry entry naming an internal condition**, so an unmapped caveat is **loud rather than blank**. Per [[D-3.6.6]] this is legitimate — it is an internal-invariant violation, but one that reaches a caller, so it needs a name.
+
+**How we'd know it was wrong.** A `Diagnostic` with an empty `Code` observed anywhere — which part 2 now makes a test failure rather than a support ticket.
+
+---
+
+### D-3.6.8 — An uncoverable rune is OMITTED: no glyph, no advance. The substitution arm is not always constructible.
+**Lead's ruling.** Confidence high.
+
+**Verdict.** A rune covered by no face in the declared chain contributes **no glyph and no advance** to the content stream. The `Warning` — element id, the offending rune, and the chain that was searched — is the **entire** record.
+
+**Situation.** [[D-3.6.2]] made missing glyph a Warning, and a Warning accompanies *successfully returned PDF bytes* — so the render must emit **something** where the rune was, and **none of AD-8, EXPERIENCE.md, UX-DR22 or Story 5.12 says what**. AD-8 forbids *"a blank box"*, ruling out the `.notdef` the code emits by default. The choice enters a golden hash under AD-21/AD-22.
+
+**In simple terms.** A Thai name contains one character that none of the document's chosen fonts can draw. The document still has to print. Either the character silently isn't there, or we print a stand-in symbol in its place. We print nothing, and we tell the author — by name, with the chain we searched — that we couldn't draw it.
+
+**Why the stand-in arm (U+FFFD) is not merely disfavoured but unavailable** — three independent grounds:
+1. **It cannot be guaranteed.** The chain is **document-declared** (AD-8: *"a template names a family plus an ordered fallback chain"*). A document may declare a single face lacking U+FFFD, leaving nothing to substitute — so the arm falls back to omission anyway. Guaranteeing it means mandating an implicit terminal face in every chain: **an AD-8 amendment**, and since *"the chain is part of the `FontSet`'s identity"*, one that **changes every existing golden hash**. Not a story decision.
+2. **It is the silent-content-edit class the codebase already rejects** (`fontset.go:833`; [[D-2.2.6]]'s `/BaseFont` correction). The document says `ก`; the PDF would say `�`.
+3. **It corrupts text extraction; omission does not.** Omitted, the rune allocates no CID, `/ToUnicode` never maps it, and extracted text matches visible text. Substituted, extracted text contains a character the source data never held — worse for a document that gets machine-read, which a bank statement is.
+
+Keeping it an Error was rejected: it contradicts all four sources and leaves Story 5.12's first AC **subjectless**. AD-8's own sentence structure points to omission — *"is **a diagnostic** … never a blank box"* contrasts telling-you with drawing-something. And omission is the safer arm under **NFR1**: trivially deterministic, where a chain-ordered U+FFFD lookup adds new surface for cross-target divergence in the one place we can least afford it.
+
+**The accepted cost, stated rather than discovered.** A character is absent from the page with **no in-band indication whatsoever**. If the diagnostic is not surfaced, the defect is invisible.
+
+**Three things that answer "what stops a future reader calling this a rendering bug?"**
+1. **The posture is established, not conceded here.** FR44's clipped content also gives no in-band page signal — [[D-2.8.1]] ruled the overflow *"clipped at the box's left/right edges, never reflowed and never dropped"*, no marker drawn. *"The defect lives in the diagnostics, not in the artifact"* is how this engine already treats the nearest neighbour.
+2. **The binding assertion — and this is the half that actually answers it.** *Rendering any committed fixture produces **zero** missing-glyph Warnings*, over the whole corpus, **count derived, not literal**. Cheap, non-vacuous today, and it prevents the corpus quietly normalising a dropped character — [[D-000.22]]: *"a wrong first recording is not a bug that gets caught later, it is a bug that gets **ratified** later."* A future reader never meets a vanished character in our own goldens because none can exist.
+3. **The Warning must be executable by a human** ([[D-000.37]]): element id, the rune as `U+XXXX` **and** its literal form, and **the chain that was searched** — *"no face in chain [Noto Sans, Noto Sans Thai] covers U+0E01 (ก) in element e3"*. Naming only the rune says something is wrong; **naming the chain says what to do.**
+
+**A consequence for this story's own subject.** Measured: `grep -rn "no font in chain"` returns **one hit, the production site** — so **nothing currently exercises this path at all**, and the story must build the subject. Point 2 forbids it being a committed fixture. It is therefore a **synthetic, test-only template constructed in the test**, exactly as [[D-2.6.5]] required for page-edge overflow. The two obligations only appear to conflict.
+
+**A record edit this forces.** This case is worse than FR44's: for clipping a reader can at least *see* truncation; here there is nothing. **DW-17 is amended in place** to record that its weight has risen — its three owners (Story 3.7's CLI, 5.12's located diagnostics, 6.6's failure presentation) each now carry a Warning whose **only** manifestation is the diagnostic.
+
+**The framing to preserve, because it is the thing most easily lost.** The arms are **asymmetrically reversible**. Omission → substitution later moves the bytes of any document containing an uncovered rune — and the corpus assertion guarantees there are none — so the reversal costs nothing beyond the AD-8 amendment it would need regardless. **If anyone later wants an in-band marker, it is an AD-8 amendment with a global chain-identity change, not a rendering tweak.**
+
+**How we'd know it was wrong.** An integrator reporting characters silently missing from production documents — which would mean the Warning is not reaching humans, and would indict DW-17's owners rather than this ruling.
+
+**Confidence: high.** The assumption that would flip it: a face in the shipped set being mandated as a terminal fallback in every chain, which would collapse ground 1 and make substitution constructible. Nothing schedules that.
+
+---
+
+### D-3.6.5 (amendment) — The DW-19 deviation is RATIFIED; the "must not drift" clause was the defect; and the exclusion needs a floor
+**Lead's ruling**, amending its own [[D-3.6.5]] rather than rewriting it ([[D-000.49]], append-only). Confidence high.
+
+**Ratified.** The Story 3.6 developer departed from D-3.6.5's literal mechanism — *"the asset root resolved to a path with zero tracked files is a **scan error**, returned and assessed **before any findings**"* — and instead **excluded the untracked directory from findings entirely (no row, no error)** while every tracked directory's real violation still fires. **That is the correct resolution of a contradiction, not drift.**
+
+**The contradiction was the lead's, and the way it was wrong is the reusable part.** DW-19's fix shape was written against a **mis-modelled situation**: it assumes the untracked directory **is** the asset root, in which case you genuinely could not look and an error is right. Measured reality: `.font-sources` is **one child among several** in `dirOrder`. The root is fine; one child is not in the repository. Applied to *that* situation, "scan error before findings" **aborts the whole scan on the first untracked child** — and because `.font-sources` **sorts first alphabetically**, it masks every real violation behind it. **The mechanism would have preserved the exact masking defect the story existed to remove.** The developer proved it by finding `TestFontsAssetsLicenceRemovalRedProof` **already vacuously passing at baseline for that reason**.
+
+**And the "must not drift" clause made it worse than an unverified mechanism would have been on its own.**
+
+> **A no-drift clause on a MECHANISM forbids the developer from correcting it. A no-drift clause belongs on a PROPERTY.**
+
+What D-3.6.5 should have said: *the fix must keep "could not look" distinguishable from "all clear", and must not let one directory's state mask another's.* **Both properties survive the developer's implementation intact.** The original entry currently forbids the thing that was correct, which is why this is filed as an amendment rather than absorbed.
+
+**In simple terms.** The instruction said "if a shelf has no catalogued items, stop the whole inventory and report a problem." That is right if the *warehouse* is empty. It is wrong when one shelf out of several is simply not part of this warehouse — you would abandon the count at the first such shelf and never reach the ones with real discrepancies. And because that shelf happens to come first alphabetically, you would never reach any of them.
+
+**ONE ADDITION — the exclusion has no floor, and that is [[D-000.9]] reachable by ordinary refactor.** `ResolveAssets` skips any directory with zero tracked files, and the two `len(rows) == 0` sites are manifest **rendering**, not a guard. So if **every** candidate directory resolved to zero tracked files — a directory rename, a wrong `repoRoot`, a layout refactor — the scan returns **zero rows and no error**, and the manifest prints *"No redistributed non-code assets are committed at this commit."* **"All clear" and "could not look" produce identical output.**
+
+> **Required: if `dirOrder` is non-empty but EVERY directory resolves to zero tracked files, that is a scan error** — returned and assessed before findings.
+
+Note the precision: **no candidate directories at all** stays legitimately empty (it was true before fonts shipped); **candidates exist and none is tracked** is the could-not-look state. That is the predicate DW-19's "scan error" language was reaching for, aimed correctly. Red-provable against a synthetic repo with the harness the two new tests already use.
+
+**Credit.** The developer deviating **and saying so** is [[D-000.10]]'s `applied-with-a-different-mechanism` executed as designed — and the corroborating measurement (a baseline test passing for the wrong reason) is what separates *an opinion about a ruling* from *a demonstration that it was wrong*.
+
+**How we'd know it was wrong.** A licence violation in a tracked directory going unreported while `.font-sources` is present — which the developer's two synthetic-repo tests now make a test failure.
+
+---
+
+### D-000.70 — A standing red does not merely cost attention; it can be the thing that makes a second defect invisible
+**Standing rule**, from the Story 3.6 finding that DW-19's three reds were masking a fourth problem.
+
+**Verdict.** A known-failing test is not neutral. **Treat every standing red as a potential mask, not merely as noise**, and when one is finally fixed, **check what it was hiding** rather than only that it is now green.
+
+**The incident.** DW-19's three `lint` failures had been read for five stories as *local-only environmental noise* — true, and incomplete. Fixing them at 3.6 revealed that `TestFontsAssetsLicenceRemovalRedProof` **had been passing for the wrong reason at baseline**: the same first-directory abort that produced the three reds was also short-circuiting the scan before it could reach a real violation. **The reds were not merely sitting beside a defect; they were producing it.**
+
+**In simple terms.** A smoke alarm that beeps constantly for a known reason is not just annoying. Because everyone stops listening, it is also the reason nobody hears the second alarm. Fixing the first one is how you find out the second was sounding.
+
+**Why this generalises beyond attention.** [[D-000.55]]'s existing argument for clearing standing reds is **attributability** — you cannot tell a new failure from an old one. That argument is real and it is the weaker half. The stronger one is **mechanical**: a red frequently shares a code path with the thing it is failing in, so whatever short-circuits, aborts or skips to produce the red **also short-circuits the coverage behind it**. Attributability is about the reader; masking is about the test suite.
+
+**Consequences.** Every remaining standing red in the program is now higher-priority than its own cost suggests, and the required-red `TestCorpusMeetsP6ExerciseFloors` deserves a deliberate look at what sits behind it in its own package — **not** to fix it ([[D-000.17]] / [[D-2.1.14]] / [[D-000.57]] require it red) but to establish whether anything downstream of it is unreached. When a standing red is fixed, the story reports **what the fix revealed**, not only the new count.
+
+**How we'd know it was wrong.** A standing red fixed with nothing behind it, repeatedly — which would mean the masking case is rarer than this incident suggests and the rule can relax to D-000.55's attributability argument alone.
+
+---
+
+### D-3.6.9 — The 3.3 suites are NOT the tautology class; the layering is complete and must not be "fixed"
+**Lead's ruling**, declining a sweep the orchestrator raised. Confidence high.
+
+**Verdict.** [[D-3.6.4]]'s bridge guardrail is **met**. AC3's literal assertion and AC5's pinned table both redden on a code-string change; the story's claim that the **pre-existing 3.3 suites** would also redden is **false and must be corrected to claim only what holds**. **Do not convert those suites to literals, and do not sweep for the pattern.**
+
+**The diagnosis, which matters more than the answer.** A test asserting `d.Code == diag.CodeEmptyAverage` is **not** comparing a constant against itself. `d.Code` is **a value produced by the mapping**; the constant is the expectation. If the mapping picks the wrong code, it reddens. It tests **wiring**, at the right level of abstraction, and using the symbol there is **correct** — a literal would couple a wiring test to a string-value decision it has no business asserting.
+
+**The discriminator, and this is the part to keep:**
+
+> **Is there an independent producer?**
+
+The date-token failure ([[D-3.4.6]]) was tautological because the parser looked up **the same map** the test extracted — one object, no producer, set-equality with itself. Here there are two things: **code that computes**, and **a constant that expects**. Different shape entirely.
+
+**Why a sweep would be actively harmful.** Grepping for *"constant compared against symbol"* would flag dozens of correct tests, and **a guard that fires on correct work is [[D-000.15]]'s erosion aimed at the review process itself.** The narrower question — *are there tests where both sides derive from one declaration?* — is the real one and a much smaller population; the right instrument is [[D-000.68]]'s standing rule preventing **new** instances, now carrying the producer discriminator. Retrofitting is low yield against a suite that is mostly sound, and 3.6 is the epic's most loaded story and green.
+
+**The one line that must be recorded, so nobody "fixes" it later:**
+
+> **AC5's pinned table owns the STRING-VALUE property; the 3.3 suites own the WIRING property. Neither is a substitute for the other.**
+
+**How we'd know it was wrong.** A code-string change shipping unnoticed — which AC5's pin now prevents independently of the 3.3 suites.
+
+---
+
+### D-000.6 amendment (Story 3.6, finisher pass) — `ARCHITECTURE-SPINE.md:613`'s `diag/` line corrected
+**Ships in Story 3.6's own finisher commit**, per [[D-000.6]] (a ruling that makes a canonical document
+wrong amends that document) and Finding 15 (this story's QA review): AC11 amended the spine's `diag/`
+line in the same commit but no standalone `D-000.6 amendment` entry was filed for it — breaking the
+convention every prior canonical-document amendment under D-000.6 followed (Stories 1.2, 1.3, 1.4,
+3.4's finisher), each of which quoted the before/after verbatim in the decision log. The before/after
+had previously appeared only inside [[D-3.6.4]]'s Divergence-3 paragraph, in a form that did not match
+what was actually shipped (the shipped line adds a provenance parenthetical the paragraph does not
+quote).
+
+**Verdict.** Correct the omission; no invariant, AC, or table shape changes — this entry records what
+AC11 already did.
+
+**Before** (`_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md:613`):
+> `diag/                           # Diagnostic, Severity, the code registry (AD-14)`
+
+**After:**
+> `diag/                           # the closed code registry (AD-14); Diagnostic, Severity and`
+> `                                # Result live in the root `folio` package (D-2.8.3, an owner`
+> `                                # decision — amended here at Story 3.6/AC11; not re-opened)`
+
+**Why the decision itself is not re-opened.** `Diagnostic`, `Severity` and `Result` were sited at the
+module root by [[D-2.8.3]] (an owner decision) because `Result` is `Render`'s return type and
+`Diagnostic` is a public API type; the spine's source tree was simply never updated to match. Moving
+those types under `internal/diag/` to satisfy the stale document would reopen an owner decision for no
+reason on the table — [[D-3.6.4]]'s option C was rejected on exactly this ground, and this amendment
+does not disturb that.
+
+**How we'd know it was wrong.** A future reader treating `internal/diag/` as the place to find
+`Diagnostic`/`Severity`/`Result`, and being surprised to find them at the module root instead.

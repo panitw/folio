@@ -238,7 +238,17 @@ the parsed expression tree to check `bind`'s shape — machinery Story 1.4 delib
 (no `internal/expr` package existed yet). Before Story 3.2, a `footer` with no `footerOf` simply
 loaded (AC44's known, fixture-pinned gap) rather than being derived or rejected.
 
-### DW-6 — The two footer diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` / `TABLE_FOOTER_SOURCE_FORBIDDEN`
+### DW-6 — The two footer diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` / `TABLE_FOOTER_SOURCE_FORBIDDEN` — **RETIRED by Story 3.6 (R6, R8, AC2)**
+- **Retired at:** Story 3.6, by replacement, in the same commit (R6, D-000.59): `absence-diag-package`
+  was deleted from `absenceChecks` (`lint/internal/rules/absences.go`), and `internal/diag`'s own
+  `TestRegistryIsAdditiveOnly` (`folio-go/internal/diag/diag_test.go`) lands the positive assertion
+  that the registry as constructed contains both codes, each pinned to its exact string:
+  `TABLE_FOOTER_SOURCE_UNRESOLVED` (attached at `folio-go/folio_expr_validate.go`'s
+  `validateTableColumns`, the `!derivable` branch) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (attached at
+  `folio-go/internal/template/parse_bands.go`'s two sites — `newLoadErrorCoded`, one code, two sites,
+  because the code names the condition, not the line). Both travel wrapped in `*folio.RenderError`
+  (D-3.6.3), never merely as a bare error. `TestAbsencesChecksIncludeBothRemainingEntries`
+  (`absences_test.go`) now pins the two remaining rows.
 - **Deferred by:** Story 1.4 (ruling D-1.4.2)
 - **Owner:** **whichever story first creates `folio-go/internal/diag`** — expected to be Story 3.6,
   but the obligation attaches to the condition, not the story number (D-2.8.4)
@@ -773,7 +783,76 @@ folio's render path returns actually appears in what a human sees (CLI stdout, t
 the failed-render presentation) — a case where `Render`/`RenderTo` returned a non-empty
 `Diagnostics`/warning slice and nothing downstream of it printed, logged or displayed any part of it.
 
-### DW-18 — `Severity`'s zero value is a VALID severity, so no test can prove the field was ever explicitly set
+**Amended by Story 3.6 (OPEN-1's ruling): this obligation's weight just increased, for one specific
+code.** `DiagCodeTextMissingGlyph` (FR41's fifth mode) is minted this story with a render-side
+disposition ruled by the engineering lead: the uncovered rune is OMITTED — no glyph, no advance, and
+no in-band marker of any kind (never `.notdef`, never a substituted replacement glyph, per AD-8 and
+the ruling's three grounds: the chain is document-declared and not guaranteed to cover a substitute;
+substitution is the "silent content edit" class AD-8 already rejects; and omission — unlike
+substitution — keeps `/ToUnicode` extraction honest). **This makes DiagCodeTextMissingGlyph's case
+WORSE than FR44's clipped content**, which this entry's own "not novel" framing (below) was written
+against: a reader can at least SEE that clipped content was truncated; here there is nothing at all on
+the page — the Warning is the ONLY record the rune ever existed. If DW-17's three owners ship without
+surfacing this specific Warning, the defect is not merely unreported, it is INVISIBLE — there is no
+artifact-level clue for a human to even suspect something is missing. Story 3.7's CLI, 5.12's
+located-diagnostics interface and 6.6's honest-failure presentation each now carry this sharpened
+stake explicitly, not only the general "some Diagnostic went unprinted" case this entry originally
+named.
+
+**One framing this amendment preserves, so a future reader does not mistake it for a novel hazard:**
+FR44's clipped content already gives no in-band page signal either (D-2.8.1 ruled it "clipped at the
+box's left/right edges, never reflowed and never dropped" — no marker drawn) — "the defect lives in the
+diagnostics, not in the artifact" is the engine's EXISTING posture, not something this story
+introduced. What changed is only that missing-glyph's case has NO visible truncation cue at all, where
+clipping at least leaves something a reader can notice went wrong.
+
+**The reversal cost, recorded because it decides what "urgent" means here.** The two arms are
+asymmetric: omitting now, then substituting later (if a future story wants an in-band marker) would
+move the BYTES of any document containing an uncovered rune — but Story 3.6's own corpus-wide
+assertion (`folio-go/missing_glyph_corpus_test.go`,
+`TestCorpusFixturesProduceNoMissingGlyphWarnings`) guarantees there are NONE in the committed corpus
+today, so that reversal costs nothing beyond the AD-8 amendment it would need anyway (an implicit
+terminal, guaranteed-coverage face in every chain — which also changes every existing golden hash,
+since the chain is part of a `FontSet`'s identity). This is not urgent in the sense of "code debt
+accruing interest" — it is urgent only in the sense that a document with the defect exists silently
+until one of DW-17's three owners makes it visible.
+
+**Amended by Story 3.6's finisher (Finding 13, QA review): the Warning is emitted PER RUNE OCCURRENCE,
+knowingly, as a bound for DW-17's owners to inherit.** `shapeSegments` (`folio-go/render.go`) appends
+one `Diagnostic` for every uncovered rune before adjacent uncovered runes are merged into a display
+segment — an element whose declared chain covers none of its script produces one Warning per
+character (e.g. 200 near-identical Warnings for a 200-character string). This is left as-is by this
+story rather than coalesced, for two reasons: (1) no AC or ruling specifies a batching shape, and
+inventing one now risks a shape 3.7/5.12's actual presentation needs would not have chosen anyway —
+D-2.6.5's guardrail against building presentation machinery a consuming story doesn't yet name; (2)
+`Result.Diagnostics` is otherwise unordered-count-sensitive nowhere else in the module, so this is a
+presentation concern, squarely DW-17's own territory, not a `folio-go` correctness one. **Whichever of
+DW-17's three owners is first to present this Warning to a human must decide the granularity**
+(per-rune, per-distinct-rune, or per-element) as part of that presentation design — do not inherit
+per-occurrence silently by copying the raw diagnostic list.
+
+### DW-18 — `Severity`'s zero value is a VALID severity, so no test can prove the field was ever explicitly set — **RETIRED by Story 3.6 (AC6, R10)**
+- **Retired at:** Story 3.6. `severityUnset Severity = iota` now precedes `SeverityWarning` in
+  `folio-go/diagnostic.go`, so `SeverityWarning` is **1** and `SeverityError` is **2** — the zero value
+  is no longer a member of the valid set. `Severity.String()` gained a `severityUnset` arm. Every
+  production `Diagnostic{...}` construction site (render.go, render_error.go) sets `Severity`
+  explicitly. `render_clip_diagnostic_test.go`'s three sites lost their "known limitation" comments and
+  now carry real coverage. **M8, re-run**: at `4ec1884` (baseline), deleting `Severity:
+  SeverityWarning,` from `render.go`'s clip construction site was confirmed INVISIBLE (all clip
+  diagnostic tests still passed) — the concrete demonstration that the defect this entry names was
+  real. After AC6 landed, the same deletion was re-run and confirmed to REDDEN
+  (`TestRenderAndRenderToDiagnosticsAgree` failed with `Severity:Severity(unset)`).
+  **Free now, never again**: `folio-go/version.go` declares `Version = "0.0.0-dev"` and `git tag`
+  named no `folio-go/v*` tag at the time this story ran, so nothing downstream could have pinned the
+  previous integer values (AD-22 — once `folio-go/v0.1.0` is cut, renumbering a public constant here
+  becomes a breaking change requiring `folio-go/v2`).
+- **Why Task 8 (renumber) had to precede Task 10 (construct the first `SeverityError` values,
+  D-3.6.3).** Not diligence — an INSTRUMENT. The hazard this entry names is a WINDOW IN TIME: if
+  `SeverityError` values existed while the zero value was still a valid `SeverityWarning`, a
+  copy-paste omitting the `Severity:` field would silently downgrade an Error to a Warning with
+  nothing able to catch it. Ordering the tasks so the zero value stops being valid BEFORE any
+  `SeverityError` is ever constructed means that failure mode has NO INTERVAL in which to occur —
+  the same move as making an invalid call fail to compile rather than testing that nobody writes it.
 - **Deferred by:** Story 2.8 finisher (review Finding 2, `render_clip_diagnostic_test.go`)
 - **Owner:** whoever next touches `folio.Severity` (`diagnostic.go`) — plausibly Story 3.6, which
   mints the next `Diagnostic`-carrying codes and is the first natural place a `SeverityError` value
@@ -801,12 +880,36 @@ the failed-render presentation) — a case where `Render`/`RenderTo` returned a 
   disposition rule ("Error aborts the render, Warning accompanies a successful one") violated with no
   test catching it, because the zero value still reads as a valid, unremarkable `Warning`.
 
-### DW-19 — The lint asset resolver walks a GITIGNORED directory, so it fails in BOTH directions
+### DW-19 — The lint asset resolver walks a GITIGNORED directory, so it fails in BOTH directions — **RETIRED by Story 3.6 (AC10, D-3.6.5)**
+- **Retired at:** Story 3.6, at a mechanism the engineering lead ratified as a deviation from the fix
+  shape this entry originally specified — see the D-3.6.5 amendment (decision log), which found the
+  literal pre-pass shape implemented and measured strictly worse (104/3 → 103/4, AC10's 0-fail target
+  unreachable) and ratified the exclusion mechanism actually shipped instead. `ResolveAssets`
+  (`lint/internal/manifest/manifest.go`) now checks, per discovered asset directory, whether git
+  actually tracks any file under it (`gitTrackedFileCount`, shelling out to `git ls-files`) BEFORE
+  evaluating that directory's LICENSE/NOTICE findings. A directory with zero tracked files (measured:
+  `.font-sources/`, still gitignored, still holding real font files on disk, still zero tracked files
+  at this story's run) is EXCLUDED from the findings loop entirely — no row, no error — because it is
+  not a redistributed asset (AD-26) at all, never having been committed. A TRACKED directory's real
+  violation is untouched by this and still fails loudly (verified:
+  `TestResolveAssetsStillReportsATrackedViolation`,
+  `TestFontsAssetsNoticeRemovalRedProof`/`LicenceRemovalRedProof` — of those two, only
+  `TestFontsAssetsLicenceRemovalRedProof` was SILENTLY MASKED before this fix (D-000.70; corrected
+  here from an earlier draft that claimed both), since `.font-sources` sorted first alphabetically
+  and its own erroneous "no LICENSE* file" message satisfied that test's substring check by
+  coincidence, without the test ever reaching its real target directory —
+  `TestFontsAssetsNoticeRemovalRedProof` was already failing loudly at baseline for its own reason
+  (this story's own baseline table). `lint` moved from
+  **104 pass / 3 fail** to **109 pass / 0 fail** (the three named tests plus two new permanent
+  regression guards, `TestResolveAssetsExcludesUntrackedDirectoryWithoutError` and
+  `TestResolveAssetsStillReportsATrackedViolation`). Not fixed by adding files to `.font-sources/` and
+  not by `t.Skip`, exactly as this entry required.
 - **Deferred by:** Story 3.1a creator (finding F4), ruled out of scope for 3.1a by the engineering lead
 - **Owner:** whoever next touches `lint`'s asset resolution (`ResolveAssets`). Not Story 3.1a — it is
   already building a kernel, a corpus, an oracle and a lint rule, and this is a different subject
   ([[D-000.25]]'s reason for not folding the vendor audit into 2.4).
-- **Status:** open, with the fix shape SPECIFIED so it cannot be discharged vacuously
+- **Status:** retired (Story 3.6), at the ratified deviation recorded above, not at the literal fix
+  shape stated below — see the D-3.6.5 amendment.
 
 **The defect, measured.** `ResolveAssets` walks `.font-sources/` — **gitignored** (`.gitignore:85`),
 **zero tracked files**, the owner's local variable-font scratch directory. Three lint tests
@@ -833,6 +936,17 @@ depending on an environment existing only on one machine is not a procedure).
 **Explicitly NOT the fix:** adding files to `.font-sources/`, or making the three tests **skip**. Both
 trade a **loud** environmental failure for a **quieter** one — exactly what the Epic 2 gate declined to
 do for `.fontgen-venv` ([[D-000.58]]).
+
+**Superseded by the D-3.6.5 amendment.** The literal "scan error before any findings" shape above was
+implemented and measured at Story 3.6: it strictly worsens `lint` (104/3 → 103/4) and makes AC10's
+0-fail target unreachable, because `.font-sources` sorts before the real violation directories and a
+global pre-pass would abort before ever reaching them. The engineering lead ratified the shipped
+alternative instead — EXCLUDE an untracked directory from the findings loop entirely (no row, no
+error) rather than treat it as a blocking scan error — which preserves the property this entry exists
+for (a tracked directory's real violation still fails loudly) without the literal mechanism's
+regression. See D-3.6.5 amendment (decision log) for the full grounds, and Story 3.6's own Finding 1
+(QA review) for a further, narrower "Required" floor the amendment adds on top of this shape (all
+candidate directories untracked is its own scan error), which this story implements separately.
 
 **Story 3.1a's one-line obligation, already discharged in its prompt** ([[D-000.55]]): its Delivery Log
 names these three tests as failing for a known environmental reason **before** its run, with the

@@ -77,9 +77,9 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 	// not decorative.
 }
 
-// TestAbsencesChecksIncludeAllThreeEntries closes the shrunk-list gap
-// D-1.4.11 warned about and this story's finisher review (Finding 5,
-// Major) confirmed was still open: the witness above proves
+// TestAbsencesChecksIncludeBothRemainingEntries closes the shrunk-list
+// gap D-1.4.11 warned about and this story's finisher review (Finding
+// 5, Major) confirmed was still open: the witness above proves
 // ChecksEvaluated tracks the scanner's OWN loop, but nothing previously
 // pinned WHICH checks the list holds — deleting just the two Story 1.4
 // tripwires left ChecksEvaluated == 2 (still non-zero) and the whole
@@ -91,16 +91,22 @@ func TestAbsencesZeroWitnessIsCaught(t *testing.T) {
 // that row). Story 2.2 (AC5) removed "absence-fonts-dir" — the faces it
 // guarded against now ship, and ScanFontsAssets (fontsassets.go) is its
 // fail-closed replacement. Story 3.2 (D-000.59) DISCHARGED
-// "absence-expr-package" by replacement, not deletion alone: the same
-// commit that removes it here lands the positive assertions that take
-// over its job (folio-go/folio_expr_validate.go,
-// folio-go/internal/expr_arch_test.go) — bringing this list down to
-// three entries; this test still pins them, by rule id, so every check
-// kind stays covered by the same shrunk-list protection.
-func TestAbsencesChecksIncludeAllThreeEntries(t *testing.T) {
+// "absence-expr-package" by replacement, not deletion alone. Story 3.6
+// (R6, AC2, D-000.59) DISCHARGED "absence-diag-package" the same way:
+// the same commit that removes it here lands internal/diag's own
+// positive assertion (TestRegistryIsAdditiveOnly) that the registry as
+// constructed contains TABLE_FOOTER_SOURCE_UNRESOLVED and
+// TABLE_FOOTER_SOURCE_FORBIDDEN — bringing this list down to TWO
+// entries; this test still pins them, by rule id, so every remaining
+// check kind stays covered by the same shrunk-list protection. Per the
+// schedule recorded in absences.go's own comment: 3 -> 2 (this story)
+// -> 1 (Story 3.7) -> 0 (Story 5.1, which must remove ScanAbsences and
+// its precondition TOGETHER — TestAbsencesZeroWitnessIsCaught above
+// proves the mechanism goes SLACK, not LOUD, at an empty list, so
+// reaching zero by decrementing this list alone is not a valid path).
+func TestAbsencesChecksIncludeBothRemainingEntries(t *testing.T) {
 	want := []string{
 		"absence-designer-project",
-		"absence-diag-package",
 		"absence-source-date-epoch",
 	}
 	if len(absenceChecks) != len(want) {

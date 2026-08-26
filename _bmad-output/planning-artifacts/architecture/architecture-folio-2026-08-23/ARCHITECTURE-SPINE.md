@@ -610,7 +610,9 @@ folio/                                # github.com/panitw/folio — monorepo
     fontset.go                        # FontSet as a public input (AD-8)
     internal/
       geom/                           # Length, Rect, rounding — imports nothing (AD-2)
-      diag/                           # Diagnostic, Severity, the code registry (AD-14)
+      diag/                           # the closed code registry (AD-14); Diagnostic, Severity and
+                                       # Result live in the root `folio` package (D-2.8.3, an owner
+                                       # decision — amended here at Story 3.6/AC11; not re-opened)
       template/                       # schema, canonical parse + serialize, ids, assets (AD-9, AD-10)
       expr/                           # lexer, parser, the 8 functions, locale tables (AD-12)
       bind/                           # data + params resolution, row scope, decimals (AD-11, AD-23)

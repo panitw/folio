@@ -80,7 +80,11 @@ func LoadTemplate(path string) (*Template, error) {
 func ParseTemplate(b []byte) (*Template, error) {
 	doc, err := template.ParseDocument(b)
 	if err != nil {
-		return nil, err
+		// Story 3.6, AC4/AC8/R8: wraps as *RenderError, carrying
+		// DiagCodeTemplateMalformed (FR41's "malformed template" mode)
+		// or, for DW-6's two named conditions, the coded value
+		// internal/template's own newLoadErrorCoded attached.
+		return nil, wrapTemplateError(err)
 	}
 	derived, err := validateAndDeriveExpressions(doc)
 	if err != nil {

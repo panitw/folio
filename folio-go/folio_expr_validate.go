@@ -42,7 +42,12 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 			// starts evaluating it.
 			if el.VisibleIf.Set && !el.VisibleIf.Null {
 				if err := checkVisibleIfExpression(el.VisibleIf.Value, el.ID); err != nil {
-					return nil, err
+					// Story 3.6, AC4/AC8: FR41's "invalid expression"
+					// mode — visibleIf is validated by the SAME
+					// expr.Parse/expr.Check machinery checkTextExpressions
+					// uses for a text value, so a failure here is the
+					// same failure MODE, coded the same way.
+					return nil, newRenderError(DiagCodeExpressionInvalid, string(el.ID), "", err)
 				}
 			}
 			// Story 3.5, AC4/DECISION-1 (ruled): conditional/data-driven
@@ -65,7 +70,9 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 			case template.ElementText:
 				if el.Value.Set && !el.Value.Null {
 					if err := checkTextExpressions(el.Value.Value, el.ID); err != nil {
-						return nil, err
+						// Story 3.6, AC4/AC8, R9: FR41's "invalid
+						// expression" mode.
+						return nil, newRenderError(DiagCodeExpressionInvalid, string(el.ID), "", err)
 					}
 				}
 			case template.ElementTable:
@@ -298,7 +305,10 @@ func validateTableColumns(tbl template.TableExt, derived map[template.ElementID]
 
 	for _, col := range tbl.Columns {
 		if err := checkTextExpressions(col.Bind, col.ID); err != nil {
-			return err
+			// Story 3.6, AC4/AC8, R9: FR41's "invalid expression" mode
+			// — a column's bind uses the same static-check machinery a
+			// text element's value does.
+			return newRenderError(DiagCodeExpressionInvalid, string(col.ID), "", err)
 		}
 
 		if !col.Footer.Set || col.FooterOf.Set {
@@ -313,11 +323,15 @@ func validateTableColumns(tbl template.TableExt, derived map[template.ElementID]
 			return fmt.Errorf("folio: ParseTemplate: column %s: %s", col.ID, err)
 		}
 		if !derivable {
-			return fmt.Errorf(
+			// Story 3.6, R8/DW-6: TABLE_FOOTER_SOURCE_UNRESOLVED — a
+			// column requesting a sum/avg footer with footerOf omitted
+			// and a bind that is not one of D-1.4.1's two derivable
+			// shapes.
+			return newRenderError(DiagCodeTableFooterSourceUnresolved, string(col.ID), "", fmt.Errorf(
 				"folio: ParseTemplate: column %s: footer %q requires footerOf, and bind %q is not one of D-1.4.1's two derivable shapes — "+
 					"name the numeric source explicitly with footerOf",
 				col.ID, col.Footer.Value, col.Bind,
-			)
+			))
 		}
 		derived[col.ID] = result
 	}

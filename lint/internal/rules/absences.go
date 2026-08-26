@@ -84,24 +84,30 @@ var absenceChecks = []absenceCheck{
 		rule:    "absence-designer-project",
 		desc:    "folio-designer/ must be absent until Story 5.1 creates the project and wires the JS licence half (DW-2)",
 	},
-	// The entry below is one of Story 1.4's original tripwires (AC48,
-	// AC49, D-1.4.2), added AFTER AC50/D-1.4.11 closed ScanAbsences'
-	// own coverage-witness gap (T2's ordering is load-bearing —
-	// "adding entries to a list whose emptiness passes is exactly how
-	// a tripwire becomes decorative"). Keyed on the DIRECTORY, per
-	// DW-2's recorded correction (an exact filename guess is a
-	// false-pass hazard a directory-level check does not have). Its
-	// twin, "absence-expr-package" (folio-go/internal/expr/ absent),
-	// was DISCHARGED by Story 3.2 (D-000.59) — deleted in the SAME
-	// commit as the positive assertions that replace it
-	// (folio_expr_validate.go, internal/expr_arch_test.go): the
-	// obligation it stood in for is now asserted directly, never
-	// merely by this directory's continued absence.
-	{
-		relPath: "folio-go/internal/diag",
-		rule:    "absence-diag-package",
-		desc:    "folio-go/internal/diag/ must be absent until Story 3.6 mints TABLE_FOOTER_SOURCE_UNRESOLVED/TABLE_FOOTER_SOURCE_FORBIDDEN and AD-14's other diagnostic codes (DW-6, D-1.4.2)",
-	},
+	// "absence-diag-package" (folio-go/internal/diag/ absent) — one of
+	// Story 1.4's original tripwires (AC48, AC49, D-1.4.2) — was
+	// DISCHARGED BY REPLACEMENT by Story 3.6 (R6, AC2, D-000.59), the
+	// same shape as "absence-expr-package" before it: deleted in the
+	// SAME commit as the positive assertion that replaces it
+	// (internal/diag's own TestRegistryIsAdditiveOnly, which asserts
+	// the registry as constructed contains TABLE_FOOTER_SOURCE_UNRESOLVED
+	// and TABLE_FOOTER_SOURCE_FORBIDDEN) — the obligation this row
+	// stood in for is now asserted directly, never merely by
+	// internal/diag/'s continued absence.
+	//
+	// THE SCHEDULE (D-000.67 part 1, recorded forward here because the
+	// mechanism's own failure mode at zero is otherwise invisible from
+	// this file alone): this list started at 3 entries, Story 3.6 drops
+	// it to 2 (this commit), Story 3.7 drops it to 1, and Story 5.1
+	// must drop it to 0 by REMOVING ScanAbsences and its precondition
+	// TOGETHER, never by decrementing absenceChecks to an empty slice
+	// and leaving the mechanism running: absences_test.go's own
+	// TestAbsencesZeroWitnessIsCaught proves that an empty
+	// absenceChecks yields zero findings and ChecksEvaluated == 0 — a
+	// GREEN pass, not a red one. The tripwire goes SLACK at zero, not
+	// LOUD, so "just delete the remaining rows" is not a valid way to
+	// reach zero; Story 5.1 owns removing the scanner itself.
+	//
 	// Story 1.7's tripwire (AC25, D-1.7.7), RE-KEYED by Story 2.1
 	// (D-2.1.x, this row's disposition recorded in deferred-work.md's
 	// DW-10 entry): originally keyed on the folio-go/cmd/ PATH existing

@@ -111,14 +111,11 @@ func TestWidthOverflowDetectedPerElement(t *testing.T) {
 			t.Fatalf("want exactly 1 Diagnostic (only e4 overflows horizontally in this fixture, finding 4), got %d: %+v", len(res.Diagnostics), res.Diagnostics)
 		}
 		d := res.Diagnostics[0]
-		// KNOWN LIMITATION (DW-18, deferred-work.md): SeverityWarning is the
-		// iota zero value, which is also Go's zero value for an unset
-		// Diagnostic.Severity field, so this check cannot distinguish
-		// "correctly set to Warning" from "never set" — both compare
-		// equal here. Left in place as documentation of intent, not
-		// coverage; closing the gap requires changing Severity's public
-		// zero-value semantics, which is an AD-14-territory decision this
-		// finisher pass does not make unilaterally.
+		// DW-18 RETIRED (Story 3.6, AC6): severityUnset now occupies the
+		// zero value, so this check genuinely distinguishes "correctly
+		// set to Warning" from "never set" — an omitted Severity field
+		// would compare as severityUnset, not SeverityWarning, and this
+		// assertion would (correctly) fail.
 		if d.Severity != SeverityWarning {
 			t.Errorf("Severity = %v, want SeverityWarning (AD-14: clipped content is a Warning, never fatal)", d.Severity)
 		}
@@ -142,8 +139,8 @@ func TestWidthOverflowDetectedPerElement(t *testing.T) {
 		if d.ElementID != "e1" {
 			t.Errorf("ElementID = %q, want %q", d.ElementID, "e1")
 		}
-		// Severity half of this check is a known non-failing limitation
-		// (DW-18) — see the comment on the equivalent check above.
+		// DW-18 RETIRED (Story 3.6, AC6) — see the comment on the
+		// equivalent check above; the Severity half is real coverage now.
 		if d.Code != DiagCodeTextClippedWidth || d.Severity != SeverityWarning {
 			t.Errorf("got Code=%q Severity=%v, want Code=%q Severity=Warning", d.Code, d.Severity, DiagCodeTextClippedWidth)
 		}
@@ -394,10 +391,10 @@ func TestRenderAndRenderToDiagnosticsAgree(t *testing.T) {
 	// pass. Code is therefore pinned against the bare wire string, not
 	// the constant, so a changed constant value is exactly what this
 	// catches (Story 2.8 review Finding 1: comparing the constant
-	// against itself caught nothing). Severity below carries the same
-	// known limitation as the two checks above (DW-18): SeverityWarning
-	// is the zero value, so this pin cannot distinguish a correctly set
-	// field from an unset one.
+	// against itself caught nothing). Severity below is real coverage
+	// as of Story 3.6/AC6 (DW-18 retired): severityUnset now occupies
+	// the zero value, so an omitted Severity field would fail this
+	// reflect.DeepEqual, not pass it silently.
 	want := []Diagnostic{{
 		Severity:  SeverityWarning,
 		Code:      "TEXT_CLIPPED_WIDTH",

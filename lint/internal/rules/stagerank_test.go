@@ -28,7 +28,13 @@ import (
 // `layout` and `pagemodel` are the packages this story CREATES, and the
 // arrow between `text` and `fontset` is the one D-000.16's ranks were
 // corrected for — plus a non-zero count of first-party import edges
-// actually compared.
+// actually compared. `diag` was added by Story 3.6's finisher (Finding
+// 14, QA review): AC1 requires `internal/diag`'s zero-first-party-import
+// property to be asserted by TWO independent guards (an in-package AST
+// scan plus this lint scan); without `diag` named here, `ScanStageRank`
+// reporting a violation there was verified to redden, but nothing
+// asserted the scan had ever actually ENTERED the package — a future
+// change that caused the walk to skip it would go slack silently.
 func TestStageRankProductionScan(t *testing.T) {
 	root := repoRootFromTest(t)
 	internalDir := filepath.Join(root, "folio-go", "internal")
@@ -38,7 +44,7 @@ func TestStageRankProductionScan(t *testing.T) {
 		t.Fatalf("scan folio-go/internal/: %v", err)
 	}
 
-	for _, pkg := range []string{"layout", "pagemodel", "pdf", "text", "fontset"} {
+	for _, pkg := range []string{"layout", "pagemodel", "pdf", "text", "fontset", "diag"} {
 		if !slices.Contains(stats.PackagesVisited, pkg) {
 			t.Fatalf("vacuity guard: the scanner's own stats do not report visiting package %q — a scan that never entered it reports the same zero findings a healthy scan does (D-000.9). Visited: %v",
 				pkg, stats.PackagesVisited)

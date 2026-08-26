@@ -372,9 +372,15 @@ type pendingPageSlot struct {
 // It resolves to the SAME face a {{page}} slot in this element resolves
 // to, by construction: both are shaped from the same chain, and digits
 // never fall back within the shipped set (finding 6, story creation) —
-// resolveRuneFace always returns chain[0] for a digit.
+// resolveRuneFace always returns chain[0] for a digit. Because of that,
+// the digit table can never itself produce a missing-glyph Diagnostic
+// (Story 3.6) — decimal digits 0-9 are always covered by chain[0] in
+// every shipped/testdata font — so its diagnostics return is discarded
+// here, never silently swallowing a real one: the len(segs) check below
+// would already fail loudly (a different message) if coverage ever
+// broke for a digit.
 func digitTableRun(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (textRunSource, error) {
-	segs, err := shapeSegments(chain, "0123456789", fs, cache)
+	segs, _, err := shapeSegments("", chain, "0123456789", fs, cache)
 	if err != nil {
 		return textRunSource{}, err
 	}

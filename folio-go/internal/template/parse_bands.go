@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/panitw/folio/folio-go/internal/diag"
 	"github.com/panitw/folio/folio-go/internal/geom"
 )
 
@@ -406,7 +407,7 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 	// AC43 check 2: footerOf/footerFormat present with no footer —
 	// pure field presence.
 	if (hasFooterOfRaw || hasFooterFormatRaw) && !footer.Set {
-		return Column{}, newLoadError("footerOf/footerFormat", string(id), "", "footerOf/footerFormat present with no footer — load error (D-1.4.2)")
+		return Column{}, newLoadErrorCoded("footerOf/footerFormat", string(id), "", "footerOf/footerFormat present with no footer — load error (D-1.4.2)", diag.CodeTableFooterSourceForbidden)
 	}
 
 	if footerOfRaw, ok := obj["footerOf"]; ok {
@@ -417,7 +418,7 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 		}
 		// AC43 check 1: footerOf present with footer: "count" — load error.
 		if footer.Set && footer.Value == "count" {
-			return Column{}, newLoadError("footerOf", string(id), s, `footerOf present alongside footer: "count" is a load error (D-1.4.2: storing it would be a second source of truth against bind, AD-13)`)
+			return Column{}, newLoadErrorCoded("footerOf", string(id), s, `footerOf present alongside footer: "count" is a load error (D-1.4.2: storing it would be a second source of truth against bind, AD-13)`, diag.CodeTableFooterSourceForbidden)
 		}
 		// AC43 check 3: footerOf must be prefixed by the table's own
 		// collection path + "." — a string prefix test, no parser.
