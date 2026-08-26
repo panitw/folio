@@ -136,8 +136,6 @@
   }
   nav a:hover { border-color: var(--bind); color: var(--bind-text); background: var(--bind-tint); }
   nav a:focus-visible { outline: 2px solid var(--select); outline-offset: 1px; }
-  nav a.pending { color: var(--ink-low); background: transparent; border-color: var(--line-strong); }
-  nav a.pending:hover { border-color: var(--edge); color: var(--ink); }
 
   /* ---- sections ---- */
   section { margin-top: 52px; }
@@ -272,11 +270,11 @@
   </header>
 
   <div class="notice">
-    <strong>While the engine is being built.</strong> Every function below is described as specified.
-    Those marked <em>pending</em> are recognised by the template — the document still loads — but
-    calling one produces an error naming the element rather than a plausible-looking value. That is
-    deliberate: a <code>sum</code> that quietly returned <code>0</code> before it was real would be a
-    wrong total on a statement, and a wrong total is worse than an error.
+    <strong>All eight functions are implemented.</strong> A function called with the wrong kind of
+    argument, or with data that cannot support what it asks for, still produces an error naming the
+    element rather than a plausible-looking value. That is deliberate: a <code>sum</code> that quietly
+    returned <code>0</code> on bad input would be a wrong total on a statement, and a wrong total is
+    worse than an error.
   </div>
 
   <nav>
@@ -284,11 +282,11 @@
     <a href="#upper">upper</a>
     <a href="#upper">lower</a>
     <a href="#if">if</a>
-    <a href="#totals" class="pending">sum</a>
-    <a href="#totals" class="pending">count</a>
-    <a href="#totals" class="pending">avg</a>
-    <a href="#format" class="pending">formatDate</a>
-    <a href="#format" class="pending">formatNumber</a>
+    <a href="#totals">sum</a>
+    <a href="#totals">count</a>
+    <a href="#totals">avg</a>
+    <a href="#format">formatDate</a>
+    <a href="#format">formatNumber</a>
   </nav>
 
   <section id="paths">
@@ -337,14 +335,14 @@
 
   <section id="upper">
     <h2>Text</h2>
-    <h3>upper<span class="args">(text)</span> · lower<span class="args">(text)</span> <span class="pill live">In progress</span></h3>
+    <h3>upper<span class="args">(text)</span> · lower<span class="args">(text)</span> <span class="pill live">Implemented</span></h3>
     <div class="sample"><pre>{{upper(customer.name)}}          <span class="out">SOMCHAI SRISUK</span>
 {{lower(customer.email)}}         <span class="out">somchai@example.com</span></pre></div>
   </section>
 
   <section id="if">
     <h2>Choosing between two values</h2>
-    <h3>if<span class="args">(condition, then, else)</span> <span class="pill live">In progress</span></h3>
+    <h3>if<span class="args">(condition, then, else)</span> <span class="pill live">Implemented</span></h3>
 
     <div class="sample"><pre>{{if(customer.isVip, <span class="str">"VIP"</span>, <span class="str">"Standard"</span>)}}
 {{if(hasDiscount, discount.amount, <span class="str">"N/A"</span>)}}</pre></div>
@@ -388,7 +386,7 @@
 
   <section id="totals">
     <h2>Totals</h2>
-    <h3>sum<span class="args">(collection.field)</span> · count<span class="args">(collection)</span> · avg<span class="args">(collection.field)</span></h3>
+    <h3>sum<span class="args">(collection.field)</span> · count<span class="args">(collection)</span> · avg<span class="args">(collection.field)</span> <span class="pill live">Implemented</span></h3>
 
     <p>
       <code>sum</code> and <code>avg</code> take a <strong>projection path</strong>: a collection,
@@ -409,10 +407,11 @@
 
     <p>
       A number-valued aggregate must be wrapped in <code>formatNumber(...)</code>
-      <span class="pill">Pending</span> before it can appear in text; that worked example belongs to
-      Story 3.4, not here. <code>count</code> is the one exception: it is already a plain
-      non-negative whole number, and needs no formatting to render as text.
+      before it can appear in text — see <em>Dates and numbers</em>, below. <code>count</code> is the
+      one exception: it is already a plain non-negative whole number, and needs no formatting to
+      render as text.
     </p>
+    <div class="sample"><pre>{{formatNumber(sum(transactions.amount), <span class="str">"#,##0.00"</span>)}}     <span class="out">1,234.56</span></pre></div>
     <p>
       <strong>Totals are exact.</strong> Folio adds money as decimal digits, never as binary floating
       point, so a statement total is correct to the last satang no matter how many rows it covers.
@@ -458,7 +457,7 @@
   <section id="format">
     <h2>Dates and numbers</h2>
 
-    <h3>formatDate<span class="args">(value, pattern)</span> <span class="pill">Pending</span></h3>
+    <h3>formatDate<span class="args">(value, pattern)</span> <span class="pill live">Implemented</span></h3>
     <div class="sample"><pre>{{formatDate(statement.date, <span class="str">"d MMMM yyyy"</span>)}}
 
   <span class="cmt">locale th</span>    <span class="th">15 สิงหาคม 2569</span>   <span class="cmt">← Buddhist era</span>
@@ -468,7 +467,7 @@
       of milliseconds since the epoch. Anything else is an error.
     </p>
 
-    <h3>formatNumber<span class="args">(value, pattern)</span> <span class="pill">Pending</span></h3>
+    <h3>formatNumber<span class="args">(value, pattern)</span> <span class="pill live">Implemented</span></h3>
     <div class="sample"><pre>{{formatNumber(transaction.amount, <span class="str">"#,##0.00"</span>)}}   <span class="out">1,234.56</span>
 {{formatNumber(statement.balance,  <span class="str">"#,##0"</span>)}}      <span class="out">48,251</span></pre></div>
 
@@ -492,10 +491,10 @@
       <table class="roster">
         <thead><tr><th>Group</th><th>Functions</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td>Text</td><td><code>upper</code> · <code>lower</code></td><td>In progress</td></tr>
-          <tr><td>Choice</td><td><code>if</code></td><td>In progress</td></tr>
-          <tr><td>Totals</td><td><code>sum</code> · <code>count</code> · <code>avg</code></td><td>In progress</td></tr>
-          <tr><td>Formatting</td><td><code>formatDate</code> · <code>formatNumber</code></td><td>Pending</td></tr>
+          <tr><td>Text</td><td><code>upper</code> · <code>lower</code></td><td>Implemented</td></tr>
+          <tr><td>Choice</td><td><code>if</code></td><td>Implemented</td></tr>
+          <tr><td>Totals</td><td><code>sum</code> · <code>count</code> · <code>avg</code></td><td>Implemented</td></tr>
+          <tr><td>Formatting</td><td><code>formatDate</code> · <code>formatNumber</code></td><td>Implemented</td></tr>
         </tbody>
       </table>
     </div>

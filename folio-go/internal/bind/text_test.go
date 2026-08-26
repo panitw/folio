@@ -31,7 +31,7 @@ func TestAD14Triple(t *testing.T) {
 
 	t.Run("row1_absent_is_error", func(t *testing.T) {
 		data := mustDecode(t, `{}`)
-		_, err := BindText(text, data, noParams, elementID)
+		_, err := BindText(text, data, noParams, testFormatContext(), elementID)
 		if err == nil {
 			t.Fatal("AC8: absent path must be an Error")
 		}
@@ -42,7 +42,7 @@ func TestAD14Triple(t *testing.T) {
 
 	t.Run("row2_null_renders_empty", func(t *testing.T) {
 		data := mustDecode(t, `{"customer": {"name": null}}`)
-		got, err := BindText(text, data, noParams, elementID)
+		got, err := BindText(text, data, noParams, testFormatContext(), elementID)
 		if err != nil {
 			t.Fatalf("AC9: explicit null must not be an error, got: %v", err)
 		}
@@ -53,7 +53,7 @@ func TestAD14Triple(t *testing.T) {
 
 	t.Run("row3_wrong_kind_is_error_no_coercion", func(t *testing.T) {
 		data := mustDecode(t, `{"customer": {"name": 123}}`)
-		_, err := BindText(text, data, noParams, elementID)
+		_, err := BindText(text, data, noParams, testFormatContext(), elementID)
 		if err == nil {
 			t.Fatal("AC10: a JSON number bound into a text element must be an Error, never coerced")
 		}
@@ -66,7 +66,7 @@ func TestAD14Triple(t *testing.T) {
 // TestBindTextAcceptsBareDottedPath is AC15.
 func TestBindTextAcceptsBareDottedPath(t *testing.T) {
 	data := mustDecode(t, `{"customer": {"name": "Ada Lovelace"}}`)
-	got, err := BindText("Statement for {{customer.name}}", data, noParams, "e1")
+	got, err := BindText("Statement for {{customer.name}}", data, noParams, testFormatContext(), "e1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestBindTextRejectsGenuineSyntaxErrors(t *testing.T) {
 	}
 	data := mustDecode(t, `{}`)
 	for _, c := range cases {
-		_, err := BindText(c, data, noParams, "e1")
+		_, err := BindText(c, data, noParams, testFormatContext(), "e1")
 		if err == nil {
 			t.Errorf("BindText(%q): expected a located error", c)
 			continue
@@ -113,7 +113,7 @@ func TestBindTextRejectsGenuineSyntaxErrors(t *testing.T) {
 func TestBindTextRejectsExcessiveCallNestingAtRender(t *testing.T) {
 	data := mustDecode(t, `{}`)
 	deep := "{{" + strings.Repeat("a(", 800000) + "}}"
-	_, err := BindText(deep, data, noParams, "e1")
+	_, err := BindText(deep, data, noParams, testFormatContext(), "e1")
 	if err == nil {
 		t.Fatal("BindText: expected a located error; excessive call nesting must not risk a stack overflow")
 	}
@@ -137,7 +137,7 @@ func TestBindTextRejectsExcessiveCallNestingAtRender(t *testing.T) {
 // untested conversion arm.
 func TestBindTextArrayPathIsLocatedNotScalarError(t *testing.T) {
 	data := mustDecode(t, `{"tags": ["a", "b"]}`)
-	_, err := BindText(`{{tags}}`, data, noParams, "e1")
+	_, err := BindText(`{{tags}}`, data, noParams, testFormatContext(), "e1")
 	if err == nil {
 		t.Fatal("BindText: expected a located error — an array is not a scalar value usable in an expression")
 	}
@@ -152,29 +152,27 @@ func TestBindTextArrayPathIsLocatedNotScalarError(t *testing.T) {
 	}
 }
 
-// TestBindTextParsesExpressionButFailsAsUnimplemented is F10's
-// re-point, second half (D-000.9's signature-failure shape:
-// "err != nil" alone would pass identically whether formatNumber was
-// REJECTED as unsupported syntax, as it was at fde96b5, or PARSED and
-// then reported unimplemented, as it is now — so the message itself
-// must be asserted). Under Story 3.2, formatNumber(...) is registered,
-// parses, and derives successfully (AC15) but is not implemented until
-// Story 3.4 — a DIFFERENT located error from a syntax rejection, and
-// this test asserts the difference, not merely that err != nil.
-func TestBindTextParsesExpressionButFailsAsUnimplemented(t *testing.T) {
+// TestBindTextParsesFormatNumberAndFailsOnAbsentData is F10's re-point
+// (Story 3.4): formatNumber is now IMPLEMENTED (AC16), so a call over
+// data that does not carry the operand path fails at EVALUATION, on
+// the absent path — a DIFFERENT located error from a syntax rejection
+// (D-000.9's signature-failure shape: "err != nil" alone would pass
+// identically for either failure, so the message itself must be
+// asserted).
+func TestBindTextParsesFormatNumberAndFailsOnAbsentData(t *testing.T) {
 	data := mustDecode(t, `{}`)
-	_, err := BindText(`{{formatNumber(transaction.amount, "#,##0.00")}}`, data, noParams, "e1")
+	_, err := BindText(`{{formatNumber(transaction.amount, "#,##0.00")}}`, data, noParams, testFormatContext(), "e1")
 	if err == nil {
-		t.Fatal(`expected a located error: formatNumber is registered but not implemented until Story 3.4`)
+		t.Fatal(`expected a located error: "transaction" is absent from the data`)
 	}
 	if !strings.Contains(err.Error(), "e1") {
 		t.Errorf("error must name the element id, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "3.4") {
-		t.Errorf("error must name Story 3.4 as the owning story (AC15), got: %v", err)
+	if !strings.Contains(err.Error(), "transaction") {
+		t.Errorf("error must name the absent path, got: %v", err)
 	}
 	if strings.Contains(err.Error(), "not a valid expression") {
-		t.Errorf("error must NOT read as a syntax rejection — formatNumber(...) is syntactically valid now, got: %v", err)
+		t.Errorf("error must NOT read as a syntax rejection — formatNumber(...) is syntactically valid: %v", err)
 	}
 }
 
@@ -185,7 +183,7 @@ func TestBindTextParsesExpressionButFailsAsUnimplemented(t *testing.T) {
 // its own content rather than being rejected (the pre-3.2 behaviour).
 func TestBindTextAcceptsBareStringLiteral(t *testing.T) {
 	data := mustDecode(t, `{}`)
-	got, err := BindText(`{{"literal"}}`, data, noParams, "e1")
+	got, err := BindText(`{{"literal"}}`, data, noParams, testFormatContext(), "e1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -200,7 +198,7 @@ func TestBindTextAcceptsBareStringLiteral(t *testing.T) {
 // (the retained fixture for the reservation).
 func TestBindTextReservesPageAndPages(t *testing.T) {
 	data := mustDecode(t, `{"page": "HIJACKED"}`)
-	got, err := BindText("Page {{page}} of {{pages}}", data, noParams, "e1")
+	got, err := BindText("Page {{page}} of {{pages}}", data, noParams, testFormatContext(), "e1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -229,11 +227,11 @@ func TestBindTextPageReservationIsRedProofable(t *testing.T) {
 	withPage := mustDecode(t, `{"page": "HIJACKED"}`)
 	withOtherPage := mustDecode(t, `{"page": "SOMETHING ELSE"}`)
 
-	got1, err1 := BindText("{{page}}", withPage, noParams, "e1")
+	got1, err1 := BindText("{{page}}", withPage, noParams, testFormatContext(), "e1")
 	if err1 != nil {
 		t.Fatalf("unexpected error: %v", err1)
 	}
-	got2, err2 := BindText("{{page}}", withOtherPage, noParams, "e1")
+	got2, err2 := BindText("{{page}}", withOtherPage, noParams, testFormatContext(), "e1")
 	if err2 != nil {
 		t.Fatalf("unexpected error: %v", err2)
 	}
@@ -260,7 +258,7 @@ func TestBindTextNumberCoefficientOverflowIsLocatedError(t *testing.T) {
 	// TestNewDecimalCoefficientBound already proves NewDecimal rejects
 	// directly.
 	data := mustDecode(t, `{"transaction": {"amount": 12345678901234567890}}`)
-	_, err := BindText("Amount: {{transaction.amount}}", data, noParams, "e7")
+	_, err := BindText("Amount: {{transaction.amount}}", data, noParams, testFormatContext(), "e7")
 	if err == nil {
 		t.Fatal("expected a located error for a coefficient that does not fit int64")
 	}
@@ -282,7 +280,7 @@ func TestBindTextNumberCoefficientOverflowIsLocatedError(t *testing.T) {
 // as text.
 func TestBindTextWellFormedNumberIsStillWrongKind(t *testing.T) {
 	data := mustDecode(t, `{"transaction": {"amount": 1.50}}`)
-	_, err := BindText("Amount: {{transaction.amount}}", data, noParams, "e7")
+	_, err := BindText("Amount: {{transaction.amount}}", data, noParams, testFormatContext(), "e7")
 	if err == nil {
 		t.Fatal("AC10: a JSON number bound into a text element must be an Error, never coerced, even when it is a well-formed Decimal")
 	}
@@ -305,11 +303,11 @@ func TestBindTextParamsRootTakesPrecedenceOverData(t *testing.T) {
 	dataB := mustDecode(t, `{"params": {"reportDate": "SHADOWED-FROM-DATA-B"}}`)
 	params := mustDecode(t, `{"reportDate": "2026-08-23"}`)
 
-	got1, err1 := BindText("{{params.reportDate}}", dataA, params, "e1")
+	got1, err1 := BindText("{{params.reportDate}}", dataA, params, testFormatContext(), "e1")
 	if err1 != nil {
 		t.Fatalf("unexpected error: %v", err1)
 	}
-	got2, err2 := BindText("{{params.reportDate}}", dataB, params, "e1")
+	got2, err2 := BindText("{{params.reportDate}}", dataB, params, testFormatContext(), "e1")
 	if err2 != nil {
 		t.Fatalf("unexpected error: %v", err2)
 	}
@@ -322,7 +320,7 @@ func TestBindTextParamsRootTakesPrecedenceOverData(t *testing.T) {
 
 	// The whitespace-tolerant spelling shadows identically (M-6): the
 	// fix belongs at path-segment level, not on the trimmed literal.
-	got3, err3 := BindText("{{ params.reportDate }}", dataA, params, "e1")
+	got3, err3 := BindText("{{ params.reportDate }}", dataA, params, testFormatContext(), "e1")
 	if err3 != nil {
 		t.Fatalf("unexpected error: %v", err3)
 	}
@@ -346,7 +344,7 @@ func TestBindTextParamsMissDoesNotFallBackToData(t *testing.T) {
 	dataB := mustDecode(t, `{"params": {"reportDate": "SHADOWED-FROM-DATA-B"}}`)
 	params := mustDecode(t, `{"otherField": "present-but-no-reportDate"}`)
 
-	got1, err1 := BindText("{{params.reportDate}}", dataA, params, "e1")
+	got1, err1 := BindText("{{params.reportDate}}", dataA, params, testFormatContext(), "e1")
 	if err1 == nil {
 		t.Fatalf("RP-3: a params miss must not fall back to report data, got no error, value %q (report data's decoy)", got1)
 	}
@@ -354,7 +352,7 @@ func TestBindTextParamsMissDoesNotFallBackToData(t *testing.T) {
 		t.Errorf("error must name the params path and the params root, got: %v", err1)
 	}
 
-	got2, err2 := BindText("{{params.reportDate}}", dataB, params, "e1")
+	got2, err2 := BindText("{{params.reportDate}}", dataB, params, testFormatContext(), "e1")
 	if err2 == nil {
 		t.Fatalf("RP-3: a params miss must not fall back to report data, got no error, value %q (report data's decoy)", got2)
 	}
@@ -368,7 +366,7 @@ func TestBindTextParamsMissDoesNotFallBackToData(t *testing.T) {
 // all).
 func TestBindTextParamsAbsentIsLocatedError(t *testing.T) {
 	data := mustDecode(t, `{}`)
-	_, err := BindText("{{params.reportDate}}", data, noParams, "e9")
+	_, err := BindText("{{params.reportDate}}", data, noParams, testFormatContext(), "e9")
 	if err == nil {
 		t.Fatal("AC16: an absent params path must be a located Error")
 	}
@@ -387,7 +385,7 @@ func TestBindTextParamsAbsentIsLocatedError(t *testing.T) {
 // dot, is a located error — params is a namespace, not a value.
 func TestBindTextParamsBareIsLocatedError(t *testing.T) {
 	data := mustDecode(t, `{}`)
-	_, err := BindText("{{params}}", data, noParams, "e10")
+	_, err := BindText("{{params}}", data, noParams, testFormatContext(), "e10")
 	if err == nil {
 		t.Fatal("AC17: a bare {{params}} must be a located Error")
 	}
@@ -406,7 +404,7 @@ func TestBindTextParamsBareIsLocatedError(t *testing.T) {
 // binding an UNRELATED placeholder against that data must not error.
 func TestBindTextTopLevelParamsKeyInDataIsNotAnError(t *testing.T) {
 	data := mustDecode(t, `{"params": {"reportDate": "SHADOWED"}, "customer": {"name": "Ada"}}`)
-	got, err := BindText("Statement for {{customer.name}}", data, noParams, "e11")
+	got, err := BindText("Statement for {{customer.name}}", data, noParams, testFormatContext(), "e11")
 	if err != nil {
 		t.Fatalf("a top-level \"params\" key in report data must not be an error for an unrelated binding, got: %v", err)
 	}
@@ -423,7 +421,7 @@ func TestBindTextTopLevelParamsKeyInDataIsNotAnError(t *testing.T) {
 func TestBindTextPageAndPagesUnaffectedByParamsRoot(t *testing.T) {
 	data := mustDecode(t, `{"page": "HIJACKED"}`)
 	params := mustDecode(t, `{"reportDate": "2026-08-23"}`)
-	got, err := BindText("Page {{page}} of {{pages}}, dated {{params.reportDate}}", data, params, "e12")
+	got, err := BindText("Page {{page}} of {{pages}}, dated {{params.reportDate}}", data, params, testFormatContext(), "e12")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -469,7 +467,7 @@ func TestBindTextDottedPageAndPagesPathsAreOrdinaryDataPaths(t *testing.T) {
 	cases := []string{"{{page.number}}", "{{page.total}}", "{{pages.total}}", "{{pages.number}}"}
 	for _, text := range cases {
 		t.Run(text, func(t *testing.T) {
-			got, err := BindText(text, empty, noParams, "e1")
+			got, err := BindText(text, empty, noParams, testFormatContext(), "e1")
 			if err == nil {
 				t.Fatalf("%s resolved to %q without error against data carrying no top-level \"page\"/"+
 					"\"pages\" key — a \"page\" NAMESPACE exists, which AD-4/AC3 forbid: \"no page "+

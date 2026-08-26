@@ -41,7 +41,7 @@ func evalAggregateExpr(t *testing.T, src string, data Value) (expr.Value, []expr
 		t.Fatalf("Check(%q): %v", src, cerr)
 	}
 	resolver := exprResolver{scope: NewScope(data, Value{Kind: KindObject}), elementID: "e1"}
-	return expr.Eval(e, resolver, "e1")
+	return expr.Eval(e, resolver, testFormatContext(), "e1")
 }
 
 // --- AC1-AC6: the seam itself ---
@@ -520,7 +520,7 @@ func TestAggregateBypassesRowRootEvenWhenAliasShadowsCollectionName(t *testing.T
 		t.Fatalf("Check: %v", cerr)
 	}
 	resolver := exprResolver{scope: scope, elementID: "e2"}
-	v, _, err := expr.Eval(e, resolver, "e2")
+	v, _, err := expr.Eval(e, resolver, testFormatContext(), "e2")
 	if err != nil {
 		t.Fatalf("AC20 VIOLATED: sum() must resolve the whole collection from the data root even under a shadowing row alias, got error: %v", err)
 	}

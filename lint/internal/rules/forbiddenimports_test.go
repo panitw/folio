@@ -70,16 +70,20 @@ func countFilesImporting(t *testing.T, root, importPath string) int {
 }
 
 // TestForbiddenImportsFixtureScan is the AC1 fixture caller, red-proving
-// AC13's nine fixtures at folio-go/testdata/lint/forbidden-imports/
+// AC13's ten fixtures at folio-go/testdata/lint/forbidden-imports/
 // (never under folio-go/internal/, F-10): a non-test file and a
 // `_test.go` file each importing time (D-1.3.1: two, not one); a call to
-// a math function outside the seven; a reference to math.Pi; and a file
+// a math function outside the seven; a reference to math.Pi; a file
 // importing subpackages of three banned paths (Finding 6, this story's
-// QA review: math/rand/v2, net/http, net/url, os/exec) — all reported —
-// plus a `_test.go` file using the exemption's exact four imports, a
-// file using math.MaxInt64, a file calling math.Abs, and a file whose
-// comments name math.Round/math.MinInt64 (reproducing
-// internal/geom/scale.go:31's shape) — none reported.
+// QA review: math/rand/v2, net/http, net/url, os/exec); and a dot
+// import of "math" (Finding 15, Story 3.4's QA review: a dot import
+// makes Pow(10, 2) unqualified, evading RuleMathSelector entirely — only
+// RuleDotImport catches it, and RuleMathSelector must NOT also fire for
+// the same file) — all reported — plus a `_test.go` file using the
+// exemption's exact four imports, a file using math.MaxInt64, a file
+// calling math.Abs, and a file whose comments name
+// math.Round/math.MinInt64 (reproducing internal/geom/scale.go:31's
+// shape) — none reported.
 func TestForbiddenImportsFixtureScan(t *testing.T) {
 	root := repoRootFromTest(t)
 	fixtureRoot := filepath.Join(root, "folio-go", "testdata", "lint", "forbidden-imports")
@@ -96,8 +100,45 @@ func TestForbiddenImportsFixtureScan(t *testing.T) {
 		{Path: "violating_math_call.go", Rule: RuleMathSelector},
 		{Path: "violating_math_pi.go", Rule: RuleMathSelector},
 		{Path: "violating_runtime_caller.go", Rule: RuleRuntimeCaller}, // Story 2.1, AC2, V1
+		{Path: "violating_dot_import.go", Rule: RuleDotImport},         // Finding 15
 	}
 	assertExactFindings(t, got, want)
+}
+
+// TestForbiddenImportsDotImportEvadesMathSelectorAloneButNotDotImport
+// is Finding 15's own named hazard, asserted directly rather than only
+// implied by the fixture-scan count above: violating_dot_import.go's
+// `. "math"` call to Pow must be caught by RuleDotImport, and it must
+// NOT ALSO be caught by RuleMathSelector — proving RuleMathSelector's
+// alias-resolution genuinely cannot see a dot-imported call (the exact
+// gap the engineering lead's ruling named), and that RuleDotImport is
+// the instrument closing it, not a coincidental second hit.
+func TestForbiddenImportsDotImportEvadesMathSelectorAloneButNotDotImport(t *testing.T) {
+	root := repoRootFromTest(t)
+	fixtureRoot := filepath.Join(root, "folio-go", "testdata", "lint", "forbidden-imports")
+
+	got, _, err := ScanForbiddenImports(fixtureRoot)
+	if err != nil {
+		t.Fatalf("scan fixture tree %s: %v", fixtureRoot, err)
+	}
+
+	var rulesForDotImportFile []string
+	for _, f := range got {
+		if f.Path == "violating_dot_import.go" {
+			rulesForDotImportFile = append(rulesForDotImportFile, f.Rule)
+		}
+	}
+	if len(rulesForDotImportFile) == 0 {
+		t.Fatal("violating_dot_import.go produced no findings at all — RuleDotImport did not fire")
+	}
+	for _, r := range rulesForDotImportFile {
+		if r == RuleMathSelector {
+			t.Errorf("violating_dot_import.go was ALSO caught by RuleMathSelector (%v) — the fixture no longer demonstrates the evasion Finding 15 named", rulesForDotImportFile)
+		}
+	}
+	if len(rulesForDotImportFile) != 1 || rulesForDotImportFile[0] != RuleDotImport {
+		t.Fatalf("violating_dot_import.go: got rules %v, want exactly [%s]", rulesForDotImportFile, RuleDotImport)
+	}
 }
 
 // TestForbiddenImportsMessageContent is AC10's message-content

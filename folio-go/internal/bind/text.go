@@ -151,8 +151,8 @@ var declaredResolutionRootNames = []string{kindData.name, kindParams.name, kindR
 // 2.7; params is a NAMESPACE, resolved from its own root — conflating
 // the two is how "page" would eventually acquire a namespace, which
 // AD-4 forbids forever).
-func BindText(text string, data, params Value, elementID string) (string, error) {
-	s, _, _, err := BindTextSpans(text, data, params, elementID)
+func BindText(text string, data, params Value, fc expr.FormatContext, elementID string) (string, error) {
+	s, _, _, err := BindTextSpans(text, data, params, fc, elementID)
 	return s, err
 }
 
@@ -184,8 +184,8 @@ func BindText(text string, data, params Value, elementID string) (string, error)
 // set — the byte-identical pre-3.1 behaviour when no row is active. A
 // future row-scoped caller (Story 4.2) calls Resolve directly with a
 // Scope built through NewScope(...).WithRow(...).
-func BindTextSpans(text string, data, params Value, elementID string) (string, []Substitution, []expr.Caveat, error) {
-	return Resolve(text, NewScope(data, params), elementID)
+func BindTextSpans(text string, data, params Value, fc expr.FormatContext, elementID string) (string, []Substitution, []expr.Caveat, error) {
+	return Resolve(text, NewScope(data, params), fc, elementID)
 }
 
 // Resolve is the one implementation of the binding grammar's
@@ -203,7 +203,7 @@ func BindTextSpans(text string, data, params Value, elementID string) (string, [
 // string-only result, so it can serve a path resolved from ANYWHERE
 // in an expression (a bare top-level path, or nested inside a function
 // argument), not only the top-level substitution case.
-func Resolve(text string, scope Scope, elementID string) (string, []Substitution, []expr.Caveat, error) {
+func Resolve(text string, scope Scope, fc expr.FormatContext, elementID string) (string, []Substitution, []expr.Caveat, error) {
 	var out strings.Builder
 	// runesWritten tracks the rune length of out, maintained alongside
 	// every write rather than recomputed, so a Substitution's bounds are
@@ -255,7 +255,7 @@ func Resolve(text string, scope Scope, elementID string) (string, []Substitution
 		}
 
 		resolver := exprResolver{scope: scope, elementID: elementID}
-		val, valCaveats, everr := expr.Eval(astExpr, resolver, elementID)
+		val, valCaveats, everr := expr.Eval(astExpr, resolver, fc, elementID)
 		if everr != nil {
 			return "", nil, nil, everr
 		}

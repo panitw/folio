@@ -550,6 +550,13 @@ func collectBandTextRuns(
 	resolve elementTokenResolver,
 ) ([]textRunSource, []pendingPageSlot, []Diagnostic, error) {
 	b := bands[bandIndex]
+	// fc (Story 3.4, R1) is the document's formatting context —
+	// declared locale plus fixed UTC offset — constructed once here,
+	// at the render entry point that already holds *Template, and
+	// threaded down through bind.BindTextSpans/Resolve to
+	// expr.Eval. Never sourced from the host (AD-1's "no host
+	// locale…").
+	fc := expr.NewFormatContext(doc.doc.Locale, doc.doc.UTCOffset)
 	var runs []textRunSource
 	var pending []pendingPageSlot
 	// diags accumulates in ELEMENT DECLARATION ORDER within this one
@@ -568,7 +575,7 @@ func collectBandTextRuns(
 		if !el.Value.Set || el.Value.Null || el.Value.Value == "" {
 			continue
 		}
-		boundText, subs, caveats, berr := bind.BindTextSpans(el.Value.Value, data, params, string(el.ID))
+		boundText, subs, caveats, berr := bind.BindTextSpans(el.Value.Value, data, params, fc, string(el.ID))
 		if berr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: %w", berr)
 		}

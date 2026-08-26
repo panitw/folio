@@ -80,6 +80,33 @@ func checkCall(call *CallExpr) error {
 			return err
 		}
 	}
+
+	// AC10/F3: a pattern literal's own grammar is decidable with NO
+	// data at all, exactly like arity and a number literal's bounds
+	// (checkNumberLit, *Do not re-open* item 9) — so it belongs here,
+	// at Check (load time), not at Eval. checkArgKind above has
+	// already confirmed call.Args[1] is a *StringLit for both
+	// functions (argStringLiteral); this is the SAME grammar
+	// parseDatePattern/validateNumberPattern apply at evaluation —
+	// one implementation, never two that could drift.
+	switch call.Name {
+	case "formatDate":
+		lit, ok := call.Args[1].(*StringLit)
+		if !ok {
+			return fmt.Errorf("expr: %s(): internal: pattern argument was not a string literal after checkArgKind: %s", call.Name, call.Raw)
+		}
+		if _, err := parseDatePattern(lit.Value); err != nil {
+			return err
+		}
+	case "formatNumber":
+		lit, ok := call.Args[1].(*StringLit)
+		if !ok {
+			return fmt.Errorf("expr: %s(): internal: pattern argument was not a string literal after checkArgKind: %s", call.Name, call.Raw)
+		}
+		if _, err := validateNumberPattern(lit.Value); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

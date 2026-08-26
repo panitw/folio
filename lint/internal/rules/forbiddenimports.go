@@ -22,6 +22,31 @@ const RuleForbiddenImports = "forbidden-imports"
 // AC12).
 const RuleMathSelector = "math-selector"
 
+// RuleDotImport is this guard's stable rule id for a dot import — `.
+// "pkg"` — under internal/ (Finding 15, Story 3.4's QA review, ruled
+// wider than the finding itself by the engineering lead).
+//
+// WHY THIS EXISTS AND WHY IT IS NOT SCOPED TO `math`: RuleMathSelector
+// above (D-1.3.10) resolves a call's package by requiring its
+// *ast.SelectorExpr's X to be a bare *ast.Ident, looked up in
+// importAliases — the exact shape a dot import defeats, because
+// `. "math"` makes `Pow(10, 2)` a plain, unqualified call with no
+// SelectorExpr at all. That same aliasing assumption is what every
+// OTHER selector-keyed ban in this file — and in effect every path ban
+// in bannedImportPaths that a caller might reference by selector after
+// aliasing it away — rests on. Patching mathAllowedCalls alone would
+// leave time/os/net/math-rand equally exposed to the identical
+// spelling and fix only the one instance a finding happened to name
+// (D-000.23's failure: a guard written for the defect rather than its
+// class). One predicate on the import spec's own local name being "."
+// closes all of them at once, and closes every future selector-keyed
+// rule this file gains, by construction. There is no legitimate
+// dot-import under internal/ — none exists in this tree today (D-000.50:
+// measured, not assumed) and Go style guidance discourages the form
+// universally outside small a test-assertion-library idiom this
+// codebase does not use anywhere.
+const RuleDotImport = "dot-import"
+
 // RuleRuntimeCaller is Story 2.1's addition (AC2, V1): AD-1's render
 // path must never depend on the filesystem or on inspecting its own
 // call stack (both are exactly what would make `internal/text`'s
@@ -133,9 +158,19 @@ func importAliases(file *ast.File) map[string]string {
 // examined, from the scanner's own execution (Major 5, this story's QA
 // review) — see MapRangeStats' doc comment for why a second,
 // independently-derived walk cannot be trusted as a vacuity guard.
+//
+// FilesSeenNames (Finding 14, Story 3.4's QA review) makes a BY-NAME
+// coverage witness possible directly from the scanner's own record:
+// FilesSeen alone is an int, so a by-name witness built against it had
+// to re-derive its own, independent walk (walkGoFiles) to get names —
+// exactly the "a vacuity guard built by re-deriving a fact a different
+// way cannot see a scanner that silently does nothing" failure
+// MapRangeStats' own doc comment warns against. A future early-skip
+// added to ScanForbiddenImports now shows up here directly.
 type ForbiddenImportsStats struct {
-	DirsVisited []string
-	FilesSeen   int
+	DirsVisited    []string
+	FilesSeen      int
+	FilesSeenNames []string
 }
 
 // ScanForbiddenImports is the AC1 pure checker for AD-1's import and
@@ -152,6 +187,7 @@ func ScanForbiddenImports(root string) ([]Finding, ForbiddenImportsStats, error)
 	dirsSeen := map[string]bool{}
 	err := walkGoFiles(root, func(rel string, file *ast.File, fset *token.FileSet) error {
 		stats.FilesSeen++
+		stats.FilesSeenNames = append(stats.FilesSeenNames, filepath.ToSlash(rel))
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		if !dirsSeen[dir] {
 			dirsSeen[dir] = true
@@ -175,6 +211,24 @@ func ScanForbiddenImports(root string) ([]Finding, ForbiddenImportsStats, error)
 				Path: rel, Rule: RuleForbiddenImports, Line: pos.Line,
 				Message: fmt.Sprintf("%s:%d: forbidden import %q (AD-1's allow-listed numeric surface: %s)",
 					rel, pos.Line, path, allowedNumericSurface),
+			})
+		}
+
+		// Dot imports (RuleDotImport, Finding 15): unconditional, no
+		// test exemption, no allow-list — every selector-keyed ban in
+		// this file (math, runtime.Caller) resolves its package by
+		// requiring a bare *ast.Ident on the left of the dot, which a
+		// dot import removes entirely by making the imported package's
+		// exports unqualified identifiers.
+		for _, imp := range file.Imports {
+			if imp.Name == nil || imp.Name.Name != "." {
+				continue
+			}
+			pos := fset.Position(imp.Pos())
+			findings = append(findings, Finding{
+				Path: rel, Rule: RuleDotImport, Line: pos.Line,
+				Message: fmt.Sprintf("%s:%d: forbidden dot import %s — it removes every selector-keyed ban's ability to resolve the imported package (AD-1)",
+					rel, pos.Line, imp.Path.Value),
 			})
 		}
 

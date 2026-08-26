@@ -20,7 +20,12 @@ import (
 // unknown-function/arity mismatch is still handled below, cheaply, in
 // case a caller ever reaches Eval without calling Check first, but the
 // authoritative, located version of those errors is Check's).
-func Eval(e Expr, resolver Resolver, elementID string) (Value, []Caveat, error) {
+// fc (Story 3.4, R1/AC1) is the document's formatting context — locale
+// tag plus fixed UTC offset — needed only by formatDate/formatNumber,
+// but threaded through every recursive Eval call so a nested call
+// (inside if()'s selected branch, for instance) can reach it too. It
+// is a plain value, never read from package state (AD-1).
+func Eval(e Expr, resolver Resolver, fc FormatContext, elementID string) (Value, []Caveat, error) {
 	switch n := e.(type) {
 	case *PathExpr:
 		v, err := resolver.Resolve(n.Segments)
@@ -34,13 +39,13 @@ func Eval(e Expr, resolver Resolver, elementID string) (Value, []Caveat, error) 
 		}
 		return Value{Kind: KindNumber, Num: d}, nil, nil
 	case *CallExpr:
-		return evalCall(n, resolver, elementID)
+		return evalCall(n, resolver, fc, elementID)
 	default:
 		return Value{}, nil, fmt.Errorf("expr: element %s: internal: unrecognised expression node %T", elementID, e)
 	}
 }
 
-func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, []Caveat, error) {
+func evalCall(call *CallExpr, resolver Resolver, fc FormatContext, elementID string) (Value, []Caveat, error) {
 	entry, ok := lookupFunc(call.Name)
 	if !ok {
 		return Value{}, nil, fmt.Errorf(
@@ -55,24 +60,12 @@ func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, []Cav
 		)
 	}
 
-	if !entry.implemented {
-		// AC15/AC17/AC18: a registered-but-unimplemented function is a
-		// LOCATED error, never a plausible value — this is the guard
-		// against F6's hazard. Neither its arguments nor any other
-		// unimplemented entry's are evaluated at all before this error
-		// is returned.
-		return Value{}, nil, fmt.Errorf(
-			"expr: element %s: function %q is not yet implemented (coming in Story %s): %s",
-			elementID, entry.name, entry.owningStory, call.Raw,
-		)
-	}
-
 	switch entry.name {
 	case "upper", "lower":
-		v, err := evalUpperLower(entry.name, call, resolver, elementID)
+		v, err := evalUpperLower(entry.name, call, resolver, fc, elementID)
 		return v, nil, err
 	case "if":
-		return evalIf(call, resolver, elementID)
+		return evalIf(call, resolver, fc, elementID)
 	case "sum":
 		return evalSum(call, resolver, elementID)
 	case "count":
@@ -80,12 +73,16 @@ func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, []Cav
 		return v, nil, err
 	case "avg":
 		return evalAvg(call, resolver, elementID)
+	case "formatDate":
+		return evalFormatDate(call, resolver, fc, elementID)
+	case "formatNumber":
+		return evalFormatNumber(call, resolver, fc, elementID)
 	default:
 		// Unreachable given functionTable's own entries (table.go):
-		// every implemented entry is handled above. Kept as a located
-		// error, not a panic, per AC20's "plain Go errors" discipline
-		// and AD-14's "never a panic" (AC11).
-		return Value{}, nil, fmt.Errorf("expr: element %s: internal: %q is marked implemented but has no evaluator", elementID, entry.name)
+		// every entry is handled above (AC16's structural half,
+		// table_derivational_test.go, asserts this by AST). Kept as a
+		// located error, not a panic, per AD-14's "never a panic".
+		return Value{}, nil, fmt.Errorf("expr: element %s: internal: %q has no evaluator", elementID, entry.name)
 	}
 }
 
@@ -94,8 +91,8 @@ func evalCall(call *CallExpr, resolver Resolver, elementID string) (Value, []Cav
 // resolved from data of the wrong kind, a number literal, or a null —
 // is a located error, never a coerced stringification (AD-14's
 // wrong-kind case, never a coercion, AD-14 verbatim).
-func evalUpperLower(name string, call *CallExpr, resolver Resolver, elementID string) (Value, error) {
-	v, _, err := Eval(call.Args[0], resolver, elementID)
+func evalUpperLower(name string, call *CallExpr, resolver Resolver, fc FormatContext, elementID string) (Value, error) {
+	v, _, err := Eval(call.Args[0], resolver, fc, elementID)
 	if err != nil {
 		return Value{}, err
 	}
@@ -136,17 +133,20 @@ func evalUpperLower(name string, call *CallExpr, resolver Resolver, elementID st
 //     findable test (TestIfNullConditionIsSilentlyFalse, eval_test.go)
 //     for exactly that reason.
 //
-// AC14: only the SELECTED branch is evaluated — an unimplemented
-// function called from the branch that was NOT selected must not
-// surface at all. This is not a special case here either: the
+// AC14: only the SELECTED branch is evaluated — a function call that
+// would ERROR, called from the branch that was NOT selected, must not
+// surface at all (originally proved with an unimplemented function as
+// the example, back when formatDate/formatNumber were registered but
+// not yet computing; any erroring call demonstrates the same
+// short-circuit today). This is not a special case here either: the
 // unselected call.Args[1]/[2] element is simply never passed to Eval.
 //
 // A Caveat from cond's OWN evaluation (e.g. avg() used, unusually, as
 // a condition and landing on the empty-average caveat before erroring
 // on its non-boolean kind) still propagates — evalIf never discards a
 // caveat it collected on the way to a result, selected branch or not.
-func evalIf(call *CallExpr, resolver Resolver, elementID string) (Value, []Caveat, error) {
-	condVal, condCaveats, err := Eval(call.Args[0], resolver, elementID)
+func evalIf(call *CallExpr, resolver Resolver, fc FormatContext, elementID string) (Value, []Caveat, error) {
+	condVal, condCaveats, err := Eval(call.Args[0], resolver, fc, elementID)
 	if err != nil {
 		return Value{}, nil, err
 	}
@@ -167,7 +167,7 @@ func evalIf(call *CallExpr, resolver Resolver, elementID string) (Value, []Cavea
 			elementID, condVal.Kind, call.Raw,
 		)
 	}
-	branchVal, branchCaveats, err := Eval(branch, resolver, elementID)
+	branchVal, branchCaveats, err := Eval(branch, resolver, fc, elementID)
 	if err != nil {
 		return Value{}, nil, err
 	}

@@ -375,8 +375,9 @@ func TestParseTemplateRejectsExcessiveCallNestingAtLoad(t *testing.T) {
 }
 
 // TestParseTemplateAcceptsCanonicalGolden is F3's forcing case, proved
-// directly: the canonical worked example binds an unimplemented
-// formatNumber(...) call (D-1.4.1 shape 2) and must still load.
+// directly: the canonical worked example binds a formatNumber(...)
+// call (D-1.4.1 shape 2, now fully implemented as of Story 3.4) and
+// must still load, deriving its footer as before.
 func TestParseTemplateAcceptsCanonicalGolden(t *testing.T) {
 	tpl, err := LoadTemplate("testdata/template/golden/worked-example.json")
 	if err != nil {

@@ -62,7 +62,7 @@ func TestBindTextSpansReportsRuneSpans(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, subs, _, err := BindTextSpans(tc.template, data, params, "e1")
+			got, subs, _, err := BindTextSpans(tc.template, data, params, testFormatContext(), "e1")
 			if err != nil {
 				t.Fatalf("BindTextSpans: %v", err)
 			}
@@ -103,7 +103,7 @@ func TestBindTextSpansSpanDelimitsTheSubstitutedValue(t *testing.T) {
 		"params.ref":    "AB-9",
 	}
 
-	got, subs, _, err := BindTextSpans(template, data, params, "e1")
+	got, subs, _, err := BindTextSpans(template, data, params, testFormatContext(), "e1")
 	if err != nil {
 		t.Fatalf("BindTextSpans: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestBindTextSpansReservedPlaceholdersProduceNoSubstitution(t *testing.T) {
 	data := valueFromJSON(t, `{}`)
 	params := valueFromJSON(t, `{}`)
 
-	got, subs, _, err := BindTextSpans("Page {{page}} of {{pages}}", data, params, "e1")
+	got, subs, _, err := BindTextSpans("Page {{page}} of {{pages}}", data, params, testFormatContext(), "e1")
 	if err != nil {
 		t.Fatalf("BindTextSpans: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestBindTextSpansNullValueYieldsAnEmptySpan(t *testing.T) {
 	data := valueFromJSON(t, `{"customer":{"name":null}}`)
 	params := valueFromJSON(t, `{}`)
 
-	got, subs, _, err := BindTextSpans("A{{customer.name}}B", data, params, "e1")
+	got, subs, _, err := BindTextSpans("A{{customer.name}}B", data, params, testFormatContext(), "e1")
 	if err != nil {
 		t.Fatalf("a null binding renders as empty and is not an error (AD-14): %v", err)
 	}
@@ -194,8 +194,8 @@ func TestBindTextDelegatesToBindTextSpans(t *testing.T) {
 
 	var errCases, okCases int
 	for _, in := range inputs {
-		wantText, wantErr := BindText(in, data, params, "e1")
-		gotText, _, _, gotErr := BindTextSpans(in, data, params, "e1")
+		wantText, wantErr := BindText(in, data, params, testFormatContext(), "e1")
+		gotText, _, _, gotErr := BindTextSpans(in, data, params, testFormatContext(), "e1")
 		if (wantErr == nil) != (gotErr == nil) {
 			t.Errorf("%q: BindText err=%v but BindTextSpans err=%v", in, wantErr, gotErr)
 			continue

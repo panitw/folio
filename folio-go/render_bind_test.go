@@ -195,13 +195,16 @@ func TestRenderTrailingGarbageInParamsIsReportedAsParams(t *testing.T) {
 	}
 }
 
-// TestRenderRejectsUnimplementedFunctionInTextValue is F10's re-point
-// through the public Render API (Story 3.2): formatNumber(...) is now
-// registered, parses and derives successfully at load (AC15) — this
-// document loads fine — but is not implemented until Story 3.4, so
-// Render (evaluation) still produces a located error, now naming the
-// owning story rather than reading as a syntax rejection.
-func TestRenderRejectsUnimplementedFunctionInTextValue(t *testing.T) {
+// TestRenderRejectsInvalidNumberPatternAtLoad is F3's re-point (Story
+// 3.4, AC10b/AC17): formatNumber is now IMPLEMENTED (AC16), and its
+// pattern grammar is validated at Check/load time (AC10), not at
+// evaluation — so `formatNumber(a, "x")`, whose pattern "x" is not in
+// the closed number-pattern grammar, is now a LOAD error at
+// ParseTemplate, never a Render-time error. The subject this test
+// pins (a wrong-kind pattern is caught, with a located message)
+// survives 3.2 -> 3.4; only the stage moves, per F3's own instruction
+// to re-point rather than delete.
+func TestRenderRejectsInvalidNumberPatternAtLoad(t *testing.T) {
 	const tplJSON = `{
   "assets": {},
   "bands": {
@@ -221,16 +224,20 @@ func TestRenderRejectsUnimplementedFunctionInTextValue(t *testing.T) {
   "version": "1.0"
 }
 `
-	tpl, err := ParseTemplate([]byte(tplJSON))
-	if err != nil {
-		t.Fatalf("ParseTemplate: %v", err)
-	}
-	_, err = Render(tpl, Data(`{}`), nil, testFontSet())
+	_, err := ParseTemplate([]byte(tplJSON))
 	if err == nil {
-		t.Fatal("expected a located error naming the element id and Story 3.4")
+		t.Fatal("expected a load error: \"x\" is not a valid formatNumber pattern")
 	}
-	if !strings.Contains(err.Error(), "e1") || !strings.Contains(err.Error(), "3.4") {
-		t.Fatalf("error must name the element id and Story 3.4, got: %v", err)
+	if !strings.Contains(err.Error(), "e1") {
+		t.Fatalf("error must name the element id, got: %v", err)
+	}
+	// Finding 11 (this story's QA review): every error this package
+	// emits is prefixed "expr: …", which itself contains an "x" — a
+	// bare Contains(err.Error(), "x") passes regardless of whether the
+	// message actually names the offending pattern. Assert the quoted
+	// form the error actually produces instead.
+	if !strings.Contains(err.Error(), `"x"`) {
+		t.Fatalf("error must name the offending pattern (quoted), got: %v", err)
 	}
 }
 

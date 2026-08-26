@@ -5,13 +5,19 @@
 // dotted path, a function call over comma-separated arguments, a
 // double-quoted string literal, or a number literal — plus the eight
 // named functions FR18 promises (sum, count, avg, formatDate,
-// formatNumber, upper, lower, if), of which upper/lower/if (Story 3.2)
-// and, as of Story 3.3, sum/count/avg are implemented; formatDate and
-// formatNumber remain registered, parse and derive successfully, and
-// fail loudly at evaluation, naming the story that implements them
-// (AC15-AC18, Story 3.2; AC30, Story 3.3, restates the guard
-// derivationally rather than by a hard-coded name list once three of
-// the five move).
+// formatNumber, upper, lower, if). As of Story 3.4, ALL EIGHT are
+// implemented: upper/lower/if landed at Story 3.2, sum/count/avg at
+// Story 3.3, and formatDate/formatNumber — the last two, AD-12's
+// locale-aware date and number formatting — at this story. The
+// registered-but-unimplemented machinery that used to distinguish
+// these populations (funcEntry.implemented/owningStory,
+// TestUnimplementedFunctionsAreLocatedErrors and friends) is REMOVED,
+// not merely retired to inert, because the table is closed at eight
+// (C1) and that population cannot refill (Story 3.4's AC16, D-000.59).
+// TestImplementedEntriesMatchEvalCallSwitch (table_derivational_test.go)
+// and the behavioural witness in table_behavioral_test.go now assert
+// the OBLIGATION that every entry computes, derivationally, rather
+// than re-reading a flag.
 //
 // internal/expr is rank 3 in the stage-rank table
 // (lint/internal/rules/stagerank.go): it may import internal/template
@@ -31,26 +37,27 @@
 // Decimal declaration — is RELATIONAL and follows this move with zero
 // edits to that guard.
 //
-// Two-phase load/evaluate split (R3, forced by F3 — the canonical
-// golden binds a still-unimplemented formatNumber(...) call, so an
-// unimplemented function cannot be a load error): Parse produces an
-// AST from raw grammar alone, with no knowledge of the eight-function
-// table; Check walks that AST against the table and reports every
-// statically decidable defect — a syntax error, a wrong arity, an
-// unknown function name, or a literal argument of the wrong kind
-// (Decision 3: arity and literal-argument-kind are both decidable
-// without data, so both are 3.2's to check; a PATH argument's runtime
-// kind is not decidable without data and is explicitly NOT 3.2's
-// obligation — owed at evaluation by Story 3.3 (sum/count/avg, done)
-// and Story 3.4 (formatDate/formatNumber, still owed)). Eval walks the
-// AST against a Resolver (evaluation-time data lookup) and actually
-// computes a result, calling only the branch of an if() that was
-// selected (AC14's short-circuit) and reporting a
-// registered-but-unimplemented function as a LOCATED error, never a
-// plausible value (AC15, guarding directly against F6/AC17's
-// SumDecimals(nil) == {0,0} hazard). Story 3.3 additionally proves
-// sum()/avg() actually ROUTE through SumDecimals/AvgDecimals rather
-// than merely producing an equal-looking answer some other way
-// (routing_arch_test.go; D-3.1a.4's own correction that the reducer
-// inventory alone cannot force this).
+// Two-phase load/evaluate split (R3, originally forced by F3 — the
+// canonical golden bound a still-unimplemented formatNumber(...) call,
+// so an unimplemented function could not be a load error; the split
+// stays now that all eight are implemented, because arity and
+// literal-argument-kind remain decidable without data while a PATH
+// argument's runtime kind is not): Parse produces an AST from raw
+// grammar alone, with no knowledge of the eight-function table; Check
+// walks that AST against the table and reports every statically
+// decidable defect — a syntax error, a wrong arity, an unknown
+// function name, a literal argument of the wrong kind, or (Story 3.4,
+// AC10) a formatDate/formatNumber pattern literal outside its own
+// closed grammar. Eval walks the AST against a Resolver
+// (evaluation-time data lookup) and actually computes a result,
+// calling only the branch of an if() that was selected (AC14's
+// short-circuit). Story 3.3 additionally proves sum()/avg() actually
+// ROUTE through SumDecimals/AvgDecimals rather than merely producing
+// an equal-looking answer some other way (routing_arch_test.go;
+// D-3.1a.4's own correction that the reducer inventory alone cannot
+// force this). Story 3.4's formatDate/formatNumber are hand-rolled:
+// formatDate does its own calendar arithmetic (calendar.go, integer
+// only, no "time" import anywhere) and formatNumber scales through an
+// integer power-of-ten lookup table (tenpow.go), never math.Pow
+// (AD-23: math.Pow returns float64).
 package expr

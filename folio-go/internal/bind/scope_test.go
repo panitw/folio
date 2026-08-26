@@ -20,7 +20,7 @@ func TestScopeRowAliasResolvesCurrentRow(t *testing.T) {
 	row2 := mustDecode(t, `{"amount": "20.00", "payee": "Beta"}`)
 
 	scope1 := NewScope(data, noParams).WithRow(row1, "transaction")
-	got1, _, _, err1 := Resolve("{{transaction.amount}} {{transaction.payee}}", scope1, "e2")
+	got1, _, _, err1 := Resolve("{{transaction.amount}} {{transaction.payee}}", scope1, testFormatContext(), "e2")
 	if err1 != nil {
 		t.Fatalf("row1: unexpected error: %v", err1)
 	}
@@ -29,7 +29,7 @@ func TestScopeRowAliasResolvesCurrentRow(t *testing.T) {
 	}
 
 	scope2 := NewScope(data, noParams).WithRow(row2, "transaction")
-	got2, _, _, err2 := Resolve("{{transaction.amount}} {{transaction.payee}}", scope2, "e2")
+	got2, _, _, err2 := Resolve("{{transaction.amount}} {{transaction.payee}}", scope2, testFormatContext(), "e2")
 	if err2 != nil {
 		t.Fatalf("row2: unexpected error: %v", err2)
 	}
@@ -50,7 +50,7 @@ func TestScopeRowAliasFieldAbsentIsLocatedError(t *testing.T) {
 	row := mustDecode(t, `{"amount": "10.00"}`)
 	scope := NewScope(data, noParams).WithRow(row, "transaction")
 
-	_, _, _, err := Resolve("{{transaction.payee}}", scope, "e2")
+	_, _, _, err := Resolve("{{transaction.payee}}", scope, testFormatContext(), "e2")
 	if err == nil {
 		t.Fatal("AC1: a field absent from the row must be a located Error")
 	}
@@ -79,7 +79,7 @@ func TestScopeRowAliasBareIsLocatedError(t *testing.T) {
 	row := mustDecode(t, `{"amount": "10.00"}`)
 	scope := NewScope(data, noParams).WithRow(row, "transaction")
 
-	_, _, _, err := Resolve("{{transaction}}", scope, "e2")
+	_, _, _, err := Resolve("{{transaction}}", scope, testFormatContext(), "e2")
 	if err == nil {
 		t.Fatal("a bare row alias must be a located Error")
 	}
@@ -101,7 +101,7 @@ func TestScopeRowAliasDefaultsToRow(t *testing.T) {
 	row := mustDecode(t, `{"amount": "10.00"}`)
 	scope := NewScope(data, noParams).WithRow(row, "row") // caller applies the AC2 default
 
-	got, _, _, err := Resolve("{{row.amount}}", scope, "e2")
+	got, _, _, err := Resolve("{{row.amount}}", scope, testFormatContext(), "e2")
 	if err != nil {
 		t.Fatalf("AC2: unexpected error: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestScopeRowNeverShadowsDocumentRoot(t *testing.T) {
 	row := mustDecode(t, `{"customer": "FROM-ROW", "nested": {"customer": "FROM-ROW-NESTED"}}`)
 	scope := NewScope(data, noParams).WithRow(row, "transaction")
 
-	got, _, _, err := Resolve("{{customer}}", scope, "e2")
+	got, _, _, err := Resolve("{{customer}}", scope, testFormatContext(), "e2")
 	if err != nil {
 		t.Fatalf("AC3: unexpected error: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestScopeRowNeverShadowsDocumentRoot(t *testing.T) {
 		t.Fatalf("AC3: an unqualified colliding key must resolve to the DOCUMENT ROOT's value, got %q (want %q)", got, "FROM-ROOT")
 	}
 
-	gotNested, _, _, errNested := Resolve("{{nested.customer}}", scope, "e2")
+	gotNested, _, _, errNested := Resolve("{{nested.customer}}", scope, testFormatContext(), "e2")
 	if errNested != nil {
 		t.Fatalf("AC3 nested: unexpected error: %v", errNested)
 	}
@@ -152,7 +152,7 @@ func TestScopeParamsUnshadowableByRow(t *testing.T) {
 	params := mustDecode(t, `{"reportDate": "FROM-PARAMS"}`)
 
 	scopeNoRow := NewScope(data, params)
-	gotBaseline, _, _, errBaseline := Resolve("{{params.reportDate}}", scopeNoRow, "e1")
+	gotBaseline, _, _, errBaseline := Resolve("{{params.reportDate}}", scopeNoRow, testFormatContext(), "e1")
 	if errBaseline != nil {
 		t.Fatalf("baseline (no row): unexpected error: %v", errBaseline)
 	}
@@ -161,7 +161,7 @@ func TestScopeParamsUnshadowableByRow(t *testing.T) {
 	}
 
 	scopeWithRow := NewScope(data, params).WithRow(row, "transaction")
-	got, _, _, err := Resolve("{{params.reportDate}}", scopeWithRow, "e2")
+	got, _, _, err := Resolve("{{params.reportDate}}", scopeWithRow, testFormatContext(), "e2")
 	if err != nil {
 		t.Fatalf("AC4: unexpected error: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestScopeParamsUnshadowableEvenByRowAliasedParams(t *testing.T) {
 	params := mustDecode(t, `{"reportDate": "FROM-PARAMS"}`)
 
 	scope := NewScope(data, params).WithRow(row, "params")
-	got, _, _, err := Resolve("{{params.reportDate}}", scope, "e2")
+	got, _, _, err := Resolve("{{params.reportDate}}", scope, testFormatContext(), "e2")
 	if err != nil {
 		t.Fatalf("AC4: unexpected error: %v", err)
 	}

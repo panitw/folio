@@ -279,6 +279,11 @@ graph TD
   library version, so changing it is a breaking change under AD-22.
   `[ASSUMPTION]` The four-locale set is inferred from NFR3's script list; widen it only with a
   golden fixture per locale.
+  **`ja` disclosure (Story 3.4, D-3.4.1):** the shipped font set renders Japanese completely —
+  every glyph resolves — but in Simplified-Chinese kanji shapes, since a font holds one drawing
+  per shared codepoint. This is a typography limitation, not a coverage gap, and no runtime
+  diagnostic is raised for it. Supply your own face via `FontSet` for Japanese typography; the
+  font chain is always document-declared, never inferred from `locale`.
 
 ### AD-13 — Table geometry is derived, not stored twice
 

@@ -93,9 +93,11 @@ func (k Kind) String() string {
 }
 
 // Value is an expression's evaluated result: a scalar, deliberately —
-// this story implements no function that produces or consumes a
-// collection value (sum/count/avg are registered but unimplemented,
-// AC15). AD-14's null case is a Kind, not a separate sentinel: an
+// no function in the closed eight-entry table produces or consumes a
+// collection value directly; sum/count/avg (Story 3.3) reduce a
+// collection to a scalar, and CollectionLength/ProjectCollection below
+// are the seam that reaches one, never Value itself. AD-14's null case
+// is a Kind, not a separate sentinel: an
 // explicit JSON null is a legal Value (KindNull), never itself an
 // evaluation error — only an ABSENT path is (see Resolver).
 type Value struct {

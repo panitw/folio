@@ -7,11 +7,10 @@ Expressions are deliberately small. There are **eight functions and no more** �
 variables, no arithmetic operators. If you find yourself wanting a ninth, the calculation probably
 belongs in the data you supply rather than in the template.
 
-> **Status while the engine is being built.** Every function below is described as it is specified.
-> Functions marked *not yet implemented* are recognised by the template — the document still loads —
-> but calling one produces an error naming the element, rather than a plausible-looking value. This
-> is deliberate: a `sum` that quietly returned `0` before it was real would be a wrong total on a
-> statement, and wrong totals are worse than errors.
+> All eight functions are implemented. A function called with the wrong kind of argument, or with
+> data that cannot support what it asks for, still produces an error naming the element rather than
+> a plausible-looking value: a `sum` that quietly returned `0` on bad input would be a wrong total on
+> a statement, and wrong totals are worse than errors.
 
 ---
 
@@ -130,10 +129,13 @@ makes a bare `{{transactions.amount}}` an error today):
 {{count(transactions)}}         12    (an exception, see below)
 ```
 
-A number-valued aggregate must be wrapped in `formatNumber(...)` *(not yet implemented — Story 3.4)*
-before it can appear in text; that worked example belongs to Story 3.4, not here. `count` is the one
-exception: it is already a plain non-negative whole number, and needs no formatting to render as
-text.
+A number-valued aggregate must be wrapped in `formatNumber(...)` before it can appear in text — see
+*Dates and numbers*, below. `count` is the one exception: it is already a plain non-negative whole
+number, and needs no formatting to render as text.
+
+```
+{{formatNumber(sum(transactions.amount), "#,##0.00")}}     1,234.56
+```
 
 **Totals are exact.** Folio adds money as decimal digits, never as binary floating point, so a
 statement total is correct to the last satang no matter how many rows it covers. `avg` divides at
@@ -166,7 +168,7 @@ collection with no rows at all are not the same subject, and render differently 
 
 ---
 
-## Dates and numbers *(not yet implemented — Story 3.4)*
+## Dates and numbers
 
 ### `formatDate(value, pattern)`
 
@@ -205,10 +207,10 @@ Eight, and the engine enforces that count.
 
 | | function | status |
 |---|---|---|
-| Text | `upper` · `lower` | in progress |
-| Choice | `if` | in progress |
-| Totals | `sum` · `count` · `avg` | in progress |
-| Formatting | `formatDate` · `formatNumber` | not yet implemented |
+| Text | `upper` · `lower` | implemented |
+| Choice | `if` | implemented |
+| Totals | `sum` · `count` · `avg` | implemented |
+| Formatting | `formatDate` · `formatNumber` | implemented |
 
 Adding a ninth is not a small change and is not meant to be — the table is closed, and a new entry
 has to be made deliberately and visibly.

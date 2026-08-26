@@ -79,7 +79,7 @@ development_status:
   3-1a-guard-ad-23-against-named-binary-float-types: done
   3-2-evaluate-the-expression-language: done
   3-3-aggregate-over-a-collection: done
-  3-4-format-dates-and-numbers-by-declared-locale: backlog
+  3-4-format-dates-and-numbers-by-declared-locale: done
   3-5-hide-a-component-conditionally: backlog
   3-6-fail-with-located-actionable-diagnostics: backlog
   3-7-validate-a-template-and-render-it-from-the-command-line: backlog

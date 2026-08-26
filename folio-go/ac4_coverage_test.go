@@ -133,6 +133,17 @@ func TestMissingGlyphDiagnosticFiresOnUncoveredRune(t *testing.T) {
 // NOT fire for it — the `ja` gap is glyph FORM quality (AC10), never a
 // coverage failure, and conflating the two makes a diagnostic fire on a
 // correct render.
+//
+// LIVE REGRESSION SUBJECT UNDER D-3.4.1/D-3.4.2 (Story 3.4, AC4,
+// Finding 10, this story's QA review): this fixture's `"locale": "ja"`
+// document is now covered by internal/expr's own locale-table tests
+// too (locale.go / locale_test.go), but that does NOT make this test
+// redundant — it is the one place a `ja` document is exercised end to
+// end through the real Render/ParseTemplate path with real report
+// data, proving a `ja` document actually LOADS and renders, which the
+// locale table's own unit tests do not attempt. Do not delete this as
+// redundant once — or because — the locale table grows more `ja`
+// coverage of its own.
 func TestJapaneseTextThroughPanCJKFaceDoesNotFireDiagnostic(t *testing.T) {
 	const jaTemplateJSON = `{
   "assets": {},

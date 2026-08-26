@@ -78,7 +78,7 @@ func TestSubstitutedWindowRedProofDiffersFromWholeCollectionTotal(t *testing.T) 
 	if cerr := Check(e); cerr != nil {
 		t.Fatalf("Check: %v", cerr)
 	}
-	v, _, err := Eval(e, w, "e1")
+	v, _, err := Eval(e, w, testFC(), "e1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

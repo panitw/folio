@@ -44,7 +44,7 @@ func mustEval(t *testing.T, src string, resolver Resolver) Value {
 	if err := Check(e); err != nil {
 		t.Fatalf("Check(%q): %v", src, err)
 	}
-	v, _, err := Eval(e, resolver, "e1")
+	v, _, err := Eval(e, resolver, testFC(), "e1")
 	if err != nil {
 		t.Fatalf("Eval(%q): unexpected error: %v", src, err)
 	}
@@ -116,7 +116,7 @@ func TestUpperLowerNonStringOperandIsLocatedError(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("upper(x)"): unexpected syntax error: %v`, perr)
 	}
-	_, _, err := Eval(e, r, "e7")
+	_, _, err := Eval(e, r, testFC(), "e7")
 	if err == nil {
 		t.Fatal("expected a located error for a non-string operand")
 	}
@@ -155,7 +155,7 @@ func TestIfAbsentConditionIsLocatedError(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("if(cond, a, b)"): unexpected syntax error: %v`, perr)
 	}
-	_, _, err := Eval(e, r, "e9")
+	_, _, err := Eval(e, r, testFC(), "e9")
 	if err == nil {
 		t.Fatal("an absent condition path must be a located Error, never false")
 	}
@@ -204,7 +204,7 @@ func TestIfEmptyStringConditionIsLocatedErrorNoTruthiness(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("if(cond, a, b)"): unexpected syntax error: %v`, perr)
 	}
-	_, _, err := Eval(e, r, "e1")
+	_, _, err := Eval(e, r, testFC(), "e1")
 	if err == nil {
 		t.Fatal("an empty-string condition must be a located error — no truthiness")
 	}
@@ -220,7 +220,7 @@ func TestIfZeroConditionIsLocatedErrorNoTruthiness(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("if(cond, a, b)"): unexpected syntax error: %v`, perr)
 	}
-	_, _, err := Eval(e, r, "e1")
+	_, _, err := Eval(e, r, testFC(), "e1")
 	if err == nil {
 		t.Fatal("a zero condition must be a located error — 0 is not false (no truthiness)")
 	}
@@ -230,8 +230,13 @@ func TestIfZeroConditionIsLocatedErrorNoTruthiness(t *testing.T) {
 }
 
 // TestIfShortCircuitsUnselectedBranch is AC14: the unselected branch
-// calls an unimplemented function; the expression must still succeed
-// because that branch is never evaluated at all.
+// calls sum() over a path ("t.x") that mapResolver{"cond": …} cannot
+// resolve, so evaluating that branch would error; the expression must
+// still succeed because that branch is never evaluated at all. (This
+// test originally used sum() specifically because sum/count/avg were
+// registered but not yet computing at the time it was written —
+// calling any of them, implemented or not, still demonstrates the same
+// short-circuit today, per eval.go's own AC14 comment.)
 func TestIfShortCircuitsUnselectedBranch(t *testing.T) {
 	r := mapResolver{"cond": {Kind: KindBool, Bool: true}}
 	v := mustEval(t, `if(cond, "a", sum(t.x))`, r)
@@ -245,7 +250,7 @@ func TestIfShortCircuitsUnselectedBranch(t *testing.T) {
 // "### Expressions" section) is {{if(hasDiscount, discount.amount,
 // "N/A")}} on a row where discount is absent entirely.
 // TestIfShortCircuitsUnselectedBranch above exercises the mechanism
-// with an unimplemented function in the untaken branch; this is the
+// with a call that would error in the untaken branch; this is the
 // actual documented shape, with an ABSENT PATH in the untaken branch
 // instead — a case nothing exercised before this fix.
 func TestIfShortCircuitsAbsentPathInUnselectedBranch(t *testing.T) {
@@ -256,58 +261,12 @@ func TestIfShortCircuitsAbsentPathInUnselectedBranch(t *testing.T) {
 	}
 }
 
-// --- AC15/AC18/AC30: the two functions this story leaves unimplemented ---
+// --- AC17: the vendor-default red-proof (sum/count/avg, Story 3.3) ---
 //
-// AC30 (D-000.59's shape): sum/count/avg are DROPPED from this table —
-// they are Story 3.3's own positive assertions now (below, and
-// aggregate_test.go) — in the SAME commit that adds the three of them
-// to TestImplementedEntriesMatchEvalCallSwitch's derived set
-// (table_derivational_test.go). formatDate/formatNumber remain, still
-// proving the located-error arm Story 3.4 will one day retire in turn.
-
-func TestUnimplementedFunctionsAreLocatedErrors(t *testing.T) {
-	r := mapResolver{"x": {Kind: KindString, Str: "irrelevant"}}
-	cases := []struct {
-		src   string
-		name  string
-		story string
-	}{
-		{`formatDate(x, "yyyy-MM-dd")`, "formatDate", "3.4"},
-		{`formatNumber(x, "#,##0.00")`, "formatNumber", "3.4"},
-	}
-	seen := 0
-	for _, c := range cases {
-		seen++
-		e, err := Parse(c.src)
-		if err != nil {
-			t.Fatalf("Parse(%q): %v", c.src, err)
-		}
-		_, _, err = Eval(e, r, "e5")
-		if err == nil {
-			t.Fatalf("%s: expected a located error, got none", c.src)
-		}
-		if !strings.Contains(err.Error(), "e5") {
-			t.Errorf("%s: error must name the element id, got: %v", c.src, err)
-		}
-		if !strings.Contains(err.Error(), c.story) {
-			t.Errorf("%s: error must name the owning story %s, got: %v", c.src, c.story, err)
-		}
-		// QA Finding 14 (Minor): AC15 also requires the function name
-		// and the offending expression text — the assertions above
-		// left both unpinned, so dropping call.Raw or the function
-		// name from the message would have been a silent, green
-		// change.
-		if !strings.Contains(err.Error(), c.name) {
-			t.Errorf("%s: error must name the function %q, got: %v", c.src, c.name, err)
-		}
-		if !strings.Contains(err.Error(), c.src) {
-			t.Errorf("%s: error must carry the offending expression text verbatim, got: %v", c.src, err)
-		}
-	}
-	if seen != 2 {
-		t.Fatalf("AC30: expected exactly 2 assertions (formatDate, formatNumber), ran %d", seen)
-	}
-}
+// (This section header used to read "AC15/AC18/AC30: the two functions
+// this story leaves unimplemented" — orphaned once Story 3.3 flipped
+// sum/count/avg from registered-but-unimplemented to computing;
+// Finding 8, this story's QA review.)
 
 // TestSumOverEmptyOperandIsNeverASilentZero is AC17: THE
 // VENDOR-DEFAULT RED-PROOF (F6, D-000.25). Evaluating sum() over an
@@ -325,7 +284,7 @@ func TestSumOverEmptyOperandIsNeverASilentZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected syntax error: %v", err)
 	}
-	v, _, err := Eval(e, r, "e17")
+	v, _, err := Eval(e, r, testFC(), "e17")
 	// QA Finding 8 (Minor): the value check must live on the SUCCESS
 	// path. t.Fatal calls runtime.Goexit, so the old ordering (value
 	// check unconditionally after the err==nil check) could only ever
@@ -340,39 +299,6 @@ func TestSumOverEmptyOperandIsNeverASilentZero(t *testing.T) {
 			t.Fatal("AC17 RED-PROOF FAILED: sum() returned the exact SumDecimals(nil) identity {0,0} — the vendor-default hazard shipped")
 		}
 		t.Fatal("AC17: sum() must return an error, not a plausible value")
-	}
-}
-
-// TestUnimplementedAndUnknownFunctionErrorsAreDistinguishable is AC18.
-func TestUnimplementedAndUnknownFunctionErrorsAreDistinguishable(t *testing.T) {
-	r := mapResolver{"x": {Kind: KindString, Str: "v"}}
-
-	// QA Finding 15 (Minor): fail each parse explicitly.
-	// AC30: sum() is implemented as of this story — formatDate() is
-	// now the unimplemented example (owned by Story 3.4).
-	e1, perr1 := Parse(`formatDate(x, "yyyy-MM-dd")`)
-	if perr1 != nil {
-		t.Fatalf(`Parse("formatDate(...)"): unexpected syntax error: %v`, perr1)
-	}
-	_, _, err1 := Eval(e1, r, "e1")
-
-	e2, perr2 := Parse("frobnicate(x)")
-	if perr2 != nil {
-		t.Fatalf(`Parse("frobnicate(x)"): unexpected syntax error: %v`, perr2)
-	}
-	_, _, err2 := Eval(e2, r, "e1")
-
-	if err1 == nil || err2 == nil {
-		t.Fatalf("expected both to error, got err1=%v err2=%v", err1, err2)
-	}
-	if err1.Error() == err2.Error() {
-		t.Fatal("AC18: the unimplemented-function error and the unknown-function error must not collapse to the same message")
-	}
-	if !strings.Contains(err1.Error(), "3.4") {
-		t.Errorf("unimplemented error should name Story 3.4, got: %v", err1)
-	}
-	if strings.Contains(err2.Error(), "3.4") {
-		t.Errorf("unknown-function error must not claim an owning story, got: %v", err2)
 	}
 }
 
@@ -391,7 +317,7 @@ func TestEvalPathPropagatesResolverError(t *testing.T) {
 	if perr != nil {
 		t.Fatalf(`Parse("missing.path"): unexpected syntax error: %v`, perr)
 	}
-	_, _, err := Eval(e, mapResolver{}, "e1")
+	_, _, err := Eval(e, mapResolver{}, testFC(), "e1")
 	if err == nil {
 		t.Fatal("expected the resolver's own absent error to propagate")
 	}

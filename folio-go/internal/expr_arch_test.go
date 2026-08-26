@@ -289,11 +289,11 @@ func TestExprFunctionTableRedProofNinthEntry(t *testing.T) {
 		t.Fatalf("read %s: %v", path, err)
 	}
 
-	marker := `{name: "if", arity: 3, args: []argKind{argNotLiteral, argAny, argAny}, ret: returnAny{}, implemented: true},`
+	marker := `{name: "if", arity: 3, args: []argKind{argNotLiteral, argAny, argAny}, ret: returnAny{}},`
 	if !strings.Contains(string(src), marker) {
 		t.Fatalf("presence precondition: table.go no longer contains the expected \"if\" entry line — this red-proof's injection point is stale")
 	}
-	injected := `{name: "frobnicate", arity: 1, args: []argKind{argAny}, ret: returnString{}, implemented: false, owningStory: "9.9"},`
+	injected := `{name: "frobnicate", arity: 1, args: []argKind{argAny}, ret: returnString{}},`
 	mutated := strings.Replace(string(src), marker, marker+"\n\t"+injected, 1)
 
 	fset := token.NewFileSet()

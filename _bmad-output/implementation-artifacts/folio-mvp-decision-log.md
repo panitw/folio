@@ -10421,3 +10421,273 @@ remains (the footer half, still Story 4.5), and the correction *"none possible"*
 the footer half."* Ownership is unchanged. This was a wording slip in the ruling's heading, not a
 discipline breach, and is recorded here rather than edited into [[D-3.3.5]] in place, per this log's
 own append-only rule.
+
+---
+
+## Epic 3 decisions — Story 3.4
+
+### D-3.4.1 — OWNER DECISION: `ja` stays a supported locale, and the kanji-shape limit is stated in writing
+**Owner decision**, on the engineering lead's recommendation, taken with measured facts that **falsified the premise the record had carried since the first grounding**.
+
+**Verdict.** `ja` remains in AD-12's closed locale set. The locale table gets its `ja` row — effectively identical to `zh-Hans` for everything Story 3.4 implements (grouping, decimal separator, the `年月日` date pattern). **One honest sentence** is added to `folio-format.md` and AD-12: *the shipped font set renders Japanese completely, in Simplified-Chinese kanji shapes; supply your own face via `FontSet` for Japanese typography.*
+
+**The premise that turned out to be false.** Every grounding since the first has carried: *"AD-12 declares `ja` a supported locale while no Japanese face is named. Whether Noto Sans SC's coverage suffices must be verified, not assumed."* The lead verified it — by **parsing the shipped `cmap` tables**, not by the font's reputation:
+
+| | measured at `c2b4fe2` |
+|---|---|
+| Hiragana | **93/93** assigned codepoints (the 2 "missing" of 95 are U+3097/U+3098, **unassigned in Unicode**) |
+| Katakana | **96/96**; halfwidth kana **58/58**; phonetic extensions **16/16** |
+| CJK punctuation (、。「」) | **64/64** |
+| Kokuji | **all present** — 峠 働 込 匂 辻 畑 — plus shinjitai 円 様 直 骨 |
+| Total | 30,890 codepoints in `NotoSansSC-Regular.ttf` |
+
+Neither Noto Sans nor Noto Sans Thai carries a single kana, so the CJK face is the **sole Japanese carrier** — and it is complete. **There is no coverage gap.** The real defect is **glyph shape**: one font holds one glyph per codepoint, so Han characters where Japanese and Simplified-Chinese conventions diverge render in the Chinese form.
+
+**In simple terms.** The fear was that Folio promised to handle Japanese while being physically unable to draw it. Checking the actual font file rather than repeating the worry, every Japanese character is there — including the ones invented in Japan that don't exist in Chinese at all. What's wrong is subtler: a few hundred characters shared between the two languages are drawn slightly differently in each, and Folio draws the Chinese version. A Japanese reader gets a complete, readable document that looks faintly foreign — like reading English set in a typeface where the `a` is the wrong shape. That is a typography problem, and it costs a sentence to disclose. It is not the problem the record had been describing.
+
+**The other decisive facts, all measured.** Nobody ever asked for Japanese: `SPEC.md`'s Assumptions say the four locales *"are inferred from the required script set rather than stated by any input"*, AD-12 carries the same as an `[ASSUMPTION]`, and NFR3 names only *"Latin, CJK, and Thai"* — **`ja` arrived from the J in CJK.** The correct-typography path already exists: AD-8 makes `FontSet` a public `map[string][]byte`, so a user may supply Noto Sans JP today. And the fallback chain is **declared by the document, not derived from the locale**, so even a shipped JP face would not auto-select — a `ja` author names it either way.
+
+**Options considered.**
+1. **Keep `ja`, state the limit — chosen.**
+2. *Drop `ja` from AD-12's closed set.* Rejected on a specific failure, not on cost: **it would make Folio reject a document it can render correctly.** A Japanese statement tagged `ja` becomes a load error while the identical document tagged `zh-Hans` renders **byte-identically** — same grouping, same date pattern, same glyphs. The workaround is one character, so the refusal has no operative content. (It would also have amended AD-12, `SPEC.md` ×2, `epics.md` ×2, `folio-format.md`, four code sites and a live fixture, and narrowed an already-shipped closed set — the inverse of [[D-1.4.12]], free only because nothing is released.)
+3. *Ship a Japanese face.* **The lead declined to cost this arm rather than estimate it** — no JP face exists on this machine. From the same family it is the order of SC's 4.82 MB brotli, which would put fonts at ~8–10 MB and **likely breach NFR7's ~9 MB budget alone**; it also triggers DW-12 (a new pinned instance owes its own golden *and* a four-target matrix run in its story), a new OFL NOTICE under AD-26, and a `tools/fontgen` derivation — and it still would not select itself. Correctly gated on measuring the face first.
+4. *Keep `ja` plus a runtime glyph-coverage diagnostic.* **The lead stated it would decline to build this even if chosen, and said so before the owner decided** — the right posture. There is no coverage gap to diagnose; every glyph resolves. A shape-*preference* warning would fire on **every** Japanese document, unconditionally, forever: [[D-000.15]]'s false positive, whose cheapest resolution is switching the guard off. Documentation is the right instrument for a known, permanent, universal limitation.
+
+**Why this wins.** It costs one table row and one sentence in two documents, it keeps Folio from refusing a document it can genuinely render, and it leaves the correct-typography path open and documented through a mechanism that already ships. The accepted downside, disclosed rather than hidden: **Folio's Japanese kanji look Chinese to a Japanese reader.** That is the same posture AD-25 already takes for Thai, where an unrecognised name overflows visibly instead of being silently mis-split.
+
+**Consequences.**
+- **The `ja` golden is FORMATTING ONLY** — `2026年8月26日`, `1,234.56` — mechanically verifiable by anyone. AD-12's `[ASSUMPTION]` requires *"a golden fixture per locale"*; under this ruling that fixture covers dates and numbers, **not typography**. **The moment anyone claims Japanese typography, the golden needs a Japanese reader for [[D-000.22]]'s semantic acceptance step — and this project has no such person.** Thai works because the owner reads Thai ([[D-2.4.3]]); [[D-000.41]] forbids buying attributability with a scarce human we do not have. A later story may not quietly upgrade the claim.
+- **No locale→font inference is added.** The chain stays document-declared.
+- `ja` already appears at `internal/template/closedsets.go:14`, `model.go:25`, `parse.go:85` and a live fixture at `ac4_coverage_test.go:149`. Nothing narrows — but the new locale table must **agree** with those sites; a closed set declared in two places is a set that drifts ([[D-000.47]]).
+
+**Independent of this decision, and now owed:** **Story 5.4's payload itemisation is falsified.** Measured: **5.07 MB brotli -q 11** total (Latin 0.226 / Thai 0.025 / CJK 4.82; 11.29 MB raw) against AC2's stated 0.4 + 0.1 + 7.4 = 7.9 MB — roughly **2.8 MB headroom** under NFR7's ~9 MB, assuming the still-unmeasured 1.5 MB engine and 0.12 MB dictionary. This independently confirms DW-9. Amend `epics.md` and UX-DR5 under [[D-000.6]] at Story 5.4.
+
+**How we'd know it was wrong.** A Japanese user reporting the output as unusable rather than merely imperfect — which would mean the shape difference is not the cosmetic issue this ruling assumes. Or the disclosure sentence going missing, at which point the claim silently overstates.
+
+---
+
+### D-3.4.2 — The locale closed SET is declared in `internal/template`; the locale TABLE lives in `internal/expr` and is keyed from it
+**Lead's ruling**, issued pre-emptively because [[D-3.4.1]]'s "the four `ja` sites must agree" has a forced consequence with an attractive wrong answer. Confidence high on the direction (measured) and the split; medium on the accessor's exact shape.
+
+**Verdict.** One declaration, in `internal/template`, consumed by `internal/expr`:
+- **`closedLocales` (`internal/template/closedsets.go:13`) stays the single source of the tag set**, and gains an exported accessor.
+- **`internal/expr`'s locale table is keyed from that accessor**, never from a second literal.
+- **The agreement assertion is set difference in BOTH directions** — every declared tag has exactly one table entry, and every table entry has a declared tag. **Never a count, never a length check.**
+- **Not an AST scan.** This is checkable over the real values at test time.
+
+**The wall, measured.** The intuitive arrangement — have the loader's closed set read the locale table — **does not compile**. The stage-rank guard puts `template` at **2** and `expr` at **3** (`lint/internal/rules/stagerank.go:61-62`), so `template` may not import `expr`; and `expr` **already imports** `template` (`internal/expr/decimal.go:15`, for `SplitJSONNumber`). The arrow runs one way and it is the opposite of the one a developer reaches for.
+
+**In simple terms.** Two lists have to stay in step: the list of locale tags the file format will accept, and the list of locales we know how to format dates and money for. The obvious fix is to have one read the other — but the building's one-way corridors only allow traffic in the direction that makes the *formatting* side read the *format* side, never the reverse. Someone who hits the locked door and just writes the list out a second time has produced the exact problem the rule was written to stop, and it will compile perfectly.
+
+**Why the split is right rather than merely forced.** The closed set of **valid tags** is a `.folio` *format* constraint — `folio-format.md:48` states it, and the load error is raised in `template`. The per-locale **formatting data** (symbols, calendar, patterns) is `expr`'s, exactly as the spine's source tree says: *"`expr/` — … locale tables (AD-12)"*. **The set is format; the table is behaviour.** AD-12 is not amended.
+
+**Why a count would be wrong.** A count is a lossy set, and the two failure modes are **different bugs**: a declared tag with no table entry is *a locale nobody can format*; a table entry with no declared tag is *formatting data for a tag the loader rejects*. Only a two-directional set difference distinguishes them.
+
+**Why not an AST scan.** Unlike AC19's method-set check at 3.3 — defeated by an embedded interface — this property is checkable over **real values at test time**, so it does not inherit the alternate-spelling problem that has now defeated three instruments this epic ([[D-3.3.8]]). Do not over-engineer it into a type-checker rule.
+
+**Consequences.** This is the same wall [[D-3.2.1]]'s knock-on hit at 3.2, when the rank guard forced `DeriveFooterOf` up to the module root — worth noting as a recurring shape, not a one-off. **The dangerous resolution is never the compile error (Go stops that) but declaring the list twice to get past it** — [[DW-8]]'s duplication hazard in a new type. The other two `ja` sites are **consumers, not declarations**, and must not become a third and fourth source: `model.go:25` is a doc comment ([[D-000.35]]); `ac4_coverage_test.go:149` is a fixture that, under [[D-3.4.1]], is now a **live regression subject** proving a `ja` document loads — it must not be deleted as redundant once the locale table has its own tests.
+
+**How we'd know it was wrong.** A second locale literal appearing anywhere in the module, or a length assertion replacing the set difference.
+
+---
+
+### D-3.4.2 amendment (Story 3.4, finisher pass) — the shipped shape is ONE NAMED CONSTANT PER TAG, not the accessor-only shape above
+**Story-finisher note**, recording a ruling the story file's own header already states but which never reached this log entry (Finding 18, this story's QA review). **This amends D-3.4.2 above; that entry stays as written** — the log is append-only, per the same precedent D-1.2.3 (amended) above records.
+
+**What actually shipped, per the story file's own AC4 text ("The ruling, as AMENDED on this story's pushback"):** `internal/template` does **not** merely grow an exported accessor onto `closedLocales`. It exports **one named Go constant per tag** (`internal/template/locale.go`), `closedLocales` is built **from those constants**, and `internal/expr`'s locale table is **keyed by the same constants** — so each tag string is spelled exactly once **by construction**, never by an accessor function a caller could still bypass with a second literal. `internal/template` also exports the ordered tag sequence as a **declared literal slice** (never a ranged map, forbidden outright under `internal/` by [[D-1.3.5]]), with its exact order asserted as a pinned literal (AC4a).
+
+**Why the amendment, not a rewrite of the original.** D-3.4.2's own **verdict** substance — the split itself (set in `template`, table in `expr`), the two-directional set-difference assertion, never a count, never an AST scan, the `ja` row built like the others — is unchanged and correct. Only the **accessor's exact shape**, which D-3.4.2's own preamble flagged as "medium confidence," moved: the amendment removes the one remaining failure mode the accessor-only shape could not itself assert against — a caller constructing a SECOND literal tag string that happens to agree with the accessor's output today and drifts tomorrow. The constants shape closes that by making a second literal a **spelling** impossibility, not merely a **membership** one.
+
+**How we'd know it was wrong.** A tag string spelled as a bare literal anywhere outside `internal/template/locale.go`'s own constant declarations (JSON fixture documents are consumers, not declarations, and are exempted — AC4's own text).
+
+---
+
+### D-000.66 — "Verified, not assumed" marks a DEBT, and an uncollected debt reads as a fact with every hand-off
+**Orchestrator decision**, on the engineering lead's generalisation from [[D-3.4.1]]. A process rule, recorded because the failure it names has already run for four sessions undetected.
+
+**Verdict.** When an inherited grounding, ADR, deferral or story carries a phrase of the form *"must be verified, not assumed"*, *"needs confirming"*, *"believed to be"* or *"assumed for now"*, **that phrase is a debt with no owner**, and the next agent to read it either **collects it or re-states it as still outstanding with the reason it was not collected**. Passing it along verbatim is the one thing that is not allowed. For a lead, this applies at grounding: a hand-off phrase inherited from a predecessor is a work item, not a fact.
+
+**The incident.** The first grounding wrote, of AD-12's `ja` locale: *"Whether Noto Sans SC's coverage suffices must be **verified, not assumed**, before Story 2.2."* Sessions 2, 3 and 4 each re-grounded and each carried the sentence forward. **Story 2.2 shipped.** By session 5 the wording had hardened into a settled worry — the record read as though Folio claimed a locale it could not render, and the framing of the owner escalation was built on that. The fifth lead parsed the shipped `cmap` tables and found **complete coverage**: hiragana 93/93, katakana 96/96, every kokuji present. The real defect was regional glyph *shape* — a different problem, two orders of magnitude cheaper, and one the four-session-old sentence actively obscured.
+
+**In simple terms.** Somebody pinned a note to the wall saying "check whether this beam is load-bearing — don't just assume." Four people walked past, read the note, and repeated "there's a question about that beam" to the next person. By the fifth telling, "there's a question about the beam" had quietly become "there's a problem with the beam," and plans were being drawn around it. Someone finally got a ladder. The beam was fine; the paint was the wrong colour.
+
+**Why it is worth a rule of its own.** The phrase is *the marker of the failure*, which is what makes it mechanisable. An unverified claim usually looks like any other claim; this class **announces itself in its own text** and still survived four readings. That is [[D-000.35]]/[[D-000.46]]'s false-map hazard with a self-identifying label attached — and the label makes it cheap to catch, which is exactly why letting it pass is worse than the ordinary case.
+
+**Options considered.** (a) *Verify every inherited claim at each grounding* — rejected as the re-derivation [[D-000.8]] exists to prevent; the whole point of grounding from the log is not to re-measure the program every session. (b) *A tripwire grepping the log for the phrases* — attractive, and rejected for now on [[D-000.15]]: it keys on the wording, and the wording has unlimited paraphrases, which is the third instrument-defeat shape this run ([[D-3.3.8]]). (c) *A discipline, stated, applying only to the marked subset* — chosen: it costs nothing per session, and the marked subset is small precisely because the phrase is deliberate when written.
+
+**Why this wins.** It targets the narrow band where the cost of checking is known to be low (someone already flagged it) and the cost of not checking compounds silently. The accepted cost, stated plainly: **this rule has no mechanism** — same admission as [[D-000.63]]. It relies on each lead treating the phrase as a trigger.
+
+**Consequences.** Every lead-grounding brief from Story 3.5 onward instructs the lead to sweep inherited grounding sections for hand-off phrases and to **collect or re-state each one**. A re-stated debt names why it was not collected and what it would cost — never bare repetition. Where a debt turns out to be false, the correction is appended and the original left standing ([[D-000.49]]), as [[D-3.4.1]] did.
+
+**How we'd know it was wrong.** A grounding refresh that spends more effort re-verifying inherited phrasing than ruling on live stories — that would mean the marked subset is not small and the rule needs narrowing to load-bearing claims only.
+
+---
+
+### D-3.4.3 — OWNER DECISION: the `th` locale prints WESTERN digits, in dates and numbers alike, as an explicit table field
+**Owner decision**, on the engineering lead's recommendation, which the lead offered explicitly as *a prior for the owner to correct rather than a fact it could assert*.
+
+**Verdict.** Under `th`, Folio prints **Western (ASCII) digits** everywhere — dates and `formatNumber` alike. A Thai date reads `15 สิงหาคม 2569` (Buddhist era, Western digits); an amount reads `1,234.56`. The digit shape ships as an **explicit named field in the locale table**, never as an implicit default.
+
+**Why it went to the owner.** The owner reads Thai; neither the orchestrator nor the lead does. The locale table is versioned under AD-22, so **changing this later is a breaking change for every downstream golden hash** — cheap now, expensive at any later point. And *"what does a Thai bank statement actually print"* is a fact about the Thai market, not about the architecture.
+
+**The near-miss, recorded because it is the reusable part.** The orchestrator was inclined to take this as an orchestrator decision on the strength of `docs/expression-reference.md`, which already showed `15 สิงหาคม 2569` with Western digits. **The lead blocked that**, and was right: **that page was written at Story 3.2 as documentation for behaviour that did not yet exist** — [[D-000.28]]'s anticipatory-boilerplate class, *"false from birth and reading identically to a true one"* — and it had already been found wrong on two other counts, with Story 3.3 ordered to correct it. **Treating an agent's unverified guess as a shipped product decision is precisely the failure D-000.28 names.** The owner then ruled independently and happened to agree; that agreement is a coincidence, not a vindication of the shortcut.
+
+**In simple terms.** We were about to answer a question about Thai banking conventions by looking it up in a document we had written ourselves, three weeks earlier, guessing. It would have given the right answer this time. That is the worst possible outcome for a bad method, because it teaches you to use it again.
+
+**Options considered.**
+1. **Western digits everywhere — chosen.**
+2. *Thai numerals everywhere* (`๑๕ สิงหาคม ๒๕๖๙`, `๑,๒๓๔.๕๖`). Rejected: amounts become hard to scan for a mixed audience, and any downstream system parsing text out of the PDF breaks.
+3. *Thai numerals for the date or year only.* The lead named this **the incoherent middle** and declined to recommend it absent evidence it is the actual convention — a Buddhist-era year in Thai numerals sitting above a column of Western-digit amounts is two numeral systems in one document.
+4. *Author-selectable per document.* The only arm that would not be an AD-22 breaking change later, rejected as new author-facing surface in a story that has none, pushing onto the template author a decision the locale exists to settle.
+
+**Why an explicit field rather than "we just use ASCII".** It puts the choice **on the page**, so changing it later is a visible, versioned table edit rather than a silent code change — which is what AD-22 needs. The accepted downside: if Thai statements do conventionally print Thai numerals, this is wrong and costs a breaking change to fix. That is exactly why it was asked at 3.4 rather than discovered at 4.7.
+
+**How we'd know it was wrong.** A Thai reader reporting the output looks like a translated document rather than a Thai one — which is the story's own stated goal, verbatim.
+
+---
+
+### D-3.4.4 — The registered-but-unimplemented machinery is REMOVED at 3.4, not kept inert; and the replacement asserts the obligation, not the event
+**Lead's ruling.** Confidence high.
+
+**Verdict — arm A.** Story 3.4 flips the last two `functionTable` entries, at which point the unimplemented apparatus describes an empty set. Delete it: `funcEntry.implemented`, `owningStory`, `eval.go:57-66`'s branch, `TestUnimplementedFunctionsAreLocatedErrors`, `TestUnimplementedAndUnknownFunctionErrorsAreDistinguishable`, and `TestUnimplementedEntriesHaveNoEvalCallBranch`.
+
+**Why not keep it inert.** The table is closed at eight (C1), so **the unimplemented population cannot refill**. Arms B and C both leave a mechanism asserting a proposition that can never again be false — [[D-000.9]] with the polarity inverted: not *"an all-clear indistinguishable from a could-not-look"*, but **a guard that cannot fail, reported as coverage**.
+
+**The replacement, and the anti-vacuity clause is the whole point** ([[D-000.59]]: assert the **obligation**, never the **event**). *"All eight are implemented"* is the *event* — it re-reads the flag 3.4 just set. The *obligation* is that **a registered function actually computes**. Two halves, both required:
+1. **Structural, already built.** `TestImplementedEntriesMatchEvalCallSwitch` (`table_derivational_test.go:98`) becomes set equality between `functionTable`'s names and `evalCall`'s switch cases — every entry has a branch, every branch has an entry.
+2. **Behavioural, because a branch can exist and still refuse.** Each of the eight, called with valid arguments, returns **a value and no error**. Coverage witness derived from `len(functionTable)`, never a literal ([[D-000.14]]).
+
+**This pre-settles Story 5.1's `absenceChecks`**, which the session-5 grounding flagged as reaching zero. Same disposition: **delete the registration list, `ScanAbsences`, the `absenceKind*` machinery and `TestAbsencesChecksIncludeAllThreeEntries` — do not decrement to zero** — relying on the three positive assertions each discharge already landed (DW-2's licence coverage, DW-6's registry membership, DW-10's params path). **One thing 5.1's brief must state rather than assume:** the test is *can the population legitimately refill?* Here it cannot (closed table); at 5.1 it cannot either — but **that is a fact about the roadmap**, so the brief says it out loud rather than leaving it inferred.
+
+**How we'd know it was wrong.** A ninth function proposal, or a story after 5.1 wanting a new absence tripwire — either would mean a population we called closed was not.
+
+---
+
+### D-000.67 — D-000.9 and D-000.59 collide at a SCHEDULED zero; and a targeted fix does not sweep, even within one file
+**Orchestrator decision**, on the engineering lead's generalisation. Two rules from one incident; they are filed together because the second is what let the first survive.
+
+**Verdict, part 1.** An anti-vacuity presence precondition (*"this scan found at least one candidate"*, per [[D-000.9]]) is **itself a population-keyed assertion**, and must be checked against the roadmap the same way an absence tripwire is. **When the schedule empties its population, the precondition fires as a false alarm at exactly the moment the guard becomes correctly vacuous.** The remedy is never to relax the precondition — it is to remove the mechanism and its precondition together, replacing it per [[D-000.59]].
+
+**Verdict, part 2.** **A targeted fix to a named instance does not sweep, even within the same file.** When a finding names an instance of a *class*, the fix's unit is **the file, swept, with the count of sites examined reported** — the same coverage-witness discipline [[D-000.9]] already demands of guards, applied to fixes.
+
+**The incident.** Story 3.3's reviewer found a hard-coded expected value (`if n != 2`) in `internal/expr/table_derivational_test.go` and the finisher removed it. **Four lines below sat `if unimplemented == 0 { t.Fatal(...) }`** — the same class, in the same file, in the same story, and it survived, because nobody was asked about it. The Story 3.4 creator found it. Measured on inspection, the file carries **three** presence preconditions (`:85`, `:121`, `:159`); **two are safe forever and exactly one is not** — and the difference is not carelessness. `:159` is the only one keyed on a population **the roadmap drives to zero on purpose**. The file's own top comment claims it *"survives 3.3's edit and 3.4's with NO edit to this file at all"*, which is true of two of its three guards.
+
+**In simple terms.** A safety inspector finds a cracked bracket, writes it up, and the crew replaces that bracket. Four feet along the same beam is an identical bracket, identically cracked, and it stays there — because the work order named a bracket, not a beam. Nobody was careless; the unit of work was wrong. And separately: two of the three brackets were never going to crack, because only one of them was carrying a load scheduled to be removed. Knowing *which* required reading the plan, not the beam.
+
+**Why part 1 is not obvious.** [[D-000.9]] says zero candidates is a failure, not a pass. [[D-000.59]] says a population legitimately reaching zero is discharged by replacement. Both are right, and at a scheduled zero they **point in opposite directions** — D-000.9 says the guard should fire, D-000.59 says the guard should be gone. The resolution is that D-000.9 protects against an *accidental* empty population and D-000.59 governs a *planned* one, so the discriminating question is **"can this population legitimately refill?"** — which is a fact about the roadmap and must be looked up, not assumed.
+
+**Why part 2 is [[D-000.48]]'s mirror.** D-000.48 says a correction *sweep* can introduce a fresh instance of the class it is correcting. This is the inverse: a targeted *fix* fails to reach siblings of the instance it names. Same underlying cause — the unit of work and the unit of the defect are different sizes — and the two rules bracket it from both ends.
+
+**Consequences.** Reviewer findings that name an instance of a recurring class say so, and the finisher's resolution reports **how many sites in that file were examined**, not merely that the named one was fixed. Any presence precondition added from here is accompanied by one line stating whether its population can refill. [[D-3.4.4]] is the first application: the `== 0` precondition is **not** relaxed; the mechanism carrying it is removed.
+
+**How we'd know it was wrong.** A finisher spending materially longer sweeping files than fixing findings — that would mean the file is too large a unit and the rule needs narrowing to the enclosing declaration.
+
+---
+
+### D-3.4.5 — Date patterns have NO quoting grammar; a stray ASCII letter is a located load error
+**Lead's ruling.** Confidence high.
+
+**Verdict.** A date pattern is a sequence of **field tokens** (from a closed, asserted set) and **literals**. A literal may be **any character that is not an ASCII letter**. Any ASCII letter not part of a recognised token makes the pattern a **located load error naming the pattern and the offending character**. **No quoting mechanism ships** — no `'…'`, no backslash, nothing to escape.
+
+**Situation.** [[D-3.4.1]]'s `ja` golden forces `"yyyy年M月d日"`, so the grammar must admit literals interleaved with field tokens. That raises the usual next question — how do you write a literal that *is* a pattern letter? — and CLDR's answer is a quoting grammar.
+
+**In simple terms.** The only literal characters the four supported locales actually need are `年`, `月`, `日`, spaces, commas and slashes — none of which are letters of the English alphabet, which is what the pattern codes are made of. So there is no collision to escape. Rather than build a quoting system for a conflict that does not arise, a leftover English letter is simply rejected with a message pointing at it.
+
+**Why this wins, and the reason is reversibility rather than simplicity.** Patterns containing stray ASCII letters are **errors today**, so adding CLDR-style `'…'` quoting later **breaks nothing that works** — whereas shipping a quoting grammar now and removing it later would break every pattern using it. Take the reversible arm. It also keeps the check **decidable at load with no data**, which Story 3.7's `folio.Validate` needs.
+
+**Consequences.** The accepted **token** set is closed and asserted by **AST set-equality**, the same instrument as the function table — **not a regex over pattern text and not a name list**, per this epic's three instrument-defeats ([[D-3.3.8]]). The error names the pattern and the character (FR41). Note this governs the **date** pattern only: **`formatNumber`'s pattern grammar is a separate closed set** and still owes [[D-3.1a.1]]'s forcing assertion — no accepted `formatNumber` pattern may request more fractional digits than `avg` produces, with `avgExtraScale` cited **by symbol, never as the literal 4**.
+
+**How we'd know it was wrong.** A locale needing a Latin-letter literal in a date pattern — at which point quoting is added, additively, breaking nothing.
+
+---
+
+### D-000.68 — A guard must be anchored to something the code under test cannot move
+**Standing rule.** The lead's formulation as the statement; the orchestrator's as the operational corollary; four measured instrument-defeats in one epic as the evidence.
+
+**The rule.**
+
+> **A guard must be anchored to something the code under test cannot move. A guard whose reference point is the code's own spelling, its own declaration, or a space derived from either measures nothing — it asserts an identity and reports it as coverage.**
+
+**The operational corollary — how you check it.** *Prove a closed set closed by **rejection from outside**, and the rejected candidate must be **chosen by the test**, never derived from the declaration.* (The corollary is the actionable half; the statement is the half that explains *why*, and neither alone would have caught all four cases below.)
+
+**The three anchors that hold: the compiler, the type system, and a literal the test owns.** Every anchor that failed was chosen from inside the code under test.
+
+**Evidence base — four instruments defeated in Epic 3 alone.**
+
+| # | the guard's anchor | why the code could move it | the fix, and its anchor |
+|---|---|---|---|
+| 1 | the spellings `float32`/`float64` | a named struct type is binary float under another name (`math/big.Float`) | resolved type identity — **the type system** ([[D-3.1a.1]]) |
+| 2 | the *expression form* "non-literal" | `r := "page"` launders the value through one assignment | a defined struct type — **the compiler** ([[D-3.3.8]]) |
+| 3 | the syntactic method listing | embedding adds a method without listing it | `types.Interface`'s expanded method set — **the type system** ([[D-3.4.4]] context) |
+| 4 | **the declaration itself** | it is both specification and implementation | a literal the **test** owns, plus a fixed array bound ([[D-3.4.6]]) |
+
+**In simple terms.** You can't check a ruler against itself. Cases 1–3 were guards that checked the right thing against the wrong reference — they measured how the code *spelled* something rather than what it *was*, so renaming defeated them. Case 4 was worse: the parser decided what a valid token was by consulting the very list the test compared it to, so the test asked the code "do you agree with yourself?" and reported the inevitable yes as proof. It would have passed no matter what the list contained.
+
+**Why case 4 is the one that produced the rule.** It was **already** an AST set-equality — the fix prescribed for case 3 — and still fell. And the orchestrator's proposed generalisation (*"a closed set is only closed if something rejects everything outside it"*) is **true and would not have caught it**: enumerating all 52 ASCII letters still passes, because the parser genuinely does accept `HH` once `HH` is declared. That is what forced the sharper diagnosis. The lead also identified its own [[D-3.4.5]] wording as the defect — it cited the function-table instrument and **transplanted the half that does no work**: `TestExprFunctionTableIsExactlyEight` has teeth because `functionTable` is a fixed-size `[8]funcEntry` (a ninth entry is a **compile error**) and because the test pins the literal **8**. The teeth are in the array bound and the literal, not in the set-equality.
+
+**The discriminator against [[D-3.1a.3]], because these two rules appear to conflict.** D-3.1a.3 says *"a guard whose expected value must be edited is one that gets edited wrongly"*, and on that basis Story 3.3 removed hard-coded name lists. That rule governs **a population the roadmap is scheduled to change** — the `implemented` flags were due to flip at 3.3 and 3.4, so a literal list would have forced an edit in the same diff as the thing it guarded. This rule governs **a permanently closed set**, where a literal expectation is exactly right, because growing the set *should* require deliberately editing a test that says "this set is closed."
+
+> **Pin to a literal when the set is permanent; state it relationally when it is scheduled to move.**
+
+**Consequences.** Every new guard names its anchor and states which of the three it is. A guard that cannot name an anchor outside the code under test is not yet a guard. Reviewers test the anchor, not only the assertion: the discriminating mutation is one that changes the code **without** changing the anchor. Where a closed set is enforced by a lookup into its own declaration, the declaration must additionally carry an **external bound** (a fixed-size array, so growth is a compile error) — a bare `len() == N` does not qualify, because a count is a lossy set.
+
+**How we'd know it was wrong.** A guard anchored to a test-owned literal that has to be edited every story or two — that would mean the set was never permanent and [[D-3.1a.3]]'s relational form was the right instrument after all.
+
+---
+
+### D-3.4.6 — The date-token guard is re-anchored to a test-owned literal plus a fixed array bound
+**Lead's ruling**, issued as a correction to its own [[D-3.4.5]]. See [[D-000.68]] for the general rule this produced.
+
+**The defect, measured.** `parseDatePattern` (`datepattern.go:51-73`) validates by looking up **`dateFieldTokens` itself**, so `TestDateFieldTokenSetMatchesParser` compares that map to itself twice: half 1 ("every declared token is accepted") looks up the same map and **cannot fail**; half 2's candidate alphabet is `lettersInUse`, **built from `declared`** (`:99-104`), and **cannot fail**. Adding `"HH"` puts `H` into `lettersInUse`, `declared["HH"]` is true, the parser accepts it, and the whole package stays green.
+
+**Verdict — three changes.**
+1. **Pin the expected set as a literal the test owns** — `{"yyyy","MMMM","MM","M","dd","d"}` — set equality in **both** directions against `dateFieldTokens`. Adding `"HH"` then reddens. This is the anchor the test had nowhere.
+2. **Give the source an external bound**, mirroring the function table: declare the tokens as a **fixed-size array (`[6]string`)** and build the map from it, so growth is a **compile error** as well as a test failure. **Not a bare `len() == 6`** — a count is a lossy set.
+3. **Widen half 2's candidate space to all 52 ASCII letters at lengths 1..5, independently of `declared`.** It does not catch this bug — the parser really does accept `HH` once declared — but it guards a parser that ever gains a special case outside the map, and its space must not be derived from the thing under test.
+
+**How we'd know it was wrong.** A seventh date token being needed — at which point the compile error and the test failure both fire, deliberately, which is the intent.
+
+---
+
+### D-3.4.7 — Dot-imports are banned outright under `internal/`; the `math` rule is not patched
+**Lead's ruling.** Confidence high.
+
+**Verdict.** Ban **dot-imports** for every file the AD-1 lint covers under `internal/` — one predicate on the import spec's name being `.`. Do **not** patch the `math` rule.
+
+**Situation.** The reviewer found the `math` import ban evadable by a dot-import, established by reading `forbiddenimports.go:187-197` rather than by a mutant, since no such spelling exists in the tree. [[D-1.3.10]] made `math` a **selector** rule with a closed allow-list, so it keys on `math.Sqrt` — and a dot-import removes the selector.
+
+**Why wider is cheaper and better.** **Every other AD-1 import ban — `os`, `time`, `net`, `math/rand` — is evadable by the same spelling.** One dot-import ban closes all of them at once, and closes every future selector-keyed rule by construction. Patching `math` alone leaves four siblings open and is [[D-000.23]]'s failure exactly: a guard written for the defect rather than for its class. This is [[D-000.68]]'s family — a guard keyed on spelling — and the fix moves the anchor to a syntactic property the code cannot restate.
+
+**Why not deferred.** There is no legitimate dot-import under `internal/`; it is universally discouraged in Go and nothing in the tree uses one. It is **red-provable now** with a retained violating fixture under `lint/testdata/` — exactly what the reviewer could not construct for the narrow version. The deferral record would cost more than the predicate.
+
+**How we'd know it was wrong.** A generated file needing a dot-import under `internal/` — none exists, and generated code is not covered by that path.
+
+---
+
+### D-3.4.8 — The `digits` coherence is ASSERTED, and the assertion requires a synthetic locale or it is vacuous
+**Lead's ruling**, on an orchestrator escalation. Confidence high.
+
+**Verdict.** Assert the **coherence**, not merely the wiring: for every locale, every digit character in `formatDate`'s output **and** in `formatNumber`'s output is drawn from the numeral system that locale's `digits` field names. Both surfaces, one system, per locale.
+
+**Why an assertion and not just a fix.** [[D-3.4.3]] ruled Western digits ship as an **explicit named field** so a later change is a visible versioned table edit — but `formatDate` did not read the field, so **one table edit would produce `๑,๒๓๔.๕๖` amounts above Western-digit dates**: exactly the "incoherent middle" the owner was shown as option 3 and **rejected**. Wiring the field through leaves that rejected option one edit away with nothing objecting. **An owner decision with no forcing function is a preference, not a decision.**
+
+**The part that decides whether the assertion works.** All four locales are Western today, so *"assert both outputs match the field"* passes **whether or not `formatDate` reads the field** — the hardcoded behaviour and the correct behaviour are **indistinguishable on every shipped subject**. [[D-000.50]]: no existing subject can express this defect. So the test **constructs one** — a **synthetic locale entry with `digits: thai`, injected in the test and never shipped** — asserting that **both** the date and the number come back in Thai numerals. The same move [[D-2.6.5]] required: the red-proof needs a synthetic template, not a fixture.
+
+**Red-proof.** With `formatDate` ignoring the field, the synthetic-locale case reddens **on the date** while the number still passes — which names the defect precisely rather than reporting a generic mismatch.
+
+**How we'd know it was wrong.** A locale added with a non-Western `digits` value and no test movement.
+
+---
+
+### D-000.6 amendment (Story 3.4, finisher pass) — `folio-format.md:223`'s "aggregate not yet computed" sentence corrected
+**Ships in Story 3.4's own commit**, per [[D-000.6]] (a ruling that makes a canonical document wrong amends that document) and Finding 18 (this story's QA review): the sentence was a live falsehood in the very document AC21 amends in this same story, of the identical staleness class the developer already volunteered to correct elsewhere in the docs twins (the *Locale* paragraph, AC20).
+
+**Verdict.** Correct the sentence; no invariant, AC, or table shape changes. Story 3.3 computed `sum`/`count`/`avg` and Story 3.4 (this story) implements `formatNumber`, so the claim that the aggregate "is not yet computed" and is "registered but unimplemented" was two stories stale. What remains true, and stays stated: no table-rendering code path exists yet to place a computed, formatted value into an actual footer CELL — that is still Story 4.5's job, untouched by this story.
+
+**Before** (`_bmad-output/specs/spec-folio/folio-format.md:223`):
+> **The aggregate itself is not yet computed** — `sum`/`count`/`avg` are registered but unimplemented until Story 3.3, so evaluating one today is a located error naming the owning story; the footer cell's actual value is not rendered until Story 4.5.
+
+**After:**
+> **As of Story 3.4, the aggregate itself computes** (`sum`/`count`/`avg`, Story 3.3) **and can be formatted** (`formatNumber`, Story 3.4) — but no table-rendering code path exists yet to place a computed, formatted footer value into an actual footer cell; the footer cell's actual value is not rendered until Story 4.5.
+
+**How we'd know it was wrong.** Story 4.5 landing and this sentence still reading as though `sum`/`count`/`avg`/`formatNumber` were the open question, rather than table placement.

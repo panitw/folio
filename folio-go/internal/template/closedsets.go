@@ -10,9 +10,10 @@ import "regexp"
 // optional" — every check against one of these sets lives here, and
 // nowhere near the passthrough code in parse.go.
 
-var closedLocales = map[string]bool{
-	"en": true, "th": true, "zh-Hans": true, "ja": true,
-}
+// closedLocales moved to locale.go (Story 3.4, AC4): the closed set of
+// valid `locale` tags is now built from named constants exported for
+// internal/expr's locale table to key off, rather than a second copy
+// of the tag literals.
 
 var closedElementTypes = map[string]bool{
 	"text": true, "image": true, "table": true, "line": true, "rect": true,

@@ -8,7 +8,20 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/template"
 )
+
+// testFC is the ordinary `en`/UTC formatting context most tests that
+// do not themselves exercise formatDate/formatNumber's locale
+// behaviour thread through Eval — Story 3.4's FormatContext parameter
+// (R1) is mandatory on every Eval call, and this is the shared,
+// explicit, non-zero value tests use when the locale is not the point
+// of the test (AC5b: the ZERO value is deliberately unusable, so it is
+// never used here as a stand-in for "don't care").
+func testFC() FormatContext {
+	return FormatContext{Locale: template.LocaleEN, UTCOffset: "+00:00"}
+}
 
 func repoRootFromTest(t *testing.T) string {
 	t.Helper()

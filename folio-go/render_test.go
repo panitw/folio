@@ -12,9 +12,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/pdf"
+	"github.com/panitw/folio/folio-go/internal/template"
 )
+
+// testFormatContext is the ordinary `en`/UTC formatting context this
+// package's own tests thread through bind.BindTextSpans/Resolve
+// wherever they call it directly rather than through the public
+// Render/ParseTemplate path (Story 3.4's mandatory FormatContext
+// parameter, R1).
+func testFormatContext() expr.FormatContext {
+	return expr.NewFormatContext(template.LocaleEN, "+00:00")
+}
 
 // subprocessEnvVar, when set to "1", makes TestMain render the FONTLESS
 // document to stdout and exit instead of running the test suite. This is

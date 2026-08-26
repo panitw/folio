@@ -18,8 +18,9 @@ package expr
 // argKind is a per-argument constraint Check (check.go) can decide
 // WITHOUT any data — Decision 3's "literal-argument kind" half, never
 // its "path-argument value kind" half (that is explicitly NOT this
-// story's obligation; it is owed at evaluation by whichever story
-// implements the function — see FuncEntry.OwningStory).
+// story's obligation; it is owed at evaluation by evalCall's own
+// switch, below — FuncEntry no longer carries an OwningStory field,
+// see AC16/Arm A's removal note further down this file).
 type argKind int
 
 const (
@@ -63,35 +64,39 @@ func (returnString) isReturnKind()  {}
 func (returnAny) isReturnKind()     {}
 
 // FuncEntry is one row of the closed eight-entry table.
+//
+// Story 3.4/AC16 (RULED ARM A): this struct used to also carry
+// `implemented bool` and `owningStory string`, distinguishing a
+// computed function from a registered-but-not-yet-implemented one.
+// That distinction is REMOVED, not merely retired to false/inert,
+// because the table is closed at eight (C1) and this story flips the
+// last two entries — so the "unimplemented" population goes to ZERO,
+// on schedule, and a mechanism asserting "is this entry implemented"
+// would from that point on assert a proposition that can never again
+// be false (D-000.9 with the polarity inverted: a guard that cannot
+// fail, reported as coverage). Every one of the eight entries below
+// now computes; TestImplementedEntriesMatchEvalCallSwitch
+// (table_derivational_test.go) and the behavioural witness in
+// table_behavioral_test.go assert the OBLIGATION that they do,
+// derivationally, rather than re-reading a flag this story just set.
 type funcEntry struct {
 	name  string
 	arity int
 	args  []argKind // len(args) == arity
 	ret   returnKind
-
-	// implemented reports whether Eval actually computes a result for
-	// this function (AC12-AC14: upper/lower/if) or whether every call
-	// is a located "not yet implemented" error (AC15-AC18: the other
-	// five).
-	implemented bool
-
-	// owningStory names the story that implements this function, used
-	// only in the unimplemented-function error message (AC15).
-	// Meaningless (and unused) when implemented is true.
-	owningStory string
 }
 
 // functionTable is FR18's closed eight, keyed by name (AC5). Ordering
 // here is source order, not significant to any guard.
 var functionTable = [8]funcEntry{
-	{name: "sum", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: true},
-	{name: "count", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: true},
-	{name: "avg", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}, implemented: true},
-	{name: "formatDate", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}, implemented: false, owningStory: "3.4"},
-	{name: "formatNumber", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}, implemented: false, owningStory: "3.4"},
-	{name: "upper", arity: 1, args: []argKind{argAny}, ret: returnString{}, implemented: true},
-	{name: "lower", arity: 1, args: []argKind{argAny}, ret: returnString{}, implemented: true},
-	{name: "if", arity: 3, args: []argKind{argNotLiteral, argAny, argAny}, ret: returnAny{}, implemented: true},
+	{name: "sum", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}},
+	{name: "count", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}},
+	{name: "avg", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}},
+	{name: "formatDate", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}},
+	{name: "formatNumber", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}},
+	{name: "upper", arity: 1, args: []argKind{argAny}, ret: returnString{}},
+	{name: "lower", arity: 1, args: []argKind{argAny}, ret: returnString{}},
+	{name: "if", arity: 3, args: []argKind{argNotLiteral, argAny, argAny}, ret: returnAny{}},
 }
 
 // LegalFunctionNames returns the eight legal names, in table order —
