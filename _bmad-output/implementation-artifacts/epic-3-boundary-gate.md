@@ -773,3 +773,25 @@ lint-side instrument wherever one is affordable.
 **Carried-forward count: eleven → nine.** Items 2 and 9 are closed. The option 1 / option 2 fork on
 what the page model promises is **with the project owner**, batched into Epic 4 planning with DW-4 and
 DW-13.
+
+### Item 5, third disposition — **D-000.75**: all four CI jobs now verified under their own conditions
+
+Finding O.1 said CI has never run. D-000.74 made the `folio-go` job green so the first push would be
+readable. **Checking that claim the way D-000.74's own lesson demands turned up a third defect**, and
+it was in the job this gate had recorded as green throughout.
+
+`lint`'s `112/0` — and my own `113/0` and `114/0` after it — were **warm-cache measurements reported
+as claims about CI**. In a clean `GOMODCACHE`, reproducing the job's documented steps exactly:
+**EXIT=1, 101 pass, 13 fail**. `lint/go.mod` does not require `folio-go` and there is no `go.work`, so
+`go mod download all` in `lint/` never fetches `folio-go`'s own `textshape` require; under
+`GOPROXY=off` every type-checking rule degrades. **Eleven of the twelve failing functions have been
+latent since Story 1.3.** One added CI step fixes it: `go mod download all` with
+`working-directory: folio-go`.
+
+All four jobs then run in their own fresh caches: `folio-go` every step **EXIT=0**;
+`folio-go-known-red` **EXIT=1** as designed; `hashmatrix` **EXIT=0**; `lint` with the fix **EXIT=0,
+114 pass**.
+
+**This retroactively qualifies every "lint green" in this document.** The conclusions stand — the
+rules are sound and the tree is clean — but the instrument was the wrong one, which is D-000.71's
+finding arriving a second time from a different direction. Corrected in grammar and in mechanism.

@@ -152,6 +152,25 @@ jobs:
       - name: go mod download all (D-1.3.11: populates the module cache for lint's WHOLE module graph, not just the packages it imports directly, so the GOPROXY=off step below can resolve every dependency's LICENSE file offline)
         working-directory: lint
         run: go mod download all
+      # D-000.75. lint's packages.Load type-checks the SIBLING module folio-go
+      # (bigfloattype, floattyped, maprange, licencegraph, visibilitysignature,
+      # glyphidcensus). lint/go.mod does not require folio-go and there is no
+      # go.work, so the download above populates LINT's graph only — folio-go's
+      # own require (boxesandglue/textshape, folio-go/go.mod:20) stays absent
+      # and, under GOPROXY=off below, every type-checking rule degrades.
+      #
+      # Measured A/B in two freshly-created empty GOMODCACHE directories, not
+      # from a warm cache: WITHOUT this step, 101 pass / 13 fail, EXIT=1
+      # ("invalid package name" on textshape/subset). WITH it, 114 pass, EXIT=0.
+      # Eleven of the twelve failing functions have been latent since Story 1.3.
+      #
+      # Do NOT "fix" this by dropping GOPROXY=off below — that flag is
+      # D-1.3.11's deliberate offline licence check, and removing it trades a
+      # loud failure for a silent dependency on the network (D-000.58's
+      # declined shape).
+      - name: go mod download all (folio-go's graph — lint type-checks it across the module boundary)
+        working-directory: folio-go
+        run: go mod download all
       - name: go test -count=1 ./... (AD-1 lint, map-range, fonts-assets, licence check + manifest — production and fixture scans, AC1)
         working-directory: lint
         env:

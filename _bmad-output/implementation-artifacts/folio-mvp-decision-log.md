@@ -11727,3 +11727,90 @@ assumption is a red-proof to run and not a caveat to record.
 **How we'd know it was wrong.** A second sanctioned red arriving and being absorbed into
 `KNOWN_RED_TEST` by turning the scalar into a list without an owner decision — the mechanism is
 designed to make that visible, not impossible, and it depends on a reviewer noticing a shape change.
+
+---
+
+### D-000.75 — Before the first push of a repo whose CI has never run, every job is executed under its own conditions and the result recorded; a warm dev machine is a different instrument
+**Engineering lead ruling**, at Epic 4's opening. **Third finding in two days traceable to
+[[D-000.71]]**, and the lead's own error is the subject of it.
+
+**Verdict.** Before the first push of a repository whose CI has never run, **each job is executed under
+its own conditions** — a clean module cache, the job's exact environment, its exact
+working-directories, its steps in order — and the result is recorded per job. `go test ./...` from a
+warm development machine is **a different instrument measuring a different thing**, and its green is
+not that job's green. This is [[D-000.58]]'s *"a procedure that cannot be run from a clean checkout is
+not a procedure"* pointed at CI jobs rather than at gate procedures.
+
+**The error that produced the rule.** The lead argued DW-16's census belonged in `lint` partly because
+*"lint's job is green (112/0)"*. **That number came from a local run with a warm module cache,
+reported as a claim about CI.** Same class as [[D-000.64]]: a correct measurement over the wrong
+population, stated as a conclusion about the whole. The placement was right for other reasons and
+stands ([[D-000.73]]); the argument for it was not.
+
+**The defect it uncovered, measured A/B in two freshly-created empty `GOMODCACHE` directories — by the
+lead, and then reproduced independently by the orchestrator rather than accepted** (the entire point
+of the rule being that a warm cache lies, so taking someone else's warm-cache-free numbers on faith
+would repeat the error one level up):
+
+| condition | result |
+|---|---|
+| `go mod download all` in `lint/` only, then `GOPROXY=off go test -count=1 ./...` | **EXIT=1 — 101 pass, 13 fail** |
+| same, plus `go mod download all` in `folio-go/` | **EXIT=0 — 114 pass, 0 fail** |
+
+Thirteen rather than the lead's twelve because `TestLicenceGraphProductionScan/folio-go` counts
+separately from its parent; the twelve **functions** are identical.
+
+**The cause is one line of CI config, not a code defect.** `lint/go.mod` requires only
+`golang.org/x/tools` — it does **not** require `folio-go`, and there is no `go.work`. So
+`go mod download all` with `working-directory: lint` populates *lint's own* graph, while
+`packages.Load` runs the go command in `<repo>/folio-go`, whose
+`require github.com/boxesandglue/textshape` (`folio-go/go.mod:20`) nobody downloaded. Under
+`GOPROXY: "off"` it cannot be fetched, and every type-checking rule degrades. The failure text names
+it exactly: *`boxesandglue/textshape/subset (invalid package name: "")`*. **Eleven of the twelve have
+been latent since Story 1.3**; `TestGlyphIdentifierCensus` is the twelfth and is how it surfaced.
+
+**Fix:** one step in the `lint` job, `go mod download all` with `working-directory: folio-go`, placed
+after lint's own download and before the `GOPROXY=off` test. **Not** by dropping `GOPROXY=off` — that
+flag is [[D-1.3.11]]'s deliberate offline licence check, and removing it trades a loud failure for a
+silent dependency on the network, which is D-000.58's declined shape.
+
+**All four jobs then executed under their own conditions, each in its own fresh cache** (guardrail 2 —
+`lint` was the only one either party had simulated, and *"I expect"* is the word that produced the
+finding):
+
+| job | steps | result |
+|---|---|---|
+| `folio-go` | build · vet · build `-tags=matrix` · vet `-tags=matrix` · gofmt · test `-skip` | **every step EXIT=0**, 13 packages ok |
+| `folio-go-known-red` | test `-run` the one test | **EXIT=1 — correct**, `…/P6g_(opaque_names)` |
+| `hashmatrix` | vet · build probe · test · gofmt | **EXIT=0** |
+| `lint` (with the fix) | build · vet · gofmt · download ×2 · `GOPROXY=off` test | **EXIT=0**, 4 packages ok |
+
+**In simple terms.** We have been saying "the tests pass" while standing next to a machine that has
+already downloaded everything. The build server starts with nothing. One of our four jobs turns out to
+depend on something nobody told it to fetch, and it has been that way for three epics — invisible,
+because the server has never run.
+
+**Why it mattered enough to hold before the push.** Without the fix, the first push would have shown
+`folio-go` green, `folio-go-known-red` red-as-designed, and **`lint` red for a reason that has nothing
+to do with the code** — muddying, on day one, exactly the at-a-glance discrimination [[D-000.74]] was
+built to create. The accommodation would have been born unreadable.
+
+**The reassuring half, and it belongs in [[D-000.73]]'s record too: all thirteen failed LOUDLY** —
+*"type information unavailable"* — and `TestGlyphIdentifierCensus` **Fatal**ed rather than reporting
+an empty census as a clean one. A degraded load answering *"zero producers, zero readers, all clear"*
+would have been the dangerous outcome **and would have been indistinguishable from a healthy census**.
+That is the D-000.9 anti-vacuity design earning its cost, in the first situation that could have
+exploited its absence. **Before treating a red of this shape as a defect, establish which of the two
+you have.**
+
+**The symmetric guardrail, recorded because both parties needed it.** The lead bound itself to a rule
+that any clause of its own containing *"fails safe"*, *"reddens"* or *"stops matching"* is a mutation
+it owes, not a claim — after [[D-000.74]] found its `-skip` fail-safe was untested and false. But the
+orchestrator **applied** that step without running its mutation, and ran it only because the lead
+flagged it. So the rule is not *"the lead must test its fail-safes"*: **the party who LANDS a safety
+property owes the mutation, whoever wrote the clause.**
+
+**How we'd know it was wrong.** A job passing under its own conditions here and still failing on the
+first real push — which would mean the local simulation is missing something about the runner
+(`ubuntu-24.04` versus `darwin/arm64`, `actions/setup-go`'s own cache restore) that this rule assumes
+away. The simulation is not the runner; it is much closer than a warm dev machine.
