@@ -111,3 +111,45 @@ func validateNumberPattern(pattern string) (numberPatternSpec, error) {
 
 	return numberPatternSpec{minIntDigits: minInt, fracDigits: fracDigits, grouping: grouping}, nil
 }
+
+// UnformattedPattern is D-1.4.1's "absent and underived, the footer
+// renders UNFORMATTED" case, expressed as the one thing this package's
+// closed pattern grammar can express: a pattern that reproduces d's OWN
+// spelling — its own fraction digits, no grouping separator, no
+// zero-padding of the integer part.
+//
+// WHY THIS EXISTS AT ALL (Story 4.5 review, Blocker 1). "Unformatted"
+// is not a pattern the grammar has a spelling for: the fraction part is
+// drawn from {'0'} only (validateNumberPattern above), so "however many
+// fraction digits the value happens to carry" cannot be WRITTEN — it can
+// only be COMPUTED from the value, which is what this function does. The
+// alternative a caller reaches for when it does not have this function
+// is a fixed literal default, and the only fixed default available is
+// "0" — ZERO fraction digits, which SILENTLY ROUNDS every non-integral
+// value it is handed (a true total of 30.85 renders "31"). On AD-23's
+// exact-decimal money path that is a wrong bank-statement figure, and it
+// is what shipped in Story 4.5's first pass. A pattern derived from the
+// value's own scale never rounds anything the grammar can express.
+//
+// THE ONE RESIDUAL, STATED RATHER THAN HIDDEN: fracDigits is clamped to
+// maxPatternFractionDigits (== avgExtraScale), because that is the
+// widest pattern validateNumberPattern accepts — it is the product's own
+// declared display ceiling, not a choice made here, and it binds an
+// explicit author-written footerFormat exactly as hard. A value whose
+// scale exceeds it therefore renders rounded half-to-even at that
+// ceiling (formatNumber's own AC13 rounding, applied once) rather than
+// at zero digits. avg() reaches the clamp routinely — its scale is
+// maximum operand scale + avgExtraScale by construction — so this is the
+// ordinary case for avg, not an exotic one. Widening the ceiling is a
+// change to the pattern grammar's own bound (AC17) and belongs to
+// whoever owns that bound, not to a caller.
+func UnformattedPattern(d Decimal) string {
+	fracDigits := -d.Exponent
+	if fracDigits <= 0 {
+		return "0"
+	}
+	if fracDigits > maxPatternFractionDigits {
+		fracDigits = maxPatternFractionDigits
+	}
+	return "0." + strings.Repeat("0", fracDigits)
+}

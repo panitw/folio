@@ -186,7 +186,7 @@ func TestTableHeaderLabelsAppearOnEveryContinuationPage(t *testing.T) {
 // per-story/per-epic `go test ./...` gate therefore SKIPS both tests
 // (this var unset), and the Epic 4 boundary catch-up run sets it:
 //
-//	env CGO_ENABLED=0 GOWORK=off FOLIO_HEAVY=1 go test -count=1 -run 'TestTableHeaderRepeatAcrossHundredsOfPagesIsByteStable|TestTwoTablesWithPageCountFooterRenderConsistently' -v ./...
+//	env CGO_ENABLED=0 GOWORK=off FOLIO_HEAVY=1 go test -count=1 -run 'TestTableHeaderRepeatAcrossHundredsOfPagesIsByteStable|TestTwoTablesWithPageCountFooterRenderConsistently|TestFooterOrphanTieHoldsAcrossHundredsOfPagesWithByteStability' -v ./...
 const heavyTestGateEnvVar = "FOLIO_HEAVY"
 
 // TestTableHeaderRepeatAcrossHundredsOfPagesIsByteStable is a HEAVY

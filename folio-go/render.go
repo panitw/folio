@@ -179,6 +179,20 @@ type textRunSource struct {
 	// its labels form ONE group (AC5), the same mechanism a data row's
 	// chrome and lines use. Never true alongside isTableRowLine.
 	isHeaderLabel bool
+
+	// isFooterLine — Story 4.5: mirrors tableRectSource.isFooterRow,
+	// carried on a table's footer VALUE runs so the footer's chrome and
+	// its value text form one group (AC1/AC5), the same mechanism a
+	// data row's chrome and lines use, or the header's chrome and
+	// labels. Never true alongside isTableRowLine or isHeaderLabel. A
+	// DISTINCT row-type tag from isTableRowLine on purpose: a future
+	// story keying alternating-row shading off isTableRowLine/rowIndex
+	// (Story 4.8, epics.md: "the alternation follows row index in the
+	// collection") never sees the footer as a row, regardless of
+	// whichever layout.ItemGroup.Key the footer is carrying for
+	// pagination purposes at any given moment (see chromeRowGroup's own
+	// note on Index -1).
+	isFooterLine bool
 }
 
 // lineRowGroup derives this run's layout.ItemGroup — Story 4.3's grouping
@@ -190,6 +204,19 @@ func (r textRunSource) lineRowGroup() layout.ItemGroup {
 	switch {
 	case r.isHeaderLabel:
 		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, IsHeader: true}}
+	case r.isFooterLine:
+		// Story 4.5: Index -1 is a sentinel no real data row ever carries
+		// (rowIndex ranges 0..N-1) — it names the footer's OWN group,
+		// distinct from the header's (IsHeader) and from every data
+		// row's (Index>=0). paginateWithFooterOrphanFix (table_footer.go)
+		// may temporarily redirect this Key to a preceding row's own Key
+		// for ONE layout.Paginate call, when (and only when) the orphan
+		// rule requires it — that redirection is a pagination-time
+		// grouping decision only, made outside this package's row-type
+		// tags (isFooterLine itself never changes), so it cannot leak
+		// into anything that keys off row identity instead of group
+		// membership (see isFooterLine's own doc comment).
+		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, Index: footerGroupIndex}}
 	case r.isTableRowLine:
 		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, Index: r.rowIndex}}
 	default:
@@ -1484,7 +1511,8 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// band also does; the ACTUAL page-model content is unaffected,
 	// only Result.Diagnostics' relative order between the two kinds).
 	contentRuns = append(contentRuns, contentTableRuns...)
-	contentPlan, plerr := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns, tableRects, visible))
+	contentItems := contentColumnItems(contentRuns, imageRuns, tableRects, visible)
+	contentPlan, _, plerr := paginateWithFooterOrphanFix(geometry, contentItems, footerOrphanTargetsFrom(contentItems))
 	if plerr != nil {
 		return nil, nil, nil, nil, wrapOverflowError(plerr)
 	}
@@ -1822,7 +1850,10 @@ func paginateDocument(
 		lo := len(pdfRects)
 		pdfRects = append(pdfRects, ts.rects...)
 		for range ts.rects {
-			rectIsDataRow = append(rectIsDataRow, ts.isDataRow)
+			// Story 4.5: a footer row's chrome gets the SAME per-table
+			// row displacement a data row's chrome gets (AC6) — it is
+			// one more row of this table for FR26's purposes.
+			rectIsDataRow = append(rectIsDataRow, ts.isDataRow || ts.isFooterRow)
 			rectElementID = append(rectElementID, ts.elementID)
 		}
 		refs := make([]layout.RectRef, 0, len(ts.rects))
@@ -1938,7 +1969,7 @@ func paginateDocument(
 		}
 	}
 
-	plan, err := layout.Paginate(geometry, items)
+	plan, footerOrphanDiags, err := paginateWithFooterOrphanFix(geometry, items, footerOrphanTargetsFrom(items))
 	if err != nil {
 		return nil, nil, wrapOverflowError(err)
 	}
@@ -1953,6 +1984,7 @@ func paginateDocument(
 	// the page's content height (smaller margins, or a smaller
 	// page-header/page-footer).
 	var repeatDiags []Diagnostic
+	repeatDiags = append(repeatDiags, footerOrphanDiags...)
 	for _, s := range plan.Suppressed {
 		repeatDiags = append(repeatDiags, Diagnostic{
 			Severity:  SeverityWarning,
@@ -2002,7 +2034,9 @@ func paginateDocument(
 			// further down, beyond Shift, to make room for the repeat
 			// above them — scoped to that table's ElementID alone
 			// (DECISION-3), never to any other element on this page.
-			if runs[ref].isTableRowLine {
+			// Story 4.5: the footer's own value lines get the same
+			// displacement its chrome does (AC6), for the same reason.
+			if runs[ref].isTableRowLine || runs[ref].isFooterLine {
 				run.Y += rowDisplacementFor(assigned.RowDisplacement, runs[ref].elementID)
 			}
 			pageRuns = append(pageRuns, run)

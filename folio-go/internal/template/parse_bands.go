@@ -410,6 +410,17 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 		if err != nil {
 			return Column{}, newLoadError("footer", string(id), string(footerRaw), "must be a string: "+err.Error())
 		}
+		// UNCODED, DELIBERATELY, AND ON THIS GROUND (D-000.67 part 2;
+		// Story 4.5's review, Minor 8 corrected the ground recorded for
+		// it). Unlike the three checks around it, this is NOT a type
+		// failure — the value is a well-formed string. It is a
+		// CLOSED-SET violation: a footer KIND outside {sum, count, avg}.
+		// TABLE_FOOTER_SOURCE_UNRESOLVED / _FORBIDDEN name a failure of
+		// the footer's numeric SOURCE (which collection path its value
+		// comes from), and a bad KIND is a different statement entirely,
+		// so coding it with either would corrupt both meanings — worse
+		// than leaving it to surface as TEMPLATE_MALFORMED through
+		// wrapTemplateError, which is what it is.
 		if !closedFooterKinds[s] {
 			return Column{}, newLoadError("footer", string(id), s, "not one of the closed set sum, count, avg")
 		}
@@ -440,7 +451,14 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 		// collection path + "." — a string prefix test, no parser.
 		prefix := collection + "."
 		if !strings.HasPrefix(s, prefix) {
-			return Column{}, newLoadError("footerOf", string(id), s, fmt.Sprintf("must be prefixed by the table's collection path %q (D-1.4.2)", prefix))
+			// D-1.4.1: TABLE_FOOTER_SOURCE_UNRESOLVED covers "underivable
+			// OR out-of-collection source" — this is the out-of-collection
+			// arm. Routed here by the engineering lead (Story 4.5): a
+			// Story 3.6 absorption gap (the two FORBIDDEN checks beside
+			// this one were coded at 3.6; this one was left as a plain
+			// newLoadError), swept and closed in this story rather than
+			// carried further.
+			return Column{}, newLoadErrorCoded("footerOf", string(id), s, fmt.Sprintf("must be prefixed by the table's collection path %q (D-1.4.2)", prefix), diag.CodeTableFooterSourceUnresolved)
 		}
 		col.FooterOf = present(s)
 	}

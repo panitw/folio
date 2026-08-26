@@ -12615,3 +12615,414 @@ wrong once: with the gate unset both tests report `--- SKIP` (never a silent pas
 **How this ledger could mislead, stated up front:** the counts come from **what review found**, and
 review is a sample, not a census — `resolvedBodyStyle.valign` was found by grep, not by the adversarial
 pass. **Every number here is a lower bound.**
+
+---
+
+### D-4.5.1 — Two conditions share a diagnostic code only if the author would take the same action AND the same thing happened to their document; same remedy is not sufficient
+
+**Asked:** when the last data row and the footer together exceed the content window, is that the SAME
+condition as Story 4.4's `TABLE_HEADER_REPEAT_SUPPRESSED` — one condition with a second site — or a new
+one? I asked rather than minting because I had misread D-000.65's minting rule in the wrong direction
+in a brief the week before, and the reflex correction to that ("don't mint") is itself a reflex.
+
+**Ruled: mint. Two codes.** And the lead gave the discriminator rather than only the verdict, because
+Story 4.6 arrives with the structurally identical question about a single row taller than a page:
+
+> **Two conditions share a code only if the author would take the same action AND the same thing
+> happened to their document. Same remedy is not sufficient.**
+
+**Applied.** Story 4.4 **drops** a declared element — the repeated header is simply absent from page
+two onward. Story 4.5 **relocates** one — the footer is present, on a page of its own, in the wrong
+place. The remedy an author reaches for is the same in both cases (shorten the row, widen the page,
+split the table), which is exactly why "same remedy" is the tempting and wrong test.
+
+**The plain-language version.** An author who asks *"where did my column headings go?"* has a different
+problem from one who asks *"why is my grand total sitting alone on page 4?"* — and the asymmetry that
+settles it is this: **a missing element can be mistaken for a data problem; a moved one cannot.** Someone
+seeing no header on page 2 may reasonably go looking at their data source, their template, their
+binding. Someone seeing the total on its own page knows perfectly well the total computed; they are
+asking about layout. Two different investigations, so two different codes to search for.
+
+**Supporting precedent, from this codebase's own history:** `TABLE_FOOTER_SOURCE_UNRESOLVED` and
+`TABLE_FOOTER_SOURCE_FORBIDDEN` were minted separately at Story 3.6 for two closely-related
+footer-source failures. The established grain here is fine, not coarse.
+
+**And the argument against widening, stated as a property rather than a preference:** a code keyed on a
+broad class — "layout not honoured" — that accumulates sites over time is **proxy-keyed**. It is
+ungreppable (every hit is a different problem) and unhandleable programmatically (a consumer cannot
+branch on it without parsing the human-readable message, which is not a contract). The code stops
+being an identifier and becomes a category label.
+
+**Substance of the arm, also ruled:** place the footer alone, record the condition, **never error**,
+**always terminate**. Never-error follows 4.4's finding that erroring at this point is a regression;
+always-terminate is non-negotiable for the reason sharpened at 4.4. This **overturns the developer's
+stated default** of letting the existing `OverflowError` arise naturally as the safe arm — it had
+chosen that before the ruling landed, correctly flagged it as pending, and was corrected mid-story.
+
+**Carried forward:** the discriminator goes to Story 4.6's creator **as a test to apply**, not as a
+precedent to copy in either direction.
+
+---
+
+### D-4.5.2 — "Place it alone" assumes it fits alone; an undefined state sitting next to "always terminate" is a hang
+
+**The hole the lead found in its own ruling before code was written.** D-4.5.1's arm says the orphaned
+footer is placed alone on the following page. That sentence quietly assumes the footer **fits** on a
+page by itself. If the footer band is by itself taller than the content window, the arm as written says
+nothing at all about what happens.
+
+**Why that specific silence is dangerous here and not merely incomplete:** it sits immediately beside
+the guarantee that pagination **always terminates**. An undefined state inside a loop whose contract is
+"this always ends" is the precise shape of the hang that an earlier ruling at Story 4.4 was spent
+preventing. The two statements are individually reasonable and jointly a defect.
+
+**Ruled: the arm must name it explicitly.** Either route it to FR44/2.8's clip-and-say-so behaviour, or
+declare it Story 4.6's subject and assert that 4.5 **terminates without placing**. Both are acceptable
+answers. **Undefined is the one answer not available**, and it must be stated in code and in the
+Delivery Log, not left to be inferred from what the implementation happens to do.
+
+**The generalisable form:** when a ruling's remedy is "put it somewhere else", ask whether the somewhere
+else can always accept it. A relocation arm needs a floor case in the same way a recursion needs a base
+case.
+
+---
+
+### D-4.5.3 — Sum-of-nothing is zero BY DECISION, with a test that fails if it is zero by fallthrough; and footer chrome follows the two existing per-column precedents
+
+**Two arms, both as the story creator recommended, plus one guardrail that is the entire point.**
+
+**Footer chrome renders for every column, including columns with no `footer` declared.** Header cells
+and data cells already emit a rectangle per column regardless of whether that column has content; a
+special case here would make the footer the odd row out of three. Consistency with two live precedents
+beats a saving of a few rectangles.
+
+**The footer renders for an empty collection.** Story 4.2 already established that the header renders
+on an empty collection; the footer is the same class of structural row. A table of nothing still shows
+its frame.
+
+**The guardrail — and this is the part that is not a formality.** The aggregate's value over an empty
+collection must be **defined and asserted, not inherited from whatever the reducer happens to return**.
+
+**Why.** A footer printing `0.00` on an empty bank statement is **indistinguishable from a footer
+printing `0.00` because nothing computed at all.** Sum-of-nothing being zero is almost certainly the
+right answer — but "almost certainly right" and "right by accident" produce identical PDFs, and the
+failure mode is a wrong total on a financial document that looks entirely normal. This is the same
+hazard named in the lead's own grounding session: *a registered-but-unimplemented `sum` returning a
+plausible `0` is a wrong bank-statement total, silently.*
+
+**So the test must be one that would FAIL if the zero arrived by fallthrough** — the empty-average
+caveat machinery already in `internal/expr` is the shape of what "decided" looks like here, versus a
+reducer returning its zero value because it never entered its loop.
+
+---
+
+### D-000.81 — Report skips by NAME, never by count; and D-000.74 silently re-based the denominator of the figure that then concealed two of them
+
+**This entry corrects an earlier ruling of the lead's own, and the attribution matters, so it is
+recorded rather than folded into a relay-error note.**
+
+**What happened.** D-000.74 quarantined the known-red corpus test by running the green CI job with
+`go test -skip "$KNOWN_RED_TEST"`. It was later measured that **`-skip` EXCLUDES a test rather than
+printing it as skipped.** So from D-000.74 onward, the reported skip figure silently meant something
+different from what it had meant before — the quarantined test vanished from the count instead of
+appearing in it, and nobody re-derived the baseline against the new meaning.
+
+**What that concealed.** Story 4.4 shipped with two new permanent skips whose bodies were **empty**
+under an unconditional `t.Skip`. Both were absorbed into a reported "1 skip" figure, and the arithmetic
+reconciled cleanly. The true count was 3.
+
+**This is a stale snapshot inheriting a change to its own denominator** — the count did not go stale
+because the world moved under it, but because a ruling redefined what the count measured, and the
+figure carried on being reported in the old units.
+
+**Ruled remedy — and this is the third time this week the same underlying rule has bitten:**
+
+> **Report skips BY NAME, never by count. A count is a lossy set.**
+
+`go test -v` emits `--- SKIP: TestName` lines. The gate reports **the set of names**. A new name
+appearing in a set is visible; a new name appearing inside an integer is not. The red-by-design test is
+**named** in the gate report too, never folded into arithmetic.
+
+**Corollary already in force elsewhere:** the same lossy-set rule is why a page count could not carry
+Story 4.5's orphan criterion (2 pages either way; only the 9/0 → 8/1 partition moves), and why Story
+4.4's row-displacement evidence could not be a total.
+
+**On DW-21's two owners:** belt-and-braces is right, and the precedent justifying it is DW-14 — whose
+owner was a gate that ran, passed, and closed **without re-owning the deferral it was carrying**. A
+single owner that is a gate is a single point of silent discharge.
+
+**Meta, recorded because it is the second instance:** my own developer brief for this story asserted a
+false premise (that two footer diagnostic codes were due here; both had shipped at Story 3.6, and the
+deferral entry covering them reads "RETIRED by Story 3.6"). The week's earlier instance was a
+misrouted rule about when codes are minted. Both are the same family — **the record cited from memory
+rather than read.** In both cases the **story creator caught it by checking the source rather than
+complying.** That is not luck twice: **the brief has become a reviewed artifact and the creator is its
+reviewer**, structurally identical to why the code reviewer works, and for the same reason — the
+creator did not write the brief. **Action: the creator's brief now states explicitly that verifying the
+premises it is handed is part of its job, and that reporting a false one is a success, not friction.**
+
+---
+
+### D-000.82 — A ruling that lands on a HELD decision can invalidate choices made while it was held, not just the prose around them; and the ruling's author must ask what hazard the original delegation's invariant no longer covers
+
+**Second instance in two messages, which is why it is a standing rule rather than a note on one story.**
+
+**The pattern.** A decision is surfaced and **held** — parked with the lead, correctly, rather than
+guessed. Meanwhile the party that raised it must keep making progress, so it makes the choices that
+*surround* the held one, pricing them against the world as it stands. Then the ruling lands and changes
+that world. The surrounding choices are now priced on a premise that no longer holds — **and nobody is
+holding the other end of the flag that said so.**
+
+**Instance 1 ([[D-000.81]]).** [[D-000.74]] quarantined the known-red test with `go test -skip`, which
+excludes rather than prints. Every later skip *count* was then reported in units the ruling had
+silently changed.
+
+**Instance 2 (this story).** The developer chose Story 4.5's grouping mechanism — footer joins the
+preceding row's `ItemGroup` — and stated its reason plainly: **zero new machinery, it reuses the
+existing union-extent path.** It also stated the trade-off: an over-tall group becomes an
+`OverflowError`, *"which is exactly DECISION-2's open question."* DECISION-2 then ruled **never error**,
+which removed shape (i)'s entire stated advantage. The choice's reason was void the moment the ruling
+landed.
+
+**Attribution, explicitly: this is churn attributable to the RULING, not to the party that chose.** The
+developer flagged the dependency correctly and then had to make progress. Recording it as a developer
+error would punish exactly the behaviour the pipeline wants — surfacing a dependency instead of
+silently absorbing it.
+
+**The tell, and it is greppable.** In a story file or a developer's report:
+
+> *"Decision X bears on my choice here"* — followed by the choice being made anyway.
+
+That sentence is **a promise to re-check with nobody holding the other end.** It is not a defect when
+written; it becomes one the moment X is answered and nobody returns to it.
+
+**Two obligations follow, one per party.**
+
+**The relay's (the orchestrator's).** When a held decision is answered, the message carrying the answer
+also carries **"re-check what was decided while this was open."** Naming the specific choices, not the
+general instruction.
+
+**The ruling author's.** Before issuing a ruling on a held decision, ask: **"did I just create a hazard
+that the original delegation's invariant does not cover?"** The lead had stated *"row membership must
+be recoverable without inference"* and left the mechanism delegated — an invariant that is entirely
+silent on what a later *never-error* requirement demands of that mechanism. Asking the question
+produced the fence in [[D-4.5.4]]; not asking it yesterday is what the fence cost.
+
+**Third obligation, on the party that chose: re-derive, do not defend.** The prior choice may well
+survive — but *"we already chose it"* is not a surviving reason, and defending a prior choice on
+freshly-found grounds is the natural move under time pressure. The re-derivation must name **which new
+reason carried it**.
+
+**Relationship to the existing rule.** There is already a standing rule that a late ruling must fix the
+stale **text** it leaves behind. This extends it to stale **choices** — which are harder, because text
+is visible in a diff and a choice is visible only in a sentence someone wrote about their reasoning.
+
+---
+
+### D-4.5.4 — The story that carves the exception is the story that fences it; the never-error bypass is asserted and red-proofed in 4.5, not 4.6
+
+**The invariant added to DECISION-1's delegation without reclaiming the mechanism:**
+
+> **"Never error" is scoped to the footer-with-its-last-row case and to NOTHING else. Any bypass carved
+> into the grouping path must be narrow enough that an over-tall group which is *not* a footer-plus-row
+> still produces `OverflowError` — asserted in Story 4.5, red-proofed by widening the bypass until an
+> over-tall single data row slips through.**
+
+**Why it cannot wait for Story 4.6, stated in this programme's own terms.** Story 4.6's subject *is* the
+over-tall single row. If the fence ships there instead, 4.6's creator probes that case and finds the
+property **accidentally already true** — silently handled by 4.5's footer bypass — and ships a test that
+measures nothing.
+
+**That is [[D-000.80]]'s founding accident, reproduced by us, one story after building the screen
+designed to catch it.** D-000.80 exists because Story 4.3's central property already held at HEAD for an
+unrelated reason; the remedy was a part (a) that removes the accidental cause and requires the test to
+*still pass*. Here we would be **manufacturing** the accidental cause in 4.5 and then measuring against
+it in 4.6.
+
+**Generalised: the story that carves an exception is the story that fences it.** An exception and its
+boundary are one unit of work. Splitting them across a story boundary hands the second story a
+pre-satisfied property and no way to tell.
+
+**Asymmetric cost, deliberately accepted.** Under shape (ii) — a keep-with relation outside the
+union-extent check — there may be no bypass at all, and the assertion is **trivially green**. It ships
+anyway, as a fence for later. Under shape (i) it is **load-bearing** and its red-proof is real work.
+A trivially-green guard is acceptable here *because* [[D-4.2.4]] settled that a guard whose inertness
+ends at a named future story is a semantic acceptance step — and this one's inertness ends at whichever
+story next widens the grouping path.
+
+**Sweep run when this rule was filed, and its honest limit.** The greppable tell was run across every
+story file in the programme (`if the lead rules`, `pending decision`, `awaiting decision`, and
+variants): **13 hits, in Stories 1.1, 2.3, 2.3a, 3.2, 4.1 and 4.5.**
+
+**Twelve are a materially different and BETTER shape than the one that caused this entry.** They are
+**creation-time** hedges, and each one names **what changes under the other arm** — Story 3.2's goes
+further and lists "a test not written / a scope not taken / a compensating obligation taken instead"
+explicitly. Spot-checked, not censused: Story 2.3's Q1 assumption survived its ruling ([[D-2.3.2]])
+refined rather than reversed, and Story 4.1's format-file hedge was discharged by [[D-4.1.1]]'s
+amendment to `folio-format.md:288`. **No stale choice was found.** Four of the thirteen were not
+traced to their rulings; that is a sample, not a clean bill.
+
+**So the tell needs sharpening, and the sharpening points at the ORCHESTRATOR rather than the author.**
+The 4.5 developer *did* meet the documentation standard — it named its trade-off and named the decision
+that bore on it, in one sentence. **The failure was entirely on the relay side: the ruling arrived and
+nobody re-read the flag that had been left pointing at it.** A hedge is not defective when written; it
+becomes defective when its decision is answered and the answer is delivered without the flag being
+re-read. That is one party's job, and it is mine.
+
+---
+
+### D-000.83 — A test count without its units is the same lossy-set defect as a skip count; `lint` is 77 top-level and 115 including subtests, and both figures are correct
+
+**Third instance this week of the same underlying failure, found by a developer who flagged a
+discrepancy instead of reconciling it.**
+
+**What happened.** Story 4.5's developer reported: *"The story's baseline table records `lint` at 115
+pass. I measure 77 pass · 0 fail, unchanged before and after this story, under the exact command given.
+Not something 4.5 introduced — a discrepancy between the recorded figure and the tree. Flagged rather
+than reconciled."*
+
+**Measured by the orchestrator, cold, in `lint/`:**
+
+```
+go test -count=1 -v ./...  |  grep -c "^--- PASS"                      →  77
+go test -count=1 -v ./...  |  grep -cE "^(--- PASS|    --- PASS)"      → 115
+```
+
+**Both numbers are right. They count different things** — 77 top-level test functions, 115 including
+subtests. Neither party was wrong; **neither party stated its units.**
+
+**Why this is not a triviality.** A subtest count moves when tests are **restructured without adding a
+single assertion**. Story 4.4 wrapped seven corpus floors in `t.Run(c.name, …)`; that alone raises the
+subtest figure by six while proving nothing new. So a rising "test count" can mean more coverage, or
+mean somebody reorganised a table-driven test — and a reader cannot tell which from the number.
+
+**The family.** [[D-000.81]] ruled *report skips by name, never by count*, because a count is a lossy
+set. This is the same defect at one remove: not a set collapsed to a number, but **a number whose
+denominator is unstated**. [[DW-21]]'s amendment records a third variant — a ruling silently re-basing
+what a count measured.
+
+**Ruled, and it applies to every gate report from here:**
+
+> **State the units with any test count: "N top-level" or "N including subtests". Where a set is
+> available and small, report the set instead of the count.**
+
+**Credit where it belongs.** The developer could have silently adopted the recorded 115 (it is in the
+story's own baseline table and would have reconciled perfectly), or silently overwritten it with 77.
+It did neither, and said so in the words *"flagged rather than reconciled"* — which is exactly the
+behaviour [[D-000.82]]'s sweep found the programme depends on and had not written down.
+
+---
+
+### D-000.84 — The D-000.79 four-story test is CONCLUDED, and the answer is "partially": the deletion screen catches a feature with no witness at all, and does not cover compound observables or prose claims
+
+**Pre-registered at n=4 (Stories 4.1–4.5, with 4.1/4.2 as the no-screen baseline). Read once, at the
+registered n, and closed. This entry is the result.**
+
+**The measurement.**
+
+| story | screen in force | Class A (guards that cannot fail) |
+| --- | --- | --- |
+| 4.1 | no | 2 |
+| 4.2 | no | 3 |
+| 4.3 | yes | 1 |
+| 4.4 | yes | **0** |
+| 4.5 | yes | **2** |
+
+**The answer: partially.** Class A does **not** stay at zero. Story 4.4's zero is real evidence that the
+screen works **for the class it was designed for** — a feature with no witness at all, deleted
+wholesale. Story 4.5's blockers are real evidence that it **does not cover two other classes.**
+
+**The diagnosed cause, and it is a defect in the remedy's UNIT rather than its strength.** The rule as
+written named a deletion per output-producing **AC**. The unit should have been the **OBSERVABLE**.
+
+> **An AC that produces two observables passes the screen when deleting it reddens on EITHER. The
+> screen's result is a BOOLEAN standing in for a SET.**
+
+That is the maximally lossy case of [[D-000.68]]'s corollary — the fourth instance of the same root this
+week, after [[D-000.81]]'s skip counts, [[DW-21]]'s re-based denominator, and [[D-000.83]]'s units.
+
+**Why this diagnosis and not the rare-condition one.** The orchestrator proposed that the screen has a
+blind spot for artefacts minted by ruling, because a diagnostic firing on a rare layout condition
+produces output no AC's mutation reaches. **That reading predicts Blocker 3 and NOT Blocker 4.**
+
+- **Blocker 3** — `TABLE_FOOTER_ORPHAN_SUPPRESSED`: the AC's *layout* half reddened under deletion; the
+  *diagnostic* half rode along unwitnessed. One AC, two observables, one boolean.
+- **Blocker 4** — AC9's zero: a genuine provenance witness for `avg`, with `sum` and `count` asserted by
+  value alone. One AC, three observables, one witness. **Identical shape — and the empty-collection
+  case is not rare; the story tests it directly.**
+
+The boolean diagnosis covers both; the rare-condition one covers one. **It is therefore the finding**,
+and the more generous framing — that this was a property the screen turned out to have rather than one
+built into it by choosing the wrong unit — is rejected by its author.
+
+**The class with NO cheap screen, stated rather than papered over.** Story 4.5's AC3 shipped a
+**comment-only precondition** — an `if` block containing nothing but prose. That is not the boolean
+problem: **you cannot delete prose and have anything redden.** It stays the reviewer's catch. No third
+screen is being invented for it, on the standing grounds that a weak mechanism is worse than an honest
+gap.
+
+---
+
+### D-000.85 — The per-observable screen: name a deletion per OBSERVABLE, not per AC; pre-registered as a NEW count starting at Story 4.6
+
+**The fix to [[D-000.84]]'s diagnosed unit error.**
+
+> **An AC producing a layout change and a diagnostic owes TWO deletions. An AC asserting a property
+> across three reducers owes THREE. The creator records the COUNT OF OBSERVABLES per AC alongside each
+> named deletion.**
+
+Recording the count is the load-bearing half: **an AC that reports one observable where it plainly has
+two is the screen being routed around, and it is visible at creation rather than at review.**
+
+**Measurement discipline — the instrument does NOT change mid-series.** The 4.1–4.5 series is closed
+with D-000.84's answer. Folding Story 4.6 into it under a changed screen would destroy the test, and
+the pull to add one more favourable story is exactly what a pre-registered n exists to resist.
+**A new count starts at 4.6, pre-registered the same way. n=1 will not be read as vindication.**
+
+**What Story 4.6 must report:**
+
+1. **Class A split BY SUB-CAUSE** — compound-observable / prose-claim / other. A flat count cannot
+   distinguish "the fix worked" from "prose-claims now dominate". (This is D-000.83's own lesson applied
+   to our own ledger: report the set, not the scalar.)
+2. **Deletions named per observable, with the observable-count per AC recorded.**
+
+---
+
+### D-000.83 (amendment) — the two arms are not equal: prefer "report the set" over "state the units"
+
+D-000.83 ruled *"state the units with any test count, or report the set where it is small."* The lead's
+sharpening, affirmed: **the two arms are not of equal strength, and the ordering matters.**
+
+**Report the set is strictly better.** A set cannot be ambiguous about its units, and **a subtest
+restructuring cannot move a set without moving names.** A units-labelled scalar is the fallback for
+when the set is too large to print — not an equal alternative.
+
+**The proof that the scalar was never measuring what it was read as:** Story 4.4 wrapped seven corpus
+floors in `t.Run(c.name, …)` and thereby raised the subtests-inclusive count by six **without adding a
+single assertion.**
+
+---
+
+### D-4.5.5 — A default is only tested by an input that would render differently under a wrong default; Blocker 1's remedy is a corpus, not an assertion
+
+**The best find of Story 4.5, and its lesson is a FIXTURE lesson.**
+
+`table_render.go`'s `footerCellExprText` defaulted `pattern := "0"` — zero fraction digits — so a `sum`
+footer with no `footerFormat` **silently rounded: a true total of 30.85 rendering as "31".**
+This contradicts [[D-1.4.1]] as Story 4.5 itself quotes it — *"absent and underived, the footer renders
+unformatted"* — and a default of `"0"` is not unformatted, it is formatted with a lossy pattern. On a
+project whose central claim is exact-decimal report data ([[AD-23]]), it is a wrong bank-statement total
+that looks entirely normal.
+
+**Why every test missed it.** The only fixture column reaching that default is the **`count`** column,
+which is **integral** — so the lossy default and a correct one render **identically**.
+
+> **A default is only tested by an input that would render differently under a wrong default.**
+
+**So the remedy is not another assertion against the same corpus; it is a corpus that discriminates** —
+a non-integral value reaching the default path. Fixing only the code leaves the discriminating input
+still absent, and the next wrong default is invisible in exactly the same way.
+
+**Generalised:** for any fallback, ask *"which fixture reaches this, and would it look different if the
+fallback were wrong?"* If the answer is no fixture, the fallback is unobserved regardless of how many
+tests pass through it.

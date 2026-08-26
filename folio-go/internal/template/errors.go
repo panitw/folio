@@ -15,20 +15,28 @@ import (
 // and Value are always populated so the message can name what a
 // person needs to fix, without minting a stable code for it.
 //
-// Code is Story 3.6's one addition (R8, DW-6): set ONLY at the two
-// call sites (newLoadErrorCoded, below) matching D-1.4.2's
-// TABLE_FOOTER_SOURCE_FORBIDDEN parenthetical — footerOf paired with
-// footer: "count", and a footer field present with no footer at all.
+// Code is Story 3.6's one addition (R8, DW-6), extended once at Story
+// 4.5: set ONLY at the three call sites (newLoadErrorCoded, below)
+// naming a footer SOURCE condition — D-1.4.2's
+// TABLE_FOOTER_SOURCE_FORBIDDEN parenthetical (footerOf paired with
+// footer: "count", and a footer field present with no footer at all),
+// plus D-1.4.1's TABLE_FOOTER_SOURCE_UNRESOLVED "out-of-collection
+// source" arm (the footerOf prefix check), which Story 3.6 left
+// uncoded and Story 4.5 swept in under D-000.67 part 2.
 // Every other call site leaves it at its zero value (""), which
 // folio.ParseTemplate's boundary (this package may never import the
-// module root, AD-1) reads as "not one of DW-6's two conditions — mint
-// TEMPLATE_MALFORMED instead."
+// module root, AD-1) reads as "not one of the footer-source conditions
+// — mint TEMPLATE_MALFORMED instead." That is the CORRECT reading for
+// the four remaining uncoded footer sites (a `footer`/`footerOf`/
+// `footerFormat` that is not a string, and a `footer` outside the
+// closed set sum/count/avg): those are malformed-template/type
+// failures, not statements about a footer's numeric SOURCE.
 type LoadError struct {
 	Field     string
 	ElementID string // empty when the error is not scoped to one element/column
 	Value     string
 	Reason    string
-	Code      diag.Code // "" unless this is one of DW-6's two coded conditions
+	Code      diag.Code // "" unless this is one of the three coded footer-source conditions
 }
 
 func (e *LoadError) Error() string {
@@ -46,9 +54,13 @@ func newLoadError(field, elementID, value, reason string) error {
 }
 
 // newLoadErrorCoded is Story 3.6's second constructor (R8/DW-6),
-// called ONLY at parse_bands.go's two TABLE_FOOTER_SOURCE_FORBIDDEN
-// sites — one code, two sites, because the code names the CONDITION,
-// not the line.
+// called ONLY at parse_bands.go's three footer-source sites: the two
+// TABLE_FOOTER_SOURCE_FORBIDDEN ones (one code, two sites, because the
+// code names the CONDITION, not the line) and the single
+// TABLE_FOOTER_SOURCE_UNRESOLVED one (the out-of-collection footerOf
+// prefix check, swept in at Story 4.5 under D-000.67 part 2 — Story
+// 3.6 coded the two FORBIDDEN checks beside it and left this one
+// plain, which was an absorption gap, not a decision).
 func newLoadErrorCoded(field, elementID, value, reason string, code diag.Code) error {
 	return &LoadError{Field: field, ElementID: elementID, Value: value, Reason: reason, Code: code}
 }

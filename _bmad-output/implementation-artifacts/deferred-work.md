@@ -193,7 +193,7 @@ one-line obligation whose whole failure mode is being forgotten.
 routine per-story gate never pays their cost (D-000.4's per-epic cadence):
 
 ```
-env CGO_ENABLED=0 GOWORK=off FOLIO_HEAVY=1 go test -count=1 -v   -run 'TestTableHeaderRepeatAcrossHundredsOfPagesIsByteStable|TestTwoTablesWithPageCountFooterRenderConsistently' ./...
+env CGO_ENABLED=0 GOWORK=off FOLIO_HEAVY=1 go test -count=1 -v   -run 'TestTableHeaderRepeatAcrossHundredsOfPagesIsByteStable|TestTwoTablesWithPageCountFooterRenderConsistently|TestFooterOrphanTieHoldsAcrossHundredsOfPagesWithByteStability' ./...
 ```
 
 **Verified independently by the orchestrator before this entry was written**, both directions: unset →
@@ -212,9 +212,31 @@ a deferred-execution obligation recorded **only** in the story that deferred it 
 moment it comes due. **If the Epic 4 gate closes without this command having been run, that is the
 same defect a second time.**
 
+**Amended 2026-08-27 ([[D-000.81]]) — part of the concealment was a ruling's, not a relay error's,
+and the remedy is a reporting rule rather than a checklist item.** [[D-000.74]] quarantined the
+known-red corpus test by running the green CI job with `go test -skip "$KNOWN_RED_TEST"`. `-skip`
+**excludes** a test rather than printing it as skipped — so that ruling silently **re-based the
+denominator of the skip figure**, and nobody re-derived the baseline against its new meaning. Story
+4.4's two empty-bodied skips then landed inside the slack that created, and the arithmetic reconciled
+cleanly. Tidy reconciliation is what should have raised suspicion.
+
+**Standing remedy, now in force for every gate report: report skips BY NAME, never by count.**
+`go test -v` emits `--- SKIP: TestName` lines; the gate reports **the set**. A new name appearing in a
+set is visible; a new name appearing inside an integer is not. The red-by-design test is **named** too,
+never folded into arithmetic. A count is a lossy set.
+
 **Retire when:** the Epic 4 boundary gate records the command, its output, and the pass/fail — or an
 epic gate adopts a standing "run every env-gated heavy suite" step, which would make this entry
 unnecessary rather than merely discharged.
+
+**Amended at Story 4.5:** a third heavy test joins the set, same pattern (real body, `FOLIO_HEAVY=1`,
+never a build tag) — `TestFooterOrphanTieHoldsAcrossHundredsOfPagesWithByteStability`
+(`folio-go/table_footer_test.go`): a 500-row footer table through the public `Render()`, confirming
+the footer's sum appears exactly once, on the last page only, byte-stable across two renders, bounded
+time. Confirmed both directions in this story's own run (unset → `--- SKIP`; `FOLIO_HEAVY=1` →
+`--- PASS`; see the story's Delivery Log for the exact output). The recorded command above and
+`table_header_repeat_test.go`'s own doc comment are both updated in the same change. **Not run as
+part of this story's routine gate** — stated explicitly per D-000.4.
 
 
 ### DW-2 — The licence check's JS half: `folio-designer/`'s lockfile
@@ -361,6 +383,69 @@ is never edited in place):
   half."** The `{{...}}` half gained a real anti-rot mechanism this story (the routing assertion
   above); the footer half gained none, because there is still nothing to key one on until Story 4.5
   gives `columns[].footer` a shape. Ownership of the footer half is unchanged: **Story 4.5**, by name.
+
+**APPENDED at Story 4.5 (RETIRED by replacement — R6/D-000.59's discipline: replace, never merely
+delete):**
+
+- **What landed:** the footer half is wired to the SAME evaluation as the `{{...}}` half — not by a
+  second evaluator, but STRUCTURALLY: `table_render.go`'s `footerCellExprText` synthesises the exact
+  `"{{sum(<footerOf>)}}"` / `"{{count(<collection>)}}"` / `"{{avg(<footerOf>)}}"` text (wrapped in
+  `formatNumber` per AC2) an author would write, and hands it to `bind.Resolve` — the one
+  display-text function every other cell already uses, which parses it with `expr.Parse` and
+  evaluates it with the SAME `expr.Eval` → `evalSum`/`evalCount`/`evalAvg` → `SumDecimals`/
+  `AvgDecimals` path the `{{...}}` half already reaches. This makes "routes through the same
+  evaluation" a structural fact (the call graph is identical) rather than an argued one.
+- **Positive routing assertion, the footer half's own, in the shape Story 3.3 shipped for the
+  `{{...}}` half:** `TestFooterRoutesThroughTheSameAggregateEvaluationAsAnOrdinaryExpression`
+  (`folio-go/table_footer_test.go`) asserts BEHAVIOURAL equality — the footer's rendered sum/count/avg
+  strings are byte-identical to an independently-evaluated, author-written `{{sum(...)}}`/
+  `{{count(...)}}`/`{{avg(...)}}` expression over the SAME data, through `bind.Resolve` directly —
+  which is AC3's own "equal, exactly" requirement, extended to be this AC's routing witness too.
+- **Captured red-proof (the mutation this AC's own text names):** replacing the footer's route into
+  the shared aggregate evaluation with a hand-rolled, ignore-the-exponent inline accumulator (adding
+  Decimal coefficients directly, without `SumDecimals`'s alignment step) reddened
+  `TestDecimalReducerInventoryIsExactlySumAndAvg` (`folio-go/internal/reducer_inventory_test.go`) the
+  moment the accumulator was given the reducer inventory's own tripwire shape (`func(...[]expr.Decimal)
+  (expr.Decimal, error)`) — a THIRD reducer where the inventory expects exactly two — proving R3/
+  D-3.1a.3's "one aggregate implementation" guard reaches the footer half too. See the story's
+  Delivery Log for the exact mutation, command and reddened test name.
+- **Correction:** DW-7 is now discharged in full. Both halves — `{{...}}` (Story 3.3) and
+  `columns[].footer` (Story 4.5) — share one evaluation, each with its own positive routing assertion
+  and its own captured red-proof. No further owner is due.
+
+**APPENDED at Story 4.5, FINISHER PASS (append-only, D-000.29/D-3.1.1 — the block above is not
+edited in place; it is CORRECTED here, because part of what it claimed was not true):**
+
+- **The claim that was wrong.** The block above records
+  `TestFooterRoutesThroughTheSameAggregateEvaluationAsAnOrdinaryExpression` as "the footer half's own
+  positive routing assertion" and cites a captured red-proof that reddened
+  `TestDecimalReducerInventoryIsExactlySumAndAvg`. That test is **Story 3.1a's module-wide reducer
+  inventory** — it fires for a third reducer *anywhere* in the module and has no relation to the
+  footer. The story's code review re-ran the mutation the AC actually names (the footer's `sum` route
+  replaced by a literal `"13,500.00"` that never touches `SumDecimals`) and the **whole suite stayed
+  green**: the behavioural equality was a single-dataset value comparison, so any rival that agreed on
+  that one fixture passed. **DW-7 was, for one commit, marked discharged against another story's
+  instrument** — the [[D-4.2.4]] defect, a deferral discharged by something that was not measuring it.
+- **What discharges it now, and it is two things, not one:**
+  1. **Structural, footer-side:** `TestFooterCellExpressionNamesTheSharedAggregateFunctions`
+     (`folio-go/table_footer_test.go`) parses the expression `footerCellExprText` actually hands to
+     `bind.Resolve` and asserts, **by AST**, that it is a `formatNumber()` call whose operand is a
+     call to the shared `sum`/`count`/`avg` over the column's own resolved source path. This is the
+     footer-side analogue of `internal/expr/routing_arch_test.go`'s
+     `TestSumRoutesThroughSumDecimals` / `TestAvgRoutesThroughAvgDecimals`, which cover the `{{...}}`
+     half and only that half.
+  2. **Behavioural, over MORE THAN ONE DATASET:**
+     `TestFooterRoutesThroughTheSameAggregateEvaluationAsAnOrdinaryExpression` now renders at two row
+     counts and asserts up front that their aggregates differ, so a constant cannot agree with both.
+     A footer value is a function of the data, and a function is not witnessed by one point.
+- **Captured red-proof, the review's own mutation, re-run against these two:** inserting
+  `if col.Footer.Value == "sum" && !collectionEmpty { return "13,500.00", nil }` at the head of
+  `footerCellExprText` reddens **`TestFooterCellExpressionNamesTheSharedAggregateFunctions`** and
+  **`TestFooterRoutesThroughTheSameAggregateEvaluationAsAnOrdinaryExpression`** (whole suite,
+  `-count=1`, not behind `-run`; 4 top-level failures in all). Recorded by NAME rather than by count,
+  per D-000.81.
+- **Correction:** DW-7 **is** discharged, but on the evidence in this block, not on the evidence in
+  the block above it. No further owner is due.
 
 ### DW-8 — `Decimal` moves to `internal/expr` (or a leaf) and 1.6's path matcher is deleted — **RETIRED at Story 3.2**
 - **Deferred by:** Story 1.6 (rulings D-1.6.1, D-1.6.5)

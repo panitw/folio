@@ -13,6 +13,8 @@ package folio
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/bind"
 	"github.com/panitw/folio/folio-go/internal/expr"
@@ -22,6 +24,155 @@ import (
 	"github.com/panitw/folio/folio-go/internal/template"
 	"github.com/panitw/folio/folio-go/internal/text"
 )
+
+// effectiveFooterOf resolves col's numeric source for a sum/avg footer
+// (Story 4.5): the EXPLICIT footerOf when the column carries one, else
+// D-1.4.1's DERIVED value from doc.derivedFooters (Story 3.2's
+// derivation, first consumed here — Finding 1, this story's creation
+// probe). Never re-derived (D-4.2.2): load-time validation
+// (folio_expr_validate.go's validateTableColumns) already ran
+// expr.DeriveFooterOf and is the ONLY caller of that function; this
+// looks its answer up.
+func effectiveFooterOf(doc *Template, col template.Column) (string, bool) {
+	if col.FooterOf.Set {
+		return col.FooterOf.Value, true
+	}
+	if d, ok := doc.derivedFooters[col.ID]; ok && d.FooterOf != "" {
+		return d.FooterOf, true
+	}
+	return "", false
+}
+
+// effectiveFooterFormat resolves col's display pattern: EXPLICIT
+// footerFormat when set, else D-1.4.1's derived pattern (shape 2 only
+// — shape 1 derives no format at all), else false ("absent and
+// underived").
+func effectiveFooterFormat(doc *Template, col template.Column) (string, bool) {
+	if col.FooterFormat.Set {
+		return col.FooterFormat.Value, true
+	}
+	if d, ok := doc.derivedFooters[col.ID]; ok && d.HasFooterFormat {
+		return d.FooterFormat, true
+	}
+	return "", false
+}
+
+// footerCellExprText builds the "{{ }}" text that computes col's footer
+// VALUE (Story 4.5, AC4/DW-7): the SAME aggregate evaluation as an
+// author-written {{sum(...)}}/{{avg(...)}}/{{count(...)}} expression,
+// because it IS one — synthesised and handed to bind.Resolve, the one
+// display-text function every other cell already uses (D-1.4.1),
+// rather than a second, parallel evaluator. D-000.79 §2: this is the
+// developer's mechanism choice for "routes through the same
+// evaluation" — a second route that provably reached the same kernel
+// would also satisfy AC4, but this one makes the identity a
+// STRUCTURAL fact (it is literally the same parser/evaluator entry
+// point) rather than an argued one.
+//
+// formatNumber is ALWAYS applied — never a bare {{sum(...)}} — because
+// bind.Resolve's own text-substitution rule rejects a non-string
+// result outright ("resolved to a number, not a string — text
+// bindings are never coerced", this story's own creation-probe Finding
+// 0): there is no bare numeral-to-text path in this codebase, for a
+// footer or for any other cell.
+//
+// THE "ABSENT AND UNDERIVED" CASE, CORRECTED (this story's review,
+// Blocker 1). D-1.4.1 rules it verbatim: "Absent and underived, the
+// footer renders UNFORMATTED". This story's first pass used a fixed
+// pattern literal "0" there and argued the grammar admitted nothing
+// better — the argument was half right and the conclusion was wrong.
+// "0" is ZERO fraction digits, so a true total of 30.85 rendered "31":
+// a silently altered money figure on the one path AD-23 exists to keep
+// exact. The grammar genuinely cannot SPELL "the value's own scale"
+// (its fraction part is drawn from '0' alone, never '#'), but it can be
+// COMPUTED from the value — which is what expr.UnformattedPattern does,
+// and what the bind.EvaluateValue call below exists to feed it. The
+// aggregate is evaluated ONCE as a NUMBER, through the SAME
+// bind→expr→SumDecimals/AvgDecimals seam the display expression itself
+// then re-enters (AC4/DW-7 is unaffected: this adds no second
+// arithmetic, only a second traversal of the one that already exists),
+// its own scale becomes the pattern, and the value renders at its own
+// precision with no grouping and no zero-padding. The one residual —
+// a scale beyond the grammar's own maxPatternFractionDigits ceiling —
+// is documented on UnformattedPattern itself and binds an explicit
+// author-written footerFormat exactly as hard.
+//
+// collectionEmpty (AC9, D-3.1a.2, Story 4.2's own empty-collection AC)
+// is the one exception to "always wrap in formatNumber": avg() over an
+// empty collection resolves to expr.KindNull (a Caveat, not an error —
+// evalAvg's own R9/DECISION-5 guard, aggregate.go), and
+// evalFormatNumber HARD-ERRORS on any non-KindNumber operand
+// ("operand must be a number, got null (never coerced)",
+// numberformat.go) — wrapping it would turn AC9's Warning-and-empty-
+// cell into a render-aborting Error, which is exactly the AD-14
+// violation AC9 exists to forbid. So when the table's bound collection
+// is empty, an avg footer's expression text omits formatNumber
+// entirely and resolves bare: bind.Resolve's own KindNull handling
+// ("AD-14: an explicit JSON null renders as empty, never an error")
+// takes it from there, and the Caveat it collects is what becomes
+// AC9's Warning (diagnosticFromCaveat, reusing DiagCodeEmptyAverage —
+// D-000.65: no new code). sum/count are unaffected: SumDecimals(nil)
+// and CollectionLength(empty) both resolve to a real KindNumber zero
+// (D-3.1a.2's own two-zeros ruling), never KindNull, so they always
+// go through formatNumber exactly like the non-empty case.
+func footerCellExprText(doc *Template, tbl template.TableExt, col template.Column, collectionEmpty bool, scope bind.Scope, fc expr.FormatContext) (string, error) {
+	if col.Footer.Value == "avg" && collectionEmpty {
+		footerOf, ok := effectiveFooterOf(doc, col)
+		if !ok {
+			return "", fmt.Errorf("folio: Render: internal error: column %s: footer %q has no resolved footerOf at render time", col.ID, col.Footer.Value)
+		}
+		return "{{avg(" + footerOf + ")}}", nil
+	}
+	var inner string
+	switch col.Footer.Value {
+	case "count":
+		// D-1.4.1/"Things the schema and record could not resolve" #4:
+		// count's operand is the table's own bound collection, never a
+		// per-column source — footerOf is a load error alongside it
+		// (parse_bands.go's own AC43 check 1).
+		inner = "count(" + strings.TrimSuffix(tbl.Bind, "[]") + ")"
+	case "sum", "avg":
+		footerOf, ok := effectiveFooterOf(doc, col)
+		if !ok {
+			// Unreachable: validateTableColumns (folio_expr_validate.go)
+			// already rejects a sum/avg footer whose footerOf is
+			// neither explicit nor derivable
+			// (DiagCodeTableFooterSourceUnresolved) before render ever
+			// runs. Kept as a located error, never a panic (AD-14), in
+			// case that load-time contract is ever broken.
+			return "", fmt.Errorf("folio: Render: internal error: column %s: footer %q has no resolved footerOf at render time", col.ID, col.Footer.Value)
+		}
+		inner = col.Footer.Value + "(" + footerOf + ")"
+	default:
+		// Unreachable: parse_bands.go's closedFooterKinds already
+		// rejects anything outside {sum, count, avg} at load time.
+		return "", fmt.Errorf("folio: Render: internal error: column %s: footer %q is not one of sum, count, avg", col.ID, col.Footer.Value)
+	}
+	pattern, ok := effectiveFooterFormat(doc, col)
+	if !ok {
+		// D-1.4.1's "absent and underived" arm: UNFORMATTED, which is
+		// the value's own scale — see this function's doc comment for
+		// why that has to be computed rather than written down.
+		v, _, verr := bind.EvaluateValue(inner, scope, fc, string(col.ID))
+		if verr != nil {
+			return "", fmt.Errorf("folio: Render: column %s: footer: %w", col.ID, verr)
+		}
+		if v.Kind != expr.KindNumber {
+			// AD-14's wrong-kind Error, never coerced and never a panic
+			// (R7/D-000.65: an existing shape, no new code). Reachable
+			// only if an aggregate ever resolves to a non-number here;
+			// sum/count always resolve to a KindNumber, and the one
+			// KindNull case (avg over an empty collection) returned
+			// above before reaching this line.
+			return "", fmt.Errorf(
+				"folio: Render: column %s: footer %q resolved to a %s, not a number (never coerced)",
+				col.ID, col.Footer.Value, v.Kind,
+			)
+		}
+		pattern = expr.UnformattedPattern(v.Num)
+	}
+	return "{{formatNumber(" + inner + ", " + strconv.Quote(pattern) + ")}}", nil
+}
 
 // tableRectSource is one table's header-row vector chrome (Story 4.1,
 // R1/AC3/AC6): one pagemodel.Rect per column cell, ALWAYS populated
@@ -69,6 +220,18 @@ type tableRectSource struct {
 	// tableRectSource (isDataRow stays false there, unchanged); never set
 	// alongside isDataRow.
 	isHeaderRow bool
+
+	// isFooterRow — Story 4.5: parallel to isHeaderRow/isDataRow above,
+	// for the one footer row a table with at least one `footer` column
+	// has. Set true ONLY on the footer's own tableRectSource; never
+	// alongside isDataRow or isHeaderRow. A row-TYPE tag, kept separate
+	// from whatever layout.ItemGroupKey.Index this row's group is
+	// carrying for pagination purposes (see chromeRowGroup) precisely so
+	// a future consumer keying off row identity (isDataRow/rowIndex —
+	// Story 4.8's alternating shading, epics.md: "follows row index in
+	// the collection") never mistakes the footer for a row, regardless
+	// of the orphan-tie mechanism's own bookkeeping.
+	isFooterRow bool
 }
 
 // chromeRowGroup derives this rect source's layout.ItemGroup — Story 4.3's
@@ -81,6 +244,11 @@ func (r tableRectSource) chromeRowGroup() layout.ItemGroup {
 	switch {
 	case r.isHeaderRow:
 		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, IsHeader: true}}
+	case r.isFooterRow:
+		// Story 4.5: Index -1 is a sentinel no real data row ever
+		// carries — see textRunSource.lineRowGroup's matching case for
+		// the full rationale (paginateWithFooterOrphanFix, table_footer.go).
+		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, Index: footerGroupIndex}}
 	case r.isDataRow:
 		return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: r.elementID, Index: r.rowIndex}}
 	default:
@@ -549,7 +717,20 @@ func collectBandTableRuns(
 		collectionVal, _ := data.Lookup(tableCollectionSegments(tbl.Bind))
 		items := collectionVal.Arr
 
-		if len(items) > 0 {
+		// Story 4.5, DECISION-3 (ruled by the engineering lead): a
+		// footer row renders whenever at least one column declares
+		// `footer` — including over an EMPTY bound collection (AC9),
+		// since a footer is a property of the column's configuration,
+		// not of the data.
+		hasFooter := false
+		for _, c := range tbl.Columns {
+			if c.Footer.Set {
+				hasFooter = true
+				break
+			}
+		}
+
+		if len(items) > 0 || hasFooter {
 			// AC5: a data cell's font/border/background/padding/align/
 			// valign cascade from the table's own `style` ONLY — never
 			// `headerStyle` (D-000.76: header-only). fontChain is
@@ -808,6 +989,175 @@ func collectBandTableRuns(
 				}
 
 				rowTop = rowBottom
+			}
+
+			// --- Story 4.5: footer row ---
+			//
+			// rowTop is already the bottom of the last data row (or, for
+			// an empty collection, tableBottom unchanged — DECISION-3).
+			// bs/bodyChain/bodyFontSize/vm/padding were all resolved
+			// ONCE above (R2), before this story existed, and are
+			// reused verbatim rather than re-cascaded for the footer.
+			if hasFooter {
+				// AC4/DW-7: no row scope — an aggregate's operand is a
+				// collection path from the DOCUMENT ROOT (D-1.4.1),
+				// exactly as an author-written {{sum(...)}} outside any
+				// row context resolves; a footer is not one row.
+				scope := bind.NewScope(data, params)
+
+				cellResults := make([]cellResult, len(tbl.Columns))
+				maxLines := 0
+				for ci, col := range tbl.Columns {
+					if !col.Footer.Set {
+						// AC1: "a column that declares no footer carries
+						// no value" — DECISION-3 gives it chrome only,
+						// built unconditionally below.
+						align := bs.alignFallback
+						if col.Align.Set && !col.Align.Null {
+							align = col.Align.Value
+						}
+						cellResults[ci] = cellResult{align: align}
+						continue
+					}
+					align := bs.alignFallback
+					if col.Align.Set && !col.Align.Null {
+						align = col.Align.Value
+					}
+
+					exprText, exprErr := footerCellExprText(doc, tbl, col, len(items) == 0, scope, fc)
+					if exprErr != nil {
+						return nil, nil, nil, exprErr
+					}
+
+					boundText, subs, caveats, berr := bind.Resolve(exprText, scope, fc, string(col.ID))
+					if berr != nil {
+						// AD-14's existing wrong-kind Error path (R7/D-000.65):
+						// a non-numeric value at footerOf surfaces here
+						// exactly as any other expression type error
+						// does — a plain wrapped error, never a new
+						// diagnostic code, never a panic, never coerced.
+						return nil, nil, nil, fmt.Errorf("folio: Render: column %s: footer: %w", col.ID, berr)
+					}
+					for _, c := range caveats {
+						// AC9: avg() over an empty collection's Caveat
+						// becomes the EXISTING DiagCodeEmptyAverage
+						// Warning here, through the SAME
+						// diagnosticFromCaveat every other aggregate
+						// caveat already uses (D-000.65).
+						diags = append(diags, diagnosticFromCaveat(string(col.ID), c))
+					}
+					if boundText == "" {
+						cellResults[ci] = cellResult{align: align}
+						continue
+					}
+
+					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache)
+					if serr != nil {
+						return nil, nil, nil, serr
+					}
+					diags = append(diags, glyphDiags...)
+					totalRunes := len([]rune(boundText))
+
+					atomic := atomicSpansFor(doc.doc.UnbreakableValues, subs)
+					ops := text.Opportunities(text.Dictionary(), boundText, atomic)
+					cg := geometry.Columns[ci]
+					contentW := cg.Width - padLeftB - padRightB
+					lines := packLines(segs, ops, totalRunes, bodyFontSize, contentW)
+
+					overflow, overflows := detectWidthOverflow(string(col.ID), lines, contentW)
+					if overflows {
+						diags = append(diags, Diagnostic{
+							Severity:  SeverityWarning,
+							Code:      DiagCodeTextClippedWidth,
+							ElementID: overflow.elementID,
+							Message:   widthClipMessage("column", "content", overflow),
+						})
+					}
+					if len(lines) > maxLines {
+						maxLines = len(lines)
+					}
+					cellResults[ci] = cellResult{
+						lines: lines, segs: segs, align: align,
+						clip: overflows, clipX: cg.X + padLeftB, clipWidth: contentW,
+					}
+				}
+
+				linesInRow := maxLines
+				if linesInRow < 1 {
+					linesInRow = 1
+				}
+				footerRowHeight := padTopB + vm.FirstBaseline + geom.Length(int64(linesInRow-1))*vm.Advance + vm.LastDescent + padBottomB
+				footerRowBottom := rowTop + footerRowHeight
+
+				// DECISION-3 (ruled): chrome for EVERY column,
+				// unconditionally — mirrors a data row's own chrome
+				// (buildCellRect above), never conditioned on whether
+				// that column itself declares a footer, so a bordered
+				// table's footer row never draws a broken-looking
+				// partial row.
+				footerCellRects := make([]pagemodel.Rect, len(tbl.Columns))
+				for ci := range tbl.Columns {
+					cg := geometry.Columns[ci]
+					rect, rerr := buildCellRect(string(el.ID), cg.X, rowTop, cg.Width, footerRowHeight, bs.hasBackground, bs.background, bs.hasBorder, bs.border)
+					if rerr != nil {
+						return nil, nil, nil, rerr
+					}
+					footerCellRects[ci] = rect
+				}
+				rectSources = append(rectSources, tableRectSource{
+					band:        bandIndex,
+					elementID:   string(el.ID),
+					top:         rowTop,
+					bottom:      footerRowBottom,
+					rects:       footerCellRects,
+					isFooterRow: true,
+				})
+
+				for li := 0; li < linesInRow; li++ {
+					lineTopY := rowTop + padTopB + geom.Length(int64(li))*vm.Advance
+					lineBottom := lineTopY + vm.FirstBaseline + vm.LastDescent
+					for ci := range tbl.Columns {
+						cr := cellResults[ci]
+						if li >= len(cr.lines) {
+							continue
+						}
+						ln := cr.lines[li]
+						cg := geometry.Columns[ci]
+						contentX := cg.X + padLeftB
+						contentW := cg.Width - padLeftB - padRightB
+						measured := ln.width
+
+						var textX geom.Length
+						switch cr.align {
+						case "right":
+							textX = contentX + contentW - measured
+						case "center":
+							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+						default: // "left"
+							textX = contentX
+						}
+
+						placed, poserr := positionSegments(cr.segs, ln.from, ln.to, textX, lineTopY, bodyFontSize, vm.FirstBaseline, nil)
+						if poserr != nil {
+							return nil, nil, nil, poserr
+						}
+						for j := range placed {
+							placed[j].band = bandIndex
+							placed[j].elementID = string(el.ID)
+							placed[j].lineIndex = nextLineIndex
+							placed[j].itemTop = lineTopY
+							placed[j].itemBottom = lineBottom
+							placed[j].isFooterLine = true
+							if cr.clip {
+								placed[j].clipToBox = true
+								placed[j].clipX = cr.clipX
+								placed[j].clipWidth = cr.clipWidth
+							}
+						}
+						runs = append(runs, placed...)
+					}
+					nextLineIndex++
+				}
 			}
 		}
 	}

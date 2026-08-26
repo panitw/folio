@@ -257,6 +257,20 @@ const DiagCodeStyleColorInvalid = string(diag.CodeStyleColorInvalid)
 // Additive only (AD-14): once shipped, this string's meaning is permanent.
 const DiagCodeTableHeaderRepeatSuppressed = string(diag.CodeTableHeaderRepeatSuppressed)
 
+// DiagCodeTableFooterOrphanSuppressed names Story 4.5's own new condition
+// (FR25, DECISION-2 as ruled by the engineering lead): a table's footer row
+// and the data row immediately preceding it in the bound collection, together,
+// exceed the content window, so the orphan rule cannot be honoured by moving
+// the two together. The footer is placed alone on that page instead — the
+// render still completes — and this Warning travels on Result.Diagnostics
+// (never wrapped in a *RenderError) as the sole record that the rule did not
+// hold there. Distinct from DiagCodeTableHeaderRepeatSuppressed: that
+// condition drops a declared element; this one relocates nothing further and
+// leaves the footer present, in the position the rule exists to prevent.
+//
+// Additive only (AD-14): once shipped, this string's meaning is permanent.
+const DiagCodeTableFooterOrphanSuppressed = string(diag.CodeTableFooterOrphanSuppressed)
+
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — over-tall rows (FR25, not yet built) and clipped
 // content (FR44, this story) — is expressed as a value of this type,

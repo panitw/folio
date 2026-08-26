@@ -161,6 +161,24 @@ const (
 	// records that this is the lead's authorization, not a deferred
 	// owner call).
 	CodeTableHeaderRepeatSuppressed Code = "TABLE_HEADER_REPEAT_SUPPRESSED"
+
+	// CodeTableFooterOrphanSuppressed names Story 4.5's own new
+	// condition (FR25, DECISION-2 as ruled by the engineering lead): a
+	// table's footer row and the data row immediately preceding it in
+	// the bound collection, together, are taller than the content
+	// window — so the orphan rule (a footer never lands alone at the
+	// top of a page) cannot be honoured by moving the two together. The
+	// footer is placed alone on that page instead, and this Warning is
+	// the record that the rule did not hold there. Distinct from
+	// CodeTableHeaderRepeatSuppressed (Story 4.4): that condition DROPS
+	// a declared element (the repeated header is simply absent);this
+	// one RELOCATES nothing further and leaves the footer PRESENT, just
+	// in the position the rule exists to prevent — same remedy (suppress
+	// on one page, record, never error), a different document, per the
+	// engineering lead's discriminator ("same remedy is not sufficient;
+	// same thing must have happened to the document"). Minted here, at
+	// the point the condition first ships (R7/D-000.65).
+	CodeTableFooterOrphanSuppressed Code = "TABLE_FOOTER_ORPHAN_SUPPRESSED"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -182,6 +200,7 @@ var allCodes = []Code{
 	CodeDocumentDateInvalid,
 	CodeStyleColorInvalid,
 	CodeTableHeaderRepeatSuppressed,
+	CodeTableFooterOrphanSuppressed,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a

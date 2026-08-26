@@ -40,6 +40,7 @@ var codePins = []struct {
 	{"CodeDocumentDateInvalid", CodeDocumentDateInvalid, "DOCUMENT_DATE_INVALID"},
 	{"CodeStyleColorInvalid", CodeStyleColorInvalid, "STYLE_COLOR_INVALID"},
 	{"CodeTableHeaderRepeatSuppressed", CodeTableHeaderRepeatSuppressed, "TABLE_HEADER_REPEAT_SUPPRESSED"},
+	{"CodeTableFooterOrphanSuppressed", CodeTableFooterOrphanSuppressed, "TABLE_FOOTER_ORPHAN_SUPPRESSED"},
 }
 
 // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by

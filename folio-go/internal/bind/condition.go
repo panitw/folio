@@ -37,15 +37,9 @@ import (
 // condition and a text placeholder dispatch to data/params/row through
 // one traversal, never two.
 func EvaluateCondition(src string, scope Scope, fc expr.FormatContext, elementID string) (expr.Value, []expr.Caveat, error) {
-	e, perr := expr.Parse(src)
+	e, perr := parseAndCheck(src, elementID)
 	if perr != nil {
-		return expr.Value{}, nil, fmt.Errorf(
-			"bind: element %s: %q is not a valid expression: %s",
-			elementID, strings.TrimSpace(src), perr,
-		)
-	}
-	if cerr := expr.Check(e); cerr != nil {
-		return expr.Value{}, nil, fmt.Errorf("bind: element %s: %s", elementID, cerr)
+		return expr.Value{}, nil, perr
 	}
 	// D-3.5.1's own tripwire, applied here too (Story 3.5 finisher
 	// review, Finding 10 / Minor): "a third condition slot appearing
@@ -63,6 +57,55 @@ func EvaluateCondition(src string, scope Scope, fc expr.FormatContext, elementID
 				"the grammar has no boolean literal, so a bare literal can never be a boolean",
 			elementID, strings.TrimSpace(src),
 		)
+	}
+	resolver := exprResolver{scope: scope, elementID: elementID}
+	return expr.Eval(e, resolver, fc, elementID)
+}
+
+// parseAndCheck is the parse + static-check half every bare-expression
+// entry point in this file shares (D-000.9: one traversal, one error
+// shape, never two spellings of the same two steps).
+func parseAndCheck(src, elementID string) (expr.Expr, error) {
+	e, perr := expr.Parse(src)
+	if perr != nil {
+		return nil, fmt.Errorf(
+			"bind: element %s: %q is not a valid expression: %s",
+			elementID, strings.TrimSpace(src), perr,
+		)
+	}
+	if cerr := expr.Check(e); cerr != nil {
+		return nil, fmt.Errorf("bind: element %s: %s", elementID, cerr)
+	}
+	return e, nil
+}
+
+// EvaluateValue is this file's second bare-expression entry point, and
+// it is the general one this file's own header describes: "a caller that
+// needs the raw expr.Value a[n expression] resolved to — never coerced
+// to a string". It parses, statically checks and evaluates src against
+// scope through the SAME exprResolver seam Resolve (text.go) and
+// EvaluateCondition already use, and returns the resolved expr.Value
+// uncoerced, plus any Caveat the walk produced.
+//
+// It deliberately does NOT carry EvaluateCondition's D-3.5.1
+// literal tripwire: that tripwire is a property of a CONDITION slot
+// ("the grammar has no boolean literal"), not of bare evaluation, and
+// applying it here would make this function a second condition slot —
+// exactly what that tripwire exists to prevent.
+//
+// Its one caller today is Story 4.5's table footer (folio's
+// table_render.go, footerCellExprText): D-1.4.1 rules that a footer
+// whose footerFormat is "absent and underived" renders UNFORMATTED, and
+// the only way to render a Decimal at its own scale through the closed
+// pattern grammar is to know that scale — which means evaluating the
+// aggregate, as a NUMBER, before the display expression is synthesised.
+// Routing that through this function rather than through a private
+// evaluator is what keeps the footer's value on the one aggregate
+// evaluation (Story 4.5's AC4/DW-7) instead of manufacturing a second.
+func EvaluateValue(src string, scope Scope, fc expr.FormatContext, elementID string) (expr.Value, []expr.Caveat, error) {
+	e, perr := parseAndCheck(src, elementID)
+	if perr != nil {
+		return expr.Value{}, nil, perr
 	}
 	resolver := exprResolver{scope: scope, elementID: elementID}
 	return expr.Eval(e, resolver, fc, elementID)

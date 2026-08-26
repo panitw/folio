@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 08-26-2026
+last_updated: 08-27-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -92,7 +92,7 @@ development_status:
   4-2-generate-rows-from-a-bound-collection: done
   4-3-break-a-table-across-pages-without-splitting-a-row: done
   4-4-repeat-the-table-header-on-every-continuation-page: done
-  4-5-render-footer-aggregates-without-orphaning-them: backlog
+  4-5-render-footer-aggregates-without-orphaning-them: done
   4-6-handle-a-row-taller-than-the-page: backlog
   4-7-the-golden-report-renders-and-hashes-match: backlog
   4-8-alternating-row-styling: backlog
