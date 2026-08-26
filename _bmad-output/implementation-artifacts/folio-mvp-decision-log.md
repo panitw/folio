@@ -12526,3 +12526,53 @@ only.** Story 4.3's fixture is the first real input to that property and Story 4
 statement is the second. [[D-4.2.4]]'s corpus guard will pick up any crossing automatically through
 its observed-maximum log — **the property doing exactly the job it was added for, one story earlier
 than predicted.**
+
+---
+
+### D-000.79 (ledger) — the Class A / Class B split, per story, so the falsification test is decidable
+**Orchestrator record**, opened at Story 4.3's close. [[D-000.79]] required this ledger by name: *"record
+the per-story Class A / Class B split from here so the test is decidable rather than impressionistic."*
+**Appended to, never rewritten.** The test it settles: *if Stories 4.3 and 4.4 still produce **Class A**
+defects at review after the creator names deletions, the diagnosis is wrong* and the honest conclusion is
+that blockers-at-review are the cost of doing business. **Class B continuing is not falsification** —
+that is the reviewer's job by design.
+
+| story | creator named deletions? | Class A at review | Class B at review | other |
+|---|---|---|---|---|
+| 4.1 | no (pre-ruling) | **2** — `headerStyle`, `style.valign` | 0 | — |
+| 4.2 | no (pre-ruling) | **3** — data-row border, data-cell padding, `resolvedBodyStyle.valign` | **1** — row identity (count-as-proxy) | — |
+| 4.3 | **yes** | **1** — AC5's header grouping (deleting it left the suite green at 1000/0) | 0 | **1 live regression** — R7 contiguity rejected a table beside any same-`y` element |
+| 4.4 | yes | *pending* | *pending* | *pending* |
+
+**Story 4.3's entry needs its nuance recorded, because a bare "1" would misread the evidence in both
+directions.**
+
+**Against the remedy:** a Class A defect still reached review, in the first story where the creator named
+deletions. That is one data point of the two [[D-000.79]] said would decide it.
+
+**For the remedy, and it is not a rescue:** the creator's own probing under this rule is what found that
+**Story 4.3's central property already held at HEAD by accident** — the discovery that produced
+[[D-000.80]] and reshaped the whole story. Without it, a naive AC1 test would have passed with zero
+implementation and a naive deletion would have stayed green, and the story would have shipped a
+guard measuring the accident. **The remedy caught the deeper instance and missed the shallower one.**
+
+**The honest reading of AC5 specifically.** The creator *did* name the deletion. The developer ran it,
+found it did not bite, and **reported that** rather than faking a green — its no-witness label was
+partially honest. What the reviewer caught was not the missing witness but **the surrounding claim**:
+§10's *"Part (a) properly witnessed"* was false, and §9.4's appeal to layout-level tests was a category
+error, since those tests use `IsHeader:false` keys. So the failure was **not** the developer hiding an
+inert guard; it was a **true local observation wrapped in a false summary** — [[D-000.66]]'s class, not
+[[D-000.79]]'s. Counted as Class A because the guard could not fail; flagged here because the mechanism
+that produced it differs from 4.1's and 4.2's, and the remedy is aimed at a different step.
+
+**A third category this ledger did not anticipate, recorded so 4.4's row is not distorted.** 4.3's
+Blocker 1 was **neither** Class A nor Class B: it was a **live correctness regression** — the contiguity
+check rejected ordinary templates where a table sits beside any element sharing its `y`, verified against
+a `903bf8f` worktree returning `<nil>`. It escaped because **no test in that story called `Render()`**,
+which is a **coverage-shape** defect rather than a guard-anchoring one. **A story can be perfectly
+guarded at one layer and blind at another**, and the deletion screen does not address that. If 4.4
+produces the same shape, the ledger should grow a column rather than force it into A or B.
+
+**How this ledger could mislead, stated up front:** the counts come from **what review found**, and
+review is a sample, not a census — `resolvedBodyStyle.valign` was found by grep, not by the adversarial
+pass. **Every number here is a lower bound.**
