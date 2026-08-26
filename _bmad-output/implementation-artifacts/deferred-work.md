@@ -180,6 +180,43 @@ all → **Fatal** on the vacuity path; moving the single declaration → **both*
 
 ## Open
 
+### DW-21 — Two heavy tests exist but run ONLY under `FOLIO_HEAVY=1`; the Epic 4 boundary gate must set it
+
+**Owner:** **the Epic 4 boundary gate run**, and — because a gate has failed as an owner before
+([[DW-14]]'s owner was *"the Epic 2 boundary gate"*, which ran and closed without re-owning it —
+[[D-000.73]]) — **also the orchestrator's own gate checklist.** Two addresses deliberately, for a
+one-line obligation whose whole failure mode is being forgotten.
+
+**Raised at:** Story 4.4's finisher pass, closing that review's Blocker 1.
+
+**What.** Story 4.4 shipped two genuine heavy/integration tests, gated on an ordinary env var so the
+routine per-story gate never pays their cost (D-000.4's per-epic cadence):
+
+```
+env CGO_ENABLED=0 GOWORK=off FOLIO_HEAVY=1 go test -count=1 -v   -run 'TestTableHeaderRepeatAcrossHundredsOfPagesIsByteStable|TestTwoTablesWithPageCountFooterRenderConsistently' ./...
+```
+
+**Verified independently by the orchestrator before this entry was written**, both directions: unset →
+both report `--- SKIP`, never a silent pass; `FOLIO_HEAVY=1` → both `--- PASS`. So the gate genuinely
+has something to turn on, which is exactly what the story's first attempt did not have.
+
+**Why an env var and not a build tag.** A new `//go:build matrix` file would itself register as an
+**unauthorised Epic 2 gate obligation** — `TestEpic2GateObligationsMatchTheDeclaredSet` scans for the
+matrix build constraint specifically and correctly refused one in Story 4.3. An env-gated ordinary
+test stays outside that obligation set by construction.
+
+**Why this entry exists at all rather than living only in the story.** Story 4.4's review found the
+first attempt at these tests was **two empty bodies under unconditional `t.Skip`s** — *"written, not
+run"* had shipped neither, and the skip count was misreported as 1 when it was 3. The lesson is that
+a deferred-execution obligation recorded **only** in the story that deferred it is invisible at the
+moment it comes due. **If the Epic 4 gate closes without this command having been run, that is the
+same defect a second time.**
+
+**Retire when:** the Epic 4 boundary gate records the command, its output, and the pass/fail — or an
+epic gate adopts a standing "run every env-gated heavy suite" step, which would make this entry
+unnecessary rather than merely discharged.
+
+
 ### DW-2 — The licence check's JS half: `folio-designer/`'s lockfile
 - **Deferred by:** Story 1.3 (ruling D-1.3.4)
 - **Owner:** **Story 5.1** — the story that creates `folio-designer/`

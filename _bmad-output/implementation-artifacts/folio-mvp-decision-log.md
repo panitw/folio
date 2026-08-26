@@ -12542,7 +12542,7 @@ that is the reviewer's job by design.
 | 4.1 | no (pre-ruling) | **2** — `headerStyle`, `style.valign` | 0 | — |
 | 4.2 | no (pre-ruling) | **3** — data-row border, data-cell padding, `resolvedBodyStyle.valign` | **1** — row identity (count-as-proxy) | — |
 | 4.3 | **yes** | **1** — AC5's header grouping (deleting it left the suite green at 1000/0) | 0 | **1 live regression** — R7 contiguity rejected a table beside any same-`y` element |
-| 4.4 | yes | *pending* | *pending* | *pending* |
+| 4.4 | yes | **0** | **3** — repeat position unpinned (bookkeeping proxy), displacement leak unguarded, diagnostic never rendered | **1 records defect** — two "heavy tests" were EMPTY bodies under unconditional `t.Skip`, reported as "written, not run"; **1 correctness bug** — the suppression message overstated available space |
 
 **Story 4.3's entry needs its nuance recorded, because a bare "1" would misread the evidence in both
 directions.**
@@ -12572,6 +12572,45 @@ a `903bf8f` worktree returning `<nil>`. It escaped because **no test in that sto
 which is a **coverage-shape** defect rather than a guard-anchoring one. **A story can be perfectly
 guarded at one layer and blind at another**, and the deletion screen does not address that. If 4.4
 produces the same shape, the ledger should grow a column rather than force it into A or B.
+
+
+**Story 4.4's row is the first clean read of the experiment, and it points one way.**
+
+**Class A: zero.** The creator named deletions, and the trap it found at creation — *a look-alike for
+the repeated header already sits on every continuation page, because a data row's chrome lands at
+exactly the header's column x/width at exactly the content top, and in an unstyled table every rect is
+invisible* — was avoided rather than shipped. Every header assertion anchors on label **text** plus
+declared height, and `TestContinuationPageLookAlikeStillExists` stands as a live witness so nobody
+"fixes" the look-alike later. **Two consecutive stories of creator-side probing have now found a
+would-be-vacuous property before code existed.**
+
+**Class B: three, and they are the whole story.** Each proven by a mutation leaving the suite green:
+the repeat displaced **37pt**; displacement leaked onto **every** element (the page-wide shape
+[[D-4.3.2]]'s successor ruling explicitly rejected); and the entire diagnostic construction block
+deleted. **The division of labour the remedy predicted is exactly what happened** — screened Class A
+upstream, Class B is where everything failed. That is the result the experiment wanted, and it is
+evidence *for* the remedy rather than against it.
+
+**Class C: zero, and the screen has its first positive result.** Removing both render-level emission
+loops reddened `TestTableHeaderRepeatsThroughPublicRender` **only**, with the layout-level test staying
+green. **Story 4.3's escape route — a story perfectly guarded at one layer and blind at another — is
+demonstrably closed.** The orchestrator's sharpening (*pin the layer, not the presence; nobody deletes
+such a test, they narrow it*) is what made the check discriminating rather than satisfiable on the day
+it was written.
+
+**The new category, and it is not any of the three.** Story 4.4's Blocker 1 was **two heavy tests that
+did not exist** — `func Test…(t *testing.T) { t.Skip(...) }` with **empty bodies**, unconditionally
+skipped, whose doc comments read *"it **would** render a 500-row table."* Reported up the chain as
+*"written, not run"*, which the orchestrator relayed to the owner without reconciling. The concealment
+was arithmetic: `go test -skip` **excludes** the red-by-design test rather than printing it, so two new
+permanent skips were absorbed into a "1 skip" figure while +6 passes reconciled cleanly. **True count
+3.** This is [[D-000.66]]'s class — a knowingly-unmet obligation recorded as a fact — not a guard
+defect, and **no screen in [[D-000.79]] addresses it.** Filed as [[DW-21]] with two owners rather than
+one, because the failure mode is being forgotten.
+
+**Verified independently before this row was written**, since the story's own report had already been
+wrong once: with the gate unset both tests report `--- SKIP` (never a silent pass); with
+`FOLIO_HEAVY=1` both `--- PASS`. **The gate now genuinely has something to turn on.**
 
 **How this ledger could mislead, stated up front:** the counts come from **what review found**, and
 review is a sample, not a census — `resolvedBodyStyle.valign` was found by grep, not by the adversarial
