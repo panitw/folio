@@ -91,7 +91,7 @@ development_status:
   4-1-lay-out-a-table-s-columns-header-and-cell-chrome: done
   4-2-generate-rows-from-a-bound-collection: done
   4-3-break-a-table-across-pages-without-splitting-a-row: done
-  4-4-repeat-the-table-header-on-every-continuation-page: backlog
+  4-4-repeat-the-table-header-on-every-continuation-page: done
   4-5-render-footer-aggregates-without-orphaning-them: backlog
   4-6-handle-a-row-taller-than-the-page: backlog
   4-7-the-golden-report-renders-and-hashes-match: backlog

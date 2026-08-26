@@ -271,8 +271,99 @@ func (e *MixedItemError) Error() string {
 // the distance the window has slid. A caller applies `Y − Shift` and nothing
 // else, which is why pagination cannot introduce a per-item displacement
 // even by accident.
+//
+// Story 4.4 (FR26) adds a SECOND, NARROWER displacement channel —
+// PageAssignment.HeaderRepeats and RowDisplacement — that is scoped to one
+// table on one page and is layered ON TOP OF Shift, never a redefinition of
+// it (DECISION-3, ruled): Shift keeps exactly its pre-4.4 meaning, and an
+// element that is not part of a repeating table is positioned by Shift
+// alone, exactly as before this story.
 type Pagination struct {
 	Pages []PageAssignment
+
+	// Suppressed records every (table, page) where FR26's repeat could
+	// not be honoured (Story 4.4, DECISION-2): the next unplaced row of
+	// that table fit the BARE window on that page but not the window
+	// under the header's own reserved height. The repeat is silently
+	// absent from that ONE page only, so pagination always terminates
+	// (AC6) rather than looping or turning a document that renders
+	// today into a hard error.
+	//
+	// This is DATA for a caller to build a located Warning from — the
+	// row height and the space it fit inside are carried here, straight
+	// from the computation that decided the suppression, so a caller
+	// never re-derives the fit arithmetic a second time (D-4.2.2).
+	// Appended in the sweep's own deterministic order (a slice, never a
+	// map ranged for emission — R5).
+	Suppressed []TableHeaderSuppressed
+}
+
+// TableHeaderRepeat is one continuation page's redrawn copy of a table's
+// header row (Story 4.4, FR26): the SAME Rects/Runs the table's own header
+// ColumnItem already carries (R6 — no new glyphs, no second producer),
+// positioned immediately above that table's own first row on THIS page
+// (DECISION-3, ruled: never at the page's own top — that would displace
+// unrelated siblings, which AD-24 forbids).
+type TableHeaderRepeat struct {
+	// ElementID names the table this repeat belongs to.
+	ElementID string
+
+	// Rects/Runs are the header's OWN content refs, copied verbatim from
+	// the header's ColumnItem — index into the SAME caller-owned slices
+	// PageAssignment.ContentRects/ContentRuns already index into.
+	Rects []RectRef
+	Runs  []TextRunRef
+
+	// Shift is subtracted from each ref's own page-absolute Y (the same
+	// convention PageAssignment.Shift uses) to place the repeat on this
+	// page. It is a SEPARATE quantity from PageAssignment.Shift — the
+	// page's own Shift is untouched and continues to govern every other
+	// element on the page (DECISION-3).
+	Shift geom.Length
+}
+
+// TableRowDisplacement is the EXTRA downward displacement (Story 4.4),
+// beyond PageAssignment.Shift, applied to one table's OWN rows on one page
+// to make room for that table's repeated header immediately above them.
+// Scoped by ElementID: no other element's position is touched (R2 — the
+// column itself is never mutated; DECISION-3 — displacement is per-table,
+// never page-wide).
+type TableRowDisplacement struct {
+	ElementID string
+	Amount    geom.Length
+}
+
+// TableHeaderSuppressed is Pagination.Suppressed's element type — see its
+// doc comment.
+type TableHeaderSuppressed struct {
+	// ElementID names the table whose repeat was suppressed on Page.
+	ElementID string
+	Page      int
+
+	// RowHeight is the row that forced the decision — its own height,
+	// which fits Available but not Available minus the header's height.
+	RowHeight geom.Length
+
+	// Available is the space the row ACTUALLY had to fit inside WITHOUT
+	// the reservation — `windowStart + height - effectiveTop`, the room
+	// remaining from wherever this row's own window happened to land,
+	// not the page's bare content height (finisher fix, Story 4.4
+	// review Finding 8/Major: the two coincide only when the window
+	// slid to this row's own top; when an EARLIER element on the page
+	// slid the window first — reachable, see
+	// TestReservedHeaderSuppressedDiagnosticReportsTheRoomTheRowActuallyHad
+	// — the row's real headroom is strictly less than the bare content
+	// height, and reporting the bare height overstated the room the
+	// author actually had to work with, D-000.37's "executable by a
+	// human" requirement). A caller's diagnostic message can state
+	// RowHeight and Available directly, without re-deriving either.
+	Available geom.Length
+
+	// HeaderHeight is the table's own reserved header height on this
+	// page — carried so a caller's message can name the "reduce
+	// headerHeight" lever WITH a number, rather than leaving the author
+	// to go measure it themselves (finisher fix, Finding 8).
+	HeaderHeight geom.Length
 }
 
 // PageAssignment is one page's content and its window shift.
@@ -298,6 +389,10 @@ type PageAssignment struct {
 	// Y — nothing pulls it to the band's top. The finding's claim does not
 	// hold against this file's own ruled model; the comment is left as it
 	// was.
+	//
+	// Story 4.4, DECISION-3 (ruled): this field's meaning is UNCHANGED by
+	// FR26. A repeated table header is never folded into Shift — see
+	// HeaderRepeats/RowDisplacement below, a second and narrower channel.
 	Shift geom.Length
 
 	// ContentRuns/ContentImages are the CONTENT band's items on this page,
@@ -309,6 +404,21 @@ type PageAssignment struct {
 	ContentRuns   []TextRunRef
 	ContentImages []ImageRef
 	ContentRects  []RectRef
+
+	// HeaderRepeats — Story 4.4, FR26: this page's copy of a table's
+	// header, one entry per table continuing onto this page under an
+	// honoured reservation. Empty for a page that is not a continuation
+	// of any table, and always empty for the page carrying that table's
+	// OWN header (DECISION-1: that page's header is not a "repeat").
+	// Appended in the sweep's own deterministic order.
+	HeaderRepeats []TableHeaderRepeat
+
+	// RowDisplacement — Story 4.4: the extra downward displacement
+	// (beyond Shift) this page applies to a table's own rows, keyed by
+	// ElementID, when that table's header repeats on this page. A slice,
+	// walked by a caller in declared order — never a map ranged for
+	// emission (R5).
+	RowDisplacement []TableRowDisplacement
 }
 
 // Paginate slices the content column into windows and returns one assignment
@@ -438,6 +548,44 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		}
 	}
 
+	// Story 4.4 (FR26): a table's repeat candidacy and its header's
+	// height are both read from the SAME `groups` pre-pass above by
+	// DIRECT LOOKUP — headerExtent below is a thin helper for
+	// `groups[ItemGroupKey{ElementID: t, IsHeader: true}]`, never a
+	// second, independent derivation (R3/D-4.2.2) and never a RANGE over
+	// `groups` (R5/D-1.3.5 total ban — a lookup is fine, an iteration is
+	// not). FR26 is unconditional (no schema opt-out — "Things the
+	// schema and the record could not resolve" note 1), so no
+	// caller-supplied list of which tables repeat is needed at all: a
+	// table's header group existing among `items` IS the authorization
+	// to repeat it. A page-header/page-footer band's table never
+	// reaches Paginate as a ColumnItem (it is repeated verbatim via
+	// BandContent instead, AC5), so this can never affect it.
+	headerExtent := func(table string) (*groupExtent, bool) {
+		e, ok := groups[ItemGroupKey{ElementID: table, IsHeader: true}]
+		return e, ok
+	}
+	// headerPageOf[T] is the page table T's OWN header landed on —
+	// populated by the sweep below, the moment that page is decided.
+	// Consulted only by direct lookup, never ranged for emission (R5).
+	headerPageOf := make(map[string]int)
+
+	// tablePageKey names one (table, page) pair — Story 4.4's decision
+	// granularity for whether a repeat is honoured there (DECISION-2/3).
+	type tablePageKey struct {
+		table string
+		page  int
+	}
+	// reservation[key] is the reserved height ADOPTED for that table on
+	// that page — headerHeightOf[table] if the repeat is honoured there,
+	// or 0 if DECISION-2's fallback applied (suppressed on that one
+	// page only). Decided ONCE per key, the first time a row of that
+	// table is resolved onto that page; every later row of the same
+	// table on the same page reads the SAME decision, by direct lookup
+	// — never re-derived (D-4.2.2).
+	reservation := make(map[tablePageKey]geom.Length)
+	var suppressed []TableHeaderSuppressed
+
 	// pageOf[i] is the page authored-item i landed on. Filled by the sweep,
 	// read by the emission below — which is what lets the sweep run in column
 	// order while emission runs in authored order.
@@ -489,9 +637,34 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 			effectiveTop, effectiveBottom = e.top, e.bottom
 		}
 
+		// Story 4.4: is this item one of table T's OWN ROWS (never the
+		// header itself) whose header this sweep has already resolved?
+		// table == "" means "not applicable" throughout what follows.
+		table := ""
+		if it.Group.Present && !it.Group.Key.IsHeader {
+			if _, ok := headerExtent(it.Group.Key.ElementID); ok {
+				table = it.Group.Key.ElementID
+			}
+		}
+
+		// ceilingFor is the usable window top edge for THIS item on page
+		// p — height reduced by whatever reservation already stands for
+		// (table, p), or the RAW ceiling if none has been decided yet
+		// (deciding happens below, once p is FINAL for this item, never
+		// here: a page's reservation must never be decided against a
+		// window this item is only tentatively being tested against).
+		ceilingFor := func(p int, ws geom.Length) geom.Length {
+			if table != "" {
+				if amt, ok := reservation[tablePageKey{table, p}]; ok {
+					return ws + height - amt
+				}
+			}
+			return ws + height
+		}
+
 		// Does this item (or its group) fit ENTIRELY in the window as it
 		// currently stands?
-		if effectiveBottom > windowStart+height {
+		if effectiveBottom > ceilingFor(page, windowStart) {
 			// It does not. The window slides to begin at THIS ITEM'S TOP
 			// — or, grouped, at the GROUP'S earliest Top, which is what
 			// keeps a wrapped row's continuation lines from starting a
@@ -510,6 +683,66 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 			}
 			windowStart = effectiveTop
 			pages[page].Shift = windowStart - contentTop
+		}
+
+		// Story 4.4 (FR26/DECISION-2/DECISION-3): p/windowStart are now
+		// FINAL for this item. If it is table T's row and (T, p) has no
+		// decision yet, decide it exactly once, against the window this
+		// item actually landed in.
+		if table != "" {
+			key := tablePageKey{table, page}
+			if _, decided := reservation[key]; !decided {
+				if hp, known := headerPageOf[table]; known && hp != page {
+					headerItem, _ := headerExtent(table)
+					hh := headerItem.bottom - headerItem.top
+					reservedCeiling := windowStart + height - hh
+					if effectiveBottom <= reservedCeiling {
+						// DECISION-3: honoured. This row (or group) fits
+						// even with the header's height reserved above
+						// it, so the repeat is drawn on this page,
+						// immediately above the table's own first row
+						// here — effectiveTop, not windowStart, per
+						// DECISION-3's ruling that the repeat sits at
+						// the top of the TABLE on that page, not the
+						// top of the page.
+						reservation[key] = hh
+						hdrRects, hdrRuns := headerContentOf(items, table)
+						pages[page].RowDisplacement = append(pages[page].RowDisplacement,
+							TableRowDisplacement{ElementID: table, Amount: hh})
+						pages[page].HeaderRepeats = append(pages[page].HeaderRepeats,
+							TableHeaderRepeat{
+								ElementID: table,
+								Rects:     hdrRects,
+								Runs:      hdrRuns,
+								Shift:     headerItem.top - effectiveTop + pages[page].Shift,
+							})
+					} else {
+						// DECISION-2, arm (c): even alone, this row does
+						// not fit under the reservation. Suppress the
+						// repeat on THIS page only and place the row
+						// under the RAW ceiling instead (guaranteed to
+						// fit: the row already passed the raw fit test
+						// above, or the window was just set to its own
+						// top, which always admits an item that is not
+						// itself an overflow). Recorded, never silent.
+						reservation[key] = 0
+						suppressed = append(suppressed, TableHeaderSuppressed{
+							ElementID:    table,
+							Page:         page,
+							RowHeight:    effectiveBottom - effectiveTop,
+							Available:    windowStart + height - effectiveTop,
+							HeaderHeight: hh,
+						})
+					}
+				} else {
+					// This IS table T's own header page (or the header
+					// has not yet been placed — unreachable given the
+					// sort order, since a header's Top always precedes
+					// every one of its rows' Tops, but guarded rather
+					// than assumed): never a repeat here (DECISION-1).
+					reservation[key] = 0
+				}
+			}
 		}
 
 		// The residual case, and the ONLY one left once the window can
@@ -540,6 +773,9 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		pageHasItem = true
 		if it.Group.Present {
 			groupPage[it.Group.Key] = page
+			if it.Group.Key.IsHeader {
+				headerPageOf[it.Group.Key.ElementID] = page
+			}
 		}
 	}
 
@@ -572,5 +808,26 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		pages[p].ContentRects = append(pages[p].ContentRects, items[i].Rects...)
 	}
 
-	return Pagination{Pages: pages}, nil
+	return Pagination{Pages: pages, Suppressed: suppressed}, nil
+}
+
+// headerContentOf returns table's header ColumnItem(s)' own Rects and Runs,
+// found by a single SLICE WALK over items (never a map range, R5) and
+// matched by DIRECT FIELD LOOKUP on Group.Key (never reconstructed from
+// ElementID/extent/order, D-4.2.2). A table's header is built as exactly
+// two ColumnItems sharing one Group.Key{ElementID: table, IsHeader: true}
+// — one carrying the header's cell chrome (Rects), one carrying its column
+// labels (Runs), collectBandTableRuns'/table_render.go's own shape — so at
+// most one of each is ever found, but both are accumulated defensively
+// rather than assumed.
+func headerContentOf(items []ColumnItem, table string) (rects []RectRef, runs []TextRunRef) {
+	key := ItemGroupKey{ElementID: table, IsHeader: true}
+	for i := range items {
+		if !items[i].Group.Present || items[i].Group.Key != key {
+			continue
+		}
+		rects = append(rects, items[i].Rects...)
+		runs = append(runs, items[i].Runs...)
+	}
+	return rects, runs
 }

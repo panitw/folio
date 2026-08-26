@@ -492,6 +492,34 @@ func TestBothPaginationPassesAgreeOnRowPartition(t *testing.T) {
 			}
 		}
 	}
+
+	// Story 4.4, AC3: FR26's reservation is ONE derivation inside
+	// layout.Paginate itself (never a second, independent copy per
+	// pass, D-4.3.2/D-4.2.2), so both phases must agree not only on the
+	// row partition above but on WHICH pages reserved the header's
+	// height and by how much. This fixture (rows=20, wrapRow=5) is
+	// known, at this story's creation, to change partition under the
+	// reservation — presence-checked here so this assertion is not
+	// vacuously true of a fixture the reservation never touches.
+	totalDisp := func(p layout.Pagination) (pages int, disp int) {
+		for _, pg := range p.Pages {
+			for _, d := range pg.RowDisplacement {
+				if d.ElementID == "e1" {
+					pages++
+					disp += int(d.Amount)
+				}
+			}
+		}
+		return pages, disp
+	}
+	aPages, aDisp := totalDisp(phaseAPlan)
+	bPages, bDisp := totalDisp(phaseBPlan)
+	if aPages == 0 {
+		t.Fatal("presence precondition: this fixture must exercise FR26's reservation on at least one page, or AC3's own teeth are vacuous")
+	}
+	if aPages != bPages || aDisp != bDisp {
+		t.Errorf("PHASE A reserves the header on %d page(s) (total %dmp), PHASE B on %d page(s) (total %dmp) — the two passes disagree on FR26's reservation itself", aPages, aDisp, bPages, bDisp)
+	}
 }
 
 // TestRowTallerThanContentWindowStillReturnsLocatedTableOverflow is AC4,
@@ -666,15 +694,51 @@ func headerPushedToNextPageDoc() string {
 `
 }
 
-// TestHeaderRowMovesWholeToNextPageAndIsNotRepeated is AC5: a header
-// that does not fit the remaining content height moves — chrome AND
-// column labels TOGETHER — to the next page, exactly like a data row
-// (D2's own note: this already holds by the chrome accident at 903bf8f;
-// the mechanism this story ships must hold it for a REASON). The second
-// half of AC5 is the fence: the header must NOT be repeated on any later
-// page (4.4's job), and this test confirms it stays absent past the one
-// page it landed on.
-func TestHeaderRowMovesWholeToNextPageAndIsNotRepeated(t *testing.T) {
+// TestHeaderRowMovesWholeToNextPageThenRepeatsOnEveryLaterOne is AC5's
+// "moves whole" half (UNCHANGED, Story 4.3) AND Story 4.4's own inverted
+// fence.
+//
+// STORY 4.4 AUTHORISED THIS INVERSION. Before this story, this test was
+// named TestHeaderRowMovesWholeToNextPageAndIsNotRepeated and its own doc
+// comment ended with a live fence: "the header must appear on EXACTLY ONE
+// page — repeating it is Story 4.4's job, not this story's." Per that
+// fence's own text, Story 4.4 is the one authorised to invert it — see
+// the story's own "One existing test this story OWNS inverting" section.
+// This is that inversion: rescoped and renamed, never deleted, because
+// the two "moves whole" halves below are still load-bearing and still
+// pass unmutated.
+//
+// A header that does not fit the remaining content height moves — chrome
+// AND column labels TOGETHER — to the next page, exactly like a data row
+// (D2's own note: this already held by the chrome accident at 903bf8f;
+// the mechanism Story 4.3 shipped holds it for a REASON, and this test's
+// first two invariants below are exactly that mechanism, unmutated by
+// this story). What changes is the OLD fence: the header's OWN chrome
+// and labels (the ORIGINAL ColumnItems, read via ContentRects/ContentRuns)
+// still land on exactly the one page they always did — that is a true
+// and unchanged fact, not weakened here — but the header ALSO now
+// appears, through the SEPARATE PageAssignment.HeaderRepeats channel
+// (DECISION-3: never folded into ContentRects/ContentRuns), on every
+// later page this table's own rows land on. The new assertion below
+// checks that channel by name, so a regression that silently stopped
+// repeating the header on THIS fixture (header pushed off page 0 by a
+// filler element, Story 4.3's own AC5 shape) would redden here too, not
+// only in table_header_repeat_test.go's own simpler fixture.
+//
+// FINDER'S NOTE ON TEETH (finisher fix, Story 4.4 review Finding 13,
+// Minor): the two "moves whole" halves below stay GREEN when row
+// atomicity is deleted outright (RP-E, the story's own red-proof),
+// because this fixture's header chrome and its label happen to share an
+// identical extent — the exact "chrome accident" Story 4.3 itself named
+// — so this fixture cannot, on its own, discriminate a grouped header
+// from an ungrouped one. That property is properly, and independently,
+// guarded by
+// TestPaginateHeaderGroupMovesWholeEvenWhenChromeAndLabelExtentsDiffer
+// and TestPaginateRowGroupMovesWholeRegardlessOfAppendOrder (both
+// reddened under RP-E). The two halves here are therefore RE-CONFIRMING
+// witnesses on a realistic document shape, not this property's sole
+// guard — read them that way rather than as free-standing teeth.
+func TestHeaderRowMovesWholeToNextPageThenRepeatsOnEveryLaterOne(t *testing.T) {
 	const rows = 60
 	plan, contentRuns, tableRects := paginateContentTableForTest(t, headerPushedToNextPageDoc(), multiRowTableData(rows, -1))
 
@@ -740,17 +804,59 @@ func TestHeaderRowMovesWholeToNextPageAndIsNotRepeated(t *testing.T) {
 		}
 	}
 
-	// FENCE, both halves: the header must appear on EXACTLY ONE page —
-	// repeating it is Story 4.4's job, not this story's.
+	// UNCHANGED HALF: the header's OWN, DECLARED chrome and labels — the
+	// ORIGINAL ColumnItems, read via ContentRects/ContentRuns exactly as
+	// Story 4.3 built them — still land on EXACTLY the one page they
+	// always did. This is not "not repeated" any more (see below); it is
+	// "the header's own position is still a single page", which stays
+	// true regardless of FR26.
 	for p := range plan.Pages {
 		if p == headerPage {
 			continue
 		}
 		if headerChromePages[p] {
-			t.Errorf("page %d carries a header rect — the header must appear on EXACTLY ONE page (repeating it is Story 4.4's job, not this story's)", p)
+			t.Errorf("page %d carries the header's OWN chrome rect (via ContentRects) — its declared position must still be exactly ONE page", p)
 		}
 		if headerLabelPages[p] {
-			t.Errorf("page %d carries a header label — the header must appear on EXACTLY ONE page", p)
+			t.Errorf("page %d carries the header's OWN label (via ContentRuns) — its declared position must still be exactly ONE page", p)
+		}
+	}
+
+	// STORY 4.4's INVERTED HALF: the header DOES now appear again, via
+	// the SEPARATE HeaderRepeats channel, on every LATER page this
+	// table's own rows land on — FR26, and the very thing the pre-4.4
+	// fence forbade.
+	rowPages := map[int]bool{}
+	for p, pg := range plan.Pages {
+		for _, ref := range pg.ContentRects {
+			if tableRects[ref].isDataRow {
+				rowPages[p] = true
+			}
+		}
+	}
+	if len(rowPages) < 2 {
+		t.Fatalf("presence precondition: this table's rows must span >= 2 pages so 'every later page' is observable on more than one, got %d", len(rowPages))
+	}
+	for p := range rowPages {
+		if p == headerPage {
+			continue // the header's OWN page is never a "repeat" (DECISION-1)
+		}
+		repeated := false
+		for _, rep := range plan.Pages[p].HeaderRepeats {
+			if rep.ElementID == "e1" {
+				repeated = true
+			}
+		}
+		if !repeated {
+			t.Errorf("page %d carries this table's own rows but no HeaderRepeats entry for e1 — FR26's repeat is missing on this continuation page", p)
+		}
+	}
+	// And the header's OWN page must never carry a "repeat" of itself
+	// (DECISION-1: a repeat captions rows on a CONTINUATION page; the
+	// page holding the header's own declared position is not one).
+	for _, rep := range plan.Pages[headerPage].HeaderRepeats {
+		if rep.ElementID == "e1" {
+			t.Errorf("page %d (the header's own declared page) carries a HeaderRepeats entry for e1 — DECISION-1 forbids a repeat on the header's own page", headerPage)
 		}
 	}
 }
@@ -772,7 +878,14 @@ func TestMultiRowTableRendersThroughPublicRenderWithPageCountFooter(t *testing.T
 		wrapRow   int
 		wantPages int
 	}{
-		{rows: 20, wrapRow: 5, wantPages: 3},
+		// Story 4.4: this fixture's page count moved 3 -> 4. FR26's
+		// repeated header reserves headerHeight (10,000mp) on every
+		// continuation page, which is exactly the reservation this
+		// story adds — a genuine behaviour change (AC2), re-measured
+		// against the shipped mechanism: page 0 holds rows 0-4 (row 5
+		// wraps and does not fit), page 1 holds rows 5-8 (reservation
+		// active), page 2 holds rows 9-17, page 3 holds rows 18-19.
+		{rows: 20, wrapRow: 5, wantPages: 4},
 		{rows: 40, wrapRow: -1, wantPages: 5},
 		{rows: 60, wrapRow: -1, wantPages: 7},
 	}

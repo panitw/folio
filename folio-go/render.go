@@ -1745,10 +1745,11 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// into /Count. Only the middle produced one. Content taller than the
 	// content band was still DRAWN — below the bottom edge of the sheet,
 	// with no error and no warning.
-	pages, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible)
+	pages, repeatDiags, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible)
 	if perr != nil {
 		return nil, nil, nil, nil, perr
 	}
+	diags = append(diags, repeatDiags...)
 
 	return pages, embedded, pdfImages, diags, nil
 }
@@ -1794,7 +1795,7 @@ func paginateDocument(
 	pdfRuns []pagemodel.TextRun,
 	pdfPlacements []pagemodel.ImagePlacement,
 	visible visibilityVerdicts,
-) ([]pagemodel.Page, error) {
+) ([]pagemodel.Page, []Diagnostic, error) {
 	// The two repeated bands, and the content column's atomic items.
 	var header, footer layout.BandContent
 	var items []layout.ColumnItem
@@ -1808,10 +1809,22 @@ func paginateDocument(
 	// isVisible check is repeated here (mirrors this file's own images
 	// loop below, which DOES re-check — imageRuns is unfiltered by
 	// design, see its own doc comment; tableRects is not).
+	// rectIsDataRow, parallel to pdfRects (Story 4.4): whether the RectRef
+	// at that index belongs to a DATA ROW's chrome (never the header's
+	// own) — read by DIRECT FIELD LOOKUP from the SAME tableRectSource
+	// this loop already walks, never reconstructed from ElementID/extent/
+	// order (D-4.2.2). Consulted below to apply a page's RowDisplacement
+	// (FR26) to exactly the rows it names, and to nothing else.
 	var pdfRects []pagemodel.Rect
+	var rectIsDataRow []bool
+	var rectElementID []string
 	for _, ts := range tableRects {
 		lo := len(pdfRects)
 		pdfRects = append(pdfRects, ts.rects...)
+		for range ts.rects {
+			rectIsDataRow = append(rectIsDataRow, ts.isDataRow)
+			rectElementID = append(rectElementID, ts.elementID)
+		}
 		refs := make([]layout.RectRef, 0, len(ts.rects))
 		for k := lo; k < len(pdfRects); k++ {
 			refs = append(refs, layout.RectRef(k))
@@ -1873,7 +1886,7 @@ func paginateDocument(
 		// relying on an unasserted enumeration invariant in another
 		// function.
 		if runs[i].band != contentBandIndex {
-			return nil, fmt.Errorf("folio: internal error: paginateDocument: run %d has band %d, which is neither the page-header, page-footer, nor content band — documentBands' three-band enumeration invariant no longer holds", i, runs[i].band)
+			return nil, nil, fmt.Errorf("folio: internal error: paginateDocument: run %d has band %d, which is neither the page-header, page-footer, nor content band — documentBands' three-band enumeration invariant no longer holds", i, runs[i].band)
 		}
 		j := i
 		item := layout.ColumnItem{
@@ -1927,7 +1940,28 @@ func paginateDocument(
 
 	plan, err := layout.Paginate(geometry, items)
 	if err != nil {
-		return nil, wrapOverflowError(err)
+		return nil, nil, wrapOverflowError(err)
+	}
+
+	// Story 4.4, DECISION-2: one Warning per (table, page) suppression,
+	// built straight from Paginate's OWN decision — never a second,
+	// independent re-run of the fit arithmetic (D-4.2.2). The message
+	// names the table, the page, the row's own height, the space it fit
+	// inside WITHOUT the reservation, and the three levers a template
+	// author actually has (D-000.37): reduce the header's declared
+	// height, reduce the row's height (font size/padding), or increase
+	// the page's content height (smaller margins, or a smaller
+	// page-header/page-footer).
+	var repeatDiags []Diagnostic
+	for _, s := range plan.Suppressed {
+		repeatDiags = append(repeatDiags, Diagnostic{
+			Severity:  SeverityWarning,
+			Code:      DiagCodeTableHeaderRepeatSuppressed,
+			ElementID: s.ElementID,
+			Message: fmt.Sprintf(
+				"folio: Render: element %s: the repeated header could not be drawn on page %d — the next row is %s tall and only %s is available on that page without the header's own reservation (the table's own headerHeight is %s), so the header repeat is suppressed on this page only (FR26). Reduce the table's headerHeight, reduce this row's height (font size or cell padding), or increase the page's content height (smaller margins, or a smaller page-header/page-footer)",
+				s.ElementID, s.Page+1, millipointsForDiag(s.RowHeight), millipointsForDiag(s.Available), millipointsForDiag(s.HeaderHeight)),
+		})
 	}
 
 	pages := make([]pagemodel.Page, 0, len(plan.Pages))
@@ -1944,6 +1978,19 @@ func paginateDocument(
 		for _, ref := range header.Runs {
 			pageRuns = append(pageRuns, resolvePageRunForPage(pdfRuns[ref], pageNum))
 		}
+		// Story 4.4, FR26/DECISION-3: this page's repeated table headers,
+		// drawn before that page's own content — the SAME Rects/Runs the
+		// table's own header carries (R6: no new glyphs, no second
+		// producer), repositioned by the repeat's OWN Shift, a quantity
+		// separate from assigned.Shift (DECISION-3: the page's Shift is
+		// untouched and continues to govern everything else on the page).
+		for _, rep := range assigned.HeaderRepeats {
+			for _, ref := range rep.Runs {
+				run := pdfRuns[ref]
+				run.Y -= rep.Shift
+				pageRuns = append(pageRuns, run)
+			}
+		}
 		for _, ref := range assigned.ContentRuns {
 			// The window shift, and it is the ONLY transformation
 			// pagination applies. Every content item on one page shares it,
@@ -1951,6 +1998,13 @@ func paginateDocument(
 			// itself is never mutated.
 			run := pdfRuns[ref]
 			run.Y -= assigned.Shift
+			// Story 4.4: a repeating table's OWN rows are displaced
+			// further down, beyond Shift, to make room for the repeat
+			// above them — scoped to that table's ElementID alone
+			// (DECISION-3), never to any other element on this page.
+			if runs[ref].isTableRowLine {
+				run.Y += rowDisplacementFor(assigned.RowDisplacement, runs[ref].elementID)
+			}
 			pageRuns = append(pageRuns, run)
 		}
 		for _, ref := range footer.Runs {
@@ -1974,9 +2028,19 @@ func paginateDocument(
 		for _, ref := range header.Rects {
 			pageRects = append(pageRects, pdfRects[ref])
 		}
+		for _, rep := range assigned.HeaderRepeats {
+			for _, ref := range rep.Rects {
+				r := pdfRects[ref]
+				r.Y -= rep.Shift
+				pageRects = append(pageRects, r)
+			}
+		}
 		for _, ref := range assigned.ContentRects {
 			r := pdfRects[ref]
 			r.Y -= assigned.Shift
+			if rectIsDataRow[ref] {
+				r.Y += rowDisplacementFor(assigned.RowDisplacement, rectElementID[ref])
+			}
 			pageRects = append(pageRects, r)
 		}
 		for _, ref := range footer.Rects {
@@ -1985,7 +2049,31 @@ func paginateDocument(
 
 		pages = append(pages, layout.ComposePage(geometry, pageRuns, pageImages, pageRects))
 	}
-	return pages, nil
+	return pages, repeatDiags, nil
+}
+
+// rowDisplacementFor returns the extra downward displacement (Story 4.4)
+// a page's RowDisplacement reserves for elementID — 0 if none — found by a
+// single SLICE WALK (never a map range, R5): the list is small (one entry
+// per repeating table on that page) and its own order is not itself
+// meaningful, so a linear scan is the simplest correct read.
+func rowDisplacementFor(list []layout.TableRowDisplacement, elementID string) geom.Length {
+	for _, d := range list {
+		if d.ElementID == elementID {
+			return d.Amount
+		}
+	}
+	return 0
+}
+
+// millipointsForDiag spells a geom.Length for a HUMAN-READABLE diagnostic
+// message (Story 4.4, D-000.37) — mirrors internal/layout's own
+// millipoints helper (that one is unexported and this package may not
+// import internal/layout for a formatting helper alone); not an
+// output-format emitter, so AD-3's "one number emitter" (internal/pdf's
+// numbers.go) is untouched.
+func millipointsForDiag(v geom.Length) string {
+	return strconv.FormatInt(int64(v), 10) + "mp"
 }
 
 // cidKey identifies one allocated CID: a subset glyph together with the

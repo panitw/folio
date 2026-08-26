@@ -242,6 +242,21 @@ const DiagCodeDocumentDateInvalid = string(diag.CodeDocumentDateInvalid)
 // permanent.
 const DiagCodeStyleColorInvalid = string(diag.CodeStyleColorInvalid)
 
+// DiagCodeTableHeaderRepeatSuppressed names Story 4.4's own new condition
+// (FR26, DECISION-2 as ruled by the engineering lead): a table's repeated
+// header could not be honoured on one continuation page because the next
+// unplaced row fits the bare content window but not the window under the
+// header's own reserved height. The repeat is suppressed on that ONE page
+// only — the row is still placed and the render still completes — and this
+// Warning travels on Result.Diagnostics (never wrapped in a *RenderError:
+// the document still renders) as the sole record that FR26 did not hold on
+// that page. Distinct from DiagCodeContentUnlayoutable, which names an
+// element taller than the content window itself — this row is not; it is
+// taller than the window less a reservation FR26 itself introduces.
+//
+// Additive only (AD-14): once shipped, this string's meaning is permanent.
+const DiagCodeTableHeaderRepeatSuppressed = string(diag.CodeTableHeaderRepeatSuppressed)
+
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — over-tall rows (FR25, not yet built) and clipped
 // content (FR44, this story) — is expressed as a value of this type,

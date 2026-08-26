@@ -147,6 +147,20 @@ const (
 	// stroke anywhere in the PDF writer"). Minted here, at the point
 	// the condition first ships (R7/D-000.65), rather than in advance.
 	CodeStyleColorInvalid Code = "STYLE_COLOR_INVALID"
+
+	// CodeTableHeaderRepeatSuppressed names Story 4.4's own new
+	// condition (FR26, DECISION-2 as ruled): a table's repeated header
+	// could not be honoured on one continuation page because the next
+	// unplaced row fits the bare content window but not the window
+	// under the header's own reserved height. The repeat is suppressed
+	// on that ONE page only (never a hard error — CodeContentUnlayoutable
+	// names a DIFFERENT condition, an element taller than the content
+	// window itself, which this is not) and the render completes; this
+	// Warning is the record that FR26 did not hold there. Minted here,
+	// at the point the condition first ships (R7/D-000.65: the ruling
+	// records that this is the lead's authorization, not a deferred
+	// owner call).
+	CodeTableHeaderRepeatSuppressed Code = "TABLE_HEADER_REPEAT_SUPPRESSED"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -167,6 +181,7 @@ var allCodes = []Code{
 	CodeInternalUnhandledCaveat,
 	CodeDocumentDateInvalid,
 	CodeStyleColorInvalid,
+	CodeTableHeaderRepeatSuppressed,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
