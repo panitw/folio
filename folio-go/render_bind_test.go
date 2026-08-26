@@ -19,6 +19,19 @@ import (
 // table's columns[].bind is never scanned by text binding") is
 // unchanged and still non-vacuous, because Story 3.1 does not evaluate
 // column binds either — that is Story 3.2.
+//
+// Story 4.2 correction (measured fresh in this run — the table did not
+// declare "as" here, so the column's row-scoped "transaction.amount"
+// path was about to resolve against the DATA ROOT under the default
+// alias "row" and fail): "as": "transaction" is now declared so the
+// column's own alias matches the bind it has always carried. This is a
+// fixture correction, not a behaviour change — the same category as
+// the nine table_render_test.go bind sites D3 tabulates — surfaced by
+// this story because column binds are evaluated for the first time.
+// For the same reason, "amount" is now a JSON NUMBER (1.00) rather
+// than a string: formatNumber() (D-000.14, AD-14) never coerces, and
+// the column's bind was never evaluated before this story to notice
+// the mismatch.
 const bindTestTemplateJSON = `{
   "assets": {},
   "bands": {
@@ -26,7 +39,7 @@ const bindTestTemplateJSON = `{
       "elements": [
         {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "Statement for {{customer.name}}", "style": {"fontFamily": "body", "fontSize": 14}},
         {"id": "e2", "type": "table", "x": 0, "y": 30, "bind": "transactions[]", "headerHeight": 20,
-          "style": {"fontFamily": "body", "fontSize": 9},
+          "as": "transaction", "style": {"fontFamily": "body", "fontSize": 9},
           "columns": [
             {"id": "e3", "label": "Amount", "width": 80, "bind": "{{formatNumber(transaction.amount, \"#,##0.00\")}}"}
           ]}
@@ -65,26 +78,31 @@ const bindTestTemplateJSON = `{
 // AC20/D-1.6.8 (Story 3.1 amendment, finding 4): columns[0].bind
 // carries expression-shaped "{{…}}" content (parentheses, a comma and
 // quotes — three separate AC16 rejection triggers) that would fail
-// AC16's grammar if it were ever scanned as text. Render succeeds
-// anyway, because binding is scoped to text-element `value`
-// interpolation only (collectTextRuns skips every non-text element,
-// and is the ONLY call site of internal/bind.BindText) — this is the
-// shape M-4 found already living in the canonical golden fixture
-// (worked-example.json:19), reproduced here as a render-time (not
-// merely round-trip) proof.
+// AC16's grammar if it were ever scanned as TEXT-ELEMENT VALUE
+// INTERPOLATION. Render succeeds anyway, because collectTextRuns skips
+// every non-text element and is the ONLY call site of
+// internal/bind.BindText — this is the shape M-4 found already living
+// in the canonical golden fixture (worked-example.json:19), reproduced
+// here as a render-time (not merely round-trip) proof.
 //
-// table.bind is READ, from this story on — as a collection path
-// (source AC5), never as interpolated text — so this template's
-// table.bind is now the bare path "transactions[]" with a real array
-// supplied, and does not, on its own, exercise AC20's fence; the fence
-// this test proves is columns[0].bind alone. Story 3.1 does not
-// evaluate column binds either — that stays Story 3.2's.
+// table.bind is READ, from Story 3.2 on, as a collection path (source
+// AC5), never as interpolated text — so this template's table.bind is
+// the bare path "transactions[]" with a real array supplied, and does
+// not, on its own, exercise AC20's fence. As of Story 4.2, columns[].bind
+// IS also evaluated — in the table's own ROW SCOPE (AD-11), never by
+// collectTextRuns/BindText — so this test's discriminating claim is
+// narrower than it once was: it proves column binds are never scanned
+// by TEXT binding, not that they are unevaluated altogether. Render
+// succeeding here therefore depends on BOTH the fence holding AND the
+// column's own bind resolving cleanly in row scope; the two updated
+// fixture corrections below (the declared alias, the numeric amount)
+// are what make the latter true.
 func TestRenderScopeFenceIgnoresTableBind(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(bindTestTemplateJSON))
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	data := Data(`{"customer": {"name": "Ada Lovelace"}, "transactions": [{"amount": "1.00"}]}`)
+	data := Data(`{"customer": {"name": "Ada Lovelace"}, "transactions": [{"amount": 1.00}]}`)
 	res, err := Render(tpl, data, nil, testFontSet())
 	if err != nil {
 		t.Fatalf("Render must succeed despite the table column's expression-shaped bind field: %v", err)

@@ -542,6 +542,25 @@ func pdfNameEscape(name string) string {
 	return string(out)
 }
 
+// bfcharSectionCap is DW-14's cap: ISO 32000-1 §9.10.3 (the ToUnicode
+// CMap clause, which incorporates the Adobe CMap and CIDFont
+// specifications' operator limits) REQUIRES that a single
+// `beginbfchar`/`endbfchar` section carry no more than 100 entries —
+// this is not implementation-defined guidance, and several
+// third-party PDF readers are known to mis-parse a section that
+// exceeds it. Story 4.2 is the first story to hand buildToUnicodeCMap
+// a face whose ToUnicode table can exceed this at all in principle
+// (D1's measurement: the largest section shipped anywhere in this
+// repository is 45, on a two-page document).
+//
+// This is a NAMED constant precisely so the corpus-wide witness
+// (package folio's TestNoRealToUnicodeSectionExceedsTheCap) and the
+// direct chunking witness (internal/pdf/tounicode_chunk_test.go) can
+// each state their own expectation as an INDEPENDENT literal — never
+// derived from this constant — so a wrong value here cannot pass
+// either test by construction (D-000.9).
+const bfcharSectionCap = 100
+
 // buildToUnicodeCMap builds the ToUnicode CMap stream — one bfchar
 // entry per CID the content stream actually emits, mapping it back to
 // the text it extracts as. This is what an independent reader uses to
@@ -569,6 +588,11 @@ func pdfNameEscape(name string) string {
 // rune would need a UTF-16 surrogate pair, which no shipped face's
 // coverage reaches in this story's fixtures — and which is reported as a
 // located error rather than silently truncated.
+//
+// DW-14 (Story 4.2): entries are emitted in consecutive
+// bfcharSectionCap-sized sections rather than one unbounded section —
+// see that constant's own comment for why.
+
 func buildToUnicodeCMap(face EmbeddedFace) ([]byte, error) {
 	var c []byte
 	c = append(c, "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n"...)
@@ -576,21 +600,44 @@ func buildToUnicodeCMap(face EmbeddedFace) ([]byte, error) {
 	c = append(c, "/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n"...)
 	c = append(c, "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"...)
 
-	c = appendInt(c, int64(len(face.ToUnicode)))
-	c = append(c, " beginbfchar\n"...)
-	for _, e := range face.ToUnicode {
-		c = append(c, '<')
-		c = appendHex4(c, e.CID)
-		c = append(c, "> <"...)
-		for _, r := range e.Text {
-			if r > 0xFFFF {
-				return nil, &supplementaryPlaneError{face: face.Name, r: r}
-			}
-			c = appendHex4(c, uint16(r))
-		}
-		c = append(c, ">\n"...)
+	// DW-14: chunked into consecutive sections of at most
+	// bfcharSectionCap entries each, in the SAME ascending-CID order
+	// face.ToUnicode already carries, every entry present exactly once.
+	// Byte-identical to the pre-chunking single-section form for any
+	// face whose ToUnicode table is at or under the cap (measured:
+	// 965/0/1, unchanged, at cap 100 — see the story's Delivery Log).
+	//
+	// A face with ZERO entries still emits exactly one (empty) section
+	// — the pre-chunking behaviour, preserved byte-for-byte — rather
+	// than none at all: `start < len(...)` alone would skip the loop
+	// body entirely for an empty ToUnicode table.
+	sections := (len(face.ToUnicode) + bfcharSectionCap - 1) / bfcharSectionCap
+	if sections == 0 {
+		sections = 1
 	}
-	c = append(c, "endbfchar\n"...)
+	for i := 0; i < sections; i++ {
+		start := i * bfcharSectionCap
+		end := start + bfcharSectionCap
+		if end > len(face.ToUnicode) {
+			end = len(face.ToUnicode)
+		}
+		section := face.ToUnicode[start:end]
+		c = appendInt(c, int64(len(section)))
+		c = append(c, " beginbfchar\n"...)
+		for _, e := range section {
+			c = append(c, '<')
+			c = appendHex4(c, e.CID)
+			c = append(c, "> <"...)
+			for _, r := range e.Text {
+				if r > 0xFFFF {
+					return nil, &supplementaryPlaneError{face: face.Name, r: r}
+				}
+				c = appendHex4(c, uint16(r))
+			}
+			c = append(c, ">\n"...)
+		}
+		c = append(c, "endbfchar\n"...)
+	}
 	c = append(c, "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"...)
 	return c, nil
 }

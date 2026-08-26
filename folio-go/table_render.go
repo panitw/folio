@@ -14,10 +14,13 @@ package folio
 import (
 	"fmt"
 
+	"github.com/panitw/folio/folio-go/internal/bind"
+	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/layout"
 	"github.com/panitw/folio/folio-go/internal/pagemodel"
 	"github.com/panitw/folio/folio-go/internal/template"
+	"github.com/panitw/folio/folio-go/internal/text"
 )
 
 // tableRectSource is one table's header-row vector chrome (Story 4.1,
@@ -36,6 +39,26 @@ type tableRectSource struct {
 	elementID   string
 	top, bottom geom.Length
 	rects       []pagemodel.Rect
+
+	// isDataRow / rowIndex — Story 4.2, DECISION-2 (owner ruling): a
+	// carried identity for "which bound-collection row produced this
+	// chrome group", so Story 4.3 ("a row moves whole to the next
+	// page") can group this story's output by DIRECT FIELD LOOKUP
+	// rather than by reconstructing membership from element ids,
+	// extents or emission order — exactly the reconstruction the
+	// ruling names as where a wrapped row silently becomes two.
+	//
+	// isDataRow is false (and rowIndex meaningless) for the header's
+	// own chrome group (Story 4.1, unchanged): a header is not a row.
+	// For a data row's chrome group (Story 4.2), isDataRow is true and
+	// rowIndex is the row's 0-based position in the bound collection.
+	//
+	// This story asserts only that the identity itself is correct
+	// (TestDataRowIdentityIsConsistentAndDistinct) — it asserts nothing
+	// about pagination (AC7). Story 4.3 is this field's one named
+	// consumer.
+	isDataRow bool
+	rowIndex  int
 }
 
 // resolvedHeaderStyle is a table's header-row style, cascaded ONCE per
@@ -136,6 +159,63 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 	return r
 }
 
+// resolvedBodyStyle is a table's DATA-ROW style, cascaded ONCE per
+// table (Story 4.2, AC5; D-000.76's ruling that headerStyle governs
+// the header row ONLY): for every field, the table's own
+// `style.<field>` wins when set, otherwise the field's documented
+// default. There is deliberately NO headerStyle arm here — that is the
+// whole point of AC5's fence. `columns[].align` is resolved separately
+// per column and still wins over `alignFallback`, exactly as it does
+// for the header (AC4, extended one level).
+//
+// fontFamily/fontSize are NOT carried here: a data row's font chain
+// cascades from `style` alone, which is exactly fontChain's own
+// cascade (render.go) — reused verbatim so a data cell's "no
+// resolvable fontFamily" error is the SAME message the existing
+// font-resolution failure produces, never a third spelling (AC5's own
+// grounds, D-000.65).
+type resolvedBodyStyle struct {
+	hasBorder bool
+	border    template.Border
+
+	hasBackground bool
+	background    string
+
+	padding template.Padding
+
+	valign string // "top", "middle" or "bottom" — never empty
+
+	alignFallback string
+}
+
+// resolveBodyStyle cascades el's table style ALONE (never headerStyle)
+// exactly once per table (Story 4.2, AC5).
+func resolveBodyStyle(el template.Element) resolvedBodyStyle {
+	var base template.Style
+	if el.Style.Set && !el.Style.Null {
+		base = el.Style.Value
+	}
+
+	r := resolvedBodyStyle{valign: "top", alignFallback: "left"}
+
+	if base.Border.Set && !base.Border.Null {
+		r.hasBorder, r.border = true, base.Border.Value
+	}
+	if base.Background.Set && !base.Background.Null {
+		r.hasBackground, r.background = true, base.Background.Value
+	}
+	if base.Padding.Set && !base.Padding.Null {
+		r.padding = base.Padding.Value
+	}
+	if base.Valign.Set && !base.Valign.Null {
+		r.valign = base.Valign.Value
+	}
+	if base.Align.Set && !base.Align.Null {
+		r.alignFallback = base.Align.Value
+	}
+	return r
+}
+
 // paddingEdges returns the four padding insets, each independently
 // defaulting to zero when its own field is absent (AC3, R6).
 func paddingEdges(p template.Padding) (top, right, bottom, left geom.Length) {
@@ -194,26 +274,39 @@ func hexDigit(b byte) (uint8, bool) {
 // AUTHOR expresses the look via style/headerStyle, this function
 // invents none of it).
 func buildHeaderCellRect(elementID string, x, y, w, h geom.Length, hs resolvedHeaderStyle) (pagemodel.Rect, error) {
+	return buildCellRect(elementID, x, y, w, h, hs.hasBackground, hs.background, hs.hasBorder, hs.border)
+}
+
+// buildCellRect builds ONE cell's vector primitive (header or data row
+// alike, Story 4.1/4.2) from a resolved has*/value pair for background
+// and border — never a hardcoded treatment (the owner ruling both
+// stories carry: the AUTHOR expresses the look via style, this
+// function invents none of it). hasBackground/hasBorder absent means
+// "draw nothing for this half" — a fully style-less cell still gets a
+// Rect (HasFill==false, HasStroke==false), so it still occupies its
+// own page space (D-2.6.5: an item that occupies space must not be
+// empty) without drawing anything.
+func buildCellRect(elementID string, x, y, w, h geom.Length, hasBackground bool, background string, hasBorder bool, border template.Border) (pagemodel.Rect, error) {
 	rect := pagemodel.Rect{X: x, Y: y, W: w, H: h}
 
-	if hs.hasBackground {
-		c, ok := parseHexColor(hs.background)
+	if hasBackground {
+		c, ok := parseHexColor(background)
 		if !ok {
 			return pagemodel.Rect{}, newRenderError(DiagCodeStyleColorInvalid, elementID, "",
-				fmt.Errorf("folio: Render: element %s: style.background/headerStyle.background %q is not a #RRGGBB colour", elementID, hs.background))
+				fmt.Errorf("folio: Render: element %s: style.background/headerStyle.background %q is not a #RRGGBB colour", elementID, background))
 		}
 		rect.HasFill = true
 		rect.Fill = c
 	}
 
-	if hs.hasBorder {
+	if hasBorder {
 		width := geom.Length(500) // folio-format.md's documented default: 0.5pt
-		if hs.border.Width.Set && !hs.border.Width.Null {
-			width = hs.border.Width.Value
+		if border.Width.Set && !border.Width.Null {
+			width = border.Width.Value
 		}
 		colorHex := "#000000"
-		if hs.border.Color.Set && !hs.border.Color.Null {
-			colorHex = hs.border.Color.Value
+		if border.Color.Set && !border.Color.Null {
+			colorHex = border.Color.Value
 		}
 		c, ok := parseHexColor(colorHex)
 		if !ok {
@@ -221,9 +314,9 @@ func buildHeaderCellRect(elementID string, x, y, w, h geom.Length, hs resolvedHe
 				fmt.Errorf("folio: Render: element %s: style.border.color/headerStyle.border.color %q is not a #RRGGBB colour", elementID, colorHex))
 		}
 		edges := pagemodel.RectEdges{Top: true, Right: true, Bottom: true, Left: true}
-		if hs.border.Edges.Set && !hs.border.Edges.Null {
+		if border.Edges.Set && !border.Edges.Null {
 			edges = pagemodel.RectEdges{}
-			for _, e := range hs.border.Edges.Value {
+			for _, e := range border.Edges.Value {
 				switch e {
 				case "top":
 					edges.Top = true
@@ -259,6 +352,8 @@ func collectBandTableRuns(
 	doc *Template,
 	bands []bandWithOrigin,
 	bandIndex int,
+	data, params bind.Value,
+	fc expr.FormatContext,
 	fs FontSet,
 	cache *fontCache,
 	visible visibilityVerdicts,
@@ -414,6 +509,278 @@ func collectBandTableRuns(
 			bottom:    tableBottom,
 			rects:     rects,
 		})
+
+		// --- Story 4.2: data rows ---
+		//
+		// checkTableBindings (render.go) already ran, before this
+		// function is ever called, and already proved tbl.Bind resolves
+		// to a KindArray value (or failed the whole render) — so
+		// data.Lookup below is safe to read .Arr from unconditionally.
+		alias := resolvedRowAlias(tbl.As)
+		collectionVal, _ := data.Lookup(tableCollectionSegments(tbl.Bind))
+		items := collectionVal.Arr
+
+		if len(items) > 0 {
+			// AC5: a data cell's font/border/background/padding/align/
+			// valign cascade from the table's own `style` ONLY — never
+			// `headerStyle` (D-000.76: header-only). fontChain is
+			// reused VERBATIM (not re-implemented) so a data cell's
+			// "no resolvable fontFamily" failure is the SAME message
+			// the existing font-resolution failure produces, never a
+			// third spelling (AC5's own grounds, D-000.65).
+			bodyChain, cerr := fontChain(doc, el)
+			if cerr != nil {
+				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, cerr)
+			}
+			bodyFontSize := defaultFontSizePt
+			if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
+				bodyFontSize = el.Style.Value.FontSize.Value
+			}
+			bs := resolveBodyStyle(el)
+			padTopB, padRightB, padBottomB, padLeftB := paddingEdges(bs.padding)
+
+			// R2: ONE vertical model for the WHOLE table's body, computed
+			// once outside the row loop — never recomputed per cell or
+			// per row.
+			vm, verr := chainVerticalModel(bodyChain, bodyFontSize, fs, cache)
+			if verr != nil {
+				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, verr)
+			}
+
+			type cellResult struct {
+				lines     []wrappedLine
+				segs      []faceSegment
+				align     string
+				clip      bool
+				clipX     geom.Length
+				clipWidth geom.Length
+			}
+
+			rowTop := tableBottom
+			// nextLineIndex starts at 1: the header's own label line
+			// above always uses lineIndex 0 (unchanged), so this counter
+			// — monotonically increasing across EVERY physical line of
+			// EVERY row of this table — never collides with it and never
+			// collides between two different rows, which is exactly what
+			// keeps contentColumnItems/paginateDocument's
+			// (elementID, lineIndex) grouping from merging two distinct
+			// physical lines into one ColumnItem (D2).
+			nextLineIndex := 1
+
+			for rowIdx, rowVal := range items {
+				scope := bind.NewScope(data, params).WithRow(rowVal, alias)
+
+				cellResults := make([]cellResult, len(tbl.Columns))
+				maxLines := 0
+				for ci, col := range tbl.Columns {
+					cg := geometry.Columns[ci]
+					contentW := cg.Width - padLeftB - padRightB
+
+					align := bs.alignFallback
+					if col.Align.Set && !col.Align.Null {
+						align = col.Align.Value
+					}
+
+					// AC4: the column's bind resolves in the table's
+					// ROW SCOPE — bind.Resolve, never bind.BindTextSpans
+					// — so an unqualified path still resolves from the
+					// document root (a row never shadows it) and
+					// `params.` still resolves to the parameters,
+					// shadowed by nothing (AD-11). AC4's own three AD-14
+					// cases (absent -> Error, explicit null -> empty and
+					// not an error, wrong kind -> Error never coerced)
+					// are ALL already implemented inside bind.Resolve
+					// itself — nothing here re-implements any of them.
+					//
+					// Diagnostic located by COLUMN id (AC4's own
+					// grounds: "columns[].id exists precisely so a
+					// diagnostic can name a column") — the SAME
+					// DiagCodeBindingPathAbsent code collectBandTextRuns
+					// already uses for a text element's own unresolvable
+					// binding (D-000.65: reuse, mint nothing).
+					boundText, subs, caveats, berr := bind.Resolve(col.Bind, scope, fc, string(col.ID))
+					if berr != nil {
+						return nil, nil, nil, newRenderError(DiagCodeBindingPathAbsent, string(col.ID), "", fmt.Errorf("folio: Render: %w", berr))
+					}
+					for _, c := range caveats {
+						diags = append(diags, diagnosticFromCaveat(string(col.ID), c))
+					}
+					if boundText == "" {
+						cellResults[ci] = cellResult{align: align}
+						continue
+					}
+
+					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache)
+					if serr != nil {
+						return nil, nil, nil, serr
+					}
+					diags = append(diags, glyphDiags...)
+					totalRunes := len([]rune(boundText))
+
+					atomic := atomicSpansFor(doc.doc.UnbreakableValues, subs)
+					ops := text.Opportunities(text.Dictionary(), boundText, atomic)
+					// AC2: wrap INSIDE the column's own content width —
+					// packLines is the SAME packer text elements use.
+					lines := packLines(segs, ops, totalRunes, bodyFontSize, contentW)
+
+					// AC3: residual overflow (no break opportunity
+					// narrow enough) is CLIPPED at the column's content
+					// box, with the EXISTING DiagCodeTextClippedWidth —
+					// D-2.8.1's own precedent, D-000.65: no new code.
+					overflow, overflows := detectWidthOverflow(string(col.ID), lines, contentW)
+					if overflows {
+						diags = append(diags, Diagnostic{
+							Severity:  SeverityWarning,
+							Code:      DiagCodeTextClippedWidth,
+							ElementID: overflow.elementID,
+							Message:   widthClipMessage("column", "content", overflow),
+						})
+					}
+
+					if len(lines) > maxLines {
+						maxLines = len(lines)
+					}
+					cellResults[ci] = cellResult{
+						lines: lines, segs: segs, align: align,
+						clip: overflows, clipX: cg.X + padLeftB, clipWidth: contentW,
+					}
+				}
+
+				// R3: a block of n lines is
+				// FirstBaseline + (n-1)*Advance + LastDescent. n is at
+				// least 1 even when every cell in the row is empty — a
+				// data row, unlike an empty text element, is not itself
+				// optional (it is one element of the bound collection),
+				// so it still occupies one blank line's worth of height.
+				linesInRow := maxLines
+				if linesInRow < 1 {
+					linesInRow = 1
+				}
+				rowHeight := padTopB + vm.FirstBaseline + geom.Length(int64(linesInRow-1))*vm.Advance + vm.LastDescent + padBottomB
+				rowBottom := rowTop + rowHeight
+
+				// AC5 (Story 4.2 review Finding 4): bs.valign
+				// distributes a CELL's own vertical slack —
+				// linesInRow minus that cell's own line count — WITHIN
+				// the row, the body's analogue of the header's own
+				// valign (R2/R3's shared vertical model: same three-
+				// way switch, applied to a whole-line COUNT here
+				// rather than a sub-line pixel remainder, since a
+				// row's height is already an exact multiple of
+				// vm.Advance). It never changes the row's own height
+				// (still exactly linesInRow, computed above) or any
+				// column's geometry (AD-13) — it only decides which of
+				// the row's physical line SLOTS a shorter cell's own
+				// lines occupy: "top" (the default, and the ONLY
+				// behaviour before this fix) leaves them at the row's
+				// first slots; "bottom" shifts them to the last
+				// slots; "middle" splits the remainder, rounding down
+				// (an integer LINE count, not a Length — no
+				// geom.ScaleRound/binary-float concern, AD-1 holds).
+				lineOffsets := make([]int, len(tbl.Columns))
+				for ci := range tbl.Columns {
+					slack := linesInRow - len(cellResults[ci].lines)
+					if slack < 0 {
+						slack = 0
+					}
+					switch bs.valign {
+					case "bottom":
+						lineOffsets[ci] = slack
+					case "middle":
+						lineOffsets[ci] = slack / 2
+					default: // "top"
+						lineOffsets[ci] = 0
+					}
+				}
+
+				// DECISION-1 (ruled): a data row gets cell chrome too,
+				// cascaded from `style` alone (never headerStyle,
+				// never a data-driven decision — bs was resolved ONCE,
+				// above, from the template alone). One tableRectSource
+				// per ROW — reusing the EXACT same downstream handling
+				// contentColumnItems/paginateDocument already give the
+				// header's own tableRectSource, so a data row's chrome
+				// becomes its own ColumnItem, spanning the row's full
+				// extent (AC7), with no changes needed to either of
+				// those two functions.
+				cellRects := make([]pagemodel.Rect, len(tbl.Columns))
+				for ci := range tbl.Columns {
+					cg := geometry.Columns[ci]
+					rect, rerr := buildCellRect(string(el.ID), cg.X, rowTop, cg.Width, rowHeight, bs.hasBackground, bs.background, bs.hasBorder, bs.border)
+					if rerr != nil {
+						return nil, nil, nil, rerr
+					}
+					cellRects[ci] = rect
+				}
+				rectSources = append(rectSources, tableRectSource{
+					band:      bandIndex,
+					elementID: string(el.ID),
+					top:       rowTop,
+					bottom:    rowBottom,
+					rects:     cellRects,
+					isDataRow: true,
+					rowIndex:  rowIdx,
+				})
+
+				// One physical line at a time: ALL columns' cell content
+				// at line li share the SAME lineIndex (assigned once per
+				// li, below) and the SAME vertical extent, exactly as
+				// the header's several column labels already share
+				// lineIndex 0 — this is what keeps a multi-column line
+				// grouped into ONE ColumnItem (D2's "two items, same
+				// extent" shape, extended to N columns on one physical
+				// line rather than only two content kinds).
+				for li := 0; li < linesInRow; li++ {
+					lineTopY := rowTop + padTopB + geom.Length(int64(li))*vm.Advance
+					lineBottom := lineTopY + vm.FirstBaseline + vm.LastDescent
+					for ci := range tbl.Columns {
+						cr := cellResults[ci]
+						cellLi := li - lineOffsets[ci]
+						if cellLi < 0 || cellLi >= len(cr.lines) {
+							continue
+						}
+						ln := cr.lines[cellLi]
+						cg := geometry.Columns[ci]
+						contentX := cg.X + padLeftB
+						contentW := cg.Width - padLeftB - padRightB
+						measured := ln.width
+
+						var textX geom.Length
+						switch cr.align {
+						case "right":
+							textX = contentX + contentW - measured
+						case "center":
+							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+						default: // "left"
+							textX = contentX
+						}
+
+						placed, poserr := positionSegments(cr.segs, ln.from, ln.to, textX, lineTopY, bodyFontSize, vm.FirstBaseline, nil)
+						if poserr != nil {
+							return nil, nil, nil, poserr
+						}
+						for j := range placed {
+							placed[j].band = bandIndex
+							placed[j].elementID = string(el.ID)
+							placed[j].lineIndex = nextLineIndex
+							placed[j].itemTop = lineTopY
+							placed[j].itemBottom = lineBottom
+							placed[j].isTableRowLine = true
+							placed[j].rowIndex = rowIdx
+							if cr.clip {
+								placed[j].clipToBox = true
+								placed[j].clipX = cr.clipX
+								placed[j].clipWidth = cr.clipWidth
+							}
+						}
+						runs = append(runs, placed...)
+					}
+					nextLineIndex++
+				}
+
+				rowTop = rowBottom
+			}
+		}
 	}
 
 	return runs, rectSources, diags, nil

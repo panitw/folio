@@ -95,8 +95,8 @@ func tableHeaderDocFull(styleJSON, headerStyleJSON, columnsJSON string, headerHe
 }
 
 const twoColumnsNoAlign = `[
-  {"id": "e2", "label": "Date", "width": 100, "bind": "{{item.a}}"},
-  {"id": "e3", "label": "Amount", "width": 150, "bind": "{{item.b}}"}
+  {"id": "e2", "label": "Date", "width": 100, "bind": "{{row.a}}"},
+  {"id": "e3", "label": "Amount", "width": 150, "bind": "{{row.b}}"}
 ]`
 
 // TestTableHeaderNoStyleExceptFontFamilyRendersDocumentedDefaults is
@@ -223,41 +223,45 @@ func TestTableHeaderPaddingInsetsLabel(t *testing.T) {
 // only source) — reds on column 1 (its label would stay flush left).
 func TestColumnAlignWinsOverStyleAlign(t *testing.T) {
 	cols := `[
-  {"id": "e2", "label": "A", "width": 100, "align": "left", "bind": "{{item.a}}"},
-  {"id": "e3", "label": "B", "width": 100, "bind": "{{item.b}}"}
+  {"id": "e2", "label": "A", "width": 100, "align": "left", "bind": "{{row.a}}"},
+  {"id": "e3", "label": "B", "width": 100, "bind": "{{row.b}}"}
 ]`
 	doc := tableHeaderDoc(`{"fontFamily": "latin", "align": "right"}`, cols)
-	pages := tablePagesForTest(t, doc, `{"items": []}`)
+	// Story 4.2 review Finding 12: a NON-EMPTY collection, so this
+	// precedence property is asserted over the header AND the data
+	// row, never the header alone. Every run in each column bucket
+	// (not merely the first one encountered) must satisfy the
+	// precedence, so a data cell falling back to the WRONG source
+	// cannot hide behind the header cell's own correct answer.
+	pages := tablePagesForTest(t, doc, `{"items": [{"a":"1","b":"2"}]}`)
 
 	// Column 0's cell is [0,100000); flush-left means its label X == 0.
 	// Column 1's cell is [100000,200000); flush-right means its label X
 	// is somewhere strictly greater than 100000 (its own cell's left
 	// edge) — a right-aligned short label never starts at the cell's
 	// own left edge.
-	var col0X, col1X *int64
+	var col0Runs, col1Runs int
 	for i := range pages[0].Runs {
 		r := &pages[0].Runs[i]
 		x := int64(r.X)
-		if x < 100000 && col0X == nil {
-			col0X = &x
-		}
-		if x >= 100000 && col1X == nil {
-			// not reachable this way once column 1 is right-aligned and
-			// therefore < 200000 but could still be >= 100000; kept
-			// simple since column 1's glyphs are the ONLY runs with
-			// X >= 100000 in this fixture.
-			v := x
-			col1X = &v
+		switch {
+		case x < 100000:
+			col0Runs++
+			if x != 0 {
+				t.Errorf("column 0 (own align=left) run %d X = %d, want 0", i, x)
+			}
+		default:
+			col1Runs++
+			if x <= 100000 {
+				t.Errorf("column 1 (falls back to style.align=right) run %d X = %d, want > 100000 (right-aligned)", i, x)
+			}
 		}
 	}
-	if col0X == nil || col1X == nil {
+	if col0Runs == 0 || col1Runs == 0 {
 		t.Fatalf("expected runs in both column cells, got %d total runs", len(pages[0].Runs))
 	}
-	if *col0X != 0 {
-		t.Errorf("column 0 (own align=left) label X = %d, want 0", *col0X)
-	}
-	if *col1X <= 100000 {
-		t.Errorf("column 1 (falls back to style.align=right) label X = %d, want > 100000 (right-aligned)", *col1X)
+	if col0Runs != 2 || col1Runs != 2 {
+		t.Fatalf("expected 2 runs per column (1 header + 1 data row), got column0=%d column1=%d", col0Runs, col1Runs)
 	}
 }
 
@@ -332,32 +336,36 @@ func TestHeaderStyleCascadesPerField(t *testing.T) {
 // just style) sets a conflicting align.
 func TestColumnAlignWinsOverHeaderStyleAlign(t *testing.T) {
 	cols := `[
-  {"id": "e2", "label": "A", "width": 100, "align": "left", "bind": "{{item.a}}"},
-  {"id": "e3", "label": "B", "width": 100, "bind": "{{item.b}}"}
+  {"id": "e2", "label": "A", "width": 100, "align": "left", "bind": "{{row.a}}"},
+  {"id": "e3", "label": "B", "width": 100, "bind": "{{row.b}}"}
 ]`
 	doc := tableHeaderDocFull(`{"fontFamily": "latin"}`, `{"align": "right"}`, cols, 20)
-	pages := tablePagesForTest(t, doc, `{"items": []}`)
+	// Story 4.2 review Finding 12: a NON-EMPTY collection. This also
+	// doubles as an AC5 witness: headerStyle.align governs the HEADER
+	// row's column-1 fallback only — a data cell's fallback comes from
+	// `style.align` alone (absent here, so it defaults to "left") and
+	// must NOT inherit headerStyle's "right", per D-000.76/AC5. Runs
+	// are emitted header-first then data-row (collectBandTableRuns's
+	// own order), so Runs[0:2] are the header's and Runs[2:4] the data
+	// row's.
+	pages := tablePagesForTest(t, doc, `{"items": [{"a":"1","b":"2"}]}`)
+	if len(pages[0].Runs) != 4 {
+		t.Fatalf("got %d runs, want 4 (2 header + 2 data row)", len(pages[0].Runs))
+	}
+	headerCol0X, headerCol1X := int64(pages[0].Runs[0].X), int64(pages[0].Runs[1].X)
+	dataCol0X, dataCol1X := int64(pages[0].Runs[2].X), int64(pages[0].Runs[3].X)
 
-	var col0X, col1X *int64
-	for i := range pages[0].Runs {
-		r := &pages[0].Runs[i]
-		x := int64(r.X)
-		if x < 100000 && col0X == nil {
-			col0X = &x
-		}
-		if x >= 100000 && col1X == nil {
-			v := x
-			col1X = &v
-		}
+	if headerCol0X != 0 {
+		t.Errorf("header column 0 (own align=left) label X = %d, want 0 — must win over headerStyle.align=right", headerCol0X)
 	}
-	if col0X == nil || col1X == nil {
-		t.Fatalf("expected runs in both column cells, got %d total runs", len(pages[0].Runs))
+	if headerCol1X <= 100000 {
+		t.Errorf("header column 1 (falls back to headerStyle.align=right) label X = %d, want > 100000 (right-aligned)", headerCol1X)
 	}
-	if *col0X != 0 {
-		t.Errorf("column 0 (own align=left) label X = %d, want 0 — must win over headerStyle.align=right", *col0X)
+	if dataCol0X != 0 {
+		t.Errorf("data column 0 (own align=left) X = %d, want 0 — column align still wins for data cells", dataCol0X)
 	}
-	if *col1X <= 100000 {
-		t.Errorf("column 1 (falls back to headerStyle.align=right) label X = %d, want > 100000 (right-aligned)", *col1X)
+	if dataCol1X != 100000 {
+		t.Errorf("data column 1 X = %d, want 100000 (style.align default \"left\", NEVER headerStyle.align=right — AC5/D-000.76)", dataCol1X)
 	}
 }
 
@@ -496,86 +504,80 @@ func TestTableHeaderVisibleIfFalseIsAbsentFromPageModel(t *testing.T) {
 	}
 }
 
-// TestTableRendersZeroDataRows is AC9's scope fence, made a test rather
-// than a sentence — expected to be REWRITTEN by Story 4.2 (marked here
-// so 4.2 has an unambiguous red-to-green to inherit).
+// TestTableRendersOneRowPerCollectionElementInDataOrder is AC1,
+// rewriting TestTableRendersZeroDataRows (4.1's own doc comment marked
+// it "expected to be REWRITTEN by Story 4.2" — this is that rewrite,
+// kept rather than deleted per this story's own obligation list).
 //
-// It renders a header row and asserts the render SUCCEEDS with a
-// non-empty items collection — an unrendered body is not an error at
-// 4.1 — while the ONLY runs the page model carries are the header
-// labels: this test would need to change the moment 4.2 adds row
-// output, which is the point.
+// Anchor (D-000.68): a five-element collection whose cell values are
+// five DISTINCT, test-owned strings; expected run count =
+// columns * (1 header + 5 rows) since every cell here is single-line;
+// expected rect count = columns * (1 header row + 5 data rows), one
+// rect per column per row (DECISION-1, ruled: data rows get cell
+// chrome too); and the ORDERED list of SourceText values compared
+// against the test's own literal slice — data order is asserted by
+// comparing the SEQUENCE, never a set, since a set assertion cannot
+// see a reversal.
 //
-// Finisher fix (Story 4.1 review Finding 14, Minor): the ORIGINAL
-// version of this test asserted only the RECT count. A row
-// implementation emitting cell TEXT with no cell RECTS — precisely
-// what 4.2 (row text) ships before 4.8 (row shading, which is what
-// would add rects) — would have left the rect-only fence green while
-// AC9's own "zero data rows" claim was already false. The run-count
-// assertion below, and the SourceText check that every run's text is
-// exactly one of the two column labels (never e.g. an item value like
-// "1".."5"), close that gap.
-func TestTableRendersZeroDataRows(t *testing.T) {
+// Vacuity fence: the collection is non-empty by construction (five
+// distinct values), so "in data order" is a positive claim, not an
+// empty-collection accident (no AC in this story may be satisfied by
+// asserting on an empty collection).
+func TestTableRendersOneRowPerCollectionElementInDataOrder(t *testing.T) {
 	doc := tableHeaderDoc(`{"fontFamily": "latin"}`, twoColumnsNoAlign)
-	// Five items — AC9's own example shape — deliberately non-empty, so
-	// "zero rows" is a positive claim about THIS story, not merely an
-	// empty-collection accident.
-	pages := tablePagesForTest(t, doc, `{"items": [{"a":1},{"a":2},{"a":3},{"a":4},{"a":5}]}`)
+	pages := tablePagesForTest(t, doc, `{"items": [
+		{"a":"r0a","b":"r0b"}, {"a":"r1a","b":"r1b"}, {"a":"r2a","b":"r2b"},
+		{"a":"r3a","b":"r3b"}, {"a":"r4a","b":"r4b"}
+	]}`)
 	if len(pages) != 1 {
 		t.Fatalf("got %d pages, want 1", len(pages))
 	}
-	// Exactly 2 rects (one per column's header cell) and the header
-	// labels' runs — nothing else. A data ROW would add more rects (one
-	// per data cell) and more runs; this count pins "header only".
-	if len(pages[0].Rects) != 2 {
-		t.Errorf("got %d rects, want 2 (header cells only, zero data rows)", len(pages[0].Rects))
+	const columns = 2
+	const rows = 5
+	if got, want := len(pages[0].Rects), columns*(1+rows); got != want {
+		t.Errorf("got %d rects, want %d (%d columns * (1 header row + %d data rows))", got, want, columns, rows)
 	}
-	// Exactly 2 runs — one per column's header label — and each run's
-	// text is exactly the column's own label, never any data-row
-	// content. A row implementation that emitted cell text WITHOUT
-	// cell rects would leave the assertion above green; this is what
-	// catches it.
-	if len(pages[0].Runs) != 2 {
-		t.Fatalf("got %d runs, want 2 (header labels only, zero data rows)", len(pages[0].Runs))
+	if got, want := len(pages[0].Runs), columns*(1+rows); got != want {
+		t.Fatalf("got %d runs, want %d (%d columns * (1 header row + %d data rows), one line each)", got, want, columns, rows)
 	}
-	wantLabels := map[string]bool{"Date": true, "Amount": true}
-	seen := map[string]bool{}
+
+	// Data order: every run's SourceText, in emission order, must be
+	// exactly the header labels followed by the rows' own values IN THE
+	// COLLECTION'S OWN ORDER — a reversed row loop would still produce
+	// the same SET of strings, which is why this is a sequence
+	// comparison, never a set.
+	want := []string{"Date", "Amount"}
+	for i := 0; i < rows; i++ {
+		want = append(want, fmt.Sprintf("r%da", i), fmt.Sprintf("r%db", i))
+	}
+	// len(pages[0].Runs) == len(want) is already guaranteed by the
+	// run-count Fatalf above (both equal columns*(1+rows) by
+	// construction), so it is not re-checked here (Story 4.2 review
+	// Finding 19: the duplicate check could never fire).
 	for i, r := range pages[0].Runs {
-		if !wantLabels[r.SourceText] {
-			t.Errorf("run %d: SourceText = %q, want one of the two column labels %v (not data-row content)", i, r.SourceText, wantLabels)
+		if r.SourceText != want[i] {
+			t.Errorf("run %d: SourceText = %q, want %q (data order)", i, r.SourceText, want[i])
 		}
-		seen[r.SourceText] = true
-	}
-	if len(seen) != len(wantLabels) {
-		t.Errorf("saw labels %v, want both of %v represented exactly once", seen, wantLabels)
 	}
 }
 
-// TestTableStyleFieldsAreNotDataDriven is AC7 Part A, for the fields
-// this story wires (border/padding/background/align/valign): two
-// report-data documents differing ONLY in a field the template does
-// not bind (exactly the shape a conditional-formatting implementation
-// would key on) must produce byte-identical output.
+// TestTableStyleFieldsAreNotDataDriven is AC10 (originally AC7 Part
+// A), for the fields this story wires on DATA CELLS too
+// (border/padding/background/align/valign): two report-data documents
+// differing ONLY in a field the template does not bind (exactly the
+// shape a conditional-formatting implementation would key on) must
+// produce byte-identical output.
 //
-// This holds STRUCTURALLY for TWO of this story's three new functions:
-// resolveHeaderStyle and buildHeaderCellRect take NO data/params
-// parameter at all — there is no channel through which "overdue" could
-// reach a style decision through either of them without a signature
-// change visible in review. CORRECTED (finisher fix, Story 4.1 review
-// Finding 9 / Minor, and its Nit-18 duplicate): the claim as
-// originally written also named collectBandTableRuns as taking "no
-// data/params parameter at all", which is FALSE — its signature
-// carries `visible visibilityVerdicts`, a value COMPUTED FROM the
-// report data (render_visibility.go). That is not a style channel:
-// `visible` gates only WHETHER a table renders at all (AD-24's
-// Visibility clause, AC8), never HOW it looks once rendered — a
-// verdict has no colour, no width, no padding value to leak — but the
-// original sentence overstated what the type system alone guarantees
-// for that function. This test still runs the byte-identical
-// comparison for real, per D-000.9 (a structural argument is not a
-// substitute for a measurement), and
-// TestTableStyleFieldsAreNotDataDrivenControl (below) is now sensitive
-// to each of the five fields independently, not only `border.color`.
+// Story 4.2 correction (D4, this story's own creation record): the
+// ORIGINAL version of this test rendered "items": [] — an empty
+// collection — so it compared two HEADER-ONLY documents forever, even
+// after this story ships row output, while claiming a property about
+// a table WITH rows. That is 4.1 review's Blockers 1/2 shape exactly.
+// AC10 requires a NON-EMPTY collection, identical in both renders,
+// with cell binds resolving REAL row fields (row.a/row.b) and
+// "overdue" still unbound — so this test now actually exercises the
+// row style cascade (resolveBodyStyle, buildCellRect) it claims to
+// cover, not merely the header's.
 func TestTableStyleFieldsAreNotDataDriven(t *testing.T) {
 	doc := tableHeaderDoc(`{"fontFamily": "latin", "border": {"edges": ["bottom"], "color": "#112233", "width": 1},
 		"padding": {"left": 5, "top": 2}, "background": "#EFEFEF", "align": "right", "valign": "middle"}`, twoColumnsNoAlign)
@@ -583,16 +585,17 @@ func TestTableStyleFieldsAreNotDataDriven(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	resTrue, err := Render(tpl, Data(`{"items": [], "overdue": true}`), nil, testShippedFontSet())
+	const items = `[{"a":"x1","b":"y1"},{"a":"x2","b":"y2"},{"a":"x3","b":"y3"}]`
+	resTrue, err := Render(tpl, Data(`{"items": `+items+`, "overdue": true}`), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("Render(overdue=true): %v", err)
 	}
-	resFalse, err := Render(tpl, Data(`{"items": [], "overdue": false}`), nil, testShippedFontSet())
+	resFalse, err := Render(tpl, Data(`{"items": `+items+`, "overdue": false}`), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("Render(overdue=false): %v", err)
 	}
 	if string(resTrue.Bytes) != string(resFalse.Bytes) {
-		t.Fatal("table style output differs between two datasets differing only in an unbound field — style must never be data-driven (AC7)")
+		t.Fatal("table style output differs between two datasets differing only in an unbound field — style must never be data-driven (AC10)")
 	}
 }
 
@@ -678,33 +681,47 @@ func TestColumnGeometryNeverNegotiatesAgainstLabelContent(t *testing.T) {
 			fontFamily := c.name
 			cols := func(middleLabel string) string {
 				return `[
-  {"id": "e2", "label": "A", "width": 60, "bind": "{{item.a}}"},
-  {"id": "e3", "label": "` + middleLabel + `", "width": 60, "bind": "{{item.b}}"},
-  {"id": "e4", "label": "B", "width": 60, "bind": "{{item.c}}"}
+  {"id": "e2", "label": "A", "width": 60, "bind": "{{row.a}}"},
+  {"id": "e3", "label": "` + middleLabel + `", "width": 60, "bind": "{{row.b}}"},
+  {"id": "e4", "label": "B", "width": 60, "bind": "{{row.c}}"}
 ]`
 			}
 			narrowDoc := threeColumnTableDoc(`{"fontFamily": "`+fontFamily+`"}`, cols(c.narrow))
 			wideDoc := threeColumnTableDoc(`{"fontFamily": "`+fontFamily+`"}`, cols(c.wide))
 
-			narrowPages := tablePagesForTest(t, narrowDoc, `{"items": []}`)
-			widePages := tablePagesForTest(t, wideDoc, `{"items": []}`)
+			// Story 4.2 review Finding 12: a NON-EMPTY collection,
+			// IDENTICAL in both the narrow and wide render, so this
+			// test — named in AC2 as its own model — exercises the
+			// property over a table WITH a data row, not the header
+			// alone. The row's own values are short and identical in
+			// both renders, so they contribute no wrapping of their
+			// own; only the header LABEL varies.
+			const items = `{"items": [{"a":"1","b":"2","c":"3"}]}`
+			narrowPages := tablePagesForTest(t, narrowDoc, items)
+			widePages := tablePagesForTest(t, wideDoc, items)
 
 			for _, pages := range []struct {
 				label string
 				pages []pagemodel.Page
 			}{{"narrow", narrowPages}, {"wide", widePages}} {
-				if len(pages.pages[0].Rects) != 3 {
-					t.Fatalf("%s/%s: expected exactly 3 rects, got %d", c.name, pages.label, len(pages.pages[0].Rects))
+				if len(pages.pages[0].Rects) != 6 {
+					t.Fatalf("%s/%s: expected exactly 6 rects (3 header + 3 data row), got %d", c.name, pages.label, len(pages.pages[0].Rects))
 				}
-				var total int64
-				for i, r := range pages.pages[0].Rects {
-					if int64(r.X) != want[i].x || int64(r.W) != want[i].w {
-						t.Errorf("%s/%s: column %d geometry = {X:%d,W:%d}, want {X:%d,W:%d} — content must never move it", c.name, pages.label, i, r.X, r.W, want[i].x, want[i].w)
+				// Both the header's rect group and the data row's rect
+				// group must show the SAME test-owned {X,W} geometry —
+				// a widened column would move both.
+				for group := 0; group < 2; group++ {
+					var total int64
+					for i := 0; i < 3; i++ {
+						r := pages.pages[0].Rects[group*3+i]
+						if int64(r.X) != want[i].x || int64(r.W) != want[i].w {
+							t.Errorf("%s/%s: group %d column %d geometry = {X:%d,W:%d}, want {X:%d,W:%d} — content must never move it", c.name, pages.label, group, i, r.X, r.W, want[i].x, want[i].w)
+						}
+						total += int64(r.W)
 					}
-					total += int64(r.W)
-				}
-				if total != wantTotal {
-					t.Errorf("%s/%s: table total width (summed rects) = %d, want %d", c.name, pages.label, total, wantTotal)
+					if total != wantTotal {
+						t.Errorf("%s/%s: group %d table total width (summed rects) = %d, want %d", c.name, pages.label, group, total, wantTotal)
+					}
 				}
 			}
 
@@ -791,11 +808,12 @@ func TestTableStyleFieldsAreNotDataDrivenControl(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParseTemplate(b): %v", err)
 			}
-			resA, err := Render(tplA, Data(`{"items": []}`), nil, testShippedFontSet())
+			const items = `[{"a":"x1","b":"y1"},{"a":"x2","b":"y2"}]`
+			resA, err := Render(tplA, Data(`{"items": `+items+`}`), nil, testShippedFontSet())
 			if err != nil {
 				t.Fatalf("Render(a): %v", err)
 			}
-			resB, err := Render(tplB, Data(`{"items": []}`), nil, testShippedFontSet())
+			resB, err := Render(tplB, Data(`{"items": `+items+`}`), nil, testShippedFontSet())
 			if err != nil {
 				t.Fatalf("Render(b): %v", err)
 			}

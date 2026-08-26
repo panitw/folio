@@ -160,6 +160,19 @@ type textRunSource struct {
 	// derived from an element's declared height (AC3).
 	clipToBox        bool
 	clipX, clipWidth geom.Length
+
+	// --- Story 4.2: DECISION-2's row identity, for Story 4.3 ---
+	//
+	// isTableRowLine/rowIndex mirror tableRectSource's own fields (see
+	// its doc comment, table_render.go) — one bound-collection row's
+	// identity, carried on every physical LINE this row's cells
+	// produce, so 4.3 can group a wrapped row's several line items
+	// WITHOUT reconstructing membership from elementID/extent/order.
+	// false/unset for every run this story does not itself mint (every
+	// header label, every ordinary text element) — unchanged from
+	// before this story.
+	isTableRowLine bool
+	rowIndex       int
 }
 
 // textRunPageSlot is one {{page}} reservation's glyph range within the
@@ -289,11 +302,7 @@ func checkTableBindings(bands []bandWithOrigin, data bind.Value) error {
 				)
 			}
 
-			collection := strings.TrimSuffix(tbl.Bind, "[]")
-			var segments []string
-			if collection != "" {
-				segments = strings.Split(collection, ".")
-			}
+			segments := tableCollectionSegments(tbl.Bind)
 			val, presence := data.Lookup(segments)
 			switch presence {
 			case bind.Absent:
@@ -755,12 +764,7 @@ func collectBandTextRuns(
 				Severity:  SeverityWarning,
 				Code:      DiagCodeTextClippedWidth,
 				ElementID: overflow.elementID,
-				Message: fmt.Sprintf(
-					"element %s: the widest laid-out line is %s wide, exceeding the element's declared "+
-						"width of %s; the overflowing content is clipped at the box's left/right edges, "+
-						"never reflowed and never dropped (FR44)",
-					overflow.elementID, millipoints(overflow.measuredWidth), millipoints(overflow.declaredWidth),
-				),
+				Message:   widthClipMessage("element", "declared", overflow),
 			})
 		}
 
@@ -884,6 +888,48 @@ func detectWidthOverflow(elementID string, lines []wrappedLine, boxWidth geom.Le
 		return widthOverflow{}, false
 	}
 	return widthOverflow{elementID: elementID, declaredWidth: boxWidth, measuredWidth: widest}, true
+}
+
+// tableCollectionSegments splits a table's `bind` field (a bare
+// collection path plus its trailing "[]", e.g. "transactions[]") into
+// the dotted segments bind.Value.Lookup expects. Story 4.2 review
+// Finding 18: checkTableBindings (above, which validates the
+// collection BEFORE render) and collectBandTableRuns (table_render.go,
+// which reads it during render) each reproduced this exact two-line
+// parse independently; they are now the SAME function, so the two can
+// never silently drift into resolving different collections for the
+// same bind string.
+func tableCollectionSegments(bind string) []string {
+	collection := strings.TrimSuffix(bind, "[]")
+	if collection == "" {
+		return nil
+	}
+	return strings.Split(collection, ".")
+}
+
+// widthClipMessage builds FR44's clip Warning message, shared by BOTH
+// sites that reuse detectWidthOverflow (collectBandTextRuns's own text
+// element, and table_render.go's data cell — D-000.65: no new
+// diagnostic code, and now no independently-drifting message text
+// either).
+//
+// noun is "element" for a text element's own declared width, or
+// "column" for a table cell (Story 4.2 review Finding 15: the table
+// site previously hand-copied this string and still said "element"
+// even though overflow.elementID there names a COLUMN — AC4's own
+// grounds are that columns[].id exists precisely so a diagnostic can
+// name a column). widthLabel is "declared" (a text element's own box
+// width IS its declared width) or "content" (a column's clip bound is
+// its declared width MINUS padding — a genuinely different quantity,
+// not merely a re-spelling, which is why this parameter exists rather
+// than being folded into noun).
+func widthClipMessage(noun, widthLabel string, overflow widthOverflow) string {
+	return fmt.Sprintf(
+		"%s %s: the widest laid-out line is %s wide, exceeding the %s's %s "+
+			"width of %s; the overflowing content is clipped at the %s's left/right edges, "+
+			"never reflowed and never dropped (FR44)",
+		noun, overflow.elementID, millipoints(overflow.measuredWidth), noun, widthLabel, millipoints(overflow.declaredWidth), noun,
+	)
 }
 
 // millipoints spells a geom.Length for a HUMAN-READABLE Diagnostic
@@ -1378,15 +1424,15 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// A/B exists for. Order: header, content, footer — documentBands'
 	// own authored order — matching how PHASE B below appends its own
 	// three bands' text.
-	headerTableRuns, headerTableRects, headerTableDiags, htterr := collectBandTableRuns(t, bands, pageHeaderBandIndex, fs, cache, visible)
+	headerTableRuns, headerTableRects, headerTableDiags, htterr := collectBandTableRuns(t, bands, pageHeaderBandIndex, data, params, fc, fs, cache, visible)
 	if htterr != nil {
 		return nil, nil, nil, nil, htterr
 	}
-	contentTableRuns, contentTableRects, contentTableDiags, ctterr := collectBandTableRuns(t, bands, contentBandIndex, fs, cache, visible)
+	contentTableRuns, contentTableRects, contentTableDiags, ctterr := collectBandTableRuns(t, bands, contentBandIndex, data, params, fc, fs, cache, visible)
 	if ctterr != nil {
 		return nil, nil, nil, nil, ctterr
 	}
-	footerTableRuns, footerTableRects, footerTableDiags, ftterr := collectBandTableRuns(t, bands, pageFooterBandIndex, fs, cache, visible)
+	footerTableRuns, footerTableRects, footerTableDiags, ftterr := collectBandTableRuns(t, bands, pageFooterBandIndex, data, params, fc, fs, cache, visible)
 	if ftterr != nil {
 		return nil, nil, nil, nil, ftterr
 	}

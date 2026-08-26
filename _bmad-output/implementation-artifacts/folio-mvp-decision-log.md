@@ -12150,3 +12150,244 @@ three items' status"* is the **weak form** — a process rule with no mechanism,
 admits it belongs to and [[D-000.63]] already showed decaying. **Use it as a backstop alongside a real
 trigger, never instead of one.** A gate obligation depends on a human remembering to look; a pinned
 condition fires at the keystroke that creates the risk.
+
+---
+
+### D-4.2.1 — Data-cell chrome lands in Story 4.2, because padding changes row height and row height is 4.3's input
+**Engineering lead ruling**, on a scope gap the Story 4.2 creator measured and surfaced.
+
+**The gap.** Story 4.1 fenced borders, padding and background to the **header row**; Story 4.8 owns only
+`altRowBackground`; **no story in Epic 4 owned cell chrome for data rows.** On the roadmap as written,
+a Folio table renders a bordered, padded header above unbordered, unpadded data rows — and
+[[Story 4.7]]'s golden Customer Account Statement, the C4 gate's own artifact, is a five-column
+transaction table.
+
+**Why it is not an owner call.** With the owner's `headerStyle` shipped ([[D-000.76]]), the table has
+**two style attach points**: `headerStyle` → the header row, the element's own `style` → everything
+else. *"Wire `style` to data cells"* is not a gap being papered over — **it is the reading that makes
+the two blocks mean something distinct.** No new schema surface, no format change, so it is the lead's.
+
+**Verdict: 4.2 takes it.** Three grounds, in the lead's order of weight:
+
+1. **Cell padding changes row height, and row height is Story 4.3's input.** *(The decisive ground,
+   and it was in nobody's list — not the creator's, not the orchestrator's.)* 4.3 paginates on
+   extents. Landing chrome **after** 4.3 would invalidate every measurement 4.3 is built and tested
+   against. **This removes "defer it" from the option set entirely**: it lands at 4.2, or in a 4.2a
+   scheduled *before* 4.3, and never later.
+2. **The row emitter is 4.2's own code.** A 4.2a re-opens the same function for a second pass over one
+   seam.
+3. **DW-14 does not contend with it.** The chunking work is in `internal/pdf`; row emission is in
+   layout. Disjoint files, disjoint seams. The scope worry is **volume, not interference.**
+
+**Two guardrails on the implementation:**
+- **Honour the field; do not invent a policy.** If the author sets `style.border`, data cells get it —
+  a full grid, symmetric with the header. **Folio does not decide that data rows "should" be
+  borderless.** This is the same prohibition the lead placed on a hardcoded header treatment: a visual
+  default no document expresses is invisible to the format, un-overridable by any author, and
+  **permanent in every golden hash once 4.7 records**.
+- **Rank the two colour sources now**, in the story and in `folio-format.md`: **`table.altRowBackground`
+  (Story 4.8) wins over `style.background`** on the rows it applies to. Leaving them unranked is how
+  4.8 discovers a conflict at the end of a gating epic.
+
+**Delegated trim lever:** if 4.2 does not converge, the orchestrator splits cell chrome to **4.2a,
+scheduled before 4.3**, without returning to the lead — a delivery call, with the single constraint
+that 4.3 must not open until it lands.
+
+### D-4.2.2 — Row membership must be recoverable from `Paginate`'s input without inference; 4.2 carries it, 4.3 decides what to do with it
+**Engineering lead ruling.** **The orchestrator asked the wrong question and the ruling corrects it.**
+
+**What was measured.** `Paginate` (`internal/layout/paginate.go:272`) takes `[]ColumnItem` and rejects
+anything that is not exactly one line, with `MixedItemError` (`:303`, `:306`). **There is no grouping
+concept.** So Story 4.3's acceptance criterion — *"a row that does not fit moves whole to the next
+page; no row is ever split"* — **is unexpressible against today's primitive.** 4.3 would open against
+a pagination engine that structurally cannot state its own AC.
+
+**The orchestrator asked:** *"should 4.2 emit a shape 4.3 can group?"* **That invites 4.2 to design
+4.3's pagination**, which 4.2's own AC7 fence correctly forbids. The real issue is narrower and is not
+a design question at all:
+
+> **Row membership is information 4.2 HAS and 4.3 cannot reliably recover.** Emit a wrapped row as N
+> independent items with no marker of which row they came from, and 4.3 must **reconstruct**
+> membership by inference — from element ids, extents, or emission order. **Reconstruction is where a
+> row silently becomes two rows, and it fails on exactly the input 4.3 exists to handle.**
+
+So this is not anticipatory design. It is **not throwing away what you already know**.
+
+**Verdict — the invariant, not the mechanism:** *row membership must be recoverable from `Paginate`'s
+input without inference.* **How** it is carried — a field on `ColumnItem`, a parallel index, something
+else — is the implementer's call, **deliberately not named from outside the code**, because a
+mechanism named from outside over-constrains and the lead has made that mistake in this programme
+before.
+
+**What 4.2 does not do:** change `Paginate`'s semantics, touch `MixedItemError`, or assert any
+pagination property. AC7's fence stands verbatim.
+
+**The inert-field hazard, closed — [[D-3.5.4]]'s defect in miniature.** A carried identity that
+nothing reads until 4.3 is an inert field, and Story 4.1 had just spent a whole story fixing eight of
+those. So **4.2 asserts the identity's CONTENT**: items from one row carry the same identity, items
+from different rows do not, and a wrapped row's N items all agree. That is a behavioural assertion on
+data 4.2 itself produces — **inert as to behaviour, guarded as to correctness**. Story 4.3 is named in
+4.2's story file as the consumer, so the obligation has an address.
+
+### D-4.2.3 — A test that pins current behaviour must say in its own words that it records rather than endorses
+**Engineering lead ruling**, confirming the orchestrator's placement with one addition.
+
+D-2.8.6's within-band text-vs-table diagnostic ordering stays **pinned, not resolved**: Story 4.1's
+finisher judged the question better answered against 4.2–4.8's richer table surface, and 4.2's AC8
+pins current behaviour in a named test without deciding interleave-vs-relax.
+
+**The addition, and it generalises.** The pinning test's **doc comment must state that it records
+current behaviour and does not endorse it**, naming the open question. Otherwise a reader eighteen
+months out finds **a green test asserting an ordering and concludes the ordering was decided** — which
+is [[D-3.4.3]]'s failure exactly: *treating an artifact we produced as evidence of a decision we
+made*. A pin and a ruling are indistinguishable in a passing test unless the test says which it is.
+
+### D-4.2.4 — A guard whose inertness ends at the story that FREEZES the evidence is a semantic acceptance step, not a deferral discharge
+**Engineering lead ruling** on DW-14's chunking, sharpening a concern the orchestrator raised in a
+weaker form. **Program-wide standing shape** *(mechanism: binding)*.
+
+**The orchestrator's framing.** DW-14's chunking is **inert at cap 100** — measured, nothing in the
+repository exceeds **45** — so it could be reverted today with the whole gate green. The orchestrator
+called this *"a change with no witness"* and asked whether the creator's direct 250-entry test was
+doing less work than it appeared.
+
+**The lead's sharpening, which is the entry's point.** *"No witness"* understates it. **The inertness
+is scheduled to end at the exact story that records the reference renders.** Story 4.7 renders a
+five-column transaction table at 1, 5, 20 and 50 pages carrying Latin, Thai and CJK — very likely the
+first input to cross 100 — **and it is the commit that freezes the goldens across four targets.**
+
+> **So the 250-entry test is not merely discharging a deferral. It is the semantic acceptance step for
+> a golden that has not been taken yet.** If the chunking is subtly wrong, **4.7 records the wrong
+> bytes as correct, forever, and every guard we own then defends them.**
+
+**The remedy, cheap and automatic:** assert the property **over the real corpus** — *no emitted
+`/ToUnicode` section exceeds the cap, across every fixture*. Green today at max 45, costs nothing, and
+becomes **load-bearing automatically at the moment the crossing golden is recorded**, with nobody
+having to remember. [[D-000.59]]'s assert-the-obligation-not-the-event, applied to a threshold.
+
+**Anti-vacuity is mandatory on it:** it must report the **observed maximum and the number of faces
+examined**, never merely "no violation" — otherwise it is an all-clear indistinguishable from a
+couldn't-look, and **the jump from 45 to something over 100 is precisely the number a human should
+have in front of them at the recording story.** Red-proof: force a fixture past the cap and watch it
+redden.
+
+**Two things to confirm rather than assume, the first being the orchestrator's actual question:**
+1. **Does the 250-entry test assert on emitted CMap bytes, or on a helper's return value?** If it
+   checks a `chunk()` helper returning `[100,100,50]`, **nothing standing catches the emitter ceasing
+   to call the chunker** — the cap-2 control would have, but that was a one-time run, not a test in
+   the suite.
+2. **Is 100 a named constant carrying the PDF-spec citation, and does the test pin `[100,100,50]` as
+   its own literal rather than deriving it from that constant?** A derived expectation passes against
+   a wrong constant. Two independent statements — [[D-3.4.6]]'s shape.
+
+**Answering the orchestrator directly:** *no, the direct test is not doing less work than it appears —
+it is doing the right work one story too early to be self-checking.* The corpus property is what
+carries it forward to where it matters.
+
+**What the creator did right, recorded because it is the pattern.** Faced with a byte-identical result
+that could have been shipped as a comfortable green, it ran a **falsifiability control at cap 2**
+which reddened **954/11 with eleven golden tests named** — turning *"nothing changed"* from an absence
+of evidence into a **measurement with demonstrated discriminating power**.
+
+**The lead flagged its own confidence honestly**, per its standing guardrail: **high** on the ruling,
+**medium** on the prediction that 4.7 crosses 100, *"inference from DW-14's own claim plus the fixture
+description, not a measurement."* It does not change the remedy — if 4.7 does not cross 100, the
+corpus property is still green, still free, and still correct.
+
+---
+
+### D-000.79 — Whoever names the mutation must not have written the code; deletion is the screen, modification is the precision test
+**Engineering lead ruling**, at Story 4.2's close, on a pattern the orchestrator escalated rather than
+absorbing. **Program-wide standing rule** *(mechanism: binding)*, with a **decidable falsification
+test running over Stories 4.3 and 4.4.**
+
+**The pattern.** Six guards that could not fail, in two consecutive stories:
+
+| story | Class A — no witness at all | Class B — the guard asserts a proxy |
+|---|---|---|
+| 4.1 | `headerStyle`, `style.valign` | — |
+| 4.2 | data-row border, data-cell padding, `resolvedBodyStyle.valign` | row identity |
+
+Each Class A instance was proven the same way: **break the code, the suite stays at exactly its
+passing count, nothing notices.** And 4.2's were not a plumbing blind spot — the reviewer ran a
+**control**, dropping data-cell *background*, which **did** redden. The harness could see data-cell
+chrome. Border and padding simply had no witness, in a story whose brief named guard-anchoring three
+times and whose creator wrote *"assume your first draft has one of these and design against it."*
+**The warning was given, understood, and did not work.**
+
+**Why the orchestrator's comfortable answer was rejected.** The orchestrator offered three readings and
+flagged a bias toward the third — *"this is simply what the reviewer is for."* The lead rejected it,
+not because the reviewer is failing but because **the claim is unfalsifiable as stated: the review has
+no denominator.** *"The reviewer found no more"* is indistinguishable from *"the reviewer stopped
+looking"* — [[D-000.9]]'s own hazard pointed at the review process instead of at a test. And the
+evidence that it is a sample rather than a census was already in hand: **`resolvedBodyStyle.valign`
+was found by grep, not by the review.** A sixth instance, in the same two stories, that the
+adversarial pass did not surface. **Five was a lower bound on an unmeasured population.**
+
+**THE INVARIANT UNDERNEATH, which the orchestrator reached and stopped one step short of:**
+
+> **Whoever names the mutation must not have written the code.**
+
+The orchestrator's diagnosis — *"developers red-proof the case they already handled"* — was right, and
+the reason is **structural, not attentional**: *"what if I hadn't written this"* is not a thought
+anyone has about code they just wrote. **No amount of brief emphasis fixes an epistemic position**,
+which is precisely why two increasingly emphatic briefs failed. The reviewer succeeds **by
+construction**, not by diligence. **And the reviewer is not the only party in that position — so is
+the creator, who arrives earlier and far cheaper.**
+
+**Separating the two classes is what made the remedy findable.** Class A is mechanisable; Class B is
+not. Every Class A instance **dies to deleting the feature outright**. Class B's row identity would
+*also* have died to deletion — remove the identity and the distinct-count collapses — but the
+reviewer's M2b **modification** survived the existing test. **So deletion is necessary and not
+sufficient.**
+
+**Verdict — three changes. No tool, no new emphasis.**
+
+1. **Deletion is a SCREEN, not a replacement.** Per output-producing AC: *if deleting the behaviour
+   entirely does not redden the suite, stop — there is no witness at all, and any modification-based
+   red-proof run afterwards is measuring something unrelated.* Deletion is the **floor**; the
+   modification red-proof is the precision test that still follows it. **Do not swap one for the
+   other**: Class B shows why modification is still needed, Class A shows why it cannot come first.
+2. **The CREATOR names the deletion, at creation time; the developer executes and records it.** One
+   line per AC in a document that already exists. The creator has not written the implementation, so
+   its mutation is not shaped by it — **the reviewer's structural advantage, one stage earlier and at
+   a fraction of the cost of a Changes-Requested cycle.** State it **behaviourally, never as a
+   mechanism** — *"remove whatever makes borders appear on data cells; the suite must redden"* — so it
+   constrains the test and not the design.
+3. **The reviewer is reallocated to Class B, explicitly, in its brief.** With Class A screened
+   upstream, its finite budget goes where judgement is irreplaceable. One question, which is exactly
+   what M2b was:
+
+   > **Name a WRONG state that produces the same summary statistic as the right one.** Three rows with
+   > correct identities and three with shuffled identities both give distinct-count 3. If such a state
+   > exists, the assertion is a **proxy, not a guard**.
+
+   Not new direction — **[[D-000.68]] already rules it** (*"a count is a lossy set"*). It was written
+   down and violated anyway, **which is why it must be a checked question rather than a standing
+   principle.**
+
+**Explicitly NOT doing: a mutation-testing tool.** The orchestrator's wariness was endorsed. The
+failure is judgement about **which** mutation; a tool that generates thousands substitutes volume for
+judgement and **buries the two that matter**.
+
+**How we would know this is wrong, and it is cheap to run.** If Stories 4.3 and 4.4 still produce
+**Class A** defects at review after the creator names deletions, **the diagnosis is wrong** and the
+honest conclusion is the orchestrator's third reading — accept blockers-at-review as the cost of doing
+business and stop spending brief wording on it. **Class B defects continuing is NOT falsification**;
+those are the reviewer's job by design. **Record the per-story Class A / Class B split from here** so
+the test is decidable rather than impressionistic. Four stories is a real sample and **the answer
+arrives before 4.7.**
+
+**Confidence: high** on the split and the invariant. **Medium** on a creator being able to name useful
+deletions for *every* AC — easy for Class A output features (*"delete whatever draws it"*), harder for
+a non-visual behaviour whose shape the creator may not see. **Fallback if that binds: require it only
+for ACs that produce output** — which is where all six of these lived.
+
+**One instance worth naming separately, because of where it occurred.**
+`TestNoRealToUnicodeSectionExceedsTheCapRedProof` **never exercises the test it is named for.** The
+guard itself is sound — the reviewer ran the real one — so the guard stays and the **artifact** is the
+defect. **A red-proof artifact that does not red-proof is worse than no artifact**, because its *name*
+is a false all-clear a future reader will trust without opening it. **That is the same defect class as
+the other six, occurring inside the machinery built to prevent them** — which is the strongest
+available evidence that this is a systematic blind spot in self-checking rather than developer
+carelessness. Fix it to exercise the real test, or delete it. **Never leave it renamed-but-hollow.**
