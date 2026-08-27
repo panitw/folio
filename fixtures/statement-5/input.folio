@@ -1,0 +1,50 @@
+{
+  "assets": {
+    "f4a37bba5652865abc8e24be5e1aad4d5ad42ce5727715f6d19b93861d23f6a4": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAR0lEQVR42u3XQQ0AIAwEsLnACW7w",
+        "LwMkwAPCIF1OQB+3JYtSW6oE0GegfmCAgIBWQOnWHug50K4KAwEBuUNAQEC3QT5XoGkGGMiUzlsM",
+        "R5wAAAAASUVORK5CYII="
+      ],
+      "mediaType": "image/png"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e5", "type": "text", "x": 0, "y": 0, "width": 300, "height": 14, "value": "Customer: {{customer.name}}", "style": {"fontFamily": "body", "fontSize": 10}},
+        {"id": "e6", "type": "text", "x": 0, "y": 16, "width": 300, "height": 14, "value": "Account: {{account.number}}", "style": {"fontFamily": "body", "fontSize": 10}},
+        {"id": "e7", "type": "text", "x": 0, "y": 32, "width": 420, "height": 14, "value": "Statement period: {{period.from}} to {{period.to}}", "style": {"fontFamily": "body", "fontSize": 10}},
+        {"id": "e8", "type": "table", "x": 0, "y": 54, "bind": "transactions[]", "as": "txn", "headerHeight": 28,
+          "style": {"fontFamily": "body", "fontSize": 8, "padding": {"bottom": 8, "left": 3, "right": 3, "top": 8}},
+          "columns": [
+            {"id": "e9", "label": "Date", "width": 60, "align": "left", "bind": "{{txn.date}}"},
+            {"id": "ea", "label": "Reference", "width": 66, "align": "left", "bind": "{{txn.ref}}"},
+            {"id": "eb", "label": "Description", "width": 170, "align": "left", "bind": "{{txn.description}}"},
+            {"id": "ec", "label": "Note", "width": 34, "align": "left", "bind": "{{txn.note}}"},
+            {"id": "ed", "label": "Amount", "width": 84, "align": "right", "bind": "{{formatNumber(txn.amount, \"#,##0.00\")}}", "footer": "sum", "footerFormat": "#,##0.00"}
+          ]}
+      ]
+    },
+    "pageFooter": {
+      "elements": [
+        {"id": "e3", "type": "text", "x": 0, "y": 8, "width": 380, "height": 12, "value": "Confidential - for the named account holder only. Generated {{params.generatedDate}}.", "style": {"fontFamily": "body", "fontSize": 7}},
+        {"id": "e4", "type": "text", "x": 400, "y": 8, "width": 123, "height": 12, "value": "Page {{page}} of {{pages}}", "style": {"fontFamily": "body", "fontSize": 7, "align": "right"}}
+      ],
+      "height": 34
+    },
+    "pageHeader": {
+      "elements": [
+        {"id": "e1", "type": "image", "asset": "f4a37bba5652865abc8e24be5e1aad4d5ad42ce5727715f6d19b93861d23f6a4", "x": 0, "y": 6, "width": 36, "height": 24},
+        {"id": "e2", "type": "text", "x": 48, "y": 12, "width": 320, "height": 16, "value": "CUSTOMER ACCOUNT STATEMENT", "style": {"fontFamily": "body", "fontSize": 11}}
+      ],
+      "height": 54
+    }
+  },
+  "fonts": {"body": ["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]},
+  "locale": "en",
+  "nextId": 14,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}

@@ -597,6 +597,27 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	// Story 4.7's ELEVENTH..FOURTEENTH selectors: the Customer Account
+	// Statement at 1, 5, 20 and 50 pages. Four selectors rather than one
+	// parameterised selector because matrixDocuments' capture contract is
+	// one env var per document, and because js/wasm has no argv the Docker
+	// and wasm runners could carry a page count in.
+	for _, sel := range statementSubprocessSelectors {
+		if os.Getenv(sel.env) != "1" {
+			continue
+		}
+		tpl, err := ParseTemplate([]byte(statementTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(statementDataJSON(sel.rows)), Params(statementParamsJSON), testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	os.Exit(m.Run())
 }
 
@@ -1938,4 +1959,77 @@ func beInt64(b []byte) int64 {
 		v = v<<8 | uint64(c)
 	}
 	return int64(v)
+}
+
+// statementSubprocessSelectors is Story 4.7's env-gated render seam, one
+// entry per recorded statement document. Each renders the SAME template
+// and params document with a data document of its own collection length,
+// in a FRESH process — the same reason multi-page and page-count-20
+// needed one: a golden recorded from one process pins whatever that
+// process happened to do.
+//
+// The rows field is deliberately NOT read from statementFixtures'
+// pages field: this list and statementFixtures are two independent
+// statements of the same four collection lengths, and
+// TestStatementSubprocessSelectorsCoverEveryFixture below compares them.
+var statementSubprocessSelectors = []struct {
+	env  string
+	slug string
+	rows int
+}{
+	{"FOLIO_SUBPROCESS_RENDER_STATEMENT1", "statement-1", 5},
+	{"FOLIO_SUBPROCESS_RENDER_STATEMENT5", "statement-5", 95},
+	{"FOLIO_SUBPROCESS_RENDER_STATEMENT20", "statement-20", 425},
+	{"FOLIO_SUBPROCESS_RENDER_STATEMENT50", "statement-50", 1085},
+}
+
+// TestStatementSubprocessSelectorsCoverEveryFixture is the guard the
+// comment above promises, and this story's review Finding 4: the comment
+// cited it by name, `grep` returned exactly one hit — the comment itself
+// — and the `slug` field it reconciles was read by nothing at all. A
+// message that points at a mechanism which is not there is D-000.37's
+// second clause exactly, and the duplication it justifies was left
+// unguarded.
+//
+// The duplication is deliberate and sound: statementSubprocessSelectors
+// and statementFixtures are TWO INDEPENDENT STATEMENTS of the same four
+// collection lengths, so a typo in either is visible rather than
+// self-consistent. What was missing is the thing that makes independence
+// safe — something that compares them. Without it, a drift in
+// `rows` would be caught only by the matrix legs, which sit behind
+// //go:build matrix and do not run per-commit.
+func TestStatementSubprocessSelectorsCoverEveryFixture(t *testing.T) {
+	if len(statementSubprocessSelectors) == 0 || len(statementFixtures) == 0 {
+		t.Fatal("vacuity guard: one of the two lists is empty, so set equality below would compare nothing")
+	}
+	if len(statementSubprocessSelectors) != len(statementFixtures) {
+		t.Fatalf("statementSubprocessSelectors declares %d document(s) and statementFixtures declares %d — every recorded statement document needs a subprocess render seam, and a seam with no document renders nothing the matrix compares",
+			len(statementSubprocessSelectors), len(statementFixtures))
+	}
+	seenEnv := map[string]bool{}
+	for i, sel := range statementSubprocessSelectors {
+		f := statementFixtures[i]
+		if sel.slug != f.slug {
+			t.Errorf("entry %d: the subprocess selector names %q and statementFixtures names %q — the two lists are in different orders, so every comparison below is between different documents",
+				i, sel.slug, f.slug)
+			continue
+		}
+		if sel.rows != f.rows {
+			t.Errorf("%s: the subprocess selector renders a collection of %d row(s) and statementFixtures records %d.\n\n"+
+				"These are two independent statements of one number and they have DRIFTED. The matrix leg would then capture a document that is not the one the golden was recorded from, and the byte comparison would fail with a message about hashes rather than about this.",
+				sel.slug, sel.rows, f.rows)
+		}
+		if seenEnv[sel.env] {
+			t.Errorf("%s: the env selector %q is used by more than one document, so two legs would capture the same render", sel.slug, sel.env)
+		}
+		seenEnv[sel.env] = true
+	}
+	t.Logf("subprocess-selector witness: %d selector(s) reconciled against statementFixtures by slug and row count: %v",
+		len(statementSubprocessSelectors), func() []string {
+			var out []string
+			for _, sel := range statementSubprocessSelectors {
+				out = append(out, sel.slug+"="+itoaForTest(int64(sel.rows)))
+			}
+			return out
+		}())
 }

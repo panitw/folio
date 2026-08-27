@@ -60,6 +60,10 @@ jobs:
             folio-go/.matrix-build/hash.darwin-arm64.multi-page.txt
             folio-go/.matrix-build/hash.darwin-arm64.page-count-20.txt
             folio-go/.matrix-build/hash.darwin-arm64.hidden-image.txt
+            folio-go/.matrix-build/hash.darwin-arm64.statement-1.txt
+            folio-go/.matrix-build/hash.darwin-arm64.statement-5.txt
+            folio-go/.matrix-build/hash.darwin-arm64.statement-20.txt
+            folio-go/.matrix-build/hash.darwin-arm64.statement-50.txt
           if-no-files-found: error
 
   render-linux-amd64:
@@ -90,6 +94,10 @@ jobs:
             folio-go/.matrix-build/hash.linux-amd64.multi-page.txt
             folio-go/.matrix-build/hash.linux-amd64.page-count-20.txt
             folio-go/.matrix-build/hash.linux-amd64.hidden-image.txt
+            folio-go/.matrix-build/hash.linux-amd64.statement-1.txt
+            folio-go/.matrix-build/hash.linux-amd64.statement-5.txt
+            folio-go/.matrix-build/hash.linux-amd64.statement-20.txt
+            folio-go/.matrix-build/hash.linux-amd64.statement-50.txt
           if-no-files-found: error
 
   render-linux-arm64:
@@ -120,6 +128,10 @@ jobs:
             folio-go/.matrix-build/hash.linux-arm64.multi-page.txt
             folio-go/.matrix-build/hash.linux-arm64.page-count-20.txt
             folio-go/.matrix-build/hash.linux-arm64.hidden-image.txt
+            folio-go/.matrix-build/hash.linux-arm64.statement-1.txt
+            folio-go/.matrix-build/hash.linux-arm64.statement-5.txt
+            folio-go/.matrix-build/hash.linux-arm64.statement-20.txt
+            folio-go/.matrix-build/hash.linux-arm64.statement-50.txt
           if-no-files-found: error
 
   render-js-wasm:
@@ -150,6 +162,10 @@ jobs:
             folio-go/.matrix-build/hash.js-wasm.multi-page.txt
             folio-go/.matrix-build/hash.js-wasm.page-count-20.txt
             folio-go/.matrix-build/hash.js-wasm.hidden-image.txt
+            folio-go/.matrix-build/hash.js-wasm.statement-1.txt
+            folio-go/.matrix-build/hash.js-wasm.statement-5.txt
+            folio-go/.matrix-build/hash.js-wasm.statement-20.txt
+            folio-go/.matrix-build/hash.js-wasm.statement-50.txt
           if-no-files-found: error
 
   compare-render-hashes:
@@ -208,7 +224,7 @@ jobs:
           # `go test ./...` and not only at the epic boundary gate. Running
           # every story is what makes it worth having; matrix_test.go would
           # have been the wrong home for exactly that reason.
-          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image"
+          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image statement-1 statement-5 statement-20 statement-50"
           targets="darwin-arm64 linux-amd64 linux-arm64 js-wasm"
 
           overall_fail=0

@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -159,8 +160,52 @@ type mpDrawnRun struct {
 // document so an existing helper can read it would be fitting the subject to
 // the instrument — and D-000.50's whole lesson is that the subject is what
 // decides whether an assertion means anything.
+//
+// IT IS SINGLE-FACE ONLY, AND IT NOW REFUSES A MULTI-FACE DOCUMENT
+// RATHER THAN LYING ABOUT ONE (D-4.7.6).
+//
+// THE DEFECT. This function merges EVERY embedded face's beginbfchar
+// section into ONE cid -> text map. CIDs are per-face: face A's CID 3 and
+// face B's CID 3 are different glyphs, and the loop below lets whichever
+// section comes last in the file win. On a document with more than one
+// embedded face the recovered text is therefore GARBAGE — measured during
+// Story 4.7 on the Customer Account Statement, which embeds Noto Sans,
+// Noto Sans Thai and Noto Sans SC: "Customer: Ada Lovelace" came back as
+// "ไustomerะบdaบศovelace".
+//
+// WHY A FATAL AND NOT A COMMENT. Every caller before Story 4.7 was
+// single-face, so the defect had never shown, and the failure mode is
+// PLAUSIBLE-LOOKING TEXT rather than an error — a future caller gets a
+// string, not a crash, and may well assert against it. There are eight
+// call sites. A comment protects none of them; counting font resources
+// is cheap and fails closed.
+//
+// THE TWO REPLACEMENTS, so the fatal is actionable (D-000.37):
+// toUnicodeForResources (shaped_fixture_test.go) returns one CMap PER
+// FONT RESOURCE, and parseContentStreamRuns returns each run with the
+// resource that drew it. Composing the two decodes a multi-face document
+// correctly; statement_semantics_test.go's statementPageRuns is the
+// worked example.
 func mpParseToUnicode(t *testing.T, b []byte) map[uint16]string {
 	t.Helper()
+	if _, type0s := resourceType0Objects(t, b); len(type0s) > 1 {
+		names := make([]string, 0, len(type0s))
+		for name := range type0s {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		t.Fatalf(
+			"mpParseToUnicode was called on a document that embeds %d font faces (%v), and it CANNOT decode one correctly.\n\n"+
+				"It merges every face's /ToUnicode beginbfchar section into a single cid -> text map, but CIDs are "+
+				"PER FACE: the sections collide and the last one in the file wins. The result is not an error — it is "+
+				"plausible-looking, confidently WRONG text. Measured on Story 4.7's Customer Account Statement, which "+
+				"embeds three faces: \"Customer: Ada Lovelace\" decoded as \"ไustomerะบdaบศovelace\".\n\n"+
+				"Use the per-resource instruments instead: toUnicodeForResources(t, b) gives one CMap per font resource, "+
+				"and parseContentStreamRuns(t, stream) gives each run with the resource that drew it. Compose them — "+
+				"statement_semantics_test.go's statementPageRuns is the worked example.",
+			len(type0s), names,
+		)
+	}
 	out := map[uint16]string{}
 	src := string(b)
 	idx := 0

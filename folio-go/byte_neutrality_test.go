@@ -200,6 +200,92 @@ var goldenDigestRecord = []struct {
 			{kind: "readme", relPath: "fixtures/wrapped-text/README.md"},
 		},
 	},
+	{
+		// RECORDED by Story 4.7 — the C4 gate. THE FIRST FOUR
+		// COMMITTED GOLDENS IN THIS REPOSITORY THAT CONTAIN A TABLE
+		// AT ALL. Measured at 4.7's baseline (df8cbcc):
+		// `grep -l '"table"' fixtures/*/input.folio` returned
+		// NOTHING, so no recorded byte in the corpus could tell a
+		// correct table from a broken one, and Story 4.6's
+		// unconditional-clip mutation reddened ZERO goldens while
+		// reddening the table behaviour suite. That is the gap this
+		// family closes.
+		//
+		// The four differ ONLY in the length of the bound
+		// transaction collection: one template, one params document,
+		// four data documents. The page count is a CONSEQUENCE of the
+		// data, never a geometric construction (contrast
+		// page-count-20 below, whose page count is placement
+		// arithmetic and therefore accidentally true at any N).
+		//
+		// THE HUMAN SEMANTIC ACCEPTANCE STEP IS RECORDED in
+		// fixtures/statement-signoff.json, after the owner visually
+		// inspected the final rendered pages. The sign-off site is
+		// declared on all FOUR entries because one record names all
+		// four digests and is invalidated IN WHOLE if any one moves.
+		//
+		// statement-1: the discriminating rows and nothing else. It
+		// is the document on which "the header appears on every page"
+		// is ACCIDENTALLY TRUE (it has one page), which is why AC2
+		// excludes it by name.
+		dir:    "statement-1",
+		sha256: "ef58bbf6dac1c3d4a5d679a77f9907a8d45f02ccd3f886c4d4e7cbdf9e86611d",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/statement-1/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/statement-1/README.md"},
+			{kind: "signoff", relPath: "fixtures/statement-signoff.json"},
+		},
+	},
+	{
+		// Story 4.7. The smallest statement with continuation
+		// pages: the first document in the repository that can
+		// express a table header that fails to repeat, or a footer
+		// aggregate emitted somewhere other than the last page.
+		dir:    "statement-5",
+		sha256: "7f67b317c0a1925a404f8435bd4736b85e831a213f5a69fc2a2934a742ff950f",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/statement-5/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/statement-5/README.md"},
+			{kind: "signoff", relPath: "fixtures/statement-signoff.json"},
+		},
+	},
+	{
+		// Story 4.7. The mid-sized statement: large enough to
+		// exercise the page-9-to-page-10 digit-count boundary
+		// (D-2.7.2) WITH A TABLE PRESENT — page-count-20 crosses the
+		// same boundary but is table-free — and small enough that a
+		// person can read it END TO END at a re-attestation, which is
+		// the role the sign-off's own `examined` instructions give
+		// it. The boundary alone is NOT its reason to exist:
+		// statement-50 crosses it too, with the same table, recorded
+		// in the same commit (this story's review, Finding 15).
+		dir:    "statement-20",
+		sha256: "be6f5e27af94e62e7c15a1814633cc48a2a91c5ee8686f5b76de5dc12e3cd4ed",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/statement-20/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/statement-20/README.md"},
+			{kind: "signoff", relPath: "fixtures/statement-signoff.json"},
+		},
+	},
+	{
+		// Story 4.7. Fifty pages, 1085 rows, and the ONLY document
+		// in the repository where CJK subsetting happens at any
+		// volume: 41 distinct CJK glyphs against multi-script-
+		// fallback's one. It is the subject DW-14's /ToUnicode
+		// prediction was measured against — see this story's
+		// Delivery Log; the prediction is REFUTED, not inherited.
+		dir:    "statement-50",
+		sha256: "9c5be7ba7b4f31c7d488c114a377058ec30cec5ffca082d9c76ee26f304c754c",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/statement-50/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/statement-50/README.md"},
+			{kind: "signoff", relPath: "fixtures/statement-signoff.json"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -345,13 +431,12 @@ func TestGoldenDigestAgreesAtEveryDeclaredSite(t *testing.T) {
 				}
 				checkedSites++
 			case "signoff":
-				// A human sign-off record — e.g.
-				// fixtures/shaped-text/thai-signoff.json — names, in its
-				// own "sha256" field, the exact digest the reader looked
-				// at. Read the same way as "expected.json" above (both
-				// are flat JSON objects with a top-level "sha256"
-				// string), but reported as what it is: a human record
-				// going stale, not a machine-derived fixture drifting.
+				// A human sign-off record names the exact digest the reader
+				// looked at. Single-artifact records use a top-level
+				// "sha256"; Story 4.7's one-record-over-four-statements form
+				// uses "digests" keyed by fixture slug. Supporting both
+				// shapes here keeps the registry honest: every declared
+				// sign-off site is checked against this entry's live digest.
 				path := filepath.Join(root, site.relPath)
 				body, rerr := os.ReadFile(path)
 				if rerr != nil {
@@ -362,19 +447,20 @@ func TestGoldenDigestAgreesAtEveryDeclaredSite(t *testing.T) {
 					t.Errorf("presence precondition: %s is empty", path)
 					continue
 				}
-				var raw map[string]any
-				if jerr := json.Unmarshal(body, &raw); jerr != nil {
+				var rec struct {
+					SHA256  string            `json:"sha256"`
+					Digests map[string]string `json:"digests"`
+				}
+				if jerr := json.Unmarshal(body, &rec); jerr != nil {
 					t.Errorf("presence precondition: %s is not valid JSON: %v", path, jerr)
 					continue
 				}
-				field, present := raw["sha256"]
-				if !present {
-					t.Errorf("presence precondition: %s carries no \"sha256\" field — the property this test asserts does not live in this artifact", path)
-					continue
+				got := rec.SHA256
+				if got == "" && rec.Digests != nil {
+					got = rec.Digests[fx.dir]
 				}
-				got, isString := field.(string)
-				if !isString {
-					t.Errorf("presence precondition: %s's \"sha256\" is %T, not a JSON string", path, field)
+				if got == "" {
+					t.Errorf("presence precondition: %s carries neither a non-empty top-level \"sha256\" nor a \"digests\" entry for %q — the property this test asserts does not live in this artifact", path, fx.dir)
 					continue
 				}
 				if len(got) != 64 || strings.ToLower(got) != got {
@@ -535,6 +621,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-file: matrix_test.go",                         // Story 1.2 — the four-target legs themselves
 	"matrix-file: shaped_signoff_matrix_test.go",          // Story 2.3 — Thai READING sign-off (D-2.3.5)
 	"matrix-file: expected_breaks_signoff_matrix_test.go", // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
+	"matrix-file: statement_signoff_matrix_test.go",       // Story 4.7 — the Customer Account Statement READING sign-off, ONE record over FOUR digests (engineering lead's ruling, this story; D-2.3.5 mechanism, D-000.41 dilution)
 
 	// The documents whose four legs the gate runs and compares.
 	"matrix-document: minimal-rect",          // Story 1.1
@@ -547,6 +634,10 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: multi-page",            // Story 2.6 — the gate's FIFTH obligation, SANCTIONED by D-2.6.2; legs DEFERRED to the gate (D-000.4 override criterion DECLINED)
 	"matrix-document: page-count-20",         // Story 2.7 — the gate's SIXTH obligation, SANCTIONED by D-2.7.4 (D-2.6.2's criterion: FR31 had no cross-target artifact before this entry); legs DEFERRED to the gate (D-000.4 override criterion DECLINED, D-2.7.4)
 	"matrix-document: hidden-image",          // Story 3.5 finisher (Finding 1 / Blocker) — D-000.54: native leg (host target) RUN by this story; the other three DEFERRED to the Epic 3 boundary gate (D-000.4 override criterion DECLINED — integer/set work, no new source of cross-target divergence)
+	"matrix-document: statement-1",           // Story 4.7 — the C4 gate. The four legs are RUN IN-STORY: D-000.4 names 4.7 a per-story matrix override (matrix_test.go's own comment lists "1.2, 1.5, 1.8, 2.4 and 4.7"), and the gate story running its own matrix is what stops the gate certifying itself
+	"matrix-document: statement-5",           // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
+	"matrix-document: statement-20",          // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
+	"matrix-document: statement-50",          // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

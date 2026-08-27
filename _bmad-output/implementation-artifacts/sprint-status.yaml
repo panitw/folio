@@ -94,7 +94,7 @@ development_status:
   4-4-repeat-the-table-header-on-every-continuation-page: done
   4-5-render-footer-aggregates-without-orphaning-them: done
   4-6-handle-a-row-taller-than-the-page: done
-  4-7-the-golden-report-renders-and-hashes-match: backlog
+  4-7-the-golden-report-renders-and-hashes-match: done
   4-8-alternating-row-styling: backlog
   epic-4-retrospective: optional
 

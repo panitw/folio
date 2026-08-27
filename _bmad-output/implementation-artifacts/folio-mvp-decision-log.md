@@ -16,6 +16,44 @@ Entries are append-only: a reversal is appended, never a rewrite.
 
 ## Lead Grounding
 
+### Refresh — 2026-08-27 (continuation at Story 4.7 finish)
+
+*Filed by the orchestrator from the run-scoped engineering lead's append-only refresh. The lead
+re-grounded from the existing Lead Grounding and prior rulings, then verified only sprint status,
+the Epic 4–6 source sections, architecture spine, current history/tree, and Story 4.7 artifacts.*
+
+**Delta since the 2026-08-26 grounding.** Epic 4 Stories 4.1–4.6 are committed `done`; HEAD is
+`df8cbcc` (4.6 finisher). Story 4.7 is the sole in-flight story: `sprint-status.yaml` says `review`,
+while its uncommitted story file says `done`. The working tree contains the full 4.7 fixture/test/CI/
+log change set (four statement goldens and associated guards), plus unrelated `.agents/` and BMAD
+configuration churn that must not be swept into the story commit. No 4.7 commit exists yet. The
+story's earlier independent review requested changes (1 blocker, 5 majors, 9 minors, 1 nit); its
+Delivery Log records finisher corrections and new rulings through D-4.7.9, but those corrections are
+still only working-tree state.
+
+**Direction already settled by the record.** Story 4.7 remains the hard C4 gate: no Epic 5 work
+begins until its four statement documents are semantically accepted and byte-identical on
+darwin/arm64, linux/amd64, linux/arm64 and js/wasm. One human sign-off record covers all four digests
+and invalidates as a whole (D-4.7.1); it is intentionally absent until a person visually inspects the
+rendered pages, never extracted text (D-4.7.7). The goldens were deliberately re-recorded after
+quarter-integral money values were replaced with discriminating decimals (D-4.7.8). Thai assertions
+reuse the frozen corpus (D-4.7.2); `thai-002` remains unasserted for the measured-width reason
+(D-4.7.9). DW-14 is discharged by measurement; DW-13 compression is declined unless a fixed-input
+compressor determinism guard exists; the multi-face `mpParseToUnicode` helper must fail closed.
+
+**Immediate obligations and risks.** Reconcile tracker/story status only after every review finding
+is resolved, required visual sign-off exists, ordinary gates and the Story 4.7 four-target matrix
+override are rerun, and a scoped local commit is created. Explicitly exclude unrelated `.agents/`
+and BMAD manifest/config churn from staging. Epic 4 closes only after its measured boundary gate.
+Story 4.8 is optional but still targeted: ship it in numeric order or obtain an explicit owner cut;
+never silently skip it. At 5.1, create `folio-designer/` from the pinned Vite/React/TS stack, retire
+the empty `absenceChecks` mechanism rather than decrementing it to zero, and preserve the worker-owned
+canonical document, command-only channel, engine-measured canvas, same-WASM exact preview, and
+offline/no-backend boundaries. Epic 5's twelve-story width is the largest attribution risk under
+per-epic heavy cadence; a boundary failure taking more than one bisect step moves remaining work to
+every-story heavy tests under D-000.4. Epic 6 must build binding UI on canonical worker state and
+close with the golden-report round trip, without introducing a second renderer or template authority.
+
 *Filed 2026-08-23 by the orchestrator, from the engineering lead's one-time grounding pass. The
 lead read the spine (AD-1…AD-26 in full), `SPEC.md`, `acceptance.md`, `folio-format.md`,
 `glossary.md`, the Epic List and all 50 stories, this log, and `sprint-status.yaml`, and confirmed
@@ -13501,3 +13539,417 @@ instrument rather than about this story.
 > **The finisher PROPOSES 13 as the corrected declared count and does NOT apply it.** [[D-000.88]]
 > forbids the measured party from moving its own denominator; the story file keeps 15 and the delta
 > stays visible for the reviewer to adjudicate.
+
+---
+
+### D-000.90 — Invoking a standing obligation WITHOUT citing the mechanism that implements it degrades in two steps into a duplicate mechanism; and a duplicate authority is worse than none
+
+**Origin traced by the lead to itself, after the orchestrator had filed it as a relay error.**
+
+**The incident.** The lead required *"an explicit semantic acceptance step, named as an AC"* for Story
+4.7. **Correct obligation.** But **[[D-000.22]], [[D-000.44]], [[D-000.53]] and [[D-2.3.5]]/[[D-000.26]]
+(refined) already specify the mechanism, and it SHIPS IN TWO FILES** —
+`shaped_signoff_matrix_test.go` and `expected_breaks_signoff_matrix_test.go`. **None was cited.** The
+orchestrator's brief then handed it to the story creator as *"design it so it is performable and
+auditable"* — an open design problem.
+
+**The degradation is two-step, and neither step is a misreading:**
+
+> **A lead names an obligation abstractly → a relay reads it as a design task → a story invents a second
+> mechanism beside the first.**
+
+Each step is the only sensible reading of what the previous one handed on.
+
+**Why the endpoint is worse than doing nothing:**
+
+> **A duplicate sign-off shape is worse than none, because it SPLITS THE AUTHORITY.**
+
+Two mechanisms attesting to the same class of fact can disagree, and nothing adjudicates between them.
+
+**Standing form, on the party invoking the obligation:**
+
+> **Name the decision AND the shipped implementation — or say plainly "I do not know whether a mechanism
+> exists; check before designing one."**
+
+That sentence costs one line.
+
+**Corollary on the relay, which is the orchestrator's half:** before commissioning a mechanism, **check
+whether one exists.** The orchestrator's self-diagnosis was correct but incomplete — it named its own
+half and let the origin off.
+
+**Third instance of the creator-as-brief-reviewer working.** Story 4.7's creator **refused to design what
+was already ratified**, exactly as Story 4.6's creator refused a fork [[AD-14]] had already settled.
+**Credited here so the next creator knows refusing is safe**, not insubordinate.
+
+---
+
+### D-4.7.1 — ONE sign-off record naming all four digests, invalidated IN WHOLE: over-invalidating is safe, under-invalidating is not
+
+**Ruled on the creator's recommendation, with one clause added because "one record" and "one digest" are
+not the same thing.**
+
+**One record**, per [[D-000.41]]'s dilution argument: **four records for one act of human attention
+overstates the attention.** `goldenDigestSite.kind` already accepts `"signoff"`, so no new machinery.
+
+> **The record names ALL FOUR digests. If any ONE of them moves, the record is invalidated IN WHOLE.**
+
+**The reason, and it is a failure-direction argument rather than a tidiness one:**
+
+> **Over-invalidating is safe; under-invalidating is not.**
+
+Four separate records would let **three attestations survive a change that was systemic** — and a font
+or layout change that moves one document is **nearly always evidence about all four**. **A stale
+attestation that still reads valid is precisely the artifact this epic has spent itself hunting**
+([[D-000.87]]'s unpinned constants, [[D-000.84]]'s withdrawn conclusion, the inert bridge guards).
+
+---
+
+### D-4.7.2 — Thai strings reuse the FROZEN set, because `expected_breaks.json` is S4: two signed authorities over the same rules can disagree
+
+**Arm A — reuse. And the decisive reason is NOT the one the story proposed.**
+
+The creator grounded it on [[D-000.41]]'s attention-cost argument. Real, but secondary. The reason that
+settles it:
+
+> **`expected_breaks.json` is S4 — the frozen authority Thai break correctness is judged against for the
+> life of the project. Minting new strings creates a SECOND signed Thai-break corpus, and two signed
+> authorities over the same rules can disagree.**
+
+**One authority is worth more than a naturally-reading transaction description.**
+
+**Scope, as the creator qualified it:** frozen strings for the cells AC5 asserts; **ordinary Latin/CJK
+elsewhere.** The *"reads artificial"* cost is real and **bounded** by that scoping. **The golden report's
+job is to demonstrate byte-reproducibility and correct rendering, not to be a plausible bank statement.**
+
+**Fallback PRE-RULED so the story cannot stall on it.** If the frozen set appears to supply no
+interior-seam string:
+- **Do not switch to Arm B unilaterally** — the creator's *"a finding to report, not a reason to switch
+  arms"* is confirmed.
+- **But do not stall: the tuning knob is the COLUMN WIDTH, not the string set.** Where a line breaks
+  depends on the width it must fit — **a narrower column forces a seam inside a string that would
+  otherwise fit on one line.**
+- `expected_breaks.json` carries ~40 `transaction_description` items, so this is expected not to arise.
+  **If the width knob also fails: report, do not choose.**
+
+**And a standing line, because the creator handled this correctly and the failure mode is silent:**
+
+> **A lead's LEAN quoted as a RULING is how a preference becomes a precedent without anyone deciding.**
+
+The creator marked the lead's grounding note as a lean and framed the fork anyway. That was right.
+
+---
+
+### D-4.7.3 — Attest NOW, and the SECOND attestation is a designed check rather than repetition
+
+**Ruled: request the owner's sign-off in Story 4.7, with the trade-off stated to the owner rather than
+discovered later.**
+
+**Two reasons not to wait for DW-13's adoption:**
+1. **DW-13's adoption is a DECISION, not a scheduled event.** Waiting on it is waiting on a distant owner
+   that may never arrive — the shape ruled against five times this month ([[D-000.87]]).
+2. **Story 4.7 IS the C4 gate.** Closing it with the flagship artifact unattested is the wrong shape.
+   *"Frozen with sign-off pending"* ([[D-2.3.5]]) is a licence for a **transient** state, **not for the
+   gate's own terminal one.**
+
+**The dilution worry INVERTS on inspection, and this is the part that changes what gets written down.**
+
+The concern: a human attests to bytes everyone expects to be replaced when DW-13 lands. But **if DW-13
+is adopted, the re-record is a deliberate byte-moving change that SHOULD NOT alter appearance** —
+
+> **so the second attestation is the check that catches an UNINTENDED VISUAL SIDE-EFFECT of it. The
+> second attestation is MORE valuable than the first, not less. The owner is not being asked to sign
+> twice for the same thing; the second signature answers a question the first cannot.**
+
+**Recorded obligation:** DW-13's adoption, if taken, requires **re-record AND re-attestation**, with that
+purpose stated.
+
+---
+
+### D-000.91 — "46 table behaviour tests" was a mutation BLAST RADIUS consumed as a POPULATION: the fifth lossy-count instance this week, and a ruling was built on it
+
+**The figure.** *"46 table behaviour tests"* entered the record from Story 4.6's AC7 mutation — the count
+of tests that **reddened** when the row clip was fired unconditionally. It was then relayed, twice, as
+**the size of the table behaviour suite**, and the lead **built a ruling on it**: *"the 46
+table-behaviour tests are a second independent producer that must survive the golden's arrival."*
+
+**Measured by Story 4.7's creator:** the suite is **90 top-level tests across six named files**
+(17/12/8/14/28/11), **plus 25 in internal packages.**
+
+> **A guard written against 46 would have protected a number that was never the population.**
+
+**Remedy, already applied in Story 4.7:** guard **the SET of file names** ([[D-2.5.1]]), never a count.
+
+**The ruling's substance is unchanged and strengthened** — a second independent producer is exactly
+right, and it is larger than believed. **Only the figure was wrong**, and it was wrong because it was
+repeated without asking what produced it.
+
+**Fifth instance this week**, after [[D-000.81]] (skips), [[DW-21]] (a re-based denominator),
+[[D-000.83]] (units) and [[D-000.89]] (a passed-count consumed as a total). **Three of the five were in
+the orchestrator's relay; all five were accepted by every downstream reader.** The distinguishing
+question, in all five cases, is the same one: **what invocation, or what population, produced this
+number?**
+
+---
+
+### D-000.92 — Three ACs declaring a ZERO observable count is the declared-count discipline working in the direction that costs something
+
+**Story 4.7 declares 21 observables across 12 ACs (2/4/3/1/2/3/2/2/1/0/1/0).** Three ACs declare
+**zero**.
+
+**Why this is evidence rather than a gap.** Under [[D-000.88]], the story declares the denominator and
+review finds the numerator — so the standing worry is **inflation**, since a larger declared count looks
+more thorough and is the easier direction to move in.
+
+> **A declared ZERO is checkable and falsifiable. Inflating is easier and looks better.**
+
+A story that declares zero where it has nothing separably observable is spending something to be
+accurate, and it is **exactly the signal the declared-vs-audited delta exists to detect.** Recorded as
+evidence the declaration is honest, to be read against the audited figure when review returns.
+
+---
+
+### D-4.7.4 — DW-14 is DISCHARGED by measurement, and what gets recorded is the MECHANISM, not the verdict
+
+**The first time [[D-000.86]]'s part (a) was pointed at a DEFERRAL'S OWN PREDICTION rather than at a
+test.** DW-14 warned: *"do not read `page-count-20`'s green as headroom for 4.7's varied data."* That is
+a prediction with a date, and Story 4.7 was the date.
+
+**Measured:** corpus maximum `/ToUnicode` section rose **45 → 55**. **Cap 100 not crossed.**
+
+**But "refuted" alone would mislead the next reader, so the durable finding is the mechanism:**
+
+> **`/ToUnicode` section size follows the number of DISTINCT GLYPHS IN A SUBSET — not pages, and not
+> rows.**
+
+**That one sentence explains both halves of DW-14's own warning at once:** why `page-count-20`'s green was
+never headroom (page count is not the driver), **and** why varied data does not blow it up either (row
+count is not the driver either). And it tells a future reader **what WOULD cross the cap: a document
+with many distinct glyphs in a single face** — which a CJK-heavy statement can still reach.
+
+**Consequences, both load-bearing:**
+- **The chunker is NOT dead code**, and the corpus property remains load-bearing rather than becoming
+  ceremonial.
+- **The assertion logs 55 as its observed maximum**, so the next movement is visible **against a real
+  measured number rather than against a prediction.**
+
+---
+
+### D-4.7.5 — DW-13 (font-stream compression) is NOT adopted, and the decisive reason is cross-UPGRADE determinism rather than size; its re-entry condition is a guard, not a date
+
+**Two reasons were on the table before the ruling, and the ruling rests on neither.**
+
+**The measurement:** 50-page CJK statement, **77,452 B** uncompressed `FontFile2`; Flate saves
+**54,965 B = 9.9% of the file.**
+
+**The inverting fact the deferral could not have contained** (found by Story 4.7's developer): the font
+payload is a **subset**, and therefore **constant across 5 / 20 / 50 pages**. **So compression helps
+LEAST on the flagship document** — the very one the C4 gate is about. A deferral priced on *"big
+documents benefit most"* **inverts** here. That alone justifies declining for 9.9%.
+
+**The DECISIVE reason, which neither the deferral nor the measurement names:**
+
+> **Compressing `FontFile2` makes byte-identity depend on the Go standard library's compressor producing
+> identical output across Go versions — and nothing guarantees that.** `compress/flate`'s output is
+> **not part of Go's compatibility promise**, and it has changed.
+
+**The risk is not cross-TARGET, it is cross-UPGRADE.** The toolchain is pinned today
+(`toolchain go1.26.0`), so the four-target matrix would still agree. **But the next Go bump silently
+moves every golden** — in the one part of the pipeline whose entire claim is that **bytes do not move
+for reasons nobody logged.**
+
+> **We would be buying ~10% by adding an unguaranteed surface underneath [[NFR1]].**
+
+**Re-entry condition — a CONDITION, not a milestone** (the [[D-000.87]] remedy applied):
+
+> **If DW-13 is ever revisited, the PRECONDITION is a determinism guard: pin the compressed output of a
+> fixed input as a test-owned literal, so a Go upgrade that moves it reddens DELIBERATELY instead of
+> being discovered as golden drift. Without that guard the answer is no regardless of the size
+> numbers.**
+
+---
+
+### D-4.7.6 — Make `mpParseToUnicode` FATAL on multi-face documents: a known-broken helper whose failure mode is plausible text is a landmine, and a comment is not a mechanism
+
+**The bug, found by Story 4.7's developer and correctly left out of scope:** `mpParseToUnicode` merges
+**every face's** `/ToUnicode` into one CID map. Measured, it returns
+**`"ไustomerะบdaบศovelace"` for `"Customer: Ada Lovelace"`.**
+
+**Contamination check — already answered, so the reviewer does not re-derive it:**
+- **Story 4.7's own assertions do NOT route through it.** `statement_semantics_test.go:22-35` documents
+  the substitution **with the measurement** and composes `toUnicodeForResources` +
+  `parseContentStreamRuns` — **existing per-resource instruments from `shaped_fixture_test.go`**, not
+  newly derived ones. Measured, reported, and **reusing a shipped instrument rather than inventing a
+  second one.**
+- **The matrix leg is clean.** `matrix_test.go:904`'s call sits inside
+  `requirePageCount20HasCorrectPageNumbers` — scoped by name to the **single-face** `page-count-20`
+  document. Story 4.7's new multi-face registrations do not reach it.
+
+**But a comment is not enough, and this is the required addition.**
+
+> **A known-broken helper with eight callers, whose failure mode is PLAUSIBLE-LOOKING TEXT rather than an
+> error, is a landmine.** The correctness of every future caller would depend on someone reading a
+> comment in a file they may never open.
+
+**Ruled: `mpParseToUnicode` must `t.Fatal` when the document embeds more than one face**, naming the
+defect and pointing at the two replacements. Counting font resources is cheap, it is the **fail-closed**
+direction, and **it converts documentation into mechanism** — the same principle [[D-000.58]] credited
+for not letting an absent environment read as a passing reproduction.
+
+**The next multi-face caller then gets a loud refusal instead of `"ไustomerะบdaบศovelace"` in a
+transcript a human is attesting to.**
+
+---
+
+### D-4.7.7 — The sign-off's text checks must be performed by LOOKING at rendered pages, never by extracting text
+
+**A one-line addition to the human acceptance step, forced by [[D-4.7.6]]'s measurement.**
+
+Several of the eight confirmations concern **text** — that the Thai reads correctly with its marks on the
+consonants they belong to, that the Chinese is not the wrong weight or face, that rows carry the values
+the data declares.
+
+> **These must be verified by LOOKING AT THE RENDERED PAGES, not by extracting text — and the
+> instructions must say so.**
+
+**Because there is now a measured demonstration that a text extractor in this repository returns
+confident garbage on exactly this document's shape** (multi-face), and:
+
+> **A sign-off performed against a broken extractor would be worse than no sign-off, because it would
+> carry a name.**
+
+---
+
+### D-000.93 — The lead's third citation-from-memory figure this epic, self-verified rather than accepted: a FLOOR is not a COUNT, and a field from one file is not a field in another
+
+**The lead supplied *"`expected_breaks.json` carries ~40 `transaction_description` items."* Story 4.7's
+developer measured and refuted it. The lead then re-verified independently rather than accepting the
+correction.**
+
+**Measured:** `fixtures/expected-breaks/expected_breaks.json` carries **26 items** (18 thai / 8 cjk), keys
+`expectedBreaks / gloss / id / text / words` — **and no `transaction_description` anywhere.**
+
+**The diagnosed origin, which is the useful part:** the lead read `corpus_test.go`'s **P5 FLOOR**
+(`txns < 40`) — which governs **a different artifact**, the 243-item P5/P6 corpus — and transposed it
+onto the frozen break fixture **as a count**.
+
+> **Two errors in one clause: a FLOOR is not a COUNT, and a field from one file is not a field in
+> another.**
+
+**Third figure supplied this epic that was citation-from-memory rather than measurement**, after
+[[D-000.91]]'s "46" and [[D-000.87]]'s "ten unpinned". **The standing form of [[D-000.89]] applies
+symmetrically to the lead: if a number is quoted, it was measured or the speaker says it was not.**
+
+**And the fallback ruling earned its keep despite resting on the wrong number.** The width knob was never
+needed — `thai-001` supplied the seam directly. **But a second measurement went the other way:
+`thai-002` cannot be asserted at ANY width**, because its two labelled words present **six advancing
+glyphs** (two runes are zero-advance marks), making it **identical in shape to `thai-001`'s first word.**
+
+> ***"Cannot be asserted at any width"* is a strictly STRONGER finding than *"no seam exists"* — it is a
+> property of the GLYPH MODEL, not of the layout.**
+
+**No width knob could have rescued it, and a developer authorised to switch arms would have switched and
+never found it.** That is *report-do-not-choose* paying, rather than the ruling being right.
+
+---
+
+### D-4.7.8 — The four statement goldens were RE-RECORDED at Story 4.7's finish: the money column's value class was quarter-integral, and AD-23's own guards mean the wrong implementation cannot be written in-tree to prove it
+
+**Appended by Story 4.7's finisher. It does not edit [[D-4.7.0]]–[[D-4.7.7]]; the log is append-only.**
+
+**The AD-22 event, declared as one.** All four `fixtures/statement-*/expected.pdf` files were re-rendered
+and re-recorded in the finisher's own commit, before any of them had ever been signed. This is a
+deliberate byte-moving change and it is recorded as such:
+
+| document | recorded at review | recorded at finish |
+|---|---|---|
+| `statement-1` | `57f23efa…f747` | `ef58bbf6…611d` |
+| `statement-5` | `c15867eb…f98a` | `7f67b317…950f` |
+| `statement-20` | `31448c02…c6f5` | `be6f5e27…d4ed` |
+| `statement-50` | `46d13e15…4406` | `9c5be7ba…c754` |
+
+Byte lengths are unchanged (76,740 / 127,343 / 269,804 / 555,629): the change moved DIGITS, not glyphs,
+not layout and not page counts. **No golden outside this family moved** — `git diff df8cbcc -- fixtures/`
+touches only `fixtures/statement-*`. **No human sign-off was invalidated, because none existed**: the
+re-record landed while `TestStatementSemanticSignOffIsRecorded` was still red, which is the whole reason
+the owner was asked to HOLD the sign-off until it did.
+
+**THE REASON. All 1085 amounts had cent parts drawn from `{0, 25, 50, 75}`** — every value an exact
+multiple of 0.25, and therefore **exactly representable in float64**. A naive float64 accumulation
+returned `602061.5`, formatting to `602,061.50`, **identical to the exact-decimal sum**. So:
+
+> **All four goldens would have been byte-identical under a renderer whose money path went through
+> binary floating point, and AC2(iii) would still have passed.** The check was exact. The FIXTURE was
+> not.
+
+That is [[D-4.5.5]] on the one column [[AD-23]] exists for, and it is Story 4.5's money-path failure one
+notch up — 4.5's surviving column was integral, this one quarter-integral, which is the same thing to a
+binary float. The amounts now carry cent parts from `{90, 60, 84, 67, 36, 3, 51, 20, 61, 99}`, none a
+multiple of 25.
+
+**AND A FACT WORTH THE ENTRY ON ITS OWN: this project cannot write the wrong implementation in order to
+test against it.** Three separate guards forbid binary floating point under `folio-go/`, and every one of
+them covers `_test.go` files with no exemption. Both of the obvious ways to demonstrate the divergence
+were tried, and both were **measured firing**:
+
+- writing the naive path literally reddened `TestNoFloat64UnderModule`, naming `statement_semantics_test.go`;
+- modelling binary64 exactly with `math/big.Float` at 53 bits reddened the `no-bigfloat-type` lint rule
+  (`TestBigFloatTypeTestScopeInventory`), naming eleven expressions in the same file.
+
+**Neither was worked around.** Spelling past the first (`total := 0.0`, `strconv.ParseFloat(lit, 64)`)
+would have passed while doing exactly the forbidden thing — [[D-000.15]]'s workaround-that-erodes-a-guard
+— and adding the first-ever sanctioned exception to the second, to make a test convenient, is a worse
+trade. So the property is asserted the way this architecture permits:
+
+> **A decimal of *m* hundredths is exactly representable in binary64 IF AND ONLY IF 25 divides *m*.**
+> *m*/100 = *m*/(4·25); the reduced denominator is a power of two exactly when the 25 cancels, and every
+> *m*/25 here is far below 2⁵³. "No amount is a multiple of 0.25" and "no amount is exactly representable
+> in binary floating point" are **the same statement** about these numbers — checkable in integers, and
+> no float can check it better.
+
+`TestStatementMoneyColumnDiscriminatesFloatArithmetic` asserts that identity over every amount, keeps the
+original quarter-integral class as the CONTROL that does not discriminate, and pins what a binary money
+path would draw (`1,851.99` / `7,348.38` / `96,801.81` / `602,408.67` against the exact `1,852.00` /
+`7,348.39` / `96,801.82` / `602,408.68`, plus 2 / 5 / 34 / 78 individually divergent Amount cells). The
+pin cannot rot quietly: each row pins the EXACT total too, so any edit to the amounts reddens the test
+and sends the reader back to re-measure both halves together.
+
+**The boundary, stated rather than left flattering.** The fixture discriminates the **scale-to-minor-units**
+spelling of the defect — `int64(total*100)`, the canonical naive one. It does **not** discriminate a float
+path that formats by ROUNDING, and no fixture at this magnitude could: ~1,000 amounts of this size
+accumulate about 1e-9 of error and hiding a rendered cent needs half a cent. Recorded in all four
+fixture READMEs' *what it cannot express*.
+
+---
+
+### D-4.7.9 — `thai-002`'s exclusion is confirmed, and its stated REASON is withdrawn: the glyph-count argument does not establish the conclusion, and the measured widths do
+
+**Appended by Story 4.7's finisher, correcting the closing paragraph of [[D-000.93]] and the matching
+passage in Story 4.7's Delivery Log §1. [[D-000.93]] itself is not edited; the log is append-only.**
+
+**What is withdrawn.** The recorded reason was that `เก็บเงิน` *"presents six advancing glyphs — the same
+six as `thai-001`'s first word `ประเทศ`"*, making the two *"identical in shape"*. The glyph **count** is
+correct (8 runes less two zero-advance marks, re-verified). **The argument is not**: the six glyphs are
+different glyphs — `เ ก บ เ ง น` against `ป ร ะ เ ท ศ` — and line breaking is decided by **advance
+width**, not by glyph count. Equal counts of different glyphs do not imply equal widths. Story 4.7's code
+review, Finding 13, was right to call this an inference presented as a measurement.
+
+**What survives, now measured.** The Note column's declared width was swept and the breaks and
+`TEXT_CLIPPED_WIDTH` diagnostics read off the render:
+
+```
+thai-001's first labelled word "ประเทศ"   23,704 mp   (from the clip diagnostic's own "widest laid-out line")
+thai-002 "เก็บเงิน", whole string          fits at a content width of 23,400 mp; breaks at 23,200 mp
+```
+
+Breaking `thai-002` at its labelled seam therefore needs a content width below ~23,400 mp, and `ประเทศ`
+does not fit in anything under 23,704 mp. **The two windows are disjoint by at least 304 mp**, so every
+width that breaks `thai-002` clips `thai-001`'s first word and raises a diagnostic that AD-14's
+no-unasserted-diagnostic precondition turns into a fatal.
+
+> **The conclusion — *"`thai-002` cannot be asserted at any usable width"* — stands, and it is still
+> strictly stronger than *"no seam exists"*. [[D-000.93]]'s wider point about *report-do-not-choose* is
+> unaffected. Only the reason it gave is replaced.**
+
+**And the shape of the mistake is the same one [[D-000.93]] is about**: a plausible property (glyph count)
+standing in for the one that governs (advance width), quoted as though it had been measured. That it
+recurred inside the entry recording it is worth seeing.

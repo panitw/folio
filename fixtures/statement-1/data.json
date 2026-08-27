@@ -1,0 +1,12 @@
+{
+  "customer": {"name": "Ada Lovelace"},
+  "account": {"number": "TH-4471-0092-8836"},
+  "period": {"from": "2026-07-01", "to": "2026-07-31"},
+  "transactions": [
+    {"date": "2026-07-02", "ref": "TXN-0001", "description": "Opening balance Ada ก 汉", "note": "", "amount": 1250.10},
+    {"date": "2026-07-03", "ref": "TXN-0002", "description": "Quarterly maintenance retainer for the regional office", "note": "", "amount": 480.33},
+    {"date": "2026-07-05", "ref": "TXN-0003", "description": "Domestic transfer", "note": "ประเทศไทย", "amount": 75.07},
+    {"date": "2026-07-07", "ref": "TXN-0004", "description": "Card issue fee", "note": "ปั ฟั ที่ ป้ำ", "amount": 12.51},
+    {"date": "2026-07-09", "ref": "TXN-0005", "description": "Interest credit", "note": "เก็บเงิน", "amount": 33.99}
+  ]
+}

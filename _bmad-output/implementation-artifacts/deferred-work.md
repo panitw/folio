@@ -715,6 +715,109 @@ by construction** and creates **no Thai judgment of any kind**, so it neither co
 adds a third sign-off obligation. That was a deliberate choice recorded in the fixture's README, not an
 accident of what the document happened to contain.
 
+#### Story 4.7's answer — AC12. **No new items were added. The load-bearing count remains 2, and this entry's own forgetting-signal has now FIRED.**
+
+Story 4.7 is the second address in DW-11's owner line (*"Epic 2's later stories **and Epic 4's
+golden-report work**"*), and it is also the event this entry named as its forgetting-signal:
+*"S4 still carrying only 2 genuinely-uncoverable, independently-attested opaque items **when Epic 4's
+golden report ships**."* **The golden report has now shipped, and S4 is still carrying 2. The signal
+has fired, and it is recorded as fired rather than quietly re-owned to a later story.**
+
+The answer to the question itself is the same as 2.4's and 2.6's, and for the same reason: **none were
+found, and none were invented.** The dev agent had no access to a sourced, independently-attested
+register of Thai personal names, and D-000.17 forbids manufacturing attestation to reach a number.
+Adding a name that *looks* opaque would move the figure from 2 to 3 while moving the evidence not at
+all. **`ดอเลาะ` and `แนแซ` remain the only two. DW-11 stays open, at 2.**
+
+Measured at Story 4.7's baseline (`df8cbcc`) and again after its work, with
+`env CGO_ENABLED=0 GOWORK=off go test -count=1 -v ./...` from `folio-go/`:
+`TestCorpusMeetsP6ExerciseFloors` reports `P6g (opaque names) floor not met: got 7, need >=20` with the
+stats line `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`, character for character — unchanged
+in both directions. `fixtures/thai-break-corpus/corpus.json` and `cmd/gencorpus/main.go` are
+**byte-unchanged** by this story. The P6g floor was **not** touched: turning it green by invention is
+exactly what D-000.17 bans, and the guard cuts both ways —
+`TestCorpusP6StatsMatchDeclaredBaseline` pins those literals and reddens on an **improvement** too, so
+a genuinely-attested addition would require a deliberate baseline edit in the same commit.
+
+**What Story 4.7 adds to the record, and it is not a discharge.** The four statement goldens reuse
+Thai strings **already frozen** in `fixtures/expected-breaks/expected_breaks.json` — the engineering
+lead's ruling on this story, on the ground that minting new Thai strings would create a **second
+signed Thai-break corpus**, and two signed authorities over the same rules can disagree. So this
+story adds **no** Thai judgment to S4, **no** new attested name, and **no** third Thai sign-off. Two
+of the four names DW-11 discusses (`ดอเลาะ`, `แนแซ`) do not appear in the statement fixtures at all;
+the string this story does assert against is `thai-001` (`ประเทศไทย`), which is an ordinary
+two-headword sequence and carries no opacity claim.
+
+**A note for whoever specifies S4's adequacy criteria next, since the signal has fired.** The
+measured context in this entry has not changed: 115 of 122 sourced names (94%) decompose into
+recognisable morphemes, so genuinely opaque real names appear to be a **real minority of the
+language, not a sourcing-effort gap**. A floor of 20 may be asking the corpus for a population the
+language does not contain. That is a question about the FLOOR, not about the corpus, and it is the
+owner's — this story neither answers it nor uses it as a reason to stop reporting the shortfall.
+
+#### Story 4.7's DW-13 measurement — recorded here beside the entry that asked for it
+
+DW-13's sizing was scheduled by the Epic 3 boundary gate to run **during Story 4.7** (see DW-13's own
+entry). It ran. Measured on the committed goldens, summing every `FontFile2` stream's `/Length1` and
+compressing each program with zlib at level 9:
+
+| document | file size | `FontFile2` programs | uncompressed | Flate | saving |
+|---|---|---|---|---|---|
+| `statement-1` | 76,740 B | 3 | 65,740 B (85.7% of file) | 14,277 B | 51,463 B — 78.3% of program bytes, 67.1% of file |
+| `statement-5` | 127,343 B | 3 | 77,452 B (60.8%) | 22,487 B | 54,965 B — 71.0% of program bytes, 43.2% of file |
+| `statement-20` | 269,804 B | 3 | 77,452 B (28.7%) | 22,487 B | 54,965 B — 71.0% of program bytes, 20.4% of file |
+| **`statement-50`** | **555,629 B** | **3** | **77,452 B (13.9%)** | **22,487 B** | **54,965 B — 71.0% of program bytes, 9.9% of file** |
+
+**The answer DW-13 asked for: the 50-page statement with real CJK content carries 77,452 bytes of
+uncompressed `FontFile2` payload, and Flate would save 54,965 of them — 9.9% of that document's
+total size.**
+
+**Recommendation: leave it. DW-13 closes cheaply.** Three measured reasons, in order of weight:
+
+1. DW-13's own stated threshold is met on the "leave it" side: *"If 4.7's 50-page CJK payload comes
+   back in the tens of KB rather than the hundreds, the honest recommendation is 'leave it'."* It came
+   back at **76 KB** — tens, not hundreds.
+2. **The font payload does not scale with the document.** It is *constant* at 77,452 B across the 5-,
+   20- and 50-page statements, because the subsets are identical — the cost is per FACE, not per page.
+   So the relative benefit of compressing it **falls** as documents grow: 43% of the 5-page file, but
+   under 10% of the 50-page one. The flagship document is the case where compression helps least.
+3. Adoption would move **every golden in the repository**, invalidate **all three** human sign-offs
+   (`shaped-text`, `expected-breaks` and this story's four-document statement record), and require
+   narrowing `lint/internal/rules/nocompressor.go` — a guard that has been proved to fire.
+
+**Adoption remains the project owner's decision, batched with the other Epic 4 close decisions.**
+This story measured and did not adopt; nothing in `internal/pdf` or `lint/` was touched.
+
+#### D-4.7.5 — DW-13 is NOT adopted, and the reason to record is NOT the 9.9%
+
+The three measured reasons above are real, and they are all about SIZE. **They are not the reason the
+answer is no, and recording them as though they were would leave a future reader thinking a bigger
+saving would settle it.** It would not.
+
+**The reason is byte-identity.** Compressing `FontFile2` makes every golden's bytes depend on **Go's
+`compress/flate` producing identical output for identical input across Go versions** — and that is
+**not part of Go's compatibility promise**. Flate's implementation has changed between Go releases
+before, and it may change again. This is exactly the carried risk R4 the `no-compressor-import` rule
+(D-1.8.1) exists to keep closed: *"compressor output is stable by observation, not by contract."*
+
+**The risk is CROSS-UPGRADE, not cross-target, and the distinction matters because it decides what the
+matrix can tell you.** The toolchain is pinned (`go.mod`'s `toolchain go1.26.0`), so all four targets
+would compress identically and the four-target matrix would agree — green, and green for a reason that
+has nothing to do with the property at stake. The failure arrives at the **next Go bump**, silently
+moving every golden in the repository, invalidating every human sign-off, and presenting as a
+mysterious mass re-record rather than as a toolchain event.
+
+**RE-ENTRY IS A CONDITION, NOT A DATE.** Do not re-open this on a schedule and do not re-open it
+because the size numbers moved. Re-open it when, and only when, this is true:
+
+> The compressed output of a FIXED input is pinned as a TEST-OWNED LITERAL — a byte string committed in
+> this repository, compared against `compress/flate`'s live output, so that a Go upgrade that changes
+> the compressor reddens a named test **before** it moves a single golden.
+
+With that pin in place the risk becomes visible and the size argument can be had on its merits.
+Without it the answer stays no regardless of what the saving turns out to be.
+
+
 ### DW-12 — Every later pinned instance inherits AC7's golden + matrix obligation
 - **Deferred by:** Story 2.2 (ruling D-2.2.1)
 - **Owner:** **whichever story next adds a pinned instance of a shipped variable face** (on current
@@ -908,6 +1011,50 @@ moved.**
 **One thing 4.2 must measure rather than assume:** `fixtures/page-count-20/` is a 20-page document
 already in the matrix's ten and its assert is green, so page count alone plainly does not fill a
 section — that fixture repeats a template. Do not read its green as headroom for 4.7's varied data.
+
+#### Story 4.7's measurement — DW-14 is DISCHARGED (D-4.7.4)
+
+`TestNoRealToUnicodeSectionExceedsTheCap` picks every `fixtures/*/expected.pdf` up by directory walk,
+in the ordinary suite. Run over the corpus with the four statement goldens in it:
+
+```
+DW-14 real-corpus witness: examined 13 fixture(s), 11 carrying at least one /ToUnicode section,
+25 section(s) total; observed maximum section size = 55 (cap 100)
+```
+
+Per document, the three faces' section sizes are `[Noto Sans 55, Noto Sans SC 41, Noto Sans Thai 25]`
+for `statement-5/20/50` and `[55, 1, 25]` for `statement-1`. **The corpus maximum rose from 45 to 55.
+The cap was not crossed. 55 is the number to measure the next movement against** — record it, so a
+future story sees a real figure rather than a prediction.
+
+**THE MECHANISM, WHICH IS WHAT THIS ENTRY IS ACTUALLY FOR (D-4.7.4). A `/ToUnicode` section's size
+follows the number of DISTINCT GLYPHS IN A FACE'S SUBSET — not pages, and not rows.** The three
+sections are **identical** across 95, 425 and 1085 rows and across 5, 20 and 50 pages: fifty pages of
+transactions add no glyph the first page did not already need.
+
+That single sentence explains **both halves of this entry's own warning**, which had until now been
+recorded as two separate observations:
+
+- *"a document of roughly twice the length in one face would reach the cap"* — right about the
+  direction, wrong about the axis. Length is a proxy for distinct glyphs and a poor one; a long
+  document that repeats vocabulary adds nothing.
+- *"`page-count-20` repeats a template — do not read its green as headroom for 4.7's varied data"* —
+  right, and now explicable: a repeated template has a small glyph inventory, so its green really did
+  say nothing. But 4.7's varied data turns out to be varied in the wrong dimension. Its descriptions
+  vary; its ALPHABET does not.
+
+**What WOULD cross the cap, stated so the next reader can recognise it:** many DISTINCT GLYPHS IN ONE
+FACE. Latin reaches ~55 and stops, because Latin has about that many distinct characters in ordinary
+business prose. **A CJK-heavy statement is the realistic case** — Chinese has no small alphabet, so a
+document whose Chinese content is genuinely varied rather than drawn from a ten-phrase cycle climbs
+one entry per distinct character. This family's Noto Sans SC subset is 41 from forty-one distinct
+glyphs; two and a half times that vocabulary crosses 100.
+
+**The chunker is NOT dead code, and this entry must not be read as saying so.** `internal/pdf`'s
+chunking (Story 4.2, `textdoc.go:548,626`) is the reason a document that does cross the cap emits a
+conformant file instead of a broken one. It has never fired in a committed golden; it is
+`internal/pdf/tounicode_chunk_test.go`'s subject and is exercised there. Discharging DW-14 discharges
+the WATCH, not the mechanism.
 
 **Do not** "fix" this by capping the number of CIDs; the CID allocation is D-2.3.2 and is correct.
 

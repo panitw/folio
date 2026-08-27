@@ -588,6 +588,121 @@ func requireNoImageXObject(t *testing.T, target matrixTarget, raw []byte) {
 	}
 }
 
+// captureStatementRender is Story 4.7's capture, parameterised by the
+// document's own env selector rather than duplicated four times — the
+// four statement documents differ only in the length of the bound
+// collection, and a per-document copy of this two-line function would
+// be four places for one fact to drift.
+func captureStatementRender(env string) func(t *testing.T, target matrixTarget, binPath string) []byte {
+	return func(t *testing.T, target matrixTarget, binPath string) []byte {
+		t.Helper()
+		return runOnTarget(t, target, binPath, map[string]string{env: "1"})
+	}
+}
+
+// requireStatementIsAWorkingStatement is the statement family's OWN
+// feature guard, and it exists for the reason every extraGuard in this
+// file exists: "contains a FontFile2" is satisfied by any embedding,
+// and four targets agreeing on a BROKEN statement would be byte-
+// identical and would certify nothing (D-000.9).
+//
+// It asserts, on EVERY leg and BEFORE any byte comparison, the four
+// properties a statement that had silently stopped working would lose:
+// the page tree resolves to the declared count; the document is not
+// blank; the five column header labels appear on EVERY page (the
+// repeated header, which is the epic's headline feature); and the logo
+// XObject is defined once and referenced from every page.
+//
+// D-000.86 part (a), stated because AC7's whole hazard is a vacuous
+// green: cross-target byte identity was ALREADY TRUE of all ten
+// previously registered documents, so four more documents exercising
+// nothing new would pass and mean nothing. What is new here is CJK
+// subsetting at volume — 41 distinct CJK glyphs against multi-script-
+// fallback's one — and that is asserted below as a per-leg property,
+// not merely reported.
+func requireStatementIsAWorkingStatement(wantPages int, wantCJKGlyphs int) func(t *testing.T, target matrixTarget, raw []byte) {
+	return func(t *testing.T, target matrixTarget, raw []byte) {
+		t.Helper()
+		if len(raw) == 0 {
+			t.Fatalf("%s: the statement leg produced no bytes", target.name)
+		}
+		requirePageTreeResolves(t, target, raw, wantPages)
+
+		streams := splitPageContentStreams(t, raw)
+		if len(streams) != wantPages {
+			t.Fatalf("%s: the statement leg resolved to %d page(s), want %d", target.name, len(streams), wantPages)
+		}
+
+		cmaps := toUnicodeForResources(t, raw)
+		decode := func(stream string) []string {
+			var out []string
+			for _, r := range parseContentStreamRuns(t, []byte(stream)) {
+				cmap, ok := cmaps[r.Resource]
+				if !ok {
+					t.Fatalf("%s: a run selects font resource %q with no /ToUnicode CMap", target.name, r.Resource)
+				}
+				var sb strings.Builder
+				for _, cid := range r.CIDs {
+					sb.WriteString(cmap[cid])
+				}
+				out = append(out, sb.String())
+			}
+			return out
+		}
+
+		for p, stream := range streams {
+			texts := decode(stream)
+			if len(texts) == 0 {
+				t.Fatalf("%s: page %d of the statement leg is BLANK — it draws no text at all", target.name, p+1)
+			}
+			for _, label := range statementColumnLabels {
+				found := false
+				for _, txt := range texts {
+					if txt == label {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("%s: page %d of the statement leg does not draw the column header label %q — the table header does not repeat on this target", target.name, p+1, label)
+				}
+			}
+			wantPageNo := "Page " + itoaForTest(int64(p+1)) + " of " + itoaForTest(int64(wantPages))
+			found := false
+			for _, txt := range texts {
+				if txt == wantPageNo {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("%s: page %d of the statement leg does not draw %q", target.name, p+1, wantPageNo)
+			}
+			if n := strings.Count(stream, "/"+statementLogoAssetKey+" Do"); n != 1 {
+				t.Errorf("%s: page %d of the statement leg draws the logo XObject %d time(s), want exactly 1", target.name, p+1, n)
+			}
+		}
+
+		if defs := bytes.Count(raw, []byte("/Subtype /Image")); defs != 1 {
+			t.Errorf("%s: the statement leg carries %d image XObject definition(s), want exactly 1 — the logo must be embedded once and referenced, not re-embedded per page", target.name, defs)
+		}
+
+		// What is NEW about this family (AC7 part (a)): CJK subsetting
+		// at volume. Counted off the produced bytes, through the SC
+		// face's own /ToUnicode CMap.
+		cjk := 0
+		for name, cmap := range cmaps {
+			if name != "NotoSansSC" {
+				continue
+			}
+			cjk = len(cmap)
+		}
+		if cjk != wantCJKGlyphs {
+			t.Errorf("%s: the statement leg's Noto Sans SC subset carries %d /ToUnicode entries, want %d — the CJK volume this family exists to exercise is not on this leg", target.name, cjk, wantCJKGlyphs)
+		}
+	}
+}
+
 // matrixKidsArrayRE and matrixWellFormedRefRE are this file's OWN copies of
 // golden_structural_validity_test.go's kidsArrayRE / wellFormedRefRE, not a
 // shared import: that file is package folio_test (external), this one is
@@ -1247,6 +1362,65 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2:    true,
 		requireImageXObject: false,
 		extraGuard:          requireNoImageXObject,
+	},
+	{
+		// Story 4.7's FOUR documents — the C4 gate, and THE FIRST
+		// TABLE GOLDENS THIS REPOSITORY HAS EVER HAD. Measured at
+		// 4.7's baseline: not one committed fixture's input.folio
+		// contained a table, so cross-target identity had never once
+		// been asserted over a paginated table with a repeated
+		// header and a footer aggregate.
+		//
+		// THEIR FOUR LEGS ARE RUN BY THIS STORY, not deferred to the
+		// Epic 4 boundary gate. D-000.4 names 4.7 explicitly as a
+		// per-story matrix override — this file's own comments below
+		// list the overrides as "1.2, 1.5, 1.8, 2.4 and 4.7" — and
+		// the reason is structural rather than cadence: 4.7 IS the
+		// C4 gate, so deferring its own matrix to the gate would be
+		// the gate certifying itself.
+		//
+		// extraGuard is parameterised per document because the
+		// property that matters is per document: the declared page
+		// count, and the size of the CJK subset. statement-1 carries
+		// ONE CJK glyph (the three-script row's 汉); the other three
+		// carry 41, because the CJK descriptions begin in the filler
+		// rows. Asserting 41 on statement-1 would be wrong, not
+		// merely redundant — the same reasoning requireFontFile2 is
+		// per document.
+		label:            "statement-1 (Customer Account Statement, 1 page)",
+		slug:             "statement-1",
+		capture:          captureStatementRender("FOLIO_SUBPROCESS_RENDER_STATEMENT1"),
+		fixtureRelPath:   []string{"fixtures", "statement-1", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireStatementIsAWorkingStatement(1, 1),
+		wantPages:        1,
+	},
+	{
+		label:            "statement-5 (Customer Account Statement, 5 pages)",
+		slug:             "statement-5",
+		capture:          captureStatementRender("FOLIO_SUBPROCESS_RENDER_STATEMENT5"),
+		fixtureRelPath:   []string{"fixtures", "statement-5", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireStatementIsAWorkingStatement(5, 41),
+		wantPages:        5,
+	},
+	{
+		label:            "statement-20 (Customer Account Statement, 20 pages)",
+		slug:             "statement-20",
+		capture:          captureStatementRender("FOLIO_SUBPROCESS_RENDER_STATEMENT20"),
+		fixtureRelPath:   []string{"fixtures", "statement-20", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireStatementIsAWorkingStatement(20, 41),
+		wantPages:        20,
+	},
+	{
+		label:            "statement-50 (Customer Account Statement, 50 pages)",
+		slug:             "statement-50",
+		capture:          captureStatementRender("FOLIO_SUBPROCESS_RENDER_STATEMENT50"),
+		fixtureRelPath:   []string{"fixtures", "statement-50", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireStatementIsAWorkingStatement(50, 41),
+		wantPages:        50,
 	},
 }
 
