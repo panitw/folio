@@ -567,6 +567,19 @@ func captureHiddenImageRender(t *testing.T, target matrixTarget, binPath string)
 	return runOnTarget(t, target, binPath, map[string]string{subprocessHiddenImageEnvVar: "1"})
 }
 
+func captureAlternatingRowsRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessAlternatingRowsEnvVar: "1"})
+}
+
+func requireAlternatingRowsAreStriped(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	const alternateOperator = "0.867 0.933 1 rg\n"
+	if got := bytes.Count(raw, []byte(alternateOperator)); got != 2 {
+		t.Fatalf("target %s: alternating-rows carries %d alternate-colour fill operators, want exactly 2", target.name, got)
+	}
+}
+
 // requireNoImageXObject is hidden-image's extraGuard (Story 3.5
 // finisher review, Finding 1 / Blocker) — the mirror image of
 // requireImageXObject's vacuity check (AC23), applied in the direction
@@ -1421,6 +1434,18 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requireStatementIsAWorkingStatement(50, 41),
 		wantPages:        50,
+	},
+	{
+		// Story 4.8's independently accepted visual fixture. Its native
+		// darwin/arm64 leg runs in-story under D-000.54; the remaining three
+		// targets stay deferred to the Epic 4 boundary gate under D-000.4.
+		label:            "alternating-rows (odd collection-index row shading)",
+		slug:             "alternating-rows",
+		capture:          captureAlternatingRowsRender,
+		fixtureRelPath:   []string{"fixtures", "alternating-rows", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireAlternatingRowsAreStriped,
+		wantPages:        1,
 	},
 }
 

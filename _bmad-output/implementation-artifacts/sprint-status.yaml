@@ -87,7 +87,7 @@ development_status:
   3-7-validate-a-template-and-render-it-from-the-command-line: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
+  epic-4: in-progress
   4-1-lay-out-a-table-s-columns-header-and-cell-chrome: done
   4-2-generate-rows-from-a-bound-collection: done
   4-3-break-a-table-across-pages-without-splitting-a-row: done
@@ -95,7 +95,7 @@ development_status:
   4-5-render-footer-aggregates-without-orphaning-them: done
   4-6-handle-a-row-taller-than-the-page: done
   4-7-the-golden-report-renders-and-hashes-match: done
-  4-8-alternating-row-styling: backlog
+  4-8-alternating-row-styling: done
   epic-4-retrospective: optional
 
   epic-5: backlog

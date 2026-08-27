@@ -1,0 +1,60 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "id": "e1",
+          "type": "table",
+          "x": 0,
+          "y": 0,
+          "bind": "items[]",
+          "headerHeight": 20,
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "headerStyle": {
+            "background": "#445566"
+          },
+          "altRowBackground": "#DDEEFF",
+          "columns": [
+            {
+              "id": "e2",
+              "label": "Transaction",
+              "width": 180,
+              "bind": "{{row.label}}"
+            }
+          ]
+        }
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {
+    "body": [
+      "Noto Sans"
+    ]
+  },
+  "locale": "en",
+  "nextId": 3,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}

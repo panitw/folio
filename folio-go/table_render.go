@@ -482,13 +482,22 @@ func buildHeaderCellRect(elementID string, x, y, w, h geom.Length, hs resolvedHe
 // own page space (D-2.6.5: an item that occupies space must not be
 // empty) without drawing anything.
 func buildCellRect(elementID string, x, y, w, h geom.Length, hasBackground bool, background string, hasBorder bool, border template.Border) (pagemodel.Rect, error) {
+	return buildCellRectWithBackgroundField(elementID, x, y, w, h, hasBackground, background,
+		"style.background/headerStyle.background", hasBorder, border)
+}
+
+// buildCellRectWithBackgroundField is buildCellRect's located-field form.
+// Most callers use the ordinary style cascade through buildCellRect; an
+// alternating data row passes table.altRowBackground so a malformed value is
+// reported against the template field that actually supplied it.
+func buildCellRectWithBackgroundField(elementID string, x, y, w, h geom.Length, hasBackground bool, background, backgroundField string, hasBorder bool, border template.Border) (pagemodel.Rect, error) {
 	rect := pagemodel.Rect{X: x, Y: y, W: w, H: h}
 
 	if hasBackground {
 		c, ok := parseHexColor(background)
 		if !ok {
 			return pagemodel.Rect{}, newRenderError(DiagCodeStyleColorInvalid, elementID, "",
-				fmt.Errorf("folio: Render: element %s: style.background/headerStyle.background %q is not a #RRGGBB colour", elementID, background))
+				fmt.Errorf("folio: Render: element %s: %s %q is not a #RRGGBB colour", elementID, backgroundField, background))
 		}
 		rect.HasFill = true
 		rect.Fill = c
@@ -578,6 +587,8 @@ func collectBandTableRuns(
 		if len(tbl.Columns) == 0 {
 			continue // nothing to lay out or draw
 		}
+		hasAltBackground := tbl.AltRowBackground.Set && !tbl.AltRowBackground.Null
+		altBackground := tbl.AltRowBackground.Value
 
 		hs := resolveHeaderStyle(el)
 		tableTop := layout.PlaceInBand(b.origin, el.Y)
@@ -914,9 +925,18 @@ func collectBandTableRuns(
 				// extent (AC7), with no changes needed to either of
 				// those two functions.
 				cellRects := make([]pagemodel.Rect, len(tbl.Columns))
+				hasRowBackground := bs.hasBackground
+				rowBackground := bs.background
+				rowBackgroundField := "style.background"
+				if rowIdx%2 == 1 && hasAltBackground {
+					hasRowBackground = true
+					rowBackground = altBackground
+					rowBackgroundField = "table.altRowBackground"
+				}
 				for ci := range tbl.Columns {
 					cg := geometry.Columns[ci]
-					rect, rerr := buildCellRect(string(el.ID), cg.X, rowTop, cg.Width, rowHeight, bs.hasBackground, bs.background, bs.hasBorder, bs.border)
+					rect, rerr := buildCellRectWithBackgroundField(string(el.ID), cg.X, rowTop, cg.Width, rowHeight,
+						hasRowBackground, rowBackground, rowBackgroundField, bs.hasBorder, bs.border)
 					if rerr != nil {
 						return nil, nil, nil, rerr
 					}

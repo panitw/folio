@@ -13953,3 +13953,23 @@ no-unasserted-diagnostic precondition turns into a fatal.
 **And the shape of the mistake is the same one [[D-000.93]] is about**: a plausible property (glyph count)
 standing in for the one that governs (advance width), quoted as though it had been measured. That it
 recurred inside the entry recording it is worth seeing.
+
+### D-4.8.1 — Alternating row parity is odd zero-based collection index, never page position
+
+**Engineering lead ruling, recorded by Story 4.8.** `table.altRowBackground` is the alternate treatment:
+collection index **0** retains the ordinary body background (or remains unfilled), and odd zero-based
+collection indexes receive the configured alternate colour. The carried data-row collection index is
+authoritative across pagination; headers, repeated headers and footers are never alternate data rows.
+
+This closes the only parity convention that the implementation could otherwise choose accidentally.
+It preserves `style.background` on even indexes and gives `altRowBackground` precedence only on odd
+indexes, while keeping row geometry, ordering and page partition unchanged. The colour remains a
+template-only value; row data cannot select it. The Story 4.8 focused tests own the literal colours and
+assert both directions, including a continuation page whose first row is an odd collection index.
+
+**Ratification provenance (2026-08-27).** The Story 4.8 developer proposed and recorded this
+entry before consulting the engineering lead. The lead subsequently reviewed the exact convention
+and ratified it unchanged: index 0 is base; odd zero-based collection indexes use the alternate
+colour globally across pages; headers (including repeated headers) and footer aggregates never
+participate; the feature remains appearance-only under AD-13 and AD-24. This note preserves the
+original record and corrects its consultation provenance without rewriting it.

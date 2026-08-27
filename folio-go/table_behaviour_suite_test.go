@@ -71,12 +71,13 @@ import (
 // diff to this list, made deliberately and reviewed, rather than a
 // silent deletion nothing notices.
 var declaredTableBehaviourSuite = []string{
-	"table_render_test.go",        // Story 4.1 — cell rendering, header row, column geometry
-	"table_render_row_test.go",    // Story 4.2 — row scope, per-row binding, empty collections
-	"table_pagination_test.go",    // Story 4.3 — row-atomic pagination
-	"table_header_repeat_test.go", // Story 4.4 — the header repeats on continuation pages
-	"table_footer_test.go",        // Story 4.5 — footer aggregates, orphan avoidance
-	"table_row_clip_test.go",      // Story 4.6 — a row taller than the page
+	"table_render_test.go",          // Story 4.1 — cell rendering, header row, column geometry
+	"table_render_row_test.go",      // Story 4.2 — row scope, per-row binding, empty collections
+	"table_pagination_test.go",      // Story 4.3 — row-atomic pagination
+	"table_header_repeat_test.go",   // Story 4.4 — the header repeats on continuation pages
+	"table_footer_test.go",          // Story 4.5 — footer aggregates, orphan avoidance
+	"table_row_clip_test.go",        // Story 4.6 — a row taller than the page
+	"table_alternating_row_test.go", // Story 4.8 — odd collection-index alternate fills
 }
 
 // TestTableBehaviourSuiteIsNotSupersededByTheGolden asserts every

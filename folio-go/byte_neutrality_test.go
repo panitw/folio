@@ -286,6 +286,18 @@ var goldenDigestRecord = []struct {
 			{kind: "signoff", relPath: "fixtures/statement-signoff.json"},
 		},
 	},
+	{
+		// RECORDED by Story 4.8. The isolated visual fixture for
+		// table.altRowBackground: five data rows, no base background, and
+		// exactly two alternate-colour fills at odd collection indexes.
+		dir:    "alternating-rows",
+		sha256: "e491d628ecd1dae9ad2d396341c014fb9dc5ce1e55c535a2f88bdae15b0e8bbd",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/alternating-rows/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/alternating-rows/README.md"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -638,6 +650,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: statement-5",           // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
 	"matrix-document: statement-20",          // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
 	"matrix-document: statement-50",          // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
+	"matrix-document: alternating-rows",      // Story 4.8 — native host leg RUN in-story (D-000.54); other targets deferred to Epic 4 boundary (D-000.4)
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

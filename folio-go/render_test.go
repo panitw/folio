@@ -597,6 +597,14 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessAlternatingRowsEnvVar) == "1" {
+		b, err := renderAlternatingRowsFixture()
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(b)
+	}
 	// Story 4.7's ELEVENTH..FOURTEENTH selectors: the Customer Account
 	// Statement at 1, 5, 20 and 50 pages. Four selectors rather than one
 	// parameterised selector because matrixDocuments' capture contract is
