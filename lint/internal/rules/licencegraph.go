@@ -84,7 +84,8 @@ func ScanNPMGraph(designerDir string) ([]Finding, error) {
 }
 
 // ScanPDFJSNotice becomes non-vacuous the moment pdfjs-dist is present: its
-// lock record must be Apache-2.0 and its redistributed NOTICE must exist.
+// lock record, project NOTICE, and every license accompanying the copied
+// worker/CMap/Liberation support assets must agree.
 func ScanPDFJSNotice(designerDir string) ([]Finding, error) {
 	packages, err := licence.ResolveNPMGraph(designerDir)
 	if err != nil {
@@ -97,8 +98,12 @@ func ScanPDFJSNotice(designerDir string) ([]Finding, error) {
 		if p.Licence != "Apache-2.0" {
 			return []Finding{{Path: p.Path, Rule: RuleLicence, Message: "pdfjs-dist must be Apache-2.0"}}, nil
 		}
-		if _, err := os.Stat(filepath.Join(designerDir, "third-party-notices", "pdfjs-dist", "NOTICE")); err != nil {
-			return []Finding{{Path: "folio-designer/third-party-notices/pdfjs-dist/NOTICE", Rule: RuleLicence, Message: "pdfjs-dist is present but its Apache-2.0 NOTICE is missing"}}, nil
+		noticeRoot := filepath.Join(designerDir, "third-party-notices", "pdfjs-dist")
+		for _, name := range []string{"NOTICE", "LICENSE-APACHE-2.0", "LICENSE-CMAPS", "LICENSE-LIBERATION"} {
+			contents, err := os.ReadFile(filepath.Join(noticeRoot, name))
+			if err != nil || len(contents) == 0 {
+				return []Finding{{Path: "folio-designer/third-party-notices/pdfjs-dist/" + name, Rule: RuleLicence, Message: "pdfjs-dist is present but its required copied-asset license material is missing"}}, nil
+			}
 		}
 	}
 	return nil, nil

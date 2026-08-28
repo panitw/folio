@@ -84,6 +84,18 @@ exists to prevent.
 | @jridgewell/resolve-uri | 3.1.2 | MIT | folio-designer | build-time-only |
 | @jridgewell/sourcemap-codec | 1.5.5 | MIT | folio-designer | build-time-only |
 | @jridgewell/trace-mapping | 0.3.31 | MIT | folio-designer | build-time-only |
+| @napi-rs/canvas | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-android-arm64 | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-darwin-arm64 | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-darwin-x64 | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-linux-arm-gnueabihf | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-linux-arm64-gnu | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-linux-arm64-musl | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-linux-riscv64-gnu | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-linux-x64-gnu | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-linux-x64-musl | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-win32-arm64-msvc | 1.0.8 | MIT | folio-designer | shipped |
+| @napi-rs/canvas-win32-x64-msvc | 1.0.8 | MIT | folio-designer | shipped |
 | @napi-rs/lzma-linux-x64-gnu | 1.5.1 | MIT | folio-designer | build-time-only |
 | @oxlint/binding-android-arm-eabi | 1.79.0 | MIT | folio-designer | build-time-only |
 | @oxlint/binding-android-arm64 | 1.79.0 | MIT | folio-designer | build-time-only |
@@ -209,6 +221,7 @@ exists to prevent.
 | oxlint | 1.79.0 | MIT | folio-designer | build-time-only |
 | parse5 | 8.0.1 | MIT | folio-designer | build-time-only |
 | pathe | 2.0.3 | MIT | folio-designer | build-time-only |
+| pdfjs-dist | 6.2.108 | Apache-2.0 | folio-designer | shipped |
 | picocolors | 1.1.1 | ISC | folio-designer | build-time-only |
 | picomatch | 4.0.7 | MIT | folio-designer | build-time-only |
 | playwright | 1.58.2 | Apache-2.0 | folio-designer | build-time-only |

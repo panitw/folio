@@ -62,6 +62,11 @@ describe('canvas projection authority contract', () => {
 function violationsForSource(source: string): RegExp[] { return prohibited.filter((pattern) => pattern.test(source)) }
 
 function withoutApprovedLocalPointerInput(file: string, source: string): string {
+  if (file.includes(`${path.sep}preview${path.sep}`)) {
+    // PDF viewer scroll is deliberately transient viewer navigation, never a
+    // document/canvas measurement. Keep that exception narrow to this owner.
+    return source.replace(/scroll(?:Width|Height|Left|Top)\b/g, 'viewerTransientState')
+  }
   if (path.basename(file) !== 'App.tsx') return source
   // The sole approved pointer coordinate is isolated to a named transient
   // proposal helper. It is not DOM measurement and never reaches paint.

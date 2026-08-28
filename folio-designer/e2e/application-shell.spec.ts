@@ -12,7 +12,20 @@ test('the initial shell exposes desktop landmarks and honest local-file controls
   await expect(page.getByRole('button', { name: 'Save As' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start blank' })).toBeVisible()
   await expect(page.getByText('Unsaved local changes')).toBeVisible()
-  await expect(page.getByText('PREVIEW · later')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'PREVIEW' })).toBeVisible()
+})
+
+test('Preview replaces the design canvas with the correlated local worker PDF viewer', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'PREVIEW' }).click()
+  await expect(page.getByLabel('Preview region')).toBeVisible()
+  await expect(page.getByLabel('Canvas region')).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Raw sample data JSON' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Raw parameter JSON' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Return to Design' })).toBeVisible()
+  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
+  await page.getByRole('button', { name: 'Return to Design' }).click()
+  await expect(page.getByLabel('Canvas region')).toBeVisible()
 })
 
 test('the real worker projects page bands and accepts local page setup without changing transient controls', async ({ page }) => {

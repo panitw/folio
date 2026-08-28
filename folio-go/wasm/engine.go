@@ -4,6 +4,8 @@
 package wasm
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
@@ -17,6 +19,16 @@ type Snapshot struct {
 	Revision      uint64                  `json:"revision"`
 	ByteLength    int                     `json:"byteLength"`
 	Canvas        *folio.CanvasProjection `json:"canvas,omitempty"`
+}
+
+// RenderResult is a deliberately opaque production-render projection. It is
+// never a browser document model: callers can only receive the PDF bytes,
+// their producer-computed digest, the revision that supplied template bytes,
+// and bounded diagnostics from the existing production renderer.
+type RenderResult struct {
+	PDFSHA256   string             `json:"pdfSha256"`
+	Revision    uint64             `json:"revision"`
+	Diagnostics []folio.Diagnostic `json:"diagnostics"`
 }
 
 // Engine owns one live template and its canonical bytes for one worker.
@@ -71,6 +83,33 @@ func (e *Engine) Serialize() ([]byte, Snapshot, error) {
 		return nil, Snapshot{}, fmt.Errorf("folio wasm: no document is loaded")
 	}
 	return append([]byte(nil), e.bytes...), e.Snapshot(), nil
+}
+
+// Render reparses the caller-provided canonical template bytes through the
+// production boundary and invokes the one public renderer. The three byte
+// channels intentionally remain distinct: data and params must preserve the
+// exact-decimal JSON semantics owned by folio.Render.
+func (e *Engine) Render(template, data, params []byte) ([]byte, RenderResult, error) {
+	if e.template == nil {
+		return nil, RenderResult{}, fmt.Errorf("folio wasm: no document is loaded")
+	}
+	if len(template) == 0 || len(data) == 0 || len(params) == 0 {
+		return nil, RenderResult{}, fmt.Errorf("folio wasm: render inputs must be non-empty")
+	}
+	if !bytes.Equal(template, e.bytes) {
+		return nil, RenderResult{}, fmt.Errorf("folio wasm: render template is not the current canonical revision")
+	}
+	tpl, err := folio.ParseTemplate(template)
+	if err != nil {
+		return nil, RenderResult{}, err
+	}
+	result, err := folio.Render(tpl, folio.Data(data), folio.Params(params), fonts.Shipped())
+	if err != nil {
+		return nil, RenderResult{}, err
+	}
+	pdf := append([]byte(nil), result.Bytes...)
+	digest := sha256.Sum256(pdf)
+	return pdf, RenderResult{PDFSHA256: fmt.Sprintf("%x", digest), Revision: e.revision, Diagnostics: append([]folio.Diagnostic(nil), result.Diagnostics...)}, nil
 }
 
 // Validate reparses the engine-owned canonical bytes. It deliberately does

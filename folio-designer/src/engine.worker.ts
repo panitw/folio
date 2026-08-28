@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { ENGINE_PROTOCOL_VERSION, type EngineError, type EngineRequest, type EngineSnapshot } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, MAX_ENGINE_RENDER_PDF_BYTES, type EngineDiagnostic, type EngineError, type EngineRequest, type EngineSnapshot, type RenderPayload } from './engine-protocol'
 import { EngineRequestAdmission } from './engine-worker-admission'
 import { EngineWorkerQueue } from './engine-worker-queue'
 import { runtimeAssetUrls } from './generated/offline-assets'
@@ -8,7 +8,7 @@ import { runtimeAssetUrls } from './generated/offline-assets'
 declare const Go: new () => { importObject: WebAssembly.Imports; run(instance: WebAssembly.Instance): void }
 
 type WasmHost = { handle(request: string): string }
-type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string }
+type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[] }
 
 const worker = self as unknown as DedicatedWorkerGlobalScope
 let host: WasmHost | undefined
@@ -53,8 +53,9 @@ worker.onmessage = (event: MessageEvent<unknown>) => {
 
 async function execute(request: EngineRequest): Promise<void> {
   try {
-    const payloadBase64 = request.payload ? bytesToBase64(request.payload) : undefined
-    const raw = host!.handle(JSON.stringify({ operation: request.operation, ...(payloadBase64 ? { payloadBase64 } : {}) }))
+    const render = request.operation === 'render' ? request.payload as RenderPayload : undefined
+    const payloadBase64 = request.payload instanceof ArrayBuffer ? bytesToBase64(request.payload) : undefined
+    const raw = host!.handle(JSON.stringify({ operation: request.operation, ...(payloadBase64 ? { payloadBase64 } : {}), ...(render ? { templateBase64: bytesToBase64(render.template), dataBase64: bytesToBase64(render.data), paramsBase64: bytesToBase64(render.params) } : {}) }))
     const result = JSON.parse(raw) as WasmResponse
     if (!result.ok || !result.snapshot) {
       respondFailure(request.requestId, {
@@ -65,8 +66,11 @@ async function execute(request: EngineRequest): Promise<void> {
       })
       return
     }
-    const bytes = result.bytesBase64 ? base64ToBytes(result.bytesBase64) : undefined
-    worker.postMessage({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: request.requestId, ok: true, snapshot: result.snapshot, ...(bytes ? { bytes } : {}) }, bytes ? [bytes] : [])
+    // Reject a hostile/buggy producer before atob allocates its decoded
+    // buffer. The protocol repeats this guard on the main-thread boundary.
+    const bytes = result.bytesBase64 ? base64ToBytesBounded(result.bytesBase64, request.operation === 'render' ? MAX_ENGINE_RENDER_PDF_BYTES : undefined) : undefined
+    const preview = request.operation === 'render' ? { revision: result.renderRevision, pdfSha256: result.pdfSha256, diagnostics: result.diagnostics } : undefined
+    worker.postMessage({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: request.requestId, ok: true, snapshot: result.snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}) }, bytes ? [bytes] : [])
   } catch {
     respondFailure(request.requestId, { code: 'WASM_PROTOCOL_FAILURE', message: 'The engine returned an invalid response' })
   }
@@ -83,6 +87,13 @@ function failWorker(error: EngineError): void {
 }
 
 function bytesToBase64(bytes: ArrayBuffer): string { let text = ''; for (const byte of new Uint8Array(bytes)) text += String.fromCharCode(byte); return btoa(text) }
-function base64ToBytes(value: string): ArrayBuffer { const text = atob(value); const bytes = new Uint8Array(text.length); for (let index = 0; index < text.length; index++) bytes[index] = text.charCodeAt(index); return bytes.buffer }
+function base64ToBytesBounded(value: string, max?: number): ArrayBuffer {
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
+  const byteLength = value.length % 4 === 0 ? value.length / 4 * 3 - padding : -1
+  if (byteLength < 0 || (max !== undefined && byteLength > max)) throw new Error('WASM byte response exceeds its transport limit')
+  const text = atob(value)
+  if (max !== undefined && text.length > max) throw new Error('WASM byte response exceeds its transport limit')
+  const bytes = new Uint8Array(text.length); for (let index = 0; index < text.length; index++) bytes[index] = text.charCodeAt(index); return bytes.buffer
+}
 
 booted = boot()

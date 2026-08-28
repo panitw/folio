@@ -27,7 +27,7 @@ describe('transient interaction boundary', () => {
     expect(worker.sent).toHaveLength(0) // Red proof: draft does not leak into a document command.
     const pending = interaction.commit()
     expect(worker.sent).toHaveLength(1)
-    expect(new TextDecoder().decode(worker.sent[0]!.payload)).toBe('commit')
+    expect(new TextDecoder().decode(worker.sent[0]!.payload as ArrayBuffer)).toBe('commit')
     interaction.update('later UI event')
     expect(interaction.draft).toBe('later UI event')
     worker.succeed()

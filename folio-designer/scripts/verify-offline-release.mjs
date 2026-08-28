@@ -31,6 +31,9 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   if (!sameSet(manifestUrls, outputUrls)) fail('manifest and production runtime output are not an exact set')
   if (!manifestUrls.has('/index.html')) fail('navigation entry is absent')
   for (const required of ['.wasm', '.css', '.js', '.ttf', '.folio']) if (!release.assets.some((asset) => asset.url.endsWith(required))) fail(`missing required runtime class ${required}`)
+  if (!release.assets.some((asset) => /\/pdf\.worker-[A-Za-z0-9_-]+\.mjs$/.test(asset.url))) fail('missing local PDF.js worker runtime asset')
+  if (release.assets.filter((asset) => asset.url.endsWith('.bcmap')).length < 4) fail('missing local PDF.js CMap runtime assets')
+  if (!release.assets.some((asset) => /\/pdfjs-standard-fonts-[a-f0-9]{20}\/LiberationSans-Regular\.ttf$/.test(asset.url))) fail('missing local PDF.js standard-font runtime asset')
   if (release.id !== releaseIdentity(release.assets, release.workerRevision)) fail('release identity does not match canonical assets and worker revision')
   if (release.pageId !== pageIdentity(release.assets, release.workerRevision)) fail('page release identity does not match runtime assets and worker revision')
   if (!readFileSync(join(outputDir, 'index.html'), 'utf8').includes(`name="folio-page-release" content="${release.pageId}"`)) fail('page does not bind to its release identity')
@@ -81,7 +84,8 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   for (const asset of release.assets) {
     const file = join(outputDir, asset.url.slice(1))
     if (asset.immutable) {
-      if (!asset.url.startsWith(contract.immutableRuntime.urlPrefix) || !/-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/.test(asset.url)) fail(`immutable URL is not content-addressed ${asset.url}`)
+      const pdfjsCollection = /\/pdfjs-(?:cmaps|standard-fonts)-[a-f0-9]{20}\//.test(asset.url)
+      if (!asset.url.startsWith(contract.immutableRuntime.urlPrefix) || (!/-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/.test(asset.url) && !pdfjsCollection)) fail(`immutable URL is not content-addressed ${asset.url}`)
       const sidecar = `${file}${contract.immutableRuntime.sidecarSuffix}`
       if (!existsSync(sidecar)) fail(`missing Brotli sidecar ${asset.url}`)
       const original = readFileSync(file)
@@ -122,6 +126,7 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
   const readRelease = (outputDir) => JSON.parse(readFileSync(join(outputDir, 'offline-release-manifest.json'), 'utf8'))
   for (const extension of ['.wasm', '.ttf']) redProof(`stale-${extension.slice(1)}-byte`, (outputDir) => { const witness = baseline.assets.find((candidate) => candidate.immutable && candidate.url.endsWith(extension)); if (!witness) fail(`red proof has no ${extension} witness`); const file = join(outputDir, witness.url.slice(1)); const original = readFileSync(file); writeFileSync(file, Buffer.concat([original, Buffer.from([0])])); return () => writeFileSync(file, original) })
   for (const [name, extension] of [['missing-wasm-row', '.wasm'], ['missing-font-row', '.ttf']]) redProof(name, (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const worker = join(outputDir, 'sw.js'); const oldManifest = readFileSync(manifest); const oldWorker = readFileSync(worker); const release = readRelease(outputDir); release.assets = release.assets.filter((asset) => !asset.url.endsWith(extension)); rewriteRelease(outputDir, release); return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) } })
+  for (const [name, matcher] of [['missing-pdfjs-worker', (url) => /\/pdf\.worker-[A-Za-z0-9_-]+\.mjs$/.test(url)], ['missing-pdfjs-cmap', (url) => url.endsWith('.bcmap')], ['missing-pdfjs-standard-font', (url) => /\/pdfjs-standard-fonts-[a-f0-9]{20}\/LiberationSans-Regular\.ttf$/.test(url)]]) redProof(name, (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const worker = join(outputDir, 'sw.js'); const oldManifest = readFileSync(manifest); const oldWorker = readFileSync(worker); const release = readRelease(outputDir); release.assets = release.assets.filter((asset) => !matcher(asset.url)); rewriteRelease(outputDir, release); return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) } })
   redProof('unmanifested-runtime-output', (outputDir) => { const injected = join(outputDir, 'assets', 'injected-12345678.js'); writeFileSync(injected, 'export {}'); return () => unlinkSync(injected) })
   redProof('stale-release-identity', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.id = '0'.repeat(64); writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('worker-manifest-drift', (outputDir) => { const worker = join(outputDir, 'sw.js'); const original = readFileSync(worker, 'utf8'); const drifted = original.replace(`"pageId":"${baseline.pageId}"`, `"pageId":"${'0'.repeat(64)}"`); if (drifted === original) fail('red proof could not locate the worker release record'); writeFileSync(worker, drifted); return () => writeFileSync(worker, original) })

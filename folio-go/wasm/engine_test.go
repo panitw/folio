@@ -2,9 +2,14 @@ package wasm
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
+
+	folio "github.com/panitw/folio/folio-go"
+	"github.com/panitw/folio/folio-go/fonts"
 )
 
 func TestEngineLoadAndSerializeRoundTripsCanonicalBytes(t *testing.T) {
@@ -32,6 +37,65 @@ func TestEngineLoadAndSerializeRoundTripsCanonicalBytes(t *testing.T) {
 	again, _, err := engine.Serialize()
 	if err != nil || !bytes.Equal(again, input) {
 		t.Fatal("Serialize exposed aliased authoritative bytes")
+	}
+}
+
+func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
+	fixtures := []struct{ name, template, data, params string }{
+		{"simple", "../testdata/example/first-pdf.folio", `{"customer":{"name":"Ada"}}`, `{"preview":null}`},
+		// This is a genuine five-page, table/text, multi-script shipped-font
+		// document. A one-page ASCII fixture cannot detect pagination or font
+		// path divergence, so both inputs remain required parity subjects.
+		{"multipage-text-font", "../../fixtures/statement-5/input.folio", "../../fixtures/statement-5/data.json", "../../fixtures/statement-5/params.json"},
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.name, func(t *testing.T) {
+			input, err := os.ReadFile(fixture.template)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, params := []byte(fixture.data), []byte(fixture.params)
+			if fixture.name != "simple" {
+				data, err = os.ReadFile(fixture.data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				params, err = os.ReadFile(fixture.params)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			engine := NewEngine()
+			if _, err := engine.Load(input); err != nil {
+				t.Fatal(err)
+			}
+			canonical, snapshot, err := engine.Serialize()
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantTemplate, err := folio.ParseTemplate(canonical)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := folio.Render(wantTemplate, folio.Data(data), folio.Params(params), fonts.Shipped())
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, evidence, err := engine.Render(canonical, data, params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want.Bytes) || evidence.Revision != snapshot.Revision {
+				t.Fatalf("wasm render diverged from production: revision=%d want=%d", evidence.Revision, snapshot.Revision)
+			}
+			wantDigest := sha256.Sum256(want.Bytes)
+			if evidence.PDFSHA256 != fmt.Sprintf("%x", wantDigest) {
+				t.Fatalf("digest = %q", evidence.PDFSHA256)
+			}
+			if _, _, err := engine.Render(append(canonical, ' '), []byte(`{}`), []byte(`{}`)); err == nil {
+				t.Fatal("stale/noncanonical template render unexpectedly succeeded")
+			}
+		})
 	}
 }
 

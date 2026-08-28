@@ -1,0 +1,17 @@
+pdfjs-dist 6.2.108
+Copyright 2012 Mozilla Foundation
+
+Folio redistributes only the local PDF.js worker, four Adobe binary CMaps, and
+four Liberation Sans standard-font files from pdfjs-dist to rasterize PDF bytes
+produced by Folio's local Go renderer. No PDF.js viewer asset is served from a
+network origin.
+
+The complete attribution and license materials shipped with these copied bytes
+are retained beside this NOTICE:
+
+- LICENSE-APACHE-2.0 — pdfjs-dist / Mozilla PDF.js, Apache License 2.0.
+- LICENSE-CMAPS — Adobe CMap Resources, Copyright 1990-2009 Adobe Systems
+  Incorporated, BSD-style redistribution terms.
+- LICENSE-LIBERATION — Liberation Sans standard fonts, SIL Open Font License
+  1.1; copyright Google Corporation and Red Hat, with Reserved Font Name
+  Liberation.

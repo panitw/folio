@@ -19,9 +19,9 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .icon { width: var(--icon-size); height: var(--icon-size); }
 .later-control { margin-left: auto; color: var(--color-ink); }
 .mode-switch { display: flex; border: var(--hairline) solid var(--color-edge); }
-.mode-switch span { min-height: var(--status-bar-height); padding: var(--space-1) var(--space-6); color: var(--color-ink); font: var(--type-body); letter-spacing: var(--tracking-brand); }
+.mode-switch button { min-height: var(--status-bar-height); padding: var(--space-1) var(--space-6); border: 0; background: transparent; color: var(--color-ink); font: var(--type-body); letter-spacing: var(--tracking-brand); }
 .mode-switch .mode-active { background: var(--color-active); color: var(--color-ink-high); font-weight: 500; }
-.mode-switch .mode-disabled { color: var(--color-ink); }
+.mode-switch button:focus-visible, .pdf-preview button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .workbench { min-width: 1080px; min-height: 0; display: grid; grid-template-columns: var(--palette-width) minmax(0, 1fr) var(--panel-width); }
 .palette-rail, .properties-panel { overflow: auto; padding: var(--space-5) var(--space-panel-x); background: var(--color-panel); }
 .palette-rail { border-right: var(--hairline) solid var(--color-line); }
@@ -80,5 +80,13 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .engine-starting { min-height: 100vh; display: grid; place-items: center; background: var(--color-ground); color: var(--color-ink); font: var(--type-mono); }
 label { display: grid; gap: var(--space-1); margin-bottom: var(--space-3); color: var(--color-ink); font: var(--type-mono); }
 input, select { width: 100%; min-height: 28px; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-mono); }
-input:focus-visible, select:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+textarea { width: 100%; min-height: 120px; resize: vertical; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-mono); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+.preview-region { min-width: 0; overflow: auto; padding: var(--space-6); background: var(--color-ground-preview); color: var(--color-ink-high); }
+.preview-heading, .pdf-preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
+.preview-heading p, .preview-evidence { margin: 0; color: var(--color-ink); font: var(--type-mono); }
+.pdf-preview-controls { position: sticky; top: 0; z-index: 1; padding: var(--space-2); background: var(--color-panel); border: var(--hairline) solid var(--color-line-strong); }
+.pdf-preview-controls button { min-height: 28px; border: var(--hairline) solid var(--color-edge); background: var(--color-raised); color: var(--color-ink-high); }
+.pdf-preview-scroll { min-height: 240px; overflow: auto; display: grid; justify-content: center; padding: var(--space-6); background: var(--color-base); }
+.pdf-preview-scroll canvas { max-width: none; box-shadow: var(--shadow-page); background: var(--color-page); }
 @media (prefers-reduced-motion: reduce) { .load-progress span { transition: none; } }

@@ -18,7 +18,26 @@ describe('application shell', () => {
     expect(screen.getByLabelText('Report page with Page Header, Content, and Page Footer')).toBeInTheDocument()
     expect(screen.getByLabelText('Properties panel')).toBeInTheDocument()
     expect(screen.getByLabelText('Status bar')).toBeInTheDocument()
-    expect(screen.getByText('PREVIEW · later')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('replaces the canvas with Preview, cancels an older render, and never dirties or installs its late PDF', async () => {
+    let releaseSerialize!: (value: { snapshot: ReturnType<typeof snapshot>; bytes: ArrayBuffer }) => void
+    const request = vi.fn((operation: string) => {
+      if (operation === 'serialize') return new Promise<{ snapshot: ReturnType<typeof snapshot>; bytes: ArrayBuffer }>((resolve) => { releaseSerialize = resolve })
+      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, pdfSha256: 'a'.repeat(64), diagnostics: [] } })
+      return Promise.resolve({ snapshot: snapshot(1) })
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    expect(screen.queryByLabelText('Canvas region')).not.toBeInTheDocument()
+    expect(screen.getByText('Rendering local PDF')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel and return to Design' }))
+    releaseSerialize({ snapshot: snapshot(1), bytes })
+    await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
+    expect(screen.queryByText(/Go production digest/)).not.toBeInTheDocument()
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(['serialize'])
   })
 
   it('names local file controls, persistent unsaved state, and offline availability', () => {

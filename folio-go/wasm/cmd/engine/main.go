@@ -18,8 +18,11 @@ import (
 // request is intentionally byte-oriented. The JavaScript boundary never
 // reads document values as JS numbers or recreates document fields.
 type request struct {
-	Operation     string `json:"operation"`
-	PayloadBase64 string `json:"payloadBase64,omitempty"`
+	Operation      string `json:"operation"`
+	PayloadBase64  string `json:"payloadBase64,omitempty"`
+	TemplateBase64 string `json:"templateBase64,omitempty"`
+	DataBase64     string `json:"dataBase64,omitempty"`
+	ParamsBase64   string `json:"paramsBase64,omitempty"`
 }
 
 type response struct {
@@ -31,6 +34,21 @@ type response struct {
 	ElementID        string        `json:"elementId,omitempty"`
 	DataPath         string        `json:"dataPath,omitempty"`
 	DictionarySHA256 string        `json:"dictionarySha256,omitempty"`
+	PDFSHA256        string        `json:"pdfSha256,omitempty"`
+	RenderRevision   uint64        `json:"renderRevision,omitempty"`
+	// Diagnostics is deliberately not omitempty: an otherwise successful
+	// render has the same closed response shape whether it has zero warnings
+	// or many. JavaScript treats [] as evidence, while a missing/null field is
+	// a protocol violation.
+	Diagnostics []diagnostic `json:"diagnostics"`
+}
+
+type diagnostic struct {
+	Severity  string `json:"severity"`
+	Code      string `json:"code"`
+	ElementID string `json:"elementId"`
+	DataPath  string `json:"dataPath"`
+	Message   string `json:"message"`
 }
 
 func main() {
@@ -52,10 +70,7 @@ func main() {
 
 func dispatch(engine *wasm.Engine, in request) response {
 	decode := func() ([]byte, error) {
-		if len(in.PayloadBase64) > 8<<20 {
-			return nil, fmt.Errorf("payload exceeds 8 MiB")
-		}
-		return base64.StdEncoding.DecodeString(in.PayloadBase64)
+		return decodeBase64Bounded(in.PayloadBase64, 8<<20)
 	}
 	switch in.Operation {
 	case "offline-audit":
@@ -99,6 +114,33 @@ func dispatch(engine *wasm.Engine, in request) response {
 			return engineFailure(err)
 		}
 		return response{OK: true, Snapshot: snapshot}
+	case "render":
+		if in.PayloadBase64 != "" || in.TemplateBase64 == "" || in.DataBase64 == "" || in.ParamsBase64 == "" {
+			return failure("WASM_INPUT_INVALID", errors.New("render requires exactly three byte inputs"))
+		}
+		decodePart := func(value string) ([]byte, error) {
+			return decodeBase64Bounded(value, 8<<20)
+		}
+		template, err := decodePart(in.TemplateBase64)
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		data, err := decodePart(in.DataBase64)
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		params, err := decodePart(in.ParamsBase64)
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		pdf, rendered, err := engine.Render(template, data, params)
+		if err != nil {
+			return engineFailure(err)
+		}
+		if len(pdf) > 32<<20 {
+			return failure("WASM_OUTPUT_INVALID", errors.New("rendered PDF exceeds 32 MiB"))
+		}
+		return response{OK: true, Snapshot: engine.Snapshot(), BytesBase64: base64.StdEncoding.EncodeToString(pdf), PDFSHA256: rendered.PDFSHA256, RenderRevision: rendered.Revision, Diagnostics: boundedDiagnostics(rendered.Diagnostics)}
 	default:
 		return response{DiagnosticCode: "WASM_OPERATION_UNKNOWN", Message: "unknown operation"}
 	}
@@ -147,5 +189,39 @@ func bounded(value string, max int) string {
 		return value[:max]
 	}
 	return value
+}
+func boundedDiagnostics(values []folio.Diagnostic) []diagnostic {
+	if len(values) == 0 {
+		return []diagnostic{}
+	}
+	if len(values) > 256 {
+		values = values[:256]
+	}
+	out := make([]diagnostic, 0, len(values))
+	for _, value := range values {
+		out = append(out, diagnostic{Severity: strings.ToLower(value.Severity.String()), Code: bounded(value.Code, 96), ElementID: bounded(value.ElementID, 128), DataPath: bounded(value.DataPath, 256), Message: bounded(value.Message, 512)})
+	}
+	return out
+}
+
+// decodeBase64Bounded checks decoded bytes before DecodeString allocates. A
+// base64 transport string is larger than its raw bytes, so comparing its text
+// length to a raw-byte limit both rejects valid inputs and obscures the real
+// memory bound.
+func decodeBase64Bounded(value string, max int) ([]byte, error) {
+	if len(value)%4 != 0 {
+		return nil, errors.New("malformed base64 payload")
+	}
+	padding := 0
+	if strings.HasSuffix(value, "==") {
+		padding = 2
+	} else if strings.HasSuffix(value, "=") {
+		padding = 1
+	}
+	decoded := len(value)/4*3 - padding
+	if decoded < 0 || decoded > max {
+		return nil, fmt.Errorf("payload exceeds %d bytes", max)
+	}
+	return base64.StdEncoding.DecodeString(value)
 }
 func marshal(out response) string { bytes, _ := json.Marshal(out); return string(bytes) }
