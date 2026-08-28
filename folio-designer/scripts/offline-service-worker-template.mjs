@@ -20,9 +20,16 @@ const MESSAGE_VERSION = ${messageVersion}
 const cacheableRequest = ${isCacheableStaticRequest.toString()}
 const statusRequest = ${isStatusRequest.toString()}
 
+async function progress(state, asset) {
+  await notify({ type: 'offline-progress', state, assetUrl: asset?.url ?? null })
+}
+
 async function completeCache() {
   const cache = await caches.open(CACHE_NAME)
-  for (const asset of RELEASE.assets) {
+  let activeAsset = null
+  try { for (const [index, asset] of RELEASE.assets.entries()) {
+    activeAsset = asset
+    await progress('active', asset)
     const response = await fetch(asset.url, { cache: 'reload', credentials: 'omit' })
     if (!response.ok || response.type === 'opaque') throw new Error('offline asset missing')
     const bytes = await response.clone().arrayBuffer()
@@ -30,8 +37,13 @@ async function completeCache() {
     const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
     if (actual !== asset.sha256) throw new Error('offline asset integrity mismatch')
     await cache.put(asset.url, response)
-  }
-  await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))
+    // Delay the final verified notification until the marker exists. That makes
+    // a 100% page readout proof of a complete release, not just of the last put.
+    if (index < RELEASE.assets.length - 1) await progress('verified', asset)
+    }
+    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))
+    await progress('verified', activeAsset)
+  } catch (error) { error.asset = activeAsset; throw error }
 }
 
 async function hasCompleteCache() {
@@ -41,14 +53,14 @@ async function hasCompleteCache() {
   return (await Promise.all(RELEASE.assets.map((asset) => cache.match(asset.url)))).every(Boolean)
 }
 
-async function notify(state, target) {
-  const message = { version: MESSAGE_VERSION, type: 'offline-status', state, releaseId: RELEASE.id, pageId: RELEASE.pageId }
+async function notify(detail, target) {
+  const message = { version: MESSAGE_VERSION, releaseId: RELEASE.id, pageId: RELEASE.pageId, ...detail }
   if (target && 'postMessage' in target) { target.postMessage(message); return }
   for (const client of await clients.matchAll({ type: 'window', includeUncontrolled: true })) client.postMessage(message)
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(completeCache().catch(async (error) => { await caches.delete(CACHE_NAME); throw error }))
+  event.waitUntil(completeCache().catch(async (error) => { await progress('failed', error.asset); await caches.delete(CACHE_NAME); throw error }))
 })
 
 self.addEventListener('activate', (event) => {
@@ -59,7 +71,7 @@ self.addEventListener('activate', (event) => {
     const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true })
     if (windows.length === 0) await Promise.all((await caches.keys()).filter((name) => name.startsWith('folio-release-') && name !== CACHE_NAME).map((name) => caches.delete(name)))
     await clients.claim()
-    await notify('ready')
+    await notify({ type: 'offline-status', state: 'ready' })
   })())
 })
 
@@ -76,7 +88,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', (event) => {
   if (!statusRequest(event.data)) return
-  event.waitUntil(hasCompleteCache().then((complete) => notify(complete ? 'ready' : 'unavailable', event.source)))
+  event.waitUntil(hasCompleteCache().then((complete) => notify({ type: 'offline-status', state: complete ? 'ready' : 'unavailable' }, event.source)))
 })
 `
 }

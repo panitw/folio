@@ -13993,4 +13993,25 @@ churn was excluded. `epic-4` is therefore **done**; Epic 5 remains untouched.
 
 ### D-5.1.1 — DW-2 is replaced by the committed npm lockfile licence graph
 
+### D-5.4.1 — S1 payload figures are generated from the closed release artifact
+
+**D-000.6 amendment, Story 5.4, 2026-08-28 — verbatim record.**
+
+**Epic 5 before:** “Then it is itemised with real sizes — engine 1.5 MB, Latin 0.4 MB, Thai 0.1 MB, CJK 7.4 MB, Thai dictionary 0.12 MB — and explains why CJK dominates”
+
+**Epic 5 after:** “Then it is itemised from the generated current-release manifest: Engine, Latin font, Thai font, CJK font, and the Thai dictionary embedded in the engine (not a second request), with release-derived byte figures and an explanation of why the actually dominant CJK font payload dominates”
+
+**EXPERIENCE S1 before:** “First run only — once per browser cache lifetime. Covers the ~9 MB of rendering engine,\nfonts, and Thai line-breaking dictionary (NFR7).”
+
+**EXPERIENCE S1 after:** “First run only — while the current release is becoming ready for this browser cache lifetime.\nCovers the release-derived rendering engine and fonts; the Thai line-breaking dictionary is\nembedded in the engine, not a separately requested payload (NFR7).”
+
+The first-run explanation, itemisation, actual progress, cache-lifetime qualification, non-dense exception, and CJK rationale are unchanged.
+
+**Measurement and proof.** `cd folio-designer && npm run build && npm run verify:offline` generated
+`dist/offline-release-manifest.json` with `s1` version 1 rows from deterministic Brotli sidecars and
+the emitted-wasm Thai-dictionary digest witness. The verifier fails on stale/missing rows, altered
+sidecar size or digest, wrong delivery kind, incorrect total, and a non-dominant CJK row; the named
+red controls also exercise S1 total and delivery-fiction mutations. No planning estimate is rendered
+by the application.
+
 **Finisher correction, 2026-08-28.** Story 5.1 uses the committed npm lockfile as the sole JS dependency graph. AD-26 deterministically enumerates every direct, transitive, and platform-optional lock record without network access or `node_modules`, then accepts only supported SPDX expressions; a missing, unknown, or prohibited record fails closed. The manifest consumes that same lock graph and labels non-dev React runtime entries `shipped`, while dev-only tooling is `build-time-only`. The exhausted absence scanner is deleted with its only tenant; the diagnostics registry and `SOURCE_DATE_EPOCH` protections remain separate positive guards. `pdfjs-dist` is now a live conditional: when its lock record arrives it must be Apache-2.0 and its committed `third-party-notices/pdfjs-dist/NOTICE` must exist.

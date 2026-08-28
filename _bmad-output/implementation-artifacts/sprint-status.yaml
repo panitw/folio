@@ -102,7 +102,7 @@ development_status:
   5-1-the-design-system-and-application-shell: done
   5-2-the-engine-worker-and-command-channel: done
   5-3-work-offline: done
-  5-4-an-honest-first-run-load-screen: backlog
+  5-4-an-honest-first-run-load-screen: done
   5-5-open-and-save-folio-files-locally: backlog
   5-6-the-canvas-page-bands-grid-and-page-setup: backlog
   5-7-place-and-manipulate-the-five-components: backlog

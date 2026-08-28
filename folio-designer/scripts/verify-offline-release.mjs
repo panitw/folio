@@ -21,7 +21,7 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   if (!existsSync(manifestFile)) fail('missing generated manifest')
   const release = JSON.parse(readFileSync(manifestFile, 'utf8'))
   const contract = JSON.parse(readFileSync(join(root, 'static-host-contract.json'), 'utf8'))
-  if (release.version !== 2 || !Array.isArray(release.assets) || release.assets.length < 2 || !/^[a-f0-9]{64}$/.test(release.id) || !/^[a-f0-9]{64}$/.test(release.pageId) || !/^[a-f0-9]{64}$/.test(release.workerRevision)) fail('manifest has no complete release identity')
+  if (release.version !== 3 || !Array.isArray(release.assets) || release.assets.length < 2 || !/^[a-f0-9]{64}$/.test(release.id) || !/^[a-f0-9]{64}$/.test(release.pageId) || !/^[a-f0-9]{64}$/.test(release.workerRevision)) fail('manifest has no complete release identity')
   const manifestUrls = new Set()
   for (const asset of release.assets) {
     if (!asset || typeof asset.url !== 'string' || !asset.url.startsWith('/') || asset.url.includes('\\') || manifestUrls.has(asset.url)) fail('manifest URL is duplicate or invalid')
@@ -34,12 +34,43 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   if (release.id !== releaseIdentity(release.assets, release.workerRevision)) fail('release identity does not match canonical assets and worker revision')
   if (release.pageId !== pageIdentity(release.assets, release.workerRevision)) fail('page release identity does not match runtime assets and worker revision')
   if (!readFileSync(join(outputDir, 'index.html'), 'utf8').includes(`name="folio-page-release" content="${release.pageId}"`)) fail('page does not bind to its release identity')
+  const indexHtml = readFileSync(join(outputDir, 'index.html'), 'utf8')
+  const bootstrap = indexHtml.match(/<script id="folio-release-bootstrap" type="application\/json">([^<]+)<\/script>/)?.[1]
+  if (!bootstrap) fail('page has no cached S1 release bootstrap')
+  let bootS1
+  try { bootS1 = JSON.parse(bootstrap).s1 } catch { fail('page S1 bootstrap is not JSON') }
   const sw = readFileSync(join(outputDir, 'sw.js'), 'utf8')
   const embedded = sw.match(/const RELEASE = (.+)\nconst CACHE_NAME/m)?.[1]
   if (!embedded || JSON.stringify(JSON.parse(embedded)) !== JSON.stringify(release)) fail('service worker and manifest release records differ')
   for (const required of ["const CACHE_NAME = 'folio-release-' + RELEASE.id", "credentials: 'omit'", "credentials === 'omit'", 'RELEASE.pageId', 'windows.length === 0', 'offline asset integrity mismatch']) if (!sw.includes(required)) fail(`service worker lacks ${required}`)
   if (sw.includes('skipWaiting') || sw.includes('cache.addAll') || sw.includes('fetch(event.request)')) fail('service worker has unsafe activation or generic network fallback')
+  const markerWrite = sw.indexOf("await cache.put(MARKER")
+  const finalVerified = sw.indexOf("await progress('verified', activeAsset)")
+  if (markerWrite < 0 || finalVerified < markerWrite) fail('emitted worker can report 100% before its complete marker')
   if (release.thaiDictionary?.delivery !== 'emitted-wasm-digest-witness' || !manifestUrls.has(release.thaiDictionary.wasmUrl) || !/^[a-f0-9]{64}$/.test(release.thaiDictionary.sha256)) fail('Thai dictionary containment is not declared against the emitted wasm')
+  const s1 = release.s1
+  const s1Ids = ['engine', 'latin-font', 'thai-font', 'cjk-font', 'thai-dictionary']
+  if (!s1 || JSON.stringify(bootS1) !== JSON.stringify(s1) || s1.version !== 1 || s1.releaseId !== release.id || s1.pageId !== release.pageId || s1.unit !== 'MiB' || s1.decimals !== 2 || s1.assetCount !== release.assets.length || !Array.isArray(s1.cacheAssets) || !Array.isArray(s1.rows) || s1.rows.length !== s1Ids.length || s1.rows.map((row) => row.id).join(',') !== s1Ids.join(',')) fail('S1 payload metadata is incomplete or not exactly page/release bound')
+  const semanticLabels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Thai dictionary']
+  if (s1.rows.map((row) => row.label).join(',') !== semanticLabels.join(',') || s1.rows.some((row) => /cloud|download|account|sync/i.test(row.label))) fail('S1 semantic labels contain delivery fiction')
+  if (s1.cacheAssets.length !== release.assets.length || new Set(s1.cacheAssets.map((asset) => asset.assetUrl)).size !== release.assets.length) fail('S1 cache assets are incomplete')
+  for (const asset of release.assets) {
+    const cacheAsset = s1.cacheAssets.find((candidate) => candidate.assetUrl === asset.url)
+    if (!cacheAsset || cacheAsset.bytes !== readFileSync(join(outputDir, asset.url.slice(1))).byteLength) fail(`S1 cache denominator is not the emitted release ${asset.url}`)
+  }
+  if (s1.cachedBytes !== s1.cacheAssets.reduce((total, asset) => total + asset.bytes, 0)) fail('S1 cache denominator is not all release assets')
+  const cachedRows = s1.rows.filter((row) => row.delivery === 'cached-asset')
+  if (cachedRows.length !== 4 || !cachedRows.every((row) => typeof row.assetUrl === 'string' && Number.isSafeInteger(row.bytes) && row.bytes > 0 && /^[a-f0-9]{64}$/.test(row.sha256))) fail('S1 cached rows are invalid')
+  for (const row of cachedRows) {
+    const asset = release.assets.find((candidate) => candidate.url === row.assetUrl)
+    if (!asset || asset.sha256 !== row.sha256) fail(`S1 row is not bound to an emitted asset ${row.id}`)
+    if (readFileSync(`${join(outputDir, row.assetUrl.slice(1))}.br`).byteLength !== row.bytes) fail(`S1 row size is not its emitted Brotli sidecar ${row.id}`)
+  }
+  const dictionaryRow = s1.rows[4]
+  if (dictionaryRow.delivery !== 'embedded-in-engine' || dictionaryRow.assetUrl !== release.thaiDictionary.wasmUrl || dictionaryRow.bytes !== readFileSync(join(root, '..', 'folio-go', 'internal', 'text', 'data', 'thai_words.trie')).byteLength || dictionaryRow.sha256 !== release.thaiDictionary.sha256) fail('S1 Thai dictionary row is not a real embedded witness')
+  if (release.s1VisibleBytes !== cachedRows.reduce((total, row) => total + row.bytes, 0)) fail('S1 visible payload total is not row arithmetic')
+  const cjk = s1.rows.find((row) => row.id === 'cjk-font')
+  if (!cjk || cjk.bytes !== Math.max(...cachedRows.filter((row) => row.id.endsWith('font')).map((row) => row.bytes))) fail('S1 CJK row is not the dominant font payload')
   const thaiSource = readFileSync(join(root, '..', 'folio-go', 'internal', 'text', 'data', 'thai_words.trie'))
   if (sha256(thaiSource) !== release.thaiDictionary.sha256) fail('Thai dictionary audit digest is stale')
   for (const asset of release.assets) {
@@ -104,6 +135,12 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
     rewriteRelease(outputDir, release)
     return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
   })
+  redProof('s1-total-mismatch', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.cachedBytes++; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
+  redProof('s1-delivery-fiction', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.rows[4].delivery = 'cached-asset'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
+  redProof('s1-cloud-label', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.rows[0].label = 'Cloud download'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
+  redProof('s1-progress-denominator', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.cacheAssets.pop(); writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
+  redProof('s1-bootstrap-drift', (outputDir) => { const index = join(outputDir, 'index.html'); const original = readFileSync(index); writeFileSync(index, original.toString().replace('"releaseId":"', '"releaseId":"0')); return () => writeFileSync(index, original) })
+  redProof('worker-progress-before-marker', (outputDir) => { const worker = join(outputDir, 'sw.js'); const original = readFileSync(worker, 'utf8'); const moved = original.replace("    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))\n    await progress('verified', activeAsset)", "    await progress('verified', activeAsset)\n    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))"); if (moved === original) fail('red proof could not find final marker ordering'); writeFileSync(worker, moved); return () => writeFileSync(worker, original) })
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

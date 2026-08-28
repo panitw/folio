@@ -1458,7 +1458,7 @@ So that a nine-megabyte wait feels like an explanation rather than a hang.
 
 **Given** the payload
 **When** it is presented
-**Then** it is itemised with real sizes — engine 1.5 MB, Latin 0.4 MB, Thai 0.1 MB, CJK 7.4 MB, Thai dictionary 0.12 MB — and explains why CJK dominates
+**Then** it is itemised from the generated current-release manifest: Engine, Latin font, Thai font, CJK font, and the Thai dictionary embedded in the engine (not a second request), with release-derived byte figures and an explanation of why the actually dominant CJK font payload dominates
 
 **Given** the download in progress
 **When** it is displayed

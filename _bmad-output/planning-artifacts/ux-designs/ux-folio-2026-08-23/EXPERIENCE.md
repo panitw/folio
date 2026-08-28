@@ -65,12 +65,13 @@ S1 Load  ──▶  S2 Workspace ──┬──▶  S3 Binding Panel   (docked,
 
 → [mockups/Load.dc.html](./mockups/Load.dc.html)
 
-First run only — once per browser cache lifetime. Covers the ~9 MB of rendering engine,
-fonts, and Thai line-breaking dictionary (NFR7).
+First run only — while the current release is becoming ready for this browser cache lifetime.
+Covers the release-derived rendering engine and fonts; the Thai line-breaking dictionary is
+embedded in the engine, not a separately requested payload (NFR7).
 
 Stated, not hidden: the screen names what is loading and why it happens only once. A
 progress indication is required — a spinner without progress is not acceptable at this
-payload size.
+release-derived payload size.
 
 ### S2 · Workspace
 

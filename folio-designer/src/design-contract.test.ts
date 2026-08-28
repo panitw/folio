@@ -66,6 +66,14 @@ describe('DESIGN.md token contract', () => {
     expect(shellCss).not.toMatch(/\.canvas-region[^}]*--color-page-/)
   })
 
+  it('limits the display and large numeric exception to S1', () => {
+    const shellCss = fs.readFileSync(appCssPath, 'utf8')
+    expect(shellCss.match(/var\(--type-display\)/g)).toHaveLength(1)
+    expect(shellCss.match(/var\(--type-numeric-lg\)/g)).toHaveLength(1)
+    expect(shellCss).toContain('.load-column h1')
+    expect(shellCss).toContain('.load-numeric')
+  })
+
   it('keeps actual shell foreground/background pairings above the usability floor', () => {
     const tokensCss = fs.readFileSync(cssPath, 'utf8')
     const channel = (name: string) => {

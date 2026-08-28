@@ -4,6 +4,9 @@ import type { EngineClient } from './engine-client'
 import type { EngineSnapshot } from './engine-protocol'
 import { TransientInteraction } from './transient-interaction'
 import type { OfflineLifecycleState } from './offline-lifecycle'
+import type { OfflineLifecycle } from './offline-lifecycle'
+import type { S1Payload } from './release-payload'
+import { LoadScreen } from './LoadScreen'
 
 const paletteItems = ['Text', 'Image', 'Table', 'Line', 'Rectangle']
 
@@ -15,12 +18,16 @@ function DeferredIconButton({ label, icon }: { label: string; icon: 'open' | 'sa
   return <button className="icon-button" type="button" disabled aria-describedby="future-features"><Icon name={icon} /><span className="sr-only">{label}</span></button>
 }
 
-type AppProps = Readonly<{ engine?: EngineClient; initialSnapshot?: EngineSnapshot; initializationError?: string; offlineState?: OfflineLifecycleState }>
+type AppProps = Readonly<{ engine?: EngineClient; initialSnapshot?: EngineSnapshot; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
 
-export default function App({ engine, initialSnapshot, initializationError, offlineState = 'unavailable' }: AppProps = {}) {
+export default function App({ engine, initialSnapshot, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [commitError, setCommitError] = useState<string>()
   const interaction = useMemo(() => engine ? new TransientInteraction(engine) : undefined, [engine])
+  if (loadState && !engine) {
+    if (loadState.cacheReady && engineState !== 'failed') return <main className="engine-starting" aria-label="Engine preparation"><p role="status" aria-live="polite" aria-label="Engine preparation status">Starting local engine</p></main>
+    return <LoadScreen lifecycle={loadState} payload={payload} engineState={engineState} onRetry={onRetry} />
+  }
 
   const commit = async () => {
     if (!interaction) return

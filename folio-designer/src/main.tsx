@@ -1,30 +1,42 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
-import { getEngineClient } from './engine-client.ts'
+import { getEngineClient, type EngineClient } from './engine-client.ts'
+import type { EngineSnapshot } from './engine-protocol.ts'
+import { registerOfflineLifecycle, type OfflineLifecycle } from './offline-lifecycle.ts'
+import { loadS1Payload, type S1Payload } from './release-payload.ts'
 import { runtimeAssetUrls } from './generated/offline-assets.ts'
-import { registerOfflineLifecycle, type OfflineLifecycleState } from './offline-lifecycle.ts'
+import { loadStarterAfterEngineReady } from './startup-sequence.ts'
 
 const root = createRoot(document.getElementById('root')!)
-
-// The composition root owns the one client/worker lifetime. The starter file
-// is opaque bytes to TypeScript; Go parses, canonicalizes, snapshots and then
-// serializes it before React receives the small immutable projection.
-void (async () => {
+let lifecycle: OfflineLifecycle = { state: 'checking', cacheReady: false, verifiedAssetUrls: [] }
+let payload: S1Payload | undefined
+let engine: EngineClient | undefined
+let snapshot: EngineSnapshot | undefined
+let engineState: 'waiting' | 'starting' | 'failed' = 'waiting'
+let started = false
+let stopObservation: (() => void) | undefined
+let observationInFlight = false
+const render = () => root.render(<StrictMode><App engine={engine} initialSnapshot={snapshot} loadState={lifecycle} payload={payload} engineState={engineState} onRetry={startObservation} /></StrictMode>)
+async function startEngine() {
+  if (started || !lifecycle.cacheReady) return
+  started = true; engineState = 'starting'; render()
   try {
-    const client = await getEngineClient()
-    const source = await fetch(runtimeAssetUrls.starter)
-    if (!source.ok) throw new Error('starter template unavailable')
-    const input = await source.arrayBuffer()
-    const loaded = await client.request('load', input)
-    const serialized = await client.request('serialize')
-    if (!serialized.bytes || serialized.bytes.byteLength !== loaded.snapshot.byteLength) throw new Error('canonical serialization unavailable')
-    let offlineState: OfflineLifecycleState = 'checking'
-    const render = () => root.render(<StrictMode><App engine={client} initialSnapshot={loaded.snapshot} offlineState={offlineState} /></StrictMode>)
-    render()
+    const startedEngine = await loadStarterAfterEngineReady(getEngineClient(), runtimeAssetUrls.starter, (url) => fetch(url, { credentials: 'omit' }))
+    engine = startedEngine.client; snapshot = startedEngine.snapshot; render()
+  } catch { engineState = 'failed'; render() }
+}
+async function startObservation() {
+  if (engineState === 'failed') { window.location.reload(); return }
+  if (observationInFlight) return
+  observationInFlight = true
+  stopObservation?.()
+  lifecycle = { state: 'checking', cacheReady: false, verifiedAssetUrls: [] }; engineState = 'waiting'; render()
+  try {
+    payload = loadS1Payload()
     const expectedPageId = document.querySelector('meta[name="folio-page-release"]')?.getAttribute('content') ?? undefined
-    registerOfflineLifecycle(expectedPageId, (state) => { offlineState = state; render() })
-  } catch {
-    root.render(<StrictMode><App initializationError="Engine unavailable" /></StrictMode>)
-  }
-})()
+    stopObservation = registerOfflineLifecycle(expectedPageId, payload, (next) => { lifecycle = next; render(); void startEngine() })
+    render()
+  } finally { observationInFlight = false }
+}
+void startObservation()

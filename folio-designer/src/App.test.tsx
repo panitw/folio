@@ -33,4 +33,11 @@ describe('application shell', () => {
     rerender(<App offlineState="update-available" />)
     expect(status).toHaveTextContent('Update available; current release remains usable')
   })
+
+  it('bypasses S1 when the current cache and engine are already ready', () => {
+    render(<App loadState={{ state: 'ready', cacheReady: true, verifiedAssetUrls: [] }} engineState="starting" />)
+    expect(screen.getByRole('status', { name: 'Engine preparation status' })).toHaveTextContent('Starting local engine')
+    expect(screen.queryByRole('heading', { name: 'Preparing Folio' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
 })
