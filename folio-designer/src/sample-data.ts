@@ -95,7 +95,7 @@ class DiscoveryParser {
     this.expect('['); this.space()
     const collection = this.path(`${path} › []`)
     const children: SampleNode[] = []; let count = 0; let limited = collection.truncated; const collectionPath = collection.text
-    if (this.take(']')) return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children } : truncatedNode(path, label)
+    if (this.take(']')) return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children, ...(segments.length ? { segments } : {}) } : truncatedNode(path, label)
     while (true) {
       count++
       const childVisible = visible && count <= SAMPLE_LIMITS.items
@@ -104,7 +104,7 @@ class DiscoveryParser {
       if (childVisible) children.push(child)
       this.space(); if (this.take(']')) break; this.expect(',')
     }
-    return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children, truncated: limited || undefined } : truncatedNode(path, label)
+    return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children, truncated: limited || undefined, ...(segments.length ? { segments } : {}) } : truncatedNode(path, label)
   }
 
   // Validate and decode only a bounded prefix so a huge value/key does not

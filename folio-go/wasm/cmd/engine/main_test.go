@@ -60,6 +60,7 @@ func TestTableColumnsRequestRequiresTheExactSelectionEnvelope(t *testing.T) {
 		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"e7","bind":"row.amount"}`))},
 		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"e7","footer":"sum"}`))},
 		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"e7","sample":"data"}`))},
+		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"e7"}{"id":"e8"}`))},
 		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"` + string(bytes.Repeat([]byte("e"), 129)) + `"}`))},
 	} {
 		out := dispatch(engine, in)

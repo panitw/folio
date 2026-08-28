@@ -11,19 +11,43 @@ import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/
 import { pageSetupCommand } from './page-setup-command'
 import { bindComponentScalarCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
 import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
-import { addTableColumnCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnCommand } from './table-column-command'
+import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
 import { TableEditor } from './TableEditor'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
 import { canInstallPreview, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, staleCopy } from './preview/freshness'
 import { PreviewDiagnostics, PreviewFailure, type DiagnosticLocation } from './preview/diagnostic-presenter'
 import { isMacPlatform, primaryModifier, shortcutHintsFor } from './shortcuts'
 import { DataPanel } from './DataPanel'
-import { acceptSampleData, type SampleData } from './sample-data'
+import { acceptSampleData, type SampleData, type SampleNode } from './sample-data'
 import type { SampleFileAccess } from './sample-file'
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 const EMPTY_PARAMETER_DOCUMENT = '{}'
 const MAX_PARAMETER_DOCUMENT_BYTES = 8 * 1024 * 1024
+
+// Sample inspection is strictly a local affordance. These values are never
+// sent with a command; Go still owns all collection and field admission.
+function tableSampleCandidates(root: SampleNode | undefined): ReadonlyArray<Readonly<{ collection: string; field: string }>> {
+  if (!root) return []
+  const candidates = new Map<string, Readonly<{ collection: string; field: string }>>()
+  const visit = (node: SampleNode) => {
+    if (node.kind === 'collection' && node.segments?.length && node.segments.every((part) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(part))) {
+      const collection = `${node.segments.join('.')}[]`
+      const fields = (value: SampleNode, prefix: ReadonlyArray<string>): void => {
+        if (value.kind === 'collection' || value.kind === 'truncated') return
+        if (value.kind === 'object') { value.children.forEach((child) => fields(child, [...prefix, child.label])); return }
+        if (prefix.length && prefix.every((part) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(part))) {
+          const field = prefix.join('.')
+          candidates.set(`${collection}\u0000${field}`, { collection, field })
+        }
+      }
+      node.children.forEach((item) => fields(item, []))
+    }
+    node.children.forEach(visit)
+  }
+  visit(root)
+  return [...candidates.values()].sort((a, b) => a.collection.localeCompare(b.collection) || a.field.localeCompare(b.field)).slice(0, 50)
+}
 
 type ParameterReferenceState = Readonly<{ status: 'pending' | 'ready' | 'failed'; names: ReadonlyArray<string> }>
 
@@ -316,9 +340,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     const revision = snapshotRef.current?.revision
     const id = current.table.tableId
 		const session = tableEditorSession.current
+    let accepted = false
     setTableEditorError(undefined); setTableEditorBusy(true)
     try {
       const committed = await engine.request('command', payload)
+			accepted = true
 			// A committed canonical document is not scoped to transient selection or
 			// editor visibility. Admit it whenever it follows the expected document
 			// generation/revision; only the editor's re-projection remains scoped.
@@ -328,7 +354,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
 			}
       const projected = await engine.request('table-columns', new TextEncoder().encode(JSON.stringify({ id })).buffer)
       if (tableEditorSession.current === session && documentGeneration.current === generation && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === committed.snapshot.revision && projected.snapshot.revision === committed.snapshot.revision && projected.tableColumns?.revision === committed.snapshot.revision && projected.tableColumns.table.tableId === id) setTableEditor(projected.tableColumns)
-    } catch (error) { if (tableEditorSession.current === session && documentGeneration.current === generation && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === revision) setTableEditorError(componentDiagnostic(error))
+			else if (tableEditorSession.current === session) revokeTableEditor()
+    } catch (error) { if (accepted) { if (tableEditorSession.current === session) revokeTableEditor() } else if (tableEditorSession.current === session && documentGeneration.current === generation && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === revision) setTableEditorError(componentDiagnostic(error))
     } finally { if (tableEditorSession.current === session && documentGeneration.current === generation) setTableEditorBusy(false) }
   }
   const bindPickedPath = async (segments: ReadonlyArray<string>) => {
@@ -590,7 +617,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       <DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} />
       <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} onEditTable={(id) => void openTableEditor(id)} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
-    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} />}
+    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} />}
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
   </div>
 }

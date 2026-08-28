@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"syscall/js"
 
@@ -119,7 +120,8 @@ func dispatch(engine *wasm.Engine, in request) response {
 		}
 		decoder := json.NewDecoder(strings.NewReader(string(payload)))
 		decoder.DisallowUnknownFields()
-		if decoder.Decode(&selection) != nil || decoder.More() || selection.ID == "" || len(selection.ID) > 128 {
+		var trailing any
+		if decoder.Decode(&selection) != nil || decoder.Decode(&trailing) != io.EOF || selection.ID == "" || len(selection.ID) > 128 {
 			return failure("WASM_INPUT_INVALID", errors.New("table columns require one selected table id"))
 		}
 		result, err := engine.TableColumns(selection.ID)

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"regexp"
 	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
@@ -34,7 +36,11 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 	dec := json.NewDecoder(bytes.NewReader(command))
 	dec.UseNumber()
 	var raw map[string]json.RawMessage
-	if err := dec.Decode(&raw); err != nil || dec.More() {
+	if err := dec.Decode(&raw); err != nil {
+		return CanvasProjection{}, fmt.Errorf("folio: component command is malformed")
+	}
+	var surplus any
+	if err := dec.Decode(&surplus); err != io.EOF {
 		return CanvasProjection{}, fmt.Errorf("folio: component command is malformed")
 	}
 	if !equalNumber(raw["version"], "1") {
@@ -69,6 +75,12 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return applyTableColumnCommand(t, raw, moveTableColumn)
 	case "updateTableColumn":
 		return applyTableColumnCommand(t, raw, updateTableColumn)
+	case "configureTableBinding":
+		return applyTableColumnCommand(t, raw, configureTableBinding)
+	case "updateTableColumnBinding":
+		return applyTableColumnCommand(t, raw, updateTableColumnBinding)
+	case "updateTableColumnFooter":
+		return applyTableColumnCommand(t, raw, updateTableColumnFooter)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
@@ -106,8 +118,8 @@ func applyTableColumnCommand(t *Template, raw map[string]json.RawMessage, apply 
 	return projection, nil
 }
 
-// The table-column commands are a deliberately closed structural vocabulary.
-// They carry no binding/footer/sample fields: those belong to Story 6.5.
+// The table commands are a deliberately closed authoring vocabulary. Sample
+// input never enters these commands: it only helps the UI discover candidates.
 func addTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 4); err != nil {
 		return CanvasProjection{}, err
@@ -281,6 +293,188 @@ func updateTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProje
 		return CanvasProjection{}, componentFailure(id, "column.width", err.Error())
 	}
 	return Canvas(t)
+}
+
+var rootCollectionPath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\[\]$`)
+var boundedIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var rootValuePath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$`)
+
+// configureTableBinding changes the two document-owned row-scope settings as
+// one candidate. An empty alias deliberately means the schema's absent `as`
+// form; render resolution supplies the established default alias, `row`.
+func configureTableBinding(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 5); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	collection, err := commandString(raw, "collection")
+	if err != nil || len(collection) > 256 || !rootCollectionPath.MatchString(collection) || strings.HasPrefix(collection, "params.") || collection == "params[]" {
+		return CanvasProjection{}, componentFailure(id, "table.collection", "collection must be a bounded root collection path ending in []")
+	}
+	aliasRaw, ok := raw["alias"]
+	if !ok {
+		return CanvasProjection{}, componentFailure(id, "table.alias", "alias is required")
+	}
+	var alias string
+	if json.Unmarshal(aliasRaw, &alias) != nil || len(alias) > 64 || (alias != "" && (!boundedIdentifier.MatchString(alias) || reservedRowAlias(alias))) {
+		return CanvasProjection{}, componentFailure(id, "table.alias", "alias must be a bounded identifier or empty for row")
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	oldAlias := resolvedTableAlias(element.Table.Value.As)
+	newAlias := alias
+	if newAlias == "" {
+		newAlias = "row"
+	}
+	if oldAlias != newAlias {
+		for i := range element.Table.Value.Columns {
+			next, migrated, used, migrationErr := expr.RewriteRowBinding(element.Table.Value.Columns[i].Bind, oldAlias, newAlias)
+			if migrationErr != nil || (used && !migrated) {
+				return CanvasProjection{}, componentFailure(id, "table.alias", "alias change cannot migrate a row-scoped column binding")
+			}
+			if migrated {
+				element.Table.Value.Columns[i].Bind = next
+			}
+		}
+	}
+	element.Table.Value.Bind = collection
+	if alias == "" {
+		element.Table.Value.As = template.Presence[string]{}
+	} else {
+		element.Table.Value.As = template.Presence[string]{Set: true, Value: alias}
+	}
+	return Canvas(t)
+}
+
+// updateTableColumnBinding accepts only a canonical single row-relative field
+// expression. The UI passes a discovered field path, while this Go boundary
+// constructs and owns the actual expression spelling.
+func updateTableColumnBinding(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 5); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	columnID, err := commandString(raw, "columnId")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.id", err.Error())
+	}
+	field, err := commandString(raw, "field")
+	if err != nil || len(field) > 192 || !rootValuePath.MatchString(field) {
+		return CanvasProjection{}, componentFailure(id, "column.bind", "field must be a bounded row field path")
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	index := tableColumnIndex(element, columnID)
+	if index < 0 {
+		return CanvasProjection{}, componentFailure(id, "column.id", "column was not found")
+	}
+	alias := "row"
+	if element.Table.Value.As.Set && !element.Table.Value.As.Null {
+		alias = element.Table.Value.As.Value
+	}
+	element.Table.Value.Columns[index].Bind = "{{" + alias + "." + field + "}}"
+	return Canvas(t)
+}
+
+func reservedRowAlias(alias string) bool {
+	return alias == "params" || alias == "page" || alias == "pages"
+}
+
+func resolvedTableAlias(value template.Presence[string]) string {
+	if value.Set && !value.Null && value.Value != "" {
+		return value.Value
+	}
+	return "row"
+}
+
+// updateTableColumnFooter is intentionally a complete footer configuration,
+// not three independent mutations. Empty companion strings mean absent schema
+// fields, making an accepted command one revision/history step.
+func updateTableColumnFooter(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 7); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	columnID, err := commandString(raw, "columnId")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.id", err.Error())
+	}
+	footer, ok := optionalCommandString(raw, "footer", 16)
+	if !ok || (footer != "" && footer != "sum" && footer != "avg" && footer != "count") {
+		return CanvasProjection{}, componentFailure(id, "column.footer", "footer must be sum, avg, count, or empty")
+	}
+	footerOf, ok := optionalCommandString(raw, "footerOf", 256)
+	if !ok || (footerOf != "" && !rootValuePath.MatchString(footerOf)) {
+		return CanvasProjection{}, componentFailure(id, "column.footerOf", "footerOf must be a bounded root data path")
+	}
+	footerFormat, ok := optionalCommandString(raw, "footerFormat", 256)
+	if !ok {
+		return CanvasProjection{}, componentFailure(id, "column.footerFormat", "footerFormat must be a bounded string")
+	}
+	if footer == "" && (footerOf != "" || footerFormat != "") {
+		return CanvasProjection{}, componentFailure(id, "column.footer", "footer companions require a footer")
+	}
+	if footer == "count" && footerOf != "" {
+		return CanvasProjection{}, componentFailure(id, "column.footerOf", "count uses the table collection and forbids footerOf")
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	index := tableColumnIndex(element, columnID)
+	if index < 0 {
+		return CanvasProjection{}, componentFailure(id, "column.id", "column was not found")
+	}
+	collection := strings.TrimSuffix(element.Table.Value.Bind, "[]")
+	if footerOf != "" && !strings.HasPrefix(footerOf, collection+".") {
+		return CanvasProjection{}, componentFailure(id, "column.footerOf", "footerOf must stay within the table collection")
+	}
+	column := &element.Table.Value.Columns[index]
+	column.Footer, column.FooterOf, column.FooterFormat = template.Presence[string]{}, template.Presence[string]{}, template.Presence[string]{}
+	if footer != "" {
+		column.Footer = template.Presence[string]{Set: true, Value: footer}
+	}
+	if footerOf != "" {
+		column.FooterOf = template.Presence[string]{Set: true, Value: footerOf}
+	}
+	if footerFormat != "" {
+		column.FooterFormat = template.Presence[string]{Set: true, Value: footerFormat}
+	}
+	return Canvas(t)
+}
+
+func optionalCommandString(raw map[string]json.RawMessage, name string, max int) (string, bool) {
+	v, ok := raw[name]
+	if !ok {
+		return "", false
+	}
+	var out string
+	if json.Unmarshal(v, &out) != nil || len(out) > max {
+		return "", false
+	}
+	return out, true
 }
 
 func tableColumnIndex(element *template.Element, columnID string) int {

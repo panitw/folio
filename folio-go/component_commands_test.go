@@ -353,6 +353,113 @@ func TestTableColumnProjectionCapRejectsThe129thCommandWithoutMutation(t *testin
 	}
 }
 
+func TestTableDataBindingAndFooterCommandsAreCanonicalAndTransactional(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := newProjectedComponent(t, before, projection)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err != nil {
+		t.Fatal(err)
+	}
+	view, err := TableColumns(tpl, table.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	column := view.Columns[0]
+	for _, command := range [][]byte{
+		[]byte(`{"kind":"configureTableBinding","version":1,"id":"` + table.ID + `","collection":"transactions[]","alias":"transaction"}`),
+		[]byte(`{"kind":"updateTableColumnBinding","version":1,"id":"` + table.ID + `","columnId":"` + column.ID + `","field":"amount"}`),
+		[]byte(`{"kind":"updateTableColumnFooter","version":1,"id":"` + table.ID + `","columnId":"` + column.ID + `","footer":"sum","footerOf":"","footerFormat":""}`),
+	} {
+		if _, err := ApplyComponentCommand(tpl, command); err != nil {
+			t.Fatalf("apply %s: %v", command, err)
+		}
+	}
+	view, err = TableColumns(tpl, table.ID)
+	if err != nil || view.Collection != "transactions[]" || view.Alias != "transaction" || view.Columns[0].Binding != "{{transaction.amount}}" || view.Columns[0].Footer != "sum" {
+		t.Fatalf("data projection = %#v, err=%v", view, err)
+	}
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(canonical, []byte(`"as": "transaction"`)) || !bytes.Contains(canonical, []byte(`"bind": "{{transaction.amount}}"`)) || !bytes.Contains(canonical, []byte(`"footer": "sum"`)) {
+		t.Fatalf("canonical data table omitted configured fields: %s", canonical)
+	}
+	if _, err := ParseTemplate(canonical); err != nil {
+		t.Fatalf("canonical reload: %v", err)
+	}
+	for _, rejected := range [][]byte{
+		[]byte(`{"kind":"configureTableBinding","version":1,"id":"` + table.ID + `","collection":"params.items[]","alias":"row"}`),
+		[]byte(`{"kind":"updateTableColumnBinding","version":1,"id":"` + table.ID + `","columnId":"` + column.ID + `","field":"bare row"}`),
+		[]byte(`{"kind":"updateTableColumnFooter","version":1,"id":"` + table.ID + `","columnId":"` + column.ID + `","footer":"count","footerOf":"transactions.amount","footerFormat":""}`),
+	} {
+		if _, err := ApplyComponentCommand(tpl, rejected); err == nil {
+			t.Fatalf("rejected command succeeded: %s", rejected)
+		}
+		after, _ := SerializeTemplate(tpl)
+		if !bytes.Equal(canonical, after) {
+			t.Fatalf("rejection changed canonical bytes: %s", rejected)
+		}
+	}
+}
+
+func TestTableAliasMigrationReservedRootsAndStrictEnvelope(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := newProjectedComponent(t, before, projection)
+	for index := 0; index < 3; index++ {
+		if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":`+strconv.Itoa(index)+`}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view, _ := TableColumns(tpl, table.ID)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"configureTableBinding","version":1,"id":"`+table.ID+`","collection":"transactions[]","alias":"transaction"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateTableColumnBinding","version":1,"id":"`+table.ID+`","columnId":"`+view.Columns[0].ID+`","field":"params.value"}`)); err != nil {
+		t.Fatal(err)
+	}
+	// A formatNumber row expression is a legal persisted source and must migrate
+	// without a browser parser; params remains a distinct root and stays put.
+	_, _, _, tableElement, err := findComponent(tpl, table.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tableElement.Table.Value.Columns[1].Bind = `{{formatNumber(transaction.amount, "#,##0.00")}}`
+	tableElement.Table.Value.Columns[2].Bind = `{{params.value}}`
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"configureTableBinding","version":1,"id":"`+table.ID+`","collection":"transactions[]","alias":"item"}`)); err != nil {
+		t.Fatal(err)
+	}
+	view, err = TableColumns(tpl, table.ID)
+	if err != nil || view.Alias != "item" || view.Columns[0].Binding != "{{item.params.value}}" || view.Columns[1].Binding != `{{formatNumber(item.amount, "#,##0.00")}}` || view.Columns[2].Binding != "{{params.value}}" {
+		t.Fatalf("migrated projection = %#v, err=%v", view, err)
+	}
+	canonical, _ := SerializeTemplate(tpl)
+	for _, alias := range []string{"params", "page", "pages"} {
+		if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"configureTableBinding","version":1,"id":"`+table.ID+`","collection":"transactions[]","alias":"`+alias+`"}`)); err == nil {
+			t.Fatalf("reserved alias %q succeeded", alias)
+		}
+		after, _ := SerializeTemplate(tpl)
+		if !bytes.Equal(canonical, after) {
+			t.Fatalf("reserved alias %q mutated bytes", alias)
+		}
+	}
+	if _, err := ApplyComponentCommand(tpl, append([]byte(`{"kind":"configureTableBinding","version":1,"id":"`+table.ID+`","collection":"transactions[]","alias":"sale"}`), []byte(` {}`)...)); err == nil {
+		t.Fatal("concatenated command succeeded")
+	}
+	if _, err := ParseTemplate(canonical); err != nil {
+		t.Fatalf("migrated reload: %v", err)
+	}
+}
+
 func TestDropComponentUsesGoHalfOpenBandHitTesting(t *testing.T) {
 	tpl := componentTemplate(t)
 	canvas, err := Canvas(tpl)

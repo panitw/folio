@@ -1,6 +1,85 @@
 package expr
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
+
+// RowBinding is the small, engine-owned view of a table cell binding that an
+// editor may expose as a row-field draft.  Everything else remains display
+// only: callers must not reverse-engineer expressions in another language.
+type RowBinding struct {
+	Field    string
+	Editable bool
+}
+
+// ProjectRowBinding recognizes exactly the editable bare row-path shape.
+// formatNumber and all other valid expressions intentionally remain
+// non-editable displays; editing them through a field box would lose meaning.
+func ProjectRowBinding(bindText, rowAlias string) (RowBinding, error) {
+	literal, placeholders, trailing, err := ScanPlaceholders(bindText)
+	if err != nil || len(placeholders) != 1 || literal[0] != "" || trailing != "" || placeholders[0].Reserved {
+		return RowBinding{}, err
+	}
+	e, err := Parse(placeholders[0].Inner)
+	if err != nil {
+		return RowBinding{}, err
+	}
+	if path, ok := e.(*PathExpr); ok {
+		if rest, ok := rowScopedRest(path.Segments, rowAlias); ok {
+			return RowBinding{Field: rest, Editable: true}, nil
+		}
+	}
+	return RowBinding{}, nil
+}
+
+// RewriteRowBinding migrates the two D-1.4.1 row binding shapes during an
+// alias edit.  It reports used=true when the old alias appears anywhere in a
+// parsed expression, allowing the command boundary to reject a non-migratable
+// expression atomically rather than silently changing its scope.
+func RewriteRowBinding(bindText, oldAlias, newAlias string) (rewritten string, migrated, used bool, err error) {
+	literal, placeholders, trailing, err := ScanPlaceholders(bindText)
+	if err != nil {
+		return "", false, false, err
+	}
+	if len(placeholders) != 1 || literal[0] != "" || trailing != "" || placeholders[0].Reserved {
+		return bindText, false, false, nil
+	}
+	e, err := Parse(placeholders[0].Inner)
+	if err != nil {
+		return "", false, false, err
+	}
+	used = expressionUsesRoot(e, oldAlias)
+	if path, ok := e.(*PathExpr); ok {
+		if rest, ok := rowScopedRest(path.Segments, oldAlias); ok {
+			return "{{" + newAlias + "." + rest + "}}", true, true, nil
+		}
+	}
+	if call, ok := e.(*CallExpr); ok && call.Name == "formatNumber" && len(call.Args) == 2 {
+		if path, ok := call.Args[0].(*PathExpr); ok {
+			if rest, ok := rowScopedRest(path.Segments, oldAlias); ok {
+				if pattern, ok := call.Args[1].(*StringLit); ok {
+					return "{{formatNumber(" + newAlias + "." + rest + ", " + strconv.Quote(pattern.Value) + ")}}", true, true, nil
+				}
+			}
+		}
+	}
+	return bindText, false, used, nil
+}
+
+func expressionUsesRoot(e Expr, root string) bool {
+	switch value := e.(type) {
+	case *PathExpr:
+		return len(value.Segments) > 0 && value.Segments[0] == root
+	case *CallExpr:
+		for _, arg := range value.Args {
+			if expressionUsesRoot(arg, root) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // DerivedFooter is D-1.4.1's footerOf/footerFormat derivation result
 // — resolved ALONGSIDE the document, never written back into it (R2:

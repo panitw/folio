@@ -8,7 +8,7 @@ import { runtimeAssetUrls } from './generated/offline-assets'
 declare const Go: new () => { importObject: WebAssembly.Imports; run(instance: WebAssembly.Instance): void }
 
 type WasmHost = { handle(request: string): string }
-type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[]; parameterReferences?: string[]; parameterReferenceRevision?: number; tableColumns?: { tableId: string; columns: { id: string; header: string; width: number; align: 'left' | 'center' | 'right' }[] }; tableColumnsRevision?: number }
+type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[]; parameterReferences?: string[]; parameterReferenceRevision?: number; tableColumns?: { tableId: string; collection: string; alias: string; columns: { id: string; header: string; width: number; align: 'left' | 'center' | 'right'; binding: string; rowField: string; rowFieldEditable: boolean; footer: '' | 'sum' | 'avg' | 'count'; footerOf: string; footerFormat: string }[] }; tableColumnsRevision?: number }
 
 const worker = self as unknown as DedicatedWorkerGlobalScope
 let host: WasmHost | undefined

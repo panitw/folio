@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addTableColumnCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnCommand } from './table-column-command'
+import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
 
 const decode = (command: ArrayBuffer): Record<string, unknown> => JSON.parse(new TextDecoder().decode(command)) as Record<string, unknown>
 
@@ -10,6 +10,9 @@ describe('table-column command bytes', () => {
     expect(new TextDecoder().decode(addTableColumnCommand('e7', 1))).toBe('{"kind":"addTableColumn","version":1,"id":"e7","index":1}')
     expect(decode(removeTableColumnCommand('e7', 'e8'))).toMatchObject({ kind: 'removeTableColumn', id: 'e7', columnId: 'e8' })
     expect(decode(moveTableColumnCommand('e7', 'e8', 0))).toMatchObject({ kind: 'moveTableColumn', id: 'e7', columnId: 'e8', toIndex: 0 })
+    expect(decode(configureTableBindingCommand('e7', 'transactions[]', 'transaction'))).toEqual({ kind: 'configureTableBinding', version: 1, id: 'e7', collection: 'transactions[]', alias: 'transaction' })
+    expect(decode(updateTableColumnBindingCommand('e7', 'e8', 'amount'))).toEqual({ kind: 'updateTableColumnBinding', version: 1, id: 'e7', columnId: 'e8', field: 'amount' })
+    expect(decode(updateTableColumnFooterCommand('e7', 'e8', 'sum', 'transactions.amount', '#,##0.00'))).toEqual({ kind: 'updateTableColumnFooter', version: 1, id: 'e7', columnId: 'e8', footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' })
   })
 
   it('does not construct an invalid JSON number for non-finite local input', () => {

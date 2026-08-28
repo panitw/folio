@@ -100,7 +100,7 @@ export class EngineClient {
     const bytes = message.bytes ? copyBytes(message.bytes) : undefined
 		const preview = message.preview ? deepFreeze({ revision: message.preview.revision, identity: message.preview.identity, ...(message.preview.pdfSha256 ? { pdfSha256: message.preview.pdfSha256, diagnostics: message.preview.diagnostics!.map((diagnostic) => ({ ...diagnostic })) } : {}) }) : undefined
 		const parameterReferences = message.parameterReferences ? deepFreeze({ revision: message.parameterReferences.revision, names: [...message.parameterReferences.names] }) : undefined
-		const tableColumns = message.tableColumns ? deepFreeze({ revision: message.tableColumns.revision, table: { tableId: message.tableColumns.table.tableId, columns: message.tableColumns.table.columns.map((column) => ({ ...column })) } }) : undefined
+		const tableColumns = message.tableColumns ? deepFreeze({ revision: message.tableColumns.revision, table: { tableId: message.tableColumns.table.tableId, collection: message.tableColumns.table.collection, alias: message.tableColumns.table.alias, columns: message.tableColumns.table.columns.map((column) => ({ ...column })) } }) : undefined
 		pending.resolve(deepFreeze({ snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}) }))
   }
 
