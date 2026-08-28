@@ -52,11 +52,18 @@ export function generateOfflineRelease(outputDir = dist) {
   if (!rows.every((row) => Number.isSafeInteger(row.bytes) && row.bytes > 0)) throw new Error('S1 payload rows are incomplete')
   const s1 = { version: 1, releaseId, pageId, unit: 'MiB', decimals: 2, cachedBytes: 0, assetCount: initialAssets.length, cacheAssets: initialAssets.map((asset) => ({ assetUrl: asset.url, bytes: statSync(join(outputDir, asset.url.slice(1))).size })), rows: [...rows, { id: 'thai-dictionary', label: 'Thai dictionary', delivery: 'embedded-in-engine', assetUrl: engine.url, bytes: thaiDictionary.byteLength, sha256: sha256(thaiDictionary) }] }
   const index = join(outputDir, 'index.html')
-  const originalHtml = readFileSync(index, 'utf8')
+  // Regeneration is part of normal local verification. Strip our previous
+  // generated bootstrap so a second build:offline run replaces it instead of
+  // nesting stale S1 records before the current page identity.
+  const originalHtml = readFileSync(index, 'utf8').replace(/<meta name="folio-page-release"[^>]*><script id="folio-release-bootstrap" type="application\/json">[^<]*<\/script>/, '')
   let bootstrappedHtml = originalHtml
   // The bootstrap is cached inside index.html. Its own byte length is the only
   // self-reference, so converge that decimal value before hashing the final page.
-  for (let attempt = 0; attempt < 4; attempt++) {
+  // The S1 payload includes index.html's own emitted size. Keep iterating
+  // through the self-reference until both the page bootstrap and manifest
+  // describe the same final output (the larger application bundle can require
+  // more than the former four passes to settle its decimal widths).
+  for (let attempt = 0; attempt < 8; attempt++) {
     const otherBytes = initialAssets.filter((asset) => asset.url !== '/index.html').reduce((total, asset) => total + statSync(join(outputDir, asset.url.slice(1))).size, 0)
     const indexAsset = s1.cacheAssets.find((asset) => asset.assetUrl === '/index.html')
     if (!indexAsset) throw new Error('S1 cache asset list has no navigation entry')

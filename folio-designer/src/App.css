@@ -9,10 +9,13 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .brand { color: var(--color-ink-high); font: var(--type-brand); letter-spacing: var(--tracking-brand); }
 .document-name, .later-control { font: var(--type-mono); color: var(--color-ink); }
 .status-dot { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-dot); background: var(--color-bind); }
+.status-dot.status-clean { background: var(--color-select); }
 .status-copy { color: var(--color-ink); font: var(--type-body); }
 .document-actions { display: flex; gap: var(--space-1); }
 .icon-button { width: var(--status-bar-height); height: var(--status-bar-height); display: grid; place-items: center; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); }
 .icon-button:disabled { opacity: 1; color: var(--color-ink); cursor: not-allowed; }
+.file-button { min-height: var(--status-bar-height); padding: 0 var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body); }
+.file-button:disabled { color: var(--color-ink); cursor: not-allowed; }
 .icon { width: var(--icon-size); height: var(--icon-size); }
 .later-control { margin-left: auto; color: var(--color-ink); }
 .mode-switch { display: flex; border: var(--hairline) solid var(--color-edge); }
@@ -34,6 +37,7 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .page-surface h1 { margin: 0 0 var(--space-4); font: var(--type-page-title); }
 .page-copy { max-width: 180px; color: var(--color-page-ink-body); font: var(--type-page-body); }
 .page-placeholder { display: inline-block; margin-top: var(--space-8); color: var(--color-page-ink-muted); font: var(--type-page-mono); }
+.file-message { max-width: 240px; color: var(--color-page-ink-body); font: var(--type-page-body); }
 .panel-heading { margin: 0 0 var(--space-5); color: var(--color-ink-high); font: var(--type-body-em); }
 .property-field { display: flex; justify-content: space-between; align-items: center; min-height: 28px; margin-bottom: var(--space-3); padding: var(--space-1) var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); }
 .property-field span { color: var(--color-ink); font: var(--type-mono); }

@@ -10,24 +10,26 @@ const productionFiles = fs.readdirSync(sourceDir, { recursive: true })
   .map((entry) => path.join(sourceDir, entry))
 const documentFields = new Set(['version', 'page', 'bands', 'elements', 'assets'])
 
-type OwnershipScan = Readonly<{ workers: string[]; wasmInstances: string[]; schemaMirrors: string[] }>
+type OwnershipScan = Readonly<{ workers: string[]; wasmInstances: string[]; schemaMirrors: string[]; documentJson: string[] }>
 
 function scanOwnership(files: ReadonlyArray<Readonly<{ name: string; source: string }>>): OwnershipScan {
   const workers: string[] = []
   const wasmInstances: string[] = []
   const schemaMirrors: string[] = []
+  const documentJson: string[] = []
   for (const file of files) {
     const source = ts.createSourceFile(file.name, file.source, ts.ScriptTarget.Latest, true)
     const visit = (node: ts.Node): void => {
       if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && (node.expression.text === 'Worker' || node.expression.text === 'SharedWorker')) workers.push(file.name)
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'WebAssembly' && (node.expression.name.text === 'instantiate' || node.expression.name.text === 'instantiateStreaming')) wasmInstances.push(file.name)
       const names = propertyNames(node)
-      if (names.filter((name) => documentFields.has(name)).length >= 3) schemaMirrors.push(file.name)
+      if (names.filter((name) => documentFields.has(name)).length >= 2) schemaMirrors.push(file.name)
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'JSON' && (node.expression.name.text === 'parse' || node.expression.name.text === 'stringify')) documentJson.push(file.name)
       ts.forEachChild(node, visit)
     }
     visit(source)
   }
-  return { workers, wasmInstances, schemaMirrors }
+  return { workers, wasmInstances, schemaMirrors, documentJson }
 }
 
 function propertyNames(node: ts.Node): string[] {
@@ -54,7 +56,9 @@ describe('engine ownership structure', () => {
   })
 
   it('does not mirror the .folio document schema in production TypeScript', () => {
-    expect(scanOwnership(sources()).schemaMirrors).toEqual([])
+    const scan = scanOwnership(sources())
+    expect(scan.schemaMirrors).toEqual([])
+    expect(scan.documentJson.filter((name) => !['engine.worker.ts', 'offline-lifecycle.ts', 'release-payload.ts'].includes(name))).toEqual([]) // protocol/release envelopes only; UI/file code cannot parse or serialize templates.
   })
 
   it('keeps main-thread engine messaging in the one client module', () => {
@@ -70,5 +74,9 @@ describe('engine ownership structure', () => {
     expect(schemaMutation.schemaMirrors).toEqual(['designer-state.ts'])
     const wasmMutation = scanOwnership([{ name: 'secondary-wasm.ts', source: 'WebAssembly.instantiate(new ArrayBuffer(0), {})' }])
     expect(wasmMutation.wasmInstances).toEqual(['secondary-wasm.ts'])
+    const jsonMutation = scanOwnership([{ name: 'save-template.ts', source: 'const template = JSON.parse(bytes); JSON.stringify(template)' }])
+    expect(jsonMutation.documentJson).toEqual(['save-template.ts', 'save-template.ts'])
+    const narrowSchemaMutation = scanOwnership([{ name: 'designer-state.ts', source: 'type DesignerFileState = { page: {}; elements: [] }' }])
+    expect(narrowSchemaMutation.schemaMirrors).toEqual(['designer-state.ts'])
   })
 })
