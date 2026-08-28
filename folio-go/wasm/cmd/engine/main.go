@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"syscall/js"
 
 	folio "github.com/panitw/folio/folio-go"
@@ -117,6 +118,17 @@ func engineFailure(err error) response {
 			ElementID:      bounded(diagnostic.ElementID, 128),
 			DataPath:       bounded(diagnostic.DataPath, 256),
 		}
+	}
+	message := bounded(err.Error(), 512)
+	if strings.HasPrefix(message, "folio: page.") || strings.HasPrefix(message, "width") || strings.HasPrefix(message, "height") {
+		path := "page.setup"
+		for _, candidate := range []string{"page.width", "page.height", "page.margin.top", "page.margin.right", "page.margin.bottom", "page.margin.left", "page.size", "page.orientation"} {
+			if strings.Contains(message, candidate) {
+				path = candidate
+				break
+			}
+		}
+		return response{DiagnosticCode: "PAGE_SETUP_INVALID", Message: message, DataPath: path}
 	}
 	return response{DiagnosticCode: "ENGINE_REJECTED", Message: "The engine rejected the request"}
 }

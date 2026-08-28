@@ -12,7 +12,7 @@ export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuf
 type Pending = { resolve: (result: EngineResult) => void; reject: (error: Error) => void }
 type ClientState = 'starting' | 'ready' | 'failed' | 'terminated'
 
-const errorFor = (code: string, message: string) => Object.assign(new Error(message), { code })
+const errorFor = (code: string, message: string, dataPath?: string) => Object.assign(new Error(message), { code, ...(dataPath ? { dataPath } : {}) })
 
 export class EngineClient {
 	#state: ClientState = 'starting'
@@ -92,7 +92,7 @@ export class EngineClient {
     const pending = this.#pending.get(message.requestId)
     if (!pending) { this.#fail('PROTOCOL_DUPLICATE_OR_UNKNOWN', 'The engine sent an unknown or duplicate response'); return }
     this.#pending.delete(message.requestId)
-    if (!message.ok) { pending.reject(errorFor(message.error.code, safeErrorMessage(message.error))); return }
+    if (!message.ok) { pending.reject(errorFor(message.error.code, safeErrorMessage(message.error), message.error.dataPath)); return }
     const snapshot = deepFreeze({ ...message.snapshot }) as EngineSnapshot
     const bytes = message.bytes ? copyBytes(message.bytes) : undefined
     pending.resolve(deepFreeze({ snapshot, ...(bytes ? { bytes } : {}) }))

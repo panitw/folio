@@ -3,6 +3,7 @@ package wasm
 import (
 	"bytes"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -31,6 +32,31 @@ func TestEngineLoadAndSerializeRoundTripsCanonicalBytes(t *testing.T) {
 	again, _, err := engine.Serialize()
 	if err != nil || !bytes.Equal(again, input) {
 		t.Fatal("Serialize exposed aliased authoritative bytes")
+	}
+}
+
+func TestEngineRejectedLoadIsTransactional(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	before, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeBytes, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := bytes.Replace(input, []byte(`"top": 36`), []byte(`"top": 800`), 1)
+	if _, err := engine.Load(invalid); err == nil {
+		t.Fatal("invalid projection load unexpectedly succeeded")
+	}
+	after := engine.Snapshot()
+	afterBytes, _, err := engine.Serialize()
+	if err != nil || !reflect.DeepEqual(after, before) || !bytes.Equal(afterBytes, beforeBytes) {
+		t.Fatalf("rejected load changed engine: before=%#v after=%#v", before, after)
 	}
 }
 
@@ -69,5 +95,24 @@ func TestEngineCommitsThroughGoOwnedCommandChannel(t *testing.T) {
 	}
 	if after.Revision != before.Revision+1 || after.ByteLength != before.ByteLength {
 		t.Fatalf("commit snapshot = %#v, before = %#v", after, before)
+	}
+}
+
+func TestEnginePageSetupRevisionAndProjectionChangeTogether(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	before, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := engine.Apply([]byte(`{"kind":"pageSetup","version":1,"preset":"Letter","orientation":"landscape","width":1,"height":1,"margin":{"top":36,"right":36,"bottom":36,"left":36}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Revision != before.Revision+1 || after.Canvas == nil || after.Canvas.Width != 792000 || after.Canvas.Height != 612000 {
+		t.Fatalf("page setup snapshot = %#v", after)
 	}
 }

@@ -26,6 +26,15 @@ export type EngineSnapshot = Readonly<{
   documentState: 'empty' | 'loaded'
   revision: number
   byteLength: number
+	canvas?: CanvasProjection
+}>
+
+// This is paint-only output from Go, not a .folio page model. Values are
+// millipoints and are never used to derive a browser document layout.
+export type CanvasProjection = Readonly<{
+	width: number; height: number; orientation: 'portrait' | 'landscape'; preset: 'A4' | 'Letter' | 'custom'
+	marginTop: number; marginRight: number; marginBottom: number; marginLeft: number; gridIncrement: number; commandWidth: number; commandHeight: number
+	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -59,7 +68,20 @@ const isArrayBuffer = (value: unknown): value is ArrayBuffer => Object.prototype
 export const isEngineRequestId = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= MAX_ENGINE_REQUEST_ID_LENGTH && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value)
 
 const isError = (value: unknown): value is EngineError => isRecord(value) && typeof value.code === 'string' && value.code.length > 0 && value.code.length <= 96 && typeof value.message === 'string' && value.message.length <= 512 && (value.elementId === undefined || typeof value.elementId === 'string') && (value.dataPath === undefined || typeof value.dataPath === 'string')
-const isSnapshot = (value: unknown): value is EngineSnapshot => isRecord(value) && (value.documentState === 'empty' || value.documentState === 'loaded') && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.byteLength === 'number' && Number.isSafeInteger(value.byteLength) && value.byteLength >= 0
+const isCanvas = (value: unknown): value is CanvasProjection => {
+  if (!isRecord(value) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
+  if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
+  if (!Array.isArray(value.bands) || value.bands.length !== 3) return false
+  const names = ['pageHeader', 'content', 'pageFooter']
+  const page = value as Record<string, number>
+  return value.bands.every((band, index) => {
+    if (!isRecord(band) || band.name !== names[index] || !['x', 'y', 'width', 'height'].every((key) => typeof band[key] === 'number' && Number.isSafeInteger(band[key]))) return false
+    const paint = band as Record<string, number>
+    return paint.x >= 0 && paint.y >= 0 && paint.width > 0 && paint.height >= 0 && paint.x + paint.width <= page.width && paint.y + paint.height <= page.height
+  })
+}
+const isSnapshot = (value: unknown): value is EngineSnapshot => isRecord(value) && (value.documentState === 'empty' || value.documentState === 'loaded') && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.byteLength === 'number' && Number.isSafeInteger(value.byteLength) && value.byteLength >= 0 && (value.canvas === undefined || isCanvas(value.canvas))
 
 export function requestCorrelationId(value: unknown): string | undefined {
   return isRecord(value) && isEngineRequestId(value.requestId) ? value.requestId : undefined

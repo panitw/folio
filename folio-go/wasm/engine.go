@@ -11,9 +11,10 @@ import (
 
 // Snapshot is a paint-safe projection, not a .folio schema mirror.
 type Snapshot struct {
-	DocumentState string `json:"documentState"`
-	Revision      uint64 `json:"revision"`
-	ByteLength    int    `json:"byteLength"`
+	DocumentState string                  `json:"documentState"`
+	Revision      uint64                  `json:"revision"`
+	ByteLength    int                     `json:"byteLength"`
+	Canvas        *folio.CanvasProjection `json:"canvas,omitempty"`
 }
 
 // Engine owns one live template and its canonical bytes for one worker.
@@ -21,6 +22,7 @@ type Engine struct {
 	template *folio.Template
 	bytes    []byte
 	revision uint64
+	canvas   *folio.CanvasProjection
 }
 
 func NewEngine() *Engine { return &Engine{} }
@@ -39,8 +41,16 @@ func (e *Engine) load(input []byte) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	projection, err := folio.Canvas(tpl)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	// Install only after every fallible projection step has completed. Failed
+	// Open/Initialize must leave the old template, bytes, snapshot and revision
+	// untouched so a later Save cannot serialize rejected input.
 	e.template = tpl
 	e.bytes = append(e.bytes[:0], canonical...)
+	e.canvas = &projection
 	e.revision++
 	return e.Snapshot(), nil
 }
@@ -49,7 +59,7 @@ func (e *Engine) Snapshot() Snapshot {
 	if e.template == nil {
 		return Snapshot{DocumentState: "empty", Revision: e.revision}
 	}
-	return Snapshot{DocumentState: "loaded", Revision: e.revision, ByteLength: len(e.bytes)}
+	return Snapshot{DocumentState: "loaded", Revision: e.revision, ByteLength: len(e.bytes), Canvas: e.canvas}
 }
 
 // Serialize returns a copy of canonical bytes. Bytes are the authority across
@@ -80,12 +90,34 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if e.template == nil {
 		return Snapshot{}, fmt.Errorf("folio wasm: no document is loaded")
 	}
-	if string(command) != "commit" {
-		return Snapshot{}, fmt.Errorf("folio wasm: unknown committed command")
+	if string(command) == "commit" {
+		// "commit" is deliberately an opaque, Go-owned acknowledgement today.
+		// It provides the real command-channel boundary without inventing the
+		// later editor command/schema vocabulary in TypeScript.
+		e.revision++
+		return e.Snapshot(), nil
 	}
-	// "commit" is deliberately an opaque, Go-owned acknowledgement today.
-	// It provides the real command-channel boundary without inventing the
-	// later editor command/schema vocabulary in TypeScript.
+	// Apply to a fresh canonical clone. This makes command validation,
+	// serialization and projection one transaction rather than relying on a
+	// rollback that can itself alter the revision.
+	candidate, err := folio.ParseTemplate(e.bytes)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if _, err := folio.ApplyPageSetupCommand(candidate, command); err != nil {
+		return Snapshot{}, err
+	}
+	canonical, err := folio.SerializeTemplate(candidate)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	projection, err := folio.Canvas(candidate)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	e.template = candidate
+	e.bytes = append(e.bytes[:0], canonical...)
+	e.canvas = &projection
 	e.revision++
 	return e.Snapshot(), nil
 }

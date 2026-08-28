@@ -5,15 +5,17 @@ import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }] }
+const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
 describe('application shell', () => {
   it('renders every persistent desktop landmark and honest later regions', () => {
-    render(<App />)
+    render(<App initialSnapshot={snapshot(1)} />)
     expect(screen.getByLabelText('Document bar')).toBeInTheDocument()
     expect(screen.getByLabelText('Component palette')).toBeInTheDocument()
     expect(screen.getByLabelText('Canvas region')).toBeInTheDocument()
-    expect(screen.getByLabelText('Blank report page')).toBeInTheDocument()
+    expect(screen.getByLabelText('Report page with Page Header, Content, and Page Footer')).toBeInTheDocument()
     expect(screen.getByLabelText('Properties panel')).toBeInTheDocument()
     expect(screen.getByLabelText('Status bar')).toBeInTheDocument()
     expect(screen.getByText('PREVIEW · later')).toBeInTheDocument()
@@ -48,15 +50,34 @@ describe('application shell', () => {
   })
 
   it('loads only opaque adapter bytes through Go, establishes a clean baseline, and dirties after a committed command', async () => {
-    const request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 8 : 7, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))
+    const request = vi.fn(async (operation: string) => ({ snapshot: snapshot(operation === 'command' ? 8 : 7), ...(operation === 'serialize' ? { bytes } : {}) }))
     const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'report.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
-    render(<App engine={engine(request)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3 }} />)
+    render(<App engine={engine(request)} fileAccess={files} initialSnapshot={snapshot(1)} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
     await waitFor(() => expect(screen.getByText('report.folio')).toBeInTheDocument())
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(['load', 'serialize'])
     expect(screen.getByText('Saved local file')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Commit engine snapshot' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
     await waitFor(() => expect(screen.getByText('Unsaved local changes')).toBeInTheDocument())
+  })
+
+  it('keeps zoom, grid, and snap local while an explicit Go page-setup command alone dirties the document', async () => {
+    const request = vi.fn(async (operation: string) => ({ snapshot: snapshot(operation === 'command' ? 2 : 1), ...(operation === 'serialize' ? { bytes } : {}) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Grid on' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Snap on' }))
+    expect(request).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Grid off' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Snap off' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37.125' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+    expect(request.mock.calls[0]![0]).toBe('command')
+    const command = request.mock.calls[0] as unknown as [string, ArrayBuffer]
+    expect(new TextDecoder().decode(command[1])).toContain('"top":37.125')
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
   })
 
   it('leaves a dirty session untouched for an open cancellation or failure', async () => {
@@ -126,21 +147,53 @@ describe('application shell', () => {
     let releaseWrite: (() => void) | undefined
     let releaseCommit: (() => void) | undefined
     const writeSave = vi.fn(() => new Promise<{ name: string }>((resolve) => { releaseWrite = () => resolve({ name: 'untitled.folio' }) }))
-    const request = vi.fn((operation: string): Promise<{ snapshot: { documentState: 'loaded'; revision: number; byteLength: number }; bytes?: ArrayBuffer }> => {
-      if (operation === 'command') return new Promise((resolve) => { releaseCommit = () => resolve({ snapshot: { documentState: 'loaded' as const, revision: 3, byteLength: 3 } }) })
-      return Promise.resolve({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 }, bytes })
+    const request = vi.fn((operation: string): Promise<{ snapshot: ReturnType<typeof snapshot>; bytes?: ArrayBuffer }> => {
+      if (operation === 'command') return new Promise((resolve) => { releaseCommit = () => resolve({ snapshot: snapshot(3) }) })
+      return Promise.resolve({ snapshot: snapshot(2), bytes })
     })
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => ({ name: 'untitled.folio' })), writeSave }
-    render(<App engine={engine(request)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Commit engine snapshot' }))
+    render(<App engine={engine(request)} fileAccess={files} initialSnapshot={snapshot(2)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
     await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
-    expect(screen.getByRole('button', { name: 'Commit engine snapshot' })).toBeDisabled()
     releaseCommit!()
     await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3'))
     releaseWrite!()
     await waitFor(() => expect(screen.getByText('Unsaved local changes')).toBeInTheDocument())
     expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3')
     expect(screen.getByText(/newer local changes need saving/)).toBeInTheDocument()
+  })
+
+  it('paints each Go band rectangle at its projected origin and uses one zoomed display scale for page and grid', () => {
+    render(<App initialSnapshot={snapshot(1)} />)
+    const page = screen.getByLabelText('Report page with Page Header, Content, and Page Footer')
+    const header = screen.getByLabelText('Page Header')
+    expect(page.style.getPropertyValue('--page-display-width')).toBe('595.276px')
+    expect(page.style.getPropertyValue('--page-display-height')).toBe('841.89px')
+    expect(page.style.getPropertyValue('--grid-display-pitch')).toBe('6px')
+    expect(header.style.getPropertyValue('--band-x')).toBe('36px')
+    expect(header.style.getPropertyValue('--band-y')).toBe('36px')
+    expect(header.style.getPropertyValue('--band-width')).toBe('523.276px')
+    expect(header.style.getPropertyValue('--band-height')).toBe('20px')
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(page.style.getPropertyValue('--page-display-width')).toBe('654.8036px')
+    expect(page.style.getPropertyValue('--grid-display-pitch')).toBe('6.6px')
+  })
+
+  it('retains literal empty drafts, announces the precise engine diagnostic, and ignores a stale Apply draft reset', async () => {
+    let resolveApply: ((value: { snapshot: ReturnType<typeof snapshot> }) => void) | undefined
+    const request = vi.fn((operation: string) => operation === 'command' ? new Promise<{ snapshot: ReturnType<typeof snapshot> }>((resolve) => { resolveApply = resolve }) : Promise.resolve({ snapshot: snapshot(1) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    const top = screen.getByRole('textbox', { name: 'Top margin (pt)' })
+    fireEvent.change(top, { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    fireEvent.change(top, { target: { value: '38' } })
+    resolveApply!({ snapshot: snapshot(2) })
+    await waitFor(() => expect(top).toHaveValue('38'))
+    request.mockRejectedValueOnce(Object.assign(new Error('must not be negative'), { code: 'PAGE_SETUP_INVALID', dataPath: 'page.margin.top' }))
+    fireEvent.change(top, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('page.margin.top: must not be negative'))
+    expect(top).toHaveValue('')
   })
 })
