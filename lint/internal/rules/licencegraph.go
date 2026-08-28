@@ -2,6 +2,8 @@ package rules
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/panitw/folio/lint/internal/licence"
 )
@@ -61,4 +63,43 @@ func ScanLicenceGraph(moduleDir string) ([]Finding, error) {
 		}
 	}
 	return findings, nil
+}
+
+// ScanNPMGraph extends AD-26 to every direct and transitive dependency named
+// by folio-designer/package-lock.json. Resolution is lockfile-first and local;
+// absent or unclassifiable metadata is a finding, never a warning or skip.
+func ScanNPMGraph(designerDir string) ([]Finding, error) {
+	packages, err := licence.ResolveNPMGraph(designerDir)
+	if err != nil {
+		return []Finding{{Path: "folio-designer/package-lock.json", Rule: RuleLicence, Message: "npm licence graph unresolvable: " + err.Error()}}, nil
+	}
+	var findings []Finding
+	for _, p := range packages {
+		family, expressionErr := licence.ClassifySPDXExpression(p.Licence)
+		if expressionErr != nil || family != licence.FamilyPermissive {
+			findings = append(findings, Finding{Path: p.Path, Rule: RuleLicence, Message: fmt.Sprintf("npm package %s: forbidden or unresolvable licence %s", p.Path, p.Licence)})
+		}
+	}
+	return findings, nil
+}
+
+// ScanPDFJSNotice becomes non-vacuous the moment pdfjs-dist is present: its
+// lock record must be Apache-2.0 and its redistributed NOTICE must exist.
+func ScanPDFJSNotice(designerDir string) ([]Finding, error) {
+	packages, err := licence.ResolveNPMGraph(designerDir)
+	if err != nil {
+		return []Finding{{Path: "folio-designer/package-lock.json", Rule: RuleLicence, Message: "npm licence graph unresolvable: " + err.Error()}}, nil
+	}
+	for _, p := range packages {
+		if p.Path != "pdfjs-dist" {
+			continue
+		}
+		if p.Licence != "Apache-2.0" {
+			return []Finding{{Path: p.Path, Rule: RuleLicence, Message: "pdfjs-dist must be Apache-2.0"}}, nil
+		}
+		if _, err := os.Stat(filepath.Join(designerDir, "third-party-notices", "pdfjs-dist", "NOTICE")); err != nil {
+			return []Finding{{Path: "folio-designer/third-party-notices/pdfjs-dist/NOTICE", Rule: RuleLicence, Message: "pdfjs-dist is present but its Apache-2.0 NOTICE is missing"}}, nil
+		}
+	}
+	return nil, nil
 }

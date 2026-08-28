@@ -1,9 +1,12 @@
 package rules
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/panitw/folio/lint/internal/licence"
 )
 
 // TestLicenceGraphProductionScan is AC18's production caller: it walks
@@ -29,6 +32,91 @@ func TestLicenceGraphProductionScan(t *testing.T) {
 			}
 		})
 	}
+	t.Run("folio-designer npm lockfile", func(t *testing.T) {
+		packages, resolveErr := licence.ResolveNPMGraph(filepath.Join(root, "folio-designer"))
+		if resolveErr != nil || len(packages) < 2 {
+			t.Fatalf("expected complete non-empty npm graph, packages=%d err=%v", len(packages), resolveErr)
+		}
+		findings, err := ScanNPMGraph(filepath.Join(root, "folio-designer"))
+		if err != nil {
+			t.Fatalf("scan designer lockfile: %v", err)
+		}
+		if len(findings) > 0 {
+			t.Fatalf("forbidden or unresolvable npm licence(s): %v", findings)
+		}
+		noticeFindings, err := ScanPDFJSNotice(filepath.Join(root, "folio-designer"))
+		if err != nil || len(noticeFindings) != 0 {
+			t.Fatalf("scan designer pdfjs notice: findings=%v err=%v", noticeFindings, err)
+		}
+	})
+}
+
+func TestNPMGraphFixtureScan(t *testing.T) {
+	makeFixture := func(t *testing.T, nestedLicence string) string {
+		t.Helper()
+		dir := t.TempDir()
+		lock := `{"lockfileVersion":3,"packages":{"":{"name":"fixture"},"node_modules/permissive":{"version":"1.0.0","license":"MIT"},"node_modules/permissive/node_modules/nested":{"version":"1.0.0","license":"` + nestedLicence + `"}}}`
+		if err := os.WriteFile(filepath.Join(dir, "package-lock.json"), []byte(lock), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	t.Run("prohibited transitive", func(t *testing.T) {
+		findings, err := ScanNPMGraph(makeFixture(t, "GPL-3.0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertExactFindings(t, findings, []Finding{{Path: "nested", Rule: RuleLicence}})
+	})
+	t.Run("unknown transitive", func(t *testing.T) {
+		findings, err := ScanNPMGraph(makeFixture(t, "Proprietary"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(findings) != 1 || findings[0].Path != "folio-designer/package-lock.json" {
+			t.Fatalf("unknown lockfile licence must fail closed: %v", findings)
+		}
+	})
+	t.Run("optional GPL and missing metadata fail without node_modules", func(t *testing.T) {
+		dir := t.TempDir()
+		lock := `{"lockfileVersion":3,"packages":{"":{"name":"fixture"},"node_modules/@esbuild/evil":{"version":"1.0.0","optional":true,"license":"GPL-3.0"}}}`
+		if err := os.WriteFile(filepath.Join(dir, "package-lock.json"), []byte(lock), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		findings, err := ScanNPMGraph(dir)
+		if err != nil || len(findings) != 1 || findings[0].Path != "@esbuild/evil" {
+			t.Fatalf("optional GPL lockfile record must fail without node_modules: findings=%v err=%v", findings, err)
+		}
+		lock = `{"lockfileVersion":3,"packages":{"":{"name":"fixture"},"node_modules/missing":{"version":"1.0.0"}}}`
+		if err := os.WriteFile(filepath.Join(dir, "package-lock.json"), []byte(lock), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		findings, err = ScanNPMGraph(dir)
+		if err != nil || len(findings) != 1 || findings[0].Path != "folio-designer/package-lock.json" {
+			t.Fatalf("missing lockfile licence must fail closed without node_modules: findings=%v err=%v", findings, err)
+		}
+	})
+	t.Run("pdfjs-dist requires its live NOTICE", func(t *testing.T) {
+		dir := t.TempDir()
+		lock := `{"lockfileVersion":3,"packages":{"":{"name":"fixture"},"node_modules/pdfjs-dist":{"version":"1.0.0","license":"Apache-2.0"}}}`
+		if err := os.WriteFile(filepath.Join(dir, "package-lock.json"), []byte(lock), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		findings, err := ScanPDFJSNotice(dir)
+		if err != nil || len(findings) != 1 {
+			t.Fatalf("missing pdfjs NOTICE must fail: findings=%v err=%v", findings, err)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, "third-party-notices", "pdfjs-dist"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "third-party-notices", "pdfjs-dist", "NOTICE"), []byte("Apache notice"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		findings, err = ScanPDFJSNotice(dir)
+		if err != nil || len(findings) != 0 {
+			t.Fatalf("present pdfjs NOTICE must pass: findings=%v err=%v", findings, err)
+		}
+	})
 }
 
 // TestLicenceGraphFixtureScan is AC29's fixture caller: copyleft/ fails

@@ -32,7 +32,7 @@ func repoRootFromTest(t *testing.T) string {
 
 // TestManifestUpToDate is AC19's completeness assertion (RP-9): the
 // committed lint/MANIFEST.md must match what Generate/Render produce
-// right now. A dependency added to any of the three module graphs
+// right now. A dependency added to a Go module graph or the designer lockfile
 // without regenerating and committing the manifest fails this test —
 // `cd lint && go run ./cmd/genmanifest` (lint has its own go.mod — run
 // from inside lint/, not the repo root) regenerates it (Finding 16, QA
@@ -59,6 +59,28 @@ func TestManifestUpToDate(t *testing.T) {
 
 	if string(got) != want {
 		t.Fatalf("lint/MANIFEST.md is out of date — run `cd lint && go run ./cmd/genmanifest` and commit the result")
+	}
+}
+
+func TestDesignerManifestClassifiesRuntimeAndBuildDependencies(t *testing.T) {
+	rows, err := Generate(repoRootFromTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"react": "shipped", "react-dom": "shipped", "vite": "build-time-only"}
+	for module, shippedBy := range want {
+		found := false
+		for _, row := range rows {
+			if row.Serves == "folio-designer" && row.Module == module {
+				found = true
+				if row.ShippedBy != shippedBy {
+					t.Errorf("%s classification = %q, want %q", module, row.ShippedBy, shippedBy)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("designer manifest is missing %s", module)
+		}
 	}
 }
 

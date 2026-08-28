@@ -182,3 +182,31 @@ jobs:
         env:
           GOPROXY: "off"
         run: go test -count=1 ./...
+
+  folio-designer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+          cache-dependency-path: folio-designer/package-lock.json
+      - name: npm ci (committed lockfile only)
+        working-directory: folio-designer
+        run: npm ci
+      - name: unit and contract tests
+        working-directory: folio-designer
+        run: npm run test
+      - name: TypeScript check
+        working-directory: folio-designer
+        run: npm run typecheck
+      - name: lint
+        working-directory: folio-designer
+        run: npm run lint
+      - name: production build
+        working-directory: folio-designer
+        run: npm run build
+      - name: compile deferred browser smoke suite (D-000.4)
+        working-directory: folio-designer
+        run: npm run test:e2e:compile

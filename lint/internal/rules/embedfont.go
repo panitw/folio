@@ -21,8 +21,8 @@ var fontFileExtensions = []string{".ttf", ".otf", ".ttc", ".woff", ".woff2"}
 
 // EmbedFontStats reports what ScanEmbedFont actually examined, from the
 // scanner's own execution — the same D-000.9 reasoning every other
-// guard in this package follows (MapRangeStats, AbsencesStats,
-// noFloat64Stats): a second, independently-derived re-walk cannot see a
+// guard in this package follows (MapRangeStats, noFloat64Stats): a
+// second, independently-derived re-walk cannot see a
 // scanner that silently does nothing.
 type EmbedFontStats struct {
 	FilesParsed int

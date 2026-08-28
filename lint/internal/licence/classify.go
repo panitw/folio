@@ -4,9 +4,40 @@
 package licence
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
+
+// ClassifySPDXExpression accepts a known SPDX identifier or a simple known
+// conjunction/disjunction. Unknown syntax or terms fail closed.
+func ClassifySPDXExpression(expression string) (Family, error) {
+	expression = strings.TrimSpace(expression)
+	if expression == "" || strings.ContainsAny(expression, "()") {
+		return FamilyUnknown, fmt.Errorf("unsupported SPDX expression")
+	}
+	parts := strings.Fields(expression)
+	if len(parts)%2 == 0 {
+		return FamilyUnknown, fmt.Errorf("malformed SPDX expression")
+	}
+	family := FamilyPermissive
+	for i, part := range parts {
+		if i%2 == 1 {
+			if part != "AND" && part != "OR" {
+				return FamilyUnknown, fmt.Errorf("unsupported SPDX operator %q", part)
+			}
+			continue
+		}
+		term := classifyBySPDX(part)
+		if term == FamilyUnknown {
+			return FamilyUnknown, fmt.Errorf("unknown SPDX identifier %q", part)
+		}
+		if term == FamilyCopyleft {
+			family = FamilyCopyleft
+		}
+	}
+	return family, nil
+}
 
 // Family is a coarse licence classification.
 //
@@ -65,6 +96,7 @@ func (f Family) String() string {
 var permissiveSPDX = map[string]bool{
 	"MIT": true, "Apache-2.0": true, "BSD-2-Clause": true, "BSD-3-Clause": true,
 	"ISC": true, "0BSD": true, "Unlicense": true, "CC0-1.0": true,
+	"MIT-0": true, "BlueOak-1.0.0": true, "CC-BY-4.0": true,
 	// OFL-1.1 joined this list at Story 2.2 (AC2, AD-26), the first
 	// story to introduce an OFL-licensed asset (the three shipped Noto
 	// faces) — measured, "OFL" appeared nowhere in the lint module

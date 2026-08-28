@@ -1,0 +1,21 @@
+@font-face { font-family: 'IBM Plex Sans'; src: url('/fonts/notosans/NotoSans-Regular.ttf') format('truetype'); font-display: swap; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/notosanssc/NotoSansSC-Regular.ttf') format('truetype'); font-display: swap; }
+@font-face { font-family: 'IBM Plex Sans Thai'; src: url('/fonts/notosansthai/NotoSansThai-Regular.ttf') format('truetype'); font-display: swap; }
+
+:root {
+  --color-ground: #0D0F12; --color-ground-preview: #0A0C0E; --color-base: #15181C; --color-panel: #1A1E23; --color-raised: #22272D; --color-active: #2A3037; --color-row-focus: #1D2228;
+  --color-line-faint: #191D21; --color-line-subtle: #22272D; --color-line: #272C33; --color-line-strong: #2F353D; --color-dim: #363D46; --color-edge: #3A4048; --color-edge-strong: #454D57;
+  --color-ink-high: #E6E9EC; --color-ink: #AAB2BB; --color-ink-low: #737C86; --color-ink-faint: #5E666F; --color-ink-ghost: #4E565F; --color-ink-disabled: #454C55;
+  --color-select: #58A6C4; --color-select-bright: #8FD0E4; --color-select-on-fill: #CFE8F2; --color-select-fill: #1E3B46; --color-select-tint: #16232A; --color-select-tint-deep: #12222A; --color-select-edge: #2F4F5C; --color-select-hover: #7CC0DA;
+  --color-bind: #C9A758; --color-bind-text: #E0C07A; --color-bind-muted: #8A7440; --color-bind-tint: #241F14; --color-bind-tint-warm: #1E1B13; --color-bind-edge: #4A3D1E; --color-bind-edge-soft: #3A3118; --color-bind-edge-dash: #6B5726; --color-bind-on-page: #A8801F;
+  --color-ok: #7FBF8A; --color-danger: #D1655C; --color-page: #FFFFFF; --color-page-ink: #1C2530; --color-page-ink-body: #2A3440; --color-page-ink-muted: #6B7480; --color-page-thead: #F1F4F7; --color-page-thead-line: #D5DBE2; --color-page-rule: #F0F2F5; --color-page-guide: #EEF1F4; --color-page-dot: #DFE3E8; --color-page-outline-dot: #CDD4DB; --color-page-outline-dash: #B6BEC7; --color-page-placeholder: #98A2AD; --color-page-shell: #E9ECEF;
+  --tint-band: rgba(88,166,196,0.035); --tint-select-fill-soft: rgba(88,166,196,0.07); --tint-select-focus-ring: rgba(88,166,196,0.22); --tint-bind-row: rgba(201,167,88,0.14); --tint-bind-marker: rgba(201,167,88,0.28); --tint-scrim: rgba(6,8,10,0.72);
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif; --font-mono: 'IBM Plex Mono', ui-monospace, monospace; --font-page: 'IBM Plex Sans Thai', 'IBM Plex Sans', sans-serif;
+  --space-1: 4px; --space-2: 6px; --space-3: 8px; --space-4: 10px; --space-5: 12px; --space-6: 14px; --space-7: 16px; --space-8: 22px; --space-9: 28px; --space-10: 34px; --space-panel-x: 12px; --space-sheet-x: 16px; --space-row-y: 5px;
+  --radius-default: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0; --radius-dot: 50%;
+  --shadow-page: 0 2px 24px rgba(0,0,0,0.55);
+  --doc-bar-height: 40px; --status-bar-height: 24px; --palette-width: 180px; --panel-width: 300px; --hairline: 1px;
+  --type-label: 600 9px/1 var(--font-sans); --type-label-tight: 600 9px/1 var(--font-sans); --type-body: 400 10px/1.3 var(--font-sans); --type-body-em: 400 11px/1.3 var(--font-sans); --type-title: 500 12px/1.3 var(--font-sans); --type-display: 500 19px/1.3 var(--font-sans); --type-mono: 400 10px/1.3 var(--font-mono); --type-mono-em: 400 11px/1.3 var(--font-mono); --type-numeric-lg: 500 22px/1.3 var(--font-mono); --type-brand: 500 11px/1 var(--font-mono); --type-brand-load: 500 13px/1 var(--font-mono); --type-band-tab: 400 9px/1 var(--font-mono); --type-page-title: 600 13px/1.3 var(--font-page); --type-page-eyebrow: 400 8px/1 var(--font-sans); --type-page-body: 400 8px/1.4 var(--font-page); --type-page-mono: 400 8px/1.3 var(--font-mono); --type-page-fine: 400 7px/1.3 var(--font-page);
+  --tracking-label: 0.1em; --tracking-label-tight: 0.09em; --tracking-brand: 0.04em; --tracking-brand-load: 0.06em; --tracking-band-tab: 0.08em; --tracking-page-eyebrow: 0.14em; --tracking-display: -0.01em;
+  --palette-item-padding-y: 7px; --page-grid-pitch: 12px; --icon-size: 16px;
+}

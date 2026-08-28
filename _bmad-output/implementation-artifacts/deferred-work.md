@@ -290,6 +290,8 @@ there — regardless of name — now trips the same finding. This still fully im
 paragraph's "same treatment, same story, same mechanism" for the OFL text and the pdfjs-dist
 NOTICE; it does not narrow anything DW-2 promises.
 
+**DISCHARGED — Story 5.1 (2026-08-28, finisher corrected).** `folio-designer/package-lock.json` is covered by the positive, fail-closed lockfile-only `licence.ResolveNPMGraph` / `rules.ScanNPMGraph` AD-26 path and generated `lint/MANIFEST.md` rows labelled `folio-designer`; neither reads `node_modules`. Missing, unknown, optional, and prohibited transitive records red the guard. A zero-tenant absence scanner cannot return because `ScanAbsences`, `AbsencesStats`, `absenceChecks`, its tests, and fixture-only rule were removed and the structural guard scans the live lint tree. `pdfjs-dist` remains absent, so no fabricated notice is committed; when it appears its Apache-2.0 lock record and `folio-designer/third-party-notices/pdfjs-dist/NOTICE` are both required by `ScanPDFJSNotice`.
+
 ### DW-4 — Nobody owns cutting `folio-go/v0.1.0` — **owner decision recorded at Epic 4 planning; release checkpoint remains open**
 - **Raised by:** the engineering lead during Story 1.3 rulings
 - **Owner:** **the project owner**, at Epic 4 planning

@@ -98,8 +98,8 @@ development_status:
   4-8-alternating-row-styling: done
   epic-4-retrospective: optional
 
-  epic-5: backlog
-  5-1-the-design-system-and-application-shell: backlog
+  epic-5: in-progress
+  5-1-the-design-system-and-application-shell: done
   5-2-the-engine-worker-and-command-channel: backlog
   5-3-work-offline: backlog
   5-4-an-honest-first-run-load-screen: backlog

@@ -13988,3 +13988,9 @@ The gate audit found and corrected stale current-contract prose in `folio-format
 `folio-go/README.md`, `SPEC.md`, and the PRD NFR1 assumption. The architecture spine and all eight
 Epic 4 plain-term openers remain consistent. Existing unrelated `_bmad` configuration and `.agents/`
 churn was excluded. `epic-4` is therefore **done**; Epic 5 remains untouched.
+
+---
+
+### D-5.1.1 — DW-2 is replaced by the committed npm lockfile licence graph
+
+**Finisher correction, 2026-08-28.** Story 5.1 uses the committed npm lockfile as the sole JS dependency graph. AD-26 deterministically enumerates every direct, transitive, and platform-optional lock record without network access or `node_modules`, then accepts only supported SPDX expressions; a missing, unknown, or prohibited record fails closed. The manifest consumes that same lock graph and labels non-dev React runtime entries `shipped`, while dev-only tooling is `build-time-only`. The exhausted absence scanner is deleted with its only tenant; the diagnostics registry and `SOURCE_DATE_EPOCH` protections remain separate positive guards. `pdfjs-dist` is now a live conditional: when its lock record arrives it must be Apache-2.0 and its committed `third-party-notices/pdfjs-dist/NOTICE` must exist.
