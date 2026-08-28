@@ -35,6 +35,7 @@ type response struct {
 	DataPath         string        `json:"dataPath,omitempty"`
 	DictionarySHA256 string        `json:"dictionarySha256,omitempty"`
 	PDFSHA256        string        `json:"pdfSha256,omitempty"`
+	PreviewIdentity  string        `json:"previewIdentity,omitempty"`
 	RenderRevision   uint64        `json:"renderRevision,omitempty"`
 	// Diagnostics is deliberately not omitempty: an otherwise successful
 	// render has the same closed response shape whether it has zero warnings
@@ -140,7 +141,24 @@ func dispatch(engine *wasm.Engine, in request) response {
 		if len(pdf) > 32<<20 {
 			return failure("WASM_OUTPUT_INVALID", errors.New("rendered PDF exceeds 32 MiB"))
 		}
-		return response{OK: true, Snapshot: engine.Snapshot(), BytesBase64: base64.StdEncoding.EncodeToString(pdf), PDFSHA256: rendered.PDFSHA256, RenderRevision: rendered.Revision, Diagnostics: boundedDiagnostics(rendered.Diagnostics)}
+		return response{OK: true, Snapshot: engine.Snapshot(), BytesBase64: base64.StdEncoding.EncodeToString(pdf), PDFSHA256: rendered.PDFSHA256, PreviewIdentity: rendered.Identity, RenderRevision: rendered.Revision, Diagnostics: boundedDiagnostics(rendered.Diagnostics)}
+	case "identity":
+		if in.PayloadBase64 != "" || in.TemplateBase64 != "" || in.DataBase64 == "" || in.ParamsBase64 == "" {
+			return failure("WASM_INPUT_INVALID", errors.New("identity requires exactly two byte inputs"))
+		}
+		data, err := decodeBase64Bounded(in.DataBase64, 8<<20)
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		params, err := decodeBase64Bounded(in.ParamsBase64, 8<<20)
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		identity, revision, err := engine.PreviewIdentity(data, params)
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: engine.Snapshot(), PreviewIdentity: identity, RenderRevision: revision}
 	default:
 		return response{DiagnosticCode: "WASM_OPERATION_UNKNOWN", Message: "unknown operation"}
 	}

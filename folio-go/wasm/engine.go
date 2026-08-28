@@ -27,8 +27,22 @@ type Snapshot struct {
 // and bounded diagnostics from the existing production renderer.
 type RenderResult struct {
 	PDFSHA256   string             `json:"pdfSha256"`
+	Identity    string             `json:"identity"`
 	Revision    uint64             `json:"revision"`
 	Diagnostics []folio.Diagnostic `json:"diagnostics"`
+}
+
+// PreviewIdentity obtains evidence from the current engine-owned canonical
+// template and the two raw JSON channels without exposing or parsing the
+// template in the browser.
+func (e *Engine) PreviewIdentity(data, params []byte) (string, uint64, error) {
+	if e.template == nil {
+		return "", 0, fmt.Errorf("folio wasm: no document is loaded")
+	}
+	if len(data) == 0 || len(params) == 0 {
+		return "", 0, fmt.Errorf("folio wasm: identity inputs must be non-empty")
+	}
+	return folio.PreviewIdentity(e.bytes, folio.Data(data), folio.Params(params), fonts.Shipped()), e.revision, nil
 }
 
 // Engine owns one live template and its canonical bytes for one worker.
@@ -109,7 +123,11 @@ func (e *Engine) Render(template, data, params []byte) ([]byte, RenderResult, er
 	}
 	pdf := append([]byte(nil), result.Bytes...)
 	digest := sha256.Sum256(pdf)
-	return pdf, RenderResult{PDFSHA256: fmt.Sprintf("%x", digest), Revision: e.revision, Diagnostics: append([]folio.Diagnostic(nil), result.Diagnostics...)}, nil
+	identity, revision, err := e.PreviewIdentity(data, params)
+	if err != nil {
+		return nil, RenderResult{}, err
+	}
+	return pdf, RenderResult{PDFSHA256: fmt.Sprintf("%x", digest), Identity: identity, Revision: revision, Diagnostics: append([]folio.Diagnostic(nil), result.Diagnostics...)}, nil
 }
 
 // Validate reparses the engine-owned canonical bytes. It deliberately does

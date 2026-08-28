@@ -15,15 +15,19 @@ test('the initial shell exposes desktop landmarks and honest local-file controls
   await expect(page.getByRole('button', { name: 'PREVIEW' })).toBeVisible()
 })
 
-test('Preview replaces the design canvas with the correlated local worker PDF viewer', async ({ page }) => {
+test('Preview renders local identity evidence and marks an edited last-good PDF stale', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'PREVIEW' }).click()
   await expect(page.getByLabel('Preview region')).toBeVisible()
   await expect(page.getByLabel('Canvas region')).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: 'Raw sample data JSON' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Raw parameter JSON' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Return to Design' })).toBeVisible()
-  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
+  await expect(page.getByRole('button', { name: /return to design/i })).toBeVisible()
+  await expect(page.getByRole('status')).toContainText(/Rendering local PDF|Current exact local PDF/)
+  const data = page.getByRole('textbox', { name: 'Raw sample data JSON' })
+  await data.fill('{"transactions":[]}')
+  await expect(page.getByText('STALE — inputs changed')).toBeVisible()
+  await expect(page.getByLabel(/Stale historical PDF|Current exact local production PDF/)).toBeVisible()
   await page.getByRole('button', { name: 'Return to Design' }).click()
   await expect(page.getByLabel('Canvas region')).toBeVisible()
 })

@@ -12,9 +12,9 @@ export type PDFPreviewViewState = Readonly<{ page: number; scale: number; scroll
 export const initialPDFPreviewViewState: PDFPreviewViewState = { page: 1, scale: 1, scrollTop: 0, scrollLeft: 0 }
 export const samePDFPreviewViewState = (left: PDFPreviewViewState, right: PDFPreviewViewState) => left.page === right.page && left.scale === right.scale && left.scrollTop === right.scrollTop && left.scrollLeft === right.scrollLeft
 
-export type PDFPreviewViewerProps = Readonly<{ bytes: ArrayBuffer; label: string; state: PDFPreviewViewState; onStateChange: (state: PDFPreviewViewState) => void; onError: (error: Error) => void; onPageCount: (pages: number) => void }>
+export type PDFPreviewViewerProps = Readonly<{ bytes: ArrayBuffer; label: string; describedBy: string; state: PDFPreviewViewState; onStateChange: (state: PDFPreviewViewState) => void; onError: (error: Error) => void; onPageCount: (pages: number) => void }>
 
-export function PDFPreviewViewer({ bytes, label, state, onStateChange, onError, onPageCount }: PDFPreviewViewerProps) {
+export function PDFPreviewViewer({ bytes, label, describedBy, state, onStateChange, onError, onPageCount }: PDFPreviewViewerProps) {
   const host = useRef<HTMLDivElement>(null)
   const active = useRef<ActiveDocument | undefined>(undefined)
   const [pages, setPages] = useState<number>()
@@ -76,7 +76,7 @@ export function PDFPreviewViewer({ bytes, label, state, onStateChange, onError, 
     host.current.scrollLeft = state.scrollLeft
   }, [state.scrollLeft, state.scrollTop])
 
-  return <section className="pdf-preview" aria-label="Exact local production PDF preview">
+  return <section className="pdf-preview" aria-label={label} aria-describedby={describedBy}>
     <div className="pdf-preview-controls" aria-label="PDF viewer controls">
       <button type="button" onClick={() => onStateChange({ ...state, page: Math.max(1, page - 1) })} disabled={page <= 1} aria-label="Previous PDF page">Previous</button>
       <output aria-live="polite" aria-label="PDF page status">{pages ? `Page ${page} of ${pages}` : 'Rendering PDF'}</output>
@@ -85,6 +85,6 @@ export function PDFPreviewViewer({ bytes, label, state, onStateChange, onError, 
       <output aria-label="PDF zoom">{Math.round(scale * 100)}%</output>
       <button type="button" onClick={() => onStateChange({ ...state, scale: Math.min(2, scale + 0.1) })} aria-label="Zoom in PDF">+</button>
     </div>
-    <div className="pdf-preview-scroll" ref={host} role="img" aria-label={label} tabIndex={0} onScroll={(event) => onStateChange({ ...state, scrollTop: event.currentTarget.scrollTop, scrollLeft: event.currentTarget.scrollLeft })} />
+    <div className="pdf-preview-scroll" ref={host} role="img" aria-label={label} aria-describedby={describedBy} tabIndex={0} onScroll={(event) => onStateChange({ ...state, scrollTop: event.currentTarget.scrollTop, scrollLeft: event.currentTarget.scrollLeft })} />
   </section>
 }

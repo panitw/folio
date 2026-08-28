@@ -92,6 +92,24 @@ func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 			if evidence.PDFSHA256 != fmt.Sprintf("%x", wantDigest) {
 				t.Fatalf("digest = %q", evidence.PDFSHA256)
 			}
+			identity, identityRevision, err := engine.PreviewIdentity(data, params)
+			// This is deliberately not a same-helper comparison: the engine must
+			// supply precisely the complete shipped set to the public identity
+			// contract. Omitting any production face in Engine.PreviewIdentity
+			// therefore disagrees with this independently assembled expectation.
+			wantIdentity := folio.PreviewIdentity(canonical, folio.Data(data), folio.Params(params), fonts.Shipped())
+			if err != nil || identity != wantIdentity || evidence.Identity != wantIdentity || identityRevision != snapshot.Revision {
+				t.Fatalf("identity evidence = %q/%d, render = %q, want=%q, err=%v", identity, identityRevision, evidence.Identity, wantIdentity, err)
+			}
+			for face, program := range fonts.Shipped() {
+				changed := append([]byte(nil), program...)
+				changed[0] ^= 1
+				mutated := fonts.Shipped()
+				mutated[face] = changed
+				if folio.PreviewIdentity(canonical, folio.Data(data), folio.Params(params), mutated) == wantIdentity {
+					t.Fatalf("shipped face %q did not affect preview identity", face)
+				}
+			}
 			if _, _, err := engine.Render(append(canonical, ' '), []byte(`{}`), []byte(`{}`)); err == nil {
 				t.Fatal("stale/noncanonical template render unexpectedly succeeded")
 			}

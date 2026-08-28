@@ -4,6 +4,12 @@ import App, { placementPoint } from './App'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 
+vi.mock('./preview/pdf-viewer', () => ({
+  initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
+  samePDFPreviewViewState: () => false,
+  PDFPreviewViewer: ({ label, describedBy, onPageCount }: { label: string; describedBy: string; onPageCount: (pages: number) => void }) => <button type="button" aria-label={label} aria-describedby={describedBy} onClick={() => onPageCount(1)}>Admit local PDF</button>,
+}))
+
 const bytes = new Uint8Array([1, 2, 3]).buffer
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
@@ -24,20 +30,67 @@ describe('application shell', () => {
   it('replaces the canvas with Preview, cancels an older render, and never dirties or installs its late PDF', async () => {
     let releaseSerialize!: (value: { snapshot: ReturnType<typeof snapshot>; bytes: ArrayBuffer }) => void
     const request = vi.fn((operation: string) => {
+      if (operation === 'identity') return Promise.resolve({ snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } })
       if (operation === 'serialize') return new Promise<{ snapshot: ReturnType<typeof snapshot>; bytes: ArrayBuffer }>((resolve) => { releaseSerialize = resolve })
-      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, pdfSha256: 'a'.repeat(64), diagnostics: [] } })
+      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } })
       return Promise.resolve({ snapshot: snapshot(1) })
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     expect(screen.queryByLabelText('Canvas region')).not.toBeInTheDocument()
     expect(screen.getByText('Rendering local PDF')).toBeInTheDocument()
+    await waitFor(() => expect(request).toHaveBeenCalledWith('serialize', undefined, expect.any(AbortSignal)))
     fireEvent.click(screen.getByRole('button', { name: 'Cancel and return to Design' }))
     releaseSerialize({ snapshot: snapshot(1), bytes })
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.queryByText(/Go production digest/)).not.toBeInTheDocument()
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
-    expect(request.mock.calls.map(([operation]) => operation)).toEqual(['serialize'])
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(['identity', 'serialize'])
+  })
+
+  it('coalesces manual and debounced rerenders behind one active FIFO operation', async () => {
+    let releaseIdentity!: () => void
+    let identityCalls = 0
+    const request = vi.fn((operation: string) => {
+      if (operation === 'identity') {
+        identityCalls++
+        if (identityCalls === 1) return new Promise<{ snapshot: ReturnType<typeof snapshot>; preview: { revision: number; identity: string } }>((resolve) => { releaseIdentity = () => resolve({ snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }) })
+        return Promise.resolve({ snapshot: snapshot(1), preview: { revision: 1, identity: 'c'.repeat(64) } })
+      }
+      if (operation === 'serialize') return Promise.resolve({ snapshot: snapshot(1), bytes })
+      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'c'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } })
+      return Promise.resolve({ snapshot: snapshot(1) })
+    })
+    vi.useFakeTimers()
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[1]}' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[2]}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+    await vi.runAllTimersAsync()
+    expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(1)
+    releaseIdentity()
+    await vi.runAllTimersAsync()
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(2)
+    vi.useRealTimers()
+  })
+
+  it('waits for matching PDF.js admission before claiming current exact output', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    expect(screen.getByText('LOCAL PDF PREVIEW')).toBeInTheDocument()
+    expect(screen.queryByText('EXACT LOCAL PRODUCTION PDF')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    expect(screen.getByText('EXACT LOCAL PRODUCTION PDF')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toHaveAttribute('aria-describedby', 'preview-freshness-status')
   })
 
   it('names local file controls, persistent unsaved state, and offline availability', () => {

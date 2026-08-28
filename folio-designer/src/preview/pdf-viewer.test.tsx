@@ -16,7 +16,7 @@ const pdf = (numPages = 1) => ({
   getPage: vi.fn(async () => ({ getViewport: () => ({ width: 20, height: 30 }), render: state.render })),
   destroy: state.documentDestroy,
 })
-const viewerProps = (overrides = {}) => ({ bytes: new Uint8Array([1, 2, 3]).buffer, label: 'Exact PDF', state: { page: 1, scale: 1, scrollTop: 0, scrollLeft: 0 }, onStateChange: vi.fn(), onError: vi.fn(), onPageCount: vi.fn(), ...overrides })
+const viewerProps = (overrides = {}) => ({ bytes: new Uint8Array([1, 2, 3]).buffer, label: 'Exact PDF', describedBy: 'preview-freshness-status', state: { page: 1, scale: 1, scrollTop: 0, scrollLeft: 0 }, onStateChange: vi.fn(), onError: vi.fn(), onPageCount: vi.fn(), ...overrides })
 
 describe('local PDF preview owner', () => {
   afterEach(() => { vi.restoreAllMocks(); state.loadingDestroy.mockReset(); state.documentDestroy.mockReset(); state.cancel.mockReset(); state.render.mockReset(); state.getDocument.mockReset(); state.workerSrc = '' })

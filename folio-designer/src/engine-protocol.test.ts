@@ -84,14 +84,26 @@ describe('canvas projection protocol guard', () => {
     expect(parseRequest(render)).toBeDefined()
     expect(parseRequest({ ...render, payload: { template: part, data: part.slice(0) } })).toBeUndefined()
     expect(parseRequest({ ...render, viewport: 900 })).toBeUndefined()
-    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'render-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, bytes: part, preview: { revision: 7, pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'render-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, bytes: part, preview: { revision: 7, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
     expect(parseInbound(response)).toBeDefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, pdfSha256: 'not-a-digest' } })).toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, identity: 'not-an-identity' } })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, revision: -1 } })).toBeUndefined()
     expect(parseInbound({ ...response, bytes: undefined })).toBeUndefined()
     expect(parseRequest({ ...render, payload: { template: new ArrayBuffer(MAX_ENGINE_PAYLOAD_BYTES + 1), data: part.slice(0), params: part.slice(0) } })).toBeUndefined()
     expect(parseInbound({ ...response, bytes: new ArrayBuffer(MAX_ENGINE_RENDER_PDF_BYTES + 1) })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, diagnostics: [{}] } })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, diagnostics: [], snapshot: {} } })).toBeUndefined()
+  })
+
+  it('accepts only an identity-only engine response with revision-bound opaque evidence', () => {
+    const part = new Uint8Array([1]).buffer
+    const request = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'identity-1', operation: 'identity', payload: { data: part, params: part.slice(0) } }
+    expect(parseRequest(request)).toBeDefined()
+    expect(parseRequest({ ...request, payload: { data: part } })).toBeUndefined()
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'identity-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, preview: { revision: 7, identity: 'a'.repeat(64) } }
+    expect(parseInbound(response)).toBeDefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, pdfSha256: 'b'.repeat(64) } })).toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, revision: 6 } })).toBeUndefined()
   })
 })
