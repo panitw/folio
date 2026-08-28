@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	folio "github.com/panitw/folio/folio-go"
+	"github.com/panitw/folio/folio-go/fonts"
 )
 
 // Snapshot is a paint-safe projection, not a .folio schema mirror.
@@ -42,7 +43,7 @@ func (e *Engine) load(input []byte) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	projection, err := folio.Canvas(tpl)
+	projection, err := folio.CanvasWithTextPaint(tpl, fonts.Shipped())
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -123,7 +124,7 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	projection, err = folio.Canvas(installed)
+	projection, err = folio.CanvasWithTextPaint(installed, fonts.Shipped())
 	if err != nil {
 		return Snapshot{}, err
 	}

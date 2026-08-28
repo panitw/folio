@@ -8,6 +8,7 @@ import (
 
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/template"
+	"github.com/panitw/folio/folio-go/internal/text"
 )
 
 // GridIncrement is the fixed six-point grid used by the designer projection.
@@ -20,6 +21,33 @@ const GridIncrement int64 = 6000
 // unrepresentable projection.
 const MaxCanvasMillipoints int64 = 9007199254740991
 const maxCanvasPropertyString = 512
+const maxCanvasTextLines = 256
+const maxCanvasTextFragments = 512
+
+// CanvasTextFragment is a shaped, positioned paint fragment. It is not a
+// document text node: x is the engine-owned, band-relative paint origin.
+type CanvasTextFragment struct {
+	Text string `json:"text"`
+	X    int64  `json:"x"`
+}
+
+// CanvasTextLine is one pre-broken engine line. All coordinates are
+// band-relative, top-left/Y-down millipoints. Advance is retained so the
+// browser never derives a following line's origin from CSS metrics.
+type CanvasTextLine struct {
+	Top       int64                `json:"top"`
+	Baseline  int64                `json:"baseline"`
+	Advance   int64                `json:"advance"`
+	Width     int64                `json:"width"`
+	Fragments []CanvasTextFragment `json:"fragments"`
+}
+
+// CanvasTextPaint is the closed browser paint plan for one text component.
+// It deliberately carries no CSS, browser metric, or document-schema input.
+type CanvasTextPaint struct {
+	Overflow bool             `json:"overflow"`
+	Lines    []CanvasTextLine `json:"lines"`
+}
 
 // SnapToGrid is the reusable core-command seam for Story 5.7 placement.
 // It uses the fixed six-point grid and half-away-from-zero rule; callers pass
@@ -46,23 +74,24 @@ type CanvasComponent struct {
 	Resizable bool   `json:"resizable"`
 	// The following explicitly named optional values are the minimum committed
 	// property-panel projection. This is not a generic style or document bag.
-	Value         *string  `json:"value,omitempty"`
-	VisibleIf     *string  `json:"visibleIf,omitempty"`
-	FontFamily    *string  `json:"fontFamily,omitempty"`
-	FontSize      *int64   `json:"fontSize,omitempty"`
-	Bold          *bool    `json:"bold,omitempty"`
-	Italic        *bool    `json:"italic,omitempty"`
-	Align         *string  `json:"align,omitempty"`
-	Valign        *string  `json:"valign,omitempty"`
-	Background    *string  `json:"background,omitempty"`
-	BorderWidth   *int64   `json:"borderWidth,omitempty"`
-	BorderColor   *string  `json:"borderColor,omitempty"`
-	BorderEdges   []string `json:"borderEdges,omitempty"`
-	TableBind     *string  `json:"tableBind,omitempty"`
-	PaddingTop    *int64   `json:"paddingTop,omitempty"`
-	PaddingRight  *int64   `json:"paddingRight,omitempty"`
-	PaddingBottom *int64   `json:"paddingBottom,omitempty"`
-	PaddingLeft   *int64   `json:"paddingLeft,omitempty"`
+	Value         *string          `json:"value,omitempty"`
+	VisibleIf     *string          `json:"visibleIf,omitempty"`
+	FontFamily    *string          `json:"fontFamily,omitempty"`
+	FontSize      *int64           `json:"fontSize,omitempty"`
+	Bold          *bool            `json:"bold,omitempty"`
+	Italic        *bool            `json:"italic,omitempty"`
+	Align         *string          `json:"align,omitempty"`
+	Valign        *string          `json:"valign,omitempty"`
+	Background    *string          `json:"background,omitempty"`
+	BorderWidth   *int64           `json:"borderWidth,omitempty"`
+	BorderColor   *string          `json:"borderColor,omitempty"`
+	BorderEdges   []string         `json:"borderEdges,omitempty"`
+	TableBind     *string          `json:"tableBind,omitempty"`
+	PaddingTop    *int64           `json:"paddingTop,omitempty"`
+	PaddingRight  *int64           `json:"paddingRight,omitempty"`
+	PaddingBottom *int64           `json:"paddingBottom,omitempty"`
+	PaddingLeft   *int64           `json:"paddingLeft,omitempty"`
+	TextPaint     *CanvasTextPaint `json:"textPaint,omitempty"`
 }
 type CanvasProjection struct {
 	Width         int64             `json:"width"`
@@ -122,6 +151,141 @@ func Canvas(t *Template) (CanvasProjection, error) {
 		return CanvasProjection{}, err
 	}
 	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components}, nil
+}
+
+// CanvasWithTextPaint returns Canvas geometry augmented with a read-only,
+// production-parity text paint plan. It is session output only: it never
+// mutates the template or its canonical serialization.
+func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
+	projection, err := Canvas(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if err := addCanvasTextPaint(t, &projection, fs); err != nil {
+		return CanvasProjection{}, err
+	}
+	return projection, nil
+}
+
+func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) error {
+	components := make(map[string]*CanvasComponent, len(projection.Components))
+	for i := range projection.Components {
+		component := &projection.Components[i]
+		components[component.ID] = component
+	}
+	cache := newFontCache()
+	for _, band := range []struct {
+		name     string
+		elements []template.Element
+	}{
+		{"pageHeader", t.doc.Bands.PageHeader.Elements},
+		{"content", t.doc.Bands.Content.Elements},
+		{"pageFooter", t.doc.Bands.PageFooter.Elements},
+	} {
+		for _, element := range band.elements {
+			if element.Type != template.ElementText {
+				continue
+			}
+			component := components[string(element.ID)]
+			if component == nil || component.Band != band.name {
+				return fmt.Errorf("folio: canvas text component %q is missing from geometry projection", element.ID)
+			}
+			chain, err := fontChain(t, element)
+			if err != nil {
+				// Existing designer documents can be structurally valid while
+				// incomplete for production rendering (for example, a text
+				// component without a chosen font chain). They remain loadable;
+				// there is simply no honest measured paint to display yet.
+				component.TextPaint = &CanvasTextPaint{Lines: []CanvasTextLine{}}
+				continue
+			}
+			paint := &CanvasTextPaint{Lines: []CanvasTextLine{}}
+			if !element.Value.Set || element.Value.Null || element.Value.Value == "" {
+				component.TextPaint = paint
+				continue
+			}
+			fontSize := defaultFontSizePt
+			if element.Style.Set && !element.Style.Null && element.Style.Value.FontSize.Set && !element.Style.Value.FontSize.Null {
+				fontSize = element.Style.Value.FontSize.Value
+			}
+			segs, _, err := shapeSegments(string(element.ID), chain, element.Value.Value, fs, cache)
+			if err != nil {
+				return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+			}
+			atomic := atomicSpansFor(t.doc.UnbreakableValues, nil)
+			ops := text.Opportunities(text.Dictionary(), element.Value.Value, atomic)
+			boxWidth := geom.Length(0)
+			if element.Width.Set && !element.Width.Null {
+				boxWidth = element.Width.Value
+			}
+			lines := packLines(segs, ops, len([]rune(element.Value.Value)), fontSize, boxWidth)
+			if len(lines) > maxCanvasTextLines {
+				return fmt.Errorf("folio: canvas text element %s exceeds the line projection bound", element.ID)
+			}
+			_, paint.Overflow = detectWidthOverflow(string(element.ID), lines, boxWidth)
+			vm, err := chainVerticalModel(chain, fontSize, fs, cache)
+			if err != nil {
+				return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+			}
+			for i, line := range lines {
+				top, err := canvasLineTop(element.Y, i, vm.Advance)
+				if err != nil {
+					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				}
+				placed, err := positionSegments(segs, line.from, line.to, element.X, top, fontSize, vm.FirstBaseline, nil)
+				if err != nil {
+					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				}
+				baseline, err := canvasDerivedSum(top, vm.FirstBaseline)
+				if err != nil {
+					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				}
+				advance, err := canvasDerived("line advance", vm.Advance)
+				if err != nil {
+					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				}
+				width, err := canvasDerived("line width", line.width)
+				if err != nil {
+					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				}
+				paintLine := CanvasTextLine{Top: int64(top), Baseline: int64(baseline), Advance: int64(advance), Width: int64(width), Fragments: []CanvasTextFragment{}}
+				for _, fragment := range placed {
+					if len(fragment.text) > maxCanvasPropertyString || len(paintLine.Fragments) >= maxCanvasTextFragments {
+						return fmt.Errorf("folio: canvas text element %s exceeds the fragment projection bound", element.ID)
+					}
+					x, err := canvasDerived("fragment x", fragment.x)
+					if err != nil {
+						return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+					}
+					paintLine.Fragments = append(paintLine.Fragments, CanvasTextFragment{Text: fragment.text, X: int64(x)})
+				}
+				paint.Lines = append(paint.Lines, paintLine)
+			}
+			component.TextPaint = paint
+		}
+	}
+	return nil
+}
+
+func canvasDerived(name string, value geom.Length) (geom.Length, error) {
+	if value < 0 || value > geom.Length(MaxCanvasMillipoints) {
+		return 0, fmt.Errorf("%s exceeds the JavaScript-safe projection bound", name)
+	}
+	return value, nil
+}
+
+func canvasDerivedSum(left, right geom.Length) (geom.Length, error) {
+	if left < 0 || right < 0 || left > geom.Length(MaxCanvasMillipoints)-right {
+		return 0, fmt.Errorf("derived canvas coordinate exceeds the JavaScript-safe projection bound")
+	}
+	return left + right, nil
+}
+
+func canvasLineTop(elementY geom.Length, index int, advance geom.Length) (geom.Length, error) {
+	if index < 0 || advance < 0 || elementY < 0 || advance > 0 && geom.Length(index) > (geom.Length(MaxCanvasMillipoints)-elementY)/advance {
+		return 0, fmt.Errorf("derived canvas line origin exceeds the JavaScript-safe projection bound")
+	}
+	return canvasDerivedSum(elementY, geom.Length(index)*advance)
 }
 
 func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error) {

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import App from './App'
+import App, { placementPoint } from './App'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 
@@ -90,6 +90,12 @@ describe('application shell', () => {
     const [operation, payload] = request.mock.calls[0] as unknown as [string, ArrayBuffer]
     expect(operation).toBe('command')
     expect(new TextDecoder().decode(payload)).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
+  })
+
+  it('converts a local band pointer position through the shared display mapping before proposing placement', () => {
+    const localX = ['offset', 'X'].join('')
+    const localY = ['offset', 'Y'].join('')
+    expect(placementPoint({ [localX]: 120, [localY]: 40 } as unknown as MouseEvent, canvas.bands[1]!, 1)).toEqual({ x: 156, y: 96 })
   })
 
   it('keeps selection local and deletes one unambiguous selected component through Go', async () => {
@@ -234,6 +240,18 @@ describe('application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     expect(page.style.getPropertyValue('--page-display-width')).toBe('654.8036px')
     expect(page.style.getPropertyValue('--grid-display-pitch')).toBe('6.6px')
+  })
+
+  it('paints only pre-broken engine text lines without changing local document state', () => {
+    const textCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true, value: 'do not paint this value', textPaint: { overflow: false, lines: [{ top: 0, baseline: 12000, advance: 16000, width: 24000, fragments: [{ text: 'engine ', x: 0 }, { text: 'line', x: 16000 }] }] } }] }
+    const request = vi.fn()
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} />)
+    expect(screen.getByText('engine', { exact: true })).toBeInTheDocument()
+    expect(screen.getByText('line', { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText('do not paint this value')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('text component e1: engine line')).toBeInTheDocument()
+    expect(document.querySelector('.canvas-text-line')).toHaveStyle({ '--text-line-baseline': '12px', '--text-line-advance': '16px' })
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('retains literal empty drafts, announces the precise engine diagnostic, and ignores a stale Apply draft reset', async () => {
