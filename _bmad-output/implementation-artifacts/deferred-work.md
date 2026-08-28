@@ -1174,7 +1174,7 @@ gate assumed, not less.
 `buildShapedPDFRuns` opportunistically — neither Story 2.5's AC1 nor its Task 4 asked for it, and the
 developer was right not to attempt it.
 
-### DW-17 — Surfacing a returned `Diagnostic` to a human is a presented-interface obligation, not a Go call-graph one
+### DW-17 — Surfacing a returned `Diagnostic` to a human is a presented-interface obligation, not a Go call-graph one — **DISCHARGED by Stories 3.7, 5.12, and 6.6**
 - **Deferred by:** Story 2.8 (ruling D-2.8.5)
 - **Owners:** **Story 3.7** (the CLI must print the diagnostics it receives), **Story 5.12**
   ("Diagnostics that locate and an interface that can be driven"), **Story 6.6** ("Present a failed
@@ -1266,6 +1266,17 @@ is discharged**: `folio-go/cmd/folio/main.go`'s `printDiagnostics`, tested in
 case and its negative control — a clean render prints nothing). **Story 5.12 and Story 6.6 inherit
 the coalesced, first-occurrence-ordered form as a property of the `Diagnostic` slice itself** — they
 owe only their OWN presentation of it, never a re-decision of its granularity.
+
+**DISCHARGED at the Epic 6 boundary (2026-08-29).** All three presentation owners have landed and
+the boundary re-ran their executable evidence. The CLI prints returned diagnostics on stderr;
+Preview presents successful-render warnings from the engine's closed diagnostic array with code,
+message, element/path location, live announcement, dismiss and locate behavior; and rejected producer
+renders use the distinct failure card with preserved code/message/location, Retry, and return-to-canvas
+behavior. Viewer, identity, serialization, lifecycle and cancellation-adjacent failures are explicitly
+excluded from producer-render provenance. Story 6.7's dynamic registry census executes every registered
+warning and error through its production path. The designer unit suite exercises warning presentation,
+and the real Chromium suite exercises the located `BINDING_PATH_ABSENT` render failure. No presenter
+re-coalesces or reclassifies the engine's diagnostic list.
 
 ### DW-18 — `Severity`'s zero value is a VALID severity, so no test can prove the field was ever explicitly set — **RETIRED by Story 3.6 (AC6, R10)**
 - **Retired at:** Story 3.6. `severityUnset Severity = iota` now precedes `SeverityWarning` in

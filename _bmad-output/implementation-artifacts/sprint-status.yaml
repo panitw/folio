@@ -116,7 +116,7 @@ development_status:
   5-12-diagnostics-that-locate-and-an-interface-that-can-be-driven: done
   epic-5-retrospective: optional
 
-  epic-6: in-progress
+  epic-6: done
   6-1-load-sample-data-and-browse-its-paths: done
   6-2-bind-a-component-by-picking-a-path: done
   6-3-supply-parameters-for-preview: done
