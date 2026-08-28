@@ -31,14 +31,14 @@ describe('DESIGN.md token contract', () => {
     }
     expect(css).toContain('--type-page-eyebrow:')
     expect(css).toContain('--type-page-fine:')
-    expect(css).toContain("font-family: 'IBM Plex Sans'")
+    expect(css).toContain("@import './generated/runtime-fonts.css'")
   })
 
   it('pins package, lockfile, and strict compiler metadata independently', () => {
     const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'))
     const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'))
     const compiler = fs.readFileSync(path.resolve(sourceDir, '../tsconfig.app.json'), 'utf8')
-    expect(pkg.engines.node).toBe('^20.19.0 || >=22.12.0')
+    expect(pkg.engines.node).toBe('24.16.0')
     expect(pkg.dependencies.react).toBe('19.2.0')
     expect(pkg.dependencies['react-dom']).toBe('19.2.0')
     expect(pkg.devDependencies.vite).toBe('7.3.6')

@@ -3,6 +3,7 @@
 import { ENGINE_PROTOCOL_VERSION, type EngineError, type EngineRequest, type EngineSnapshot } from './engine-protocol'
 import { EngineRequestAdmission } from './engine-worker-admission'
 import { EngineWorkerQueue } from './engine-worker-queue'
+import { runtimeAssetUrls } from './generated/offline-assets'
 
 declare const Go: new () => { importObject: WebAssembly.Imports; run(instance: WebAssembly.Instance): void }
 
@@ -29,9 +30,9 @@ function lifecycle(state: 'ready' | 'failed', error?: EngineError) {
 
 async function boot(): Promise<void> {
   try {
-    importScripts('/wasm/wasm_exec.js')
+    importScripts(runtimeAssetUrls.wasmExec)
     const go = new Go()
-    const result = await WebAssembly.instantiateStreaming(fetch('/wasm/folio-engine.wasm'), go.importObject)
+    const result = await WebAssembly.instantiateStreaming(fetch(runtimeAssetUrls.wasm), go.importObject)
     go.run(result.instance)
     const candidate = (globalThis as typeof globalThis & { FolioWasmHost?: WasmHost }).FolioWasmHost
     if (!candidate) throw new Error('wasm host did not register')

@@ -1,6 +1,4 @@
-@font-face { font-family: 'IBM Plex Sans'; src: url('/fonts/notosans/NotoSans-Regular.ttf') format('truetype'); font-display: swap; }
-@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/notosanssc/NotoSansSC-Regular.ttf') format('truetype'); font-display: swap; }
-@font-face { font-family: 'IBM Plex Sans Thai'; src: url('/fonts/notosansthai/NotoSansThai-Regular.ttf') format('truetype'); font-display: swap; }
+@import './generated/runtime-fonts.css';
 
 :root {
   --color-ground: #0D0F12; --color-ground-preview: #0A0C0E; --color-base: #15181C; --color-panel: #1A1E23; --color-raised: #22272D; --color-active: #2A3037; --color-row-focus: #1D2228;

@@ -50,7 +50,7 @@ describe('engine ownership structure', () => {
   it('keeps exactly one wasm instantiation, in the dedicated worker entry, across every production module', () => {
     const scan = scanOwnership(sources())
     expect(scan.wasmInstances).toEqual(['engine.worker.ts'])
-    expect(fs.readFileSync(path.join(sourceDir, 'engine.worker.ts'), 'utf8')).toContain("importScripts('/wasm/wasm_exec.js')")
+    expect(fs.readFileSync(path.join(sourceDir, 'engine.worker.ts'), 'utf8')).toContain('importScripts(runtimeAssetUrls.wasmExec)')
   })
 
   it('does not mirror the .folio document schema in production TypeScript', () => {
@@ -60,7 +60,7 @@ describe('engine ownership structure', () => {
   it('keeps main-thread engine messaging in the one client module', () => {
     const offenders = productionFiles.filter((file) => {
       const name = path.basename(file)
-      return name !== 'engine-client.ts' && name !== 'engine.worker.ts' && /\.postMessage\s*\(/.test(fs.readFileSync(file, 'utf8'))
+      return name !== 'engine-client.ts' && name !== 'engine.worker.ts' && name !== 'offline-lifecycle.ts' && /\.postMessage\s*\(/.test(fs.readFileSync(file, 'utf8'))
     })
     expect(offenders).toEqual([])
   })

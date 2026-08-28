@@ -10,6 +10,7 @@ import (
 	"syscall/js"
 
 	folio "github.com/panitw/folio/folio-go"
+	"github.com/panitw/folio/folio-go/internal/text"
 	"github.com/panitw/folio/folio-go/wasm"
 )
 
@@ -21,13 +22,14 @@ type request struct {
 }
 
 type response struct {
-	OK             bool          `json:"ok"`
-	Snapshot       wasm.Snapshot `json:"snapshot,omitempty"`
-	BytesBase64    string        `json:"bytesBase64,omitempty"`
-	DiagnosticCode string        `json:"diagnosticCode,omitempty"`
-	Message        string        `json:"message,omitempty"`
-	ElementID      string        `json:"elementId,omitempty"`
-	DataPath       string        `json:"dataPath,omitempty"`
+	OK               bool          `json:"ok"`
+	Snapshot         wasm.Snapshot `json:"snapshot,omitempty"`
+	BytesBase64      string        `json:"bytesBase64,omitempty"`
+	DiagnosticCode   string        `json:"diagnosticCode,omitempty"`
+	Message          string        `json:"message,omitempty"`
+	ElementID        string        `json:"elementId,omitempty"`
+	DataPath         string        `json:"dataPath,omitempty"`
+	DictionarySHA256 string        `json:"dictionarySha256,omitempty"`
 }
 
 func main() {
@@ -55,6 +57,8 @@ func dispatch(engine *wasm.Engine, in request) response {
 		return base64.StdEncoding.DecodeString(in.PayloadBase64)
 	}
 	switch in.Operation {
+	case "offline-audit":
+		return response{OK: true, DictionarySHA256: text.DictionarySHA256()}
 	case "initialize", "load":
 		payload, err := decode()
 		if err != nil {

@@ -65,6 +65,9 @@ folio-go/.matrix-build/
 # ── WASM build output ─────────────────────────────────────────────
 *.wasm
 wasm_exec.js
+folio-designer/src/generated/runtime/
+folio-designer/src/generated/offline-assets.ts
+folio-designer/src/generated/runtime-fonts.css
 
 # ── Rendering / test output ───────────────────────────────────────
 tmp/

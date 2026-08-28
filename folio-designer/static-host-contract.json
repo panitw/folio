@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "scope": "Reference static-host contract; Folio does not operate a host.",
+  "immutableRuntime": {
+    "urlPrefix": "/assets/",
+    "sidecarSuffix": ".br",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable"
+  },
+  "updateableEntries": [
+    { "url": "/index.html", "cacheControl": "no-cache" },
+    { "url": "/sw.js", "cacheControl": "no-cache" }
+  ]
+}

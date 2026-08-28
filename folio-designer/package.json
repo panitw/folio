@@ -4,15 +4,20 @@
   "version": "0.0.0",
   "type": "module",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "24.16.0"
   },
   "scripts": {
     "dev": "vite",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "build": "npm run build:wasm && tsc -b && vite build",
-    "typecheck": "tsc -b",
+    "build:offline": "node scripts/generate-offline-release.mjs",
+    "verify:offline": "node scripts/verify-offline-release.mjs",
+    "verify:offline:wasm": "node scripts/verify-offline-release.mjs --wasm-witness",
+    "verify:offline:red": "node scripts/verify-offline-release.mjs --red-proof",
+    "verify:offline:red:controls": "node scripts/verify-offline-release.mjs --red-only",
+    "build": "npm run build:wasm && tsc -b && vite build && npm run build:offline && npm run verify:offline",
+    "typecheck": "npm run build:wasm && tsc -b",
     "lint": "oxlint",
-    "test": "vitest run",
+    "test": "npm run build:wasm && vitest run",
     "test:e2e:compile": "tsc -p tsconfig.e2e.json --noEmit",
     "test:e2e": "playwright test",
     "preview": "vite preview"

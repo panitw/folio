@@ -1,7 +1,9 @@
 package text
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"sync"
 )
 
@@ -32,4 +34,12 @@ func Dictionary() *BytesTrie {
 		dict = DecodeBytesTrie(compiledTrie)
 	})
 	return dict
+}
+
+// DictionarySHA256 is a bounded audit witness for the exact embedded trie.
+// It exposes no dictionary entries and lets the offline release verifier ask
+// the emitted js/wasm engine which compiled representation it actually uses.
+func DictionarySHA256() string {
+	sum := sha256.Sum256(compiledTrie)
+	return hex.EncodeToString(sum[:])
 }
