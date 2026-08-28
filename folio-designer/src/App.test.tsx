@@ -252,4 +252,36 @@ describe('application shell', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('page.margin.top: must not be negative'))
     expect(top).toHaveValue('')
   })
+
+  it('keeps component drafts local, sends exactly one Enter/Blur commit, and locates a Go diagnostic', async () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', fontFamily: 'body', fontSize: 12_000, borderEdges: ['bottom' as const] }] }
+    const request = vi.fn((operation: string) => operation === 'command' ? Promise.reject(Object.assign(new Error('must fit the content band'), { elementId: 'e1', dataPath: 'component.x' })) : Promise.resolve({ snapshot: snapshot(1) }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const x = screen.getByRole('textbox', { name: 'X (pt)' })
+    fireEvent.change(x, { target: { value: '9999' } })
+    expect(request).not.toHaveBeenCalled()
+    fireEvent.keyDown(x, { key: 'Enter' })
+    fireEvent.blur(x)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('e1: component.x: must fit the content band'))
+    expect(x).toHaveValue('9999')
+    expect(x).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('keeps a newer property draft through an unrelated successful snapshot and exposes table truth', async () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }, { id: 'e2', type: 'table' as const, band: 'content' as const, x: 0, y: 30_000, width: 72_000, height: 12_000, resizable: false, tableBind: 'transactions[]' }] }
+    let resolve: ((value: { snapshot: { documentState: 'loaded'; revision: number; byteLength: number; canvas: typeof componentCanvas } }) => void) | undefined
+    const request = vi.fn((operation: string) => operation === 'command' ? new Promise<{ snapshot: { documentState: 'loaded'; revision: number; byteLength: number; canvas: typeof componentCanvas } }>((done) => { resolve = done }) : Promise.resolve({ snapshot: snapshot(1) }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const value = screen.getByRole('textbox', { name: 'Text value' })
+    fireEvent.change(value, { target: { value: 'newer literal' } })
+    fireEvent.keyDown(value, { key: 'Enter' })
+    resolve!({ snapshot: { documentState: 'loaded', revision: 2, byteLength: 3, canvas: componentCanvas } })
+    await waitFor(() => expect(value).toHaveValue('newer literal'))
+    fireEvent.click(screen.getByLabelText('table component e2'))
+    expect(screen.queryByRole('textbox', { name: 'Width (pt)' })).not.toBeInTheDocument()
+    expect(screen.getByText('Table binding: transactions[] (display only)')).toBeInTheDocument()
+  })
 })

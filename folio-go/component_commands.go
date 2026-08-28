@@ -53,9 +53,417 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return resizeComponent(t, raw)
 	case "deleteComponent":
 		return deleteComponent(t, raw)
+	case "updateComponentProperties":
+		return updateComponentProperties(t, raw)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
+}
+
+// updateComponentProperties is deliberately a small closed mutation language.
+// It applies the supplied changes to every named component as one candidate;
+// the engine's serialize/reparse transaction makes the update atomic.
+func updateComponentProperties(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	before, err := SerializeTemplate(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	working, err := ParseTemplate(before)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	projection, err := updateComponentPropertiesInPlace(working, raw)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	// Keep the public helper transactional too. wasm.Apply uses a fresh clone,
+	// but direct callers must receive the same no-partial-mutation guarantee.
+	canonical, err := SerializeTemplate(working)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	installed, err := ParseTemplate(canonical)
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "component.changes", "component properties did not pass format validation")
+	}
+	t.doc, t.derivedFooters = installed.doc, installed.derivedFooters
+	return projection, nil
+}
+
+func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	idsRaw, ok := raw["ids"]
+	if !ok {
+		return CanvasProjection{}, componentFailure("", "component.ids", "component ids are required")
+	}
+	var ids []string
+	if json.Unmarshal(idsRaw, &ids) != nil || len(ids) == 0 {
+		return CanvasProjection{}, componentFailure("", "component.ids", "component ids must be a non-empty string array")
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			return CanvasProjection{}, componentFailure(id, "component.ids", "component ids must be unique non-empty strings")
+		}
+		seen[id] = true
+	}
+	changesRaw, ok := raw["changes"]
+	if !ok {
+		return CanvasProjection{}, componentFailure("", "component.changes", "component changes are required")
+	}
+	var changes map[string]json.RawMessage
+	if json.Unmarshal(changesRaw, &changes) != nil || len(changes) == 0 {
+		return CanvasProjection{}, componentFailure("", "component.changes", "component changes must be a non-empty object")
+	}
+	if len(ids) > 1 {
+		if _, ok := changes["value"]; ok {
+			return CanvasProjection{}, componentFailure("", "component.value", "text value cannot be edited across a selection")
+		}
+	}
+	for _, id := range ids {
+		_, band, _, element, err := findComponent(t, id)
+		if err != nil {
+			return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
+		}
+		if err := applyPropertyChanges(t, element, changes); err != nil {
+			return CanvasProjection{}, componentFailure(id, "component."+propertyPath(changes), err.Error())
+		}
+		width, height := projectedSize(*element)
+		if err := containComponent(band, element.X, element.Y, width, height); err != nil {
+			return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
+		}
+	}
+	return Canvas(t)
+}
+
+func propertyPath(changes map[string]json.RawMessage) string {
+	// This is a fixed command vocabulary, so use its canonical order rather
+	// than ranging a map (diagnostic location must be repeatable too).
+	for _, key := range []string{"x", "y", "width", "height", "value", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+		if _, ok := changes[key]; ok {
+			return key
+		}
+	}
+	return "changes"
+}
+
+func propertyChange(raw json.RawMessage) (string, json.RawMessage, error) {
+	var value map[string]json.RawMessage
+	if json.Unmarshal(raw, &value) != nil || (len(value) != 1 && len(value) != 2) {
+		return "", nil, fmt.Errorf("property change must be an operation object")
+	}
+	op, ok := value["op"]
+	var operation string
+	if !ok || json.Unmarshal(op, &operation) != nil || (operation != "set" && operation != "clear" && operation != "null") {
+		return "", nil, fmt.Errorf("property operation must be set, clear, or null")
+	}
+	if operation == "clear" || operation == "null" {
+		if len(value) != 1 {
+			return "", nil, fmt.Errorf("clear property operation cannot carry a value")
+		}
+		return operation, nil, nil
+	}
+	v, ok := value["value"]
+	if !ok || len(value) != 2 {
+		return "", nil, fmt.Errorf("set property operation requires exactly one value")
+	}
+	return operation, v, nil
+}
+
+func propertyString(raw json.RawMessage) (string, error) {
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return "", fmt.Errorf("property value must be a string")
+	}
+	return value, nil
+}
+func propertyBool(raw json.RawMessage) (bool, error) {
+	var value bool
+	if json.Unmarshal(raw, &value) != nil {
+		return false, fmt.Errorf("property value must be a boolean")
+	}
+	return value, nil
+}
+func propertyLength(raw json.RawMessage, key string) (geom.Length, error) {
+	return lengthField(map[string]json.RawMessage{key: raw}, key)
+}
+func styleFor(element *template.Element) *template.Style {
+	if !element.Style.Set || element.Style.Null {
+		element.Style = template.Presence[template.Style]{Set: true}
+	}
+	return &element.Style.Value
+}
+
+func applyPropertyChanges(t *Template, element *template.Element, changes map[string]json.RawMessage) error {
+	allowed := map[string]bool{"x": true, "y": true, "visibleIf": true}
+	propertyOrder := []string{"x", "y", "width", "height", "value", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
+	if element.Type != template.ElementTable {
+		allowed["width"], allowed["height"] = true, true
+	}
+	if element.Type == template.ElementText {
+		allowed["value"] = true
+	}
+	if element.Type == template.ElementText || element.Type == template.ElementImage || element.Type == template.ElementTable || element.Type == template.ElementLine || element.Type == template.ElementRect {
+		for _, key := range []string{"background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+			allowed[key] = true
+		}
+	}
+	if element.Type == template.ElementText || element.Type == template.ElementTable {
+		for _, key := range []string{"fontFamily", "fontSize", "bold", "italic", "align", "valign"} {
+			allowed[key] = true
+		}
+	}
+	known := 0
+	for _, key := range propertyOrder {
+		if _, ok := changes[key]; ok {
+			known++
+		}
+	}
+	if known != len(changes) {
+		return fmt.Errorf("property is not editable")
+	}
+	for _, key := range propertyOrder {
+		change, present := changes[key]
+		if !present {
+			continue
+		}
+		if !allowed[key] {
+			return fmt.Errorf("property %s is not editable for %s", key, element.Type)
+		}
+		op, value, err := propertyChange(change)
+		if err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		clear := op == "clear"
+		setNull := op == "null"
+		switch key {
+		case "x", "y", "width", "height", "fontSize", "borderWidth", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft":
+			if setNull {
+				return fmt.Errorf("%s does not support null", key)
+			}
+			if clear && (key == "x" || key == "y" || key == "width" || key == "height") {
+				return fmt.Errorf("%s cannot be cleared", key)
+			}
+			var length geom.Length
+			if !clear {
+				length, err = propertyLength(value, key)
+				if err != nil {
+					return fmt.Errorf("%s: %w", key, err)
+				}
+				if (key == "width" || key == "height" || key == "fontSize" || key == "borderWidth") && length <= 0 {
+					return fmt.Errorf("%s must be positive", key)
+				}
+				if stringsContainsPlaceholder(string(value)) {
+					return fmt.Errorf("%s must not contain a placeholder", key)
+				}
+			}
+			switch key {
+			case "x":
+				element.X = length
+			case "y":
+				element.Y = length
+			case "width":
+				element.Width = template.Presence[geom.Length]{Set: true, Value: length}
+			case "height":
+				element.Height = template.Presence[geom.Length]{Set: true, Value: length}
+			case "fontSize":
+				st := styleFor(element)
+				if clear {
+					st.FontSize = template.Presence[geom.Length]{}
+				} else {
+					st.FontSize = template.Presence[geom.Length]{Set: true, Value: length}
+				}
+			case "borderWidth":
+				st := styleFor(element)
+				if !st.Border.Set || st.Border.Null {
+					st.Border = template.Presence[template.Border]{Set: true}
+				}
+				if clear {
+					st.Border.Value.Width = template.Presence[geom.Length]{}
+				} else {
+					st.Border.Value.Width = template.Presence[geom.Length]{Set: true, Value: length}
+				}
+			default:
+				st := styleFor(element)
+				if !st.Padding.Set || st.Padding.Null {
+					st.Padding = template.Presence[template.Padding]{Set: true}
+				}
+				target := map[string]*template.Presence[geom.Length]{"paddingTop": &st.Padding.Value.Top, "paddingRight": &st.Padding.Value.Right, "paddingBottom": &st.Padding.Value.Bottom, "paddingLeft": &st.Padding.Value.Left}[key]
+				if clear {
+					*target = template.Presence[geom.Length]{}
+				} else {
+					*target = template.Presence[geom.Length]{Set: true, Value: length}
+				}
+			}
+		case "value", "visibleIf", "fontFamily", "align", "valign", "background", "borderColor":
+			var text string
+			if !clear && !setNull {
+				text, err = propertyString(value)
+				if err != nil {
+					return fmt.Errorf("%s: %w", key, err)
+				}
+				if key != "value" && stringsContainsPlaceholder(text) {
+					return fmt.Errorf("%s must not contain a placeholder", key)
+				}
+			}
+			switch key {
+			case "value":
+				if clear || setNull {
+					return fmt.Errorf("value cannot be cleared")
+				}
+				element.Value = template.Presence[string]{Set: true, Value: text}
+			case "visibleIf":
+				if clear {
+					element.VisibleIf = template.Presence[string]{}
+				} else if setNull {
+					element.VisibleIf = template.Presence[string]{Set: true, Null: true}
+				} else {
+					element.VisibleIf = template.Presence[string]{Set: true, Value: text}
+				}
+			case "fontFamily":
+				if setNull {
+					return fmt.Errorf("fontFamily does not support null")
+				}
+				if !clear && !knownFontFamily(t, text) {
+					return fmt.Errorf("fontFamily must name a declared non-empty font chain")
+				}
+				st := styleFor(element)
+				if clear {
+					st.FontFamily = template.Presence[string]{}
+				} else {
+					st.FontFamily = template.Presence[string]{Set: true, Value: text}
+				}
+			case "align":
+				if setNull {
+					return fmt.Errorf("align does not support null")
+				}
+				st := styleFor(element)
+				if clear {
+					st.Align = template.Presence[string]{}
+				} else {
+					st.Align = template.Presence[string]{Set: true, Value: text}
+				}
+			case "valign":
+				if setNull {
+					return fmt.Errorf("valign does not support null")
+				}
+				st := styleFor(element)
+				if clear {
+					st.Valign = template.Presence[string]{}
+				} else {
+					st.Valign = template.Presence[string]{Set: true, Value: text}
+				}
+			case "background":
+				st := styleFor(element)
+				if clear {
+					st.Background = template.Presence[string]{}
+				} else if setNull {
+					st.Background = template.Presence[string]{Set: true, Null: true}
+				} else if !validPropertyColor(text) {
+					return fmt.Errorf("background must be a #RRGGBB colour")
+				} else {
+					st.Background = template.Presence[string]{Set: true, Value: text}
+				}
+			case "borderColor":
+				if setNull {
+					return fmt.Errorf("borderColor does not support null")
+				}
+				if !clear && !validPropertyColor(text) {
+					return fmt.Errorf("borderColor must be a #RRGGBB colour")
+				}
+				st := styleFor(element)
+				if !st.Border.Set || st.Border.Null {
+					st.Border = template.Presence[template.Border]{Set: true}
+				}
+				if clear {
+					st.Border.Value.Color = template.Presence[string]{}
+				} else {
+					st.Border.Value.Color = template.Presence[string]{Set: true, Value: text}
+				}
+			}
+		case "bold", "italic":
+			if setNull {
+				return fmt.Errorf("%s does not support null", key)
+			}
+			if clear {
+				if key == "bold" {
+					styleFor(element).Bold = template.Presence[bool]{}
+				} else {
+					styleFor(element).Italic = template.Presence[bool]{}
+				}
+				continue
+			}
+			flag, err := propertyBool(value)
+			if err != nil {
+				return fmt.Errorf("%s: %w", key, err)
+			}
+			if key == "bold" {
+				styleFor(element).Bold = template.Presence[bool]{Set: true, Value: flag}
+			} else {
+				styleFor(element).Italic = template.Presence[bool]{Set: true, Value: flag}
+			}
+		case "borderEdges":
+			if setNull {
+				return fmt.Errorf("borderEdges does not support null")
+			}
+			if clear {
+				st := styleFor(element)
+				if st.Border.Set && !st.Border.Null {
+					st.Border.Value.Edges = template.Presence[[]string]{}
+				}
+				continue
+			}
+			var edges []string
+			if json.Unmarshal(value, &edges) != nil || len(edges) == 0 {
+				return fmt.Errorf("borderEdges must be a non-empty string array")
+			}
+			st := styleFor(element)
+			if !st.Border.Set || st.Border.Null {
+				st.Border = template.Presence[template.Border]{Set: true}
+			}
+			st.Border.Value.Edges = template.Presence[[]string]{Set: true, Value: edges}
+		}
+	}
+	cleanupEmptyStyle(element)
+	return nil
+}
+
+func validPropertyColor(value string) bool {
+	_, ok := parseHexColor(value)
+	return ok
+}
+
+func knownFontFamily(t *Template, value string) bool {
+	chain, ok := t.doc.Fonts[value]
+	return ok && len(chain) > 0
+}
+
+func cleanupEmptyStyle(element *template.Element) {
+	if !element.Style.Set || element.Style.Null {
+		return
+	}
+	style := &element.Style.Value
+	if style.Border.Set && !style.Border.Null {
+		border := style.Border.Value
+		if !border.Color.Set && !border.Width.Set && !border.Edges.Set && len(border.Extra) == 0 {
+			style.Border = template.Presence[template.Border]{}
+		}
+	}
+	if style.Padding.Set && !style.Padding.Null {
+		padding := style.Padding.Value
+		if !padding.Top.Set && !padding.Right.Set && !padding.Bottom.Set && !padding.Left.Set && len(padding.Extra) == 0 {
+			style.Padding = template.Presence[template.Padding]{}
+		}
+	}
+	if !style.Align.Set && !style.Background.Set && !style.Bold.Set && !style.Italic.Set && !style.Border.Set && !style.FontFamily.Set && !style.FontSize.Set && !style.Padding.Set && !style.Valign.Set && len(style.Extra) == 0 {
+		element.Style = template.Presence[template.Style]{}
+	}
+}
+
+func stringsContainsPlaceholder(value string) bool {
+	return bytes.Contains([]byte(value), []byte("{{")) || bytes.Contains([]byte(value), []byte("}}"))
 }
 
 func componentFields(raw map[string]json.RawMessage, want int) error {

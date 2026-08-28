@@ -116,3 +116,30 @@ func TestEnginePageSetupRevisionAndProjectionChangeTogether(t *testing.T) {
 		t.Fatalf("page setup snapshot = %#v", after)
 	}
 }
+
+func TestEnginePropertyBatchAdvancesOneRevisionOrLeavesEverythingUntouched(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	before, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := engine.Apply([]byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1","e5"],"changes":{"y":{"op":"set","value":12}}}`))
+	if err != nil || after.Revision != before.Revision+1 || after.Canvas == nil {
+		t.Fatalf("property batch = %#v, %v", after, err)
+	}
+	bytesBeforeFailure, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1","missing"],"changes":{"y":{"op":"set","value":18}}}`)); err == nil {
+		t.Fatal("bad target unexpectedly succeeded")
+	}
+	bytesAfterFailure, snapshotAfterFailure, err := engine.Serialize()
+	if err != nil || snapshotAfterFailure.Revision != after.Revision || !bytes.Equal(bytesBeforeFailure, bytesAfterFailure) {
+		t.Fatal("rejected property batch changed engine state")
+	}
+}

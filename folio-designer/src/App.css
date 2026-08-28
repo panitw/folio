@@ -53,6 +53,8 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .property-field { display: flex; justify-content: space-between; align-items: center; min-height: 28px; margin-bottom: var(--space-3); padding: var(--space-1) var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); }
 .property-field span { color: var(--color-ink); font: var(--type-mono); }
 .property-field code { color: var(--color-ink-high); font: var(--type-mono-em); }
+.property-editor input { border-radius: var(--radius-default); }
+.property-toggle { width: 100%; margin-bottom: var(--space-3); border-radius: var(--radius-default); text-align: left; }
 .status-bar { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-5); border-top: var(--hairline) solid var(--color-line); background: var(--color-panel); color: var(--color-ink); font: var(--type-mono); }
 .status-bar code { color: var(--color-ink); font: inherit; }
 .status-spacer { flex: 1; }

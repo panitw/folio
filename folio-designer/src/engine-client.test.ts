@@ -94,6 +94,15 @@ describe('engine client protocol and lifecycle', () => {
     expect(worker.terminated).toBe(0)
   })
 
+  it('preserves bounded component diagnostic location on a command rejection', async () => {
+    const worker = new FakeWorker()
+    const client = new EngineClient(worker)
+    worker.ready()
+    const pending = client.request('command', new Uint8Array([1]).buffer)
+    worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: false, error: { code: 'COMPONENT_INVALID', message: 'bad x', elementId: 'e1', dataPath: 'component.x' } })
+    await expect(pending).rejects.toMatchObject({ code: 'COMPONENT_INVALID', elementId: 'e1', dataPath: 'component.x', message: 'bad x' })
+  })
+
   it('rejects singleton startup failure and clears listeners on every terminal state', async () => {
     const worker = new FakeWorker()
     const getClient = createEngineClientSingleton(() => worker)

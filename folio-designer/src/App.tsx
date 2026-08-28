@@ -9,6 +9,7 @@ import { LoadScreen } from './LoadScreen'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { deleteComponentCommand, dropComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
+import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 
@@ -21,6 +22,7 @@ type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; initi
 export default function App({ engine, fileAccess, initialSnapshot, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [commitError, setCommitError] = useState<string>()
+  const [propertyError, setPropertyError] = useState<PropertyCommitError>()
   const [fileError, setFileError] = useState<string>()
   const [fileStatus, setFileStatus] = useState<string>()
   const [fileBusy, setFileBusy] = useState(false)
@@ -40,6 +42,10 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const snapshotRef = useRef(snapshot)
   const saveInFlight = useRef(false)
   const draftGeneration = useRef(0)
+  const documentGeneration = useRef(0)
+  const [documentGenerationValue, setDocumentGenerationValue] = useState(0)
+  const selectedRef = useRef(selected)
+  useEffect(() => { selectedRef.current = selected }, [selected])
   const canvas = snapshot?.canvas
   const clearInteraction = () => { setPlacing(undefined); setHoverBand(undefined); setDrag(undefined) }
   const commitComponent = async (payload: ArrayBuffer, after?: () => void) => {
@@ -65,8 +71,26 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
       setCurrentSnapshot(result.snapshot, draftGeneration.current !== requestGeneration)
     } catch (error) { setCommitError(pageSetupDiagnostic(error)) }
   }
+  const applyProperties = async (ids: ReadonlyArray<string>, intent: PropertyIntent, responseGeneration: number, selectionKey: string): Promise<CanvasProjection | undefined> => {
+    if (!engine || fileBusy) return undefined
+    setCommitError(undefined)
+    setPropertyError(undefined)
+    try {
+      const result = await engine.request('command', updateComponentPropertiesCommand(ids, intent))
+      // A command result is authoritative only if it advances this snapshot;
+      // field drafts independently ignore a response from a replaced scope.
+      if ((snapshotRef.current?.revision ?? -1) < result.snapshot.revision) setCurrentSnapshot(result.snapshot)
+      return documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey ? result.snapshot.canvas : undefined
+    } catch (error) {
+      if (documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) {
+        const diagnostic = componentDiagnosticDetail(error)
+        setPropertyError({ field: intent.field, selectionKey, ...diagnostic })
+      }
+      return undefined
+    }
+  }
 
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); if (clearDocumentInteraction) { setSelected([]); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); if (clearDocumentInteraction) { documentGeneration.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const open = async () => {
@@ -161,11 +185,72 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}
       </main>
-      <aside className="properties-panel" aria-label="Properties panel"><p className="section-label">PAGE SETUP</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => setPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => setOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => updateDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => updateDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => updateDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => updateDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => updateDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => updateDraft('left', value)}/><button type="button" className="file-button" onClick={() => void applyPageSetup()} disabled={!canvas || fileBusy}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences. Undo and redo arrive later.</p></aside>
+      <aside className="properties-panel" aria-label="Properties panel">{selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>DESIGN MODE</code></footer>
   </div>
 }
+
+function PageSetup({ preset, orientation, draft, onPreset, onOrientation, onDraft, onApply, disabled }: { preset: string; orientation: string; draft: Draft; onPreset: (value: string) => void; onOrientation: (value: string) => void; onDraft: (key: keyof Draft, value: string) => void; onApply: () => void; disabled: boolean }) {
+  return <><p className="section-label">PAGE SETUP</p><p className="honest-note">Component properties require a selection.</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => onPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => onOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => onDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => onDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => onDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => onDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => onDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => onDraft('left', value)}/><button type="button" className="file-button" onClick={onApply} disabled={disabled}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences. Undo and redo arrive later.</p></>
+}
+
+type PanelComponent = CanvasProjection['components'][number]
+type PropertyCommitError = Readonly<{ field: PropertyField; selectionKey: string; elementId?: string; dataPath?: string; message: string }>
+type CommitProperties = (ids: ReadonlyArray<string>, intent: PropertyIntent, generation: number, key: string) => Promise<CanvasProjection | undefined>
+const baseFields: ReadonlyArray<readonly [PropertyField, string]> = [['x', 'X (pt)'], ['y', 'Y (pt)'], ['visibleIf', 'Visible if']]
+const styleFields: ReadonlyArray<readonly [PropertyField, string]> = [['background', 'Background'], ['borderWidth', 'Border width (pt)'], ['borderColor', 'Border colour'], ['paddingTop', 'Padding top (pt)'], ['paddingRight', 'Padding right (pt)'], ['paddingBottom', 'Padding bottom (pt)'], ['paddingLeft', 'Padding left (pt)']]
+const typographyFields: ReadonlyArray<readonly [PropertyField, string]> = [['fontFamily', 'Font family'], ['fontSize', 'Font size (pt)'], ['align', 'Align'], ['valign', 'Vertical align']]
+function ComponentProperties({ components, onCommit, documentGeneration, propertyError }: { components: ReadonlyArray<PanelComponent>; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError }) {
+  const ids = components.map((component) => component.id)
+  const types = new Set(components.map((component) => component.type))
+  const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
+  const fields: Array<readonly [PropertyField, string]> = [...baseFields]
+  if (all((type) => type !== 'table')) fields.splice(2, 0, ['width', 'Width (pt)'], ['height', 'Height (pt)'])
+  if (components.length === 1 && types.has('text')) fields.push(['value', 'Text value'])
+  if (all((type) => type === 'text' || type === 'table')) fields.push(...typographyFields)
+  fields.push(...styleFields)
+  const scopedError = propertyError?.selectionKey === ids.join(',') ? propertyError : undefined
+  return <><p className="section-label">{components.length === 1 ? 'COMPONENT' : 'COMPONENTS'}</p><p className="panel-heading">{components.length === 1 ? `${components[0]!.id} · ${components[0]!.type}` : `${components.length} selected`}</p>{fields.map(([field, label]) => <PropertyDraft key={field} label={label} field={field} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === field ? scopedError : undefined} />)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} />}{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} />}{components.length === 1 && components[0]!.type === 'table' && <p className="honest-note">Table binding: {components[0]!.tableBind ?? 'Not set'} (display only)</p>}<p className="honest-note">{types.has('table') ? 'Table size, binding, columns, and header style are not editable here; table geometry is derived.' : 'Only committed engine values are shown. Asset import and arbitrary CSS are not editable here.'}</p></>
+}
+
+function committedValue(component: PanelComponent, field: PropertyField): string | undefined {
+  const value = component[field as keyof PanelComponent]
+  if (typeof value === 'number') return points(value)
+  return typeof value === 'string' ? value : undefined
+}
+function PropertyDraft({ label, field, components, ids, onCommit, documentGeneration, error }: { label: string; field: PropertyField; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+  const values = components.map((component) => committedValue(component, field))
+  const same = values.every((value) => value === values[0])
+  const committed = same ? values[0] ?? '' : ''
+  const [draft, setDraft] = useState(committed)
+  const [pending, setPending] = useState(false)
+  const pendingRef = useRef(false)
+  const selectionKey = ids.join(',')
+  const revert = () => setDraft(committed)
+  const submit = async (intent: PropertyIntent, reconcileDraft: boolean) => {
+    if (pendingRef.current) return
+    pendingRef.current = true
+    setPending(true)
+    const accepted = await onCommit(ids, intent, documentGeneration, selectionKey)
+    pendingRef.current = false
+    setPending(false)
+    if (accepted && reconcileDraft) setDraft(canonicalValue(accepted, ids, field) ?? draft)
+  }
+  const commit = async () => { if (draft !== committed) await submit({ field, operation: draft === '' && field !== 'value' ? 'clear' : 'set', value: draft }, true) }
+  const canNull = field === 'visibleIf' || field === 'background'
+  const errorId = error ? `property-error-${field}` : undefined
+  return <div className="property-editor"><label>{label}<input aria-label={label} aria-description={same ? undefined : 'Mixed value'} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} inputMode={label.includes('(pt)') ? 'decimal' : undefined} value={draft} placeholder={same ? undefined : 'Mixed'} disabled={pending} onChange={(event) => setDraft(event.target.value)} onBlur={() => void commit()} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void commit() } if (event.key === 'Escape') { event.preventDefault(); revert(); (event.target as HTMLInputElement).blur() } }} /></label>{field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height' && field !== 'value' && <button type="button" className="property-action" disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>Clear {label}</button>}{canNull && <button type="button" className="property-action" disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>Set {label} null</button>}{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+}
+function canonicalValue(canvas: CanvasProjection, ids: ReadonlyArray<string>, field: PropertyField): string | undefined { const values = canvas.components.filter((component) => ids.includes(component.id)).map((component) => committedValue(component, field)); return values.length === ids.length && values.every((value) => value === values[0]) ? values[0] ?? '' : undefined }
+function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+  const values = components.map((component) => component[field])
+  const uniform = values.every((value) => value === values[0])
+  const active = uniform && values[0] === true
+  const [pending, setPending] = useState(false); const pendingRef = useRef(false); const commit = async (operation: PropertyIntent['operation'], value?: boolean) => { if (pendingRef.current) return; pendingRef.current = true; setPending(true); await onCommit(ids, { field, operation, value }, documentGeneration, ids.join(',')); pendingRef.current = false; setPending(false) }
+  return <div className="property-editor"><button type="button" className="file-button property-toggle" disabled={pending} aria-pressed={active} aria-label={uniform ? label : `${label}, mixed`} onClick={() => void commit('set', !active)}>{uniform ? label : `${label} · Mixed`}</button><button type="button" className="property-action" disabled={pending} onClick={() => void commit('clear')}>Clear {label}</button>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+}
+function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, error }: { components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) { const values = components.map((component) => (component.borderEdges ?? []).join(',')); const same = values.every((value) => value === values[0]); const [edges, setEdges] = useState<string[]>(same && values[0] ? values[0].split(',') : []); const pending = useRef(false); const update = async (next: string[]) => { if (pending.current) return; pending.current = true; setEdges(next); await onCommit(ids, { field: 'borderEdges', operation: next.length ? 'set' : 'clear', ...(next.length ? { value: next } : {}) }, documentGeneration, ids.join(',')); pending.current = false }; return <fieldset className="property-editor"><legend>Border edges</legend>{['top', 'right', 'bottom', 'left'].map((edge) => <label key={edge}><input type="checkbox" aria-label={`Border ${edge}`} checked={edges.includes(edge)} onChange={() => void update(edges.includes(edge) ? edges.filter((value) => value !== edge) : [...edges, edge])} />{edge}</label>)}{!same && <span aria-label="Border edges mixed">Mixed</span>}<button type="button" className="property-action" onClick={() => void update([])}>Clear Border edges</button>{error && <p role="alert" className="property-error">{error.message}</p>}</fieldset> }
 
 type Draft = { width: string; height: string; top: string; right: string; bottom: string; left: string }
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label>{label}<input aria-label={label} inputMode="decimal" value={value} onChange={(event) => onChange(event.target.value)} /></label> }
@@ -176,7 +261,8 @@ function displayPx(millipoints: number, zoom: number): string { return `${Math.r
 function pageStyle(canvas: CanvasProjection, zoom: number): CSSProperties { return { '--page-display-width': displayPx(canvas.width, zoom), '--page-display-height': displayPx(canvas.height, zoom), '--grid-display-pitch': displayPx(canvas.gridIncrement, zoom) } as CSSProperties }
 function bandStyle(band: CanvasProjection['bands'][number], zoom: number): CSSProperties { return { '--band-x': displayPx(band.x, zoom), '--band-y': displayPx(band.y, zoom), '--band-width': displayPx(band.width, zoom), '--band-height': displayPx(band.height, zoom) } as CSSProperties }
 function pageSetupDiagnostic(error: unknown): string { const received = error as { code?: string; dataPath?: string; message?: string }; if (received.code === 'PAGE_SETUP_INVALID') return received.dataPath ? `${received.dataPath}: ${received.message ?? 'invalid value'}` : received.message ?? 'Page setup is invalid.'; return 'Page setup is invalid. Check the selected size and margins.' }
-function componentDiagnostic(error: unknown): string { const received = error as { elementId?: string; dataPath?: string; message?: string }; const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message ?? 'Component change was rejected.'}` : received.message ?? 'Component change was rejected.' }
+function componentDiagnosticDetail(error: unknown): Readonly<{ elementId?: string; dataPath?: string; message: string }> { const received = error as { elementId?: string; dataPath?: string; message?: string }; return { ...(received.elementId ? { elementId: received.elementId } : {}), ...(received.dataPath ? { dataPath: received.dataPath } : {}), message: received.message ?? 'Component change was rejected.' } }
+function componentDiagnostic(error: unknown): string { const received = componentDiagnosticDetail(error); const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message}` : received.message }
 function displayPoint(pixel: number, zoom: number): number { return Math.round((pixel / zoom) * 1000) / 1000 }
 
 type DragState = Readonly<{ id: string; mode: 'move' | 'resize'; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>

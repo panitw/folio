@@ -19,6 +19,7 @@ const GridIncrement int64 = 6000
 // bound, so a successful command can never strand the worker with an
 // unrepresentable projection.
 const MaxCanvasMillipoints int64 = 9007199254740991
+const maxCanvasPropertyString = 512
 
 // SnapToGrid is the reusable core-command seam for Story 5.7 placement.
 // It uses the fixed six-point grid and half-away-from-zero rule; callers pass
@@ -43,6 +44,25 @@ type CanvasComponent struct {
 	Width     int64  `json:"width"`
 	Height    int64  `json:"height"`
 	Resizable bool   `json:"resizable"`
+	// The following explicitly named optional values are the minimum committed
+	// property-panel projection. This is not a generic style or document bag.
+	Value         *string  `json:"value,omitempty"`
+	VisibleIf     *string  `json:"visibleIf,omitempty"`
+	FontFamily    *string  `json:"fontFamily,omitempty"`
+	FontSize      *int64   `json:"fontSize,omitempty"`
+	Bold          *bool    `json:"bold,omitempty"`
+	Italic        *bool    `json:"italic,omitempty"`
+	Align         *string  `json:"align,omitempty"`
+	Valign        *string  `json:"valign,omitempty"`
+	Background    *string  `json:"background,omitempty"`
+	BorderWidth   *int64   `json:"borderWidth,omitempty"`
+	BorderColor   *string  `json:"borderColor,omitempty"`
+	BorderEdges   []string `json:"borderEdges,omitempty"`
+	TableBind     *string  `json:"tableBind,omitempty"`
+	PaddingTop    *int64   `json:"paddingTop,omitempty"`
+	PaddingRight  *int64   `json:"paddingRight,omitempty"`
+	PaddingBottom *int64   `json:"paddingBottom,omitempty"`
+	PaddingLeft   *int64   `json:"paddingLeft,omitempty"`
 }
 type CanvasProjection struct {
 	Width         int64             `json:"width"`
@@ -123,10 +143,129 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 					return nil, fmt.Errorf("folio: component exceeds the JavaScript-safe geometry bound")
 				}
 			}
-			out = append(out, CanvasComponent{ID: string(element.ID), Type: string(element.Type), Band: projected.Name, X: int64(element.X), Y: int64(element.Y), Width: int64(width), Height: int64(height), Resizable: element.Type != template.ElementTable})
+			component := CanvasComponent{ID: string(element.ID), Type: string(element.Type), Band: projected.Name, X: int64(element.X), Y: int64(element.Y), Width: int64(width), Height: int64(height), Resizable: element.Type != template.ElementTable}
+			if element.Type == template.ElementText && element.Value.Set && !element.Value.Null {
+				if len(element.Value.Value) > maxCanvasPropertyString {
+					return nil, fmt.Errorf("folio: component value exceeds the projection bound")
+				}
+				component.Value = stringPointer(element.Value.Value)
+			}
+			if element.VisibleIf.Set && !element.VisibleIf.Null {
+				if len(element.VisibleIf.Value) > maxCanvasPropertyString {
+					return nil, fmt.Errorf("folio: component visibleIf exceeds the projection bound")
+				}
+				component.VisibleIf = stringPointer(element.VisibleIf.Value)
+			}
+			if element.Type == template.ElementTable && element.Table.Set && !element.Table.Null {
+				if len(element.Table.Value.Bind) > maxCanvasPropertyString {
+					return nil, fmt.Errorf("folio: component table bind exceeds the projection bound")
+				}
+				component.TableBind = stringPointer(element.Table.Value.Bind)
+			}
+			if element.Style.Set && !element.Style.Null {
+				if err := applyCanvasStyle(&component, element.Type, element.Style.Value); err != nil {
+					return nil, err
+				}
+			}
+			out = append(out, component)
 		}
 	}
 	return out, nil
+}
+
+func stringPointer(value string) *string     { return &value }
+func boolPointer(value bool) *bool           { return &value }
+func lengthPointer(value geom.Length) *int64 { rendered := int64(value); return &rendered }
+func canvasPropertyLength(name string, value geom.Length) (*int64, error) {
+	if value < 0 || value > geom.Length(MaxCanvasMillipoints) {
+		return nil, fmt.Errorf("folio: component %s exceeds the projection bound", name)
+	}
+	return lengthPointer(value), nil
+}
+
+func applyCanvasStyle(component *CanvasComponent, elementType template.ElementType, style template.Style) error {
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.FontFamily.Set && !style.FontFamily.Null {
+		if len(style.FontFamily.Value) > maxCanvasPropertyString {
+			return fmt.Errorf("folio: component fontFamily exceeds the projection bound")
+		}
+		component.FontFamily = stringPointer(style.FontFamily.Value)
+	}
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.FontSize.Set && !style.FontSize.Null {
+		value, err := canvasPropertyLength("fontSize", style.FontSize.Value)
+		if err != nil {
+			return err
+		}
+		component.FontSize = value
+	}
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Bold.Set && !style.Bold.Null {
+		component.Bold = boolPointer(style.Bold.Value)
+	}
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Italic.Set && !style.Italic.Null {
+		component.Italic = boolPointer(style.Italic.Value)
+	}
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Align.Set && !style.Align.Null {
+		component.Align = stringPointer(style.Align.Value)
+	}
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Valign.Set && !style.Valign.Null {
+		component.Valign = stringPointer(style.Valign.Value)
+	}
+	if style.Background.Set && !style.Background.Null {
+		if len(style.Background.Value) > maxCanvasPropertyString {
+			return fmt.Errorf("folio: component background exceeds the projection bound")
+		}
+		component.Background = stringPointer(style.Background.Value)
+	}
+	if style.Border.Set && !style.Border.Null {
+		border := style.Border.Value
+		if border.Width.Set && !border.Width.Null {
+			value, err := canvasPropertyLength("borderWidth", border.Width.Value)
+			if err != nil {
+				return err
+			}
+			component.BorderWidth = value
+		}
+		if border.Color.Set && !border.Color.Null {
+			if len(border.Color.Value) > maxCanvasPropertyString {
+				return fmt.Errorf("folio: component borderColor exceeds the projection bound")
+			}
+			component.BorderColor = stringPointer(border.Color.Value)
+		}
+		if border.Edges.Set && !border.Edges.Null {
+			component.BorderEdges = append([]string(nil), border.Edges.Value...)
+		}
+	}
+	if style.Padding.Set && !style.Padding.Null {
+		padding := style.Padding.Value
+		if padding.Top.Set && !padding.Top.Null {
+			value, err := canvasPropertyLength("paddingTop", padding.Top.Value)
+			if err != nil {
+				return err
+			}
+			component.PaddingTop = value
+		}
+		if padding.Right.Set && !padding.Right.Null {
+			value, err := canvasPropertyLength("paddingRight", padding.Right.Value)
+			if err != nil {
+				return err
+			}
+			component.PaddingRight = value
+		}
+		if padding.Bottom.Set && !padding.Bottom.Null {
+			value, err := canvasPropertyLength("paddingBottom", padding.Bottom.Value)
+			if err != nil {
+				return err
+			}
+			component.PaddingBottom = value
+		}
+		if padding.Left.Set && !padding.Left.Null {
+			value, err := canvasPropertyLength("paddingLeft", padding.Left.Value)
+			if err != nil {
+				return err
+			}
+			component.PaddingLeft = value
+		}
+	}
+	return nil
 }
 
 func canvasDimensions(t *Template) (geom.Length, geom.Length, error) {
