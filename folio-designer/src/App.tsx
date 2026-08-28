@@ -1,4 +1,8 @@
 import './App.css'
+import { useMemo, useState } from 'react'
+import type { EngineClient } from './engine-client'
+import type { EngineSnapshot } from './engine-protocol'
+import { TransientInteraction } from './transient-interaction'
 
 const paletteItems = ['Text', 'Image', 'Table', 'Line', 'Rectangle']
 
@@ -10,7 +14,25 @@ function DeferredIconButton({ label, icon }: { label: string; icon: 'open' | 'sa
   return <button className="icon-button" type="button" disabled aria-describedby="future-features"><Icon name={icon} /><span className="sr-only">{label}</span></button>
 }
 
-export default function App() {
+type AppProps = Readonly<{ engine?: EngineClient; initialSnapshot?: EngineSnapshot; initializationError?: string }>
+
+export default function App({ engine, initialSnapshot, initializationError }: AppProps = {}) {
+  const [snapshot, setSnapshot] = useState(initialSnapshot)
+  const [commitError, setCommitError] = useState<string>()
+  const interaction = useMemo(() => engine ? new TransientInteraction(engine) : undefined, [engine])
+
+  const commit = async () => {
+    if (!interaction) return
+    try {
+      const result = await interaction.commit()
+      setSnapshot(result.snapshot)
+      setCommitError(undefined)
+    } catch {
+      setCommitError('Engine commit failed')
+    }
+  }
+
+  const engineLabel = initializationError ? 'ENGINE UNAVAILABLE' : snapshot ? `GO SNAPSHOT · REVISION ${snapshot.revision}` : 'ENGINE STARTING'
   return <div className="app-shell" aria-label="Folio designer application shell">
     <header className="document-bar" aria-label="Document bar">
       <span className="brand">FOLIO</span><span className="document-name">Untitled template</span><span className="status-dot" aria-hidden="true" /><span className="status-copy" role="status">Unsaved — local files arrive later</span>
@@ -20,9 +42,9 @@ export default function App() {
     </header>
     <div className="workbench" id="future-features">
       <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map((item) => <div className="palette-item" key={item}><span className="palette-icon" aria-hidden="true" />{item}<kbd>later</kbd></div>)}<p className="honest-note">Placement arrives later.</p></nav>
-      <main className="canvas-region" aria-label="Canvas region"><section className="page-surface" aria-label="Blank report page"><p className="page-eyebrow">UNTITLED TEMPLATE</p><h1>Report page</h1><p className="page-copy">Canvas editing and bands arrive in later stories.</p><span className="page-placeholder">A4 · 210 × 297 mm</span></section></main>
+      <main className="canvas-region" aria-label="Canvas region"><section className="page-surface" aria-label="Blank report page"><p className="page-eyebrow">UNTITLED TEMPLATE</p><h1>Report page</h1><p className="page-copy">Canvas editing and bands arrive in later stories.</p><span className="page-placeholder">A4 · 210 × 297 mm</span>{snapshot && <button type="button" onClick={() => void commit()} aria-label="Commit engine snapshot">Commit engine snapshot</button>}{commitError && <p role="alert">{commitError}</p>}</section></main>
       <aside className="properties-panel" aria-label="Properties panel"><p className="section-label">PROPERTIES</p><p className="panel-heading">No selection</p><div className="property-field"><span>POSITION</span><code>—</code></div><div className="property-field"><span>BINDING</span><code>unavailable</code></div><p className="honest-note">Select a component after canvas editing is available.</p></aside>
     </div>
-    <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code>NO TEMPLATE LOADED</code><span className="status-spacer" /><code>DESIGN MODE</code></footer>
+    <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><code>DESIGN MODE</code></footer>
   </div>
 }

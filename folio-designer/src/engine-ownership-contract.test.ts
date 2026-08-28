@@ -1,0 +1,74 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import ts from 'typescript'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+
+const sourceDir = path.dirname(fileURLToPath(import.meta.url))
+const productionFiles = fs.readdirSync(sourceDir, { recursive: true })
+  .filter((entry): entry is string => typeof entry === 'string' && /\.(?:ts|tsx)$/.test(entry) && !/\.test\.(?:ts|tsx)$/.test(entry))
+  .map((entry) => path.join(sourceDir, entry))
+const documentFields = new Set(['version', 'page', 'bands', 'elements', 'assets'])
+
+type OwnershipScan = Readonly<{ workers: string[]; wasmInstances: string[]; schemaMirrors: string[] }>
+
+function scanOwnership(files: ReadonlyArray<Readonly<{ name: string; source: string }>>): OwnershipScan {
+  const workers: string[] = []
+  const wasmInstances: string[] = []
+  const schemaMirrors: string[] = []
+  for (const file of files) {
+    const source = ts.createSourceFile(file.name, file.source, ts.ScriptTarget.Latest, true)
+    const visit = (node: ts.Node): void => {
+      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && (node.expression.text === 'Worker' || node.expression.text === 'SharedWorker')) workers.push(file.name)
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'WebAssembly' && (node.expression.name.text === 'instantiate' || node.expression.name.text === 'instantiateStreaming')) wasmInstances.push(file.name)
+      const names = propertyNames(node)
+      if (names.filter((name) => documentFields.has(name)).length >= 3) schemaMirrors.push(file.name)
+      ts.forEachChild(node, visit)
+    }
+    visit(source)
+  }
+  return { workers, wasmInstances, schemaMirrors }
+}
+
+function propertyNames(node: ts.Node): string[] {
+  const members = ts.isInterfaceDeclaration(node) || ts.isTypeLiteralNode(node) || ts.isClassDeclaration(node) ? node.members : ts.isObjectLiteralExpression(node) ? node.properties : []
+  return members.flatMap((member) => {
+    if ('name' in member && member.name && ts.isIdentifier(member.name)) return [member.name.text]
+    if ('name' in member && member.name && ts.isStringLiteral(member.name)) return [member.name.text]
+    return []
+  })
+}
+
+const sources = () => productionFiles.map((file) => ({ name: path.relative(sourceDir, file), source: fs.readFileSync(file, 'utf8') }))
+
+describe('engine ownership structure', () => {
+  it('has a non-vacuous source witness and exactly one Worker factory across production source', () => {
+    expect(productionFiles.length).toBeGreaterThan(5)
+    expect(scanOwnership(sources()).workers).toEqual(['engine-client.ts'])
+  })
+
+  it('keeps exactly one wasm instantiation, in the dedicated worker entry, across every production module', () => {
+    const scan = scanOwnership(sources())
+    expect(scan.wasmInstances).toEqual(['engine.worker.ts'])
+    expect(fs.readFileSync(path.join(sourceDir, 'engine.worker.ts'), 'utf8')).toContain("importScripts('/wasm/wasm_exec.js')")
+  })
+
+  it('does not mirror the .folio document schema in production TypeScript', () => {
+    expect(scanOwnership(sources()).schemaMirrors).toEqual([])
+  })
+
+  it('keeps main-thread engine messaging in the one client module', () => {
+    const offenders = productionFiles.filter((file) => {
+      const name = path.basename(file)
+      return name !== 'engine-client.ts' && name !== 'engine.worker.ts' && /\.postMessage\s*\(/.test(fs.readFileSync(file, 'utf8'))
+    })
+    expect(offenders).toEqual([])
+  })
+
+  it('rejects the two realistic second-authority review mutations', () => {
+    const schemaMutation = scanOwnership([{ name: 'designer-state.ts', source: 'interface DesignerFileState { version: string; page: {}; bands: []; elements: []; assets: [] }' }])
+    expect(schemaMutation.schemaMirrors).toEqual(['designer-state.ts'])
+    const wasmMutation = scanOwnership([{ name: 'secondary-wasm.ts', source: 'WebAssembly.instantiate(new ArrayBuffer(0), {})' }])
+    expect(wasmMutation.wasmInstances).toEqual(['secondary-wasm.ts'])
+  })
+})

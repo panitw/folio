@@ -274,6 +274,9 @@ build failure (`ResolveAssets`), not a silent gap.
 
 | Path | Licence | Copyright | Serves |
 |---|---|---|---|
+| folio-designer/public/fonts/notosans/NotoSans-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notosans) |
+| folio-designer/public/fonts/notosanssc/NotoSansSC-Regular.ttf | OFL-1.1 | Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | committed asset (folio-designer/public/fonts/notosanssc) |
+| folio-designer/public/fonts/notosansthai/NotoSansThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthai) |
 | folio-go/fonts/notosans/NotoSans-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | folio-go shipped |
 | folio-go/fonts/notosanssc/NotoSansSC-Regular.ttf | OFL-1.1 | Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | folio-go shipped |
 | folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | folio-go shipped |
