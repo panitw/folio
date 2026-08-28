@@ -1,6 +1,6 @@
 import './App.css'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
-import type { EngineClient } from './engine-client'
+import { isProducerRenderFailure, type EngineClient } from './engine-client'
 import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot, TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
@@ -84,6 +84,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const [previewStatus, setPreviewStatus] = useState<'idle' | 'checking' | 'debouncing' | 'rendering' | 'current' | 'stale' | 'error'>('idle')
   const [staleReason, setStaleReason] = useState<'inputs-changed' | 'render-failed'>('inputs-changed')
   const [previewError, setPreviewError] = useState<PreviewFailureRecord>()
+  const [previewIssue, setPreviewIssue] = useState<string>()
   const [dismissedDiagnostics, setDismissedDiagnostics] = useState<ReadonlySet<string>>(new Set())
   const [undoAvailable, setUndoAvailable] = useState(initialSnapshot?.canUndo === true)
   const [redoAvailable, setRedoAvailable] = useState(initialSnapshot?.canRedo === true)
@@ -116,6 +117,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const previewScheduler = useRef(new PreviewWorkScheduler())
   const previewRef = useRef<PreviewRecord | undefined>(undefined)
   const previewGeneration = useRef(0)
+  const retryingFailure = useRef<number | undefined>(undefined)
+  const previewNeedsFreshRender = useRef(false)
   const sampleDataRef = useRef(sampleData)
   const bindingInFlight = useRef(false)
 	const tableEditorSession = useRef(0)
@@ -138,6 +141,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     if (previewTimer.current !== undefined) clearTimeout(previewTimer.current)
     previewTimer.current = undefined
     previewScheduler.current.clear()
+    retryingFailure.current = undefined
   }
   const invalidatePreview = (clear = false) => {
     // A request already admitted to the FIFO worker must drain; invalidation
@@ -154,15 +158,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       setStaleReason('inputs-changed')
     }
     setPreviewError(undefined)
+    setPreviewIssue(undefined)
+    retryingFailure.current = undefined
     setDismissedDiagnostics(new Set())
   }
-  const renderPreview = () => {
+  const renderPreview = (force = false) => {
     if (!sampleDataRef.current) { setPreviewStatus('idle'); return }
     if (previewTimer.current !== undefined) clearTimeout(previewTimer.current)
     previewTimer.current = undefined
-    previewScheduler.current.submit(runPreview)
+    previewScheduler.current.submit(() => runPreview(force))
   }
-  const runPreview = async () => {
+  const runPreview = async (force = false) => {
     const sample = sampleDataRef.current
     if (!engine || !snapshotRef.current || !sample) return
     const generation = previewGeneration.current
@@ -176,12 +182,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     const controller = new AbortController()
     previewAbort.current = controller
     const current = (identity?: string) => token === previewToken.current && !controller.signal.aborted && modeRef.current === 'preview' && previewGeneration.current === generation && documentGeneration.current === documentAtStart && snapshotRef.current?.revision === revisionAtStart && (!identity || canInstallPreview({ token, generation, revision: revisionAtStart, identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity, mode: modeRef.current }))
-    setPreviewStatus(previewRef.current ? 'stale' : 'checking'); setPreviewError(undefined)
+    const mustRender = force || previewNeedsFreshRender.current
+    setPreviewStatus(previewRef.current ? 'stale' : 'checking'); setPreviewError(undefined); setPreviewIssue(undefined)
     try {
       const checked = await engine.request('identity', { data, params }, controller.signal)
       const identity = checked.preview?.identity
       if (!identity || checked.preview.revision !== revisionAtStart || !current(identity)) return
-      if (previewRef.current && previewRef.current.identity === identity && previewRef.current.revision === revisionAtStart && previewRef.current.generation === generation) {
+      if (!mustRender && previewStatus === 'current' && previewRef.current && previewRef.current.identity === identity && previewRef.current.revision === revisionAtStart && previewRef.current.generation === generation) {
         setPreviewStatus('current')
         return
       }
@@ -193,6 +200,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       const result = await engine.request('render', { template: canonical.bytes, data, params }, controller.signal)
       if (!result.bytes || !result.preview?.pdfSha256 || !result.preview.diagnostics || result.preview.identity !== identity || result.preview.revision !== revision || !current(identity)) return
       installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics, token, generation })
+      previewNeedsFreshRender.current = false
       setDismissedDiagnostics(new Set())
       setPreviewViewState(initialPDFPreviewViewState)
       // PDF.js is a separate boundary. The bytes become current only when its
@@ -203,8 +211,16 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     } catch (error) {
       if (token !== previewToken.current || controller.signal.aborted) return
       if (!current()) return
-      setStaleReason('render-failed')
-      setPreviewStatus(previewRef.current ? 'stale' : 'error'); setPreviewError({ error: previewFailure(error), token, generation, revision: revisionAtStart })
+      if (isProducerRenderFailure(error)) {
+        setStaleReason('render-failed')
+        setPreviewStatus(previewRef.current ? 'stale' : 'error'); setPreviewError({ error: previewFailure(error), token, generation, revision: revisionAtStart })
+      } else {
+        // This failed before/around the closed producer response boundary. It
+        // remains a local Preview issue rather than invented render provenance.
+        setStaleReason('inputs-changed')
+        setPreviewStatus(previewRef.current ? 'stale' : 'error')
+        setPreviewIssue(localPreviewIssue(error))
+      }
     } finally {
       if (previewAbort.current === controller) previewAbort.current = undefined
     }
@@ -286,13 +302,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     cancelPreviewWork()
     const current = previewRef.current
     if (!current) return
-    setPreviewError({ error: { code: 'PDF_VIEWER_FAILED', message: error.message.slice(0, 160) }, token: current.token, generation: current.generation, revision: current.revision })
-    setStaleReason('render-failed')
+    previewNeedsFreshRender.current = true
+    setPreviewError(undefined)
+    setPreviewIssue(`The local PDF viewer could not display the admitted PDF: ${error.message.slice(0, 160)}`)
+    setStaleReason('inputs-changed')
     setPreview((current) => { previewRef.current = current; setPreviewStatus(current ? 'stale' : 'error'); return current })
   }, [])
   const viewerPages = useCallback((token: number, pages: number) => {
     const current = previewRef.current
-    if (pages > 0 && current && current.token === token && token === previewToken.current && modeRef.current === 'preview' && canInstallPreview({ token, generation: current.generation, revision: current.revision, identity: current.identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity: current.identity, mode: modeRef.current })) setPreviewStatus('current')
+    if (pages > 0 && current && current.token === token && token === previewToken.current && modeRef.current === 'preview' && canInstallPreview({ token, generation: current.generation, revision: current.revision, identity: current.identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity: current.identity, mode: modeRef.current })) { previewNeedsFreshRender.current = false; setPreviewIssue(undefined); setPreviewStatus('current') }
   }, [])
   const changePreviewViewState = useCallback((next: PDFPreviewViewState) => setPreviewViewState((current) => samePDFPreviewViewState(current, next) ? current : next), [])
   const clearInteraction = () => { setPlacing(undefined); setHoverBand(undefined); setDrag(undefined) }
@@ -554,8 +572,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     setTimeout(() => canvasRegionRef.current?.focus(), 0)
   }
   const admittedPreview = (candidate: PreviewRecord | undefined): candidate is PreviewRecord => Boolean(candidate && previewStatus === 'current' && modeRef.current === 'preview' && previewRef.current === candidate && candidate.token === previewToken.current && candidate.generation === previewGeneration.current && candidate.revision === snapshotRef.current?.revision && candidate.identity === previewRef.current.identity)
-  const activeFailure = (candidate: PreviewFailureRecord | undefined): candidate is PreviewFailureRecord => Boolean(candidate && ['error', 'stale'].includes(previewStatus) && modeRef.current === 'preview' && candidate.token === previewToken.current && candidate.generation === previewGeneration.current && candidate.revision === snapshotRef.current?.revision)
+  const activeFailure = (candidate: PreviewFailureRecord | undefined): candidate is PreviewFailureRecord => Boolean(candidate && previewError === candidate && ['error', 'stale'].includes(previewStatus) && modeRef.current === 'preview' && candidate.token === previewToken.current && candidate.generation === previewGeneration.current && candidate.revision === snapshotRef.current?.revision)
   const locateDiagnostic = (candidate: PreviewRecord, location: DiagnosticLocation) => { if (admittedPreview(candidate)) returnWithOptionalSelection(location, true) }
+  const retryFromFailure = (failure: PreviewFailureRecord) => {
+    if (!activeFailure(failure) || retryingFailure.current === failure.token) return
+    retryingFailure.current = failure.token
+    // Bypass only the retained same-identity PDF shortcut. The scheduler, FIFO
+    // worker, serializer, and PDF.js admission path remain unchanged.
+    renderPreview(true)
+  }
   const returnFromFailure = (failure: PreviewFailureRecord) => { if (activeFailure(failure)) returnWithOptionalSelection(failure.error, true) }
 
   useEffect(() => {
@@ -613,7 +638,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
           {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); place(point.x, point.y) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { setDrag(undefined); if (!finished.changed) return; if (finished.mode === 'move') void commitComponent(moveComponentCommand(component.id, finished.x, finished.y, snapEnabled)); else void commitComponent(resizeComponentCommand(component.id, finished.width, finished.height, snapEnabled)) }} />)}</section>)}
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
-      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <><PreviewFailure error={currentFailure.error} onReturn={() => returnFromFailure(currentFailure)} /><button type="button" className="file-button" onClick={renderPreview}>Retry local render</button></>}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
+      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} />
       <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} onEditTable={(id) => void openTableEditor(id)} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
@@ -842,14 +867,15 @@ function equalBytes(left: ArrayBuffer, right: ArrayBuffer): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
-function previewFailure(error: unknown): EngineError {
-  const received = error as Partial<EngineError>
-  return {
-    code: typeof received.code === 'string' && received.code ? received.code.slice(0, 96) : 'LOCAL_RENDER_FAILED',
-    message: error instanceof Error ? error.message.slice(0, 512) : 'The local PDF render failed',
-    ...(typeof received.elementId === 'string' && received.elementId ? { elementId: received.elementId.slice(0, 128) } : {}),
-    ...(typeof received.dataPath === 'string' && received.dataPath ? { dataPath: received.dataPath.slice(0, 256) } : {}),
-  }
+function previewFailure(error: EngineError): EngineError {
+  // Values reached here were bounded and validated at the worker boundary.
+  // Preserve their presence and content; do not turn absent provenance into a
+  // browser-owned replacement code, message, or location.
+  return { code: error.code, message: error.message, ...(error.elementId !== undefined ? { elementId: error.elementId } : {}), ...(error.dataPath !== undefined ? { dataPath: error.dataPath } : {}) }
+}
+
+function localPreviewIssue(error: unknown): string {
+  return error instanceof Error && error.message ? error.message.slice(0, 512) : 'The local Preview work did not complete'
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

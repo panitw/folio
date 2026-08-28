@@ -122,6 +122,6 @@ development_status:
   6-3-supply-parameters-for-preview: done
   6-4-configure-table-columns-as-a-matrix: done
   6-5-bind-columns-in-row-scope-and-configure-footer-aggregates: done
-  6-6-present-a-failed-render-honestly: backlog
+  6-6-present-a-failed-render-honestly: done
   6-7-the-round-trip-closes: backlog
   epic-6-retrospective: optional

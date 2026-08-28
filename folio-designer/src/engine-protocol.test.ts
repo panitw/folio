@@ -30,11 +30,18 @@ describe('canvas projection protocol guard', () => {
     expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: bad } })).toBeUndefined()
   })
 
-  it('bounds optional component diagnostic fields at the main-thread boundary', () => {
+  it('bounds opaque producer failure provenance at the main-thread boundary', () => {
     const response = (error: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: false, error })
     expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', elementId: 'e'.repeat(MAX_ENGINE_ELEMENT_ID_LENGTH), dataPath: 'p'.repeat(MAX_ENGINE_DATA_PATH_LENGTH) })).toBeDefined()
     expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', elementId: 'e'.repeat(MAX_ENGINE_ELEMENT_ID_LENGTH + 1) })).toBeUndefined()
     expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', dataPath: 'p'.repeat(MAX_ENGINE_DATA_PATH_LENGTH + 1) })).toBeUndefined()
+    expect(response({ code: 'C'.repeat(97), message: 'invalid' })).toBeUndefined()
+    expect(response({ code: 'COMPONENT_INVALID', message: 'm'.repeat(513) })).toBeUndefined()
+    expect(response({ code: 'COMPONENT_INVALID', message: '' })).toBeUndefined()
+    expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', elementId: '' })).toBeUndefined()
+    expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', dataPath: '' })).toBeUndefined()
+    expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', elementId: 7 })).toBeUndefined()
+    expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', dataPath: [] })).toBeUndefined()
   })
 
   it('rejects surplus authority-bearing fields at every projection level', () => {

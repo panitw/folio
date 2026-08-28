@@ -117,7 +117,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .diagnostic-code, .diagnostic-location { font: var(--type-mono); }
 .diagnostic-location { display: block; color: var(--color-ink); }
 .diagnostic-locate, .diagnostic-dismiss { min-height: 28px; border: var(--hairline) solid var(--color-edge); background: var(--color-raised); color: var(--color-ink-high); }
-.preview-failure { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); padding: var(--space-3); border-left: 3px solid var(--color-select); background: var(--color-raised); color: var(--color-ink-high); }
-.preview-failure p { margin: 0; }
+.preview-failure { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; margin-bottom: var(--space-5); padding: var(--space-3); border: 1px solid var(--color-danger); border-left: 3px solid var(--color-danger); background: var(--color-raised); color: var(--color-ink-high); }
+.preview-failure p { margin: 0 0 var(--space-2); }
+.preview-failure-marker { color: var(--color-danger); font-size: 1.1em; line-height: 1; }
+.preview-failure-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .diagnostic-locate:focus-visible, .diagnostic-dismiss:focus-visible, .preview-failure button:focus-visible { outline: 2px solid var(--color-select); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .load-progress span { transition: none; } }

@@ -12,7 +12,17 @@ export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuf
 type Pending = { operation: EngineOperation; resolve: (result: EngineResult) => void; reject: (error: Error) => void }
 type ClientState = 'starting' | 'ready' | 'failed' | 'terminated'
 
-const errorFor = (code: string, message: string, dataPath?: string, elementId?: string) => Object.assign(new Error(message), { code, ...(dataPath ? { dataPath } : {}), ...(elementId ? { elementId } : {}) })
+type ProducerRenderError = Error & Readonly<{ code: string; elementId?: string; dataPath?: string; producerRenderFailure: true }>
+
+const errorFor = (code: string, message: string, dataPath?: string, elementId?: string) => Object.assign(new Error(message), { code, ...(dataPath !== undefined ? { dataPath } : {}), ...(elementId !== undefined ? { elementId } : {}) })
+const producerRenderErrorFor = (code: string, message: string, dataPath?: string, elementId?: string): ProducerRenderError => Object.assign(errorFor(code, message, dataPath, elementId), { producerRenderFailure: true as const })
+
+// This marker records transport provenance, not an error taxonomy.  Only a
+// rejected producer `render` response earns the failed-render UI; worker,
+// identity, serialization, and viewer failures remain local Preview state.
+export function isProducerRenderFailure(error: unknown): error is ProducerRenderError {
+  return error instanceof Error && (error as Partial<ProducerRenderError>).producerRenderFailure === true
+}
 
 export class EngineClient {
 	#state: ClientState = 'starting'
@@ -93,7 +103,7 @@ export class EngineClient {
     const pending = this.#pending.get(message.requestId)
     if (!pending) { this.#fail('PROTOCOL_DUPLICATE_OR_UNKNOWN', 'The engine sent an unknown or duplicate response'); return }
     this.#pending.delete(message.requestId)
-    if (!message.ok) { pending.reject(errorFor(message.error.code, safeErrorMessage(message.error), message.error.dataPath, message.error.elementId)); return }
+    if (!message.ok) { pending.reject(pending.operation === 'render' ? producerRenderErrorFor(message.error.code, safeErrorMessage(message.error), message.error.dataPath, message.error.elementId) : errorFor(message.error.code, safeErrorMessage(message.error), message.error.dataPath, message.error.elementId)); return }
 		const mismatch = !matchesOperationPayload(pending.operation, message)
 		if (mismatch) { pending.reject(errorFor('PROTOCOL_OPERATION_MISMATCH', 'The engine response did not match its request')); this.#fail('PROTOCOL_OPERATION_MISMATCH', 'The engine response did not match its request'); return }
     const snapshot = deepFreeze({ ...message.snapshot }) as EngineSnapshot

@@ -67,6 +67,14 @@ describe('DESIGN.md token contract', () => {
 		expect(shellCss).toContain('.tree-item:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }')
   })
 
+  it('reserves the solid danger card and square marker for a failed local render', () => {
+    const shellCss = fs.readFileSync(appCssPath, 'utf8')
+    expect(shellCss).toContain('.preview-failure { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;')
+    expect(shellCss).toContain('border: 1px solid var(--color-danger); border-left: 3px solid var(--color-danger);')
+    expect(shellCss).toContain('.preview-failure-marker { color: var(--color-danger);')
+    expect(shellCss).toContain('.preview-failure button:focus-visible { outline: 2px solid var(--color-select);')
+  })
+
   it('limits the display and large numeric exception to S1', () => {
     const shellCss = fs.readFileSync(appCssPath, 'utf8')
     expect(shellCss.match(/var\(--type-display\)/g)).toHaveLength(1)

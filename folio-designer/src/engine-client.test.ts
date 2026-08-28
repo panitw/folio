@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createEngineClientSingleton, EngineClient, type WorkerPort } from './engine-client'
+import { createEngineClientSingleton, EngineClient, isProducerRenderFailure, type WorkerPort } from './engine-client'
 import { ENGINE_PROTOCOL_VERSION, type EngineRequest } from './engine-protocol'
 
 class FakeWorker implements WorkerPort {
@@ -101,6 +101,29 @@ describe('engine client protocol and lifecycle', () => {
     const pending = client.request('command', new Uint8Array([1]).buffer)
     worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: false, error: { code: 'COMPONENT_INVALID', message: 'bad x', elementId: 'e1', dataPath: 'component.x' } })
     await expect(pending).rejects.toMatchObject({ code: 'COMPONENT_INVALID', elementId: 'e1', dataPath: 'component.x', message: 'bad x' })
+  })
+
+  it('preserves the closed render-failure provenance without a browser code map', async () => {
+    const worker = new FakeWorker()
+    const client = new EngineClient(worker)
+    worker.ready()
+    const pending = client.request('render', { template: new Uint8Array([1]).buffer, data: new Uint8Array([2]).buffer, params: new Uint8Array([3]).buffer })
+    worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: false, error: { code: 'PARAMETER_REQUIRED', message: 'The template could not be processed', elementId: 'e1', dataPath: 'params.reportDate' } })
+    await expect(pending).rejects.toMatchObject({ code: 'PARAMETER_REQUIRED', message: 'The template could not be processed', elementId: 'e1', dataPath: 'params.reportDate' })
+    await pending.catch((error: unknown) => expect(isProducerRenderFailure(error)).toBe(true))
+  })
+
+  it('does not label identity or worker lifecycle errors as producer render failures', async () => {
+    const worker = new FakeWorker()
+    const client = new EngineClient(worker)
+    worker.ready()
+    const identity = client.request('identity', { data: new Uint8Array([1]).buffer, params: new Uint8Array([2]).buffer })
+    worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: false, error: { code: 'IDENTITY_UNAVAILABLE', message: 'identity unavailable' } })
+    await identity.catch((error: unknown) => expect(isProducerRenderFailure(error)).toBe(false))
+
+    const render = client.request('render', { template: new Uint8Array([1]).buffer, data: new Uint8Array([2]).buffer, params: new Uint8Array([3]).buffer })
+    worker.onerror?.({} as ErrorEvent)
+    await render.catch((error: unknown) => expect(isProducerRenderFailure(error)).toBe(false))
   })
 
   it('fails closed when every operation receives surplus table metadata', async () => {

@@ -21,7 +21,6 @@ export function PreviewDiagnostics({ diagnostics, dismissed, onDismiss, onLocate
   })}</section>
 }
 
-export function PreviewFailure({ error, onReturn }: { error: EngineError; onReturn: () => void }) {
-  const location = diagnosticLocation(error)
-  return <section className="preview-failure" aria-label="Local render failure" role="status" aria-live="assertive" aria-atomic="true"><p>Local PDF render failed: {error.message}</p>{location && <code className="diagnostic-location">{location}</code>}<button type="button" className="file-button" onClick={onReturn}>Return to Design</button></section>
+export function PreviewFailure({ error, onRetry, onReturn }: { error: EngineError; onRetry: () => void; onReturn: () => void }) {
+  return <section className="preview-failure" aria-label="Local render failure" role="alert" aria-atomic="true"><span className="preview-failure-marker" aria-hidden="true">■</span><div className="preview-failure-facts"><p className="diagnostic-code">Render failure · {error.code}</p><p>Local PDF render failed: {error.message}</p>{error.elementId !== undefined && <code className="diagnostic-location">Element ID: {error.elementId}</code>}{error.dataPath !== undefined && <code className="diagnostic-location">Data path: {error.dataPath}</code>}</div><div className="preview-failure-actions"><button type="button" className="file-button" onClick={onRetry}>Retry preview</button><button type="button" className="file-button" onClick={onReturn}>Return to Design</button></div></section>
 }

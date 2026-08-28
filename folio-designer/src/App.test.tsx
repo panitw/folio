@@ -9,7 +9,7 @@ import { acceptSampleData } from './sample-data'
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
   samePDFPreviewViewState: () => false,
-  PDFPreviewViewer: ({ label, describedBy, onPageCount }: { label: string; describedBy: string; onPageCount: (pages: number) => void }) => <button type="button" aria-label={label} aria-describedby={describedBy} onClick={() => onPageCount(1)}>Admit local PDF</button>,
+  PDFPreviewViewer: ({ label, describedBy, onPageCount, onError }: { label: string; describedBy: string; onPageCount: (pages: number) => void; onError: (error: Error) => void }) => <><button type="button" aria-label={label} aria-describedby={describedBy} onClick={() => onPageCount(1)}>Admit local PDF</button><button type="button" aria-label="Fail local PDF viewer" onClick={() => onError(new Error('viewer rejected bytes'))}>Fail local PDF viewer</button></>,
 }))
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
@@ -298,7 +298,7 @@ describe('application shell', () => {
   })
 
   it('returns from a path-only render failure without requiring an element id', async () => {
-    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', dataPath: 'items[0]' })
+    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', dataPath: 'items[0]', producerRenderFailure: true as const })
     const request = vi.fn(async (operation: string) => {
       if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
@@ -310,6 +310,99 @@ describe('application shell', () => {
     await waitFor(() => expect(screen.getByLabelText('Local render failure')).toBeInTheDocument())
     fireEvent.click(within(screen.getByLabelText('Local render failure')).getByRole('button', { name: 'Return to Design' }))
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
+  })
+
+  it('returns from a located render failure by selecting only the current projected element', async () => {
+    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e7', producerRenderFailure: true as const })
+    const locatedCanvas = { ...canvas, components: [{ id: 'e7', type: 'rect' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: true }] }
+    const locatedSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: locatedCanvas }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: locatedSnapshot, preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: locatedSnapshot, bytes }
+      if (operation === 'render') throw failure
+      return { snapshot: locatedSnapshot }
+    })
+    render(<App engine={engine(request)} initialSnapshot={locatedSnapshot} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const card = await screen.findByLabelText('Local render failure')
+    fireEvent.click(within(card).getByRole('button', { name: 'Return to Design' }))
+    const component = await screen.findByRole('button', { name: 'rect component e7' })
+    expect(component).toHaveClass('canvas-component-selected')
+    expect(screen.getByText('Selected e7 in Design.')).toHaveAttribute('role', 'status')
+  })
+
+  it('retries an active failed render through the existing scheduler without mutating the document', async () => {
+    let renders = 0
+    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e7', dataPath: 'params.reportDate', producerRenderFailure: true as const })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') { renders++; if (renders === 1) throw failure; return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } } }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const card = await screen.findByLabelText('Local render failure')
+    expect(card).toHaveTextContent('RENDER_INVALID')
+    fireEvent.click(within(card).getByRole('button', { name: 'Retry preview' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(2))
+    expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(0)
+    expect(screen.queryByLabelText('Local render failure')).not.toBeInTheDocument()
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+  })
+
+  it('forces a fresh FIFO render after a same-identity last-good PDF failure and retains that PDF as stale', async () => {
+    let renders = 0
+    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e7', producerRenderFailure: true as const })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') {
+        renders++
+        if (renders > 1) throw failure
+        return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const admitted = await screen.findByRole('button', { name: /Stale historical PDF/ })
+    fireEvent.click(admitted)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Fail local PDF viewer' }))
+    expect(screen.queryByLabelText('Local render failure')).not.toBeInTheDocument()
+    expect(screen.getByText(/local PDF viewer could not display/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+    const card = await screen.findByLabelText('Local render failure')
+    expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument()
+    const retry = within(card).getByRole('button', { name: 'Retry preview' })
+    retry.focus()
+    fireEvent.keyDown(retry, { key: 'Enter' })
+    fireEvent.click(retry)
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(3))
+    expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(3)
+    expect(request.mock.calls.filter(([operation]) => operation === 'serialize')).toHaveLength(3)
+    expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(0)
+    expect(screen.getByLabelText('Local render failure')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument()
+  })
+
+  it('revokes a delayed render failure after leaving Preview so its actions cannot reach Design', async () => {
+    let rejectRender!: (error: Error) => void
+    const request = vi.fn((operation: string) => {
+      if (operation === 'identity') return Promise.resolve({ snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } })
+      if (operation === 'serialize') return Promise.resolve({ snapshot: snapshot(1), bytes })
+      if (operation === 'render') return new Promise<never>((_, reject: (error: Error) => void) => { rejectRender = reject })
+      return Promise.resolve({ snapshot: snapshot(1) })
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel and return to Design' }))
+    rejectRender(Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e7', producerRenderFailure: true as const }))
+    await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Local render failure')).not.toBeInTheDocument()
+    expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(0)
   })
 
   it('names local file controls, persistent unsaved state, and offline availability', () => {
