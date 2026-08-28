@@ -8,7 +8,7 @@ import { runtimeAssetUrls } from './generated/offline-assets'
 declare const Go: new () => { importObject: WebAssembly.Imports; run(instance: WebAssembly.Instance): void }
 
 type WasmHost = { handle(request: string): string }
-type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[] }
+type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[]; parameterReferences?: string[]; parameterReferenceRevision?: number }
 
 const worker = self as unknown as DedicatedWorkerGlobalScope
 let host: WasmHost | undefined
@@ -71,7 +71,8 @@ async function execute(request: EngineRequest): Promise<void> {
     // buffer. The protocol repeats this guard on the main-thread boundary.
     const bytes = result.bytesBase64 ? base64ToBytesBounded(result.bytesBase64, request.operation === 'render' ? MAX_ENGINE_RENDER_PDF_BYTES : undefined) : undefined
     const preview = request.operation === 'render' ? { revision: result.renderRevision, identity: result.previewIdentity, pdfSha256: result.pdfSha256, diagnostics: result.diagnostics } : request.operation === 'identity' ? { revision: result.renderRevision, identity: result.previewIdentity } : undefined
-    worker.postMessage({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: request.requestId, ok: true, snapshot: result.snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}) }, bytes ? [bytes] : [])
+    const parameterReferences = request.operation === 'parameter-references' ? { revision: result.parameterReferenceRevision, names: result.parameterReferences } : undefined
+    worker.postMessage({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: request.requestId, ok: true, snapshot: result.snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}) }, bytes ? [bytes] : [])
   } catch {
     respondFailure(request.requestId, { code: 'WASM_PROTOCOL_FAILURE', message: 'The engine returned an invalid response' })
   }

@@ -119,4 +119,16 @@ describe('canvas projection protocol guard', () => {
     expect(parseInbound({ ...response, preview: { ...response.preview, pdfSha256: 'b'.repeat(64) } })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, revision: 6 } })).toBeUndefined()
   })
+
+  it('admits only a bounded, revision-correlated engine parameter-reference projection', () => {
+    const request = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'params-1', operation: 'parameter-references' }
+    expect(parseRequest(request)).toBeDefined()
+    expect(parseRequest({ ...request, payload: new Uint8Array([1]).buffer })).toBeUndefined()
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'params-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, parameterReferences: { revision: 7, names: ['branch', 'reportDate'] } }
+    expect(parseInbound(response)).toBeDefined()
+    expect(parseInbound({ ...response, parameterReferences: { revision: 6, names: ['branch'] } })).toBeUndefined()
+    expect(parseInbound({ ...response, parameterReferences: { revision: 7, names: ['reportDate', 'branch'] } })).toBeUndefined()
+    expect(parseInbound({ ...response, parameterReferences: { revision: 7, names: ['reportDate', 'reportDate'] } })).toBeUndefined()
+    expect(parseInbound({ ...response, parameterReferences: { revision: 7, names: ['reportDate'], expression: 'params.reportDate' } })).toBeUndefined()
+  })
 })

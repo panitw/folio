@@ -57,7 +57,7 @@ describe('application shell', () => {
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.queryByText(/Go production digest/)).not.toBeInTheDocument()
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
-    expect(request.mock.calls.map(([operation]) => operation)).toEqual(['identity', 'serialize'])
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(['parameter-references', 'identity', 'serialize'])
   })
 
   it('coalesces manual and debounced rerenders behind one active FIFO operation', async () => {
@@ -89,6 +89,101 @@ describe('application shell', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('uses the engine reference projection for keyboard-operable parameter inputs and retains accepted bytes through an invalid draft', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: ['reportDate'] } }
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const named = await screen.findByRole('textbox', { name: 'Value for params.reportDate' })
+    fireEvent.change(named, { target: { value: '"2026-08-28T00:00:00Z"' } })
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(2))
+    const accepted = request.mock.calls.filter(([operation]) => operation === 'identity').at(-1)! as unknown as [string, { params: ArrayBuffer }]
+    expect(new TextDecoder().decode(accepted[1].params)).toContain('2026-08-28T00:00:00Z')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{ nope' } })
+    expect(screen.getByRole('alert')).toHaveTextContent('last accepted parameter document remains in Preview')
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(0)
+  })
+
+  it('states pending, failed, and empty parameter discovery without inventing fields', async () => {
+    let release!: () => void
+    const pending = new Promise<{ snapshot: ReturnType<typeof snapshot>; parameterReferences: { revision: number; names: string[] } }>((resolve) => { release = () => resolve({ snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }) })
+    const request = vi.fn((operation: string) => operation === 'parameter-references' ? pending : Promise.resolve(operation === 'identity' ? { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } } : { snapshot: snapshot(1) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    expect(screen.getByText('Discovering parameter references from the local engine…')).toBeInTheDocument()
+    release()
+    await screen.findByText('The local engine found no parameter references in this template.')
+  })
+
+  it('states a failed parameter projection rather than calling it an empty projection', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') throw new Error('worker unavailable')
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await screen.findByText('The local engine could not provide parameter references. The raw parameter document is still available.')
+    expect(screen.queryByText('The local engine found no parameter references in this template.')).not.toBeInTheDocument()
+  })
+
+  it('edits named parameters without rewriting raw numeric lexemes or special own keys', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: ['__proto__', 'constructor', 'reportDate'] } }
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const reportDate = await screen.findByRole('textbox', { name: 'Value for params.reportDate' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"constructor":1.00e+2,"__proto__":-0,"other":123.4500}' } })
+    expect(screen.getByRole('textbox', { name: 'Value for params.constructor' })).toHaveValue('1.00e+2')
+    expect(screen.getByRole('textbox', { name: 'Value for params.__proto__' })).toHaveValue('-0')
+    reportDate.focus()
+    fireEvent.change(reportDate, { target: { value: '"2026-08-28T00:00:00Z"' } })
+    expect(document.activeElement).toBe(reportDate)
+    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'identity').length).toBeGreaterThan(1))
+    const accepted = request.mock.calls.filter(([operation]) => operation === 'identity').at(-1)! as unknown as [string, { params: ArrayBuffer }]
+    const exact = '{"constructor":1.00e+2,"__proto__":-0,"other":123.4500,"reportDate":"2026-08-28T00:00:00Z"}'
+    expect(new TextDecoder().decode(accepted[1].params)).toBe(exact)
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render').length).toBeGreaterThan(0))
+    const rendered = request.mock.calls.filter(([operation]) => operation === 'render').at(-1)! as unknown as [string, { params: ArrayBuffer }]
+    expect(new TextDecoder().decode(rendered[1].params)).toBe(exact)
+  })
+
+  it('refreshes the engine reference projection after Undo while Preview remains open', async () => {
+    let references = 0
+    const historySnapshot = { ...snapshot(2), canUndo: false, canRedo: true }
+    const initial = { ...snapshot(1), canUndo: true, canRedo: false }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') {
+        references++
+        return { snapshot: references === 1 ? initial : historySnapshot, parameterReferences: { revision: references === 1 ? 1 : 2, names: references === 1 ? ['reportDate'] : ['branch'] } }
+      }
+      if (operation === 'undo') return { snapshot: historySnapshot }
+      if (operation === 'identity') return { snapshot: references > 1 ? historySnapshot : initial, preview: { revision: references > 1 ? 2 : 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: references > 1 ? historySnapshot : initial, bytes }
+      if (operation === 'render') return { snapshot: references > 1 ? historySnapshot : initial, bytes: new Uint8Array([9]).buffer, preview: { revision: references > 1 ? 2 : 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      return { snapshot: initial }
+    })
+    render(<App engine={engine(request)} initialSnapshot={initial} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await screen.findByRole('textbox', { name: 'Value for params.reportDate' })
+    fireEvent.click(screen.getByRole('button', { name: /^Undo/ }))
+    await screen.findByRole('textbox', { name: 'Value for params.branch' })
+    expect(screen.queryByRole('textbox', { name: 'Value for params.reportDate' })).not.toBeInTheDocument()
+    expect(request.mock.calls.filter(([operation]) => operation === 'parameter-references')).toHaveLength(2)
   })
 
   it('waits for matching PDF.js admission before claiming current exact output', async () => {

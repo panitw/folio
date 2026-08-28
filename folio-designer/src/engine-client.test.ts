@@ -103,6 +103,16 @@ describe('engine client protocol and lifecycle', () => {
     await expect(pending).rejects.toMatchObject({ code: 'COMPONENT_INVALID', elementId: 'e1', dataPath: 'component.x', message: 'bad x' })
   })
 
+  it('fails closed when a render or identity reply smuggles parameter references', async () => {
+    const worker = new FakeWorker()
+    const client = new EngineClient(worker)
+    worker.ready()
+    const render = client.request('render', { template: new Uint8Array([1]).buffer, data: new Uint8Array([2]).buffer, params: new Uint8Array([3]).buffer })
+    worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 10 }, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'a'.repeat(64), pdfSha256: 'b'.repeat(64), diagnostics: [] }, parameterReferences: { revision: 1, names: ['reportDate'] } })
+    await expect(render).rejects.toMatchObject({ code: 'PROTOCOL_OPERATION_MISMATCH' })
+    expect(client.state).toBe('failed')
+  })
+
   it('rejects singleton startup failure and clears listeners on every terminal state', async () => {
     const worker = new FakeWorker()
     const getClient = createEngineClientSingleton(() => worker)

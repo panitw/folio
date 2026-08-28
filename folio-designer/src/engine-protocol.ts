@@ -1,6 +1,6 @@
 export const ENGINE_PROTOCOL_VERSION = 1 as const
 
-export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render'
+export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'parameter-references' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render'
 
 export const MAX_ENGINE_REQUEST_ID_LENGTH = 128
 export const MAX_ENGINE_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -9,6 +9,8 @@ export const MAX_ENGINE_DIAGNOSTICS = 256
 export const MAX_ENGINE_ELEMENT_ID_LENGTH = 128
 export const MAX_ENGINE_DATA_PATH_LENGTH = 256
 export const MAX_ENGINE_BINDING_LENGTH = 256
+export const MAX_ENGINE_PARAMETER_REFERENCES = 128
+export const MAX_ENGINE_PARAMETER_NAME_LENGTH = 128
 
 export type EngineError = Readonly<{
   code: string
@@ -21,6 +23,7 @@ export type RenderPayload = Readonly<{ template: ArrayBuffer; data: ArrayBuffer;
 export type IdentityPayload = Readonly<{ data: ArrayBuffer; params: ArrayBuffer }>
 export type EngineDiagnostic = Readonly<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }>
 export type PreviewEvidence = Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<EngineDiagnostic> }>
+export type ParameterReferences = Readonly<{ revision: number; names: ReadonlyArray<string> }>
 
 // Opaque bytes/JSON are deliberately the only document-bearing values on this
 // boundary. These types describe transport, not the .folio file format.
@@ -58,6 +61,7 @@ export type EngineSuccess = Readonly<{
   snapshot: EngineSnapshot
   bytes?: ArrayBuffer
 	preview?: PreviewEvidence
+	parameterReferences?: ParameterReferences
 }>
 
 export type EngineFailure = Readonly<{
@@ -88,6 +92,7 @@ export const isEngineRequestId = (value: unknown): value is string => typeof val
 const isError = (value: unknown): value is EngineError => isRecord(value) && hasOnly(value, ['code', 'message', 'elementId', 'dataPath']) && typeof value.code === 'string' && value.code.length > 0 && value.code.length <= 96 && typeof value.message === 'string' && value.message.length <= 512 && (value.elementId === undefined || typeof value.elementId === 'string' && value.elementId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH) && (value.dataPath === undefined || typeof value.dataPath === 'string' && value.dataPath.length <= MAX_ENGINE_DATA_PATH_LENGTH)
 const isDiagnostic = (value: unknown): value is EngineDiagnostic => isRecord(value) && hasExactKeys(value, ['severity', 'code', 'elementId', 'dataPath', 'message']) && value.severity === 'warning' && typeof value.code === 'string' && value.code.length > 0 && value.code.length <= 96 && typeof value.elementId === 'string' && value.elementId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof value.dataPath === 'string' && value.dataPath.length <= MAX_ENGINE_DATA_PATH_LENGTH && typeof value.message === 'string' && value.message.length <= 512
 const isPreview = (value: unknown): value is PreviewEvidence => isRecord(value) && hasOnly(value, ['revision', 'identity', 'pdfSha256', 'diagnostics']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.identity === 'string' && /^[a-f0-9]{64}$/.test(value.identity) && ((value.pdfSha256 === undefined && value.diagnostics === undefined) || (typeof value.pdfSha256 === 'string' && /^[a-f0-9]{64}$/.test(value.pdfSha256) && Array.isArray(value.diagnostics) && value.diagnostics.length <= MAX_ENGINE_DIAGNOSTICS && value.diagnostics.every(isDiagnostic)))
+const isParameterReferences = (value: unknown): value is ParameterReferences => isRecord(value) && hasExactKeys(value, ['revision', 'names']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && Array.isArray(value.names) && value.names.length <= MAX_ENGINE_PARAMETER_REFERENCES && value.names.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_ENGINE_PARAMETER_NAME_LENGTH && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) && new Set(value.names).size === value.names.length && value.names.every((name, index, names) => index === 0 || names[index - 1]! < name)
 const isCanvas = (value: unknown): value is CanvasProjection => {
   if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
@@ -165,7 +170,7 @@ export function requestCorrelationId(value: unknown): string | undefined {
 
 export function parseRequest(value: unknown): EngineRequest | undefined {
   if (!isRecord(value) || !hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'operation', 'payload']) || value.protocolVersion !== ENGINE_PROTOCOL_VERSION || value.kind !== 'request' || !isEngineRequestId(value.requestId)) return undefined
-  if (!['initialize', 'load', 'snapshot', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render'].includes(value.operation as string)) return undefined
+	if (!['initialize', 'load', 'snapshot', 'parameter-references', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render'].includes(value.operation as string)) return undefined
   if (value.payload !== undefined && (!isArrayBuffer(value.payload) || value.payload.byteLength > MAX_ENGINE_PAYLOAD_BYTES) && !(value.operation === 'render' && isRenderPayload(value.payload)) && !(value.operation === 'identity' && isIdentityPayload(value.payload))) return undefined
   const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command'
   if (value.operation === 'render' ? !isRenderPayload(value.payload) : value.operation === 'identity' ? !isIdentityPayload(value.payload) : needsPayload !== (value.payload !== undefined)) return undefined
@@ -179,7 +184,7 @@ export function parseInbound(value: unknown): EngineInbound | undefined {
     return undefined
   }
   if (value.kind !== 'response' || !isEngineRequestId(value.requestId) || typeof value.ok !== 'boolean') return undefined
-  if (value.ok && hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'snapshot', 'bytes', 'preview']) && isSnapshot(value.snapshot) && (value.bytes === undefined || isArrayBuffer(value.bytes) && value.bytes.byteLength <= MAX_ENGINE_RENDER_PDF_BYTES) && (value.preview === undefined || isPreview(value.preview)) && (value.preview === undefined || value.preview.revision === value.snapshot.revision) && (value.preview?.pdfSha256 === undefined || value.bytes !== undefined)) return value as EngineSuccess
+	if (value.ok && hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'snapshot', 'bytes', 'preview', 'parameterReferences']) && isSnapshot(value.snapshot) && (value.bytes === undefined || isArrayBuffer(value.bytes) && value.bytes.byteLength <= MAX_ENGINE_RENDER_PDF_BYTES) && (value.preview === undefined || isPreview(value.preview)) && (value.parameterReferences === undefined || isParameterReferences(value.parameterReferences)) && (value.preview === undefined || value.preview.revision === value.snapshot.revision) && (value.parameterReferences === undefined || value.parameterReferences.revision === value.snapshot.revision) && (value.preview?.pdfSha256 === undefined || value.bytes !== undefined)) return value as EngineSuccess
   if (!value.ok && hasExactKeys(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'error']) && isError(value.error)) return value as EngineFailure
   return undefined
 }

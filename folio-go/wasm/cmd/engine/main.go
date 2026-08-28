@@ -26,17 +26,19 @@ type request struct {
 }
 
 type response struct {
-	OK               bool          `json:"ok"`
-	Snapshot         wasm.Snapshot `json:"snapshot,omitempty"`
-	BytesBase64      string        `json:"bytesBase64,omitempty"`
-	DiagnosticCode   string        `json:"diagnosticCode,omitempty"`
-	Message          string        `json:"message,omitempty"`
-	ElementID        string        `json:"elementId,omitempty"`
-	DataPath         string        `json:"dataPath,omitempty"`
-	DictionarySHA256 string        `json:"dictionarySha256,omitempty"`
-	PDFSHA256        string        `json:"pdfSha256,omitempty"`
-	PreviewIdentity  string        `json:"previewIdentity,omitempty"`
-	RenderRevision   uint64        `json:"renderRevision,omitempty"`
+	OK                         bool          `json:"ok"`
+	Snapshot                   wasm.Snapshot `json:"snapshot,omitempty"`
+	BytesBase64                string        `json:"bytesBase64,omitempty"`
+	DiagnosticCode             string        `json:"diagnosticCode,omitempty"`
+	Message                    string        `json:"message,omitempty"`
+	ElementID                  string        `json:"elementId,omitempty"`
+	DataPath                   string        `json:"dataPath,omitempty"`
+	DictionarySHA256           string        `json:"dictionarySha256,omitempty"`
+	PDFSHA256                  string        `json:"pdfSha256,omitempty"`
+	PreviewIdentity            string        `json:"previewIdentity,omitempty"`
+	RenderRevision             uint64        `json:"renderRevision,omitempty"`
+	ParameterReferences        *[]string     `json:"parameterReferences,omitempty"`
+	ParameterReferenceRevision uint64        `json:"parameterReferenceRevision,omitempty"`
 	// Diagnostics is deliberately not omitempty: an otherwise successful
 	// render has the same closed response shape whether it has zero warnings
 	// or many. JavaScript treats [] as evidence, while a missing/null field is
@@ -93,6 +95,15 @@ func dispatch(engine *wasm.Engine, in request) response {
 		return response{OK: true, Snapshot: snapshot}
 	case "snapshot":
 		return response{OK: true, Snapshot: engine.Snapshot()}
+	case "parameter-references":
+		if in.PayloadBase64 != "" || in.TemplateBase64 != "" || in.DataBase64 != "" || in.ParamsBase64 != "" {
+			return failure("WASM_INPUT_INVALID", errors.New("parameter references require no byte inputs"))
+		}
+		references, revision, err := engine.ParameterReferences()
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: engine.Snapshot(), ParameterReferences: &references, ParameterReferenceRevision: revision}
 	case "validate":
 		snapshot, err := engine.Validate()
 		if err != nil {

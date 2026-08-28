@@ -40,6 +40,20 @@ type RenderResult struct {
 	Diagnostics []folio.Diagnostic `json:"diagnostics"`
 }
 
+// ParameterReferences exposes only engine-derived display metadata for the
+// transient Preview parameter editor. It is neither document state nor a
+// template/schema projection.
+func (e *Engine) ParameterReferences() ([]string, uint64, error) {
+	if e.template == nil {
+		return nil, 0, fmt.Errorf("folio wasm: no document is loaded")
+	}
+	references, err := folio.ParameterReferences(e.template)
+	if err != nil {
+		return nil, 0, err
+	}
+	return append([]string(nil), references...), e.revision, nil
+}
+
 // PreviewIdentity obtains evidence from the current engine-owned canonical
 // template and the two raw JSON channels without exposing or parsing the
 // template in the browser.

@@ -20,6 +20,10 @@ import { acceptSampleData, type SampleData } from './sample-data'
 import type { SampleFileAccess } from './sample-file'
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
+const EMPTY_PARAMETER_DOCUMENT = '{}'
+const MAX_PARAMETER_DOCUMENT_BYTES = 8 * 1024 * 1024
+
+type ParameterReferenceState = Readonly<{ status: 'pending' | 'ready' | 'failed'; names: ReadonlyArray<string> }>
 
 function Icon({ name }: { name: 'open' | 'save' }) {
   return <svg aria-hidden="true" className="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><path d={name === 'open' ? 'M2 5.5h4l1.2-2h6.8v9H2z M2 5.5h12' : 'M3 2h8l2 2v10H3z M5 2v4h6V2 M5 12h6'} /></svg>
@@ -59,7 +63,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const [redoAvailable, setRedoAvailable] = useState(initialSnapshot?.canRedo === true)
   const [locateStatus, setLocateStatus] = useState<string>()
   const [previewViewState, setPreviewViewState] = useState<PDFPreviewViewState>(initialPDFPreviewViewState)
-  const [previewParams, setPreviewParams] = useState('{\n  "preview": null\n}')
+  // Accepted bytes and editor draft are intentionally separate. The engine
+  // receives only accepted raw text; invalid local input cannot silently turn
+  // into an alternate runtime value.
+  const [previewParams, setPreviewParams] = useState(EMPTY_PARAMETER_DOCUMENT)
+  const [previewParamsDraft, setPreviewParamsDraft] = useState(EMPTY_PARAMETER_DOCUMENT)
+  const [previewParamsError, setPreviewParamsError] = useState<string>()
+  const [parameterReferenceState, setParameterReferenceState] = useState<ParameterReferenceState>({ status: 'pending', names: [] })
   const [sampleData, setSampleData] = useState<SampleData | undefined>(initialSampleData)
   const [sampleError, setSampleError] = useState<string>()
   const [sampleBusy, setSampleBusy] = useState(false)
@@ -83,6 +93,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   // A document replacement revokes a picker started for the old document.
   const sampleLoadGeneration = useRef(0)
   const previewParamsRef = useRef(previewParams)
+  const parameterReferenceRequest = useRef(0)
   const modeRef = useRef(mode)
   const canvasRegionRef = useRef<HTMLElement>(null)
   useEffect(() => { modeRef.current = mode }, [mode])
@@ -173,9 +184,67 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     setPreviewStatus(previewRef.current ? 'stale' : 'debouncing')
     previewTimer.current = setTimeout(() => { previewTimer.current = undefined; renderPreview() }, PREVIEW_DEBOUNCE_MS)
   }
+  const acceptPreviewParameters = (draftValue: string) => {
+    setPreviewParamsDraft(draftValue)
+    try {
+      const parsed: unknown = JSON.parse(draftValue)
+      if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Parameter input must be a JSON object')
+      if (new TextEncoder().encode(draftValue).byteLength > MAX_PARAMETER_DOCUMENT_BYTES) throw new Error('Parameter input exceeds the local engine limit')
+      previewParamsRef.current = draftValue
+      setPreviewParams(draftValue)
+      setPreviewParamsError(undefined)
+      invalidatePreview()
+      schedulePreview()
+    } catch (error) {
+      setPreviewParamsError(error instanceof Error ? error.message : 'Parameter input must be valid JSON')
+    }
+  }
+  const setNamedParameter = (name: string, value: string) => {
+    try {
+      const document: unknown = JSON.parse(previewParamsRef.current)
+      JSON.parse(value)
+      if (document === null || Array.isArray(document) || typeof document !== 'object') throw new Error('Parameter input must be a JSON object')
+      // Never stringify the accepted document here. Its numeric lexemes and
+      // untouched source bytes are runtime input evidence, not UI state to
+      // normalize. The small JSON token locator only replaces this one value.
+      const next = replaceTopLevelJSONValue(previewParamsRef.current, name, value)
+      if (next === undefined) throw new Error('Parameter input must be a JSON object')
+      acceptPreviewParameters(next)
+    } catch {
+      setPreviewParamsError(`Value for params.${name} must be valid JSON`)
+    }
+  }
+  const clearPreviewParameters = (clearReferences = false) => {
+    previewParamsRef.current = EMPTY_PARAMETER_DOCUMENT
+    setPreviewParams(EMPTY_PARAMETER_DOCUMENT)
+    setPreviewParamsDraft(EMPTY_PARAMETER_DOCUMENT)
+    setPreviewParamsError(undefined)
+    if (clearReferences) { parameterReferenceRequest.current++; setParameterReferenceState({ status: 'pending', names: [] }) }
+  }
+  const loadParameterReferences = async () => {
+    const currentSnapshot = snapshotRef.current
+    const generation = documentGeneration.current
+    const request = ++parameterReferenceRequest.current
+    if (!engine || !currentSnapshot) {
+      setParameterReferenceState({ status: 'failed', names: [] })
+      return
+    }
+    setParameterReferenceState({ status: 'pending', names: [] })
+    try {
+      const result = await engine.request('parameter-references')
+      if (parameterReferenceRequest.current === request && documentGeneration.current === generation) {
+        if (snapshotRef.current?.revision === currentSnapshot.revision && result.snapshot.revision === currentSnapshot.revision && result.parameterReferences?.revision === currentSnapshot.revision) setParameterReferenceState({ status: 'ready', names: result.parameterReferences.names })
+        else setParameterReferenceState({ status: 'failed', names: [] })
+      }
+    } catch {
+      // Never turn an unavailable projection into a guessed empty one.
+      if (parameterReferenceRequest.current === request && documentGeneration.current === generation) setParameterReferenceState({ status: 'failed', names: [] })
+    }
+  }
   const enterPreview = () => {
     modeRef.current = 'preview'
     setMode('preview')
+    void loadParameterReferences()
     renderPreview()
   }
   const returnToDesign = () => { cancelPreviewWork(); modeRef.current = 'design'; setPreviewStatus(previewRef.current ? 'stale' : 'idle'); setPreviewError(undefined); setMode('design') }
@@ -288,6 +357,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const clearSampleData = () => {
     revokeSampleLoad()
     sampleDataRef.current = undefined; setSampleData(undefined); setSampleError(undefined); setBindingError(undefined)
+    clearPreviewParameters()
     // Clearing a previously accepted sample is itself a Preview input change.
     invalidatePreview(true)
   }
@@ -302,6 +372,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       // Replacement is atomic: only a fully accepted raw file and its bounded
       // projection can replace the prior local sample.
       sampleDataRef.current = accepted; setSampleData(accepted); setBindingError(undefined)
+      clearPreviewParameters()
       invalidatePreview()
       schedulePreview()
     } catch (error) {
@@ -312,6 +383,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     if (!engine || !fileAccess || fileBusy) return
     revokeSampleLoad()
     invalidatePreview(true)
+    clearPreviewParameters(true)
     setFileBusy(true); setFileError(undefined); setFileStatus('Opening local file…')
     try {
       const opened = await fileAccess.open()
@@ -325,7 +397,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       setTarget(opened.target)
       setSavedRevision(inputWasCanonical ? canonical.snapshot.revision : undefined)
       setFileStatus(inputWasCanonical ? `Opened local file ${opened.name}` : `Opened local file ${opened.name}; canonical local changes need saving`)
-      if (modeRef.current === 'preview') void renderPreview()
+      if (modeRef.current === 'preview') { void loadParameterReferences(); void renderPreview() }
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
       else announceFailure('Could not open local file')
@@ -360,6 +432,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     if (!engine || !blankBytes || fileBusy) return
     revokeSampleLoad()
     invalidatePreview(true)
+    clearPreviewParameters(true)
     setFileBusy(true); setFileError(undefined); setFileStatus('Starting blank local template…')
     try {
       const loaded = await engine.request('load', blankBytes)
@@ -367,7 +440,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       clearSampleData()
       setTitle('Untitled template'); setTarget(undefined); setSavedRevision(undefined)
       setFileStatus('Started an unnamed local template')
-      if (modeRef.current === 'preview') void renderPreview()
+      if (modeRef.current === 'preview') { void loadParameterReferences(); void renderPreview() }
     } catch { announceFailure('Could not start a blank local template')
     } finally { setFileBusy(false) }
   }
@@ -378,6 +451,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     try {
       const result = await engine.request(operation)
       invalidatePreview(); setCurrentSnapshot(result.snapshot, false, true)
+      // Undo/Redo installs a different canonical revision while Preview stays
+      // open. Re-query the Go projection instead of keeping fields attributed
+      // to the revision we just left.
+      if (modeRef.current === 'preview') void loadParameterReferences()
     } catch (error) {
       const received = error as { code?: string }
       if (received.code === 'UNDO_UNAVAILABLE') setUndoAvailable(false)
@@ -457,10 +534,116 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <><PreviewFailure error={currentFailure.error} onReturn={() => returnFromFailure(currentFailure)} /><button type="button" className="file-button" onClick={renderPreview}>Retry local render</button></>}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} />
-      <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><label>Raw parameter JSON<textarea aria-label="Raw parameter JSON" value={previewParams} onChange={(event) => { previewParamsRef.current = event.target.value; setPreviewParams(event.target.value); invalidatePreview(); schedulePreview() }} /></label><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
+      <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
   </div>
+}
+
+function ParameterEditor({ referenceState, accepted, draft, error, onDraft, onNamedValue }: { referenceState: ParameterReferenceState; accepted: string; draft: string; error?: string; onDraft: (value: string) => void; onNamedValue: (name: string, value: string) => void }) {
+  const values = parameterValues(accepted)
+  const references = referenceState.names
+  return <><p className="panel-heading">Runtime parameters</p>{referenceState.status === 'pending' ? <p className="honest-note" role="status">Discovering parameter references from the local engine…</p> : referenceState.status === 'failed' ? <p className="file-message" role="alert">The local engine could not provide parameter references. The raw parameter document is still available.</p> : references.length > 0 ? <div aria-label="Engine-discovered parameter references">{references.map((name) => <ParameterValueInput key={name} name={name} acceptedValue={values[name]} onAccept={onNamedValue} />)}</div> : <p className="honest-note">The local engine found no parameter references in this template.</p>}<label>Raw parameter JSON<textarea aria-label="Raw parameter JSON" aria-invalid={Boolean(error)} aria-describedby={error ? 'parameter-input-error' : undefined} value={draft} onChange={(event) => onDraft(event.target.value)} /></label>{error && <p id="parameter-input-error" role="alert" className="file-message">{error}. The last accepted parameter document remains in Preview.</p>}</>
+}
+
+function ParameterValueInput({ name, acceptedValue, onAccept }: { name: string; acceptedValue?: string; onAccept: (name: string, value: string) => void }) {
+	const accepted = acceptedValue ?? ''
+	return <label>params.{name}<input aria-label={`Value for params.${name}`} value={accepted} onChange={(event) => onAccept(name, event.target.value)} /></label>
+}
+
+function parameterValues(raw: string): Record<string, string> {
+  const values = Object.create(null) as Record<string, string>
+  for (const property of topLevelJSONProperties(raw) ?? []) values[property.name] = raw.slice(property.valueStart, property.valueEnd)
+  return values
+}
+
+type JSONPropertySpan = Readonly<{ name: string; valueStart: number; valueEnd: number }>
+
+// This is intentionally a token locator, not a template parser or a second
+// parameter schema. JSON.parse remains the acceptance authority; these spans
+// merely let a named control replace one top-level raw JSON value without
+// rewriting numeric lexemes, whitespace, unrelated keys, or special keys.
+function topLevelJSONProperties(raw: string): ReadonlyArray<JSONPropertySpan> | undefined {
+  let cursor = skipJSONWhitespace(raw, 0)
+  if (raw[cursor++] !== '{') return undefined
+  const properties: JSONPropertySpan[] = []
+  cursor = skipJSONWhitespace(raw, cursor)
+  if (raw[cursor] === '}') return properties
+  while (cursor < raw.length) {
+    const keyStart = cursor
+    const keyEnd = scanJSONString(raw, cursor)
+    if (keyEnd === undefined) return undefined
+    let name: unknown
+    try { name = JSON.parse(raw.slice(keyStart, keyEnd)) } catch { return undefined }
+    if (typeof name !== 'string') return undefined
+    cursor = skipJSONWhitespace(raw, keyEnd)
+    if (raw[cursor++] !== ':') return undefined
+    cursor = skipJSONWhitespace(raw, cursor)
+    const valueStart = cursor
+    const valueEnd = scanJSONValue(raw, cursor)
+    if (valueEnd === undefined) return undefined
+    properties.push({ name, valueStart, valueEnd })
+    cursor = skipJSONWhitespace(raw, valueEnd)
+    if (raw[cursor] === '}') return properties
+    if (raw[cursor++] !== ',') return undefined
+    cursor = skipJSONWhitespace(raw, cursor)
+  }
+  return undefined
+}
+
+function replaceTopLevelJSONValue(raw: string, name: string, value: string): string | undefined {
+  const properties = topLevelJSONProperties(raw)
+  if (!properties) return undefined
+  // Duplicate JSON keys resolve last-wins in the production decoder; retain
+  // that same value while preserving every other occurrence byte-for-byte.
+  const existing = properties.filter((property) => property.name === name).at(-1)
+  if (existing) return raw.slice(0, existing.valueStart) + value + raw.slice(existing.valueEnd)
+  const close = skipJSONWhitespace(raw, properties.length === 0 ? 1 : properties.at(-1)!.valueEnd)
+  const beforeClose = raw.indexOf('}', close)
+  if (beforeClose < 0) return undefined
+  return raw.slice(0, beforeClose) + `${properties.length > 0 ? ',' : ''}${JSON.stringify(name)}:${value}` + raw.slice(beforeClose)
+}
+
+function skipJSONWhitespace(raw: string, cursor: number): number {
+  while (cursor < raw.length && /[\t\n\r ]/.test(raw[cursor]!)) cursor++
+  return cursor
+}
+
+function scanJSONString(raw: string, cursor: number): number | undefined {
+  if (raw[cursor] !== '"') return undefined
+  for (cursor++; cursor < raw.length; cursor++) {
+    if (raw[cursor] === '\\') { cursor++; continue }
+    if (raw[cursor] === '"') return cursor + 1
+  }
+  return undefined
+}
+
+function scanJSONValue(raw: string, cursor: number): number | undefined {
+  const first = raw[cursor]
+  if (first === '"') return scanJSONString(raw, cursor)
+  if (first === '{' || first === '[') {
+    const close = first === '{' ? '}' : ']'
+    cursor = skipJSONWhitespace(raw, cursor + 1)
+    if (raw[cursor] === close) return cursor + 1
+    while (cursor < raw.length) {
+      if (first === '{') {
+        const keyEnd = scanJSONString(raw, cursor)
+        if (keyEnd === undefined) return undefined
+        cursor = skipJSONWhitespace(raw, keyEnd)
+        if (raw[cursor++] !== ':') return undefined
+        cursor = skipJSONWhitespace(raw, cursor)
+      }
+      const valueEnd = scanJSONValue(raw, cursor)
+      if (valueEnd === undefined) return undefined
+      cursor = skipJSONWhitespace(raw, valueEnd)
+      if (raw[cursor] === close) return cursor + 1
+      if (raw[cursor++] !== ',') return undefined
+      cursor = skipJSONWhitespace(raw, cursor)
+    }
+    return undefined
+  }
+  const token = raw.slice(cursor).match(/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/)?.[0]
+  return token ? cursor + token.length : undefined
 }
 
 function PageSetup({ preset, orientation, draft, onPreset, onOrientation, onDraft, onApply, disabled }: { preset: string; orientation: string; draft: Draft; onPreset: (value: string) => void; onOrientation: (value: string) => void; onDraft: (key: keyof Draft, value: string) => void; onApply: () => void; disabled: boolean }) {

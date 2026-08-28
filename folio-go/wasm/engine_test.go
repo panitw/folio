@@ -41,6 +41,22 @@ func TestEngineLoadAndSerializeRoundTripsCanonicalBytes(t *testing.T) {
 	}
 }
 
+func TestEngineParameterReferencesAreARevisionCorrelatedProjection(t *testing.T) {
+	engine := NewEngine()
+	input, err := os.ReadFile("../testdata/example/first-pdf.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input = bytes.Replace(input, []byte("{{customer.name}}"), []byte("{{params.reportDate}} {{params.reportDate}}"), 1)
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	references, revision, err := engine.ParameterReferences()
+	if err != nil || !reflect.DeepEqual(references, []string{"reportDate"}) || revision != engine.Snapshot().Revision {
+		t.Fatalf("parameter references = %#v/%d, err=%v", references, revision, err)
+	}
+}
+
 func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 	fixtures := []struct{ name, template, data, params string }{
 		{"simple", "../testdata/example/first-pdf.folio", `{"customer":{"name":"Ada"}}`, `{"preview":null}`},
