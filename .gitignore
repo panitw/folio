@@ -89,3 +89,6 @@ _bmad/config.user.toml
 
 # Local fontgen toolchain (pinned Python 3.12.13 + fontTools 4.63.0), never committed
 /.fontgen-venv/
+# Playwright output is disposable; Story 6.7 attaches a bounded JSON manifest
+# to its run rather than retaining PDFs or platform binaries in this tree.
+folio-designer/test-results/

@@ -659,7 +659,7 @@ func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessag
 func propertyPath(changes map[string]json.RawMessage) string {
 	// This is a fixed command vocabulary, so use its canonical order rather
 	// than ranging a map (diagnostic location must be repeatable too).
-	for _, key := range []string{"x", "y", "width", "height", "value", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+	for _, key := range []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
 		if _, ok := changes[key]; ok {
 			return key
 		}
@@ -716,12 +716,13 @@ func styleFor(element *template.Element) *template.Style {
 
 func applyPropertyChanges(t *Template, element *template.Element, changes map[string]json.RawMessage) error {
 	allowed := map[string]bool{"x": true, "y": true, "visibleIf": true}
-	propertyOrder := []string{"x", "y", "width", "height", "value", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
+	propertyOrder := []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
 	if element.Type != template.ElementTable {
 		allowed["width"], allowed["height"] = true, true
 	}
 	if element.Type == template.ElementText {
 		allowed["value"] = true
+		allowed["expression"] = true
 	}
 	if element.Type == template.ElementText || element.Type == template.ElementImage || element.Type == template.ElementTable || element.Type == template.ElementLine || element.Type == template.ElementRect {
 		for _, key := range []string{"background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
@@ -815,14 +816,14 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					*target = template.Presence[geom.Length]{Set: true, Value: length}
 				}
 			}
-		case "value", "visibleIf", "fontFamily", "align", "valign", "background", "borderColor":
+		case "value", "expression", "visibleIf", "fontFamily", "align", "valign", "background", "borderColor":
 			var text string
 			if !clear && !setNull {
 				text, err = propertyString(value)
 				if err != nil {
 					return fmt.Errorf("%s: %w", key, err)
 				}
-				if key != "value" && stringsContainsPlaceholder(text) {
+				if key != "value" && key != "expression" && stringsContainsPlaceholder(text) {
 					return fmt.Errorf("%s must not contain a placeholder", key)
 				}
 			}
@@ -836,6 +837,11 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					// command deliberately remains useful for literal text, but cannot
 					// become a second, typed expression route.
 					return fmt.Errorf("value must not contain a placeholder; choose a path in the Data panel")
+				}
+				element.Value = template.Presence[string]{Set: true, Value: text}
+			case "expression":
+				if clear || setNull || !stringsContainsPlaceholder(text) {
+					return fmt.Errorf("expression must contain a template placeholder")
 				}
 				element.Value = template.Presence[string]{Set: true, Value: text}
 			case "visibleIf":
@@ -1174,7 +1180,21 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 			element.Value = template.Presence[string]{Set: true, Value: "Text"}
 		}
 		if elementType == template.ElementImage {
-			element.Asset = template.Presence[string]{Set: true, Value: ""}
+			// The palette's image control is usable immediately: it inserts the
+			// shipped Folio mark as an embedded, canonical document asset rather
+			// than an empty image reference that could never render. Authors can
+			// position/size it through the normal selected-component controls.
+			if t.doc.Assets == nil {
+				t.doc.Assets = map[string]template.Asset{}
+			}
+			if _, exists := t.doc.Assets[defaultAuthoringLogoKey]; !exists {
+				t.doc.Assets[defaultAuthoringLogoKey] = template.Asset{MediaType: "image/png", Data: []string{
+					"iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAR0lEQVR42u3XQQ0AIAwEsLnACW7w",
+					"LwMkwAPCIF1OQB+3JYtSW6oE0GegfmCAgIBWQOnWHug50K4KAwEBuUNAQEC3QT5XoGkGGMiUzlsM",
+					"R5wAAAAASUVORK5CYII=",
+				}}
+			}
+			element.Asset = template.Presence[string]{Set: true, Value: defaultAuthoringLogoKey}
 		}
 	}
 	if err := containComponent(projected, x, y, width, height); err != nil {
@@ -1184,6 +1204,8 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 	t.doc.NextID++
 	return Canvas(t)
 }
+
+const defaultAuthoringLogoKey = "f4a37bba5652865abc8e24be5e1aad4d5ad42ce5727715f6d19b93861d23f6a4"
 
 func hitTestBand(t *Template, x, y geom.Length) (*template.Band, CanvasBand, error) {
 	projection, err := Canvas(t)

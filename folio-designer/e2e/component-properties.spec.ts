@@ -20,5 +20,5 @@ test('a selected component exposes committed properties and a mixed selection om
   await text.click()
   await table.click({ modifiers: ['Shift'] })
   await expect(page.getByRole('textbox', { name: 'Width (pt)', exact: true })).toHaveCount(0)
-  await expect(page.getByText(/Table size, binding, columns/)).toBeVisible()
+  await expect(page.getByText(/Table size and binding are not editable here/)).toBeVisible()
 })

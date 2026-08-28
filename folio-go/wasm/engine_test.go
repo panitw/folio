@@ -57,6 +57,24 @@ func TestEngineParameterReferencesAreARevisionCorrelatedProjection(t *testing.T)
 	}
 }
 
+func TestEngineEmptyParameterReferencesRemainAnArrayForWorkerTransport(t *testing.T) {
+	engine := NewEngine()
+	input, err := os.ReadFile("../testdata/example/first-pdf.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	references, _, err := engine.ParameterReferences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if references == nil || len(references) != 0 {
+		t.Fatalf("empty parameter references must be a non-nil array for JSON transport, got %#v", references)
+	}
+}
+
 func TestEngineTableColumnsAreRevisionCorrelatedAndHistoryOwned(t *testing.T) {
 	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
 	if err != nil {

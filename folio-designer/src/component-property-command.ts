@@ -1,6 +1,6 @@
 // This is an opaque Go command vocabulary, not a browser-side property or
 // style model. A caller sends exact local literals only on an explicit commit.
-export type PropertyField = 'x' | 'y' | 'width' | 'height' | 'value' | 'visibleIf' | 'fontFamily' | 'fontSize' | 'bold' | 'italic' | 'align' | 'valign' | 'background' | 'borderWidth' | 'borderColor' | 'borderEdges' | 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
+export type PropertyField = 'x' | 'y' | 'width' | 'height' | 'value' | 'expression' | 'visibleIf' | 'fontFamily' | 'fontSize' | 'bold' | 'italic' | 'align' | 'valign' | 'background' | 'borderWidth' | 'borderColor' | 'borderEdges' | 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
 
 export type PropertyIntent = Readonly<{ field: PropertyField; operation: 'set' | 'clear' | 'null'; value?: string | boolean | ReadonlyArray<string> }>
 

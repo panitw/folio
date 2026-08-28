@@ -1,0 +1,724 @@
+{
+  "retention": "Committed manifest contains only hashes, small raw render inputs, and command provenance. Playwright output/PDFs/native binary are disposable and ignored.",
+  "runtime": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.16.0",
+    "chromium": "explicit Chromium executable"
+  },
+  "rawRenderInputs": {
+    "dataUTF8": "{\n  \"customer\": {\"name\": \"Ada Lovelace\"},\n  \"account\": {\"number\": \"001-9\"},\n  \"period\": {\"from\": \"2026-08-01\", \"to\": \"2026-08-29\"},\n  \"transactions\": [\n    {\"date\":\"2026-08-01\",\"description\": \"Opening balance — สวัสดี 世界\", \"debitDisplay\":\"\", \"creditDisplay\":\"1,250.10\", \"balanceDisplay\":\"1,250.10\", \"amount\": 1250.10},\n    {\"date\":\"2026-08-29\",\"description\": \"Service charge — 支払い\", \"debitDisplay\":\"480.33\", \"creditDisplay\":\"\", \"balanceDisplay\":\"769.77\", \"amount\": 480.33}\n  ]\n}\n",
+    "paramsUTF8": "{\n  \"reportDate\": \"2026-08-29\",\n  \"generatedDate\": \"2026-08-29\",\n  \"documentDate\": \"2026-08-29T00:00:00Z\"\n}\n"
+  },
+  "golden": {
+    "template": {
+      "length": 4261,
+      "sha256": "4267fc0792bc4224ad32a95a9f0e2a82b3d412c56b855e24a33e29f1de0096f3"
+    },
+    "data": {
+      "length": 505,
+      "sha256": "f3db4537989bec143b0f20e8280595fbd4d9f8fa5c2773a1dc83964ac644a818"
+    },
+    "params": {
+      "length": 108,
+      "sha256": "99bbfbcb76aadfb93fc8ea64620f866b30c08dcd4c39fa985fd3acbd3b530813"
+    },
+    "browserPDF": {
+      "length": 73705,
+      "sha256": "2a07ca115ffa498969dafe36ab82d2253913b565fbf48d16a9ee135559314c98"
+    },
+    "repeatedBrowserPDF": {
+      "length": 73705,
+      "sha256": "2a07ca115ffa498969dafe36ab82d2253913b565fbf48d16a9ee135559314c98"
+    },
+    "nativePDF": {
+      "length": 73705,
+      "sha256": "2a07ca115ffa498969dafe36ab82d2253913b565fbf48d16a9ee135559314c98"
+    },
+    "serializations": 4,
+    "commands": [
+      {
+        "requestId": "request-3",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"image\",\"x\":36,\"y\":36,\"snap\":true}"
+      },
+      {
+        "requestId": "request-4",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":36,\"snap\":true}"
+      },
+      {
+        "requestId": "request-5",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-6",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":30}}}"
+      },
+      {
+        "requestId": "request-7",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"value\":{\"op\":\"set\",\"value\":\"CUSTOMER ACCOUNT STATEMENT\"}}}"
+      },
+      {
+        "requestId": "request-8",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
+      },
+      {
+        "requestId": "request-9",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-10",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":30}}}"
+      },
+      {
+        "requestId": "request-11",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Customer: {{customer.name}}\"}}}"
+      },
+      {
+        "requestId": "request-12",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
+      },
+      {
+        "requestId": "request-13",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e4\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-14",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e4\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":60}}}"
+      },
+      {
+        "requestId": "request-15",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e4\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Account: {{account.number}}\"}}}"
+      },
+      {
+        "requestId": "request-16",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
+      },
+      {
+        "requestId": "request-17",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e5\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-18",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e5\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":90}}}"
+      },
+      {
+        "requestId": "request-19",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e5\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Statement period: {{period.from}} to {{period.to}}\"}}}"
+      },
+      {
+        "requestId": "request-20",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":765.89,\"snap\":true}"
+      },
+      {
+        "requestId": "request-21",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e6\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-22",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e6\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Confidential — generated {{params.generatedDate}} / report {{params.reportDate}}\"}}}"
+      },
+      {
+        "requestId": "request-23",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":765.89,\"snap\":true}"
+      },
+      {
+        "requestId": "request-24",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e7\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-25",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e7\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":12}}}"
+      },
+      {
+        "requestId": "request-26",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e7\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Page {{page}} of {{pages}}\"}}}"
+      },
+      {
+        "requestId": "request-27",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
+      },
+      {
+        "requestId": "request-28",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e8\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-29",
+        "utf8": "{\"kind\":\"bindComponentScalar\",\"version\":1,\"id\":\"e8\",\"segments\":[\"customer\",\"name\"]}"
+      },
+      {
+        "requestId": "request-30",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"table\",\"x\":36,\"y\":96,\"snap\":true}"
+      },
+      {
+        "requestId": "request-31",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e9\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":120}}}"
+      },
+      {
+        "requestId": "request-32",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e9\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-34",
+        "utf8": "{\"kind\":\"configureTableBinding\",\"version\":1,\"id\":\"e9\",\"collection\":\"transactions[]\",\"alias\":\"\"}"
+      },
+      {
+        "requestId": "request-36",
+        "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":0}"
+      },
+      {
+        "requestId": "request-38",
+        "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ea\",\"field\":\"date\"}"
+      },
+      {
+        "requestId": "request-40",
+        "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":1}"
+      },
+      {
+        "requestId": "request-42",
+        "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"eb\",\"field\":\"description\"}"
+      },
+      {
+        "requestId": "request-44",
+        "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":2}"
+      },
+      {
+        "requestId": "request-46",
+        "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ec\",\"field\":\"debitDisplay\"}"
+      },
+      {
+        "requestId": "request-48",
+        "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":3}"
+      },
+      {
+        "requestId": "request-50",
+        "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ed\",\"field\":\"creditDisplay\"}"
+      },
+      {
+        "requestId": "request-52",
+        "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":4}"
+      },
+      {
+        "requestId": "request-54",
+        "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"field\":\"balanceDisplay\"}"
+      },
+      {
+        "requestId": "request-56",
+        "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ea\",\"field\":\"header\",\"value\":\"Date\"}"
+      },
+      {
+        "requestId": "request-58",
+        "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"eb\",\"field\":\"header\",\"value\":\"Description\"}"
+      },
+      {
+        "requestId": "request-60",
+        "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ec\",\"field\":\"header\",\"value\":\"Debit\"}"
+      },
+      {
+        "requestId": "request-62",
+        "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ed\",\"field\":\"header\",\"value\":\"Credit\"}"
+      },
+      {
+        "requestId": "request-64",
+        "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"field\":\"header\",\"value\":\"Balance\"}"
+      },
+      {
+        "requestId": "request-66",
+        "utf8": "{\"kind\":\"updateTableColumnFooter\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"footer\":\"sum\",\"footerOf\":\"\",\"footerFormat\":\"\"}"
+      },
+      {
+        "requestId": "request-68",
+        "utf8": "{\"kind\":\"updateTableColumnFooter\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"footer\":\"sum\",\"footerOf\":\"transactions.amount\",\"footerFormat\":\"\"}"
+      }
+    ],
+    "operations": [
+      {
+        "operation": "initialize",
+        "requestId": "request-1"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-2"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-3"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-4"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-5"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-6"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-7"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-8"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-9"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-10"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-11"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-12"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-13"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-14"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-15"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-16"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-17"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-18"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-19"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-20"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-21"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-22"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-23"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-24"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-25"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-26"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-27"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-28"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-29"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-30"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-31"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-32"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-33"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-34"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-35"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-36"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-37"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-38"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-39"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-40"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-41"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-42"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-43"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-44"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-45"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-46"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-47"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-48"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-49"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-50"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-51"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-52"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-53"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-54"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-55"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-56"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-57"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-58"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-59"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-60"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-61"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-62"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-63"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-64"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-65"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-66"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-67"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-68"
+      },
+      {
+        "operation": "table-columns",
+        "requestId": "request-69"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-70"
+      },
+      {
+        "operation": "parameter-references",
+        "requestId": "request-71"
+      },
+      {
+        "operation": "identity",
+        "requestId": "request-72"
+      },
+      {
+        "operation": "identity",
+        "requestId": "request-73"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-74"
+      },
+      {
+        "operation": "render",
+        "requestId": "request-75"
+      },
+      {
+        "operation": "identity",
+        "requestId": "request-76"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-77"
+      },
+      {
+        "operation": "render",
+        "requestId": "request-78"
+      },
+      {
+        "operation": "identity",
+        "requestId": "request-79"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-80"
+      },
+      {
+        "operation": "render",
+        "requestId": "request-81"
+      }
+    ]
+  },
+  "alternate": {
+    "template": {
+      "length": 1520,
+      "sha256": "f4eab1a8303c9ae2f404e1811578111f0d41607af4ed007ee14dbd28eb03b898"
+    },
+    "data": {
+      "length": 505,
+      "sha256": "f3db4537989bec143b0f20e8280595fbd4d9f8fa5c2773a1dc83964ac644a818"
+    },
+    "params": {
+      "length": 108,
+      "sha256": "99bbfbcb76aadfb93fc8ea64620f866b30c08dcd4c39fa985fd3acbd3b530813"
+    },
+    "browserPDF": {
+      "length": 59350,
+      "sha256": "dc3afc10319e4287ece5225706ed93d481eae41ddb58369c13ce3c4ce21b6b82"
+    },
+    "repeatedBrowserPDF": {
+      "length": 59350,
+      "sha256": "dc3afc10319e4287ece5225706ed93d481eae41ddb58369c13ce3c4ce21b6b82"
+    },
+    "nativePDF": {
+      "length": 59350,
+      "sha256": "dc3afc10319e4287ece5225706ed93d481eae41ddb58369c13ce3c4ce21b6b82"
+    },
+    "serializations": 3,
+    "commands": [
+      {
+        "requestId": "request-3",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
+      },
+      {
+        "requestId": "request-4",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e1\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-5",
+        "utf8": "{\"kind\":\"bindComponentScalar\",\"version\":1,\"id\":\"e1\",\"segments\":[\"customer\",\"name\"]}"
+      },
+      {
+        "requestId": "request-6",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":36,\"snap\":true}"
+      },
+      {
+        "requestId": "request-7",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-8",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":30}}}"
+      },
+      {
+        "requestId": "request-9",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"value\":{\"op\":\"set\",\"value\":\"ACCOUNT NOTICE\"}}}"
+      },
+      {
+        "requestId": "request-10",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":765.89,\"snap\":true}"
+      },
+      {
+        "requestId": "request-11",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+      },
+      {
+        "requestId": "request-12",
+        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Archive copy — {{params.reportDate}}\"}}}"
+      },
+      {
+        "requestId": "request-13",
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"rect\",\"x\":36,\"y\":96,\"snap\":true}"
+      }
+    ],
+    "operations": [
+      {
+        "operation": "initialize",
+        "requestId": "request-1"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-2"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-3"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-4"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-5"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-6"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-7"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-8"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-9"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-10"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-11"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-12"
+      },
+      {
+        "operation": "command",
+        "requestId": "request-13"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-14"
+      },
+      {
+        "operation": "parameter-references",
+        "requestId": "request-15"
+      },
+      {
+        "operation": "identity",
+        "requestId": "request-16"
+      },
+      {
+        "operation": "identity",
+        "requestId": "request-17"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-18"
+      },
+      {
+        "operation": "render",
+        "requestId": "request-19"
+      },
+      {
+        "operation": "identity",
+        "requestId": "request-20"
+      },
+      {
+        "operation": "serialize",
+        "requestId": "request-21"
+      },
+      {
+        "operation": "render",
+        "requestId": "request-22"
+      }
+    ]
+  },
+  "handEditedNativeTemplate": "folio-go/testdata/template/golden/worked-example.json (native test only; never uploaded by this browser test)"
+}

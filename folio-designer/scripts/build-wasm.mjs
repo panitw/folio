@@ -36,10 +36,11 @@ const copyPDFJSRuntime = (directory, files) => {
 // family without shipping its unneeded browser-viewer resources or licences.
 copyPDFJSRuntime('pdfjs-cmaps', ['Adobe-GB1-0.bcmap', 'Adobe-CNS1-0.bcmap', 'Adobe-Japan1-0.bcmap', 'Adobe-Korea1-0.bcmap'])
 copyPDFJSRuntime('pdfjs-standard_fonts', ['LiberationSans-Regular.ttf', 'LiberationSans-Bold.ttf', 'LiberationSans-Italic.ttf', 'LiberationSans-BoldItalic.ttf'])
-// Whitespace makes this a deliberately non-canonical input; only the Go
-// serializer determines the bytes that the application subsequently reads.
+// The starter is an empty, author-owned canvas. Whitespace keeps it a
+// deliberately non-canonical input; only the Go serializer determines the
+// bytes the application subsequently reads and saves.
 const starterPath = join(outputDir, 'starter.folio')
-writeFileSync(starterPath, Buffer.concat([Buffer.from('\n  '), readFileSync(join(repoRoot, 'folio-go', 'testdata', 'template', 'golden', 'worked-example.json'))]))
+writeFileSync(starterPath, Buffer.concat([Buffer.from('\n  '), readFileSync(join(designerRoot, 'public', 'templates', 'starter.folio'))]))
 
 const fingerprint = (source, label) => {
   const bytes = readFileSync(source)

@@ -232,7 +232,7 @@ func TestTableColumnCommandsAreClosedCanonicalAndDerived(t *testing.T) {
 		t.Fatal(err)
 	}
 	view, err := TableColumns(tpl, table.ID)
-	if err != nil || len(view.Columns) != 1 || view.Columns[0].Width != 72000 || view.Columns[0].Align != "left" {
+	if err != nil || len(view.Columns) != 1 || view.Columns[0].Width != 72000 || view.Columns[0].Align != "left" || !view.Columns[0].RowFieldEditable {
 		t.Fatalf("column projection = %#v, err=%v", view, err)
 	}
 	column := view.Columns[0]

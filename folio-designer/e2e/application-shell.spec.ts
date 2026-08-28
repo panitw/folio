@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test'
 
+// These scenarios exercise the fallback input/download adapter. Chromium ships
+// the File System Access API, so select the adapter explicitly before the app
+// captures capabilities rather than waiting for a filechooser that cannot fire.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
+})
+
 test('the initial shell exposes desktop landmarks and honest local-file controls', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByLabel('Document bar')).toBeVisible()

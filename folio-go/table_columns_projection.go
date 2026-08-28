@@ -85,9 +85,16 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 		if footer != "" && footer != "sum" && footer != "avg" && footer != "count" || (footer == "" && (footerOf != "" || footerFormat != "")) || (footer == "count" && footerOf != "") || len(column.Bind) > 256 || len(footerOf) > 256 || len(footerFormat) > 256 {
 			return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
 		}
-		row, err := expr.ProjectRowBinding(column.Bind, alias)
-		if err != nil {
-			return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
+		// A new column has no bind yet. It is deliberately editable so the
+		// normal Table Editor can complete it through the Go command boundary;
+		// once a non-empty expression exists, retain the stricter projection
+		// rules for arbitrary/unsupported expressions.
+		row := expr.RowBinding{Editable: column.Bind == ""}
+		if column.Bind != "" {
+			row, err = expr.ProjectRowBinding(column.Bind, alias)
+			if err != nil {
+				return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
+			}
 		}
 		projection.Columns = append(projection.Columns, TableColumnProjection{ID: string(column.ID), Header: column.Label, Width: int64(column.Width), Align: align, Binding: column.Bind, RowField: row.Field, RowFieldEditable: row.Editable, Footer: footer, FooterOf: footerOf, FooterFormat: footerFormat})
 	}

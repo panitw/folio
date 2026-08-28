@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
 
+// Binding examples provide files through the fallback adapter; force it before
+// the application probes browser picker capabilities.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
+})
+
 // Compile-covered in Story 6.2. Real browser execution remains deferred to the
 // Epic 6 D-000.4 boundary cadence.
 test('binds a selected text component to a picked root scalar and undoes/redoes the one command', async ({ page }) => {
@@ -14,10 +20,10 @@ test('binds a selected text component to a picked root scalar and undoes/redoes 
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
   await (await chooser).setFiles({ name: 'sample.json', mimeType: 'application/json', buffer: Buffer.from('{"customer":{"name":"Ada"}}') })
   const tree = page.getByRole('tree', { name: 'Sample data paths' })
-  const customer = tree.getByRole('treeitem').filter({ hasText: /^customer/ })
-  await customer.press('ArrowRight')
-  await customer.press('ArrowDown')
-  await page.keyboard.press('Enter')
+  // Select the projected scalar itself. The previous keyboard sequence relied
+  // on an old tree focus order and could leave the connect control disabled.
+  await tree.getByRole('treeitem').filter({ hasText: /^customer/ }).click()
+  await tree.getByRole('treeitem').filter({ hasText: /^name/ }).click()
   await page.getByRole('button', { name: 'Connect selected path' }).click()
 
   await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
@@ -25,6 +31,9 @@ test('binds a selected text component to a picked root scalar and undoes/redoes 
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect(page.getByText('Bound to').locator('..')).toHaveCount(0)
   await page.getByRole('button', { name: 'Redo' }).click()
+  // Undo/redo intentionally clears transient selection; reselect the restored
+  // Go-projected component before asserting its committed binding.
+  await content.getByRole('button', { name: /bound to customer.name/ }).click()
   await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
 })
 
@@ -39,10 +48,8 @@ test('offers another golden-report scalar through the tree and has no binding pa
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
   await (await chooser).setFiles({ name: 'golden-paths.json', mimeType: 'application/json', buffer: Buffer.from('{"account":{"number":"001-9"}}') })
   const tree = page.getByRole('tree', { name: 'Sample data paths' })
-  const account = tree.getByRole('treeitem').filter({ hasText: /^account/ })
-  await account.press('ArrowRight')
-  await account.press('ArrowDown')
-  await page.keyboard.press('Enter')
+  await tree.getByRole('treeitem').filter({ hasText: /^account/ }).click()
+  await tree.getByRole('treeitem').filter({ hasText: /^number/ }).click()
   await page.getByRole('button', { name: 'Connect selected path' }).click()
 
   await expect(page.getByText('Bound to').locator('..')).toContainText('account.number')

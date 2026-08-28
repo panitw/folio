@@ -248,6 +248,53 @@ var allCodes = []Code{
 // Registered queries this value, never the const block directly.
 var registry = buildRegistry()
 
+// Disposition records how a registered code reaches callers. It deliberately
+// lives beside the closed registry: a string code alone cannot tell a dynamic
+// census whether it must exercise RenderError or a successful Result warning.
+type Disposition uint8
+
+const (
+	DispositionWarning Disposition = iota + 1
+	DispositionError
+)
+
+var dispositions = map[Code]Disposition{
+	CodeTextClippedWidth:            DispositionWarning,
+	CodeEmptyAverage:                DispositionWarning,
+	CodeTableFooterSourceUnresolved: DispositionError,
+	CodeTableFooterSourceForbidden:  DispositionError,
+	CodeTemplateMalformed:           DispositionError,
+	CodeBindingPathAbsent:           DispositionError,
+	CodeExpressionInvalid:           DispositionError,
+	CodeContentUnlayoutable:         DispositionError,
+	CodeTextMissingGlyph:            DispositionWarning,
+	CodeInternalUnhandledCaveat:     DispositionWarning,
+	CodeDocumentDateInvalid:         DispositionError,
+	CodeStyleColorInvalid:           DispositionError,
+	CodeTableHeaderRepeatSuppressed: DispositionWarning,
+	CodeTableFooterOrphanSuppressed: DispositionWarning,
+	CodeTableRowClippedHeight:       DispositionWarning,
+}
+
+// Classified reports the registry-owned disposition for c. A registered code
+// without one is a broken registry and the Story 6.7 census fails loudly.
+func Classified(c Code) (Disposition, bool) {
+	d, ok := dispositions[c]
+	return d, ok && Registered(c)
+}
+
+// ErrorCodes returns the registry's render-stopping Error members in declared
+// order. It is intentionally derived from All rather than a test-owned list.
+func ErrorCodes() []Code {
+	out := make([]Code, 0, len(allCodes))
+	for _, c := range All() {
+		if d, ok := Classified(c); ok && d == DispositionError {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func buildRegistry() map[Code]struct{} {
 	m := make(map[Code]struct{}, len(allCodes))
 	for _, c := range allCodes {

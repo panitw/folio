@@ -56,7 +56,12 @@ func (e *Engine) ParameterReferences() ([]string, uint64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	return append([]string(nil), references...), e.revision, nil
+	// The browser protocol's closed parameterReferences shape requires an
+	// array. A nil Go slice marshals as null and would invalidate an otherwise
+	// healthy worker response when the document has no params references.
+	out := make([]string, len(references))
+	copy(out, references)
+	return out, e.revision, nil
 }
 
 // TableColumns exposes one revision-correlated selected-table projection.
