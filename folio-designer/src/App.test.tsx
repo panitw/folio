@@ -4,6 +4,7 @@ import App, { placementPoint } from './App'
 import { shortcutHintsFor } from './shortcuts'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
+import { acceptSampleData } from './sample-data'
 
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
@@ -12,6 +13,7 @@ vi.mock('./preview/pdf-viewer', () => ({
 }))
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
+const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
@@ -45,7 +47,7 @@ describe('application shell', () => {
       if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } })
       return Promise.resolve({ snapshot: snapshot(1) })
     })
-    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     expect(screen.queryByLabelText('Canvas region')).not.toBeInTheDocument()
     expect(screen.getByText('Rendering local PDF')).toBeInTheDocument()
@@ -73,10 +75,10 @@ describe('application shell', () => {
     })
     vi.useFakeTimers()
     try {
-      render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+      render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
       fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
-      fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[1]}' } })
-      fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[2]}' } })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"transactions":[1]}' } })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"transactions":[2]}' } })
       fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
       await vi.runAllTimersAsync()
       expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(1)
@@ -96,7 +98,7 @@ describe('application shell', () => {
       if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
       return { snapshot: snapshot(1) }
     })
-    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
     expect(screen.getByText('LOCAL PDF PREVIEW')).toBeInTheDocument()
@@ -113,13 +115,13 @@ describe('application shell', () => {
       if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: 'bands.content.gone', message: 'Content was clipped' }] } }
       return { snapshot: snapshot(1) }
     })
-    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
     expect(screen.queryByLabelText('Render diagnostics')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
     await waitFor(() => expect(screen.getByLabelText('Render diagnostics')).toBeInTheDocument())
-    fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[1]}' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"transactions":[1]}' } })
     expect(screen.queryByLabelText('Render diagnostics')).not.toBeInTheDocument()
   })
 
@@ -130,7 +132,7 @@ describe('application shell', () => {
       if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: '', message: 'Content was clipped' }] } }
       return { snapshot: snapshot(1) }
     })
-    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
@@ -148,7 +150,7 @@ describe('application shell', () => {
       if (operation === 'render') throw failure
       return { snapshot: snapshot(1) }
     })
-    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(screen.getByLabelText('Local render failure')).toBeInTheDocument())
     fireEvent.click(within(screen.getByLabelText('Local render failure')).getByRole('button', { name: 'Return to Design' }))

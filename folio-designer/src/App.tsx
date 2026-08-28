@@ -14,6 +14,9 @@ import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, 
 import { canInstallPreview, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, staleCopy } from './preview/freshness'
 import { PreviewDiagnostics, PreviewFailure, type DiagnosticLocation } from './preview/diagnostic-presenter'
 import { isMacPlatform, primaryModifier, shortcutHintsFor } from './shortcuts'
+import { DataPanel } from './DataPanel'
+import { acceptSampleData, type SampleData } from './sample-data'
+import type { SampleFileAccess } from './sample-file'
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 
@@ -21,11 +24,11 @@ function Icon({ name }: { name: 'open' | 'save' }) {
   return <svg aria-hidden="true" className="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><path d={name === 'open' ? 'M2 5.5h4l1.2-2h6.8v9H2z M2 5.5h12' : 'M3 2h8l2 2v10H3z M5 2v4h6V2 M5 12h6'} /></svg>
 }
 
-type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; initialSnapshot?: EngineSnapshot; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
+type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampleFileAccess?: SampleFileAccess; initialSnapshot?: EngineSnapshot; initialSampleData?: SampleData; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
 type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number }>
 type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
-export default function App({ engine, fileAccess, initialSnapshot, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
+export default function App({ engine, fileAccess, sampleFileAccess, initialSnapshot, initialSampleData, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [commitError, setCommitError] = useState<string>()
   const [propertyError, setPropertyError] = useState<PropertyCommitError>()
@@ -55,8 +58,10 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const [redoAvailable, setRedoAvailable] = useState(initialSnapshot?.canRedo === true)
   const [locateStatus, setLocateStatus] = useState<string>()
   const [previewViewState, setPreviewViewState] = useState<PDFPreviewViewState>(initialPDFPreviewViewState)
-  const [previewData, setPreviewData] = useState('{\n  "customer": { "name": "Preview customer" },\n  "transactions": []\n}')
   const [previewParams, setPreviewParams] = useState('{\n  "preview": null\n}')
+  const [sampleData, setSampleData] = useState<SampleData | undefined>(initialSampleData)
+  const [sampleError, setSampleError] = useState<string>()
+  const [sampleBusy, setSampleBusy] = useState(false)
   const snapshotRef = useRef(snapshot)
   const saveInFlight = useRef(false)
   const draftGeneration = useRef(0)
@@ -69,7 +74,10 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const previewScheduler = useRef(new PreviewWorkScheduler())
   const previewRef = useRef<PreviewRecord | undefined>(undefined)
   const previewGeneration = useRef(0)
-  const previewDataRef = useRef(previewData)
+  const sampleDataRef = useRef(sampleData)
+  // Local picker results are authority-scoped independently of React renders.
+  // A document replacement revokes a picker started for the old document.
+  const sampleLoadGeneration = useRef(0)
   const previewParamsRef = useRef(previewParams)
   const modeRef = useRef(mode)
   const canvasRegionRef = useRef<HTMLElement>(null)
@@ -103,20 +111,25 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
     setDismissedDiagnostics(new Set())
   }
   const renderPreview = () => {
+    if (!sampleDataRef.current) { setPreviewStatus('idle'); return }
     if (previewTimer.current !== undefined) clearTimeout(previewTimer.current)
     previewTimer.current = undefined
     previewScheduler.current.submit(runPreview)
   }
   const runPreview = async () => {
-    if (!engine || !snapshotRef.current) return
+    const sample = sampleDataRef.current
+    if (!engine || !snapshotRef.current || !sample) return
     const generation = previewGeneration.current
+    const documentAtStart = documentGeneration.current
     const revisionAtStart = snapshotRef.current.revision
-    const data = new TextEncoder().encode(previewDataRef.current).buffer
+    // The engine receives the accepted file bytes, not the local inspection
+    // projection. ArrayBuffer slicing is a transport copy, never a rewrite.
+    const data = sample.bytes.slice(0)
     const params = new TextEncoder().encode(previewParamsRef.current).buffer
     const token = ++previewToken.current
     const controller = new AbortController()
     previewAbort.current = controller
-    const current = (identity?: string) => token === previewToken.current && !controller.signal.aborted && modeRef.current === 'preview' && previewGeneration.current === generation && snapshotRef.current?.revision === revisionAtStart && (!identity || canInstallPreview({ token, generation, revision: revisionAtStart, identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity, mode: modeRef.current }))
+    const current = (identity?: string) => token === previewToken.current && !controller.signal.aborted && modeRef.current === 'preview' && previewGeneration.current === generation && documentGeneration.current === documentAtStart && snapshotRef.current?.revision === revisionAtStart && (!identity || canInstallPreview({ token, generation, revision: revisionAtStart, identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity, mode: modeRef.current }))
     setPreviewStatus(previewRef.current ? 'stale' : 'checking'); setPreviewError(undefined)
     try {
       const checked = await engine.request('identity', { data, params }, controller.signal)
@@ -241,8 +254,33 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
+  const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
+  const clearSampleData = () => {
+    revokeSampleLoad()
+    sampleDataRef.current = undefined; setSampleData(undefined); setSampleError(undefined)
+    // Clearing a previously accepted sample is itself a Preview input change.
+    invalidatePreview(true)
+  }
+  const loadSample = async () => {
+    if (!sampleFileAccess || sampleBusy) return
+    const authority = ++sampleLoadGeneration.current
+    setSampleBusy(true); setSampleError(undefined)
+    try {
+      const selected = await sampleFileAccess.openSample()
+      const accepted = acceptSampleData(selected.name, selected.bytes)
+      if (authority !== sampleLoadGeneration.current) return
+      // Replacement is atomic: only a fully accepted raw file and its bounded
+      // projection can replace the prior local sample.
+      sampleDataRef.current = accepted; setSampleData(accepted)
+      invalidatePreview()
+      schedulePreview()
+    } catch (error) {
+      if (authority === sampleLoadGeneration.current && !isFileAccessCancelled(error)) setSampleError(error instanceof Error ? error.message : 'Could not read local sample data')
+    } finally { if (authority === sampleLoadGeneration.current) setSampleBusy(false) }
+  }
   const open = async () => {
     if (!engine || !fileAccess || fileBusy) return
+    revokeSampleLoad()
     invalidatePreview(true)
     setFileBusy(true); setFileError(undefined); setFileStatus('Opening local file…')
     try {
@@ -252,6 +290,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
       if (!canonical.bytes) throw new Error('Local file could not be serialized')
       const inputWasCanonical = equalBytes(opened.bytes, canonical.bytes)
       setCurrentSnapshot(loaded.snapshot, false, true)
+      clearSampleData()
       setTitle(opened.name)
       setTarget(opened.target)
       setSavedRevision(inputWasCanonical ? canonical.snapshot.revision : undefined)
@@ -289,11 +328,13 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
 
   const startBlank = async () => {
     if (!engine || !blankBytes || fileBusy) return
+    revokeSampleLoad()
     invalidatePreview(true)
     setFileBusy(true); setFileError(undefined); setFileStatus('Starting blank local template…')
     try {
       const loaded = await engine.request('load', blankBytes)
       setCurrentSnapshot(loaded.snapshot, false, true)
+      clearSampleData()
       setTitle('Untitled template'); setTarget(undefined); setSavedRevision(undefined)
       setFileStatus('Started an unnamed local template')
       if (modeRef.current === 'preview') void renderPreview()
@@ -384,8 +425,9 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
           {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); place(point.x, point.y) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { setDrag(undefined); if (!finished.changed) return; if (finished.mode === 'move') void commitComponent(moveComponentCommand(component.id, finished.x, finished.y, snapEnabled)); else void commitComponent(resizeComponentCommand(component.id, finished.width, finished.height, snapEnabled)) }} />)}</section>)}
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
-      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <><PreviewFailure error={currentFailure.error} onReturn={() => returnFromFailure(currentFailure)} /><button type="button" className="file-button" onClick={renderPreview}>Retry local render</button></>}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
-      <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><label>Raw sample data JSON<textarea aria-label="Raw sample data JSON" value={previewData} onChange={(event) => { previewDataRef.current = event.target.value; setPreviewData(event.target.value); invalidatePreview(); schedulePreview() }} /></label><label>Raw parameter JSON<textarea aria-label="Raw parameter JSON" value={previewParams} onChange={(event) => { previewParamsRef.current = event.target.value; setPreviewParams(event.target.value); invalidatePreview(); schedulePreview() }} /></label><button type="button" className="file-button" onClick={() => void renderPreview()}>Render local PDF</button><p className="honest-note">These raw local inputs are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
+      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <><PreviewFailure error={currentFailure.error} onReturn={() => returnFromFailure(currentFailure)} /><button type="button" className="file-button" onClick={renderPreview}>Retry local render</button></>}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
+      <DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} onLoad={() => void loadSample()} />
+      <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><label>Raw parameter JSON<textarea aria-label="Raw parameter JSON" value={previewParams} onChange={(event) => { previewParamsRef.current = event.target.value; setPreviewParams(event.target.value); invalidatePreview(); schedulePreview() }} /></label><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
   </div>

@@ -7,7 +7,7 @@ import { registerOfflineLifecycle, type OfflineLifecycle } from './offline-lifec
 import { loadS1Payload, type S1Payload } from './release-payload.ts'
 import { runtimeAssetUrls } from './generated/offline-assets.ts'
 import { loadStarterAfterEngineReady } from './startup-sequence.ts'
-import { selectFileAccess } from './file/capability.ts'
+import { selectFileAccess, selectSampleFileAccess } from './file/capability.ts'
 
 const root = createRoot(document.getElementById('root')!)
 let lifecycle: OfflineLifecycle = { state: 'checking', cacheReady: false, verifiedAssetUrls: [] }
@@ -20,7 +20,8 @@ let started = false
 let stopObservation: (() => void) | undefined
 let observationInFlight = false
 const fileAccess = selectFileAccess()
-const render = () => root.render(<StrictMode><App key={engine ? 'engine-ready' : 'engine-loading'} engine={engine} fileAccess={fileAccess} initialSnapshot={snapshot} blankBytes={blankBytes} offlineState={lifecycle.state} loadState={lifecycle} payload={payload} engineState={engineState} onRetry={startObservation} /></StrictMode>)
+const sampleFileAccess = selectSampleFileAccess()
+const render = () => root.render(<StrictMode><App key={engine ? 'engine-ready' : 'engine-loading'} engine={engine} fileAccess={fileAccess} sampleFileAccess={sampleFileAccess} initialSnapshot={snapshot} blankBytes={blankBytes} offlineState={lifecycle.state} loadState={lifecycle} payload={payload} engineState={engineState} onRetry={startObservation} /></StrictMode>)
 async function startEngine() {
   if (started || !lifecycle.cacheReady) return
   started = true; engineState = 'starting'; render()

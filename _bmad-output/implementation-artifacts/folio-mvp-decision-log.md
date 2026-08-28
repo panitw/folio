@@ -16,6 +16,39 @@ Entries are append-only: a reversal is appended, never a rewrite.
 
 ## Lead Grounding
 
+### Refresh — 2026-08-28 (Epic 6 opening after boundary `49df7d3`)
+
+*Filed by the orchestrator from the continuing run's engineering-lead refresh. The lead re-grounded
+from this section and prior rulings, verified the Epic 5 boundary delta and current tracker, and did
+not re-derive settled direction.*
+
+**Verified delta.** HEAD is the Epic 5 boundary commit `49df7d3`; Epic 5 is `done`, Epic 6 Stories
+6.1–6.7 are `backlog`, and no Epic 6 implementation exists. The remaining `_bmad` configuration,
+`.agents/`, and planning-research worktree changes are unrelated and stay excluded.
+
+**Direction carried into Epic 6.** Go/wasm remains the sole owner of canonical `.folio` state,
+mutation, validation, serialization, layout, diagnostics, preview identity, and PDF bytes. Sample
+data and parameters are external preview inputs: neither persists in `.folio`, participates in
+undo, nor becomes an engine document command. Root binding paths never become row-relative; table
+row scope uses the explicit alias (default `row`); `params` is a separate unshadowable root. The
+existing absent/null/wrong-kind diagnostic meanings and the frozen footer aggregate schema remain
+unchanged. The final round trip must render the exact saved canonical bytes through the production
+path with the same data and parameters, and compare them byte-for-byte with the admitted browser
+preview.
+
+**Pressure points.** Story 6.1's data tree may describe external JSON for interaction but must not
+invent binding grammar; if its projection begins deciding legal bindings, Go/wasm must own that
+contract. Stories 6.2 and 6.4–6.5 need transactional engine commands and paint-only snapshots, not a
+TypeScript document model. Story 6.3 replaces provisional parameter editing without changing the
+already-settled raw input transport. Story 6.6 presents engine diagnostic provenance without a
+browser-owned error taxonomy. Story 6.7 is inherently integration-shaped: authorship must be proved
+rather than simulated by reopening a fixture, and its real browser/native/matrix evidence is a hard
+Epic 6 boundary gate under D-000.4.
+
+No owner decision is presently forced. Persisting sample data or params, changing the footer schema,
+introducing another render/template authority, or cutting the release before Story 6.7 would cross
+settled direction and requires escalation.
+
 ### Refresh — 2026-08-27 (continuation at Story 4.7 finish)
 
 *Filed by the orchestrator from the run-scoped engineering lead's append-only refresh. The lead

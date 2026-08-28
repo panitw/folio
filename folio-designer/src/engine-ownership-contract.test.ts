@@ -58,7 +58,7 @@ describe('engine ownership structure', () => {
   it('does not mirror the .folio document schema in production TypeScript', () => {
     const scan = scanOwnership(sources())
     expect(scan.schemaMirrors).toEqual([])
-    expect(scan.documentJson.filter((name) => !['engine.worker.ts', 'offline-lifecycle.ts', 'release-payload.ts'].includes(name))).toEqual([]) // protocol/release envelopes only; UI/file code cannot parse or serialize templates.
+    expect(scan.documentJson.filter((name) => !['engine.worker.ts', 'offline-lifecycle.ts', 'release-payload.ts', 'sample-data.ts'].includes(name))).toEqual([]) // protocol/release envelopes and the bounded, local-only sample discovery parser; UI/file code cannot parse or serialize templates.
   })
 
   it('keeps main-thread engine messaging in the one client module', () => {

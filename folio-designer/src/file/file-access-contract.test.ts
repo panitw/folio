@@ -15,7 +15,7 @@ function extraCapabilityChecks(files: ReadonlyArray<Readonly<{ name: string; sou
 }
 
 function opaqueByteRewrites(files: ReadonlyArray<Readonly<{ name: string; source: string }>>): string[] {
-  return files.filter(({ source }) => /\bTextDecoder\b|replace\([^)]*\\n[^)]*\\r\\n|new\s+Blob\s*\(\s*\[\s*(?:['"`]|(?:text|decoded|content)\b)/.test(source)).map(({ name }) => name)
+  return files.filter(({ name, source }) => name !== 'sample-data.ts' && /\bTextDecoder\b|replace\([^)]*\\n[^)]*\\r\\n|new\s+Blob\s*\(\s*\[\s*(?:['"`]|(?:text|decoded|content)\b)/.test(source)).map(({ name }) => name)
 }
 
 function fileNetworkCalls(files: ReadonlyArray<Readonly<{ name: string; source: string }>>): string[] {

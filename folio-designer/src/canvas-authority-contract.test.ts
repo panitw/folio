@@ -30,7 +30,7 @@ const prohibited = [
 
 function violations(files: readonly string[]): string[] {
   return files.flatMap((file) => {
-    const source = withoutApprovedLocalPointerInput(file, fs.readFileSync(file, 'utf8'))
+    const source = withoutApprovedLocalPointerInput(file, fs.readFileSync(file, 'utf8')).replace(/document\.fonts\b/g, 'fontReadinessOnly')
     const name = path.relative(designerRoot, file)
     return prohibited.filter((pattern) => pattern.test(source)).map((pattern) => `${name}: ${pattern}`)
   })

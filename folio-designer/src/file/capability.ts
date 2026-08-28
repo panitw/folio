@@ -2,6 +2,7 @@ import { type FileAccess } from './file-access'
 import { FileSystemAccess, type FileSystemPicker } from './file-system-access'
 import { InputDownloadAccess } from './input-download'
 import type { DownloadUrl } from './input-download'
+import { FileSystemSampleAccess, InputSampleAccess, type SampleFileAccess, type SamplePicker } from '../sample-file'
 
 export type FileAccessBrowser = Partial<FileSystemPicker> & Readonly<{ document: Document; url: DownloadUrl }>
 
@@ -16,4 +17,11 @@ export function selectFileAccess(browser: FileAccessBrowser = currentBrowser()):
     return new FileSystemAccess({ showOpenFilePicker: browser.showOpenFilePicker.bind(browser), showSaveFilePicker: browser.showSaveFilePicker.bind(browser) })
   }
   return new InputDownloadAccess(browser.document, browser.url)
+}
+
+// Sample selection shares the same single capability decision as template
+// selection, but exposes no template target, save, or document semantics.
+export function selectSampleFileAccess(browser: FileAccessBrowser = currentBrowser()): SampleFileAccess {
+  if (typeof browser.showOpenFilePicker === 'function') return new FileSystemSampleAccess({ showOpenFilePicker: browser.showOpenFilePicker.bind(browser) } as SamplePicker)
+  return new InputSampleAccess(browser.document)
 }
