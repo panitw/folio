@@ -180,7 +180,7 @@ all → **Fatal** on the vacuity path; moving the single declaration → **both*
 
 ## Open
 
-### DW-21 — Two heavy tests exist but run ONLY under `FOLIO_HEAVY=1`; the Epic 4 boundary gate must set it
+### DW-21 — Three heavy tests exist but run ONLY under `FOLIO_HEAVY=1`; the Epic 4 boundary gate must set it
 
 **Owner:** **the Epic 4 boundary gate run**, and — because a gate has failed as an owner before
 ([[DW-14]]'s owner was *"the Epic 2 boundary gate"*, which ran and closed without re-owning it —
@@ -238,6 +238,12 @@ time. Confirmed both directions in this story's own run (unset → `--- SKIP`; `
 `table_header_repeat_test.go`'s own doc comment are both updated in the same change. **Not run as
 part of this story's routine gate** — stated explicitly per D-000.4.
 
+**AMENDED at Epic 4 boundary (2026-08-28, DW-21 discharge):** all three heavy tests named above
+were run with `CGO_ENABLED=0`, `GOWORK=off`, and `FOLIO_HEAVY=1` via the exact command recorded in
+the Epic 4 boundary artifact. Each passed. No test emitted `--- SKIP`; the selected tests were not
+skipped, and nonmatching packages reported only `no tests to run` because the command's `-run`
+regular expression selects these three names.
+
 
 ### DW-2 — The licence check's JS half: `folio-designer/`'s lockfile
 - **Deferred by:** Story 1.3 (ruling D-1.3.4)
@@ -284,7 +290,7 @@ there — regardless of name — now trips the same finding. This still fully im
 paragraph's "same treatment, same story, same mechanism" for the OFL text and the pdfjs-dist
 NOTICE; it does not narrow anything DW-2 promises.
 
-### DW-4 — Nobody owns cutting `folio-go/v0.1.0` — **owner decision when Epic 4 is planned**
+### DW-4 — Nobody owns cutting `folio-go/v0.1.0` — **owner decision recorded at Epic 4 planning; release checkpoint remains open**
 - **Raised by:** the engineering lead during Story 1.3 rulings
 - **Owner:** **the project owner**, at Epic 4 planning
 
@@ -299,6 +305,12 @@ unowned when Epic 4 is planned, it goes to the owner rather than being absorbed 
 `folio-go/v0.1.0` alongside the API signatures this entry already tracks. The `params` namespace now
 has one reserved name in it; a future story adding a second one should append its own line here
 rather than letting this ledger go stale.
+
+**AMENDED at Epic 4 boundary (2026-08-28, D-000.78 audit):** the project owner's decision is
+recorded in `folio-mvp-decision-log.md` as **cut `folio-go/v0.1.0` after Epic 6**, so the original
+"owner decision when Epic 4 is planned" trigger has fired and the release timing is no longer
+unowned. The entry remains open only for the intermediate engineering-lead checkpoint explicitly
+owed by D-000.78 before the post-Epic-6 tag; this boundary does not discharge that future checkpoint.
 
 ### DW-5 — Derivation validation of `columns[].footerOf` from `bind` — **RETIRED at Story 3.2**
 - **Deferred by:** Story 1.4 (ruling D-1.4.2, AC43/AC44)

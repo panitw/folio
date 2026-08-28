@@ -13973,3 +13973,18 @@ and ratified it unchanged: index 0 is base; odd zero-based collection indexes us
 colour globally across pages; headers (including repeated headers) and footer aggregates never
 participate; the feature remains appearance-only under AD-13 and AD-24. This note preserves the
 original record and corrects its consultation provenance without rewriting it.
+
+### D-4.8.2 — Epic 4 boundary gate passes; DW-21 is discharged and the intentional P6g red remains disclosed
+
+**Boundary decision, 2026-08-28.** After Story 4.8 commit `0838db4`, the Epic 4 gate ran the real
+four-target matrix over all fifteen registered documents (local darwin/arm64, Docker linux/amd64
+and linux/arm64, and Node js/wasm), the FMA divergence probe, the exact DW-21 heavy command, and
+the ordinary folio-go, lint, hashmatrix, gofmt, diff, vet, build, and signed-statement gates. All
+required checks passed. The only red remains the named, sanctioned
+`TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` floor (`7 < 20`), which remains unchanged by
+design under D-000.17, D-000.57, D-000.74, and D-2.1.14.
+
+The gate audit found and corrected stale current-contract prose in `folio-format.md`,
+`folio-go/README.md`, `SPEC.md`, and the PRD NFR1 assumption. The architecture spine and all eight
+Epic 4 plain-term openers remain consistent. Existing unrelated `_bmad` configuration and `.agents/`
+churn was excluded. `epic-4` is therefore **done**; Epic 5 remains untouched.

@@ -573,7 +573,7 @@ rather than deleted, so a reader who followed a reference still lands somewhere 
 | §3.1 | Both user journeys are inferred, not captured from a real session |
 | FR9 | Sample JSON is a separate local file, not embedded in the template |
 | FR17 | ~~Row scope needs explicit definition~~ — **resolved**, see Q3 |
-| NFR1 | Byte-identity is achievable in practice — verified against reproducible Go PDF writers, but not yet proven in Folio's own code |
+| NFR1 | Byte-identity is proven in Folio's own code — the Epic 4 boundary matrix renders fifteen registered documents on four targets and compares their SHA-256 digests |
 | NFR4 | No memory or throughput targets exist; a 50-page statement is the working target |
 | NFR6 | Template/library compatibility policy undefined |
 | NFR7 | ~~Specific font faces and their licensing unresolved~~ — **resolved**, see Q2 |

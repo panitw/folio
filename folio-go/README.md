@@ -357,6 +357,6 @@ would quietly undo the pin this section is about.)
   an explicit `null`, is never displaced by `SOURCE_DATE_EPOCH`.
 - **The cross-platform byte-identity matrix** (Linux amd64/arm64, WASM under
   Node, compared against local `darwin/arm64`) is verified **at each epic
-  boundary**, not on every change — most recently at the Epic 3 boundary,
-  over ten documents on all four targets. See `hashmatrix/` and
+  boundary**, not on every change — most recently at the Epic 4 boundary,
+  over fifteen documents on all four targets. See `hashmatrix/` and
   `matrix_test.go`.

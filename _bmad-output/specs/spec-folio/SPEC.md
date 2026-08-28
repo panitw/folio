@@ -221,8 +221,9 @@ compare the hash.
 - Both user journeys in the PRD are inferred from the source plan, not captured from a real
   session with a template author or an integrating developer.
 - Sample JSON is a separate local file alongside the template, not embedded in the `.folio`.
-- Byte-identity is achievable in Folio's own code — verified against reproducible Go PDF
-  writers and measured across targets, but not yet proven in Folio.
+- Byte-identity is proven in Folio's own code — the Epic 4 boundary matrix renders fifteen
+  registered documents on darwin/arm64, linux/amd64, linux/arm64 and js/wasm and compares the
+  resulting SHA-256 digests.
 - No memory ceiling or throughput target exists; a 50-page statement rendering without
   pathological memory growth is the working target.
 - Success is acceptance-based rather than adoption-based, given the current build-for-self
