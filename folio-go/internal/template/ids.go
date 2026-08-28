@@ -33,6 +33,11 @@ func renderElementID(counter int64) ElementID {
 	return ElementID("e" + idCounterToBase36(counter))
 }
 
+// AllocateElementID is the sole mutation-time bridge for the authoritative
+// nextId counter. The caller increments NextID only after its transaction has
+// passed all validation, so failed commands never consume an id.
+func AllocateElementID(d *Document) ElementID { return renderElementID(d.NextID) }
+
 // validateElementID checks a decoded id string against AC34's rule:
 // must match ^e[0-9a-z]+$, decode to >= 1, no leading zeros, no
 // uppercase. It never normalises — an invalid spelling is a load error,

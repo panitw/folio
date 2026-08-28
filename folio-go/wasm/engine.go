@@ -4,6 +4,7 @@
 package wasm
 
 import (
+	"encoding/json"
 	"fmt"
 
 	folio "github.com/panitw/folio/folio-go"
@@ -83,19 +84,10 @@ func (e *Engine) Validate() (Snapshot, error) {
 	return e.Snapshot(), nil
 }
 
-// Apply is reserved for opaque, engine-defined committed commands. Component
-// mutation semantics intentionally arrive in later stories, so accepting an
-// unknown payload is forbidden rather than inventing a TypeScript schema.
+// Apply accepts only opaque, engine-defined committed commands.
 func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if e.template == nil {
 		return Snapshot{}, fmt.Errorf("folio wasm: no document is loaded")
-	}
-	if string(command) == "commit" {
-		// "commit" is deliberately an opaque, Go-owned acknowledgement today.
-		// It provides the real command-channel boundary without inventing the
-		// later editor command/schema vocabulary in TypeScript.
-		e.revision++
-		return e.Snapshot(), nil
 	}
 	// Apply to a fresh canonical clone. This makes command validation,
 	// serialization and projection one transaction rather than relying on a
@@ -104,18 +96,38 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if _, err := folio.ApplyPageSetupCommand(candidate, command); err != nil {
+	var commandKind struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(command, &commandKind); err != nil {
+		return Snapshot{}, fmt.Errorf("folio wasm: command is malformed")
+	}
+	var projection folio.CanvasProjection
+	if commandKind.Kind == "pageSetup" {
+		projection, err = folio.ApplyPageSetupCommand(candidate, command)
+	} else {
+		projection, err = folio.ApplyComponentCommand(candidate, command)
+	}
+	if err != nil {
 		return Snapshot{}, err
 	}
 	canonical, err := folio.SerializeTemplate(candidate)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	projection, err := folio.Canvas(candidate)
+	// Reparse the candidate's canonical bytes before installation. Command
+	// factories therefore cannot bypass the normal format validator, and the
+	// persisted bytes, live template, and paint projection all describe the
+	// same accepted document.
+	installed, err := folio.ParseTemplate(canonical)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	e.template = candidate
+	projection, err = folio.Canvas(installed)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	e.template = installed
 	e.bytes = append(e.bytes[:0], canonical...)
 	e.canvas = &projection
 	e.revision++

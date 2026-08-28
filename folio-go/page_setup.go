@@ -34,19 +34,30 @@ type CanvasBand struct {
 	Width  int64  `json:"width"`
 	Height int64  `json:"height"`
 }
+type CanvasComponent struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Band      string `json:"band"`
+	X         int64  `json:"x"`
+	Y         int64  `json:"y"`
+	Width     int64  `json:"width"`
+	Height    int64  `json:"height"`
+	Resizable bool   `json:"resizable"`
+}
 type CanvasProjection struct {
-	Width         int64        `json:"width"`
-	Height        int64        `json:"height"`
-	Orientation   string       `json:"orientation"`
-	Preset        string       `json:"preset"`
-	MarginTop     int64        `json:"marginTop"`
-	MarginRight   int64        `json:"marginRight"`
-	MarginBottom  int64        `json:"marginBottom"`
-	MarginLeft    int64        `json:"marginLeft"`
-	GridIncrement int64        `json:"gridIncrement"`
-	CommandWidth  int64        `json:"commandWidth"`
-	CommandHeight int64        `json:"commandHeight"`
-	Bands         []CanvasBand `json:"bands"`
+	Width         int64             `json:"width"`
+	Height        int64             `json:"height"`
+	Orientation   string            `json:"orientation"`
+	Preset        string            `json:"preset"`
+	MarginTop     int64             `json:"marginTop"`
+	MarginRight   int64             `json:"marginRight"`
+	MarginBottom  int64             `json:"marginBottom"`
+	MarginLeft    int64             `json:"marginLeft"`
+	GridIncrement int64             `json:"gridIncrement"`
+	CommandWidth  int64             `json:"commandWidth"`
+	CommandHeight int64             `json:"commandHeight"`
+	Bands         []CanvasBand      `json:"bands"`
+	Components    []CanvasComponent `json:"components"`
 }
 
 // Canvas returns immutable paint geometry. It intentionally exposes neither
@@ -81,11 +92,41 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if !t.doc.Page.SizeIsName {
 		commandW, commandH = t.doc.Page.SizeCustom.Width, t.doc.Page.SizeCustom.Height
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: []CanvasBand{
+	bands := []CanvasBand{
 		{Name: "pageHeader", X: int64(m.Left), Y: int64(m.Top), Width: int64(innerW), Height: int64(header)},
 		{Name: "content", X: int64(m.Left), Y: int64(m.Top + header), Width: int64(innerW), Height: int64(innerH - header - footer)},
 		{Name: "pageFooter", X: int64(m.Left), Y: int64(h - m.Bottom - footer), Width: int64(innerW), Height: int64(footer)},
-	}}, nil
+	}
+	components, err := canvasComponents(t, bands)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components}, nil
+}
+
+func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error) {
+	out := make([]CanvasComponent, 0)
+	for _, projected := range bands {
+		var elements []template.Element
+		switch projected.Name {
+		case "pageHeader":
+			elements = t.doc.Bands.PageHeader.Elements
+		case "content":
+			elements = t.doc.Bands.Content.Elements
+		case "pageFooter":
+			elements = t.doc.Bands.PageFooter.Elements
+		}
+		for _, element := range elements {
+			width, height := projectedSize(element)
+			for _, value := range []geom.Length{element.X, element.Y, width, height} {
+				if value > geom.Length(MaxCanvasMillipoints) {
+					return nil, fmt.Errorf("folio: component exceeds the JavaScript-safe geometry bound")
+				}
+			}
+			out = append(out, CanvasComponent{ID: string(element.ID), Type: string(element.Type), Band: projected.Name, X: int64(element.X), Y: int64(element.Y), Width: int64(width), Height: int64(height), Resizable: element.Type != template.ElementTable})
+		}
+	}
+	return out, nil
 }
 
 func canvasDimensions(t *Template) (geom.Length, geom.Length, error) {

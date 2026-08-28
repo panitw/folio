@@ -109,6 +109,15 @@ func failure(code string, err error) response {
 }
 
 func engineFailure(err error) response {
+	var componentErr *folio.ComponentCommandError
+	if errors.As(err, &componentErr) {
+		return response{
+			DiagnosticCode: "COMPONENT_INVALID",
+			Message:        bounded(componentErr.Message, 512),
+			ElementID:      bounded(componentErr.ElementID, 128),
+			DataPath:       bounded(componentErr.DataPath, 256),
+		}
+	}
 	var renderErr *folio.RenderError
 	if errors.As(err, &renderErr) {
 		diagnostic := renderErr.Diagnostic

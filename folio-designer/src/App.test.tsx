@@ -5,7 +5,7 @@ import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
@@ -78,6 +78,62 @@ describe('application shell', () => {
     const command = request.mock.calls[0] as unknown as [string, ArrayBuffer]
     expect(new TextDecoder().decode(command[1])).toContain('"top":37.125')
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+  })
+
+  it('offers only the five fixed palette components and sends an opaque Go placement command', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle'])
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    fireEvent.keyDown(screen.getByLabelText('Content'), { key: 'Enter' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    const [operation, payload] = request.mock.calls[0] as unknown as [string, ArrayBuffer]
+    expect(operation).toBe('command')
+    expect(new TextDecoder().decode(payload)).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
+  })
+
+  it('keeps selection local and deletes one unambiguous selected component through Go', async () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }] }
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('text component e9'))
+    expect(request).not.toHaveBeenCalled()
+    const region = screen.getByLabelText('Canvas region')
+    region.focus()
+    fireEvent.keyDown(region, { key: 'Delete' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"deleteComponent","version":1,"id":"e9"}')
+  })
+
+  it('does not send a move for a pointer selection, but commits one point-valued move after a real drag', async () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }] }
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    const component = screen.getByLabelText('text component e9')
+    fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerUp(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    expect(request).not.toHaveBeenCalled()
+    fireEvent.pointerDown(component, { pointerId: 2, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(component, { pointerId: 2, clientX: 13, clientY: 12 })
+    fireEvent.pointerUp(component, { pointerId: 2, clientX: 13, clientY: 12 })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e9","x":3,"y":2,"snap":true}')
+  })
+
+  it('toggles Shift-click selection once without engine traffic and clears it on an empty canvas click', () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }, { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 80000, y: 0, width: 72000, height: 24000, resizable: true }] }
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.pointerDown(screen.getByLabelText('text component e1'), { pointerId: 1, clientX: 1, clientY: 1 })
+    fireEvent.pointerUp(screen.getByLabelText('text component e1'), { pointerId: 1, clientX: 1, clientY: 1 })
+    fireEvent.pointerDown(screen.getByLabelText('rect component e2'), { pointerId: 2, clientX: 1, clientY: 1, shiftKey: true })
+    fireEvent.pointerUp(screen.getByLabelText('rect component e2'), { pointerId: 2, clientX: 1, clientY: 1, shiftKey: true })
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Resize e2')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Report page with Page Header, Content, and Page Footer'))
+    expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Resize e2')).not.toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('leaves a dirty session untouched for an open cancellation or failure', async () => {

@@ -79,7 +79,7 @@ func TestEngineRejectsUnknownCommandWithoutChangingDocument(t *testing.T) {
 	}
 }
 
-func TestEngineCommitsThroughGoOwnedCommandChannel(t *testing.T) {
+func TestEngineCommitsComponentChangesThroughGoOwnedCommandChannel(t *testing.T) {
 	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
 	if err != nil {
 		t.Fatal(err)
@@ -89,11 +89,11 @@ func TestEngineCommitsThroughGoOwnedCommandChannel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := engine.Apply([]byte("commit"))
+	after, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"text","band":"content","x":12,"y":12,"width":72,"height":24,"snap":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Revision != before.Revision+1 || after.ByteLength != before.ByteLength {
+	if after.Revision != before.Revision+1 || after.ByteLength <= before.ByteLength || after.Canvas == nil || len(after.Canvas.Components) == 0 {
 		t.Fatalf("commit snapshot = %#v, before = %#v", after, before)
 	}
 }

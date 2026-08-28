@@ -1,5 +1,5 @@
 import './App.css'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import type { EngineClient } from './engine-client'
 import type { CanvasProjection, EngineSnapshot } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
@@ -8,8 +8,9 @@ import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
+import { deleteComponentCommand, dropComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
 
-const paletteItems = ['Text', 'Image', 'Table', 'Line', 'Rectangle']
+const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 
 function Icon({ name }: { name: 'open' | 'save' }) {
   return <svg aria-hidden="true" className="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><path d={name === 'open' ? 'M2 5.5h4l1.2-2h6.8v9H2z M2 5.5h12' : 'M3 2h8l2 2v10H3z M5 2v4h6V2 M5 12h6'} /></svg>
@@ -29,6 +30,10 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const [zoom, setZoom] = useState(1)
   const [gridVisible, setGridVisible] = useState(true)
   const [snapEnabled, setSnapEnabled] = useState(true)
+  const [placing, setPlacing] = useState<PaletteKind>()
+  const [hoverBand, setHoverBand] = useState<CanvasProjection['bands'][number]['name']>()
+  const [selected, setSelected] = useState<ReadonlyArray<string>>([])
+  const [drag, setDrag] = useState<DragState>()
   const [preset, setPreset] = useState<string>(initialSnapshot?.canvas?.preset ?? 'A4')
   const [orientation, setOrientation] = useState<string>(initialSnapshot?.canvas?.orientation ?? 'portrait')
   const [draft, setDraft] = useState(() => draftFor(initialSnapshot?.canvas))
@@ -36,6 +41,21 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const saveInFlight = useRef(false)
   const draftGeneration = useRef(0)
   const canvas = snapshot?.canvas
+  const clearInteraction = () => { setPlacing(undefined); setHoverBand(undefined); setDrag(undefined) }
+  const commitComponent = async (payload: ArrayBuffer, after?: () => void) => {
+    if (!engine || fileBusy) return
+    setCommitError(undefined)
+    try { const result = await engine.request('command', payload); setCurrentSnapshot(result.snapshot); after?.() }
+    catch (error) { setCommitError(componentDiagnostic(error)); clearInteraction() }
+  }
+  const place = (x: number, y: number) => {
+    if (!placing) return
+    const kind = placing
+    clearInteraction()
+    void commitComponent(dropComponentCommand(kind, x, y, snapEnabled))
+  }
+  const select = (id: string, extend: boolean) => setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id])
+  const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => setSelected([])) }
   const applyPageSetup = async () => {
     if (!engine || !canvas || fileBusy) return
     setCommitError(undefined)
@@ -46,7 +66,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
     } catch (error) { setCommitError(pageSetupDiagnostic(error)) }
   }
 
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false) => { snapshotRef.current = next; setSnapshot(next); if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); if (clearDocumentInteraction) { setSelected([]); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const open = async () => {
@@ -58,7 +78,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
       const canonical = await engine.request('serialize')
       if (!canonical.bytes) throw new Error('Local file could not be serialized')
       const inputWasCanonical = equalBytes(opened.bytes, canonical.bytes)
-      setCurrentSnapshot(loaded.snapshot)
+      setCurrentSnapshot(loaded.snapshot, false, true)
       setTitle(opened.name)
       setTarget(opened.target)
       setSavedRevision(inputWasCanonical ? canonical.snapshot.revision : undefined)
@@ -98,7 +118,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
     setFileBusy(true); setFileError(undefined); setFileStatus('Starting blank local template…')
     try {
       const loaded = await engine.request('load', blankBytes)
-      setCurrentSnapshot(loaded.snapshot)
+      setCurrentSnapshot(loaded.snapshot, false, true)
       setTitle('Untitled template'); setTarget(undefined); setSavedRevision(undefined)
       setFileStatus('Started an unnamed local template')
     } catch { announceFailure('Could not start a blank local template')
@@ -133,15 +153,15 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
       <div className="mode-switch" aria-label="Designer mode"><span className="mode-active">DESIGN</span><span className="mode-disabled">PREVIEW · later</span></div>
     </header>
     <div className="workbench" id="future-features">
-      <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map((item) => <div className="palette-item" key={item}><span className="palette-icon" aria-hidden="true" />{item}<kbd>later</kbd></div>)}<p className="honest-note">Placement arrives later.</p></nav>
-      <main className="canvas-region" aria-label="Canvas region" tabIndex={0}>
+      <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><span className="palette-icon" aria-hidden="true" />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
+      <main className="canvas-region" aria-label="Canvas region" tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) setSelected([]) }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); setSelected([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'}</button></div>
-        {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)}>
-          {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}`} aria-label={bandName(band.name)} style={bandStyle(band, zoom)}><span>{bandName(band.name)}</span></section>)}
+        {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)} onClick={() => setSelected([])}>
+          {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) place(band.x / 1000 + displayPoint(event.nativeEvent.offsetX, zoom), band.y / 1000 + displayPoint(event.nativeEvent.offsetY, zoom)) }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { setDrag(undefined); if (!finished.changed) return; if (finished.mode === 'move') void commitComponent(moveComponentCommand(component.id, finished.x, finished.y, snapEnabled)); else void commitComponent(resizeComponentCommand(component.id, finished.width, finished.height, snapEnabled)) }} />)}</section>)}
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}
       </main>
-      <aside className="properties-panel" aria-label="Properties panel"><p className="section-label">PAGE SETUP</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => setPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => setOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => updateDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => updateDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => updateDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => updateDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => updateDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => updateDraft('left', value)}/><button type="button" className="file-button" onClick={() => void applyPageSetup()} disabled={!canvas || fileBusy}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences. Component placement arrives later.</p></aside>
+      <aside className="properties-panel" aria-label="Properties panel"><p className="section-label">PAGE SETUP</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => setPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => setOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => updateDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => updateDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => updateDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => updateDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => updateDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => updateDraft('left', value)}/><button type="button" className="file-button" onClick={() => void applyPageSetup()} disabled={!canvas || fileBusy}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences. Undo and redo arrive later.</p></aside>
     </div>
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>DESIGN MODE</code></footer>
   </div>
@@ -156,6 +176,19 @@ function displayPx(millipoints: number, zoom: number): string { return `${Math.r
 function pageStyle(canvas: CanvasProjection, zoom: number): CSSProperties { return { '--page-display-width': displayPx(canvas.width, zoom), '--page-display-height': displayPx(canvas.height, zoom), '--grid-display-pitch': displayPx(canvas.gridIncrement, zoom) } as CSSProperties }
 function bandStyle(band: CanvasProjection['bands'][number], zoom: number): CSSProperties { return { '--band-x': displayPx(band.x, zoom), '--band-y': displayPx(band.y, zoom), '--band-width': displayPx(band.width, zoom), '--band-height': displayPx(band.height, zoom) } as CSSProperties }
 function pageSetupDiagnostic(error: unknown): string { const received = error as { code?: string; dataPath?: string; message?: string }; if (received.code === 'PAGE_SETUP_INVALID') return received.dataPath ? `${received.dataPath}: ${received.message ?? 'invalid value'}` : received.message ?? 'Page setup is invalid.'; return 'Page setup is invalid. Check the selected size and margins.' }
+function componentDiagnostic(error: unknown): string { const received = error as { elementId?: string; dataPath?: string; message?: string }; const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message ?? 'Component change was rejected.'}` : received.message ?? 'Component change was rejected.' }
+function displayPoint(pixel: number, zoom: number): number { return Math.round((pixel / zoom) * 1000) / 1000 }
+
+type DragState = Readonly<{ id: string; mode: 'move' | 'resize'; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
+function CanvasComponent({ component, zoom, selected, preview, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; zoom: number; selected: boolean; preview?: DragState; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+  const selectedByPointer = useRef(false)
+  const active = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
+  const begin = (event: PointerEvent, mode: 'move' | 'resize') => { event.stopPropagation(); selectedByPointer.current = true; onSelect(component.id, event.shiftKey); if (event.shiftKey) return; event.currentTarget.setPointerCapture?.(event.pointerId); onDragStart({ id: component.id, mode, startClientX: event.clientX, startClientY: event.clientY, x: component.x, y: component.y, width: component.width, height: component.height, originalX: component.x, originalY: component.y, originalWidth: component.width, originalHeight: component.height, changed: false }) }
+  const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.hypot(rawDX, rawDY) >= 2; const dx = displayPoint(rawDX, zoom) * 1000; const dy = displayPoint(rawDY, zoom) * 1000; onDragStart({ ...preview, changed, x: preview.originalX + (preview.mode === 'move' ? dx : 0), y: preview.originalY + (preview.mode === 'move' ? dy : 0), width: preview.originalWidth + (preview.mode === 'resize' ? dx : 0), height: preview.originalHeight + (preview.mode === 'resize' ? dy : 0) }) }
+  const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
+  return <div className={`canvas-component canvas-component-${component.type}${selected ? ' canvas-component-selected' : ''}`} aria-label={`${component.type} component ${component.id}`} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}>{component.type === 'text' ? 'Text' : component.type === 'image' ? 'Image' : component.type === 'table' ? 'Table' : ''}{selected && component.resizable && <button type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, 'resize')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />}</div>
+}
+function componentStyle(component: { x: number; y: number; width: number; height: number }, zoom: number): CSSProperties { return { '--component-x': displayPx(component.x, zoom), '--component-y': displayPx(component.y, zoom), '--component-width': displayPx(component.width, zoom), '--component-height': displayPx(component.height, zoom) } as CSSProperties }
 
 function equalBytes(left: ArrayBuffer, right: ArrayBuffer): boolean {
   const a = new Uint8Array(left)
