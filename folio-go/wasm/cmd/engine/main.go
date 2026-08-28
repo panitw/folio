@@ -26,19 +26,21 @@ type request struct {
 }
 
 type response struct {
-	OK                         bool          `json:"ok"`
-	Snapshot                   wasm.Snapshot `json:"snapshot,omitempty"`
-	BytesBase64                string        `json:"bytesBase64,omitempty"`
-	DiagnosticCode             string        `json:"diagnosticCode,omitempty"`
-	Message                    string        `json:"message,omitempty"`
-	ElementID                  string        `json:"elementId,omitempty"`
-	DataPath                   string        `json:"dataPath,omitempty"`
-	DictionarySHA256           string        `json:"dictionarySha256,omitempty"`
-	PDFSHA256                  string        `json:"pdfSha256,omitempty"`
-	PreviewIdentity            string        `json:"previewIdentity,omitempty"`
-	RenderRevision             uint64        `json:"renderRevision,omitempty"`
-	ParameterReferences        *[]string     `json:"parameterReferences,omitempty"`
-	ParameterReferenceRevision uint64        `json:"parameterReferenceRevision,omitempty"`
+	OK                         bool                          `json:"ok"`
+	Snapshot                   wasm.Snapshot                 `json:"snapshot,omitempty"`
+	BytesBase64                string                        `json:"bytesBase64,omitempty"`
+	DiagnosticCode             string                        `json:"diagnosticCode,omitempty"`
+	Message                    string                        `json:"message,omitempty"`
+	ElementID                  string                        `json:"elementId,omitempty"`
+	DataPath                   string                        `json:"dataPath,omitempty"`
+	DictionarySHA256           string                        `json:"dictionarySha256,omitempty"`
+	PDFSHA256                  string                        `json:"pdfSha256,omitempty"`
+	PreviewIdentity            string                        `json:"previewIdentity,omitempty"`
+	RenderRevision             uint64                        `json:"renderRevision,omitempty"`
+	ParameterReferences        *[]string                     `json:"parameterReferences,omitempty"`
+	ParameterReferenceRevision uint64                        `json:"parameterReferenceRevision,omitempty"`
+	TableColumns               *folio.TableColumnsProjection `json:"tableColumns,omitempty"`
+	TableColumnsRevision       uint64                        `json:"tableColumnsRevision,omitempty"`
 	// Diagnostics is deliberately not omitempty: an otherwise successful
 	// render has the same closed response shape whether it has zero warnings
 	// or many. JavaScript treats [] as evidence, while a missing/null field is
@@ -104,6 +106,27 @@ func dispatch(engine *wasm.Engine, in request) response {
 			return engineFailure(err)
 		}
 		return response{OK: true, Snapshot: engine.Snapshot(), ParameterReferences: &references, ParameterReferenceRevision: revision}
+	case "table-columns":
+		if in.TemplateBase64 != "" || in.DataBase64 != "" || in.ParamsBase64 != "" {
+			return failure("WASM_INPUT_INVALID", errors.New("table columns require exactly one selected table id"))
+		}
+		payload, err := decode()
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		var selection struct {
+			ID string `json:"id"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(payload)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&selection) != nil || decoder.More() || selection.ID == "" || len(selection.ID) > 128 {
+			return failure("WASM_INPUT_INVALID", errors.New("table columns require one selected table id"))
+		}
+		result, err := engine.TableColumns(selection.ID)
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: engine.Snapshot(), TableColumns: &result.Table, TableColumnsRevision: result.Revision}
 	case "validate":
 		snapshot, err := engine.Validate()
 		if err != nil {

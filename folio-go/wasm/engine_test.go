@@ -57,6 +57,53 @@ func TestEngineParameterReferencesAreARevisionCorrelatedProjection(t *testing.T)
 	}
 }
 
+func TestEngineTableColumnsAreRevisionCorrelatedAndHistoryOwned(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	created, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tableID string
+	for _, component := range created.Canvas.Components {
+		if component.Type == "table" {
+			tableID = component.ID
+		}
+	}
+	if tableID == "" {
+		t.Fatal("table was not projected")
+	}
+	before := engine.Snapshot()
+	after, err := engine.Apply([]byte(`{"kind":"addTableColumn","version":1,"id":"` + tableID + `","index":0}`))
+	if err != nil || after.Revision != before.Revision+1 || !after.CanUndo {
+		t.Fatalf("add history = %#v, err=%v", after, err)
+	}
+	projection, err := engine.TableColumns(tableID)
+	if err != nil || projection.Revision != after.Revision || len(projection.Table.Columns) != 1 {
+		t.Fatalf("projection = %#v, err=%v", projection, err)
+	}
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	undone, err := engine.TableColumns(tableID)
+	if err != nil || len(undone.Table.Columns) != 0 || undone.Revision == projection.Revision {
+		t.Fatalf("undo projection = %#v, err=%v", undone, err)
+	}
+	beforeRejected := engine.Snapshot()
+	if _, err := engine.Apply([]byte(`{"kind":"addTableColumn","version":1,"id":"` + tableID + `","index":9}`)); err == nil {
+		t.Fatal("invalid table command succeeded")
+	}
+	if afterRejected := engine.Snapshot(); !reflect.DeepEqual(afterRejected, beforeRejected) {
+		t.Fatalf("rejection changed history/revision: %#v != %#v", afterRejected, beforeRejected)
+	}
+}
+
 func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 	fixtures := []struct{ name, template, data, params string }{
 		{"simple", "../testdata/example/first-pdf.folio", `{"customer":{"name":"Ada"}}`, `{"preview":null}`},

@@ -1,0 +1,30 @@
+import { expect, test } from '@playwright/test'
+
+// Compiled at story cadence; the executable browser pass remains Epic 6
+// boundary evidence under D-000.4.
+test('table editor is a named keyboard-operable matrix', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Place Table' }).click()
+  await page.getByLabel('Content').click({ position: { x: 24, y: 24 } })
+  await page.getByRole('button', { name: /table component/ }).click()
+  await page.getByRole('button', { name: 'Configure columns' }).click()
+  await expect(page.getByRole('button', { name: 'Add column' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add column' }).click()
+  const grid = page.getByRole('grid', { name: 'Table columns' })
+  await expect(grid).toBeVisible()
+	await expect(grid).toHaveAttribute('aria-rowcount', '2')
+	await expect(grid).toHaveAttribute('aria-colcount', '7')
+  const header = page.getByRole('textbox', { name: 'Header for column 1' })
+  await header.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toBeFocused()
+	await page.keyboard.press('End')
+	await expect(page.getByRole('button', { name: 'Add column after column 1' })).toBeFocused()
+	await page.keyboard.press('ArrowLeft')
+	await expect(page.getByRole('button', { name: 'Remove column 1' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Remove column 1' })).toBeVisible()
+	await expect(page.getByRole('button', { name: 'Move column 1 earlier' })).toBeDisabled()
+	await expect(page.getByRole('button', { name: 'Move column 1 later' })).toBeDisabled()
+	await page.keyboard.press('Escape')
+	await expect(page.getByRole('dialog', { name: 'Table Editor' })).toHaveCount(0)
+})

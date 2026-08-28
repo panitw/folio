@@ -39,6 +39,66 @@ describe('application shell', () => {
     expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('opens an engine-projected, keyboard-operable table matrix with named controls', async () => {
+    const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+    const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right' as const }] } } }
+      return { snapshot: tableSnapshot }
+    })
+    render(<App engine={engine(request)} initialSnapshot={tableSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    const grid = await screen.findByRole('grid', { name: 'Table columns' })
+    expect(grid).toHaveAttribute('aria-colcount', '7')
+		expect(grid).toHaveAttribute('aria-rowcount', '2')
+    const header = screen.getByRole('textbox', { name: 'Header for column 1' })
+    header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
+    expect(screen.getByRole('button', { name: 'Move column 1 earlier' })).toBeDisabled()
+		expect(screen.getByRole('button', { name: 'Move column 1 later' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove column 1' })).toBeInTheDocument()
+  })
+
+  it('traps the focused matrix, closes on Escape, and restores its invoking control', async () => {
+    const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+    const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
+    render(<App engine={engine(vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const }] } } } : { snapshot: tableSnapshot }))} initialSnapshot={tableSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    const invoker = screen.getByRole('button', { name: 'Configure columns' })
+    invoker.focus(); fireEvent.click(invoker)
+    const header = await screen.findByRole('textbox', { name: 'Header for column 1' })
+    expect(document.activeElement).toBe(header)
+    fireEvent.keyDown(header, { key: 'Tab' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close Table Editor' }))
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).not.toBeInTheDocument())
+    expect(document.activeElement).toBe(invoker)
+  })
+
+  it('admits a committed table snapshot after deselection and never reopens a closed session', async () => {
+    const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+    const first = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
+    const second = { documentState: 'loaded' as const, revision: 2, byteLength: 4, canvas: { ...tableCanvas, components: [{ ...tableCanvas.components[0]!, width: 144000 }] } }
+    let releaseProjection!: () => void
+    const delayedProjection = new Promise<{ snapshot: typeof second; tableColumns: { revision: number; table: { tableId: string; columns: { id: string; header: string; width: number; align: 'left' }[] } } }>((resolve) => { releaseProjection = () => resolve({ snapshot: second, tableColumns: { revision: 2, table: { tableId: 'e7', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' }] } } }) })
+    let queries = 0
+    const request = vi.fn((operation: string) => {
+      if (operation === 'table-columns') { queries++; return queries === 1 ? Promise.resolve({ snapshot: first, tableColumns: { revision: 1, table: { tableId: 'e7', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const }] } } }) : delayedProjection }
+      if (operation === 'command') return Promise.resolve({ snapshot: second })
+      return Promise.resolve({ snapshot: first })
+    })
+    render(<App engine={engine(request)} initialSnapshot={first} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    await screen.findByRole('button', { name: 'Add column after column 1' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add column after column 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Table Editor' }))
+    releaseProjection()
+    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2'))
+    expect(screen.queryByRole('dialog', { name: 'Table Editor' })).not.toBeInTheDocument()
+  })
+
   it('replaces the canvas with Preview, cancels an older render, and never dirties or installs its late PDF', async () => {
     let releaseSerialize!: (value: { snapshot: ReturnType<typeof snapshot>; bytes: ArrayBuffer }) => void
     const request = vi.fn((operation: string) => {

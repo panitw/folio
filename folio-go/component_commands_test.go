@@ -217,6 +217,142 @@ func TestComponentCommandsRejectTableResizeAndPreserveTableGeometry(t *testing.T
 	}
 }
 
+func TestTableColumnCommandsAreClosedCanonicalAndDerived(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := newProjectedComponent(t, before, projection)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err != nil {
+		t.Fatal(err)
+	}
+	view, err := TableColumns(tpl, table.ID)
+	if err != nil || len(view.Columns) != 1 || view.Columns[0].Width != 72000 || view.Columns[0].Align != "left" {
+		t.Fatalf("column projection = %#v, err=%v", view, err)
+	}
+	column := view.Columns[0]
+	for _, command := range [][]byte{
+		[]byte(`{"kind":"updateTableColumn","version":1,"id":"` + table.ID + `","columnId":"` + column.ID + `","field":"header","value":"Amount"}`),
+		[]byte(`{"kind":"updateTableColumn","version":1,"id":"` + table.ID + `","columnId":"` + column.ID + `","field":"width","value":96}`),
+		[]byte(`{"kind":"updateTableColumn","version":1,"id":"` + table.ID + `","columnId":"` + column.ID + `","field":"align","value":"right"}`),
+		[]byte(`{"kind":"addTableColumn","version":1,"id":"` + table.ID + `","index":1}`),
+	} {
+		if _, err := ApplyComponentCommand(tpl, command); err != nil {
+			t.Fatalf("apply %s: %v", command, err)
+		}
+	}
+	view, err = TableColumns(tpl, table.ID)
+	if err != nil || len(view.Columns) != 2 || view.Columns[0].Header != "Amount" || view.Columns[0].Width != 96000 || view.Columns[0].Align != "right" {
+		t.Fatalf("edited projection = %#v, err=%v", view, err)
+	}
+	canvas, err := Canvas(tpl)
+	if err != nil || componentByID(t, canvas, table.ID).Width != 168000 {
+		t.Fatalf("derived table width = %#v, err=%v", canvas, err)
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"moveTableColumn","version":1,"id":"`+table.ID+`","columnId":"`+view.Columns[1].ID+`","toIndex":0}`)); err != nil {
+		t.Fatal(err)
+	}
+	view, _ = TableColumns(tpl, table.ID)
+	if view.Columns[0].ID == column.ID {
+		t.Fatal("move did not preserve engine ordered columns")
+	}
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil || bytes.Contains(canonical, []byte(`"tableWidth"`)) {
+		t.Fatalf("canonical table geometry leaked a width: %s, err=%v", canonical, err)
+	}
+}
+
+func TestTableColumnRejectionsDoNotMutate(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := newProjectedComponent(t, before, projection)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err != nil {
+		t.Fatal(err)
+	}
+	view, _ := TableColumns(tpl, table.ID)
+	canonical, _ := SerializeTemplate(tpl)
+	for _, command := range [][]byte{
+		[]byte(`{"kind":"updateTableColumn","version":1,"id":"` + table.ID + `","columnId":"` + view.Columns[0].ID + `","field":"width","value":0}`),
+		[]byte(`{"kind":"updateTableColumn","version":1,"id":"` + table.ID + `","columnId":"` + view.Columns[0].ID + `","field":"align","value":"justify"}`),
+		[]byte(`{"kind":"removeTableColumn","version":1,"id":"` + table.ID + `","columnId":"missing"}`),
+		[]byte(`{"kind":"addTableColumn","version":1,"id":"` + table.ID + `","index":3}`),
+	} {
+		if _, err := ApplyComponentCommand(tpl, command); err == nil {
+			t.Fatalf("invalid command succeeded: %s", command)
+		}
+		after, _ := SerializeTemplate(tpl)
+		if !bytes.Equal(canonical, after) {
+			t.Fatalf("rejection mutated canonical bytes: %s", command)
+		}
+	}
+}
+
+func TestTableColumnCommandsAreTransactionalAtThePublicSeam(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":500,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := newProjectedComponent(t, before, projection)
+	canonical, _ := SerializeTemplate(tpl)
+	// addTableColumn reaches containment only after adding the candidate column;
+	// direct callers must still retain their original canonical template.
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err == nil {
+		t.Fatal("out-of-band add unexpectedly succeeded")
+	}
+	after, _ := SerializeTemplate(tpl)
+	if !bytes.Equal(canonical, after) {
+		t.Fatal("rejected add mutated the public caller template")
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err == nil {
+		t.Fatal("a rejected candidate consumed an id or changed later command behavior")
+	}
+}
+
+func TestTableColumnProjectionCapRejectsThe129thCommandWithoutMutation(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := newProjectedComponent(t, before, projection)
+	for index := 0; index < maxTableColumns; index++ {
+		if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":`+strconv.Itoa(index)+`}`)); err != nil {
+			t.Fatalf("add %d: %v", index+1, err)
+		}
+		view, err := TableColumns(tpl, table.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateTableColumn","version":1,"id":"`+table.ID+`","columnId":"`+view.Columns[index].ID+`","field":"width","value":0.001}`)); err != nil {
+			t.Fatalf("shrink %d: %v", index+1, err)
+		}
+	}
+	view, err := TableColumns(tpl, table.ID)
+	if err != nil || len(view.Columns) != maxTableColumns {
+		t.Fatalf("128-column projection = %#v, err=%v", view, err)
+	}
+	canonical, _ := SerializeTemplate(tpl)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":128}`)); err == nil {
+		t.Fatal("129th editor-unprojectable column unexpectedly succeeded")
+	}
+	after, _ := SerializeTemplate(tpl)
+	if !bytes.Equal(canonical, after) {
+		t.Fatal("129th column rejection mutated canonical bytes")
+	}
+}
+
 func TestDropComponentUsesGoHalfOpenBandHitTesting(t *testing.T) {
 	tpl := componentTemplate(t)
 	canvas, err := Canvas(tpl)

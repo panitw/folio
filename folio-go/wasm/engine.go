@@ -29,6 +29,11 @@ type Snapshot struct {
 	Canvas        *folio.CanvasProjection `json:"canvas,omitempty"`
 }
 
+type TableColumnsResult struct {
+	Revision uint64                       `json:"revision"`
+	Table    folio.TableColumnsProjection `json:"table"`
+}
+
 // RenderResult is a deliberately opaque production-render projection. It is
 // never a browser document model: callers can only receive the PDF bytes,
 // their producer-computed digest, the revision that supplied template bytes,
@@ -52,6 +57,19 @@ func (e *Engine) ParameterReferences() ([]string, uint64, error) {
 		return nil, 0, err
 	}
 	return append([]string(nil), references...), e.revision, nil
+}
+
+// TableColumns exposes one revision-correlated selected-table projection.
+// It is intentionally a query, not a browser-side document model.
+func (e *Engine) TableColumns(tableID string) (TableColumnsResult, error) {
+	if e.template == nil {
+		return TableColumnsResult{}, fmt.Errorf("folio wasm: no document is loaded")
+	}
+	table, err := folio.TableColumns(e.template, tableID)
+	if err != nil {
+		return TableColumnsResult{}, err
+	}
+	return TableColumnsResult{Revision: e.revision, Table: table}, nil
 }
 
 // PreviewIdentity obtains evidence from the current engine-owned canonical

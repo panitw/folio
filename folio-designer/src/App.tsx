@@ -1,7 +1,7 @@
 import './App.css'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import type { EngineClient } from './engine-client'
-import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot } from './engine-protocol'
+import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot, TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
@@ -11,6 +11,8 @@ import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/
 import { pageSetupCommand } from './page-setup-command'
 import { bindComponentScalarCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
 import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
+import { addTableColumnCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnCommand } from './table-column-command'
+import { TableEditor } from './TableEditor'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
 import { canInstallPreview, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, staleCopy } from './preview/freshness'
 import { PreviewDiagnostics, PreviewFailure, type DiagnosticLocation } from './preview/diagnostic-presenter'
@@ -75,6 +77,9 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const [sampleBusy, setSampleBusy] = useState(false)
   const [bindingError, setBindingError] = useState<BindingErrorScope>()
   const [bindingBusy, setBindingBusy] = useState(false)
+  const [tableEditor, setTableEditor] = useState<TableColumns>()
+  const [tableEditorBusy, setTableEditorBusy] = useState(false)
+  const [tableEditorError, setTableEditorError] = useState<string>()
   const snapshotRef = useRef(snapshot)
   const saveInFlight = useRef(false)
   const draftGeneration = useRef(0)
@@ -89,6 +94,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const previewGeneration = useRef(0)
   const sampleDataRef = useRef(sampleData)
   const bindingInFlight = useRef(false)
+	const tableEditorSession = useRef(0)
+	const tableEditorInvoker = useRef<HTMLElement | undefined>(undefined)
   // Local picker results are authority-scoped independently of React renders.
   // A document replacement revokes a picker started for the old document.
   const sampleLoadGeneration = useRef(0)
@@ -277,6 +284,53 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     }
     catch (error) { setCommitError(componentDiagnostic(error)); clearInteraction() }
   }
+  const openTableEditor = async (id: string) => {
+    if (!engine || fileBusy || selectedRef.current.length !== 1 || selectedRef.current[0] !== id) return
+    const generation = documentGeneration.current
+    const revision = snapshotRef.current?.revision
+		const session = ++tableEditorSession.current
+		tableEditorInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    setTableEditorError(undefined); setTableEditorBusy(true)
+    try {
+      const result = await engine.request('table-columns', new TextEncoder().encode(JSON.stringify({ id })).buffer)
+      if (tableEditorSession.current === session && documentGeneration.current === generation && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === revision && result.snapshot.revision === revision && result.tableColumns?.revision === revision && result.tableColumns.table.tableId === id) setTableEditor(result.tableColumns)
+    } catch (error) { if (tableEditorSession.current === session && documentGeneration.current === generation) setTableEditorError(componentDiagnostic(error))
+    } finally { if (tableEditorSession.current === session && documentGeneration.current === generation) setTableEditorBusy(false) }
+  }
+	const revokeTableEditor = () => {
+		tableEditorSession.current++
+		setTableEditor(undefined); setTableEditorError(undefined); setTableEditorBusy(false)
+	}
+	const closeTableEditor = () => {
+		revokeTableEditor()
+		queueMicrotask(() => {
+			const invoker = tableEditorInvoker.current
+			if (invoker?.isConnected) invoker.focus()
+			else canvasRegionRef.current?.focus()
+		})
+	}
+  const commitTableColumn = async (payload: ArrayBuffer) => {
+    const current = tableEditor
+    if (!engine || fileBusy || !current || tableEditorBusy) return
+    const generation = documentGeneration.current
+    const revision = snapshotRef.current?.revision
+    const id = current.table.tableId
+		const session = tableEditorSession.current
+    setTableEditorError(undefined); setTableEditorBusy(true)
+    try {
+      const committed = await engine.request('command', payload)
+			// A committed canonical document is not scoped to transient selection or
+			// editor visibility. Admit it whenever it follows the expected document
+			// generation/revision; only the editor's re-projection remains scoped.
+			if (documentGeneration.current === generation && snapshotRef.current?.revision === revision) {
+				if (committed.snapshot.revision !== revision) invalidatePreview()
+				setCurrentSnapshot(committed.snapshot)
+			}
+      const projected = await engine.request('table-columns', new TextEncoder().encode(JSON.stringify({ id })).buffer)
+      if (tableEditorSession.current === session && documentGeneration.current === generation && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === committed.snapshot.revision && projected.snapshot.revision === committed.snapshot.revision && projected.tableColumns?.revision === committed.snapshot.revision && projected.tableColumns.table.tableId === id) setTableEditor(projected.tableColumns)
+    } catch (error) { if (tableEditorSession.current === session && documentGeneration.current === generation && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === revision) setTableEditorError(componentDiagnostic(error))
+    } finally { if (tableEditorSession.current === session && documentGeneration.current === generation) setTableEditorBusy(false) }
+  }
   const bindPickedPath = async (segments: ReadonlyArray<string>) => {
     const id = selectedRef.current.length === 1 ? selectedRef.current[0] : undefined
     if (!engine || fileBusy || !id || bindingInFlight.current) return
@@ -309,8 +363,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     clearInteraction()
     void commitComponent(dropComponentCommand(kind, x, y, snapEnabled))
   }
-  const select = (id: string, extend: boolean) => { setBindingError(undefined); setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id]) }
-  const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => setSelected([])) }
+  const select = (id: string, extend: boolean) => { setBindingError(undefined); revokeTableEditor(); setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id]) }
+  const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => { revokeTableEditor(); setSelected([]) }) }
   const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
   const nudgeSelection = (dx: number, dy: number) => {
     const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
@@ -350,7 +404,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   }
 
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
@@ -466,7 +520,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     const id = location?.elementId
     const current = snapshotRef.current?.canvas?.components
     clearInteraction()
-    if (id && current?.some((component) => component.id === id)) { setSelected([id]); setLocateStatus(`Selected ${id} in Design.`) }
+    if (id && current?.some((component) => component.id === id)) { revokeTableEditor(); setSelected([id]); setLocateStatus(`Selected ${id} in Design.`) }
     else if (id && announceUnavailable) setLocateStatus('Locate unavailable: the authoritative element is no longer present.')
     else setLocateStatus(undefined)
     returnToDesign()
@@ -526,16 +580,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     </header>
     <div className="workbench" id="future-features">
       <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><span className="palette-icon" aria-hidden="true" />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
-      {mode === 'design' ? <main ref={canvasRegionRef} className="canvas-region" aria-label="Canvas region" tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) setSelected([]) }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); setSelected([]) } }}>
+      {mode === 'design' ? <main ref={canvasRegionRef} className="canvas-region" aria-label="Canvas region" tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) { revokeTableEditor(); setSelected([]) } }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
-        {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)} onClick={() => setSelected([])}>
+        {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)} onClick={() => { revokeTableEditor(); setSelected([]) }}>
           {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); place(point.x, point.y) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { setDrag(undefined); if (!finished.changed) return; if (finished.mode === 'move') void commitComponent(moveComponentCommand(component.id, finished.x, finished.y, snapEnabled)); else void commitComponent(resizeComponentCommand(component.id, finished.width, finished.height, snapEnabled)) }} />)}</section>)}
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <><PreviewFailure error={currentFailure.error} onReturn={() => returnFromFailure(currentFailure)} /><button type="button" className="file-button" onClick={renderPreview}>Retry local render</button></>}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} />
-      <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
+      <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} onEditTable={(id) => void openTableEditor(id)} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
+    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} />}
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
   </div>
 }
@@ -656,7 +711,7 @@ type CommitProperties = (ids: ReadonlyArray<string>, intent: PropertyIntent, gen
 const baseFields: ReadonlyArray<readonly [PropertyField, string]> = [['x', 'X (pt)'], ['y', 'Y (pt)'], ['visibleIf', 'Visible if']]
 const styleFields: ReadonlyArray<readonly [PropertyField, string]> = [['background', 'Background'], ['borderWidth', 'Border width (pt)'], ['borderColor', 'Border colour'], ['paddingTop', 'Padding top (pt)'], ['paddingRight', 'Padding right (pt)'], ['paddingBottom', 'Padding bottom (pt)'], ['paddingLeft', 'Padding left (pt)']]
 const typographyFields: ReadonlyArray<readonly [PropertyField, string]> = [['fontFamily', 'Font family'], ['fontSize', 'Font size (pt)'], ['align', 'Align'], ['valign', 'Vertical align']]
-function ComponentProperties({ components, onCommit, documentGeneration, propertyError }: { components: ReadonlyArray<PanelComponent>; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError }) {
+function ComponentProperties({ components, onCommit, documentGeneration, propertyError, onEditTable }: { components: ReadonlyArray<PanelComponent>; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError; onEditTable: (id: string) => void }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -666,7 +721,8 @@ function ComponentProperties({ components, onCommit, documentGeneration, propert
   if (all((type) => type === 'text' || type === 'table')) fields.push(...typographyFields)
   fields.push(...styleFields)
   const scopedError = propertyError?.selectionKey === ids.join(',') ? propertyError : undefined
-  return <><p className="section-label">{components.length === 1 ? 'COMPONENT' : 'COMPONENTS'}</p><p className="panel-heading">{components.length === 1 ? `${components[0]!.id} · ${components[0]!.type}` : `${components.length} selected`}</p>{components.length === 1 && components[0]!.binding && <p className="binding-chip">Bound to <code>{components[0]!.binding}</code></p>}{fields.map(([field, label]) => <PropertyDraft key={field} label={label} field={field} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === field ? scopedError : undefined} />)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} />}{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} />}{components.length === 1 && components[0]!.type === 'table' && <p className="honest-note">Table binding: {components[0]!.tableBind ?? 'Not set'} (display only)</p>}<p className="honest-note">{types.has('table') ? 'Table size, binding, columns, and header style are not editable here; table geometry is derived.' : 'Only committed engine values are shown. Asset import and arbitrary CSS are not editable here.'}</p></>
+  const table = components.length === 1 && components[0]!.type === 'table' ? components[0] : undefined
+  return <><p className="section-label">{components.length === 1 ? 'COMPONENT' : 'COMPONENTS'}</p><p className="panel-heading">{components.length === 1 ? `${components[0]!.id} · ${components[0]!.type}` : `${components.length} selected`}</p>{components.length === 1 && components[0]!.binding && <p className="binding-chip">Bound to <code>{components[0]!.binding}</code></p>}{fields.map(([field, label]) => <PropertyDraft key={field} label={label} field={field} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === field ? scopedError : undefined} />)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} />}{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} />}{table && <><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></>}<p className="honest-note">{types.has('table') ? 'Table size and binding are not editable here; table geometry is derived from columns.' : 'Only committed engine values are shown. Asset import and arbitrary CSS are not editable here.'}</p></>
 }
 
 function committedValue(component: PanelComponent, field: PropertyField): string | undefined {

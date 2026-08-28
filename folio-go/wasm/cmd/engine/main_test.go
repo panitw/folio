@@ -49,3 +49,22 @@ func TestWasmHostSanitizesTemplateDiagnostics(t *testing.T) {
 		t.Fatalf("unsafe message = %q", got.Message)
 	}
 }
+
+func TestTableColumnsRequestRequiresTheExactSelectionEnvelope(t *testing.T) {
+	engine := wasm.NewEngine()
+	payload := base64.StdEncoding.EncodeToString([]byte(`{"id":"e7"}`))
+	for _, in := range []request{
+		{Operation: "table-columns", TemplateBase64: base64.StdEncoding.EncodeToString([]byte("template")), PayloadBase64: payload},
+		{Operation: "table-columns", DataBase64: base64.StdEncoding.EncodeToString([]byte("sample")), PayloadBase64: payload},
+		{Operation: "table-columns", ParamsBase64: base64.StdEncoding.EncodeToString([]byte("params")), PayloadBase64: payload},
+		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"e7","bind":"row.amount"}`))},
+		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"e7","footer":"sum"}`))},
+		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"e7","sample":"data"}`))},
+		{Operation: "table-columns", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(`{"id":"` + string(bytes.Repeat([]byte("e"), 129)) + `"}`))},
+	} {
+		out := dispatch(engine, in)
+		if out.OK || out.DiagnosticCode != "WASM_INPUT_INVALID" {
+			t.Fatalf("table envelope = %#v", out)
+		}
+	}
+}

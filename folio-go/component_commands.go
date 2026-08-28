@@ -61,9 +61,253 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return updateComponentProperties(t, raw)
 	case "bindComponentScalar":
 		return bindComponentScalar(t, raw)
+	case "addTableColumn":
+		return applyTableColumnCommand(t, raw, addTableColumn)
+	case "removeTableColumn":
+		return applyTableColumnCommand(t, raw, removeTableColumn)
+	case "moveTableColumn":
+		return applyTableColumnCommand(t, raw, moveTableColumn)
+	case "updateTableColumn":
+		return applyTableColumnCommand(t, raw, updateTableColumn)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
+}
+
+// applyTableColumnCommand keeps the public command seam just as atomic as
+// wasm.Engine.Apply. The individual handlers may mutate their candidate while
+// checking geometry, but the caller's template is installed only after that
+// candidate serializes, reparses, and projects successfully.
+func applyTableColumnCommand(t *Template, raw map[string]json.RawMessage, apply func(*Template, map[string]json.RawMessage) (CanvasProjection, error)) (CanvasProjection, error) {
+	before, err := SerializeTemplate(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	working, err := ParseTemplate(before)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if _, err := apply(working, raw); err != nil {
+		return CanvasProjection{}, err
+	}
+	canonical, err := SerializeTemplate(working)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	installed, err := ParseTemplate(canonical)
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.columns", "table columns did not pass format validation")
+	}
+	projection, err := Canvas(installed)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	t.doc, t.derivedFooters = installed.doc, installed.derivedFooters
+	return projection, nil
+}
+
+// The table-column commands are a deliberately closed structural vocabulary.
+// They carry no binding/footer/sample fields: those belong to Story 6.5.
+func addTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	index, err := commandInt(raw, "index")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.index", err.Error())
+	}
+	_, band, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	columns := element.Table.Value.Columns
+	if len(columns) >= maxTableColumns {
+		return CanvasProjection{}, componentFailure(id, "column.index", "table has too many columns")
+	}
+	if index < 0 || index > len(columns) {
+		return CanvasProjection{}, componentFailure(id, "column.index", "column index is out of range")
+	}
+	if t.doc.NextID <= 0 || t.doc.NextID == 1<<63-1 {
+		return CanvasProjection{}, componentFailure(id, "column.id", "nextId cannot allocate another column")
+	}
+	column := template.Column{ID: template.AllocateElementID(t.doc), Label: fmt.Sprintf("Column %d", len(columns)+1), Width: geom.Length(72000)}
+	element.Table.Value.Columns = append(columns, template.Column{})
+	copy(element.Table.Value.Columns[index+1:], element.Table.Value.Columns[index:])
+	element.Table.Value.Columns[index] = column
+	width, height := projectedSize(*element)
+	if err := containComponent(band, element.X, element.Y, width, height); err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.width", err.Error())
+	}
+	t.doc.NextID++
+	return Canvas(t)
+}
+
+func removeTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	columnID, err := commandString(raw, "columnId")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.id", err.Error())
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	index := tableColumnIndex(element, columnID)
+	if index < 0 {
+		return CanvasProjection{}, componentFailure(id, "column.id", "column was not found")
+	}
+	columns := element.Table.Value.Columns
+	copy(columns[index:], columns[index+1:])
+	element.Table.Value.Columns = columns[:len(columns)-1]
+	return Canvas(t)
+}
+
+func moveTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 5); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	columnID, err := commandString(raw, "columnId")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.id", err.Error())
+	}
+	toIndex, err := commandInt(raw, "toIndex")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.toIndex", err.Error())
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	fromIndex := tableColumnIndex(element, columnID)
+	if fromIndex < 0 {
+		return CanvasProjection{}, componentFailure(id, "column.id", "column was not found")
+	}
+	columns := element.Table.Value.Columns
+	if toIndex < 0 || toIndex >= len(columns) {
+		return CanvasProjection{}, componentFailure(id, "column.toIndex", "column index is out of range")
+	}
+	if fromIndex == toIndex {
+		return Canvas(t)
+	}
+	column := columns[fromIndex]
+	if fromIndex < toIndex {
+		copy(columns[fromIndex:toIndex], columns[fromIndex+1:toIndex+1])
+	} else {
+		copy(columns[toIndex+1:fromIndex+1], columns[toIndex:fromIndex])
+	}
+	columns[toIndex] = column
+	return Canvas(t)
+}
+
+func updateTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 6); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	columnID, err := commandString(raw, "columnId")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.id", err.Error())
+	}
+	field, err := commandString(raw, "field")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.field", err.Error())
+	}
+	value, ok := raw["value"]
+	if !ok {
+		return CanvasProjection{}, componentFailure(id, "column.value", "column value is required")
+	}
+	_, band, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	index := tableColumnIndex(element, columnID)
+	if index < 0 {
+		return CanvasProjection{}, componentFailure(id, "column.id", "column was not found")
+	}
+	column := &element.Table.Value.Columns[index]
+	switch field {
+	case "header":
+		label, err := commandString(map[string]json.RawMessage{"value": value}, "value")
+		if err != nil || len(label) > 256 {
+			return CanvasProjection{}, componentFailure(id, "column.header", "header must be a bounded string")
+		}
+		column.Label = label
+	case "width":
+		width, err := propertyLength(value, "width")
+		if err != nil || width <= 0 {
+			return CanvasProjection{}, componentFailure(id, "column.width", "width must be a positive length")
+		}
+		column.Width = width
+	case "align":
+		align, err := commandString(map[string]json.RawMessage{"value": value}, "value")
+		if err != nil || (align != "left" && align != "center" && align != "right") {
+			return CanvasProjection{}, componentFailure(id, "column.align", "alignment must be left, center, or right")
+		}
+		column.Align = template.Presence[string]{Set: true, Value: align}
+	default:
+		return CanvasProjection{}, componentFailure(id, "column.field", "column field is not editable")
+	}
+	width, height := projectedSize(*element)
+	if err := containComponent(band, element.X, element.Y, width, height); err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.width", err.Error())
+	}
+	return Canvas(t)
+}
+
+func tableColumnIndex(element *template.Element, columnID string) int {
+	for index, column := range element.Table.Value.Columns {
+		if string(column.ID) == columnID {
+			return index
+		}
+	}
+	return -1
+}
+
+func commandInt(raw map[string]json.RawMessage, name string) (int, error) {
+	value, ok := raw[name]
+	if !ok {
+		return 0, fmt.Errorf("%s is required", name)
+	}
+	var number json.Number
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.UseNumber()
+	if err := decoder.Decode(&number); err != nil || decoder.More() {
+		return 0, fmt.Errorf("%s must be an integer", name)
+	}
+	integer, err := number.Int64()
+	if err != nil || int64(int(integer)) != integer {
+		return 0, fmt.Errorf("%s must be an integer", name)
+	}
+	return int(integer), nil
 }
 
 // bindComponentScalar is the sole Story 6.2 mutation for a picked root data

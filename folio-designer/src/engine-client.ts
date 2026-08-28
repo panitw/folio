@@ -1,4 +1,4 @@
-import { copyBytes, deepFreeze, ENGINE_PROTOCOL_VERSION, parseInbound, type EngineError, type EngineInbound, type EngineOperation, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload } from './engine-protocol'
+import { copyBytes, deepFreeze, ENGINE_PROTOCOL_VERSION, parseInbound, type EngineError, type EngineInbound, type EngineOperation, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload, type TableColumns } from './engine-protocol'
 
 export interface WorkerPort {
   postMessage(message: EngineRequest, transfer?: Transferable[]): void
@@ -7,7 +7,7 @@ export interface WorkerPort {
   onerror: ((event: ErrorEvent) => void) | null
 }
 
-export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuffer; preview?: Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }> }>; parameterReferences?: Readonly<{ revision: number; names: ReadonlyArray<string> }> }>
+export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuffer; preview?: Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }> }>; parameterReferences?: Readonly<{ revision: number; names: ReadonlyArray<string> }>; tableColumns?: TableColumns }>
 
 type Pending = { operation: EngineOperation; resolve: (result: EngineResult) => void; reject: (error: Error) => void }
 type ClientState = 'starting' | 'ready' | 'failed' | 'terminated'
@@ -94,18 +94,14 @@ export class EngineClient {
     if (!pending) { this.#fail('PROTOCOL_DUPLICATE_OR_UNKNOWN', 'The engine sent an unknown or duplicate response'); return }
     this.#pending.delete(message.requestId)
     if (!message.ok) { pending.reject(errorFor(message.error.code, safeErrorMessage(message.error), message.error.dataPath, message.error.elementId)); return }
-		const mismatch =
-      (pending.operation === 'render' && (!message.bytes || !message.preview?.pdfSha256 || !message.preview.diagnostics || message.parameterReferences !== undefined)) ||
-      (pending.operation === 'identity' && (!message.preview || message.bytes || message.preview.pdfSha256 !== undefined || message.preview.diagnostics !== undefined || message.parameterReferences !== undefined)) ||
-      (pending.operation === 'parameter-references' && (!message.parameterReferences || message.bytes || message.preview)) ||
-      (pending.operation === 'serialize' && (!message.bytes || message.preview || message.parameterReferences)) ||
-      (!['render', 'identity', 'serialize', 'parameter-references'].includes(pending.operation) && (message.bytes || message.preview || message.parameterReferences))
+		const mismatch = !matchesOperationPayload(pending.operation, message)
 		if (mismatch) { pending.reject(errorFor('PROTOCOL_OPERATION_MISMATCH', 'The engine response did not match its request')); this.#fail('PROTOCOL_OPERATION_MISMATCH', 'The engine response did not match its request'); return }
     const snapshot = deepFreeze({ ...message.snapshot }) as EngineSnapshot
     const bytes = message.bytes ? copyBytes(message.bytes) : undefined
 		const preview = message.preview ? deepFreeze({ revision: message.preview.revision, identity: message.preview.identity, ...(message.preview.pdfSha256 ? { pdfSha256: message.preview.pdfSha256, diagnostics: message.preview.diagnostics!.map((diagnostic) => ({ ...diagnostic })) } : {}) }) : undefined
 		const parameterReferences = message.parameterReferences ? deepFreeze({ revision: message.parameterReferences.revision, names: [...message.parameterReferences.names] }) : undefined
-		pending.resolve(deepFreeze({ snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}) }))
+		const tableColumns = message.tableColumns ? deepFreeze({ revision: message.tableColumns.revision, table: { tableId: message.tableColumns.table.tableId, columns: message.tableColumns.table.columns.map((column) => ({ ...column })) } }) : undefined
+		pending.resolve(deepFreeze({ snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}) }))
   }
 
   #fail(code: string, message: string): void {
@@ -125,6 +121,18 @@ export class EngineClient {
   }
 
   #detach(): void { this.worker.onmessage = null; this.worker.onerror = null }
+}
+
+function matchesOperationPayload(operation: EngineOperation, message: Extract<EngineInbound, { kind: 'response'; ok: true }>): boolean {
+  const none = message.bytes === undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+  switch (operation) {
+    case 'render': return message.bytes !== undefined && message.preview?.pdfSha256 !== undefined && message.preview.diagnostics !== undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+    case 'identity': return message.bytes === undefined && message.preview !== undefined && message.preview.pdfSha256 === undefined && message.preview.diagnostics === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+    case 'serialize': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+    case 'parameter-references': return message.bytes === undefined && message.preview === undefined && message.parameterReferences !== undefined && message.tableColumns === undefined
+    case 'table-columns': return message.bytes === undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns !== undefined
+    default: return none
+  }
 }
 
 function copyPayload(payload: ArrayBuffer | RenderPayload | IdentityPayload): ArrayBuffer | RenderPayload | IdentityPayload {

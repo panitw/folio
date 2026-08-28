@@ -1,6 +1,6 @@
 export const ENGINE_PROTOCOL_VERSION = 1 as const
 
-export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'parameter-references' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render'
+export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'parameter-references' | 'table-columns' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render'
 
 export const MAX_ENGINE_REQUEST_ID_LENGTH = 128
 export const MAX_ENGINE_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -24,6 +24,8 @@ export type IdentityPayload = Readonly<{ data: ArrayBuffer; params: ArrayBuffer 
 export type EngineDiagnostic = Readonly<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }>
 export type PreviewEvidence = Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<EngineDiagnostic> }>
 export type ParameterReferences = Readonly<{ revision: number; names: ReadonlyArray<string> }>
+export type TableColumn = Readonly<{ id: string; header: string; width: number; align: 'left' | 'center' | 'right' }>
+export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; columns: ReadonlyArray<TableColumn> }> }>
 
 // Opaque bytes/JSON are deliberately the only document-bearing values on this
 // boundary. These types describe transport, not the .folio file format.
@@ -62,6 +64,7 @@ export type EngineSuccess = Readonly<{
   bytes?: ArrayBuffer
 	preview?: PreviewEvidence
 	parameterReferences?: ParameterReferences
+	tableColumns?: TableColumns
 }>
 
 export type EngineFailure = Readonly<{
@@ -93,6 +96,11 @@ const isError = (value: unknown): value is EngineError => isRecord(value) && has
 const isDiagnostic = (value: unknown): value is EngineDiagnostic => isRecord(value) && hasExactKeys(value, ['severity', 'code', 'elementId', 'dataPath', 'message']) && value.severity === 'warning' && typeof value.code === 'string' && value.code.length > 0 && value.code.length <= 96 && typeof value.elementId === 'string' && value.elementId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof value.dataPath === 'string' && value.dataPath.length <= MAX_ENGINE_DATA_PATH_LENGTH && typeof value.message === 'string' && value.message.length <= 512
 const isPreview = (value: unknown): value is PreviewEvidence => isRecord(value) && hasOnly(value, ['revision', 'identity', 'pdfSha256', 'diagnostics']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.identity === 'string' && /^[a-f0-9]{64}$/.test(value.identity) && ((value.pdfSha256 === undefined && value.diagnostics === undefined) || (typeof value.pdfSha256 === 'string' && /^[a-f0-9]{64}$/.test(value.pdfSha256) && Array.isArray(value.diagnostics) && value.diagnostics.length <= MAX_ENGINE_DIAGNOSTICS && value.diagnostics.every(isDiagnostic)))
 const isParameterReferences = (value: unknown): value is ParameterReferences => isRecord(value) && hasExactKeys(value, ['revision', 'names']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && Array.isArray(value.names) && value.names.length <= MAX_ENGINE_PARAMETER_REFERENCES && value.names.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_ENGINE_PARAMETER_NAME_LENGTH && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) && new Set(value.names).size === value.names.length && value.names.every((name, index, names) => index === 0 || names[index - 1]! < name)
+const isTableColumns = (value: unknown): value is TableColumns => {
+  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'columns'])) return false
+  const table = value.table
+  return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string)) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
+}
 const isCanvas = (value: unknown): value is CanvasProjection => {
   if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
@@ -170,9 +178,9 @@ export function requestCorrelationId(value: unknown): string | undefined {
 
 export function parseRequest(value: unknown): EngineRequest | undefined {
   if (!isRecord(value) || !hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'operation', 'payload']) || value.protocolVersion !== ENGINE_PROTOCOL_VERSION || value.kind !== 'request' || !isEngineRequestId(value.requestId)) return undefined
-	if (!['initialize', 'load', 'snapshot', 'parameter-references', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render'].includes(value.operation as string)) return undefined
+	if (!['initialize', 'load', 'snapshot', 'parameter-references', 'table-columns', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render'].includes(value.operation as string)) return undefined
   if (value.payload !== undefined && (!isArrayBuffer(value.payload) || value.payload.byteLength > MAX_ENGINE_PAYLOAD_BYTES) && !(value.operation === 'render' && isRenderPayload(value.payload)) && !(value.operation === 'identity' && isIdentityPayload(value.payload))) return undefined
-  const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command'
+	const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command' || value.operation === 'table-columns'
   if (value.operation === 'render' ? !isRenderPayload(value.payload) : value.operation === 'identity' ? !isIdentityPayload(value.payload) : needsPayload !== (value.payload !== undefined)) return undefined
   return value as EngineRequest
 }
@@ -184,7 +192,7 @@ export function parseInbound(value: unknown): EngineInbound | undefined {
     return undefined
   }
   if (value.kind !== 'response' || !isEngineRequestId(value.requestId) || typeof value.ok !== 'boolean') return undefined
-	if (value.ok && hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'snapshot', 'bytes', 'preview', 'parameterReferences']) && isSnapshot(value.snapshot) && (value.bytes === undefined || isArrayBuffer(value.bytes) && value.bytes.byteLength <= MAX_ENGINE_RENDER_PDF_BYTES) && (value.preview === undefined || isPreview(value.preview)) && (value.parameterReferences === undefined || isParameterReferences(value.parameterReferences)) && (value.preview === undefined || value.preview.revision === value.snapshot.revision) && (value.parameterReferences === undefined || value.parameterReferences.revision === value.snapshot.revision) && (value.preview?.pdfSha256 === undefined || value.bytes !== undefined)) return value as EngineSuccess
+	if (value.ok && hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'snapshot', 'bytes', 'preview', 'parameterReferences', 'tableColumns']) && isSnapshot(value.snapshot) && (value.bytes === undefined || isArrayBuffer(value.bytes) && value.bytes.byteLength <= MAX_ENGINE_RENDER_PDF_BYTES) && (value.preview === undefined || isPreview(value.preview)) && (value.parameterReferences === undefined || isParameterReferences(value.parameterReferences)) && (value.tableColumns === undefined || isTableColumns(value.tableColumns)) && (value.preview === undefined || value.preview.revision === value.snapshot.revision) && (value.parameterReferences === undefined || value.parameterReferences.revision === value.snapshot.revision) && (value.tableColumns === undefined || value.tableColumns.revision === value.snapshot.revision) && (value.preview?.pdfSha256 === undefined || value.bytes !== undefined)) return value as EngineSuccess
   if (!value.ok && hasExactKeys(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'error']) && isError(value.error)) return value as EngineFailure
   return undefined
 }
