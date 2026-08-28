@@ -115,6 +115,18 @@ func dispatch(engine *wasm.Engine, in request) response {
 			return engineFailure(err)
 		}
 		return response{OK: true, Snapshot: snapshot}
+	case "undo":
+		snapshot, err := engine.Undo()
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: snapshot}
+	case "redo":
+		snapshot, err := engine.Redo()
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: snapshot}
 	case "render":
 		if in.PayloadBase64 != "" || in.TemplateBase64 == "" || in.DataBase64 == "" || in.ParamsBase64 == "" {
 			return failure("WASM_INPUT_INVALID", errors.New("render requires exactly three byte inputs"))
@@ -169,6 +181,12 @@ func failure(code string, err error) response {
 }
 
 func engineFailure(err error) response {
+	if errors.Is(err, wasm.ErrNoUndo) {
+		return response{DiagnosticCode: "UNDO_UNAVAILABLE", Message: "Nothing to undo"}
+	}
+	if errors.Is(err, wasm.ErrNoRedo) {
+		return response{DiagnosticCode: "REDO_UNAVAILABLE", Message: "Nothing to redo"}
+	}
 	var componentErr *folio.ComponentCommandError
 	if errors.As(err, &componentErr) {
 		return response{

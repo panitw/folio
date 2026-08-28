@@ -7,17 +7,25 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	folio "github.com/panitw/folio/folio-go"
 	"github.com/panitw/folio/folio-go/fonts"
 )
 
+const historyLimit = 100
+
+var ErrNoUndo = errors.New("folio wasm: no undo history")
+var ErrNoRedo = errors.New("folio wasm: no redo history")
+
 // Snapshot is a paint-safe projection, not a .folio schema mirror.
 type Snapshot struct {
 	DocumentState string                  `json:"documentState"`
 	Revision      uint64                  `json:"revision"`
 	ByteLength    int                     `json:"byteLength"`
+	CanUndo       bool                    `json:"canUndo"`
+	CanRedo       bool                    `json:"canRedo"`
 	Canvas        *folio.CanvasProjection `json:"canvas,omitempty"`
 }
 
@@ -51,6 +59,8 @@ type Engine struct {
 	bytes    []byte
 	revision uint64
 	canvas   *folio.CanvasProjection
+	undo     [][]byte
+	redo     [][]byte
 }
 
 func NewEngine() *Engine { return &Engine{} }
@@ -79,15 +89,17 @@ func (e *Engine) load(input []byte) (Snapshot, error) {
 	e.template = tpl
 	e.bytes = append(e.bytes[:0], canonical...)
 	e.canvas = &projection
+	e.undo = nil
+	e.redo = nil
 	e.revision++
 	return e.Snapshot(), nil
 }
 
 func (e *Engine) Snapshot() Snapshot {
 	if e.template == nil {
-		return Snapshot{DocumentState: "empty", Revision: e.revision}
+		return Snapshot{DocumentState: "empty", Revision: e.revision, CanUndo: len(e.undo) > 0, CanRedo: len(e.redo) > 0}
 	}
-	return Snapshot{DocumentState: "loaded", Revision: e.revision, ByteLength: len(e.bytes), Canvas: e.canvas}
+	return Snapshot{DocumentState: "loaded", Revision: e.revision, ByteLength: len(e.bytes), CanUndo: len(e.undo) > 0, CanRedo: len(e.redo) > 0, Canvas: e.canvas}
 }
 
 // Serialize returns a copy of canonical bytes. Bytes are the authority across
@@ -173,6 +185,13 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	// Some closed commands are valid but leave canonical bytes unchanged (for
+	// example, applying the page setup already in force). They are not committed
+	// mutations: preserve revision, dirty state, preview authority, and both
+	// history branches exactly as they were.
+	if bytes.Equal(canonical, e.bytes) {
+		return e.Snapshot(), nil
+	}
 	// Reparse the candidate's canonical bytes before installation. Command
 	// factories therefore cannot bypass the normal format validator, and the
 	// persisted bytes, live template, and paint projection all describe the
@@ -185,9 +204,64 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	e.template = installed
+	e.pushUndo(e.bytes)
+	e.redo = nil
+	e.install(installed, canonical, projection)
+	return e.Snapshot(), nil
+}
+
+// Undo and Redo replay canonical engine bytes from this live wasm session.
+// They never serialize history into .folio bytes or ask TypeScript to retain
+// a mirror/inverse command. Revisions stay monotonic even when document bytes
+// return to an earlier state, which keeps preview authority correlation sound.
+func (e *Engine) Undo() (Snapshot, error) {
+	if len(e.undo) == 0 {
+		return e.Snapshot(), ErrNoUndo
+	}
+	prior := e.undo[len(e.undo)-1]
+	e.undo = e.undo[:len(e.undo)-1]
+	e.pushRedo(e.bytes)
+	return e.restore(prior)
+}
+
+func (e *Engine) Redo() (Snapshot, error) {
+	if len(e.redo) == 0 {
+		return e.Snapshot(), ErrNoRedo
+	}
+	next := e.redo[len(e.redo)-1]
+	e.redo = e.redo[:len(e.redo)-1]
+	e.pushUndo(e.bytes)
+	return e.restore(next)
+}
+
+func (e *Engine) restore(canonical []byte) (Snapshot, error) {
+	tpl, err := folio.ParseTemplate(canonical)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	projection, err := folio.CanvasWithTextPaint(tpl, fonts.Shipped())
+	if err != nil {
+		return Snapshot{}, err
+	}
+	e.install(tpl, canonical, projection)
+	return e.Snapshot(), nil
+}
+
+func (e *Engine) install(tpl *folio.Template, canonical []byte, projection folio.CanvasProjection) {
+	e.template = tpl
 	e.bytes = append(e.bytes[:0], canonical...)
 	e.canvas = &projection
 	e.revision++
-	return e.Snapshot(), nil
+}
+
+func (e *Engine) pushUndo(value []byte) { e.undo = appendBounded(e.undo, value) }
+func (e *Engine) pushRedo(value []byte) { e.redo = appendBounded(e.redo, value) }
+func appendBounded(history [][]byte, value []byte) [][]byte {
+	copyValue := append([]byte(nil), value...)
+	if len(history) == historyLimit {
+		copy(history, history[1:])
+		history[len(history)-1] = copyValue
+		return history
+	}
+	return append(history, copyValue)
 }

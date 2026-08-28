@@ -3,6 +3,7 @@ package wasm
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -223,5 +224,113 @@ func TestEnginePropertyBatchAdvancesOneRevisionOrLeavesEverythingUntouched(t *te
 	bytesAfterFailure, snapshotAfterFailure, err := engine.Serialize()
 	if err != nil || snapshotAfterFailure.Revision != after.Revision || !bytes.Equal(bytesBeforeFailure, bytesAfterFailure) {
 		t.Fatal("rejected property batch changed engine state")
+	}
+}
+
+func TestEngineUndoRedoOwnsCommittedCanonicalHistoryAndResetsOnLoad(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"text","band":"content","x":12,"y":12,"width":72,"height":24,"snap":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, _, err := engine.Serialize()
+	if err != nil || bytes.Equal(before, after) {
+		t.Fatal("accepted command did not create a distinct canonical state")
+	}
+	undone, err := engine.Undo()
+	if err != nil || undone.Revision != committed.Revision+1 {
+		t.Fatalf("undo = %#v, %v", undone, err)
+	}
+	got, _, err := engine.Serialize()
+	if err != nil || !bytes.Equal(got, before) {
+		t.Fatal("undo did not restore engine canonical bytes")
+	}
+	redone, err := engine.Redo()
+	if err != nil || redone.Revision != undone.Revision+1 {
+		t.Fatalf("redo = %#v, %v", redone, err)
+	}
+	got, _, err = engine.Serialize()
+	if err != nil || !bytes.Equal(got, after) {
+		t.Fatal("redo did not restore engine canonical bytes")
+	}
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"rect","band":"content","x":100,"y":100,"width":72,"height":24,"snap":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Redo(); !errors.Is(err, ErrNoRedo) {
+		t.Fatalf("divergent command retained redo branch: %v", err)
+	}
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Undo(); !errors.Is(err, ErrNoUndo) {
+		t.Fatalf("load retained undo history: %v", err)
+	}
+	if engine.Snapshot().Revision <= loaded.Revision {
+		t.Fatal("revision was not monotonic")
+	}
+}
+
+func TestEngineNoOpDoesNotChangeHistoryRevisionOrRedo(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	command := []byte(`{"kind":"pageSetup","version":1,"preset":"custom","orientation":"landscape","width":300.125,"height":400.5,"margin":{"top":10,"right":11.5,"bottom":12,"left":13}}`)
+	changed, err := engine.Apply(command)
+	if err != nil || !changed.CanUndo || changed.CanRedo {
+		t.Fatalf("first command = %#v, %v", changed, err)
+	}
+	undone, err := engine.Undo()
+	if err != nil || undone.CanUndo || !undone.CanRedo {
+		t.Fatalf("undo = %#v, %v", undone, err)
+	}
+	stable, err := engine.Apply([]byte(`{"kind":"pageSetup","version":1,"preset":"A4","orientation":"portrait","width":0,"height":0,"margin":{"top":36,"right":36,"bottom":36,"left":36}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stable.Revision != undone.Revision || stable.CanUndo != undone.CanUndo || stable.CanRedo != undone.CanRedo {
+		t.Fatalf("no-op changed history evidence: before=%#v after=%#v", undone, stable)
+	}
+	redone, err := engine.Redo()
+	if err != nil || redone.Revision != stable.Revision+1 || !redone.CanUndo || redone.CanRedo {
+		t.Fatalf("no-op cleared redo or changed revision: %#v, %v", redone, err)
+	}
+}
+
+func TestEngineDuplicateIsACommittedGoCommand(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	before, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := engine.Apply([]byte(`{"kind":"duplicateComponent","version":1,"id":"e1","snap":true}`))
+	if err != nil || after.Revision != before.Revision+1 || after.Canvas == nil || len(after.Canvas.Components) != len(before.Canvas.Components)+1 {
+		t.Fatalf("duplicate = %#v, %v", after, err)
+	}
+	if after.Canvas.Components[len(after.Canvas.Components)-1].ID == "e1" {
+		t.Fatal("duplicate retained its source opaque id")
 	}
 }

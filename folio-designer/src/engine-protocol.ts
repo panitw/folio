@@ -1,6 +1,6 @@
 export const ENGINE_PROTOCOL_VERSION = 1 as const
 
-export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'validate' | 'serialize' | 'command' | 'identity' | 'render'
+export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render'
 
 export const MAX_ENGINE_REQUEST_ID_LENGTH = 128
 export const MAX_ENGINE_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -35,6 +35,8 @@ export type EngineSnapshot = Readonly<{
   documentState: 'empty' | 'loaded'
   revision: number
   byteLength: number
+	canUndo?: boolean
+	canRedo?: boolean
 	canvas?: CanvasProjection
 }>
 
@@ -152,7 +154,7 @@ const isTextPaint = (value: unknown, component: Record<string, number>): boolean
     })
   })
 }
-const isSnapshot = (value: unknown): value is EngineSnapshot => isRecord(value) && hasOnly(value, ['documentState', 'revision', 'byteLength', 'canvas']) && (value.documentState === 'empty' || value.documentState === 'loaded') && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.byteLength === 'number' && Number.isSafeInteger(value.byteLength) && value.byteLength >= 0 && (value.canvas === undefined || isCanvas(value.canvas))
+const isSnapshot = (value: unknown): value is EngineSnapshot => isRecord(value) && hasOnly(value, ['documentState', 'revision', 'byteLength', 'canUndo', 'canRedo', 'canvas']) && (value.documentState === 'empty' || value.documentState === 'loaded') && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.byteLength === 'number' && Number.isSafeInteger(value.byteLength) && value.byteLength >= 0 && (value.canUndo === undefined || typeof value.canUndo === 'boolean') && (value.canRedo === undefined || typeof value.canRedo === 'boolean') && (value.canvas === undefined || isCanvas(value.canvas))
 
 export function requestCorrelationId(value: unknown): string | undefined {
   return isRecord(value) && isEngineRequestId(value.requestId) ? value.requestId : undefined
@@ -160,7 +162,7 @@ export function requestCorrelationId(value: unknown): string | undefined {
 
 export function parseRequest(value: unknown): EngineRequest | undefined {
   if (!isRecord(value) || !hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'operation', 'payload']) || value.protocolVersion !== ENGINE_PROTOCOL_VERSION || value.kind !== 'request' || !isEngineRequestId(value.requestId)) return undefined
-  if (!['initialize', 'load', 'snapshot', 'validate', 'serialize', 'command', 'identity', 'render'].includes(value.operation as string)) return undefined
+  if (!['initialize', 'load', 'snapshot', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render'].includes(value.operation as string)) return undefined
   if (value.payload !== undefined && (!isArrayBuffer(value.payload) || value.payload.byteLength > MAX_ENGINE_PAYLOAD_BYTES) && !(value.operation === 'render' && isRenderPayload(value.payload)) && !(value.operation === 'identity' && isIdentityPayload(value.payload))) return undefined
   const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command'
   if (value.operation === 'render' ? !isRenderPayload(value.payload) : value.operation === 'identity' ? !isIdentityPayload(value.payload) : needsPayload !== (value.payload !== undefined)) return undefined

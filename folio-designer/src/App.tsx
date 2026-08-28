@@ -1,17 +1,19 @@
 import './App.css'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import type { EngineClient } from './engine-client'
-import type { CanvasProjection, EngineSnapshot } from './engine-protocol'
+import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
-import { deleteComponentCommand, dropComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
+import { deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
 import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
 import { canInstallPreview, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, staleCopy } from './preview/freshness'
+import { PreviewDiagnostics, PreviewFailure, type DiagnosticLocation } from './preview/diagnostic-presenter'
+import { isMacPlatform, primaryModifier, shortcutHintsFor } from './shortcuts'
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 
@@ -20,7 +22,8 @@ function Icon({ name }: { name: 'open' | 'save' }) {
 }
 
 type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; initialSnapshot?: EngineSnapshot; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
-type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: number; token: number; generation: number }>
+type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number }>
+type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
 export default function App({ engine, fileAccess, initialSnapshot, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
@@ -46,7 +49,11 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const [preview, setPreview] = useState<PreviewRecord | undefined>(undefined)
   const [previewStatus, setPreviewStatus] = useState<'idle' | 'checking' | 'debouncing' | 'rendering' | 'current' | 'stale' | 'error'>('idle')
   const [staleReason, setStaleReason] = useState<'inputs-changed' | 'render-failed'>('inputs-changed')
-  const [previewError, setPreviewError] = useState<string>()
+  const [previewError, setPreviewError] = useState<PreviewFailureRecord>()
+  const [dismissedDiagnostics, setDismissedDiagnostics] = useState<ReadonlySet<string>>(new Set())
+  const [undoAvailable, setUndoAvailable] = useState(initialSnapshot?.canUndo === true)
+  const [redoAvailable, setRedoAvailable] = useState(initialSnapshot?.canRedo === true)
+  const [locateStatus, setLocateStatus] = useState<string>()
   const [previewViewState, setPreviewViewState] = useState<PDFPreviewViewState>(initialPDFPreviewViewState)
   const [previewData, setPreviewData] = useState('{\n  "transactions": []\n}')
   const [previewParams, setPreviewParams] = useState('{\n  "preview": null\n}')
@@ -65,6 +72,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const previewDataRef = useRef(previewData)
   const previewParamsRef = useRef(previewParams)
   const modeRef = useRef(mode)
+  const canvasRegionRef = useRef<HTMLElement>(null)
   useEffect(() => { modeRef.current = mode }, [mode])
   useEffect(() => { selectedRef.current = selected }, [selected])
   const canvas = snapshot?.canvas
@@ -92,6 +100,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
       setStaleReason('inputs-changed')
     }
     setPreviewError(undefined)
+    setDismissedDiagnostics(new Set())
   }
   const renderPreview = () => {
     if (previewTimer.current !== undefined) clearTimeout(previewTimer.current)
@@ -124,7 +133,8 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
       setPreviewStatus(previewRef.current ? 'stale' : 'rendering')
       const result = await engine.request('render', { template: canonical.bytes, data, params }, controller.signal)
       if (!result.bytes || !result.preview?.pdfSha256 || !result.preview.diagnostics || result.preview.identity !== identity || result.preview.revision !== revision || !current(identity)) return
-      installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics.length, token, generation })
+      installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics, token, generation })
+      setDismissedDiagnostics(new Set())
       setPreviewViewState(initialPDFPreviewViewState)
       // PDF.js is a separate boundary. The bytes become current only when its
       // matching document has admitted successfully through onPageCount. The
@@ -133,8 +143,9 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
       setPreviewStatus('stale')
     } catch (error) {
       if (token !== previewToken.current || controller.signal.aborted) return
+      if (!current()) return
       setStaleReason('render-failed')
-      setPreviewStatus(previewRef.current ? 'stale' : 'error'); setPreviewError(error instanceof Error ? error.message.slice(0, 160) : 'The local PDF render failed')
+      setPreviewStatus(previewRef.current ? 'stale' : 'error'); setPreviewError({ error: previewFailure(error), token, generation, revision: revisionAtStart })
     } finally {
       if (previewAbort.current === controller) previewAbort.current = undefined
     }
@@ -156,7 +167,9 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
     // must never turn a newer render into an error state.
     if (token !== previewToken.current || modeRef.current !== 'preview') return
     cancelPreviewWork()
-    setPreviewError(error.message.slice(0, 160))
+    const current = previewRef.current
+    if (!current) return
+    setPreviewError({ error: { code: 'PDF_VIEWER_FAILED', message: error.message.slice(0, 160) }, token: current.token, generation: current.generation, revision: current.revision })
     setStaleReason('render-failed')
     setPreview((current) => { previewRef.current = current; setPreviewStatus(current ? 'stale' : 'error'); return current })
   }, [])
@@ -168,9 +181,14 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const clearInteraction = () => { setPlacing(undefined); setHoverBand(undefined); setDrag(undefined) }
   const commitComponent = async (payload: ArrayBuffer, after?: () => void) => {
     if (!engine || fileBusy) return
-    invalidatePreview()
     setCommitError(undefined)
-    try { const result = await engine.request('command', payload); setCurrentSnapshot(result.snapshot); after?.() }
+    try {
+      const priorRevision = snapshotRef.current?.revision
+      const result = await engine.request('command', payload)
+      if (result.snapshot.revision !== priorRevision) invalidatePreview()
+      setCurrentSnapshot(result.snapshot)
+      after?.()
+    }
     catch (error) { setCommitError(componentDiagnostic(error)); clearInteraction() }
   }
   const place = (x: number, y: number) => {
@@ -181,23 +199,31 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   }
   const select = (id: string, extend: boolean) => setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id])
   const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => setSelected([])) }
+  const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
+  const nudgeSelection = (dx: number, dy: number) => {
+    const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
+    if (component && selectedRef.current.length === 1) void commitComponent(moveComponentCommand(component.id, component.x + dx, component.y + dy, snapEnabled))
+  }
   const applyPageSetup = async () => {
     if (!engine || !canvas || fileBusy) return
-    invalidatePreview()
     setCommitError(undefined)
     try {
       const requestGeneration = draftGeneration.current
+      const priorRevision = snapshotRef.current?.revision
       const result = await engine.request('command', pageSetupCommand(preset, orientation, preset === 'custom' ? draft.width : '0', preset === 'custom' ? draft.height : '0', draft))
+      if (result.snapshot.revision !== priorRevision) invalidatePreview()
       setCurrentSnapshot(result.snapshot, draftGeneration.current !== requestGeneration)
     } catch (error) { setCommitError(pageSetupDiagnostic(error)) }
   }
   const applyProperties = async (ids: ReadonlyArray<string>, intent: PropertyIntent, responseGeneration: number, selectionKey: string): Promise<CanvasProjection | undefined> => {
     if (!engine || fileBusy) return undefined
-    invalidatePreview()
     setCommitError(undefined)
     setPropertyError(undefined)
     try {
+      const priorRevision = snapshotRef.current?.revision
       const result = await engine.request('command', updateComponentPropertiesCommand(ids, intent))
+      if (result.snapshot.revision !== priorRevision) invalidatePreview()
+      setHistoryAvailability(result.snapshot)
       // A command result is authoritative only if it advances this snapshot;
       // field drafts independently ignore a response from a replaced scope.
       if ((snapshotRef.current?.revision ?? -1) < result.snapshot.revision) setCurrentSnapshot(result.snapshot)
@@ -211,7 +237,8 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
     }
   }
 
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); if (clearDocumentInteraction) { documentGeneration.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const open = async () => {
@@ -274,12 +301,50 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
     } finally { setFileBusy(false) }
   }
 
+  const applyHistory = async (operation: 'undo' | 'redo') => {
+    if (!engine || fileBusy || !(operation === 'undo' ? undoAvailable : redoAvailable)) return
+    setCommitError(undefined)
+    try {
+      const result = await engine.request(operation)
+      invalidatePreview(); setCurrentSnapshot(result.snapshot, false, true)
+    } catch (error) {
+      const received = error as { code?: string }
+      if (received.code === 'UNDO_UNAVAILABLE') setUndoAvailable(false)
+      else if (received.code === 'REDO_UNAVAILABLE') setRedoAvailable(false)
+      else setCommitError(componentDiagnostic(error))
+    }
+  }
+  const returnWithOptionalSelection = (location?: DiagnosticLocation, announceUnavailable = false) => {
+    const id = location?.elementId
+    const current = snapshotRef.current?.canvas?.components
+    clearInteraction()
+    if (id && current?.some((component) => component.id === id)) { setSelected([id]); setLocateStatus(`Selected ${id} in Design.`) }
+    else if (id && announceUnavailable) setLocateStatus('Locate unavailable: the authoritative element is no longer present.')
+    else setLocateStatus(undefined)
+    returnToDesign()
+    setTimeout(() => canvasRegionRef.current?.focus(), 0)
+  }
+  const admittedPreview = (candidate: PreviewRecord | undefined): candidate is PreviewRecord => Boolean(candidate && previewStatus === 'current' && modeRef.current === 'preview' && previewRef.current === candidate && candidate.token === previewToken.current && candidate.generation === previewGeneration.current && candidate.revision === snapshotRef.current?.revision && candidate.identity === previewRef.current.identity)
+  const activeFailure = (candidate: PreviewFailureRecord | undefined): candidate is PreviewFailureRecord => Boolean(candidate && ['error', 'stale'].includes(previewStatus) && modeRef.current === 'preview' && candidate.token === previewToken.current && candidate.generation === previewGeneration.current && candidate.revision === snapshotRef.current?.revision)
+  const locateDiagnostic = (candidate: PreviewRecord, location: DiagnosticLocation) => { if (admittedPreview(candidate)) returnWithOptionalSelection(location, true) }
+  const returnFromFailure = (failure: PreviewFailureRecord) => { if (activeFailure(failure)) returnWithOptionalSelection(failure.error, true) }
+
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's' && engine && fileAccess && !fileBusy) {
+      const editing = isEditableTarget(event.target) || event.isComposing
+      const mac = isMacPlatform()
+      const modifier = primaryModifier(event, mac)
+      if (modifier && event.key.toLowerCase() === 's' && engine && fileAccess && !fileBusy) {
         event.preventDefault()
         void save(false)
+        return
       }
+      if (editing) return
+      if (modifier && event.key.toLowerCase() === 'z' && !event.shiftKey && undoAvailable) { event.preventDefault(); void applyHistory('undo'); return }
+      if ((modifier && event.shiftKey && event.key.toLowerCase() === 'z' || !mac && modifier && event.key.toLowerCase() === 'y') && redoAvailable) { event.preventDefault(); void applyHistory('redo'); return }
+      if (modifier && event.key.toLowerCase() === 'd' && modeRef.current === 'design' && selectedRef.current.length === 1) { event.preventDefault(); duplicateSelection(); return }
+      if (modeRef.current === 'design' && selectedRef.current.length === 1 && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); const step = event.shiftKey ? 10_000 : 1_000; if (event.key === 'ArrowLeft') nudgeSelection(-step, 0); if (event.key === 'ArrowRight') nudgeSelection(step, 0); if (event.key === 'ArrowUp') nudgeSelection(0, -step); if (event.key === 'ArrowDown') nudgeSelection(0, step); return }
+      if (event.altKey && event.key.toLowerCase() === 's' && modeRef.current === 'design') { event.preventDefault(); setSnapEnabled((value) => !value); return }
       if (event.altKey && event.key.toLowerCase() === 'p' && engine && snapshotRef.current) {
         event.preventDefault()
         if (mode === 'preview') returnToDesign()
@@ -297,6 +362,9 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
     return <LoadScreen lifecycle={loadState} payload={payload} engineState={engineState} onRetry={onRetry} />
   }
 
+  const shortcuts = shortcutHintsFor()
+  const currentDiagnostics = previewStatus === 'current' && mode === 'preview' && preview?.revision === snapshot?.revision ? preview : undefined
+  const currentFailure = previewError && ['error', 'stale'].includes(previewStatus) && mode === 'preview' && previewError.revision === snapshot?.revision ? previewError : undefined
   const engineLabel = initializationError ? 'ENGINE UNAVAILABLE' : snapshot ? `GO SNAPSHOT · REVISION ${snapshot.revision}` : 'ENGINE STARTING'
   const offlineLabel = offlineState === 'ready' ? 'Offline ready' : offlineState === 'checking' ? 'Offline cache checking' : offlineState === 'update-available' ? 'Update available; current release remains usable' : 'Offline cache unavailable'
   const dirty = !snapshot || savedRevision === undefined || snapshot.revision !== savedRevision
@@ -304,19 +372,19 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   return <div className="app-shell" aria-label="Folio designer application shell" aria-busy={fileBusy}>
     <header className="document-bar" aria-label="Document bar">
       <span className="brand">FOLIO</span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
-      <div className="document-actions" aria-label="Local file actions"><button className="icon-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template"><Icon name="open" /></button><button className="icon-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template"><Icon name="save" /></button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button></div>
+      <div className="document-actions" aria-label="Local file actions"><button className="icon-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template"><Icon name="open" /></button><button className="icon-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}><Icon name="save" /></button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button></div>
       <span className="later-control" aria-label="Current page setup">{canvas ? `${canvas.preset} · ${canvas.orientation}` : 'Page setup unavailable'}</span>
-      <div className="mode-switch" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW</button></div>
+      <div className="mode-switch" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW <kbd aria-hidden="true">{shortcuts.preview}</kbd></button></div>
     </header>
     <div className="workbench" id="future-features">
       <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><span className="palette-icon" aria-hidden="true" />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
-      {mode === 'design' ? <main className="canvas-region" aria-label="Canvas region" tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) setSelected([]) }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); setSelected([]) } }}>
-        <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'}</button></div>
+      {mode === 'design' ? <main ref={canvasRegionRef} className="canvas-region" aria-label="Canvas region" tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) setSelected([]) }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); setSelected([]) } }}>
+        <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
         {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)} onClick={() => setSelected([])}>
           {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); place(point.x, point.y) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { setDrag(undefined); if (!finished.changed) return; if (finished.mode === 'move') void commitComponent(moveComponentCommand(component.id, finished.x, finished.y, snapEnabled)); else void commitComponent(resizeComponentCommand(component.id, finished.width, finished.height, snapEnabled)) }} />)}</section>)}
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
-        {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}
-      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${previewError ? `; local PDF render failed: ${previewError}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${previewError ? `: ${previewError}` : ''}` : 'Preview is waiting for local inputs'}</p>{previewError && <button type="button" className="file-button" onClick={renderPreview}>Retry local render</button>}{preview && <PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview?.diagnostics ? ` · ${preview.diagnostics} diagnostics retained` : ''}</p></main>}
+        {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
+      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <><PreviewFailure error={currentFailure.error} onReturn={() => returnFromFailure(currentFailure)} /><button type="button" className="file-button" onClick={renderPreview}>Retry local render</button></>}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><label>Raw sample data JSON<textarea aria-label="Raw sample data JSON" value={previewData} onChange={(event) => { previewDataRef.current = event.target.value; setPreviewData(event.target.value); invalidatePreview(); schedulePreview() }} /></label><label>Raw parameter JSON<textarea aria-label="Raw parameter JSON" value={previewParams} onChange={(event) => { previewParamsRef.current = event.target.value; setPreviewParams(event.target.value); invalidatePreview(); schedulePreview() }} /></label><button type="button" className="file-button" onClick={() => void renderPreview()}>Render local PDF</button><p className="honest-note">These raw local inputs are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
@@ -324,7 +392,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
 }
 
 function PageSetup({ preset, orientation, draft, onPreset, onOrientation, onDraft, onApply, disabled }: { preset: string; orientation: string; draft: Draft; onPreset: (value: string) => void; onOrientation: (value: string) => void; onDraft: (key: keyof Draft, value: string) => void; onApply: () => void; disabled: boolean }) {
-  return <><p className="section-label">PAGE SETUP</p><p className="honest-note">Component properties require a selection.</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => onPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => onOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => onDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => onDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => onDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => onDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => onDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => onDraft('left', value)}/><button type="button" className="file-button" onClick={onApply} disabled={disabled}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences. Undo and redo arrive later.</p></>
+  return <><p className="section-label">PAGE SETUP</p><p className="honest-note">Component properties require a selection.</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => onPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => onOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => onDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => onDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => onDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => onDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => onDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => onDraft('left', value)}/><button type="button" className="file-button" onClick={onApply} disabled={disabled}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences; document undo is available in the document bar.</p></>
 }
 
 type PanelComponent = CanvasProjection['components'][number]
@@ -433,4 +501,19 @@ function equalBytes(left: ArrayBuffer, right: ArrayBuffer): boolean {
   const a = new Uint8Array(left)
   const b = new Uint8Array(right)
   return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+function previewFailure(error: unknown): EngineError {
+  const received = error as Partial<EngineError>
+  return {
+    code: typeof received.code === 'string' && received.code ? received.code.slice(0, 96) : 'LOCAL_RENDER_FAILED',
+    message: error instanceof Error ? error.message.slice(0, 512) : 'The local PDF render failed',
+    ...(typeof received.elementId === 'string' && received.elementId ? { elementId: received.elementId.slice(0, 128) } : {}),
+    ...(typeof received.dataPath === 'string' && received.dataPath ? { dataPath: received.dataPath.slice(0, 256) } : {}),
+  }
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 }

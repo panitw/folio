@@ -53,6 +53,8 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return resizeComponent(t, raw)
 	case "deleteComponent":
 		return deleteComponent(t, raw)
+	case "duplicateComponent":
+		return duplicateComponent(t, raw)
 	case "updateComponentProperties":
 		return updateComponentProperties(t, raw)
 	default:
@@ -781,6 +783,42 @@ func deleteComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
 	}
 	band.Elements = append(band.Elements[:index:index], band.Elements[index+1:]...)
+	return Canvas(t)
+}
+
+func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	snap, err := commandBool(raw, "snap")
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	band, projected, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
+	}
+	if t.doc.NextID <= 0 || t.doc.NextID == 1<<63-1 {
+		return CanvasProjection{}, fmt.Errorf("folio: nextId cannot allocate another component")
+	}
+	clone := *element
+	clone.ID = template.AllocateElementID(t.doc)
+	width, height := projectedSize(clone)
+	x, y := clone.X+6000, clone.Y+6000
+	if snap {
+		x, _ = SnapToGrid(x)
+		y, _ = SnapToGrid(y)
+	}
+	if containComponent(projected, x, y, width, height) != nil {
+		x, y = clone.X, clone.Y
+	}
+	clone.X, clone.Y = x, y
+	band.Elements = append(band.Elements, clone)
+	t.doc.NextID++
 	return Canvas(t)
 }
 

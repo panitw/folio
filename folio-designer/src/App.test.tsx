@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App, { placementPoint } from './App'
+import { shortcutHintsFor } from './shortcuts'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 
@@ -62,18 +63,21 @@ describe('application shell', () => {
       return Promise.resolve({ snapshot: snapshot(1) })
     })
     vi.useFakeTimers()
-    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
-    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[1]}' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[2]}' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
-    await vi.runAllTimersAsync()
-    expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(1)
-    releaseIdentity()
-    await vi.runAllTimersAsync()
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
-    expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(2)
-    vi.useRealTimers()
+    try {
+      render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[1]}' } })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[2]}' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+      await vi.runAllTimersAsync()
+      expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(1)
+      releaseIdentity()
+      await vi.runAllTimersAsync()
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+      expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('waits for matching PDF.js admission before claiming current exact output', async () => {
@@ -91,6 +95,55 @@ describe('application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
     expect(screen.getByText('EXACT LOCAL PRODUCTION PDF')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toHaveAttribute('aria-describedby', 'preview-freshness-status')
+  })
+
+  it('keeps producer diagnostics hidden and inert until their exact PDF is admitted, then revokes them on input change', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: 'bands.content.gone', message: 'Content was clipped' }] } }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    expect(screen.queryByLabelText('Render diagnostics')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    await waitFor(() => expect(screen.getByLabelText('Render diagnostics')).toBeInTheDocument())
+    fireEvent.change(screen.getByRole('textbox', { name: 'Raw sample data JSON' }), { target: { value: '{"transactions":[1]}' } })
+    expect(screen.queryByLabelText('Render diagnostics')).not.toBeInTheDocument()
+  })
+
+  it('returns to Design and announces an unavailable authoritative warning target without selecting a substitute', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: '', message: 'Content was clipped' }] } }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Locate in Design' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Locate in Design' }))
+    await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
+    expect(screen.getByText('Locate unavailable: the authoritative element is no longer present.')).toHaveAttribute('role', 'status')
+  })
+
+  it('returns from a path-only render failure without requiring an element id', async () => {
+    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', dataPath: 'items[0]' })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') throw failure
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByLabelText('Local render failure')).toBeInTheDocument())
+    fireEvent.click(within(screen.getByLabelText('Local render failure')).getByRole('button', { name: 'Return to Design' }))
+    await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
   })
 
   it('names local file controls, persistent unsaved state, and offline availability', () => {
@@ -150,6 +203,64 @@ describe('application shell', () => {
     const command = request.mock.calls[0] as unknown as [string, ArrayBuffer]
     expect(new TextDecoder().decode(command[1])).toContain('"top":37.125')
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+  })
+
+  it('drives the full authoritative undo/redo depth, bounds, and divergent branch from engine snapshots', async () => {
+    let revision = 1
+    let undoDepth = 0
+    let redoDepth = 0
+    const historySnapshot = () => ({ ...snapshot(revision), canUndo: undoDepth > 0, canRedo: redoDepth > 0 })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'command') { revision++; undoDepth++; redoDepth = 0; return { snapshot: historySnapshot() } }
+      if (operation === 'undo') { revision++; undoDepth--; redoDepth++; return { snapshot: historySnapshot() } }
+      if (operation === 'redo') { revision++; undoDepth++; redoDepth--; return { snapshot: historySnapshot() } }
+      return { snapshot: historySnapshot(), ...(operation === 'serialize' ? { bytes } : {}) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={historySnapshot()} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled())
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '38' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'undo')).toHaveLength(1))
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'undo')).toHaveLength(2))
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'redo')).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(3))
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
+  })
+
+  it('keeps a no-op command non-dirty and out of browser history when the engine returns its stable snapshot', async () => {
+    const request = vi.fn(async () => ({ snapshot: { ...snapshot(1), canUndo: false, canRedo: true } }))
+    render(<App engine={engine(request)} initialSnapshot={{ ...snapshot(1), canUndo: false, canRedo: true }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
+  })
+
+  it.each([
+    [true, { save: '⌘S', undo: '⌘Z', redo: '⇧⌘Z', preview: '⌥P', snap: '⌥S' }],
+    [false, { save: 'Ctrl+S', undo: 'Ctrl+Z', redo: 'Ctrl+Y', preview: 'Alt+P', snap: 'Alt+S' }],
+  ])('uses one platform-normalized shortcut map (%s)', (mac, expected) => {
+    expect(shortcutHintsFor(mac)).toMatchObject(expected)
+  })
+
+  it.each([
+    ['property draft', { key: 'z', ctrlKey: true }],
+    ['IME composition', { key: 'z', ctrlKey: true, isComposing: true }],
+  ])('does not route Undo through an editable %s', (_name, keyboard) => {
+    const request = vi.fn(async () => ({ snapshot: { ...snapshot(1), canUndo: false, canRedo: true } }))
+    render(<App engine={engine(request)} initialSnapshot={{ ...snapshot(1), canUndo: true }} />)
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Top margin (pt)' }), keyboard)
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('offers only the five fixed palette components and sends an opaque Go placement command', async () => {

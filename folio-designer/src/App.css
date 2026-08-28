@@ -90,4 +90,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .pdf-preview-controls button { min-height: 28px; border: var(--hairline) solid var(--color-edge); background: var(--color-raised); color: var(--color-ink-high); }
 .pdf-preview-scroll { min-height: 240px; overflow: auto; display: grid; justify-content: center; padding: var(--space-6); background: var(--color-base); }
 .pdf-preview-scroll canvas { max-width: none; box-shadow: var(--shadow-page); background: var(--color-page); }
+.diagnostic-list { display: grid; gap: var(--space-3); margin: var(--space-5) 0; }
+.diagnostic-card { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: start; padding: var(--space-3); border: 1px dashed var(--color-bind-edge-dash); border-left: 3px dashed var(--color-bind); background: var(--color-bind-tint-warm); color: var(--color-ink-high); }
+.diagnostic-card p { margin: 0 0 var(--space-2); }
+.diagnostic-triangle { color: var(--color-bind); font-size: 1.1em; line-height: 1; }
+.diagnostic-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.diagnostic-code, .diagnostic-location { font: var(--type-mono); }
+.diagnostic-location { display: block; color: var(--color-ink); }
+.diagnostic-locate, .diagnostic-dismiss { min-height: 28px; border: var(--hairline) solid var(--color-edge); background: var(--color-raised); color: var(--color-ink-high); }
+.preview-failure { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); padding: var(--space-3); border-left: 3px solid var(--color-select); background: var(--color-raised); color: var(--color-ink-high); }
+.preview-failure p { margin: 0; }
+.diagnostic-locate:focus-visible, .diagnostic-dismiss:focus-visible, .preview-failure button:focus-visible { outline: 2px solid var(--color-select); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .load-progress span { transition: none; } }

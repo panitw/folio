@@ -27,5 +27,8 @@ export function resizeComponentCommand(id: string, width: number, height: number
   return encode(`{"kind":"resizeComponent","version":1,"id":"${id}","width":${millipoints(width)},"height":${millipoints(height)},"snap":${snap}}`)
 }
 export function deleteComponentCommand(id: string): ArrayBuffer {
-  return encode(`{"kind":"deleteComponent","version":1,"id":"${id}"}`)
+	return encode(`{"kind":"deleteComponent","version":1,"id":"${id}"}`)
+}
+export function duplicateComponentCommand(id: string, snap: boolean): ArrayBuffer {
+	return encode(`{"kind":"duplicateComponent","version":1,"id":"${id}","snap":${snap}}`)
 }
