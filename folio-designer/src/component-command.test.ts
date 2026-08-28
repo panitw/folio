@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dropComponentCommand, moveComponentCommand, resizeComponentCommand } from './component-command'
+import { bindComponentScalarCommand, dropComponentCommand, moveComponentCommand, resizeComponentCommand } from './component-command'
 
 const text = (value: ArrayBuffer) => new TextDecoder().decode(value)
 
@@ -11,5 +11,9 @@ describe('opaque component commands', () => {
 
   it('sends a global document point to the Go-owned drop hit test', () => {
     expect(text(dropComponentCommand('text', 36, 56, true))).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
+  })
+
+  it('encodes decoded picker segments with complete JSON escaping', () => {
+    expect(text(bindComponentScalarCommand('e1', ['a.b', 'line\nbreak', '\u0000']))).toBe('{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["a.b","line\\nbreak","\\u0000"]}')
   })
 })

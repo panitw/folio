@@ -12,6 +12,9 @@ export type SampleNode = Readonly<{
   count?: number
   children: ReadonlyArray<SampleNode>
   truncated?: boolean
+  // JSON key segments are discovery data, not Folio expression text. They are
+  // supplied verbatim to the opaque engine command only for root scalar leaves.
+  segments?: ReadonlyArray<string>
 }>
 export type SampleData = Readonly<{ bytes: ArrayBuffer; name: string; tree: SampleNode; truncated: boolean }>
 export class SampleDataError extends Error {}
@@ -45,32 +48,33 @@ class DiscoveryParser {
 
   parse(): SampleNode {
     this.space()
-    const node = this.value('$', '$', 0, true)
+    const node = this.value('$', '$', 0, true, [], true)
     this.space()
     if (this.index !== this.source.length) this.invalid()
     return node
   }
 
-  private value(path: string, label: string, depth: number, project: boolean): SampleNode {
+  private value(path: string, label: string, depth: number, project: boolean, segments: ReadonlyArray<string>, rootScoped: boolean): SampleNode {
     this.space()
     const visible = project && this.nodeCount < SAMPLE_LIMITS.nodes && depth <= SAMPLE_LIMITS.depth
     if (project && !visible) this.truncated = true
     if (visible) this.nodeCount++
     const token = this.source[this.index]
-    if (token === '{') return this.object(path, label, depth, visible)
-    if (token === '[') return this.array(path, label, depth, visible)
+    if (token === '{') return this.object(path, label, depth, visible, segments, rootScoped)
+    if (token === '[') return this.array(path, label, depth, visible, segments, rootScoped)
+    const candidate = rootScoped && segments.length > 0 ? { segments } : {}
     if (token === '"') {
       const value = this.string(SAMPLE_LIMITS.stringPreview)
-      return visible ? { kind: 'string', path, label, preview: JSON.stringify(value.text) + (value.truncated ? '…' : ''), children: [] } : truncatedNode(path, label)
+      return visible ? { kind: 'string', path, label, preview: JSON.stringify(value.text) + (value.truncated ? '…' : ''), children: [], ...candidate } : truncatedNode(path, label)
     }
-    if (this.takeWord('true')) return visible ? { kind: 'boolean', path, label, preview: 'true', children: [] } : truncatedNode(path, label)
-    if (this.takeWord('false')) return visible ? { kind: 'boolean', path, label, preview: 'false', children: [] } : truncatedNode(path, label)
-    if (this.takeWord('null')) return visible ? { kind: 'null', path, label, preview: 'null', children: [] } : truncatedNode(path, label)
+    if (this.takeWord('true')) return visible ? { kind: 'boolean', path, label, preview: 'true', children: [], ...candidate } : truncatedNode(path, label)
+    if (this.takeWord('false')) return visible ? { kind: 'boolean', path, label, preview: 'false', children: [], ...candidate } : truncatedNode(path, label)
+    if (this.takeWord('null')) return visible ? { kind: 'null', path, label, preview: 'null', children: [], ...candidate } : truncatedNode(path, label)
     const number = this.number(SAMPLE_LIMITS.scalarPreview)
-    return visible ? { kind: 'number', path, label, preview: number.text + (number.truncated ? '…' : ''), children: [] } : truncatedNode(path, label)
+    return visible ? { kind: 'number', path, label, preview: number.text + (number.truncated ? '…' : ''), children: [], ...candidate } : truncatedNode(path, label)
   }
 
-  private object(path: string, label: string, depth: number, visible: boolean): SampleNode {
+  private object(path: string, label: string, depth: number, visible: boolean, segments: ReadonlyArray<string>, rootScoped: boolean): SampleNode {
     this.expect('{'); this.space()
     const children: SampleNode[] = []; let count = 0; let limited = false
     if (this.take('}')) return visible ? { kind: 'object', path, label, count, children } : truncatedNode(path, label)
@@ -80,14 +84,14 @@ class DiscoveryParser {
       if (!childVisible) { limited = true; this.truncated = true }
       const keyText = key.text + (key.truncated ? '…' : '')
       const childPath = this.path(`${path} › ${JSON.stringify(keyText)}`)
-      const child = this.value(childPath.text, keyText, depth + 1, childVisible)
+      const child = this.value(childPath.text, keyText, depth + 1, childVisible, key.truncated ? [] : [...segments, key.text], rootScoped && !key.truncated)
       if (childVisible) children.push(childPath.truncated ? { ...child, truncated: true } : child)
       this.space(); if (this.take('}')) break; this.expect(',')
     }
     return visible ? { kind: 'object', path, label, count, children, truncated: limited || undefined } : truncatedNode(path, label)
   }
 
-  private array(path: string, label: string, depth: number, visible: boolean): SampleNode {
+  private array(path: string, label: string, depth: number, visible: boolean, segments: ReadonlyArray<string>, _rootScoped: boolean): SampleNode {
     this.expect('['); this.space()
     const collection = this.path(`${path} › []`)
     const children: SampleNode[] = []; let count = 0; let limited = collection.truncated; const collectionPath = collection.text
@@ -96,7 +100,7 @@ class DiscoveryParser {
       count++
       const childVisible = visible && count <= SAMPLE_LIMITS.items
       if (!childVisible) { limited = true; this.truncated = true }
-      const child = this.value(collectionPath, `item ${count}`, depth + 1, childVisible)
+      const child = this.value(collectionPath, `item ${count}`, depth + 1, childVisible, segments, false)
       if (childVisible) children.push(child)
       this.space(); if (this.take(']')) break; this.expect(',')
     }

@@ -106,6 +106,96 @@ func TestComponentCommandsSnapContainAndFailureAreTransactional(t *testing.T) {
 	}
 }
 
+func TestBindComponentScalarOwnsRootExpressionAndPaintProjection(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["customer","name"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	component := componentByID(t, projection, "e1")
+	if component.Binding == nil || *component.Binding != "customer.name" {
+		t.Fatalf("binding paint = %#v, want customer.name", component.Binding)
+	}
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil || bytes.Equal(before, canonical) || !bytes.Contains(canonical, []byte(`"value": "{{customer.name}}"`)) {
+		t.Fatalf("canonical scalar binding = %s, err=%v", canonical, err)
+	}
+	for _, command := range [][]byte{
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["params","name"]}`),
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["page"]}`),
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e2","segments":["customer","name"]}`),
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["not-valid"]}`),
+	} {
+		if _, err := ApplyComponentCommand(tpl, command); err == nil {
+			t.Fatalf("invalid scalar bind unexpectedly succeeded: %s", command)
+		}
+		after, err := SerializeTemplate(tpl)
+		if err != nil || !bytes.Equal(canonical, after) {
+			t.Fatalf("rejected scalar bind changed canonical bytes: %s, err=%v", command, err)
+		}
+	}
+}
+
+func TestBindComponentScalarPreservesDecodedSegmentsAndRejectsTypedBindings(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This is legal command grammar even though a picker would withhold an
+	// observed collection. D-6.2.1 keeps sample runtime kind out of command
+	// legality; AD-14 reports any incompatible runtime value later.
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["items"]}`)); err != nil {
+		t.Fatalf("sample-independent collection-shaped path was rejected: %v", err)
+	}
+	collectionCanonical, err := SerializeTemplate(tpl)
+	if err != nil || !bytes.Contains(collectionCanonical, []byte(`"value": "{{items}}"`)) {
+		t.Fatalf("collection-shaped path was not canonically retained: %s, err=%v", collectionCanonical, err)
+	}
+	_, renderErr := Render(tpl, Data(`{"items":[],"transactions":[]}`), Params(`{}`), testShippedFontSet())
+	if renderErr == nil || !strings.Contains(renderErr.Error(), "element e1") || !strings.Contains(renderErr.Error(), `"items"`) || !strings.Contains(renderErr.Error(), "array") {
+		t.Fatalf("runtime collection kind must use the AD-14 located diagnostic, got %v", renderErr)
+	}
+	for _, command := range [][]byte{
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["a.b"]}`),
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["line\\nbreak"]}`),
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["สวัสดี"]}`),
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":[""]}`),
+		[]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["params","name"]}`),
+		[]byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"{{customer.name}}"}}}`),
+	} {
+		if _, err := ApplyComponentCommand(tpl, command); err == nil {
+			t.Fatalf("ambiguous or typed binding unexpectedly succeeded: %s", command)
+		}
+		after, err := SerializeTemplate(tpl)
+		if err != nil || !bytes.Equal(collectionCanonical, after) {
+			t.Fatalf("rejected command changed canonical bytes: %s, err=%v", command, err)
+		}
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"literal text"}}}`)); err != nil {
+		t.Fatalf("literal text edit was rejected: %v", err)
+	}
+	after, err := SerializeTemplate(tpl)
+	if err != nil || bytes.Equal(before, after) || !bytes.Contains(after, []byte(`"value": "literal text"`)) {
+		t.Fatalf("literal edit was not canonical: %s, err=%v", after, err)
+	}
+}
+
+func componentByID(t *testing.T, projection CanvasProjection, id string) CanvasComponent {
+	t.Helper()
+	for _, component := range projection.Components {
+		if component.ID == id {
+			return component
+		}
+	}
+	t.Fatalf("component %q is absent from projection", id)
+	return CanvasComponent{}
+}
+
 func TestComponentCommandsRejectTableResizeAndPreserveTableGeometry(t *testing.T) {
 	tpl := componentTemplate(t)
 	beforeProjection, err := Canvas(tpl)

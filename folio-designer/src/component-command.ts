@@ -32,3 +32,31 @@ export function deleteComponentCommand(id: string): ArrayBuffer {
 export function duplicateComponentCommand(id: string, snap: boolean): ArrayBuffer {
 	return encode(`{"kind":"duplicateComponent","version":1,"id":"${id}","snap":${snap}}`)
 }
+
+// The tree supplies decoded JSON object-key segments only. Go owns the
+// expression grammar, root/params scope, target eligibility, canonical
+// mutation, and diagnostics; this factory intentionally does none of those.
+export function bindComponentScalarCommand(id: string, segments: ReadonlyArray<string>): ArrayBuffer {
+	// This encodes JSON transport only; it does not turn a key into a Folio
+	// expression. Complete escaping keeps decoded keys unambiguous until Go
+	// verifies the exact segment sequence.
+	return encode(`{"kind":"bindComponentScalar","version":1,"id":${quote(id)},"segments":[${segments.map(quote).join(',')}]}`)
+}
+
+function quote(value: string): string {
+	let encoded = '"'
+	for (const character of value) {
+		const code = character.charCodeAt(0)
+		switch (character) {
+			case '\\': encoded += '\\\\'; break
+			case '"': encoded += '\\"'; break
+			case '\b': encoded += '\\b'; break
+			case '\f': encoded += '\\f'; break
+			case '\n': encoded += '\\n'; break
+			case '\r': encoded += '\\r'; break
+			case '\t': encoded += '\\t'; break
+			default: encoded += code <= 0x1f || (code >= 0xd800 && code <= 0xdfff) ? `\\u${code.toString(16).padStart(4, '0')}` : character
+		}
+	}
+	return `${encoded}"`
+}

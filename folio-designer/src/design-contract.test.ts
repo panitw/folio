@@ -64,6 +64,7 @@ describe('DESIGN.md token contract', () => {
     expect(shellCss).toContain('.page-surface')
     expect(shellCss).toContain('radial-gradient(var(--color-page-dot)')
     expect(shellCss).not.toMatch(/\.canvas-region[^}]*--color-page-/)
+		expect(shellCss).toContain('.tree-item:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }')
   })
 
   it('limits the display and large numeric exception to S1', () => {

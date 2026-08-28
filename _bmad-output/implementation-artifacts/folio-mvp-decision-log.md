@@ -14048,3 +14048,48 @@ red controls also exercise S1 total and delivery-fiction mutations. No planning 
 by the application.
 
 **Finisher correction, 2026-08-28.** Story 5.1 uses the committed npm lockfile as the sole JS dependency graph. AD-26 deterministically enumerates every direct, transitive, and platform-optional lock record without network access or `node_modules`, then accepts only supported SPDX expressions; a missing, unknown, or prohibited record fails closed. The manifest consumes that same lock graph and labels non-dev React runtime entries `shipped`, while dev-only tooling is `build-time-only`. The exhausted absence scanner is deleted with its only tenant; the diagnostics registry and `SOURCE_DATE_EPOCH` protections remain separate positive guards. `pdfjs-dist` is now a live conditional: when its lock record arrives it must be Apache-2.0 and its committed `third-party-notices/pdfjs-dist/NOTICE` must exist.
+
+### D-6.2.1 — A picked-path affordance is sample-shaped; binding legality is sample-independent
+
+**Engineering lead ruling, 2026-08-28.** Go command legality covers the command envelope, target
+eligibility, root-path grammar, reserved namespaces, bounds, and transactional canonical mutation.
+It does not consume sample bytes or promise that the selected path will hold a compatible runtime
+value. The browser may offer only primitive root leaves observed in the active sample and withhold
+Connect for object or collection nodes, but that is a discovery affordance—not a binding validator.
+
+**The situation, in plain language.** Story 6.2's picker sees an example JSON file, while the
+persistent template must also work with later production data. The Go command receives a component
+and a path, not the sample tree. Treating the current sample's node kind as command legality would
+make a transient example into schema authority and introduce a time-of-check/time-of-use race: a
+path that is a string today can be absent, null, numeric, an object, or a collection tomorrow.
+
+**In simple terms.** If the example contains `"items": []`, the picker does not offer `items` to a
+text component because it is not a useful scalar candidate in that example. Nevertheless,
+`["items"]` is a syntactically valid root path. If another authoring route or future sample installs
+that path and production data supplies an array, the template remains canonically bound and the
+production validator/render reports the existing located wrong-kind diagnostic. Changing the sample
+does not silently rewrite or unbind the document.
+
+**Options considered.** (A) Keep command legality sample-independent and let the browser filter its
+offered candidates from observed shape. (B) pass bounded sample evidence to Go so mutation can reject
+the current node kind. Option B loses because sample data is explicitly external, non-persisted,
+non-undoable preview input under AD-15/16; admitting it into canonical mutation would give an example
+authority over the template and require stale-evidence correlation. It would also pull table/row
+semantics forward from Stories 6.4–6.5.
+
+**Why this wins.** AD-14 already assigns runtime compatibility to validation/render against the
+actual input: absent and wrong-kind values are located Errors, while explicit null renders empty.
+Keeping mutation syntactic preserves that single authority. The accepted downside is that a
+syntactically valid binding can later fail against incompatible data; that failure is truthful and
+located rather than hidden by sample-time guesswork.
+
+**Consequences.** Story 6.2 must not claim Go verifies “scalar” runtime kind. Go must accept bounded
+valid root segments such as `["items"]` without sample evidence and transactionally reject malformed
+segments, reserved roots/page forms, unsupported targets, and malformed commands. The designer may
+offer primitive root leaves only, explicitly as picker filtering. No sample bytes, node kind,
+filename, or tree metadata enters the command, canonical bytes, or undo history. Replacing/removing
+the sample never validates, clears, or rewrites an installed binding. An incompatible actual value
+is proved through the existing AD-14 located diagnostic during validate/render.
+
+**How we'd know it was wrong.** Reopen this only if Folio adopts an explicit persisted data schema
+whose versioned authority—not a sample file—can safely participate in canonical binding validation.

@@ -6,9 +6,10 @@ import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
+import type { BindingErrorScope } from './DataPanel'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
-import { deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
+import { bindComponentScalarCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, resizeComponentCommand, type PaletteKind } from './component-command'
 import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
 import { canInstallPreview, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, staleCopy } from './preview/freshness'
@@ -62,6 +63,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const [sampleData, setSampleData] = useState<SampleData | undefined>(initialSampleData)
   const [sampleError, setSampleError] = useState<string>()
   const [sampleBusy, setSampleBusy] = useState(false)
+  const [bindingError, setBindingError] = useState<BindingErrorScope>()
+  const [bindingBusy, setBindingBusy] = useState(false)
   const snapshotRef = useRef(snapshot)
   const saveInFlight = useRef(false)
   const draftGeneration = useRef(0)
@@ -75,6 +78,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const previewRef = useRef<PreviewRecord | undefined>(undefined)
   const previewGeneration = useRef(0)
   const sampleDataRef = useRef(sampleData)
+  const bindingInFlight = useRef(false)
   // Local picker results are authority-scoped independently of React renders.
   // A document replacement revokes a picker started for the old document.
   const sampleLoadGeneration = useRef(0)
@@ -204,13 +208,39 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     }
     catch (error) { setCommitError(componentDiagnostic(error)); clearInteraction() }
   }
+  const bindPickedPath = async (segments: ReadonlyArray<string>) => {
+    const id = selectedRef.current.length === 1 ? selectedRef.current[0] : undefined
+    if (!engine || fileBusy || !id || bindingInFlight.current) return
+    const requestGeneration = documentGeneration.current
+    const priorRevision = snapshotRef.current?.revision
+    const requestSample = sampleDataRef.current
+    const requestSegments = [...segments]
+    setBindingError(undefined)
+    bindingInFlight.current = true
+    setBindingBusy(true)
+    try {
+      const result = await engine.request('command', bindComponentScalarCommand(id, segments))
+      // Selection is transient and cannot revoke an already committed engine
+      // command. Only a document replacement or a newer authoritative view
+      // can prevent this response from becoming the current projection.
+      if (documentGeneration.current === requestGeneration && snapshotRef.current?.revision === priorRevision) {
+        if (result.snapshot.revision !== priorRevision) invalidatePreview()
+        setCurrentSnapshot(result.snapshot)
+      }
+    } catch (error) {
+      if (requestSample && documentGeneration.current === requestGeneration && sampleDataRef.current === requestSample && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === priorRevision) setBindingError({ sample: requestSample, componentID: id, segments: requestSegments, message: componentDiagnostic(error) })
+    } finally {
+      bindingInFlight.current = false
+      if (documentGeneration.current === requestGeneration) setBindingBusy(false)
+    }
+  }
   const place = (x: number, y: number) => {
     if (!placing) return
     const kind = placing
     clearInteraction()
     void commitComponent(dropComponentCommand(kind, x, y, snapEnabled))
   }
-  const select = (id: string, extend: boolean) => setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id])
+  const select = (id: string, extend: boolean) => { setBindingError(undefined); setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id]) }
   const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => setSelected([])) }
   const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
   const nudgeSelection = (dx: number, dy: number) => {
@@ -251,13 +281,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   }
 
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
   const clearSampleData = () => {
     revokeSampleLoad()
-    sampleDataRef.current = undefined; setSampleData(undefined); setSampleError(undefined)
+    sampleDataRef.current = undefined; setSampleData(undefined); setSampleError(undefined); setBindingError(undefined)
     // Clearing a previously accepted sample is itself a Preview input change.
     invalidatePreview(true)
   }
@@ -271,7 +301,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       if (authority !== sampleLoadGeneration.current) return
       // Replacement is atomic: only a fully accepted raw file and its bounded
       // projection can replace the prior local sample.
-      sampleDataRef.current = accepted; setSampleData(accepted)
+      sampleDataRef.current = accepted; setSampleData(accepted); setBindingError(undefined)
       invalidatePreview()
       schedulePreview()
     } catch (error) {
@@ -426,7 +456,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local PDF render failed${currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <><PreviewFailure error={currentFailure.error} onReturn={() => returnFromFailure(currentFailure)} /><button type="button" className="file-button" onClick={renderPreview}>Retry local render</button></>}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
-      <DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} onLoad={() => void loadSample()} />
+      <DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} />
       <aside className="properties-panel" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><label>Raw parameter JSON<textarea aria-label="Raw parameter JSON" value={previewParams} onChange={(event) => { previewParamsRef.current = event.target.value; setPreviewParams(event.target.value); invalidatePreview(); schedulePreview() }} /></label><button type="button" className="file-button" onClick={() => void renderPreview()} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</aside>
     </div>
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
@@ -453,7 +483,7 @@ function ComponentProperties({ components, onCommit, documentGeneration, propert
   if (all((type) => type === 'text' || type === 'table')) fields.push(...typographyFields)
   fields.push(...styleFields)
   const scopedError = propertyError?.selectionKey === ids.join(',') ? propertyError : undefined
-  return <><p className="section-label">{components.length === 1 ? 'COMPONENT' : 'COMPONENTS'}</p><p className="panel-heading">{components.length === 1 ? `${components[0]!.id} · ${components[0]!.type}` : `${components.length} selected`}</p>{fields.map(([field, label]) => <PropertyDraft key={field} label={label} field={field} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === field ? scopedError : undefined} />)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} />}{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} />}{components.length === 1 && components[0]!.type === 'table' && <p className="honest-note">Table binding: {components[0]!.tableBind ?? 'Not set'} (display only)</p>}<p className="honest-note">{types.has('table') ? 'Table size, binding, columns, and header style are not editable here; table geometry is derived.' : 'Only committed engine values are shown. Asset import and arbitrary CSS are not editable here.'}</p></>
+  return <><p className="section-label">{components.length === 1 ? 'COMPONENT' : 'COMPONENTS'}</p><p className="panel-heading">{components.length === 1 ? `${components[0]!.id} · ${components[0]!.type}` : `${components.length} selected`}</p>{components.length === 1 && components[0]!.binding && <p className="binding-chip">Bound to <code>{components[0]!.binding}</code></p>}{fields.map(([field, label]) => <PropertyDraft key={field} label={label} field={field} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === field ? scopedError : undefined} />)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} />}{all((type) => type === 'text' || type === 'table') && <BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} />}{components.length === 1 && components[0]!.type === 'table' && <p className="honest-note">Table binding: {components[0]!.tableBind ?? 'Not set'} (display only)</p>}<p className="honest-note">{types.has('table') ? 'Table size, binding, columns, and header style are not editable here; table geometry is derived.' : 'Only committed engine values are shown. Asset import and arbitrary CSS are not editable here.'}</p></>
 }
 
 function committedValue(component: PanelComponent, field: PropertyField): string | undefined {
@@ -526,7 +556,7 @@ function CanvasComponent({ component, zoom, selected, preview, onSelect, onDelet
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const dy = canvasDisplay.documentDelta(rawDY, zoom) * 1000; onDragStart({ ...preview, changed, x: preview.originalX + (preview.mode === 'move' ? dx : 0), y: preview.originalY + (preview.mode === 'move' ? dy : 0), width: preview.originalWidth + (preview.mode === 'resize' ? dx : 0), height: preview.originalHeight + (preview.mode === 'resize' ? dy : 0) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}>{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? 'Image' : component.type === 'table' ? 'Table' : ''}{selected && component.resizable && <button type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, 'resize')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />}</div>
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}>{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? 'Image' : component.type === 'table' ? 'Table' : ''}{component.binding && <span className="canvas-binding-chip" aria-hidden="true">{component.binding}</span>}{selected && component.resizable && <button type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, 'resize')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />}</div>
 }
 function TextPaint({ component, zoom }: { component: CanvasProjection['components'][number]; zoom: number }) {
   const paint = component.textPaint!
@@ -535,7 +565,8 @@ function TextPaint({ component, zoom }: { component: CanvasProjection['component
 function componentAccessibleName(component: CanvasProjection['components'][number]): string {
   if (component.type !== 'text') return `${component.type} component ${component.id}`
   const text = component.textPaint?.lines.map((line) => line.fragments.map((fragment) => fragment.text).join('').trim()).filter(Boolean).join(' ').slice(0, 160)
-  return text ? `text component ${component.id}: ${text}` : `text component ${component.id}`
+  const binding = component.binding ? `; bound to ${component.binding}` : ''
+  return text ? `text component ${component.id}: ${text}${binding}` : `text component ${component.id}${binding}`
 }
 function componentStyle(component: { x: number; y: number; width: number; height: number }, zoom: number): CSSProperties { return { '--component-x': canvasDisplay.css(component.x, zoom), '--component-y': canvasDisplay.css(component.y, zoom), '--component-width': canvasDisplay.css(component.width, zoom), '--component-height': canvasDisplay.css(component.height, zoom) } as CSSProperties }
 

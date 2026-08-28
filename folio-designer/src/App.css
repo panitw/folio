@@ -50,6 +50,7 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-component-line { height: max(2px, var(--component-height)); background: var(--color-page-ink); }
 .canvas-component-selected { outline: 2px solid var(--color-select); outline-offset: 1px; }
 .canvas-component:focus-visible { outline: 2px solid var(--color-select); outline-offset: 2px; }
+.canvas-binding-chip { position: absolute; right: 0; bottom: 100%; max-width: 100%; overflow: hidden; padding: 1px var(--space-2); border: 1px solid var(--color-bind-edge); background: var(--color-bind-tint-warm); color: var(--color-bind-text); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
 .resize-handle { position: absolute; right: -9px; bottom: -9px; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: nwse-resize; }
 .resize-handle::after { content: ''; position: absolute; inset: 9px; border: 2px solid var(--color-select); background: var(--color-page); }
 .canvas-awaiting { color: var(--color-ink); font: var(--type-mono); }
@@ -60,7 +61,11 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .data-tree { display: grid; gap: var(--space-2); margin: var(--space-5) 0; padding: 0; list-style: none; }
 .data-tree-node { display: grid; gap: var(--space-1); min-width: 0; margin-left: calc((var(--tree-level) - 1) * var(--space-5)); border-left: 2px solid var(--color-bind-edge); background: var(--tint-bind-row); }
 .tree-item { display: grid; gap: var(--space-1); width: 100%; min-width: 0; padding: var(--space-2); border: 0; color: inherit; text-align: left; background: transparent; cursor: pointer; }
-.tree-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.tree-item:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+.data-tree-picked { border-left-color: var(--color-select); background: var(--color-select-fill); }
+.binding-status, .binding-chip { margin: var(--space-3) 0; color: var(--color-ink-high); font: var(--type-body); }
+.binding-status code, .binding-chip code { color: var(--color-bind-text); font: var(--type-mono); }
+.binding-connect { width: 100%; margin-bottom: var(--space-3); }
 .tree-label { color: var(--color-ink-high); font: var(--type-mono-em); }
 .tree-detail { color: var(--color-ink); font: var(--type-body); overflow: hidden; text-overflow: ellipsis; }
 .panel-heading { margin: 0 0 var(--space-5); color: var(--color-ink-high); font: var(--type-body-em); }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/template"
 	"github.com/panitw/folio/folio-go/internal/text"
@@ -74,7 +75,11 @@ type CanvasComponent struct {
 	Resizable bool   `json:"resizable"`
 	// The following explicitly named optional values are the minimum committed
 	// property-panel projection. This is not a generic style or document bag.
-	Value         *string          `json:"value,omitempty"`
+	Value *string `json:"value,omitempty"`
+	// Binding is a bounded, Go-derived paint label for a direct text binding.
+	// It is not a general expression/template projection and cannot be used to
+	// reconstruct canonical document bytes in the browser.
+	Binding       *string          `json:"binding,omitempty"`
 	VisibleIf     *string          `json:"visibleIf,omitempty"`
 	FontFamily    *string          `json:"fontFamily,omitempty"`
 	FontSize      *int64           `json:"fontSize,omitempty"`
@@ -93,6 +98,9 @@ type CanvasComponent struct {
 	PaddingLeft   *int64           `json:"paddingLeft,omitempty"`
 	TextPaint     *CanvasTextPaint `json:"textPaint,omitempty"`
 }
+
+const maxCanvasBindingString = 256
+
 type CanvasProjection struct {
 	Width         int64             `json:"width"`
 	Height        int64             `json:"height"`
@@ -313,6 +321,9 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 					return nil, fmt.Errorf("folio: component value exceeds the projection bound")
 				}
 				component.Value = stringPointer(element.Value.Value)
+				if binding := directCanvasBinding(element.Value.Value); binding != "" {
+					component.Binding = stringPointer(binding)
+				}
 			}
 			if element.VisibleIf.Set && !element.VisibleIf.Null {
 				if len(element.VisibleIf.Value) > maxCanvasPropertyString {
@@ -335,6 +346,22 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 		}
 	}
 	return out, nil
+}
+
+func directCanvasBinding(value string) string {
+	literal, placeholders, trailing, err := expr.ScanPlaceholders(value)
+	if err != nil || len(literal) != 1 || literal[0] != "" || len(placeholders) != 1 || trailing != "" || placeholders[0].Reserved {
+		return ""
+	}
+	parsed, err := expr.Parse(placeholders[0].Inner)
+	if err != nil {
+		return ""
+	}
+	path, ok := parsed.(*expr.PathExpr)
+	if !ok || path.Raw == "" || len(path.Raw) > maxCanvasBindingString {
+		return ""
+	}
+	return path.Raw
 }
 
 func stringPointer(value string) *string     { return &value }

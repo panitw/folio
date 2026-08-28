@@ -118,7 +118,7 @@ development_status:
 
   epic-6: in-progress
   6-1-load-sample-data-and-browse-its-paths: done
-  6-2-bind-a-component-by-picking-a-path: backlog
+  6-2-bind-a-component-by-picking-a-path: done
   6-3-supply-parameters-for-preview: backlog
   6-4-configure-table-columns-as-a-matrix: backlog
   6-5-bind-columns-in-row-scope-and-configure-footer-aggregates: backlog

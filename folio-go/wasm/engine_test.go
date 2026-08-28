@@ -285,6 +285,113 @@ func TestEngineUndoRedoOwnsCommittedCanonicalHistoryAndResetsOnLoad(t *testing.T
 	}
 }
 
+func TestEngineScalarBindingIsOneCanonicalUndoableMutation(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := engine.Apply([]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["customer","name"]}`))
+	if err != nil || bound.Revision != loaded.Revision+1 || !bound.CanUndo || bound.Canvas == nil {
+		t.Fatalf("scalar bind snapshot = %#v, err=%v", bound, err)
+	}
+	component := canvasComponentByID(t, bound.Canvas, "e1")
+	if component.Binding == nil || *component.Binding != "customer.name" {
+		t.Fatalf("engine binding projection = %#v", component.Binding)
+	}
+	after, _, err := engine.Serialize()
+	if err != nil || bytes.Equal(before, after) || !bytes.Contains(after, []byte(`"value": "{{customer.name}}"`)) {
+		t.Fatalf("accepted bind was not canonical: %s, err=%v", after, err)
+	}
+	undone, err := engine.Undo()
+	if err != nil || undone.Revision != bound.Revision+1 {
+		t.Fatalf("undo scalar bind = %#v, err=%v", undone, err)
+	}
+	got, _, err := engine.Serialize()
+	if err != nil || !bytes.Equal(got, before) {
+		t.Fatalf("undo did not restore pre-bind bytes: %v", err)
+	}
+	redone, err := engine.Redo()
+	if err != nil || redone.Revision != undone.Revision+1 {
+		t.Fatalf("redo scalar bind = %#v, err=%v", redone, err)
+	}
+	got, _, err = engine.Serialize()
+	if err != nil || !bytes.Equal(got, after) {
+		t.Fatalf("redo did not restore scalar binding: %v", err)
+	}
+	stable := engine.Snapshot()
+	if _, err := engine.Apply([]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["params","name"]}`)); err == nil {
+		t.Fatal("params scalar bind unexpectedly succeeded")
+	}
+	if engine.Snapshot().Revision != stable.Revision {
+		t.Fatal("rejected scalar bind advanced revision")
+	}
+}
+
+func TestEngineScalarBindingRoundTripsAndNoOpPreservesHistoryBranches(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["customer","name"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["account","number"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	undone, err := engine.Undo()
+	if err != nil || !undone.CanRedo {
+		t.Fatalf("undo before no-op = %#v, err=%v", undone, err)
+	}
+	beforeNoOp, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	noOp, err := engine.Apply([]byte(`{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["customer","name"]}`))
+	if err != nil || noOp.Revision != undone.Revision || !noOp.CanRedo {
+		t.Fatalf("same binding must preserve revision and redo: %#v, err=%v", noOp, err)
+	}
+	afterNoOp, _, err := engine.Serialize()
+	if err != nil || !bytes.Equal(beforeNoOp, afterNoOp) {
+		t.Fatalf("same binding changed canonical bytes: %v", err)
+	}
+	if _, err := engine.Redo(); err != nil {
+		t.Fatalf("no-op binding discarded redo: %v", err)
+	}
+	canonical, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewEngine()
+	loaded, err := reloaded.Load(canonical)
+	if err != nil || loaded.Canvas == nil || canvasComponentByID(t, loaded.Canvas, "e1").Binding == nil {
+		t.Fatalf("saved canonical binding did not survive load: %#v, err=%v", loaded, err)
+	}
+}
+
+func canvasComponentByID(t *testing.T, canvas *folio.CanvasProjection, id string) folio.CanvasComponent {
+	t.Helper()
+	for _, component := range canvas.Components {
+		if component.ID == id {
+			return component
+		}
+	}
+	t.Fatalf("component %q is absent from wasm canvas", id)
+	return folio.CanvasComponent{}
+}
+
 func TestEngineNoOpDoesNotChangeHistoryRevisionOrRedo(t *testing.T) {
 	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
 	if err != nil {

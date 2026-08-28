@@ -1,0 +1,50 @@
+import { expect, test } from '@playwright/test'
+
+// Compile-covered in Story 6.2. Real browser execution remains deferred to the
+// Epic 6 D-000.4 boundary cadence.
+test('binds a selected text component to a picked root scalar and undoes/redoes the one command', async ({ page }) => {
+  await page.goto('/')
+  const content = page.getByRole('region', { name: 'Content', exact: true })
+  await page.getByRole('button', { name: 'Place Text' }).click()
+  await content.press('Enter')
+  const text = content.getByRole('button', { name: /text component/ }).last()
+  await text.click()
+
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Load sample JSON' }).click()
+  await (await chooser).setFiles({ name: 'sample.json', mimeType: 'application/json', buffer: Buffer.from('{"customer":{"name":"Ada"}}') })
+  const tree = page.getByRole('tree', { name: 'Sample data paths' })
+  const customer = tree.getByRole('treeitem').filter({ hasText: /^customer/ })
+  await customer.press('ArrowRight')
+  await customer.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: 'Connect selected path' }).click()
+
+  await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
+  await expect(content.getByRole('button', { name: /bound to customer.name/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(page.getByText('Bound to').locator('..')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Redo' }).click()
+  await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
+})
+
+test('offers another golden-report scalar through the tree and has no binding path textbox', async ({ page }) => {
+  await page.goto('/')
+  const content = page.getByRole('region', { name: 'Content', exact: true })
+  await page.getByRole('button', { name: 'Place Text' }).click()
+  await content.press('Enter')
+  await content.getByRole('button', { name: /text component/ }).last().click()
+
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Load sample JSON' }).click()
+  await (await chooser).setFiles({ name: 'golden-paths.json', mimeType: 'application/json', buffer: Buffer.from('{"account":{"number":"001-9"}}') })
+  const tree = page.getByRole('tree', { name: 'Sample data paths' })
+  const account = tree.getByRole('treeitem').filter({ hasText: /^account/ })
+  await account.press('ArrowRight')
+  await account.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: 'Connect selected path' }).click()
+
+  await expect(page.getByText('Bound to').locator('..')).toContainText('account.number')
+  await expect(page.getByRole('textbox', { name: /binding path|path expression/i })).toHaveCount(0)
+})

@@ -35,6 +35,11 @@ describe('bounded local sample discovery', () => {
     ])
     expect(accepted.tree.children[2]!.preview).toHaveLength(121)
     expect(accepted.tree.children[0]!.path).not.toBe(accepted.tree.children[1]!.children[0]!.path)
+		// The command carries these decoded segments, not the display path. Go
+		// rejects the first key because Folio identifiers cannot represent dots,
+		// rather than reinterpreting it as the second path.
+		expect(accepted.tree.children[0]!.segments).toEqual(['a.b'])
+		expect(accepted.tree.children[1]!.children[0]!.segments).toEqual(['a', 'b'])
     const nested = acceptSampleData('paths.json', encode(`{"${'x'.repeat(120)}":{"${'y'.repeat(120)}":{"${'z'.repeat(120)}":1}}}`))
     expect(nested.tree.children[0]!.children[0]!.children[0]!.path).toHaveLength(257)
   })

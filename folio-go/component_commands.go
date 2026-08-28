@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
@@ -57,9 +59,85 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return duplicateComponent(t, raw)
 	case "updateComponentProperties":
 		return updateComponentProperties(t, raw)
+	case "bindComponentScalar":
+		return bindComponentScalar(t, raw)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
+}
+
+// bindComponentScalar is the sole Story 6.2 mutation for a picked root data
+// path. The caller transports JSON object-key segments, not an expression or a
+// browser-side validity judgment. This command owns the conversion to Folio's
+// established expression grammar and rejects every non-root/reserved form
+// before touching the target element.
+func bindComponentScalar(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "component.id", err.Error())
+	}
+	segmentsRaw, ok := raw["segments"]
+	if !ok {
+		return CanvasProjection{}, componentFailure(id, "binding.segments", "binding segments are required")
+	}
+	var segments []string
+	if json.Unmarshal(segmentsRaw, &segments) != nil || len(segments) == 0 || len(segments) > 32 {
+		return CanvasProjection{}, componentFailure(id, "binding.segments", "binding segments must be a non-empty bounded string array")
+	}
+	for _, segment := range segments {
+		if segment == "" || len(segment) > 64 {
+			return CanvasProjection{}, componentFailure(id, "binding.segments", "binding segments must be bounded non-empty strings")
+		}
+	}
+	if segments[0] == "params" {
+		return CanvasProjection{}, componentFailure(id, "binding.segments", "params is not a root data binding")
+	}
+	path := strings.Join(segments, ".")
+	if len(path) > maxCanvasBindingString {
+		return CanvasProjection{}, componentFailure(id, "binding.segments", "binding path exceeds the projection bound")
+	}
+	parsed, err := expr.Parse(path)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "binding.segments", "binding path is not a valid Folio expression")
+	}
+	pathExpr, ok := parsed.(*expr.PathExpr)
+	// Joining is only an intermediate representation for Folio's established
+	// identifier grammar. It must never reinterpret a decoded JSON key such as
+	// "a.b" as two keys. Keys that Folio cannot represent are rejected before
+	// mutation, rather than silently binding a different path.
+	if !ok || !sameSegments(pathExpr.Segments, segments) || expr.IsReserved(path) {
+		return CanvasProjection{}, componentFailure(id, "binding.segments", "binding path must be a non-reserved root data path")
+	}
+	if err := expr.Check(parsed); err != nil {
+		return CanvasProjection{}, componentFailure(id, "binding.segments", "binding path is not a valid Folio expression")
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
+	}
+	if element.Type != template.ElementText {
+		return CanvasProjection{}, componentFailure(id, "component.id", "only text components can receive a scalar binding")
+	}
+	// The generated expression is canonical and then independently reparsed by
+	// wasm.Engine before installation. No sample bytes or local tree metadata
+	// enter the template.
+	element.Value = template.Presence[string]{Set: true, Value: "{{" + path + "}}"}
+	return Canvas(t)
+}
+
+func sameSegments(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // updateComponentProperties is deliberately a small closed mutation language.
@@ -314,6 +392,12 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 			case "value":
 				if clear || setNull {
 					return fmt.Errorf("value cannot be cleared")
+				}
+				if stringsContainsPlaceholder(text) {
+					// Direct bindings are authored only by bindComponentScalar. This
+					// command deliberately remains useful for literal text, but cannot
+					// become a second, typed expression route.
+					return fmt.Errorf("value must not contain a placeholder; choose a path in the Data panel")
 				}
 				element.Value = template.Presence[string]{Set: true, Value: text}
 			case "visibleIf":
