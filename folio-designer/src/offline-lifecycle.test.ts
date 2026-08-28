@@ -28,6 +28,7 @@ describe('offline lifecycle message boundary', () => {
     const registration = new EventTarget() as ServiceWorkerRegistration
     Object.assign(registration, { active, waiting: null, installing })
     channel.register = vi.fn(async () => registration)
+    channel.controller = active
     Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: channel })
     Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
     const states: string[] = []
@@ -74,6 +75,28 @@ describe('offline lifecycle message boundary', () => {
     stop()
     channel.dispatchEvent(new MessageEvent('message', { data: { version: 1, type: 'offline-status', state: 'ready', releaseId: release, pageId: page } }))
     expect(states).toHaveLength(before)
+    vi.useRealTimers()
+  })
+
+  it('measures cache inactivity and never times out after the worker reports ready', async () => {
+    vi.useFakeTimers()
+    const channel = new EventTarget() as EventTarget & { register: ReturnType<typeof vi.fn>; controller?: ServiceWorker }
+    const active = { postMessage: vi.fn() } as unknown as ServiceWorker
+    const registration = new EventTarget() as ServiceWorkerRegistration
+    Object.assign(registration, { active, waiting: null, installing: null })
+    channel.register = vi.fn(async () => registration)
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: channel })
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
+    const states: string[] = []
+    registerOfflineLifecycle(page, payload, (state) => states.push(state.state), 10)
+    await Promise.resolve()
+    vi.advanceTimersByTime(9)
+    channel.dispatchEvent(new MessageEvent('message', { data: { version: 1, type: 'offline-progress', state: 'verified', assetUrl: '/assets/engine.wasm', releaseId: release, pageId: page } }))
+    vi.advanceTimersByTime(9)
+    expect(states).not.toContain('unavailable')
+    channel.dispatchEvent(new MessageEvent('message', { data: { version: 1, type: 'offline-status', state: 'ready', releaseId: release, pageId: page } }))
+    vi.advanceTimersByTime(20)
+    expect(states.at(-1)).toBe('ready')
     vi.useRealTimers()
   })
 })

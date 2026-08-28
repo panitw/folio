@@ -20,7 +20,7 @@ let started = false
 let stopObservation: (() => void) | undefined
 let observationInFlight = false
 const fileAccess = selectFileAccess()
-const render = () => root.render(<StrictMode><App engine={engine} fileAccess={fileAccess} initialSnapshot={snapshot} blankBytes={blankBytes} loadState={lifecycle} payload={payload} engineState={engineState} onRetry={startObservation} /></StrictMode>)
+const render = () => root.render(<StrictMode><App key={engine ? 'engine-ready' : 'engine-loading'} engine={engine} fileAccess={fileAccess} initialSnapshot={snapshot} blankBytes={blankBytes} offlineState={lifecycle.state} loadState={lifecycle} payload={payload} engineState={engineState} onRetry={startObservation} /></StrictMode>)
 async function startEngine() {
   if (started || !lifecycle.cacheReady) return
   started = true; engineState = 'starting'; render()

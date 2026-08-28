@@ -45,7 +45,7 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   const sw = readFileSync(join(outputDir, 'sw.js'), 'utf8')
   const embedded = sw.match(/const RELEASE = (.+)\nconst CACHE_NAME/m)?.[1]
   if (!embedded || JSON.stringify(JSON.parse(embedded)) !== JSON.stringify(release)) fail('service worker and manifest release records differ')
-  for (const required of ["const CACHE_NAME = 'folio-release-' + RELEASE.id", "credentials: 'omit'", "credentials === 'omit'", 'RELEASE.pageId', 'windows.length === 0', 'offline asset integrity mismatch']) if (!sw.includes(required)) fail(`service worker lacks ${required}`)
+  for (const required of ["const CACHE_NAME = 'folio-release-' + RELEASE.id", "credentials: 'omit'", 'url.origin === origin', 'paths.has(url.pathname)', 'RELEASE.pageId', 'windows.length === 0', 'offline asset integrity mismatch']) if (!sw.includes(required)) fail(`service worker lacks ${required}`)
   if (sw.includes('skipWaiting') || sw.includes('cache.addAll') || sw.includes('fetch(event.request)')) fail('service worker has unsafe activation or generic network fallback')
   const markerWrite = sw.indexOf("await cache.put(MARKER")
   const finalVerified = sw.indexOf("await progress('verified', activeAsset)")

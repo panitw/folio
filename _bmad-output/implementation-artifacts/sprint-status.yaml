@@ -98,7 +98,10 @@ development_status:
   4-8-alternating-row-styling: done
   epic-4-retrospective: optional
 
-  epic-5: in-progress
+  # Boundary gate passed 2026-08-28: 14/14 real Playwright scenarios, offline
+  # release verification, and the 4-target x 15-document matrix are green.
+  # See epic-5-boundary-gate.md.
+  epic-5: done
   5-1-the-design-system-and-application-shell: done
   5-2-the-engine-worker-and-command-channel: done
   5-3-work-offline: done

@@ -55,7 +55,7 @@ export default function App({ engine, fileAccess, initialSnapshot, blankBytes, i
   const [redoAvailable, setRedoAvailable] = useState(initialSnapshot?.canRedo === true)
   const [locateStatus, setLocateStatus] = useState<string>()
   const [previewViewState, setPreviewViewState] = useState<PDFPreviewViewState>(initialPDFPreviewViewState)
-  const [previewData, setPreviewData] = useState('{\n  "transactions": []\n}')
+  const [previewData, setPreviewData] = useState('{\n  "customer": { "name": "Preview customer" },\n  "transactions": []\n}')
   const [previewParams, setPreviewParams] = useState('{\n  "preview": null\n}')
   const snapshotRef = useRef(snapshot)
   const saveInFlight = useRef(false)

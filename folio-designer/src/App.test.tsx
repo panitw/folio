@@ -17,6 +17,15 @@ const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revi
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
 describe('application shell', () => {
+  it('hydrates engine-owned state when asynchronous startup replaces the loading shell', () => {
+    const lifecycle = { state: 'ready' as const, cacheReady: true, verifiedAssetUrls: [] }
+    const view = render(<App key="engine-loading" loadState={lifecycle} engineState="starting" />)
+    expect(screen.getByRole('status', { name: 'Engine preparation status' })).toHaveTextContent('Starting local engine')
+    view.rerender(<App key="engine-ready" engine={engine()} initialSnapshot={snapshot(1)} loadState={lifecycle} engineState="starting" />)
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 1')
+    expect(screen.getByLabelText('Report page with Page Header, Content, and Page Footer')).toBeInTheDocument()
+  })
+
   it('renders every persistent desktop landmark and honest later regions', () => {
     render(<App initialSnapshot={snapshot(1)} />)
     expect(screen.getByLabelText('Document bar')).toBeInTheDocument()

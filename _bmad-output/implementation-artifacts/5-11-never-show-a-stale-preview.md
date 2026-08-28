@@ -10,6 +10,12 @@ created: 2026-08-28
 **Epic:** 5 — A template author can lay out a report and see the real PDF  
 **Covers:** AD-18 · UX-DR14 · FR35/36 · NFR1/NFR5
 
+## In plain terms
+
+The preview now carries engine-produced evidence tying it to the exact template, data, parameters,
+engine version, and shipped fonts that produced it. Any newer edit makes the old result visibly
+stale immediately, and late asynchronous work cannot replace a newer authoritative preview.
+
 **Standing delivery decision:** D-000.4 requires focused Go/designer tests, typecheck, lint, production/offline build, Go tests/vet/native and js/wasm builds, format/diff checks, and compiled e2e source in this story. Playwright execution and the four-target hash matrix remain written/compiled but are not run until the Epic 5 boundary after Story 5.12. This is not a hash-matrix override: identity evidence prevents stale presentation; it does not alter the production PDF algorithm.
 
 ## Story

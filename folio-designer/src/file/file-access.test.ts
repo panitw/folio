@@ -27,6 +27,16 @@ describe('local file access boundary', () => {
     expect(selectFileAccess({ document, url, showOpenFilePicker: vi.fn() })).toBeInstanceOf(InputDownloadAccess)
   })
 
+  it('probes the real window picker pair when no explicit browser seam is supplied', () => {
+    const pickerWindow = window as typeof window & { showOpenFilePicker?: ReturnType<typeof vi.fn>; showSaveFilePicker?: ReturnType<typeof vi.fn> }
+    const priorOpen = pickerWindow.showOpenFilePicker
+    const priorSave = pickerWindow.showSaveFilePicker
+    pickerWindow.showOpenFilePicker = vi.fn()
+    pickerWindow.showSaveFilePicker = vi.fn()
+    try { expect(selectFileAccess()).toBeInstanceOf(FileSystemAccess) }
+    finally { pickerWindow.showOpenFilePicker = priorOpen; pickerWindow.showSaveFilePicker = priorSave }
+  })
+
   it('returns opaque selected bytes and an in-memory target from the File System Access tier', async () => {
     const selected = handle()
     const access = new FileSystemAccess({ showOpenFilePicker: vi.fn(async () => [selected]), showSaveFilePicker: vi.fn() })

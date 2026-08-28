@@ -2,20 +2,24 @@ import { expect, test } from '@playwright/test'
 
 test('the five closed palette choices can begin an accessible local placement', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await expect(page.getByRole('button', { name: 'Place Text' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Place Image' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Place Table' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Place Line' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Place Rectangle' })).toBeVisible()
+  const content = page.getByRole('region', { name: 'Content', exact: true })
+  const priorTextCount = await content.getByRole('button', { name: /text component/ }).count()
   await page.getByRole('button', { name: 'Place Text' }).click()
-  await page.getByLabel('Content').press('Enter')
-  await expect(page.getByLabel(/text component e/)).toBeVisible()
+  await content.press('Enter')
+  await expect(content.getByRole('button', { name: /text component/ })).toHaveCount(priorTextCount + 1)
 })
 
 test('a palette pointer drag drops, selects, moves, resizes, and deletes through the local engine', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const palette = page.getByRole('button', { name: 'Place Rectangle' })
-  const content = page.getByLabel('Content')
+  const content = page.getByRole('region', { name: 'Content', exact: true })
   const paletteBox = await palette.boundingBox()
   const contentBox = await content.boundingBox()
   if (!paletteBox || !contentBox) throw new Error('canvas placement targets were not painted')
@@ -32,7 +36,7 @@ test('a palette pointer drag drops, selects, moves, resizes, and deletes through
   await page.mouse.down()
   await page.mouse.move(box.x + 20, box.y + 14)
   await page.mouse.up()
-  await expect(page.getByRole('status')).toContainText('Unsaved local changes')
+  await expect(page.getByText('Unsaved local changes')).toBeVisible()
 
   const handle = page.getByRole('button', { name: /Resize e/ })
   await expect(handle).toBeVisible()

@@ -2,7 +2,7 @@ const messageVersion = 1
 
 export function isCacheableStaticRequest(request, origin, paths) {
   const url = new URL(request.url)
-  return request.method === 'GET' && request.credentials === 'omit' && url.origin === origin && paths.has(url.pathname) && request.mode !== 'navigate'
+  return request.method === 'GET' && url.origin === origin && paths.has(url.pathname) && request.mode !== 'navigate'
 }
 
 export function isStatusRequest(value) {

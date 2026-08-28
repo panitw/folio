@@ -4,11 +4,13 @@ export type S1Payload = Readonly<{ version: 1; releaseId: string; pageId: string
 const hash = /^[a-f0-9]{64}$/
 const ids = ['engine', 'latin-font', 'thai-font', 'cjk-font', 'thai-dictionary'] as const
 const labels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Thai dictionary'] as const
+const minimumCacheAssets = 10
+const maximumCacheAssets = 64
 
 export function parseS1Payload(value: unknown): S1Payload | undefined {
   if (!value || typeof value !== 'object') return undefined
   const candidate = value as Record<string, unknown>
-  if (Object.keys(candidate).length !== 9 || candidate.version !== 1 || !hash.test(String(candidate.releaseId)) || !hash.test(String(candidate.pageId)) || candidate.unit !== 'MiB' || candidate.decimals !== 2 || typeof candidate.cachedBytes !== 'number' || !Number.isSafeInteger(candidate.cachedBytes) || candidate.cachedBytes <= 0 || typeof candidate.assetCount !== 'number' || !Number.isSafeInteger(candidate.assetCount) || candidate.assetCount !== 10 || !Array.isArray(candidate.cacheAssets) || candidate.cacheAssets.length !== candidate.assetCount || !Array.isArray(candidate.rows) || candidate.rows.length !== ids.length) return undefined
+  if (Object.keys(candidate).length !== 9 || candidate.version !== 1 || !hash.test(String(candidate.releaseId)) || !hash.test(String(candidate.pageId)) || candidate.unit !== 'MiB' || candidate.decimals !== 2 || typeof candidate.cachedBytes !== 'number' || !Number.isSafeInteger(candidate.cachedBytes) || candidate.cachedBytes <= 0 || typeof candidate.assetCount !== 'number' || !Number.isSafeInteger(candidate.assetCount) || candidate.assetCount < minimumCacheAssets || candidate.assetCount > maximumCacheAssets || !Array.isArray(candidate.cacheAssets) || candidate.cacheAssets.length !== candidate.assetCount || !Array.isArray(candidate.rows) || candidate.rows.length !== ids.length) return undefined
   const cacheAssets = candidate.cacheAssets as unknown[]
   if (new Set(cacheAssets.map((asset) => typeof asset === 'object' && asset ? (asset as Record<string, unknown>).assetUrl : undefined)).size !== candidate.assetCount || !cacheAssets.every((asset) => { const item = asset as Record<string, unknown>; return asset && typeof asset === 'object' && Object.keys(item).length === 2 && typeof item.assetUrl === 'string' && item.assetUrl.startsWith('/') && item.assetUrl.length <= 256 && typeof item.bytes === 'number' && Number.isSafeInteger(item.bytes) && item.bytes > 0 })) return undefined
   if (cacheAssets.reduce<number>((total, asset) => total + (asset as { bytes: number }).bytes, 0) !== candidate.cachedBytes) return undefined

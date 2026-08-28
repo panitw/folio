@@ -31,6 +31,7 @@
                 "bottom"
               ]
             },
+            "fontFamily": "body",
             "fontSize": 8,
             "padding": {
               "left": 3,
@@ -50,6 +51,7 @@
           "id": "e5",
           "style": {
             "align": "center",
+            "fontFamily": "body",
             "fontSize": 7
           },
           "type": "text",
@@ -68,6 +70,7 @@
           "id": "e1",
           "style": {
             "bold": true,
+            "fontFamily": "body",
             "fontSize": 12
           },
           "type": "text",

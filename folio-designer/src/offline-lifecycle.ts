@@ -33,15 +33,22 @@ export function registerOfflineLifecycle(expectedPageId: string | undefined, pay
   let disposed = false
   let timeout: ReturnType<typeof setTimeout> | undefined
   const publish = (event: WorkerStatus | WorkerProgress | 'checking' | 'update-available' | 'unavailable' | 'timeout') => { if (disposed) return; const next = reduceOfflineLifecycle(current, event, payload); if (JSON.stringify(next) !== JSON.stringify(current)) { current = next; onState(next) } }
+  const resetTimeout = () => { if (timeout) clearTimeout(timeout); timeout = setTimeout(() => publish('timeout'), timeoutMs) }
   if (!expectedPageId || !payload || expectedPageId !== payload.pageId || !releaseIdPattern.test(expectedPageId) || !('serviceWorker' in navigator) || !window.isSecureContext) { publish('unavailable'); return () => { disposed = true } }
   onState(current)
-  const onMessage = (event: MessageEvent<unknown>) => { const message = parseWorkerStatus(event.data) ?? parseWorkerProgress(event.data); if (message) publish(message) }
+  const onMessage = (event: MessageEvent<unknown>) => {
+    const message = parseWorkerStatus(event.data) ?? parseWorkerProgress(event.data)
+    if (!message) return
+    if (message.type === 'offline-status' && message.state === 'ready') { if (timeout) clearTimeout(timeout); timeout = undefined }
+    else if (message.type === 'offline-progress' && message.state !== 'failed') resetTimeout()
+    publish(message)
+  }
   navigator.serviceWorker.addEventListener('message', onMessage)
-  timeout = setTimeout(() => publish('timeout'), timeoutMs)
+  resetTimeout()
   let registration: ServiceWorkerRegistration | undefined
   let installing: ServiceWorker | null = null
-  const onStateChange = () => { if (!registration || !installing || disposed) return; if (installing.state === 'installed' && registration.waiting) publish('update-available'); if (installing.state === 'redundant' && !navigator.serviceWorker.controller) publish('unavailable') }
+  const onStateChange = () => { if (!registration || !installing || disposed) return; if (installing.state === 'installed' && registration.waiting && navigator.serviceWorker.controller) publish('update-available'); if (installing.state === 'redundant' && !navigator.serviceWorker.controller) publish('unavailable') }
   const onUpdateFound = () => { if (!registration) return; if (installing) installing.removeEventListener('statechange', onStateChange); installing = registration.installing; installing?.addEventListener('statechange', onStateChange); onStateChange() }
-  void navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((registered) => { if (disposed) return; registration = registered; registration.addEventListener('updatefound', onUpdateFound); onUpdateFound(); if (registration.waiting) publish('update-available'); (registration.active ?? navigator.serviceWorker.controller)?.postMessage({ version: MESSAGE_VERSION, type: 'get-offline-status' }) }).catch(() => publish('unavailable'))
+  void navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((registered) => { if (disposed) return; registration = registered; registration.addEventListener('updatefound', onUpdateFound); onUpdateFound(); if (registration.waiting && navigator.serviceWorker.controller) publish('update-available'); (registration.active ?? navigator.serviceWorker.controller)?.postMessage({ version: MESSAGE_VERSION, type: 'get-offline-status' }) }).catch(() => publish('unavailable'))
   return () => { disposed = true; if (timeout) clearTimeout(timeout); navigator.serviceWorker.removeEventListener('message', onMessage); registration?.removeEventListener('updatefound', onUpdateFound); installing?.removeEventListener('statechange', onStateChange) }
 }

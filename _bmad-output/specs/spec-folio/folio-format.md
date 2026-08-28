@@ -509,6 +509,7 @@ A minimal but complete template, in canonical form.
                 "bottom"
               ]
             },
+            "fontFamily": "body",
             "fontSize": 8,
             "padding": {
               "left": 3,
@@ -528,6 +529,7 @@ A minimal but complete template, in canonical form.
           "id": "e5",
           "style": {
             "align": "center",
+            "fontFamily": "body",
             "fontSize": 7
           },
           "type": "text",
@@ -546,6 +548,7 @@ A minimal but complete template, in canonical form.
           "id": "e1",
           "style": {
             "bold": true,
+            "fontFamily": "body",
             "fontSize": 12
           },
           "type": "text",

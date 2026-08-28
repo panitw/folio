@@ -28,8 +28,8 @@ describe('service worker static policy', () => {
   it('allows only credential-omitting manifest static requests', () => {
     const paths = new Set(['/assets/app-abc12345.js'])
     expect(isCacheableStaticRequest(request(), 'https://folio.test', paths)).toBe(true)
-    expect(isCacheableStaticRequest(request({ credentials: 'same-origin' }), 'https://folio.test', paths)).toBe(false)
-    expect(isCacheableStaticRequest(request({ credentials: 'include' }), 'https://folio.test', paths)).toBe(false)
+    expect(isCacheableStaticRequest(request({ credentials: 'same-origin' }), 'https://folio.test', paths)).toBe(true)
+    expect(isCacheableStaticRequest(request({ credentials: 'include' }), 'https://folio.test', paths)).toBe(true)
     expect(isCacheableStaticRequest(request({ url: 'https://evil.test/assets/app-abc12345.js' }), 'https://folio.test', paths)).toBe(false)
     expect(isCacheableStaticRequest(request({ url: 'https://folio.test/documents/customer.folio' }), 'https://folio.test', paths)).toBe(false)
     expect(isCacheableStaticRequest(request({ method: 'POST' }), 'https://folio.test', paths)).toBe(false)

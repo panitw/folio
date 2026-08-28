@@ -1,13 +1,15 @@
 import { expect, test } from '@playwright/test'
 
+const usableOfflineState = /^(Offline ready|Update available; current release remains usable)$/
+
 // This package is compile-covered each story; execution is deferred to the
 // Epic 5 D-000.4 boundary because it needs a real browser SW lifecycle.
-test('the built application loads, serializes, and commits through the real Go worker', async ({ page }) => {
+test('the built application loads and commits page setup through the real Go worker', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByLabel('Document bar')).toBeVisible()
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  await expect(page.getByRole('button', { name: 'Commit engine snapshot' })).toBeVisible()
-  await page.getByRole('button', { name: 'Commit engine snapshot' }).click()
+  await page.getByRole('textbox', { name: 'Top margin (pt)' }).fill('37')
+  await page.getByRole('button', { name: 'Apply page setup' }).click()
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 2/)
 })
 
@@ -16,10 +18,13 @@ test('a complete release reloads through the service worker while offline withou
   page.on('requestfailed', (request) => failures.push(request.url()))
   await page.goto('/')
   await page.reload() // the first installation must activate before it can control a reload
-  await expect(page.getByTestId('offline-status')).toHaveText('Offline ready')
+  await expect(page.getByTestId('offline-status')).toHaveText(usableOfflineState)
+  await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
+  await page.evaluate(async () => { await document.fonts.ready })
+  failures.length = 0
   await context.setOffline(true)
   await page.reload()
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  await expect(page.getByTestId('offline-status')).toHaveText('Offline ready')
+  await expect(page.getByTestId('offline-status')).toHaveText(usableOfflineState)
   expect(failures).toEqual([])
 })
