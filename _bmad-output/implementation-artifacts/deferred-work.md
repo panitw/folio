@@ -1508,3 +1508,45 @@ reaches across the module boundary with `packages.Load` today — [[D-000.73]]'s
 type-checking rules of [[D-000.75]] — so when this trigger fires, a `go/types` walker is a **marginal
 cost on working infrastructure**, exactly as [[D-3.7.9]] anticipated: *"both guards that actually held
 this story live in `lint`, which type-checks the module; both that leaked are in-module AST scans."*
+
+### DW-23 — `lint`'s gofmt break has been red since Story 5.10, and CI's permanently-red workflow hid it from two boundary gates
+- **Deferred by:** the second Epic 5 boundary gate (2026-08-29), which measured it rather than fixing it
+- **Owner:** whoever next touches `lint/` — or the next boundary gate, whichever comes first
+- **Status:** OPEN
+
+**The defect.** `lint/internal/rules/licencegraph_test.go` is not gofmt-clean. The committed file is
+byte-identical to its version at `5dddbea` (Story 5.10, "finish exact PDF preview"), so the break has
+been in the tree since that story. It is one collapsed single-line `for` loop:
+
+```
+for _, name := range []string{...} { if err := os.WriteFile(...); err != nil { t.Fatal(err) } }
+```
+
+`gofmt -w lint/internal/rules/licencegraph_test.go` fixes it. It is unrelated to Story 5.13, which
+touched no file under `lint/`.
+
+**Why it is worth an entry rather than a one-line fix in passing.** It survived the Epic 5 **and**
+Epic 6 boundary gates, and the reason is structural:
+
+1. **The local gate procedure ran `gofmt` in `folio-go` only.** CI runs that step three times, under
+   `working-directory:` `folio-go`, `hashmatrix` and `lint` (`.github/workflows/ci.yml`). A gate that
+   measures fewer modules than CI cannot certify what CI will report.
+2. **CI's workflow status cannot distinguish a real failure from the sanctioned one.** The
+   `folio-go-known-red` job is red by design so DW-11's unmet floor stays visible — its own comment
+   reads "this job going GREEN is the surprising event, not this job going red." Because that job
+   lives in the "Build, vet, and guardrails" workflow, the workflow is permanently red, and a genuine
+   `lint` failure beside it is camouflaged. `gh run view` shows `lint` and `folio-go-known-red` both
+   failing on the last two pushes to `main`, indistinguishable from the badge.
+
+This is D-000.38's shape — two conditions sharing one signal, so neither can be read alone — applied
+to CI job status rather than to a parser. The quarantine design is right; what is missing is that
+nothing reads the **per-job** conclusions.
+
+**The fix has two halves, and the second is the one that matters.** Run `gofmt -w` on the file; and
+change the boundary-gate procedure to (a) run `gofmt -l` in all three Go modules and (b) read CI's
+per-job conclusions rather than the workflow badge. Fixing only the first half leaves the blind spot
+that produced it, and the next such break will hide for exactly as long.
+
+**How we'd know it was still wrong.** Another genuine failure sitting green-adjacent in that workflow
+for multiple stories — or a boundary gate reporting "CI clean" on the strength of a badge that is red
+by design.

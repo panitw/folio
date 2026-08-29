@@ -104,7 +104,11 @@ development_status:
   # Reopened 2026-08-29: Story 5.13 completes FR4/FR5 for the Image component, which
   # Stories 5.7/5.8 left without any way to choose the picture. The gate above stands as
   # baseline-anchored evidence for 5.1-5.12; a second Epic 5 boundary is owed once 5.13 lands.
-  epic-5: in-progress
+  # Second boundary gate passed 2026-08-29 at 6c79d29: 23/23 Playwright scenarios,
+  # the 4-target x 16-document matrix (incl. Story 5.13's component-asset-import),
+  # offline release verification, and the post-Epic-6-gate delta. See
+  # epic-5-boundary-gate-2.md. DW-23 filed for a pre-existing lint gofmt break.
+  epic-5: done
   5-1-the-design-system-and-application-shell: done
   5-2-the-engine-worker-and-command-channel: done
   5-3-work-offline: done
