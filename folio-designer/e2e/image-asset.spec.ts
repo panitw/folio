@@ -80,15 +80,17 @@ test('the File System Access tier sets a local image through one committed comma
   await expect(imageComponent).toHaveCount(1)
   await imageComponent.click()
 
-  // AC2: the IMAGE section shows the CURRENT (shipped default) asset's
-  // identity straight from the engine snapshot. getByText('IMAGE') alone is
+  // AC2: the IMAGE section reports the CURRENT state straight from the
+  // engine snapshot — here an unfilled box, because a placed image starts
+  // with a null asset and waits for a file. getByText('IMAGE') alone is
   // a strict-mode collision (it substring/case-insensitively matches the
   // palette's "Place Image" caption, the identity row's "image" type text,
   // the honest-note identity string, and the "Choose image…" button all at
   // once) — scope to the PropertySection's own <p class="section-label">
   // and anchor the regex so only the literal section title matches.
   await expect(page.locator('p.section-label', { hasText: /^IMAGE$/ })).toBeVisible()
-  await expect(page.getByText(/^image\/png · \d+×\d+px · asset [0-9a-f]{12}…$/)).toBeVisible()
+  await expect(page.getByText(/^No image chosen yet\./)).toBeVisible()
+  await expect(imageComponent.locator('img.canvas-image-paint')).toHaveCount(0)
   const pickButton = page.getByRole('button', { name: 'Choose image…' })
   await expect(pickButton).toBeEnabled()
 
@@ -108,7 +110,7 @@ test('the File System Access tier sets a local image through one committed comma
   await expect(page.getByText(`image/png · 1×1px · asset ${png1x1GrayKey.slice(0, 12)}…`, { exact: true })).toBeVisible()
   await expect(imageComponent.locator('img.canvas-image-paint')).toBeVisible()
 
-  // Undo restores the prior (shipped default) asset; redo restores the pick.
+  // Undo restores the prior state — the unfilled box; redo restores the pick.
   // Undo/Redo is pre-existing, story-independent behaviour: applyHistory's
   // setCurrentSnapshot(..., true) clears the local selection on EVERY
   // history navigation (deliberate — the footer note on the deselected
@@ -120,7 +122,7 @@ test('the File System Access tier sets a local image through one committed comma
   await page.getByRole('button', { name: /^Undo/ }).click()
   await expect.poll(async () => page.getByTestId('engine-snapshot').textContent()).not.toBe(revisionAfterPick)
   await imageComponent.click()
-  await expect(page.getByText(/^image\/png · \d+×\d+px · asset [0-9a-f]{12}…$/)).toBeVisible()
+  await expect(page.getByText(/^No image chosen yet\./)).toBeVisible()
   await expect(page.getByText(`image/png · 1×1px · asset ${png1x1GrayKey.slice(0, 12)}…`, { exact: true })).toHaveCount(0)
   const revisionAfterUndo = await page.getByTestId('engine-snapshot').textContent()
   await page.getByRole('button', { name: /^Redo/ }).click()
@@ -169,6 +171,7 @@ test('the File System Access tier sets a local image through one committed comma
 // synthetic pointer-event dispatch, either of which could pass without
 // ever exercising the browser's native drag path this defect lives in.
 test('a placed image component can be dragged on the canvas like any other component', async ({ page }) => {
+  await installNativePickers(page)
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
 
@@ -177,8 +180,10 @@ test('a placed image component can be dragged on the canvas like any other compo
   await content.press('Enter')
   const imageComponent = content.getByRole('button', { name: /image component/ })
   await expect(imageComponent).toHaveCount(1)
-  // The shipped default asset paints immediately — no file pick needed to
-  // exercise the drag.
+  // A placed box starts empty (its asset is null until the author chooses a
+  // file), and this spec needs a real <img> to drive, so pick one first.
+  await imageComponent.click()
+  await page.getByRole('button', { name: 'Choose image…' }).click()
   await expect(imageComponent.locator('img.canvas-image-paint')).toBeVisible()
 
   const revisionBeforeDrag = await page.getByTestId('engine-snapshot').textContent()
@@ -215,6 +220,7 @@ test('a placed image component can be dragged on the canvas like any other compo
 // a zoom change against the projected rectangle — never a browser-computed
 // fit (AC3).
 test('a placed image component can be resized, and its painted box tracks both the resize and a zoom change', async ({ page }) => {
+  await installNativePickers(page)
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
 
@@ -223,11 +229,12 @@ test('a placed image component can be resized, and its painted box tracks both t
   await content.press('Enter')
   const imageComponent = content.getByRole('button', { name: /image component/ })
   await expect(imageComponent).toHaveCount(1)
-  const paintedImage = imageComponent.locator('img.canvas-image-paint')
-  await expect(paintedImage).toBeVisible()
-
-  // The resize handle only renders while the component is selected.
+  // A placed box starts empty (its asset is null until the author chooses a
+  // file), and this spec needs a real <img> to drive, so pick one first.
   await imageComponent.click()
+  await page.getByRole('button', { name: 'Choose image…' }).click()
+  await expect(imageComponent.locator('img.canvas-image-paint')).toBeVisible()
+  const paintedImage = imageComponent.locator('img.canvas-image-paint')
   const handle = page.getByRole('button', { name: /^Resize / })
   await expect(handle).toBeVisible()
 

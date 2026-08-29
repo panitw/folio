@@ -426,6 +426,14 @@ func collectImageRuns(doc *Template) ([]imageRunSource, error) {
 				// handled rather than assumed.
 				return nil, fmt.Errorf("folio: Render: element %s: image element has no asset", el.ID)
 			}
+			if el.Asset.Null {
+				// A placed but unfilled image box: the author has chosen
+				// no file yet. There is nothing to draw and nothing has
+				// gone wrong, so the run is simply absent and the render
+				// completes without a diagnostic. Only the designer shows
+				// the empty box, as canvas chrome that never prints.
+				continue
+			}
 			runs = append(runs, imageRunSource{
 				elementID: string(el.ID),
 				assetKey:  el.Asset.Value,

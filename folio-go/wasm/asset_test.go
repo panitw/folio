@@ -1,9 +1,13 @@
 package wasm
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"testing"
 )
@@ -29,10 +33,10 @@ func setAssetCommand(id, mediaType string, data []byte) []byte {
 	return []byte(`{"kind":"setComponentAsset","version":1,"id":"` + id + `","mediaType":"` + mediaType + `","data":"` + base64.StdEncoding.EncodeToString(data) + `"}`)
 }
 
-// loadedImageEngine loads the shipped worked example, drops an image
-// component from the palette (which attaches the shipped default asset,
-// Story 6.7/component_commands.go's defaultAuthoringLogoKey), and returns
-// the engine plus that component's id and its current (default) asset key.
+// loadedImageEngine loads the shipped worked example and drops an image
+// component from the palette. The dropped box starts EMPTY — its asset is
+// present and null until the author chooses a file — so a test that needs a
+// picture already in place sets one itself.
 func loadedImageEngine(t *testing.T) (*Engine, string) {
 	t.Helper()
 	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
@@ -67,6 +71,13 @@ func loadedImageEngine(t *testing.T) (*Engine, string) {
 // restores it BY CONSTRUCTION.
 func TestEngineApplySetComponentAssetIsOneHistoryEventWithUndoRedo(t *testing.T) {
 	engine, id := loadedImageEngine(t)
+	// The box arrives empty, so the picture this test replaces has to be put
+	// there first: the subject is what happens to the asset a REPLACEMENT
+	// collects, which needs one to collect.
+	firstPicture := encodePNG(t, 2, 3)
+	if _, err := engine.Apply(setAssetCommand(id, "image/png", firstPicture)); err != nil {
+		t.Fatal(err)
+	}
 	before := engine.Snapshot()
 
 	after, err := engine.Apply(setAssetCommand(id, "image/png", png3x2RGB))
@@ -92,9 +103,9 @@ func TestEngineApplySetComponentAssetIsOneHistoryEventWithUndoRedo(t *testing.T)
 	}
 	// D-5.13.3/AC4: undo restores the COLLECTED asset's bytes by construction
 	// — proving that, not building new machinery.
-	restored, _, err := engine.AssetBytes(defaultAuthoringLogoKeyForTest)
+	restored, _, err := engine.AssetBytes(sha256Hex(firstPicture))
 	if err != nil {
-		t.Fatalf("expected the orphan-collected default asset to be restored by undo: %v", err)
+		t.Fatalf("expected the orphan-collected asset to be restored by undo: %v", err)
 	}
 	if len(restored) == 0 {
 		t.Fatal("restored default asset bytes are empty")
@@ -182,8 +193,21 @@ func TestEngineAssetBytesRejectsAnUnknownKey(t *testing.T) {
 	}
 }
 
-// defaultAuthoringLogoKeyForTest mirrors component_commands.go's unexported
-// defaultAuthoringLogoKey (package boundary: this test lives in package
-// wasm). Any drift would be caught immediately — TestEngineApplySetComponentAssetIsOneHistoryEventWithUndoRedo's
-// undo assertion above would fail to find this key's bytes restored.
-const defaultAuthoringLogoKeyForTest = "f4a37bba5652865abc8e24be5e1aad4d5ad42ce5727715f6d19b93861d23f6a4"
+// encodePNG builds a decodable picture distinct from png3x2RGB, so a test
+// can replace one asset with another and watch what happens to the first.
+func encodePNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	picture := image.NewRGBA(image.Rect(0, 0, width, height))
+	// Every pixel opaque: the encoder writes truecolor rather than
+	// truecolor+alpha, and this library refuses transparency (AC12/D-1.8.1).
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			picture.Set(x, y, color.RGBA{R: uint8(0x20 + x), G: uint8(0x60 + y), B: 0xa8, A: 0xff})
+		}
+	}
+	var out bytes.Buffer
+	if err := png.Encode(&out, picture); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}

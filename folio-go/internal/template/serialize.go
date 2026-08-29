@@ -257,7 +257,11 @@ func writeElement(dst []byte, depth int, e Element) []byte {
 		}
 	}
 	if e.Asset.Set {
-		fields = append(fields, kv{"asset", writeString(e.Asset.Value)})
+		if e.Asset.Null {
+			fields = append(fields, kv{"asset", writeNull()})
+		} else {
+			fields = append(fields, kv{"asset", writeString(e.Asset.Value)})
+		}
 	}
 	if e.Table.Set {
 		t := e.Table.Value

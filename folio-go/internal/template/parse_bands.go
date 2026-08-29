@@ -231,11 +231,19 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 			return Element{}, newLoadError("asset", string(id), "", "missing required field for an image element")
 		}
 		consumed["asset"] = true
-		s, err := decodeStringRaw(aRaw)
-		if err != nil {
-			return Element{}, newLoadError("asset", string(id), string(aRaw), "must be a string: "+err.Error())
+		if rawIsNull(aRaw) {
+			// An image box the author placed but has not filled yet. The
+			// field stays required — a silently absent asset is still a
+			// load error — but null says "no image chosen", which Render
+			// draws nothing for and the designer shows as a placeholder.
+			el.Asset = presentNull[string]()
+		} else {
+			s, err := decodeStringRaw(aRaw)
+			if err != nil {
+				return Element{}, newLoadError("asset", string(id), string(aRaw), "must be a string: "+err.Error())
+			}
+			el.Asset = present(s)
 		}
-		el.Asset = present(s)
 	case ElementTable:
 		tbl, tblConsumed, err := decodeTableExt(ctx, string(id), obj)
 		if err != nil {
