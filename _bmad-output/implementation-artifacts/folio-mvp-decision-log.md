@@ -14545,3 +14545,54 @@ manifest as the baseline for that gate.
 
 **How we'd know it was wrong.** The second Epic 5 gate comparing against this manifest and reporting
 agreement — which would be the gate certifying a record produced by the same drift it exists to catch.
+
+---
+
+### D-000.94 — Multi-page authoring is a longer canvas over one column, never per-page layouts
+**Owner decision**, taken while scoping Epic 7 (post-MVP), before any story was written.
+
+**Verdict.** The designer will render the content column as a run of page-height sheets — Epic 7's
+Stories 7.5 and 7.6. It will **not** gain independently laid-out pages. `bands` stays a closed set of
+exactly three (FR6, `parse_bands.go`'s `decodeBands`), and `internal/layout`'s window model is
+untouched.
+
+**Situation.** Legal-document templates need long body copy and content on later pages. The canvas is
+one sheet: `page_setup.go`'s projection pins the content band to `innerH - header - footer`, and
+`component_commands.go` *refuses* a placement or bounds command whose Y reaches `band.Height`. So a
+component cannot be authored below the fold at all — only flowed text and generated table rows ever
+reach page two.
+
+**Two readings were put to the owner.** (A) The canvas shows more of the column the engine already
+paginates. (B) Each page gets its own layout, as in a word processor.
+
+**Why B was rejected, and it was rejected on evidence rather than taste.** The owner initially
+preferred B, on the reasonable ground that per-page WYSIWYG is easier for users to understand. That
+half is conceded — it is. Three findings decided it anyway:
+
+1. **The golden corpus is built on the opposite assumption.** `page-count-1/5/20/50` and
+   `statement-1/5/20/50` are one template at four data volumes. Page count is a function of DATA. A
+   per-page model has no way to express `statement-50`, because nobody designed fifty pages.
+2. **B is more expensive, not less.** A costs: relax two bounds checks, report N windows from the
+   canvas projection, draw N sheets in React — no format change, no renderer change, because
+   `paginate.go` was written for an unbounded column. B costs: a format version bump (bands is a
+   closed set that hard-fails on a fourth key), a second layout mode beside the window model and its
+   ~1,500 lines of tests, and a fresh answer for every flowing feature — table pagination (4.3–4.6),
+   text flow, `Page X of Y` — each of which currently answers "flow to the next window."
+3. **B is dangerous for the actual use case.** Per-page layout means content never reflows, and
+   FR44's overflow behaviour is clip-and-warn. A clause body growing three lines past its box would
+   be silently truncated in a contract.
+
+**What the owner wanted from B is preserved.** "Users see pages" is a presentation choice, and A
+delivers it: discrete sheets, real break lines, repeated header/footer chrome. What A cannot give is
+*independent* page layouts — which is the same property as "content never reflows."
+
+**Consequence, stated because it is A's one genuine weakness.** Under AD-24 siblings never move, so a
+component dropped on "page 2" is pinned to a COLUMN position, not to a page number. If the content
+above it grows, it lands on page 3. Story 7.6 requires the interface to say so plainly rather than
+imply a pin. Story 7.7 (keep-together groups) exists because a signature block needs a real guarantee,
+and a page pin was never going to be one.
+
+**How we'd know it was wrong.** Authors routinely fighting the column — placing a component, watching
+it drift a page when the data changes, and having no way to express what they meant. That would be a
+signal for a stronger anchoring primitive (7.7 generalised, or an explicit page-break element), NOT
+for per-page layouts: the corpus finding above does not weaken with use.

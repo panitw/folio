@@ -29,12 +29,25 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 08-29-2026
+last_updated: 08-29-2026 22:05
 project: folio
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
+  # ---------------------------------------------------------------------------
+  # DO NOT run `sprint_plan.py generate` against this file without first
+  # re-adding the four inserted stories below. Verified 2026-08-29: the script
+  # regenerates development_status FROM epics.md and drops anything absent there.
+  # 2-3a, 2-5a, 2-6a and 3-1a are all `done`, all have story files on disk, and
+  # are all DELIBERATELY absent from epics.md — each story file states it in
+  # bold ("This story does not come from epics.md ... epics.md is not amended by
+  # this story and must not be"), per D-000.25, D-2.6.9 and D-3.1a.1. So the
+  # omission is a RULING, not drift, and must not be "fixed" by amending
+  # epics.md. `--set` cannot restore them either: it only retargets keys the
+  # generated plan already contains. A bare `generate` run therefore destroys
+  # the record of four completed stories. Reconcile by hand, as of this update.
+  # ---------------------------------------------------------------------------
   epic-1: done
   1-1-a-minimal-pdf-reproducible-on-one-machine: done
   1-2-cross-target-byte-identity-proven-in-ci: done
@@ -133,3 +146,22 @@ development_status:
   6-6-present-a-failed-render-honestly: done
   6-7-the-round-trip-closes: done
   epic-6-retrospective: optional
+
+  # Epic 7 added 2026-08-29 (post-MVP). Long-form body text + a multi-page authoring
+  # canvas, for legal-document templates. Scoped in conversation against the alternative
+  # of per-page layouts, which was REJECTED: paginate.go's window model (D-2.6.1, rule 1
+  # — "more windows, never rearranged furniture") and the page-count-N/statement-N golden
+  # corpus both rest on one unbounded content column whose page count comes from DATA.
+  # Per-page layout implies content that never reflows, i.e. silently clipped clause text.
+  # Epic 7 changes the AUTHORING SURFACE and TYPOGRAPHY only; pagination is a constraint
+  # on it, not a target of it. Every field it adds is optional and absent-by-default, so
+  # the existing corpus must hash identically.
+  epic-7: backlog
+  7-1-break-a-line-where-the-author-typed-a-break: backlog
+  7-2-set-the-space-between-a-paragraph-s-lines: backlog
+  7-3-justify-a-paragraph-s-edges: backlog
+  7-4-author-body-text-in-the-designer: backlog
+  7-5-the-content-column-runs-past-the-first-page: backlog
+  7-6-the-canvas-draws-every-page-the-document-will-produce: backlog
+  7-7-keep-a-signature-block-together-across-a-page-break: backlog
+  epic-7-retrospective: optional
