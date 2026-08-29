@@ -96,6 +96,15 @@ FR44: Define overflow behaviour for absolutely-positioned content exceeding its 
 
 FR45: *(optional, only if capacity permits)* Expose an HTTP endpoint accepting parameters and data and responding with `application/pdf`. Template travels in the request or resolves from an operator-supplied path — no server-side report repository.
 
+**Long-Form Body Text and the Multi-Page Canvas** *(post-MVP, Epic 7)*
+
+FR46: Preserve a mandatory line break authored inside a text value, so one component can hold more than one paragraph.
+FR47: Justify a text element's edges to its declared width, leaving the last line of a paragraph unjustified.
+FR48: Control the space between a text element's lines, as an integer ratio applied to the ruled inter-baseline advance. Absent means today's font-derived leading.
+FR49: Author and edit multi-paragraph body text, its line spacing and its alignment in the designer.
+FR50: Author on a canvas that extends across every page the content column currently occupies, with page-header and page-footer chrome repeated per page and breaks drawn where the engine will take them.
+FR51: Declare a group of content-band elements that paginate together, so a signature block is never split across a page boundary.
+
 ### NonFunctional Requirements
 
 NFR1: **Byte-reproducible rendering.** Same template + data + parameters + `folio-go` version produces a byte-identical PDF regardless of OS, machine, or compilation target — including across compilation targets, so the WebAssembly preview hash-matches the native render. Decomposes into seven constraints:
@@ -291,6 +300,12 @@ in the PRD and a Non-goal in `SPEC.md`.
 | FR9 | Epic 6 | Load a sample JSON document |
 | FR10 | Epic 6 | Table structure editing |
 | FR45 | — | *Not scheduled. Optional in PRD, Non-goal in SPEC.* |
+| FR46 | Epic 7 | Mandatory line breaks inside a text value |
+| FR47 | Epic 7 | Justified alignment |
+| FR48 | Epic 7 | Author-controlled line spacing |
+| FR49 | Epic 7 | Body-text authoring in the designer |
+| FR50 | Epic 7 | Multi-page authoring canvas |
+| FR51 | Epic 7 | Keep-together groups |
 
 **NFR coverage:** NFR1 and NFR6 are established in Epic 1 and defended by every epic thereafter
 (AD-21: no change lands without a fixture). NFR3 and NFR7 land in Epic 2. NFR4 lands in Epic 2
@@ -406,6 +421,31 @@ This epic closes the loop the whole product exists to prove, and ends on success
 **UX-DRs:** UX-DR7, 8, 12, 20
 **Also lands:** success measures S5, S7, S8, S9
 
+
+### Epic 7: A template author can lay out a multi-page legal document
+
+**Post-MVP.** Ploy opens a contract template, types a numbered clause as real body copy — hard
+line breaks between paragraphs, justified edges, the line spacing her firm's house style demands —
+and scrolls the canvas past the foot of page one onto page two and page three, where the schedule
+and the signature block sit. She sees page breaks where the engine will actually put them. She
+saves, and Anan renders forty pages of it from a longer contract without touching the template.
+
+Two pillars, and they are separable: **body text** (7.1–7.4) makes a text element hold a paragraph
+rather than a line, and **the multi-page canvas** (7.5–7.6) makes the authoring surface as long as
+the document. 7.7 is the one legal-specific layout primitive neither pillar supplies, and it is the
+story to cut first if the epic needs trimming.
+
+The engine's pagination model is **not** changed by this epic and must not be. `internal/layout`
+already treats the content band as a window onto one unbounded column, and `page-count-50` /
+`statement-50` already render fifty pages from a template nobody designed fifty pages for. Epic 7
+lets the *designer* see that column; it does not introduce per-page layouts, which would mean
+content that never reflows and, for a contract, silently clipped clause text.
+
+Every field this epic adds is optional and absent-by-default, so the existing golden corpus must
+hash identically after it. That is an acceptance criterion, not an aspiration.
+
+**FRs covered:** FR46, FR47, FR48, FR49, FR50, FR51
+**Also lands:** AD-4, AD-24 and D-2.6.1 upheld unchanged — the window model is a constraint on this epic, not a target of it
 ---
 
 ## Epic 1: A Go developer can render a deterministic PDF
@@ -1929,3 +1969,256 @@ So that the claim the entire product rests on is demonstrated end to end.
 **Given** every error case in the diagnostic registry
 **When** the suite runs
 **Then** each produces a located, actionable message
+
+---
+
+## Epic 7: A template author can lay out a multi-page legal document
+
+Ploy's firm authors contracts, not statements. A contract is mostly body copy — numbered clauses
+that run for paragraphs, justified, set at the line spacing the house style fixes — followed by a
+schedule and a signature block that sit on later pages. Today the canvas is one page tall and a
+text element holds one run of text with no way to type a break, so neither half of that document
+can be authored.
+
+This epic adds both halves. It changes the **authoring surface and the typography**, and it
+deliberately changes **nothing about pagination**: `internal/layout/paginate.go`'s four rules and
+D-2.6.1's window model are inputs to this epic, not targets of it.
+
+### Story 7.1: Break a line where the author typed a break
+
+As a template author,
+I want a line break I typed to survive into the PDF,
+So that a clause can be more than one paragraph without being more than one component.
+
+**Covers:** FR46 · AD-25
+
+**Acceptance Criteria:**
+
+**Given** a text value containing a line feed
+**When** the element is rendered
+**Then** the text following it begins on a new line, at the next baseline, regardless of how much
+width remained on the line before it
+
+**Given** a mandatory break
+**When** line packing runs
+**Then** it is not an optional opportunity that the packer may decline — `internal/text` reports it
+as mandatory and `packLines` always takes it
+
+**Given** two consecutive line feeds
+**When** the element is rendered
+**Then** an empty line is produced, occupying one full advance, so a paragraph gap is expressible
+
+**Given** a value carrying `\r\n`
+**When** it is broken
+**Then** the pair is one break, never two
+
+**Given** a mandatory break
+**When** the line is measured
+**Then** the break character itself is consumed and drawn on neither line, exactly as a whitespace
+break already is
+
+**Given** the entire existing fixture corpus, none of whose values contain a line feed
+**When** it is re-rendered on all four targets
+**Then** every hash is unchanged
+
+### Story 7.2: Set the space between a paragraph's lines
+
+As a template author,
+I want to control the space between lines,
+So that a contract matches the house style my firm files under.
+
+**Covers:** FR48 · AD-23, AD-9
+
+**Acceptance Criteria:**
+
+**Given** a `lineSpacing` on an element's style
+**When** the vertical model is computed
+**Then** it scales `Advance` — the baseline-to-baseline span — and **nothing else**
+
+**Given** the same `lineSpacing`
+**When** the first line is placed
+**Then** `FirstBaseline` is unchanged, so the element's top edge does not move and no sibling
+appears to shift
+
+**Given** `lineSpacing` is expressed
+**When** the arithmetic runs
+**Then** it is an integer ratio in thousandths applied in millipoints — never a binary float, which
+AD-23 bans and which would break byte-identity across targets
+
+**Given** an element with no `lineSpacing`
+**When** it is rendered
+**Then** the advance is byte-for-byte the value the ruled model produces today
+
+**Given** an element whose lines are spaced wider
+**When** the document paginates
+**Then** the wider line extents feed `internal/layout` unchanged, so page breaks follow the spacing
+rather than ignoring it
+
+**Given** the same element on the canvas
+**When** the canvas text paint plan is projected
+**Then** it consumes the same advance the renderer does, so the canvas and the PDF do not disagree
+— the Story 5.9 invariant holds
+
+**Given** a `lineSpacing` outside the supported range, or one that is not a whole number of
+thousandths
+**When** the template is loaded
+**Then** it is a located load error naming the element, never a silent clamp
+
+### Story 7.3: Justify a paragraph's edges
+
+As a template author,
+I want body copy justified to both margins,
+So that a clause reads the way a filed contract reads.
+
+**Covers:** FR47
+
+**Acceptance Criteria:**
+
+**Given** `align: justify` on a text element
+**When** the template is loaded
+**Then** it is accepted — `justify` joins the closed align set
+
+**Given** a justified paragraph
+**When** a line other than its last is drawn
+**Then** the slack is distributed across that line's break opportunities so the line meets the
+declared width
+
+**Given** the last line of a paragraph, or a line ended by a mandatory break
+**When** it is drawn
+**Then** it is not justified — it is set at the element's natural start edge
+
+**Given** slack that does not divide evenly across a line's gaps
+**When** it is distributed
+**Then** the remainder is placed by one stated, ordered rule in integer millipoints, so all four
+targets produce identical bytes
+
+**Given** a justified line that still exceeds its declared width
+**When** overflow is detected
+**Then** the existing FR44 clip-and-warn behaviour applies unchanged
+
+**Given** an element with no `align`, or with `left`, `center` or `right`
+**When** it is rendered
+**Then** its bytes are unchanged
+
+### Story 7.4: Author body text in the designer
+
+As a template author,
+I want to type and paste a multi-paragraph clause into a component,
+So that I can author the body of a contract without hand-editing the file.
+
+**Covers:** FR49 · UX-DR10, UX-DR13
+
+**Acceptance Criteria:**
+
+**Given** a selected text component
+**When** its value is edited
+**Then** the editor accepts and preserves multiple lines — the single-line input at
+`ComponentProperties`' content fields is no longer the only way in
+
+**Given** a clause pasted from a word processor
+**When** it lands in the editor
+**Then** its paragraph breaks are preserved as mandatory breaks and its other formatting is
+discarded without error
+
+**Given** the inspector
+**When** a text component is selected
+**Then** line spacing and alignment — including justify — are editable there, alongside the
+existing typography controls
+
+**Given** any of these edits
+**When** it is committed
+**Then** it travels as an opaque command to the engine and the canvas re-projects from the engine's
+answer, never from a browser measurement
+
+### Story 7.5: The content column runs past the first page
+
+As a template author,
+I want to place a component below the foot of page one,
+So that a schedule and a signature block can exist at all.
+
+**Covers:** FR50 · AD-24
+
+**Acceptance Criteria:**
+
+**Given** a placement or bounds command in the **content** band with a Y beyond one page's content
+height
+**When** the engine validates it
+**Then** it is accepted — the refusal at `component_commands.go`'s band-bounds checks no longer
+treats one page as the column's limit
+
+**Given** the same command in the **pageHeader** or **pageFooter** band
+**When** it is validated
+**Then** it is refused exactly as today: those bands are one page tall by definition and repeat
+
+**Given** a coordinate that is negative, or beyond the JavaScript-safe geometry bound
+**When** it is validated
+**Then** it is still refused, with the message unchanged
+
+**Given** a template whose content column is longer than one page
+**When** the canvas is projected
+**Then** the projection reports the page-height window and how many windows the column currently
+occupies, so the designer can draw them without measuring anything itself
+
+**Given** every existing template, none of which places anything past page one
+**When** it is projected and rendered
+**Then** the projection and the bytes are unchanged
+
+### Story 7.6: The canvas draws every page the document will produce
+
+As a template author,
+I want to see my document as a run of pages,
+So that I can lay out page three without imagining where page two ended.
+
+**Covers:** FR50 · UX-DR6, UX-DR3
+
+**Acceptance Criteria:**
+
+**Given** a content column spanning more than one window
+**When** the canvas renders
+**Then** it draws one sheet per window, in order, each with the page header and page footer chrome
+repeated — because the engine repeats them
+
+**Given** the boundary between two windows
+**When** it is drawn
+**Then** it is marked where the engine will actually break, taken from the projection rather than
+computed in the browser
+
+**Given** a component dragged onto a later sheet
+**When** the drop is committed
+**Then** it is translated to a column coordinate and sent as an opaque command
+
+**Given** the canvas
+**When** a component sits on a later page
+**Then** the interface states plainly that its page is a consequence of the content above it and
+can change when the data does — it is a column position, not a pin to page three
+
+**Given** a single-page template
+**When** the canvas renders
+**Then** it looks and behaves exactly as it does today
+
+### Story 7.7: Keep a signature block together across a page break
+
+As a template author,
+I want a group of components to move to the next page rather than split,
+So that a signature block is never severed by a page boundary.
+
+**Covers:** FR51 · AD-14, D-4.6.2
+
+**Acceptance Criteria:**
+
+**Given** a set of content-band elements declared as a keep-together group
+**When** the document paginates
+**Then** the group is placed entirely within one window, or entirely within the next
+
+**Given** the existing `ItemGroup` machinery, which today serves table rows alone
+**When** this group is paginated
+**Then** it reuses that machinery rather than adding a second grouping model to `internal/layout`
+
+**Given** a group taller than one window
+**When** it is paginated
+**Then** the Story 4.6 exception applies unchanged — a page of its own, clipped, and recorded in
+`Pagination.Clipped` as a Warning beside the PDF bytes, never a fatal error
+
+**Given** a template declaring no groups
+**When** it is rendered
+**Then** its bytes are unchanged
