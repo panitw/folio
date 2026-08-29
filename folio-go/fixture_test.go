@@ -844,3 +844,192 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 		)
 	}
 }
+
+// TestRenderMatchesComponentAssetImportGoldenFixture is Story 5.13's
+// golden fixture, part (a): the same shape as
+// TestRenderMatchesImageEmbedGoldenFixture, applied to
+// fixtures/component-asset-import/ — but unlike image-embed, this
+// fixture's input.folio is not merely a document that names an asset; it
+// is the CAPTURED CANONICAL OUTPUT of one real setComponentAsset command
+// (see part (b), TestComponentAssetImportCommandReproducesTheFixtureInput,
+// below — part (a) alone would make this indistinguishable from a second
+// image-embed).
+func TestRenderMatchesComponentAssetImportGoldenFixture(t *testing.T) {
+	root := repoRootFromTest(t)
+	fixturePath := filepath.Join(root, "fixtures", "component-asset-import", "expected.json")
+
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	var fixture expectedFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("parse fixture JSON: %v", err)
+	}
+
+	if fixture.FolioGoVersion == "" {
+		t.Fatal("fixture is missing folioGoVersion")
+	}
+	if fixture.GoToolchain == "" {
+		t.Fatal("fixture is missing goToolchain (RP-8: this must fail before the hash comparison runs)")
+	}
+	if fixture.SHA256 == "" {
+		t.Fatal("fixture is missing sha256")
+	}
+	if !isSHA256HexString(fixture.SHA256) {
+		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
+	}
+
+	// input.folio is byte-identical to the Go constant that renders it —
+	// the same obligation every other fixture's input.folio carries.
+	inputFolioPath := filepath.Join(root, "fixtures", "component-asset-import", "input.folio")
+	inputFolioBytes, err := os.ReadFile(inputFolioPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", inputFolioPath, err)
+	}
+	if string(inputFolioBytes) != componentAssetImportTemplateJSON {
+		t.Fatalf(
+			"%s has drifted from folio-go/componentAssetImportTemplateJSON (render_test.go) — "+
+				"the two are supposed to be byte-identical; this fixture no longer documents what "+
+				"actually produced its recorded hash",
+			inputFolioPath,
+		)
+	}
+
+	tpl, err := ParseTemplate([]byte(componentAssetImportTemplateJSON))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	res, err := Render(tpl, Data("{}"), nil, nil)
+	if err != nil {
+		t.Fatalf("Render() error: %v", err)
+	}
+	b := res.Bytes
+	assertWellFormedPDF(t, "component-asset-import golden fixture render", b, 1)
+
+	// Vacuity guard, same shape as image-embed's: confirm the render
+	// actually contains an image XObject before comparing any hash — a
+	// render that silently dropped the image would certify nothing.
+	if !containsImageXObject(b) {
+		t.Fatal("component-asset-import golden fixture render does not contain an image XObject — the fixture would certify nothing")
+	}
+
+	expectedPDFPath := filepath.Join(root, "fixtures", "component-asset-import", "expected.pdf")
+	expectedPDFBytes, err := os.ReadFile(expectedPDFPath)
+	if err != nil {
+		t.Fatalf("read expected.pdf: %v", err)
+	}
+	expectedPDFSum := sha256.Sum256(expectedPDFBytes)
+	expectedPDFHex := hex.EncodeToString(expectedPDFSum[:])
+	if expectedPDFHex != fixture.SHA256 {
+		t.Fatalf(
+			"fixtures/component-asset-import/expected.pdf's own sha256 (%s) does not match "+
+				"expected.json's recorded sha256 (%s) — the fixture's two halves have drifted apart",
+			expectedPDFHex, fixture.SHA256,
+		)
+	}
+
+	if runtime.Version() != fixture.GoToolchain {
+		t.Fatalf(
+			"toolchain mismatch: running under %s, fixture was recorded under %s. "+
+				"A Go toolchain bump is a versioned breaking change under AD-22 — "+
+				"the golden hash must be re-measured deliberately (C6).",
+			runtime.Version(), fixture.GoToolchain,
+		)
+	}
+
+	sum := sha256.Sum256(b)
+	gotHex := hex.EncodeToString(sum[:])
+	if gotHex != fixture.SHA256 {
+		t.Fatalf(
+			"golden fixture mismatch: got sha256 %s, want %s (fixtures/component-asset-import). "+
+				"Under AD-21/AD-22 this is a defect until proven to be an intended, "+
+				"versioned change — see fixtures/component-asset-import/README.md.",
+			gotHex, fixture.SHA256,
+		)
+	}
+}
+
+// TestComponentAssetImportCommandReproducesTheFixtureInput is Story
+// 5.13's golden fixture, part (b) — the part that makes this a 5.13
+// fixture rather than a second image-embed. It re-runs the REAL
+// setComponentAsset command (component_commands.go, via the public
+// ApplyComponentCommand entry point, not a hand-rolled equivalent)
+// against the same starting document (componentAssetImportBaseTemplateJSON,
+// render_test.go) and the same source image bytes (png1x1Gray(),
+// component_asset_command_test.go) used to generate this fixture, and
+// asserts the resulting canonical bytes are byte-for-byte identical to
+// fixtures/component-asset-import/input.folio.
+//
+// This is what pins the AUTHORING COMMAND's canonical-bytes-producing
+// behaviour (AD-9: digest-as-key, 76-column wrap, sorted keys,
+// insert-if-absent, repoint-with-orphan-collection) rather than merely
+// pinning a render of a document that already names an asset. It
+// red-proofs cleanly: change the base64 wrap width or the digest-as-key
+// derivation, and this test fails while TestRenderMatchesComponentAssetImportGoldenFixture
+// above might not (that test only observes the rendered PDF, not the
+// canonical `.folio` bytes the command produced). Attribution note
+// (Finding 20, review of 2026-08-29): mutating the digest-as-key
+// derivation specifically reddens through ApplyComponentCommand's own
+// reparse hitting decodeAssets's PRE-EXISTING digest-match enforcement
+// (parse.go) — a real catch, but a mechanism Story 1.8 already shipped,
+// not new coverage this fixture adds.
+//
+// Finding 7 (review of 2026-08-29): the base document carries a SECOND
+// image element (e2) on a DIFFERENT asset that the command never touches
+// — componentAssetImportBaseTemplateJSON's own doc comment explains why.
+// Without it, the command's own orphan-collection of e1's old asset left
+// exactly ONE surviving asset, and a one-entry map has no ordering to get
+// wrong: reversing the sort in serialize.go passed this test and the
+// entire `go test ./...` suite. With two surviving assets under two
+// different keys, that same mutation now reorders committed bytes this
+// test actually compares.
+func TestComponentAssetImportCommandReproducesTheFixtureInput(t *testing.T) {
+	root := repoRootFromTest(t)
+	inputFolioPath := filepath.Join(root, "fixtures", "component-asset-import", "input.folio")
+	want, err := os.ReadFile(inputFolioPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", inputFolioPath, err)
+	}
+
+	tpl, err := ParseTemplate([]byte(componentAssetImportBaseTemplateJSON))
+	if err != nil {
+		t.Fatalf("ParseTemplate(componentAssetImportBaseTemplateJSON): %v", err)
+	}
+
+	command := setAssetCommand("e1", "image/png", png1x1Gray())
+	if _, err := ApplyComponentCommand(tpl, command); err != nil {
+		t.Fatalf("ApplyComponentCommand(setComponentAsset): %v", err)
+	}
+
+	// Finding 7's own precondition: this fixture proves nothing about key
+	// ordering unless two DIFFERENT assets actually survive the command.
+	if len(tpl.doc.Assets) != 2 {
+		t.Fatalf("expected exactly 2 surviving assets (e1's new one, e2's untouched one), got %d: %#v", len(tpl.doc.Assets), tpl.doc.Assets)
+	}
+
+	got, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatalf("SerializeTemplate: %v", err)
+	}
+
+	if string(got) != string(want) {
+		t.Fatalf(
+			"running the real setComponentAsset command against componentAssetImportBaseTemplateJSON + "+
+				"png1x1Gray() no longer reproduces fixtures/component-asset-import/input.folio "+
+				"byte-for-byte — the authoring command's canonical output has drifted from the "+
+				"committed golden bytes (AD-9). This is a defect until proven to be an intended, "+
+				"versioned change — see fixtures/component-asset-import/README.md.\ngot:\n%s\nwant:\n%s",
+			got, want,
+		)
+	}
+
+	if string(got) != componentAssetImportTemplateJSON {
+		t.Fatalf(
+			"the command's output also disagrees with folio-go/componentAssetImportTemplateJSON " +
+				"(render_test.go) — that constant and fixtures/component-asset-import/input.folio " +
+				"were supposed to be kept byte-identical",
+		)
+	}
+}

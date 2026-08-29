@@ -1,6 +1,6 @@
 export const ENGINE_PROTOCOL_VERSION = 1 as const
 
-export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'parameter-references' | 'table-columns' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render'
+export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'parameter-references' | 'table-columns' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render' | 'asset'
 
 export const MAX_ENGINE_REQUEST_ID_LENGTH = 128
 export const MAX_ENGINE_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -52,7 +52,7 @@ export type CanvasProjection = Readonly<{
 	width: number; height: number; orientation: 'portrait' | 'landscape'; preset: 'A4' | 'Letter' | 'custom'
 	marginTop: number; marginRight: number; marginBottom: number; marginLeft: number; gridIncrement: number; commandWidth: number; commandHeight: number
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right'; valign?: 'top' | 'middle' | 'bottom'; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number }>> }>> }> }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right'; valign?: 'top' | 'middle' | 'bottom'; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -129,7 +129,7 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {
-	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'bold', 'italic', 'align', 'valign', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'textPaint']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
+	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'bold', 'italic', 'align', 'valign', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
     ids.add(component.id)
     const bandIndex = bandNames.indexOf(component.band as string)
     if (bandIndex < priorBand) return false
@@ -151,8 +151,39 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
 	if (!['text', 'table'].includes(component.type as string) && ['fontFamily', 'fontSize', 'bold', 'italic', 'align', 'valign'].some((key) => component[key] !== undefined)) return false
 	if (!isTextPaint(component.textPaint, box)) return false
 	if (component.type === 'text' ? component.textPaint === undefined : component.textPaint !== undefined) return false
+	if (!isImagePaint(component.image, box)) return false
+	if (component.type !== 'image' && component.image !== undefined) return false
+	// Finding 9 (review of 2026-08-29): the bounded, enumerated reason
+	// discriminant Go emits alongside an absent image paint — only legal
+	// for an 'image' component whose image paint is itself absent (the
+	// two are the same "one Go-side signal", D-5.13.2), never alongside a
+	// present paint and never for a non-image component.
+	if (component.imageUnavailable !== undefined && (component.type !== 'image' || component.image !== undefined || !['missing', 'undecodable'].includes(component.imageUnavailable as string))) return false
 	return true
   })
+}
+
+// isImagePaint admits Story 5.13's optional per-component paint-only image
+// projection. Absence is always legal for an 'image' component (D-5.13.2:
+// "absence, not zero" — an unrecognised or undecodable asset simply has no
+// paint). When present, every field must be a bounded, positive, in-box
+// value: the draw rectangle is asserted to sit INSIDE the component's own
+// box, exactly like the fit-and-centre invariant it is meant to project.
+const isImagePaint = (value: unknown, box: Record<string, number>): boolean => {
+  if (value === undefined) return true
+  if (!isRecord(value) || !hasOnly(value, ['mediaType', 'assetKey', 'width', 'height', 'drawX', 'drawY', 'drawWidth', 'drawHeight'])) return false
+  if (typeof value.mediaType !== 'string' || value.mediaType.length === 0 || value.mediaType.length > 128) return false
+  // Finding 12 (review of 2026-08-29): D-5.13.2's amendment settled the wire
+  // key as the FULL 64-hex digest — a per-key bytes request cannot address
+  // an asset by a prefix (Go's isAssetKeyShape, asset_bytes.go, requires
+  // exactly 64). This admission previously accepted 1..64, so a truncated
+  // key passed straight through to a per-key fetch that could never
+  // succeed (Finding 13's permanent "Loading image…").
+  if (typeof value.assetKey !== 'string' || value.assetKey.length !== 64 || !/^[a-f0-9]{64}$/.test(value.assetKey)) return false
+  const integer = (key: string, positive = false) => typeof (value as Record<string, unknown>)[key] === 'number' && Number.isSafeInteger((value as Record<string, unknown>)[key]) && (positive ? ((value as Record<string, unknown>)[key] as number) > 0 : ((value as Record<string, unknown>)[key] as number) >= 0)
+  if (!['width', 'height', 'drawWidth', 'drawHeight'].every((key) => integer(key, true)) || !['drawX', 'drawY'].every((key) => integer(key))) return false
+  const paint = value as Record<string, number>
+  return paint.drawX >= box.x && paint.drawY >= box.y && paint.drawX + paint.drawWidth <= box.x + box.width && paint.drawY + paint.drawHeight <= box.y + box.height
 }
 
 const isTextPaint = (value: unknown, component: Record<string, number>): boolean => {
@@ -181,9 +212,9 @@ export function requestCorrelationId(value: unknown): string | undefined {
 
 export function parseRequest(value: unknown): EngineRequest | undefined {
   if (!isRecord(value) || !hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'operation', 'payload']) || value.protocolVersion !== ENGINE_PROTOCOL_VERSION || value.kind !== 'request' || !isEngineRequestId(value.requestId)) return undefined
-	if (!['initialize', 'load', 'snapshot', 'parameter-references', 'table-columns', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render'].includes(value.operation as string)) return undefined
+	if (!['initialize', 'load', 'snapshot', 'parameter-references', 'table-columns', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render', 'asset'].includes(value.operation as string)) return undefined
   if (value.payload !== undefined && (!isArrayBuffer(value.payload) || value.payload.byteLength > MAX_ENGINE_PAYLOAD_BYTES) && !(value.operation === 'render' && isRenderPayload(value.payload)) && !(value.operation === 'identity' && isIdentityPayload(value.payload))) return undefined
-	const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command' || value.operation === 'table-columns'
+	const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command' || value.operation === 'table-columns' || value.operation === 'asset'
   if (value.operation === 'render' ? !isRenderPayload(value.payload) : value.operation === 'identity' ? !isIdentityPayload(value.payload) : needsPayload !== (value.payload !== undefined)) return undefined
   return value as EngineRequest
 }

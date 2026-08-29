@@ -115,11 +115,16 @@ func decodeRecognisedImage(mediaType string, data []byte) (DecodedImage, bool, e
 	}
 }
 
-// DecodeImageForRender is AC11a's one named predicate: called ONLY from
-// the render path (never from LoadTemplate/ParseTemplate), for an asset
-// an element actually needs to draw. reason identifies the element and
-// asset for both the capability error and any (already load-time-proven
-// impossible in practice, but handled rather than assumed) format error.
+// DecodeImageForRender is AC11a's one named predicate: never called from
+// LoadTemplate/ParseTemplate. It has two call sites — the render path, for
+// an asset an element actually needs to draw, and Story 5.13's
+// setComponentAsset authoring command (folio-go/component_commands.go),
+// which reuses it as the command's own media-type-recognition and
+// decode-validation check rather than restating decodeRecognisedImage's
+// rules a second time or leaning on decodeAssets as the catcher. assetKey
+// and elementID identify the element and asset for both the capability
+// error and any (already load-time-proven impossible in practice for a
+// loaded document, but handled rather than assumed) format error.
 func DecodeImageForRender(mediaType string, data []byte, assetKey, elementID string) (DecodedImage, error) {
 	img, recognised, err := decodeRecognisedImage(mediaType, data)
 	if !recognised {

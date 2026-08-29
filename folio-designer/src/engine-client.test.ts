@@ -126,15 +126,26 @@ describe('engine client protocol and lifecycle', () => {
     await render.catch((error: unknown) => expect(isProducerRenderFailure(error)).toBe(false))
   })
 
-  it('fails closed when every operation receives surplus table metadata', async () => {
-		for (const operation of ['render', 'identity', 'serialize', 'parameter-references', 'snapshot', 'command', 'undo', 'redo'] as const) {
+  it('requests one asset key and resolves its bytes like serialize', async () => {
     const worker = new FakeWorker()
     const client = new EngineClient(worker)
     worker.ready()
-			const payload = operation === 'render' ? { template: new Uint8Array([1]).buffer, data: new Uint8Array([2]).buffer, params: new Uint8Array([3]).buffer } : operation === 'identity' ? { data: new Uint8Array([1]).buffer, params: new Uint8Array([2]).buffer } : operation === 'command' ? new Uint8Array([1]).buffer : undefined
+    const pending = client.request('asset', new TextEncoder().encode('a'.repeat(64)).buffer)
+    expect(worker.sent[0]!.operation).toBe('asset')
+    worker.respond('request-1', 1, new Uint8Array([1, 2, 3]).buffer)
+    const result = await pending
+    expect(new Uint8Array(result.bytes!)).toEqual(new Uint8Array([1, 2, 3]))
+  })
+
+  it('fails closed when every operation receives surplus table metadata', async () => {
+		for (const operation of ['render', 'identity', 'serialize', 'asset', 'parameter-references', 'snapshot', 'command', 'undo', 'redo'] as const) {
+    const worker = new FakeWorker()
+    const client = new EngineClient(worker)
+    worker.ready()
+			const payload = operation === 'render' ? { template: new Uint8Array([1]).buffer, data: new Uint8Array([2]).buffer, params: new Uint8Array([3]).buffer } : operation === 'identity' ? { data: new Uint8Array([1]).buffer, params: new Uint8Array([2]).buffer } : operation === 'command' || operation === 'asset' ? new Uint8Array([1]).buffer : undefined
 			const pending = client.request(operation, payload)
 			const base = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response' as const, requestId: 'request-1', ok: true as const, snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 10 }, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [] } } }
-			worker.emit(operation === 'render' ? { ...base, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'a'.repeat(64), pdfSha256: 'b'.repeat(64), diagnostics: [] } } : operation === 'identity' ? { ...base, preview: { revision: 1, identity: 'a'.repeat(64) } } : operation === 'serialize' ? { ...base, bytes: new Uint8Array([9]).buffer } : operation === 'parameter-references' ? { ...base, parameterReferences: { revision: 1, names: [] } } : base)
+			worker.emit(operation === 'render' ? { ...base, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'a'.repeat(64), pdfSha256: 'b'.repeat(64), diagnostics: [] } } : operation === 'identity' ? { ...base, preview: { revision: 1, identity: 'a'.repeat(64) } } : operation === 'serialize' || operation === 'asset' ? { ...base, bytes: new Uint8Array([9]).buffer } : operation === 'parameter-references' ? { ...base, parameterReferences: { revision: 1, names: [] } } : base)
 			await expect(pending).rejects.toMatchObject({ code: 'PROTOCOL_OPERATION_MISMATCH' })
 			expect(client.state).toBe('failed')
 		}

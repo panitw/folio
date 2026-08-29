@@ -1713,6 +1713,53 @@ So that fixing a problem is one click and the tool does not exclude people who c
 **Then** it covers every canvas and property mutation as engine-side history over committed commands
 **And** loading sample data is not undoable and does not appear to be
 
+### Story 5.13: Import an image and set it on an image component
+
+Added after the Epic 5 boundary. Stories 5.7 and 5.8 delivered the Image palette item and the property
+panel, but no story ever owned choosing the picture. The palette control has therefore always attached
+one hardcoded shipped asset, added during Story 6.7 so a browser-authored golden report could contain an
+embedded image at all. This story completes FR4 and FR5 for the one component that was left half-built,
+and is why `epic-5` returns to `in-progress` and owes a second boundary gate.
+
+As a template author,
+I want to put my own logo on the page,
+So that the statement I lay out is my organisation's document rather than Folio's.
+
+**Covers:** FR4, FR5, FR33 · UX-DR10, UX-DR21, UX-DR24, UX-DR25
+
+**Acceptance Criteria:**
+
+**Given** a selected image component and an image file chosen from local disk
+**When** the author sets it
+**Then** one committed engine command carries the raw bytes to the engine, which computes their SHA-256, stores the asset under that key, and points the element at it
+**And** the same picture chosen twice is stored once and referenced twice
+**And** the browser never hashes, sniffs a format, or holds an asset model
+
+**Given** a media type this library version cannot decode
+**When** it is chosen
+**Then** the command refuses it with a located diagnostic and nothing enters the document
+**And** the author learns at the click, not at reopen
+
+**Given** a selection that is exactly one image component
+**When** the properties panel renders
+**Then** an IMAGE section shows the current asset's media type, intrinsic pixel dimensions and abbreviated key, and offers a named control that opens the picker
+**And** the section is keyboard-operable with visible focus and accessible names, and states each unavailable reason concretely
+
+**Given** an image component whose asset is installed
+**When** the canvas paints it
+**Then** it draws inside the fit-and-centre rectangle the engine already computes for the PDF, supplied on the projection as engine-owned millipoints
+**And** the browser computes no fit of its own, and the canvas stays explicitly approximate about text only
+
+**Given** an asset whose last referencing element is deleted or repointed
+**When** the document is serialized
+**Then** the asset is collected in the same transaction, so replacing a logo ten times leaves one asset
+**And** undoing back to a state that referenced it restores its bytes
+
+**Given** the image path in its entirety
+**When** it is inspected
+**Then** no URL field, filesystem path, remote fetch or render-time IO exists anywhere on it
+**And** the palette insert path is unchanged, so a dropped Image is still renderable before a file is picked
+
 ---
 
 ## Epic 6: A template author can bind a report to data and build the golden report

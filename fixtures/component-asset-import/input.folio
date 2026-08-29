@@ -1,0 +1,75 @@
+{
+  "assets": {
+    "541581d3ab4d47c46ce5bcfbe86f9e9369f425b41df11decff572d259fa22c65": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAADklEQVR4nGJqAAQAAP//AIYAg0ye",
+        "IEsAAAAASUVORK5CYII="
+      ],
+      "mediaType": "image/png"
+    },
+    "a3beda078fd65550fb477583f62a56b17fcb89a881b22606c1790cede7f9640a": {
+      "data": [
+        "/9j/2wCEAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMU",
+        "FRUVDA8XGBYUGBIUFRQBAwQEBQQFCQUFCRQNCw0UFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
+        "FBQUFBQUFBQUFBQUFBQUFBQUFBQUFP/AABEIAAQABAMBIgACEQEDEQH/xAGiAAABBQEBAQEBAQAA",
+        "AAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGh",
+        "CCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hp",
+        "anN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV",
+        "1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQAC",
+        "AQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXx",
+        "FxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqS",
+        "k5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T1",
+        "9vf4+fr/2gAMAwEAAhEDEQA/ALHw9/Z+8Ff8Iva/8Sz9R6D2rpP+GfvBX/QM/Uf4V0fw9/5Fe1/z",
+        "2FdJX5lis0x3t5/vpbvqzuyHOsy/srDf7RP4I/afY//Z"
+      ],
+      "mediaType": "image/jpeg"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "asset": "541581d3ab4d47c46ce5bcfbe86f9e9369f425b41df11decff572d259fa22c65",
+          "height": 60,
+          "id": "e1",
+          "type": "image",
+          "width": 100,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "asset": "a3beda078fd65550fb477583f62a56b17fcb89a881b22606c1790cede7f9640a",
+          "height": 40,
+          "id": "e2",
+          "type": "image",
+          "width": 40,
+          "x": 0,
+          "y": 70
+        }
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 3,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}

@@ -83,6 +83,60 @@ describe('canvas projection protocol guard', () => {
     expect(response({ overflow: false, lines: [{ ...line, top: -1, baseline: 8 }] })).toBeUndefined()
   })
 
+  it('accepts a well-formed image paint inside its own box and rejects malformed or out-of-box substitutes', () => {
+    const box = { x: 0, y: 0, width: 100, height: 50 }
+    // Finding 12 (review of 2026-08-29): the wire key is the FULL 64-hex
+    // digest (D-5.13.2 amendment) — a truncated key passed admission here
+    // before the fix, then could never resolve through the per-key 'asset'
+    // fetch. This fixture's OWN well-formedness now pins that width.
+    const image = { mediaType: 'image/png', assetKey: 'ab'.repeat(32), width: 300, height: 150, drawX: 0, drawY: 0, drawWidth: 100, drawHeight: 50 }
+    const response = (img: object | undefined) => parseInbound({
+      protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'image', band: 'content', resizable: true, ...box, ...(img === undefined ? {} : { image: img }) }] } },
+    })
+    expect(response(image)).toBeDefined()
+    expect(response(undefined)).toBeDefined()
+    expect(response({ ...image, mediaType: '' })).toBeUndefined()
+    expect(response({ ...image, assetKey: '' })).toBeUndefined()
+    expect(response({ ...image, assetKey: 'z'.repeat(64) })).toBeUndefined() // 64 chars, not hex
+    // A well-formed but TRUNCATED key (12 hex characters, the inspector's
+    // own display-abbreviation width) must be rejected, not merely a
+    // wrong-length string of the wrong shape.
+    expect(response({ ...image, assetKey: 'abcdef012345' })).toBeUndefined()
+    expect(response({ ...image, width: 0 })).toBeUndefined()
+    expect(response({ ...image, height: -1 })).toBeUndefined()
+    expect(response({ ...image, drawWidth: 0 })).toBeUndefined()
+    expect(response({ ...image, drawX: -1 })).toBeUndefined()
+    expect(response({ ...image, drawX: 1, drawWidth: 100 })).toBeUndefined() // spills past box.x+box.width
+    expect(response({ ...image, drawY: 1, drawHeight: 50 })).toBeUndefined() // spills past box.y+box.height
+    expect(response({ ...image, extra: true })).toBeUndefined()
+    // A non-image component must never carry an image paint.
+    expect(parseInbound({
+      protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, lines: [] }, image }] } },
+    })).toBeUndefined()
+  })
+
+  it("admits Finding 9's imageUnavailable discriminant only for an image component with no image paint, and only its two named values", () => {
+    const box = { x: 0, y: 0, width: 100, height: 50 }
+    const response = (component: object) => parseInbound({
+      protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'image', band: 'content', resizable: true, ...box, ...component }] } },
+    })
+    expect(response({ imageUnavailable: 'missing' })).toBeDefined()
+    expect(response({ imageUnavailable: 'undecodable' })).toBeDefined()
+    expect(response({})).toBeDefined() // absent is legal (an image paint present, or nothing yet)
+    expect(response({ imageUnavailable: 'something-else' })).toBeUndefined()
+    // Not a text component.
+    expect(parseInbound({
+      protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, lines: [] }, imageUnavailable: 'missing' }] } },
+    })).toBeUndefined()
+    // Not alongside a PRESENT image paint — the two are one signal.
+    const image = { mediaType: 'image/png', assetKey: 'ab'.repeat(32), width: 300, height: 150, drawX: 0, drawY: 0, drawWidth: 100, drawHeight: 50 }
+    expect(response({ image, imageUnavailable: 'missing' })).toBeUndefined()
+  })
+
   it('admits only operation-coherent closed worker requests and responses', () => {
     const load = new Uint8Array([1]).buffer
     expect(parseRequest({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'load-1', operation: 'load', payload: load })).toBeDefined()
@@ -96,6 +150,10 @@ describe('canvas projection protocol guard', () => {
     expect(parseRequest({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'command-1', operation: 'command', payload: load, [dpr]: 2 })).toBeUndefined()
     expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'response-1', ok: false, error: { code: 'NO', message: 'no' }, font: 'browser' })).toBeUndefined()
     expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'lifecycle', state: 'ready', snapshot: {} })).toBeUndefined()
+    expect(parseRequest({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'asset-1', operation: 'asset', payload: load })).toBeDefined()
+    expect(parseRequest({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'asset-2', operation: 'asset' })).toBeUndefined()
+    const assetResponse = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response' as const, requestId: 'asset-1', ok: true as const, snapshot: { documentState: 'loaded' as const, revision: 3, byteLength: 1 }, bytes: load }
+    expect(parseInbound(assetResponse)).toBeDefined()
   })
 
   it('accepts only a correlated, bounded three-byte render envelope and producer digest', () => {

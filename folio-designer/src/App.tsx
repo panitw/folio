@@ -21,6 +21,8 @@ import { isMacPlatform, primaryModifier, shortcutHintsFor } from './shortcuts'
 import { DataPanel } from './DataPanel'
 import { acceptSampleData, type SampleData, type SampleNode } from './sample-data'
 import type { SampleFileAccess } from './sample-file'
+import { assetBytesRequest, setComponentAssetCommand } from './component-asset-command'
+import type { ImageFileAccess } from './image-file'
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 type InspectorTab = 'properties' | 'data'
@@ -70,11 +72,11 @@ function PaletteIcon({ kind }: { kind: PaletteKind }) {
   return <svg aria-hidden="true" className="palette-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square">{paletteGlyphs[kind]}</svg>
 }
 
-type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampleFileAccess?: SampleFileAccess; initialSnapshot?: EngineSnapshot; initialSampleData?: SampleData; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
+type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampleFileAccess?: SampleFileAccess; imageFileAccess?: ImageFileAccess; initialSnapshot?: EngineSnapshot; initialSampleData?: SampleData; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
 type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number }>
 type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
-export default function App({ engine, fileAccess, sampleFileAccess, initialSnapshot, initialSampleData, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
+export default function App({ engine, fileAccess, sampleFileAccess, imageFileAccess, initialSnapshot, initialSampleData, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [commitError, setCommitError] = useState<string>()
   const [propertyError, setPropertyError] = useState<PropertyCommitError>()
@@ -120,6 +122,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const [sampleBusy, setSampleBusy] = useState(false)
   const [bindingError, setBindingError] = useState<BindingErrorScope>()
   const [bindingBusy, setBindingBusy] = useState(false)
+  const [assetError, setAssetError] = useState<Readonly<{ id: string; message: string }>>()
+  const [assetBusy, setAssetBusy] = useState(false)
   const [tableEditor, setTableEditor] = useState<TableColumns>()
   const [tableEditorBusy, setTableEditorBusy] = useState(false)
   const [tableEditorError, setTableEditorError] = useState<string>()
@@ -466,8 +470,44 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
     }
   }
 
+  // Story 5.13: choosing a local image is a two-step boundary crossing — the
+  // browser reads bytes (imageFileAccess), then sends ONE opaque committed
+  // command carrying those bytes and the browser's own declared media type
+  // (AC1). This function does not hash, sniff, or decide legality; Go alone
+  // does, through the ordinary command/diagnostic path every other mutation
+  // already uses.
+  const applyImageAsset = async (id: string) => {
+    if (!engine || !imageFileAccess || fileBusy || assetBusy) return
+    // Finding 4 (review of 2026-08-29): this closure spans the two longest
+    // awaits in the application — an OS file dialog, then an engine command
+    // carrying up to megabytes — and element ids are reused across
+    // documents. Capture the generation/revision BEFORE the picker await,
+    // matching bindPickedPath's shape exactly, so a result that resolves
+    // after an Open/Start-blank/undo/newer-command document replacement is
+    // never installed over the authoritative snapshot (AC1's named red
+    // proof: "a command result installed after document replacement").
+    const requestGeneration = documentGeneration.current
+    const priorRevision = snapshotRef.current?.revision
+    setAssetError(undefined)
+    setAssetBusy(true)
+    try {
+      const picked = await imageFileAccess.openImage()
+      const result = await engine.request('command', setComponentAssetCommand(id, picked.mediaType, picked.bytes))
+      if (documentGeneration.current === requestGeneration && snapshotRef.current?.revision === priorRevision) {
+        if (result.snapshot.revision !== priorRevision) invalidatePreview()
+        setCurrentSnapshot(result.snapshot)
+      }
+    } catch (error) {
+      if (!isFileAccessCancelled(error) && documentGeneration.current === requestGeneration && snapshotRef.current?.revision === priorRevision) {
+        setAssetError({ id, message: componentDiagnostic(error) })
+      }
+    } finally {
+      if (documentGeneration.current === requestGeneration) setAssetBusy(false)
+    }
+  }
+
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setAssetError(undefined); setAssetBusy(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
@@ -653,13 +693,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       {mode === 'design' ? <main ref={canvasRegionRef} className="canvas-region" aria-label="Canvas region" tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) { revokeTableEditor(); setSelected([]) } }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
         {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)} onClick={() => { revokeTableEditor(); setSelected([]) }}>
-          {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); place(point.x, point.y) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { setDrag(undefined); if (!finished.changed) return; if (finished.mode === 'move') void commitComponent(moveComponentCommand(component.id, finished.x, finished.y, snapEnabled)); else void commitComponent(resizeComponentCommand(component.id, finished.width, finished.height, snapEnabled)) }} />)}</section>)}
+          {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); place(point.x, point.y) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { setDrag(undefined); if (!finished.changed) return; if (finished.mode === 'move') void commitComponent(moveComponentCommand(component.id, finished.x, finished.y, snapEnabled)); else void commitComponent(resizeComponentCommand(component.id, finished.width, finished.height, snapEnabled)) }} />)}</section>)}
         </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
@@ -795,13 +835,14 @@ const visibilityField: FieldSpec = { field: 'visibleIf', label: 'Visible if', af
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, onCommit, documentGeneration, propertyError, drag, onEditTable }: { components: ReadonlyArray<PanelComponent>; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void }) {
+function ComponentProperties({ components, onCommit, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
   const single = components.length === 1 ? components[0]! : undefined
   const scopedError = propertyError?.selectionKey === ids.join(',') ? propertyError : undefined
   const table = single?.type === 'table' ? single : undefined
+  const image = single?.type === 'image' ? single : undefined
   const typographic = all((type) => type === 'text' || type === 'table')
   // A drag is the same transient local proposal the canvas is already
   // painting, shown in the same units. It is never committed from here; the
@@ -815,11 +856,38 @@ function ComponentProperties({ components, onCommit, documentGeneration, propert
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{contentFields.map(draftFor)}</PropertySection>}
     {typographic && <PropertySection title="TYPOGRAPHY">{typographyFields.map(draftFor)}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></PropertySection>}
+    {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{boxFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} /><div className="property-grid">{paddingFields.map(draftFor)}</div>{draftFor(visibilityField)}</PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
     <PropertySection title="BINDING" tone="bind">{single?.binding ? <p className="binding-chip"><span className="binding-dot" aria-hidden="true" />Bound to <code>{single.binding}</code></p> : <p className="honest-note">{single ? 'No engine binding on this component. Pick a root scalar in the Data tab.' : 'Binding is shown for one selected component.'}</p>}</PropertySection>
-    <p className="honest-note">{types.has('table') ? 'Table size and binding are not editable here; table geometry is derived from columns.' : 'Only committed engine values are shown. Asset import and arbitrary CSS are not editable here.'}</p>
+    <p className="honest-note">{types.has('table') ? 'Table size and binding are not editable here; table geometry is derived from columns.' : 'Only committed engine values are shown. Arbitrary CSS is not editable here.'}</p>
   </>
+}
+
+// ImageSection is AC2's IMAGE section: it shows the CURRENTLY set asset's
+// identity straight from the engine snapshot (never a local model of it),
+// plus one named control that opens the local image picker. Every
+// unavailable/failed state states its concrete reason in text — never
+// colour alone — and the control is a plain, visibly-labelled button, so
+// both the accessible name and keyboard/focus behaviour come from the same
+// existing button pattern every other file/pick control in this panel uses.
+function ImageSection({ component, onPick, available, busy, error }: { component: PanelComponent; onPick: (id: string) => void; available: boolean; busy: boolean; error?: string }) {
+  const image = component.image
+  return <PropertySection title="IMAGE">
+    {image
+      ? <p className="honest-note">{image.mediaType} · {image.width}×{image.height}px · asset {image.assetKey.slice(0, 12)}…</p>
+      // Finding 9 (review of 2026-08-29): the paint field's absence used to
+      // drive ONE fixed string here, which was FALSE for a dangling asset
+      // reference — the media type is fine, the asset is simply gone.
+      // Go's imageUnavailable discriminant (still one signal alongside the
+      // absent paint, D-5.13.2) now says which of the two applies. An
+      // element is never legally asset-less (AC4), so the only case with
+      // no discriminant at all is an as-yet-unprojected snapshot.
+      : <p className="honest-note" role="status">{component.imageUnavailable === 'missing' ? "This element's asset is not present in the document." : "This version cannot render this asset's media type."}</p>}
+    <button type="button" className="file-button" disabled={!available || busy} onClick={() => onPick(component.id)}>Choose image…</button>
+    {!available && <p className="honest-note">No local file picker is available in this browser tier.</p>}
+    {error && <p role="alert" className="property-error">{error}</p>}
+  </PropertySection>
 }
 
 function committedValue(component: PanelComponent, field: PropertyField): string | undefined {
@@ -893,14 +961,60 @@ function componentDiagnosticDetail(error: unknown): Readonly<{ elementId?: strin
 function componentDiagnostic(error: unknown): string { const received = componentDiagnosticDetail(error); const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message}` : received.message }
 
 type DragState = Readonly<{ id: string; mode: 'move' | 'resize'; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
-function CanvasComponent({ component, zoom, selected, preview, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; zoom: number; selected: boolean; preview?: DragState; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+function CanvasComponent({ component, zoom, selected, preview, engine, generation, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; zoom: number; selected: boolean; preview?: DragState; engine?: EngineClient; generation: number; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
   const selectedByPointer = useRef(false)
   const active = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
   const begin = (event: PointerEvent, mode: 'move' | 'resize') => { event.stopPropagation(); selectedByPointer.current = true; onSelect(component.id, event.shiftKey); if (event.shiftKey) return; event.currentTarget.setPointerCapture?.(event.pointerId); onDragStart({ id: component.id, mode, startClientX: event.clientX, startClientY: event.clientY, x: component.x, y: component.y, width: component.width, height: component.height, originalX: component.x, originalY: component.y, originalWidth: component.width, originalHeight: component.height, changed: false }) }
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const dy = canvasDisplay.documentDelta(rawDY, zoom) * 1000; onDragStart({ ...preview, changed, x: preview.originalX + (preview.mode === 'move' ? dx : 0), y: preview.originalY + (preview.mode === 'move' ? dy : 0), width: preview.originalWidth + (preview.mode === 'resize' ? dx : 0), height: preview.originalHeight + (preview.mode === 'resize' ? dy : 0) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}>{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? 'Image' : component.type === 'table' ? 'Table' : ''}{component.binding && <span className="canvas-binding-chip" aria-hidden="true">{component.binding}</span>}{selected && component.resizable && <button type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, 'resize')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />}</div>
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}>{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{component.binding && <span className="canvas-binding-chip" aria-hidden="true">{component.binding}</span>}{selected && component.resizable && <button type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, 'resize')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />}</div>
+}
+// ImagePaint is Story 5.13's canvas producer: it paints ONLY inside the
+// fit-and-centre draw rectangle Go already computed (component.image), never
+// a rectangle CSS or this component negotiates on its own (AD-17/guardrail
+// 5) — object-fit is never used; the <img> is sized to the EXACT draw
+// rectangle Go supplied, so the browser has no fitting decision left to
+// make. Paintable bytes are fetched separately, per asset key, on a fresh
+// effect run keyed by (assetKey, generation) — never cached across a
+// document replacement — and the object URL this effect creates is
+// revoked in its own cleanup, covering deletion (unmount), asset
+// replacement (assetKey changes) and document replacement (generation
+// changes) alike, with no accumulation across a session.
+function ImagePaint({ component, zoom, engine, generation }: { component: CanvasProjection['components'][number]; zoom: number; engine?: EngineClient; generation: number }) {
+  const image = component.image
+  const [url, setUrl] = useState<string>()
+  // Finding 13 (review of 2026-08-29): a failed per-key 'asset' fetch used
+  // to leave `url` undefined forever, which rendered as "Loading image…"
+  // permanently — the opposite of AC3's "honest placeholder" for a
+  // component that cannot be painted. Track failure as its own state,
+  // distinct from "still in flight", so the placeholder can say which one
+  // it is. Causes include a stale/malformed key (Finding 12, now rejected
+  // earlier by admission) and any transport failure.
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    setUrl(undefined)
+    setFailed(false)
+    if (!engine || !image) return
+    let active = true
+    let created: string | undefined
+    void engine.request('asset', assetBytesRequest(image.assetKey)).then((result) => {
+      if (!active) return
+      if (!result.bytes) { setFailed(true); return }
+      created = URL.createObjectURL(new Blob([result.bytes], { type: image.mediaType }))
+      setUrl(created)
+    }).catch(() => { if (active) setFailed(true) })
+    return () => { active = false; if (created) URL.revokeObjectURL(created) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, image?.assetKey, image?.mediaType, generation])
+  if (!image) {
+    // Finding 9: echo which of the two Go-side reasons applies, matching
+    // ImageSection's text — one Go signal drives both surfaces.
+    return <span className="canvas-image-placeholder" aria-hidden="true">{component.imageUnavailable === 'missing' ? 'Image unavailable — its asset is not present in the document' : 'Image unavailable — this version cannot render its media type'}</span>
+  }
+  const style: CSSProperties = { position: 'absolute', left: canvasDisplay.css(image.drawX - component.x, zoom), top: canvasDisplay.css(image.drawY - component.y, zoom), width: canvasDisplay.css(image.drawWidth, zoom), height: canvasDisplay.css(image.drawHeight, zoom) }
+  if (url) return <img src={url} alt="" aria-hidden="true" draggable={false} className="canvas-image-paint" style={style} />
+  return <span className="canvas-image-placeholder" aria-hidden="true">{failed ? 'Image unavailable — could not load its bytes' : 'Loading image…'}</span>
 }
 function TextPaint({ component, zoom }: { component: CanvasProjection['components'][number]; zoom: number }) {
   const paint = component.textPaint!

@@ -784,3 +784,220 @@ describe('application shell', () => {
     expect(screen.getByText('Table binding: transactions[] (display only)')).toBeInTheDocument()
   })
 })
+
+describe('Story 5.13: image asset selection', () => {
+  const imageComponent = { id: 'e1', type: 'image' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 48_000, resizable: true, image: { mediaType: 'image/png', assetKey: 'a'.repeat(64), width: 300, height: 200, drawX: 6_000, drawY: 8_000, drawWidth: 60_000, drawHeight: 40_000 } }
+  const undecodableImageComponent = { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 48_000, resizable: true }
+  const textComponent = { id: 'e3', type: 'text' as const, band: 'content' as const, x: 0, y: 120_000, width: 72_000, height: 24_000, resizable: true }
+  const imageFileAccess = (openImage: () => Promise<{ bytes: ArrayBuffer; mediaType: string; name: string }>) => ({ openImage }) as unknown as import('./image-file').ImageFileAccess
+
+  it('shows the IMAGE section carrying the engine snapshot identity for a single image selection, and never for other selections', () => {
+    const componentCanvas = { ...canvas, components: [imageComponent, textComponent] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(async () => ({ bytes, mediaType: 'image/png', name: 'logo.png' }))} />)
+    // Empty selection: no IMAGE section.
+    expect(screen.queryByText('IMAGE')).not.toBeInTheDocument()
+    // Single image selection: IMAGE section with identity from the snapshot.
+    fireEvent.click(screen.getByLabelText('image component e1'))
+    expect(screen.getByText('IMAGE')).toBeInTheDocument()
+    expect(screen.getByText('image/png · 300×200px · asset aaaaaaaaaaaa…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Choose image…' })).toBeInTheDocument()
+    // Mixed selection (image + text): no IMAGE section.
+    fireEvent.click(screen.getByLabelText('text component e3'), { shiftKey: true })
+    expect(screen.queryByText('IMAGE')).not.toBeInTheDocument()
+    // Non-image single selection: no IMAGE section.
+    fireEvent.click(screen.getByLabelText('text component e3'))
+    expect(screen.queryByText('IMAGE')).not.toBeInTheDocument()
+  })
+
+  it('states the concrete reason for an asset this version cannot render, distinguished by text, not colour alone', () => {
+    const componentCanvas = { ...canvas, components: [undecodableImageComponent] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(async () => ({ bytes, mediaType: 'image/png', name: 'logo.png' }))} />)
+    fireEvent.click(screen.getByLabelText('image component e2'))
+    expect(screen.getByText("This version cannot render this asset's media type.")).toBeInTheDocument()
+  })
+
+  it('states the concrete reason when no local picker capability is available in this browser tier', () => {
+    const componentCanvas = { ...canvas, components: [imageComponent] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('image component e1'))
+    const button = screen.getByRole('button', { name: 'Choose image…' })
+    expect(button).toBeDisabled()
+    expect(screen.getByText('No local file picker is available in this browser tier.')).toBeInTheDocument()
+  })
+
+  it('drives the keyboard path from a real keyboard SELECTION to a focus-visible picker control, then commits through it', async () => {
+    // Finding 15 (review of 2026-08-29): the original version of this test
+    // selected the component with fireEvent.click (a mouse-shaped
+    // interaction) and only PROVED the picker button was focusable, never
+    // dispatching a key event at all. CanvasComponent has its own
+    // onKeyDown handler for Enter/Space selection (App.tsx) — exercise
+    // THAT, not a click, for the selection half of "selection to picker".
+    const componentCanvas = { ...canvas, components: [imageComponent] }
+    const openImage = vi.fn(async () => ({ bytes, mediaType: 'image/jpeg', name: 'logo.jpg' }))
+    const request = vi.fn(async (operation: string, _payload?: ArrayBuffer) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: componentCanvas } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(openImage)} />)
+    const component = screen.getByLabelText('image component e1')
+    component.focus()
+    fireEvent.keyDown(component, { key: 'Enter' })
+    expect(screen.getByText('IMAGE')).toBeInTheDocument()
+    const button = screen.getByRole('button', { name: 'Choose image…' })
+    // "Keyboard-reachable... with visible colors.select focus" (AC2):
+    // proved by moving focus WITHOUT a pointer event and checking it
+    // landed. A native <button> converts Enter/Space into a real 'click'
+    // event by construction in every browser — jsdom does not synthesise
+    // that translation from a bare keyDown, so the committed activation
+    // below stands in for it here; the Playwright suite drives the SAME
+    // control with a real OS-level key press (image-asset.spec.ts).
+    button.focus()
+    expect(document.activeElement).toBe(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(openImage).toHaveBeenCalledOnce())
+    await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'command')).toBe(true))
+    const [, payload] = request.mock.calls.find(([operation]) => operation === 'command')!
+    const command = new TextDecoder().decode(payload)
+    expect(command).toContain('"kind":"setComponentAsset"')
+    expect(command).toContain('"id":"e1"')
+    expect(command).toContain('"mediaType":"image/jpeg"')
+  })
+
+  it('shows a located diagnostic when the command rejects the picked file, and shows nothing when the picker is cancelled', async () => {
+    const componentCanvas = { ...canvas, components: [imageComponent] }
+    const request = vi.fn(async (operation: string) => operation === 'command' ? Promise.reject(Object.assign(new Error('asset exceeds the 8388608-byte supported size'), { elementId: 'e1', dataPath: 'component.data' })) : { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: componentCanvas } })
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(async () => ({ bytes, mediaType: 'image/png', name: 'huge.png' }))} />)
+    fireEvent.click(screen.getByLabelText('image component e1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose image…' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('e1: asset exceeds the 8388608-byte supported size'))
+  })
+
+  it('shows no error when the local picker is cancelled', async () => {
+    const componentCanvas = { ...canvas, components: [imageComponent] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(async () => { throw new FileAccessCancelled() })} />)
+    fireEvent.click(screen.getByLabelText('image component e1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose image…' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Choose image…' })).not.toBeDisabled())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('does not install a setComponentAsset result that resolves after a document replacement (Finding 4)', async () => {
+    // AC1's own named red proof: "a command result installed after
+    // document replacement". Element ids are reused across documents
+    // (e1, e2, ...), and this closure spans the two longest awaits in the
+    // app — an OS file dialog, then an engine command carrying up to
+    // megabytes — so if Open/Start blank/undo lands in between, a stale
+    // command result must never overwrite the newer, authoritative
+    // document. Before the fix, applyImageAsset called setCurrentSnapshot
+    // unconditionally with no generation/revision guard, matching every
+    // OTHER committed-command path's (bindPickedPath, etc.) shape only in
+    // that one respect being ABSENT.
+    const componentCanvas = { ...canvas, components: [imageComponent] }
+    let resolveOpenImage: ((value: { bytes: ArrayBuffer; mediaType: string; name: string }) => void) | undefined
+    const openImage = vi.fn(() => new Promise<{ bytes: ArrayBuffer; mediaType: string; name: string }>((resolve) => { resolveOpenImage = resolve }))
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'load') return { snapshot: { documentState: 'loaded' as const, revision: 50, byteLength: 3 } }
+      if (operation === 'command') return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }
+      return { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: componentCanvas } }
+    })
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(openImage)} blankBytes={bytes} />)
+
+    // Start the asset pick — this awaits openImage(), which we hold open.
+    fireEvent.click(screen.getByLabelText('image component e1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose image…' }))
+    await waitFor(() => expect(openImage).toHaveBeenCalledOnce())
+
+    // A DOCUMENT REPLACEMENT lands while the picker is still open.
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 50'))
+
+    // NOW the picker resolves and the stale command completes.
+    resolveOpenImage!({ bytes, mediaType: 'image/jpeg', name: 'logo.jpg' })
+    await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'command')).toBe(true))
+
+    // The blank document (revision 50) must still be showing — the stale
+    // command's revision-2 result must never have been installed.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 50')
+    expect(screen.getByText('Untitled template')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('paints the image inside the Go-owned draw rectangle at zoom, fetched per asset key, shows an honest placeholder for an undecodable asset, and revokes its object URL on every trigger AC3 names', async () => {
+    let paintCounter = 0
+    const createObjectURL = vi.fn(() => `blob:paint-${++paintCounter}`)
+    const revokeObjectURL = vi.fn()
+    const priorCreate = URL.createObjectURL; const priorRevoke = URL.revokeObjectURL
+    ;(URL as unknown as { createObjectURL: typeof createObjectURL }).createObjectURL = createObjectURL
+    ;(URL as unknown as { revokeObjectURL: typeof revokeObjectURL }).revokeObjectURL = revokeObjectURL
+    try {
+      const canvasWithKey = (assetKey: string, extra: ReadonlyArray<typeof undecodableImageComponent> = [undecodableImageComponent]) =>
+        ({ ...canvas, components: [{ ...imageComponent, image: { ...imageComponent.image, assetKey } }, ...extra] })
+      const canvasA = canvasWithKey('a'.repeat(64))
+      // Finding 11: asset REPLACEMENT (same element id, new assetKey) is a
+      // distinct trigger from document replacement — exercised via a
+      // committed setComponentAsset, never a document generation bump.
+      const canvasB = canvasWithKey('b'.repeat(64))
+      const openImage = vi.fn(async () => ({ bytes, mediaType: 'image/jpeg', name: 'logo.jpg' }))
+      const request = vi.fn(async (operation: string) => {
+        if (operation === 'asset') return { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 }, bytes }
+        if (operation === 'command') return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: canvasB } }
+        // Finding 11: document REPLACEMENT (Start blank) with the SAME
+        // assetKey as canvasB — isolates the `generation` dependency from
+        // `assetKey`, so a future edit that dropped `generation` from
+        // ImagePaint's effect deps would leak here with nothing else red.
+        if (operation === 'load') return { snapshot: { documentState: 'loaded' as const, revision: 9, byteLength: 3, canvas: canvasB } }
+        return { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: canvasA } }
+      })
+      const view = render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: canvasA }} imageFileAccess={imageFileAccess(openImage)} blankBytes={bytes} />)
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledOnce())
+      const img = () => view.container.querySelector('img.canvas-image-paint') as HTMLImageElement
+      expect(img().src).toContain('blob:paint-1')
+      // The undecodable second element paints an honest, named placeholder,
+      // never a blank box and never a crash.
+      expect(screen.getByText(/Image unavailable/)).toBeInTheDocument()
+
+      // Finding 3: the painted element's geometry must equal the engine's
+      // OWN draw rectangle (image.drawX/Y/W/H relative to component.x/y),
+      // mapped through canvasDisplay's zoom rule — never object-fit, never
+      // a browser-computed fit. Checked at the default zoom (1) first.
+      expect(img().style.left).toBe('6px'); expect(img().style.top).toBe('8px')
+      expect(img().style.width).toBe('60px'); expect(img().style.height).toBe('40px')
+
+      // Finding 3/10: AC3 says the rectangle is "mapped through the
+      // existing zoom rule" — this was asserted at NO zoom before. One
+      // step of "Zoom in" (+0.1) must scale every one of the four values
+      // by exactly the same factor the engine's own zoom rule uses.
+      fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+      await waitFor(() => expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('110%'))
+      expect(img().style.left).toBe('6.6px'); expect(img().style.top).toBe('8.8px')
+      expect(img().style.width).toBe('66px'); expect(img().style.height).toBe('44px')
+
+      // Finding 11, trigger 1 of 3: ASSET REPLACEMENT. Pick a new file for
+      // the same element; the committed command repoints its assetKey, and
+      // that alone (not a document generation bump) must revoke the first
+      // URL and fetch a second.
+      fireEvent.click(screen.getByLabelText('image component e1'))
+      fireEvent.click(screen.getByRole('button', { name: 'Choose image…' }))
+      await waitFor(() => expect(openImage).toHaveBeenCalledOnce())
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2))
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:paint-1')
+      expect(img().src).toContain('blob:paint-2')
+
+      // Finding 11, trigger 2 of 3: DOCUMENT REPLACEMENT. Start blank loads
+      // a canvas whose e1 element carries the SAME assetKey as canvasB —
+      // only `generation` changed, isolating it from the assetKey trigger
+      // just exercised above.
+      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(3))
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:paint-2')
+      expect(img().src).toContain('blob:paint-3')
+
+      // Finding 11, trigger 3 of 3: DELETION (unmount) revokes the URL this
+      // effect most recently created — no accumulation across a session.
+      view.unmount()
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:paint-3')
+    } finally {
+      (URL as unknown as { createObjectURL: typeof priorCreate }).createObjectURL = priorCreate
+      ;(URL as unknown as { revokeObjectURL: typeof priorRevoke }).revokeObjectURL = priorRevoke
+    }
+  })
+})

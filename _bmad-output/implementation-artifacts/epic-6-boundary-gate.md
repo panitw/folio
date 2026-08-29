@@ -3,7 +3,36 @@
 **Date:** 2026-08-29  
 **Baseline:** Story 6.7 commit `44121b8855f42eebaa7000fdd1bfaa9c7968401a`  
 **Cadence:** D-000.4, per-epic boundary  
-**Verdict:** **PASS**
+**Verdict:** **PASS** — *at the stated baseline only. See the amendment immediately below.*
+
+## Amendment — 2026-08-29: this gate describes `44121b8`, not HEAD
+
+**Owner decision, recorded as D-5.13.6.** Two commits landed on `designer-inspector-tabs` after this
+gate passed, with no story key and no story file. This gate's evidence therefore no longer describes
+the tree anyone will run. `epic-6` stays `done` — it was written correctly at the time — but the
+delta below is open, named debt, and it is re-measured at the **second Epic 5 boundary gate** owed by
+Story 5.13's reopening of Epic 5, rather than by re-running this gate now.
+
+The post-gate delta, precisely:
+
+- **`eef7fbb` changed canonical-byte-producing engine code.** `createComponentInBand`
+  (`folio-go/component_commands.go`) now adopts the first declared non-empty font chain in sorted key
+  order onto every palette-placed text element, so **the same author action serializes different
+  `.folio` bytes than §3's matrix measured**. Any golden that records a palette-placed text element
+  has moved; a hash change there must be investigated as an intended versioned change under AD-22,
+  never regenerated on sight.
+- **`eef7fbb` changed Story 6.6's diagnostic contract surface.** `folio-go/wasm/cmd/engine/main.go`
+  replaced the fixed `ENGINE_REJECTED` / render-failure text with the engine's own bounded message.
+- **`eef7fbb` carries in-progress owner dev-bypass work** in `offline-lifecycle.ts`, `main.tsx` and
+  `verify-offline-release.mjs`, letting the dev server start the engine with **no release payload**.
+  This is named here deliberately: it is a mechanism that stays invisible until it is load-bearing,
+  and it currently exists only as a clause in a commit message. §5's offline-release evidence does
+  not cover it.
+- **`3a52ae4` edited five of the eleven Playwright specs** whose green §2 recorded, plus `App.tsx`,
+  `App.css` and `DataPanel.tsx`.
+
+Consequence for the next gate: a red second Epic 5 boundary needs a **two-way** bisect — across Story
+5.13 and across these two unstoried commits — which is the attribution cost this option accepted.
 
 This gate was run from the completed Story 6.7 code. It discharges the real-browser and four-target
 work deliberately deferred by Stories 6.1–6.6 and independently repeats Story 6.7's integration-shaped

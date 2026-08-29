@@ -179,6 +179,21 @@ func (e *Engine) Render(template, data, params []byte) ([]byte, RenderResult, er
 	return pdf, RenderResult{PDFSHA256: fmt.Sprintf("%x", digest), Identity: identity, Revision: revision, Diagnostics: append([]folio.Diagnostic(nil), result.Diagnostics...)}, nil
 }
 
+// AssetBytes is Story 5.13's per-key paintable-bytes query (D-5.13.2's
+// "Producer" clause). It is read-only: it never advances revision or
+// touches undo/redo history, and it never reproduces asset lookup/decoding
+// rules here — folio.AssetBytes owns those.
+func (e *Engine) AssetBytes(key string) ([]byte, Snapshot, error) {
+	if e.template == nil {
+		return nil, Snapshot{}, fmt.Errorf("folio wasm: no document is loaded")
+	}
+	raw, _, err := folio.AssetBytes(e.template, key)
+	if err != nil {
+		return nil, Snapshot{}, err
+	}
+	return raw, e.Snapshot(), nil
+}
+
 // Validate reparses the engine-owned canonical bytes. It deliberately does
 // not reproduce validation rules in the transport layer.
 func (e *Engine) Validate() (Snapshot, error) {

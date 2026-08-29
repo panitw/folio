@@ -298,6 +298,28 @@ var goldenDigestRecord = []struct {
 			{kind: "readme", relPath: "fixtures/alternating-rows/README.md"},
 		},
 	},
+	{
+		// RECORDED by Story 5.13 (AD-21). Unlike every fixture above,
+		// input.folio here is not hand-authored — it is the captured
+		// canonical output of one real setComponentAsset command, and
+		// TestComponentAssetImportCommandReproducesTheFixtureInput
+		// (fixture_test.go) re-runs that command on every ordinary
+		// `go test ./...` and asserts it reproduces this fixture's
+		// input.folio byte-for-byte, pinning the AUTHORING COMMAND's
+		// canonical-bytes behaviour (AD-9), not merely a render of a
+		// document that already names an asset. RE-RECORDED after the
+		// initial delivery (Finding 7, review of 2026-08-29): the base
+		// document now carries a SECOND image element/asset the command
+		// never touches, so two assets under two different keys survive
+		// it — a one-asset map had no ordering for the golden's
+		// sorted-key claim to actually pin.
+		dir:    "component-asset-import",
+		sha256: "3283b81c9692cecd48591925f06044923a9885e529bdc7a3a43572c1a81e8608",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/component-asset-import/expected.json"},
+			{kind: "second-literal"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -636,21 +658,22 @@ var declaredEpic2GateObligations = []string{
 	"matrix-file: statement_signoff_matrix_test.go",       // Story 4.7 — the Customer Account Statement READING sign-off, ONE record over FOUR digests (engineering lead's ruling, this story; D-2.3.5 mechanism, D-000.41 dilution)
 
 	// The documents whose four legs the gate runs and compares.
-	"matrix-document: minimal-rect",          // Story 1.1
-	"matrix-document: font-text",             // Story 1.5
-	"matrix-document: image-embed",           // Story 1.8
-	"matrix-document: multi-script-fallback", // Story 2.2
-	"matrix-document: shaped-text",           // Story 2.3
-	"matrix-document: wrapped-text",          // Story 2.4 — legs RUN in-story (D-000.4 override)
-	"matrix-document: three-band-page",       // Story 2.5 — legs DEFERRED to the gate (D-2.5.1; D-000.4 override criterion DECLINED)
-	"matrix-document: multi-page",            // Story 2.6 — the gate's FIFTH obligation, SANCTIONED by D-2.6.2; legs DEFERRED to the gate (D-000.4 override criterion DECLINED)
-	"matrix-document: page-count-20",         // Story 2.7 — the gate's SIXTH obligation, SANCTIONED by D-2.7.4 (D-2.6.2's criterion: FR31 had no cross-target artifact before this entry); legs DEFERRED to the gate (D-000.4 override criterion DECLINED, D-2.7.4)
-	"matrix-document: hidden-image",          // Story 3.5 finisher (Finding 1 / Blocker) — D-000.54: native leg (host target) RUN by this story; the other three DEFERRED to the Epic 3 boundary gate (D-000.4 override criterion DECLINED — integer/set work, no new source of cross-target divergence)
-	"matrix-document: statement-1",           // Story 4.7 — the C4 gate. The four legs are RUN IN-STORY: D-000.4 names 4.7 a per-story matrix override (matrix_test.go's own comment lists "1.2, 1.5, 1.8, 2.4 and 4.7"), and the gate story running its own matrix is what stops the gate certifying itself
-	"matrix-document: statement-5",           // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
-	"matrix-document: statement-20",          // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
-	"matrix-document: statement-50",          // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
-	"matrix-document: alternating-rows",      // Story 4.8 — native host leg RUN in-story (D-000.54); other targets deferred to Epic 4 boundary (D-000.4)
+	"matrix-document: minimal-rect",           // Story 1.1
+	"matrix-document: font-text",              // Story 1.5
+	"matrix-document: image-embed",            // Story 1.8
+	"matrix-document: multi-script-fallback",  // Story 2.2
+	"matrix-document: shaped-text",            // Story 2.3
+	"matrix-document: wrapped-text",           // Story 2.4 — legs RUN in-story (D-000.4 override)
+	"matrix-document: three-band-page",        // Story 2.5 — legs DEFERRED to the gate (D-2.5.1; D-000.4 override criterion DECLINED)
+	"matrix-document: multi-page",             // Story 2.6 — the gate's FIFTH obligation, SANCTIONED by D-2.6.2; legs DEFERRED to the gate (D-000.4 override criterion DECLINED)
+	"matrix-document: page-count-20",          // Story 2.7 — the gate's SIXTH obligation, SANCTIONED by D-2.7.4 (D-2.6.2's criterion: FR31 had no cross-target artifact before this entry); legs DEFERRED to the gate (D-000.4 override criterion DECLINED, D-2.7.4)
+	"matrix-document: hidden-image",           // Story 3.5 finisher (Finding 1 / Blocker) — D-000.54: native leg (host target) RUN by this story; the other three DEFERRED to the Epic 3 boundary gate (D-000.4 override criterion DECLINED — integer/set work, no new source of cross-target divergence)
+	"matrix-document: statement-1",            // Story 4.7 — the C4 gate. The four legs are RUN IN-STORY: D-000.4 names 4.7 a per-story matrix override (matrix_test.go's own comment lists "1.2, 1.5, 1.8, 2.4 and 4.7"), and the gate story running its own matrix is what stops the gate certifying itself
+	"matrix-document: statement-5",            // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
+	"matrix-document: statement-20",           // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
+	"matrix-document: statement-50",           // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
+	"matrix-document: alternating-rows",       // Story 4.8 — native host leg RUN in-story (D-000.54); other targets deferred to Epic 4 boundary (D-000.4)
+	"matrix-document: component-asset-import", // Story 5.13 — AD-21 fixture pinning setComponentAsset's canonical output (digest-as-key, 76-col wrap, sorted keys, repoint); registered per engineering-lead ruling (2026-08-29) that Task 5's AD-21 obligation was owed in-story and guardrail 10 excluded only OTHER stories' fixtures; legs DEFERRED to the gate (D-5.13.5: this story's four-target matrix run declined)
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

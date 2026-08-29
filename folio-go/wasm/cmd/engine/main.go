@@ -151,6 +151,16 @@ func dispatch(engine *wasm.Engine, in request) response {
 			return engineFailure(err)
 		}
 		return response{OK: true, Snapshot: snapshot}
+	case "asset":
+		payload, err := decode()
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		bytes, snapshot, err := engine.AssetBytes(string(payload))
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: snapshot, BytesBase64: base64.StdEncoding.EncodeToString(bytes)}
 	case "undo":
 		snapshot, err := engine.Undo()
 		if err != nil {

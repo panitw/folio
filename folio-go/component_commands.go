@@ -2,6 +2,8 @@ package folio
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -67,6 +69,8 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return duplicateComponent(t, raw)
 	case "updateComponentProperties":
 		return updateComponentProperties(t, raw)
+	case "setComponentAsset":
+		return setComponentAsset(t, raw)
 	case "bindComponentScalar":
 		return bindComponentScalar(t, raw)
 	case "addTableColumn":
@@ -608,6 +612,175 @@ func updateComponentProperties(t *Template, raw map[string]json.RawMessage) (Can
 	}
 	t.doc, t.derivedFooters = installed.doc, installed.derivedFooters
 	return projection, nil
+}
+
+// engineProtocolMaxPayloadBytes mirrors MAX_ENGINE_PAYLOAD_BYTES
+// (folio-designer/src/engine-protocol.ts) — the one number the transport
+// enforces on every worker request payload, asset commands included.
+const engineProtocolMaxPayloadBytes = 8 * 1024 * 1024
+
+// maxComponentAssetPayloadOverheadBytes reserves room, inside the envelope
+// above, for setComponentAssetCommand's OWN JSON skeleton around its
+// base64 "data" field — the "kind"/"version"/"id"/"mediaType" keys and
+// values (component-asset-command.ts). id is bounded by
+// MAX_ENGINE_ELEMENT_ID_LENGTH (128, engine-protocol.ts) and mediaType is
+// a handful of ASCII bytes in practice ("image/png", "image/jpeg"); even a
+// pathological worst case with every id/mediaType byte JSON-escaped to
+// \uXXXX (6 bytes each) stays under 2 KiB. 4 KiB leaves comfortable
+// headroom without materially shrinking the budget below.
+const maxComponentAssetPayloadOverheadBytes = 4 * 1024
+
+// maxComponentAssetBytes is D-5.13.4's host-memory bound, DERIVED from the
+// protocol envelope rather than reused verbatim (Finding 6, review of
+// 2026-08-29). The command travels as JSON containing BASE64 — a 4/3
+// expansion — so applying the raw 8 MiB envelope ceiling directly to the
+// DECODED byte count (as this constant did before the fix) let a file
+// between roughly 6 and 8 MiB pass Go's own check while the base64-inflated
+// envelope had already rejected it at the TRANSPORT, before the command
+// diagnostic AC2 requires could ever be produced — the protocol threshold
+// and the author-facing diagnostic disagreed, which D-5.13.4 explicitly
+// forbids ("the two must not disagree about the threshold"). This is
+// instead the largest DECODED size whose base64-encoded command payload,
+// plus the skeleton overhead above, is still guaranteed to fit inside
+// engineProtocolMaxPayloadBytes — so a file Go is willing to accept can
+// always actually arrive. It remains, as before, a memory judgement rather
+// than an arithmetic proof like maxImagePixelDimension's (int64 overflow
+// in geom.ScaleRound) — only its GROUND changed, not its honesty about
+// what kind of number it is.
+const maxComponentAssetBytes = (engineProtocolMaxPayloadBytes - maxComponentAssetPayloadOverheadBytes) * 3 / 4
+
+// setComponentAsset is AC1/AC4's asset-authoring command (D-5.13.1): a
+// closed, two-value payload (raw bytes plus declared media type) that
+// propertyChange's {op,value} grammar cannot express, and AC4's rule that an
+// image element is never legally asset-less means clear/null must stay
+// inexpressible for it. It is therefore its own top-level command kind, not
+// a key threaded through applyPropertyChanges/propertyPath/allowed.
+//
+// Go alone hashes the decoded bytes, recognises the media type (reusing
+// image.go's DecodeImageForRender rather than a second capability check),
+// inserts the asset only if its key is absent, repoints the target element,
+// and collects the previous asset key it just orphaned — scoped to that one
+// key, never a document-wide sweep (D-5.13.3). The whole thing runs inside
+// one serialize/reparse/project transaction, matching every other component
+// command's no-partial-mutation guarantee.
+func setComponentAsset(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	before, err := SerializeTemplate(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	working, err := ParseTemplate(before)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	projection, err := setComponentAssetInPlace(working, raw)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	canonical, err := SerializeTemplate(working)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	installed, err := ParseTemplate(canonical)
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "component.asset", "component asset did not pass format validation")
+	}
+	t.doc, t.derivedFooters = installed.doc, installed.derivedFooters
+	return projection, nil
+}
+
+func setComponentAssetInPlace(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 5); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
+	}
+	if element.Type != template.ElementImage {
+		return CanvasProjection{}, componentFailure(id, "component.id", "only an image component can receive an asset")
+	}
+	mediaType, err := commandString(raw, "mediaType")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.mediaType", err.Error())
+	}
+	dataRaw, ok := raw["data"]
+	if !ok {
+		return CanvasProjection{}, componentFailure(id, "component.data", "asset data is required")
+	}
+	var dataB64 string
+	if json.Unmarshal(dataRaw, &dataB64) != nil || dataB64 == "" {
+		return CanvasProjection{}, componentFailure(id, "component.data", "asset data must be a non-empty base64 string")
+	}
+	decoded, err := base64.StdEncoding.Strict().DecodeString(dataB64)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.data", "asset data must be valid base64")
+	}
+	if len(decoded) == 0 {
+		return CanvasProjection{}, componentFailure(id, "component.data", "asset data cannot be empty")
+	}
+	if len(decoded) > maxComponentAssetBytes {
+		return CanvasProjection{}, componentFailure(id, "component.data", fmt.Sprintf("asset exceeds the %d-byte supported size", maxComponentAssetBytes))
+	}
+	digest := sha256.Sum256(decoded)
+	key := fmt.Sprintf("%x", digest)
+	// AC1: media-type recognition and decode validation happen at the
+	// COMMAND, never relying on decodeAssets (parse.go) as the catcher — a
+	// file this library version cannot decode is refused here, before
+	// anything is written to t.doc.Assets.
+	if _, err := template.DecodeImageForRender(mediaType, decoded, key, id); err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.mediaType", err.Error())
+	}
+	previousKey := ""
+	if element.Asset.Set && !element.Asset.Null {
+		previousKey = element.Asset.Value
+	}
+	if t.doc.Assets == nil {
+		t.doc.Assets = map[string]template.Asset{}
+	}
+	if _, exists := t.doc.Assets[key]; !exists {
+		// Re-wrapped canonically (76 columns, AD-9) by writeAssets at
+		// serialize time regardless of how it is stored here; a single
+		// element is sufficient in memory.
+		t.doc.Assets[key] = template.Asset{MediaType: mediaType, Data: []string{base64.StdEncoding.EncodeToString(decoded)}}
+	}
+	element.Asset = template.Presence[string]{Set: true, Value: key}
+	if previousKey != "" && previousKey != key && !assetKeyReferenced(t, previousKey) {
+		delete(t.doc.Assets, previousKey)
+	}
+	return Canvas(t)
+}
+
+// assetKeyReferenced reports whether any image element, across every band,
+// still names key. D-5.13.3: orphan collection is scoped to exactly the one
+// key this command just repointed away from, never a document-wide sweep —
+// a document may legally carry an asset no element references (RP-11's
+// positive control, render_image_test.go), and this command must never
+// silently remove one it did not just orphan.
+//
+// This is the SAFETY half of a delete: under-reporting a reference here
+// deletes a live asset with no compile error to announce it. It walks the
+// same three top-level band element lists (pageHeader/content/pageFooter)
+// findComponent (component_commands.go) and addCanvasImagePaint
+// (page_setup.go) enumerate — correct for today's model, where images in
+// table cells are explicitly out of scope (AC4's exclusions, Finding 17,
+// review of 2026-08-29). If a later story places an image anywhere else
+// (a table cell, most likely), this walk, findComponent's and
+// addCanvasImagePaint's ALL need the new location added together — there
+// is no single shared element-enumeration helper today, so update all
+// three by hand rather than assuming one covers the others.
+func assetKeyReferenced(t *Template, key string) bool {
+	for _, elements := range [][]template.Element{t.doc.Bands.PageHeader.Elements, t.doc.Bands.Content.Elements, t.doc.Bands.PageFooter.Elements} {
+		for _, el := range elements {
+			if el.Type == template.ElementImage && el.Asset.Set && !el.Asset.Null && el.Asset.Value == key {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {

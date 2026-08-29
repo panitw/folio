@@ -139,6 +139,7 @@ function matchesOperationPayload(operation: EngineOperation, message: Extract<En
     case 'render': return message.bytes !== undefined && message.preview?.pdfSha256 !== undefined && message.preview.diagnostics !== undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'identity': return message.bytes === undefined && message.preview !== undefined && message.preview.pdfSha256 === undefined && message.preview.diagnostics === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'serialize': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+    case 'asset': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'parameter-references': return message.bytes === undefined && message.preview === undefined && message.parameterReferences !== undefined && message.tableColumns === undefined
     case 'table-columns': return message.bytes === undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns !== undefined
     default: return none

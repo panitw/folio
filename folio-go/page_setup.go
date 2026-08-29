@@ -79,24 +79,83 @@ type CanvasComponent struct {
 	// Binding is a bounded, Go-derived paint label for a direct text binding.
 	// It is not a general expression/template projection and cannot be used to
 	// reconstruct canonical document bytes in the browser.
-	Binding       *string          `json:"binding,omitempty"`
-	VisibleIf     *string          `json:"visibleIf,omitempty"`
-	FontFamily    *string          `json:"fontFamily,omitempty"`
-	FontSize      *int64           `json:"fontSize,omitempty"`
-	Bold          *bool            `json:"bold,omitempty"`
-	Italic        *bool            `json:"italic,omitempty"`
-	Align         *string          `json:"align,omitempty"`
-	Valign        *string          `json:"valign,omitempty"`
-	Background    *string          `json:"background,omitempty"`
-	BorderWidth   *int64           `json:"borderWidth,omitempty"`
-	BorderColor   *string          `json:"borderColor,omitempty"`
-	BorderEdges   []string         `json:"borderEdges,omitempty"`
-	TableBind     *string          `json:"tableBind,omitempty"`
-	PaddingTop    *int64           `json:"paddingTop,omitempty"`
-	PaddingRight  *int64           `json:"paddingRight,omitempty"`
-	PaddingBottom *int64           `json:"paddingBottom,omitempty"`
-	PaddingLeft   *int64           `json:"paddingLeft,omitempty"`
-	TextPaint     *CanvasTextPaint `json:"textPaint,omitempty"`
+	Binding       *string           `json:"binding,omitempty"`
+	VisibleIf     *string           `json:"visibleIf,omitempty"`
+	FontFamily    *string           `json:"fontFamily,omitempty"`
+	FontSize      *int64            `json:"fontSize,omitempty"`
+	Bold          *bool             `json:"bold,omitempty"`
+	Italic        *bool             `json:"italic,omitempty"`
+	Align         *string           `json:"align,omitempty"`
+	Valign        *string           `json:"valign,omitempty"`
+	Background    *string           `json:"background,omitempty"`
+	BorderWidth   *int64            `json:"borderWidth,omitempty"`
+	BorderColor   *string           `json:"borderColor,omitempty"`
+	BorderEdges   []string          `json:"borderEdges,omitempty"`
+	TableBind     *string           `json:"tableBind,omitempty"`
+	PaddingTop    *int64            `json:"paddingTop,omitempty"`
+	PaddingRight  *int64            `json:"paddingRight,omitempty"`
+	PaddingBottom *int64            `json:"paddingBottom,omitempty"`
+	PaddingLeft   *int64            `json:"paddingLeft,omitempty"`
+	TextPaint     *CanvasTextPaint  `json:"textPaint,omitempty"`
+	Image         *CanvasImagePaint `json:"image,omitempty"`
+	// ImageUnavailable is a small, bounded discriminant set ONLY when this
+	// is an image element and Image is absent (Finding 9, review of
+	// 2026-08-29): "missing" when the element's own asset key is not in
+	// the document's assets map, or "undecodable" when the key resolves
+	// but the bytes fail to decode or the media type is one this library
+	// version cannot render. D-5.13.2's "one Go-side signal drives both"
+	// governed the media-type case only; collapsing a dangling asset
+	// reference into that same undecodable text was a defect — the media
+	// type there is fine, the asset is simply gone. This does not widen
+	// the projection's authority: it is still Go stating which of two
+	// bounded, enumerated reasons applies, never bytes or a path.
+	ImageUnavailable *string `json:"imageUnavailable,omitempty"`
+}
+
+// imageUnavailableMissing / imageUnavailableUndecodable are
+// ImageUnavailable's only two values (Finding 9). Kept as named constants,
+// not inline literals, so the Go producer and any future consumer cannot
+// drift on spelling.
+const (
+	imageUnavailableMissing     = "missing"
+	imageUnavailableUndecodable = "undecodable"
+)
+
+// CanvasImagePaint is Story 5.13's read-only, paint-only projection of one
+// placed image element's Go-owned display data: the declared media type,
+// the asset's content-addressed key, VALIDATED intrinsic pixel dimensions,
+// and the fit-and-centre draw rectangle already computed for the PDF
+// (resolveImagePlacement), in BAND-RELATIVE millipoints (matching this
+// component's own X/Y, D-5.13.2's "Frame" clause). It carries no asset
+// BYTES (AD-17: a paint-only projection must not carry anything that
+// reconstructs canonical bytes or the assets map): AssetKey is only a
+// LOOKUP TOKEN for the separate, explicit, per-key bytes request
+// (AssetBytes/wasm.Engine.AssetBytes) the canvas uses to obtain what it
+// paints — a key alone cannot reconstruct the assets map or canonical
+// bytes any more than a table id (already sent on every projection) can.
+// The inspector abbreviates this same key for DISPLAY (a formatting choice
+// over a value Go already supplied, same as it formats millipoints as
+// "12.5pt"); Go does not truncate it on the wire, because the canvas needs
+// the real key to ask for bytes.
+//
+// The whole field is present only when the referenced asset decodes
+// successfully through the recognised-image path — D-5.13.2's "Absence,
+// not zero": DecodedImage.Width()/Height() are reachable only through
+// decodeRecognisedImage, so a legally-loaded asset of an unrecognised media
+// type (or one whose bytes fail to decode) has no dimensions and no
+// computable rectangle. Rather than carry two independently-absent signals
+// (a known media type but a missing rectangle), the ENTIRE paint is absent
+// together — ONE Go-side signal drives both AC2's inspector failure text
+// and AC3's canvas placeholder, never two.
+type CanvasImagePaint struct {
+	MediaType  string `json:"mediaType"`
+	AssetKey   string `json:"assetKey"`
+	Width      int64  `json:"width"`
+	Height     int64  `json:"height"`
+	DrawX      int64  `json:"drawX"`
+	DrawY      int64  `json:"drawY"`
+	DrawWidth  int64  `json:"drawWidth"`
+	DrawHeight int64  `json:"drawHeight"`
 }
 
 const maxCanvasBindingString = 256
@@ -172,7 +231,119 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 	if err := addCanvasTextPaint(t, &projection, fs); err != nil {
 		return CanvasProjection{}, err
 	}
+	if err := addCanvasImagePaint(t, &projection); err != nil {
+		return CanvasProjection{}, err
+	}
 	return projection, nil
+}
+
+// addCanvasImagePaint is addCanvasTextPaint's sibling for image components
+// (D-5.13.2's "Producer" clause): a paint PRODUCER invoked from
+// CanvasWithTextPaint, never computed inside setComponentAsset or any other
+// command — every mutating command's own Canvas(t) is discarded and
+// recomputed by wasm/engine.go, so the paint must be derivable from
+// template state alone, exactly like text paint.
+//
+// It builds each run in the BAND frame (element.X/Y untranslated by band
+// origin, matching this component's own X/Y) and calls the same
+// resolveImagePlacement collectImageRuns/renderDocument use for the PDF —
+// never a second fit computation. canvas_image_paint_test.go asserts that
+// this band-relative rectangle is exactly a translation of the page-absolute
+// one collectImageRuns/resolveImagePlacement produce, rather than assuming
+// it from the two call sites merely sharing a function.
+//
+// A missing asset key or a decode failure (unrecognised media type or
+// malformed bytes) leaves this component's Image field absent and does NOT
+// fail the whole projection — Render (render.go) is the located, fatal
+// diagnostic for a genuinely broken document; this paint-only projection
+// must stay paintable (AC3: "not a crash") even for a document a save
+// cannot yet produce a clean render from.
+func addCanvasImagePaint(t *Template, projection *CanvasProjection) error {
+	components := make(map[string]*CanvasComponent, len(projection.Components))
+	for i := range projection.Components {
+		component := &projection.Components[i]
+		components[component.ID] = component
+	}
+	for _, band := range []struct {
+		name     string
+		elements []template.Element
+	}{
+		{"pageHeader", t.doc.Bands.PageHeader.Elements},
+		{"content", t.doc.Bands.Content.Elements},
+		{"pageFooter", t.doc.Bands.PageFooter.Elements},
+	} {
+		for _, element := range band.elements {
+			if element.Type != template.ElementImage {
+				continue
+			}
+			component := components[string(element.ID)]
+			if component == nil || component.Band != band.name {
+				return fmt.Errorf("folio: canvas image component %q is missing from geometry projection", element.ID)
+			}
+			if !element.Width.Set || !element.Height.Set || !element.Asset.Set || element.Asset.Null {
+				// Load-time validation (parse_bands.go) already makes these
+				// required for a successfully parsed document — handled
+				// rather than assumed, never reached in practice.
+				continue
+			}
+			assetKey := element.Asset.Value
+			asset, ok := t.doc.Assets[assetKey]
+			if !ok {
+				missing := imageUnavailableMissing
+				component.ImageUnavailable = &missing
+				continue
+			}
+			raw, err := template.DecodeAssetBytes(asset)
+			if err != nil {
+				undecodable := imageUnavailableUndecodable
+				component.ImageUnavailable = &undecodable
+				continue
+			}
+			img, err := template.DecodeImageForRender(asset.MediaType, raw, assetKey, string(element.ID))
+			if err != nil {
+				undecodable := imageUnavailableUndecodable
+				component.ImageUnavailable = &undecodable
+				continue
+			}
+			run := imageRunSource{elementID: string(element.ID), assetKey: assetKey, x: element.X, y: element.Y, boxW: element.Width.Value, boxH: element.Height.Value}
+			drawX, drawY, drawW, drawH := resolveImagePlacement(run, img)
+			width, err := canvasDerived("image intrinsic width", geom.Length(img.Width()))
+			if err != nil {
+				return fmt.Errorf("folio: canvas image element %s: %w", element.ID, err)
+			}
+			height, err := canvasDerived("image intrinsic height", geom.Length(img.Height()))
+			if err != nil {
+				return fmt.Errorf("folio: canvas image element %s: %w", element.ID, err)
+			}
+			dx, err := canvasDerived("image draw x", drawX)
+			if err != nil {
+				return fmt.Errorf("folio: canvas image element %s: %w", element.ID, err)
+			}
+			dy, err := canvasDerived("image draw y", drawY)
+			if err != nil {
+				return fmt.Errorf("folio: canvas image element %s: %w", element.ID, err)
+			}
+			dw, err := canvasDerived("image draw width", drawW)
+			if err != nil {
+				return fmt.Errorf("folio: canvas image element %s: %w", element.ID, err)
+			}
+			dh, err := canvasDerived("image draw height", drawH)
+			if err != nil {
+				return fmt.Errorf("folio: canvas image element %s: %w", element.ID, err)
+			}
+			component.Image = &CanvasImagePaint{
+				MediaType:  asset.MediaType,
+				AssetKey:   assetKey,
+				Width:      int64(width),
+				Height:     int64(height),
+				DrawX:      int64(dx),
+				DrawY:      int64(dy),
+				DrawWidth:  int64(dw),
+				DrawHeight: int64(dh),
+			}
+		}
+	}
+	return nil
 }
 
 func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) error {

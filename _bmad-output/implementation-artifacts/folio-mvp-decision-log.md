@@ -16,6 +16,59 @@ Entries are append-only: a reversal is appended, never a rewrite.
 
 ## Lead Grounding
 
+### Refresh — 2026-08-29 (Epic 5 reopened for Story 5.13, after Epic 6 boundary `f1b4d65`)
+
+*Filed by the orchestrator from the continuing run's engineering-lead refresh. The lead re-grounded
+from this section and prior rulings, verified only the post-Epic-6 delta, the reopened tracker, the
+Story 5.13 draft and the code it turns on, and did not re-derive settled direction from the spine.*
+
+**Verified delta.** Epic 6 is complete: `epic-6-boundary-gate.md` records **PASS** at the Story 6.7
+commit `44121b8`, with no release tag cut. Branch is `designer-inspector-tabs`; HEAD is `3a52ae4`.
+Epic 5 has been reopened — `sprint-status.yaml` now reads `epic-5: in-progress` with
+`5-13-import-an-image-and-set-it-on-an-image-component: ready-for-dev`, and `epics.md` carries the
+matching Story 5.13 section. The Epic 5 PASS at `4bd6331` stands as baseline-anchored evidence for
+Stories 5.1-5.12 and is not falsified by the reopening; a **second** Epic 5 boundary gate is owed
+once 5.13 lands. The modified `story-6.7-roundtrip-manifest.json` and the untracked `.agents/`,
+`planning-artifacts/research/` and `test-data/` are unrelated and stay excluded from every commit.
+
+**Two commits sit after the Epic 6 gate with no story key and no story file, and they are not
+cosmetic.** `eef7fbb` changed **canonical-byte-producing engine code**: `createComponentInBand`
+(`folio-go/component_commands.go`) now adopts `defaultFontFamily` onto every palette-placed text
+element, so the same author action serializes different `.folio` bytes than the gate measured; and
+`folio-go/wasm/cmd/engine/main.go` replaced the fixed `ENGINE_REJECTED` / render-failure text with
+the engine's own bounded message, which is Story 6.6's diagnostic contract surface. That commit
+also carries, by its own message, in-progress owner dev-bypass work in `offline-lifecycle.ts` /
+`main.tsx` / `verify-offline-release.mjs` letting the dev server start the engine with no release
+payload. `3a52ae4` edited five Playwright e2e specs — the suite whose green the Epic 6 gate
+recorded — plus `App.tsx`, `App.css` and `DataPanel.tsx`. **The Epic 6 gate therefore no longer
+describes HEAD**, while `sprint-status.yaml` still reads `epic-6: done`. Resolved as D-5.13.6.
+
+**Direction carried into Story 5.13.** Go/wasm remains the sole owner of canonical `.folio` state,
+mutation, validation, serialization, layout, diagnostics, preview identity and PDF bytes. AD-9's
+asset contract is unchanged: keyed by the SHA-256 of the decoded bytes, base64 hard-wrapped at 76
+columns, sorted keys, `Parse(Serialize(d)) == d`. AD-24's Images clause binds `designer` as well as
+the engine — an image is fit-and-centred in integer millipoints and **never sized from its
+intrinsic pixel dimensions**, so the canvas is already forbidden from computing its own fit; AD-17
+bans browser text measurement and grants the browser rasterization only. AD-20's one capability
+decision, AD-21's per-feature golden and FR33's embedded-never-linked rule all hold unchanged.
+D-1.8.1 (as amended) stays in force: `mediaType` is an **open** set at the format level, unrecognised
+types are never refused by `decodeAssets`, and `render_image_test.go` asserts that an *orphaned*
+unrecognised-mediaType asset must load and render clean (RP-11's positive control).
+
+**Pressure points.** Story 5.13's asset command must be a new entry in the versioned
+component-command vocabulary, not an `asset` key in `applyPropertyChanges`, whose grammar admits one
+scalar and whose `clear`/`null` operations have no meaning for an element that may never be
+asset-less. The canvas paint must be produced beside `addCanvasTextPaint` in
+`folio-go/page_setup.go` and reach the browser through `CanvasWithTextPaint`, because every mutating
+command's own `Canvas(t)` projection is discarded and recomputed in `wasm/engine.go`. The story's own
+Task 2 asked for "the bytes-or-handle the canvas paints from" on the snapshot, which its AC3 forbids;
+resolved as D-5.13.2. Orphan collection must be scoped to the key this command itself orphaned, or an
+unqualified sweep silently deletes legally-orphaned assets the shipped tests require to survive
+(D-5.13.3). Undo is byte-snapshot replay (`Engine.undo [][]byte`, `restore` reparses), so AC4's
+restore-on-undo obligation is already satisfied by the existing mechanism and needs no new machinery.
+
+**One owner decision was forced** and is recorded as D-5.13.6.
+
 ### Refresh — 2026-08-28 (Epic 6 opening after boundary `49df7d3`)
 
 *Filed by the orchestrator from the continuing run's engineering-lead refresh. The lead re-grounded
@@ -14093,3 +14146,367 @@ is proved through the existing AD-14 located diagnostic during validate/render.
 
 **How we'd know it was wrong.** Reopen this only if Folio adopts an explicit persisted data schema
 whose versioned authority—not a sample file—can safely participate in canonical binding validation.
+
+---
+
+## Story 5.13 — image asset authoring (Epic 5 reopened)
+
+### D-5.13.0 — Run standing decisions
+**Owner decision** (channel, heavy-test cadence, checkpoints), taken at the run's opening.
+
+**Verdict.** Mid-run questions are asked **at the terminal**, not over Telegram. The designer
+Playwright suite **runs inside Story 5.13**; the four-target hash matrix **defers** to the second
+Epic 5 boundary gate. The pipeline runs **continuously**, pausing only for decisions the lead rules
+are genuinely the owner's.
+
+**Consequences.** Every later escalation this run uses `AskUserQuestion`, not `telegram-ask.sh`. The
+story's Delivery Log must name the matrix as written-but-unrun. See D-5.13.5 for the override
+reasoning the cadence half of this rests on.
+
+---
+
+### D-5.13.1 — Setting an image asset is a new component command, not a property change
+**Orchestrator decision**, on the lead's ruling. Routine in outcome, but the *ground* matters.
+
+**Verdict.** Add a new entry to the versioned component-command vocabulary in
+`folio-go/component_commands.go`, routed through `wasm.Engine.Apply`. Do not add an `asset` key to
+`applyPropertyChanges`'s `allowed` map or to `propertyOrder`.
+
+**Situation.** The story's first draft justified this as "a property op takes a scalar the browser
+typed, and this takes bytes" — true, but soft enough that a developer under time pressure could
+reasonably talk themselves out of it. The structural ground is firmer. `propertyChange` unmarshals
+into a map and rejects anything that is not exactly one or two keys of the form `{op, value?}` with
+`op` in `{set, clear, null}`. `propertyPath` returns a **single** key name as the diagnostic
+location. `applyPropertyChanges` enforces `known != len(changes)` against a closed `propertyOrder`.
+
+**In simple terms.** The property vocabulary is a form with one box per field, and every box takes
+one short answer. An asset is not one answer — it is a file plus a label saying what kind of file it
+is, and the two must be judged together. Worse, two of the three things the form knows how to do
+(`clear`, `null`) are meaningless here: an image element is never legally asset-less, so "empty this
+box" has no valid outcome. Admitting `asset` would mean either teaching the form a second grammar or
+smuggling base64 through the single-answer box, and either way the closed vocabulary stops being
+closed — which is the only property that made it safe to reason about.
+
+**Options considered.** (a) *`asset` as a property op* — rejected on the grammar collision above.
+(b) *Two property ops, bytes and mediaType* — rejected: they must be validated together, and two ops
+means a window where the document has one without the other. (c) *A new command* — chosen.
+
+**Why this wins.** It keeps the property vocabulary closed and lets the asset path carry its own
+validation without weakening a grammar seven stories depend on. The accepted cost is one more command
+kind in the vocabulary and its own admission tests.
+
+**Consequences.** The command preserves the existing `bytes.Equal(canonical, e.bytes)`
+short-circuit, so re-choosing the picture already set is not a committed mutation: revision unchanged,
+neither history branch pushed.
+
+**How we'd know it was wrong.** If the new command's validation ends up duplicating most of
+`applyPropertyChanges` rather than being genuinely different, the separation was cosmetic.
+
+---
+
+### D-5.13.2 — The canvas takes Go's draw rectangle; the snapshot carries no asset bytes
+**Orchestrator decision**, on the lead's ruling. Load-bearing.
+
+**Verdict.** The canvas paints an image inside the fit-and-centre rectangle `resolveImagePlacement`
+already computes, projected as engine-owned millipoints. The paint is produced by a sibling of
+`addCanvasTextPaint` called from `CanvasWithTextPaint` (`folio-go/page_setup.go:167-178`), built in
+the **band frame**, with the translation against the render path's page-absolute frame asserted in a
+test. The snapshot carries media type, validated intrinsic pixel dimensions, abbreviated key and the
+rectangle — **and no asset bytes**. Paintable bytes arrive on a separate per-key request.
+
+**Situation.** The story asked whether projecting engine geometry onto the canvas leaks layout
+authority across AD-17. It does not — it is the opposite. **AD-24's Images clause binds `designer`**,
+not only the engine: an image is fit-and-centred in integer millipoints and never sized from its
+intrinsic pixel dimensions. A browser reaching for `object-fit` is the violation; taking Go's
+rectangle is compliance. But the story's Task 2 also asked the snapshot to carry "the
+bytes-or-handle the canvas paints from", which its own AC3 forbids — an internal contradiction that
+would have been resolved by whichever the developer read second.
+
+**In simple terms.** Two people must hang the same picture in the same frame. One of them has the
+tape measure. The wrong fix is for the second person to eyeball it and hope; the right fix is to be
+handed the measurement. That is what projecting the rectangle does. Separately: handing someone the
+measurement is not the same as handing them the whole photo album. The snapshot is the measurement.
+The photo is fetched one at a time, when there is actually something to hang.
+
+**Options considered.** (a) *Browser computes the fit with `object-fit: contain`* — rejected: a
+second source of truth about output geometry, which AD-24 forbids in the designer specifically.
+(b) *Snapshot carries the bytes* — rejected: on every snapshot that is the assets map by another
+name, and it hands TypeScript everything it needs to reconstruct canonical state. (c) *Rectangle on
+the snapshot, bytes per-key on demand* — chosen.
+
+**Why this wins.** It gives the canvas exact placement with no second geometry authority, and keeps
+the projection lossy in the way AD-17 requires. The accepted cost is an extra request per distinct
+asset and its cache/lifetime handling in the browser.
+
+**Consequences.** Four specifics now bind and are written into AC3: band frame with an asserted
+translation equality; producer beside `addCanvasTextPaint`; a two-producer proof shaped like
+`TestCanvasTextPaintExactlyMatchesTheShippingRunPath` (equal to the *shipping run path*, not merely
+computed from the same function); and **absence, not zero**, for an asset whose media type this
+version cannot decode — such an asset is legal in the format and has no computable rectangle.
+
+**How we'd know it was wrong.** A canvas image that visibly disagrees with Preview at any zoom, or a
+JS-unsafe number reaching the projection because a derived coordinate skipped `canvasDerived`.
+
+---
+
+### D-5.13.3 — Orphan collection is scoped to the key the command itself orphaned
+**Orchestrator decision**, on the lead's ruling. This one corrected a real defect in the drafted story.
+
+**Verdict.** The asset command collects **only the previous asset key of the element it just
+repointed**, and only when no other element still references that key after the mutation. Never a
+document-wide sweep. The story's delete-path clauses are narrowed out of AC4.
+
+**Situation.** The story as drafted said `assets` must contain "no entry unreachable from any
+element". That reads as obviously correct and is wrong. `folio-go/render_image_test.go`'s
+`TestRenderUnrecognisedMediaTypeErrorsOnlyWhenDrawn` requires an **orphaned** asset of an
+unrecognised media type to load and render clean — RP-11's positive control, protecting D-1.8.1 (as
+amended)'s rule that `mediaType` is an open set. A document may legally carry an unreferenced asset.
+
+**In simple terms.** Someone asks you to throw out the packaging after unwrapping a parcel. The
+drafted wording instead said "throw out anything in the room nobody is currently holding" — which
+also bins the spare key on the sideboard that was deliberately left there. Concretely: open a
+`.folio` that carries an asset no element references, set any image, and the author's asset silently
+vanishes from their own file, and the round-trip no longer returns what they opened.
+
+**Options considered.** (a) *Document-wide sweep* — rejected: breaks a shipped test and silently
+mutates state the command did not create. (b) *No collection at all* — rejected: replacing a logo ten
+times would leave eleven assets, and AD-9's dedup promise would erode in the one direction authors
+actually exercise. (c) *Collect only what this mutation orphaned* — chosen.
+
+**Why this wins.** It makes "replace a logo ten times, get one asset" true without turning an
+authoring command into a garbage collector for the whole document. The accepted cost is that a
+genuinely orphaned asset from some other source persists — which is exactly what the shipped test
+wants.
+
+**Consequences.** Undo needs no new machinery and must not grow any: history is byte-snapshot replay
+(`Engine.undo` holds canonical byte strings; `restore` reparses one whole at `wasm/engine.go:274`),
+so undoing a mutation that collected an asset restores it by construction. AC4 now says *prove that,
+do not build it* — the wording matters, because "prove the asset comes back" invites a developer to
+invent inverse-command history that the engine deliberately does not have.
+
+**How we'd know it was wrong.** `TestRenderUnrecognisedMediaTypeErrorsOnlyWhenDrawn` going red, or a
+saved file losing an asset the author never touched.
+
+---
+
+### D-5.13.4 — The asset byte bound derives from the protocol envelope, on a host-memory ground
+**Orchestrator decision**, on the lead's ruling.
+
+**Verdict.** Derive the bound from the existing `MAX_ENGINE_PAYLOAD_BYTES` (8 MiB,
+`folio-designer/src/engine-protocol.ts:6`) and state its ground honestly as wasm linear-memory
+headroom. Enforce it **in Go**; the browser must not pre-reject on size.
+
+**Situation.** The story's first draft said to pin a bound "with its rationale in the same style as
+`maxImagePixelDimension`". That constant's justification is genuinely arithmetic — `ScaleRound`
+panics on int64 overflow, and 10^6 keeps `bw*H` four orders clear of the ceiling. A byte bound has no
+such derivation; it is a memory judgement. Borrowing the arithmetic style would have dressed a
+judgement call as a proof.
+
+**Why this wins.** Reusing the envelope keeps one number instead of two that can disagree. The
+accepted cost is that the bound is a judgement, and it is now labelled as one.
+
+**Consequences.** The protocol envelope may reject the message, but the author-facing "file too
+large" diagnostic AC2 requires comes from the engine, and the two must not disagree about the
+threshold.
+
+---
+
+### D-5.13.5 — D-000.4 per-story override: e2e granted, matrix declined
+**Orchestrator decision** (D-000.4 assigns the override policy to the orchestrator explicitly),
+ruled per suite by the lead and confirmed by the owner's cadence choice at D-5.13.0.
+
+**Verdict.** Story 5.13 **runs the designer Playwright e2e suite in its own story**. It **does not**
+run the four-target hash matrix, which is due at the second Epic 5 boundary gate.
+
+**Situation — the matrix half.** D-000.4's override criterion is literal: an override needs a new
+*source of cross-target divergence*, not a new golden. 5.13 introduces none. The digest is
+`crypto/sha256`, already executed on all four arms by `decodeAssets` on every load; the wrapping is
+the existing `writeAssets`; the embedding is Story 1.8's untouched passthrough, so no compressor is
+invoked and R4 stays shut; the fit is integer cross-multiply plus `ScaleRound`. "First time asset
+bytes enter canonical `.folio` from the browser" is a **provenance** novelty, not a divergence one —
+and the matrix cannot observe it, since two of its four arms have no browser at all. This is
+materially the Story 2.5 shape, whose override was declined at a distance of three stories; 5.13 is
+at one.
+
+**Situation — the e2e half.** The criterion's parallel for e2e is whether the story's own deliverable
+is observable by any suite that runs per-story, and here it provably is not: a local file picker
+cannot be exercised in jsdom, and `createObjectURL`/`revokeObjectURL` are inert stubs there. AC2's
+picker path and AC3's revocation obligations are the story's two principal new browser seams and both
+are invisible to the unit suite.
+
+**In simple terms.** This is not a hypothetical. Commit `eef7fbb`, landed on this branch hours before
+the story was drafted, is a measured instance of exactly this gap on exactly this file:
+`capability.ts` bound `showOpenFilePicker` to a plain object literal, Chrome brand-checks the
+receiver, and every File System Access-tier picker call threw "Illegal invocation" — Open, Save and
+Load Sample JSON all broken in the shipped designer. It passed the entire unit suite and survived the
+whole Epic 5 Playwright boundary gate. Its own commit message names the mechanism: covered only by a
+test asserting the receiver, "which the `vi.fn()` doubles could never catch." Story 5.13 adds a
+**third** picker on that same seam.
+
+**Why this wins.** The wall-clock the owner bought with D-000.4 was "a Docker arm64 boot per story,
+50 times." One Playwright run is not that cost, and the e2e suite is not what was traded. Declining
+the matrix keeps the owner's actual bargain intact. The accepted cost: a divergence introduced here
+is attributable only to the second Epic 5 gate's span.
+
+**Consequences.** The e2e coverage must exercise the **File System Access tier**, not only the
+`<input type="file">` fallback — `eef7fbb`'s defect was tier-specific. A unit test must pin the new
+picker's **receiver**. The matrix must be named in the Delivery Log as written-but-unrun.
+**This decline flips** if implementation reaches for any image decoder or re-encoder: `image.go` is a
+chunk/segment walker and no image package exists in the module (AD-1/AC10), so a decoder would be
+both a new dependency and a new divergence source, and the override must be re-raised before landing.
+
+**How we'd know it was wrong.** The second Epic 5 gate showing a hash divergence that bisects to
+5.13 — which would mean a divergence source entered that this ruling did not anticipate.
+
+---
+
+### D-5.13.6 — Epic 6's gate record is amended rather than re-run; re-measurement folds into the owed Epic 5 gate
+**Owner decision.**
+
+**Verdict.** Amend `epic-6-boundary-gate.md` now to state that its **PASS** covers baseline `44121b8`
+only, naming the post-gate delta precisely. Leave `epic-6: done` in the tracker, annotated. Let the
+**second Epic 5 boundary gate**, already owed by Story 5.13's reopening, be the single run that
+re-measures everything.
+
+**Situation.** D-000.4 makes the epic-boundary run a gate: `epic-<n>: done` is not written until it
+passes. It says nothing about engine code landing *after* a gate has passed with no story attached,
+and two commits did exactly that. `eef7fbb` changed canonical-byte-producing code —
+`createComponentInBand` now adopts a default font chain onto every palette-placed text element, so
+the same author action serializes different bytes than the gate measured — and changed Story 6.6's
+diagnostic contract surface, and carries in-progress owner dev-bypass work letting the dev server
+start the engine with no release payload. `3a52ae4` edited five of the eleven Playwright specs the
+gate ran. `epic-6: done` was written correctly at the time; it simply no longer describes HEAD.
+
+**In simple terms.** The building passed inspection, and then two people changed the wiring without
+filing anything. Nothing has shipped on the stale certificate — no release tag was cut — but the next
+inspection is now covering both the new work and the undocumented wiring at once, so if it fails you
+have two places to look instead of one.
+
+**Options considered.** (a) *Re-run the Epic 6 gate now* — rejected by the owner on wall-clock: it
+pays the Docker arm64 boot twice in two days to measure a tree that is about to change again for
+5.13. (b) *Amend and fold into the owed Epic 5 gate* — chosen. (c) *Retro-story the two commits* —
+not taken as a story; the record half is absorbed into the gate amendment instead, which is what the
+dev bypass actually needed. (d) *Log the drift and change nothing* — rejected: it would leave Epic
+6's byte-identity evidence permanently describing a commit nobody runs.
+
+**Why this wins.** One measurement run instead of two, at a moment when a second Epic 5 gate is owed
+regardless. The accepted downside is stated plainly and is real: for the duration of Story 5.13 the
+Epic 6 evidence is known-stale and labelled so, and a red second Epic 5 gate needs a **two-way**
+bisect — across 5.13 and across the two unstoried commits.
+
+**Consequences.** Story 5.13's commit stages only its own files; it does not absorb either commit,
+which would make its own evidence unattributable and would put an Epic 6 contract change on an Epic 5
+story's record. Separately, under AD-21: any golden fixture recording a palette-placed text element
+has moved because of the `defaultFontFamily` change, and a hash change there must be investigated as
+an intended versioned change, never regenerated on sight.
+
+**How we'd know it was wrong.** The second Epic 5 gate going red in a way that cannot be attributed
+within a reasonable bisect — which would argue for gating unstoried engine commits in future rather
+than absorbing them into the next scheduled run.
+
+---
+
+### D-5.13.2 (amendment) — full key on the wire, abbreviated only for display
+**Orchestrator decision**, on the lead's ruling overruling its own earlier wording. The original
+D-5.13.2 stands; this corrects one clause of it.
+
+**Verdict.** `CanvasImagePaint.AssetKey` carries the **full 64-hex key** on the projection. AC2's
+"abbreviated key" is a **display** requirement on the inspector, not a constraint on the transport.
+The developer built it this way and was right to.
+
+**What was wrong.** "Abbreviated" was a display concern written into the transport clause of
+D-5.13.2, where it actively fought the invariant sitting beside it. That ruling requires paintable
+bytes to arrive on "a separate, explicit, **per-key** request" — and a per-key request needs a real
+lookup token. An abbreviated key is not one: resolving a prefix is either ambiguous or forces the
+browser to hold a key table, and a browser-held key table **is** the assets-map mirror AD-17 forbids.
+The clause pushed toward the exact defect the invariant exists to prevent.
+
+**In simple terms.** Asking for a file by the first few characters of its name only works if you
+already have the directory listing — so the "shorter" version quietly requires the browser to hold
+the very thing it was not allowed to have. The abbreviation is a formatting choice over a value Go
+supplied whole, exactly like rendering millipoints as "12.5pt".
+
+**The invariant, restated so it cannot be misread again.** One key for the one selected element;
+never the key set, never the bytes. A key is an identifier over content the user already holds and
+reconstructs nothing. `CanvasComponent` has carried element ids on every projection since Story 5.1
+on the same reasoning. Verified in the shipped code: `CanvasImagePaint` (`folio-go/page_setup.go:129`)
+carries media type, full key, validated dimensions and the band-relative draw rectangle — and no
+bytes — with `folio-go/asset_bytes.go` as the separate per-key route.
+
+**Lesson, recorded because it recurred.** Twice in this story a binding guardrail named a *mechanism*
+before the code had been read, and over-constrained the implementation. Standing rule: the verdict
+line is the invariant; where a clause names a mechanism that fights the invariant, **the invariant
+governs** and the mechanism is the thing that yields.
+
+---
+
+### D-5.13.7 — Story 5.13 owes an AD-21 golden fixture, and it is verifiable in this story
+**Orchestrator decision**, on the lead's ruling, after the developer shipped none.
+
+**Verdict.** The golden is **owed** and lands **in this story before `done`**. Shipping it is fully
+compatible with the declined matrix override. The developer's Go tests against real PNG/JPEG bytes
+stay, but do not discharge AD-21.
+
+**Situation.** The developer skipped the fixture on two grounds, both checked in the tree and both
+false. *"`fixtures/` is the same apparatus the declined matrix consumes"* — it is not: the matrix is
+`folio-go/matrix_test.go` under `//go:build matrix`, driven by a hand-registered `matrixDocuments`
+table with an explicit `fixtureRelPath` per document, so a new directory enrols nothing and
+participation is opt-in by hand. *"It would sit unverified until the second Epic 5 gate"* — it would
+not: `folio-go/fixture_test.go` carries **no build tag**, so `TestRenderMatchesGoldenFixture` runs in
+the ordinary per-story `go test ./...`, re-rendering through the public `Render` path against the
+recorded `sha256` and cross-checking `expected.pdf`'s own digest so the fixture's halves cannot drift.
+
+**In simple terms.** One target verified now, three deferred to the gate — which is what every golden
+in this program already does. D-000.4's own text draws the line: "Unit tests, `go vet` / lint, and
+the build run on **every** story regardless." Declining the matrix override never touched the fixture
+obligation; the two sit on opposite sides of that sentence.
+
+**Why the fixture is not a one-line instruction.** The passthrough embedding path is unchanged, so a
+plain render golden would near-duplicate `fixtures/image-embed/`. What 5.13 changes is the **canonical
+`.folio` bytes the authoring command produces** — digest-as-key, 76-column wrapping, sorted keys,
+insert-if-absent, repoint. So `input.folio` must **be the captured canonical output of the real
+command**, and the test must assert both (a) the render matches `expected.json` in the
+`TestRenderMatchesGoldenFixture` shape, and **(b) running the authoring command on the source image
+bytes reproduces `input.folio` byte-for-byte**. (b) is the load-bearing half: committed literal
+against live computation. It red-proofs cleanly — change the wrap width, key derivation or key
+ordering and the bytes disagree. Without (b) the story ships a second `image-embed`.
+
+**Consequences.** Register in `matrixDocuments` now with `folioGoVersion`/`goToolchain` matching the
+existing fixtures — `assertFixturesShareToolchain` (matrix_test.go:391) fails loudly on drift, and a
+mismatched fixture would red the second Epic 5 gate for the wrong reason. Prove it compiles under
+`-tags matrix`; do not run it. Registering now puts the obligation in code so the leg fires at the
+gate without anyone remembering. Hashes are derived Go-side from canonical bytes on the local target,
+never transcribed from a browser artifact or the e2e run.
+
+**Not deferred to `deferred-work.md`.** A deferral needs a reason the work cannot be done now, and
+there is none. AD-21's rule is that no change lands without a fixture covering it, so landing without
+one is the exact event AD-21 names — and a deferral entry would ask the same apparatus that already
+failed once to catch it later.
+
+**How we'd know it was wrong.** Assertion (b) never failing across a real change to the wrapping or
+key derivation would mean it is not actually pinning the command's output.
+
+---
+
+### D-5.13.8 — Guardrail 10's blanket `fixtures/` wording is a template defect
+**Orchestrator decision.**
+
+**Verdict.** Guardrail 10 in Story 5.13 is reworded from "Do not modify ... fixtures/goldens/fonts
+..." to *"do not disturb fixtures, goldens or fonts belonging to **other** stories"*, with an explicit
+carve-out: this story's own AD-21 fixture is required by Task 5 and is not covered by the guardrail.
+
+**Situation.** As written, guardrail 10 flatly contradicted the same story's Task 5, which requires an
+AD-21 golden. The developer implemented the text faithfully and chose the guardrail — reasonable
+behaviour given a document that said both things.
+
+**Why this is worth its own entry.** The failure did not surface as a contradiction; it surfaced as a
+*developer decision*, reported as a deviation with a plausible rationale attached. A boilerplate
+guardrail silently overrode an explicit story task, and it took a lead ruling and two tree checks to
+establish which one was authoritative. The wording is inherited from the Story 6.2 template, so
+**every designer story cloned from that template carries the same landmine.**
+
+**Consequences.** Fix the wording in Story 5.13 now. Any future story cloned from the 6.2 template
+must have this guardrail reconciled against its own tasks before development starts.
+
+**How we'd know it was wrong.** Another story reporting a skipped obligation with a guardrail citation
+as its justification.

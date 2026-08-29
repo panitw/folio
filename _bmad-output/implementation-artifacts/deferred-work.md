@@ -180,6 +180,39 @@ all → **Fatal** on the vacuity path; moving the single declaration → **both*
 
 ## Open
 
+### DW-22 — `ImagePaint` fetches paintable bytes once per ELEMENT with no cache, not once per distinct asset
+
+**Owner:** **the second Epic 5 boundary gate** (already owed by Story 5.13's reopening, D-5.13.6) —
+a legitimate, already-scheduled owner for this deferral, not a new one invented for it.
+
+**Raised at:** Story 5.13's finisher pass, Finding 18 of that review.
+
+**What.** D-5.13.2 accepted, as the cost of keeping the canvas snapshot lossy (AD-17), "an extra
+request per **distinct** asset and its cache/lifetime handling in the browser." What shipped
+(`folio-designer/src/App.tsx`'s `ImagePaint`) is a request per **element instance**, with no cache
+at all: N image components sharing one asset key issue N separate `'asset'` worker round-trips,
+each carrying the full decoded bytes back through the single FIFO-correlated worker, and the same
+N requests fire again on every `generation` change (Open, Start blank, undo/redo).
+
+**Why deferred rather than fixed now.** On a document with a header logo repeated across a few
+bands this is a small, unmeasured cost; on a document with many placed images it serializes the
+worker behind repeated multi-megabyte transfers, but no story to date has produced such a document,
+so there is no measured regression to fix against — only the accepted-but-unbuilt design point
+D-5.13.2 named. Building a keyed cache (one in-flight request and one object URL per distinct
+asset key, revoked when the last referent unmounts) is a real, non-trivial addition to `ImagePaint`
+that the mandatory Blockers and Majors already fixed in this story's finisher pass did not touch,
+and scope discipline (the finisher's "minimal change that resolves the concern" heuristic) argues
+against expanding this commit to build it speculatively.
+
+**The trigger.** Either (a) a story places or measures a document with enough image elements/shared
+assets that the N-requests-no-cache shape becomes an observed cost, or (b) the second Epic 5
+boundary gate's own measurement pass surfaces it, whichever comes first.
+
+**Retire when:** `ImagePaint` (or its replacement) keys the per-key bytes fetch by asset key at the
+canvas level — one in-flight request and one object URL per distinct key, revoked when the last
+referent unmounts — or the accepted cost is re-confirmed explicitly with a measurement showing it
+does not matter in practice.
+
 ### DW-21 — Three heavy tests exist but run ONLY under `FOLIO_HEAVY=1`; the Epic 4 boundary gate must set it
 
 **Owner:** **the Epic 4 boundary gate run**, and — because a gate has failed as an owner before

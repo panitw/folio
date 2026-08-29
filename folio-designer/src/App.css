@@ -53,6 +53,8 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-text-paint { inset: 0; pointer-events: none; font-size: var(--text-font-size); font-weight: var(--text-font-weight); font-style: var(--text-font-style); }
 .canvas-text-line { top: var(--text-line-baseline); left: 0; height: var(--text-line-advance); line-height: 1; transform: translateY(calc(-1 * var(--text-font-size))); }
 .canvas-text-fragment { left: var(--text-fragment-x); top: 0; font-family: 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC', sans-serif; }
+.canvas-image-paint { position: absolute; display: block; pointer-events: none; -webkit-user-drag: none; user-drag: none; }
+.canvas-image-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: var(--space-2); pointer-events: none; -webkit-user-drag: none; user-drag: none; color: var(--color-page-ink-muted); font: var(--type-mono); text-align: center; }
 .canvas-component-line { height: max(2px, var(--component-height)); background: var(--color-page-ink); }
 .canvas-component-selected { outline: 2px solid var(--color-select); outline-offset: 1px; }
 .canvas-component:focus-visible { outline: 2px solid var(--color-select); outline-offset: 2px; }

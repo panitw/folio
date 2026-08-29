@@ -278,6 +278,190 @@ const imageTestTemplateJSON = `{
 }
 `
 
+// componentAssetImportKey is the SHA-256 (lowercase hex) of the source
+// image bytes setComponentAsset installs below — the same picture
+// component_asset_command_test.go's png1x1Gray() decodes (Go's own
+// internal/template/fixtures_test.go fixture: a real, valid 1x1 grayscale
+// PNG).
+const componentAssetImportKey = "541581d3ab4d47c46ce5bcfbe86f9e9369f425b41df11decff572d259fa22c65"
+
+// componentAssetImportSecondAssetKey is the SHA-256 (lowercase hex) of
+// jpeg4x4Bytes() (render_image_test.go's own real, decodable 4x4 JPEG
+// fixture) — the SECOND asset in componentAssetImportBaseTemplateJSON
+// below, on element e2. e2 is never touched by the command under test, so
+// this key survives it untouched, alongside componentAssetImportKey
+// (Finding 7, review of 2026-08-29: this second, DIFFERENT asset is what
+// makes the fixture's sorted-key claim genuinely falsifiable — see that
+// constant's doc comment).
+const componentAssetImportSecondAssetKey = "a3beda078fd65550fb477583f62a56b17fcb89a881b22606c1790cede7f9640a"
+
+// componentAssetImportBaseTemplateJSON is the STARTING document
+// TestComponentAssetImportCommandReproducesTheFixtureInput applies the
+// real setComponentAsset command to (fixture_test.go). Unlike
+// imageTestTemplateJSON (one image, one asset) it carries TWO image
+// elements/assets: e1 references imageTestAssetKey's 3x2 RGB PNG (the
+// same starting point image-embed/ and the pre-Finding-7 version of this
+// fixture both used) and e2 references componentAssetImportSecondAssetKey's
+// JPEG. The command below targets e1 ONLY — e2's asset is never
+// referenced by the mutation, so D-5.13.3's scoped orphan-collection must
+// leave it alone while e1's OLD asset (imageTestAssetKey, referenced by
+// nothing else) is correctly collected. The result therefore carries TWO
+// surviving assets under two DIFFERENT keys, which is what lets the
+// golden's sorted-key claim actually be falsified: with only one
+// surviving asset (the shape before this fix), reversing the sort order
+// in serialize.go has nothing to reorder and the golden stays green.
+const componentAssetImportBaseTemplateJSON = `{
+  "assets": {
+    "` + imageTestAssetKey + `": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAGElEQVR42mL6z8DAAMZMEOo/AwMg",
+        "AAD//zwUBf/NjsW5AAAAAElFTkSuQmCC"
+      ],
+      "mediaType": "image/png"
+    },
+    "` + componentAssetImportSecondAssetKey + `": {
+      "data": ["/9j/2wCEAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRQBAwQEBQQFCQUFCRQNCw0UFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFP/AABEIAAQABAMBIgACEQEDEQH/xAGiAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2gAMAwEAAhEDEQA/ALHw9/Z+8Ff8Iva/8Sz9R6D2rpP+GfvBX/QM/Uf4V0fw9/5Fe1/z2FdJX5lis0x3t5/vpbvqzuyHOsy/srDf7RP4I/afY//Z"],
+      "mediaType": "image/jpeg"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "image", "asset": "` + imageTestAssetKey + `", "x": 0, "y": 0, "width": 100, "height": 60},
+        {"id": "e2", "type": "image", "asset": "` + componentAssetImportSecondAssetKey + `", "x": 0, "y": 70, "width": 40, "height": 40}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 3,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// componentAssetImportTemplateJSON is fixtures/component-asset-import's
+// input.folio, captured verbatim (AC in Story 5.13's Task 5): the CANONICAL
+// output of one real setComponentAsset command (AD-9's digest-as-key, 76-col
+// wrap, sorted keys, insert-if-absent, repoint-with-orphan-collection) run
+// against componentAssetImportBaseTemplateJSON above, replacing element e1's
+// asset with png1x1Gray(). It is not hand-authored to resemble that output —
+// TestComponentAssetImportCommandReproducesTheFixtureInput (fixture_test.go)
+// re-runs the command and asserts byte-identity against this constant on
+// every ordinary `go test ./...`, so this string can never silently drift
+// from what the command actually produces. It carries TWO assets — e1's new
+// one (componentAssetImportKey) and e2's untouched one
+// (componentAssetImportSecondAssetKey), never repointed or collected by
+// this command — which is what makes the sorted-key ordering below (5 < a)
+// an actual, falsifiable claim rather than a single-entry map with nothing
+// to order (Finding 7, review of 2026-08-29).
+const componentAssetImportTemplateJSON = `{
+  "assets": {
+    "541581d3ab4d47c46ce5bcfbe86f9e9369f425b41df11decff572d259fa22c65": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAADklEQVR4nGJqAAQAAP//AIYAg0ye",
+        "IEsAAAAASUVORK5CYII="
+      ],
+      "mediaType": "image/png"
+    },
+    "a3beda078fd65550fb477583f62a56b17fcb89a881b22606c1790cede7f9640a": {
+      "data": [
+        "/9j/2wCEAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMU",
+        "FRUVDA8XGBYUGBIUFRQBAwQEBQQFCQUFCRQNCw0UFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
+        "FBQUFBQUFBQUFBQUFBQUFBQUFBQUFP/AABEIAAQABAMBIgACEQEDEQH/xAGiAAABBQEBAQEBAQAA",
+        "AAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGh",
+        "CCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hp",
+        "anN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV",
+        "1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQAC",
+        "AQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXx",
+        "FxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqS",
+        "k5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T1",
+        "9vf4+fr/2gAMAwEAAhEDEQA/ALHw9/Z+8Ff8Iva/8Sz9R6D2rpP+GfvBX/QM/Uf4V0fw9/5Fe1/z",
+        "2FdJX5lis0x3t5/vpbvqzuyHOsy/srDf7RP4I/afY//Z"
+      ],
+      "mediaType": "image/jpeg"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "asset": "541581d3ab4d47c46ce5bcfbe86f9e9369f425b41df11decff572d259fa22c65",
+          "height": 60,
+          "id": "e1",
+          "type": "image",
+          "width": 100,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "asset": "a3beda078fd65550fb477583f62a56b17fcb89a881b22606c1790cede7f9640a",
+          "height": 40,
+          "id": "e2",
+          "type": "image",
+          "width": 40,
+          "x": 0,
+          "y": 70
+        }
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 3,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// subprocessComponentAssetImportEnvVar is Story 5.13's SIXTEENTH selector
+// (joining the fifteen above — it replaces none of them): it renders
+// componentAssetImportTemplateJSON — fixtures/component-asset-import's
+// input.folio, the captured canonical output of one real setComponentAsset
+// command, not a hand-authored document — through the public Render path
+// and writes the bytes to stdout. Unlike subprocessImageEnvVar's
+// image-embed fixture, this selector's fixture pins the AUTHORING
+// COMMAND's output (AD-9's digest-as-key insertion, 76-column wrap, sorted
+// keys, repoint-with-orphan-collection), not merely a document that already
+// names an asset.
+const subprocessComponentAssetImportEnvVar = "FOLIO_SUBPROCESS_RENDER_COMPONENTASSETIMPORT"
+
 // fontTestTemplateJSON is a `.folio` document with one text element in
 // each of pageHeader, content and pageFooter, all resolving to the same
 // face via one fallback chain ("body" -> ["Roboto-Regular"]) — enough to
@@ -495,6 +679,19 @@ func TestMain(m *testing.M) {
 	}
 	if os.Getenv(subprocessImageEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(imageTestTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data("{}"), nil, nil)
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
+	if os.Getenv(subprocessComponentAssetImportEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(componentAssetImportTemplateJSON))
 		if err != nil {
 			os.Stderr.WriteString(err.Error())
 			os.Exit(1)

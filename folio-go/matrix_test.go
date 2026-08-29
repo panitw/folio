@@ -513,6 +513,17 @@ func captureImageRender(t *testing.T, target matrixTarget, binPath string) []byt
 	return runOnTarget(t, target, binPath, map[string]string{subprocessImageEnvVar: "1"})
 }
 
+// captureComponentAssetImportRender runs binPath with
+// FOLIO_SUBPROCESS_RENDER_COMPONENTASSETIMPORT=1 — Story 5.13's SIXTEENTH
+// selector (joining the fifteen above, replacing none): rendering
+// fixtures/component-asset-import/'s document — the captured canonical
+// output of one real setComponentAsset command, not a hand-authored
+// document — through the public Render path.
+func captureComponentAssetImportRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessComponentAssetImportEnvVar: "1"})
+}
+
 // captureMultiScriptRender runs binPath with
 // FOLIO_SUBPROCESS_RENDER_MULTISCRIPT=1 — Story 2.2's AC8 FOURTH
 // selector (D-1.8.6, joining the three above, replacing none): rendering
@@ -1446,6 +1457,22 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requireAlternatingRowsAreStriped,
 		wantPages:        1,
+	},
+	{
+		// Story 5.13's golden fixture. Registered in-story per the
+		// coordinator's ruling: matrix participation is opt-in per
+		// fixture, by hand, and this registration puts the obligation
+		// in code so the four-target leg fires automatically at the
+		// next Epic 5 boundary gate rather than depending on someone
+		// remembering — this story's own D-5.13.5 override declines
+		// only RUNNING the matrix now, not registering this fixture in
+		// it.
+		label:               "component-asset-import (setComponentAsset canonical output)",
+		slug:                "component-asset-import",
+		capture:             captureComponentAssetImportRender,
+		fixtureRelPath:      []string{"fixtures", "component-asset-import", "expected.json"},
+		requireImageXObject: true,
+		wantPages:           1,
 	},
 }
 
