@@ -1,0 +1,9 @@
+[
+  {"claim":"Folio's byte-oriented API can be adapted behind a small C ABI","class":"architecture","pub_date":"2026-08-28"},
+  {"claim":"Go c-shared plus classic DllImport is supported","class":"version/compatibility","pub_date":"2026-08-28"},
+  {"claim":"Strict .NET Framework 4.6 requires direct net46 targeting","class":"version/compatibility","pub_date":"2026-08-28"},
+  {"claim":"Legacy NuGet consumers require explicit native asset deployment testing","class":"packaging","pub_date":"2026-08-28"},
+  {"claim":"Pinned Go 1.26 binaries require Windows 10 or Server 2016 or newer","class":"version/compatibility","pub_date":"2026-08-28"},
+  {"claim":"The Folio dependency graph compiles for Windows amd64 without cgo","class":"implementation","pub_date":"2026-08-28"},
+  {"claim":".NET Framework 4.6 is retired","class":"lifecycle","pub_date":"2022-04-26"}
+]

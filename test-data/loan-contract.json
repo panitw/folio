@@ -1,0 +1,10 @@
+{
+    "firstName": "John",
+    "lastName": "Doe",
+    "loanAmount": 10000,
+    "interestRate": 5.5,
+    "loanTerm": 36,
+    "monthlyPayment": 304.15,
+    "startDate": "2023-01-01",
+    "endDate": "2025-12-31"
+}

@@ -42,12 +42,8 @@
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"image\",\"x\":36,\"y\":36,\"snap\":true}"
       },
       {
-        "requestId": "request-4",
-        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":36,\"snap\":true}"
-      },
-      {
         "requestId": "request-5",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
+        "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":36,\"snap\":true}"
       },
       {
         "requestId": "request-6",
@@ -63,170 +59,146 @@
       },
       {
         "requestId": "request-9",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-10",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":30}}}"
       },
       {
-        "requestId": "request-11",
+        "requestId": "request-10",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Customer: {{customer.name}}\"}}}"
       },
       {
-        "requestId": "request-12",
+        "requestId": "request-11",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
       },
       {
-        "requestId": "request-13",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e4\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-14",
+        "requestId": "request-12",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e4\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":60}}}"
       },
       {
-        "requestId": "request-15",
+        "requestId": "request-13",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e4\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Account: {{account.number}}\"}}}"
       },
       {
-        "requestId": "request-16",
+        "requestId": "request-14",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
       },
       {
-        "requestId": "request-17",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e5\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-18",
+        "requestId": "request-15",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e5\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":90}}}"
       },
       {
-        "requestId": "request-19",
+        "requestId": "request-16",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e5\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Statement period: {{period.from}} to {{period.to}}\"}}}"
       },
       {
-        "requestId": "request-20",
+        "requestId": "request-17",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":765.89,\"snap\":true}"
       },
       {
-        "requestId": "request-21",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e6\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-22",
+        "requestId": "request-18",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e6\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Confidential — generated {{params.generatedDate}} / report {{params.reportDate}}\"}}}"
       },
       {
-        "requestId": "request-23",
+        "requestId": "request-19",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":765.89,\"snap\":true}"
       },
       {
-        "requestId": "request-24",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e7\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-25",
+        "requestId": "request-20",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e7\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":12}}}"
       },
       {
-        "requestId": "request-26",
+        "requestId": "request-21",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e7\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Page {{page}} of {{pages}}\"}}}"
       },
       {
-        "requestId": "request-27",
+        "requestId": "request-22",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":96,\"snap\":true}"
       },
       {
-        "requestId": "request-28",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e8\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-29",
+        "requestId": "request-23",
         "utf8": "{\"kind\":\"bindComponentScalar\",\"version\":1,\"id\":\"e8\",\"segments\":[\"customer\",\"name\"]}"
       },
       {
-        "requestId": "request-30",
+        "requestId": "request-24",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"table\",\"x\":36,\"y\":96,\"snap\":true}"
       },
       {
-        "requestId": "request-31",
+        "requestId": "request-25",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e9\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":120}}}"
       },
       {
-        "requestId": "request-32",
+        "requestId": "request-26",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e9\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
       },
       {
-        "requestId": "request-34",
+        "requestId": "request-28",
         "utf8": "{\"kind\":\"configureTableBinding\",\"version\":1,\"id\":\"e9\",\"collection\":\"transactions[]\",\"alias\":\"\"}"
       },
       {
-        "requestId": "request-36",
+        "requestId": "request-30",
         "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":0}"
       },
       {
-        "requestId": "request-38",
+        "requestId": "request-32",
         "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ea\",\"field\":\"date\"}"
       },
       {
-        "requestId": "request-40",
+        "requestId": "request-34",
         "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":1}"
       },
       {
-        "requestId": "request-42",
+        "requestId": "request-36",
         "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"eb\",\"field\":\"description\"}"
       },
       {
-        "requestId": "request-44",
+        "requestId": "request-38",
         "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":2}"
       },
       {
-        "requestId": "request-46",
+        "requestId": "request-40",
         "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ec\",\"field\":\"debitDisplay\"}"
       },
       {
-        "requestId": "request-48",
+        "requestId": "request-42",
         "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":3}"
       },
       {
-        "requestId": "request-50",
+        "requestId": "request-44",
         "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ed\",\"field\":\"creditDisplay\"}"
       },
       {
-        "requestId": "request-52",
+        "requestId": "request-46",
         "utf8": "{\"kind\":\"addTableColumn\",\"version\":1,\"id\":\"e9\",\"index\":4}"
       },
       {
-        "requestId": "request-54",
+        "requestId": "request-48",
         "utf8": "{\"kind\":\"updateTableColumnBinding\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"field\":\"balanceDisplay\"}"
       },
       {
-        "requestId": "request-56",
+        "requestId": "request-50",
         "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ea\",\"field\":\"header\",\"value\":\"Date\"}"
       },
       {
-        "requestId": "request-58",
+        "requestId": "request-52",
         "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"eb\",\"field\":\"header\",\"value\":\"Description\"}"
       },
       {
-        "requestId": "request-60",
+        "requestId": "request-54",
         "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ec\",\"field\":\"header\",\"value\":\"Debit\"}"
       },
       {
-        "requestId": "request-62",
+        "requestId": "request-56",
         "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ed\",\"field\":\"header\",\"value\":\"Credit\"}"
       },
       {
-        "requestId": "request-64",
+        "requestId": "request-58",
         "utf8": "{\"kind\":\"updateTableColumn\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"field\":\"header\",\"value\":\"Balance\"}"
       },
       {
-        "requestId": "request-66",
+        "requestId": "request-60",
         "utf8": "{\"kind\":\"updateTableColumnFooter\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"footer\":\"sum\",\"footerOf\":\"\",\"footerFormat\":\"\"}"
       },
       {
-        "requestId": "request-68",
+        "requestId": "request-62",
         "utf8": "{\"kind\":\"updateTableColumnFooter\",\"version\":1,\"id\":\"e9\",\"columnId\":\"ee\",\"footer\":\"sum\",\"footerOf\":\"transactions.amount\",\"footerFormat\":\"\"}"
       }
     ],
@@ -244,7 +216,7 @@
         "requestId": "request-3"
       },
       {
-        "operation": "command",
+        "operation": "asset",
         "requestId": "request-4"
       },
       {
@@ -336,7 +308,7 @@
         "requestId": "request-26"
       },
       {
-        "operation": "command",
+        "operation": "table-columns",
         "requestId": "request-27"
       },
       {
@@ -344,7 +316,7 @@
         "requestId": "request-28"
       },
       {
-        "operation": "command",
+        "operation": "table-columns",
         "requestId": "request-29"
       },
       {
@@ -352,7 +324,7 @@
         "requestId": "request-30"
       },
       {
-        "operation": "command",
+        "operation": "table-columns",
         "requestId": "request-31"
       },
       {
@@ -484,39 +456,39 @@
         "requestId": "request-63"
       },
       {
-        "operation": "command",
+        "operation": "serialize",
         "requestId": "request-64"
       },
       {
-        "operation": "table-columns",
+        "operation": "parameter-references",
         "requestId": "request-65"
       },
       {
-        "operation": "command",
+        "operation": "identity",
         "requestId": "request-66"
       },
       {
-        "operation": "table-columns",
+        "operation": "identity",
         "requestId": "request-67"
       },
       {
-        "operation": "command",
+        "operation": "serialize",
         "requestId": "request-68"
       },
       {
-        "operation": "table-columns",
+        "operation": "render",
         "requestId": "request-69"
       },
       {
-        "operation": "serialize",
+        "operation": "identity",
         "requestId": "request-70"
       },
       {
-        "operation": "parameter-references",
+        "operation": "serialize",
         "requestId": "request-71"
       },
       {
-        "operation": "identity",
+        "operation": "render",
         "requestId": "request-72"
       },
       {
@@ -530,30 +502,6 @@
       {
         "operation": "render",
         "requestId": "request-75"
-      },
-      {
-        "operation": "identity",
-        "requestId": "request-76"
-      },
-      {
-        "operation": "serialize",
-        "requestId": "request-77"
-      },
-      {
-        "operation": "render",
-        "requestId": "request-78"
-      },
-      {
-        "operation": "identity",
-        "requestId": "request-79"
-      },
-      {
-        "operation": "serialize",
-        "requestId": "request-80"
-      },
-      {
-        "operation": "render",
-        "requestId": "request-81"
       }
     ]
   },
@@ -590,42 +538,30 @@
       },
       {
         "requestId": "request-4",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e1\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-5",
         "utf8": "{\"kind\":\"bindComponentScalar\",\"version\":1,\"id\":\"e1\",\"segments\":[\"customer\",\"name\"]}"
       },
       {
-        "requestId": "request-6",
+        "requestId": "request-5",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":36,\"snap\":true}"
       },
       {
-        "requestId": "request-7",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-8",
+        "requestId": "request-6",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"y\":{\"op\":\"set\",\"value\":30}}}"
       },
       {
-        "requestId": "request-9",
+        "requestId": "request-7",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e2\"],\"changes\":{\"value\":{\"op\":\"set\",\"value\":\"ACCOUNT NOTICE\"}}}"
       },
       {
-        "requestId": "request-10",
+        "requestId": "request-8",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"text\",\"x\":36,\"y\":765.89,\"snap\":true}"
       },
       {
-        "requestId": "request-11",
-        "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"fontFamily\":{\"op\":\"set\",\"value\":\"body\"}}}"
-      },
-      {
-        "requestId": "request-12",
+        "requestId": "request-9",
         "utf8": "{\"kind\":\"updateComponentProperties\",\"version\":1,\"ids\":[\"e3\"],\"changes\":{\"expression\":{\"op\":\"set\",\"value\":\"Archive copy — {{params.reportDate}}\"}}}"
       },
       {
-        "requestId": "request-13",
+        "requestId": "request-10",
         "utf8": "{\"kind\":\"dropComponent\",\"version\":1,\"type\":\"rect\",\"x\":36,\"y\":96,\"snap\":true}"
       }
     ],
@@ -671,27 +607,27 @@
         "requestId": "request-10"
       },
       {
-        "operation": "command",
+        "operation": "serialize",
         "requestId": "request-11"
       },
       {
-        "operation": "command",
+        "operation": "parameter-references",
         "requestId": "request-12"
       },
       {
-        "operation": "command",
+        "operation": "identity",
         "requestId": "request-13"
       },
       {
-        "operation": "serialize",
+        "operation": "identity",
         "requestId": "request-14"
       },
       {
-        "operation": "parameter-references",
+        "operation": "serialize",
         "requestId": "request-15"
       },
       {
-        "operation": "identity",
+        "operation": "render",
         "requestId": "request-16"
       },
       {
@@ -705,18 +641,6 @@
       {
         "operation": "render",
         "requestId": "request-19"
-      },
-      {
-        "operation": "identity",
-        "requestId": "request-20"
-      },
-      {
-        "operation": "serialize",
-        "requestId": "request-21"
-      },
-      {
-        "operation": "render",
-        "requestId": "request-22"
       }
     ]
   },

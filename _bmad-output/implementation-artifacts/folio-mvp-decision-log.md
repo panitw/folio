@@ -14510,3 +14510,38 @@ must have this guardrail reconciled against its own tasks before development sta
 
 **How we'd know it was wrong.** Another story reporting a skipped obligation with a guardrail citation
 as its justification.
+
+---
+
+### D-5.13.9 — Story 6.7's evidence manifest is replaced with a post-gate re-run
+**Owner decision**, taken at the push to `main`.
+
+**Verdict.** The rewritten `evidence/story-6.7-roundtrip-manifest.json` is committed alongside the
+remaining untracked working-tree material, rather than being left for the second Epic 5 boundary gate.
+
+**Situation.** Running the designer e2e suite re-executes `browser-native-roundtrip.spec.ts`, which
+rewrites Story 6.7's evidence manifest in place. During Story 5.13 that suite ran several times, so the
+committed manifest is now the record of a **post-Epic-6-gate** authoring session rather than the one
+`epic-6-boundary-gate.md` measured at `44121b8`.
+
+**The delta is real, not timestamp churn.** The manifest lost 137 lines and gained 61. The recorded
+command history shrank because `eef7fbb`'s `createComponentInBand` change makes every palette-placed
+text element adopt a font family automatically, so the session no longer issues the explicit
+`updateComponentProperties … fontFamily` commands the original evidence recorded. In other words, the
+manifest diff **is** the post-gate behaviour change named in D-5.13.6, surfacing in Epic 6's own
+evidence record.
+
+**The concern raised, and the decision.** D-5.13.6 assigned re-measurement of the post-gate delta to
+the second Epic 5 boundary gate, so replacing this record now moves Epic 6's durable evidence ahead of
+the gate that is supposed to certify it. That was put to the owner explicitly and the owner chose to
+commit it anyway.
+
+**Consequences.** `epic-6-boundary-gate.md`'s §1 reference to the manifest as "the bounded durable
+record of exact raw inputs, hashes, authoring commands, and browser/native PDF identity" now describes
+a file whose contents post-date the gate. The gate's amendment already warns that it describes
+`44121b8` and not HEAD, so the two are consistent — but the second Epic 5 gate must treat this manifest
+as **input to be re-derived**, not as prior evidence to compare against. Do not use the committed
+manifest as the baseline for that gate.
+
+**How we'd know it was wrong.** The second Epic 5 gate comparing against this manifest and reporting
+agreement — which would be the gate certifying a record produced by the same drift it exists to catch.
