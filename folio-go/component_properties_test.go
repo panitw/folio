@@ -31,6 +31,44 @@ func TestUpdateComponentPropertiesIsClosedCanonicalAndAtomic(t *testing.T) {
 	}
 }
 
+func TestCreatedTextAdoptsADeclaredFontChainSoItCanRender(t *testing.T) {
+	tpl := componentTemplate(t)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"text","band":"content","x":40,"y":40,"width":200,"height":24,"snap":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Render resolves a face through style.fontFamily and refuses text without
+	// one, so a freshly placed element must already name a declared chain.
+	if !strings.Contains(string(after), `"fontFamily"`) {
+		t.Fatalf("created text names no font chain: %s", after)
+	}
+	if _, err := ParseTemplate(after); err != nil {
+		t.Fatalf("created text did not preserve load validation: %v", err)
+	}
+}
+
+func TestCreatedTextLeavesFontFamilyAbsentWhenNoChainIsDeclared(t *testing.T) {
+	// Nothing to adopt is not the same as adopting something invented: the
+	// element stays exactly as it was before this default existed.
+	tpl, err := ParseTemplate([]byte(`{"assets":{},"bands":{"content":{"elements":[]},"pageFooter":{"elements":[],"height":40},"pageHeader":{"elements":[],"height":60}},"fonts":{},"locale":"en","nextId":1,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"1.0"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"text","band":"content","x":40,"y":40,"width":200,"height":24,"snap":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(after), `"fontFamily"`) {
+		t.Fatalf("created text invented a font chain: %s", after)
+	}
+}
+
 func TestUpdateComponentPropertiesRejectsTableGeometryAndRollsBackBatch(t *testing.T) {
 	tpl := componentTemplate(t)
 	before, err := SerializeTemplate(tpl)

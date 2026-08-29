@@ -29,7 +29,7 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .section-label { margin: 0 0 var(--space-5); color: var(--color-ink); font: var(--type-label); letter-spacing: var(--tracking-label); }
 .palette-item { width: 100%; min-height: 32px; display: grid; grid-template-columns: var(--icon-size) 1fr auto; align-items: center; gap: var(--space-3); padding: var(--palette-item-padding-y) var(--space-5); border: 0; border-left: 2px solid var(--color-line); background: transparent; color: var(--color-ink); text-align: left; }
 .palette-item[aria-pressed="true"] { border-left-color: var(--color-select); background: var(--color-select-fill); color: var(--color-ink-high); }
-.palette-icon { width: var(--icon-size); height: var(--icon-size); border: var(--hairline) solid var(--color-ink); }
+.palette-icon { width: var(--icon-size); height: var(--icon-size); flex: none; }
 .palette-item kbd { color: var(--color-ink); font: var(--type-mono); }
 .honest-note { margin: var(--space-5) 0; color: var(--color-ink); font: var(--type-body); }
 .canvas-region { display: grid; align-content: start; justify-items: center; gap: var(--space-5); overflow: auto; padding: var(--space-10); background: var(--color-ground); }

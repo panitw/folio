@@ -4,12 +4,15 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { serviceWorkerSource } from './offline-service-worker-template.mjs'
-import { assertPinnedRuntime } from './generate-offline-release.mjs'
+import { assertPinnedRuntime, generateOfflineRelease } from './generate-offline-release.mjs'
 import { RELEASE_RUNTIME, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
 const fail = (message) => { throw new Error(`offline release verification failed: ${message}`) }
+// Kept in sync with the `import.meta.env.DEV` offline bypass in src/main.tsx,
+// src/App.tsx, and src/offline-lifecycle.ts.
+const DEV_BYPASS_MARKERS = ['dev-bypass', 'Offline layer bypassed']
 const sameSet = (left, right) => left.size === right.size && [...left].every((value) => right.has(value))
 const brotliOptions = { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_GENERIC, [constants.BROTLI_PARAM_LGWIN]: 22 } }
 const walk = (directory) => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)])
@@ -100,6 +103,14 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
     const wasmDigest = execFileSync(process.execPath, [join(root, 'scripts', 'verify-wasm-dictionary.mjs'), join(outputDir, glue.url.slice(1)), join(outputDir, release.thaiDictionary.wasmUrl.slice(1))], { encoding: 'utf8', timeout: 30000 }).trim()
     if (wasmDigest !== release.thaiDictionary.sha256) fail('emitted wasm dictionary witness does not match the shipped dictionary')
   }
+  // The dev-server offline bypass is gated on `import.meta.env.DEV` so the
+  // branch and its strings are eliminated from production bundles. Prove that
+  // elimination against the emitted release rather than trusting the gate.
+  for (const asset of release.assets) {
+    if (!/\.(?:js|mjs|html|css)$/.test(asset.url)) continue
+    const text = readFileSync(join(outputDir, asset.url.slice(1)), 'utf8')
+    for (const marker of DEV_BYPASS_MARKERS) if (text.includes(marker)) fail(`development offline bypass shipped in ${asset.url}`)
+  }
   if (!contract.immutableRuntime.cacheControl.includes('immutable') || contract.immutableRuntime.contentEncoding !== 'br') fail('immutable host policy is incomplete')
   if (!contract.updateableEntries.some((entry) => entry.url === '/index.html' && !entry.cacheControl.includes('immutable')) || !contract.updateableEntries.some((entry) => entry.url === '/sw.js' && !entry.cacheControl.includes('immutable'))) fail('updateable entries have immutable policy')
   return release
@@ -112,13 +123,16 @@ function rewriteRelease(outputDir, release) {
   writeFileSync(join(outputDir, 'sw.js'), serviceWorkerSource(release))
 }
 
-function redProof(name, mutate) {
+function redProof(name, mutate, expected) {
   let restore
   try {
     restore = mutate(dist)
-    let failed = false
-    try { verifyOfflineRelease(dist) } catch { failed = true }
-    if (!failed) fail(`red proof ${name} escaped verification`)
+    let message
+    try { verifyOfflineRelease(dist) } catch (error) { message = error.message }
+    if (!message) fail(`red proof ${name} escaped verification`)
+    // A mutation can trip several guards at once. Where a proof names the guard
+    // it is proving, hold it to that guard rather than to any failure at all.
+    if (expected && !message.includes(expected)) fail(`red proof ${name} failed for the wrong reason: ${message}`)
   } finally { restore?.() }
 }
 
@@ -145,6 +159,17 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
   redProof('s1-cloud-label', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.rows[0].label = 'Cloud download'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('s1-progress-denominator', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.cacheAssets.pop(); writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('s1-bootstrap-drift', (outputDir) => { const index = join(outputDir, 'index.html'); const original = readFileSync(index); writeFileSync(index, original.toString().replace('"releaseId":"', '"releaseId":"0')); return () => writeFileSync(index, original) })
+  redProof('dev-bypass-shipped', (outputDir) => {
+    const witness = baseline.assets.find((candidate) => candidate.url.startsWith('/assets/') && candidate.url.endsWith('.js'))
+    if (!witness) fail('red proof has no script witness')
+    const file = join(outputDir, witness.url.slice(1))
+    const original = readFileSync(file)
+    // Regenerating after the mutation restores every digest, identity, and S1
+    // figure, so the bypass guard is the only one left that can trip.
+    writeFileSync(file, Buffer.concat([original, Buffer.from(`\n// ${DEV_BYPASS_MARKERS[0]}\n`)]))
+    generateOfflineRelease(outputDir)
+    return () => { writeFileSync(file, original); generateOfflineRelease(outputDir) }
+  }, 'development offline bypass shipped in')
   redProof('worker-progress-before-marker', (outputDir) => { const worker = join(outputDir, 'sw.js'); const original = readFileSync(worker, 'utf8'); const moved = original.replace("    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))\n    await progress('verified', activeAsset)", "    await progress('verified', activeAsset)\n    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))"); if (moved === original) fail('red proof could not find final marker ordering'); writeFileSync(worker, moved); return () => writeFileSync(worker, original) })
 }
 

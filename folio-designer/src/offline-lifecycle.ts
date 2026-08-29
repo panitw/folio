@@ -1,7 +1,15 @@
 import type { S1Payload } from './release-payload'
 
-export type OfflineLifecycleState = 'checking' | 'caching' | 'ready' | 'update-available' | 'unavailable'
+export type OfflineLifecycleState = 'checking' | 'caching' | 'ready' | 'update-available' | 'unavailable' | 'dev-bypass'
 export type OfflineLifecycle = Readonly<{ state: OfflineLifecycleState; cacheReady: boolean; verifiedAssetUrls: readonly string[]; activeAssetUrl?: string; failedAssetUrl?: string; failure?: 'timeout' | 'install' | 'unsupported' }>
+// `vite dev` serves unbundled mutable modules, so no content-addressed release
+// exists for the worker to verify. Development bypasses the offline gate
+// visibly rather than simulating a verified cache: `cacheReady` keeps meaning
+// "this browser holds a verified release", and `dev-bypass` is a separate,
+// labelled reason to start the engine. Every reference is behind
+// `import.meta.env.DEV`, so the branch and its strings are eliminated from
+// production bundles; verify-offline-release.mjs proves their absence.
+export const engineMayStart = (lifecycle: OfflineLifecycle) => lifecycle.cacheReady || (import.meta.env.DEV && lifecycle.state === 'dev-bypass')
 const MESSAGE_VERSION = 1
 const releaseIdPattern = /^[a-f0-9]{64}$/
 type WorkerStatus = Readonly<{ version: number; type: 'offline-status'; state: 'ready' | 'unavailable'; releaseId: string; pageId: string }>

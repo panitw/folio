@@ -8,7 +8,10 @@ export type FileAccessBrowser = Partial<FileSystemPicker> & Readonly<{ document:
 
 function currentBrowser(): FileAccessBrowser {
   const pickerWindow = window as typeof window & Partial<FileSystemPicker>
-  return { document: window.document, url: URL, showOpenFilePicker: pickerWindow.showOpenFilePicker, showSaveFilePicker: pickerWindow.showSaveFilePicker }
+  // The pickers are Window methods and the browser brand-checks their receiver.
+  // Bind them to the window here, where it is still in hand; carrying the bare
+  // references out on this record would strand them on a plain object.
+  return { document: window.document, url: URL, showOpenFilePicker: pickerWindow.showOpenFilePicker?.bind(pickerWindow), showSaveFilePicker: pickerWindow.showSaveFilePicker?.bind(pickerWindow) }
 }
 
 // Called once from the composition root. The application receives only FileAccess.

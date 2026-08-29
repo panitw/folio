@@ -1,9 +1,10 @@
 import './App.css'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
 import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot, TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
+import { engineMayStart } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import type { BindingErrorScope } from './DataPanel'
@@ -53,6 +54,18 @@ type ParameterReferenceState = Readonly<{ status: 'pending' | 'ready' | 'failed'
 
 function Icon({ name }: { name: 'open' | 'save' }) {
   return <svg aria-hidden="true" className="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><path d={name === 'open' ? 'M2 5.5h4l1.2-2h6.8v9H2z M2 5.5h12' : 'M3 2h8l2 2v10H3z M5 2v4h6V2 M5 12h6'} /></svg>
+}
+
+const paletteGlyphs: Readonly<Record<PaletteKind, ReactNode>> = {
+  text: <><path d="M3.5 4.5V3h9v1.5" /><path d="M8 3v10" /><path d="M5.75 13h4.5" /></>,
+  image: <><path d="M2.5 3.5h11v9h-11z" /><path d="M2.5 10.25 5.75 7l2.25 2.25 2-2 3.5 3.5" /><circle cx="10.5" cy="6.25" r="1" /></>,
+  table: <><path d="M2.5 3.5h11v9h-11z" /><path d="M2.5 6.5h11" /><path d="M6.5 6.5v6" /><path d="M10 6.5v6" /></>,
+  line: <><path d="M3 12.5 13 3.5" /></>,
+  rect: <><path d="M2.5 4.5h11v7h-11z" /></>,
+}
+
+function PaletteIcon({ kind }: { kind: PaletteKind }) {
+  return <svg aria-hidden="true" className="palette-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square">{paletteGlyphs[kind]}</svg>
 }
 
 type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampleFileAccess?: SampleFileAccess; initialSnapshot?: EngineSnapshot; initialSampleData?: SampleData; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
@@ -612,7 +625,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   useEffect(() => () => cancelPreviewWork(), [])
 
   if (loadState && !engine) {
-    if (loadState.cacheReady && engineState !== 'failed') return <main className="engine-starting" aria-label="Engine preparation"><p role="status" aria-live="polite" aria-label="Engine preparation status">Starting local engine</p></main>
+    if (engineMayStart(loadState) && engineState !== 'failed') return <main className="engine-starting" aria-label="Engine preparation"><p role="status" aria-live="polite" aria-label="Engine preparation status">Starting local engine</p></main>
     return <LoadScreen lifecycle={loadState} payload={payload} engineState={engineState} onRetry={onRetry} />
   }
 
@@ -620,7 +633,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
   const currentDiagnostics = previewStatus === 'current' && mode === 'preview' && preview?.revision === snapshot?.revision ? preview : undefined
   const currentFailure = previewError && ['error', 'stale'].includes(previewStatus) && mode === 'preview' && previewError.revision === snapshot?.revision ? previewError : undefined
   const engineLabel = initializationError ? 'ENGINE UNAVAILABLE' : snapshot ? `GO SNAPSHOT · REVISION ${snapshot.revision}` : 'ENGINE STARTING'
-  const offlineLabel = offlineState === 'ready' ? 'Offline ready' : offlineState === 'checking' ? 'Offline cache checking' : offlineState === 'update-available' ? 'Update available; current release remains usable' : 'Offline cache unavailable'
+  const offlineLabel = import.meta.env.DEV && offlineState === 'dev-bypass' ? 'Offline layer bypassed (dev)' : offlineState === 'ready' ? 'Offline ready' : offlineState === 'checking' ? 'Offline cache checking' : offlineState === 'update-available' ? 'Update available; current release remains usable' : 'Offline cache unavailable'
   const dirty = !snapshot || savedRevision === undefined || snapshot.revision !== savedRevision
   const saveLabel = dirty ? 'Unsaved local changes' : 'Saved local file'
   return <div className="app-shell" aria-label="Folio designer application shell" aria-busy={fileBusy}>
@@ -631,7 +644,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, initialSnaps
       <div className="mode-switch" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW <kbd aria-hidden="true">{shortcuts.preview}</kbd></button></div>
     </header>
     <div className="workbench" id="future-features">
-      <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><span className="palette-icon" aria-hidden="true" />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
+      <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><PaletteIcon kind={kind} />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
       {mode === 'design' ? <main ref={canvasRegionRef} className="canvas-region" aria-label="Canvas region" tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) { revokeTableEditor(); setSelected([]) } }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
         {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)} onClick={() => { revokeTableEditor(); setSelected([]) }}>

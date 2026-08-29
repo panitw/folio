@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { parseWorkerProgress, parseWorkerStatus, reduceOfflineLifecycle, registerOfflineLifecycle } from './offline-lifecycle'
+import { engineMayStart, parseWorkerProgress, parseWorkerStatus, reduceOfflineLifecycle, registerOfflineLifecycle } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 
 const release = 'a'.repeat(64)
@@ -98,5 +98,11 @@ describe('offline lifecycle message boundary', () => {
     vi.advanceTimersByTime(20)
     expect(states.at(-1)).toBe('ready')
     vi.useRealTimers()
+  })
+
+  it('starts the engine on a verified cache or the development bypass, and on nothing else', () => {
+    expect(engineMayStart({ state: 'ready', cacheReady: true, verifiedAssetUrls: [] })).toBe(true)
+    expect(engineMayStart({ state: 'dev-bypass', cacheReady: false, verifiedAssetUrls: [] })).toBe(true)
+    for (const state of ['checking', 'caching', 'unavailable'] as const) expect(engineMayStart({ state, cacheReady: false, verifiedAssetUrls: [] })).toBe(false)
   })
 })

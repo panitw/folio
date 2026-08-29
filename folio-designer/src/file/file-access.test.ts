@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { selectFileAccess } from './capability'
+import { selectFileAccess, selectSampleFileAccess } from './capability'
 import { FileAccessCancelled, type LocalFileHandle } from './file-access'
 import { FileSystemAccess } from './file-system-access'
 import { InputDownloadAccess } from './input-download'
@@ -35,6 +35,24 @@ describe('local file access boundary', () => {
     pickerWindow.showSaveFilePicker = vi.fn()
     try { expect(selectFileAccess()).toBeInstanceOf(FileSystemAccess) }
     finally { pickerWindow.showOpenFilePicker = priorOpen; pickerWindow.showSaveFilePicker = priorSave }
+  })
+
+  it('invokes the real window pickers with the window as their receiver', async () => {
+    // The pickers are Window methods and the browser rejects any other
+    // receiver with an illegal invocation, which the boundary would report as
+    // an unreadable local file.
+    const pickerWindow = window as typeof window & { showOpenFilePicker?: unknown; showSaveFilePicker?: unknown }
+    const priorOpen = pickerWindow.showOpenFilePicker
+    const priorSave = pickerWindow.showSaveFilePicker
+    const receivers: unknown[] = []
+    const record = function (this: unknown) { receivers.push(this); return Promise.resolve([]) }
+    pickerWindow.showOpenFilePicker = record
+    pickerWindow.showSaveFilePicker = record
+    try {
+      await expect(selectSampleFileAccess().openSample()).rejects.toBeInstanceOf(FileAccessCancelled)
+      await expect(selectFileAccess().open()).rejects.toBeInstanceOf(FileAccessCancelled)
+      expect(receivers).toEqual([window, window])
+    } finally { pickerWindow.showOpenFilePicker = priorOpen; pickerWindow.showSaveFilePicker = priorSave }
   })
 
   it('returns opaque selected bytes and an in-memory target from the File System Access tier', async () => {

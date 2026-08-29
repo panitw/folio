@@ -237,7 +237,7 @@ func engineFailure(err error) response {
 		diagnostic := renderErr.Diagnostic
 		return response{
 			DiagnosticCode: diagnostic.Code,
-			Message:        "The template could not be processed",
+			Message:        reportableMessage(diagnostic.Code, diagnostic.Message),
 			ElementID:      bounded(diagnostic.ElementID, 128),
 			DataPath:       bounded(diagnostic.DataPath, 256),
 		}
@@ -253,7 +253,21 @@ func engineFailure(err error) response {
 		}
 		return response{DiagnosticCode: "PAGE_SETUP_INVALID", Message: message, DataPath: path}
 	}
-	return response{DiagnosticCode: "ENGINE_REJECTED", Message: "The engine rejected the request"}
+	// The engine authored this text about a template the caller already holds.
+	// Withholding it left the panel with nothing to act on, so report it
+	// bounded, exactly as an ordinary render diagnostic's message is reported.
+	return response{DiagnosticCode: "ENGINE_REJECTED", Message: message}
+}
+
+// reportableMessage decides whether a Diagnostic's own message reaches the
+// caller. It does for every engine-authored failure. It does not for a
+// malformed template: that message quotes the offending document back, so a
+// large or hostile one would be reflected instead of described.
+func reportableMessage(code, message string) string {
+	if code == folio.DiagCodeTemplateMalformed {
+		return "The template could not be processed"
+	}
+	return bounded(message, 512)
 }
 
 func bounded(value string, max int) string {

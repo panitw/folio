@@ -30,7 +30,11 @@ function lifecycle(state: 'ready' | 'failed', error?: EngineError) {
 
 async function boot(): Promise<void> {
   try {
-    importScripts(runtimeAssetUrls.wasmExec)
+    // The emitted release worker is a classic worker; the dev server serves an
+    // ES module worker instead (see the construction site in engine-client.ts).
+    // The glue assigns `globalThis.Go` either way.
+    if (import.meta.env.DEV) await import(/* @vite-ignore */ runtimeAssetUrls.wasmExec)
+    else importScripts(runtimeAssetUrls.wasmExec)
     const go = new Go()
     const result = await WebAssembly.instantiateStreaming(fetch(runtimeAssetUrls.wasm), go.importObject)
     go.run(result.instance)

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
@@ -1178,6 +1180,13 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 		element.Height = template.Presence[geom.Length]{Set: true, Value: height}
 		if elementType == template.ElementText {
 			element.Value = template.Presence[string]{Set: true, Value: "Text"}
+			// The palette's text control is usable immediately, for the same
+			// reason the image control below embeds a default asset: Render
+			// resolves a face through style.fontFamily and refuses text without
+			// one, so a placed element that named no chain could never render.
+			if chain := defaultFontFamily(t); chain != "" {
+				styleFor(&element).FontFamily = template.Presence[string]{Set: true, Value: chain}
+			}
 		}
 		if elementType == template.ElementImage {
 			// The palette's image control is usable immediately: it inserts the
@@ -1206,6 +1215,20 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 }
 
 const defaultAuthoringLogoKey = "f4a37bba5652865abc8e24be5e1aad4d5ad42ce5727715f6d19b93861d23f6a4"
+
+// defaultFontFamily names the chain a newly created text element adopts: the
+// first declared non-empty chain in sorted key order. Sorted rather than
+// ranged (ScanMapRange), so a document's declared fonts pick the same chain on
+// every run. An empty result means the document declares no usable chain and
+// there is nothing to adopt; fontFamily stays absent exactly as before.
+func defaultFontFamily(t *Template) string {
+	for _, name := range slices.Sorted(maps.Keys(t.doc.Fonts)) {
+		if len(t.doc.Fonts[name]) > 0 {
+			return name
+		}
+	}
+	return ""
+}
 
 func hitTestBand(t *Template, x, y geom.Length) (*template.Band, CanvasBand, error) {
 	projection, err := Canvas(t)

@@ -415,6 +415,11 @@ describe('application shell', () => {
     expect(screen.getByRole('status', { name: 'Offline availability' })).toHaveTextContent('Offline cache unavailable')
   })
 
+  it('labels the development bypass instead of claiming a verified cache', () => {
+    render(<App offlineState="dev-bypass" />)
+    expect(screen.getByRole('status', { name: 'Offline availability' })).toHaveTextContent('Offline layer bypassed (dev)')
+  })
+
   it('announces the checking, ready, and waiting-update lifecycle states', () => {
     const { rerender } = render(<App offlineState="checking" />)
     const status = screen.getByRole('status', { name: 'Offline availability' })

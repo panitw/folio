@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "serve": "npm run build && vite preview",
     "build:wasm": "node scripts/build-wasm.mjs",
     "build:offline": "node scripts/generate-offline-release.mjs",
     "verify:offline": "node scripts/verify-offline-release.mjs",

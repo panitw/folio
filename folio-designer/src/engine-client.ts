@@ -175,5 +175,10 @@ function safeErrorMessage(error: EngineError): string {
 }
 
 // This is the single discoverable Worker construction site in production.
-const appEngineClient = createEngineClientSingleton(() => new Worker(new URL('./engine.worker.ts', import.meta.url), { name: 'folio-engine' }))
+// Vite's dev server serves worker modules unbundled, so a classic worker would
+// receive `import` statements it cannot execute. Development asks for a module
+// worker; the emitted release worker stays classic.
+const appEngineClient = createEngineClientSingleton(() => import.meta.env.DEV
+  ? new Worker(new URL('./engine.worker.ts', import.meta.url), { name: 'folio-engine', type: 'module' })
+  : new Worker(new URL('./engine.worker.ts', import.meta.url), { name: 'folio-engine' }))
 export const getEngineClient = (): Promise<EngineClient> => appEngineClient()

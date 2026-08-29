@@ -44,9 +44,14 @@ function propertyNames(node: ts.Node): string[] {
 const sources = () => productionFiles.map((file) => ({ name: path.relative(sourceDir, file), source: fs.readFileSync(file, 'utf8') }))
 
 describe('engine ownership structure', () => {
-  it('has a non-vacuous source witness and exactly one Worker factory across production source', () => {
+  // Vite parses worker options statically, so the dev server's module worker and
+  // the emitted release's classic worker cannot share one call site. Both sites
+  // stay inside the one owning module and the expectation stays exact: a Worker
+  // constructed anywhere else, or a third one here, still fails this test.
+  it('has a non-vacuous source witness and exactly one Worker-owning module across production source', () => {
     expect(productionFiles.length).toBeGreaterThan(5)
-    expect(scanOwnership(sources()).workers).toEqual(['engine-client.ts'])
+    expect(scanOwnership(sources()).workers).toEqual(['engine-client.ts', 'engine-client.ts'])
+    expect(fs.readFileSync(path.join(sourceDir, 'engine-client.ts'), 'utf8')).toContain('import.meta.env.DEV')
   })
 
   it('keeps exactly one wasm instantiation, in the dedicated worker entry, across every production module', () => {
