@@ -607,6 +607,31 @@ describe('application shell', () => {
     expect(screen.getByRole('textbox', { name: 'Height (pt)' })).toHaveValue('29')
   })
 
+  it('keeps the drop proposal painted until the engine geometry lands', async () => {
+    const placed = { id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true }
+    const componentCanvas = { ...canvas, components: [placed] }
+    const movedCanvas = { ...canvas, components: [{ ...placed, x: 6_000, y: 4_000 }] }
+    let answer: (() => void) | undefined
+    const request = vi.fn(async () => {
+      await new Promise<void>((resolve) => { answer = resolve })
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: movedCanvas } }
+    })
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    const component = screen.getByLabelText('text component e9')
+    fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(component, { pointerId: 1, clientX: 19, clientY: 10 })
+    expect(component.style.getPropertyValue('--component-x')).toBe('9px')
+    fireEvent.pointerUp(component, { pointerId: 1, clientX: 19, clientY: 10 })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    // Red proof: dropping the proposal on pointer-up painted 0px here, so the
+    // element visibly jumped back to where the drag started and stayed there
+    // until Go answered. The proposal owns the paint until the answer lands.
+    expect(component.style.getPropertyValue('--component-x')).toBe('9px')
+    answer!()
+    await waitFor(() => expect(component.style.getPropertyValue('--component-x')).toBe('6px'))
+    expect(screen.getByRole('textbox', { name: 'X (pt)' })).not.toHaveAttribute('readonly')
+  })
+
   it('toggles Shift-click selection once without engine traffic and clears it on an empty canvas click', () => {
     const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }, { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 80000, y: 0, width: 72000, height: 24000, resizable: true }] }
     const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }))
@@ -787,7 +812,7 @@ describe('application shell', () => {
 
 describe('Story 5.13: image asset selection', () => {
   const imageComponent = { id: 'e1', type: 'image' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 48_000, resizable: true, image: { mediaType: 'image/png', assetKey: 'a'.repeat(64), width: 300, height: 200, drawX: 6_000, drawY: 8_000, drawWidth: 60_000, drawHeight: 40_000 } }
-  const undecodableImageComponent = { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 48_000, resizable: true }
+  const undecodableImageComponent = { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 48_000, resizable: true, imageUnavailable: 'undecodable' as const }
   const textComponent = { id: 'e3', type: 'text' as const, band: 'content' as const, x: 0, y: 120_000, width: 72_000, height: 24_000, resizable: true }
   const imageFileAccess = (openImage: () => Promise<{ bytes: ArrayBuffer; mediaType: string; name: string }>) => ({ openImage }) as unknown as import('./image-file').ImageFileAccess
 
@@ -814,6 +839,19 @@ describe('Story 5.13: image asset selection', () => {
     render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(async () => ({ bytes, mediaType: 'image/png', name: 'logo.png' }))} />)
     fireEvent.click(screen.getByLabelText('image component e2'))
     expect(screen.getByText("This version cannot render this asset's media type.")).toBeInTheDocument()
+  })
+
+  it('shows an empty, choosable box for a placed image with no file yet', () => {
+    // Go projects neither a paint nor an unavailable reason for a box the
+    // author has not filled: nothing to draw, and nothing wrong.
+    const emptyImageComponent = { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 48_000, resizable: true }
+    const componentCanvas = { ...canvas, components: [emptyImageComponent] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} imageFileAccess={imageFileAccess(async () => ({ bytes, mediaType: 'image/png', name: 'logo.png' }))} />)
+    expect(screen.getByText('No image')).toBeInTheDocument()
+    expect(screen.queryByText(/Image unavailable/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('image component e2'))
+    expect(screen.getByText(/No image chosen yet/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Choose image…' })).toBeEnabled()
   })
 
   it('states the concrete reason when no local picker capability is available in this browser tier', () => {

@@ -63,6 +63,8 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return moveComponent(t, raw)
 	case "resizeComponent":
 		return resizeComponent(t, raw)
+	case "setComponentBounds":
+		return setComponentBounds(t, raw)
 	case "deleteComponent":
 		return deleteComponent(t, raw)
 	case "duplicateComponent":
@@ -1208,13 +1210,17 @@ func componentLength(raw map[string]json.RawMessage, name string, snap bool) (ge
 		return 0, fmt.Errorf("folio: component.%s: %w", name, err)
 	}
 	if snap {
-		var valid bool
-		v, valid = SnapToGrid(v)
-		if !valid {
-			return 0, fmt.Errorf("folio: component.%s overflows grid snapping", name)
-		}
+		return snapField(name, v)
 	}
 	return v, nil
+}
+
+func snapField(name string, value geom.Length) (geom.Length, error) {
+	snapped, valid := SnapToGrid(value)
+	if !valid {
+		return 0, fmt.Errorf("folio: component.%s overflows grid snapping", name)
+	}
+	return snapped, nil
 }
 
 func commandBand(raw map[string]json.RawMessage) (string, *template.Band, error) {
@@ -1288,6 +1294,14 @@ func createComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 // dropComponent resolves a document point in Go. Band rectangles use the
 // half-open convention [x, x+width) × [y, y+height): a shared boundary belongs
 // to the next band, and a page edge outside the last band is rejected.
+// The size a dropped component starts at, before any property edit. An image
+// starts larger than the rest: until a file is chosen its box carries the
+// designer's empty-state placeholder — an icon above a label — which a
+// 72x24 box cuts in half. Both sizes sit on the 6pt grid, so a snapped drop
+// keeps them exactly.
+const dropWidth, dropHeight geom.Length = 72000, 24000
+const imageDropWidth, imageDropHeight geom.Length = 96000, 48000
+
 func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 6); err != nil {
 		return CanvasProjection{}, err
@@ -1316,7 +1330,12 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	if err != nil {
 		return CanvasProjection{}, err
 	}
+	width, height := dropWidth, dropHeight
+	if elementType == template.ElementImage {
+		width, height = imageDropWidth, imageDropHeight
+	}
 	x, y := pageX-geom.Length(projected.X), pageY-geom.Length(projected.Y)
+	unsnappedX, unsnappedY := x, y
 	if snap {
 		var valid bool
 		x, valid = SnapToGrid(x)
@@ -1327,8 +1346,12 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 		if !valid {
 			return CanvasProjection{}, componentFailure("", "component.y", "component y overflows grid snapping")
 		}
+		if containComponent(projected, unsnappedX, unsnappedY, width, height) == nil {
+			x = containEdge(x, geom.Length(projected.Width)-width)
+			y = containEdge(y, geom.Length(projected.Height)-height)
+		}
 	}
-	return createComponentInBand(t, elementType, projected.Name, x, y, 72000, 24000)
+	return createComponentInBand(t, elementType, projected.Name, x, y, width, height)
 }
 
 func createComponentInBand(t *Template, elementType template.ElementType, bandName string, x, y, width, height geom.Length) (CanvasProjection, error) {
@@ -1362,21 +1385,13 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 			}
 		}
 		if elementType == template.ElementImage {
-			// The palette's image control is usable immediately: it inserts the
-			// shipped Folio mark as an embedded, canonical document asset rather
-			// than an empty image reference that could never render. Authors can
-			// position/size it through the normal selected-component controls.
-			if t.doc.Assets == nil {
-				t.doc.Assets = map[string]template.Asset{}
-			}
-			if _, exists := t.doc.Assets[defaultAuthoringLogoKey]; !exists {
-				t.doc.Assets[defaultAuthoringLogoKey] = template.Asset{MediaType: "image/png", Data: []string{
-					"iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAR0lEQVR42u3XQQ0AIAwEsLnACW7w",
-					"LwMkwAPCIF1OQB+3JYtSW6oE0GegfmCAgIBWQOnWHug50K4KAwEBuUNAQEC3QT5XoGkGGMiUzlsM",
-					"R5wAAAAASUVORK5CYII=",
-				}}
-			}
-			element.Asset = template.Presence[string]{Set: true, Value: defaultAuthoringLogoKey}
+			// A placed image starts empty: the author positions and sizes the
+			// box first and chooses the file through the inspector, which is
+			// the state the design draws as a dashed placeholder. The asset
+			// field is present and null rather than absent, so the document
+			// still declares the box as an image and Render draws nothing for
+			// it until a file is set.
+			element.Asset = template.Presence[string]{Set: true, Null: true}
 		}
 	}
 	if err := containComponent(projected, x, y, width, height); err != nil {
@@ -1386,8 +1401,6 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 	t.doc.NextID++
 	return Canvas(t)
 }
-
-const defaultAuthoringLogoKey = "f4a37bba5652865abc8e24be5e1aad4d5ad42ce5727715f6d19b93861d23f6a4"
 
 // defaultFontFamily names the chain a newly created text element adopts: the
 // first declared non-empty chain in sorted key order. Sorted rather than
@@ -1452,19 +1465,32 @@ func moveComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	x, err := componentLength(raw, "x", snap)
+	unsnappedX, err := componentLength(raw, "x", false)
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	y, err := componentLength(raw, "y", snap)
+	unsnappedY, err := componentLength(raw, "y", false)
 	if err != nil {
 		return CanvasProjection{}, err
+	}
+	x, y := unsnappedX, unsnappedY
+	if snap {
+		if x, err = snapField("x", unsnappedX); err != nil {
+			return CanvasProjection{}, err
+		}
+		if y, err = snapField("y", unsnappedY); err != nil {
+			return CanvasProjection{}, err
+		}
 	}
 	_, projected, _, element, err := findComponent(t, id)
 	if err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
 	}
 	width, height := projectedSize(*element)
+	if snap && containComponent(projected, unsnappedX, unsnappedY, width, height) == nil {
+		x = containEdge(x, geom.Length(projected.Width)-width)
+		y = containEdge(y, geom.Length(projected.Height)-height)
+	}
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
 	}
@@ -1505,6 +1531,75 @@ func resizeComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 	if err := containComponent(projected, element.X, element.Y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
 	}
+	element.Width = template.Presence[geom.Length]{Set: true, Value: width}
+	element.Height = template.Presence[geom.Length]{Set: true, Value: height}
+	return Canvas(t)
+}
+
+// setComponentBounds is one rectangle, not a move followed by a resize. A
+// resize anchored at any edge or corner other than the bottom-right moves the
+// origin and the size together; sending moveComponent and resizeComponent in
+// sequence would put two entries in history for one drag and would test
+// containment against an intermediate rectangle the caller never asked for.
+func setComponentBounds(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 8); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	snap, err := commandBool(raw, "snap")
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	unsnappedX, err := componentLength(raw, "x", false)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	unsnappedY, err := componentLength(raw, "y", false)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	unsnappedWidth, err := componentLength(raw, "width", false)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	unsnappedHeight, err := componentLength(raw, "height", false)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	x, y, width, height := unsnappedX, unsnappedY, unsnappedWidth, unsnappedHeight
+	if snap {
+		for _, field := range [4]struct {
+			name  string
+			value *geom.Length
+		}{{"x", &x}, {"y", &y}, {"width", &width}, {"height", &height}} {
+			if *field.value, err = snapField(field.name, *field.value); err != nil {
+				return CanvasProjection{}, err
+			}
+		}
+	}
+	_, projected, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
+	}
+	if element.Type == template.ElementTable {
+		return CanvasProjection{}, componentFailure(id, "component.geometry", "table has derived geometry and cannot be resized")
+	}
+	if width <= 0 || height <= 0 {
+		return CanvasProjection{}, componentFailure(id, "component.geometry", "component width and height must be positive")
+	}
+	if snap && containComponent(projected, unsnappedX, unsnappedY, unsnappedWidth, unsnappedHeight) == nil {
+		width = containEdge(width, geom.Length(projected.Width)-x)
+		height = containEdge(height, geom.Length(projected.Height)-y)
+		x = containEdge(x, geom.Length(projected.Width)-width)
+		y = containEdge(y, geom.Length(projected.Height)-height)
+	}
+	if err := containComponent(projected, x, y, width, height); err != nil {
+		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
+	}
+	element.X, element.Y = x, y
 	element.Width = template.Presence[geom.Length]{Set: true, Value: width}
 	element.Height = template.Presence[geom.Length]{Set: true, Value: height}
 	return Canvas(t)
@@ -1571,6 +1666,26 @@ func projectedSize(element template.Element) (geom.Length, geom.Length) {
 		width += column.Width
 	}
 	return width, element.Table.Value.HeaderHeight
+}
+
+// Grid snapping is a convenience applied to the caller's number, not a second
+// constraint placed on it: a rectangle that fitted its band before the grid
+// rounded it must still fit afterwards. Callers below pull an edge back to the
+// last grid line that fits, and only ever when the unsnapped rectangle already
+// fitted — so snapping can never turn a legal drag into a refusal, and
+// geometry the caller placed outside the band is still refused unchanged.
+func containEdge(value, limit geom.Length) geom.Length {
+	if value <= limit {
+		return value
+	}
+	return floorToGrid(limit)
+}
+
+func floorToGrid(value geom.Length) geom.Length {
+	if value <= 0 {
+		return 0
+	}
+	return geom.Length(int64(value) / GridIncrement * GridIncrement)
 }
 
 func containComponent(band CanvasBand, x, y, width, height geom.Length) error {

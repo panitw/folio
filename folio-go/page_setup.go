@@ -280,10 +280,18 @@ func addCanvasImagePaint(t *Template, projection *CanvasProjection) error {
 			if component == nil || component.Band != band.name {
 				return fmt.Errorf("folio: canvas image component %q is missing from geometry projection", element.ID)
 			}
-			if !element.Width.Set || !element.Height.Set || !element.Asset.Set || element.Asset.Null {
+			if !element.Width.Set || !element.Height.Set || !element.Asset.Set {
 				// Load-time validation (parse_bands.go) already makes these
 				// required for a successfully parsed document — handled
 				// rather than assumed, never reached in practice.
+				continue
+			}
+			if element.Asset.Null {
+				// A placed but unfilled box. Neither Image nor
+				// ImageUnavailable is set: there is nothing to paint and
+				// nothing has gone wrong, and that pairing is what tells the
+				// designer to draw its empty placeholder instead of one of
+				// the two failure texts.
 				continue
 			}
 			assetKey := element.Asset.Value

@@ -26,6 +26,12 @@ export function moveComponentCommand(id: string, x: number, y: number, snap: boo
 export function resizeComponentCommand(id: string, width: number, height: number, snap: boolean): ArrayBuffer {
   return encode(`{"kind":"resizeComponent","version":1,"id":"${id}","width":${millipoints(width)},"height":${millipoints(height)},"snap":${snap}}`)
 }
+// One rectangle, one command. Any anchor other than the bottom-right corner
+// moves the origin while it sizes, and move-then-resize would be two history
+// entries for one drag with an intermediate rectangle nobody asked for.
+export function setComponentBoundsCommand(id: string, x: number, y: number, width: number, height: number, snap: boolean): ArrayBuffer {
+  return encode(`{"kind":"setComponentBounds","version":1,"id":"${id}","x":${millipoints(x)},"y":${millipoints(y)},"width":${millipoints(width)},"height":${millipoints(height)},"snap":${snap}}`)
+}
 export function deleteComponentCommand(id: string): ArrayBuffer {
 	return encode(`{"kind":"deleteComponent","version":1,"id":"${id}"}`)
 }

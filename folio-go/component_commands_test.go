@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -137,6 +138,56 @@ func TestBindComponentScalarOwnsRootExpressionAndPaintProjection(t *testing.T) {
 		if err != nil || !bytes.Equal(canonical, after) {
 			t.Fatalf("rejected scalar bind changed canonical bytes: %s, err=%v", command, err)
 		}
+	}
+}
+
+func TestPlacedImageStartsEmptyAndSurvivesTheRoundTripAndRender(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	placed, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"image","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The box is placed but unfilled: nothing to paint, and no reason given,
+	// because nothing has gone wrong — the author simply has not chosen a
+	// file. That is what tells the designer to draw its empty placeholder
+	// rather than one of ImageUnavailable's two failure texts.
+	component := newProjectedComponent(t, before, placed)
+	if component.Image != nil || component.ImageUnavailable != nil {
+		t.Fatalf("placed image projected image=%#v unavailable=%s, want an empty box", component.Image, describeStringPtr(component.ImageUnavailable))
+	}
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No stowaway: an empty box embeds no bytes anywhere in the document.
+	if !bytes.Contains(canonical, []byte(`"asset": null`)) {
+		t.Fatalf("canonical bytes do not declare the empty asset: %s", canonical)
+	}
+	if !bytes.Contains(canonical, []byte(`"assets": {}`)) {
+		t.Fatalf("placing an empty image added a document asset: %s", canonical)
+	}
+	// The canonical bytes still load, and the element is still an image.
+	reloaded, err := ParseTemplate(canonical)
+	if err != nil {
+		t.Fatalf("a document with an empty image box did not load: %v", err)
+	}
+	again, err := SerializeTemplate(reloaded)
+	if err != nil || !bytes.Equal(canonical, again) {
+		t.Fatalf("empty image box did not round-trip: err=%v", err)
+	}
+	// Render draws nothing for it and completes without a caveat: an unfilled
+	// box is an authoring state, not a defect in the document.
+	data, err := os.ReadFile(filepath.Join("..", "fixtures", "statement-1", "data.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Render(reloaded, Data(data), Params(`{"generatedDate":"2026-08-27"}`), testShippedFontSet())
+	if err != nil {
+		t.Fatalf("a document with an empty image box did not render: %v", err)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("empty image box reported diagnostics: %#v", result.Diagnostics)
 	}
 }
 
@@ -491,6 +542,102 @@ func TestDropComponentUsesGoHalfOpenBandHitTesting(t *testing.T) {
 	after, _ := SerializeTemplate(tpl)
 	if !bytes.Equal(before, after) {
 		t.Fatal("rejected drop changed canonical bytes")
+	}
+}
+
+func TestSetComponentBoundsMovesOriginAndSizeInOneCommand(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	createdProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"content","x":36,"y":36,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := newProjectedComponent(t, before, createdProjection)
+	// A north-west drag: the origin and the size move together, which is the
+	// whole reason this command exists next to move and resize.
+	bounded, err := ApplyComponentCommand(tpl, []byte(`{"kind":"setComponentBounds","version":1,"id":"`+created.ID+`","x":24.005,"y":12.006,"width":84.007,"height":48.008,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	component := newProjectedComponent(t, before, bounded)
+	if component.X != 24005 || component.Y != 12006 || component.Width != 84007 || component.Height != 48008 {
+		t.Fatalf("bounds units = (%d,%d,%d,%d), want (24005,12006,84007,48008)", component.X, component.Y, component.Width, component.Height)
+	}
+	canonical, _ := SerializeTemplate(tpl)
+	for name, command := range map[string]string{
+		"missing height":  `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":0,"y":0,"width":72,"snap":false}`,
+		"zero width":      `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":0,"y":0,"width":0,"height":24,"snap":false}`,
+		"outside theband": `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":-1,"y":0,"width":72,"height":24,"snap":false}`,
+		"past band width": `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":0,"y":0,"width":100000,"height":24,"snap":false}`,
+		"unknown id":      `{"kind":"setComponentBounds","version":1,"id":"nope","x":0,"y":0,"width":72,"height":24,"snap":false}`,
+	} {
+		if _, err := ApplyComponentCommand(tpl, []byte(command)); err == nil {
+			t.Fatalf("%s unexpectedly succeeded", name)
+		}
+		if after, _ := SerializeTemplate(tpl); !bytes.Equal(canonical, after) {
+			t.Fatalf("rejected %s changed canonical bytes", name)
+		}
+	}
+}
+
+func TestSnapDoesNotPushAnEdgeDragOutOfItsBand(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	createdProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := newProjectedComponent(t, before, createdProjection)
+	var band CanvasBand
+	for _, candidate := range createdProjection.Bands {
+		if candidate.Name == "content" {
+			band = candidate
+		}
+	}
+	literal := func(millipoints int64) string {
+		return fmt.Sprintf("%d.%03d", millipoints/1000, millipoints%1000)
+	}
+	// The far edge of the band, to the millipoint. Nearest-grid snapping can
+	// round this away from the band, and rounding alone must not turn a legal
+	// drag into a refusal the designer shows as a bounce back.
+	edgeX, edgeY := band.Width-created.Width, band.Height-created.Height
+	moved, err := ApplyComponentCommand(tpl, []byte(`{"kind":"moveComponent","version":1,"id":"`+created.ID+`","x":`+literal(edgeX)+`,"y":`+literal(edgeY)+`,"snap":true}`))
+	if err != nil {
+		t.Fatalf("edge move with snapping was refused: %v", err)
+	}
+	component := newProjectedComponent(t, before, moved)
+	if component.X%GridIncrement != 0 || component.Y%GridIncrement != 0 {
+		t.Fatalf("pulled-back origin = (%d,%d), want grid multiples", component.X, component.Y)
+	}
+	if component.X+component.Width > band.Width || component.Y+component.Height > band.Height {
+		t.Fatalf("pulled-back geometry (%d,%d,%d,%d) leaves band %dx%d", component.X, component.Y, component.Width, component.Height, band.Width, band.Height)
+	}
+	if edgeX-component.X >= GridIncrement || edgeY-component.Y >= GridIncrement {
+		t.Fatalf("pull-back moved (%d,%d) further than one grid step from (%d,%d)", component.X, component.Y, edgeX, edgeY)
+	}
+	// Same for a bounds drag that lands its far edges exactly on the band.
+	bounded, err := ApplyComponentCommand(tpl, []byte(`{"kind":"setComponentBounds","version":1,"id":"`+created.ID+`","x":`+literal(edgeX)+`,"y":`+literal(edgeY)+`,"width":`+literal(created.Width)+`,"height":`+literal(created.Height)+`,"snap":true}`))
+	if err != nil {
+		t.Fatalf("edge bounds with snapping was refused: %v", err)
+	}
+	component = newProjectedComponent(t, before, bounded)
+	if component.X+component.Width > band.Width || component.Y+component.Height > band.Height {
+		t.Fatalf("pulled-back bounds (%d,%d,%d,%d) leave band %dx%d", component.X, component.Y, component.Width, component.Height, band.Width, band.Height)
+	}
+	// The pull-back rescues the grid's own rounding and nothing else: a
+	// caller asking for geometry a whole grid step outside is still refused.
+	canonical, _ := SerializeTemplate(tpl)
+	for name, command := range map[string]string{
+		"a grid step past the right edge":  `{"kind":"moveComponent","version":1,"id":"` + created.ID + `","x":` + literal(edgeX+GridIncrement) + `,"y":0,"snap":true}`,
+		"a grid step past the bottom edge": `{"kind":"moveComponent","version":1,"id":"` + created.ID + `","y":` + literal(edgeY+GridIncrement) + `,"x":0,"snap":true}`,
+		"far past the right edge":          `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":` + literal(edgeX+100*GridIncrement) + `,"y":0,"width":72,"height":24,"snap":true}`,
+	} {
+		if _, err := ApplyComponentCommand(tpl, []byte(command)); err == nil {
+			t.Fatalf("%s unexpectedly succeeded", name)
+		}
+		if after, _ := SerializeTemplate(tpl); !bytes.Equal(canonical, after) {
+			t.Fatalf("rejected %s changed canonical bytes", name)
+		}
 	}
 }
 

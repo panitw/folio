@@ -148,13 +148,29 @@ async function placeStatementText(page: Page, band: ReturnType<Page['getByRole']
   await waitForRevisionAdvance(page, beforeValue)
 }
 
+// A 1x1 opaque grey PNG: the smallest picture this library will accept
+// (it refuses transparency), so the witness embeds a real asset without
+// carrying a fixture file around.
+const statementLogoBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAADklEQVR4nGJqAAQAAP//AIYAg0yeIEsAAAAASUVORK5CYII='
+
 async function authorStatementFraming(page: Page): Promise<void> {
   const header = page.getByRole('region', { name: 'Page Header', exact: true })
   const content = page.getByRole('region', { name: 'Content', exact: true })
   const footer = page.getByRole('region', { name: 'Page Footer', exact: true })
   await page.getByRole('button', { name: 'Place Image' }).click()
   await header.press('Enter')
-  await expect(header.getByRole('button', { name: /image component/ })).toHaveCount(1)
+  const logo = header.getByRole('button', { name: /image component/ })
+  await expect(logo).toHaveCount(1)
+  // A placed image box starts empty, so the statement's logo is a file this
+  // session actually chooses — through the same fallback <input type=file>
+  // tier this witness runs in. That is what puts an embedded asset in the
+  // saved bytes for the native half to find.
+  await logo.click()
+  await openTab(page, 'PROPERTIES')
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Choose image…' }).click()
+  await (await chooser).setFiles({ name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from(statementLogoBase64, 'base64') })
+  await expect(logo.locator('img.canvas-image-paint')).toBeVisible()
   await placeStatementText(page, header, 'CUSTOMER ACCOUNT STATEMENT', 30)
   await placeStatementText(page, content, 'Customer: {{customer.name}}', 30, true)
   await placeStatementText(page, content, 'Account: {{account.number}}', 60, true)
