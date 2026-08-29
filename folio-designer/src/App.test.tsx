@@ -573,6 +573,40 @@ describe('application shell', () => {
     expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e9","x":3,"y":2,"snap":true}')
   })
 
+  it('tracks a drag and a resize live in the geometry fields, then lands the accepted engine geometry', async () => {
+    const placed = { id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true }
+    const componentCanvas = { ...canvas, components: [placed] }
+    const movedCanvas = { ...canvas, components: [{ ...placed, x: 6_000, y: 4_000 }] }
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: movedCanvas } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    const component = screen.getByLabelText('text component e9')
+    fireEvent.click(component)
+    const x = screen.getByRole('textbox', { name: 'X (pt)' })
+    const y = screen.getByRole('textbox', { name: 'Y (pt)' })
+    expect(x).toHaveValue('0')
+    fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(component, { pointerId: 1, clientX: 13, clientY: 12 })
+    // The transient proposal the canvas paints is the value the panel shows,
+    // and it cannot be typed over while the pointer owns it.
+    expect(x).toHaveValue('3')
+    expect(y).toHaveValue('2')
+    expect(x).toHaveAttribute('readonly')
+    fireEvent.pointerMove(component, { pointerId: 1, clientX: 19, clientY: 10 })
+    expect(x).toHaveValue('9')
+    expect(y).toHaveValue('0')
+    fireEvent.pointerUp(component, { pointerId: 1, clientX: 19, clientY: 10 })
+    // Go's accepted geometry replaces the proposal; 9 was never committed.
+    await waitFor(() => expect(x).toHaveValue('6'))
+    expect(y).toHaveValue('4')
+    expect(x).not.toHaveAttribute('readonly')
+
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Resize e9' }), { pointerId: 2, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(screen.getByRole('button', { name: 'Resize e9' }), { pointerId: 2, clientX: 8, clientY: 5 })
+    expect(width).toHaveValue('80')
+    expect(screen.getByRole('textbox', { name: 'Height (pt)' })).toHaveValue('29')
+  })
+
   it('toggles Shift-click selection once without engine traffic and clears it on an empty canvas click', () => {
     const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }, { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 80000, y: 0, width: 72000, height: 24000, resizable: true }] }
     const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }))

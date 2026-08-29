@@ -20,11 +20,14 @@ const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3,
 
 const textCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Text' }] }
 
+const openDataTab = () => fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+
 describe('docked sample data panel', () => {
   it('keeps authoring available when empty, loads a tree, keeps accepted bytes authoritative, and preserves a prior sample on cancel', async () => {
     const openSample = vi.fn<SampleFileAccess['openSample']>().mockResolvedValueOnce({ name: 'sample.json', bytes: sampleBytes }).mockRejectedValueOnce(new FileAccessCancelled()).mockResolvedValueOnce({ name: 'replacement.json', bytes: replacementBytes })
     const request = vi.fn(async (...args: [string, unknown?, AbortSignal?]) => args[0] === 'identity' ? { snapshot, preview: { revision: 1, identity: 'b'.repeat(64) } } : args[0] === 'serialize' ? { snapshot, bytes: new Uint8Array([1]).buffer } : args[0] === 'render' ? { snapshot, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } } : { snapshot })
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} sampleFileAccess={{ openSample }} />)
+    openDataTab()
     expect(screen.getByLabelText('Data panel')).toBeInTheDocument()
     expect(screen.getByText('Binding unavailable: no sample data loaded.')).toBeInTheDocument()
     expect(screen.getByLabelText('Canvas region')).toBeInTheDocument()
@@ -101,6 +104,7 @@ describe('docked sample data panel', () => {
       : { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: textCanvas } })
     const sample = acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"Ada"},"items":[]}').buffer)
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} initialSampleData={sample} />)
+    openDataTab()
     fireEvent.click(screen.getByLabelText('text component e1'))
     const customer = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '2' && item.textContent?.startsWith('customer'))!
     customer.focus()
@@ -130,6 +134,7 @@ describe('docked sample data panel', () => {
     })
     const sample = acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"Ada"}}').buffer)
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} initialSampleData={sample} blankBytes={new Uint8Array([7]).buffer} />)
+    openDataTab()
     fireEvent.click(screen.getByLabelText('text component e1'))
     const customer = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '2' && item.textContent?.startsWith('customer'))!
     fireEvent.click(customer)
@@ -151,6 +156,7 @@ describe('docked sample data panel', () => {
     const request = vi.fn((operation: string) => operation === 'command' ? new Promise<{ snapshot: { documentState: 'loaded'; revision: number; byteLength: number; canvas: typeof selectedCanvas } }>((resolve) => { resolveBinding = resolve }) : Promise.resolve({ snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: selectedCanvas } }))
     const sample = acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"Ada"}}').buffer)
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: selectedCanvas }} initialSampleData={sample} />)
+    openDataTab()
     fireEvent.click(screen.getByLabelText('text component e1'))
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!)
@@ -167,6 +173,7 @@ describe('docked sample data panel', () => {
     const openSample = vi.fn(() => new Promise<{ name: string; bytes: ArrayBuffer }>((resolve) => { release = resolve }))
     const request = vi.fn(async (operation: string) => operation === 'serialize' ? { snapshot, bytes: new Uint8Array([1]).buffer } : { snapshot })
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} blankBytes={new Uint8Array([7]).buffer} sampleFileAccess={{ openSample }} />)
+    openDataTab()
     fireEvent.click(screen.getByRole('button', { name: 'Load sample JSON' }))
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
     await waitFor(() => expect(screen.getByText('Started an unnamed local template')).toBeInTheDocument())

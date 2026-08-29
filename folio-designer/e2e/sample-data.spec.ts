@@ -6,6 +6,7 @@ test.beforeEach(async ({ page }) => {
 
 test('loads local sample JSON into the docked navigable discovery panel without opening a destination', async ({ page }) => {
   await page.goto('/')
+  await page.getByRole('tab', { name: 'DATA' }).click()
   await expect(page.getByLabel('Data panel')).toBeVisible()
   await expect(page.getByText('Binding unavailable: no sample data loaded.')).toBeVisible()
   await expect(page.getByLabel('Canvas region')).toBeVisible()

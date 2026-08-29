@@ -70,7 +70,14 @@ async function captured(page: Page): Promise<Captured> {
   return page.evaluate(() => (window as typeof window & { __folioRoundTripCapture: Captured }).__folioRoundTripCapture)
 }
 
+// The inspector is one tabbed panel: PROPERTIES (INPUTS in Preview) and DATA.
+// Each authoring helper opens the tab holding the control it drives.
+async function openTab(page: Page, name: 'PROPERTIES' | 'DATA' | 'INPUTS'): Promise<void> {
+  await page.getByRole('tab', { name }).click()
+}
+
 async function setFontFamily(page: Page): Promise<void> {
+  await openTab(page, 'PROPERTIES')
   const font = page.getByRole('textbox', { name: 'Font family' })
   await font.fill('body')
   await font.press('Enter')
@@ -78,6 +85,7 @@ async function setFontFamily(page: Page): Promise<void> {
 }
 
 async function loadSample(page: Page): Promise<void> {
+  await openTab(page, 'DATA')
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
   await (await chooser).setFiles({ name: 'authored-session-data.json', mimeType: 'application/json', buffer: sample })
@@ -103,6 +111,7 @@ async function bindTextToCustomer(page: Page, content: ReturnType<Page['getByRol
   await expect(texts).toHaveCount(beforeCount + 1, { timeout: 12_000 })
   await texts.last().click()
   await setFontFamily(page)
+  await openTab(page, 'DATA')
   const tree = page.getByRole('tree', { name: 'Sample data paths' })
   const customer = tree.getByRole('treeitem').filter({ hasText: /^customer/ })
   await customer.click()
@@ -110,6 +119,7 @@ async function bindTextToCustomer(page: Page, content: ReturnType<Page['getByRol
   await expect(name).toBeVisible()
   await name.click()
   await page.getByRole('button', { name: 'Connect selected path' }).click()
+  await openTab(page, 'PROPERTIES')
   await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
 }
 
@@ -158,6 +168,7 @@ async function authorTableWithFooter(page: Page, content: ReturnType<Page['getBy
   await content.press('Enter')
   const table = content.getByRole('button', { name: /table component/ }).last()
   await table.click()
+  await openTab(page, 'PROPERTIES')
   const yField = page.getByRole('textbox', { name: 'Y (pt)' })
   await yField.fill('120')
   await yField.press('Enter')
@@ -252,6 +263,7 @@ async function savePreviewAndCapture(page: Page, fileName: string, output: strin
   expect(saved.suggestedFilename()).toBe(fileName)
 
   await page.getByRole('button', { name: 'PREVIEW' }).click()
+  await openTab(page, 'INPUTS')
   const rawParameters = page.getByRole('textbox', { name: 'Raw parameter JSON' })
   await rawParameters.fill(params.toString('utf8'))
   // Fail with the public CLI's concrete diagnostic before asking the WASM

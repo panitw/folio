@@ -23,8 +23,7 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
         : !selectedComponentId
           ? 'Binding unavailable: select one component first.'
           : undefined
-  return <aside className="data-panel" aria-label="Data panel">
-    <p className="section-label">DATA</p>
+  return <div className="data-panel" aria-label="Data panel">
     <button className="file-button" type="button" onClick={onLoad} disabled={busy || !available}>{action}</button>
     {error && <p role="alert" className="data-message">{error}</p>}
     {!sample ? <><p className="data-empty" role="status">{unavailable}</p><p className="honest-note">{available ? 'Load one local JSON document to inspect its paths.' : 'Local sample selection is unavailable in this shell.'}</p></> : <>
@@ -36,7 +35,7 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
       <button className="file-button binding-connect" type="button" disabled={Boolean(unavailable) || bindingBusy || !onConnect} onClick={() => candidate && onConnect?.(candidate)}>{bindingBusy ? 'Connecting…' : 'Connect selected path'}</button>
       {currentBindingError && <p className="data-message" role="alert">{currentBindingError}</p>}
     </>}
-  </aside>
+  </div>
 }
 
 function DataTree({ root, picked, onPick }: Readonly<{ root: SampleNode; picked?: SampleNode; onPick: (node: SampleNode) => void }>) {

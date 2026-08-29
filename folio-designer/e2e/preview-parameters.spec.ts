@@ -19,10 +19,12 @@ test('discovers reportDate from Go, keeps an absent value as a located engine fa
   await (await templateChooser).setFiles({ name: 'parameter-preview.folio', mimeType: 'application/json', buffer: parameterTemplate })
 	await expect(page.locator('.document-name')).toHaveText('parameter-preview.folio')
   const sampleChooser = page.waitForEvent('filechooser')
+  await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
   await (await sampleChooser).setFiles({ name: 'sample.json', mimeType: 'application/json', buffer: Buffer.from('{"customer":{"name":"Ada"}}') })
 	await expect(page.getByRole('tree', { name: 'Sample data paths' })).toBeVisible()
   await page.getByRole('button', { name: 'PREVIEW' }).click()
+  await page.getByRole('tab', { name: 'INPUTS' }).click()
   const reportDate = page.getByRole('textbox', { name: 'Value for params.reportDate' })
   await expect(reportDate).toBeVisible()
   // Parameter discovery is asynchronous; explicitly render the currently

@@ -17,6 +17,7 @@ test('binds a selected text component to a picked root scalar and undoes/redoes 
   await text.click()
 
   const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
   await (await chooser).setFiles({ name: 'sample.json', mimeType: 'application/json', buffer: Buffer.from('{"customer":{"name":"Ada"}}') })
   const tree = page.getByRole('tree', { name: 'Sample data paths' })
@@ -26,6 +27,7 @@ test('binds a selected text component to a picked root scalar and undoes/redoes 
   await tree.getByRole('treeitem').filter({ hasText: /^name/ }).click()
   await page.getByRole('button', { name: 'Connect selected path' }).click()
 
+  await page.getByRole('tab', { name: 'PROPERTIES' }).click()
   await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
   await expect(content.getByRole('button', { name: /bound to customer.name/ })).toBeVisible()
   await page.getByRole('button', { name: 'Undo' }).click()
@@ -45,6 +47,7 @@ test('offers another golden-report scalar through the tree and has no binding pa
   await content.getByRole('button', { name: /text component/ }).last().click()
 
   const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
   await (await chooser).setFiles({ name: 'golden-paths.json', mimeType: 'application/json', buffer: Buffer.from('{"account":{"number":"001-9"}}') })
   const tree = page.getByRole('tree', { name: 'Sample data paths' })
@@ -52,6 +55,7 @@ test('offers another golden-report scalar through the tree and has no binding pa
   await tree.getByRole('treeitem').filter({ hasText: /^number/ }).click()
   await page.getByRole('button', { name: 'Connect selected path' }).click()
 
+  await page.getByRole('tab', { name: 'PROPERTIES' }).click()
   await expect(page.getByText('Bound to').locator('..')).toContainText('account.number')
   await expect(page.getByRole('textbox', { name: /binding path|path expression/i })).toHaveCount(0)
 })
