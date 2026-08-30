@@ -165,7 +165,7 @@ development_status:
   7-4-author-body-text-in-the-designer: done
   7-5-the-content-column-runs-past-the-first-page: done
   7-6-the-canvas-draws-every-page-the-document-will-produce: done
-  7-7-keep-a-signature-block-together-across-a-page-break: in-progress
+  7-7-keep-a-signature-block-together-across-a-page-break: done
   # 7.8 added 2026-08-30 by Story 7.4's plan gate, which routed DW-29 out.
   7-8-refuse-a-justified-table-at-load-in-the-author-s-own-terms: backlog
   epic-7-retrospective: optional

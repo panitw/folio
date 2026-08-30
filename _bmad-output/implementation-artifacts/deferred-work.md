@@ -2890,3 +2890,165 @@ allocates a fresh origins array per call, and `columnEdgeAfterDrag` calls it twi
 and leaves open. The sheet count multiplies DW-34's cost, and this entry is the drag-time half of the
 same problem. Filed as low because the arithmetic is cheap per sheet and the budget caps the product;
 filed at all because the drag is the one interaction where a per-frame cost is felt.
+
+---
+
+### DW-46 — for a grouped document the canvas reports an EXACT window count that is wrong, and window ORIGINS that are wrong in a way no floor flag discloses
+- **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **pending the engineering lead's ruling** — recorded as such rather than assigned. It is
+  not obviously one story: it may be a floor cause, a projection change, or a decision that the
+  canvas stops claiming exactness at all
+- **Severity:** HIGH
+- **Status:** OPEN — **Epic 7's boundary is held on it**
+
+**Measured at the close, with a control.** A document with a body element, a two-member `signature`
+group at y 700 / y 740 and an untagged tail at y 1440 renders **3 pages**, while
+`CanvasWithTextPaint` reports `ContentWindowCount = 2`, `ContentWindowCountIsFloor = **false**` and
+`ContentWindowOrigins [0, 740000]`. The render's second window begins at the group's earliest top,
+**700000**. The same document with the tags removed renders 2 pages and the canvas is right — that
+control is what makes the failure the grouping's rather than the fixture's.
+
+**Why this is worse than an inaccuracy.** `addCanvasWindowCount` (`folio-go/page_setup.go:627-702`)
+builds its `layout.ColumnItems` with no `Group` at all, and grouping is not among the floor causes
+computed at `:635`. So this is a **fourth floor cause Story 7.6 does not know about** — and 7.6
+exists precisely to make the canvas honest about what it cannot know. A disclosure that is
+confidently wrong (`IsFloor = false`, i.e. *this count is exact*) is a liability the pre-7.6 silence
+was not.
+
+**The wrong ORIGINS are a separate failure.** Story 7.6 projected origins so the browser would never
+compute them. A floor flag says the count may be low; it says nothing at all about an origin that
+points at the wrong column position, and there is no flag on the origins array. Fixing the count
+alone would leave this half standing.
+
+No test reads either value for a tagged document. Story 7.7 could not take it: the intent's `Never`
+clause forbids making the canvas group-aware, and the spec's "Limits to state" explicitly forbids
+adding a floor cause or touching the projection. **DW-40 and DW-41 are the neighbouring honesty
+questions**; whoever rules on this should read all three together.
+
+---
+
+### DW-47 — an over-tall SINGLE-member keep-together group is clipped and warned, where the same element untagged is a fatal error — the contract's own matrix rows 3 and 5 collide
+- **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **the engineering lead** — **this needs a ruling, not a patch**. Both dispositions are
+  defensible and the contract asserts both
+- **Severity:** MEDIUM
+- **Status:** OPEN
+
+**The collision.** The story's I/O matrix says "Group taller than one window → clipped with a
+Warning" (row 3) and "Single-member group → placement identical to the same element untagged"
+(row 5). A single over-tall tagged element satisfies both rows and they disagree: tagging converts
+D-2.6.1's located fatal into a clip-and-warn.
+
+**Reproduced at the close.** An over-tall `rect` element (height 900 pt against a 729.890 pt content
+window) renders **566 bytes plus one `TABLE_ROW_CLIPPED_HEIGHT` Warning** when tagged, and is a
+**fatal `RenderError`** when untagged. The shipped behaviour is defensible under D-4.6.2 as amended
+— a single-member group is still an author-declared group, and leniency follows authorship — but
+row 5's "identical to untagged" is false in this corner and should be tightened or the behaviour
+changed.
+
+**Adjacent, and pre-existing, found while reproducing the above:** the untagged fatal's message reads
+*"element e1: **table** is taller than the content window"* for an element that is not a table. The
+symbol is outside this story's diff and untouched by it; whoever takes this entry is standing at that
+line anyway.
+
+---
+
+### DW-48 — `duplicateComponent` copies a keep-together tag into a group the designer offers no way to see or clear
+- **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 14's designer-panel work, or the story that first gives the designer a grouping
+  concept** — a gate, never an event, per D-000.73
+- **Severity:** MEDIUM
+- **Status:** OPEN
+
+**The gap.** `duplicateComponent`'s `clone := *element` copies the whole `Element`, `KeepTogether`
+included. The designer has no grouping concept at all — `component-command.ts` has zero hits and
+`component_commands.go`'s property surface does not accept the key — so a group can only be authored
+by hand-editing the `.folio` file, yet duplicating a tagged signature element silently joins the copy
+to that group, where it then constrains pagination invisibly.
+
+Story 7.7 records the canvas **preview** limit (DW-46); this **authoring/duplication** limit is
+recorded nowhere else. `unbreakableValues` is the shipped precedent for a format key with zero
+designer references, so the absence of a control is not itself the defect — the silent, unclearable
+join on duplicate is.
+
+---
+
+### DW-49 — `ARCHITECTURE-SPINE.md` still scopes the over-tall clip carve-out to "rows" although a second population is now clipped
+- **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **the engineering lead** — amending the spine is the lead's, never a story's
+- **Severity:** LOW
+- **Status:** OPEN
+
+**The gap.** `_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md:319`
+still reads "Over-tall **rows** (FR25) and clipped content (FR44) are …". D-4.6.2 was amended in
+`folio-mvp-decision-log.md` for this story and quotes the spine as the authority for that noun, so
+the two now disagree by one word. Verified still present at the close.
+
+Cheap to fix and easy to leave rotting; filed so the next reader of D-4.6.2 does not conclude the
+amendment was unauthorised.
+
+---
+
+### DW-50 — a tagged MULTI-LINE text element becomes atomic, so the matrix's "a single-member group changes nothing" holds only for single-line elements
+- **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **the same ruling as DW-47** — it is the same contract row, measured on a different
+  element kind, and splitting them would produce two answers to one question
+- **Severity:** LOW
+- **Status:** OPEN
+
+**The gap.** `contentColumnItems` emits one `ColumnItem` per shaped line and the substitution stamps
+the same key on all of them, so tagging one multi-line element makes its lines unbreakable and its
+placement can change. `TestKeepTogetherSingleMemberChangesNothing` deliberately uses a single-line
+element and its own doc comment concedes the multi-line case "would be a real change", while the
+contract's row 5 is stated at the **element** level.
+
+**Measured at the close, and the consequence is sharper than "placement can change":** a ~60-clause
+text element that untagged flows cleanly across pages (71,374 bytes, **no diagnostic**) becomes,
+tagged alone, a single over-tall group that is **clipped** — 66,636 bytes and one
+`TABLE_ROW_CLIPPED_HEIGHT` Warning, with the overflow dropped from the document. So tagging a long
+paragraph on its own does not merely move it; it can silently cost the author content. Arguably the
+feature working as intended, which is exactly why it wants a ruling rather than a patch.
+
+---
+
+### DW-51 — no test combines non-contiguous membership with a union extent that crosses the window ceiling
+- **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 7's retrospective, or the next story that touches `keep_together_fixture_test.go`
+  (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** LOW
+- **Status:** OPEN
+
+**The gap.** `TestKeepTogetherMembersNeedNotBeContiguous` uses a group whose union **fits** window
+one, so it exercises the ride-along but never the slide. The shipped fixture crosses the ceiling but
+is contiguous. The case where the window must slide to the group's earliest `Top` **across an
+intervening ungrouped item** — the two constraints together — is exercised by nothing.
+
+Both constraints are individually covered and the shipped machinery is key-agnostic, so this is a
+coverage gap rather than a suspected defect. Filed because the two-constraint case is the one a
+future change to the slide would break first.
+
+---
+
+### DW-52 — `asLoadError` uses a bare type assertion while its comment claims `errors.As` semantics, so it fails on any wrapped `LoadError`
+- **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **the story that next changes error wrapping in `folio-go/internal/template`, or Story
+  15.3 before the `folio-go/v0.1.0` tag (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** LOW
+- **Status:** OPEN — **pre-existing; the symbol does not appear in Story 7.7's diff**
+
+**The gap.** The body is `err.(*LoadError)`, not `errors.As`, yet the same package wraps with
+`fmt.Errorf("template: %s: %w", …)` in `decodeBand` / `decodeElement`. Either use `errors.As` or
+correct the comment.
+
+**Why it matters more than it reads.** Story 7.7's two load-refusal tests assert through
+`asLoadError`, and they pass — so today's refusal path is unwrapped. The day a caller in that chain
+starts wrapping, those assertions do not become wrong, they become **unreachable**: the test fails
+loudly rather than silently, which is the good direction, but the diagnostic surface a
+`TEMPLATE_MALFORMED` consumer sees would already have changed.

@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: '45b11c5be341fd29fefad37200e805d14cdf0bbb'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: [oversized]
 deferred:
@@ -114,17 +114,28 @@ deferred:
 
 ## In plain terms
 
-*Non-normative. This section explains the story in ordinary language and settles nothing; the contract below governs.*
+*Non-normative. This section describes what shipped; the contract below governs implementation.*
 
-A contract ends with a signature block — a name, a date, a ruled line to sign on. Those few pieces belong together. Today the engine treats every line of the content column as its own unit, so if the page happens to run out halfway through that block, the name prints at the foot of one page and the date at the head of the next. Nobody signs a document like that.
+A contract ends with a signature block — a name, a date, a ruled line to sign on — and a page break
+could fall straight through it. A template author can now mark a set of content elements as
+travelling together, and the engine treats that set as one indivisible unit: it all stays on the page
+it started on, or it all moves to the next. The members need not be neighbours. Nothing else moves,
+no page is left empty, and a template declaring no such set prints exactly the bytes it printed
+before.
 
-This story lets a template author say "these pieces travel together". When the engine works out where pages break, it treats such a set as one indivisible unit: the whole set stays on the page it started on, or the whole set moves to the next one. Nothing else moves, no gap is invented, and no page is left empty.
+One case cannot be honoured: a set too tall to fit even an empty page. Rather than refuse the
+document, the engine gives that set a page of its own, prints as much as fits, and returns a warning
+beside the finished file — it is **clipped, not refused**. The cost was accepted deliberately:
+whatever falls past the bottom is dropped, so a signature **image** inside such a set is **removed
+from the document, not moved**.
 
-There is one case that cannot be honoured: a set so tall it would not fit even on an empty page. Rather than refusing to produce a document at all, the engine gives that set a page of its own, prints as much as the page holds, and returns a warning alongside the finished file saying what was cut. The author gets a document and an explanation, not a failure.
+Two limits are known and unfixed. The authoring canvas does not preview this grouping, so for a
+document declaring one it can draw fewer pages than will print while calling that count exact; that
+sits with the engineering lead. And a single element tagged alone can paginate differently from the
+same element untagged.
 
-A template declaring no such sets prints exactly the bytes it prints today.
-
-One check in this repository is required to stay failing — the text-corpus exercise-floor check. That red is expected and must never be repaired.
+One check here is required to stay failing — the text-corpus exercise floor. That red is expected and
+must never be repaired.
 
 <intent-contract>
 
@@ -472,3 +483,153 @@ Verification: none run — planning-only dispatch executes no build or test comm
 Two items are flagged for the engineering lead at the plan gate; both are ruled in the spec so it is implementable as written, and both are the lead's to overturn:
 1. **D-4.6.2's leniency extended to author-declared groups** (Design Notes, Flag 1). Planned as holding, on AC3's explicit ratified wording, which is the deliberate decision D-4.6.2's own tripwire reserved. It is NOT supported by D-4.6.2's authorship rationale, and the log must be amended. `Block If` holds the commit until it is.
 2. **The diagnostic code** (Design Notes, Flag 2). Applied as dispatched — no mint; `TABLE_ROW_CLIPPED_HEIGHT` is reused with a fourth role arm. Dissent recorded: D-4.5.1's second limb and D-000.65 both point at a mint.
+
+## Delivery Log
+
+### 2026-08-31 — planned
+
+Baseline `ae82752`. Plan-only dispatch; no code, no commits. The story carried an `oversized`
+warning and kept it: a format key, a version rank, two pagination passes, a deliberately widened
+architecture tripwire and a thirteen-site golden fixture are one story only because the fixture is
+what proves the rest.
+
+Two items went to the engineering lead at the plan gate and both came back ruled, in
+`epic-7-8-decision-log.md` as **D-7.7.1 … D-7.7.5**.
+
+**D-4.6.2's tripwire fired exactly as designed, and this is the second of the two arms it named.**
+The entry it guards had ruled the over-tall clip carve-out table-only, and this story widens it to
+author-declared keep-together groups: a page of its own, clipped, a Warning beside the bytes, never
+fatal. That is applying D-4.6.2's own criterion — leniency follows authorship — not overriding a
+reservation, and AD-14 grounds it without analogy. The lead recorded the amendment in
+`folio-mvp-decision-log.md` **in the baseline commit**, before any code, which is what discharged the
+`Block If` on `D-4.6.2 amendment not recorded`. Consciously accepted in the same ruling: the clip
+drops whole members, so a signature **image** inside an over-tall group is removed, not moved.
+
+**The Epic 7 scope fence was re-anchored from a filename to an invariant.** "`paginate.go` absent
+from the diff" was always a proxy for "the window model must not change". At 7.7 the proxy and the
+purpose come apart, so the fence became the property itself: the four pagination rules, window
+advance to the first unplaced item, no page ever empty, one `Shift` per page, the column never
+mutated — with `TestPaginateNeverProducesAnEmptyPage` and the four-rule tests green **and
+unmodified**. It happens that the proxy held too, which the close verified independently.
+
+The version rank was settled at `1.2` — its own new rank, reached independently by the plan gate and
+the lead. Not 1.1, which would claim a reader that silently splits the block; not 2.0, which is
+additive and would needlessly orphan 1.x readers.
+
+### 2026-08-31 — built
+
+Baseline `45b11c5`; story commit `ed485eb`, 31 files, one commit. An author declares
+`keepTogether: "<tag>"` on content-band elements and the tagged column items are stamped with the
+**existing** `layout.ItemGroup`, so the shipped grouping machinery — union extent, ride-along, the
+Story 4.6 over-tall clip — carries the whole feature. `internal/layout` gained nothing: its tree hash
+is byte-identical across the commit.
+
+The group key's `ElementID` carries a `:`, which the element-id grammar `^e[0-9a-z]+$` proves no
+element id can equal, and `IsHeader` is false. That single choice makes every table-shaped path
+unreachable at once, and both halves are **asserted rather than argued** — one test feeds the key
+through the public loader as an element id and requires refusal *with a loading control*, another
+drives an over-tall group through the clip branch and requires zero header repeats, zero row
+displacement, zero suppression records and no footer-orphan target.
+
+`TABLE_ROW_CLIPPED_HEIGHT` gained a **fourth role arm** rather than a minted code (the lead's call;
+the dissent is recorded in Design Notes). Without it a signature block is announced to its author as
+a numbered row of a bound collection. The D-4.6.2 tripwire was widened deliberately and renamed to
+the invariant it now holds, its whitelist gaining the one new derivation and its vacuity floor
+raised from 2 to 3.
+
+**One review pass: 7 patched (high 1, medium 2, low 4), 7 deferred (high 1, medium 2, low 4), 8
+rejected, 0 intent gaps, 0 spec defects.** The high was found by mutation, not by reading: the
+page-count pass was wired for grouping and **wholly unverified** — removing all three of its
+substitutions left the entire suite green, so a document's own footers could print the ungrouped
+page count while the render produced a different number of pages. Closed by a 3-page grouped
+document whose footers would print "of 2".
+
+### 2026-08-31 — done
+
+Baseline `45b11c5`; story commit `ed485eb`; closed on `main` in its own commit, **not pushed**.
+Status `done`; `sprint-status.yaml`'s story key set to `done`. **`epic-7` is left `in-progress`** —
+the boundary is held on the unresolved canvas-honesty defect below, which is with the engineering
+lead, and Story 7.8 is still `backlog`.
+
+**`followup_review_recommended` was `true` and has been cleared to `false`.** The ground is that the
+close re-derived the build's load-bearing claims by mutation and measurement rather than relaying
+them, and every one held: the high gap's fix, the fourth role arm, the widened tripwire, the
+namespace audit, the fence, and the fixture's discrimination. Nothing new was patched at the close.
+
+**Gates measured at this revision, with their printed numbers. Nothing was carried forward.**
+
+- `cd folio-go && go test -count=1 ./...` — **1560 pass, 5 skip, exactly ONE distinct failure**:
+  `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)`, `got 7, need >=20`, the mandated
+  permanent red, untouched. Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` green. 13
+  packages ok.
+- `go vet -tags=matrix ./...` — exit 0. `gofmt -l folio-go` from the repository root — no output.
+- `TestTargetRenderHash` — run **once per leg with `FOLIO_MATRIX_TARGET` exported**: `darwin/arm64`,
+  `linux/amd64`, `linux/arm64`, `js/wasm`, all PASS, `grep -c "asserts NOTHING"` = **0** on every
+  leg. **The unset run was executed as a control** and does print the line once, so the four legs are
+  known not to have been no-ops.
+- `TestCrossTargetByteIdentity` — PASS (21.2s). It prints the new fixture agreeing on all four
+  targets: `keep-together` 82,825 bytes, `6ed495b4…`.
+- `cd lint && go test -count=1 ./...` — 4 packages ok.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck clean; oxlint
+  **exactly 4** pre-existing `only-export-components` warnings, 0 errors; **280 tests across 33 test
+  files**, unchanged. `npm run test:e2e:compile` clean — **`tsc --noEmit` only; the browser e2e did
+  NOT execute** (D-000.4).
+- **The nine digests, measured by `shasum` against the artifacts rather than inferred from a green
+  suite, all byte-identical:** `statement-1` 76,744 `114df1d6…`; `-5` 127,363 `70dce051…`; `-20`
+  269,884 `56bfbbd9…`; `-50` 555,829 `5d090b0f…`; `mandatory-break` 56,681 `7cf743de…`;
+  `line-spacing` 57,770 `de212115…`; `justified-text` 59,894 `6da3b12e…`; `alignment-rounding`
+  61,346 `986400a1…`; `justified-thai` 15,079 `58ca4777…`. `goldenDigestRecord` went 20 → 21 and its
+  diff is **insertions only**, so the twenty pre-existing entries are unmoved mechanically and not
+  by inspection.
+- **Nothing is deferred to a catch-up run.** This story's correctness is byte-identity- and
+  pagination-shaped, so it carried the heavy suites regardless of Epic 7's per-epic cadence
+  (D-R7.1), and so did every other Epic 7 story: 7.1, 7.2, 7.3, 7.4, 7.5 and 7.6 each record the
+  four `FOLIO_MATRIX_TARGET` legs with a zero "asserts NOTHING" count, `TestCrossTargetByteIdentity`,
+  the lint module and the designer suite in their own Delivery Logs. Epic 7 owes no heavy-test
+  arrears.
+- Known-environmental, not regressions: `TestShippedFacesReproduceFromUpstream` (no `fontTools`
+  here); `lint/internal/rules/licencegraph_test.go` gofmt (DW-23, Story 15.2).
+
+**The high gap was reproduced, not read.** With all three page-count-pass substitutions removed, the
+3-page grouped document's footers print `Page 0 of 2` on every page and both new tests fail with the
+message naming the disagreement between the two passes. The source was restored and `cmp`-verified
+byte-identical.
+
+**The fence was verified mechanically, not argued.** `git diff --name-only 45b11c5 ed485eb` contains
+**zero** paths under `folio-go/internal/layout/`; the directory's tree object is the same hash at
+both revisions and `paginate_test.go`'s blob is unchanged, so `TestPaginateNeverProducesAnEmptyPage`
+and the four-rule tests are green **and provably unmodified** (26 tests pass in that package).
+
+**Two more mutations were run at the close.** Neutering the fourth role arm makes the over-tall
+warning read *"row **-2** of the bound collection"* with a remedy about cell padding, and the test
+reddens. Restoring the tripwire's floor to 2 and removing its new whitelist entry fires it naming
+`render.go:2054:9: keepTogetherGroup`. Both sources restored and `cmp`-verified.
+
+**The fixture discriminates, reproduced end to end.** Grouped: 2 pages, page 1 carries no member of
+the signature block (neither the signature text nor the date text, **0 rects**), page 2 carries all
+three including the ruled line's rect; 82,825 bytes, `6ed495b4…`. Ungrouped twin: the signature line
+is stranded at the foot of page 1 while the rule and the date fall to page 2; 82,824 bytes,
+`16067ec1…`. The two renders differ in bytes. The twin's "identical except for the tags" claim is
+enforced by reconstruction — the test rebuilds the twin from the grouped template by deleting
+exactly the tag substring and requires string equality — so the pair cannot drift apart for a second
+reason and quietly stop discriminating.
+
+**The canvas honesty defect was reproduced with a control, and it is held at the boundary.** For a
+document with a body element, a two-member group and an untagged tail, the render produces **3
+pages** while the canvas reports `ContentWindowCount = 2` with `ContentWindowCountIsFloor = false` —
+that is, *exact* — and origins `[0, 740000]` where the render's second window begins at the group's
+earliest top, 700000. The same document with the tags removed renders 2 pages and the canvas is
+right, which is the control that makes the failure the grouping's and not the fixture's. This is a
+**fourth floor cause Story 7.6 does not know about**, and the wrong origins are a **separate** failure
+that a floor flag does not disclose at all. Filed as **DW-46**, owner pending the lead's ruling. It
+is why `epic-7` is not being marked done here.
+
+**Seven deferrals filed into the register as DW-46 … DW-52**, where the build had recorded them only
+in this spec's frontmatter. DW-43 was amended by the build to name this fixture and left OPEN.
+DW-26/27/28/30/31/32/33/34/35/37/39-45 are untouched and OPEN; DW-29 remains Story 7.8's; DW-33 and
+DW-38 still need rulings rather than patches, DW-38 routed to Epic 14.2 and DW-42 to a named Epic 15
+story (D-7.7.3, D-7.7.4).
+
+**Repository hygiene.** The story commit contains only this story's files and **no root
+`README.md`**, whose md5 is still `078d7d80d518d54af2fc04fb270d46b8`. Both commits carry the
+required `Co-Authored-By:` trailer. Nothing was pushed.
