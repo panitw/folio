@@ -751,3 +751,258 @@ D-7.1.1, which has no canvas-side effect.
 **Consequence.** Stories 7.4 and 7.6 both lean on canvas/PDF agreement. **If any story claims the canvas
 shows where the engine will break a _bound_ value, that claim is false today.** To be raised at 7.6's plan
 gate rather than decided now.
+
+---
+
+## The `.folio` format version — rulings and the owner's reframing
+
+### D-R7.9 — Nothing is tagged, so the MAJOR bump is free and no release is scheduled
+**Owner decision** (asked at the terminal 2026-08-30). **The owner REFRAMED the question rather than
+choosing an option, and the reframing is better than any of the four offered.**
+
+**Verdict, in the owner's words:** *"We haven't released anything to production yet so no need to tag
+now."* So Epic 7 takes the MAJOR bump to `.folio` 2.0 freely at Story 7.3, Epic 8's format change joins
+the same 2.0 at Story 8.3, and **no release is cut in or around this run**. Story 15.3 is not imminent
+and must not be treated as a deadline.
+
+**Why the reframing beat the options.** All four options I offered assumed a tag was coming and argued
+about where to put it relative to the epics — the lead's recommendation was "land both epics, then tag",
+and two of the remaining three were about paying to avoid a MAJOR that a tag would make permanent. The
+owner removed the premise. **There is nothing to sequence against.** The load-bearing fact the lead
+found — that a MAJOR costs per *released version*, not per feature — becomes unconditional rather than a
+race: with no tag pending, the second format extension is free, and so is the third. That dissolves the
+"cheaper before the tag" urgency that framed the whole question, and it removes the trade-off the lead's
+own recommendation had to accept (a slipped tag).
+
+**In simple terms.** A format MAJOR is expensive because it orphans everyone already using the old one.
+Nobody is using this yet — no tag, no consumers, `version.go` still reads `0.0.0-dev`. So the change that
+would be costly later is free now, and the right move is to make it properly rather than to design around
+a cost that does not exist yet.
+
+**Consequences.**
+- Story 7.3 raises `SupportedMajor` to 2 without further escalation. Story 8.3 joins the same 2.0.
+- **The build order does not change.** 15.3 was never in this run's scope; this only removes the pressure
+  to reach it.
+- Options 3 (`style.justified` as an additive key) and 4 (cut `justify`) are **rejected** and should not
+  be re-proposed: both existed only to dodge a cost the owner has just said is not being incurred, and
+  option 3 additionally reintroduces the silently-wrong render D-1.4.12 exists to prevent.
+- When 15.3 is eventually planned it must re-make the release decision from scratch — its own AC already
+  says the "cut after Epic 6" trigger has been overtaken by events. This entry is now part of what it
+  re-makes.
+
+**How we'd know it was wrong.** Someone outside the project starts depending on `folio-go` from `main`
+before a tag exists — at which point the MAJOR stops being free and this decision needs revisiting.
+
+### D-7.3.1 — `justify` extends a closed set named literally in D-1.4.12, so Story 7.3 is a MAJOR-bump story
+**Lead ruling**, orchestrator-verified. **This also corrects the lead's own grounding report.**
+
+**Verdict.** D-1.4.12 reaches `align` **by name**, with nothing to interpret. Its verdict is the mandatory
+`folio-format.md` sentence and it enumerates the eight closed sets literally: element `type`, `locale`,
+**`align`**, **`valign`**, `columns[].footer`, `border.edges`, `page.orientation`, `page.size`.
+Extending any of them is MAJOR "because every existing library validates those sets as load errors".
+Verified in code: `closedAligns = {left, center, right}` at `internal/template/closedsets.go:30`,
+enforced as a load error at `parse_bands.go:399` and `:531`. A 1.0 library hits `justify` and refuses the
+file — D-1.4.12's stated mechanism exactly.
+
+**The correction.** The orchestrator hypothesised a distinction between extending a **value** set and
+extending a **shape** set, which would have let `align` through as MINOR. **It does not exist, and the
+asymmetry runs the other way:** all eight named sets are value sets, so `align` is the textbook case,
+while Epic 8's chain-entry *shape* set is not on the list and reaches D-1.4.12 only by analogy. The lead's
+grounding report had framed 8.3 as the D-1.4.12 instance and missed that 7.3 is the cleaner one — the
+lead owns that correction. **The real instance is four stories earlier than anyone thought.**
+
+D-1.4.12 had already considered and rejected per-set treatment, with `align` named in the rejection: "on
+inspection every one of the eight genuinely cannot be faked by an older library … an unknown `align`
+would be silently wrong." And its own falsifier fires precisely here: "How we'd know it was wrong. A
+MINOR release adding a closed-set value."
+
+**Guardrails for Story 7.3, both concrete and both verified.**
+1. **`closedAligns` is a single map SHARED between `style.align` (`parse_bands.go:531`) and
+   `columns[].align` (`:399`).** Adding `justify` to it silently legalises `columns[].align: "justify"` —
+   justified table cells, which Epic 7 never specified and nothing implements. **Split the set:**
+   `columns[].align` keeps `{left, center, right}`; only the style set gains `justify`. Justified columns
+   would be a separate scope decision, not a side effect of a map edit.
+2. Both call sites carry a **hand-written** error string, "not one of the closed set left, center, right".
+   Derive the message from the set, or 7.3 ships two error messages that lie about what is legal.
+
+### D-7.2.1 — `style.lineSpacing` is MINOR, and Story 7.2 inherits an unrecorded version debt it must discharge
+**Lead ruling**, orchestrator-verified.
+
+**Verdict.** `style.lineSpacing` is a new optional key with no closed set, so D-1.4.12 does not reach it
+and D-1.4.9's "may add new optional keys only" makes it **MINOR**. But 7.2 cannot merely declare that —
+it is the first story able to discharge three things nobody has, and it must.
+
+**The debt, measured in the tree.**
+1. `SupportedVersion = "1.0"`, `SupportedMajor = 1` (`internal/template/version.go:24-25`), and **all 18
+   fixtures declare `"1.0"`. The format version has never moved since Story 1.4.**
+2. **Epic 10 shipped `style.color` and bumped nothing** — its own prose says "This epic adds one optional
+   field, `style.color`". So documents using colour **declare 1.0 while requiring 1.1**. An older 1.0
+   library loads them, ignores the key, and renders the text **black**. That is a silently-wrong render
+   arriving through the back door — the exact failure D-1.4.12's rejected option (b) would have allowed.
+3. **`versionForSave` is still a stub.** `version.go:88` returns `loaded` unchanged, and its own comment
+   says why: "At Story 1.4 the raise path is unreachable — no 1.1 exists yet … so that the day a future
+   MINOR exists, the raise path has exactly one place to be filled in." **That day is Story 7.2.**
+   Bumping `SupportedVersion` alone changes nothing; without the raise path no document is ever raised and
+   the constant is decorative.
+
+**Consequences.** Story 7.2 owns: implement D-1.4.13's raise path at the one place reserved for it; raise
+a document to 1.1 when it introduces `lineSpacing`; and **retrofit the same for `style.color`** so Epic
+10's documents stop misdeclaring. Cheap now.
+
+**A worry that dissolves — Epic 7 does NOT move the version twice.** Under D-1.4.13 `version` is a
+property of the **document**, raised only by the content it actually contains: a document using only
+`lineSpacing` is 1.1, one using `justify` is 2.0, one using neither stays 1.0, and all three coexist. What
+moves twice is the *library's* `SupportedMajor`/`SupportedVersion`, which is a library fact, not a format
+event.
+
+**Two version systems, not to be conflated** (they were being, in this run and elsewhere):
+- **AD-22 governs the LIBRARY version** (`folio-go`): any change to layout, subsetting, emission or the
+  toolchain is breaking. Epic 9's alignment change was an AD-22 breaking change — it moved goldens and
+  touched no format key.
+- **D-1.4.9 / D-1.4.12 / D-1.4.13 govern the FORMAT version** (`.folio`). Epic 9 changed no format version
+  and was right not to.
+
+**Guardrail for whichever story bumps `SupportedMajor`.** Its doc comment calls it "the full MAJOR.MINOR
+this library itself would author for a brand-new document". Once that reads `"2.0"`, a blank document
+would declare 2.0 while using no 2.0 feature — needlessly orphaning it from every 1.x reader and
+contradicting D-1.4.13's raise-only-by-content rule. **A new document must declare the lowest version its
+content requires, never the library's ceiling.**
+
+---
+
+## Story 7.2 — rulings
+
+Story 7.2's plan halted `intent gap`: AC7 rejects a `lineSpacing` "outside the supported range" and
+**nothing anywhere says what that range is**. Four lead rulings, all orchestrator-verified in code.
+
+### D-7.2.2 — The canvas clause that forbids tight leading is the defect; delete it
+**Lead ruling**, orchestrator-verified. This one removes a guard, so it was checked before acting.
+
+**Verdict.** In `folio-designer/src/engine-protocol.ts:207`, remove **`paint.baseline > paint.top +
+paint.advance`** from the predicate. Everything else on that line stays.
+
+**Situation.** The canvas emits `baseline = top + FirstBaseline` while `advance` is the scaled value, so
+that clause reduces to **`FirstBaseline <= Advance`** — the unscaled relationship `wrap.go:600-612`
+guarantees by clamping `maxDescent`/`maxLineGap` at zero. Verified at `page_setup.go:485-497`:
+`baseline = canvasDerivedSum(top, vm.FirstBaseline)`, `advance = vm.Advance`. It is **not an independent
+property**; it is a restatement of an engine invariant that `lineSpacing` deliberately dissolves, sitting
+on the wrong side of the channel. The predicate lives inside `isTextPaint`, so one bad line fails
+`isTextPaint` → `isCanvas` → `isSnapshot` and blanks the **whole projection**. Measured cliff on the
+shipped chain at 12pt (`FirstBaseline: 11759`, `Advance: 14982`): **784 thousandths rejects, 785 passes.**
+
+**In simple terms.** `FirstBaseline > scaledAdvance` means one line's baseline sits below the next line's
+top — the line boxes overlap. **That is what tight leading is**, and it is exactly what the PDF will
+draw. A guard refusing it is stating a typographic opinion, not checking a consistency property.
+
+**Why removing it is the AD-17 fix, not an AD-17 breach.** AD-17 says the canvas takes every text metric
+from the engine and the browser contributes rasterization only. This clause has the **browser refusing
+the engine's own honest measurement** and blanking the canvas — the invariant inverted. Story 5.9's guard
+is about *where metrics come from*, not about the browser adjudicating them.
+
+**What replaces it: nothing new. The real invariants are already in the same predicate and all survive.**
+`paint.advance <= 0` (genuinely required, unaffected); `paint.baseline < paint.top` (still holds —
+`FirstBaseline` is `maxAscent` clamped at zero and `lineSpacing` scales only `Advance`); the
+`Number.isSafeInteger` checks (the actual JS-boundary concern); and `paint.top < priorTop + priorAdvance`
+— **orchestrator-verified not to become the next cliff**: `top = canvasLineTop(originY, i, vm.Advance)`
+so `top_i = originY + i·A`, making the test `originY+i·A < originY+i·A`, false for any positive advance.
+
+**How we'd know it was wrong.** If browser paint code ever derived a line's top from `baseline + …`
+rather than from the engine's supplied `top`, overlap could corrupt layout. It does not — `top` is
+supplied per line.
+
+### D-7.2.3 — The load-time range is representational and encodes no typographic opinion
+**Lead ruling.**
+
+**Verdict.** `style.lineSpacing` is a whole number of thousandths in **[1, 1000000]** (0.001–1000.0
+inclusive). Outside that, or not a whole number of thousandths, is a located load error naming the
+element. **No lower bound at 1.0.**
+
+**Why not a typographic bound.** A load-time check **cannot see the font size**, so it cannot express
+one: the canvas cliff is 785 thousandths at 12pt on the shipped chain and *moves with face and size*. A
+bound pretending to be typographic while blind to the input that determines it is wrong at every size but
+one. So the load-time range is the only thing load time can see — the value's own domain. A 1.0 minimum
+was also rejected on product grounds: Epic 7 exists to produce a filed contract's house style, and tight
+leading is part of that. Asymmetry with `fontSize` (exactness and overflow checks, no range) is a reason
+*not* to invent a bound, not a reason to add one. The 1000.0 ceiling is a **stated sanity ceiling, not a
+derived safety bound**, and must say so in the constant's comment.
+
+**Guardrail — the real lower-bound failure is not load-time checkable either.** `ScaleRound(400, 1, 1000)`
+is **0**: a small face at `lineSpacing: 0.001` yields `advance = 0`, which the canvas correctly rejects
+and which gives layout zero-height lines. Check it **where both operands exist**, in the leading model, as
+a located error naming the element and the resolved size. Do not raise the minimum to prevent it — that
+just moves the blindness. One validation function, called from both the load path and the property-command
+path, so a value refused in a file is refused in the inspector for the same reason.
+
+### D-7.2.4 — Overflow is a separate guard at the computation site, and it is not a number
+**Lead ruling.**
+
+**Verdict.** Not the same bound and not a load-time bound at all. Guard `ScaleRound`'s precondition
+**where it is called**: check `int64MulOverflows(Advance, r)` before the call in the leading model and
+return a located error. **A panic must never be reachable from authored input** — `geom.ScaleRound` panics
+on int64 overflow (`internal/geom/scale.go:67-69`, verified).
+
+**Why not at load.** The precondition cannot be discharged there: `Advance` is unknown and `fontSize` is
+unbounded. Deriving a load-time ceiling honestly from the extreme case gives `r <= 1023` — i.e. it would
+forbid `lineSpacing` above 1.0, which is absurd. That reductio is why D-7.2.3's ceiling is a sanity bound
+and nothing more. This is **D-1.5.2's shape** (`unitsPerEm`): validate at the trust boundary, and add **no
+non-panicking variant** of `ScaleRound` — AD-2 says scaling is one function and a second door drifts.
+
+**Stakes.** Story 7.1's closer found that a Go panic aborts the package binary, so every other test in
+`folio-go` silently stops reporting. **A panic reachable from a template is not a crash, it is a
+suite-wide blindfold.**
+
+**Guardrail.** `fontSize`'s missing range check is the pre-existing half of this. 7.2 **records it in
+`deferred-work.md` rather than closing it** — closing it is a format-domain decision on a second field and
+would earn `multiple-goals`. Name it, noting the overflow site is shared.
+
+### D-7.2.5 — Mint `STYLE_LINE_SPACING_INVALID`
+**Lead ruling** under D-000.65 (mint where the condition first occurs).
+
+**Verdict.** Mint `STYLE_LINE_SPACING_INVALID` in `internal/diag`, `SeverityError`, with the public bridge
+`folio.DiagCodeStyleLineSpacingInvalid`, raised from the single validation function both the load path and
+the property-command path call.
+
+**Why minting is what makes AC7 reachable at all.** `wasm/cmd/engine/main.go:271-280`'s
+`reportableMessage` replaces the message with "The template could not be processed" **only** for
+`DiagCodeTemplateMalformed`; every other code gets `bounded(message, 512)`. Every load-time style
+rejection today is uncoded and becomes `TemplateMalformed`, so **an uncoded `lineSpacing` error is
+destroyed before it reaches the author** and AC7's "a located load error naming the element" is
+unsatisfiable through the designer. A dedicated code is not registry hygiene here — it is the mechanism
+that delivers the AC. The destruction rule's own stated reason does not reach this case: it exists because
+a malformed-template message "quotes the offending document back", and an engine-authored message naming
+an element id and a numeric range quotes nothing back. `STYLE_COLOR_INVALID` is the standing precedent.
+
+**Guardrails.** Assert the code is **not** `TemplateMalformed` and that its message survives
+`reportableMessage` intact — without that, someone later routes it through the generic load-error path and
+AC7 fails silently, invisibly from the Go side where the tests are. The code names **the field's value
+being outside its declared domain** — the zero-advance (D-7.2.3) and overflow (D-7.2.4) errors are
+different conditions at a different stage and **must not be folded into it to save a mint**.
+
+**Forward note, not a decision.** `STYLE_COLOR_INVALID` plus this makes two per-field style codes. Before
+a **third** is minted, someone must decide whether the general form is right or AD-14's closed registry
+accretes one entry per style field forever. Raise at Epic 11 or 12 planning, whichever first proposes one.
+
+### D-7.2.6 — DW-24 declined a second time, on a narrower ground, and is not deferrable a third
+**Lead ruling**, correcting the orchestrator's and planner's reasoning while accepting the outcome.
+
+**Verdict.** DW-24 is inspected-and-declined for 7.2. **But not for the reason given.** The planner argued
+"a different call site, denominator and file". In fact **7.2 does change the input to the unexercised
+rounding site**: `textBlockHeight` is built from `Advance` and feeds the slack that `ScaleRound(slack, 1,
+2)` halves for `valign: middle`. The exposure is unchanged only because **no fixture declares `valign` at
+all** — which is the same absence DW-24 exists to record. The decline holds on that narrower ground.
+
+**Condition.** **DW-24 is not deferrable a third time.** Story 7.3 is its owner (D-7.1.4); 7.3's plan gate
+treats it as an **acceptance criterion, not a deferred item**, and a decline there is an escalation to the
+lead rather than another entry. A trigger that has failed to fire twice stops being a trigger.
+
+### D-7.4.5 — The TypeScript mirror is three hand-copied constants, not one
+**Lead ruling**, extending D-7.4.2 after an orchestrator observation.
+
+**Verdict.** `engine-protocol.ts:201-212` mirrors **three** Go constants with no shared source:
+`value.lines.length > 256`, `fragments <= 512`, and `fragment.text.length <= 512`. This is the drift
+pattern in pure form — the Go side can be raised and the TS side will silently keep rejecting, blanking
+the projection with **no error anyone can attribute**.
+
+**Consequence, added to DW-25.** Whichever story changes a Go bound changes its TS mirror **in the same
+commit**, and lands **an assertion tying the two** — a test that reads both, not a comment asking the next
+person to remember.
