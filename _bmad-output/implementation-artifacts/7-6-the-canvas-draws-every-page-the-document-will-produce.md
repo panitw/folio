@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: 'c95fa9bc6202142a69f52d571f04d86ab12c8edc'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized'] # oversized: four wide surfaces must be stated rather than summarised — the window-ORIGIN gap (Ruling E, the reason a new projection field exists at all), the honesty obligation and its assertable form (Ruling F), the sheet-stack geometry the drag inverts (Ruling I), and the three-consumer mirror the clamp lift joins (Part 3, DW-36). NOT multiple-goals: DW-36's clamp lift is not independently shippable — 7.5 declined it precisely because there are no later sheets to drag onto until this story draws them — so it is a prerequisite of AC3, not a second goal.
 deferred:
@@ -111,13 +111,13 @@ deferred:
 
 ## In plain terms
 
-*Non-normative. This section describes what the story must produce; the contract below governs implementation.*
+*Non-normative. This section describes what shipped; the contract below governs implementation.*
 
-Today the authoring surface is one page tall even when the document is not. This story turns it into a run of sheets — one per page-full of the main column, each repeating the strip that prints at the top of every page and the one that prints at the bottom, because the engine repeats them. The seam between two sheets falls where the engine will really break, not at an even interval: a page ends where the next thing did not fit, so the leftover space at a sheet's foot is shown. A component can be dragged onto a later sheet, and what it commits is a position in the column, not a pin to sheet three.
+The authoring surface is now a stack of sheets rather than one page — one per page-full of the main column, each repeating the strips that print at the top and bottom of every page. The seams fall where the engine will really break: it now reports where each page begins, and the canvas draws those rather than guessing at an even interval, which measurement showed was wrong. A component can be dragged or placed onto a later sheet; what gets committed is a position in the column, never a pin to sheet three. One straddling a seam is drawn on both, but answers to selection once.
 
-What the sheets promise is narrower than the title, and the interface must say so out loud, not in a tooltip nobody reads. The sheets show the pages the column **as currently laid out** occupies, not a forecast of the printed document. Wherever a document's length comes from data — a table that grows a row per record — the surface has never been given that data, so it counts the table's heading and none of its rows. Such a document shows **fewer sheets than it prints**: the four sample statements each show one sheet while printing one, five, twenty and fifty pages. A component taller than a page collapses the same way.
+What the sheets promise is narrower than the drawing looks, and the interface now says so out loud, in text a screen reader reaches. They show the pages the column as currently laid out occupies, not a forecast of the printed document. Where a document's length comes from data — a table that grows a row per record — the surface has never been given that data, so **it shows fewer sheets than it prints**: the four sample statements each show one sheet while printing one, five, twenty and fifty pages.
 
-One test stays deliberately red throughout — the mandated corpus exercise floor, P6g — and must never be "fixed".
+One test stays deliberately red — the mandated corpus exercise floor — and must never be "fixed". Review caught — by running the drag, not reasoning about it — a gesture that moved a component nine pages when the pointer had not moved at all. Two rough edges at that seam are follow-ups.
 
 <intent-contract>
 
@@ -723,3 +723,148 @@ channel backstop in the shape of `MAX_ENGINE_DIAGNOSTICS`, deliberately **not** 
 numeral `pairs` (still six, still `toHaveLength(6)`): Go declares no maximum window count, so there is
 nothing on the other side for it to drift against, and the constant is set orders of magnitude above
 anything the projection can produce because a field this side rejects discards the whole snapshot.
+
+
+### 2026-08-31 — done
+
+Baseline `c95fa9b` on `main`. Closed on two build commits — `c834158` (implementation) and `02dd415`
+(review patches) — plus this closing commit. Every gate below was **re-measured at the closing
+revision by the closer**, not relayed from the build's report.
+
+**What the run actually bought.** The canvas stopped guessing. Story 7.5 gave it a window height and a
+window count; this story gave it the **window origins**, and the interesting part is that they needed
+no new computation at all — `layout.Paginate` already returned each window's band-relative column
+offset in `PageAssignment.Shift`, and `addCanvasWindowCount` was **discarding it while keeping
+`len(plan.Pages)` from the very same value**. The projection is a read, not a derivation, and that is
+what makes AD-17 hold rather than merely be asserted: there is no browser-side arithmetic to forbid,
+because there is no browser-side arithmetic. Verified by mutation at close — substituting
+`index * ContentWindowHeight` for the projected shift turns `TestCanvasProjectsWhereEachWindowBegins`
+red with `gap contentWindowOrigins = [0 727890], want [0 7280000]`. The control fixture asserts
+`[0, 728000, 1456000]` **and separately pins the closed form's `[0, 727890, 1455780]`**, so the
+discrimination cannot decay into a coincidence if the geometry ever shifts.
+
+**The one defect that mattered was found by execution, not by argument.** Review's high-severity
+finding was a real, reachable bug that no amount of reading the diff would have produced: the stack's
+display-space inverse was not an inverse for a column offset lying in the region a **declared gap**
+skips. With origins `[0, 7280000]`, a component at column offset `3,000,000` round-tripped to
+**`9,414,110`** — a press and release that moved the pointer **zero pixels** committing an opaque move
+of more than nine windows. Reached through this story's own third floor cause: a text element whose
+font chain will not resolve contributes no column items, so no window ever opens at its top. The fix
+gives the drawing and the drag **one shared clamp**. Reproduced at close: restoring the unclamped form
+turns two tests red with `expected 9414110 to be 727890` — the exact value, recovered independently.
+The shipped round-trip missed it because every offset it sampled lay inside its own window; the new
+assertion samples **across** the gap (both sides of the 7,280,000 origin) and on the undrawn region
+between them, at three zooms.
+
+**Three tests that could not fail, and this is the part worth carrying forward.** The review did not
+find them by reading; it found them by deleting things and noticing nothing went red. Two were
+reproduced at close. Replacing the later-sheet **pointer** placement's column translation left the
+whole App suite green while a mouse-dropped component silently landed on sheet one — now caught, and
+the mutation produces `"y":96` where the assertion demands `"y":1440`, a page-absolute coordinate
+where a column coordinate belongs; only the keyboard branch had ever been covered, and the two are
+separate expressions on the same handler. Deleting the Go floor flag's `band.name == bandContent`
+guard left the **entire Go suite** green — which would have told every author of an unshapeable
+*header* title that their document prints more pages than it draws, a false claim on a count that is
+exact; now caught by `TestCanvasSaysWhenTheWindowCountIsAFloor`. The third (the drag's clip lift) was
+observed by nothing at all. **The lesson for the epic: this diff's tests were written to describe the
+code rather than to constrain it, and three of them said nothing until someone tried to break them.**
+
+**AC4's honesty obligation has teeth, verified in both directions.** The disclosure is a real
+`role="status" aria-live="polite"` region with an accessible name, asserted by role **and** name
+(`getByRole('status', { name: 'Canvas sheet disclosure' })`), asserted **absent** for a one-window
+non-floor projection, and folded into `componentAccessibleName` for later-sheet components — an
+`aria-label`, not a tooltip. Red-proved at close: emptying the two disclosure sentences reddens 2 App
+tests; emptying the folded per-component notice reddens a 3rd. **D-7.4.4 is not violated** — the
+canvas still calls `atomicSpansFor(t.doc.UnbreakableValues, nil)`, untouched by this diff, so it
+breaks the raw template string and claims nothing about where the engine breaks a **bound** value; the
+shipped wording says only that the sheets show what the column *as laid out* occupies and that a
+data-length document prints **more** pages, never where.
+
+**Triage audited, not rubber-stamped.** 5 patched (high 1, medium 3, low 1) / 8 deferred / 13
+rejected; 0 intent gaps, 0 bad-spec loopbacks. `followup_review_recommended` was **cleared to false**
+on this ground: the high-severity patch was independently reproduced and its fix independently
+red-proved, two of the three could-not-fail mutations were re-run and both now redden, the
+origin-projection claim was mutation-verified on both the Go and the TypeScript side, and AC4 was
+red-proved on all three of its sentences. **What was NOT done:** the 13 rejections are not itemised in
+the story record, so they could not be spot-checked at the level of "does this refute the specific
+claim at the cited location"; this is not a security or money-path story, but the gap is stated rather
+than papered over.
+
+**Decisions and rulings applied.** AD-17 (the projection owns anything the canvas says about page
+windows); Rulings E–J as recorded in the Design Notes; D-7.4.2 (truncate the drawing, never the
+value); D-7.4.4 (raised and honoured — nothing claims to know where a bound value breaks);
+D-R7.1 (heavy tests carried regardless of the per-epic cadence, because this story changes a channel
+schema on both sides); D-000.4 (browser e2e does not execute); D-000.73 (every deferral owner is a
+role or a gate).
+
+**Gates, measured at the closing revision.**
+
+- `cd folio-go && go test -count=1 ./...` — **13 packages `ok`, exactly ONE red**:
+  `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)`, `got 7, need >=20`, the mandated permanent
+  red, untouched. Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` — **PASS**.
+- `cd folio-go && go vet -tags=matrix ./...` — exit **0**. `gofmt -l folio-go` from the repo root —
+  **no output**.
+- `TestTargetRenderHash` with `FOLIO_MATRIX_TARGET` set, **once per leg**: `darwin/arm64` PASS 0.64s,
+  `linux/amd64` PASS 6.74s, `linux/arm64` PASS 4.19s, `js/wasm` PASS 9.46s. **`asserts NOTHING`
+  appeared 0 times on all four legs**, so no leg was a no-op — checked per leg, not in aggregate.
+- `go test -tags=matrix -run TestCrossTargetByteIdentity .` — **PASS** (19.87s).
+- `cd lint && go test -count=1 ./...` — **4 packages ok**.
+- `cd folio-designer && npm run typecheck` exit **0**; `npm run lint` exit **0** with **4
+  `only-export-components` warnings, 0 errors** — exactly the baseline set
+  (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1218,1225`), no fifth. `npm test` — **280 passed / 280,
+  33 files / 33**, up from the 248 / 32 baseline. *(The build's own Delivery Log entry says 278; the
+  measured number at this revision is 280, which matches its Auto Run Result. The 278 was stale.)*
+- `npm run test:e2e:compile` — exit **0**. It is `tsc --noEmit` only: **browser e2e is deferred by
+  D-000.4 and DID NOT EXECUTE.** The three surfaces where this story's correctness actually lives —
+  the clipping, the seam painting and real pointer travel — are CSS and layout that jsdom cannot
+  observe. The echo-specificity defect the review patched is exactly that class. **This story is not
+  proven at the surface an author touches.**
+- **All nine digests byte-identical, measured, with `git status fixtures/` empty**: statement-1
+  76,744 `114df1d6`; statement-5 127,363 `70dce051`; statement-20 269,884 `56bfbbd9`; statement-50
+  555,829 `5d090b0f`; mandatory-break 56,681 `7cf743de`; line-spacing 57,770 `de212115`;
+  justified-text 59,894 `6da3b12e`; alignment-rounding 61,346 `986400a1`; justified-thai 15,079
+  `58ca4777`. `goldenDigestRecord` still declares **20** entries and
+  `TestGoldenDigestAgreesAtEveryDeclaredSite` passes.
+- **Fences, checked against the diff rather than the report:** the two commits touch **16 files**, all
+  this story's. `internal/layout/paginate.go` **absent**; `folio-go/component_commands.go` **absent
+  entirely**, so `hitTestBand`'s half-open rectangle is untouched; the repository-root `README.md`
+  appears in **no** commit and its md5 is still `078d7d80d518d54af2fc04fb270d46b8`. `SupportedMajor`
+  unchanged at **2**; **no `.folio` format field** added.
+
+**Deferral register — eight filed, one closed.** The build recorded all eight deferrals **only in the
+spec's frontmatter**; none had reached `deferred-work.md`. Filed at close as **DW-38 … DW-45**, each
+with the file's four convention lines and a **role-or-gate owner**:
+
+- **DW-38** — `createComponentCommand` hardcodes 72x24 for every kind, so a later-sheet image
+  placement now yields a different box than a first-sheet one. **Filed as needing a RULING, not a
+  patch**, owner **Owner**, due at Epic 7's retrospective: the fix either duplicates Go's per-kind
+  constants into TypeScript — a fourth spelling, against a mirror fence this story's contract froze at
+  six numeral pairs — or moves the defaults into Go, which the intent does not settle.
+- **DW-42** — the `SHEET_STACK_GAP` ↔ CSS gap coupling the cross-seam drag depends on has **no mirror
+  test**. **Raised to MEDIUM at close.** It is the same class as the five mirrors Story 7.5's inventory
+  already found, and *this story's own high-severity defect came from exactly that seam*. The repo
+  already has the idiom; this story added a third consumer to that mirror without adding this fourth.
+- DW-39 (a component past the drawing budget is unreachable and the disclosure does not say so),
+  DW-40 (the floor flag misses a bound content **text** element), DW-41 (the origins refusal branch is
+  dead code as far as the suite knows), DW-43 (no shipped fixture draws an in-sheet seam), DW-44
+  (`MAX_ENGINE_CONTENT_WINDOWS` has no Go counterpart — same axis as DW-37 and DW-26), DW-45 (the
+  stack is rebuilt on every pointermove — the drag-time half of DW-34).
+
+**DW-36 is CLOSED** by `c834158`, with a closing note in the register: the drag clamp **imports**
+`BANDS_CAPPING_VERTICALLY` from `engine-protocol.ts` and gates the one `limitHeight` both vertical
+clamps consume — a third consumer of the tie, not a fourth spelling; the **width** clamp is ungated and
+unmoved in the diff; `engine-bounds-mirror.test.ts` reads **all three sources** and pins the import,
+the gate expression and both Go sites, with the six numeral pairs untouched. Verified at close by
+restoring the unguarded clamp and watching it redden.
+
+**DW-26/27/28/30/31/32/33/34/35/37 remain OPEN and untouched.** **DW-29 stays routed to Story 7.8.**
+**DW-33 needs a ruling, not a patch**, and is provably untouched here — the origins and the count read
+the vertical model, never `painted`, `budget`, `oversized` or `placed`. **DW-35 stays Epic 8's plan
+gate's and was not taken, but it is now materially MORE VISIBLE**: the canvas paints through one
+hard-coded font stack, and drawing up to 120 sheets multiplies every glyph it paints, so a chain
+mismatch that reads as one page of wrong-looking text today reads as up to 120.
+
+**For the orchestrator.** Nothing blocks. Two things want a decision rather than a ticket: **DW-38**
+needs a ruling before anyone writes code, and **DW-42** is the one deferral whose class has already
+produced a shipped defect in this very story. `epic-7` stays `in-progress`; the epic's heavy-test
+catch-up and the `epic-7: done` call remain the orchestrator's.

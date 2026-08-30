@@ -2590,14 +2590,15 @@ first and would hand Latin text Noto Sans Thai's Latin glyphs.
 
 ---
 
-### DW-36 — the designer's live drag/resize clamp still bounds Y by band height in ALL THREE bands, so Story 7.5's lift is reachable by command and not by hand
+### DW-36 — the designer's live drag/resize clamp still bounds Y by band height in ALL THREE bands, so Story 7.5's lift is reachable by command and not by hand — **CLOSED by Story 7.6, 2026-08-31**
 - **Deferred by:** Story 7.5's build (2026-08-31); filed into this register at the story's close, where
   it was found recorded only in the spec's frontmatter
 - **Owner:** **Story 7.6's plan gate** — a gate, never an event, per D-000.73. 7.6 is also the story that
   draws the later sheets a drag past page one would target
 - **Severity:** MEDIUM — the engine and the protocol now accept the placement, so the product is
   internally inconsistent until this closes
-- **Status:** OPEN
+- **Status:** **CLOSED** by Story 7.6's implementation commit `c834158`, 2026-08-31. See the closing
+  note at the end of this entry.
 
 **The gap.** `folio-designer/src/resize-anchor.ts:29` `proposedBounds` clamps `y` to
 `limitHeight - originalHeight` (`:34-35`) and a south resize to `limitHeight` (`:52`).
@@ -2626,6 +2627,39 @@ the symptom reads as a missing page rather than as a degradation.
 
 ---
 
+## DW-36 IS CLOSED — Story 7.6, 2026-08-31
+
+`folio-designer/src/resize-anchor.ts:1` now **imports** `BANDS_CAPPING_VERTICALLY` from
+`engine-protocol.ts` and `:53` gates the ONE `limitHeight` that both vertical clamps consume — the
+move's `y` and the south resize's `bottom` — on that list. `DragLimit` (`:39`) carries the band's
+identity, and `App.tsx` fills it from the band it is already rendering. This is the **third consumer
+of the tie, not a fourth spelling of it**, which is the wording this entry itself demanded:
+`folio-go/component_commands.go:1795` declares `bandsCappingVertically` and consumes it at `:1820`
+and `:1840`; `engine-protocol.ts:88` declares the browser's half and consumes it at `:258`; the drag
+clamp reads the protocol's declaration rather than restating it.
+
+The horizontal limit is deliberately **ungated** and unmoved: `resize-anchor.ts:56` and `:72` still
+clamp width against the band in every band, and the diff touches neither. Nothing may hang off the
+side of any band, in any band, ever.
+
+`engine-bounds-mirror.test.ts` reads **all three sources**. Its `'consumes the list at the site it
+governs, in all three consumers'` case pins the two Go sites, the protocol site, the drag clamp's
+**import statement** and the drag clamp's gate expression; its drift proof rewrites the clamp back to
+the unguarded `limit ? limit.height : Number.POSITIVE_INFINITY` and asserts the pin no longer matches.
+The six numeral `pairs` and `toHaveLength(6)` are untouched — this tie is a **predicate** mirror, not
+a numeral one.
+
+**Verified at close by mutation, not by reading.** Restoring the unguarded clamp turns the content-band
+move and south-resize cases red in `resize-anchor.test.ts`, both mirror assertions that read the drag
+clamp as the third consumer, and the App drag that runs past one window's foot.
+
+The second half of this entry — the note "for 7.6's plan gate" about a content component taller than
+one window degrading to a reported count of one — was **carried, not lost**: it is the Ruling C
+degradation, one of the three causes Story 7.6's `contentWindowCountIsFloor` now reports, so the
+canvas says out loud that the number is a floor instead of silently drawing one sheet.
+
+---
+
 ### DW-37 — `contentWindowCount` has no upper bound, and the non-text content extent is an unguarded sum
 - **Deferred by:** Story 7.5's build (2026-08-31); filed into this register at the story's close, where
   it was found recorded only in the spec's frontmatter
@@ -2651,3 +2685,197 @@ when something could.
 one product that can overflow `geom.ScaleRound`). Whoever closes either should look at both: the question
 "which canvas geometry inputs are bounded, and by what" has now been asked twice from two directions and
 answered piecemeal each time.
+
+
+---
+
+### DW-38 — `createComponentCommand` hardcodes a 72x24 box for EVERY palette kind, so the same placement now yields a different box on a later sheet than on the first one — **NEEDS A RULING, NOT A PATCH**
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Owner** — this needs a ruling on *where per-kind placement defaults live* before anyone
+  writes a line; due at **Epic 7's retrospective** at the latest, which is the gate that reviews what
+  the epic claimed. Not "whoever touches the palette next" (D-000.73: an owner that is an event stops
+  existing when the event passes).
+- **Severity:** MEDIUM — silent, wrong-sized boxes on a path this story just opened to the author
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/component-command.ts:17` emits `"width":72,"height":24`
+unconditionally, for every `PaletteKind`. Go's `dropComponent` path does not:
+`folio-go/component_commands.go:1353-1360` declares `dropWidth/dropHeight` 72000/24000 but
+`imageDropWidth/imageDropHeight` **96000/48000** for images and `lineDropHeight` **1000** for lines,
+and applies them at `:1390-1395`. Story 7.6 put `createComponentCommand` on the **user path for the
+first time** — before this story it was imported by tests only, and `App.tsx` did not import it — so
+an image placed on sheet one gets a 96x48 box and the *same* image placed on sheet three gets 72x24.
+The divergence is newly *visible*, not newly created, but the user-visible inconsistency is new.
+
+**Why it was not patched here.** The fix has two shapes and the intent settles neither. Duplicating
+Go's per-kind constants into TypeScript makes a **fourth spelling** of numbers the mirror discipline
+exists to prevent drifting — and `engine-bounds-mirror.test.ts` freezes the numeral `pairs` at
+**six** with an explicit `toHaveLength(6)`, so three more pairs is a deliberate widening of a fence
+this story's own contract forbade it to touch. Moving the defaults into Go instead is a command-surface
+decision the intent does not settle. Either way it is a ruling first.
+
+**What the ruling must answer.** Whether per-kind placement defaults are the engine's (Go decides the
+box, and `createComponent` stops carrying width/height at all) or the palette's (the browser decides,
+and the numeral mirror widens to cover them). Whoever rules should note that the first shape removes
+two numbers from the channel rather than adding three to the fence.
+
+---
+
+### DW-39 — a content component whose home window is past the drawing budget produces NO occurrence at all, so it is unreachable, and the disclosure never says components are hidden
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 7's retrospective, or the plan gate of the next story that changes the canvas
+  drawing budget (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** MEDIUM in kind, LOW in reach — see below
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/sheet-stack.ts:114` iterates `index < drawn`, where `drawn` is
+`Math.min(origins.length, MAX_CANVAS_SHEETS)`, while homes are computed over the **full** origins
+list at `:112`. A component whose home index is `>= drawn` and whose extent intersects no drawn window
+is therefore emitted nowhere: not selectable, not nameable, not deletable. The truncation disclosure
+says only that sheets are truncated ("Showing the first N sheets of M"), never that **components** are
+hidden — so the author is told the drawing is short and not told anything is missing from it.
+
+**Why it is bounded in practice.** It requires a document of more than 120 windows, and Ruling J's own
+derivation argues the paint budget (1920 body-text lines) cannot fill that many with text; past ~50
+windows a window can only come from a *declared* placement gap. The budget test uses a component-free
+projection, so nothing observes the case today.
+
+**Adjacent to DW-34** (the canvas is unvirtualised), which `MAX_CANVAS_SHEETS` bounds rather than
+closes. Whoever revisits the budget should decide both: what the budget is, and what the interface
+owes an author whose component fell outside it.
+
+---
+
+### DW-40 — the floor flag's causes cover a bound TABLE but not a bound content TEXT element, so the one document that most needs the disclosure can be the one that does not get it
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 7's retrospective** — a projection-honesty scope decision, and the retrospective is
+  the gate that audits what the epic claimed. A gate, never an event, per D-000.73.
+- **Severity:** MEDIUM — a false *negative* on an honesty obligation is worse than a false positive
+- **Status:** OPEN
+
+**The gap.** `folio-go/page_setup.go:591` `canvasContentBandHasBoundTable` tests for a table with a
+non-empty binding. The disclosure it drives generalises much further — *"A document whose length comes
+from data prints more pages than are shown here."* A **bound content text element** whose bound value
+is longer than its placeholder takes neither the table branch nor the font-chain branch, so such a
+document under-counts its windows with `contentWindowCountIsFloor` **false**, and the interface
+withholds the very sentence that describes it.
+
+**Why it was not widened here.** Story 7.6's intent scopes the flag to **three named causes**, and
+widening it is a projection-honesty decision about what the engine claims to know, not an
+implementation choice. Recorded rather than taken, exactly as the contract required.
+
+**Note for whoever rules.** The canvas breaks the **raw template string** with nil substitutions
+(D-7.4.4), so it cannot measure a bound value's real length — which means the honest widening is
+"a bound content text element exists" as a *floor* cause, not an attempt to count its lines.
+
+---
+
+### DW-41 — the origins refusal branch collapses a genuine multi-window document to one sheet with the floor flag set, and NO test reaches it
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 7's retrospective, or the plan gate of the next story that changes the window-origin
+  projection (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** MEDIUM — the failure is indistinguishable from a legitimate degradation
+- **Status:** OPEN
+
+**The gap.** `folio-go/page_setup.go:565` `canvasWindowOrigins` refuses a `Shift` sequence that is
+negative, above `MaxCanvasMillipoints`, non-zero at index 0, or non-increasing, and its caller then
+degrades to one window with the floor flag set. Every fixture in `canvas_window_count_test.go`
+produces a well-formed sequence, so the `!ok` path is **dead code as far as the suite knows**. Its
+collapse is indistinguishable from the three legitimate floor causes, so a regression that made it
+fire on ordinary documents would surface to the author as *"this document prints more pages than are
+shown"* rather than as an error anyone could act on.
+
+**Why the degradation shape is nonetheless right.** A sequence the browser's own validator would reject
+must never be sent — `engine-protocol.ts` discards the WHOLE snapshot on a malformed projection and
+blanks the canvas with no attribution. Discarding the number is cheaper than discarding the snapshot.
+What is missing is a test that reaches the branch and, separately, a way to tell this collapse apart
+from a real floor.
+
+---
+
+### DW-42 — `SHEET_STACK_GAP` and the `.sheet-stack` CSS gap are coupled by nothing executable, and every cross-seam drag is correct only while the laid-out pixel gap equals the constant
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 7's retrospective, or the plan gate of the next story that changes the sheet
+  stack's display geometry (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** MEDIUM — **raised at close.** This is the SAME CLASS as the five mirrors Story 7.5's
+  inventory already found, and Story 7.6's own high-severity defect came from exactly this seam.
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/sheet-stack.ts:40` declares `SHEET_STACK_GAP = 24` and `sheetPitch`
+adds it to the page height to invert the stack's display geometry. `App.css:66` consumes it only
+through the inline `--sheet-stack-gap` custom property `App.tsx` writes. `design-contract.test.ts`
+reads `App.css` as text but asserts **nothing** about `.sheet-stack`, and jsdom applies no stylesheet,
+so **changing or dropping the CSS gap keeps every test green and silently drifts every drag that
+crosses a seam** by the difference. The only `.sheet-stack` assertion in the suite is that a
+single-window canvas has none.
+
+**Why this one deserves attention above its severity.** The repo already has the idiom for exactly
+this tie — `engine-bounds-mirror.test.ts` reads sources as text and pins both the declaration and its
+consumption site — and this story just added a third consumer to that mirror without adding this
+fourth. The three surfaces where Story 7.6's correctness actually lives (the clipping, the seam
+painting and real pointer travel) are CSS and layout, which jsdom cannot observe and the browser e2e
+suite does not execute (D-000.4). A text-level mirror is the only executable proof available here.
+
+---
+
+### DW-43 — no shipped fixture draws an IN-SHEET seam, so the seam's rendering is covered only by hand-authored synthetic literals
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Story 7.7's plan gate** — 7.7 is keep-together across a page break, so a fixture whose
+  column really breaks inside a sheet is its natural instrument. A gate, never an event, per D-000.73.
+- **Severity:** LOW
+- **Status:** OPEN
+
+**The gap.** The `page-count-*` fixtures place elements a round 728000 apart in a 727890 window, so
+`next - origin > contentWindowHeight` on **every** sheet and the no-marker branch is always taken. The
+only coverage of the drawn seam is the hand-authored `prose` fixture in `sheet-stack.test.ts` and the
+projection literals in `App.test.tsx`. Both are correct arithmetic over numbers no engine produced.
+
+**Why it matters more than "low" suggests.** The 110-millipoint overshoot that makes these fixtures
+such a sharp red proof for the *origins* (the closed form answers 727890 where the engine answers
+728000) is the very thing that stops them exercising the *seam*. The two properties trade off in the
+same fixture.
+
+---
+
+### DW-44 — `MAX_ENGINE_CONTENT_WINDOWS` has no Go counterpart and no test on either side; exceeding it discards the whole snapshot and blanks the canvas with no attribution
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **The plan gate of the next story that changes canvas geometry bounds, or Epic 7's
+  retrospective (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** LOW
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/engine-protocol.ts:25` declares `MAX_ENGINE_CONTENT_WINDOWS = 100_000`
+and `:220` rejects an origins array longer than it. Go declares no maximum window count, which is the
+stated ground for excluding this constant from the mirror's six numeral pairs — and is exactly why
+nothing bounds the producible value. A projection that exceeded it would be rejected by `parseInbound`,
+which discards the **entire** snapshot and renders "Waiting for Go page geometry" with no attribution.
+
+**This is the same axis as DW-37 and DW-26.** "Which canvas geometry inputs are bounded, and by what"
+has now been asked from three directions and answered piecemeal each time. Whoever closes any one of
+the three should close all three, or say why not.
+
+---
+
+### DW-45 — the sheet stack is rebuilt on every render, including every pointermove during a drag, at O(sheets x components) with up to 120 sheets
+- **Deferred by:** Story 7.6's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 7's retrospective, or the gate that closes DW-34 (whichever first)** — a gate,
+  never an event, per D-000.73
+- **Severity:** LOW
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/App.tsx:712` computes `const stack = canvas ? sheetStack(canvas) : undefined`
+with no `useMemo`, and a drag calls `setDrag` on every pointermove. `stackYForColumn` additionally
+allocates a fresh origins array per call, and `columnEdgeAfterDrag` calls it twice per move.
+
+**Adjacent to DW-34** (the canvas is unvirtualised), which Story 7.6 bounds with `MAX_CANVAS_SHEETS`
+and leaves open. The sheet count multiplies DW-34's cost, and this entry is the drag-time half of the
+same problem. Filed as low because the arithmetic is cheap per sheet and the budget caps the product;
+filed at all because the drag is the one interaction where a per-frame cost is felt.
