@@ -2,11 +2,11 @@
 title: 'Story 7.5: The content column runs past the first page'
 type: 'feature'
 created: '2026-08-31'
-status: 'draft'
+status: 'ready-for-dev'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
-warnings: ['oversized'] # oversized: the refusal-split surface, the four-mirror surface and the window-count evidence are three wide surfaces that must be stated, not summarised. NOT multiple-goals: the projection field is AC4 of this same story, not a second shippable.
+warnings: ['oversized'] # oversized: the refusal-split surface, the Go/TS mirror inventory (R4) and the window-count derivation (R1) are three wide surfaces that must be stated, not summarised. NOT multiple-goals: the projection field is AC4 of this same story, not a second shippable.
 deferred: []
 ---
 
@@ -14,13 +14,13 @@ deferred: []
 
 *Non-normative. This section explains the story in plain language; the contract below governs.*
 
-Today a template author can only place things on the first page. The designer refuses any component dropped below the foot of page one, because the single check that keeps a component inside its band treats one page's worth of content as the whole of the available space. That refusal is what makes a schedule or a signature block impossible to author at all.
+Today a template author can only place things on the first page. The designer refuses any component dropped below the foot of page one, because the one check that keeps a component inside its band treats a single page's worth of content as all the space there is. That is what makes a schedule or a signature block impossible to author.
 
-This story removes that ceiling for the main content area, and only there. Repeating page furniture — the strip at the top of every page and the strip at the bottom — stays exactly one page tall, because that is what repeating means. Coordinates that are simply nonsense, negative ones or ones too large for a browser to hold safely, are still refused, in the same words as today.
+This story removes that ceiling for the main content area, and only there. Repeating page furniture — the strip at the top of every page and the one at the bottom — stays exactly one page tall, because that is what repeating means. Coordinates that are simply nonsense, negative or too large for a browser to hold safely, are still refused, in the same words as today.
 
-The story also has the engine report two numbers the designer will need: how tall one page's worth of content is, and how many of those page-fulls the current column runs to. The designer must be told these, never work them out itself.
+The engine also reports two numbers the designer will need: how tall one page's worth of content is, and how many of those page-fulls the column currently runs to. The designer must be told these, never work them out itself. The second describes the column as the canvas draws it now. Where a table's rows come from data the canvas has never been given, it is a floor rather than a promise: the finished document may run longer, never shorter.
 
-This story makes a tall column legal and reportable. It does not draw it — that is the next story. It changes nothing about how the engine decides where pages break. One test is expected to stay red throughout: the corpus exercise floor recorded as P6g, a standing, deliberate failure that must never be "fixed".
+This story makes a tall column legal and reportable. It does not draw it — that is the next story. One test stays red throughout: the corpus exercise floor recorded as P6g, a deliberate standing failure that must never be "fixed".
 
 <intent-contract>
 
@@ -169,142 +169,231 @@ only. 7.5 imports `internal/layout` for `Paginate` regardless, so the collapse c
 
 ## Code Map
 
-Every anchor verified in the tree at `23a4647`.
+**Every anchor below was RE-VERIFIED at the baseline `83d49b6`.** `git log 23a4647..83d49b6` is two commits, **both `_bmad-output/` only** — no Go, no TypeScript moved — so the previous dispatch's anchors survive, with the corrections marked ⚠ below.
 
 ### The single refusal — `folio-go/component_commands.go`
 
-- **`:1766-1771` `containComponent(band CanvasBand, x, y, width, height geom.Length) error`** — the **only** band-extent validation in the designer command path. **One `if`, one message:**
+- **`:1766-1771` `containComponent(band CanvasBand, x, y, width, height geom.Length) error`** — the **only** band-extent validation in the designer command path. **One `if`, eight disjuncts, one message:**
   ```go
   if x < 0 || y < 0 || width < 0 || height < 0 || x > geom.Length(band.Width) || y > geom.Length(band.Height) || width > geom.Length(band.Width)-x || height > geom.Length(band.Height)-y {
       return fmt.Errorf("folio: component geometry must stay within %s", band.Name)
   }
   ```
-- ⚠ **THE LOAD-BEARING FACT.** The content-band one-page cap (the clauses `y > band.Height` and `height > band.Height-y`), the `pageHeader`/`pageFooter` caps, and the **negative-coordinate** refusal are **the same expression producing the same format string**. Only `%s` differs, filled from `band.Name`. There is no existing seam. "Lift the content Y cap" and "keep the negative refusal with its message unchanged" are contradictory demands on one string until the expression is split.
-- **Twelve call sites**, all reaching `:1767`: `addTableColumn` `:131`→`:165`; `updateTableColumn` `:245`→`:300`; `updateComponentPropertiesInPlace` `:788`→`:829` (the property path for `x`/`y`/`width`/`height`); `dropComponent` `:1362`→`:1409` (probe, discarded); `createComponentInBand` `:1417`→`:1472`; `moveComponent` `:1531`→`:1565` (probe), `:1569` (refusal); `resizeComponent` `:1576`→`:1606`; `setComponentBounds` `:1619`→`:1668` (probe), `:1674` (refusal); `duplicateComponent` `:1699`→`:1726` (probe; on failure falls back to the original origin at `:1727`, **no refusal**).
-- **Pull-back arithmetic that changes meaning when the cap lifts** — `containEdge` `:1752-1757`, `floorToGrid` `:1759-1764`, and their callers `dropComponent:1410-1411`, `moveComponent:1566-1567`, `setComponentBounds:1669-1672`. Each clamps against `band.Height`.
-- **Band identity is a bare `string`**, not an enum: `CanvasBand.Name` (`page_setup.go:157`). The three literals exist only inline at `page_setup.go:354/355/356`; re-spelled in `bandByName` `:1294-1301`, `hitTestBand` `:1504-1511`, `canvasComponents` `page_setup.go:720-727`. **There is no named constant to key off.**
-- Band values reach `containComponent` through `bandByName` `:1285-1304` (calls `Canvas(t)` at `:1286`) and `hitTestBand` `:1494-1514` (`Canvas(t)` at `:1495`).
-- `applyPropertyChanges` `:894` sets `X/Y/Width/Height` at `:962-969` and enforces only positivity `:954-956` — **no band bound of its own**.
+- ⚠ **THE LOAD-BEARING FACT.** The content-band one-page cap (`y > band.Height`, `height > band.Height-y`), the `pageHeader`/`pageFooter` caps, and the **negative-coordinate** refusal are **the same expression producing the same format string**. Only `%s` differs, from `band.Name`. There is no existing seam.
+- ⚠ **CORRECTION: there are ELEVEN call sites, not twelve.** The twelfth grep hit at `:1766` is the definition. **The band-by-band audit is in Design Notes, "The eleven-call-site band audit".** Sites: `:165`, `:300`, `:829`, `:1409`, `:1472`, `:1565`, `:1569`, `:1606`, `:1668`, `:1674`, `:1726`.
+- ⚠ **CORRECTION: no call site pins a band literal — every one of the eleven can receive ANY of the three bands.** `findComponent` `:1516-1530` loops `[]string{"pageHeader","content","pageFooter"}` at `:1517`; `bandByName` `:1285-1304` and `hitTestBand` `:1494-1515` switch over all three. The split must therefore key on `band.Name` **inside** `containComponent`, never at a call site.
+- **Pull-back arithmetic** — `containEdge` `:1752-1758` (doc `:1746-1751`), `floorToGrid` `:1759-1765`, `GridIncrement = 6000` (`page_setup.go:19`). Eight `containEdge` calls in three functions: `dropComponent` `:1410`(x)/`:1411`(y), `moveComponent` `:1566`(x)/`:1567`(y), `setComponentBounds` `:1669`(w)/`:1670`(h)/`:1671`(x)/`:1672`(y).
+- ⚠ **CORRECTION to the previous dispatch's reading: the pre-clamps are NEVER unconditional.** Each is gated on `snap && containComponent(unsnapped…) == nil`. So they do **not** make a lifted validator "accept nothing new" — the opposite: lifting the cap **widens the gate** and makes the Y pull-backs fire on inputs that today bypass them entirely (sites `:1409`, `:1565`, `:1668`). See Design Notes.
+- **Band identity is a bare `string`** — `CanvasBand.Name` (`page_setup.go:156-162`). **No named constant exists.** Load-bearing literal sites: `page_setup.go:354/355/356` (where the names are minted), `:417-419`, `:514-516`, `:721/723/725`; `component_commands.go:1295/1297/1299`, `:1505/1507/1509`, `:1517`; `internal/template/serialize.go:188-190`; `internal/template/parse_bands.go:24/36/40/44`.
+- `applyPropertyChanges` `:894-1190` writes `X/Y/Width/Height` at `:962-968` and enforces **only positivity** at `:953-955` — `x` and `y` have **no bound at all** there. `:829` is the sole band bound for the entire property-edit surface.
 
 ### The separate, surviving refusal — the JS-safe geometry bound
 
 - `MaxCanvasMillipoints int64 = 9007199254740991` — `page_setup.go:25`.
-- `lengthField` `page_setup.go:1043-1067`, enforced `:1063-1064`: `"%s exceeds the JavaScript-safe geometry bound"`. Wrapped by `componentLength` `component_commands.go:1258-1267` (`"folio: component.%s: %w"` at `:1261`) and by `propertyLength` `:884-886` → `:952`.
-- Projection-time sibling `page_setup.go:730-734`: `"folio: component exceeds the JavaScript-safe geometry bound"`. **Retain verbatim.**
-- ✅ **Separate path, separate message, upstream of `containComponent` — untouched by any split.**
+- `lengthField` `page_setup.go:1043-1068`, enforced `:1063`: `"%s exceeds the JavaScript-safe geometry bound"`. Wrapped by `componentLength` `component_commands.go:1258-1268` (`"folio: component.%s: %w"`) and `propertyLength` `:884-886`.
+- Siblings to retain verbatim: `page_setup.go:732` `"folio: component exceeds the JavaScript-safe geometry bound"`; `page_setup.go:338` `"folio: page setup exceeds the JavaScript-safe geometry bound"`.
+- ⚠ `lengthField` permits **negative** values down to `-MaxCanvasMillipoints`. **Negativity is caught ONLY by `containComponent`'s `x < 0 || y < 0 || …` terms** — which is why those terms are load-bearing and must stay universal.
+- ✅ Separate path, separate message, upstream of `containComponent` — untouched by any split.
 
-### The band rectangle — `folio-go/page_setup.go`
+### The band rectangle and the two `ContentHeight` spellings — `folio-go/page_setup.go`
 
-- **`:341`** `innerW, innerH := w-m.Left-m.Right, h-m.Top-m.Bottom`; **`:353-357`** the three bands, open-coded. Content is `Height: int64(innerH - header - footer)` at **`:355`** — **this is the one-page cap's source.**
-- ⚠ **`page_setup.go` does NOT import `internal/layout`** (imports `:3-15`). `layout.ContentHeight` (`internal/layout/band.go:75-77`) is a **second, independent spelling** used only by the render path. The designer-side cap is `page_setup.go:355`, not `band.go:75`. **`paginate.go` is genuinely uninvolved in the refusal.**
-- Frame difference to state in any new field's comment: `layout.Origins` measures downward from the printable top edge (`PageHeader: 0`); `CanvasBand.Y` is **page-absolute**.
-- A4 content-band height **729890 mp** exists only as a comment at `:74`/`:76`; as a literal in `App.test.tsx:17` and `DataPanel.test.tsx:18`. (`727890` at `multi_page_fixture_test.go:67` is a different geometry.)
+- **`:341`** `innerW, innerH := w-m.Left-m.Right, h-m.Top-m.Bottom`; guard **`:342-344`** (`header >= innerH-footer` → `"folio: page setup leaves no positive content region"`); **`:353-357`** the three bands, open-coded. Content is `Height: int64(innerH - header - footer)` at **`:355`** — **R5's target.**
+- `layout.ContentHeight(g)` — `internal/layout/band.go:75-77` — is `g.Height - g.MarginTop - g.MarginBottom - g.PageHeaderHeight - g.PageFooterHeight`. ✅ **Verified arithmetically identical** to `:355`: same five terms, same signs, same `geom.Length` int64 arithmetic, no rounding.
+- ⚠ **`page_setup.go` does NOT import `internal/layout`** — full import block `:1-15`. ✅ No cycle risk: `internal/layout` imports only `fmt`, `slices`, `strconv`, `internal/geom`, `internal/pagemodel`; `render.go:14` already imports it; both files are `package folio`.
+- ⚠ **`pageGeometryOf` (`render.go:291-311`) MUST NOT be the canvas's source of `PageGeometry`.** It delegates to `pageDimensions` (`render.go:75-91`), whose `default` branch **hard-errors on `"Letter"`** — while `canvasDimensions` (`page_setup.go:904-920`) **supports Letter** at `:908-909`. A Letter document projects a canvas today; routing the canvas through `pageGeometryOf` would break it. See Design Notes, "Ruling A".
+- Frame fact for the new fields' comments: `layout.Origins` (`band.go:101-109`) measures **downward from the printable top edge** (`Content: g.PageHeaderHeight`); `CanvasBand.Y` is **paper-absolute** (`content.Y = m.Top + header`). Exactly: `CanvasBand{content}.Y == MarginTop + layout.Origins(g).Content`.
 
-### The projection structs — `folio-go/page_setup.go`
+### The projection struct — `folio-go/page_setup.go`
 
-- **`CanvasProjection` `:265-293`** — `Width`/`Height` `:266-267`, `Orientation`, `Preset`, four margins `:270-273`, `GridIncrement` `:274`, `CommandWidth`/`CommandHeight` `:275-276`, `Bands` `:277`, `Components` `:278`, `FontFamilies` `:286`, `DefaultFontSize` `:292`. lowerCamelCase json tags, **no `omitempty` on any top-level field**. `FontFamilies`/`DefaultFontSize` (`:279-292`) are the newest additions and carry long comments justifying *why the engine, not the browser, owns the number* — **that is the tone a new field must follow.**
-- `CanvasBand` `:156-162`; `CanvasComponent` `:163-215`; `CanvasTextPaint` `:134-147` (`Overflow` `:135`, **`Truncated` `:145`**, `Lines` `:146`); `CanvasTextLine` `:124-130`; `CanvasTextFragment` `:116-119`.
-- **There is no page-window or window-count field anywhere.** `bands[1].height` is already exactly the page-height window, stated for one page.
-- `Canvas` `:323-367` calls only `canvasDimensions` `:904`, the inline band arithmetic, `canvasComponents` `:716`, `canvasFontFamilies` `:302`. `CanvasWithTextPaint` `:372-384` adds `addCanvasTextPaint` `:503` and `addCanvasImagePaint` `:407`. **Neither reaches `Paginate`, `ContentHeight`, `Origins`, `pageGeometryOf`, `documentBands` or `contentColumnItems`.**
-- `canvasComponents` `:716-777` does **not** re-check containment — only `> MaxCanvasMillipoints` at `:730-734`. **`Canvas()` already projects out-of-band content elements happily; no Go projection change is needed for admission.**
+- **`CanvasProjection` `:265-294`** — lowerCamelCase json tags, **no `omitempty` on any top-level field**. `FontFamilies` `:286` and `DefaultFontSize` `:293` are the newest additions; their comments (`:279-292`) justify **why the engine, not the browser, owns the number** — **that is the tone the two new fields must match.**
+- `CanvasBand` `:156-162`; `CanvasComponent` `:163-215`; `CanvasTextPaint` `:134-147` (`Truncated` `:145`).
+- **No page-window or window-count field exists anywhere.** `bands[1].height` is already exactly the page-height window, stated for one page.
+- `canvasComponents` `:716-776` does **not** re-check containment — only `> MaxCanvasMillipoints` at `:730-734`. **`Canvas()` already projects out-of-band content elements happily; no Go projection change is needed for admission.**
 
-### The window count — evidence gathered, derivation UNSETTLED
+### The canvas paint plan — the ONLY source of extents R1 permits
 
-- ⚠ **`internal/layout/paginate.go:69-74` forbids the closed form by name:**
-  > "PAGE COUNT IS NOT A CLOSED FORM. It falls out of the advance. In particular it is NOT `ceil(lowestBottom / H)`, and that spelling must not be reintroduced: the window advances to the first UNPLACED item, not by a fixed H, so an element declared far below the text STARTS THE NEXT WINDOW rather than generating blank pages before it."
-- Measured consequence: `len(Paginate(...).Pages)` diverges from `ceil(max(Top+Height)/H)` **in both directions**. Larger — slide waste compounds (four 60-tall items at tops 0/60/120/180 with H=100 give **4** pages, closed form says 3). Smaller — a lone item at Top=1000 with H=100 gives **1** page (`pageHasItem` guard, `paginate.go:995`), closed form says 11.
-- `Paginate` `:548`; the sweep `:740-1099`; the window slide `:983-1002` (`windowStart = effectiveTop`, `pages[page].Shift = windowStart - contentTop`). `PageAssignment.Shift` `:474-500` is **unconditionally zero on page 0**. `RowDisplacement` `:520-525` and `Pagination.Clipped` `:341-357` are **unreachable without tables/groups**. An **ungrouped** item taller than one window is a hard `*OverflowError` at `:1075-1089`, not a page of its own.
-- `contentColumnItems` `page_number.go:87-155`; produced in the render path from `collectBandTextRuns` (`render.go:686`, called `:1656`), `collectImageRuns` (`:437`), `collectElementBoxRects`/`collectBandTableRuns` (`table_render.go:587`), `computeVisibility` (`render_visibility.go:86`); consumed `render.go:1670-1673`.
-- ⚠ **The render machinery cannot be reused with empty data.** `collectBandTextRuns` binds at `render.go:727` via `bind.BindTextSpans` → `bind.Resolve` (`internal/bind/text.go:206-283`). An **absent** path is a hard error (`internal/bind/text.go:398-401`), returned as `*RenderError{DiagCodeBindingPathAbsent}` at `render.go:728-735` — **not** a diagnostic, and it aborts the whole collection. Only an explicit JSON `null` renders empty (`text.go:266-270`). **Every shipped fixture with a content-band placeholder errors under `{}`**: `testdata/example/first-pdf.folio:6`, `fixtures/statement-{1,5,20,50}/input.folio` (`e5`/`e6`/`e7`), `fixtures/wrapped-text/input.folio` (`e4`), `fixtures/mandatory-break/input.folio` (`e3`). A value binding to empty is also **dropped from the page model entirely** (`render.go:775-782`).
-- The canvas shapes the **raw authored string** (`page_setup.go:544`, `:548-552`) with `nil` substitutions (D-7.4.4), so canvas and render measure **different characters** whenever a placeholder is present.
-- `paginate.go:98-104` warns against re-deriving item extents: "Re-deriving it here would be a second derivation of the same number, which is exactly what D-2.4.2's amendment exists to prevent."
-- ✅ Same package (`package folio` in both `render.go:1` and `page_setup.go:1`); `internal/layout` imports only `fmt`, `slices`, `strconv`, `internal/geom` — **no import cycle** would block either option. `pageGeometryOf` `render.go:291`; `documentBands` `render.go:316`. `isVisible` (`render_visibility.go:39-45`) returns `true` for a `nil` map, so `contentColumnItems(runs, nil, nil, nil)` is safe.
+- **`addCanvasTextPaint` `page_setup.go:503-669`**, called only from `CanvasWithTextPaint` at `:377`.
+- Shaping `:544` (`shapeSegments` on the **raw** `element.Value.Value`), `:548-549` (`atomicSpansFor(..., nil)`, nil substitutions), `:554` `lines := packLines(...)` — **`lines` is the FULL, untruncated list and is never reassigned.**
+- ⚠ **Truncation has TWO sites, both of which the count must ignore:** `:567-570` (`painted := lines`, sliced to `maxCanvasBodyTextLines = 1920`, `page_setup.go:82`) **before** the loop, and `:658-661` (`oversized || !budget.admits(...)` → `break`) **inside** it. `paint.Truncated` is set at both.
+- ✅ **The code already states the rule the count needs**, `:571-575`: *"Overflow and the vertical origin below are still derived from the FULL line list, so the prefix paints at exactly the coordinates it occupies in the whole block."*
+- Vertical model `:581` `vm, err := chainVerticalModel(chain, fontSize, styleLineSpacing(element.Style), fs, cache)`. `verticalMetrics` — `wrap.go:514-534`: **`FirstBaseline` `:516`, `Advance` `:519`, `LastDescent` `:533`**. `LastDescent`'s own doc (`:528-531`) already names its two consumers as *"the per-line item extent the page splitter reads, and textBlockHeight"*.
+- Origin `:595` `originY := element.Y + textValignOffset(valign, boxHeight, textBlockHeight(len(lines), vm))` — **computed from `len(lines)`, untruncated by construction.**
+- Paint loop `:597` `for i, line := range painted`; `:598` `top, err := canvasLineTop(originY, i, vm.Advance)`. `canvasLineTop` `:709-714` = `elementY + index*advance` with a JS-safe overflow guard.
+- ⚠ **The extent formula is already written in the render path and must be copied term for term, not re-derived** — `render.go:937-938`:
+  ```go
+  placed[j].itemTop    = lineY
+  placed[j].itemBottom = lineY + vm.FirstBaseline + vm.LastDescent
+  ```
+  with the comment at `render.go:918-924`: *"computed here from the vertical model that is already in hand … Same numbers, no re-derivation."* **The canvas's `top` at `:598` is `lineY`'s exact analogue.**
+- **DW-33's path is `:658-661`** (comment `:655-657`), reached when `i == 0` already fails `budget.admits` or `oversized` (`:644-648`). ✅ **A count that iterates `lines` and uses `vm` arithmetic never reads `painted`, `budget`, `oversized` or `placed`, so it is PROVABLY independent of DW-33.** That is the flag the contract's Block If asks for; it is not a decision.
+- Degradation idioms already in this loop, to be matched not invented: font-chain failure `:526-534` → empty `TextPaint`, `continue`, **whole projection survives**; empty/unset value `:536-539` → same.
+
+### `layout.Paginate` — the one function that decides how many pages a column has
+
+- **`Paginate(g PageGeometry, items []ColumnItem) (Pagination, error)`** — `internal/layout/paginate.go:548`. **No data, no bindings, no template**, exactly as R1 states.
+- `PageGeometry` — `band.go:54-59`: `Width, Height, MarginTop, MarginBottom, MarginLeft, MarginRight, PageHeaderHeight, PageFooterHeight`.
+- `ColumnItem` — `paginate.go:105-144`: `ElementID` `:108`, `Top, Bottom` `:111`, `Runs` `:125`, `Images` `:126`, `Rects` `:127`, `Group` `:143`.
+- **The prohibition R1 relocates, verbatim `paginate.go:98-104`:** *"WHY THE EXTENT IS CARRIED RATHER THAN DERIVED HERE … Re-deriving it here would be a second derivation of the same number."* — **against a second derivation of EXTENTS, not of pagination.**
+- **The forbidden closed form, verbatim `paginate.go:69-74`:** *"PAGE COUNT IS NOT A CLOSED FORM … it is NOT `ceil(lowestBottom / H)` … an element declared far below the text STARTS THE NEXT WINDOW rather than generating blank pages before it."*
+- **The count is `len(plan.Pages)`** — there is no count field. `render.go:1675` reads it exactly that way.
+- ⚠ **`Paginate` has an EXCLUSIVITY PRE-PASS, `:567-584`.** Every item must populate **exactly one** of `Runs`/`Images`/`Rects`; zero or two returns `*MixedItemError` (`:579`, `:582`) **before the sweep**. The refs are index-only types (`TextRunRef`/`ImageRef`/`RectRef` = `int`, `:185-194`).
+- ✅ **The dummy-ref idiom is already sanctioned in-tree**, `page_number.go:141-146`: *"the actual RectRef values are never read back … so they need only be non-empty, one per rect, to satisfy Paginate's exclusivity check."*
+- ⚠ **`*OverflowError` at `:1075-1083`** fires when an **ungrouped** item's own height exceeds `ContentHeight(g)`. **This story newly makes such a component authorable** (Tasks Part 2 forbids refusing it), so the canvas count can hit it. See Design Notes, "Ruling C".
+- **Zero items → exactly ONE page**, `:545-557`: *"A document with NO content items is ONE page, not zero."*
+- `contentColumnItems` `page_number.go:87-155` is the render path's builder. ⚠ **It is NOT directly reusable** — it takes `[]textRunSource`, a render type carrying glyphs, faces, CIDs and page slots. Its **composition rule** is what 7.5 mirrors, not its signature.
+- Render-path composition, for reference: text per line (`:89-109`), images by **declared box** `Top: r.y, Bottom: r.y + r.boxH` (`:124-125`), table/element-box rects (`:138-153`). `collectElementBoxRects` (`element_box.go:52`) additionally **skips unstyled elements** (`:71-75`) — a render-only filter 7.5 does **not** copy; see Design Notes, "Ruling D".
+
+### `projectedSize` — why a bound table makes the count a FLOOR (R2)
+
+- `component_commands.go:1735-1744`, verbatim:
+  ```go
+  func projectedSize(element template.Element) (geom.Length, geom.Length) {
+      if element.Type != template.ElementTable {
+          return element.Width.Value, element.Height.Value
+      }
+      var width geom.Length
+      for _, column := range element.Table.Value.Columns {
+          width += column.Width
+      }
+      return width, element.Table.Value.HeaderHeight
+  }
+  ```
+  ✅ **Header height only, no rows** — the canvas has no data. Consumed at `page_setup.go:729`, written to `CanvasComponent.Width/Height` at `:735`.
+- Element kinds — `internal/template/model.go:177-181`: `text`, `image`, `table`, `line`, `rect`.
 
 ### Paint independence, landed by Story 7.4 — must survive and be re-asserted
 
-- `CanvasTextPaint.Truncated` `page_setup.go:145`, set at `:570` and `:659`.
-- `TestPaginationIsIndependentOfCanvasPaintTruncation` — `folio-go/canvas_body_text_bounds_test.go:237-278`; its framing comment `:230-236` names Story 7.5 explicitly. Obtains its count via `documentBands` → `collectBandTextRuns(..., data, data, ...)` → `contentColumnItems(runs, nil, nil, nil)` → `layout.Paginate(mustPageGeometry(t, tpl), ...)` at `:243-256`; `data` is `emptyBindValue(t)` at `:239` (test-only helper, `shaped_fixture_test.go:1446-1453`); `mustPageGeometry` is test-only (`collect_text_runs_composition_test.go:102-109`). Presence precondition `:265-267`; equality `:269-271`; non-coincidence `:275-277`.
-- Prohibited regexes — `folio-designer/src/canvas-authority-contract.test.ts`, rationale `:29-37` (names Story 7.6), entries **`:38`** `/\b(?:textPaint|paint)\??\.lines\.length\b/` and **`:39`** `/\blines\.length\s*[*/]|[*/]\s*\blines\.length\b/`. Non-vacuity `:51-56`; red-proofs `:70-71`.
-- **Nothing reads `paint.lines.length` today.** Go: only tests. TypeScript: one production read, `engine-protocol.ts:291`, a bound check (`>`), not a derivation — it survives both regexes by construction.
+- `TestPaginationIsIndependentOfCanvasPaintTruncation` — `folio-go/canvas_body_text_bounds_test.go:237-278`; framing comment `:231-236` names Story 7.5 explicitly. Its `pages` closure `:242-258` is `documentBands` → `collectBandTextRuns(..., data, data, ...)` → `contentColumnItems(runs, nil, nil, nil)` → `layout.Paginate(mustPageGeometry(t, tpl), ...)` → `len(plan.Pages)`. Presence precondition `:264-266`; equality `:267-270`; non-coincidence `:274-276`.
+- Helpers: `emptyBindValue` `shaped_fixture_test.go:1446-1453`; `mustPageGeometry` `collect_text_runs_composition_test.go:102-109`.
+- ⚠ **That closure is the RENDER-path oracle and it stays.** 7.5's field uses the canvas path (R1). The story must therefore **assert the two agree on a text-only fixture**, not assume it.
+- Prohibited regexes — `folio-designer/src/canvas-authority-contract.test.ts`, rationale `:29-37` (names a **window count** explicitly), entries **`:38`** `/\b(?:textPaint|paint)\??\.lines\.length\b/` and **`:39`** `/\blines\.length\s*[*/]|[*/]\s*\blines\.length\b/`. Non-vacuity `:52-55`; red-proofs `:70-71`.
+- ✅ **Nothing in production TS derives from `paint.lines.length`.** The one read is `engine-protocol.ts:291`, spelled `value.lines.length` with a `>` — it survives both regexes. ⚠ **Renaming that parameter from `value` to `paint` would make regex `:38` fire on a legitimate bound check.** Do not rename it.
 
-### The browser mirrors — `folio-designer/src/`
+### The browser mirrors — `folio-designer/src/engine-protocol.ts` (346 lines)
 
-- ⚠ **`engine-protocol.ts:193`** independently re-enforces band containment on every projection:
+- ⚠ **`:193`** the band-containment gate, inside `isCanvas`'s `components.every`, with `band` bound at `:189` and `box` at `:190`:
   ```ts
   if (!(box.x + box.width <= band.width && box.y + box.height <= band.height)) return false
   ```
-  `parseInbound` returning `undefined` **discards the whole snapshot** — no canvas, no error, silent blank. **This must lift for the content band in the same commit, or Story 7.5 is invisible in the app.**
-- Companion band invariants to leave alone: `:171` (`paint.y + paint.height <= page.height`), `:174` (bands contiguous).
-- Exact-key `hasOnly` `:139`. Allow-lists: snapshot `:311`; **canvas/page `:156`** (the list a new top-level projection field must join); band `:169`; component `:184`; textPaint `:291`; line `:300`; fragment `:307`; image `:248`; envelope `:333`. Type decls `CanvasProjection` `:95-104`, `EngineSnapshot` `:84-91`. Value predicates alongside `:157-158` (`integer(key, positive)`).
-- Test `engine-protocol.test.ts:24-31` — the out-of-band case at `:26` is an **X** overflow (`x: 991` in a 1000-wide band), so it survives a Y-only lift; fixture content band `height: 1800` at `:4`.
-- `engine-bounds-mirror.test.ts` — `goSources` `:33-36`, `tsPath` `:37`, `pairs` `:47-54` (**six** pairs, `toHaveLength(6)` at `:81`), extractors `:59-65`, red-proof `:110-128`. It ties **numbers only** — not struct field names, not `hasOnly` key lists.
-- **Third gate, and it is Story 7.6's, not this story's:** `resize-anchor.ts:29` `proposedBounds(..., limit?)` clamps live drags to `DragLimit` `:25`, filled from `{ width: band.width, height: band.height }` at `App.tsx:701` and applied at `App.tsx:1176`. Pinned by `resize-anchor.test.ts:43-53`. Dragging onto a later sheet is Story 7.6's own AC.
-- Fixtures that must gain any new field: `App.test.tsx:17`, `DataPanel.test.tsx:18`, and `engine-protocol.test.ts`'s fixtures.
-
-### The designer surface — `folio-designer/src/App.tsx`
-
-- Single sheet `:700` styled by `pageStyle(canvas, zoom)` **`:1165`**; bands `:701` via `bandStyle` `:1166`; `canvasDisplay` `:1155-1158`; `placementPoint` **exported, `:1162-1164`**.
-- ⚠ **Positional fragility.** `canvas-authority-contract.test.ts:86-88` holds a source-text seam requiring `export function placementPoint(event: Pick<MouseEvent,` to be followed **immediately** by `\n}\nfunction pageStyle`. It is the sole approved carve-out for the `offsetX`/`offsetY` ban (`:22`). **Any new helper must go after `pageStyle`, never between the two** — inserting there is a double red.
+  **Traced consequence of `parseInbound` → `undefined`:** `isCanvas` false → `isSnapshot` false (`:311`) → `parseInbound` returns `undefined` (`:335`) → `engine-client.ts:85-87` `#fail('PROTOCOL_INVALID', …)` → `:117-124` **terminates the worker**, rejects every in-flight request → `App.tsx:702` renders `Waiting for Go page geometry.` **One millipoint out of band kills the session, with no element id and no attribution.** A Go-only lift makes 7.5 invisible in the app.
+- **THE MIRROR INVENTORY (R4) is in Design Notes, "The `engine-protocol.ts` mirror inventory".** Headline: **6 of ~35 duplicated invariants are tied**; band containment is **untied**, and DW-25 closed only the four size caps.
+- Companion band invariants to leave alone: `:171` (paint inside page), `:172-175` (band contiguity), `:165-169` (three bands, that order).
+- Exact-key `hasOnly` `:139` (strict sibling `hasExactKeys` `:140`). **The canvas/page allow-list a new top-level field must join is `:156`:**
+  ```ts
+  hasOnly(value, ['width','height','orientation','preset','marginTop','marginRight','marginBottom','marginLeft','gridIncrement','commandWidth','commandHeight','fontFamilies','defaultFontSize','bands','components'])
+  ```
+  Other allow-lists: band `:169`, component `:184`, image `:248`, textPaint `:291`, line `:300`, fragment `:307`, snapshot `:311`, envelope `:333`.
+- **Value predicates:** helper `:157` `const integer = (key, positive = false) => … Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)`; applied `:158` — **a strictly-positive millipoint field joins the FIRST array on `:158`.**
+- Type decls: `CanvasProjection` `:95-104` (mixed tabs/spaces — match the neighbour), `EngineSnapshot` `:84-91`.
+- `engine-bounds-mirror.test.ts` — `goSources` `:33-36` (**`page_setup.go` and `internal/template/linespacing.go` only**), `tsPath` `:37`, `pairs` `:47-54` (**6**, `toHaveLength(6)` at `:81`), extractors `:59-65` (`^(?:const[ \t]+|[ \t]+)NAME = (\d+)$` / `^export const NAME = (\d+)$` — **decimal literals only**), site-consumption `:97-99`, red-proof `:110-128`. ⚠ **It ties numerals and names, and one narrow "the constant is actually consumed" check. It ties NO behavioural predicate** — not containment, not contiguity, not vocabularies.
+- ⚠ `engine-protocol.test.ts` — the sole out-of-band case is `:26`, `x: 991` in a **1000-wide** band; fixture content band `:4` is `{ name:'content', x:0, y:100, width:1000, height:1800 }`. **Every content component in the file has `y: 0` and `y+height <= 1800`, so nothing exercises the Y conjunct at all.** A Y-only lift leaves this file green and vacuous.
+- Fixtures that must gain the new fields — ⚠ **exactly three base literals**, everything else is a spread: `engine-protocol.test.ts:4`, `App.test.tsx:17`, `DataPanel.test.tsx:18`.
+- **Third gate, and it is Story 7.6's:** `resize-anchor.ts:29` `proposedBounds(anchor, origin, dx, dy, limit?)`, `DragLimit` `:23-25`, clamps at `:34-35`/`:50`/`:52`; filled from `{ width: band.width, height: band.height }` at `App.tsx:701`, applied at `App.tsx:1176`. Pinned by `resize-anchor.test.ts`. Its own header (`:9-18`) says it is a UX affordance, not a second authority.
+- ⚠ **Positional fragility.** `canvas-authority-contract.test.ts:83-88` requires `export function placementPoint(event: Pick<MouseEvent,` … `\n}\nfunction pageStyle` to be **textually adjacent**, and `expect(source).toMatch(seam)` at `:87` makes a break a hard failure. **Any new helper goes AFTER `pageStyle` (`App.tsx:1165`), never between `:1164` and `:1165`.**
 
 ### Tests pinning today's behaviour
 
-- ⚠ **The message text is asserted NOWHERE.** `grep -rn "must stay within" --include="*_test.go"` → **zero hits**; `"component.geometry"` in tests → **zero hits**. Every existing test asserts only `err == nil` / `err != nil` plus canonical-byte immutability. **AC3's "message unchanged" is currently unprotected, and this story must add the assertions.**
-- **`TestSnapDoesNotPushAnEdgeDragOutOfItsBand` — `component_commands_test.go:583` — the one test that must be inverted.** Content band at `:586`; `edgeY` from `band.Height` at `:603`; Y clamp assertions at **`:612-614`** and **`:624`**; the refusal case **`"a grid step past the bottom edge"` at `:632`** is exactly category (a). Its X cases `:631`/`:633` and the grid-step-distance assertion `:615-617` must survive.
-- Survive unchanged: `TestComponentCommandsSnapContainAndFailureAreTransactional` `:73` (X case `:101-103`); `TestSetComponentBoundsMovesOriginAndSizeInOneCommand` `:548` (negative-X `:570`, band-width `:571`) — **the natural home for a new "tall content Y is accepted" case**; `TestTableColumnCommandsAreTransactionalAtThePublicSeam` `:350` (width-driven); `TestDropComponentUsesGoHalfOpenBandHitTesting` `:514` (`hitTestBand`, `:1513`).
-- **Coverage gap:** `updateComponentProperties` with a large content-band `y` (the path through `:829`) has **no test today**, on either side of the change. `component_properties_test.go` has no band-bounds coverage at all.
-- Fixture `componentTemplate` `component_commands_test.go:13-24` → `testdata/template/golden/worked-example.json`: A4, 36pt margins, header 60, footer 30 ⇒ content band **523276 × 679890 mp**. Use these numbers.
+- ⚠ **The message text is asserted NOWHERE.** `grep -rn "must stay within" --include="*_test.go"` → **zero hits**; `"component.geometry"` in tests → **zero hits**; the JS-bound message in tests → **zero hits**. **AC3's "message unchanged" protects nothing today.**
+- ⚠ **The collision R3 warns about is live.** `component_commands.go:460` is `componentFailure(id, "column.footerOf", "footerOf must stay within the table collection")` — unrelated, and **exercised by `TestTableDataBindingAndFooterCommandsAreCanonicalAndTransactional` (`component_commands_test.go:407`)**. **New assertions must compare the FULL string, never `strings.Contains(err, "must stay within")`.**
+- **`TestSnapDoesNotPushAnEdgeDragOutOfItsBand` — `component_commands_test.go:583-642` — the one test that must be inverted.** Content band `:591-596`; `edgeX, edgeY := band.Width-created.Width, band.Height-created.Height` at `:603`; grid-multiple `:609-611`; containment `:612-614` and `:624-626` (**X and Y in one conditional each — the Y half must change, the X half must survive**); grid-step distance `:615-617`; refusal map `:631-633` with **`"a grid step past the bottom edge"` at `:632`** (must invert), X cases `:631`/`:633` (must survive); refusal + byte-immutability loop `:635-640`.
+- ⚠ **After the lift the Y arm of `:615-617` becomes VACUOUS** (nothing pulls Y back, so `edgeY - component.Y` is 0). A new Y case must replace its discriminating power.
+- Survive unchanged (verified): `TestComponentCommandsSnapContainAndFailureAreTransactional` `:73` (its out-of-band probe at `:101` is **X**, `x:999999`, `y:0` — the X-ness is load-bearing); `TestSetComponentBoundsMovesOriginAndSizeInOneCommand` `:548` (refusal map `:568-573` is **all negative-X or width-based; NO `y`/`height` overflow probe exists** — the natural home for a new "tall content Y is accepted" case); `TestTableColumnCommandsAreTransactionalAtThePublicSeam` `:350` (width-driven, reaches `:829`); `TestTableColumnRejectionsDoNotMutate` `:321`; `TestComponentCommandsRejectTableResizeAndPreserveTableGeometry` `:250`.
+- ⚠ **TRIPWIRE — `TestDropComponentUsesGoHalfOpenBandHitTesting` `:514`.** Band **hit-testing** at `component_commands.go:1501` (`y >= top+band.Height`) is a **different concern** from `containComponent`: it resolves *which band a point is in*. **It must not move.** Lifting it would make a content Y past the band resolve to `pageFooter` or to nothing.
+- **Coverage gap confirmed: `component_properties_test.go` has NO band-bounds coverage at all** — every component it creates sits at a safe interior position (`:41`, `:65`). The path through `component_commands.go:829` with a large content-band `y` is untested on both sides of the change.
+- Fixture `componentTemplate` `component_commands_test.go:13-24` → `testdata/template/golden/worked-example.json`: A4, 36pt margins, header 60, footer 30 ⇒ content band **523276 × 679890 mp** ✅ (re-verified). ⇒ `edgeX = 451276`, `edgeY = 655890`.
 
 ### Existing multi-page evidence — the engine needs no work
 
-- **`fixtures/page-count-{1,5,20,50}`** — templates `page_count_matrix_templates.go` (`:141` for 50); the shape comment `:13-19` states N single-line content elements at `y = i*728pt`, one content-band window apart, "so EVERY element lands in its own pagination window". `page-count-50` reaches y ≈ 35672pt, ~49 windows down, and renders to exactly 50 pages (`page_count_matrix_test.go:87-95`). **Hand-authored JSON, never produced through a designer command.**
-- **No load-time or render-time refusal of a far-below content element exists.** `parse_bands.go:147-151` → `decodePointsRaw` (`parse.go:428-438`) checks representability only; no band-height comparison anywhere in `internal/template`. The only positional error in `Paginate` is `itemHeight > height` (`:1075`) — the item's **own height**, never its position.
-- ⚠ **No canvas/projection fixture is multi-page at all.** `multi_page_fixture_test.go`, `statement_fixture_test.go` and `page_count_matrix_test.go` never call `Canvas`. Story 7.5 adds the first one.
+- **`fixtures/page-count-{1,5,20,50}`** — `page_count_matrix_templates.go`, shape comment `:11-21`, templates `:28-55`/`:57-88`/`:90-136`/`:138-214`. Geometry: A4, margins `{30,54,42,36}`, header 18, footer 24 ⇒ **content height 727890 mp**; elements at `y = i*728pt`, **one window apart**. Tests `page_count_matrix_test.go:28-39`, `:44-60`, `:76-113`.
+- ⚠ **CRITICAL: these fixtures CANNOT discriminate the closed form.** One-window spacing makes `ceil(lowestBottom/H)` and the true slide count **coincide at every N**. That is why the forbidden spelling survived until now, and why R2's new fixture must use a **GAP**.
+- **No load-time or render-time refusal of a far-below content element exists.** `parse_bands.go:147-151` → `decodePointsRaw` (`parse.go:428-438`) check representability only. `Paginate`'s only positional error is `itemHeight > height` (`:1075`) — the item's **own height**, never its position.
+- ⚠ **No canvas/projection fixture is multi-page, and none COULD be** — `containComponent`'s `y > band.Height` clause makes such a template unauthorable today. `multi_page_fixture_test.go`, `statement_fixture_test.go` and `page_count_matrix_test.go` **never call `Canvas` or `CanvasWithTextPaint`** (verified: zero hits). **Every existing canvas assertion about pagination is vacuous by construction. Story 7.5 adds the first fixture able to express the defect.**
+
+### The projection seam — which entry point reaches the browser
+
+- ✅ **VERIFIED: every projection that reaches the browser comes from `CanvasWithTextPaint`** — `wasm/engine.go:119`, `:255`, `:294` are the only three seams, and all three call it.
+- ✅ **Every mutating command's own `Canvas(t)` is DISCARDED and recomputed by `wasm/engine.go`.** This is already documented at `page_setup.go:388-392`: *"every mutating command's own Canvas(t) is discarded and recomputed by wasm/engine.go, so the paint must be derivable from template state alone, exactly like text paint."* **That is the existing architectural rule that places the window count in the paint plan — see Design Notes, "Ruling B".**
+- `Canvas` `:323-367`; `CanvasWithTextPaint` `:372-384` = `Canvas` + `addCanvasTextPaint` `:377` + `addCanvasImagePaint` `:379`.
 
 ### Verification surface
 
-- `folio-go/byte_neutrality_test.go:92-460` `goldenDigestRecord` — 20 entries; "invalidated IN WHOLE" clause `:225`.
-- `matrix_test.go:69-74` `matrixTargets` (4); `TestTargetRenderHash` `:1979`, gate `:1980-1990` (**logs "asserts NOTHING" and returns when `FOLIO_MATRIX_TARGET` is unset**); `TestCrossTargetByteIdentity` `:1802`.
-- `internal/text/corpus_test.go:169` `TestCorpusMeetsP6ExerciseFloors`; P6g floor `:185`; drift twin `TestCorpusP6StatsMatchDeclaredBaseline` `:243` **must stay green**.
-- `fontgen_matrix_test.go:64` `TestShippedFacesReproduceFromUpstream` — environmental (no `fontTools`). `lint/internal/rules/licencegraph_test.go:112` — the gofmt-dirty file (DW-23).
+- `folio-go/byte_neutrality_test.go:92-460` `goldenDigestRecord` — ✅ **20 entries** (re-counted); "invalidated IN WHOLE" clause `:225`. Fixture dirs with **no** entry: `expected-breaks`, `hidden-image`, `page-count-1`, `page-count-5`, `page-count-50`, `thai-break-corpus`.
+- `matrix_test.go:69-74` `matrixTargets` (4), `wantMatrixLegs = 4` `:84`; `TestTargetRenderHash` `:1979`, gate `:1980-1990` (**logs "asserts NOTHING" and returns when `FOLIO_MATRIX_TARGET` is unset**); a **second** such no-op branch at `:2076-2091`; `TestCrossTargetByteIdentity` `:1802`.
+- `internal/text/corpus_test.go:169` `TestCorpusMeetsP6ExerciseFloors`; **P6g floor at `:184`** (`want 20`, actual 7); drift twin `TestCorpusP6StatsMatchDeclaredBaseline` `:243` (`baselineP6g = 7` at `:251`) **must stay green**.
+- `fontgen_matrix_test.go:64` `TestShippedFacesReproduceFromUpstream` — environmental. `lint/internal/rules/licencegraph_test.go:112` — gofmt-dirty (DW-23).
+- Designer: **32 vitest files** (30 `src/**`, 2 `scripts/**`); static `it`/`test` count **231** — a lower bound, since `it.each` expands at runtime (the dispatch's runtime baseline is **239 / 32 files**). ✅ **oxlint at baseline: exactly 4 warnings, 0 errors**, all `only-export-components` (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1155,1162`). ⚠ **Adding a non-component export to any `.tsx` raises that count — keep new helpers in a `.ts` file.**
 
 ## Tasks & Acceptance
 
-⚠ **This section is INCOMPLETE BY DESIGN.** The window-count tasks cannot be written until the gap in Design Notes is ruled. Everything below the divider is settled by the ACs and the evidence; everything above the AC list that depends on the count is marked `[BLOCKED]`.
+**The ordering below is normative.** R3 requires characterization to LAND BEFORE the split; Part 1 is therefore its own step and must be committed-ready before Part 2 begins.
 
-**Execution — Part 1: the refusal split (settled).**
+**Execution — Part 1: CHARACTERIZE (must be complete before Part 2 changes anything).**
 
-- `folio-go/component_commands.go` — **Split `containComponent`'s single conditional** so the content band's vertical clauses (`y > band.Height`, `height > band.Height-y`) no longer apply, while `x`/`width` clauses, the negative clauses, and both repeating bands keep every clause they have today. Key on the band's identity; introduce named constants for the three band names rather than adding a fourth inline spelling of the literals. **The format string `"folio: component geometry must stay within %s"` must be preserved byte-for-byte for every surviving clause.** -- Rationale: the content cap, the repeating-band caps and the negative refusal are one expression and one message today, so lifting one without a split silently changes the other two.
-- `folio-go/component_commands.go` — **Leave `containEdge`/`floorToGrid` (`:1752-1764`) and their five callers arithmetically correct under the lift**: a content-band pull-back must no longer clamp Y against one window while still clamping X against the band width. -- Rationale: `moveComponent:1566` and `setComponentBounds:1669` pre-clamp before validating; a lifted validator behind an unlifted clamp accepts nothing new.
-- `folio-go/component_commands.go` — **Do not add any new refusal for a content element taller than one window.** The render path already returns `*OverflowError` (`paginate.go:1075-1089`) for an ungrouped over-tall item; that is the authority. -- Rationale: D-7.4.2's rejected option (c) — a canvas/command bound must never become a document validity rule, and the canvas-approximate/preview-exact asymmetry is the product concept.
+- `folio-go/component_commands_test.go` -- **Add assertions on the CURRENT refusal messages, by FULL-STRING equality**, for: negative `x`, `y`, `width`, `height` in each of the three bands; a content `x` past the band width; a `pageHeader` `y` and a `pageFooter` `y` past their band heights; **and — asserted here while it is still true — a content `y` past the band height**. Use `err.Error() == "folio: component geometry must stay within <band>"`; **never `strings.Contains`**, which also matches `component_commands.go:460`'s unrelated `footerOf` message. -- Rationale: R3. `grep "must stay within" --include="*_test.go"` returns zero hits, so AC3's "message unchanged" protects nothing; a story that splits first and asserts after is asserting whatever it happened to produce.
+- `folio-go/component_commands_test.go` -- **Add the same full-string assertion for the JS-safe bound's distinct message** from `componentLength` (`"folio: component.y: y exceeds the JavaScript-safe geometry bound"`), and for `page_setup.go:732`'s projection-time sibling. -- Rationale: it is the surviving upper bound after the lift (Design Notes judgment 1) and is equally unasserted today.
+- `folio-go/component_commands.go` + this spec's Delivery Log -- **RED-PROOF the characterization before proceeding**: perturb `component_commands.go:1768`'s format string locally, confirm the new assertions fail, and revert. **Record in the Delivery Log that this was done and what failed.** -- Rationale: R3 requires red-proof, not merely presence; an assertion that cannot fail is not characterization.
 
-**Execution — Part 2: the browser mirror (settled).**
+**Execution — Part 2: the refusal split.**
 
-- `folio-designer/src/engine-protocol.ts` — **Lift `:193`'s vertical containment for the content band in this same commit**, leaving the horizontal check and the band-level invariants `:171`/`:174` intact. -- Rationale: `parseInbound` discards the entire snapshot with no attributable error, so a Go-only lift makes the story invisible in the app; and D-7.4.5 requires the mirror to move in the same commit.
-- `folio-designer/src/engine-protocol.test.ts` — **Add a case admitting a content component whose `y + height` exceeds the band height, and keep the X-overflow rejection at `:26`.** -- Rationale: the existing out-of-band case is an X overflow and would pass vacuously after a Y-only lift.
+- `folio-go/component_commands.go` -- **Split `containComponent` (`:1766-1771`) BY MEANING, keying on `band.Name` inside the function** (no call site can be keyed — all eleven receive any band). **Representational refusals** (`x<0 || y<0 || width<0 || height<0`) stay universal. **Horizontal caps** (`x > band.Width`, `width > band.Width-x`) stay universal. **Band-capacity refusals** (`y > band.Height`, `height > band.Height-y`) apply to `pageHeader` and `pageFooter` **only**. **Preserve `"folio: component geometry must stay within %s"` byte-for-byte for every surviving clause.** -- Rationale: R3. Split by meaning, not clause count — the axis D-7.3.1 got wrong and its correction got right.
+- `folio-go/component_commands.go` -- **Introduce named constants for the three band names** and use them in the split, in `bandByName` `:1295-1299`, `hitTestBand` `:1505-1509`, `findComponent` `:1517`, `canvasComponents` `page_setup.go:721-725` and the band mint at `page_setup.go:354-356`. -- Rationale: the split makes band identity load-bearing for the first time; a fifth inline spelling of a bare string is how it silently diverges.
+- `folio-go/component_commands.go` -- **Do NOT add any new refusal for a content element taller than one window**, and **do NOT touch `hitTestBand`'s `:1501` half-open band rectangle.** -- Rationale: D-7.4.2's rejected option (c) — a canvas/command bound must never become a document validity rule; and `:1501` answers "which band is this point in", a different question, pinned by `TestDropComponentUsesGoHalfOpenBandHitTesting`.
+- `folio-go/component_commands.go` -- **Make the `containEdge` pull-backs correct under the lift**: a content-band pull-back must no longer clamp Y against one window, while still clamping X against the band width (`:1411`, `:1567`, `:1670`, `:1672`). -- Rationale: ⚠ the pre-clamps are gated on the probe succeeding, so lifting the cap **widens** the gate and makes the Y pull-backs fire on drags that today bypass them entirely — sites `:1409`, `:1565`, `:1668` change behaviour silently otherwise. See Design Notes, "The eleven-call-site band audit".
 
-**Execution — Part 3: the refusal-message assertions (settled, and currently missing).**
+**Execution — Part 3: re-point the tests the split moves.**
 
-- `folio-go/component_commands_test.go` — **Invert `TestSnapDoesNotPushAnEdgeDragOutOfItsBand` (`:583`) on the Y axis only**: `:612-614` and `:624` must no longer require `Y+Height <= band.Height` for content, and the `"a grid step past the bottom edge"` case at `:632` must become an accepted case. Keep both X cases and the grid-step-distance assertion `:615-617`. -- Rationale: this is the only shipped test that pins the content-band Y cap; leaving it would either fail or be weakened into vacuity.
-- `folio-go/component_commands_test.go` — **Assert the surviving refusals BY MESSAGE TEXT**, not merely that an error occurred: negative `x`/`y`/`width`/`height` in each of the three bands; a content `x` past the band width; a `pageHeader` and a `pageFooter` `y` past their band heights; and the JS-safe bound's own distinct message from `componentLength`. -- Rationale: no test asserts any of these strings today, so AC3's "message unchanged" is unprotected and the split could silently reword them.
-- `folio-go/component_properties_test.go` — **Cover `updateComponentProperties` with a large content-band `y`** (the path through `component_commands.go:829`) on both sides of the change. -- Rationale: that entry point has no band-bounds coverage at all today.
+- `folio-go/component_commands_test.go` -- **Invert `TestSnapDoesNotPushAnEdgeDragOutOfItsBand` (`:583-642`) on the Y axis only**: `"a grid step past the bottom edge"` (`:632`) becomes an **accepted** case; the Y halves of `:612-614` and `:624-626` stop requiring `Y+Height <= band.Height`. **Keep both X cases (`:631`, `:633`), the grid-multiple assertion (`:609-611`) and the X arm of `:615-617`.** -- Rationale: it is the only shipped test pinning the content-band Y cap.
+- `folio-go/component_commands_test.go` -- **Add a Y-axis case that still discriminates**: a content drag far below `band.Height` is **accepted**, **still snaps to the grid**, and persists at that Y in the canonical bytes. -- Rationale: ⚠ after the lift the Y arm of `:615-617` is vacuous (nothing pulls Y back); without a replacement, Y coverage evaporates silently.
+- `folio-go/component_commands_test.go` -- **Add a "tall content Y is accepted" case to `TestSetComponentBoundsMovesOriginAndSizeInOneCommand` (`:548`)**, whose refusal map `:568-573` today contains no `y`/`height` overflow probe at all. -- Rationale: the combined move+resize seam has zero coverage of the clause being lifted.
+- `folio-go/component_properties_test.go` -- **Cover `updateComponentProperties` with a large content-band `y`** (the path through `component_commands.go:829`), accepted after the change, and a `pageHeader` `y` past its band, still refused by message. -- Rationale: `:829` is the **sole** band bound for the entire property-edit surface (`applyPropertyChanges` bounds neither `x` nor `y`), and the file has no band-bounds coverage today.
 
-**Execution — Part 4: the projection field. `[BLOCKED — see Design Notes]`**
+**Execution — Part 4: the browser mirror lifts in the SAME commit (R4).**
 
-- `folio-go/page_setup.go` — Add the window-height and window-count projection fields, following `FontFamilies`/`DefaultFontSize` (`:279-292`) in stating **why the engine, not the browser, owns the number**, and stating which coordinate frame the value is in. **The derivation of the count is the blocking question.**
-- `folio-designer/src/engine-protocol.ts` — Add the new keys to the `hasOnly` list at `:156`, the `CanvasProjection` type at `:95-104`, and a value predicate at `:157-158`; update the fixtures at `App.test.tsx:17`, `DataPanel.test.tsx:18` and in `engine-protocol.test.ts`. -- Rationale: `hasOnly` is exact-key, so a Go-only field addition silently drops the entire snapshot.
-- `folio-go/` + `folio-designer/src/canvas-authority-contract.test.ts` — Re-assert paint independence **from this side**: the reported window count must be identical for a document whose paint truncates and the same document untruncated, and the two prohibited regexes at `:38-39` must keep their non-vacuity and red-proofs.
-- A new **multi-page canvas fixture** — there is none today.
+- `folio-designer/src/engine-protocol.ts` -- **Lift `:193`'s vertical containment for the content band**, leaving the horizontal check and the band-level invariants `:171`/`:172-175` intact. -- Rationale: `parseInbound` returning `undefined` terminates the worker and blanks the canvas with no attribution; a Go-only lift ships a story invisible in the app.
+- `folio-designer/src/engine-protocol.test.ts` -- **Add a content component with `y + height > band.height` that must be ADMITTED, and a `pageHeader`/`pageFooter` component with `y + height > band.height` that must still be REJECTED**, keeping the X-overflow rejection at `:26`. -- Rationale: ⚠ every content component in the file has `y: 0`; the Y conjunct is unexercised, so a Y-only lift leaves the file green and vacuous.
+- `folio-designer/src/engine-bounds-mirror.test.ts` -- **Widen the standing obligation from "the size caps move together" to "any invariant duplicated across the Go/TS boundary moves in one commit, with a test that reads both sides", and add a test that reads BOTH sides of band containment** — asserting that `component_commands.go`'s split and `engine-protocol.ts:193` agree on which bands cap vertically. Update `toHaveLength(6)` at `:81` if a `pairs` entry is added, and extend `goSources` `:33-36` to reach `component_commands.go`. -- Rationale: R4. This is the **third** occurrence of the shape and a **fifth mirror DW-25 never covered** — DW-25 closed the four size caps; band containment is a different invariant in the same file. **An audit closes only what it measured.**
+- This spec's Delivery Log -- **record the mirror inventory** (Design Notes, "The `engine-protocol.ts` mirror inventory") in the Delivery Log as the story's artifact. -- Rationale: R4 — a rule with no inventory rots the way DW-24's anchors did three times.
+
+**Execution — Part 5: collapse the second `ContentHeight` spelling (R5) and build one `PageGeometry`.**
+
+- `folio-go/page_setup.go` -- **Construct a single `layout.PageGeometry` inside `Canvas` from the values already in scope at `:332-341`** (`canvasDimensions`' `w`/`h`, `m`, `header`, `footer`), and **replace `:355`'s `int64(innerH - header - footer)` with `int64(layout.ContentHeight(g))`.** Add `internal/layout` to the import block `:1-15`. Keep the `:342-344` guard as it stands. -- Rationale: R5 — AD-13 requires one function in `internal/layout`, and AC4 makes it load-bearing: the reported window height **is** that number, and a divergence would leave the canvas and the engine drawing different pages while agreeing on the bytes.
+- `folio-go/page_setup.go` -- ⚠ **do NOT call `pageGeometryOf` (`render.go:291`).** It routes through `pageDimensions`, which **hard-errors on `"Letter"`** while `canvasDimensions` supports it. -- Rationale: a Letter document projects a canvas today; routing through `pageGeometryOf` would regress it, violating the contract's corpus/projection-neutrality rule. See Design Notes, "Ruling A".
+
+**Execution — Part 6: the window count, from the paint plan's own extents (R1).**
+
+- `folio-go/page_setup.go` -- **Build `[]layout.ColumnItem` for the CONTENT band from extents already computed, and call `layout.Paginate` once.** For a text element, inside `addCanvasTextPaint`'s per-element block **after `originY` (`:595`)**, iterate the **full `lines`** (never `painted`) and emit one item per line with `Top = originY + i*vm.Advance` (the value `canvasLineTop` returns) and `Bottom = Top + vm.FirstBaseline + vm.LastDescent` — **the same terms as `render.go:937-938`, copied, not re-derived.** Translate into the printable frame by adding `layout.Origins(g).Content`; **do not add `MarginTop`.** For every other content-band component, emit one item from the box `canvasComponents` already projects via `projectedSize`. Give each item exactly one non-empty ref slice, following the sanctioned dummy-ref idiom at `page_number.go:141-146`. **The count is `len(plan.Pages)`.** -- Rationale: R1 — one shaping, two consumers. `paginate.go:98-104` forbids a second derivation of **extents**, not of pagination; `Paginate` takes no data, no bindings and no template by design.
+- `folio-go/page_setup.go` -- **Compute the count in `CanvasWithTextPaint`, as a third paint producer beside `addCanvasTextPaint` and `addCanvasImagePaint` — never in `Canvas`.** `Canvas` reports the geometric floor of **one** window, and its comment must say so. -- Rationale: the count needs shaping, which needs a `FontSet` that `Canvas` does not have; and `page_setup.go:388-392` already establishes that every command's `Canvas(t)` is discarded and recomputed by `wasm/engine.go` with fonts, so **every projection reaching the browser is a `CanvasWithTextPaint`** (verified at `wasm/engine.go:119`, `:255`, `:294`). See Design Notes, "Ruling B".
+- `folio-go/page_setup.go` -- **Never fail the projection because pagination could not be computed.** On any `layout.Paginate` error — including `*OverflowError` for the over-tall content element this story newly permits — report **one** window and keep the projection. -- Rationale: Part 2 forbids turning the render path's overflow into a canvas refusal; R2 already establishes the count as a floor; and the file's existing degradation idiom (`:526-534`) keeps the projection alive on a font-chain failure. See Design Notes, "Ruling C".
+- `folio-go/page_setup.go` -- **Propagate `canvasLineTop`'s JS-safe-bound error exactly as the paint loop does at `:598-601`**, for lines the paint loop may never reach. -- Rationale: the count must iterate the full `lines` list to stay independent of truncation; the error is the file's established, consistent refusal, not a new policy.
+
+**Execution — Part 7: the projection fields and their browser admission.**
+
+- `folio-go/page_setup.go` -- **Add `ContentWindowHeight int64 \`json:"contentWindowHeight"\`` and `ContentWindowCount int64 \`json:"contentWindowCount"\`` to `CanvasProjection` (`:265-294`)**, no `omitempty`, with comments in the register of `FontFamilies`/`DefaultFontSize` (`:279-292`): why the **engine**, not the browser, owns each number; **which coordinate frame** it is in; and — for the count — that it describes **the column as the canvas paints it**, that it is a **FLOOR for any bound table** (`projectedSize` gives header height only), and that it is **never derived from `CanvasTextPaint`**. -- Rationale: R2, and D-7.4.4 requires the comment to say what the number is a number *about*.
+- `folio-designer/src/engine-protocol.ts` -- **Add both keys to the `hasOnly` list at `:156`, to the `CanvasProjection` type at `:95-104`, and to the strictly-positive array at `:158`.** -- Rationale: `hasOnly` is exact-key, so a Go-only field addition silently discards the entire snapshot and blanks the canvas.
+- `folio-designer/src/engine-protocol.test.ts:4`, `folio-designer/src/App.test.tsx:17`, `folio-designer/src/DataPanel.test.tsx:18` -- **Add both fields to the three base fixture literals** (all other fixtures are spreads and inherit them). -- Rationale: verified — these are the only three non-spread projection literals in the designer.
+- `folio-designer/src/canvas-authority-contract.test.ts` -- **Keep the two prohibited regexes (`:38-39`), their non-vacuity (`:52-55`) and their red-proofs (`:70-71`) intact**, and confirm the new field does not tempt a browser-side derivation. ⚠ **Do not rename `isTextPaint`'s `value` parameter** — spelling it `paint` would make regex `:38` fire on the legitimate bound check at `:291`. -- Rationale: D-7.4.2 §5; the regexes' own rationale comment names a **window count** explicitly.
+
+**Execution — Part 8: the DISCRIMINATING fixture (R2).**
+
+- `folio-go/canvas_window_count_template.go` (new) -- **Add the first multi-page CANVAS fixture**, as a template constant in the shape of `multi_page_template.go` / `page_count_matrix_templates.go`. Geometry: A4 portrait, margins `{top:30, right:54, bottom:42, left:36}`, header 18, footer 24 ⇒ **content window `H` = 727890 mp** (the `page-count-*` geometry, already documented and cross-checked). Content band: a text element at `y:0`, and **a second element declared far below it at `y:7280pt` — ten windows down, with nothing between.** **Assert the reported count is exactly 2.** -- Rationale: R2. `ceil(lowestBottom / H)` gives **11** here, so the fixture red-proves the exact spelling `paginate.go:69-74` bans. ⚠ **The existing `page-count-*` fixtures CANNOT discriminate it** — their one-window spacing makes the closed form and the true slide count coincide at every N.
+- `folio-go/canvas_window_count_template.go` (new) -- **Add a negative control constant in the same file**: elements at `y:0, 728, 1456` ⇒ **3 by both routes**. -- Rationale: without it the discriminating test could pass by always answering 2, and the control records *why* the closed form survived this long.
+- `folio-go/canvas_window_count_test.go` (new) -- **Assert the count is identical for a truncating and a non-truncating paint of the same document**, and that it **agrees with the render-path oracle** (`documentBands` → `collectBandTextRuns` → `contentColumnItems` → `layout.Paginate`) on a text-only fixture with no placeholders. -- Rationale: D-7.4.2 §5 re-asserted from this side; and the render oracle at `canvas_body_text_bounds_test.go:242-258` guards a **different** path, so agreement must be measured, not assumed.
+- `folio-go/canvas_window_count_test.go` (new) -- **Assert an over-tall content component degrades to one window and does NOT fail the projection**, and that a bound table's count is a floor. -- Rationale: Ruling C, and R2's instruction to record the floor explicitly rather than let 7.6 discover it.
+- `folio-go/byte_neutrality_test.go` -- ⚠ **a canvas-only fixture needs NO `goldenDigestRecord` entry.** If it also gains an `expected.pdf`, the entry and **every** site (`expected.json`, second literal, any README quoting the digest) must be declared or `byte_neutrality_test.go`'s completeness half fails. -- Rationale: `:225`'s "invalidated IN WHOLE" clause.
 
 **Acceptance Criteria:**
 
 - Given a placement or bounds command in the **content** band with a Y beyond one page's content height, when the engine validates it, then it is **accepted** and the element persists at that Y in the canonical bytes.
-- Given the same command in the **pageHeader** or **pageFooter** band, when it is validated, then it is refused, and the test asserts the **exact message text** `folio: component geometry must stay within pageHeader` / `... pageFooter`.
-- Given a negative coordinate in any band, or a coordinate beyond the JavaScript-safe geometry bound, when it is validated, then it is still refused and the test asserts the **exact message text**, unchanged from `23a4647`.
-- Given a content-band component whose box extends past one window, when the projection reaches the browser, then the snapshot is **admitted**, not silently discarded.
-- Given a template whose content column is longer than one page, when the canvas is projected, then the projection reports the page-height window and how many windows the column occupies. `[BLOCKED]`
-- Given the same document projected with and without paint truncation, when the reported window count is compared, then it is identical; and given the designer sources, when the authority contract scans them, then no height or window count is derived from a paint's line count. `[BLOCKED]`
-- Given every existing template, none of which places anything past page one, when it is projected and rendered, then every pre-existing projection field value and all twenty golden digests are **measured** unchanged.
-- Given the working tree at the end of the story, when it is inspected, then the repository-root `README.md` is byte-identical to its committed state and appears in no commit.
+- Given the same command in the **pageHeader** or **pageFooter** band, when it is validated, then it is refused, and the test asserts the **exact message text** `folio: component geometry must stay within pageHeader` / `... pageFooter` by full-string equality.
+- Given a negative coordinate in any band, or a coordinate beyond the JavaScript-safe geometry bound, when it is validated, then it is still refused and the test asserts the **exact message text**, unchanged from `83d49b6` — and those assertions were **landed and red-proved before** the split, not after.
+- Given a content-band component whose box extends past one window, when the projection reaches the browser, then the snapshot is **admitted**, not silently discarded; and given the same component in a repeating band, then it is still rejected.
+- Given a template whose content column is longer than one page, when the canvas is projected, then the projection reports the page-height window and how many windows the column occupies — **as the canvas currently paints it, not as a prediction of the rendered document** (R2). Given a content band containing a bound table, then the reported count is a **floor**, and the projection's own comment says so.
+- Given a content element declared ten windows below the text with nothing between, when the count is reported, then it is **2**, not 11 — and given a control template with elements one window apart, then it is **3**.
+- Given the same document projected with and without paint truncation, when the reported window count is compared, then it is identical; and given the designer sources, when the authority contract scans them, then no height or window count is derived from a paint's line count.
+- Given a content component taller than one window, or any other input for which `layout.Paginate` returns an error, when the canvas is projected, then the projection **succeeds** and reports one window; it never fails and never blanks the canvas.
+- Given the Go band-containment split, when the commit is inspected, then `folio-designer/src/engine-protocol.ts`'s mirror moved **in that same commit**, with a test that reads both sides, and the story record **enumerates the mirrors that exist in `engine-protocol.ts` today**.
+- Given every existing template, none of which places anything past page one, when it is projected and rendered, then every pre-existing projection field value and all **twenty** golden digests are **measured** unchanged.
+- Given the diff, when it is inspected, then `internal/layout/paginate.go` is **absent** from it, and the repository-root `README.md` is byte-identical to its committed state and appears in no commit.
 
 ## Spec Change Log
 
@@ -312,59 +401,124 @@ Every anchor verified in the tree at `23a4647`.
 
 ## Design Notes
 
-### The window-count gap — why this story is blocked
+### The window-count gap — CLOSED by R1 (the contract's `Block If` no longer fires)
 
-**AC4 requires the projection to report "how many windows the column currently occupies". No derivation available to this story satisfies the constraints the architecture already imposes, and nothing in the intent selects between the survivors.**
+The contract's `Block If` points here: *"The window count's derivation is not settled by the intent."*
+**It is now settled.** R1 selects a derivation that is neither of the two the first dispatch could not
+choose between: **the real `layout.Paginate`, fed `ColumnItem`s built from extents the canvas paint
+plan has ALREADY computed.** Option (A)'s bind coupling is rejected on three independent grounds and
+is Story 13.4's in another epic; option (C)'s closed form is foreclosed by name at `paginate.go:69-74`;
+deferring the count to 7.6 is rejected because AC4 exists in 7.5 *so that* 7.6 measures nothing.
 
-Three candidate derivations, and what each costs:
+**Why the previously-cited prohibition does not bite.** `paginate.go:98-104` forbids a **second
+derivation of an item's EXTENT**, not a second call to `Paginate` — and `Paginate`'s own signature
+(`PageGeometry` + `[]ColumnItem`, no data, no bindings, no template) shows it is designed to receive
+caller-derived extents. Reusing the per-line tops and advances the paint plan computes once is
+therefore the safe spelling: **one shaping, two consumers** — the paint plan and the window count.
+A fresh shaping pass would be the violation, and is forbidden.
 
-**(C) The closed form, `ceil(max(y+height) / windowHeight)` — FORECLOSED, not a choice.** `internal/layout/paginate.go:69-74` forbids this spelling by name. It is wrong in both directions, measurably: slide waste compounds (four 60-tall items at tops 0/60/120/180 with H=100 paginate to **4** pages, closed form says 3), and the `pageHasItem` guard at `:995` collapses a lone far-below element to **1** page where the closed form says 11. This is recorded so the next reader does not re-propose it.
+This subsection exists so the contract's pointer still resolves. **Do not re-open the question.**
 
-**(A) Reuse the render machinery** — `documentBands` → `collectBandTextRuns` → `contentColumnItems` → `layout.Paginate`, the exact sequence Story 7.4's own `TestPaginationIsIndependentOfCanvasPaintTruncation` uses as its oracle. **It cannot be fed empty data.** `collectBandTextRuns` binds at `render.go:727`; an absent path is a hard `*RenderError{DiagCodeBindingPathAbsent}` (`render.go:728-735`) that aborts the whole collection, and **every shipped fixture with a content-band placeholder errors under `{}`** — `first-pdf.folio`, all four `statement-*`, `wrapped-text`, `mandatory-break`. Making (A) work means threading the designer's **actual** data into `Canvas`/`CanvasWithTextPaint` — a public signature change, a new coupling from the canvas projection to `internal/bind` and the render pipeline, and a count measured over *substituted* text while the canvas *paints* the raw string. It is defensible: the UX line "its page is a consequence of the content above it and **can change with the data**" reads as data-dependence by design, and "**currently** occupies" reads as *with the data now bound*.
+### The eleven-call-site band audit (R3)
 
-**(B) Build `layout.ColumnItem`s from the canvas's own shaping** of the raw authored string (which `addCanvasTextPaint` already performs at `page_setup.go:544-554`) and call `layout.Paginate` on those. This stays coherent with what the canvas actually paints, needs no bind coupling and no signature change, and still routes through the one function that decides how many pages a document has. It costs a **second derivation of the item extent**, which `paginate.go:98-104` warns against by name, and it requires a shaping pass deliberately separate from the (truncatable) paint so D-7.4.2 §5's independence survives.
+⚠ **There are eleven, not twelve** — the twelfth grep hit is the definition at `:1766`. ⚠ **No site pins a band**: `findComponent` `:1517`, `bandByName` `:1295-1299` and `hitTestBand` `:1505-1509` all range over the three names, so **every site can receive any band** and the split must key on `band.Name` inside `containComponent`.
 
-**Why this is not rulable here.** The two survivors produce **different integers for the same template** — for any document with a content-band placeholder, (A) measures substituted text and (B) measures the literal `{{...}}` characters, and (A) additionally drops an element whose value binds to empty (`render.go:775-782`). Story 7.6 draws one sheet per reported window, so the choice is directly observable. Nothing selects: AD-17 and "the count must come from layout, not from `CanvasTextPaint`" (D-7.4.2 §5) are satisfied by both; `paginate.go:98-104` leans against (B); Story 7.4's landed test precedent leans toward (A); the epic's "the canvas is an approximation, the preview is exact" permits either.
+| # | Line | Function | Kind | Relies on the vertical cap? |
+|---|------|----------|------|------------------------------|
+| 1 | `:165` | `addTableColumn` | refusal (`column.width`) | **NO** — mutates `width` only; `Y`/`HeaderHeight` untouched |
+| 2 | `:300` | `updateTableColumn` | refusal (`column.width`) | **NO** — editable fields are `header`/`width`/`align` |
+| 3 | `:829` | `updateComponentPropertiesInPlace` | refusal (`component.geometry`) | **YES — highest stakes.** `applyPropertyChanges` bounds neither `x` nor `y`; `:829` is the **sole** band bound for the whole property surface |
+| 4 | `:1409` | `dropComponent` | **probe**, gates `containEdge` `:1410-1411` | **YES** — `hitTestBand` keeps `y ∈ [0,H)`, but `height > H-y` fires near the bottom. Lifting makes the probe pass and **engages a y snap-back that does not run today** |
+| 5 | `:1472` | `createComponentInBand` | refusal | **YES** — primary create/drop gate; only `width<=0 \|\| height<=0` upstream |
+| 6 | `:1565` | `moveComponent` | **probe**, gates `containEdge` `:1566-1567` | **YES** — lifting engages the y pull-back and a drag that is refused today silently succeeds at a clamped y |
+| 7 | `:1569` | `moveComponent` | refusal | **YES** — the only check stopping a move below the band bottom |
+| 8 | `:1606` | `resizeComponent` | refusal | **YES** — `height > H-y` is the sole ceiling on a resize's height |
+| 9 | `:1668` | `setComponentBounds` | **probe**, gates four `containEdge` `:1669-1672` | **YES** — two of the four pull-backs are vertical |
+| 10 | `:1674` | `setComponentBounds` | refusal | **YES** — only vertical ceiling on the combined rectangle |
+| 11 | `:1726` | `duplicateComponent` | **probe, silent fallback** (`x,y = clone.X, clone.Y`; no error ever) | **YES** — the `+6000` offset near the band bottom is exactly what triggers the fallback today; lifting keeps the offset and lands the duplicate outside the band |
 
-**And it lands one story early.** D-7.4.4 recorded that the canvas passes `nil` substitutions and breaks the raw template string, with the consequence: *"If any story claims the canvas shows where the engine will break a **bound** value, that claim is false today. To be raised at **7.6's** plan gate rather than decided now."* Option (A) is exactly that claim, arriving at 7.5. A builder choosing it would be settling a question the lead explicitly reserved.
+**The finding R3 asked for:** sites 4, 6, 9 and 11 are the ones that **change behaviour silently** — they are probes whose result is discarded, so lifting the cap widens a gate rather than removing a refusal. Sites 4/6/9 begin engaging pull-backs that today never run; site 11 stops falling back. **The pre-clamps are not unconditional**, which is the correction to the previous dispatch's reading that they would make a lifted validator "accept nothing new".
 
-**A fourth disposition the lead may prefer:** report only the **page-height window** in this story and defer the **count** to 7.6, where the parity question was already scheduled. That satisfies the first half of AC4 and the whole of AC1–AC3 and AC5, and it is separably shippable — but it does not satisfy AC4 as written, so it needs explicit sanction rather than a builder's judgment.
+### The `engine-protocol.ts` mirror inventory (R4) — the artifact
 
-### Judgments made at this gate, offered as recommendations (not blocking)
+**6 of ~35 duplicated Go/TS invariants are tied.** DW-25 closed **Group A only**.
 
-1. **What the content band's Y is bounded by after the lift: the JavaScript-safe geometry bound and nothing else.** AC1 says a Y beyond one page's content height is accepted; AC3 names the surviving upper bound. That is the ACs selecting, not a builder choosing.
-2. **AC4 vs AC5 is an apparent, not a real, contradiction.** AC5 says the projection of every existing template is "unchanged" while AC4 adds a field to it. Read as "no pre-existing field's value moves, and the window count reports one window", both clauses stand — the same in-epic reading D-7.1.3 applied. Read as "no new key", AC4 and AC5 are literally unsatisfiable together. `fixtures/page-count-*` are outside AC5's premise: they do place content past page one.
-3. **`engine-protocol.ts:193` lifts in the same commit.** D-7.4.5's consequence is explicit that a Go bound and its TypeScript mirror move together. Leaving it would accept the command and then blank the canvas with no attributable error.
-4. **The live-drag clamp (`resize-anchor.ts:29` / `App.tsx:701`) stays.** Dragging a component onto a later sheet is Story 7.6's own acceptance criterion; there are no later sheets to drag onto until 7.6 draws them.
-5. **An over-tall content element is not newly refused.** See Tasks Part 1.
+**Group A — TIED by `engine-bounds-mirror.test.ts` (the six `pairs`, `:47-54`):**
+
+| TS | Go | Value |
+|---|---|---|
+| `MAX_CANVAS_BODY_TEXT` `:35` | `page_setup.go:70` | 1048576 |
+| `MAX_CANVAS_BODY_TEXT_LINES` `:37` | `page_setup.go:82` | 1920 |
+| `MAX_CANVAS_BODY_TEXT_FRAGMENTS` `:42` | `page_setup.go:112` | 65536 |
+| `MAX_CANVAS_PROPERTY_STRING` `:45` | `page_setup.go:38` | 512 |
+| `MIN_LINE_SPACING_THOUSANDTHS` `:56` | `internal/template/linespacing.go:53` | 1 |
+| `MAX_LINE_SPACING_THOUSANDTHS` `:57` | `internal/template/linespacing.go:54` | 1000000 |
+
+**Group B — numeric literals duplicated from Go, UNTIED:** `MAX_ENGINE_FONT_FAMILIES` `:15` ↔ `page_setup.go:298` (256); ⚠ **a bare inline `512` at `:162`** for font-family name length ↔ `page_setup.go:310` — **invisible to the mirror test, whose site regex only matches `boundedString(key, MAX_CANVAS_PROPERTY_STRING)`**; `MAX_ENGINE_BINDING_LENGTH` `:11` ↔ `page_setup.go:263` (256); `MAX_ENGINE_PAYLOAD_BYTES` `:6` ↔ `component_commands.go:622` (8 MiB — **whose Go comment declares itself a mirror**); `MAX_ENGINE_ELEMENT_ID_LENGTH` `:9` (relied on by name at `component_commands.go:626-627`); `MAX_ENGINE_PARAMETER_NAME_LENGTH` `:12-13` ↔ `parameter_references.go:16`; inline `128` table-column cap `:153` ↔ `table_columns_projection.go:10`; asset-key shape `:256` ↔ `asset_bytes.go:41-50`; SHA-256 hex shape `:148`; table field caps `:153`.
+
+**Group C — mirrored PREDICATES, all untied:** the JS-safe bound (`Number.isSafeInteger` at `:157/169/184/203/221/257/300/307` ↔ `MaxCanvasMillipoints` — **structurally untieable as written, and that spelling is the safer one**); paint-inside-page `:171`; band contiguity `:172-175`; band count and order `:165-169`; ⚠ **component band containment `:193` ↔ `containComponent` — THIS STORY'S mirror**; image draw containment `:260`; `resizable ⇔ type≠table` `:192`; component band ordering `:182-188`; component id uniqueness `:181-185`; fontFamilies sortedness `:162`; text-paint line invariants `:302`; fragment x containment `:307`; the `align`/`valign` `:213`, `borderEdges` `:214`, `preset`/`orientation` `:156`, component `type` `:178`, band-name `:179`, `imageUnavailable` `:235`, table-column `align`/`footer` `:153` vocabularies; field/type coupling `:222-229`; `lineSpacing` range `:221` (literals tied, predicate untied); parameter-name shape/sort/uniqueness `:149`.
+
+⚠ **The asymmetry that makes `:193` dangerous:** Go enforces containment **only on the command path**. `canvasComponents` (`page_setup.go:716-776`) does not re-check it when projecting, and `parse_bands.go` has none either. **So Go already projects out-of-band elements happily and TypeScript alone kills them** — which is why the lift is a TS-side necessity, not a courtesy.
+
+⚠ **Highest-risk untied item, for the record:** the bare `512` at `:162`. A DW-25-style raise updates `:45` and leaves `:162` behind, every test stays green, and documents with long family names silently blank the canvas — the same defect class DW-25 was created to close, still present in the file DW-25 hardened. **Not this story's to fix; recorded so the inventory is honest.**
+
+### Ruling A — the canvas builds its own `PageGeometry`; it must not call `pageGeometryOf`
+
+`pageGeometryOf` (`render.go:291`) → `pageDimensions` (`render.go:75-91`) **hard-errors on `"Letter"`**, by deliberate design (its comment: *"failing loudly here is more honest than a silent A4 substitution"*). `canvasDimensions` (`page_setup.go:908-909`) **supports Letter**. A Letter document projects a canvas today. **Selected by the contract's own corpus/projection-neutrality rule** — the count must not be able to break a projection that works today. Constructing `layout.PageGeometry` in `Canvas` from the values already in scope at `:332-341` also serves R5: the same `g` yields the band height **and** the reported window height, so they cannot diverge. This is not a third spelling — it is the one construction both consumers read.
+
+### Ruling B — the count is a paint-plan product, computed in `CanvasWithTextPaint`
+
+R1 sources the extents from the paint plan, which exists only in `addCanvasTextPaint`, which only `CanvasWithTextPaint` calls. **Selected by an existing documented rule, not by builder preference:** `page_setup.go:388-392` already states that every mutating command's `Canvas(t)` is discarded and recomputed by `wasm/engine.go`, *"so the paint must be derivable from template state alone, exactly like text paint."* Verified at the seam: `wasm/engine.go:119`, `:255`, `:294` are the only three producers reaching the browser, and **all three call `CanvasWithTextPaint`**. `Canvas` therefore reports the documented floor of one window and never reaches the app; its comment must say so rather than leave a silent zero.
+
+### Ruling C — a pagination failure degrades the count; it never fails the projection
+
+`Paginate` returns `*OverflowError` (`paginate.go:1075-1083`) for an **ungrouped** item taller than one window — precisely the component this story newly makes authorable. Three settled positions converge, so this is a rule and not a coin flip: **(i)** Tasks Part 2 forbids turning the render path's overflow into a canvas refusal (*"a canvas/command bound must never become a document validity rule"*); **(ii)** R2 already establishes the count as a floor and requires floors to be recorded rather than hidden; **(iii)** the paint loop's existing idiom (`:526-534`) keeps the whole projection alive when a font chain fails. Reporting **one** window matches `Paginate`'s own documented answer for a column it cannot place (`:545-557`). **Consequence for 7.6, flagged deliberately:** such a document draws one sheet. That is a floor, not a lie — and it is strictly better than the alternative the settled positions exclude, which is a blank canvas with no attributable error.
+
+### Ruling D — every content-band component contributes an extent, styled or not
+
+The render path's `collectElementBoxRects` (`element_box.go:71-75`) **skips elements with no background or border** — correct there, because an unstyled rect draws nothing. **R2's own wording selects differently for the canvas:** the count is *"a claim about the column as the canvas currently paints it"*, and the canvas paints every component's box. R2's fixture requirement says *"an element declared far below the text"*, not a styled one. So: **text contributes one item per shaped line** (R1's named mechanism, never its box); **every other content-band component contributes one item from the box `projectedSize` already gives it** — for a table, header height only, which is R2's recorded floor. An element that shapes to zero lines, or whose value is empty or whose font chain fails, contributes nothing, matching the render path's treatment of a value that binds to empty (`render.go:775-782`).
+
+### DW-33 — flagged, and provably not touched
+
+DW-33 is `page_setup.go:658-661`: a text element whose first line already exceeds the per-line guard paints zero lines. ✅ **The window count reads `lines`, `originY` and `vm` — never `painted`, `budget`, `oversized` or `placed` — so its answer is identical whether the element paints zero lines or all of them.** The contract's Block If asks for a flag if the work touches that path; it does not, and this is the flag. **No ruling on whether a partial prefix should paint is made or needed here.**
+
+### Judgments carried forward from the previous gate (unchanged, non-blocking)
+
+1. **After the lift, the content band's Y is bounded by the JavaScript-safe geometry bound and nothing else.** AC1 and AC3 select it; that is the ACs speaking, not a builder choosing.
+2. **AC4 vs AC5 is an apparent, not a real, contradiction** — "no pre-existing field's value moves, and the window count reports one window", the same in-epic reading D-7.1.3 applied. `fixtures/page-count-*` are outside AC5's premise: they do place content past page one.
+3. **The live-drag clamp (`resize-anchor.ts:29` / `App.tsx:701`) stays.** Dragging onto a later sheet is Story 7.6's own AC; there are no later sheets until 7.6 draws them.
+4. **An over-tall content element is not newly refused.** See Tasks Part 2 and Ruling C.
+5. **No `.folio` format field is required.** This lifts a validation bound and adds a projection field; the projection is not the file format. `SupportedMajor` stays **2**.
 
 ### Limits to state, not to fix
 
-- **D-7.4.4 stands and this story must not contradict it.** The canvas breaks the **raw** template string; it does not know where the engine will break a **bound** value. Whatever the ruling, the projection's comment must say what its number is a number *about*.
-- **DW-33 is adjacent and needs a ruling, not a patch.** A text element whose first line already exceeds the per-line guard paints zero lines; whether it should paint a partial prefix is a design question 7.4's contract did not settle. If the window-count work touches that path, flag it.
-- **No format field is required.** This lifts a validation bound and adds a projection field; the projection is not the file format. `SupportedMajor` stays 2.
+- **D-7.4.4 stands.** The canvas breaks the **raw** template string with `nil` substitutions (`page_setup.go:544`, `:548-549`); it does not know where the engine will break a **bound** value. The new fields' comments must say what their numbers are numbers *about*. Reuse of the render/bind machinery is **rejected** by R1 on three independent grounds, and Story 13.4 in another epic is that change.
+- **The bound-table floor is pre-existing (Epic 6) and irreparable within 7.5.** `projectedSize` returns header height only because the canvas has no data.
+- ⚠ **An element at `y:7280pt` is storable but not droppable-at**: `hitTestBand`'s `:1501` half-open rectangle is one page tall and does not move in this story. That asymmetry is Story 7.6's to resolve when it draws the later sheets.
 
 ## Verification
 
 7.5 changes a command-validation bound and a channel schema on both sides, so it carries the heavy tests regardless of the per-epic cadence (D-R7.1). **Report measured pass/fail counts, never "green".**
 
 **Commands:**
-- `cd folio-go && go test -count=1 ./...` -- expected: **exactly ONE** failure, `TestCorpusMeetsP6ExerciseFloors` (`internal/text/corpus_test.go:169`, P6g subtest, `got 7, need >=20`), the **mandated permanent red**. Never touch it or the P6g floor. Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` (`:243`) must stay **green**. Anything else red is a defect.
+- `cd folio-go && go test -count=1 ./...` -- expected: **exactly ONE** failure, `TestCorpusMeetsP6ExerciseFloors` (`internal/text/corpus_test.go:169`, P6g subtest, floor at `:184`, `got 7, need >=20`), the **mandated permanent red**. Never touch it or the P6g floor. Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` (`:243`) must stay **green**. Anything else red is a defect.
 - `cd folio-go && go vet -tags=matrix ./...` -- expected: clean.
 - `gofmt -l folio-go` -- run **from the repo root**; expected: no output.
 - `cd folio-go && go test -tags=matrix -run TestTargetRenderHash -v .` -- run **once per leg** with `FOLIO_MATRIX_TARGET` set: `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` (`matrix_test.go:69-74`). **Unset, this test logs "asserts NOTHING" and returns — a no-op is not a pass.** Grep each leg's output for "asserts NOTHING" and report the count. Name the legs that ran.
-- `cd folio-go && go test -tags=matrix -run TestCrossTargetByteIdentity .` -- expected: pass.
+- `cd folio-go && go test -tags=matrix -run TestCrossTargetByteIdentity .` -- expected: pass; it exercises all four targets from one process and is not gated on the env var.
 - `cd lint && go test ./...` -- expected: pass.
-- `cd folio-designer && npm run typecheck && npm run lint && npm test` -- expected: pass, **239 tests / 32 files at baseline** plus whatever this story adds. The **4** pre-existing `only-export-components` lint warnings are not a regression; **a fifth would be**.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` -- expected: pass, **239 tests / 32 files at baseline** plus whatever this story adds. **oxlint baseline is exactly 4 `only-export-components` warnings and 0 errors** (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1155,1162`); **a fifth is a regression** — keep new helpers in a `.ts` file.
 - `cd folio-designer && npm run test:e2e:compile` -- expected: pass. Browser e2e is deferred by D-000.4 and does not execute; do not claim it ran.
 
-**Nine digests to report byte-identical** (all twenty in `goldenDigestRecord` must hold): statement-1 76,744 `114df1d6…`; statement-5 127,363 `70dce051…`; statement-20 269,884 `56bfbbd9…`; statement-50 555,829 `5d090b0f…`; mandatory-break 56,681 `7cf743de…`; line-spacing 57,770 `de212115…`; justified-text 59,894 `6da3b12e…`; alignment-rounding 61,346 `986400a1…`; justified-thai 15,079 `58ca4777…`.
+**Nine digests to report byte-identical** (all **twenty** in `goldenDigestRecord` must hold): statement-1 76,744 `114df1d6…`; statement-5 127,363 `70dce051…`; statement-20 269,884 `56bfbbd9…`; statement-50 555,829 `5d090b0f…`; mandatory-break 56,681 `7cf743de…`; line-spacing 57,770 `de212115…`; justified-text 59,894 `6da3b12e…`; alignment-rounding 61,346 `986400a1…`; justified-thai 15,079 `58ca4777…`. **Corpus and projection both unchanged for existing templates — assert, do not assume.**
 
 **Known-environmental, not regressions:** `TestShippedFacesReproduceFromUpstream` (`fontgen_matrix_test.go:64`) fails under `-tags=matrix` without `fontTools`; `lint/internal/rules/licencegraph_test.go` is not gofmt-clean (DW-23, Story 15.2).
 
 **Manual checks:**
-- **Re-derive the `containComponent` call-site enumeration by grep at the closing revision** and confirm all twelve still route through the split validator.
+- **Re-derive the `containComponent` call-site enumeration by grep at the closing revision** and confirm **eleven** sites still route through the split validator.
+- **Confirm `internal/layout/paginate.go` is absent from the diff** (`git diff --stat`), and that `README.md` appears in no commit.
 - **Demonstrate end to end** that a component placed windows below the content top survives a command, a projection, and a round trip through the canonical bytes — not that a conditional changed.
+- **Confirm the Go split and `engine-protocol.ts:193` landed in the SAME commit** (`git show --stat`).
 - **Confirm `git status` is empty for `fixtures/`** before quoting any digest.
 
 ## Auto Run Result
@@ -378,22 +532,33 @@ Directive: `Halt after planning.` — **no implementation code, no commits.**
 
 **⚠ ORCHESTRATOR: when you amend `<intent-contract>` with the lead's ruling, set `status:` back to `draft`.** Step-01 of the next dispatch HALTs on `blocked spec supplied` otherwise.
 
-**The gap, in one sentence.** AC4 requires the projection to report how many page-height windows the content column occupies; the cheap derivation is forbidden by name in `internal/layout/paginate.go:69-74`, and the two remaining derivations produce different integers for the same template with nothing in the intent selecting between them. Full framing in Design Notes, "The window-count gap".
+**The gap, in one sentence.** AC4 requires the projection to report how many page-height windows the content column occupies; the cheap derivation is forbidden by name in `internal/layout/paginate.go:69-74`, and the two remaining derivations produce different integers for the same template with nothing in the intent selecting between them.
 
-**What the lead must rule:** derivation **(A)** reuse the render/bind machinery with the designer's real data, **(B)** build column items from the canvas's own raw-string shaping, or **(D)** report the window height in 7.5 and defer the count to 7.6 where D-7.4.4 already scheduled the canvas/bound-data parity question. Recommendation: the gap is genuine; (D) is the only option that does not settle D-7.4.4's reserved question a story early, but it does not satisfy AC4 as written and therefore needs explicit sanction.
+**What the lead must rule:** derivation **(A)** reuse the render/bind machinery with the designer's real data, **(B)** build column items from the canvas's own raw-string shaping, or **(D)** report the window height in 7.5 and defer the count to 7.6. Recommendation: the gap is genuine; (D) is the only option that does not settle D-7.4.4's reserved question a story early, but it does not satisfy AC4 as written.
 
-**Five judgments made at this gate and NOT blocking** — recorded in Design Notes: the surviving content-band upper bound is the JavaScript-safe geometry bound; AC4/AC5's apparent contradiction resolves the same way D-7.1.3 resolved the epic header's; `engine-protocol.ts:193` lifts in the same commit; the live-drag clamp stays for 7.6; an over-tall content element gains no new refusal.
+**Five judgments made at this gate and NOT blocking** — the surviving content-band upper bound is the JavaScript-safe geometry bound; AC4/AC5's apparent contradiction resolves the way D-7.1.3 resolved the epic header's; `engine-protocol.ts:193` lifts in the same commit; the live-drag clamp stays for 7.6; an over-tall content element gains no new refusal.
 
-**Findings established by measurement at this baseline, load-bearing for whatever is ruled:**
+Verification was **not** run in this dispatch: no code changed.
 
-- **The content cap, both repeating-band caps and the negative-coordinate refusal are ONE conditional producing ONE format string** (`component_commands.go:1767-1768`). There is no existing seam. "Lift the content Y cap" and "keep the negative refusal's message unchanged" are contradictory demands on one string until it is split.
-- **No test asserts any of these messages** — `grep "must stay within" --include="*_test.go"` returns zero hits repo-wide. AC3's "message unchanged" is entirely unprotected today.
-- **The designer-side cap does not come from `internal/layout`.** It is `page_setup.go:355`, an independent second spelling of `ContentHeight`. `page_setup.go` does not import `internal/layout` at all. **The scope fence holds: `paginate.go` is genuinely uninvolved in the refusal.**
-- **The engine needs no pagination work.** No load-time or render-time check refuses a far-below content element; `fixtures/page-count-50` places elements ~49 windows down and renders to exactly 50 pages. The refusal is designer-side only.
-- **`engine-protocol.ts:193` is a second, independent band-containment gate** that discards the whole snapshot with no attributable error. A Go-only lift leaves the story invisible in the app.
-- **`TestSnapDoesNotPushAnEdgeDragOutOfItsBand` (`component_commands_test.go:583`) is the only shipped test that must be inverted**, at `:612-614`, `:624` and the `"a grid step past the bottom edge"` case at `:632`.
-- **There is no multi-page canvas fixture anywhere.** `multi_page_fixture_test.go`, `statement_fixture_test.go` and `page_count_matrix_test.go` never call `Canvas`. This story adds the first.
-- **No format field is needed.** `SupportedMajor` stays 2.
+### Dispatch 2 — 2026-08-31, plan only
+
+Status: `ready-for-dev`
+Blocking condition: none
+Baseline: `83d49b689bf3bd8b93d9da0c41f15a3be3e32f3e` on `main`, tree clean
+Directive: `Halt after planning.` — **no implementation code, no commits, and none were made.**
+
+**The intent gap is closed.** R1–R5 were supplied as settled rulings and are recorded verbatim above the Code Map. The contract's `Block If` — *"The window count's derivation is not settled by the intent"* — is **discharged by R1** and no longer fires. `<intent-contract>` was carried forward **byte-for-byte unchanged**; every amendment landed in the Code Map, Tasks & Acceptance, and Design Notes.
+
+**Anchor re-verification.** `git log 23a4647..83d49b6` is two commits, **both `_bmad-output/` only** — no Go and no TypeScript moved. The prior Code Map's anchors therefore held, with three corrections found by re-measurement:
+1. ⚠ **Eleven `containComponent` call sites, not twelve** — the twelfth grep hit is the definition.
+2. ⚠ **The `containEdge` pre-clamps are conditional, not unconditional.** Each is gated on the probe succeeding, so lifting the cap **widens** the gate rather than being neutralised by it — the opposite of the prior reading. Four sites (`:1409`, `:1565`, `:1668`, `:1726`) change behaviour **silently**.
+3. ⚠ **No call site pins a band literal** — all eleven can receive any of the three, so the split must key on `band.Name` inside `containComponent`.
+
+**Four forks surfaced by applying the rulings, all RULED here — none is a new intent gap.** Each was tested against a principle already settled in this spec, and each was selected rather than chosen: **Ruling A** (the canvas must not call `pageGeometryOf`, which hard-errors on `Letter` where `canvasDimensions` succeeds — selected by corpus/projection neutrality); **Ruling B** (the count is a `CanvasWithTextPaint` product — selected by the documented rule at `page_setup.go:388-392`, verified at all three `wasm/engine.go` seams); **Ruling C** (a `Paginate` error degrades to one window and never fails the projection — selected by settled Tasks Part 2, R2's floor doctrine and the paint loop's existing degradation idiom); **Ruling D** (every content-band component contributes an extent, styled or not — selected by R2's own "as the canvas currently paints it" wording).
+
+**DW-33 is flagged and provably untouched**: the count reads `lines`, `originY` and `vm`, never `painted`/`budget`/`oversized`, so its answer is identical whether the element paints zero lines or all of them. No ruling on the partial prefix is made.
+
+**No format field is required.** `SupportedMajor` stays 2.
 
 Verification was **not** run in this dispatch: no code changed. The `## Verification` section states what the implementing dispatch must measure.
 
