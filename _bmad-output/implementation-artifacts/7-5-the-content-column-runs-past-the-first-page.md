@@ -2,7 +2,7 @@
 title: 'Story 7.5: The content column runs past the first page'
 type: 'feature'
 created: '2026-08-31'
-status: 'blocked'
+status: 'draft'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -68,6 +68,104 @@ This story makes a tall column legal and reportable. It does not draw it — tha
 | Browser admission of a tall column | projection carrying a content component past the band height | Snapshot **admitted**, not silently dropped | No error expected |
 
 </intent-contract>
+## Rulings applied — the intent gap is closed (2026-08-31)
+
+Five engineering-lead rulings, each verified in code by the orchestrator. **Settled; do not re-open.**
+
+### R1 — Derive the count from the REAL `layout.Paginate`, fed canvas extents
+Call `layout.Paginate` — **never a second pagination** — with `ColumnItem`s built from **the extents the
+canvas paint plan has already computed** (`canvasLineTop(originY, i, vm.Advance)` and the vertical
+model). **Not a fresh shaping pass.** One shaping, two consumers: the paint plan and the window count.
+
+**Why this is the intended usage, not an abuse.** Verified: `Paginate(g PageGeometry, items
+[]ColumnItem) (Pagination, error)` — **no data, no bindings, no template**. It is designed to receive
+caller-derived extents and contribute only placement. And `ColumnItem`'s own doc comment relocates the
+hazard: *"A line's extent is … a quantity the vertical model already computed once. Re-deriving it here
+would be a second derivation of the same number."* **The prohibition is against a second derivation of
+EXTENTS, not of pagination.** So the thing that makes this safe is where the extents come from.
+
+**Rejected — reuse the render/bind machinery**, on three independent grounds, any one sufficient: it
+answers a different question ("how many pages will this render to") that the canvas cannot ask; feeding
+it `{}` means changing AD-14's owner-settled rule that an absent path is an `Error` carrying the path;
+and **Story 13.4 is that change, in another epic** — 7.5 must not pre-solve it. It is also the
+bound-value parity claim D-7.4.4 reserved for 7.6's plan gate.
+
+**Rejected — defer the count to 7.6.** AC4 exists in 7.5 *so that* 7.6 measures nothing — AD-17 operating
+across a story boundary. Deferring pushes engine work into 7.6, whose every AC is about drawing. The
+intermediate state is the worst of the three: an author could place a component below page one and the
+canvas would still show one page, with no signal.
+
+### R2 — AC4 is amended: the count is a claim about the CANVAS, not a prediction of the render
+AC4 stays in 7.5 and gains one clause: the window count is reported **for the column as the canvas
+currently paints it**, not as a prediction of the rendered document.
+
+**The fact that forces it, verified:** `projectedSize` (`component_commands.go:1735-1744`) returns, for a
+table, `(sum of column widths, element.Table.Value.HeaderHeight)` — **header height only, no rows**,
+because the canvas has no data. So **for any document with a bound table in the content band the canvas
+count is a FLOOR, not a prediction**, by construction and irreparably within 7.5. Pre-existing (Epic 6
+shipped it). **Record it explicitly** rather than letting 7.6 discover it by drawing four sheets for a
+fifty-page statement.
+
+This also makes the projection agree with the UI: 7.6's AC already requires the interface to say a
+component's page *"is a consequence of the content above it and can change when the data does — it is a
+column position, not a pin to page three."*
+
+**The fixture must DISCRIMINATE, not merely exercise.** There is no multi-page canvas fixture anywhere,
+so 7.5 adds the first, and it must contain **an element declared far below the text**, asserting it
+occupies **ONE** extra window, not ten. `ceil(lowestBottom / H)` gets that wrong by nine, so the fixture
+red-proves the exact spelling `paginate.go:69-74` bans. Anything less exercises the code without
+discriminating it.
+
+### R3 — Split `containComponent` by what the constraint MEANS, and characterize before changing
+- **Representational refusals** — `x < 0 || y < 0 || width < 0 || height < 0`, plus the JS-safe bound —
+  apply to **every** band and keep the existing message **verbatim**. This is AC3's population.
+- **Band-capacity refusals** — `y > band.Height`, `height > band.Height - y` — apply to the **repeating
+  bands only**. The content band is a column, not a box, so it has no height cap. This is AC1's
+  population.
+- `x > band.Width` and `width > band.Width - x` stay universal: the column is unbounded **vertically,
+  never horizontally**.
+
+Split by meaning, not by clause count — the same axis D-7.3.1 got wrong (it split by JSON key location)
+and the correction got right. A clause-by-clause split leaves the next reader unable to say which half a
+new clause belongs in.
+
+**CHARACTERIZE, THEN CHANGE — this step is not optional.** Verified: `grep "must stay within"` returns
+**exactly two hits repo-wide and neither is a test** (`component_commands.go:1768`, and an unrelated
+`column.footerOf` message at `:460`). AC3's "message unchanged" protects **nothing** today. So 7.5 must
+**land the assertions against current behaviour FIRST, as their own step, and red-proof them by
+perturbing the message** — then split. A story that splits first and asserts after is asserting whatever
+it happened to produce. New assertions must not match `:460`'s footerOf message.
+
+**Audit all twelve call sites** for which band each passes: a site passing the content band that *relied*
+on the height cap changes behaviour silently. **Enumerate them in the story record**; do not assume the
+split is transparent.
+
+### R4 — The TypeScript gate lifts in the SAME commit, and the standing obligation widens
+`engine-protocol.ts:193`'s band-containment gate lifts with the Go side. A Go-only lift ships a story
+that is **invisible in the running app**.
+
+This is the **third** occurrence of the shape, and it is a **fifth mirror DW-25 never covered** — DW-25
+closed its own predicate (the four size caps); band containment is a different invariant that happens to
+live in the same file. **An audit closes only what it measured.**
+
+**The standing obligation widens** from "the size caps move together" to: **any invariant duplicated
+across the Go/TS boundary moves in one commit, with a test that reads both sides.** 7.5 must **enumerate
+the mirrors that exist in `engine-protocol.ts` today** rather than adding one more to an unlisted set.
+That enumeration is the artifact — a rule with no inventory rots the way DW-24's anchors did, three
+times, the last inside the commit that closed it.
+
+### R5 — Collapse `page_setup.go`'s second `ContentHeight` spelling, here
+In scope, and load-bearing rather than cosmetic. AD-13 is explicit: the content height is derived *"by
+one function in `internal/layout`"*, so the inline `innerH - header - footer` is already an AD-13
+violation. **AC4 makes it dangerous**: the projection must report the page-height window, that number
+*is* `ContentHeight`, and it is what the canvas draws sheet boundaries from — reporting it from a second
+spelling ships a divergence into the one place it would be invisible, where the canvas and the engine
+draw different pages and agree on the bytes.
+
+**The scope fence is not crossed.** `page_setup.go` is in package `folio`, the shell, which the spine
+says *"composes the whole pipeline and imports every stage by design"*; stage ranks govern `internal/`
+only. 7.5 imports `internal/layout` for `Paginate` regardless, so the collapse costs one line.
+
 
 ## Code Map
 
