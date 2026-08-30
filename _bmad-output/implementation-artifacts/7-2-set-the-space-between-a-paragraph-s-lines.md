@@ -6,7 +6,7 @@ status: 'done'
 baseline_commit: '02da139273bd9a4ce34874a64d6cadde826321c5'
 baseline_revision: 'f10454ae9d625fb57ace6bd19e0f0df627e73994'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
@@ -65,31 +65,24 @@ deferred:
 A template author can now set how far apart a paragraph's lines sit. Set it wide and the lines
 breathe; set it tight and they close up, as a filed contract is usually set.
 
-The setting changes the distance from one line to the next, and nothing else — it does not
-move the first line. The space above the first line comes from how tall the typeface reaches,
-not from the spacing choice, and leaving it alone keeps a component's top edge where the author put
-it. If spacing moved that too, every multi-line component would shift and every neighbour would
-appear to jump. This project made that mistake once and deliberately undid it.
+The setting changes the distance from one line to the next and nothing else, so for ordinary top-set
+text the first line stays where the author put it and no neighbour jumps. One qualification, measured
+on a real page: where the author has asked the text to sit against the bottom or middle of its box,
+wider spacing makes the block taller and the box re-seats it, so the first line does move. That is
+the author's alignment acting on a taller block. Earlier drafts denied this in four places; all four
+were corrected.
 
-One honest qualification, found by the second review pass and measured on the page: if the author has
-asked for the text to sit against the *bottom* or the *middle* of its box, then widening the spacing
-makes the whole block taller and the box re-seats it, so the first line does move. That is the
-author's own alignment choice acting on a taller block — the spacing still never re-measures a line —
-but "the first line never moves" is true without qualification only for the default, top-set text.
+Tight spacing may be genuinely tight — tight enough that one line's letters reach into the line
+below. The preview used to refuse that and blank out entirely; now it shows what the page shows. A
+value outside the accepted range is refused at load, naming the component at fault, rather than
+quietly rounded into range.
 
-Tight spacing is allowed to be genuinely tight — tight enough that one line's letters reach into the
-line below. That is what tight leading is, and the printed page has always drawn it. The preview
-used to refuse it and blank out entirely; now it shows what the page shows.
+A document that sets no spacing renders to exactly the bytes it did before — measured, not assumed.
+The story also cleared an older debt: a document now declares the format version its own content
+needs.
 
-A value outside the accepted range is refused at load, with a message naming the component that
-carries it — never quietly rounded into range. A document that sets no spacing
-renders to exactly the bytes it renders today, and a document now declares the format version its
-content actually needs.
-
-The test suite carries one standing, deliberate failure about fixture coverage; it stays red and is
-not a regression.
-
-Out of scope: justified edges, the designer's editing controls, and how pages break.
+The suite carries one standing, deliberate red about fixture coverage; it is not a regression. Out of
+scope: justified edges, the designer's editing controls, and how pages break.
 
 <intent-contract>
 
@@ -936,3 +929,121 @@ specifies, not against `lint`.
   the rule.
 - DW-26 stands open: a panic is still reachable from an authored `fontSize`, which D-7.2.4 puts
   outside this story.
+
+
+## Delivery Log
+
+### 2026-08-30 — planned
+
+Baseline `02da139`. Dispatch 1 was plan-only, after an earlier dispatch halted `intent gap` on the
+`lineSpacing` range. The engineering lead ruled the gap out before code existed: D-7.2.1 (the format
+version moves, and Epic 10's `style.color` is retrofitted onto the same raise path), D-7.2.2 (the
+canvas clause is deleted, because browser-side adjudication of an engine metric is AD-17 inverted),
+D-7.2.3 (the load-time range is representational and carries no typographic opinion — no 1.0
+minimum), D-7.2.4 (a panic must never be reachable from authored input, and `fontSize`'s own range is
+explicitly *not* this story's), D-7.2.5 (mint a code, or the WASM host destroys the message), and
+D-7.2.6 (DW-24's decline ground). D-7.3.1 and D-R7.9 reserve the `SupportedMajor` bump for 7.3. All
+six rulings were applied in the contract and none was re-opened during the build.
+
+### 2026-08-30 — built
+
+Implemented from baseline `f10454a`. **The build was chaotic, and the record needs to say so, because
+it is the only reason two review passes exist.** Two builder dispatches overlapped: Dispatch 2 handed
+the work to a subagent and returned before that subagent finished. The subagent kept running and
+committed the whole story as `9006177` at 18:33:54 — correctly scoped, but unobserved by any parent.
+Dispatch 3 had meanwhile started its own review layers against a snapshot one step behind HEAD, then
+amended the commit rather than trusting a result nobody had watched land. So the story carries **two
+independent review passes** (10 patched / 1 deferred / 7 rejected, then 9 patched / 2 deferred /
+9 rejected) over substantially the same diff, and the second is not a re-run of the first — it found
+two behavioural defects the first pass missed. A later reader comparing the Triage Log against the
+history should read the duplication as belt-and-braces, not as churn.
+
+Separately, and also invisible in the spec: **`main` was rebased onto `origin/main` mid-story.** The
+history is therefore not what the earlier records imply. `main` now reads `9791e91` (this story) on
+`58ee9f7` (the user's own `README.md`, not this pipeline's) on `f10454a` (the baseline).
+
+### 2026-08-30 — done
+
+Baseline `f10454a`; story commit `9791e91`; closed on `main`, one commit ahead of `origin/main` and
+**not pushed**.
+
+**Verified against the diff, not the report.** `followup_review_recommended` was `true`, so the close
+re-derived the build's central claims instead of relaying them, and all of them held.
+
+- **The two behavioural defects the second pass found are both genuinely fixed, measured here rather
+  than read.** The zero-advance guard no longer fires under the neutral ratio: a font size of zero
+  with no `lineSpacing` declared returns a model with no error, which is the byte-neutrality
+  behaviour of baseline `f10454a` — the guard had been a neutrality break wearing an error-path
+  costume. And `versionForSave` no longer restamps a MAJOR-0 document: `"0.9"`, `"0.1"`, `"1.0"`,
+  `"1.1"` and `"1.5"` each round-trip unchanged with no 1.1 content present, and a real `"0.9"`
+  document parses and re-serializes byte-identically over 4,552 bytes across two round trips. That
+  was an AD-9 edit-and-edit-back break on a save that changed nothing.
+- **Teeth proved on the load-bearing assertion.** Neutering the ratio at its single application site
+  reddens **ten** tests — including the story's own golden fixture, so the proof is at the level of
+  produced bytes and not only of the model — and they do not pass for a different mechanism's sake.
+  The corpus digests stayed green under the neutering, which is itself the right result: it confirms
+  the recorded corpus genuinely does not depend on the ratio. Restored and re-verified after.
+- **Only `Advance` routes through the ratio.** Measured across eight ratios spanning the whole legal
+  range: `FirstBaseline` held at 12828 and `LastDescent` at 3516 at every one, while `Advance` moved
+  from 16 to 16344000. The D-2.5a / DW-15 two-model split holds bit-identically.
+- **The designer edit removed exactly one clause.** Reconstructing the baseline line minus
+  `paint.baseline > paint.top + paint.advance` yields the shipped line byte-for-byte, so the seven
+  survivors are provably untouched. **No new canvas clause crept in** — two reviewers proposed a new
+  browser-side baseline bound and both passes rejected it correctly; the file's only other change is
+  comment.
+- **The scope fences hold.** `paginate.go` is absent from the diff, `SupportedMajor` is still `1`
+  (`SupportedVersion` moved to `1.1`, which the contract mandates), `int64MulOverflows` is still
+  unexported, `internal/geom`'s exported surface is still exactly `{ScaleRound}`, and no production
+  file under `internal/` contains a `float64` — the ten grep hits are all comment text warning
+  against one.
+- **AC7's guard genuinely executes, with a caveat worth carrying forward.** The sibling test runs in
+  the ordinary suite and red-proves: routing the load error back through the uncoded path reddens it
+  immediately on the not-`TEMPLATE_MALFORMED` property. It also bounds the message inside the host's
+  512-byte limit and asserts the element is named. But it asserts the *properties the rule turns on*,
+  not the rule — it never calls `reportableMessage`, which stays in a `js && wasm` package no
+  executed path reaches. The build's report slightly overstates this; the frontmatter's deferred item
+  states it correctly. The guard is real and it runs; it is a faithful mirror, not the rule itself.
+
+**Gates measured on darwin/arm64** (heavy tests applied in full under D-R7.1 — this story's
+correctness is byte-identity-shaped, so the cadence does not get to defer them):
+
+- `go test -count=1 ./...` — **1437 pass, 2 fail**, both being `TestCorpusMeetsP6ExerciseFloors` and
+  its `P6g (opaque names)` subtest: got 7, need >=20. That is the mandated permanent red and the only
+  one. 13 packages `ok`.
+- `go vet -tags=matrix ./...` — clean, exit 0. `gofmt -l folio-go` — no output.
+- `TestTargetRenderHash` — run once per leg with `FOLIO_MATRIX_TARGET` **set**, so no leg was
+  vacuous: `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` each printed
+  `sha256=de2121156d8c58e9…` at 57,770 bytes for the new fixture. All four PASS and all four agree.
+- `TestCrossTargetByteIdentity` — ok, 21.755s.
+- `lint` — ok, all four packages.
+- `folio-designer` — typecheck clean; lint 4 warnings, all the known `only-export-components` set;
+  **30 files / 214 tests pass** (213 before this story).
+- **The five corpus digests, measured on the artifacts and reproduced by the engine**, unchanged:
+  `statement-1` 76,744 `114df1d6…`; `-5` 127,363 `70dce051…`; `-20` 269,884 `56bfbbd9…`; `-50`
+  555,829 `5d090b0f…`; `mandatory-break` 56,681 `7cf743de…`. No statement or mandatory-break fixture
+  file appears in the diff at all, and `TestStatementGoldenFixtures` re-renders and byte-compares all
+  four.
+
+**Not measured, and named rather than left silent:** `TestShippedFacesReproduceFromUpstream` did not
+run (`fontTools` absent here — known environmental); `lint/internal/rules/licencegraph_test.go`'s
+gofmt break is DW-23 and out of scope; and the `js && wasm` engine package remains unreachable by any
+executed path.
+
+**Deferred work, checked rather than assumed.** **DW-24** is OPEN, owned by Story 7.3 *and* the
+orchestrator's gate checklist, and its record now carries the *correct* decline ground: 7.2 **does**
+change the input to the unexercised rounding site, because the block height is built from `Advance`
+and the ratio scales it — the exposure is unchanged **only because no fixture declares `valign` at
+all**, which is the absence the entry exists to record. The entry explicitly retracts the earlier,
+wrong "a different call site" reasoning and states the item is **not deferrable a third time**; 7.3's
+plan gate treats it as an acceptance criterion, and a decline there escalates. **DW-26** is OPEN with
+all four convention lines (`Deferred by:` / `Owner:` / `Severity:` / `Status:`) and an owner that is
+a role, not an event; it does **not** claim 7.2 closed `fontSize` — its own table says the ratio
+multiply is guarded and the font-size multiply is not, so a panic stays reachable through an authored
+`fontSize` alone. **DW-25** remains open and owned by Story 7.4, its remedy unwidened; it was amended
+by one factual correction, because this story added a second route into the same projection abort and
+leaving the old "only reachable hard abort" claim standing would have misled 7.4.
+
+**Commit hygiene.** `9791e91` carries 47 files, all this story's, and does **not** contain the user's
+root `README.md` — the only README in it is the new fixture's own. `README.md` is untouched at md5
+`078d7d80d518d54af2fc04fb270d46b8`, 8,470 bytes. Message follows the project's convention and carries
+the required trailer. `followup_review_recommended` cleared to `false` on the ground recorded above.

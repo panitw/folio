@@ -161,7 +161,10 @@ development_status:
   # ## Delivery Log. DW-24 open (owner 7.3 + gate checklist); DW-25 open (canvas line cap,
   # medium, awaiting the engineering lead).
   7-1-break-a-line-where-the-author-typed-a-break: done
-  7-2-set-the-space-between-a-paragraph-s-lines: in-progress
+  # 7.2 CLOSED 2026-08-30 at 9791e91: measured gates, teeth proof and the chaotic two-pass
+  # build are in the story's ## Delivery Log. DW-24 open (owner 7.3 + gate checklist, NOT
+  # deferrable again); DW-26 open (fontSize range, unowned role); DW-25 open (owner 7.4).
+  7-2-set-the-space-between-a-paragraph-s-lines: done
   7-3-justify-a-paragraph-s-edges: backlog
   7-4-author-body-text-in-the-designer: backlog
   7-5-the-content-column-runs-past-the-first-page: backlog
