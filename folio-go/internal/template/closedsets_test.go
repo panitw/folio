@@ -146,3 +146,202 @@ func TestClosedSetsMediaTypeRedProof(t *testing.T) {
 		t.Fatalf("RP: expected the media-type-shaped key \"image/png\" to be extracted, got %v", allKeys)
 	}
 }
+
+// alignDocWithStyle is one text element carrying `style` verbatim, so a
+// case can put any align spelling — legal or not — at the STYLE
+// attachment point.
+func alignDocWithStyle(style string) []byte {
+	return []byte(`{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "v", "style": {` + style + `}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "2.0"
+}
+`)
+}
+
+// alignDocWithTable is one table carrying a headerStyle and a single
+// column, so a case can put an align spelling at EITHER of the two
+// remaining attachment points — headerStyle (a STYLE set member) and
+// columns[] (a COLUMN set member) — and see which one rejected it.
+func alignDocWithTable(headerStyle, columnExtra string) []byte {
+	return []byte(`{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "rows[]", "as": "row", "headerHeight": 20,
+          "columns": [{"id": "e2", "label": "L", "width": 100, "bind": "{{row.v}}"` + columnExtra + `}],
+          "headerStyle": {` + headerStyle + `}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "2.0"
+}
+`)
+}
+
+// TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps is Story 7.3's structural
+// guard, and it exists because NOTHING enumerated closedAligns' members
+// before the split — TestClosedSetsNeverIncludeMediaType scans this
+// file's inventory but only for media-type shapes, so a `justify` added
+// to the shared map would have passed every test in the repository while
+// silently legalising justified table cells.
+//
+// It pins each ordered slice against its map in BOTH directions and as
+// an exact literal SEQUENCE (LocaleTags' own AC4a shape): a set that
+// gains a member without gaining it in the slice ships a rejection
+// message that lies about what is legal, and a slice reordered by
+// accident reorders the message every load error prints.
+func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		tokens []string
+		set    map[string]bool
+		want   []string
+	}{
+		{"style", StyleAlignTokens, closedStyleAligns, []string{"left", "center", "right", "justify"}},
+		{"column", ColumnAlignTokens, closedColumnAligns, []string{"left", "center", "right"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if len(c.tokens) != len(c.want) {
+				t.Fatalf("%s tokens = %v, want exactly %v", c.name, c.tokens, c.want)
+			}
+			for i, w := range c.want {
+				if c.tokens[i] != w {
+					t.Errorf("%s token %d is %q, want %q — the order IS the message's order", c.name, i, c.tokens[i], w)
+				}
+			}
+			// slice -> map
+			for _, tok := range c.tokens {
+				if !c.set[tok] {
+					t.Errorf("%s: %q is in the ordered slice but the map does not admit it — the message would name a value the loader refuses", c.name, tok)
+				}
+			}
+			// map -> slice
+			if len(c.set) != len(c.tokens) {
+				t.Errorf("%s: the map has %d members and the slice %d — the loader would admit a value the message never names", c.name, len(c.set), len(c.tokens))
+			}
+		})
+	}
+
+	// THE SPLIT ITSELF, stated as the two facts D-7.3.1 turns on.
+	if !closedStyleAligns[AlignJustify] {
+		t.Error("style.align must admit justify (FR47)")
+	}
+	if closedColumnAligns[AlignJustify] {
+		t.Fatal("columns[].align must NEVER admit justify — justified table cells are a separate scope decision, not a side effect of a map edit (D-7.3.1)")
+	}
+	// And neither set is the other by subtraction: every column value is
+	// a style value, and the style set is exactly one larger.
+	for _, tok := range ColumnAlignTokens {
+		if !closedStyleAligns[tok] {
+			t.Errorf("%q is a legal column align but not a legal style align — the two sets have diverged in the wrong direction", tok)
+		}
+	}
+	if len(StyleAlignTokens) != len(ColumnAlignTokens)+1 {
+		t.Errorf("the style set has %d members and the column set %d — after Story 7.3 they differ by exactly one, `justify`", len(StyleAlignTokens), len(ColumnAlignTokens))
+	}
+
+	// IsStyleAlign is the exported single source the property-command
+	// path validates through; it must agree with the map it wraps.
+	for _, tok := range StyleAlignTokens {
+		if !IsStyleAlign(tok) {
+			t.Errorf("IsStyleAlign(%q) = false", tok)
+		}
+	}
+	if IsStyleAlign("middle") || IsStyleAlign("") {
+		t.Error("IsStyleAlign admits a value the closed set does not")
+	}
+}
+
+// TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage is the
+// split's BEHAVIOURAL red-proof: the same word, `justify`, must load at
+// the two style attachment points and be a located load error at the
+// column one — and each message must list exactly the members of the set
+// that rejected it, not the other set's.
+func TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage(t *testing.T) {
+	// (a) justify LOADS at style.align.
+	if _, err := ParseDocument(alignDocWithStyle(`"align": "justify"`)); err != nil {
+		t.Errorf("style.align: \"justify\" must load: %v", err)
+	}
+	// (b) justify LOADS at headerStyle.align — the second style
+	//     attachment point, which decodeStyle serves through the same
+	//     fieldPrefix parameter.
+	if _, err := ParseDocument(alignDocWithTable(`"align": "justify"`, "")); err != nil {
+		t.Errorf("headerStyle.align: \"justify\" must load: %v", err)
+	}
+	// (c) justify is REFUSED at columns[].align, located at the column.
+	_, err := ParseDocument(alignDocWithTable("", `, "align": "justify"`))
+	if err == nil {
+		t.Fatal("columns[].align: \"justify\" must be a load error — justified table cells are not in scope")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "e2") {
+		t.Errorf("the column rejection must be LOCATED at the column that carries it, got: %v", err)
+	}
+	if !strings.Contains(msg, "align") {
+		t.Errorf("the column rejection must name the field, got: %v", err)
+	}
+	if !strings.Contains(msg, "not one of the closed set left, center, right") {
+		t.Errorf("the column rejection must list exactly the COLUMN set, got: %v", err)
+	}
+	if strings.Contains(msg, "justify,") || strings.Contains(msg, ", justify") {
+		t.Errorf("the column rejection must not name justify as legal, got: %v", err)
+	}
+
+	// (d) An illegal STYLE value is rejected with the STYLE set, which
+	//     includes justify. This is the honesty half: before the split
+	//     both sites printed one hand-written literal, so extending
+	//     either set would have shipped a message that lied.
+	_, serr := ParseDocument(alignDocWithStyle(`"align": "middle"`))
+	if serr == nil {
+		t.Fatal("style.align: \"middle\" must be a load error")
+	}
+	smsg := serr.Error()
+	if !strings.Contains(smsg, "not one of the closed set left, center, right, justify") {
+		t.Errorf("the style rejection must list exactly the STYLE set, justify included, got: %v", serr)
+	}
+	if !strings.Contains(smsg, "style.align") {
+		t.Errorf("the style rejection must be located at style.align, got: %v", serr)
+	}
+
+	// (e) …and at headerStyle it names headerStyle, not its sibling.
+	_, herr := ParseDocument(alignDocWithTable(`"align": "middle"`, ""))
+	if herr == nil {
+		t.Fatal("headerStyle.align: \"middle\" must be a load error")
+	}
+	if !strings.Contains(herr.Error(), "headerStyle.align") {
+		t.Errorf("the headerStyle rejection must be located at headerStyle.align, got: %v", herr)
+	}
+
+	// (f) THE MESSAGES ARE DERIVED, not restated: each one contains the
+	//     exact rendering of its own ordered slice. A future edit to
+	//     either set changes both the enforcement and the message, or
+	//     this fails.
+	if !strings.Contains(msg, closedSetMessage(ColumnAlignTokens)) {
+		t.Errorf("the column message is not derived from ColumnAlignTokens: %v", err)
+	}
+	if !strings.Contains(smsg, closedSetMessage(StyleAlignTokens)) {
+		t.Errorf("the style message is not derived from StyleAlignTokens: %v", serr)
+	}
+}

@@ -1,0 +1,19 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 80, "value": "Each party shall keep the terms of this deed confidential at all times.\nDisclosure is permitted only where the law requires it, and then only to the extent so required.", "style": {"fontFamily": "body", "fontSize": 11, "align": "justify"}},
+        {"id": "e2", "type": "text", "x": 0, "y": 100, "width": 200, "height": 80, "value": "Each party shall keep the terms of this deed confidential at all times.\nDisclosure is permitted only where the law requires it, and then only to the extent so required.", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+07:00",
+  "version": "2.0"
+}

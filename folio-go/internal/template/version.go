@@ -35,20 +35,42 @@ import (
 // of none — `style.lineSpacing` (Story 7.2) and, retrofitted, Epic 10's
 // `style.color`, which shipped without moving the version and left
 // colour-bearing documents declaring 1.0 while requiring 1.1.
+//
+// Raised to 2.0 by Story 7.3 (D-7.3.1, D-R7.9). `style.align` gained a
+// fourth member, `justify` (FR47), and EXTENDING A CLOSED SET IS A MAJOR
+// CHANGE under D-1.4.12: an older reader refuses an alignment word it
+// does not recognise, on purpose, so that a file can never be drawn
+// wrongly by a reader that misunderstands it. A justified document is
+// therefore UNREADABLE to a 1.x reader rather than quietly ragged, and
+// the MAJOR says so honestly. `style.justified`, or any other additive-
+// key spelling that would have avoided the bump, was explicitly rejected
+// (D-R7.9): it reintroduces the silently-wrong render D-1.4.12 exists to
+// prevent.
+//
+// NONE OF THAT CHANGES WHAT AN EXISTING DOCUMENT DECLARES. A document
+// using only `lineSpacing` or `color` still declares 1.1; one using
+// neither still declares 1.0; only one that actually carries
+// `align: "justify"` declares 2.0. All three coexist, and a brand-new
+// document declares the LOWEST version its content requires.
 const (
-	SupportedMajor   = 1
-	SupportedVersion = "1.1"
+	SupportedMajor   = 2
+	SupportedVersion = "2.0"
 )
 
 // baseVersion is the lowest version any document can declare, and the
 // version a document whose content requires nothing newer keeps.
 //
 // minorFeatureVersion is the version introduced by the two 1.1 keys.
+//
+// majorFeatureVersion is the version introduced by the 2.0 closed-set
+// extension, `style.align: "justify"` (Story 7.3).
+//
 // They are named rather than spelled inline so versionRequiredByContent
 // reads as the rule rather than as string handling.
 const (
 	baseVersion         = "1.0"
 	minorFeatureVersion = "1.1"
+	majorFeatureVersion = "2.0"
 )
 
 // parseVersion splits a "MAJOR.MINOR" string into its two integer
@@ -147,10 +169,21 @@ func versionForSave(loaded string, d *Document) string {
 // stated once: the LOWEST version that can express what this document
 // actually contains.
 //
-// Today that is exactly one question — does any style block anywhere in
-// the document set `lineSpacing` or `color`? Both are 1.1's optional
-// keys; a document using neither is expressible in 1.0 and must keep
-// declaring it.
+// It is the MAXIMUM over every attachment point, never the first answer
+// found (Story 7.3). Until 7.3 there was only one non-base answer, so a
+// first-hit return was indistinguishable from a maximum; with two,
+// a document whose first styled element sets `lineSpacing` and whose
+// LATER one sets `align: "justify"` would have reported 1.1 and shipped
+// a file its own 1.x reader must refuse to draw. The walk therefore
+// visits every element and keeps the highest rank it saw.
+//
+// The questions, lowest requirement first:
+//
+//   - does any style block set `lineSpacing` or `color`? Both are 1.1's
+//     optional keys; a document using neither is expressible in 1.0 and
+//     must keep declaring it.
+//   - does any style block set `align: "justify"`? That is 2.0's closed-
+//     set extension, and no 1.x reader may draw it.
 //
 // Presence.Set, not "has a non-empty value" — but that only bites for
 // `color`, and the asymmetry is stated rather than papered over.
@@ -164,24 +197,70 @@ func versionRequiredByContent(d *Document) string {
 	if d == nil {
 		return baseVersion
 	}
+	highest := rankBase
 	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
 		for _, el := range band.Elements {
-			if el.Style.Set && !el.Style.Null && styleNeedsMinorVersion(el.Style.Value) {
-				return minorFeatureVersion
+			if el.Style.Set && !el.Style.Null {
+				if r := styleVersionRank(el.Style.Value); r > highest {
+					highest = r
+				}
 			}
 			if el.Table.Set && !el.Table.Null {
 				hs := el.Table.Value.HeaderStyle
-				if hs.Set && !hs.Null && styleNeedsMinorVersion(hs.Value) {
-					return minorFeatureVersion
+				if hs.Set && !hs.Null {
+					if r := styleVersionRank(hs.Value); r > highest {
+						highest = r
+					}
 				}
 			}
 		}
 	}
-	return baseVersion
+	return versionForRank[highest]
 }
 
-// styleNeedsMinorVersion reports whether one style block carries a key
-// that 1.0 cannot express.
-func styleNeedsMinorVersion(st Style) bool {
-	return st.LineSpacing.Set || st.Color.Set
+// versionRank orders the versions the content rule can require, lowest
+// first, so "the highest requirement in the document" is a comparison
+// rather than a second string parse per element.
+//
+// It ranks REQUIREMENTS, not versions in general: a document's declared
+// version can be anything (0.9, 1.9, 2.1) and versionForSave compares
+// those numerically. This type only answers "which of the versions THIS
+// LIBRARY's own content rules can demand is the highest one demanded
+// here".
+type versionRank int
+
+const (
+	rankBase versionRank = iota
+	rankMinorFeature
+	rankMajorFeature
+)
+
+// versionForRank maps a rank back to the version string it names.
+// Indexed by rank rather than ranged over, so it stays deterministic and
+// stays clear of D-1.3.5's map-range build failure.
+var versionForRank = [...]string{
+	rankBase:         baseVersion,
+	rankMinorFeature: minorFeatureVersion,
+	rankMajorFeature: majorFeatureVersion,
+}
+
+// styleVersionRank is the lowest version that can express ONE style
+// block — the successor to styleNeedsMinorVersion, which was a bool
+// because there was only ever one answer above the floor.
+//
+// Presence.Set, not "has a non-empty value", for the 1.1 keys — see
+// versionRequiredByContent's own note. `align` is different and
+// deliberately so: an align that is Set carries a VALUE from a closed
+// set, and only one member of that set is new in 2.0, so the rank turns
+// on the value rather than on the key's presence. `align: "left"` is a
+// 1.0 document.
+func styleVersionRank(st Style) versionRank {
+	rank := rankBase
+	if st.LineSpacing.Set || st.Color.Set {
+		rank = rankMinorFeature
+	}
+	if st.Align.Set && !st.Align.Null && st.Align.Value == AlignJustify {
+		rank = rankMajorFeature
+	}
+	return rank
 }

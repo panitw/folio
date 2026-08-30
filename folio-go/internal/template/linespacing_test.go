@@ -129,6 +129,17 @@ func TestVersionForSaveIsRaisedOnlyByContent(t *testing.T) {
 		// document owns, on a save that changed nothing (AD-9).
 		{"neither key, 0.9 in — a floor is not a demand", "", "0.9", "0.9"},
 		{"lineSpacing, 0.9 in — real content still raises", `"lineSpacing": 1.5, `, "0.9", "1.1"},
+		// Story 7.3. `align: "justify"` extends a CLOSED SET, which
+		// D-1.4.12 makes a MAJOR change, so it is the first content in
+		// the format's history that raises the MAJOR component. The
+		// three 1.0 alignment values raise nothing: `align` is not a
+		// new key, only one of its members is new.
+		{"justify alone, 1.0 in", `"align": "justify", `, "1.0", "2.0"},
+		{"center does not raise — the key is old, one value is new", `"align": "center", `, "1.0", "1.0"},
+		{"left does not raise", `"align": "left", `, "1.0", "1.0"},
+		{"justify, 1.1 in — the MAJOR still wins", `"align": "justify", `, "1.1", "2.0"},
+		{"justify, 2.1 in — never lowered", `"align": "justify", `, "2.1", "2.1"},
+		{"neither key, 2.1 in — never lowered", "", "2.1", "2.1"},
 	} {
 		t.Run(c.label, func(t *testing.T) {
 			doc := strings.Replace(lineSpacingRoundTripDocWithStyle(c.style), `"version": "1.0"`, `"version": "`+c.loaded+`"`, 1)
@@ -152,6 +163,38 @@ func TestVersionForSaveIsRaisedOnlyByContent(t *testing.T) {
 	}
 	if got := versionRequiredByContent(d); got != minorFeatureVersion {
 		t.Errorf("a document whose only 1.1 key is on headerStyle requires %q, want %q", got, minorFeatureVersion)
+	}
+
+	// Story 7.3: the SECOND attachment point reaches the 2.0 rule too.
+	dh, err := ParseDocument([]byte(justifyHeaderStyleDoc))
+	if err != nil {
+		t.Fatalf("parse justify headerStyle doc: %v", err)
+	}
+	if got := versionRequiredByContent(dh); got != majorFeatureVersion {
+		t.Errorf("a document whose only justify is on headerStyle requires %q, want %q", got, majorFeatureVersion)
+	}
+
+	// THE ORDERING CASE, and it is the one a first-hit implementation
+	// fails. The document's FIRST styled element sets lineSpacing (1.1)
+	// and a LATER one sets align: justify (2.0). versionRequiredByContent
+	// must report the HIGHEST requirement in the document, not the first
+	// one it walks into — reporting 1.1 here would ship a file whose own
+	// 1.x reader must refuse to draw it while its version says it may.
+	dm, err := ParseDocument([]byte(minorThenMajorDoc))
+	if err != nil {
+		t.Fatalf("parse minor-then-major doc: %v", err)
+	}
+	if got := versionRequiredByContent(dm); got != majorFeatureVersion {
+		t.Errorf("lineSpacing on an earlier element and justify on a later one requires %q, want %q — the rule must take the MAXIMUM over every attachment point, never the first hit", got, majorFeatureVersion)
+	}
+	// And in the other order, so the result is not an artifact of which
+	// element happens to come first.
+	dr, err := ParseDocument([]byte(majorThenMinorDoc))
+	if err != nil {
+		t.Fatalf("parse major-then-minor doc: %v", err)
+	}
+	if got := versionRequiredByContent(dr); got != majorFeatureVersion {
+		t.Errorf("justify on an earlier element and lineSpacing on a later one requires %q, want %q", got, majorFeatureVersion)
 	}
 
 	// And an unparseable loaded version is returned untouched rather than
@@ -183,7 +226,7 @@ func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 	if ceilingMajor != SupportedMajor {
 		t.Errorf("SupportedVersion %q declares MAJOR %d but SupportedMajor is %d — checkVersionLoadable and versionForSave would disagree about what this library can load", SupportedVersion, ceilingMajor, SupportedMajor)
 	}
-	for _, v := range []string{baseVersion, minorFeatureVersion} {
+	for _, v := range []string{baseVersion, minorFeatureVersion, majorFeatureVersion} {
 		major, minor, perr := parseVersion(v)
 		if perr != nil {
 			t.Errorf("%q does not parse: %v", v, perr)
@@ -200,7 +243,7 @@ func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 	}
 	// And the rule's own output is inside the bound for every document
 	// shape it distinguishes, not merely for the constants in isolation.
-	for _, style := range []string{"", `"lineSpacing": 1.5, `, `"color": "#112233", `} {
+	for _, style := range []string{"", `"lineSpacing": 1.5, `, `"color": "#112233", `, `"align": "justify", `} {
 		d, perr := ParseDocument([]byte(lineSpacingRoundTripDocWithStyle(style)))
 		if perr != nil {
 			t.Fatalf("parse: %v", perr)
@@ -247,6 +290,79 @@ const lineSpacingHeaderStyleDoc = `{
         {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "rows[]", "as": "row", "headerHeight": 20,
           "columns": [{"id": "e2", "label": "L", "width": 100, "bind": "{{row.v}}"}],
           "headerStyle": {"lineSpacing": 1.5}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// justifyHeaderStyleDoc is lineSpacingHeaderStyleDoc's Story 7.3 twin:
+// the 2.0 value sits on the OTHER attachment point, a table's
+// headerStyle, which a rule that walked only element.style would miss
+// exactly the way style.color was missed.
+const justifyHeaderStyleDoc = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "rows[]", "as": "row", "headerHeight": 20,
+          "columns": [{"id": "e2", "label": "L", "width": 100, "bind": "{{row.v}}"}],
+          "headerStyle": {"align": "justify"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// minorThenMajorDoc puts the 1.1 key on the element the walk reaches
+// FIRST and the 2.0 value on a later one. A first-hit implementation
+// returns 1.1 for it; the maximum rule returns 2.0.
+const minorThenMajorDoc = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "a", "style": {"lineSpacing": 1.5, "fontFamily": "body", "fontSize": 11}},
+        {"id": "e2", "type": "text", "x": 0, "y": 60, "width": 200, "height": 40, "value": "b", "style": {"align": "justify", "fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// majorThenMinorDoc is the same document with the two elements' styles
+// swapped, so neither answer can be an artifact of walk order.
+const majorThenMinorDoc = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "a", "style": {"align": "justify", "fontFamily": "body", "fontSize": 11}},
+        {"id": "e2", "type": "text", "x": 0, "y": 60, "width": 200, "height": 40, "value": "b", "style": {"lineSpacing": 1.5, "fontFamily": "body", "fontSize": 11}}
       ]
     },
     "pageFooter": {"elements": [], "height": 20},

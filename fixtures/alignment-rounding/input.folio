@@ -1,0 +1,27 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Centred", "style": {"fontFamily": "body", "fontSize": 11, "align": "center"}},
+        {"id": "e2", "type": "text", "x": 0, "y": 30, "width": 200, "height": 40.001, "value": "Middled", "style": {"fontFamily": "body", "fontSize": 11, "valign": "middle"}},
+        {"id": "e3", "type": "text", "x": 0, "y": 80, "width": 200, "height": 40, "value": "Bottomed", "style": {"fontFamily": "body", "fontSize": 11, "valign": "bottom"}},
+        {"id": "e4", "type": "table", "x": 0, "y": 130, "bind": "clauses[]", "as": "clause", "headerHeight": 24.001,
+          "columns": [
+            {"id": "e5", "label": "Qty", "width": 60.003, "align": "center", "bind": "{{clause.qty}}", "footer": "count"},
+            {"id": "e6", "label": "Clause", "width": 140, "bind": "{{clause.text}}"}
+          ],
+          "style": {"fontFamily": "body", "fontSize": 11, "valign": "middle"},
+          "headerStyle": {"fontSize": 11, "valign": "middle"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 7,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+07:00",
+  "version": "1.0"
+}

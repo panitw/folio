@@ -898,9 +898,31 @@ func collectBandTextRuns(
 		for i, ln := range lines {
 			lineY := elementY + geom.Length(int64(i))*vm.Advance
 			lineX := el.X + textAlignOffset(align, boxWidth, ln.width)
-			placed, poserr := positionSegments(segs, ln.from, ln.to, lineX, lineY, fontSize, vm.FirstBaseline, slots)
-			if poserr != nil {
-				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, poserr)
+			// Story 7.3 / FR47. A justified line is drawn as several
+			// rune ranges at several x positions — a piece is exactly
+			// positionSegments' existing contract, so this is more
+			// calls to the same function rather than a second
+			// placement primitive, and `slots` reaches every one of
+			// them. justifiedLinePieces returns nil for every ragged
+			// case and for every element that is not justified at all,
+			// so the unjustified path below is the pre-7.3 call
+			// unchanged — which is what keeps the corpus byte-
+			// identical (page_setup.go carries the identical branch).
+			var placed []textRunSource
+			if pieces := justifiedLinePieces(align, ln, i, len(lines), segs, ops, fontSize, boxWidth); pieces != nil {
+				for _, piece := range pieces {
+					pieceRuns, pieceErr := positionSegments(segs, piece.from, piece.to, el.X+piece.offset, lineY, fontSize, vm.FirstBaseline, slots)
+					if pieceErr != nil {
+						return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, pieceErr)
+					}
+					placed = append(placed, pieceRuns...)
+				}
+			} else {
+				var poserr error
+				placed, poserr = positionSegments(segs, ln.from, ln.to, lineX, lineY, fontSize, vm.FirstBaseline, slots)
+				if poserr != nil {
+					return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, poserr)
+				}
 			}
 			// Story 2.6: the LINE's extent, computed here from the
 			// vertical model that is already in hand — `lineY` IS
@@ -1413,8 +1435,10 @@ func positionSegments(segs []faceSegment, from, to int, x, y, fontSize, baseline
 			if sl.from < elemLo || sl.to > elemHi {
 				return nil, fmt.Errorf(
 					"folio: Render: internal error: a {{page}} reservation [%d,%d) straddles a "+
-						"face-segment or line boundary at [%d,%d) — Story 2.7 requires the construct to "+
-						"resolve to one face segment on one line",
+						"face-segment, line or justified-piece boundary at [%d,%d) — Story 2.7 requires "+
+						"the construct to resolve to one face segment on one line, and Story 7.3 draws a "+
+						"justified line as several pieces positioned separately, so a piece boundary is a "+
+						"run boundary too",
 					sl.from, sl.to, elemLo, elemHi,
 				)
 			}

@@ -119,6 +119,36 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 			data: Data(lineSpacingDataJSON),
 			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
 		},
+		{
+			// Story 7.3, and it matters here specifically: justification
+			// splits a line into several positioned pieces, so this is
+			// the first document whose runs are word-grained. A missing
+			// glyph that only appeared at a piece boundary would show up
+			// nowhere else.
+			name: "justified-text",
+			tpl: func(t *testing.T) *Template {
+				tpl, err := ParseTemplate([]byte(justifiedTemplateJSON))
+				if err != nil {
+					t.Fatalf("parse justified-text template: %v", err)
+				}
+				return tpl
+			},
+			data: Data(justifiedDataJSON),
+			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
+		},
+		{
+			// Story 7.3, closing DW-24.
+			name: "alignment-rounding",
+			tpl: func(t *testing.T) *Template {
+				tpl, err := ParseTemplate([]byte(alignmentRoundingTemplateJSON))
+				if err != nil {
+					t.Fatalf("parse alignment-rounding template: %v", err)
+				}
+				return tpl
+			},
+			data: Data(alignmentRoundingDataJSON),
+			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
+		},
 	}
 
 	// Finding 11 (QA review, Minor): a length check alone cannot see a
@@ -143,8 +173,10 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 	// A swap in either table still reddens, because an undeclared
 	// addition fails just as a disappearance does.
 	beyondBaselineAcceptance := map[string]string{
-		"mandatory-break": "Story 7.1 (FR46) — the first committed document whose text or bound data carries a line feed",
-		"line-spacing":    "Story 7.2 — the first committed document that declares style.lineSpacing, and the first declaring format version 1.1",
+		"mandatory-break":    "Story 7.1 (FR46) — the first committed document whose text or bound data carries a line feed",
+		"line-spacing":       "Story 7.2 — the first committed document that declares style.lineSpacing, and the first declaring format version 1.1",
+		"justified-text":     "Story 7.3 (FR47) — the first committed document that is justified at all, the first whose drawn runs are word-grained, and the first declaring format version 2.0",
+		"alignment-rounding": "Story 7.3, closing DW-24 — the first committed document declaring align center or valign at all, and therefore the first that reaches any of the branches which halve a slack",
 	}
 
 	wantNames := make(map[string]bool, len(baselineAcceptanceFixtures))

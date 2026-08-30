@@ -370,6 +370,63 @@ var goldenDigestRecord = []struct {
 			{kind: "readme", relPath: "fixtures/line-spacing/README.md"},
 		},
 	},
+	{
+		// RECORDED by Story 7.3 (FR47). THE FIRST COMMITTED DOCUMENT IN
+		// THIS REPOSITORY THAT IS JUSTIFIED AT ALL. Measured at 7.3's
+		// baseline, `grep -oh '"align"[^,}]*' fixtures/*/input.folio`
+		// returned 16 `left` and 8 `right` and nothing else, so no
+		// recorded byte in the corpus could tell a build that
+		// distributes a justified line's slack from one that draws it
+		// ragged — and the story's byte-neutrality guard over every
+		// OTHER golden is only falsifiable beside a document that is.
+		//
+		// It is also THE FIRST COMMITTED DOCUMENT DECLARING "2.0":
+		// `align: "justify"` extends a CLOSED SET, which D-1.4.12 makes
+		// a MAJOR change, so under D-1.4.13 this document's own content
+		// requires 2.0 and it declares exactly that.
+		//
+		// Its e2 is the CONTROL — the same string in the same box with
+		// no align at all — which is what makes e1's eight-piece lines
+		// evidence about justification rather than about wrapping. Its
+		// README quotes the digest.
+		dir:    "justified-text",
+		sha256: "6da3b12e694fdd7d7f865631ca190346898f45f85633facdb91d2b69590777d6",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/justified-text/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/justified-text/README.md"},
+		},
+	},
+	{
+		// RECORDED by Story 7.3, CLOSING DW-24. THE FIRST COMMITTED
+		// DOCUMENT IN THIS REPOSITORY DECLARING `align: "center"` OR
+		// `valign` AT ALL. Measured at 7.3's baseline the corpus held 16
+		// `left`, 8 `right`, zero `center` and zero `valign`, so the two
+		// branches that HALVE a slack with geom.ScaleRound — the only
+		// place in the alignment feature where a half-to-even tie could
+		// be broken differently on a different target — were declared by
+		// no document the matrix renders.
+		//
+		// One document reaching every site the re-derived enumeration
+		// returns: a centred text element, both vertical rounds, and a
+		// table whose centred column carries a footer so the header,
+		// body and footer cell branches (different code, in
+		// table_render.go) all round, plus the integer line-slot split a
+		// body row distributes its spare slots by.
+		//
+		// EVERY SLACK IS 3 (MOD 4), which is what makes it discriminating
+		// rather than merely present: half-to-even and truncation agree
+		// on every even slack, and an odd slack that rounds DOWN to even
+		// is also indistinguishable from truncation. Its README quotes
+		// the digest.
+		dir:    "alignment-rounding",
+		sha256: "986400a1c8bb1ff84d868bb8df70479c5e7e7a2ad5e867634efb810a47327087",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/alignment-rounding/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/alignment-rounding/README.md"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -726,6 +783,8 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: component-asset-import", // Story 5.13 — AD-21 fixture pinning setComponentAsset's canonical output (digest-as-key, 76-col wrap, sorted keys, repoint); registered per engineering-lead ruling (2026-08-29) that Task 5's AD-21 obligation was owed in-story and guardrail 10 excluded only OTHER stories' fixtures; legs DEFERRED to the gate (D-5.13.5: this story's four-target matrix run declined)
 	"matrix-document: mandatory-break",        // Story 7.1 (FR46) — the first cross-target artifact carrying a line feed. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: line-spacing",           // Story 7.2 — the first cross-target artifact declaring style.lineSpacing (and format version 1.1). Authorised by the story's own Verification section, which makes 7.2's correctness byte-identity-shaped and carries the heavy tests regardless of the per-epic cadence. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
+	"matrix-document: justified-text",         // Story 7.3 (FR47) — the first cross-target artifact that is justified at all, and the first declaring format version 2.0. Authorised by the story's own Verification section, which makes 7.3's correctness byte-identity-shaped (D-R7.1): a slack remainder placed in a different ORDER is precisely the defect that agrees with itself on one host and disagrees across four. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
+	"matrix-document: alignment-rounding",     // Story 7.3, CLOSING DW-24 — the first cross-target artifact declaring align center or valign at all, and therefore the first that takes a half-to-even tie in the alignment feature. DW-24's own closure conditions require the fixture be "added to matrixDocuments so all four targets render it", which is the ruling authorising this entry. Legs wired in matrix.yml and run in-story alongside justified-text
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

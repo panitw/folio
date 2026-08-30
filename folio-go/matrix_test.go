@@ -623,6 +623,69 @@ func requireLineSpacingIsHonoured(t *testing.T, target matrixTarget, raw []byte)
 	})
 }
 
+// captureJustifiedTextRender runs Story 7.3's first selector, rendering
+// fixtures/justified-text/ in a FRESH process — the same reason
+// line-spacing needed one.
+func captureJustifiedTextRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessJustifiedTextEnvVar: "1"})
+}
+
+// requireJustifiedTextIsJustified is Story 7.3's OWN feature guard for
+// the justified-text document, and it is the reason registering the legs
+// is not a formality.
+//
+// "Contains a FontFile2" is satisfied by any embedding at all, and every
+// line of this document FITS its declared box, so a target that ignored
+// `justify` entirely would still emit all ten baselines — just one run
+// each, at the element's own left edge, which is exactly what the
+// document's control element e2 already is — and four such legs would
+// agree with each other byte for byte and certify nothing. This guard
+// asserts, on EVERY leg before any byte comparison, that the justified
+// element is actually drawn PIECE BY PIECE: eight, one, six, eight and
+// one runs across its five lines, each line starting at the element's own
+// left edge and ascending, against the control's one run per line.
+func requireJustifiedTextIsJustified(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	runs := readEmittedRuns(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the justified-text leg emitted no text runs", target.name)
+	}
+	// Fatal here: a matrix leg comparing bytes it has not first
+	// established are the RIGHT bytes is worse than no leg.
+	justifiedAssertGeometry(runs, func(format string, args ...any) {
+		t.Fatalf("%s: justified-text leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
+// captureAlignmentRoundingRender runs Story 7.3's second selector,
+// rendering fixtures/alignment-rounding/ in a FRESH process.
+func captureAlignmentRoundingRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessAlignmentRoundingEnvVar: "1"})
+}
+
+// requireAlignmentRoundingRounds is DW-24's closing guard, and it is the
+// single most load-bearing feature guard in this table: this document
+// exists ONLY to make a half-to-even tie observable in recorded bytes.
+//
+// It asserts every drawn run's origin against the hand-derived table in
+// alignment_rounding_fixture_test.go — the centred text element, both
+// vertical rounds, the centred header, body and footer cells, and the
+// integer line-slot split — on EVERY leg, before any byte comparison. A
+// target that broke the tie the other way disagrees here rather than in
+// an opaque digest.
+func requireAlignmentRoundingRounds(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	runs := readEmittedRuns(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the alignment-rounding leg emitted no text runs", target.name)
+	}
+	alignmentRoundingAssertRuns(runs, func(format string, args ...any) {
+		t.Fatalf("%s: alignment-rounding leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 func captureAlternatingRowsRender(t *testing.T, target matrixTarget, binPath string) []byte {
 	t.Helper()
 	return runOnTarget(t, target, binPath, map[string]string{subprocessAlternatingRowsEnvVar: "1"})
@@ -1621,6 +1684,48 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "line-spacing", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireLineSpacingIsHonoured,
+		wantPages:        1,
+	},
+	{
+		// Story 7.3's document: the first that is justified at all, the
+		// first whose drawn runs are word-grained, and the first
+		// declaring format version 2.0.
+		//
+		// Registered on the same terms as line-spacing above — the slug
+		// lives in .github/workflows/matrix.yml's `docs="…"` list and in
+		// an upload-artifact path for every target under
+		// `if-no-files-found: error`, pinned by
+		// TestMatrixDocumentSlugsAreRegisteredInCI.
+		//
+		// D-000.4's cadence override was not NEEDED for it: distributing
+		// a line's slack is integer division and a remainder over the
+		// opportunity list the packer already built, with no new
+		// dependency, no float and no vendor call. The legs are run
+		// because this story's correctness is byte-identity-shaped
+		// (D-R7.1) — and because a remainder placed in a different ORDER
+		// is exactly the kind of defect that agrees with itself on one
+		// host and disagrees across four.
+		label:            "justified-text (both edges flush)",
+		slug:             "justified-text",
+		capture:          captureJustifiedTextRender,
+		fixtureRelPath:   []string{"fixtures", "justified-text", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireJustifiedTextIsJustified,
+		wantPages:        1,
+	},
+	{
+		// Story 7.3's second document, and DW-24's closure. It is HERE
+		// because the rounding is the point: `align: "center"` and
+		// `valign: "middle"` are the only branches in the alignment
+		// feature that halve a slack, an exact-half tie is what AD-2/AD-3
+		// exist to make deterministic, and until this entry the four-leg
+		// matrix rendered no document that took one.
+		label:            "alignment-rounding (the half-to-even tie, taken)",
+		slug:             "alignment-rounding",
+		capture:          captureAlignmentRoundingRender,
+		fixtureRelPath:   []string{"fixtures", "alignment-rounding", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireAlignmentRoundingRounds,
 		wantPages:        1,
 	},
 }

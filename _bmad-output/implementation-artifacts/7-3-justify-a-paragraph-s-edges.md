@@ -2,12 +2,65 @@
 title: 'Story 7.3: Justify a paragraph''s edges'
 type: 'feature'
 created: '2026-08-30'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: '20ccefaaa1ed2860ed68289354a1345ce678885c'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized'] # multiple-goals: the justify feature and DW-24's corpus closure are separably shippable, and D-7.1.4 accepted that cost explicitly when it made 7.3 DW-24's owner. oversized: the ruling set (D-7.3.1, D-R7.9, D-7.1.5, D-7.2.1, D-7.2.6) plus a format MAJOR plus a six-site rounding closure are three wide surfaces that must be stated, not summarised.
-deferred: []
+deferred:
+  - summary: >-
+      The `valign` arm of `applyPropertyChanges` accepts any string, so the command layer can
+      serialize a document its own loader refuses.
+    evidence: |-
+      Story 7.3 closed exactly this hole for the `align` arm (it previously "set style.align to
+      whatever string arrived") by validating through `template.IsStyleAlign`. The adjacent
+      `valign` arm was left unguarded, while `closedValigns` is a real load-time closed set and
+      `serialize.go` writes `st.Valign.Value` verbatim. `updateComponentProperties` with
+      `valign: "sideways"` therefore succeeds, serializes, and then fails to load back.
+      Pre-existing, not caused by this story, but its sibling's fix makes the asymmetry live.
+    location: >-
+      folio-go/component_commands.go:1071-1080
+    severity: medium
+  - summary: >-
+      `style.align: "justify"` on a table element or its `headerStyle` loads, forces the document
+      to format 2.0, and then renders every cell at the start edge with no diagnostic.
+    evidence: |-
+      The intent contract requires this: it directs that `headerStyle.align: "justify"` must load
+      and must raise the document to 2.0, while its Never list forbids implementing justified
+      table cells and calls justified columns "a separate scope decision". So the diff is
+      contract-correct, and the residue is a real product question the contract deliberately did
+      not settle: a document unreadable to every 1.x reader renders identically to `align: left`.
+      This story pins that fallback with a test and corrects the three `default:` arm comments
+      that wrongly claimed the load-time check had already rejected such a value; deciding whether
+      it should instead be a located load error, carry a diagnostic, or actually justify cells is
+      the deferred scope decision.
+    location: >-
+      folio-go/table_render.go:701, :1044, :1228
+    severity: medium
+  - summary: >-
+      Closing DW-24 removes the only tracked address for the image-centring rounding at
+      render.go:505-506, which remains golden-uncovered.
+    evidence: |-
+      DW-24's closing note measures that site GREEN under a truncation mutation and records it as
+      out of the entry's declared subject (it is unconditional on every image element rather than
+      selected by a declared value). That reasoning is sound, but with DW-24 closed no open item
+      names the gap, so the next re-derivation will meet it a third time with no owner.
+    location: >-
+      folio-go/render.go:505-506
+    severity: low
+  - summary: >-
+      `CanvasTextLine.Width` still projects the packer's ragged measurement for a justified line,
+      though the line's fragments now span the full declared width.
+    evidence: |-
+      Canvas/PDF parity is asserted on fragment count, text and X, which is what the contract
+      requires, and `Width` agrees between the two Go paths so no test fails. But the browser
+      validator already compensates with `Math.max(paint.width, component.width)`, and any
+      designer consumer using `paint.width` for hit-testing, caret placement or selection will be
+      wrong on exactly the lines this story adds. Not contract-covered either way.
+    location: >-
+      folio-go/page_setup.go
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -234,6 +287,19 @@ One test is expected to stay red. It is a deliberate standing marker, not a defe
 
 ## Review Triage Log
 
+### 2026-08-30 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 1, medium 1, low 3)
+- defer: 4: (high 0, medium 2, low 2)
+- reject: 11: (high 0, medium 2, low 9)
+- addressed_findings:
+  - `[high]` `[patch]` `TestJustifiedLinePiecesRemainderRule` never called production code — it re-transcribed `base`/`remainder` in the test body and asserted that against its own literals, so it stayed green for ANY implementation of the shipped rule, leaving the I/O matrix row "Remainder placement | slack 7, gaps 3 | 3, 2, 2" with no real coverage. Rewritten to shape real text, drive `justifiedLinePieces`, and recover each gap's granted amount from the returned piece offsets; covers 7/3, 6/3, 2/3 (a gap legitimately gets nothing), 5/2, single-gap and zero-slack. Independently red-proofed by reversing the remainder to the last gaps — three subtests fail (`granted [2 2 3], want [3 2 2]`) — and `text_alignment.go` restored byte-identical afterwards.
+  - `[medium]` `[patch]` `TestAlignmentRoundingSlacksAreOdd`'s discriminating guard was vacuous: `ScaleRound(odd,1,2) % 2 != 0` can never fire, and the case that actually matters — a slack ≡ 1 (mod 4), which halves DOWN to the number a truncating `slack/2` also produces — was only `t.Logf`'d and passed. Three documents (DW-24's closing note, the fixture README, the template comment) claimed `slack ≡ 3 (mod 4)` was asserted "rather than left to luck"; it was not. Now asserts `slack % 4 == 3` plus `ScaleRound(slack,1,2) == slack/2 + 1`. Independently red-proofed by moving one box to a slack of 25,021 (≡ 1 mod 4) — fails with the intended message — then reverted byte-identically.
+  - `[low]` `[patch]` The three table-cell align `default:` arm comments claimed they caught "any value the load-time closed-set check already rejected". False after the split: `justify` cascades in through `alignFallback` and is drawn at the start edge. Comments corrected at `table_render.go:701`, `:1044`, `:1228`, and `TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge` added to pin that fallback (sha256 equal to the `left` render, with a `center` leg as the vacuity guard). No load error added and no justified cells implemented — both are forbidden by the intent contract.
+  - `[low]` `[patch]` `justifyTemplateJSON`'s doc comment claimed "four justified text elements … plus a control" covering the ragged, no-width and overflow cases; the constant holds two elements and covers none of those. Comment rewritten to describe what it actually contains and what actually covers those rows.
+  - `[low]` `[patch]` The `{{page}}` slot-straddle located error named only a "face-segment or line boundary"; a justified piece boundary is now a third way to reach it. Message extended so the diagnostic tells the author the truth.
+
 ## Design Notes
 
 **Why the slack is based on the summed piece widths rather than the packer's line width.** Splitting a line into pieces means each piece's advance is rounded on its own, and a sum of roundings is not the rounding of a sum — so a justified line positioned from `ln.width` could miss the declared right edge by a millipoint or two. `measureRuneRange`'s doc comment states it *is* `positionSegments`' cursor arithmetic, so measuring the pieces with the same function the packer already uses and taking `slack = boxWidth − Σ pieceWidths` makes the right edge land exactly, with one derivation and no new measurement path. Overflow detection keeps reading `ln.width`, so FR44 is untouched.
@@ -297,3 +363,48 @@ Commits: none (plan-only dispatch; no code written)
 **Two tests will go red by design and are planned as work, not defects:** `TestHigherMajorIsLoadError` uses `withVersion("2.0")` and must move to `"3.0"` once 2.0 is loadable, and `TestContentVersionNeverExceedsTheLibraryCeiling`'s hand-maintained version enumeration goes vacuous unless the new constant is added to it.
 
 **Nothing was implemented.** No source file, fixture, workflow or deferred-work record was modified by this dispatch; the only file written is this spec.
+
+### Dispatch 2 — implement, review, commit (2026-08-30)
+
+Status: `done`
+Blocking condition: none
+Baseline: `20ccefaaa1ed2860ed68289354a1345ce678885c`, tree clean, branch `main`
+
+**Summary.** `justify` is now a member of the *style* alignment vocabulary only, the closed set having been split in two at its declaration so that `columns[].align` cannot be widened by accident. A justified line is placed by one shared rule, `justifiedLinePieces`, called identically by the PDF line loop and the canvas paint projection, distributing slack across the line's interior break opportunities by an integer-exact, ordered remainder rule with no float and no second rounding site. Extending a closed set is a MAJOR under D-1.4.12, so the format ceiling moves to 2.0 and the content-derived version rule became a maximum over every attachment point rather than a first-hit return. DW-24 is closed with a second golden fixture, and DW-25's scope is amended with a measured reachability result.
+
+**Files changed.**
+- `folio-go/internal/template/closedsets.go` — one `closedAligns` map replaced by two ordered token slices and two maps built from them; `IsStyleAlign` exported as the single source.
+- `folio-go/internal/template/parse_bands.go` — each align check points at its own set; both hand-written literals replaced by messages derived from the relevant ordered slice.
+- `folio-go/internal/template/version.go` — `SupportedMajor` 2, `SupportedVersion` "2.0", new `majorFeatureVersion`; `styleNeedsMinorVersion` became a rank and `versionRequiredByContent` takes the maximum. Ceiling doc comment extended without weakening D-7.2.1's correction.
+- `folio-go/text_alignment.go` — the justification rule and the extended file doc comment naming the three independent ragged conditions.
+- `folio-go/render.go`, `folio-go/page_setup.go` — per-piece placement at the two call sites that must stay one line apart; unjustified path unchanged byte-for-byte.
+- `folio-go/component_commands.go` — the style align arm, previously accepting any string with no validation at all, now validates through the shared style set; the column arm untouched.
+- `folio-designer/src/engine-protocol.ts` — component align validator and type admit `justify`; `TableColumn.align` stays the triple.
+- `folio-go/table_render.go` — the three cell-align `default:` comments corrected; no behaviour change.
+- New: `fixtures/justified-text/`, `fixtures/alignment-rounding/`, their template/data consts and fixture tests.
+- Registration: `byte_neutrality_test.go` (incl. `declaredEpic2GateObligations`), `matrix_test.go`, `missing_glyph_corpus_test.go` (both the corpus table and `beyondBaselineAcceptance`), `.github/workflows/matrix.yml` (`docs=` plus all four upload blocks), `render_test.go` subprocess selectors.
+- Docs: `_bmad-output/specs/spec-folio/folio-format.md`; `_bmad-output/implementation-artifacts/deferred-work.md` (DW-24 closed, DW-25 scope amended).
+
+**Review findings breakdown.** 5 patches applied (1 high, 1 medium, 3 low); 4 items deferred (2 medium, 2 low, recorded in frontmatter `deferred`); 11 rejected. No intent gap and no bad-spec loopback: the two findings that looked like scope defects — that a table's `style.align`/`headerStyle.align` admits `justify` and renders it as `left`, and that a load error "should" be added — are the intent contract's own explicit requirements (it directs that `headerStyle.align: "justify"` load and raise the document to 2.0, and forbids implementing justified table cells), so they were routed to defer and reject respectively on the contract's authority rather than escalated.
+
+**Follow-up review recommendation:** `true`. Patched findings by severity: high 1, medium 1, low 3. Any high severity sets the flag; the score `3 × 1 + 1 × 3 = 6` also clears the threshold of 5.
+
+**Verification performed (measured, not assumed).**
+- `cd folio-go && go test -count=1 ./...` — **1479 pass, 5 skip, 2 fail entries constituting exactly ONE distinct failure**: `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest (got 7, need >=20), the mandated permanent red. Untouched. Nothing else red.
+- `cd folio-go && go vet -tags=matrix ./...` — clean, exit 0.
+- `gofmt -l folio-go` (run from the repository root) — no output.
+- `cd lint && go test ./...` — 4 packages ok, 0 fail.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck clean; lint exactly the 4 pre-existing `only-export-components` warnings, 0 errors; **30 test files, 215 tests passed** (214 before this story, +1 added).
+- `TestTargetRenderHash` — run once per leg with `FOLIO_MATRIX_TARGET` actually set, so none was the unset no-op that "asserts NOTHING": **`darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` all pass**, all four agreeing on both new documents.
+- `TestCrossTargetByteIdentity` — pass (21.0s), the all-four-in-one-process local gate.
+- **All six recorded corpus digests measured unchanged**, by direct `shasum`, not inferred from a green suite: `statement-1` 76,744 B `114df1d6…`; `statement-5` 127,363 B `70dce051…`; `statement-20` 269,884 B `56bfbbd9…`; `statement-50` 555,829 B `5d090b0f…`; `mandatory-break` 56,681 B `7cf743de…`; `line-spacing` 57,770 B `de212115…`. Two new: `justified-text` 59,894 B `6da3b12e…`; `alignment-rounding` 61,346 B `986400a1…`.
+- Matrix test audit: every I/O matrix row is covered by a test that ran and passed. Two gaps found and closed during this dispatch — the "Both conditions at once" row had no covering test at all, and the "Remainder placement" row's test did not call production code.
+- Manual check 1 — the DW-24 grep was re-run at the closing revision and its output recorded verbatim in the closing note. The set of sites is identical at both revisions; only the two `text_alignment.go` anchors moved (`:56`→`:85`, `:81`→`:110`) because this story inserted the justification rule above them.
+- Manual check 2 — the canvas fragment-cap reachability was measured and recorded as an amendment to DW-25's scope. No bound was widened.
+
+**Residual risks.**
+- `fixtures/alignment-rounding/` depends on the shipped Noto Sans metrics for its `slack ≡ 3 (mod 4)` property. A face change would redden `TestAlignmentRoundingSlacksAreOdd` loudly rather than silently degrading the fixture's discriminating power — which is now a real assertion rather than the vacuous one this review found.
+- The four deferred items in frontmatter, in particular the unguarded `valign` command arm and the justified-table-styling scope question.
+- `followup_review_recommended: true` — a high-severity patch (a test that could not fail) was applied in this pass.
+
+**Known-environmental, not regressions:** `TestShippedFacesReproduceFromUpstream` fails under `-tags=matrix` when `fontTools` is absent; `lint/internal/rules/licencegraph_test.go` is not gofmt-clean (DW-23, owned by Story 15.2).

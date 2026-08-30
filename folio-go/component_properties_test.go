@@ -170,3 +170,50 @@ func mustSerialize(t *testing.T, tpl *Template) []byte {
 	}
 	return value
 }
+
+// TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly is Story 7.3's
+// guard on the one place the two alignment vocabularies could still be
+// conflated.
+//
+// This arm previously set style.align to WHATEVER STRING ARRIVED, with no
+// closed-set check at all — harmless only while one shared set served both
+// `style.align` and `columns[].align`. With two live sets it validates
+// through the STYLE set's own exported predicate, so a component may be
+// justified, a nonsense value is refused, and the COLUMN arm
+// (updateTableColumn, TestTableColumnRejectionsDoNotMutate) still refuses
+// `justify` — which is what makes that older test a red-proof of the
+// split rather than a coincidence.
+func TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly(t *testing.T) {
+	tpl := componentTemplate(t)
+	for _, align := range []string{"left", "center", "right", "justify"} {
+		cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
+		if _, err := ApplyComponentCommand(tpl, cmd); err != nil {
+			t.Errorf("style.align %q must be accepted: %v", align, err)
+		}
+	}
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(canonical, []byte(`"align": "justify"`)) {
+		t.Fatalf("the last accepted value did not reach the canonical bytes:\n%s", canonical)
+	}
+	for _, align := range []string{"middle", "top", "flush", "JUSTIFY", ""} {
+		cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
+		_, err := ApplyComponentCommand(tpl, cmd)
+		if err == nil {
+			t.Errorf("style.align %q must be refused — this arm used to accept any string at all", align)
+			continue
+		}
+		if !strings.Contains(err.Error(), "left, center, right, justify") {
+			t.Errorf("the rejection must name the STYLE set's own members, got: %v", err)
+		}
+		after, serr := SerializeTemplate(tpl)
+		if serr != nil {
+			t.Fatal(serr)
+		}
+		if !bytes.Equal(canonical, after) {
+			t.Errorf("rejecting %q mutated the canonical bytes", align)
+		}
+	}
+}

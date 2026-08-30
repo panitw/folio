@@ -38,8 +38,10 @@ package bind
 //     SET-EQUALITY over every rootKind COMPOSITE LITERAL in this
 //     package — the DECLARED set (declaredResolutionRootNames, text.go)
 //     compared, BOTH DIRECTIONS, against the OBSERVED set (D-2.5.1: the
-//     same shape internal/template/closedsets.go's closedAligns and
-//     byte_neutrality_test.go's declaredEpic2GateObligations use).
+//     same shape internal/template/closedsets.go's align sets and
+//     byte_neutrality_test.go's declaredEpic2GateObligations use;
+//     `closedAligns` became `closedStyleAligns`/`closedColumnAligns`
+//     when Story 7.3 split the one shared set in two).
 //     This REPLACES the previous selectRoot-return-statement scan and
 //     is STRICTLY WIDER: it sees a fourth root wherever a rootKind is
 //     constructed with that name, whether or not selectRoot ever

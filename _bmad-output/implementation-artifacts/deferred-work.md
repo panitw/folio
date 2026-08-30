@@ -248,7 +248,12 @@ the panic above is reproducible.
 
 ---
 
-### DW-24 — the SIX rounded alignment branches — `align: "center"` and `valign: "middle"`, in `text_alignment.go` and in all three table-cell paths — are declared by no fixture, so every rounding site in the feature has zero golden coverage
+### DW-24 — the SIX rounded alignment branches — `align: "center"` and `valign: "middle"`, in `text_alignment.go` and in all three table-cell paths — are declared by no fixture, so every rounding site in the feature has zero golden coverage — **CLOSED by Story 7.3, 2026-08-30**
+
+> **STATUS: CLOSED.** Everything from here to "DW-24 IS CLOSED" below is the entry as it stood while
+> it was open, kept verbatim because the closing note reconciles against it — the hand-list it
+> contains had rotted twice, and deleting the wrong list would delete the evidence of that. The
+> closure, the re-derived enumeration and the per-site falsifier results are at the end of the entry.
 
 **Owner:** **Story 7.3**, *and* the **orchestrator's own gate checklist** as a second standing
 address. Two addresses, on DW-21's precedent, because one of them is a person's checklist that
@@ -398,8 +403,170 @@ halves and **both** must be run — running only the first is what let this item
 
 While this item is open, the suite stays green under both. When it is closed, **both** must go red.
 
-**This item is OPEN.** Story 7.1 amended its scope and re-addressed it; Story 7.2 re-addressed it on
-the corrected ground above and fixed the deadline. Neither closed anything.
+---
+
+## DW-24 IS CLOSED — Story 7.3, 2026-08-30
+
+Closed by `fixtures/alignment-rounding/`, registered at every surface a golden is registered at and
+rendered on all four targets. Story 7.1 amended this entry's scope and re-addressed it; Story 7.2
+re-addressed it on the corrected ground above and fixed the deadline; 7.3 owned it as an acceptance
+criterion (D-7.1.4, D-7.2.6) and discharged it.
+
+### The enumeration, RE-DERIVED BY GREP, not read off the hand-list
+
+**The grep is recorded TWICE, at two named revisions, and the difference between them is stated
+rather than left to be noticed.** This story's own edits to `folio-go/text_alignment.go` moved two of
+the lines the grep returns, so a closing note that published only the baseline anchors would ship
+stale line numbers — which is exactly the rot that has already made the hand-list above wrong twice.
+Neither block below is a summary of the other; both are verbatim command output.
+
+**(a) AT THE BASELINE, `20ccefa`** — before this story's own edits moved any line. This is the
+revision the reconciliation against the hand-list is computed from, and that reconciliation stays
+valid at it: it is a statement about how far the entry's hand-written anchors had drifted by the time
+7.3 picked the item up, and it is not restated at the closing revision.
+
+```
+$ grep -rn 'ScaleRound(.*1, 2)' folio-go --include='*.go' | grep -v _test
+folio-go/render.go:486:// (ScaleRound(box-drawn, 1, 2)) rather than "/2" — D-1.8.4: "(bw-dw)/2
+folio-go/render.go:505:	offsetX := geom.ScaleRound(bw-drawW, 1, 2)
+folio-go/render.go:506:	offsetY := geom.ScaleRound(bh-drawH, 1, 2)
+folio-go/text_alignment.go:56:		return geom.ScaleRound(slack, 1, 2)
+folio-go/text_alignment.go:81:		return geom.ScaleRound(slack, 1, 2)
+folio-go/table_render.go:705:				textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+folio-go/table_render.go:716:				lineTopY = contentY + geom.ScaleRound(contentH-textBlockHeight, 1, 2)
+folio-go/table_render.go:1038:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+folio-go/table_render.go:1214:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+```
+
+**(b) AT THE CLOSING REVISION — the working tree as Story 7.3 delivers it (`20ccefa` plus this
+story's own edits).** This is the re-derivation the spec's Manual check mandates, and **this is the
+enumeration DW-24 is closed against.** The anchors published here are the ones a future reader should
+open a file at:
+
+```
+$ grep -rn 'ScaleRound(.*1, 2)' folio-go --include='*.go' | grep -v _test
+folio-go/render.go:486:// (ScaleRound(box-drawn, 1, 2)) rather than "/2" — D-1.8.4: "(bw-dw)/2
+folio-go/render.go:505:	offsetX := geom.ScaleRound(bw-drawW, 1, 2)
+folio-go/render.go:506:	offsetY := geom.ScaleRound(bh-drawH, 1, 2)
+folio-go/text_alignment.go:85:		return geom.ScaleRound(slack, 1, 2)
+folio-go/text_alignment.go:110:		return geom.ScaleRound(slack, 1, 2)
+folio-go/table_render.go:705:				textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+folio-go/table_render.go:716:				lineTopY = contentY + geom.ScaleRound(contentH-textBlockHeight, 1, 2)
+folio-go/table_render.go:1038:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+folio-go/table_render.go:1214:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+```
+
+**THE SET OF SITES IS IDENTICAL AT THE TWO REVISIONS. No site appeared, none disappeared, and the
+subject of this entry did not change.** Exactly two line numbers moved, both in `text_alignment.go`,
+and both for the same mundane reason: 7.3 inserted its justification rule and its extended file
+doc comment *above* them. Nothing about the two branches themselves changed.
+
+| site (named by what is stable — the function) | at baseline `20ccefa` | at the closing revision |
+|---|---|---|
+| `textAlignOffset`, the `align: center` arm | `text_alignment.go:56` | **`text_alignment.go:85`** |
+| `textValignOffset`, the `valign: middle` arm | `text_alignment.go:81` | **`text_alignment.go:110`** |
+| header cell `align` / `valign`, body cell `align`, footer cell `align` | `table_render.go:705`, `:716`, `:1038`, `:1214` | unmoved — same four anchors |
+| image centring (out of subject) | `render.go:505`, `:506` | unmoved — same two anchors |
+| the line-slot split (not a `ScaleRound`, found separately) | `table_render.go:966` | unmoved — same anchor |
+
+**HOW TO READ EVERY ANCHOR BELOW.** The hand-list reconciliation immediately following is stated at
+the **baseline**, and its bare `text_alignment.go:56` / `:81` are baseline anchors — they are what the
+hand-list was compared against, not where the code is now. Everywhere after it, the two
+`text_alignment.go` sites are named by **function**, which is stable across both revisions, and the
+`table_render.go` anchors are the same at both.
+
+**RECONCILED AGAINST THE HAND-LIST ABOVE, AT THE BASELINE `20ccefa`: it had rotted a SECOND time.** The entry claims all six
+anchors "were confirmed by grep at those exact lines" at `98cadf7`. Five of the six had drifted, and
+a seventh site the entry never listed exists:
+
+| hand-list, as the entry wrote it | actual at baseline `20ccefa` | branch | verdict |
+|---|---|---|---|
+| `text_alignment.go:56` | `text_alignment.go:56` | text element `align: center` | unchanged at the baseline — but **`:85` at the closing revision** |
+| `text_alignment.go:74` | **`text_alignment.go:81`** | text element `valign: middle` | drifted — and **`:110` at the closing revision** |
+| `table_render.go:687` | **`table_render.go:705`** | header cell `align: center` | drifted |
+| `table_render.go:698` | **`table_render.go:716`** | header cell `valign: middle` | drifted |
+| `table_render.go:1017` | **`table_render.go:1038`** | body cell `align: center` | drifted |
+| `table_render.go:1193` | **`table_render.go:1214`** | footer cell `align: center` | drifted |
+| *(absent)* | **`table_render.go:966`** `slack / 2` | table `valign: middle`, a body row's spare LINE SLOTS | **never listed** |
+
+`table_render.go:966` is an integer LINE-COUNT split, not a `geom.ScaleRound` and not a cross-target
+float hazard — its own comment argues it out of that scope, and correctly. It is nevertheless a
+`middle`-only branch with zero golden coverage, which is exactly the absence this entry exists to
+record, so it is closed here with the same fixture rather than left to be rediscovered.
+
+`render.go:505`/`:506` centre an IMAGE inside its box. They are **unconditional on every image
+element**, so they are a different subject from this entry's declared alignment, exactly as `:338`
+already noted — and they are recorded again below with a measured result, so the next re-derivation
+is not surprised by them a third time. `render.go:486` is a comment, not a site.
+
+### The falsifier, run PER SITE, at the closing revision
+
+DW-24's own two-part cheap check, plus the truncation mutation at **every** site the closing-revision
+grep — block (b) above — returned. The command in each case is
+`go test -count=1 -run 'Golden|golden' .` in `folio-go`, and the baseline for it is **no golden
+failures at all**.
+
+**Anchors in this table are closing-revision anchors.** The two `text_alignment.go` sites are named
+by function rather than by line precisely because those are the two lines this story moved
+(`:56`→`:85`, `:81`→`:110`); the `table_render.go` line numbers are identical at both revisions, so
+they are cited directly.
+
+| # | site | mutation | result |
+|---|---|---|---|
+| 1 | `text_alignment.go` `textAlignOffset`, `align: center` | `ScaleRound(slack,1,2)` → `slack/2` | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 2 | `text_alignment.go` `textValignOffset`, `valign: middle` | `ScaleRound(slack,1,2)` → `slack/2` | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 3 | `text_alignment.go` `textValignOffset` | `→ 0` (the entry's own half 1: "multiply `textValignOffset` by zero") | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 4 | `table_render.go:705` header cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 5 | `table_render.go:716` header cell `valign: middle` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 6 | `table_render.go:966` body row `valign: middle` line slots | `slack/2` → `0` (top) | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 7 | `table_render.go:1038` body cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 8 | `table_render.go:1214` footer cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| — | `render.go:505` image centring (**out of subject**) | → truncation | GREEN — no golden moved. Recorded, not closed: this entry's subject is TEXT alignment, and the image site is unconditional on every image element rather than selected by a declared value. It is the one rounding the corpus still does not pin, and it is now a measured fact rather than an assumption. |
+
+**While this item was open the suite stayed green under all of the above. It is now red under every
+one of them.** That is the closure condition, met per site.
+
+### Why an odd slack was not enough, and what the fixture actually declares
+
+`geom.ScaleRound(slack, 1, 2)` and a truncating `slack / 2` agree on every **even** slack — so a
+centred fixture with even slack would have satisfied this entry's literal text and detected nothing.
+An odd slack takes the tie, but **half of all odd slacks round DOWN to even**, which truncation also
+produces. The discriminating condition is `slack ≡ 3 (mod 4)`.
+
+Every one of the fixture's seven slacks is `3 (mod 4)`, and
+`TestAlignmentRoundingSlacksAreOdd` asserts it rather than leaving it to luck. Three boxes are
+declared in thousandths of a point to make it so — `height: 40.001`, `headerHeight: 24.001` and the
+centred column's `width: 60.003`:
+
+| site | slack | halves to | truncation gives |
+|---|---|---|---|
+| `e1` `align: center` | 158,783 | 79,392 | 79,391 |
+| `e2` `valign: middle` | 25,019 | 12,510 | 12,509 |
+| header `Qty` centred | 41,831 | 20,916 | 20,915 |
+| header `valign: middle` | 9,019 | 4,510 | 4,509 |
+| body `3`/`7` centred | 53,711 | 26,856 | 26,855 |
+| body `12` centred | 47,419 | 23,710 | 23,709 |
+| footer count `3` centred | 53,711 | 26,856 | 26,855 |
+
+The line-slot split is not a millipoint round: row 1's clause wraps to four lines while its qty cell
+is one, so `middle` takes slot `3 / 2 = 1` — neither the first nor the last, which is what makes
+mutation 6 above red.
+
+### Registration
+
+`fixtures/alignment-rounding/` (`README.md`, `input.folio`, `expected.json`, `expected.pdf`), plus
+`folio-go/alignment_rounding_template.go`, `folio-go/alignment_rounding_fixture_test.go`,
+`goldenDigestRecord`, `matrixDocuments` (with its own per-leg feature guard
+`requireAlignmentRoundingRounds`), the missing-glyph corpus table and `beyondBaselineAcceptance`,
+`declaredEpic2GateObligations`, `render_test.go`'s subprocess selector, and
+`.github/workflows/matrix.yml`'s `docs=` list plus an upload path for each of the four targets under
+`if-no-files-found: error`. The four legs were RUN in-story: `TestTargetRenderHash` once per
+`FOLIO_MATRIX_TARGET` and `TestCrossTargetByteIdentity`; all four agree on
+`986400a1c8bb1ff84d868bb8df70479c5e7e7a2ad5e867634efb810a47327087` (61,346 bytes).
+
+It was **not** bolted onto a statement fixture (D-4.7.1), and no recorded digest moved.
+
+**THIS ITEM IS CLOSED.**
 
 ---
 
@@ -1866,3 +2033,44 @@ work, which is why 7.1 could take none of them.
 
 **How we'd know it was still wrong.** Story 7.4 lands, someone pastes a real multi-paragraph clause
 into a canvas text element, and the canvas goes blank instead of showing the clause.
+
+**SCOPE AMENDED 2026-08-30 by Story 7.3, which discovered the interaction and measured it rather
+than guessing.** The amendment lands here, in the story that found it, on D-7.1.4's own precedent: a
+deferral known to be wrong is worse than one merely open.
+
+Story 7.3 makes a justified line project as one fragment **per word-piece** instead of one per face
+segment, which multiplies a component's cumulative fragment count by words-per-line. That matters
+here because the two fragment caps are enforced against **different quantities**:
+`folio-go/page_setup.go:28`'s `maxCanvasTextFragments = 512` is **per line**, while
+`folio-designer/src/engine-protocol.ts`'s `fragments <= 512` is **cumulative across the whole
+component** — and a validator failure there drops the entire response. The cumulative one is
+therefore the cliff a long justified paragraph would reach first, and the reachability was measured
+before anything was concluded from it:
+
+| document | value bytes | lines | cumulative fragments | max per line |
+|---|---|---|---|---|
+| realistic clause prose, 200 pt column, 9 pt | 380 | 9 | **64** | 9 |
+| the same prose, 523 pt full content width, 9 pt | 380 | 4 | **68** | 23 |
+| **adversarial**: 256 one-letter words (511 B), 40 pt column, 6 pt | 511 | 32 | **249** | 8 |
+| **adversarial**: the same value in a 200 pt column | 511 | 7 | **241** | 40 |
+
+**The cliff does NOT open, and the reason is a bound that was already here.** A justified component's
+total fragment count is `Σ(pieces per line) = (interior gaps) + (lines) ≤ (break opportunities) + 1`,
+and the component's **value** is itself capped at `maxCanvasPropertyString` = 512 **bytes** — the
+very cap this entry's amended title already names as the one that binds first. The largest number of
+break opportunities 512 bytes of text can carry is ~255 (alternating one-letter words), so the
+cumulative fragment count cannot exceed ~257: **half the browser-side cap of 512**, measured worst
+case 249. The per-line Go cap of 512 is even further away; the widest measured line held 40.
+
+So **no bound needed widening for justification**, and Story 7.3 widened none — its HALT condition
+"canvas projection bound must widen" was not triggered. What changes for Story 7.4 is the ORDER OF
+CONSEQUENCES once the 512-byte value cap is split as D-7.4.2 rules: today the value cap makes the
+fragment cap unreachable. **The moment 7.4 lets a component carry more than 512 bytes of body text,
+the cumulative fragment cap becomes reachable for the first time — and it becomes reachable through
+`justify` long before it would through any other alignment**, because a ragged component projects
+roughly one fragment per line (≤ 256) while a justified one projects one per word. At the realistic
+rate measured above (~7 fragments per line of a 200 pt clause column), the browser-side cumulative
+cap of 512 is hit at about **73 justified lines** — roughly one and a half pages of a clause column,
+which is not an adversarial input. Whoever lifts the value cap must lift or re-derive the cumulative
+fragment cap in the same change, or 7.4 will trade a blank canvas at 512 bytes for a blank canvas at
+73 justified lines. Owner is unchanged: **Story 7.4**.

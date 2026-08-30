@@ -828,6 +828,32 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessJustifiedTextEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(justifiedTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(justifiedDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
+	if os.Getenv(subprocessAlignmentRoundingEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(alignmentRoundingTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(alignmentRoundingDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	// Story 4.7's ELEVENTH..FOURTEENTH selectors: the Customer Account
 	// Statement at 1, 5, 20 and 50 pages. Four selectors rather than one
 	// parameterised selector because matrixDocuments' capture contract is
@@ -866,6 +892,22 @@ const subprocessMandatoryBreakEnvVar = "FOLIO_SUBPROCESS_RENDER_MANDATORYBREAK"
 // needed one: a golden recorded from one process pins whatever that
 // process happened to do.
 const subprocessLineSpacingEnvVar = "FOLIO_SUBPROCESS_RENDER_LINESPACING"
+
+// subprocessJustifiedTextEnvVar is Story 7.3's selector, rendering
+// fixtures/justified-text/ — the first document in this repository that
+// is justified at all, and the first declaring format version 2.0 — in a
+// FRESH process, for the same reason line-spacing needed one: a golden
+// recorded from one process pins whatever that process happened to do.
+const subprocessJustifiedTextEnvVar = "FOLIO_SUBPROCESS_RENDER_JUSTIFIEDTEXT"
+
+// subprocessAlignmentRoundingEnvVar is Story 7.3's second selector,
+// rendering fixtures/alignment-rounding/ — DW-24's closing document, the
+// first that declares `align: "center"` or `valign` at all and therefore
+// the first that reaches any branch halving a slack with
+// geom.ScaleRound. It is the one document in the corpus whose whole
+// reason to exist is a rounding rule, which is why running it on every
+// target is not a formality.
+const subprocessAlignmentRoundingEnvVar = "FOLIO_SUBPROCESS_RENDER_ALIGNMENTROUNDING"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

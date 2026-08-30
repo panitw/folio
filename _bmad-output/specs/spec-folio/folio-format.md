@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `1.1` if any style sets `lineSpacing` or `color`, `1.0` otherwise — and saving raises it only when such content is introduced, never lowers it, and never stamps the library's own ceiling on a document that does not need it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. The three coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -66,9 +66,19 @@ Top-level keys appear sorted, as does every object in the file — that is the s
 
 > A MINOR increment may add **new optional keys** only. It may **not** change the meaning of an
 > existing key, and it may **not** extend a closed set of legal values (element `type`, `locale`,
-> `align`, `valign`, `columns[].footer`, `border.edges`, `page.orientation`, `page.size`).
+> `style.align`, `columns[].align`, `valign`, `columns[].footer`, `border.edges`,
+> `page.orientation`, `page.size`).
 > Extending a closed set is a **MAJOR** change, because every existing library validates those
 > sets as load errors.
+
+> **This has happened once. `style.align` gained `justify` (Story 7.3, FR47), and the format is
+> therefore at `2.0`.** The alternative — a separate additive `style.justified` boolean, which a
+> MINOR could have carried — was rejected deliberately: an older reader would have ignored the
+> unknown key and drawn the paragraph ragged while believing it had rendered the document
+> correctly, which is precisely the silently-wrong render the closed-set rule exists to prevent. A
+> `2.0` document is *unreadable* to a `1.x` reader, and that is the honest outcome. Note that
+> `align` is now **two** closed sets, not one: `columns[].align` keeps exactly `left`, `center`,
+> `right`, and a justified table cell remains a separate scope decision that has not been taken.
 
 ## `page`
 
@@ -242,7 +252,7 @@ designer and the engine disagree.
 | `bind` | The collection path, suffixed `[]`. |
 | `as` | The row-scope alias. Optional; defaults to `row`. Inside the table, `<alias>.field` is the current row; unqualified paths still resolve from the document root (AD-11). |
 | `headerHeight` | Height of the repeated header row, in points. Accounted for on **every** continuation page. |
-| `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. |
+| `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. `columns[].align` is its **own** closed set — `left` · `center` · `right` — and does **not** admit `style.align`'s fourth value `justify` (Story 7.3, D-7.3.1). Justified table cells are a separate scope decision, and the two sets are separate declarations so that extending one cannot legalise the other by accident. |
 | `headerStyle` | *Optional.* A `Style` block (same vocabulary as an element's own `style`, below) governing the header row ONLY — never a data row. A field the header style leaves absent falls back to the table's own `style` for that field, then to that field's documented default (Story 4.1). `columns[].align` still wins over both for that column's own header cell (see `style`, below). |
 | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
 | `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 3.2, this derivation runs at load time** (`folio.ParseTemplate`) and the derived value is resolved alongside the document, never written back into it — a document that omits `footerOf` still serializes without it. **As of Story 4.5, the aggregate is computed** (`sum`/`count`/`avg`) and can be formatted (`formatNumber`), then rendered into the footer cell through the same expression evaluator used by ordinary bindings. Story 3.6 supplies the diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape). |
@@ -316,7 +326,7 @@ Every field optional; omitted fields inherit the documented default.
 | `fontSize` | `10` |
 | `bold`, `italic` | `false` |
 | `lineSpacing` | absent — the leading the declared font chain itself rules. A ratio scaling the baseline-to-baseline advance, and **only** that: the ascent above the first baseline and the descent below the last are untouched, so the ratio never re-measures a line, and a component's siblings never move. Under the default `valign` (`top`) the first baseline therefore stays exactly where it was. Note the one place the ratio is still visible in a first line's position: `valign: middle`/`bottom` seat the whole packed block inside the declared `height`, and a ratio makes that block taller, so the block is re-seated and its first baseline moves — measured at 11pt over two lines, `1.5` lifts a `bottom`-aligned first baseline by 7.491pt. That is `valign` doing its job on a taller block, not the ratio touching the first line. An exact decimal of at most three places, between `0.001` and `1000.0` inclusive; anything outside that, or a fourth decimal place, is a located load error naming the component — never a silent clamp. Values below `1` are legal and genuinely tight: one line's letters may reach into the line below, which is what tight leading is and what the page draws. |
-| `align` | `left` · also `center`, `right` |
+| `align` | `left` · also `center`, `right`, `justify` — **`justify` is style-only** (Story 7.3, FR47); `columns[].align` keeps the three-value set above. `justify` flushes both edges by distributing the line's leftover width across its interior break opportunities, in whole millipoints: every gap receives `slack / gaps` and the first `slack mod gaps` gaps *in reading order* each receive one more, so the distributed amounts sum to the slack exactly and the last piece's right edge meets the declared `width` exactly. Three independent conditions leave a line ragged at the element's own start edge: it is the **last line** of the element; it was ended by a **mandatory break** the author typed; or it has **no interior break opportunity** to place slack in (an atomic unknown Thai run offers none). An element with no declared `width` has no box to justify to, and a line that meets or overflows its width has no slack — FR44's clip-and-warn applies unchanged. Declaring `justify` anywhere raises the document to version `2.0`. |
 | `valign` | `top` · also `middle`, `bottom` |
 | `padding` | `0` on all four edges |
 | `border` | absent — no border drawn |
@@ -340,7 +350,8 @@ placeholder", nothing broader. The covered set of fields is derived from the doc
 build time (every string-valued field of this shape on `Style`, `Border`, `TableExt` and
 `Column`, minus a short, individually-justified exclusion list for fields that are identifiers or
 closed enums rather than appearance properties — e.g. a column's own `align`, already governed by
-its closed left/center/right set) rather than maintained as a second, hand-written list that can
+its own closed `left`/`center`/`right` set, and a style's `align`, governed by the separate
+four-value set that adds `justify`) rather than maintained as a second, hand-written list that can
 silently drift from it.
 
 ## `assets`

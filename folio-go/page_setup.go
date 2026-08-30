@@ -482,9 +482,28 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 				}
 				lineX := element.X + textAlignOffset(align, boxWidth, line.width)
-				placed, err := positionSegments(segs, line.from, line.to, lineX, top, fontSize, vm.FirstBaseline, nil)
-				if err != nil {
-					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				// THE IDENTICAL BRANCH render.go's line loop carries,
+				// from the identical shared rule (Story 7.3): the
+				// canvas shows the word positions the PDF prints, and
+				// it gets them by consuming engine-computed offsets —
+				// never by asking the browser to justify, which
+				// canvas-authority-contract.test.ts bans across every
+				// production, unit and e2e source.
+				var placed []textRunSource
+				if pieces := justifiedLinePieces(align, line, i, len(lines), segs, ops, fontSize, boxWidth); pieces != nil {
+					for _, piece := range pieces {
+						pieceRuns, pieceErr := positionSegments(segs, piece.from, piece.to, element.X+piece.offset, top, fontSize, vm.FirstBaseline, nil)
+						if pieceErr != nil {
+							return fmt.Errorf("folio: canvas text element %s: %w", element.ID, pieceErr)
+						}
+						placed = append(placed, pieceRuns...)
+					}
+				} else {
+					var perr error
+					placed, perr = positionSegments(segs, line.from, line.to, lineX, top, fontSize, vm.FirstBaseline, nil)
+					if perr != nil {
+						return fmt.Errorf("folio: canvas text element %s: %w", element.ID, perr)
+					}
 				}
 				baseline, err := canvasDerivedSum(top, vm.FirstBaseline)
 				if err != nil {

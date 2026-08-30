@@ -1053,6 +1053,19 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 				if clear {
 					st.Align = template.Presence[string]{}
 				} else {
+					// Story 7.3. This arm set style.align to WHATEVER
+					// STRING ARRIVED — pre-existing, and harmless only
+					// while one closed set served both vocabularies.
+					// With two live it is the one remaining place they
+					// could be conflated, so it validates through the
+					// STYLE set's own exported predicate, and names the
+					// legal values from that set's ordered slice rather
+					// than from a literal restating it. The COLUMN arm
+					// (updateTableColumn, above) keeps its own triple
+					// and still refuses "justify".
+					if !template.IsStyleAlign(text) {
+						return fmt.Errorf("align must be one of %s", strings.Join(template.StyleAlignTokens, ", "))
+					}
 					st.Align = template.Presence[string]{Set: true, Value: text}
 				}
 			case "valign":

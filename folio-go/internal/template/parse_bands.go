@@ -396,8 +396,12 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 		if err != nil {
 			return Column{}, newLoadError("align", string(id), string(alignRaw), "must be a string: "+err.Error())
 		}
-		if !closedAligns[s] {
-			return Column{}, newLoadError("align", string(id), s, "not one of the closed set left, center, right")
+		// THE COLUMN SET (Story 7.3, D-7.3.1): exactly left, center,
+		// right. `justify` is a STYLE value and never a column one, and
+		// the message is derived from ColumnAlignTokens so it can never
+		// name a value this check does not actually admit.
+		if !closedColumnAligns[s] {
+			return Column{}, newLoadError("align", string(id), s, closedSetMessage(ColumnAlignTokens))
 		}
 		col.Align = present(s)
 	}
@@ -528,8 +532,10 @@ func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Sty
 		if err != nil {
 			return Style{}, newLoadError(fieldPrefix+".align", elementID, string(r), "must be a string: "+err.Error())
 		}
-		if !closedAligns[s] {
-			return Style{}, newLoadError(fieldPrefix+".align", elementID, s, "not one of the closed set left, center, right")
+		// THE STYLE SET (Story 7.3, D-7.3.1): the column triple plus
+		// `justify` (FR47). Same derived message, from the other slice.
+		if !closedStyleAligns[s] {
+			return Style{}, newLoadError(fieldPrefix+".align", elementID, s, closedSetMessage(StyleAlignTokens))
 		}
 		st.Align = present(s)
 	}

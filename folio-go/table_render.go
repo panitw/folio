@@ -703,7 +703,15 @@ func collectBandTableRuns(
 				textX = contentX + contentW - measured
 			case "center":
 				textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-			default: // "left" and any value the load-time closed-set check already rejected otherwise
+			// "left" is the header cell's start edge — and so is "justify".
+			// style.align and headerStyle.align both admit "justify" (it
+			// raises the document to 2.0), and it cascades into a header
+			// cell through alignFallback, but the contract forbids
+			// IMPLEMENTING justified table cells, so a justified table's
+			// header labels are drawn at the start edge. That is a
+			// deliberate, tracked scope boundary, not an oversight. Any
+			// OTHER value the load-time closed-set check already rejected.
+			default:
 				textX = contentX
 			}
 
@@ -1036,7 +1044,15 @@ func collectBandTableRuns(
 							textX = contentX + contentW - measured
 						case "center":
 							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-						default: // "left"
+						// "left" is the cell's start edge — and so is
+						// "justify", which style.align admits and cascades
+						// into a body cell through alignFallback. The
+						// contract forbids implementing justified table
+						// cells, so a justified table draws at the start
+						// edge: a deliberate, tracked scope boundary, not an
+						// oversight. Any OTHER value the load-time
+						// closed-set check already rejected.
+						default:
 							textX = contentX
 						}
 
@@ -1212,7 +1228,15 @@ func collectBandTableRuns(
 							textX = contentX + contentW - measured
 						case "center":
 							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-						default: // "left"
+						// "left" is the cell's start edge — and so is
+						// "justify", which style.align admits and cascades
+						// into a footer cell through alignFallback. The
+						// contract forbids implementing justified table
+						// cells, so a justified table draws at the start
+						// edge: a deliberate, tracked scope boundary, not an
+						// oversight. Any OTHER value the load-time
+						// closed-set check already rejected.
+						default:
 							textX = contentX
 						}
 

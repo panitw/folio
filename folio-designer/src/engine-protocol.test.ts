@@ -61,6 +61,33 @@ describe('canvas projection protocol guard', () => {
     expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { ...textPaint, lines: [{ ...textPaint.lines[0], fragments: [{ text: 'engine line', x: 0, fontMetrics: 1 }] }] } }] })).toBeUndefined()
   })
 
+  // Story 7.3 / FR47. The alignment vocabulary is TWO closed sets on this
+  // boundary as well as in Go: a COMPONENT may be justified, a table
+  // COLUMN may not. The validator gates the projection — an unrecognised
+  // value drops the whole response — so a justified document that this
+  // check refused would blank the entire canvas rather than merely lose
+  // its alignment.
+  it('admits a justified component, refuses a justified table column, and accepts word-grained fragments', () => {
+    const response = (projection: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: projection } })
+    const emptyPaint = { overflow: false, lines: [] }
+    const component = (align: string) => ({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, align, textPaint: emptyPaint }] })
+    for (const align of ['left', 'center', 'right', 'justify']) expect(response(component(align))).toBeDefined()
+    for (const align of ['middle', 'JUSTIFY', 'flush', '']) expect(response(component(align))).toBeUndefined()
+
+    // The COLUMN set stays the triple, on its own projection.
+    const columns = (align: string) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'rows[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } })
+    expect(columns('right')).toBeDefined()
+    expect(columns('justify')).toBeUndefined()
+
+    // A justified line arrives as SEVERAL fragments with ascending x — the
+    // engine positions each word; the browser never justifies anything.
+    const wordGrained = { overflow: false, lines: [{ top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'one', x: 0 }, { text: ' two', x: 4 }, { text: ' three', x: 8 }] }] }
+    expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, align: 'justify', textPaint: wordGrained }] })).toBeDefined()
+    // …and a fragment placed outside the component's own box is still
+    // refused, word-grained or not.
+    expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, align: 'justify', textPaint: { ...wordGrained, lines: [{ ...wordGrained.lines[0], fragments: [...wordGrained.lines[0].fragments, { text: 'far', x: 11 }] }] } }] })).toBeUndefined()
+  })
+
   it('admits one bounded text-binding paint label but rejects an editable projection', () => {
     const response = (component: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [component] } } })
     const text = { id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, binding: 'customer.name', textPaint: { overflow: false, lines: [] } }

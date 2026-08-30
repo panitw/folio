@@ -1309,3 +1309,60 @@ func TestLineFeedInAColumnLabelStillWarns(t *testing.T) {
 	}
 	t.Logf("label path: %d run(s) on %d baseline, %d missing-glyph Warning — the break is neither taken nor silently swallowed", labelRuns, len(baselines), n)
 }
+
+// justifyCascadeColumns declares no column-level `align` at all, so
+// every cell — header, body and footer — takes the table's cascaded
+// alignFallback: headerStyle.align for the header, style.align for the
+// rest.
+const justifyCascadeColumns = `[
+  {"id": "e2", "label": "Date", "width": 140, "bind": "{{row.a}}"},
+  {"id": "e3", "label": "Amount", "width": 160, "bind": "{{row.b}}", "footer": "count"}
+]`
+
+// TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge pins the scope
+// boundary the three `default:` arms in table_render.go now name, and it
+// pins the CURRENT behaviour rather than a wished-for one.
+//
+// `justify` is admitted at style.align and headerStyle.align — the
+// contract REQUIRES it to load, and to raise the document to 2.0 — and
+// those two are exactly what a table cell without its own
+// `columns[].align` falls back to. So a cascaded `justify` really does
+// reach the header, body and footer align switches. None of them has a
+// justify arm, because the contract equally forbids implementing
+// justified table cells: they all take `default:` and draw at the
+// cell's start edge, which is where `left` draws.
+//
+// The assertion is therefore byte-identity against `left`, and the
+// `center` leg beside it is what stops that from passing vacuously: if
+// the cascade were being ignored altogether, centred would match too.
+func TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge(t *testing.T) {
+	const data = `{"items": [{"a": "Jan", "b": "7"}, {"a": "Feb", "b": "12"}]}`
+	render := func(align string) []byte {
+		t.Helper()
+		style := `{"fontFamily": "latin", "fontSize": 9, "align": "` + align + `"}`
+		doc := tableHeaderDocFull(style, style, justifyCascadeColumns, 20)
+		tpl, err := ParseTemplate([]byte(doc))
+		if err != nil {
+			t.Fatalf("ParseTemplate(align %q): %v", align, err)
+		}
+		res, err := Render(tpl, Data(data), nil, testShippedFontSet())
+		if err != nil {
+			t.Fatalf("Render(align %q): %v", align, err)
+		}
+		return res.Bytes
+	}
+
+	justified, left, centred := render("justify"), render("left"), render("center")
+	if sha256Hex(justified) != sha256Hex(left) {
+		t.Errorf(
+			"a table whose cascaded align is \"justify\" rendered differently from the same table at \"left\" "+
+				"(%s vs %s) — justified TABLE CELLS are outside this story's contract, so every cell must take "+
+				"the `default:` arm and draw at the start edge",
+			sha256Hex(justified), sha256Hex(left),
+		)
+	}
+	if sha256Hex(centred) == sha256Hex(left) {
+		t.Fatal("the centred table renders byte-identically to the left-aligned one, so the cascade is not reaching the cell align switches at all and the identity above is vacuous")
+	}
+	t.Logf("cascaded justify == left (%s); centred differs (%s)", sha256Hex(left)[:12], sha256Hex(centred)[:12])
+}
