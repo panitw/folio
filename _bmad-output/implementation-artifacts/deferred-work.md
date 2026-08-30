@@ -2587,3 +2587,67 @@ tie must be widened from "every family the rule asks for is declared" to "the fa
 are the ones the engine measured with". Note the ORDER constraint that fix already discovered: the stack
 must follow the engine's chain order rather than borrow `tokens.css`'s `--font-page`, which puts Thai
 first and would hand Latin text Noto Sans Thai's Latin glyphs.
+
+---
+
+### DW-36 — the designer's live drag/resize clamp still bounds Y by band height in ALL THREE bands, so Story 7.5's lift is reachable by command and not by hand
+- **Deferred by:** Story 7.5's build (2026-08-31); filed into this register at the story's close, where
+  it was found recorded only in the spec's frontmatter
+- **Owner:** **Story 7.6's plan gate** — a gate, never an event, per D-000.73. 7.6 is also the story that
+  draws the later sheets a drag past page one would target
+- **Severity:** MEDIUM — the engine and the protocol now accept the placement, so the product is
+  internally inconsistent until this closes
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/resize-anchor.ts:29` `proposedBounds` clamps `y` to
+`limitHeight - originalHeight` (`:34-35`) and a south resize to `limitHeight` (`:52`).
+`folio-designer/src/App.tsx:701` fills `DragLimit` from `{ width: band.width, height: band.height }` for
+**every** band, and `DragLimit` carries **no band name**, so the helper cannot tell the content band from
+a repeating one **even in principle**. `resize-anchor.test.ts:46,53` still pins the clamp and is
+unmodified by Story 7.5.
+
+**Why 7.5 did not close it.** The story is scoped to the command layer and the projection-admission
+mirror, and the clamp's own header (`resize-anchor.ts:9-18`) declares it a UX affordance rather than a
+second authority — so it is not an authority bug. Design Notes judgment 3 assigns it to 7.6 explicitly:
+there are no later sheets to drag onto until 7.6 draws them.
+
+**What this means for anyone reading 7.5 as shipped.** A component CAN be placed windows down the column
+by command, survives the canonical bytes, and is admitted by the browser protocol. It CANNOT be dragged
+there. **Do not read Story 7.5 as "done in the UI".** Closing this requires giving `DragLimit` the band's
+identity and consulting the same `bandsCappingVertically` list the Go validator and `engine-protocol.ts`
+now share — a third consumer of the tie, not a fourth spelling of it.
+
+**Also for 7.6's plan gate, recorded here because 7.6 is the owner of both.** A content component
+**taller than one window** — which Story 7.5 newly permits — makes `layout.Paginate` return
+`*OverflowError`, which Ruling C degrades to a reported count of **one window**. 7.6 would therefore draw
+**one sheet** for such a document. That is a floor, not a lie, and it is deliberate: the settled
+alternative was a blank canvas with no attributable error. But 7.6 must know it before it draws, because
+the symptom reads as a missing page rather than as a degradation.
+
+---
+
+### DW-37 — `contentWindowCount` has no upper bound, and the non-text content extent is an unguarded sum
+- **Deferred by:** Story 7.5's build (2026-08-31); filed into this register at the story's close, where
+  it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 7's retrospective, or the plan gate of the next story that changes canvas geometry
+  bounds (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** LOW — not reachable through any shipped template, and not reachable at all before Story
+  7.5 lifted the cap
+- **Status:** OPEN
+
+**The gap.** After the lift, the only remaining ceiling on a content element's Y is
+`MaxCanvasMillipoints`. Text line tops go through `canvasLineTop`'s JS-safe guard, but the **non-text**
+branch of `addCanvasWindowCount` (`folio-go/page_setup.go`) builds `Bottom: element.Y + height` with a
+**raw `+`**, and `folio-designer/src/engine-protocol.ts` requires only `Number.isSafeInteger` and `> 0`
+of the resulting count. A component placed at the JavaScript-safe ceiling yields a count near 2.5e10 that
+the browser guard admits and Story 7.6 would try to draw one sheet per window of.
+
+**Why it is low, and why it is filed anyway.** Nothing else on the projection is uncapped, and no shipped
+template comes near it. It is filed because Story 7.5 is what made the input reachable: the same shape as
+DW-25's own lesson, where a bound that was safe only because nothing could reach it stopped being safe
+when something could.
+
+**This is the same axis as DW-26** (`style.fontSize` has no range check and is the other operand of the
+one product that can overflow `geom.ScaleRound`). Whoever closes either should look at both: the question
+"which canvas geometry inputs are bounded, and by what" has now been asked twice from two directions and
+answered piecemeal each time.
