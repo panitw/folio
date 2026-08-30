@@ -556,6 +556,18 @@ func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Sty
 			st.Background = present(s)
 		}
 	}
+	if r, ok := obj["color"]; ok {
+		consumed["color"] = true
+		if rawIsNull(r) {
+			st.Color = presentNull[string]()
+		} else {
+			s, err := decodeStringRaw(r)
+			if err != nil {
+				return Style{}, newLoadError(fieldPrefix+".color", elementID, string(r), "must be a string: "+err.Error())
+			}
+			st.Color = present(s)
+		}
+	}
 	if r, ok := obj["bold"]; ok {
 		consumed["bold"] = true
 		b, err := decodeBoolRaw(r)

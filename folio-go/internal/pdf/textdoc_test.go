@@ -219,3 +219,38 @@ func TestAssetKeyEscapeIsIdentity(t *testing.T) {
 		t.Fatalf("pdfNameEscape(%q) = %q, want the identity (AC18a)", key, got)
 	}
 }
+
+// TestColouredRunBracketsItsInk is Story 10.1's byte-level assertion: a
+// run carrying an ink emits a fill-colour operator inside its own q/Q
+// bracket, so the colour cannot leak into whatever draws next; a run
+// carrying none emits no colour operator at all, which is what leaves
+// every document written before style.color existed byte-identical.
+func TestColouredRunBracketsItsInk(t *testing.T) {
+	faces := map[string]EmbeddedFace{"Body": fakeFace("Body")}
+	run := pagemodel.TextRun{Face: "Body", SourceText: "A", FontSize: 12000, X: 1000, Y: 2000, Glyphs: []pagemodel.ShapedGlyph{{CID: 1, XAdvance: 500}}}
+
+	plain, err := buildTextContentStream(pagemodel.Page{Width: 600000, Height: 800000, Runs: []pagemodel.TextRun{run}}, faces)
+	if err != nil {
+		t.Fatalf("buildTextContentStream: %v", err)
+	}
+	if bytes.Contains(plain, []byte(" rg")) || bytes.Contains(plain, []byte("q\n")) {
+		t.Errorf("an uncoloured run emitted a colour operator or a bracket: %q", plain)
+	}
+
+	run.HasColor, run.Color = true, pagemodel.Color{R: 255, G: 0, B: 0}
+	coloured, err := buildTextContentStream(pagemodel.Page{Width: 600000, Height: 800000, Runs: []pagemodel.TextRun{run}}, faces)
+	if err != nil {
+		t.Fatalf("buildTextContentStream (coloured): %v", err)
+	}
+	if !bytes.HasPrefix(coloured, []byte("q\n1 0 0 rg\nBT\n")) {
+		t.Errorf("a coloured run must set its fill inside its own bracket, before BT, got %q", coloured)
+	}
+	if !bytes.HasSuffix(coloured, []byte("ET\nQ\n")) {
+		t.Errorf("a coloured run must close its bracket after ET, got %q", coloured)
+	}
+	// The ONE difference between the two streams is the bracket and the
+	// operator: the text itself is emitted identically.
+	if got := bytes.ReplaceAll(bytes.ReplaceAll(coloured, []byte("q\n1 0 0 rg\n"), nil), []byte("ET\nQ\n"), []byte("ET\n")); !bytes.Equal(got, plain) {
+		t.Errorf("colouring a run changed more than its ink:\n coloured-minus-ink %q\n plain              %q", got, plain)
+	}
+}

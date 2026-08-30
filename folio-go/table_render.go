@@ -277,6 +277,10 @@ type resolvedHeaderStyle struct {
 	hasBackground bool
 	background    string
 
+	// Story 10.1: the header row's ink, cascaded exactly as its
+	// background is — headerStyle.color wins over style.color.
+	inkStyle template.Style
+
 	padding template.Padding
 
 	valign string // "top", "middle" or "bottom" — never empty
@@ -331,6 +335,13 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 	}
 
 	switch {
+	case hasHeader && header.Color.Set:
+		r.inkStyle.Color = header.Color
+	case base.Color.Set:
+		r.inkStyle.Color = base.Color
+	}
+
+	switch {
 	case hasHeader && header.Padding.Set && !header.Padding.Null:
 		r.padding = header.Padding.Value
 	case base.Padding.Set && !base.Padding.Null:
@@ -376,6 +387,10 @@ type resolvedBodyStyle struct {
 	hasBackground bool
 	background    string
 
+	// Story 10.1: a data cell's ink, from the table's own style alone —
+	// the same arm every other body-cell property cascades through.
+	inkStyle template.Style
+
 	padding template.Padding
 
 	valign string // "top", "middle" or "bottom" — never empty
@@ -398,6 +413,9 @@ func resolveBodyStyle(el template.Element) resolvedBodyStyle {
 	}
 	if base.Background.Set && !base.Background.Null {
 		r.hasBackground, r.background = true, base.Background.Value
+	}
+	if base.Color.Set {
+		r.inkStyle.Color = base.Color
 	}
 	if base.Padding.Set && !base.Padding.Null {
 		r.padding = base.Padding.Value
@@ -688,6 +706,10 @@ func collectBandTableRuns(
 			}
 
 			overflows := measured > contentW
+			headerInk, hasHeaderInk, inkErr := styleInk(hs.inkStyle, string(el.ID), "headerStyle.color/style.color")
+			if inkErr != nil {
+				return nil, nil, nil, inkErr
+			}
 			for j := range placed {
 				placed[j].band = bandIndex
 				placed[j].elementID = string(el.ID)
@@ -695,6 +717,10 @@ func collectBandTableRuns(
 				placed[j].itemTop = tableTop
 				placed[j].itemBottom = tableBottom
 				placed[j].isHeaderLabel = true
+				if hasHeaderInk {
+					placed[j].hasColor = true
+					placed[j].color = headerInk
+				}
 				if overflows {
 					// AC2: the wide-label render's header text is
 					// clipped, per its declared (padded) box — it
@@ -758,6 +784,14 @@ func collectBandTableRuns(
 				bodyFontSize = el.Style.Value.FontSize.Value
 			}
 			bs := resolveBodyStyle(el)
+			// Story 10.1: every data cell's ink, and the footer row's,
+			// resolved ONCE per table from the same cascade bs already
+			// carries — the discipline every other body-cell property
+			// here follows (R2: cascade once, reuse verbatim).
+			bodyInk, hasBodyInk, bodyInkErr := styleInk(bs.inkStyle, string(el.ID), "style.color")
+			if bodyInkErr != nil {
+				return nil, nil, nil, bodyInkErr
+			}
 			padTopB, padRightB, padBottomB, padLeftB := paddingEdges(bs.padding)
 
 			// R2: ONE vertical model for the WHOLE table's body, computed
@@ -997,6 +1031,10 @@ func collectBandTableRuns(
 							placed[j].itemBottom = lineBottom
 							placed[j].isTableRowLine = true
 							placed[j].rowIndex = rowIdx
+							if hasBodyInk {
+								placed[j].hasColor = true
+								placed[j].color = bodyInk
+							}
 							if cr.clip {
 								placed[j].clipToBox = true
 								placed[j].clipX = cr.clipX
@@ -1168,6 +1206,10 @@ func collectBandTableRuns(
 							placed[j].itemTop = lineTopY
 							placed[j].itemBottom = lineBottom
 							placed[j].isFooterLine = true
+							if hasBodyInk {
+								placed[j].hasColor = true
+								placed[j].color = bodyInk
+							}
 							if cr.clip {
 								placed[j].clipToBox = true
 								placed[j].clipX = cr.clipX

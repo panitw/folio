@@ -275,6 +275,11 @@ func checkStyleHasNoPlaceholders(st template.Style, elementID template.ElementID
 			return err
 		}
 	}
+	if st.Color.Set && !st.Color.Null {
+		if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".color", st.Color.Value); err != nil {
+			return err
+		}
+	}
 	if st.FontFamily.Set && !st.FontFamily.Null {
 		if err := checkStyleStringHasNoPlaceholder(elementID, fieldPrefix+".fontFamily", st.FontFamily.Value); err != nil {
 			return err

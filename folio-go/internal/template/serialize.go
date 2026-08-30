@@ -345,6 +345,13 @@ func writeStyle(dst []byte, depth int, st Style) []byte {
 			fields = append(fields, kv{"background", writeString(st.Background.Value)})
 		}
 	}
+	if st.Color.Set {
+		if st.Color.Null {
+			fields = append(fields, kv{"color", writeNull()})
+		} else {
+			fields = append(fields, kv{"color", writeString(st.Color.Value)})
+		}
+	}
 	if st.Bold.Set {
 		fields = append(fields, kv{"bold", writeBool(st.Bold.Value)})
 	}

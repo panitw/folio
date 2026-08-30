@@ -28,6 +28,8 @@
 package folio
 
 import (
+	"fmt"
+
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/layout"
 	"github.com/panitw/folio/folio-go/internal/pagemodel"
@@ -134,4 +136,36 @@ func declaredBox(el template.Element) (w, h geom.Length, ok bool) {
 		return 0, 0, false
 	}
 	return el.Width.Value, el.Height.Value, true
+}
+
+// elementInk resolves a style block's `color` into page-model channels:
+// Story 10.1's text ink, the one style colour that paints glyphs rather
+// than a rectangle. It is validated at RENDER, through the module's one
+// hex parser, exactly as style.background and style.border.color already
+// are (buildCellRectWithBackgroundField) — the format checks a colour
+// string for a placeholder at load and for nothing else, by design.
+//
+// A style that is absent, null, or carries no `color` returns hasInk
+// false, and every producer then emits no colour operator at all: the
+// state every document rendered in before this field existed.
+func elementInk(style template.Presence[template.Style], elementID, fieldPath string) (pagemodel.Color, bool, error) {
+	if !style.Set || style.Null {
+		return pagemodel.Color{}, false, nil
+	}
+	return styleInk(style.Value, elementID, fieldPath)
+}
+
+// styleInk is elementInk over an already-resolved style block — the form
+// a table's cascade (resolveHeaderStyle / resolveBodyStyle) hands over,
+// where the Presence wrapper has already been unwrapped.
+func styleInk(st template.Style, elementID, fieldPath string) (pagemodel.Color, bool, error) {
+	if !st.Color.Set || st.Color.Null {
+		return pagemodel.Color{}, false, nil
+	}
+	c, ok := parseHexColor(st.Color.Value)
+	if !ok {
+		return pagemodel.Color{}, false, newRenderError(DiagCodeStyleColorInvalid, elementID, "",
+			fmt.Errorf("folio: Render: element %s: %s %q is not a #RRGGBB colour", elementID, fieldPath, st.Color.Value))
+	}
+	return c, true, nil
 }

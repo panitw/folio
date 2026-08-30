@@ -801,6 +801,7 @@ func TestStyleStringFieldPopulationMatchesSchema(t *testing.T) {
 	wantChecked := map[string]bool{
 		"Style.Align":               true,
 		"Style.Background":          true,
+		"Style.Color":               true,
 		"Style.FontFamily":          true,
 		"Style.Valign":              true,
 		"Border.Color":              true,

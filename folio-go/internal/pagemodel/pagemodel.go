@@ -68,6 +68,16 @@ type TextRun struct {
 	X, Y     geom.Length
 	FontSize geom.Length
 
+	// HasColor / Color are Story 10.1's ink: the fill colour this run's
+	// glyphs are painted in. Absent (HasColor false) means the renderer
+	// emits no colour operator at all and the run takes the PDF's own
+	// initial fill, black — the state every document produced before the
+	// field existed, which is what keeps them byte-identical. Spelled as
+	// a bool plus a value, never a *Color, for the reason Rect's own
+	// HasFill/HasStroke are: a pointer invites a float and an alias.
+	HasColor bool
+	Color    Color
+
 	// BaselineOffset is the distance DOWNWARD from this run's top-left
 	// corner (X/Y above) to its BASELINE — the ruled vertical model's
 	// first span: max(hhea ascent) over the element's DECLARED font

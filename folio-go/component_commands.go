@@ -836,7 +836,7 @@ func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessag
 func propertyPath(changes map[string]json.RawMessage) string {
 	// This is a fixed command vocabulary, so use its canonical order rather
 	// than ranging a map (diagnostic location must be repeatable too).
-	for _, key := range []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+	for _, key := range []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
 		if _, ok := changes[key]; ok {
 			return key
 		}
@@ -893,7 +893,7 @@ func styleFor(element *template.Element) *template.Style {
 
 func applyPropertyChanges(t *Template, element *template.Element, changes map[string]json.RawMessage) error {
 	allowed := map[string]bool{"x": true, "y": true, "visibleIf": true}
-	propertyOrder := []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
+	propertyOrder := []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
 	if element.Type != template.ElementTable {
 		allowed["width"], allowed["height"] = true, true
 	}
@@ -907,7 +907,10 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 		}
 	}
 	if element.Type == template.ElementText || element.Type == template.ElementTable {
-		for _, key := range []string{"fontFamily", "fontSize", "bold", "italic", "align", "valign"} {
+		// Story 10.1: `color` is the ink text prints in, so it is offered
+		// exactly where text is — never on a rect, line or image, which
+		// carry no glyphs for it to colour.
+		for _, key := range []string{"fontFamily", "fontSize", "bold", "italic", "align", "valign", "color"} {
 			allowed[key] = true
 		}
 	}
@@ -993,7 +996,7 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					*target = template.Presence[geom.Length]{Set: true, Value: length}
 				}
 			}
-		case "value", "expression", "visibleIf", "fontFamily", "align", "valign", "background", "borderColor":
+		case "value", "expression", "visibleIf", "fontFamily", "align", "valign", "color", "background", "borderColor":
 			var text string
 			if !clear && !setNull {
 				text, err = propertyString(value)
@@ -1061,6 +1064,17 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					st.Valign = template.Presence[string]{}
 				} else {
 					st.Valign = template.Presence[string]{Set: true, Value: text}
+				}
+			case "color":
+				st := styleFor(element)
+				if clear {
+					st.Color = template.Presence[string]{}
+				} else if setNull {
+					st.Color = template.Presence[string]{Set: true, Null: true}
+				} else if !validPropertyColor(text) {
+					return fmt.Errorf("color must be a #RRGGBB colour")
+				} else {
+					st.Color = template.Presence[string]{Set: true, Value: text}
 				}
 			case "background":
 				st := styleFor(element)
@@ -1164,7 +1178,7 @@ func cleanupEmptyStyle(element *template.Element) {
 			style.Padding = template.Presence[template.Padding]{}
 		}
 	}
-	if !style.Align.Set && !style.Background.Set && !style.Bold.Set && !style.Italic.Set && !style.Border.Set && !style.FontFamily.Set && !style.FontSize.Set && !style.Padding.Set && !style.Valign.Set && len(style.Extra) == 0 {
+	if !style.Align.Set && !style.Background.Set && !style.Bold.Set && !style.Color.Set && !style.Italic.Set && !style.Border.Set && !style.FontFamily.Set && !style.FontSize.Set && !style.Padding.Set && !style.Valign.Set && len(style.Extra) == 0 {
 		element.Style = template.Presence[template.Style]{}
 	}
 }

@@ -300,6 +300,7 @@ Every field optional; omitted fields inherit the documented default.
   "background": "#F1F4F7",
   "bold": false,
   "border": { "color": "#000000", "edges": ["bottom", "top"], "width": 0.5 },
+  "color": "#1B2A4A",
   "fontFamily": "body",
   "fontSize": 9,
   "italic": false,
@@ -321,12 +322,13 @@ Every field optional; omitted fields inherit the documented default.
 | `border.color` | `"#000000"` |
 | `border.edges` | all four; a subset draws only those edges |
 | `background` | absent — transparent |
+| `color` | absent — the PDF's own initial fill, black. The INK the element's text prints in, as against `background`, the box behind it. A table cascades it to its cells like every other cell property, and `headerStyle.color` wins for the header row. Declaring none emits no colour operator at all, so a document written before this field renders byte-identically. |
 
 There is no font default. An element with text and no `style.fontFamily` is a located error naming the element. A default was documented here from the format's first draft and never implemented; `fonts` is a mapping with no authored key order, so "the first key" was never well-defined. If a default is added later it will name its rule explicitly.
 
 Colours are `#RRGGBB`. There is no colour-by-data: conditional *visibility* is in scope,
 conditional *formatting* is not. As of Story 3.5, a `{{ }}` placeholder found inside any
-string-valued style field (`align`, `background`, `fontFamily`, `valign`, `border.color`,
+string-valued style field (`align`, `background`, `color`, `fontFamily`, `valign`, `border.color`,
 `border.edges`) — or in a table's own `altRowBackground` above, the format's one colour field
 outside `style` — is a **load error** naming the element and the field — a component's condition
 turns it on or off (`visibleIf`), it never changes how the component looks. This is not general

@@ -90,6 +90,7 @@ type CanvasComponent struct {
 	Align         *string           `json:"align,omitempty"`
 	Valign        *string           `json:"valign,omitempty"`
 	Background    *string           `json:"background,omitempty"`
+	Color         *string           `json:"color,omitempty"`
 	BorderWidth   *int64            `json:"borderWidth,omitempty"`
 	BorderColor   *string           `json:"borderColor,omitempty"`
 	BorderEdges   []string          `json:"borderEdges,omitempty"`
@@ -636,6 +637,12 @@ func applyCanvasStyle(component *CanvasComponent, elementType template.ElementTy
 	}
 	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Valign.Set && !style.Valign.Null {
 		component.Valign = stringPointer(style.Valign.Value)
+	}
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Color.Set && !style.Color.Null {
+		if len(style.Color.Value) > maxCanvasPropertyString {
+			return fmt.Errorf("folio: component color exceeds the projection bound")
+		}
+		component.Color = stringPointer(style.Color.Value)
 	}
 	if style.Background.Set && !style.Background.Null {
 		if len(style.Background.Value) > maxCanvasPropertyString {

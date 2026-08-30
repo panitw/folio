@@ -158,7 +158,14 @@ type textRunSource struct {
 	// PDF clip path restricted to the box's HORIZONTAL extent only — the
 	// vertical clip bound it uses is the full page, never anything
 	// derived from an element's declared height (AC3).
-	clipToBox        bool
+	clipToBox bool
+
+	// hasColor/color — Story 10.1's ink, resolved from the element's
+	// style.color once and stamped on every run the element produces,
+	// for the same reason clipToBox is: colour is a property of the
+	// ELEMENT, never of one line or one face segment within it.
+	hasColor         bool
+	color            pagemodel.Color
 	clipX, clipWidth geom.Length
 
 	// --- Story 4.2: DECISION-2's row identity, for Story 4.3 ---
@@ -850,6 +857,15 @@ func collectBandTextRuns(
 		// alignment, and one that overflows all draw exactly where they drew
 		// before this rule existed.
 		align, valign := elementAlignment(el)
+		// Story 10.1: the element's ink, resolved ONCE per element and
+		// validated here rather than at load — the same place and the
+		// same way style.background's colour is validated, through the
+		// module's one hex parser, so a malformed value is a located
+		// render error naming the element and the field.
+		ink, hasInk, inkErr := elementInk(el.Style, string(el.ID), "style.color")
+		if inkErr != nil {
+			return nil, nil, nil, inkErr
+		}
 		boxHeight := geom.Length(0)
 		if el.Height.Set && !el.Height.Null {
 			boxHeight = el.Height.Value
@@ -885,6 +901,10 @@ func collectBandTextRuns(
 					placed[j].clipToBox = true
 					placed[j].clipX = el.X
 					placed[j].clipWidth = boxWidth
+				}
+				if hasInk {
+					placed[j].hasColor = true
+					placed[j].color = ink
 				}
 				// Story 2.7 review, Blocker 1: ONE pendingPageSlot per
 				// {{page}} occurrence this run carries, not one per
@@ -2354,6 +2374,8 @@ func buildShapedPDFRuns(
 			Y:              r.y,
 			FontSize:       r.fontSize,
 			BaselineOffset: r.baselineOffset,
+			HasColor:       r.hasColor,
+			Color:          r.color,
 			ClipToBox:      r.clipToBox,
 			ClipX:          r.clipX,
 			ClipWidth:      r.clipWidth,

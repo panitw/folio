@@ -204,3 +204,16 @@ development_status:
   9-1-the-engine-paints-a-component-s-background-and-border: review
   9-2-line-and-rectangle-draw-in-the-designer-and-in-the-pdf: review
   epic-9-retrospective: optional
+
+  # Epic 10 added 2026-08-30 (post-MVP). Reported from the designer: there is no way to set
+  # a text element's colour. Traced — `style` carries no colour for text at all: `background`
+  # is the box, and pagemodel.TextRun and internal/pdf/textdoc.go never had an ink, so every
+  # document this engine ever produced is black. Adds ONE optional format field, style.color,
+  # carried end to end (model, parse, serialize, the schema-derived placeholder fence, the
+  # page model, the PDF text emitter, the table cascade, the property command, the projection,
+  # the TYPOGRAPHY control and the canvas paint). Absent-by-default and emitting nothing when
+  # absent, so the existing corpus hashes identically.
+  # NOT yet reviewed or retrospected; the story file is not written.
+  epic-10: in-progress
+  10-1-text-prints-in-a-declared-colour: review
+  epic-10-retrospective: optional

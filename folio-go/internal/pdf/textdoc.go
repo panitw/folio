@@ -820,6 +820,19 @@ func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) 
 			c = append(c, " re\nW n\n"...)
 		}
 
+		// Story 10.1: the run's own ink. Bracketed in q/Q — the same
+		// discipline rectdoc.go's fill and stroke halves use — so a
+		// coloured run never leaves its colour in the graphics state for
+		// whatever draws next. A run with no colour emits nothing here,
+		// so a document that declares none is byte-identical to the one
+		// this renderer produced before the field existed.
+		coloured := run.HasColor
+		if coloured {
+			c = append(c, "q\n"...)
+			c = appendColorChannels(c, run.Color)
+			c = append(c, " rg\n"...)
+		}
+
 		c = append(c, "BT\n/"...)
 		c = append(c, pdfNameEscape(run.Face)...)
 		c = append(c, ' ')
@@ -832,6 +845,9 @@ func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) 
 		c = append(c, body...)
 		c = append(c, "ET\n"...)
 
+		if coloured {
+			c = append(c, "Q\n"...)
+		}
 		if clipped {
 			c = append(c, "Q\n"...)
 		}

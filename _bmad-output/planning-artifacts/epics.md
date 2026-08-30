@@ -2607,3 +2607,62 @@ engine will paint, from the engine's own projection — never from a browser-sid
 **When** the value is committed
 **Then** the canvas keeps showing the engine's last accepted box, exactly as every other property
 already behaves
+
+## Epic 10: A component prints in the colour the author chose
+
+The inspector offers a font, a size, bold, italic and two alignments — and no way to say what colour
+the words are. That is not a missing control: `style` has no colour for text at all. `background` is
+the box behind the glyphs; nothing in the format, the page model or the PDF text emitter has ever
+carried the ink the glyphs themselves are painted in, so every document this engine has produced is
+black on whatever the box is.
+
+This epic adds one optional field, `style.color`, and carries it end to end. It is the format's
+third colour and it behaves like the other two: `#RRGGBB`, no colour-by-data, validated at render
+through the module's one hex parser. It is absent by default and emits no colour operator when
+absent, so every document written before it renders byte-identically — the same condition Epics 7
+and 8 hold themselves to.
+
+### Story 10.1: Text prints in a declared colour
+
+As a template author,
+I want to set the colour of a component's text,
+So that a heading, a total or a warning reads as what it is rather than as more black text.
+
+**Covers:** FR5 · AD-5, AD-21, AD-24
+
+**Acceptance Criteria:**
+
+**Given** a text element declaring `style.color`
+**When** the document renders
+**Then** every run that element produces is painted in that colour — every line and every face
+segment, because the colour is a property of the element and not of what was drawn
+
+**Given** a table declaring `style.color`, and optionally `headerStyle.color`
+**When** the document renders
+**Then** its cells take the ink through the same cascade every other cell property already uses, and
+`headerStyle.color` wins for the header row alone
+
+**Given** an element declaring no colour
+**When** the document renders
+**Then** no colour operator is emitted at all and the text takes the PDF's own initial fill, so the
+whole existing corpus hashes identically (AD-21)
+
+**Given** a coloured run
+**When** it is emitted into the content stream
+**Then** its colour is bracketed in `q`/`Q`, so it cannot leak into whatever draws next
+
+**Given** a `style.color` that is not `#RRGGBB`
+**When** the document renders
+**Then** it is a located render error naming the element and the field — the same treatment, through
+the same parser, that `style.background` already gets
+
+**Given** a `{{ }}` placeholder inside `style.color`
+**When** the template loads
+**Then** it is a load error, because conditional formatting is out of scope for every style field
+and the fence is derived from the schema rather than hand-listed
+
+**Given** a selected text or table component
+**When** the inspector is shown
+**Then** TYPOGRAPHY offers the colour beside the family and the size — it colours the type, not the
+box — through the same picker-and-hex control the box colours already use, and the canvas paints the
+text in the engine's own projected colour

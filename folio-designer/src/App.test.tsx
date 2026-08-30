@@ -866,6 +866,22 @@ describe('application shell', () => {
     expect(screen.getByLabelText('text component e2').querySelector('.canvas-box')).toBeNull()
   })
 
+  it('sets the text colour from TYPOGRAPHY and paints the canvas in it', async () => {
+    const inked = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', color: '#c81e1e', textPaint: { overflow: false, lines: [{ top: 0, baseline: 10_000, advance: 12_000, width: 30_000, fragments: [{ text: 'Hello', x: 0 }] }] } }
+    const sent: ArrayBuffer[] = []
+    const componentCanvas = { ...canvas, components: [inked] }
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 1 + sent.length, byteLength: 3, canvas: componentCanvas } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    // The canvas paints the engine's ink, never a browser-side default.
+    const element = screen.getByLabelText('text component e1: Hello')
+    const paint = element.querySelector('.canvas-text-paint') as HTMLElement
+    expect(paint.style.getPropertyValue('--text-ink')).toBe('#c81e1e')
+    fireEvent.click(element)
+    fireEvent.change(screen.getByLabelText('Pick Text colour'), { target: { value: '#1b2a4a' } })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"color":{"op":"set","value":"#1b2a4a"}}}')
+  })
+
   it('keeps a newer property draft through an unrelated successful snapshot and exposes table truth', async () => {
     const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }, { id: 'e2', type: 'table' as const, band: 'content' as const, x: 0, y: 30_000, width: 72_000, height: 12_000, resizable: false, tableBind: 'transactions[]' }] }
     let resolve: ((value: { snapshot: { documentState: 'loaded'; revision: number; byteLength: number; canvas: typeof componentCanvas } }) => void) | undefined

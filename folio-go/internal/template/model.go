@@ -250,6 +250,12 @@ type Column struct {
 type Style struct {
 	Align      Presence[string]
 	Background Presence[string]
+	// Color is the INK a text-bearing element prints in (Story 10.1).
+	// Background is the box behind it; this is the glyphs themselves.
+	// Absent means the PDF's own initial fill colour, black, and emits
+	// nothing — which is what leaves every document that declares no
+	// colour byte-identical.
+	Color      Presence[string]
 	Bold       Presence[bool]
 	Italic     Presence[bool]
 	Border     Presence[Border]

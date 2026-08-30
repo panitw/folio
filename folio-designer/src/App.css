@@ -73,7 +73,10 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-component::after { content: ''; position: absolute; inset: 0; border: var(--hairline) dotted var(--color-page-outline-dot); pointer-events: none; }
 .canvas-component:not(.canvas-component-selected):has(.canvas-image-placeholder)::after { border-style: dashed; border-color: var(--color-page-outline-dash); }
 .canvas-text-paint, .canvas-text-line, .canvas-text-fragment { position: absolute; display: block; white-space: pre; }
-.canvas-text-paint { inset: 0; overflow-x: clip; overflow-y: visible; pointer-events: none; font-size: var(--text-font-size); font-weight: var(--text-font-weight); font-style: var(--text-font-style); }
+/* --text-ink is set only where the engine projects a style.color; with no
+   declaration the paint falls back to the page's own ink, which is what the
+   PDF's initial fill draws. */
+.canvas-text-paint { inset: 0; overflow-x: clip; overflow-y: visible; pointer-events: none; color: var(--text-ink, var(--color-page-ink)); font-size: var(--text-font-size); font-weight: var(--text-font-weight); font-style: var(--text-font-style); }
 .canvas-text-line { top: var(--text-line-baseline); left: 0; height: var(--text-line-advance); line-height: 1; transform: translateY(calc(-1 * var(--text-font-size))); }
 .canvas-text-fragment { left: var(--text-fragment-x); top: 0; font-family: 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC', sans-serif; }
 .canvas-text-expression { color: var(--color-bind-on-page); }
