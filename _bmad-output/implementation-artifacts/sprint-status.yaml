@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 08-30-2026 11:26
+last_updated: 08-30-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -351,8 +351,11 @@ development_status:
   # All four targets agree, so CAP-13/S2/S3 hold; what failed is that a golden moved
   # unexplained, which C6 makes a defect until proven intended. Epics 9 and 10 are the
   # suspects: both promised the corpus would hash identically.
-  epic-15: backlog
-  15-1-the-golden-report-s-moved-hash-is-explained: backlog
+  # 15.1 pulled forward as story zero of the Epic 7-8 run (D-R7.0): both epics guard
+  # themselves with "the corpus hashes identically", unevaluable while it is red.
+  # Ruling and attribution in epic-7-8-decision-log.md (D-R7.5, D-R7.6).
+  epic-15: in-progress
+  15-1-the-golden-report-s-moved-hash-is-explained: in-progress
   15-2-ci-s-red-means-something: backlog
   15-3-folio-go-v0-1-0-is-cut: backlog
   epic-15-retrospective: optional
