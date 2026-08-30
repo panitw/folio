@@ -89,6 +89,11 @@ describe('sheet stack model', () => {
     // author has to be able to select.
     const orphan = sheetStack(canvas({ contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000], components: [component('e9', 3_000_000)] }))
     expect(orphan.sheets.flatMap((sheet) => sheet.content.map((occurrence) => `${occurrence.component.id}@${sheet.index}:${occurrence.home}`))).toEqual(['e9@0:true'])
+    // And it is drawn WITHIN that sheet. Its own top is 3_000_000, which is
+    // past the foot of a 727_890 window, so an unclamped offset put it outside
+    // the band — clipped out of sight by .band-window on a stacked canvas, i.e.
+    // exactly the loss this test is named for, one layer further down.
+    expect(orphan.sheets[0]?.content[0]?.y).toBe(WINDOW)
   })
 
   it('draws the first budgeted sheets and says the value was larger', () => {
@@ -147,6 +152,24 @@ describe('sheet stack display-space inverse', () => {
     const closedForm = sheetStack(canvas({ contentWindowCount: 3, contentWindowOrigins: [0, WINDOW, 2 * WINDOW] }))
     const pitch = sheetPitch(projection, 1)
     expect(columnEdgeAfterDrag(closedForm, projection, 1, 700_000, pitch)).not.toBe(columnEdgeAfterDrag(model, projection, 1, 700_000, pitch))
+  })
+
+  it('does not move a component the pointer never moved, including one the engine never paginated', () => {
+    // THE INVARIANT THE DRAG RESTS ON: zero travel commits the offset the
+    // component already had. Asserted on a drawn point of every sheet, and on
+    // the one kind of point that is NOT drawn — a column offset in the region
+    // a declared gap skips, where a component the engine never paginated can
+    // sit. That case used to answer 9_414_110 for a component at 3_000_000:
+    // stackYForColumn placed it past its sheet's foot and columnForStackY then
+    // floored it onto the next sheet and added that sheet's origin, so a click
+    // that moved nothing committed a move of more than nine windows.
+    const gap = canvas({ contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] })
+    const gapStack = sheetStack(gap)
+    for (const drawn of [0, 100_000, 700_000, 7_280_000, 7_400_000]) expect(columnEdgeAfterDrag(gapStack, gap, 1, drawn, 0)).toBe(drawn)
+    // Not drawn, so it is shown and dragged against its own sheet's foot —
+    // never teleported onto a later one.
+    expect(columnEdgeAfterDrag(gapStack, gap, 1, 3_000_000, 0)).toBe(WINDOW)
+    for (const zoom of [1, 0.5, 1.7]) for (const drawn of [0, 300_000, 715_000, 1_000_000, 1_430_000]) expect(columnEdgeAfterDrag(model, projection, zoom, drawn, 0)).toBe(drawn)
   })
 
   it('never proposes a sheet the stack does not draw', () => {

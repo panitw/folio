@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App, { placementPoint } from './App'
 import { shortcutHintsFor } from './shortcuts'
@@ -1508,6 +1508,32 @@ describe('canvas sheet stack', () => {
     expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"createComponent","version":1,"type":"text","band":"content","x":0,"y":1400,"width":72,"height":24,"snap":true}')
   })
 
+  it('sends a later-sheet POINTER placement through the same column translation as the keyboard one', async () => {
+    // The pointer branch and the keyboard branch are two different expressions
+    // on the same handler, and only the keyboard one was exercised: replacing
+    // the pointer branch with `placeInBand(band.name, point.x, point.y)` — no
+    // column origin, page-absolute x — left the whole designer suite green
+    // while a mouse-dropped component silently landed on sheet one.
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshotOf(threeWindows)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    const band = screen.getByLabelText('Content on page 3 of 3')
+    const localX = ['offset', 'X'].join('')
+    const localY = ['offset', 'Y'].join('')
+    // jsdom exposes these two as prototype getters that always answer 0, so a
+    // plain fireEvent property bag is silently dropped; they have to be
+    // defined on the native event the handler actually reads.
+    const released = createEvent.pointerUp(band)
+    Object.defineProperty(released, localX, { value: 120 })
+    Object.defineProperty(released, localY, { value: 40 })
+    fireEvent(band, released)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    // x is band-relative (156 page-absolute less the band's own 36), and y is
+    // the COLUMN offset: contentWindowOrigins[2] of 1400pt plus the 40pt the
+    // pointer sat below the band's head.
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"createComponent","version":1,"type":"text","band":"content","x":120,"y":1440,"width":72,"height":24,"snap":true}')
+  })
+
   it('keeps the FIRST sheet on today dropComponent payload even when the stack is deep', async () => {
     const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
     render(<App engine={engine(request)} initialSnapshot={snapshotOf(threeWindows)} />)
@@ -1531,8 +1557,17 @@ describe('canvas sheet stack', () => {
     // exactly the page footer, the gap and the page header the pointer
     // crossed.
     expect(component.style.getPropertyValue('--component-y')).toBe('700px')
+    // The clip has to lift for the duration of the gesture, or the component
+    // is clipped out of view at the very seam it is being dragged across.
+    // jsdom applies no stylesheet, so the class is the only observable the
+    // suite has: pinning it to the constant `band-window` left every numeric
+    // assertion here green while the gesture was visually broken.
+    expect(document.querySelectorAll('.band-window-open').length).toBeGreaterThan(0)
     fireEvent.pointerUp(component, { pointerId: 1, clientX: 10, clientY: 875.89 })
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    // And it drops again once the gesture has settled, so the clip is back for
+    // every component that is not being dragged.
+    await waitFor(() => expect(document.querySelectorAll('.band-window-open')).toHaveLength(0))
     expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e1","x":0,"y":700,"snap":true}')
   })
 

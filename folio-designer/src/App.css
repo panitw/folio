@@ -74,7 +74,12 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .band-window-open { overflow: visible; }
 .band-window > .canvas-component { pointer-events: auto; }
 /* A component drawn on a window it merely crosses. Decoration only — the home
-   occurrence owns the role, the tab stop and the name. */
+   occurrence owns the role, the tab stop and the name. Both selectors carry
+   the .band-window ancestor deliberately: the rule above re-enables pointers
+   on every .canvas-component inside a window, and at (0,1,0) this one lost to
+   it, which left every echo hit-testable — swallowing the placement pointerup
+   the band beneath it was meant to receive — and advertising `move`. */
+.band-window > .canvas-component-echo { pointer-events: none; cursor: default; }
 .canvas-component-echo { pointer-events: none; cursor: default; }
 /* The seam: where the engine will really break, at the projected origin of
    the NEXT window, with the space below it shown as the leftover the engine

@@ -2,13 +2,111 @@
 title: 'Story 7.6: The canvas draws every page the document will produce'
 type: 'feature'
 created: '2026-08-31'
-status: 'review'
+status: 'done'
 baseline_revision: 'c95fa9bc6202142a69f52d571f04d86ab12c8edc'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized'] # oversized: four wide surfaces must be stated rather than summarised — the window-ORIGIN gap (Ruling E, the reason a new projection field exists at all), the honesty obligation and its assertable form (Ruling F), the sheet-stack geometry the drag inverts (Ruling I), and the three-consumer mirror the clamp lift joins (Part 3, DW-36). NOT multiple-goals: DW-36's clamp lift is not independently shippable — 7.5 declined it precisely because there are no later sheets to drag onto until this story draws them — so it is a prerequisite of AC3, not a second goal.
-deferred: []
+deferred:
+  - summary: >-
+      createComponentCommand hardcodes width 72 / height 24 for every palette kind, while Go's
+      dropComponent path gives an image 96x48 and a line a 1pt height, so the same placement now
+      produces a different box on a later sheet than on the first one.
+    evidence: |-
+      folio-designer/src/component-command.ts:17 emits "width":72,"height":24 unconditionally;
+      folio-go/component_commands.go:1353-1395 uses dropWidth/dropHeight 72000/24000, but
+      imageDropWidth/imageDropHeight 96000/48000 for images and lineDropHeight 1000 for lines.
+      Story 7.6 put createComponentCommand on the user path for the first time (it was
+      imported by tests only), so the divergence is newly visible rather than newly created.
+      Not patched here: the fix either duplicates Go's per-kind constants into TypeScript — a
+      fourth spelling, against the mirror discipline this story's own fence freezes at six
+      numeral pairs — or moves the defaults into Go, which the intent does not settle.
+    location: >-
+      folio-designer/src/component-command.ts:17
+    severity: medium
+  - summary: >-
+      A content component whose home window is past MAX_CANVAS_SHEETS produces no occurrence at
+      all, so it is unreachable — not selectable, nameable or deletable — and the disclosure says
+      only that sheets are truncated, never that components are hidden.
+    evidence: |-
+      folio-designer/src/sheet-stack.ts iterates `index < drawn`, and homes are computed over the
+      full origins list, so a home index >= drawn is never emitted. The budget test uses a
+      component-free projection, so nothing observes it. Requires a document of more than 120
+      windows, which Ruling J's derivation argues the paint budget cannot fill.
+    location: >-
+      folio-designer/src/sheet-stack.ts
+    severity: medium
+  - summary: >-
+      The floor flag's causes cover a bound TABLE but not a bound content TEXT element, so a
+      document whose length comes from a bound scalar longer than its placeholder under-counts
+      with the flag false — withholding the very sentence that describes it.
+    evidence: |-
+      folio-go/page_setup.go's canvasContentBandHasBoundTable tests for a table with a non-empty
+      binding; the disclosure it drives generalises to "A document whose length comes from data
+      prints more pages than are shown here." A bound text element takes neither the table branch
+      nor the font-chain branch. Widening the cause is a projection-honesty decision the intent
+      scopes to three named causes, so it is recorded rather than taken.
+    location: >-
+      folio-go/page_setup.go:636
+    severity: medium
+  - summary: >-
+      The origins refusal branch in addCanvasWindowCount — a Shift that is negative, above
+      MaxCanvasMillipoints, non-zero at index 0, or non-increasing — silently collapses a genuine
+      multi-window document to one sheet with the floor flag set, and no test reaches it.
+    evidence: |-
+      Every fixture in canvas_window_count_test.go produces a well-formed Shift sequence, so the
+      `!ok` path is dead code as far as the suite knows. Its collapse is indistinguishable from
+      the three legitimate floor causes, so a regression that made it fire on ordinary documents
+      would surface as "this document prints more pages than are shown" rather than as an error.
+    location: >-
+      folio-go/page_setup.go
+    severity: medium
+  - summary: >-
+      SHEET_STACK_GAP and the .sheet-stack CSS gap are coupled by nothing executable, and the
+      cross-seam drag inverse is only correct while the laid-out pixel gap equals the constant.
+    evidence: |-
+      sheet-stack.ts declares SHEET_STACK_GAP = 24 and sheetPitch adds it; App.css consumes it
+      only through the inline --sheet-stack-gap custom property. design-contract.test.ts reads
+      App.css as text but asserts nothing about .sheet-stack, and jsdom applies no stylesheet, so
+      changing or dropping the CSS gap keeps every test green and drifts every drag across a seam.
+      The repo already has the idiom for this tie in engine-bounds-mirror.test.ts.
+    location: >-
+      folio-designer/src/App.css
+    severity: medium
+  - summary: >-
+      No shipped fixture draws an in-sheet seam, so the seam's rendering is covered only by
+      synthetic literals.
+    evidence: |-
+      The page-count fixtures place elements a round 728000 apart in a 727890 window, so
+      next - origin > contentWindowHeight on every sheet and the no-marker branch is always
+      taken. The only seam coverage is the hand-authored `prose` fixture in sheet-stack.test.ts
+      and the projection literals in App.test.tsx.
+    location: >-
+      folio-go/canvas_window_count_template.go
+    severity: low
+  - summary: >-
+      MAX_ENGINE_CONTENT_WINDOWS (100000) has no Go counterpart and no test on either side; if a
+      projection ever exceeded it the whole snapshot would be discarded and the canvas blanked
+      with no attribution.
+    evidence: |-
+      engine-protocol.ts declares the cap and its own comment concedes the failure mode. It is
+      deliberately excluded from the mirror's six numeral pairs on the stated ground that Go
+      declares no maximum — which is exactly why nothing bounds the producible value.
+    location: >-
+      folio-designer/src/engine-protocol.ts
+    severity: low
+  - summary: >-
+      sheetStack is rebuilt on every render, including every pointermove during a drag, at
+      O(sheets x components) with up to 120 sheets.
+    evidence: |-
+      App.tsx computes `const stack = canvas ? sheetStack(canvas) : undefined` with no useMemo,
+      and a drag calls setDrag per pointermove; stackYForColumn additionally allocates a fresh
+      origins array per call and columnEdgeAfterDrag calls it twice per move. Adjacent to DW-34
+      (the canvas is unvirtualised), which this story bounds with a drawing budget and leaves open.
+    location: >-
+      folio-designer/src/App.tsx
+    severity: low
 ---
 
 ## In plain terms
@@ -258,6 +356,48 @@ One test stays deliberately red throughout — the mandated corpus exercise floo
 
 ## Review Triage Log
 
+### 2026-08-31 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 1, medium 3, low 1)
+- defer: 8: (high 0, medium 5, low 3)
+- reject: 13
+- addressed_findings:
+  - `[high]` `[patch]` The stack's display-space inverse was not an inverse for a column offset in
+    a region a declared gap skips, so a drag that moved the pointer ZERO pixels committed a move of
+    more than nine windows. Proven by execution before triage: with origins `[0, 7280000]`, a
+    component at column offset `3000000` came back as `9414110`. `stackYForColumn` placed such a
+    point past its own sheet's foot and `columnForStackY` then floored it onto a later sheet and
+    added that sheet's origin. Reachable through this story's own third floor cause — a text
+    element whose font chain will not resolve contributes no column items, so no window ever opens
+    at its top. Fixed by giving the drawing and the drag ONE clamp (`offsetWithinWindow`) so a
+    point with no drawn position of its own is shown, and dragged, against the foot of the sheet
+    that owns it; the shipped `prose` round-trip never saw it because every offset it tries is
+    inside its own window. Red-proved: removing the clamp restores `9414110`.
+  - `[medium]` `[patch]` Every echo of a component that crosses a seam was pointer-interactive and
+    advertised the `move` cursor, defeating Ruling G's "only the home occurrence is interactive":
+    `.canvas-component-echo { pointer-events: none }` is specificity (0,1,0) and lost to
+    `.band-window > .canvas-component { pointer-events: auto }` at (0,2,0). An echo therefore
+    swallowed the placement pointerup the band beneath it was meant to receive. Fixed by matching
+    the ancestor in the echo's own selector. jsdom applies no stylesheet, so no unit test could
+    have observed this.
+  - `[medium]` `[patch]` The later-sheet POINTER placement branch had no test — only the keyboard
+    branch did, and the two are separate expressions on the same handler. Demonstrated: replacing
+    it with `placeInBand(band.name, point.x, point.y)` left all 94 App tests green while a
+    mouse-dropped component silently landed on sheet one with a page-absolute x. Added an assertion
+    on the exact command bytes; red-proved against that same mutation.
+  - `[medium]` `[patch]` The Go floor flag's `band.name == bandContent` guard had no test:
+    deleting it left the entire Go suite green, so any template with an unshapeable HEADER title
+    would have told the author its document prints more pages than are drawn — a false claim on a
+    count that is exact. Added `canvasWindowCountUnshapedHeaderTemplateJSON` as a negative case
+    beside the existing exact fixtures; red-proved against the guard's deletion.
+  - `[low]` `[patch]` The drag's clip lift (`band-window-open`) was observed by nothing: pinning
+    the class to the constant `band-window` left all 94 App tests green while the dragged component
+    would be clipped out of view at the very seam it was crossing. Added in-flight and
+    after-settle assertions; red-proved against that mutation.
+
+
 ## Design Notes
 
 ### Ruling E — the projection must carry the window ORIGINS; the fixed interval is both banned and measurably wrong
@@ -400,6 +540,76 @@ extents the canvas already paints.
 
 Verification was **not** run in this dispatch: no code changed. The `## Verification` section states
 what the implementing dispatch must measure.
+
+### Dispatch 2 — 2026-08-31, implemented and reviewed
+
+Status: `done`
+Blocking condition: none
+Baseline: `c95fa9bc6202142a69f52d571f04d86ab12c8edc` on `main`, tree clean.
+Commits: `c834158` (implementation) and the review-patch commit that follows it.
+
+**What shipped.** The engine projects `contentWindowOrigins` — read from `layout.Paginate`'s own
+`PageAssignment.Shift`, the datum `addCanvasWindowCount` was discarding while keeping
+`len(plan.Pages)` from the same value — and `contentWindowCountIsFloor`, OR-ing three causes only
+the engine can see: a content-band table with a non-empty binding, the Ruling C degradation, and a
+content text element whose font chain will not resolve. The browser protocol admits both keys in the
+`fontFamilies` shape. A new pure `sheet-stack.ts` turns those numbers into sheets, seams, spanning
+occurrences with one interactive home, and the display-space inverse the drag uses; `App.tsx` draws
+one `.page-surface` per sheet, repeats the two bands the engine repeats, routes later-sheet
+placement onto the existing band-aware `createComponent`, and states the claim in the shipped
+`role="status"` idiom plus the folded per-component sentence. DW-36's clamp lifts for the content
+band alone, keyed on `BANDS_CAPPING_VERTICALLY` imported from the protocol — a third consumer of the
+tie, with `engine-bounds-mirror.test.ts` reading all three sources.
+
+**Files changed.** `folio-go/page_setup.go` (two projection fields, the origins read, the three floor
+causes); `folio-go/canvas_window_count_test.go` and `canvas_window_count_template.go` (origins by
+exact value, the floor's causes and its absence, plus the unshaped-header negative added at review);
+`folio-designer/src/engine-protocol.ts` and `.test.ts` (admission and rejection of both fields);
+`resize-anchor.ts` and `.test.ts` (the band-keyed clamp); `engine-bounds-mirror.test.ts` (the third
+source); `sheet-stack.ts` and `.test.ts` (new, the whole geometry); `App.tsx`, `App.css`,
+`App.test.tsx` (the drawing, the gestures, the disclosure); `canvas-authority-contract.test.ts` (the
+closed-form ban for origins); `DataPanel.test.tsx` (fixture field).
+
+**Review findings.** 5 patched (1 high, 3 medium, 1 low), 8 deferred, 13 rejected; 0 intent gaps and
+0 bad-spec loopbacks. The high one was a real defect proven by execution before triage: the stack's
+display-space inverse was not an inverse for a column offset in a region a declared gap skips, so a
+drag that moved the pointer zero pixels committed a move of more than nine windows. See the Review
+Triage Log for all five and their red proofs.
+
+**Follow-up review recommended: true** — patched counts high 1, medium 3, low 1; a high-severity
+patch sets it, and the score `3 x 3 + 1 x 1 = 10` is at or above 5 independently.
+
+**Verification, measured after the patches.**
+- `go test -count=1 ./...` — exactly ONE red, `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)`,
+  `got 7, need >=20`, the mandated permanent red, untouched. Its drift twin
+  `TestCorpusP6StatsMatchDeclaredBaseline` is green. Every other package `ok`.
+- `go vet -tags=matrix ./...` exit 0. `gofmt -l folio-go` from the repo root: no output.
+- `TestTargetRenderHash` ran on all four legs with `FOLIO_MATRIX_TARGET` set — darwin/arm64,
+  linux/amd64, linux/arm64, js/wasm — each PASS with an `asserts NOTHING` count of **0**.
+  `TestCrossTargetByteIdentity` ok.
+- `cd lint && go test ./...` — all four packages ok.
+- Designer: typecheck clean; oxlint **4 warnings / 0 errors**, the exact baseline set
+  (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1218,1225` — the same two exports, renumbered by the
+  file's growth); **280 tests / 33 files**, up from the 248 / 32 baseline.
+- `npm run test:e2e:compile` passes. It is `tsc --noEmit` only: **browser e2e is deferred by
+  D-000.4 and did NOT execute.**
+- Nine digests re-measured byte-identical with `git status fixtures/` empty: statement-1 76,744
+  `114df1d6`; -5 127,363 `70dce051`; -20 269,884 `56bfbbd9`; -50 555,829 `5d090b0f`;
+  mandatory-break 56,681 `7cf743de`; line-spacing 57,770 `de212115`; justified-text 59,894
+  `6da3b12e`; alignment-rounding 61,346 `986400a1`; justified-thai 15,079 `58ca4777`. The
+  `goldenDigestRecord` declaration still holds twenty entries.
+- Fences: `internal/layout/paginate.go` and `component_commands.go` are both **absent** from the
+  diff, so `hitTestBand`'s half-open rectangle is untouched. `README.md` appears in no commit and
+  its md5 is still `078d7d80d518d54af2fc04fb270d46b8`. No `@media` query added. `SupportedMajor`
+  stays 2.
+
+**Residual risks.** The three surfaces where this story's correctness actually lives — the clipping,
+the seam painting and real pointer travel — are CSS and layout, which jsdom cannot observe and the
+e2e suite does not execute; the echo specificity defect patched here is exactly that class of bug,
+and the deferred `SHEET_STACK_GAP` coupling is another. DW-35 becomes **more visible** (N sheets
+multiply the text the one hard-coded font stack paints) and remains Epic 8's. DW-34 is multiplied by
+the sheet count and is bounded, not closed, by Ruling J's budget. DW-26/27/28/30/31/32/33/34/35/37
+stay open and untouched; DW-33 needed no ruling, as the Design Notes predicted.
 
 ## Delivery Log
 

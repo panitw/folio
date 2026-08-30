@@ -303,6 +303,12 @@ func TestCanvasSaysWhenTheWindowCountIsAFloor(t *testing.T) {
 	}{
 		{"gap", canvasWindowCountGapTemplateJSON},
 		{"control", canvasWindowCountControlTemplateJSON},
+		// The SAME unshapeable text as case (c) below, in the page header
+		// instead of the content band. The flag is a statement about the
+		// content column, and this column is counted exactly — so the
+		// degradation site's `band.name == bandContent` guard is what keeps
+		// this false. Deleting that guard left the whole Go suite green.
+		{"unshaped header", canvasWindowCountUnshapedHeaderTemplateJSON},
 	} {
 		projection := projectWithPaint(t, parseWindowCountTemplate(t, exact.source))
 		if projection.ContentWindowCountIsFloor {

@@ -84,6 +84,22 @@ function homeWindow(origins: ReadonlyArray<number>, y: number): number {
   return home
 }
 
+// WHERE A COLUMN OFFSET SITS ON THE SHEET THAT HOLDS IT, and the one place
+// that decides it. Every component the engine paginated has a top inside its
+// home window already, so this is the identity for them. It is NOT the
+// identity for a component the engine never paginated — a text element whose
+// font chain would not resolve contributes no column items, so no window ever
+// begins at its top and it can sit in the region between one window's foot and
+// the next window's origin. The spec draws no such region ("the skipped column
+// region is not drawn"), so a point there has no drawn position of its own; it
+// is shown, and dragged, against the foot of the sheet that owns it.
+//
+// The DRAWING and the DRAG must read this through the same function. When they
+// disagreed, a zero-delta drag on such a component committed a column offset
+// nine windows away: the drawing put it past its sheet, and the inverse then
+// floored it onto a later sheet and added that sheet's origin.
+const offsetWithinWindow = (columnY: number, origin: number, windowHeight: number): number => Math.min(Math.max(columnY - origin, 0), windowHeight)
+
 export function sheetStack(canvas: CanvasProjection): SheetStack {
   const origins = canvas.contentWindowOrigins
   // Named for what it is, not shortened to `height`: the authority contract
@@ -106,7 +122,11 @@ export function sheetStack(canvas: CanvasProjection): SheetStack {
       // element whose chain would not resolve contributes no extents) still
       // has exactly one occurrence somewhere rather than vanishing.
       const intersects = component.y < origin + windowHeight && component.y + component.height > origin
-      if (home || intersects) content.push({ component, y: component.y - origin, home })
+      // An occurrence that genuinely intersects this window keeps its exact
+      // offset; only the home of a component that intersects NO window is
+      // pulled onto its sheet, which is the sole case where the two differ.
+      if (intersects) content.push({ component, y: component.y - origin, home })
+      else if (home) content.push({ component, y: offsetWithinWindow(component.y, origin, windowHeight), home })
     }
     sheets.push({ index, origin, ...(next !== undefined && next - origin <= windowHeight ? { seam: next - origin } : {}), content })
   }
@@ -137,7 +157,10 @@ const contentBandTop = (canvas: CanvasProjection): number => (canvas.bands[1] as
 export function stackYForColumn(stack: SheetStack, canvas: CanvasProjection, zoom: number, columnY: number): number {
   const origins = stack.sheets.map((sheet) => sheet.origin)
   const index = Math.min(homeWindow(origins, Math.max(columnY, 0)), stack.sheets.length - 1)
-  return index * sheetPitch(canvas, zoom) + contentBandTop(canvas) + (columnY - (origins[index] as number))
+  // Read through the SAME clamp the drawing uses, so the point this returns is
+  // the point the author is actually looking at, and the inverse below can
+  // recover it exactly.
+  return index * sheetPitch(canvas, zoom) + contentBandTop(canvas) + offsetWithinWindow(columnY, origins[index] as number, canvas.contentWindowHeight)
 }
 
 // And back: which sheet a point down the stack falls on, and what column

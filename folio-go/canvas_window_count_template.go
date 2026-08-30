@@ -201,3 +201,40 @@ const canvasWindowCountUnshapedTextTemplateJSON = `{
   "version": "1.0"
 }
 `
+
+// canvasWindowCountUnshapedHeaderTemplateJSON is the SAME defect in a band the
+// window count does not measure. The page header carries the text with no
+// resolvable chain; the content band is an ordinary, exactly counted column.
+//
+// The floor flag is a statement about the CONTENT COLUMN, so this template
+// must report it false. Without the `band.name == bandContent` guard on the
+// degradation site the whole Go suite still passed, and every document with an
+// unshapeable header title would have told the author that it prints more
+// pages than are drawn — a false claim, on a count that is exact.
+const canvasWindowCountUnshapedHeaderTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Shaped normally", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [
+        {"id": "e2", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "No chain resolves this"}
+      ],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
