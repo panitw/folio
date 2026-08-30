@@ -382,3 +382,193 @@ scalar and is not touched.
 
 **How we'd know it was wrong.** The sign-off lands and `TestGoldenDigestAgreesAtEveryDeclaredSite` is
 still red — which would mean the digests, not the attestation, are the problem.
+
+---
+
+## Story 7.1 — rulings
+
+Story 7.1's plan dispatch halted `blocked` / `intent gap` on three forks. All five entries below are
+the engineering lead's RULINGs, verified by the orchestrator where a ruling turned on a quoted fact,
+and applied to the spec before re-dispatch. **No owner escalation was needed on any of them.**
+
+### D-7.1.1 — A mandatory break survives inside a declared-unbreakable value, and AD-25 is NOT amended
+**Lead ruling**, orchestrator-verified. This was the load-bearing fork and the one that looked like it
+needed the owner.
+
+**Verdict.** Exempt **mandatory** breaks from `spansCover`; every **optional** opportunity inside an
+atomic span stays suppressed exactly as today. The exemption is keyed on the opportunity's **kind**, at
+the filter site (`folio-go/internal/text/opportunity.go:170`) — never on "is this rune `\n`", and never
+by shrinking or excluding the span. `atomicSpansFor` (`wrap.go:262`) is unchanged.
+
+**The situation.** `atomicSpansFor` builds a span for every substituted value on a declared
+`unbreakableValues` path — by construction, "whatever its script and whatever its content". `spansCover`
+then drops any opportunity strictly interior to such a span. So the naive implementation **silently
+deletes** the author's break, straight against Story 7.1's AC2. Verified by the orchestrator at
+`opportunity.go:170` (`if spansCover(atomic, o) { continue }`) and `opportunity.go:182`.
+
+The apparent conflict is inside 7.1's own `Covers: FR46 · AD-25` line. AD-25's third override says
+"no break opportunity survives inside a substituted value from a listed path"; FR46 says a typed break
+must survive.
+
+**In simple terms.** A template can mark a field "never break this" — it exists so a Thai surname is not
+split down the middle, because 83% of Thai surnames are two ordinary words joined and no algorithm can
+tell the join from a word boundary. The question was whether that mark also throws away a line break
+somebody deliberately put in the text. It does not, and the distinction is the ordinary one between
+*guessing* and *being told*: the rule stops the engine inventing a break where it is unsure, and a line
+feed sitting in the data is not the engine being unsure about anything.
+
+**Why no amendment, and why no owner.** D-2.1.6 is an OWNER decision, so amending it would have been an
+escalation. It does not need amending. Its Verdict sentence — read at
+`folio-mvp-decision-log.md:4959` and confirmed verbatim by the orchestrator — is:
+
+> "A template may declare that a bound value must never be broken. **The engine never proposes a break
+> inside such a field.** Declarative, not inferred."
+
+It binds what the engine **proposes**. A line feed present in the input is not the engine proposing
+anything, so honouring it is outside what the owner ruled. AD-25's own text scopes the same way: its
+three constraints "sit **under** whatever the dictionary proposes, and all override it", and it closes
+"the engine's contract is **break opportunities**, not word segmentation" — the third override binds the
+opportunity SET, and AC2 defines a mandatory break as expressly not a member of it. The two texts never
+meet. Third support: the alternative is a **silent data mutation**, which AD-14 ("never silent") and
+D-1.4.9 ("nothing is dropped, nothing is refused") treat as fatal.
+
+**The correction that changes the fixture — this is the part worth the routing.** `bind.Substitution`'s
+`Start, End` are rune indices covering **only what a placeholder substituted**
+(`folio-go/internal/bind/text.go:37`, confirmed by the orchestrator). So **a line feed the template
+author types into an element's literal text is never inside an atomic span at all** — the collision
+cannot arise for it. The conflict exists only for a `\n` arriving **through data** on a declared path,
+where the "author" is the data supplier. **A fixture that puts `\n` in template literal text proves
+nothing and passes vacuously.** The discriminating fixture must supply the line feed through data on an
+`unbreakableValues`-declared path.
+
+**Consequences / guardrails.**
+- One fixture red-proves both directions: a declared-unbreakable value containing **both** a `\n` and a
+  space; assert the `\n` breaks and the space does not. Either assertion alone cannot distinguish
+  "exemption works" from "span suppression broke".
+- The exemption must be red-provable by flipping the kind test, not by deleting the span — deleting it
+  reddens for the wrong reason.
+- 7.1 carries a D-000.6 **clarifying** edit: AD-25's third override gains a scope clause saying it binds
+  *inferred* break opportunities, not literal control characters in the input. **State the clause; do
+  not change the rule.** Same sentence into `folio-format.md`'s `unbreakableValues` prose.
+- D-2.1.6's disclosed cost is untouched: a Thai name in free-form text is still guarded only by the
+  atomic-unknown-run rule.
+
+**How we'd know it was wrong.** A declared-unbreakable value splitting at anything other than a literal
+control character the caller supplied.
+
+### D-7.1.2 — A leading or trailing line feed produces its empty line
+**Lead ruling.**
+
+**Verdict.** The separator model applies uniformly. `"a\n"` is two lines, the second empty and occupying
+one full `Advance`; `"\na"` is two lines, the first empty. Achieved by **scoping** the two blockers, not
+by special-casing: `opportunity.go:124`'s `i > 0 && j < n` guard stays as-is for whitespace and does not
+extend to mandatory breaks, and `packLines`' `for start < totalRunes` loop gains the ability to emit a
+final zero-length line when the input ends on a mandatory break.
+
+**In simple terms.** If a pasted clause ends with a blank line, the author gets a blank line. Under the
+alternative, a trailing blank line is *inexpressible* — you could never produce one — and the character
+is thrown away without saying so. Under this rule, an author who wants no blank line just deletes the
+newline. Both outcomes stay reachable, which is the test.
+
+**Why this wins.** Expressibility: a reading that leaves an input inexpressible loses to one that does
+not. `opportunity.go:124`'s guard is scoped by its own comment to a break that "gains nothing" — for a
+mandatory break the empty side is the entire point, so the guard's rationale does not reach it, and
+extending it would be the packer *declining* a mandatory break, which AC2 forbids in terms. Story 7.4
+makes it concrete: pasted word-processor text routinely ends in a newline.
+
+**Consequences.** Corpus-neutral by construction (no existing fixture value contains a line feed) —
+assert that rather than assume it. The empty line occupies one `Advance` and does **not** move
+`FirstBaseline`: D-2.5a/DW-15's two-model split must hold identically for empty lines. `textBlockHeight`
+must count it — that is the number `textValignOffset` distributes slack against and the quiet path to a
+wrong page break. A value that is a single `"\n"` (two empty lines) must not become a zero-line element
+or a nil deref.
+
+**How we'd know it was wrong.** An element whose rendered height disagrees with its line count, or a
+`\n`-only value producing no line box at all.
+
+### D-7.1.3 — The change lands in the shared packer, for every caller
+**Lead ruling.**
+
+**Verdict.** Every caller. One packer, one mandatory-break rule. A `\n` in a table cell's bound data
+breaks that cell's line exactly as it does in a text element. No text-element-only flag, no second
+packer.
+
+**The question behind it.** Epic 7's header says it "changes nothing about pagination". Does that mean
+"does not change the pagination MODEL", or "no template's page breaks may move"?
+
+**Why the model reading wins, from inside the epic.** Story 7.2's fifth AC reads: "the wider line extents
+feed `internal/layout` unchanged, **so page breaks follow the spacing rather than ignoring it**." Under
+the strict reading that AC is unsatisfiable — an in-epic contradiction. The reading that leaves every
+clause standing is that `paginate.go`'s four rules and D-2.6.1's window model are inputs and are
+untouched; a page break moving because a line count changed is the window model **working**, not being
+changed. Restricting by caller would also mean a second rule for one character, when
+`table_render.go:878` already declares it is "the SAME packer text elements use" — a second source of
+truth for what `\n` means.
+
+**Consequences.** The spec states the consequence rather than discovering it: a `\n` in bound data
+changes a cell's line count, hence its row height, hence where the table breaks. That is intended.
+**Re-assert, do not assume, that a row stays atomic** — a `\n` must never become a way to split a row
+across pages, and that property is currently held by code nobody is changing, which is exactly when it
+breaks. A cell with enough line feeds to exceed the content window is Story 4.6's existing case:
+`Pagination.Clipped`, a Warning beside the bytes, **no new diagnostic code**.
+
+**How we'd know it was wrong.** A row splitting across a page boundary, or a new diagnostic code minted
+for over-tall cells.
+
+### D-7.1.4 — DW-24 is declined by 7.1, moves to Story 7.3 with two addresses, and its scope is amended now
+**Lead ruling**, overriding the orchestrator's initial assignment of DW-24 to 7.1.
+
+**Verdict.** 7.1 declines DW-24. New owner: **Story 7.3**, with the **orchestrator's gate checklist as a
+second standing address** — explicitly **not** "Epic 7 close". 7.1 amends DW-24's text in its own record
+to add the four `table_render.go` rounding sites.
+
+**Why declined, on the criterion rather than the cost.** DW-24's stated hazard is the unexercised
+**rounding** branch — `center`/`middle`, `geom.ScaleRound(slack, 1, 2)` at `text_alignment.go:56`/`:74`,
+where a half-to-even tie is what the four-target matrix exists to catch. **7.1 touches neither the
+rounding nor the population that reaches it**: no corpus document declares `center` or `valign`, and 7.1
+adds none. 7.1 leaves the gap exactly as it found it, so closing it there discharges nothing 7.1
+endangered. The `multiple-goals` cost is real but secondary — "a criterion that yields to a budget stops
+being a criterion".
+
+**Why not "Epic 7 close".** Precedent: DW-14's owner was "the Epic 2 boundary gate", which ran and closed
+without re-owning it, and it survived a whole epic with nobody holding it — D-000.73's class, where an
+owner that is an *event* stops existing the moment the event passes. DW-21 already fixed this by naming
+two addresses. Use that shape.
+
+**Why 7.3 is a real forcing function.** It extends the closed align set, must author an aligned fixture
+anyway, and its slack-remainder rule is itself new integer rounding in the same neighbourhood. A
+re-deferral owes a new trigger, and that is one.
+
+**Consequences.** The **scope amendment lands in 7.1, not 7.3** — a deferral whose scope is known wrong
+is worse than one merely open, because the literal closing fixture would satisfy DW-24's text while
+missing `table_render.go:687/698/1017/1193` and the entry would be marked closed. A centred *text*
+element does not cover the table sites: different code, same rounding. **At closure the enumeration must
+be re-derived by grep and recorded, not read off the amended hand-list** — the hand-list is being amended
+today precisely because it had already rotted once. 7.1's Delivery Log names DW-24 as
+inspected-and-declined with this ground, so the next reader sees a decision rather than an omission.
+
+### D-7.1.5 — The break-kind seam is two fields, and Story 7.1 lands both
+**Lead ruling**, on an orchestrator finding.
+
+**Verdict.** Two fields, not one. (1) `Opportunity` gains the break **kind** — 7.1 needs it, reads it,
+and it is what makes AC2 true. (2) `wrappedLine` gains **the kind of break that ended this line** — 7.1
+writes it, Story 7.3 reads it. Both land in 7.1. The last-line case stays **derived** from the index at
+7.3's call site and is never stored, so there is one source for it.
+
+**The finding.** `wrappedLine` is `{from, to, width}` (`wrap.go:152`, orchestrator-verified) and
+`packLines` holds the winning opportunity in `op`/`chosen` then writes only those three fields
+(`wrap.go:217-234`). The information is **destroyed after packing**, and 7.3's AC needs it: 7.3 must not
+justify "the last line of a paragraph, **or a line ended by a mandatory break**".
+
+**Why 7.1 carries a field it never reads.** Reconstructing it in 7.3 would be a second derivation of
+where a break came from — the hazard `verticalMetrics`' own doc comment says that type exists to close.
+It lands at the site that already knows. Precedent and its handling are established:
+`verticalMetrics.LastDescent` shipped stating honestly in its comment that nothing in production consumed
+it, and was asserted directly by a test over fabricated metrics in the meantime.
+
+**Consequences / guardrails.** 7.1 asserts the `wrappedLine` field **directly** in a test over fabricated
+input, and its comment names Story 7.3 / FR47 as the arriving consumer — an unread, unasserted field is
+D-000.46's shape and is not authorised. A **named kind, not a bool**: 7.3's rule is two independent
+conditions and a bare `!hardBreak` invites the third case to be re-derived wrongly. 7.1's spec states
+that 7.3 depends on this field — D-R7.3's numeric order satisfies the dependency by accident, and relying
+on an accident is how it gets reordered later.
