@@ -1006,3 +1006,29 @@ the projection with **no error anyone can attribute**.
 **Consequence, added to DW-25.** Whichever story changes a Go bound changes its TS mirror **in the same
 commit**, and lands **an assertion tying the two** — a test that reads both, not a comment asking the next
 person to remember.
+
+### D-R7.10 — The run continues story-to-story without check-ins, through Epic 8
+**Owner decision** (given 2026-08-30, mid-run): *"make sure the dev cycles continues after each user
+story until finishing epic 8 unless there are important decisions I need to make."*
+
+**Verdict.** The orchestrator chains plan → build → close for every remaining story (7.4–7.7, then
+8.1–8.6) without pausing to report between them. It stops **only** for a decision that genuinely
+requires the owner. This supersedes the "run continuously, pause only at design decisions" setting from
+D-R7.2 by making the endpoint explicit: **Epic 8 complete.**
+
+**Why it was given.** The orchestrator twice ended a turn saying it would continue to the next story and
+did not dispatch it — the run stalled with nothing running. That is the failure this instruction closes.
+
+**What still counts as worth stopping for**, so the instruction is not read as "never ask":
+- A ruling that touches the owner's own artifacts — the golden sign-off is the standing example, since
+  no agent may write a `reader`/`date`/`examined` attestation.
+- A scope or release decision with lasting consequence (the D-R7.9 class).
+- A defect that falsifies a decision already made.
+- An `OWNER-DECISION-NEEDED` block the engineering lead declines to rule on.
+
+Everything else — lead rulings, spec amendments, deferrals, halts the lead can settle — is applied and
+logged without interrupting the owner, and reported when the run next surfaces.
+
+**Consequence.** Reports become epic-boundary-shaped rather than story-shaped. The per-story record does
+not degrade: each story still gets its `## Delivery Log` entry and its decision-log entries, so the audit
+trail is unchanged — only the interruptions stop.
