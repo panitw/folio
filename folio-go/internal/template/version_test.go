@@ -90,6 +90,39 @@ func TestNewContentIsNeverStampedWithTheLibraryCeiling(t *testing.T) {
 			}
 		})
 	}
+
+	// STORY 7.7's ELEMENT-LEVEL SHAPE. Every case above is built through
+	// a STYLE helper, so a key that hangs off the element itself is
+	// invisible to all of them: a version rule that never ran for
+	// `keepTogether` would be indistinguishable here without its own
+	// builder. 1.2 is also the first version this library can stamp that
+	// is neither the base, the previous MINOR, nor the ceiling.
+	for _, c := range []struct {
+		label string
+		attr  string
+		want  string
+	}{
+		{"no element key at all", "", "1.0"},
+		{"a 1.2 element key", `"keepTogether": "signature", `, "1.2"},
+		{"an explicitly null 1.2 element key still declares it", `"keepTogether": null, `, "1.2"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			d, err := ParseDocument([]byte(keepTogetherRoundTripDocWithAttr(c.attr)))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			out, err := SerializeDocument(d)
+			if err != nil {
+				t.Fatalf("serialize: %v", err)
+			}
+			if !strings.Contains(string(out), `"version": "`+c.want+`"`) {
+				t.Fatalf("want version %s, got:\n%s", c.want, out)
+			}
+			if c.want != SupportedVersion && strings.Contains(string(out), `"version": "`+SupportedVersion+`"`) {
+				t.Fatalf("the document was stamped with the library ceiling %s rather than the %s its content requires", SupportedVersion, c.want)
+			}
+		})
+	}
 }
 
 // TestVersionRoundTripsVerbatim pins D-1.4.13: a 1.0 file round-trips
@@ -156,5 +189,47 @@ func TestVersionMustBeMajorDotMinor(t *testing.T) {
 		if _, _, err := parseVersion(v); err == nil {
 			t.Errorf("parseVersion(%q) should have failed", v)
 		}
+	}
+}
+
+// TestVersionForRankIsStrictlyAscending is the anchor versionForRank
+// itself lacks (D-7.7.2's guardrail).
+//
+// versionForRank is a [...]string indexed by an `iota` rank, and the
+// whole "highest requirement in the document wins" rule is a comparison
+// of RANKS standing in for a comparison of VERSIONS. Nothing about the
+// array's shape enforces that the two orders agree: inserting a rank
+// renumbers every rank above it, and an entry written out of order — or
+// an insertion made in the const block but not here — would silently
+// make versionRequiredByContent return the LOWER of two requirements.
+// The hand-enumerated lists in linespacing_test.go
+// (TestContentVersionNeverExceedsTheLibraryCeiling) go vacuous against
+// that failure; this does not.
+func TestVersionForRankIsStrictlyAscending(t *testing.T) {
+	if len(versionForRank) < 2 {
+		t.Fatalf("coverage witness: versionForRank has %d entries; the ordering property is vacuous below two", len(versionForRank))
+	}
+	prevMajor, prevMinor := -1, -1
+	for rank, v := range versionForRank {
+		if v == "" {
+			t.Fatalf("versionForRank[%d] is empty — a rank exists in the const block with no version behind it, so versionRequiredByContent can return \"\"", rank)
+		}
+		major, minor, err := parseVersion(v)
+		if err != nil {
+			t.Fatalf("versionForRank[%d] = %q does not parse: %v", rank, v, err)
+		}
+		if major < prevMajor || (major == prevMajor && minor <= prevMinor) {
+			t.Errorf("versionForRank[%d] = %q is not strictly above versionForRank[%d] (%d.%d) — rank order and version order must agree, or the \"highest requirement wins\" comparison silently returns the lower one", rank, v, rank-1, prevMajor, prevMinor)
+		}
+		prevMajor, prevMinor = major, minor
+	}
+	// And the ranks the rule actually names sit where their names say:
+	// a bare ascending walk would pass over an array whose entries had
+	// been renamed as well as reordered.
+	if versionForRank[rankBase] != baseVersion ||
+		versionForRank[rankMinorFeature] != minorFeatureVersion ||
+		versionForRank[rankKeepTogether] != keepTogetherVersion ||
+		versionForRank[rankMajorFeature] != majorFeatureVersion {
+		t.Errorf("versionForRank does not map each named rank to its own constant: got %v", versionForRank)
 	}
 }

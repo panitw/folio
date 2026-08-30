@@ -198,6 +198,26 @@ type Element struct {
 	VisibleIf Presence[string]
 	Style     Presence[Style]
 
+	// KeepTogether is Story 7.7's author-declared keep-together tag
+	// (FR51): elements in the CONTENT band sharing one non-empty tag
+	// paginate as ONE indivisible unit — the whole set stays in the
+	// window it started in, or the whole set moves to the next.
+	//
+	// It is an ELEMENT-level key rather than a document-level list of
+	// id lists (D-7.7 Ruling B): a document-level list would be a
+	// second place element ids appear, and something would have to
+	// prune it when a component is deleted. A tag is deleted with its
+	// own element and can never dangle.
+	//
+	// Absent (or explicitly null) is "not grouped", and a document
+	// declaring no tag renders byte-identically to one written before
+	// this key existed. parse_bands.go refuses a tag on a
+	// page-header/page-footer element (FR51 scopes the feature to the
+	// content band) and on a `table` element (a table's items already
+	// carry a row key, and honouring both would be a second grouping
+	// model).
+	KeepTogether Presence[string]
+
 	// text
 	Value Presence[string]
 

@@ -154,6 +154,24 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
 		},
 		{
+			// Story 7.7 (FR51). It matters here specifically because it
+			// is the first committed document whose content is split
+			// across two pages by an AUTHOR'S declaration rather than by
+			// the four pagination rules alone — a missing glyph on the
+			// far side of a break the author asked for would show up
+			// nowhere else.
+			name: "keep-together",
+			tpl: func(t *testing.T) *Template {
+				tpl, err := ParseTemplate([]byte(keepTogetherTemplateJSON))
+				if err != nil {
+					t.Fatalf("parse keep-together template: %v", err)
+				}
+				return tpl
+			},
+			data: Data(keepTogetherDataJSON),
+			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
+		},
+		{
 			// Story 7.3, closing DW-24.
 			name: "alignment-rounding",
 			tpl: func(t *testing.T) *Template {
@@ -195,6 +213,7 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 		"justified-text":     "Story 7.3 (FR47) — the first committed document that is justified at all, the first whose drawn runs are word-grained, and the first declaring format version 2.0",
 		"justified-thai":     "Story 7.3, owner scope amendment — the first committed document whose justified content carries no spaces, so its pieces are cut at dictionary seams (AD-25) rather than at whitespace",
 		"alignment-rounding": "Story 7.3, closing DW-24 — the first committed document declaring align center or valign at all, and therefore the first that reaches any of the branches which halve a slack",
+		"keep-together":      "Story 7.7 (FR51) — the first committed document that declares a keep-together group, the first whose page break is placed by an author's own declaration rather than by the four pagination rules alone, and the first declaring format version 1.2",
 	}
 
 	wantNames := make(map[string]bool, len(baselineAcceptanceFixtures))

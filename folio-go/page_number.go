@@ -84,7 +84,7 @@ import (
 // computeVisibility's own doc comment (Story 3.5 finisher review,
 // Finding 6 / Minor) before wiring one of those kinds' placement in a
 // future story: THAT story owns consulting isVisible for its own kind.
-func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource, tableRects []tableRectSource, visible visibilityVerdicts) []layout.ColumnItem {
+func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource, tableRects []tableRectSource, visible visibilityVerdicts, keepTogether keepTogetherIndex) []layout.ColumnItem {
 	var items []layout.ColumnItem
 	for i := 0; i < len(contentRuns); i++ {
 		j := i
@@ -96,7 +96,12 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			// carried through to THIS builder too — not only
 			// paginateDocument's — so the page-count-only pass (PHASE A)
 			// sees the same grouping the final pass (PHASE B) does.
-			Group: contentRuns[i].lineRowGroup(),
+			// Story 7.7 applies the SAME substitution here that
+			// paginateDocument applies, from the SAME index, for the
+			// same reason this comment gives above: a group seen by one
+			// pass and not the other makes the page count disagree with
+			// the render.
+			Group: keepTogether.orKeepTogether(contentRuns[i].lineRowGroup(), contentRuns[i].elementID),
 		}
 		for j < len(contentRuns) &&
 			contentRuns[j].elementID == contentRuns[i].elementID &&
@@ -124,6 +129,7 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			Top:       r.y,
 			Bottom:    r.y + r.boxH,
 			Images:    []layout.ImageRef{layout.ImageRef(i)},
+			Group:     keepTogether.keepTogetherGroup(r.elementID),
 		})
 	}
 	// Story 4.1: table header rects. collectBandTableRuns already
@@ -148,7 +154,7 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			// this pass's Pagination.Pages length is what {{pages}}/
 			// {{page}} resolve against (D-2.7.2), so it must agree with
 			// paginateDocument's own partition, not merely its count.
-			Group: ts.chromeRowGroup(),
+			Group: keepTogether.orKeepTogether(ts.chromeRowGroup(), ts.elementID),
 		})
 	}
 	return items

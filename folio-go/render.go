@@ -1667,7 +1667,13 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// band also does; the ACTUAL page-model content is unaffected,
 	// only Result.Diagnostics' relative order between the two kinds).
 	contentRuns = append(contentRuns, contentTableRuns...)
-	contentItems := contentColumnItems(contentRuns, imageRuns, tableRects, visible)
+	// Story 7.7 (FR51): the document's own keep-together declarations,
+	// read ONCE here and handed to BOTH pagination passes — PHASE A
+	// below and paginateDocument's PHASE B — because a grouping seen by
+	// only one of them would make the page COUNT disagree with the
+	// render.
+	keepTogether := keepTogetherTags(t)
+	contentItems := contentColumnItems(contentRuns, imageRuns, tableRects, visible, keepTogether)
 	contentPlan, _, plerr := paginateWithFooterOrphanFix(geometry, contentItems, footerOrphanTargetsFrom(contentItems))
 	if plerr != nil {
 		return nil, nil, nil, nil, wrapOverflowError(plerr)
@@ -1929,13 +1935,153 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// into /Count. Only the middle produced one. Content taller than the
 	// content band was still DRAWN — below the bottom edge of the sheet,
 	// with no error and no warning.
-	pages, repeatDiags, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible)
+	pages, repeatDiags, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible, keepTogether)
 	if perr != nil {
 		return nil, nil, nil, nil, perr
 	}
 	diags = append(diags, repeatDiags...)
 
 	return pages, embedded, pdfImages, diags, nil
+}
+
+// keepTogetherKeyPrefix namespaces every keep-together group's
+// layout.ItemGroupKey.ElementID, and it is a CORRECTNESS device rather
+// than a naming convention (Story 7.7, D-7.7 Ruling C).
+//
+// validateElementID (internal/template/ids.go) admits only `^e[0-9a-z]+$`
+// with no leading zero and a decoded counter >= 1, enforced document-wide
+// at parse time. A key whose ElementID contains a character outside
+// [0-9a-z] — here, the ':' — is therefore PROVABLY never equal to any
+// real element's id, and that single fact is what makes every
+// table-shaped path in internal/layout unreachable for a keep-together
+// group at once: headerExtent cannot match, so the sweep's `table` stays
+// "" and ceilingFor is unnarrowed; no HeaderRepeats, no RowDisplacement
+// and no TableHeaderSuppressed can be produced for it; headerContentOf
+// cannot match; and footerOrphanTargetsFrom builds no target for it, so
+// applyFooterMerge can never re-key it.
+//
+// THE FOUR SITES THAT ASSUME A KEY MEANS A TABLE, enumerated because
+// D-7.7.1 requires the audit to be a list rather than a reassurance
+// (line numbers as measured at this story's baseline):
+//
+//	paginate.go:833   `if !it.Group.Key.IsHeader` — the clip branch's
+//	                  header-repeat arm. Excluded by IsHeader being
+//	                  false AND by headerExtent missing, below.
+//	paginate.go:839   `tbl := it.Group.Key.ElementID` — reads the key as
+//	                  A TABLE'S ID. Namespaced, so headerExtent(tbl)
+//	                  cannot hit and the arm is never entered.
+//	paginate.go:949-950  `headerPageOf[...]` — written only under
+//	                  `it.Group.Key.IsHeader`, which is false here.
+//	paginate.go:956-964  Gate B, `headerExtent(Key.ElementID)` — the
+//	                  gate that decides whether `table` is set at all.
+//	                  It cannot hit, so `table` stays "", ceilingFor is
+//	                  unnarrowed and the whole FR26 reservation block is
+//	                  unreachable.
+//
+// And paginate.go:783's comment — "Keyed on Group.Present, and NOT on
+// the item's kind" — is the decision this story puts under load: it is
+// now true of a second population, deliberately (D-4.6.2 as amended
+// 2026-08-31), and table_row_clip_test.go's tripwire is what holds the
+// line at those two.
+//
+// TestKeepTogetherGroupKeyIsNotAValidElementID asserts the grammar
+// rejects it, rather than asserting the convention in prose — the day
+// someone "tidies" this prefix, every one of those paths reopens
+// silently, and TestKeepTogetherReachesNoTablePath asserts the
+// consequence behaviourally.
+const keepTogetherKeyPrefix = "keepTogether:"
+
+// keepTogetherGroupIndex is the layout.ItemGroupKey.Index every
+// keep-together group carries. It is distinct from footerGroupIndex (-1)
+// and from every data row's index (>= 0), so the clipped-row
+// diagnostic's role switch can tell the three apart without needing the
+// prefix — though it checks the prefix too, because THAT is the
+// namespace fact the rest of the design rests on.
+const keepTogetherGroupIndex = -2
+
+// keepTogetherIndex maps a content-band element's id to the
+// author-declared keep-together tag it carries — Story 7.7's FR51
+// declaration, read off the document ONCE and then consulted by LOOKUP
+// only.
+//
+// It is never RANGED (D-1.3.5 / R5): a map range would reach the order
+// in which items are built, and therefore the emitted byte order. It is
+// built by walking the content band's own element slice, which is the
+// authored order.
+type keepTogetherIndex map[string]string
+
+// keepTogetherTags reads the document's keep-together declarations.
+// Elements outside the content band, and tables, cannot carry the key at
+// all (parse_bands.go refuses both at load), so this walks the content
+// band alone.
+func keepTogetherTags(t *Template) keepTogetherIndex {
+	if t == nil || t.doc == nil {
+		return nil
+	}
+	var idx keepTogetherIndex
+	for _, el := range t.doc.Bands.Content.Elements {
+		if !el.KeepTogether.Set || el.KeepTogether.Null || el.KeepTogether.Value == "" {
+			continue
+		}
+		if idx == nil {
+			idx = keepTogetherIndex{}
+		}
+		idx[string(el.ID)] = el.KeepTogether.Value
+	}
+	return idx
+}
+
+// keepTogetherGroup is Story 7.7's grouping derivation — the THIRD, and
+// the only non-table one, of package folio's present-ItemGroup
+// constructions (see TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup,
+// table_row_clip_test.go).
+//
+// Two elements sharing one tag produce one EQUAL Key, and equality of Key
+// is the whole of internal/layout's definition of a group
+// (paginate.go's ItemGroup.Key doc). The paginator requires no
+// contiguity — R7's contiguity premise is recorded there as measured
+// FALSE and removed — so a group of loose, non-adjacent signature
+// elements needs no new mechanism and no key extension.
+//
+// An untagged element gets the ZERO ItemGroup, which is "not grouped" and
+// is exactly what every item carried before this story. That is what
+// makes a document declaring no tag byte-identical.
+func (idx keepTogetherIndex) keepTogetherGroup(elementID string) layout.ItemGroup {
+	tag, ok := idx[elementID]
+	if !ok {
+		return layout.ItemGroup{}
+	}
+	return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{
+		ElementID: keepTogetherKeyPrefix + tag,
+		IsHeader:  false,
+		Index:     keepTogetherGroupIndex,
+	}}
+}
+
+// orKeepTogether substitutes the keep-together group ONLY where the
+// item's existing group is not Present.
+//
+// Filling only the ungrouped case is what preserves byte-identity: a
+// table's rows already carry a row key and keep it untouched, and an
+// untagged element's zero group stays the zero group. One item belongs
+// to at most one group, which is also why parse_bands.go refuses the tag
+// on a table rather than trying to honour both.
+func (idx keepTogetherIndex) orKeepTogether(g layout.ItemGroup, elementID string) layout.ItemGroup {
+	if g.Present {
+		return g
+	}
+	return idx.keepTogetherGroup(elementID)
+}
+
+// keepTogetherTagOf returns the author's own tag for a keep-together
+// group key, and whether the key names one at all. Read from the key's
+// namespace prefix — the same fact Ruling C rests on — never from the
+// Index sentinel alone.
+func keepTogetherTagOf(key layout.ItemGroupKey) (string, bool) {
+	if key.IsHeader || !strings.HasPrefix(key.ElementID, keepTogetherKeyPrefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(key.ElementID, keepTogetherKeyPrefix), true
 }
 
 // contentBandIndex is documentBands' authored index for the content band —
@@ -1979,6 +2125,7 @@ func paginateDocument(
 	pdfRuns []pagemodel.TextRun,
 	pdfPlacements []pagemodel.ImagePlacement,
 	visible visibilityVerdicts,
+	keepTogether keepTogetherIndex,
 ) ([]pagemodel.Page, []Diagnostic, error) {
 	// The two repeated bands, and the content column's atomic items.
 	var header, footer layout.BandContent
@@ -2029,8 +2176,11 @@ func paginateDocument(
 				Rects:     refs,
 				// Story 4.3, AC1/AC5, DECISION-1: the row's grouping
 				// identity, by direct field lookup (R3) — never
-				// reconstructed from ElementID/extent/order.
-				Group: ts.chromeRowGroup(),
+				// reconstructed from ElementID/extent/order. Story 7.7
+				// substitutes a keep-together group ONLY where that
+				// derivation returns the zero (ungrouped) value, which
+				// is what leaves every table row untouched.
+				Group: keepTogether.orKeepTogether(ts.chromeRowGroup(), ts.elementID),
 			})
 		}
 	}
@@ -2082,8 +2232,9 @@ func paginateDocument(
 			Bottom:    runs[i].itemBottom,
 			// Story 4.3, AC1/AC5, DECISION-1: see the rects loop above —
 			// same identity, same direct-lookup rule, for a row's line
-			// items.
-			Group: runs[i].lineRowGroup(),
+			// items. Story 7.7's substitution applies here too, and only
+			// to a line that is not already a row's.
+			Group: keepTogether.orKeepTogether(runs[i].lineRowGroup(), runs[i].elementID),
 		}
 		for j < len(runs) &&
 			runs[j].band == contentBandIndex &&
@@ -2121,6 +2272,11 @@ func paginateDocument(
 				Top:       r.y,
 				Bottom:    r.y + r.boxH,
 				Images:    []layout.ImageRef{layout.ImageRef(i)},
+				// Story 7.7: an image carried no group at all before
+				// this story, and still carries none unless its element
+				// is tagged — a signature's ruled line and its scanned
+				// mark belong to the same block as its name.
+				Group: keepTogether.keepTogetherGroup(r.elementID),
 			})
 		}
 	}
@@ -2293,8 +2449,21 @@ func clippedRowDiagnostic(c layout.TableRowClipped) Diagnostic {
 	// group's own Key (D-4.2.2: never re-derived from extent or order).
 	// footerGroupIndex is -1, a WIRE VALUE: a message that printed it
 	// verbatim would put "row -1" in front of a human.
-	var row string
+	//
+	// STORY 7.7 ADDS THE FOURTH ARM, and it is not optional. A
+	// keep-together group is not a row of anything: without this arm an
+	// author's signature block is announced as "row 0 of the bound
+	// collection" with a remedy about cell padding, which names neither
+	// the thing that was clipped nor an action its author could take.
+	// It is tested FIRST because the namespace prefix is the fact the
+	// whole design rests on, and because such a key's Index sentinel
+	// (-2) is deliberately neither the footer's (-1) nor a data row's.
+	var row, remedy string
+	tag, isKeepTogether := keepTogetherTagOf(c.Key)
 	switch {
+	case isKeepTogether:
+		row = fmt.Sprintf("the keep-together group %q", tag)
+		remedy = "Remove a member from this group, stop declaring the group so its elements paginate individually,"
 	case c.Key.IsHeader:
 		row = "the header row"
 	case c.Key.Index == footerGroupIndex:
@@ -2302,13 +2471,16 @@ func clippedRowDiagnostic(c layout.TableRowClipped) Diagnostic {
 	default:
 		row = fmt.Sprintf("row %d of the bound collection", c.Key.Index)
 	}
+	if remedy == "" {
+		remedy = "Reduce this row's height (font size or cell padding), shorten the data in it,"
+	}
 	return Diagnostic{
 		Severity:  SeverityWarning,
 		Code:      DiagCodeTableRowClippedHeight,
 		ElementID: c.ElementID,
 		Message: fmt.Sprintf(
-			"folio: Render: element %s: %s is %s tall, which is taller than the whole %s content window, so it fits on no page — it was placed alone on page %d and CLIPPED at that page's content bottom, and the content past the bottom is absent from this document (FR25). Reduce this row's height (font size or cell padding), shorten the data in it, or increase the page's content height (smaller margins, or a smaller page-header/page-footer)",
-			c.ElementID, row, millipointsForDiag(c.ItemHeight), millipointsForDiag(c.ContentHeight), c.Page+1),
+			"folio: Render: element %s: %s is %s tall, which is taller than the whole %s content window, so it fits on no page — it was placed alone on page %d and CLIPPED at that page's content bottom, and the content past the bottom is absent from this document (FR25). %s or increase the page's content height (smaller margins, or a smaller page-header/page-footer)",
+			c.ElementID, row, millipointsForDiag(c.ItemHeight), millipointsForDiag(c.ContentHeight), c.Page+1, remedy),
 	}
 }
 

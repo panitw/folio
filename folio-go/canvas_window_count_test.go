@@ -43,7 +43,7 @@ func renderPathWindows(t *testing.T, tpl *Template) int {
 	if err != nil {
 		t.Fatalf("collectBandTextRuns: %v", err)
 	}
-	plan, err := layout.Paginate(mustPageGeometry(t, tpl), contentColumnItems(runs, nil, nil, nil))
+	plan, err := layout.Paginate(mustPageGeometry(t, tpl), contentColumnItems(runs, nil, nil, nil, nil))
 	if err != nil {
 		t.Fatalf("layout.Paginate: %v", err)
 	}

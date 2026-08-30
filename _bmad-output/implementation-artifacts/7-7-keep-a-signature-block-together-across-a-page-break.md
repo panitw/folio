@@ -2,12 +2,114 @@
 title: 'Keep a signature block together across a page break'
 type: 'feature'
 created: '2026-08-31'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: '45b11c5be341fd29fefad37200e805d14cdf0bbb'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      The canvas reports an exact window count and window origins that a
+      keep-together group can make wrong, while ContentWindowCountIsFloor
+      still says the count is exact.
+    evidence: |-
+      addCanvasWindowCount (folio-go/page_setup.go:627-702) builds its
+      layout.ColumnItems with no Group at all, and grouping is not among the
+      floor causes. Measured during review: for a document with a body
+      element, a two-member "signature" group at y 700 / y 740 and an
+      untagged tail at y 1440, Render produces 3 pages while
+      CanvasWithTextPaint reports ContentWindowCount = 2,
+      ContentWindowCountIsFloor = false and ContentWindowOrigins
+      [0, 740000] — the render's second window actually starts at 700000.
+      No test reads either value for a tagged document. Not fixed here: the
+      intent's Never clause forbids making the canvas group-aware, and the
+      spec's "Limits to state" explicitly says do not add a floor cause and
+      do not touch the projection. Needs a ruling or its own story.
+    location: >-
+      folio-go/page_setup.go:627-702
+    severity: high
+  - summary: >-
+      An over-tall SINGLE-member keep-together group is clipped and warned,
+      where the same element untagged is a fatal located OverflowError.
+    evidence: |-
+      Matrix row "Single-member group" says placement is identical to the
+      same element untagged, while row "Group taller than one window" says a
+      group is clipped with a Warning. Both rows apply to one over-tall
+      tagged element, and they disagree: tagging converts D-2.6.1's located
+      error into a clip-and-warn. The lead's D-4.6.2 amendment rules
+      clip-and-warn for keep-together groups and a single-member group is
+      still a group, so the shipped behaviour is defensible — but row 5's
+      "identical to untagged" is false in this corner and should be tightened.
+    location: >-
+      folio-go/internal/layout/paginate.go:790-953 (clip branch), reached via
+      folio-go/render.go keepTogetherGroup
+    severity: medium
+  - summary: >-
+      duplicateComponent copies a keepTogether tag, silently adding a member
+      to a group the designer offers no way to see or clear.
+    evidence: |-
+      duplicateComponent's clone := *element copies the whole Element,
+      including KeepTogether. The designer has no grouping concept at all
+      (component-command.ts has zero hits, and component_commands.go's
+      property surface does not accept the key), so a group can only be
+      authored by hand-editing the .folio file, yet duplicating a tagged
+      signature element joins the copy to that group invisibly. The story
+      records the canvas PREVIEW limit; this authoring/duplication limit is
+      recorded nowhere.
+    location: >-
+      folio-go/component_commands.go (duplicateComponent)
+    severity: medium
+  - summary: >-
+      ARCHITECTURE-SPINE.md still scopes the over-tall clip carve-out to
+      "rows" although a second population is now clipped.
+    evidence: |-
+      ARCHITECTURE-SPINE.md:319 reads "Over-tall **rows** (FR25)". D-4.6.2 was
+      amended in folio-mvp-decision-log.md for this story, but the spine that
+      D-4.6.2 quotes as the authority for that noun was not updated. Amending
+      the spine is the engineering lead's, not this story's.
+    location: >-
+      _bmad-output/planning-artifacts/ARCHITECTURE-SPINE.md:319
+    severity: low
+  - summary: >-
+      A tagged multi-line text element becomes atomic, so the matrix's
+      "single-member group changes nothing" holds only for single-line
+      elements.
+    evidence: |-
+      contentColumnItems emits one ColumnItem per shaped line and the
+      substitution stamps the same key on all of them, so tagging one
+      multi-line element makes its lines unbreakable and its placement can
+      change. TestKeepTogetherSingleMemberChangesNothing deliberately uses a
+      single-line element and its own doc comment concedes the multi-line
+      case "would be a real change". Arguably the feature working as
+      intended, but the contract row is stated at the element level.
+    location: >-
+      folio-go/keep_together_fixture_test.go (TestKeepTogetherSingleMemberChangesNothing)
+    severity: low
+  - summary: >-
+      No test combines non-contiguous membership with a union extent that
+      crosses the window ceiling.
+    evidence: |-
+      TestKeepTogetherMembersNeedNotBeContiguous uses a group whose union
+      FITS window one, so it exercises the ride-along but never the slide.
+      The shipped fixture crosses the ceiling but is contiguous. The case
+      where the window must slide to the group's earliest Top across an
+      intervening ungrouped item — the two constraints together — is
+      exercised by nothing.
+    location: >-
+      folio-go/keep_together_fixture_test.go
+    severity: low
+  - summary: >-
+      asLoadError uses a bare type assertion while its comment claims
+      errors.As semantics, so it fails on any wrapped LoadError.
+    evidence: |-
+      The body is err.(*LoadError), not errors.As, yet the same package wraps
+      with fmt.Errorf("template: %s: %w", ...) in decodeBand/decodeElement.
+      Pre-existing: the symbol does not appear in this story's diff. Either
+      use errors.As or correct the comment.
+    location: >-
+      folio-go/internal/template
+    severity: low
 ---
 
 ## In plain terms
@@ -222,6 +324,23 @@ The whole feature is already here. Nothing needs adding.
 
 ## Review Triage Log
 
+### 2026-08-31 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 1, medium 2, low 4)
+- defer: 7: (high 1, medium 2, low 4)
+- reject: 8: (high 0, medium 0, low 8)
+- addressed_findings:
+  - `[high]` `[patch]` PHASE A's keep-together grouping was entirely unverified — mutating all three `contentColumnItems` substitutions away left the whole `folio-go` suite green, so `{{pages}}` could print the ungrouped page count. Added `TestKeepTogetherPageCountReachesTheRenderedFooter` (a document whose grouping changes the page count, with a `Page {{page}} of {{pages}}` footer) and `TestBothPaginationPassesAgreeWithAKeepTogetherGroup`. Independently re-mutated after the fix: the 3-page document's footers print "of 2" and both tests fail.
+  - `[medium]` `[patch]` `"keepTogether": null` bypassed all three load refusals — verified empirically that a `pageHeader`, a `pageFooter` and a `table` element each carrying the null form loaded clean, contradicting the matrix rows ("the key ... Refused at load") and the prose this story shipped in `folio-format.md`. Moved the band and table refusals above the `rawIsNull` branch so the key is refused wherever it can never be honoured; `null` still means "ungrouped" where the key is allowed. Refusal tests now drive both key forms.
+  - `[medium]` `[patch]` A tagged image was wired in both passes and promised specific behaviour in `folio-format.md` ("removed, not moved") but was exercised by no render test; deleting both image `Group:` lines left the suite green. Added `TestKeepTogetherCarriesATaggedImage` and `TestKeepTogetherOverTallGroupDropsATaggedImage`, both mutation-verified.
+  - `[low]` `[patch]` `version.go:277` cited `TestVersionForRankIsStrictlyAscending` as living in `version_test.go` while it was in `linespacing_test.go`; moved the test to `version_test.go` unchanged so the reference is true.
+  - `[low]` `[patch]` Stale key counts: `maximalFixture` now emits 55 keys (measured, not assumed) while `fixtures_test.go` said 52 and `drift_test.go` said 52. Both corrected.
+  - `[low]` `[patch]` `const contentBandField` had been inserted between `decodeBand`'s doc comment and `decodeBand`, orphaning the comment onto the const. Const moved.
+  - `[low]` `[patch]` The fixture's line-extent table was wrong and duplicated in two files: it used descent 244 instead of Noto Sans's −293 (per-line extent is 14.982 pt, not 14.443) and gave `e1`'s bottom as the last line's top. Re-measured from the built column items (`e1` 0.000 … 554.334, union 706.000 … 754.982) and the duplication collapsed to one copy in `fixtures/keep-together/README.md`.
+
+Rejected (with the authority each was tested against): an explicit `null` raising the document to `1.2` — the matrix's "Tag present anywhere | Document declaring the key" row covers a declared null, so this is the contract's answer, not a defect; `contentBandField` naming only one of three band fields (cosmetic; the const is used only for the comparison it names); `consumed["keepTogether"]` set unconditionally (the key is known either way); the matrix guard's literal `" re f\n"` operator count (a structural page-model assertion sits beside it); whitespace-only and case-differing tags (a tag is an opaque author string — trimming or folding would surprise); no length bound on the tag value (never projected, so no surface beyond template size); `folio-format.md` filing the key under "common to all five types" while the row's own text states the table exception; `keepTogetherUngroupedTemplateJSON` declaring `"1.2"` with no key present (deliberate, and mechanically enforced by `TestKeepTogetherTwinDiffersOnlyByTheTags`). Sprint status and the Delivery Log were left to the story closer by dispatch.
+
 ## Design Notes
 
 ### Ruling A -- the key needs no extension, because the paginator was already general
@@ -293,6 +412,54 @@ This story changes pagination inputs and the file format, so it carries the heav
 - **Demonstrate end to end** that a signature block authored across a window boundary prints whole on the next page in the real PDF -- not that a conditional changed.
 
 ## Auto Run Result
+
+### 2026-08-31 — Implementation dispatch (status: done)
+
+Status: done
+Blocking condition: none
+Dispatch: existing spec at `ready-for-dev`, routed straight to implement (step-01 early exit). Baseline `45b11c5be341fd29fefad37200e805d14cdf0bbb`; HEAD verified unmoved through both subagent dispatches.
+D-4.6.2: the `Block If` was DISCHARGED before this dispatch — the amendment is recorded in `folio-mvp-decision-log.md` and landed in the baseline commit itself.
+
+**Implemented change.** An author declares `keepTogether: "<tag>"` on content-band elements; the tagged items are stamped with the *existing* `layout.ItemGroup` so the shipped grouping machinery (union extent, ride-along, the Story 4.6 over-tall clip) carries the whole feature. `internal/layout` gained nothing and changed nothing — `git diff --name-only` contains **no path under `folio-go/internal/layout/`**, which is AC2's mechanical proof.
+
+**Files changed.**
+- `internal/template/model.go` — `Element.KeepTogether Presence[string]`.
+- `internal/template/parse_bands.go` — decode on the `visibleIf` shape; refuses the key outside the content band and on a table (both regardless of value, after review), and an empty tag.
+- `internal/template/serialize.go` — emitted in the unkeyed literal form the drift AST reader can see.
+- `internal/template/version.go` — new `"1.2"` rank between minor and major; new **element-level** probe in `versionRequiredByContent`. `SupportedMajor` 2 and `SupportedVersion` "2.0" unmoved; D-1.4.13's doc comment extended, not regressed.
+- `render.go` — the single `keepTogetherGroup` derivation, the `keepTogether:` namespace, the `-2` index sentinel, substitution at the rect/text/image sites, and `clippedRowDiagnostic`'s **fourth role arm** (no code minted).
+- `page_number.go` — the identical substitution in PHASE A's `contentColumnItems`.
+- `table_row_clip_test.go` — the D-4.6.2 tripwire widened deliberately and renamed `TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup`; whitelist gains `keepTogetherGroup`, `derivationFloor` 2 -> 3.
+- `fixtures/keep-together/` + `keep_together_template.go` + `keep_together_fixture_test.go` — the discriminating fixture and its tests; registered at all thirteen sites.
+- `folio-format.md`, `deferred-work.md` (DW-43 amended to name this fixture and left OPEN).
+- Five call-site ripples passing `nil` for the new parameter (`table_pagination_test.go`, `table_footer_test.go`, `canvas_window_count_test.go`, `canvas_body_text_bounds_test.go`, `collect_text_runs_composition_test.go`) — no assertion or expectation altered.
+
+**The co-extensiveness audit.** All four table-assuming sites were enumerated and proved unreachable: `paginate.go:833` (`!it.Group.Key.IsHeader`), `:839` (`tbl := it.Group.Key.ElementID`), `:949-950` (`headerPageOf[...]`), `:960-962` / Gate B `:956-964` (`headerExtent`). The group key's `ElementID` carries a `:`, which `validateElementID` (`ids.go:46-69`, grammar `^e[0-9a-z]+$`) proves no element id can equal, and `IsHeader` is false. Unreachability is **asserted, not relied upon**: `TestKeepTogetherGroupKeyIsNotAValidElementID` feeds the key through `ParseDocument` as an element id and requires refusal (with a loading control), and `TestKeepTogetherReachesNoTablePath` drives an over-tall group through the clip branch and requires zero `HeaderRepeats`, zero `RowDisplacement`, zero `Suppressed` and no footer-orphan target.
+
+**Review findings.** 7 patched (high 1, medium 2, low 4), 7 deferred (high 1, medium 2, low 4), 8 rejected, 0 intent_gap, 0 bad_spec. See the Review Triage Log. Follow-up review recommended: **true** (a `high` was patched).
+
+**Verification performed** (measured, re-run by the parent after patching):
+- `go test -count=1 ./...` — exactly ONE red, `TestCorpusMeetsP6ExerciseFloors/P6g` (`got 7, need >=20`), the mandated permanent red, untouched; drift twin `TestCorpusP6StatsMatchDeclaredBaseline` green. Every other package ok.
+- `go vet -tags=matrix ./...` exit 0; `gofmt -l folio-go` from the repo root: no output; `cd lint && go test -count=1 ./...` 4/4 ok.
+- `TestTargetRenderHash` once per leg with `FOLIO_MATRIX_TARGET` set — darwin/arm64, linux/amd64, linux/arm64, js/wasm — all PASS with `asserts NOTHING` count **0** on every leg. `TestCrossTargetByteIdentity` ok.
+- Nine digests re-asserted byte-identical after patching: statement-1 76,744 `114df1d6…`; -5 127,363 `70dce051…`; -20 269,884 `56bfbbd9…`; -50 555,829 `5d090b0f…`; mandatory-break 56,681 `7cf743de…`; line-spacing 57,770 `de212115…`; justified-text 59,894 `6da3b12e…`; alignment-rounding 61,346 `986400a1…`; justified-thai 15,079 `58ca4777…`.
+- Designer: typecheck clean; oxlint 4 `only-export-components` warnings / 0 errors (baseline); 280 tests / 33 files unchanged; `test:e2e:compile` clean — **`tsc --noEmit` only; the browser e2e did NOT execute** (D-000.4).
+- `README.md` untouched, md5 still `078d7d80d518d54af2fc04fb270d46b8`.
+
+**Mutation proofs run by the parent** (a green suite over correct code proves nothing):
+- Fourth role arm neutered -> the over-tall message reads "row **-2** of the bound collection" and the test fails.
+- `keepTogetherGroup` returning the zero group -> 7 tests red, including the golden fixture and the byte-difference assertion.
+- PHASE A substitutions removed -> **before patching, the entire suite stayed green** (the finding); **after patching**, the 3-page document's footers print "of 2" and both new tests fail.
+- `derivationFloor` back to 2 with the whitelist entry removed -> the tripwire fires naming `render.go:2054:9: keepTogetherGroup`.
+- `versionForRank` ranks swapped -> both halves of `TestVersionForRankIsStrictlyAscending` fire.
+All mutations restored byte-identically (`cmp`-verified) and the suite re-confirmed.
+
+**The discriminating fixture.** `fixtures/keep-together/` ships the template and a twin identical except the tags are absent (`TestKeepTogetherTwinDiffersOnlyByTheTags` enforces that "identical except"). Asserted difference: **grouped**, page 1 carries no member of the signature block (no text, 0 rects) and page 2 carries the signature line, the date line and the ruled line's rect; **ungrouped**, the signature line is stranded on page 1 while the rule and date fall to page 2; and the two renders **differ in bytes**. A derivation that ignored grouping produces the split and fails.
+
+**Residual risks.**
+- The canvas does not preview grouping, and for a grouped document its window count and origins can be wrong while `ContentWindowCountIsFloor` reports the count as exact (measured; deferred, high — the intent forbids the fix here).
+- The tagged-image behaviour is now tested at the render surface, but the browser e2e witness remains compile-only, so no executed proof crosses the browser boundary.
+- `goldenDigestRecord` is now 21 entries; the twenty pre-existing entries are unmoved (the file's diff is insertions only).
 
 Status: ready-for-dev
 Blocking condition: none

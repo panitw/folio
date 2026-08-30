@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. The three coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"`, else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -184,16 +184,26 @@ The line between the two answers is therefore **who is responsible for the heigh
 | the thing that is too tall | where its height came from | what happens |
 |---|---|---|
 | a table row (header, data or footer) | the **data** — the author may never have seen the record | clipped to a page of its own, **warning**, document produced |
+| a declared keep-together group | the **author's** own declaration that these elements travel as one | clipped to a page of its own, **warning**, document produced |
 | a line of a text element | the **author's** declared font size | **error**, no document |
 | an image | the **author's** declared box | **error**, no document |
 
-Folio absorbs what the data made too tall, and refuses what the author typed too tall. A typo in a
-template should be found by the person who can fix it, at the moment they can fix it; a pathological
-record should not be able to stop a print run. Nothing is silent in either direction — the clip
-always carries its warning, and the refusal always names its element.
+Folio absorbs what the data made too tall, and refuses what the author typed too tall — with one
+deliberate exception, which is a *declared group* rather than a typed box. A set of elements the
+author declared inseparable can add up to more than a page even though every member fits, and the
+author has already said what should happen to it: keep it whole. Refusing the whole document at that
+point would throw away a signature block for the sake of a rule about typed heights, so an over-tall
+keep-together group takes the row's answer instead — a page of its own, cut off at that page's
+content bottom, and the same `TABLE_ROW_CLIPPED_HEIGHT` warning, worded for a group rather than a
+row and naming the group the author declared. Whole members' lines and images are dropped, never
+half of one: an image inside an over-tall group is **removed, not moved**. A typo in a template
+should still be found by the person who can fix it, at the moment they can fix it; a pathological
+record should still not be able to stop a print run. Nothing is silent in any of these directions —
+the clip always carries its warning, and the refusal always names its element.
 
-There is no page-break key, no `keepTogether`, and no widow or orphan control. Where the pages fall
-is derived from the four rules above and from nothing an author writes.
+There is no page-break key and no widow or orphan control. `keepTogether` (below) is the one thing an
+author writes that pagination reads: it says which elements must not be separated, never where a
+page ends. Where the pages fall is derived from the four rules above and from nothing else.
 
 ## Elements
 
@@ -216,6 +226,7 @@ Common to all five types:
 | `type` | `text` · `image` · `table` · `line` · `rect`. The set is closed (FR4); a sixth type is a load error. |
 | `x`, `y`, `width`, `height` | Band-relative position and size, in points. **A `table` declares `x` and `y` only** — see below. For a **text** element, `width` bounds the laid-out content: content wider than the declared `width` is clipped at the box's left/right edges, never reflowed and never dropped, and a diagnostic names the element (FR44, Story 2.8). `height` on a **text** element is **not** a clip bound — content taller than the declared `height` renders in full and no diagnostic is reported, because no layout stage consults a text element's declared height. (`style.lineSpacing` does let an author set the leading, so a vertical bound is now something a template can be tuned towards by hand; it still is not something the engine checks the box against.) For an **image** element, `height` (together with `width`) is honoured: the image is scaled to fit the box and centred, never cropped and never stretched (AD-24), and is reserved for `valign` should a future story add one. |
 | `visibleIf` | *Optional.* A bare expression (no `{{ }}` wrapping — see Expressions, below); the element is absent from the page model when it evaluates false, and its siblings do not move (FR20, AD-24; Story 3.5). Evaluated during bind, before pagination — it can never depend on the page an element lands on (AD-4). Condition semantics are `if()`'s own, unchanged: `true`/`false` decide visibility directly; an explicit `null` result is silently `false` (no diagnostic); a path absent from the data is a located Error; a string or a number is a located Error (no truthiness). A **field that is absent, or present with the JSON value `null`** (`"visibleIf": null`) both mean "no condition declared" — the element is visible, and there is nothing to evaluate; this is a *different* null from the condition **resolving** to `null` at evaluation, which is what hides the element. A bare literal (e.g. `"visibleIf": "42"`) can never resolve to a boolean and is rejected at **load**, naming the element (Story 3.5, closing the same-shaped rejection `if()`'s own condition slot already has). **Not valid on a table column — rejected at load, naming the column id** (Story 3.5; row-level visibility would make pagination a function of data, which FR25 does not define). |
+| `keepTogether` | *Optional.* A string naming a **keep-together group**, e.g. `"keepTogether": "signature"`. Every content-band element carrying the same tag paginates as **one indivisible unit** (FR51): the whole set stays within the window it started in, or the whole set moves to the next one — each member still at its own declared position, with no sibling moved, no gap invented and no page left empty. The members need not be adjacent in the element list, and a tag is scoped to the document. **Content band only** — rejected at load on a `pageHeader`/`pageFooter` element, which is repeated verbatim on every page and never paginated — and **not valid on a `table`**, whose rows already carry their own grouping, rejected at load naming the element and the field. An absent field and an explicit `null` both mean "no group declared". A group taller than a whole content window is *clipped*, not refused — see *Pagination*, above. Declaring this key raises the document's `version` to `1.2`. |
 | `style` | *Optional.* See below. |
 
 **`text`** — adds `"value"`, the string, which may contain `{{ }}` bindings.

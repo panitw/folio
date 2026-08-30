@@ -33,7 +33,7 @@ func decodeBands(ctx *parseCtx, raw json.RawMessage) (Bands, error) {
 		return Bands{}, newLoadError("bands", "", strings.Join(extra, ","), "must have exactly the three keys content, pageFooter, pageHeader — no others (FR6)")
 	}
 
-	content, err := decodeBand(ctx, "bands.content", obj["content"], false)
+	content, err := decodeBand(ctx, contentBandField, obj["content"], false)
 	if err != nil {
 		return Bands{}, err
 	}
@@ -47,6 +47,12 @@ func decodeBands(ctx *parseCtx, raw json.RawMessage) (Bands, error) {
 	}
 	return Bands{Content: content, PageFooter: footer, PageHeader: header}, nil
 }
+
+// contentBandField is decodeBands' own name for the content band, and
+// the value decodeElement's bandField carries for an element declared
+// there. Named once rather than spelled twice, because Story 7.7's
+// keep-together refusal turns on exactly this comparison.
+const contentBandField = "bands.content"
 
 // decodeBand decodes one band object. hasHeight controls whether a
 // "height" key is required (pageHeader/pageFooter) or forbidden
@@ -121,7 +127,7 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 		return Element{}, err
 	}
 
-	consumed := map[string]bool{"id": true, "type": true, "x": true, "y": true}
+	consumed := map[string]bool{"id": true, "type": true, "x": true, "y": true, "keepTogether": true}
 
 	typeRaw, ok := obj["type"]
 	if !ok {
@@ -206,6 +212,59 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 				return Element{}, err
 			}
 			el.Style = present(st)
+		}
+	}
+
+	// Story 7.7 (FR51): the author-declared keep-together tag. Decoded
+	// on `visibleIf`'s exact shape — absent and explicit null both mean
+	// "no tag declared" — with two refusals that are local to the
+	// element being decoded, which is why the declaration is an element
+	// key at all (D-7.7 Ruling B).
+	//
+	//  1. NOT OUTSIDE THE CONTENT BAND. FR51 scopes the feature to
+	//     content-band elements; a page header or page footer is
+	//     repeated verbatim on every page and is never paginated, so a
+	//     tag there could never do anything. bandField is decodeBands'
+	//     own name for the band being decoded, so this is the same hook
+	//     the band-scoped `height` refusal above uses.
+	//  2. NOT ON A TABLE. A table's own items already carry a row key
+	//     (tableRectSource.chromeRowGroup / textRunSource.lineRowGroup),
+	//     and layout.ColumnItem.Group is ONE key per item — honouring
+	//     both would be a second grouping model, which this story's
+	//     contract forbids outright.
+	//
+	// An EMPTY tag is refused everywhere: the value names a group, and
+	// "" names nothing while silently joining every other ""-tagged
+	// element into one union extent.
+	//
+	// ⚠ THE TWO REFUSALS ABOVE ARE ABOUT THE KEY, NOT ITS VALUE, and so
+	// they are tested BEFORE the null branch. The contract's matrix rows
+	// say "the key on a pageHeader or pageFooter element" and "the key on
+	// type: table" — not "a non-empty key" — and there is no reading on
+	// which `"keepTogether": null` on one of those elements could ever be
+	// honoured. Leaving it inside the non-null arm accepted it silently
+	// AND raised the document to 1.2 (versionRequiredByContent probes
+	// KeepTogether.Set, which an explicit null sets) for a key that can
+	// never do anything. Where the key IS allowed — a content-band
+	// non-table element — null keeps meaning exactly "ungrouped".
+	if ktRaw, ok := obj["keepTogether"]; ok {
+		if bandField != contentBandField {
+			return Element{}, newLoadError("keepTogether", string(id), string(ktRaw), "valid only on a content-band element (FR51) — a page header or page footer is repeated verbatim on every page and is never paginated, so a keep-together group there could never be honoured")
+		}
+		if el.Type == ElementTable {
+			return Element{}, newLoadError("keepTogether", string(id), string(ktRaw), "not valid on a table — a table's rows already carry their own grouping identity, and one item can belong to only one group, so a tagged table would need a second grouping model")
+		}
+		if rawIsNull(ktRaw) {
+			el.KeepTogether = presentNull[string]()
+		} else {
+			s, err := decodeStringRaw(ktRaw)
+			if err != nil {
+				return Element{}, newLoadError("keepTogether", string(id), string(ktRaw), "must be a string naming the keep-together group: "+err.Error())
+			}
+			if s == "" {
+				return Element{}, newLoadError("keepTogether", string(id), `""`, "must name a group — an empty tag names none (FR51)")
+			}
+			el.KeepTogether = present(s)
 		}
 	}
 

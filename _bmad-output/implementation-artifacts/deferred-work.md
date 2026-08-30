@@ -2841,6 +2841,17 @@ such a sharp red proof for the *origins* (the closed form answers 727890 where t
 728000) is the very thing that stops them exercising the *seam*. The two properties trade off in the
 same fixture.
 
+**Amended by Story 7.7 (2026-08-31), and left OPEN.** The instrument now exists:
+`fixtures/keep-together/` is a shipped, four-target-registered document whose content column really
+breaks inside a sheet — its signature block sits astride the first content window's ceiling
+(729.890 pt) and the whole block moves to page 2, so the engine itself produces a break at a position
+no `page-count-*` fixture reaches. What remains unanswered, and is why this entry is **not closed**,
+is the half this story deliberately does not touch: **nobody has confirmed the canvas DRAWS that
+seam.** The canvas builds its column items ungrouped (`page_setup.go`), so it does not preview
+grouping at all, and Story 7.7 neither claims nor tests that its window count keeps the floor property
+in the presence of a group. Whoever takes this entry should drive the seam's rendering from this
+fixture rather than from a hand-authored synthetic literal.
+
 ---
 
 ### DW-44 — `MAX_ENGINE_CONTENT_WINDOWS` has no Go counterpart and no test on either side; exceeding it discards the whole snapshot and blanks the canvas with no attribution

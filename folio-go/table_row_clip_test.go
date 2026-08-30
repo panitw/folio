@@ -1039,27 +1039,41 @@ func TestOverTallGroupPaginationTerminatesWithinABound(t *testing.T) {
 
 // --- D-4.6.2's required tripwire -----------------------------------------
 
-// TestAPresentItemGroupIsAlwaysATableRow is the tripwire D-4.6.2 requires,
-// and it guards the one soft spot in this story's whole design.
+// TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup is the tripwire
+// D-4.6.2 requires, and it guards the one soft spot in Story 4.6's whole
+// design.
+//
+// IT WAS RENAMED BY STORY 7.7, BECAUSE THE PROPERTY ITS OLD NAME ASSERTED
+// IS NOW FALSE ON PURPOSE. It used to be
+// TestAPresentItemGroupIsAlwaysATableRow, and it named the only two lawful
+// ways out: "give the new grouping its own placement rule, or take the
+// decision to widen the clip deliberately and update D-4.6.2." Story 7.7
+// took the second, the engineering lead recorded the amendment in
+// folio-mvp-decision-log.md's D-4.6.2 entry (AMENDED 2026-08-31), and this
+// test now states the WIDENED invariant rather than the old one. The
+// tripwire fired exactly as designed; it was not evaded.
 //
 // The clip is keyed on layout.ItemGroup.Present, because Kind cannot tell a
 // table row from a plain line (measured: at 45cf812 an over-tall table row
 // and an over-tall plain text element were byte-identical at the public
 // API — both 0 bytes, both CONTENT_UNLAYOUTABLE, both Kind "line"). That
-// key is CORRECT only because "grouped" and "table row" are co-extensive in
-// package folio today — and they are so ACCIDENTALLY, not by construction:
-// nothing in the type system stops a future story tagging a non-table
-// element with a present ItemGroup, and the day one does, that element
-// becomes silently CLIPPABLE instead of erroring, reversing D-2.6.1 without
-// anyone deciding to.
+// key is CORRECT only while every present ItemGroup names something whose
+// clipping D-4.6.2 has actually ruled on. Nothing in the type system stops
+// a future story tagging some further element with a present ItemGroup, and
+// the day one does, that element becomes silently CLIPPABLE instead of
+// erroring, reversing D-2.6.1 without anyone deciding to.
 //
-// So the property is asserted structurally: in package folio's own
-// non-test sources, a present ItemGroup is constructed ONLY inside the two
-// row-group derivations, tableRectSource.chromeRowGroup and
+// THE INVARIANT, AS AMENDED: in package folio's own non-test sources, a
+// present ItemGroup is a TABLE ROW or an AUTHOR-DECLARED KEEP-TOGETHER
+// GROUP, and nothing else. It is constructed ONLY inside the three
+// derivations named below — tableRectSource.chromeRowGroup and
 // textRunSource.lineRowGroup, whose every arm is a table row (a header row,
-// a data row, or the footer row). The build says so the day that stops
-// being true.
-func TestAPresentItemGroupIsAlwaysATableRow(t *testing.T) {
+// a data row, or the footer row), and keepTogetherIndex.keepTogetherGroup,
+// whose single arm is an element carrying the author's own `keepTogether`
+// tag (FR51). Both populations are ones D-4.6.2 has ruled clippable, and
+// for the same stated reason: leniency follows authorship. The build says
+// so the day a FOURTH one appears.
+func TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup(t *testing.T) {
 	root, err := filepath.Abs(".")
 	if err != nil {
 		t.Fatalf("resolve module root: %v", err)
@@ -1069,11 +1083,15 @@ func TestAPresentItemGroupIsAlwaysATableRow(t *testing.T) {
 		t.Fatalf("read %s: %v", root, err)
 	}
 
-	// The two derivations that ARE the table-row grouping — named as a
-	// closed set, because that closure is the property.
+	// The three derivations that ARE the grouping — named as a closed
+	// set, because that closure is the property. Two are the table-row
+	// grouping (Story 4.3); the third is Story 7.7's author-declared
+	// keep-together group, added here under D-4.6.2's 2026-08-31
+	// amendment and not by quietly widening a whitelist.
 	rowGroupDerivations := map[string]bool{
-		"chromeRowGroup": true,
-		"lineRowGroup":   true,
+		"chromeRowGroup":    true,
+		"lineRowGroup":      true,
+		"keepTogetherGroup": true,
 	}
 
 	fset := token.NewFileSet()
@@ -1153,17 +1171,18 @@ func TestAPresentItemGroupIsAlwaysATableRow(t *testing.T) {
 	// the other (this story's reviewer, Finding 8).
 	//
 	// This test's subject is WHERE a present ItemGroup is constructed,
-	// not HOW MANY there are. Merging any two of the six arms is a
+	// not HOW MANY there are. Merging any two of the arms is a
 	// legitimate refactor that changes nothing about the property, and a
 	// floor pinned to the measurement would meet it with a false red
-	// wearing a vacuity message. Two is the real floor: one arm per
-	// derivation is the least that can be there while both derivations
-	// still exist, and the UPPER direction — a seventh construction
-	// somewhere new — is genuinely guarded by the t.Errorf above, which
-	// is where this test's teeth actually are.
-	const derivationFloor = 2
+	// wearing a vacuity message. The floor is ONE ARM PER DERIVATION —
+	// the least that can be there while every derivation still exists —
+	// so Story 7.7 raises it from two to three along with the third
+	// derivation. The UPPER direction, a construction somewhere new, is
+	// genuinely guarded by the t.Errorf above, which is where this
+	// test's teeth actually are.
+	const derivationFloor = 3
 	if constructions < derivationFloor {
-		t.Fatalf("vacuity guard: the scan found only %d present-ItemGroup construction(s) in package folio's non-test sources; at least %d must exist while both row-group derivations do (six were measured at Story 4.6). A truncated walk is trivially clean",
+		t.Fatalf("vacuity guard: the scan found only %d present-ItemGroup construction(s) in package folio's non-test sources; at least %d must exist while all three grouping derivations do (seven were measured at Story 7.7: three arms in each row-group derivation and one in keepTogetherGroup). A truncated walk is trivially clean",
 			constructions, derivationFloor)
 	}
 }

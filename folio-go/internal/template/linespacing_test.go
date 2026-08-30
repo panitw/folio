@@ -153,6 +153,68 @@ func TestVersionForSaveIsRaisedOnlyByContent(t *testing.T) {
 		})
 	}
 
+	// Story 7.7: the ELEMENT-LEVEL probe. `keepTogether` is not a style
+	// key, so a rule expressed only through styleVersionRank would miss
+	// it entirely — the same shape of miss style.color made, one level
+	// out. These go through their own builder because the style builder
+	// cannot express an element key at all.
+	for _, c := range []struct {
+		label  string
+		attr   string
+		loaded string
+		want   string
+	}{
+		{"no keepTogether, 1.0 in", "", "1.0", "1.0"},
+		{"keepTogether, 1.0 in", `"keepTogether": "signature", `, "1.0", "1.2"},
+		{"keepTogether, 1.1 in — the higher wins", `"keepTogether": "signature", `, "1.1", "1.2"},
+		{"explicit null keepTogether still declares the key", `"keepTogether": null, `, "1.0", "1.2"},
+		{"keepTogether, 1.9 in — never lowered", `"keepTogether": "signature", `, "1.9", "1.9"},
+		{"keepTogether, 2.0 in — never lowered", `"keepTogether": "signature", `, "2.0", "2.0"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			doc := strings.Replace(keepTogetherRoundTripDocWithAttr(c.attr), `"version": "1.0"`, `"version": "`+c.loaded+`"`, 1)
+			d, err := ParseDocument([]byte(doc))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if got := versionForSave(d.Version, d); got != c.want {
+				t.Errorf("versionForSave(%q) = %q, want %q", c.loaded, got, c.want)
+			}
+		})
+	}
+
+	// THE ORDERING CASE FOR THE ELEMENT-LEVEL PROBE, and it is the one a
+	// probe that ran only when no style rank had been found would fail:
+	// the FIRST element carries `keepTogether` (1.2) and a LATER one
+	// carries `align: "justify"` (2.0), so the maximum must be 2.0 —
+	// and, in the other order, the 2.0 must not be lowered by a later
+	// 1.2. A probe that overwrote `highest` instead of raising it fails
+	// the second direction.
+	dk, err := ParseDocument([]byte(keepTogetherThenJustifyDoc))
+	if err != nil {
+		t.Fatalf("parse keepTogether-then-justify doc: %v", err)
+	}
+	if got := versionRequiredByContent(dk); got != majorFeatureVersion {
+		t.Errorf("keepTogether on an earlier element and justify on a later one requires %q, want %q — the element-level probe must participate in the MAXIMUM, never replace it", got, majorFeatureVersion)
+	}
+	dj, err := ParseDocument([]byte(justifyThenKeepTogetherDoc))
+	if err != nil {
+		t.Fatalf("parse justify-then-keepTogether doc: %v", err)
+	}
+	if got := versionRequiredByContent(dj); got != majorFeatureVersion {
+		t.Errorf("justify on an earlier element and keepTogether on a later one requires %q, want %q", got, majorFeatureVersion)
+	}
+	// And the pair that fixes the RANK ORDER itself: 1.2 must beat 1.1,
+	// in both authoring orders, or inserting rankKeepTogether renumbered
+	// the iota block into a different meaning than it reads as.
+	dl, err := ParseDocument([]byte(lineSpacingThenKeepTogetherDoc))
+	if err != nil {
+		t.Fatalf("parse lineSpacing-then-keepTogether doc: %v", err)
+	}
+	if got := versionRequiredByContent(dl); got != keepTogetherVersion {
+		t.Errorf("lineSpacing on an earlier element and keepTogether on a later one requires %q, want %q", got, keepTogetherVersion)
+	}
+
 	// The rule must reach BOTH attachment points, not only element.style:
 	// a table that sets lineSpacing on headerStyle alone still requires
 	// 1.1, and a version that missed it would misdeclare exactly the way
@@ -226,7 +288,7 @@ func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 	if ceilingMajor != SupportedMajor {
 		t.Errorf("SupportedVersion %q declares MAJOR %d but SupportedMajor is %d — checkVersionLoadable and versionForSave would disagree about what this library can load", SupportedVersion, ceilingMajor, SupportedMajor)
 	}
-	for _, v := range []string{baseVersion, minorFeatureVersion, majorFeatureVersion} {
+	for _, v := range []string{baseVersion, minorFeatureVersion, keepTogetherVersion, majorFeatureVersion} {
 		major, minor, perr := parseVersion(v)
 		if perr != nil {
 			t.Errorf("%q does not parse: %v", v, perr)
@@ -245,6 +307,20 @@ func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 	// shape it distinguishes, not merely for the constants in isolation.
 	for _, style := range []string{"", `"lineSpacing": 1.5, `, `"color": "#112233", `, `"align": "justify", `} {
 		d, perr := ParseDocument([]byte(lineSpacingRoundTripDocWithStyle(style)))
+		if perr != nil {
+			t.Fatalf("parse: %v", perr)
+		}
+		got := versionRequiredByContent(d)
+		major, minor, _ := parseVersion(got)
+		if major > ceilingMajor || (major == ceilingMajor && minor > ceilingMinor) {
+			t.Errorf("versionRequiredByContent returned %q, above the ceiling %q", got, SupportedVersion)
+		}
+	}
+	// Story 7.7's shape lives on the ELEMENT, not in the style block, so
+	// it needs its own builder here or this enumeration goes vacuous for
+	// the one key that is not a style key.
+	for _, attr := range []string{"", `"keepTogether": "signature", `, `"keepTogether": null, `} {
+		d, perr := ParseDocument([]byte(keepTogetherRoundTripDocWithAttr(attr)))
 		if perr != nil {
 			t.Fatalf("parse: %v", perr)
 		}
@@ -281,6 +357,102 @@ func lineSpacingRoundTripDocWithStyle(style string) string {
 }
 `
 }
+
+// keepTogetherRoundTripDocWithAttr is lineSpacingRoundTripDocWithStyle's
+// ELEMENT-LEVEL twin (Story 7.7): the attribute goes on the element
+// itself, beside `id`/`type`, because `keepTogether` is not a style key
+// and no style builder can express it.
+func keepTogetherRoundTripDocWithAttr(attr string) string {
+	return `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, ` + attr + `"value": "v", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+}
+
+// keepTogetherThenJustifyDoc puts the 1.2 element key on the element the
+// walk reaches FIRST and the 2.0 style value on a later one; its twin
+// reverses the order. Together they pin that the element-level probe
+// RAISES the running maximum rather than setting it.
+const keepTogetherThenJustifyDoc = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "keepTogether": "signature", "value": "a", "style": {"fontFamily": "body", "fontSize": 11}},
+        {"id": "e2", "type": "text", "x": 0, "y": 60, "width": 200, "height": 40, "value": "b", "style": {"fontFamily": "body", "fontSize": 11, "align": "justify"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+const justifyThenKeepTogetherDoc = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "a", "style": {"fontFamily": "body", "fontSize": 11, "align": "justify"}},
+        {"id": "e2", "type": "text", "x": 0, "y": 60, "width": 200, "height": 40, "keepTogether": "signature", "value": "b", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// lineSpacingThenKeepTogetherDoc pins the ORDER OF THE TWO MINORS: 1.2
+// must beat 1.1. It is the case that reddens if inserting rankKeepTogether
+// into the iota block put it below rankMinorFeature.
+const lineSpacingThenKeepTogetherDoc = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "a", "style": {"fontFamily": "body", "fontSize": 11, "lineSpacing": 1.5}},
+        {"id": "e2", "type": "text", "x": 0, "y": 60, "width": 200, "height": 40, "keepTogether": "signature", "value": "b", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
 
 const lineSpacingHeaderStyleDoc = `{
   "assets": {},

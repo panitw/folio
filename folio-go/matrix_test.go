@@ -720,6 +720,69 @@ func requireAlignmentRoundingRounds(t *testing.T, target matrixTarget, raw []byt
 	})
 }
 
+// captureKeepTogetherRender runs Story 7.7's selector, rendering
+// fixtures/keep-together/ in a FRESH process.
+func captureKeepTogetherRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessKeepTogetherEnvVar: "1"})
+}
+
+// requireKeepTogetherMovesTheWholeBlock is this document's feature guard,
+// and it asserts the thing the digest cannot explain: on page 2, and only
+// on page 2, all three members of the signature block are drawn.
+//
+// The fixture is authored so that WITHOUT its tags the first member
+// stays behind on page 1 (see fixtures/keep-together/README.md), so a
+// target that ignored the grouping disagrees HERE, naming the page, long
+// before it disagrees in an opaque digest.
+func requireKeepTogetherMovesTheWholeBlock(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	if len(raw) == 0 {
+		t.Fatalf("%s: the keep-together leg produced no bytes", target.name)
+	}
+	requirePageTreeResolves(t, target, raw, 2)
+
+	streams := splitPageContentStreams(t, raw)
+	if len(streams) != 2 {
+		t.Fatalf("%s: the keep-together leg resolved to %d page(s), want 2", target.name, len(streams))
+	}
+	cmaps := toUnicodeForResources(t, raw)
+	pageText := func(stream string) string {
+		var sb strings.Builder
+		for _, r := range parseContentStreamRuns(t, []byte(stream)) {
+			cmap, ok := cmaps[r.Resource]
+			if !ok {
+				t.Fatalf("%s: a run selects font resource %q with no /ToUnicode CMap", target.name, r.Resource)
+			}
+			for _, cid := range r.CIDs {
+				sb.WriteString(cmap[cid])
+			}
+		}
+		return sb.String()
+	}
+
+	first, second := pageText(streams[0]), pageText(streams[1])
+	if first == "" || second == "" {
+		t.Fatalf("%s: a page of the keep-together leg draws no text at all", target.name)
+	}
+	if strings.Contains(first, keepTogetherSignatureText) || strings.Contains(first, keepTogetherDateText) {
+		t.Fatalf("%s: page 1 carries a member of the signature block — the group was split on this target", target.name)
+	}
+	if !strings.Contains(second, keepTogetherSignatureText) || !strings.Contains(second, keepTogetherDateText) {
+		t.Fatalf("%s: page 2 must carry the whole signature block", target.name)
+	}
+	// The ruled line travels with the two text members, and it is the
+	// member a text-only check cannot see: it is drawn as a filled
+	// rectangle, so it is counted as a fill operator on page 2 and must
+	// be absent from page 1.
+	if n := strings.Count(streams[0], " re f\n"); n != 0 {
+		t.Fatalf("%s: page 1 draws %d filled rectangle(s) — the signature block's ruled line did not move with its group", target.name, n)
+	}
+	if n := strings.Count(streams[1], " re f\n"); n != 1 {
+		t.Fatalf("%s: page 2 draws %d filled rectangle(s), want exactly the signature block's ruled line", target.name, n)
+	}
+}
+
 func captureAlternatingRowsRender(t *testing.T, target matrixTarget, binPath string) []byte {
 	t.Helper()
 	return runOnTarget(t, target, binPath, map[string]string{subprocessAlternatingRowsEnvVar: "1"})
@@ -1784,6 +1847,28 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requireAlignmentRoundingRounds,
 		wantPages:        1,
+	},
+	{
+		// Story 7.7's document (FR51). It is HERE because this story
+		// changes what the PAGINATOR IS GIVEN, and a page assignment is
+		// the one quantity a whole document's bytes hang off: a target
+		// that resolved a group's page differently would not produce a
+		// slightly different file, it would produce a different
+		// document. Until this entry the four-leg matrix rendered no
+		// document whose column breaks anywhere an author asked it to.
+		//
+		// Registered on the same terms as alignment-rounding above — the
+		// slug lives in .github/workflows/matrix.yml's `docs="…"` list
+		// and in an upload-artifact path for every target under
+		// `if-no-files-found: error`, pinned by
+		// TestMatrixDocumentSlugsAreRegisteredInCI.
+		label:            "keep-together (a signature block that moves whole)",
+		slug:             "keep-together",
+		capture:          captureKeepTogetherRender,
+		fixtureRelPath:   []string{"fixtures", "keep-together", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireKeepTogetherMovesTheWholeBlock,
+		wantPages:        2,
 	},
 }
 

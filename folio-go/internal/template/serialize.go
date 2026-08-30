@@ -241,6 +241,18 @@ func writeElement(dst []byte, depth int, e Element) []byte {
 			fields = append(fields, kv{"visibleIf", writeString(e.VisibleIf.Value)})
 		}
 	}
+	// Story 7.7 (FR51). The unkeyed literal form is REQUIRED here, not a
+	// style choice: drift_test.go's AST reader (extractGoKeys) sees a
+	// kv literal only in the `kv{"key", …}` spelling, so a keyed
+	// `kv{key: …, write: …}` would emit a key folio-format.md's drift
+	// guard is structurally blind to.
+	if e.KeepTogether.Set {
+		if e.KeepTogether.Null {
+			fields = append(fields, kv{"keepTogether", writeNull()})
+		} else {
+			fields = append(fields, kv{"keepTogether", writeString(e.KeepTogether.Value)})
+		}
+	}
 	if e.Style.Set {
 		if e.Style.Null {
 			fields = append(fields, kv{"style", writeNull()})

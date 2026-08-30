@@ -864,7 +864,7 @@ func TestBothPaginationPassesAgreeOnFooterPartition(t *testing.T) {
 	contentRuns = append(contentRuns, contentTableRuns...)
 
 	// PHASE A, exactly as predictDocument builds it.
-	phaseAItems := contentColumnItems(contentRuns, nil, contentTableRects, visible)
+	phaseAItems := contentColumnItems(contentRuns, nil, contentTableRects, visible, nil)
 	phaseAPlan, _, err := paginateWithFooterOrphanFix(geometry, phaseAItems, footerOrphanTargetsFrom(phaseAItems))
 	if err != nil {
 		t.Fatalf("PHASE A paginate: %v", err)

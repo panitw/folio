@@ -47,6 +47,14 @@ import (
 // (D-R7.9): it reintroduces the silently-wrong render D-1.4.12 exists to
 // prevent.
 //
+// A THIRD MINOR, 1.2, was added by Story 7.7 (FR51): the element-level
+// `keepTogether` key, which names an author-declared set of content-band
+// elements that paginate as one. It is additive and extends no closed
+// set, so it is a MINOR — but its own MINOR, above 1.1, because a 1.1
+// reader predates the key and would split a signature block while
+// believing it had rendered the document correctly. SupportedMajor and
+// SupportedVersion are UNMOVED by it: 2.0 already exceeds 1.2.
+//
 // NONE OF THAT CHANGES WHAT AN EXISTING DOCUMENT DECLARES. A document
 // using only `lineSpacing` or `color` still declares 1.1; one using
 // neither still declares 1.0; only one that actually carries
@@ -62,6 +70,16 @@ const (
 //
 // minorFeatureVersion is the version introduced by the two 1.1 keys.
 //
+// keepTogetherVersion is the version introduced by Story 7.7's
+// element-level `keepTogether` key (FR51). It is its OWN MINOR, 1.2, and
+// not 1.1: a 1.1 reader predates the key entirely, so it would load a
+// keep-together document, ignore the tag and silently split the block —
+// a version claiming a reader sufficient for content that reader cannot
+// render. It is not 2.0 either: the key is purely ADDITIVE and extends
+// no closed set (D-1.4.12), so a MAJOR would needlessly orphan the
+// document from every 1.x reader. `style.color` is the precedent — an
+// additive key whose absence renders WRONG is still a MINOR (D-1.4.9).
+//
 // majorFeatureVersion is the version introduced by the 2.0 closed-set
 // extension, `style.align: "justify"` (Story 7.3).
 //
@@ -70,6 +88,7 @@ const (
 const (
 	baseVersion         = "1.0"
 	minorFeatureVersion = "1.1"
+	keepTogetherVersion = "1.2"
 	majorFeatureVersion = "2.0"
 )
 
@@ -182,6 +201,12 @@ func versionForSave(loaded string, d *Document) string {
 //   - does any style block set `lineSpacing` or `color`? Both are 1.1's
 //     optional keys; a document using neither is expressible in 1.0 and
 //     must keep declaring it.
+//   - does any ELEMENT set `keepTogether`? That is 1.2's optional key
+//     (Story 7.7, FR51). It is probed HERE, in the element loop, and
+//     not in styleVersionRank: it is not a style key, it hangs off the
+//     element itself, and a rule that only ever looked inside a style
+//     block would miss it exactly the way the first-hit rule missed a
+//     later element's `justify`.
 //   - does any style block set `align: "justify"`? That is 2.0's closed-
 //     set extension, and no 1.x reader may draw it.
 //
@@ -200,6 +225,12 @@ func versionRequiredByContent(d *Document) string {
 	highest := rankBase
 	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
 		for _, el := range band.Elements {
+			// Story 7.7: Presence.Set, on `color`'s terms — an explicit
+			// `keepTogether: null` is still the key appearing in a file
+			// a 1.1 reader would not recognise.
+			if el.KeepTogether.Set && rankKeepTogether > highest {
+				highest = rankKeepTogether
+			}
 			if el.Style.Set && !el.Style.Null {
 				if r := styleVersionRank(el.Style.Value); r > highest {
 					highest = r
@@ -232,15 +263,23 @@ type versionRank int
 const (
 	rankBase versionRank = iota
 	rankMinorFeature
+	rankKeepTogether
 	rankMajorFeature
 )
 
 // versionForRank maps a rank back to the version string it names.
 // Indexed by rank rather than ranged over, so it stays deterministic and
 // stays clear of D-1.3.5's map-range build failure.
+// The array is indexed by an `iota` rank, so INSERTING a rank renumbers
+// every rank above it. Nothing about the array's shape says the rank
+// order and the VERSION order agree — that is the property the whole
+// "highest requirement wins" comparison rests on, and it is asserted
+// directly by TestVersionForRankIsStrictlyAscending (version_test.go)
+// rather than left to the eye.
 var versionForRank = [...]string{
 	rankBase:         baseVersion,
 	rankMinorFeature: minorFeatureVersion,
+	rankKeepTogether: keepTogetherVersion,
 	rankMajorFeature: majorFeatureVersion,
 }
 

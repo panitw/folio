@@ -399,7 +399,7 @@ func TestBothPaginationPassesAgreeOnRowPartition(t *testing.T) {
 	contentRuns = append(contentRuns, contentTableRuns...)
 
 	// PHASE A: the real production function.
-	phaseAPlan, err := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns, contentTableRects, visible))
+	phaseAPlan, err := layout.Paginate(geometry, contentColumnItems(contentRuns, imageRuns, contentTableRects, visible, nil))
 	if err != nil {
 		t.Fatalf("PHASE A Paginate: %v", err)
 	}

@@ -867,6 +867,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessKeepTogetherEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(keepTogetherTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(keepTogetherDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	// Story 4.7's ELEVENTH..FOURTEENTH selectors: the Customer Account
 	// Statement at 1, 5, 20 and 50 pages. Four selectors rather than one
 	// parameterised selector because matrixDocuments' capture contract is
@@ -929,6 +942,17 @@ const subprocessJustifiedThaiEnvVar = "FOLIO_SUBPROCESS_RENDER_JUSTIFIEDTHAI"
 // reason to exist is a rounding rule, which is why running it on every
 // target is not a formality.
 const subprocessAlignmentRoundingEnvVar = "FOLIO_SUBPROCESS_RENDER_ALIGNMENTROUNDING"
+
+// subprocessKeepTogetherEnvVar is Story 7.7's selector, rendering
+// fixtures/keep-together/ — the first document in this repository whose
+// column is broken by an AUTHOR'S OWN DECLARATION (FR51) rather than by
+// the four pagination rules alone, and the first declaring format
+// version 1.2 — in a FRESH process, for the same reason
+// alignment-rounding needed one: a golden recorded from one process pins
+// whatever that process happened to do. It matters here specifically
+// because this story changes what the paginator is GIVEN, and a page
+// assignment is the one quantity a whole document's bytes hang off.
+const subprocessKeepTogetherEnvVar = "FOLIO_SUBPROCESS_RENDER_KEEPTOGETHER"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

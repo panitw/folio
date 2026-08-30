@@ -394,7 +394,7 @@ func extractRuntimeKeys(t *testing.T, b []byte) (keys map[string]bool, tokensExt
 
 // TestDriftASTMatchesRuntimeEmission is D-1.4.15's required behavioural
 // guard: astKeys == runtimeKeys, both directions, over maximalFixture —
-// the document built specifically to exercise every one of the 52 keys
+// the document built specifically to exercise every one of the 55 keys
 // extractGoKeys finds in serialize.go (Finding 8: the round-trip corpus
 // did not used to cover all of them; maximalFixture closes that gap and
 // is reused here as D-1.4.15's own "cheap path first" measurement

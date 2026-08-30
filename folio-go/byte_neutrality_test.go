@@ -457,6 +457,31 @@ var goldenDigestRecord = []struct {
 			{kind: "readme", relPath: "fixtures/alignment-rounding/README.md"},
 		},
 	},
+	{
+		// RECORDED by Story 7.7 (FR51). THE FIRST COMMITTED DOCUMENT
+		// WHOSE COLUMN IS BROKEN BY AN AUTHOR'S OWN DECLARATION RATHER
+		// THAN BY THE FOUR PAGINATION RULES ALONE, and the first
+		// declaring format version 1.2.
+		//
+		// It is a DISCRIMINATOR: its signature block is authored to land
+		// astride the first content window's ceiling, so the same
+		// document with its three `keepTogether` tags and without them
+		// paginates differently. keep_together_template.go ships both
+		// halves of that pair, and the untagged twin is what makes the
+		// grouped placement falsifiable rather than merely observed.
+		//
+		// It is also the first fixture in the repository whose column
+		// really breaks INSIDE the sheet at a position no earlier
+		// fixture reaches, which is the instrument DW-43 was left open
+		// waiting for. Its README quotes the digest.
+		dir:    "keep-together",
+		sha256: "6ed495b4c22d7473d82c536c40dce8ca6f2a2fa4bf38efff44b2207929137640",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/keep-together/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/keep-together/README.md"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -815,6 +840,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: line-spacing",           // Story 7.2 — the first cross-target artifact declaring style.lineSpacing (and format version 1.1). Authorised by the story's own Verification section, which makes 7.2's correctness byte-identity-shaped and carries the heavy tests regardless of the per-epic cadence. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: justified-text",         // Story 7.3 (FR47) — the first cross-target artifact that is justified at all, and the first declaring format version 2.0. Authorised by the story's own Verification section, which makes 7.3's correctness byte-identity-shaped (D-R7.1): a slack remainder placed in a different ORDER is precisely the defect that agrees with itself on one host and disagrees across four. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: justified-thai",         // Story 7.3, owner scope amendment — the first cross-target artifact whose justified content carries no spaces, so its gaps come from the shipped dictionary walk (AD-25) rather than a whitespace scan. Registered on justified-text's terms: legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
+	"matrix-document: keep-together",          // Story 7.7 (FR51) — the first cross-target artifact whose column is broken by an author's own declaration rather than by the four pagination rules alone, and the first declaring format version 1.2. Authorised by the story's own Verification section, which makes 7.7's correctness byte-identity-shaped (D-R7.1): this story changes PAGINATION INPUTS, and a page assignment that agrees with itself on one host and disagrees across four is exactly the defect the four legs exist to catch. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: alignment-rounding",     // Story 7.3, CLOSING DW-24 — the first cross-target artifact declaring align center or valign at all, and therefore the first that takes a half-to-even tie in the alignment feature. DW-24's own closure conditions require the fixture be "added to matrixDocuments so all four targets render it", which is the ruling authorising this entry. Legs wired in matrix.yml and run in-story alongside justified-text
 }
 
