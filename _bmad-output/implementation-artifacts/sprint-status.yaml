@@ -161,7 +161,7 @@ development_status:
   # ## Delivery Log. DW-24 open (owner 7.3 + gate checklist); DW-25 open (canvas line cap,
   # medium, awaiting the engineering lead).
   7-1-break-a-line-where-the-author-typed-a-break: done
-  7-2-set-the-space-between-a-paragraph-s-lines: backlog
+  7-2-set-the-space-between-a-paragraph-s-lines: in-progress
   7-3-justify-a-paragraph-s-edges: backlog
   7-4-author-body-text-in-the-designer: backlog
   7-5-the-content-column-runs-past-the-first-page: backlog
