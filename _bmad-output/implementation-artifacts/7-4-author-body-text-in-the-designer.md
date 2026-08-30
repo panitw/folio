@@ -5,7 +5,7 @@ created: '2026-08-30'
 status: 'done'
 baseline_revision: '813a414e12198be86d28f61af741b56fd93fb40e'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
   - '{project-root}/_bmad-output/implementation-artifacts/deferred-work.md'
@@ -53,15 +53,15 @@ deferred:
 
 ## In plain terms (read this first if you just want the gist)
 
-*Non-normative: this section settles nothing. It describes what the story sets out to do.*
+*Non-normative: this section settles nothing. The contract below governs implementation.*
 
-Today a contract clause cannot be typed into the designer at all. The one place to enter a component's words is a single-line box, which cannot hold a paragraph break; and the drawing surface refuses outright any text longer than about eighty English words — or about a hundred and seventy characters in Thai, where each character costs three times as much. Past that limit the whole page goes blank rather than showing what it can.
+A contract clause could not be typed into the designer. The only place for a component's words was a single-line box that cannot hold a paragraph break, and the drawing surface refused any text past about eighty English words — a hundred and seventy in Thai, where each character costs three times as much. Past that, the edit was rejected outright.
 
-This story opens both. The text box becomes a real editor that keeps the lines an author types, and keeps the paragraph breaks of a clause pasted from a word processor while quietly dropping the pasted fonts and bold. Line spacing and alignment, justification included, join the existing typography controls. The refusal limits move up to figures derived from the epic's own forty-page target, and past those the drawing degrades honestly: it paints what it can and says it has been cut, instead of showing nothing at all.
+Both are open now. The box is a real editor that keeps typed and pasted paragraph breaks and drops a word processor's fonts and bold. Line spacing and justification join the typography controls — justification for text alone, never for a table. New limits derived from the epic's forty-page target replaced the old ones, and past those the drawing degrades honestly: it paints what it can and says in words that it was cut. The author's own text is never shortened; refusing a file hand-edited to justify a table became its own story.
 
-The alignment control offers justification only for text, never for a table, where the setting means nothing. Making the engine refuse a hand-edited file that says otherwise is a separate change and becomes its own story.
+Two things not to misread. One test is red by design — a standing marker, not a failure. And the browser-level check that follows an edit through to a finished file was corrected for the new editor but never run — that suite does not run here — making it this story's one change without executed proof.
 
-Nothing here changes how pages are decided, and the canvas still draws a single page. One test stays red by design: a standing marker, not a failure.
+Afterwards an owner reported Thai text overlapping on the drawing surface. The engine's measurements were right; the browser drew with the wrong typeface because two files spelled the font names differently. A test now holds the two spellings together.
 
 <intent-contract>
 
@@ -605,3 +605,107 @@ absent here; `lint/internal/rules/licencegraph_test.go` is not gofmt-clean (DW-2
 
 **Repository-root `README.md` is byte-identical to its committed state** and appears in no staged
 change: `git status` lists only the fourteen modified and two added files this story owns.
+
+### 2026-08-30 — done
+
+Baseline `813a414`. Story commit `a0cf8c2` (17 files). Closed at `c6e4d03`+1. Planned at the plan gate
+that routed DW-29 out; built in one dispatch; closed here against the diff rather than against the
+build's own report.
+
+**Gates measured at the closing revision, not carried forward.** `go test -count=1 ./...` — 13 packages
+`ok`, **exactly one** red and it is the mandated permanent one: `TestCorpusMeetsP6ExerciseFloors/P6g
+(opaque names)`, `got 7, need >=20`, stats `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`. Its
+drift twin `TestCorpusP6StatsMatchDeclaredBaseline` green. `go vet -tags=matrix ./...` exit 0, silent.
+`gofmt -l folio-go` from the repo root, empty. `TestTargetRenderHash` run **once per leg with
+`FOLIO_MATRIX_TARGET` exported** — `darwin/arm64` 0.64s, `linux/amd64` 7.00s, `linux/arm64` 4.46s,
+`js/wasm` 9.71s, all PASS, and no leg emitted the "asserts NOTHING" line that marks a no-op.
+`TestCrossTargetByteIdentity` ok (20.8s). `cd lint && go test -count=1 ./...` — 4 packages ok, uncached.
+Designer: typecheck clean; lint **exactly four** pre-existing `only-export-components` warnings, no
+fifth; `npm test` **239 passed / 239 across 32 files** (235/31 at the story commit, +4 from the font-stack
+guard); `npm run test:e2e:compile` clean. The nine quoted goldens re-measured byte-for-byte against
+`goldenDigestRecord`: statement-1 76,744 `114df1d6`; -5 127,363 `70dce051`; -20 269,884 `56bfbbd9`;
+-50 555,829 `5d090b0f`; mandatory-break 56,681 `7cf743de`; line-spacing 57,770 `de212115`;
+justified-text 59,894 `6da3b12e`; alignment-rounding 61,346 `986400a1`; justified-thai 15,079
+`58ca4777`. Known-environmental and not regressions: `TestShippedFacesReproduceFromUpstream` (no
+`fontTools` here) and `lint/…/licencegraph_test.go`'s gofmt (DW-23, Story 15.2).
+
+**The one change with no executed proof.** The repository's only cross-boundary authoring witness —
+browser wasm through saved bytes to a native render and back to byte identity — committed the content
+field by pressing Enter, six times over. This story's textarea makes Enter insert a paragraph break, so
+the witness would have hung at the first of the six and **nothing in CI could have seen it**: the
+compile gate is `tsc --noEmit`. The fix is a one-line change to the blur idiom the same spec already
+uses four times over. It **compiles and was never executed**, because browser e2e is deferred by
+D-000.4. That is stated here rather than buried because it is the only assertion in this story resting
+on reasoning instead of a run.
+
+**A constant the builder corrected on its own measurement, and the arithmetic re-checked here.** The
+spec prescribed `maxCanvasBodyTextFragments = 32768` from a briefing figure of 16.72 fragments per line
+taken off a thirteen-line sample. The builder re-measured 18.05 on the shipped chain and raised the
+bound to 65536. Re-checked at close: 1920 × 18.05 = 34,656, which is **above** 32,768 — so the shipped
+bound would not have covered the forty-page target its own comment claimed for it, and would have bound
+at roughly 1,690 lines. 65,536 is the next power of two, and it also clears the short-word worst case
+(1920 × 30.86 = 59,251). The derivation now sits in the constant's own comment, which is what the
+contract's "every number is DERIVED and recorded" clause was for. Raising a bound on the builder's own
+measurement against the spec's stated number is the right call and it is recorded as such.
+
+**An owner-reported defect against this story's surface, fixed after the story's own commit.** Thai body
+text rendered with glyphs stacked on top of each other in the designer, around
+`พระราชบัญญัติ การทวงถามหนี้`. Fixed at **`c6e4d03`**, which is not one of this story's commits but is
+squarely its subject area, so the link belongs here. **The engine's projection was correct** — fragment
+x-positions increase monotonically and each space is its own fragment with a real advance. The defect was
+a name mismatch on the browser side: `scripts/build-wasm.mjs` registers the three shipped Noto faces
+under **IBM Plex** family names, `App.css` asked for **Noto** names that no `@font-face` declares, and
+the browser fell through to generic `sans-serif`. Fragments then drew wider than the next fragment's x
+and collided **at fragment boundaries, which sit at spaces** — which is why every reported collision was
+at a space, and why Latin survived a glance. Verified at close: the stack now names only families the
+generator declares, in the engine's chain order, with the generic keyword last;
+`canvas-font-stack.test.ts` ties the two tracked sources and red-proves in both directions (restoring the
+Noto names names all three undeclared families; moving `sans-serif` to the front fails the ordering
+assertion). It reads the **generator** rather than its gitignored output, so the guard's strength does
+not depend on build order.
+
+**DW-29 was routed, not deferred.** The plan gate judged it `multiple-goals` under DW-29's own escalation
+clause and wrote **Story 7.8** into `epics.md` with all three of its inheritances named: the three shipped
+tests that must be inverted rather than deleted, the requirement that a **text** element's `justify` stay
+accepted so the fix cannot be a blanket ban wearing a narrow name, and the reserved decision on whether
+to mint a third per-field style diagnostic code — which the log explicitly holds for a lead. A named
+story with acceptance criteria is a different object from a deferral, and this is the distinction worth
+carrying forward.
+
+**What the closing audit found, and changed.** The adversarial pass re-verified all nine of the
+follow-up checks and red-proved four separate guards by neutering them. One held a real gap. The story's
+contract requires **both** body-text enforcement sites to take the new constant, and
+`TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve` closed by asserting a 513-byte clause is no
+longer refused — but the two sites no longer fail the same way. The **value** site still aborts, so an
+error check covers it; the **fragment** site now **degrades**, so pointing it back at the identifier
+bound raises no error at all and the test stayed green through the revert. Measured with the revert
+applied: `Truncated=true, len(Lines)==0` — the author would have seen a truncation notice over a clause
+well inside the documented bound, with nothing red. The missing half is now asserted on its own terms
+(one line, one fragment, all 513 bytes, `Truncated` false) and red-proved by that same revert.
+Everything else held: all four TypeScript mirrors are genuinely load-bearing — neutering the fourth,
+`optionalString`'s split, reddens both the tie's site-consumption assertion and a behavioural admission
+test, which is the strongest available answer to "would a correct Go fix have been inert"; the tie
+red-proves one-sided edits from the Go side and the TypeScript side alike; `component.Value` is written
+whole and sliced nowhere; the truncation notice has a real CSS rule, states its reason in words, and
+carries that sentence into the accessible name, while `Overflow`'s class still has **no rule anywhere**
+and was deliberately not repeated; pagination independence is asserted positively and negatively, the
+negative half being two prohibited patterns with their own red-proofs; `paginate.go` is absent from the
+diff, `SupportedMajor`/`SupportedVersion` are untouched, and DW-29 is unimplemented. Both recorded
+rejections were spot-checked and are sound on the facts.
+
+**Deferrals.** **DW-25 is CLOSED**, and closed on evidence per item rather than on the hand-list: the
+nine-site enumeration was re-derived by grep **at the closing revision** — the block the build wrote had
+already rotted by about twenty-two lines before the commit landed, which is this entry's own lesson
+biting inside its own closing note, so it has been refreshed. Four new entries filed: **DW-32** (the
+encoder splices typed text unquoted), **DW-33** (a first line past the per-line guard paints zero lines),
+**DW-34** (one DOM span per fragment, no virtualisation, at a ceiling two orders of magnitude higher) —
+these three were raised by the build's own review but existed **only in this spec's frontmatter** and had
+never reached `deferred-work.md`, so they are now filed there with the file's four convention lines — and
+**DW-35**, the canvas hard-coding one font stack regardless of the document's `fonts` map, owned by
+**Epic 8's plan gate**, which is the gate that makes it reachable. DW-26, DW-27, DW-28, DW-30 and DW-31
+stay open; DW-29 is owned by Story 7.8.
+
+**`followup_review_recommended` cleared to `false`** on that audit: every check was verified against the
+diff rather than the report, the one gap found was fixed and red-proved, and the guards were tested by
+neutering rather than by reading. Repository-root `README.md` untouched throughout — md5
+`078d7d80d518d54af2fc04fb270d46b8`, in no commit.

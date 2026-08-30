@@ -2142,18 +2142,24 @@ closure went wrong.
 
 ### The enumeration, re-derived. `grep -n 'maxCanvasPropertyString\|maxCanvasBodyText' folio-go/page_setup.go`
 
+**Re-run at the story's CLOSING revision.** The block first written here was produced mid-dispatch and
+its anchors had already rotted by roughly twenty-two lines before the commit landed — the review pass
+that corrected two constant comments grew the const block underneath them. The site IDENTITIES were
+right; only the numbers drifted. That is this entry's own lesson biting inside its own closing note,
+so the block below is the one taken at the revision that closes it:
+
 ```
 38:const maxCanvasPropertyString = 512
-64:const maxCanvasBodyText = 1048576
-288:  if len(name) > maxCanvasPropertyString {            # font-family name
-623:  if len(fragment.text) > maxCanvasBodyText {         # BODY TEXT (was 512)
-726:  if len(element.Value.Value) > maxCanvasBodyText {   # BODY TEXT (was 512)
-735:  if len(element.VisibleIf.Value) > maxCanvasPropertyString {
-741:  if len(element.Table.Value.Bind) > maxCanvasPropertyString {
-786:  if len(style.FontFamily.Value) > maxCanvasPropertyString {
-818:  if len(style.Color.Value) > maxCanvasPropertyString {
-824:  if len(style.Background.Value) > maxCanvasPropertyString {
-839:  if len(border.Color.Value) > maxCanvasPropertyString {
+70:const maxCanvasBodyText = 1048576
+310:  if len(name) > maxCanvasPropertyString {            # font-family name
+645:  if len(fragment.text) > maxCanvasBodyText {         # BODY TEXT (was 512)
+748:  if len(element.Value.Value) > maxCanvasBodyText {   # BODY TEXT (was 512)
+757:  if len(element.VisibleIf.Value) > maxCanvasPropertyString {
+763:  if len(element.Table.Value.Bind) > maxCanvasPropertyString {
+808:  if len(style.FontFamily.Value) > maxCanvasPropertyString {
+840:  if len(style.Color.Value) > maxCanvasPropertyString {
+846:  if len(style.Background.Value) > maxCanvasPropertyString {
+861:  if len(border.Color.Value) > maxCanvasPropertyString {
 ```
 
 **NINE sites, two of them body text, exactly as the plan gate re-derived.** The two body-text sites
@@ -2164,6 +2170,15 @@ and the **seven identifier, colour and expression sites keep 512 and keep aborti
 is where "recorded" is executable — it asserts **all seven** still refuse at 513 bytes, with the
 identifier-bound refusal's own message rather than merely a non-nil error, **and** that a 513-byte
 clause no longer does.
+
+**One half of that last claim was unpinned until the close, and is now pinned.** The two body-text
+sites do not fail the same way any more: the VALUE site still aborts, so `err == nil` is a complete
+assertion for it — but the FRAGMENT site now **degrades**, so repointing it back at the identifier
+bound raises no error at all. It quietly paints a truncation notice over a clause well inside the
+documented bound, and an error-only check stays green straight through it. Measured with that revert
+applied at the closing revision: `Truncated=true, len(Lines)==0`. The test now asserts the fragment
+half on its own terms — one line, one fragment, all 513 bytes, `Truncated` false — and that assertion
+was red-proved by the revert before this entry was closed.
 
 ### What the fix actually is
 
@@ -2464,3 +2479,111 @@ per Story 7.3's generalised lesson, an odd slack is a coin flip because round-ha
 agree on `slack ≡ 1 (mod 4)`; only `≡ 3 (mod 4)` discriminates. Registered at every golden surface, with
 the enumeration **re-derived by grep at closure**, never read off a hand-list: DW-24's anchors rotted
 three times, the third time *inside the commit that closed it*.
+
+---
+
+### DW-32 — the property-command encoder splices the author's typed text into the command JSON unquoted, so a non-numeric entry produces malformed bytes instead of a located engine error
+- **Deferred by:** Story 7.4's review pass (2026-08-30); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** the next story that adds a NUMERIC property control, **or** Epic 8's plan gate (whichever
+  first) — a role and a gate, never an event, per D-000.73
+- **Severity:** MEDIUM — the author sees a generic refusal instead of the field-located message the
+  panel is built around, but no bad value reaches the document
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/component-property-command.ts` routes `pointFields` and Story 7.4's new
+`ratioFields` through `rawNumberLiteral`, which returns the typed string **verbatim**. Typing `abc` into
+line spacing emits `{"op":"set","value":abc}` — bytes that fail JSON parsing on the engine side and yield
+a generic refusal rather than the located `STYLE_LINE_SPACING_INVALID` message the panel is built to show.
+
+**Why it is deferred and not fixed here.** The pattern is **pre-existing** for the point fields and the
+spec directed Story 7.4 to follow it, so the story did not cause it. What the story did do is **widen the
+set of fields on that path** by one, which is why it is filed rather than merely noted.
+
+**What closing it requires.** A refusal on the encoder side before the command is built — the panel
+already has the field identity it needs to locate the message — rather than letting unparseable bytes
+travel and be diagnosed by their absence of structure.
+
+---
+
+### DW-33 — a text element whose FIRST packed line already exceeds the per-line fragment guard paints ZERO lines, and its only signal is the truncation notice
+- **Deferred by:** Story 7.4's review pass (2026-08-30); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** Epic 7's retrospective, **or** the plan gate of the next story that changes canvas paint
+  degradation (whichever first) — a gate, never an event, per D-000.73
+- **Severity:** MEDIUM — conformant with the contract as written, but it is the degradation path that
+  degrades furthest and the author is given the least to go on
+- **Status:** OPEN
+
+**The gap.** Measured during Story 7.4's review: when the very first packed line already carries more than
+`maxCanvasTextFragments` fragments, the paint loop breaks before appending anything, and the element
+projects `Truncated=true, len(Lines)==0`. The author sees an empty box carrying the truncation notice.
+
+**Why production behaviour was deliberately NOT changed.** This is **conformant** with the contract Story
+7.4 was written against: painting "stops at the last whole line that fits", and here no whole line fits.
+The degraded state also remains distinguishable from the empty one — `Truncated` is the flag that
+distinguishes them, and the notice states the reason in words — which is the invariant the contract
+actually protects. Story 7.4's own review made the vacuity visible rather than papering over it:
+`assertWithinBrowserFragmentBounds` now requires a caller-stated expected line count, so the zero is
+**explained** at its call site rather than certified by accident.
+
+**What closing it requires.** A ruling, not a patch. Whether such a line should paint a **partial
+prefix** is a design question the contract does not settle, and it trades one honesty against another:
+a partial line shows the author a sentence the document does not contain. Whoever closes this decides
+that first.
+
+---
+
+### DW-34 — the canvas renders one DOM span per fragment for every projected line, with no virtualisation, and Story 7.4's bounds made the reachable ceiling two orders of magnitude higher
+- **Deferred by:** Story 7.4's review pass (2026-08-30); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** Story 7.6's plan gate (the canvas draws every page a document produces) — a gate, never an
+  event, per D-000.73
+- **Severity:** LOW — not a correctness defect and not newly introduced; only the scale at which it can
+  be reached is new
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/App.tsx`'s `textPaint` painting path maps every projected line and every
+fragment within it unconditionally to a DOM node. Story 7.4 raised the projectable ceiling from 256 lines
+/ 512 fragments to **1920 lines / 65536 fragments**, so a document at the new bounds can build tens of
+thousands of spans for a single component.
+
+**Why it is low.** Nothing about correctness changes, and the pre-existing code is unchanged. Forty pages
+of clause text is also not the common case. It is filed because the ceiling moved, not because the code
+did.
+
+**Why Story 7.6 is the owner.** 7.6 draws every page rather than one, which multiplies the same
+unvirtualised path by the page count. The two questions are the same question and should be answered once.
+
+---
+
+### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families
+- **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
+  defect at `c6e4d03` and recorded there in the commit message
+- **Owner:** **Epic 8's plan gate** — a gate, never an event, per D-000.73. This is exactly the class
+  D-7.4.4 belongs to: a limit to STATE, not to fix, until the product makes it reachable
+- **Severity:** MEDIUM once Epic 8 lands; **latent today**
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/App.css`'s `.canvas-text-fragment` rule names a **fixed** three-family
+stack — the three faces `scripts/build-wasm.mjs` ships and declares an `@font-face` for. The engine, by
+contrast, measures with the chain the **document's own `fonts` map** names. When those two disagree, the
+browser rasterizes at the engine's x-positions with the wrong metrics, and fragments collide.
+
+**This is the same mechanism as the defect fixed at `c6e4d03`**, one level up. That fix corrected a **name
+mismatch** — `App.css` asked for the faces under Noto names that no `@font-face` declares, so the browser
+fell through to generic `sans-serif` and Thai overlapped at every space. `canvas-font-stack.test.ts` now
+ties the two tracked sources so a name can never drift again. But the tie pins the stack to the
+**generator's** three families, not to the **document's** chain, and nothing checks the latter.
+
+**Why it is latent today.** Every document the product can currently produce resolves to the shipped
+chain, so the hard-coded stack happens to be right. **Epic 8 makes chains editable and author-chosen**
+(8-1 through 8-5), which turns "happens to be right" into "wrong for any document that says otherwise" —
+and the symptom is overlapping glyphs, which reads as a rendering bug rather than a font-resolution one.
+
+**What closing it requires.** The canvas fragment rule must derive its family list from the projected
+component's own resolved chain rather than from a stylesheet constant, and the `canvas-font-stack.test.ts`
+tie must be widened from "every family the rule asks for is declared" to "the families the rule asks for
+are the ones the engine measured with". Note the ORDER constraint that fix already discovered: the stack
+must follow the engine's chain order rather than borrow `tokens.css`'s `--font-page`, which puts Thai
+first and would hand Latin text Noto Sans Thai's Latin glyphs.

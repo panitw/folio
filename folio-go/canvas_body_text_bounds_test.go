@@ -382,10 +382,41 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 		})
 	}
 	// And the body-text site does NOT refuse at 512 any more — the split is
-	// only real if both halves moved.
+	// only real if BOTH halves moved, so both are asserted here.
+	//
+	// Half one, the element VALUE: Canvas alone reaches it, and its failure
+	// is still an abort, so `err == nil` is the whole claim.
 	tpl := bodyTextDocument(t, strings.Repeat("y", maxCanvasPropertyString+1), `{"fontFamily":"body","fontSize":12}`)
 	if _, err := Canvas(tpl); err != nil {
 		t.Fatalf("a 513-byte clause is still refused: %v", err)
+	}
+	// Half two, the FRAGMENT text — the site DW-25 never named. It needs its
+	// own assertion because its failure mode CHANGED with this story: it no
+	// longer aborts, it DEGRADES. Repointing this one site back at
+	// maxCanvasPropertyString would therefore raise no error at all; it
+	// would quietly paint a truncation notice over a clause well inside the
+	// documented bound, and an `err == nil` check would stay green through
+	// it. Measured with that revert applied: Truncated=true, len(Lines)==0.
+	//
+	// 513 unbroken bytes is ONE fragment by construction — a run of 'y' has
+	// no break opportunity inside it — so this fixture puts the fragment
+	// site, and only the fragment site, under the bound.
+	projection, err := CanvasWithTextPaint(tpl, testFontSet())
+	if err != nil {
+		t.Fatalf("CanvasWithTextPaint on a 513-byte clause: %v", err)
+	}
+	paint := paintOf(t, projection, "e1")
+	if paint == nil {
+		t.Fatal("the 513-byte clause projected no paint at all")
+	}
+	if paint.Truncated {
+		t.Fatal("a 513-byte clause was TRUNCATED: the fragment-text site is back on the identifier bound")
+	}
+	if len(paint.Lines) != 1 || len(paint.Lines[0].Fragments) != 1 {
+		t.Fatalf("fixture precondition: want one line of one fragment, got %d line(s)", len(paint.Lines))
+	}
+	if got := len(paint.Lines[0].Fragments[0].Text); got != maxCanvasPropertyString+1 {
+		t.Fatalf("the fragment painted %d bytes, want the whole %d", got, maxCanvasPropertyString+1)
 	}
 }
 
