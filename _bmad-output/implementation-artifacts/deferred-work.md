@@ -2266,3 +2266,26 @@ live and non-vacuous.
 opportunity inside it" are different claims, and only the second is the precondition the test
 asserts. A reader checking AC-TH2 the obvious way — grepping `words_th.txt` — finds the word present
 and concludes the fixture is mis-chosen and the test broken. It is neither.
+
+### DW-31 — `render.go`'s image-centring rounding is the one `ScaleRound` halving DW-24 deliberately left uncovered
+- **Deferred by:** Story 7.3's close (2026-08-30), which measured it rather than absorbing it
+- **Owner:** the next story that touches image placement, **or** Epic 8's plan gate (whichever first) —
+  a role and a gate, never an event, per D-000.73
+- **Severity:** LOW — one site, no author-facing control reaches it today
+- **Status:** OPEN
+
+**The gap.** DW-24 closed over the eight rounding sites that alignment reaches. Story 7.3's closure
+mutation-tested a ninth, `render.go:505`'s image-centring `geom.ScaleRound`, and measured it **GREEN** —
+i.e. no golden in the corpus exercises it, so a change to its rounding mode would move no recorded byte
+and nothing would notice. It was correctly recorded **out-of-subject** for DW-24, whose subject is the
+text/valign alignment rounding; this entry exists so "out of subject" does not quietly become "covered".
+
+**Why it is low and not medium.** The image-centring path is reached only by an image whose declared box
+exceeds its intrinsic size, and no author-facing control in the designer produces that today. It becomes
+reachable the moment image fit/placement is authorable.
+
+**What closing it requires.** A fixture whose image centres with a slack **≡ 3 (mod 4)** in millipoints —
+per Story 7.3's generalised lesson, an odd slack is a coin flip because round-half-to-even and truncation
+agree on `slack ≡ 1 (mod 4)`; only `≡ 3 (mod 4)` discriminates. Registered at every golden surface, with
+the enumeration **re-derived by grep at closure**, never read off a hand-list: DW-24's anchors rotted
+three times, the third time *inside the commit that closed it*.

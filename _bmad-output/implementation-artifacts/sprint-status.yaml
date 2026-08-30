@@ -157,16 +157,12 @@ development_status:
   # on it, not a target of it. Every field it adds is optional and absent-by-default, so
   # the existing corpus must hash identically.
   epic-7: in-progress
-  # 7.1 CLOSED 2026-08-30 at 33bd942: measured gates, teeth proof and deferrals in the story's
-  # ## Delivery Log. DW-24 open (owner 7.3 + gate checklist); DW-25 open (canvas line cap,
-  # medium, awaiting the engineering lead).
   7-1-break-a-line-where-the-author-typed-a-break: done
-  # 7.2 CLOSED 2026-08-30 at 9791e91: measured gates, teeth proof and the chaotic two-pass
-  # build are in the story's ## Delivery Log. DW-24 open (owner 7.3 + gate checklist, NOT
-  # deferrable again); DW-26 open (fontSize range, unowned role); DW-25 open (owner 7.4).
   7-2-set-the-space-between-a-paragraph-s-lines: done
   7-3-justify-a-paragraph-s-edges: done
-  7-4-author-body-text-in-the-designer: backlog
+  # 7.4 owns DW-25 and DW-29 as acceptance criteria, not deferrals. See
+  # epic-7-8-decision-log.md D-7.4.1..D-7.4.5.
+  7-4-author-body-text-in-the-designer: in-progress
   7-5-the-content-column-runs-past-the-first-page: backlog
   7-6-the-canvas-draws-every-page-the-document-will-produce: backlog
   7-7-keep-a-signature-block-together-across-a-page-break: backlog
