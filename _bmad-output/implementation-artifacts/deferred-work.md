@@ -341,6 +341,14 @@ unowned when Epic 4 is planned, it goes to the owner rather than being absorbed 
 has one reserved name in it; a future story adding a second one should append its own line here
 rather than letting this ledger go stale.
 
+**AMENDED again 2026-08-30 — the release timing decision has been overtaken by events, and Story 15.3
+re-makes it rather than assuming it.** The owner's recorded trigger was "cut after Epic 6"; Epics 7–15
+now all postdate that decision without amending it, and Epics 9 and 10 have already added public
+surface and format fields since. Story 15.3 therefore re-affirms or amends the trigger explicitly,
+naming which epics are inside v0.1.0, and re-measures the API surface census against what Epics 5–14
+actually left rather than the 40 items measured at the Epic 3 boundary. The engineering-lead
+checkpoint this entry keeps open is discharged by that story, not before it.
+
 **AMENDED at Epic 4 boundary (2026-08-28, D-000.78 audit):** the project owner's decision is
 recorded in `folio-mvp-decision-log.md` as **cut `folio-go/v0.1.0` after Epic 6**, so the original
 "owner decision when Epic 4 is planned" trigger has fired and the release timing is no longer
@@ -1512,7 +1520,11 @@ this story live in `lint`, which type-checks the module; both that leaked are in
 ### DW-23 — `lint`'s gofmt break has been red since Story 5.10, and CI's permanently-red workflow hid it from two boundary gates
 - **Deferred by:** the second Epic 5 boundary gate (2026-08-29), which measured it rather than fixing it
 - **Owner:** whoever next touches `lint/` — or the next boundary gate, whichever comes first
-- **Status:** OPEN
+- **Status:** OPEN — **now owned by Story 15.2** (`_bmad-output/planning-artifacts/epics.md`, Epic 15),
+  added 2026-08-30. That story takes BOTH halves this entry names: the gofmt fix, and the structural
+  remedy — the known-red job moves to its own workflow so the guardrails conclusion is readable, and
+  the boundary-gate procedure runs gofmt in all three modules and reads per-job conclusions rather
+  than the badge. Fixing only the first half was explicitly rejected here and stays rejected there.
 
 **The defect.** `lint/internal/rules/licencegraph_test.go` is not gofmt-clean. The committed file is
 byte-identical to its version at `5dddbea` (Story 5.10, "finish exact PDF preview"), so the break has

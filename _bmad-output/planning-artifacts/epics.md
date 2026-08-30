@@ -116,6 +116,15 @@ FR54: Render a template from its embedded faces alone — no network, no host-in
 FR55: Choose a family from a curated, freely-licensed catalogue that ships with the designer and works with the browser offline.
 FR56: Fail with a located error when a chain names a font that is neither a shipped face nor a present, decodable asset in the file.
 
+**Typography, document settings, and the preview surface (post-MVP)**
+
+FR57: Realize `style.bold` and `style.italic` as real weighted and sloped faces, resolved per rune through the declared chain, with no synthetic emboldening or obliquing anywhere.
+FR58: Set the page-header and page-footer band heights from the designer.
+FR59: Set the document's `locale` and `utcOffset` from the designer.
+FR60: Set a table's header height, header style and alternating row background from the table editor.
+FR61: Save the previewed PDF to a local file, byte-for-byte as the engine produced it.
+FR62: Navigate the previewed PDF — fit-width, fit-page, a typed or chosen zoom, a typed page number, and a persistent scroll position.
+
 ### NonFunctional Requirements
 
 NFR1: **Byte-reproducible rendering.** Same template + data + parameters + `folio-go` version produces a byte-identical PDF regardless of OS, machine, or compilation target — including across compilation targets, so the WebAssembly preview hash-matches the native render. Decomposes into seven constraints:
@@ -210,6 +219,22 @@ NFR8: **Privacy posture.** The draw.io model plus WebAssembly preview means temp
 ### UX Design Requirements
 
 *Extracted from `EXPERIENCE.md` (5 surfaces, 6 component patterns, 10 state patterns) and `DESIGN.md` (60 colour tokens, 13 type roles, 15 component specs).*
+
+**Design sources — the five artboards, by path.** Post-MVP stories that rebuild a designer surface
+carry a `**Design:**` line naming the artboard to build against and what to look at in it. All five
+live in `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/`:
+
+| Artboard | Surface |
+|---|---|
+| `Main.dc.html` | S2 Workspace — document bar, palette rail, canvas with band tabs, inspector |
+| `Binding.dc.html` | S3 Binding panel — the DATA tab, and the table as the canvas draws it |
+| `TableEditor.dc.html` | S4 Table editor — the column matrix and its HEADER / CELLS / BORDERS sections |
+| `Preview.dc.html` | S5 Preview — PAGES rail, production output, the evidence rail |
+| `Load.dc.html` | S1 Load — first-run payload manifest |
+
+They are static HTML: open one in a browser beside the running designer. Where an artboard and this
+document disagree, the disagreement is named in the story rather than resolved silently — an artboard
+can draw a control the format cannot carry, and several do.
 
 **Design system foundation**
 
@@ -322,6 +347,12 @@ in the PRD and a Non-goal in `SPEC.md`.
 | FR54 | Epic 8 | Render from embedded faces alone |
 | FR55 | Epic 8 | Curated offline font catalogue in the designer |
 | FR56 | Epic 8 | Located failure for a broken font reference |
+| FR57 | Epic 11 | Bold and italic realized as faces |
+| FR58 | Epic 12 | Band heights authorable |
+| FR59 | Epic 12 | Document locale and UTC offset authorable |
+| FR60 | Epic 12 | Table header and alternating-row styling authorable |
+| FR61 | Epic 13 | The previewed PDF saved to a local file |
+| FR62 | Epic 13 | Preview navigation: fit, zoom, page, scroll |
 
 **NFR coverage:** NFR1 and NFR6 are established in Epic 1 and defended by every epic thereafter
 (AD-21: no change lands without a fixture). NFR3 and NFR7 land in Epic 2. NFR4 lands in Epic 2
@@ -2666,3 +2697,1297 @@ and the fence is derived from the schema rather than hand-listed
 **Then** TYPOGRAPHY offers the colour beside the family and the size — it colours the type, not the
 box — through the same picker-and-hex control the box colours already use, and the canvas paints the
 text in the engine's own projected colour
+
+## Epic 11: Bold and italic mean what they say
+
+Ploy bolds a heading. The B lights up, the canvas thickens the strokes, the file records
+`"bold": true`, she previews — and the heading prints in book weight. Nothing warned her. Two
+documents differing only by `"bold": true, "italic": true` render to the same SHA-256; the toggle is
+the most prominent inert control in the product.
+
+The property is stored and projected and consumed by no producer. `Style.Bold` and `Style.Italic`
+have exactly three readers in the whole engine — `page_setup.go`'s canvas projection,
+`component_commands.go`'s edit command, and `serialize.go` — and `render.go` is not among them,
+because there is nothing for it to resolve to: `folio-go/fonts/` embeds three faces and all three
+are Regular. The canvas is the sharper half of the defect. Story 5.9's contract is that the browser
+never measures; with bold on, the browser fakes the weight with `font-weight: 700` while every
+advance, break and baseline still comes from the Regular metrics, so the canvas is wrong about the
+shape *and* about the wrapping, and the author's first evidence of either is the printed page.
+
+**This epic needs an owner ruling before 11.1 starts, and it is the ruling SPEC-fonts already
+records as open** ("Do bold and italic get realized in this scope? ... this is the work that could
+give them meaning, or they stay explicitly out and the panel says so"). Two branches, and only the
+first is specified below:
+
+- **Realize them.** Ship weighted and sloped instances of the three families, resolve a face from
+  the declared weight and slope, and the toggles become true. Cost: three families × three new
+  instances, embedded and subsetted, against the ~9 MB first-load budget the SPEC already treats as
+  a considered price.
+- **Retire them.** Remove the toggles, stop painting them on the canvas, and make the format field
+  a documented no-op or a load error. Cheaper, honest, and it makes a bold heading impossible in a
+  product whose fixture is a bank statement.
+
+Synthetic bold and oblique are not a third branch. SPEC-fonts forbids them by name — *"A weight is a
+face or it does not exist"* — and faux-bolding at emit time would put a fabricated outline inside
+the byte-identity regime.
+
+Every face this epic adds is named by a chain that did not exist before it, so a document declaring
+no bold and no italic must hash identically, and the whole golden corpus stays a witness.
+
+**FRs covered:** FR57
+**Also lands:** AD-21, AD-22 and AD-26 upheld unchanged — byte identity, byte-stable subsetting and
+licence provenance are constraints on this epic, not targets of it
+
+### Story 11.1: The shipped families gain a weighted and a sloped face
+
+As a Go developer embedding the library,
+I want the shipped font set to carry bold and italic faces,
+So that a template that asks for bold has something to be rendered in.
+
+**Covers:** FR57 · AD-22, AD-26
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Load.dc.html`
+  — the payload manifest rows the load screen itemises, which this story adds faces to
+
+**Acceptance Criteria:**
+
+**Given** the `make fonts` derivation, which today instances one Regular per family from the
+upstream variable builds
+**When** it is extended to the new instances
+**Then** each is derived by the same replayable script, committed as output rather than generated at
+build time, and `make fonts-verify` reproduces every committed face byte-for-byte — the rule that
+keeps a font from becoming a function of the build environment
+
+**Given** each new face
+**When** it lands
+**Then** it carries its own `NOTICE.md` recording the upstream release URL and source sha256, and
+its OFL text, and `lint`'s `fonts-asset-unaccounted` / `fonts-asset-missing` guard accounts for it —
+a face that ships without a licence record fails the build
+
+**Given** the enlarged shipped set
+**When** the offline release payload is generated
+**Then** the manifest states the new measured byte cost per face, and the load screen itemises it as
+it already itemises the CJK face, because the payload is the thing the author waits for
+
+**Given** the corpus, no document of which declares bold or italic
+**When** it is rendered on every target
+**Then** the bytes are identical to before this story: a face nothing names is a face nothing embeds
+(AD-21)
+
+### Story 11.2: The engine resolves a face from the declared weight and slope
+
+As a template author,
+I want the bold and italic I set to select a real face,
+So that the PDF prints the weight I asked for.
+
+**Covers:** FR57 · AD-8, AD-21, AD-24
+
+**Acceptance Criteria:**
+
+**Given** a text element declaring `style.bold`, `style.italic`, or both, and a `style.fontFamily`
+chain
+**When** the document renders
+**Then** the per-rune coverage resolution that already walks the chain resolves to the face carrying
+that weight and slope, and the glyphs are shaped and measured from that face's own metrics — never
+from the Regular face's
+
+**Given** a table declaring `style.bold`, and optionally `headerStyle.bold`
+**When** the document renders
+**Then** its cells take the weight through the same cascade every other cell property already uses,
+and `headerStyle` wins for the header row alone
+
+**Given** a chain whose resolved face has no bold instance for some rune
+**When** the document renders
+**Then** the fallback is stated, not silent: the rune renders in the nearest available face and a
+Warning names the element, the rune and the face — the same treatment an uncoverable rune already
+gets, and never a fabricated outline
+
+**Given** bold or italic set on an element
+**When** its lines are broken and measured
+**Then** the line breaks are those of the face actually used, so a bold heading may wrap differently
+from the same words unbolded — and that difference appears on the canvas and in the PDF identically,
+because both read the same engine measurement
+
+**Given** an element declaring neither bold nor italic
+**When** the document renders
+**Then** nothing about its resolution changes and the corpus hashes identically (AD-21)
+
+### Story 11.3: The canvas paints the weight the engine resolved
+
+As a template author,
+I want the canvas to show me the real face,
+So that the preview holds no surprise the canvas could have shown me.
+
+**Covers:** FR5, FR57 · AD-17 · UX-DR21
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the TYPOGRAPHY section's B / I pair in the inspector
+
+**Acceptance Criteria:**
+
+**Given** a component declaring bold or italic
+**When** the canvas paints it
+**Then** it paints in the actual face the engine resolved, delivered through the engine's own text
+paint projection — never `font-weight: 700` or `font-style: italic` applied to the Regular face by
+the browser
+
+**Given** the canvas text paint
+**When** it is inspected for a synthetic weight or slope
+**Then** there is none: browser-side emboldening and obliquing are as forbidden on the canvas as they
+are at emit time, and a contract test names the CSS properties the way the canvas-authority contract
+already names the measurement APIs
+
+**Given** a chain with no bold face and an element declaring bold
+**When** the inspector is shown
+**Then** the B control states that this family has no bold face rather than appearing to be on, so
+the panel never shows a state the document cannot reach
+
+## Epic 12: The inspector reaches the engine that is already there
+
+Six capabilities are shipped in the engine, tested by goldens, carried by the format — and reachable
+from the designer by nobody. A page header is stuck at whatever height the starter file declared,
+because no command in the product sets a band height: `pageSetup` takes a preset, an orientation, a
+size and four margins, and `Band.Height` has no writer at all. A document's `locale` and `utcOffset`
+have no control anywhere, so every date and number an author lays out formats as `en` — in a product
+whose reason to exist is Thai and CJK statements. A table's `headerHeight`, its `headerStyle` and
+Story 4.8's `altRowBackground` are authorable only by hand-editing the file the designer just wrote.
+
+This is the mirror of Epic 9. There, the panel offered controls the engine did not honour; here, the
+engine honours values the panel does not offer. Both leave the same author in the same place —
+editing JSON by hand to finish a document the designer started — and FR12's promise that the format
+is hand-editable was meant as a second door, not as the only way through.
+
+`style.padding` is the one item that belongs to neither pattern, and 12.4 rules it rather than
+building it: the format documents a default of `0` on all four edges for every element, the command
+layer accepts all four keys on any component, and the only consumer on any render path is a table's
+cell chrome. It is inert on text, image, rect and line exactly as `background` and `border` were
+before Epic 9.
+
+12.1 makes a band height settable and 12.5 makes it draggable — the boundary tabs the canvas already
+draws are exactly where an author reaches for it, and the CONTENT tab sits on the header's lower edge
+while the PAGE FOOTER tab sits on the footer's upper one. The command comes first because the drag
+commits through it; the epic is not complete with only the number.
+
+This epic adds no rendering behaviour that the engine does not already have. Every value it makes
+authorable is one the loader already accepts and the renderer already consumes, so a document that
+declares none of them must hash identically.
+
+**FRs covered:** FR58, FR59, FR60
+**Also lands:** FR5 completed for padding · AD-15 and AD-21 upheld unchanged
+
+### Story 12.1: The page header and page footer take the height the author sets
+
+As a template author,
+I want to set how tall the page header and page footer are,
+So that a letterhead fits without hand-editing the file the designer just saved.
+
+**Covers:** FR2, FR6, FR58 · AD-15
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the document bar's page-setup summary and the inspector's PAGE SETUP panel
+
+**Acceptance Criteria:**
+
+**Given** the page setup panel
+**When** it is shown
+**Then** it offers a page-header height and a page-footer height beside the margins, in points, with
+the engine's current values
+
+**Given** a new band height
+**When** it is committed
+**Then** it travels as one versioned opaque command that Go validates and applies, exactly as the
+page setup command already does, and the canvas re-projects from the engine's accepted document —
+never from a browser-side model of the bands
+
+**Given** a band height that would leave no content window — header plus footer at or beyond the
+page's inner height
+**When** the command is applied
+**Then** it is refused with a located message naming the quantity and the space available, and the
+document is unchanged, because a document with no content band is not a document
+
+**Given** a band height reduced below the content its band already holds
+**When** the command is applied
+**Then** it is accepted and the overflow is clipped with the diagnostic FR44 already defines — the
+engine's existing answer to content taller than its box, not a second one
+
+**Given** a document whose band heights are not edited
+**When** it is serialized
+**Then** the bytes are unchanged, including a band whose height key was absent staying absent
+
+### Story 12.2: The document declares its locale and its UTC offset
+
+As a template author,
+I want to set the document's locale and UTC offset in the designer,
+So that a Thai statement formats its dates and numbers as Thai without hand-editing the file.
+
+**Covers:** FR21, FR22, FR59 · AD-12
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the inspector's PAGE SETUP panel, where document-level settings live
+
+**Acceptance Criteria:**
+
+**Given** the page setup panel, which is where document-level settings already live
+**When** it is shown
+**Then** it offers the locale as the closed set AD-12 defines — `en`, `th`, `zh-Hans`, `ja` — and the
+UTC offset as a `±HH:MM` field, both showing the engine's current values
+
+**Given** a locale change
+**When** it is committed
+**Then** every `formatDate` and `formatNumber` in the document formats under it on the next preview,
+including the Buddhist-era year `th` already produces, with no other change to the document
+
+**Given** a UTC offset that does not match `±HH:MM`
+**When** it is committed
+**Then** it is refused with a located message and the document is unchanged
+
+**Given** a document whose locale and offset are not edited
+**When** it is serialized
+**Then** the bytes are unchanged
+
+### Story 12.3: A table's header and its alternating rows are authorable
+
+As a template author,
+I want to set a table's header height, header style and alternating row colour,
+So that the table styling the engine can already render is reachable from the editor that builds it.
+
+**Covers:** FR10, FR60 · AD-13
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/TableEditor.dc.html`
+  — the HEADER and CELLS sections beside the column matrix
+
+**Acceptance Criteria:**
+
+**Given** the table editor, which today configures columns only
+**When** it is opened
+**Then** it also offers the table's header height, its `altRowBackground`, and the header-row style
+fields the engine already resolves — each showing the engine's committed value and each clearable
+back to absent
+
+**Given** an alternating row background
+**When** the document renders
+**Then** it paints exactly as Story 4.8 already renders it; this story adds no rendering rule and no
+second implementation of the cascade
+
+**Given** a header style field left absent
+**When** the document renders
+**Then** it falls back to the table's own style and then to that field's documented default, which
+is the cascade Story 4.1 already defines
+
+**Given** a table whose header and row styling are not edited
+**When** it is serialized
+**Then** the bytes are unchanged
+
+### Story 12.4: Padding is honoured outside a table, or the format says it is not
+
+As a template author,
+I want `style.padding` to do what the format says it does,
+So that a value the file carries and the panel can write is not silently ignored on four of the five
+components.
+
+**Covers:** FR5 · AD-21, AD-24
+
+**Acceptance Criteria:**
+
+**Given** the format's Style table, which documents `padding` with a default of `0` on all four
+edges and scopes it to no particular element kind
+**When** this story is planned
+**Then** the owner rules one of two ways, and the ruling is recorded in the decision log before any
+code is written: padding insets a text element's content box, or padding is documented as
+table-only and the command layer stops accepting it on the other four kinds
+
+**Given** the ruling is that padding insets
+**When** a text element declaring `style.padding` renders
+**Then** its lines are laid out, aligned and clipped against its declared box inset by the four
+edges — the same quantity a table cell already computes, through the same helper — and the width
+overflow diagnostic measures against the inset width
+
+**Given** the ruling is that padding is table-only
+**When** a non-table element declares padding
+**Then** the command layer refuses the field with a located message, the loader keeps accepting it
+for compatibility, and the format states the restriction in the Style table
+
+**Given** either ruling
+**When** the corpus is rendered
+**Then** no document in it declares padding on a non-table element, so the bytes are identical
+(AD-21)
+
+### Story 12.5: A band boundary is dragged on the canvas
+
+As a template author,
+I want to resize the page header and page footer by dragging on the canvas,
+So that fitting a letterhead is a gesture rather than a number I have to guess and retype.
+
+**Covers:** FR1, FR3, FR6, FR58 · UX-DR6, UX-DR11, UX-DR18, UX-DR25
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the band tabs (PAGE HEADER / CONTENT / PAGE FOOTER) drawn at each band's top-left
+
+**Acceptance Criteria:**
+
+**Given** the band tabs, each of which already sits at the top-left of the band it names
+**When** the author drags the **CONTENT** tab
+**Then** the page-header/content boundary moves with the pointer, which is the page header's height —
+and dragging the **PAGE FOOTER** tab moves the content/footer boundary, which is the page footer's
+height
+
+**Given** the **PAGE HEADER** tab, which sits at the top of the page rather than on a boundary
+between two bands
+**When** the author drags it
+**Then** nothing resizes, because the edge above it is the page margin and not a band boundary — a
+control that looks draggable and is not would be worse than one that does not look draggable
+
+**Given** a drag in progress
+**When** the boundary is moving
+**Then** it is the same transient local proposal a component drag already is: the canvas paints the
+proposed boundary, the height is shown in points as it moves, nothing is committed, and the pointer
+release sends the one Story 12.1 command whose accepted value then replaces the proposal
+
+**Given** snapping is on
+**When** the boundary is dragged
+**Then** it snaps to the same grid increment every other drag uses, and is released the same way
+
+**Given** a drag that would leave no content window, or a negative band height
+**When** the pointer moves past that point
+**Then** the boundary stops there rather than being committed and refused — Story 12.1's engine rule
+is enforced as a drag limit, so an impossible document is never proposed
+
+**Given** the boundary
+**When** it is reached by keyboard
+**Then** it is focusable and resizable by the same nudge keys that move a component, to the floor
+UX-DR25 sets — the drag is an affordance on top of Story 12.1's command, never the only way to reach
+the value
+
+**Given** components already placed in a band
+**When** that band is made shorter than the content it holds
+**Then** they are clipped with FR44's existing diagnostic and are never moved, deleted or reflowed
+(AD-24)
+
+## Epic 13: A template author can read, navigate and keep the exact PDF
+
+The preview is the screen where Folio's whole claim lands: this is the production document, produced
+here, and here is the hash that proves it. `Preview.dc.html` draws that screen as three columns — a
+PAGES thumbnail rail, the page, and an evidence rail carrying RENDER (engine, target, pages, rows,
+elapsed, size), OUTPUT HASH with *Matches native render*, DIAGNOSTICS with its zero state and its
+shape legend, and two buttons: **Re-render** and **Save PDF**.
+
+What shipped is the middle column. The thumbnail rail was never built, and the *design-mode palette
+rail* occupies its place — five dead placement controls beside a PDF. The evidence rail was never
+built; the hash survives as one grey footnote line. Neither button exists. And the PDF cannot leave
+the tab at all: there is no export path anywhere in the designer, so the only way to obtain the
+document the author is looking at is to run the CLI over the same file.
+
+Navigation is one page at a time behind Previous/Next, and zoom is `−`/`+` in ten-point steps
+clamped to 50–200% — fifteen clicks end to end, on a document whose fixture is thirty-four pages.
+There is no fit-width, no fit-page, no zoom entry and no page entry. The viewer's own scroll
+container has a `min-height` and no cap, so it grows rather than scrolls and the outer region does
+the scrolling instead; the `scrollTop` and `scrollLeft` the view state carries can therefore never
+be non-zero, and the effect that restores them is dead code — which is why leaving Preview and
+returning loses the author's place.
+
+Preview also refuses to run at all without a loaded sample JSON, including for a template that
+declares no bindings. The engine has no such requirement: the CLI renders that template with no
+`-data` argument.
+
+This epic touches no engine byte. Every PDF it displays, exports and describes is one the engine
+already produced.
+
+**FRs covered:** FR61, FR62
+**Also lands:** UX-DR9, UX-DR14, UX-DR17, UX-DR21, UX-DR22, UX-DR23 — the exactness claim is the
+thing this screen exists to make legible, and it is a constraint on every story below
+
+### Story 13.1: The preview keeps the PDF
+
+As a template author,
+I want to save the PDF I am looking at,
+So that the document I just proved correct can be sent to someone.
+
+**Covers:** FR61 · UX-DR9, UX-DR23
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
+  — the Save PDF control, paired with Re-render at the foot of the evidence rail
+
+**Acceptance Criteria:**
+
+**Given** a current preview
+**When** the author chooses Save PDF
+**Then** the exact bytes the engine returned are written to a local file of the author's choosing —
+never re-rendered for the save, never re-serialized, so the saved file's hash is the hash the screen
+displays
+
+**Given** a browser with the File System Access API and one without
+**When** Save PDF is used in either
+**Then** it works in both, through the two file-access tiers the designer already implements for
+`.folio`, with the picker's type and suggested name parameterised rather than a second download path
+written
+
+**Given** a stale preview
+**When** Save PDF is offered
+**Then** it saves the stale document only if the author is told it is stale in the same breath —
+the preview's freshness rule governs the export exactly as it governs the display (UX-DR14)
+
+**Given** no preview has rendered
+**When** the screen is shown
+**Then** Save PDF is absent or disabled with its reason stated, never a control that fails when
+pressed
+
+### Story 13.2: The viewer navigates like a PDF viewer
+
+As a template author,
+I want to fit the page, type a zoom, and jump to a page,
+So that reading a thirty-four page statement is not sixty clicks.
+
+**Covers:** FR62 · AD-17 · UX-DR9, UX-DR25
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
+  — the bottom status bar carrying the page stepper, the page indicator and the zoom
+
+**Acceptance Criteria:**
+
+**Given** the viewer controls
+**When** they are shown
+**Then** they offer fit-width, fit-page, a zoom the author can type or choose, and a page number the
+author can type — alongside the existing previous/next and `−`/`+`
+
+**Given** fit-width or fit-page
+**When** it is chosen
+**Then** the page is scaled to the viewer's own displayed width or height, and the choice persists
+across page changes until the author zooms manually
+
+**Given** the viewer needs its container's pixel width to fit
+**When** that measurement is taken
+**Then** it is taken inside `src/preview/` under the same narrow exception the canvas-authority
+contract already grants that directory for `scroll*` — because a rasterized PDF's display scale is
+viewer navigation, not document measurement — and the exception names the new property explicitly
+rather than being widened by wildcard
+
+**Given** a zoom beyond the size of the viewport
+**When** the page is displayed
+**Then** the viewer's own container scrolls, both axes, with the page centred when it is smaller
+than the container — the container is height-constrained rather than growing, so the outer region
+never scrolls in its place
+
+**Given** an author who scrolls, zooms or changes page, then leaves Preview and returns
+**When** the preview is shown again
+**Then** the page, the zoom and the scroll position are the ones they left, because the view state
+the viewer already carries is now actually reachable
+
+**Given** the design, which puts the page stepper, the page indicator and the zoom in the
+application's **bottom status bar** rather than on a toolbar above the page
+**When** the controls are placed
+**Then** they go where the design puts them, so the page area carries the page and nothing else
+
+**Given** every new control
+**When** it is used by keyboard alone
+**Then** it is reachable, labelled and operable, to the same behavioural floor UX-DR25 sets for the
+rest of the product
+
+### Story 13.3: The preview screen is the evidence screen
+
+As a template author,
+I want the preview to show me what was rendered and prove it matches,
+So that "this is the exact production document" is something I can read rather than something I am
+told.
+
+**Covers:** FR34, FR35, FR61 · AD-18 · UX-DR9, UX-DR17, UX-DR21, UX-DR22
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
+  — the whole screen: the PAGES rail, PRODUCTION OUTPUT, and the RENDER / OUTPUT HASH / DIAGNOSTICS rail
+
+**Acceptance Criteria:**
+
+**Given** the preview screen
+**When** it is shown
+**Then** the left rail is the PAGES thumbnail rail the design draws — one thumbnail per page,
+numbered, the current page marked, clicking one navigates — and the component palette is not
+rendered in preview mode at all, because nothing in this mode can be placed
+
+**Given** a completed render
+**When** the evidence rail is shown
+**Then** it carries RENDER — engine version, target, page count, row count, elapsed, byte size — and
+OUTPUT HASH as a first-class block rather than a footnote, each value coming from the render the
+engine actually performed
+
+**Given** the OUTPUT HASH block
+**When** it is shown
+**Then** the digest is set in mono and wrapped across two lines as the design sets it, inside its own
+bordered block — a hash a person is expected to compare by eye is typeset to be compared by eye
+
+**Given** the design's affirmation beneath the hash — *"Matches native render"*, and beneath that
+*"Identical bytes on darwin/arm64, linux/arm64, linux/amd64"*
+**When** it is implemented
+**Then** the claim is earned or it is reworded, and this is ruled before it is drawn: **the tab cannot
+compare itself to a native render**. What is true is that the wasm engine is the same engine compiled
+to another target and that cross-target identity is proven by the matrix in CI for the release the
+browser is running — a property of the build, not a live comparison. The wording must say the true
+thing; an affirmation the product cannot substantiate is the one thing this screen must never print
+(UX-DR21, UX-DR23)
+
+**Given** the DIAGNOSTICS section
+**When** it is shown
+**Then** its header carries the counts the design shows — total, and errors separately — so the
+section is readable without opening a card
+
+**Given** one diagnostic
+**When** its card is shown
+**Then** it names its location the way the design does — the page, the bound path, the element kind
+and the band (`page 3 · transactions[11].description · table · band content`) — and carries **Locate
+on canvas** and **Dismiss**, which is the behaviour Story 5.12 already built and this story only
+re-dresses
+
+**Given** the PAGES rail on a document longer than the rail
+**When** it is shown
+**Then** it truncates as the design does (`… 29 more`) rather than rendering thirty-four thumbnails,
+the current page is marked in the select accent, and a page carrying a diagnostic is marked in the
+bind accent — so the rail is also the diagnostic map (UX-DR2, UX-DR22)
+
+**Given** the page area
+**When** it is shown
+**Then** it carries the design's **PRODUCTION OUTPUT** badge, and the page sits on the dark ground
+with nothing else competing with it
+
+**Given** Re-render and Save PDF
+**When** they are shown
+**Then** they are a paired action row at the foot of the evidence rail, as the design places them —
+not one control in the rail and another in a tab
+
+**Given** a render with no diagnostics
+**When** the diagnostics section is shown
+**Then** it states zero explicitly, with the shape legend the design specifies — triangle-dashed for
+a render that proceeded, square-solid for one that failed — so a clean render reads as *checked*
+rather than as *nothing here*
+
+**Given** the evidence rail
+**When** Re-render is pressed
+**Then** the document re-renders from the current inputs, and the control sits with the evidence
+rather than inside the INPUTS tab where it is today
+
+**Given** a stale or failed preview
+**When** the evidence rail is shown
+**Then** it says so in the rail as well as in the status line, and never displays stale statistics as
+though they describe the current document (UX-DR14)
+
+### Story 13.4: Preview runs without sample data, and an absent value is empty
+
+As a template author,
+I want to preview immediately, with no JSON file,
+So that laying out a page is not gated on inventing data I do not have yet.
+
+**Covers:** FR9, FR34 · AD-18 · UX-DR13, UX-DR24
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
+  — the preview surface this state must degrade from
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/EXPERIENCE.md`
+  — the ten declared states per surface, including Empty — no sample data
+
+**Acceptance Criteria:**
+
+**Given** no sample data loaded
+**When** the author enters Preview
+**Then** it renders — the screen is never disabled ahead of time on a condition the engine does not
+impose, and the CLI already renders such a template with no data argument
+
+**Given** a template that resolves data paths, and no sample data
+**When** it is previewed
+**Then** every unresolved path renders as **empty** and the page is produced, rather than the render
+failing at the first absent path
+
+**Given** that `BINDING_PATH_ABSENT` is today a located **Error** — Story 3.6's contract, S8's
+coverage, and the behaviour a production render must keep, because a statement that silently prints
+a blank where a customer's name belongs is the failure that contract exists to prevent
+**When** this story is implemented
+**Then** the empty-value behaviour is **scoped to preview with no data supplied** and is never a
+change to `Render`'s own semantics: the engine's error contract, its diagnostic codes and the golden
+corpus are untouched, and the same template rendered by `folio-go` with absent data still fails
+exactly as it does today
+
+**Given** a preview rendered this way
+**When** it is shown
+**Then** the screen states plainly that it is a no-data preview and that empty values are stand-ins —
+the exactness claim is the product, so a preview that is *not* the production document must never be
+presented as though it were (UX-DR14, UX-DR21)
+
+**Given** a no-data preview
+**When** its output hash is displayed
+**Then** it is not offered as evidence of native/wasm equality, because the inputs were not the
+production inputs
+
+**Given** sample data is then loaded
+**When** the preview re-renders
+**Then** it returns to the exact-production path with no stand-ins, and the freshness rule marks the
+earlier preview stale exactly as any other input change does
+
+**Given** a path that is absent from data that *was* supplied
+**When** it is previewed
+**Then** it is still the located Error Story 6.6 presents — absent data and absent-from-present-data
+are different conditions, and only the first is filled with an empty value
+
+### Story 13.5: The chrome tells the truth about the preview
+
+As a template author,
+I want the frame around the preview to say what I am looking at and when it was made,
+So that freshness is something I can see rather than something I have to remember.
+
+**Covers:** FR34 · AD-18 · UX-DR9, UX-DR14, UX-DR16, UX-DR21, UX-DR23
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
+  — the status bar's "no network · nothing left this machine"
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the document bar this replaces in Preview mode
+
+**Acceptance Criteria:**
+
+**Given** the document bar, which in Design mode reads `A4 · portrait`
+**When** the author is in Preview
+**Then** it reads the render's own freshness instead — *"rendered 412 ms ago · current"* — because the
+page setup is a Design-mode fact and freshness is the Preview-mode fact (UX-DR14)
+
+**Given** the DESIGN / PREVIEW switch in the document bar
+**When** the author wants to go back
+**Then** that switch is the way back, and the separate "Return to Design" button inside the preview
+heading is removed — one way to change mode, in the place the design puts it
+
+**Given** a render in progress
+**When** the author asks to leave
+**Then** cancelling is still reachable, since removing the heading button must not remove the ability
+to abandon a long render
+
+**Given** the application status bar
+**When** the author is in Preview
+**Then** it carries the design's standing assurance — *"no network · nothing left this machine"* —
+which is the product's central promise stated where it is always visible (UX-DR23)
+
+**Given** a stale preview
+**When** the chrome is shown
+**Then** the freshness reads stale rather than `current`, in the same words the status line uses, so
+the two never disagree
+
+## Epic 14: The designer's controls read as one product
+
+The inspector and the document bar were built story by story, and it shows. There are five button
+treatments in play: icon-only, text-only, text-with-shortcut, icon-with-text-and-shortcut, and
+symbol-only — and they are mixed inside single rows. Open and Save are icons; **Save As**, the same
+family of action, is text, and the design's own document bar draws all of them as text, so the icons
+are drift rather than intent. In one row of the TYPOGRAPHY section, Align is three SVG icons and
+Vertical align, beside it, is the words TOP / MID / BOT.
+
+The per-kind defects are sharper than the cosmetics. A Line's thickness is its **H** field under
+POSITION and its colour is **Background** under BOX, because Story 9.2 makes a line a filled bar — so
+the two properties a line actually has are the two an author would never look for, while Border,
+Border colour and four Edge checkboxes sit above them meaning nothing. A placed component is not
+selected, so an author places a Line and must then find and click a 1pt target — 1.33 CSS pixels at
+100% — before they can edit it. And every non-text component shows a BINDING section inviting the
+author to "Pick a root scalar in the Data tab", when `bindComponentScalar` refuses everything that is
+not a text element.
+
+14.5 is the one addition rather than a correction: the design gives the product a mark — a square
+outline around a solid block, drawn at three sizes across the mockups — and the chrome has never worn
+it.
+
+14.6 is the same failure as Epic 13's preview screen, one panel over. `Binding.dc.html` draws a
+binding panel whose tree shows the author their own data — values beside paths, `{ }` and `[]`
+markers, TABLE ONLY and RUNTIME badges, dimmed rows for what cannot be picked — and what shipped
+shows a label, a full path and a concatenated type string. `SampleNode` already carries the values;
+the panel simply never renders them.
+
+14.9 and 14.10 close the loop the other four leave open. `Binding.dc.html` draws a table on the
+canvas as a real table — a chip naming the bound collection and the column count, the header labels,
+and one representative row showing each column's binding in the bind accent — while the canvas today
+paints a box containing the word "Table". It cannot do better: the canvas projection carries one
+string, `tableBind`, and the columns live only in the projection the table editor opens. With the
+columns on the canvas, binding one stops being a reason to open a dialog and becomes what binding is
+everywhere else — select the thing, pick the path.
+
+14.7 and 14.8 are the third panel with the same story. `TableEditor.dc.html` draws a six-column
+matrix with a width budget, a row-scope context line and three property sections; what shipped is an
+eleven-column form with two bare inputs on top and no property sections at all. Two of the design's
+choices there are not fidelity questions and are called out as rulings rather than drawn: **Cancel /
+Apply** implies a local uncommitted buffer, which is the second document model AD-15 exists to
+forbid; and the design's **millimetres** contradict the points every other panel shows, which is a
+product-wide unit decision rather than a dialog's.
+
+Nothing here changes the document model, the command surface or a single rendered byte. It changes
+what the panel offers and how it is spelled.
+
+**FRs covered:** none new — FR1, FR4, FR5, FR7 and FR10 completed
+**Also lands:** UX-DR2, UX-DR7, UX-DR10, UX-DR18, UX-DR21, UX-DR24, UX-DR25
+
+### Story 14.1: One button vocabulary
+
+As a template author,
+I want the controls to look like one product,
+So that I can tell what a control is by looking at it.
+
+**Covers:** UX-DR1, UX-DR10, UX-DR24
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the document bar's Open / Save / Save As row, and the inspector's two segmented controls
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/DESIGN.md`
+  — the token file the rule is written in terms of
+
+**Acceptance Criteria:**
+
+**Given** the rule for when a control is a word and when it is a glyph
+**When** this story is planned
+**Then** it is written down first, in DESIGN.md's terms, and every control in the product is then
+audited against it — the rule is the deliverable, the sweep is its consequence
+
+**Given** the document bar
+**When** it is shown
+**Then** Open and Save are spelled the way `Main.dc.html` draws them and the way Save As, Start
+blank, Undo and Redo already are, so no two members of the same action family are spelled
+differently
+
+**Given** the TYPOGRAPHY section's two segmented controls
+**When** they are shown
+**Then** Align and Vertical align share one vocabulary — both iconic — rather than icons beside
+words at the same size in the same row
+
+**Given** any control the sweep changes
+**When** it is used by keyboard or read by a screen reader
+**Then** its accessible name is unchanged or improved, never lost to an icon without a label
+(UX-DR25)
+
+### Story 14.2: A Line is a thickness and a colour; a Rectangle is a fill and a border
+
+As a template author,
+I want a Line's properties to be the properties a line has,
+So that drawing a rule does not require knowing it is implemented as a filled box.
+
+**Covers:** FR4, FR5 · UX-DR10, UX-DR24
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the inspector's POSITION and BOX sections
+
+**Acceptance Criteria:**
+
+**Given** a selected Line
+**When** the inspector is shown
+**Then** it offers Thickness, Colour, Length and an orientation — mapped onto the element's height,
+background and width by the panel, with no new field, no new command and no change to what is
+serialized
+
+**Given** a selected Line
+**When** the inspector is shown
+**Then** the border controls and the four edge checkboxes are not offered, because a filled bar has
+no edge set to draw
+
+**Given** a selected Rectangle
+**When** the inspector is shown
+**Then** its background is labelled Fill, and its border and edge controls remain, because on a rect
+they are what they say
+
+**Given** a Line or Rectangle authored before this story, or hand-edited to a shape the panel's
+vocabulary does not describe
+**When** it is selected
+**Then** the panel shows the engine's committed values without rewriting them, and never normalises
+a document on selection
+
+### Story 14.3: A placed component is the selected component
+
+As a template author,
+I want what I just placed to be selected and easy to grab,
+So that placing a component and editing it is one gesture rather than a hunt.
+
+**Covers:** FR1, FR4 · UX-DR18, UX-DR25
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the palette rail and the canvas selection treatment
+
+**Acceptance Criteria:**
+
+**Given** a component placed from the palette
+**When** it is dropped
+**Then** it is the selection, and the inspector shows its properties — rather than the page setup
+panel and the words "Component properties require a selection"
+
+**Given** a thin component — a 1pt Line, or any element under the comfortable hit size
+**When** the author clicks near it on the canvas
+**Then** it is selected: the hit target is padded independently of the drawn thickness, and the
+padding never changes what is drawn or what is stored
+
+**Given** two thin components whose padded hit targets overlap
+**When** the author clicks in the overlap
+**Then** the topmost in document order takes the selection, deterministically, and repeated clicks
+in the same spot do not alternate
+
+**Given** the keyboard
+**When** a component is placed
+**Then** focus lands where the author can act on it, to the same floor UX-DR25 sets elsewhere
+
+### Story 14.4: The panel offers no control the engine will refuse
+
+As a template author,
+I want the panel to stop inviting me to do things that cannot be done,
+So that a dead end is not something I discover by hitting it.
+
+**Covers:** FR5, FR7 · UX-DR24
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the inspector's section stack
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Binding.dc.html`
+  — the DATA tab a binding invitation points at
+
+**Acceptance Criteria:**
+
+**Given** a selected Line, Rectangle, Image or Table
+**When** the inspector is shown
+**Then** the BINDING section either is not shown or states that only text components take a scalar
+binding — it never invites the author to pick a path the command will refuse
+
+**Given** the Data panel with a non-text component selected
+**When** a path is picked
+**Then** the reason it cannot be connected is stated before the attempt, not after the engine
+rejects it
+
+**Given** a Table
+**When** the inspector is shown
+**Then** its binding is stated once, where it is editable, rather than displayed as read-only text
+in one section and edited behind a button in another
+
+**Given** any control this story hides for a component kind
+**When** that kind's document already carries the underlying value
+**Then** the value is preserved on save untouched — the panel declining to author a field never
+removes it
+
+### Story 14.5: The product wears its own mark
+
+As a template author,
+I want the designer to carry the mark the design gives it,
+So that the application looks like the product it was designed to be.
+
+**Covers:** UX-DR1, UX-DR2, UX-DR3
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the mark at 18px in the document bar
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Load.dc.html`
+  — the same mark at 22px, and at 13px as a manifest row bullet
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/DESIGN.md`
+  — the colour token the mark is drawn in
+
+**Acceptance Criteria:**
+
+**Given** the document bar, which today shows the word FOLIO alone
+**When** it is shown
+**Then** the mark sits before the word: a square outline containing a smaller solid block, centred —
+the mark `Main.dc.html` draws at 18px with a 1.5px stroke
+
+**Given** the mark's colour
+**When** it is implemented
+**Then** it comes from `--color-select`, the token whose value is already the design's `#58a6c4`, and
+no hex is written anywhere in the app (UX-DR1)
+
+**Given** the same mark drawn at three sizes across the mockups — 22px on the load screen, 18px in the
+document bar, 13px as a manifest row bullet
+**When** it is built
+**Then** it is one component parameterised by size rather than three drawings, and it is used on the
+load screen as well as the document bar, because a brand that appears only after loading is not the
+thing the author first sees
+
+**Given** the mark
+**When** it is read by assistive technology
+**Then** it is decorative beside the word FOLIO and is not announced twice — the accessible name of
+the pair is the product name, once
+
+### Story 14.6: The DATA tab is the binding panel the design drew
+
+As a template author,
+I want the data panel to show me the values I am binding to,
+So that picking a path is recognising my data rather than decoding a type name.
+
+**Covers:** FR7, FR9 · UX-DR2, UX-DR7, UX-DR13, UX-DR24, UX-DR25
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Binding.dc.html`
+  — the whole DATA tab: file row, selection context bar, PATHS tree with values, TABLE ONLY and RUNTIME badges
+
+**Acceptance Criteria:**
+
+**Given** each scalar path in the tree
+**When** it is shown
+**Then** its **value** is shown beside it, right-aligned against the label — `customer.name` reads
+`สมชาย วงศ์ประเสริฐ`, `statement.openingBalance` reads `48250.00` — rather than the label, the full
+path and a concatenated `kind · count · preview · candidate` string, which is what the panel renders
+today. `SampleNode` already carries `preview`, `count` and `kind`; this is a presentation defect, not
+a missing model
+
+**Given** an object node
+**When** it is shown
+**Then** it is marked `{ }` beside its name, and a collection `[]`, rather than spelled out as the
+words "object" and "collection"
+
+**Given** the loaded file
+**When** the panel header is shown
+**Then** it names the file with its **size** — `sample-statement.json · 18 KB` — which `SampleData`
+can already measure from the bytes it holds
+
+**Given** a selected component
+**When** the DATA tab is shown
+**Then** a context bar above the tree states what is selected and what a pick would bind — *"Text
+selected · binding to string"* — in the bind accent, so the panel answers "what will this do" before
+the author picks rather than after the engine refuses (UX-DR2, UX-DR24)
+
+**Given** a collection such as `transactions[]`
+**When** it is shown
+**Then** it carries a **TABLE ONLY** badge and one line of prose — *"Collection · 34 items. Text
+cannot bind a collection."* — and its row-scope children are rendered dimmed and unpickable, because
+they are bound in the table editor and not here
+
+**Given** the runtime parameters the engine discovered in this template
+**When** the tree is shown
+**Then** they appear under `params` with a **RUNTIME** badge and their current values, visible but
+never pickable — `bindComponentScalar` already refuses `params` as a root data binding, and the panel
+should show the author that the namespace exists rather than leaving it invisible until Preview
+
+**Given** the design shows no connect control beside the tree, while the panel today commits through
+an explicit "Connect selected path" button
+**When** this story is planned
+**Then** the interaction is ruled and recorded before it is built: either a pick binds immediately
+(undoable under UX-DR20, and the engine still validates and can still refuse), or the explicit commit
+stays and the mockup's omission is a gap in the mockup. The row treatment the design draws — the
+picked row carried on a bind-accent left bar — is adopted either way
+
+**Given** the document's components
+**When** the status bar is shown
+**Then** it states how many carry a binding — *"7 of 10 elements bound"* — counted from the engine's
+own projection, which already reports a `binding` per component, so no new engine surface is added
+
+**Given** the panel with no sample data loaded
+**When** it is shown
+**Then** it says so in the design's own terms and states that sample data is never written into the
+template — the footer note the mockup carries, which the panel does not say anywhere today
+
+**Given** every value, badge and dimmed row this story adds
+**When** it is read by assistive technology or operated by keyboard
+**Then** the tree keeps the roving tab stop and arrow-key navigation it already has, a badge is
+announced as part of its row rather than as a separate control, and an unpickable row reports that it
+is unpickable rather than simply failing to respond (UX-DR25)
+
+### Story 14.7: The table editor is the matrix the design drew
+
+As a template author,
+I want the table editor to be the column matrix the design specifies,
+So that configuring a table is reading a table rather than filling in eleven fields per column.
+
+**Covers:** FR10 · AD-13, AD-15 · UX-DR8, UX-DR18, UX-DR24, UX-DR25
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/TableEditor.dc.html`
+  — the six-column matrix, the width budget, and the dialog's footer summary
+
+**Acceptance Criteria:**
+
+**Given** the matrix, which today carries eleven columns per row — Header, Width, Cell alignment, Row
+field, Footer, Footer source, Footer format, Move earlier, Move later, Remove, Add after
+**When** it is rebuilt
+**Then** it carries the six the design draws — `#`, HEADER LABEL, BOUND FIELD · row scope, WIDTH,
+ALIGN, FOOTER AGGREGATE — with reorder and remove as row affordances rather than as four more
+columns, because UX-DR8 calls this the densest UI in the product and density is what the extra
+columns destroyed
+
+**Given** the ALIGN cell
+**When** it is shown
+**Then** it is the three-segment L / C / R control the design draws, which is the same segmented
+control the inspector uses for alignment — one alignment control in the product, not a segmented one
+in the panel and a `<select>` here
+
+**Given** FOOTER AGGREGATE, which today is a `<select>` plus a Footer source field plus a Footer
+format field
+**When** it is shown
+**Then** it is one control reading `none` or the aggregate, with source and format revealed only when
+the chosen aggregate needs them — the engine's rules are unchanged (`count` takes no source; an
+absent footer takes neither), and this story only stops presenting three fields where the design
+presents one
+
+**Given** the columns' widths
+**When** the matrix is shown
+**Then** the width budget is shown as the design shows it — `Σ 174.0 of 174.0 available`, with the
+`exact` badge when they meet — so an author sees a table that does not fit before rendering it rather
+than after
+
+**Given** the table's scope — its collection, its item count in the loaded sample, and its band
+**When** the editor is opened
+**Then** they are read-only context as the design draws them (`transactions[] · 34 items in sample ·
+band: content`), and the collection and row alias are edited where the design puts them rather than
+as two bare inputs at the top of the dialog
+
+**Given** the dialog's footer
+**When** it is shown
+**Then** it states the summary the design states — `5 columns · 2 aggregates`
+
+**Given** the design's **Cancel / Apply** buttons, against an editor that today commits every cell on
+blur through the engine
+**When** this story is planned
+**Then** the transaction model is ruled and recorded first: commit-on-blur is what AD-15 and the undo
+model already give (the engine owns the document, every mutation is a command, and UX-DR20 makes each
+undoable), so a modal Cancel would need a local uncommitted buffer — a second model of the document,
+which AD-15 exists to forbid. Either the buttons become Close plus undo, or the buffer is ruled in
+deliberately. This is not a labelling choice
+
+**Given** the design's widths in **millimetres**, against an engine and an inspector that speak
+points
+**When** this story is planned
+**Then** the unit is ruled **product-wide** rather than for this dialog alone — the design shows mm
+here and `210 × 297 mm` in the document bar, while every panel in the product shows pt, and one
+product does not carry two length units. Whatever is ruled, the stored value is unchanged: the format
+is millipoints and stays millipoints
+
+**Given** the matrix
+**When** it is operated by keyboard
+**Then** the roving grid navigation it already has survives the rebuild — this story reduces the cell
+count, so it must not reduce what a keyboard can reach (UX-DR25)
+
+### Story 14.8: The table editor carries the header, cell and border sections
+
+As a template author,
+I want the table's header, cell and border settings beside its columns,
+So that a table is configured in one place rather than in a dialog plus a hand-edited file.
+
+**Covers:** FR10, FR60 · AD-13 · UX-DR8, UX-DR24
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/TableEditor.dc.html`
+  — the HEADER, CELLS and BORDERS sections
+
+**Acceptance Criteria:**
+
+**Given** the design's HEADER, CELLS and BORDERS sections, which the editor does not have at all
+**When** they are built
+**Then** they sit beside the matrix as the design places them, and each control is backed by a value
+the engine actually consumes — this story presents Story 12.3's capability and adds no second way to
+store it
+
+**Given** *Repeat on continuation pages*, which the design draws with a **REQUIRED** badge
+**When** it is shown
+**Then** it is a locked statement of an existing guarantee rather than a setting: FR26 and Story 4.4
+make the header repeat unconditional, and the badge says so. A control that looks switchable and is
+not would be the same defect Story 14.2 fixes for the Line
+
+**Given** *Row height*, which the design shows as `auto`
+**When** it is shown
+**Then** it likewise states a derived fact — row height comes from content and cell padding, and no
+format field sets it — rather than offering a number the engine would ignore
+
+**Given** *Show header row* and the BORDERS presets None / Horizontal / All
+**When** this story is planned
+**Then** each is traced to a format field before it is drawn, and any that has none is either ruled
+into the format as its own story or dropped from the panel. `headerHeight`, `headerStyle` and
+`style.border.edges` exist; "show header row" and a three-way border preset do **not**, and inventing
+a control the format cannot carry is how this epic's defects were made in the first place
+
+**Given** cell padding in this panel
+**When** it is edited
+**Then** it writes the table's `style.padding`, which the cell chrome already consumes — the one
+element kind for which padding is not in question (Story 12.4)
+
+**Given** any section this story cannot back with a format field
+**When** the editor is shown
+**Then** it is absent rather than disabled-and-mysterious, and the epic records why
+
+### Story 14.9: The canvas draws the table it will print
+
+As a template author,
+I want a table on the canvas to show its columns and its bindings,
+So that I can see the table I am building without opening a dialog or rendering a preview.
+
+**Covers:** FR1, FR4, FR10 · AD-15, AD-17 · UX-DR7, UX-DR10, UX-DR21
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Binding.dc.html`
+  — the table component as the canvas draws it — the collection chip, the header labels, and the one specimen row
+
+**Acceptance Criteria:**
+
+**Given** a table component, which the canvas today paints as a small box containing the word "Table"
+**When** it is drawn
+**Then** it is drawn as `Binding.dc.html` draws it — a chip along its top carrying the table glyph,
+the bound collection in the bind accent (`transactions[]`) and the column count on the right
+(`5 columns`); beneath that the real header labels (Date, Description, Debit, Credit, Balance); and
+beneath that **one** representative row
+
+**Given** the representative row
+**When** it is drawn
+**Then** each cell shows its column's binding as the placeholder it is — `{{date}}`, `{{debit}}` — in
+the bind accent, because amber means data and only data (UX-DR2), and one row is drawn rather than
+the sample's thirty-four, since the canvas shows structure and the preview shows the document
+
+**Given** each column
+**When** the header and the representative row are drawn
+**Then** the column's declared width and its alignment are honoured, so a right-aligned money column
+reads as right-aligned on the canvas exactly as it will print
+
+**Given** the canvas projection, which today carries only `tableBind` — one string — for a table
+component, while the columns live in the separate projection the table editor opens
+**When** this story is built
+**Then** the canvas projection carries the table's columns too: label, width, alignment and binding,
+from the engine, so the canvas paints from the engine's own projection and never from a
+browser-side model of the table (AD-15, AD-17). This is a new **projection** field and not a new
+format field; nothing about the document changes
+
+**Given** a table with no columns yet
+**When** it is drawn
+**Then** it says so on the canvas in the design's own terms rather than drawing an empty frame that
+looks like a rendering failure (UX-DR13)
+
+**Given** a column whose binding is not set
+**When** the representative row is drawn
+**Then** that cell reads as unbound rather than as an empty string, so an unfinished table is
+visibly unfinished
+
+### Story 14.10: A table column is bound from the main window
+
+As a template author,
+I want to bind a table column the same way I bind everything else,
+So that binding lives in one place instead of behind a dialog.
+
+**Covers:** FR7, FR10 · AD-15 · UX-DR7, UX-DR18, UX-DR24
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Binding.dc.html`
+  — the canvas table and the DATA tab that offers its row-scope fields
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/TableEditor.dc.html`
+  — the matrix's BOUND FIELD column, which this story rules as display
+
+**Acceptance Criteria:**
+
+**Given** a table drawn on the canvas with its columns visible (Story 14.9)
+**When** the author clicks a column
+**Then** that column is the selection, and the inspector and DATA panel address it — selecting a
+column is how binding one begins, rather than opening the table editor to reach it
+
+**Given** a selected table column
+**When** the DATA tab is shown
+**Then** the row-scope fields under the table's bound collection become **pickable** — the same
+fields Story 14.6 dims when a text element is selected, because for a column they are exactly the
+right paths — and the context bar names what is selected and what will be bound
+
+**Given** a picked row-scope field
+**When** it is connected
+**Then** it commits through the existing `updateTableColumnBinding` command, unchanged: the engine
+still owns the document, still validates, and can still refuse, and the refusal is presented where
+the pick was made
+
+**Given** the collection itself, or a path outside the table's row scope
+**When** a column is selected
+**Then** it is not pickable for that column, and the panel says why rather than letting the engine
+refuse after the fact (UX-DR24)
+
+**Given** `TableEditor.dc.html`, whose matrix carries a BOUND FIELD column
+**When** the two surfaces are reconciled
+**Then** the table editor keeps **showing** each column's bound field as context, and the ruling this
+story records is where it is **edited** — the owner's instruction is that binding happens in the main
+window, so the editor is for structure (add, remove, reorder, width, align, footer aggregate) and the
+matrix's BOUND FIELD is display unless the owner rules otherwise
+
+**Given** a table column bound this way
+**When** it is undone
+**Then** it undoes as one step, like every other binding (UX-DR20)
+
+## Epic 15: Folio can be released
+
+Every epic above assumes a tree someone can ship. Today that assumption does not hold, and the
+reasons are process rather than product.
+
+**The golden report's hash has moved and nobody has said why.** The cross-target matrix is red on
+`main`: `statement-1` — the Customer Account Statement, the primary acceptance fixture — produces
+`114df1d6…` against a recorded `ef58bbf6…`. The four targets agree with each other, so byte identity
+across `darwin/arm64`, `linux/amd64`, `linux/arm64` and `js/wasm` still holds and CAP-13 is intact;
+what has failed is that a golden moved unexplained. Counter-metric C6 makes that a defect until
+proven to be an intended versioned change, and Epics 9 and 10 are the obvious suspects precisely
+because both promised the corpus would hash identically.
+
+**CI's red cannot be read.** The guardrails workflow contains `folio-go-known-red`, red by design so
+DW-11's unmet floor stays visible, which makes the whole workflow permanently red and camouflages
+any genuine failure beside it. DW-23 records the consequence already realised: a gofmt break in
+`lint/` has been in the tree since Story 5.10 and survived two boundary gates, because the local
+gate procedure ran gofmt in `folio-go` only and the gate read the workflow badge rather than the
+per-job conclusions.
+
+**There is no release.** `version.go` reads `0.0.0-dev`, `folio-go/v0.1.0` has never been cut, and
+RELEASING.md says of itself that version stamping, changelog policy, the tag command and how a
+matrix result is recorded against a release are simply unwritten. The owner's recorded decision is
+to cut after Epic 6; Epics 7–14 all postdate that decision without amending it.
+
+This epic ships no feature. It is the difference between a repository and a product.
+
+**FRs covered:** none — this epic exists to make the others releasable
+**Also lands:** AD-21, AD-22 and AD-26 enforced rather than extended; C6 and DW-23 discharged; DW-4's
+remaining engineering-lead checkpoint closed
+
+### Story 15.1: The golden report's moved hash is explained
+
+As a Go developer depending on this library,
+I want a moved golden to be investigated rather than regenerated,
+So that the regression suite is still a test.
+
+**Covers:** AD-21, AD-22 · C6
+
+**Acceptance Criteria:**
+
+**Given** `statement-1`'s new digest
+**When** it is investigated
+**Then** the change is attributed to a named commit and a named behaviour — the element-box paint,
+the text ink, or something else — by diffing the produced PDF against the recorded one, never by
+inspection of the commit log alone
+
+**Given** the attribution
+**When** it is recorded
+**Then** it names whether the change is intended, and the decision log carries it, before any golden
+file is touched
+
+**Given** an intended change
+**When** the golden is re-recorded
+**Then** every affected fixture is re-recorded in one commit that says what moved and why, and the
+matrix is green on all four targets afterwards
+
+**Given** an unintended change
+**When** it is found
+**Then** it is fixed rather than absorbed, and a fixture is added that would have caught it — because
+no document in the corpus exercised the path that moved
+
+**Given** the heavy statement fixtures at 5, 20 and 50 pages, which CI does not run
+**When** this story closes
+**Then** they have been run, and their digests are recorded, so the four page counts S1 names are
+actually verified rather than assumed from the one-page case
+
+### Story 15.2: CI's red means something
+
+As a contributor,
+I want a red build to mean a broken build,
+So that the signal is worth reading.
+
+**Covers:** AD-21 · DW-23
+
+**Acceptance Criteria:**
+
+**Given** the deliberately-red known-red job
+**When** the workflows are restructured
+**Then** it lives in its own workflow, so the guardrails workflow's conclusion is green when the
+guardrails pass and red only when something is actually broken
+
+**Given** the gofmt break in `lint/`
+**When** this story closes
+**Then** it is fixed, and gofmt runs across all three Go modules in the boundary-gate procedure as
+it already does in CI — a gate that measures fewer modules than CI cannot certify what CI reports
+
+**Given** a boundary gate
+**When** it records CI as clean
+**Then** it records the per-job conclusions it read, not the workflow badge, and the procedure says
+so in the terms DW-23 sets
+
+**Given** the restructuring
+**When** it is done
+**Then** the known-red job's purpose is unchanged and still visible: it stays red, it still names
+DW-11's unmet floor, and its going green is still the surprising event
+
+### Story 15.3: `folio-go/v0.1.0` is cut
+
+As a Go developer,
+I want a version I can depend on,
+So that `go get` gives me a fixed public API rather than a moving pseudo-version.
+
+**Covers:** FR36, FR37, FR38 · AD-26 · C5 · DW-4
+
+**Acceptance Criteria:**
+
+**Given** RELEASING.md's three existing obligations — the licence manifest published as an artifact,
+the public API surface reviewed as a whole, the call-graph walker precise or its precondition
+confirmed
+**When** the tag is cut
+**Then** each is discharged and recorded, and the API surface census is re-measured against the
+surface Epics 5–14 actually left rather than the 40 items measured at the Epic 3 boundary
+
+**Given** RELEASING.md's own list of what it does not yet cover
+**When** this story closes
+**Then** version stamping, changelog policy, the tag command and how a matrix result is recorded
+against a release are written into it, by whoever cuts the release, as that document already
+instructs
+
+**Given** the owner's recorded decision to cut after Epic 6, which Epics 7–14 postdate
+**When** the tag is planned
+**Then** the decision is re-affirmed or amended explicitly, naming which epics are inside v0.1.0 and
+which are not — a decision that has been overtaken by events is re-made, not assumed
+
+**Given** `version.go`, which reads `0.0.0-dev`
+**When** the tag is cut
+**Then** it carries the released version, and a test asserts the two agree, so a tag without a
+stamp cannot ship
+
+**Given** a new integrator with the README alone
+**When** they follow it after the tag
+**Then** they produce a PDF in minutes against the released version — C5 re-verified against the
+thing that actually ships, not against the working tree

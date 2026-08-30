@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 08-29-2026 22:05
+last_updated: 08-30-2026 11:26
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -217,3 +217,142 @@ development_status:
   epic-10: in-progress
   10-1-text-prints-in-a-declared-colour: review
   epic-10-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # SPRINT SEQUENCE for Epics 11-15, agreed 2026-08-30.
+  #
+  # This file has no sprint field -- sequence is recorded here, and `ready-for-dev`
+  # is NOT used to encode it, because that status means "story file created" and no
+  # story file exists for epics 7-15 yet. Everything below stays `backlog` until its
+  # story file is written.
+  #
+  #   S1  15.1                 UNBLOCK. main is RED on the cross-target matrix; every
+  #                            other epic lands on a baseline nobody has explained.
+  #                            Doing this after building on top is strictly harder.
+  #   S2  13.1, 13.2, 13.4     One module (folio-designer/src/preview/), highest value
+  #                            per unit of work. 13.1 is the smallest useful story in
+  #                            the whole backlog and the one an author needs today.
+  #                            13.4 joins them (moved from S5, 2026-08-30): it is what
+  #                            makes Preview reachable at all without a JSON file, so it
+  #                            belongs with the stories that make Preview usable, not
+  #                            with the evidence rail. It carries a SCOPE FENCE -- the
+  #                            empty-value behaviour is preview-with-no-data only and
+  #                            must never become Render's semantics; BINDING_PATH_ABSENT
+  #                            stays a located Error (Story 3.6, S8).
+  #   S3  15.2                 Make CI's red readable BEFORE the wider surface of
+  #                            12/13/14 starts landing in it.
+  #   S4  12.1-12.5, 14.1-14.5 Independent of each other; parallelisable. 12.4 and 14.1
+  #                            each OPEN with a ruling/rule, not with code. 12.5 follows
+  #                            12.1 within the sprint -- the drag commits through 12.1's
+  #                            command. 14.5 can go any time; it depends on nothing.
+  #                            14.6 (DATA tab fidelity) OPENS with a ruling too: the
+  #                            mockup shows no connect control, so pick-binds-immediately
+  #                            vs keep-the-explicit-commit is decided before it is built.
+  #                            14.7 carries TWO rulings that are not fidelity questions:
+  #                            Cancel/Apply implies a local uncommitted buffer (the second
+  #                            document model AD-15 forbids), and the design's MILLIMETRES
+  #                            contradict the points every other panel shows -- a
+  #                            PRODUCT-WIDE unit decision, not a dialog's.
+  #                            14.8 FOLLOWS 12.3: 12.3 makes the table's header/rows
+  #                            authorable, 14.8 presents them. Do not build 14.8 first --
+  #                            it would have to invent storage 12.3 already owns.
+  #                            14.9 is the ONE story in Epic 14 with engine work: the
+  #                            canvas projection carries only `tableBind` (one string),
+  #                            so the canvas CANNOT draw column headers or a specimen
+  #                            row today. It adds a PROJECTION field, never a format
+  #                            field. 14.10 depends on it -- you cannot click a column
+  #                            the canvas does not draw -- and on 14.6 for the DATA
+  #                            panel that offers the row-scope fields.
+  #                            Owner instruction (2026-08-30): column binding belongs in
+  #                            the MAIN WINDOW; the table editor keeps structure.
+  #   S5  13.3, 13.5           The preview evidence rail and the chrome around it: the
+  #                            real build in Epic 13. 13.3 carries a RULING -- the
+  #                            design prints "Matches native render / Identical bytes on
+  #                            darwin/arm64, linux/arm64, linux/amd64" and the TAB CANNOT
+  #                            KNOW THAT. Cross-target identity is a property of the
+  #                            release proven by CI's matrix, not a live comparison, so
+  #                            the wording is earned or reworded before it is drawn.
+  #   S6  11.1-11.3            GATED on the owner's realize-vs-retire ruling (see below).
+  #                            Sequenced last of the feature work because it is the only
+  #                            epic that can move golden hashes, so it wants the S1
+  #                            baseline settled underneath it.
+  #   S7  15.3                 LAST BY CONSTRUCTION -- it freezes the public API, so it
+  #                            follows whichever epics are ruled inside v0.1.0.
+  #
+  # Readiness gate: CONCERNS, not PASS. Three findings, none of which block sequencing:
+  #   1. Epic 11 carries a forward dependency on a decision NOTHING RECORDS. SPEC-fonts
+  #      records the question ("Do bold and italic get realized in this scope?"); no
+  #      artifact records an answer. 11.1 must not enter a sprint before it is ruled.
+  #   2. Epics 9 and 10 are `review` with no story files and no retrospective, and 15.1
+  #      most likely attributes the moved statement-1 golden to one of them -- so the
+  #      evidence 15.1 needs is the evidence those two epics never wrote down.
+  #   3. Epic 8's prose still reads "Bold and italic are NOT in this epic ... a
+  #      face-inventory decision SPEC-fonts leaves open". Epic 11 now owns it; that
+  #      sentence should point there rather than dangle.
+  #
+  # Generator note (2026-08-30): `sprint_plan.py generate` was run against this file and
+  # its output was DISCARDED, restoring this file from backup. It did exactly what the
+  # header above warns of -- dropped 2-3a/2-5a/2-6a/3-1a -- and additionally stripped 87
+  # of 100 inline comments, including that header. What was KEPT from the run is its key
+  # derivation: seven story keys here were renamed by hand to the script's canonical form
+  # (64-char truncation; an apostrophe becomes `-s-`, e.g. `a-table-s-header`), so a
+  # future --dry-run reports those keys as in-sync rather than as renames.
+  # ---------------------------------------------------------------------------
+  # Epics 11-15 added 2026-08-30 (post-MVP). Scoped in conversation from a designer-UI
+  # and release-readiness audit; every finding was reproduced against the running app or
+  # the live CI before it was written up. Like Epics 7-10 these are DELIBERATELY authored
+  # by hand rather than generated -- see the header warning above.
+  #
+  # 11 is BLOCKED on an owner ruling before 11.1 starts: realize bold/italic as shipped
+  # faces, or retire the toggles. SPEC-fonts records the same question as open. The epic
+  # specifies only the "realize" branch; the "retire" branch replaces 11.1-11.2 with one
+  # removal story.
+  epic-11: backlog
+  11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face: backlog
+  11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop: backlog
+  11-3-the-canvas-paints-the-weight-the-engine-resolved: backlog
+  epic-11-retrospective: optional
+
+  # 12.4 is a RULING story: the owner decides whether padding insets a non-table element
+  # or is documented table-only, and the ruling is recorded BEFORE any code is written.
+  epic-12: backlog
+  12-1-the-page-header-and-page-footer-take-the-height-the-author-s: backlog
+  12-2-the-document-declares-its-locale-and-its-utc-offset: backlog
+  12-3-a-table-s-header-and-its-alternating-rows-are-authorable: backlog
+  12-4-padding-is-honoured-outside-a-table-or-the-format-says-it-is: backlog
+  12-5-a-band-boundary-is-dragged-on-the-canvas: backlog
+  epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-the-preview-keeps-the-pdf: backlog
+  13-2-the-viewer-navigates-like-a-pdf-viewer: backlog
+  13-3-the-preview-screen-is-the-evidence-screen: backlog
+  13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt: backlog
+  13-5-the-chrome-tells-the-truth-about-the-preview: backlog
+  epic-13-retrospective: optional
+
+  # 14.1 writes the button rule FIRST; the sweep is its consequence, not its substance.
+  epic-14: backlog
+  14-1-one-button-vocabulary: backlog
+  14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and: backlog
+  14-3-a-placed-component-is-the-selected-component: backlog
+  14-4-the-panel-offers-no-control-the-engine-will-refuse: backlog
+  14-5-the-product-wears-its-own-mark: backlog
+  14-6-the-data-tab-is-the-binding-panel-the-design-drew: backlog
+  14-7-the-table-editor-is-the-matrix-the-design-drew: backlog
+  14-8-the-table-editor-carries-the-header-cell-and-border-sections: backlog
+  14-9-the-canvas-draws-the-table-it-will-print: backlog
+  14-10-a-table-column-is-bound-from-the-main-window: backlog
+  epic-14-retrospective: optional
+
+  # Epic 15 is the release blocker set, and 15.1 is URGENT rather than merely first:
+  # main is RED on the cross-target matrix right now. statement-1 -- the golden report,
+  # the primary acceptance fixture -- produces 114df1d6... against a recorded ef58bbf6...
+  # All four targets agree, so CAP-13/S2/S3 hold; what failed is that a golden moved
+  # unexplained, which C6 makes a defect until proven intended. Epics 9 and 10 are the
+  # suspects: both promised the corpus would hash identically.
+  epic-15: backlog
+  15-1-the-golden-report-s-moved-hash-is-explained: backlog
+  15-2-ci-s-red-means-something: backlog
+  15-3-folio-go-v0-1-0-is-cut: backlog
+  epic-15-retrospective: optional
