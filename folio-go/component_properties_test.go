@@ -472,3 +472,64 @@ func TestMultiParagraphValueCommitsAndReProjectsAsSeveralCanvasLines(t *testing.
 		t.Fatalf("CRLF projected %d lines against LF's %d; the pair must fold to one break", got, want)
 	}
 }
+
+// TestUpdateComponentPropertiesBandBoundsFollowTheColumnLift covers the
+// property-edit surface's SOLE band bound.
+//
+// applyPropertyChanges enforces only positivity on x and y; the single
+// containComponent call in updateComponentPropertiesInPlace is the whole of
+// the band checking for every property this panel can edit. Before Story 7.5
+// this file had no band-bounds coverage at all — every component it created
+// sat at a safe interior position — so the path was untested on both sides of
+// the clause that moved.
+func TestUpdateComponentPropertiesBandBoundsFollowTheColumnLift(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := newProjectedComponent(t, before, createdProjection)
+	// The content band is 679.89pt of window on this fixture's A4 page, so
+	// 2400pt is a placement on the fourth sheet — a schedule's later rows, or
+	// a signature block at the end of a long statement.
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+created.ID+`"],"changes":{"y":{"op":"set","value":2400}}}`)); err != nil {
+		t.Fatalf("a content y three windows down was refused by the property panel: %v", err)
+	}
+	if roundTripped := reloadedComponent(t, tpl, created.ID); roundTripped.Y != 2400000 {
+		t.Fatalf("canonical bytes carried y = %d, want 2400000", roundTripped.Y)
+	}
+	// The horizontal bound is untouched: the column is unbounded vertically,
+	// never horizontally.
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+created.ID+`"],"changes":{"x":{"op":"set","value":2400}}}`)); err == nil {
+		t.Fatal("a content x past the band width was accepted by the property panel")
+	}
+	// And a repeating band still caps, in the same words. A page header is
+	// exactly one page tall because that is what repeating means.
+	headerProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"pageHeader","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inHeader := newProjectedComponent(t, createdProjection, headerProjection)
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+inHeader.ID+`"],"changes":{"y":{"op":"set","value":600}}}`))
+	var failure *ComponentCommandError
+	if !errors.As(err, &failure) {
+		t.Fatalf("a pageHeader y past the band = %v, want a component command failure", err)
+	}
+	if want := "folio: component geometry must stay within pageHeader"; failure.Message != want {
+		t.Fatalf("pageHeader refusal message = %q, want exactly %q", failure.Message, want)
+	}
+	if failure.DataPath != "component.geometry" {
+		t.Fatalf("pageHeader refusal data path = %q, want component.geometry", failure.DataPath)
+	}
+	if after, _ := SerializeTemplate(tpl); !bytes.Equal(canonical, after) {
+		t.Fatal("a refused property change moved the canonical bytes")
+	}
+}

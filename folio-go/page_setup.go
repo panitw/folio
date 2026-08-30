@@ -10,6 +10,7 @@ import (
 
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/layout"
 	"github.com/panitw/folio/folio-go/internal/template"
 	"github.com/panitw/folio/folio-go/internal/text"
 )
@@ -290,6 +291,44 @@ type CanvasProjection struct {
 	// engine's number, and a second copy of it in the designer would be a
 	// second authority on what an unset size means.
 	DefaultFontSize int64 `json:"defaultFontSize"`
+	// ContentWindowHeight is ONE page's worth of content column, in
+	// millipoints: internal/layout's ContentHeight, which is the single
+	// function permitted to derive it (AD-13). It is the same number
+	// bands[1].height carries — the content band rectangle IS one window —
+	// and it is named separately because the two stop being interchangeable
+	// the moment the designer draws a second sheet: the band is where page
+	// one's content sits, the window is the distance between sheets.
+	//
+	// It is projected rather than recomputed in the browser because a second
+	// spelling of it would be a second authority on where a page ends, and
+	// the divergence would be invisible: the canvas and the engine would draw
+	// different pages and still agree on the bytes.
+	ContentWindowHeight int64 `json:"contentWindowHeight"`
+	// ContentWindowCount is how many of those windows the content column
+	// occupies, from internal/layout's Paginate — the ONE function that
+	// decides how many pages a column has. It is never `ceil(lowestBottom /
+	// ContentWindowHeight)`, a spelling paginate.go forbids by name: the
+	// window advances to the first item that did not fit, so an element
+	// declared ten windows below the text starts the NEXT window rather than
+	// generating nine empty ones.
+	//
+	// WHAT THIS NUMBER IS A NUMBER ABOUT. It describes the column AS THE
+	// CANVAS CURRENTLY PAINTS IT, not the document that will render. The
+	// canvas has no data, so a bound table contributes only its header
+	// height (projectedSize) and every row it will grow is absent: for any
+	// document with a bound table in the content band this count is a FLOOR,
+	// never a prediction. The finished document may run longer; it can never
+	// run shorter.
+	//
+	// It is never derived from CanvasTextPaint. The paint truncates — at a
+	// line budget and at a fragment budget — and a count that read a paint's
+	// line list would shorten with it, so the canvas would draw the wrong
+	// number of sheets for exactly the documents long enough to need them.
+	// The extents fed to Paginate come from the FULL shaped line list and the
+	// vertical model, which truncation never touches.
+	//
+	// Always at least 1: a column with nothing in it is one page, not zero.
+	ContentWindowCount int64 `json:"contentWindowCount"`
 }
 
 // maxCanvasFontFamilies bounds the projected name list the way every other
@@ -318,18 +357,56 @@ func canvasFontFamilies(t *Template) ([]string, error) {
 	return names, nil
 }
 
+// canvasPageGeometry is THE one layout.PageGeometry the canvas builds, and
+// every canvas consumer of a page-geometry quantity reads it: the content
+// band rectangle, the projected window height and the window count all come
+// from this single struct, so they cannot diverge from one another.
+//
+// It is deliberately NOT render.go's pageGeometryOf. That one routes through
+// pageDimensions, which hard-errors on "Letter" by design — failing loudly is
+// more honest than a silent A4 substitution when a PDF is about to be
+// produced. canvasDimensions supports Letter, and a Letter document projects
+// a canvas today, so routing the canvas through the render path's spelling
+// would break a projection that works.
+func canvasPageGeometry(t *Template) (layout.PageGeometry, error) {
+	w, h, err := canvasDimensions(t)
+	if err != nil {
+		return layout.PageGeometry{}, err
+	}
+	m := t.doc.Page.Margin
+	return layout.PageGeometry{
+		Width:            w,
+		Height:           h,
+		MarginTop:        m.Top,
+		MarginBottom:     m.Bottom,
+		MarginLeft:       m.Left,
+		MarginRight:      m.Right,
+		PageHeaderHeight: t.doc.Bands.PageHeader.Height.Value,
+		PageFooterHeight: t.doc.Bands.PageFooter.Height.Value,
+	}, nil
+}
+
 // Canvas returns immutable paint geometry. It intentionally exposes neither
 // template fields nor elements, canonical bytes, or browser measurements.
+//
+// ContentWindowCount is the documented FLOOR of one window here. Counting
+// windows needs shaped lines, which needs a FontSet this entry point does not
+// receive — and it does not need to: every projection that reaches the
+// browser is a CanvasWithTextPaint (wasm/engine.go's three seams), because
+// every mutating command's own Canvas(t) is discarded and recomputed there
+// with fonts. A floor of one is what a column with nothing placeable in it
+// occupies anyway; a silent zero would be a page count no document has.
 func Canvas(t *Template) (CanvasProjection, error) {
 	if t == nil {
 		return CanvasProjection{}, errNilTemplate
 	}
-	w, h, err := canvasDimensions(t)
+	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return CanvasProjection{}, err
 	}
+	w, h := g.Width, g.Height
 	m := t.doc.Page.Margin
-	header, footer := t.doc.Bands.PageHeader.Height.Value, t.doc.Bands.PageFooter.Height.Value
+	header, footer := g.PageHeaderHeight, g.PageFooterHeight
 	if w <= 0 || h <= 0 || m.Left < 0 || m.Right < 0 || m.Top < 0 || m.Bottom < 0 || m.Left >= w-m.Right || m.Top >= h-m.Bottom {
 		return CanvasProjection{}, fmt.Errorf("folio: page setup leaves no positive content region")
 	}
@@ -350,10 +427,18 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if !t.doc.Page.SizeIsName {
 		commandW, commandH = t.doc.Page.SizeCustom.Width, t.doc.Page.SizeCustom.Height
 	}
+	// AD-13: the content band's height is derived by ONE function, in
+	// internal/layout. The inline `innerH - header - footer` that used to
+	// stand here was arithmetically identical and still a second spelling of
+	// a derived quantity — and the projection now REPORTS this number as the
+	// page-height window, which is what the designer draws sheet boundaries
+	// from, so a divergence would show up as the canvas and the engine
+	// drawing different pages while agreeing on every byte.
+	window := layout.ContentHeight(g)
 	bands := []CanvasBand{
-		{Name: "pageHeader", X: int64(m.Left), Y: int64(m.Top), Width: int64(innerW), Height: int64(header)},
-		{Name: "content", X: int64(m.Left), Y: int64(m.Top + header), Width: int64(innerW), Height: int64(innerH - header - footer)},
-		{Name: "pageFooter", X: int64(m.Left), Y: int64(h - m.Bottom - footer), Width: int64(innerW), Height: int64(footer)},
+		{Name: bandPageHeader, X: int64(m.Left), Y: int64(m.Top), Width: int64(innerW), Height: int64(header)},
+		{Name: bandContent, X: int64(m.Left), Y: int64(m.Top + header), Width: int64(innerW), Height: int64(window)},
+		{Name: bandPageFooter, X: int64(m.Left), Y: int64(h - m.Bottom - footer), Width: int64(innerW), Height: int64(footer)},
 	}
 	components, err := canvasComponents(t, bands)
 	if err != nil {
@@ -363,7 +448,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt)}, nil
+	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,
@@ -374,13 +459,93 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	if err := addCanvasTextPaint(t, &projection, fs); err != nil {
+	// One shaping, two consumers. addCanvasTextPaint shapes the content
+	// band's text once; the paint plan is one consumer of the extents that
+	// shaping produced and the window count is the other. A second shaping
+	// pass would be a second derivation of the same numbers, which is the
+	// thing internal/layout's ColumnItem doc forbids.
+	column := make([]layout.ColumnItem, 0)
+	if err := addCanvasTextPaint(t, &projection, fs, &column); err != nil {
 		return CanvasProjection{}, err
 	}
 	if err := addCanvasImagePaint(t, &projection); err != nil {
 		return CanvasProjection{}, err
 	}
+	if err := addCanvasWindowCount(t, &projection, column); err != nil {
+		return CanvasProjection{}, err
+	}
 	return projection, nil
+}
+
+// addCanvasWindowCount is the THIRD paint producer, beside addCanvasTextPaint
+// and addCanvasImagePaint: it reports how many page-height windows the
+// content column occupies.
+//
+// It calls internal/layout's Paginate — the one function that decides how
+// many pages a column has — and never a second pagination of its own. What it
+// supplies is only the extents: the per-line tops and advances the paint plan
+// already computed (textItems), plus one item per non-text content component
+// from the box canvasComponents already projects. Paginate's signature takes
+// PageGeometry and ColumnItems, no data, no bindings and no template, because
+// receiving caller-derived extents is exactly what it is for.
+//
+// EVERY CONTENT COMPONENT CONTRIBUTES, STYLED OR NOT. The render path skips
+// element boxes with no background or border, correctly, because an unstyled
+// rect draws nothing on paper. This count is a claim about the column as the
+// CANVAS paints it, and the canvas paints every component's box.
+func addCanvasWindowCount(t *Template, projection *CanvasProjection, textItems []layout.ColumnItem) error {
+	g, err := canvasPageGeometry(t)
+	if err != nil {
+		return err
+	}
+	items := make([]layout.ColumnItem, 0, len(textItems)+len(t.doc.Bands.Content.Elements))
+	items = append(items, textItems...)
+	for _, element := range t.doc.Bands.Content.Elements {
+		if element.Type == template.ElementText {
+			// Text contributes one item PER SHAPED LINE, never its box: a
+			// paragraph splits between windows at a line, which is what
+			// makes the count a slide rather than a division.
+			continue
+		}
+		_, height := projectedSize(element)
+		items = append(items, layout.ColumnItem{
+			ElementID: string(element.ID),
+			Top:       element.Y,
+			Bottom:    element.Y + height,
+			// The dummy-ref idiom page_number.go already sanctions:
+			// Paginate's exclusivity pre-pass requires exactly one of
+			// Runs/Images/Rects to be non-empty, and this Pagination is
+			// discarded except for len(Pages), so the value is never read
+			// back.
+			Rects: []layout.RectRef{0},
+		})
+	}
+	// ONE translation, in one place. Every extent above is band-relative,
+	// exactly as the author declared it and as CanvasComponent carries it;
+	// Paginate reads the printable frame, whose content origin is the page
+	// header's height. MarginTop is deliberately NOT added — Origins measures
+	// downward from the printable top edge, inside the margin, while
+	// CanvasBand.Y is paper-absolute.
+	origin := layout.Origins(g).Content
+	for i := range items {
+		items[i].Top += origin
+		items[i].Bottom += origin
+	}
+	plan, err := layout.Paginate(g, items)
+	if err != nil {
+		// A pagination failure DEGRADES THE COUNT; it never fails the
+		// projection. The reachable case is a content component taller than
+		// one window, which this story newly makes authorable — turning the
+		// render path's overflow into a canvas refusal would make a
+		// canvas bound into a document validity rule. One window is
+		// Paginate's own answer for a column it cannot place, and it is the
+		// same shape as this file's other degradations: dispose of the
+		// number, keep the canvas.
+		projection.ContentWindowCount = 1
+		return nil
+	}
+	projection.ContentWindowCount = int64(len(plan.Pages))
+	return nil
 }
 
 // addCanvasImagePaint is addCanvasTextPaint's sibling for image components
@@ -414,9 +579,9 @@ func addCanvasImagePaint(t *Template, projection *CanvasProjection) error {
 		name     string
 		elements []template.Element
 	}{
-		{"pageHeader", t.doc.Bands.PageHeader.Elements},
-		{"content", t.doc.Bands.Content.Elements},
-		{"pageFooter", t.doc.Bands.PageFooter.Elements},
+		{bandPageHeader, t.doc.Bands.PageHeader.Elements},
+		{bandContent, t.doc.Bands.Content.Elements},
+		{bandPageFooter, t.doc.Bands.PageFooter.Elements},
 	} {
 		for _, element := range band.elements {
 			if element.Type != template.ElementImage {
@@ -500,7 +665,7 @@ func addCanvasImagePaint(t *Template, projection *CanvasProjection) error {
 	return nil
 }
 
-func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) error {
+func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, column *[]layout.ColumnItem) error {
 	components := make(map[string]*CanvasComponent, len(projection.Components))
 	for i := range projection.Components {
 		component := &projection.Components[i]
@@ -593,6 +758,34 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 				boxHeight = element.Height.Value
 			}
 			originY := element.Y + textValignOffset(valign, boxHeight, textBlockHeight(len(lines), vm))
+			// THE WINDOW COUNT'S EXTENTS, taken here and nowhere else.
+			//
+			// It iterates `lines` — the FULL, untruncated list — and never
+			// `painted`, `budget`, `oversized` or the placed runs, so the
+			// count is identical whether this element paints every line, a
+			// truncated prefix, or (the first-line-too-tall path) none at
+			// all. That independence is the whole point: a canvas that
+			// stopped drawing at line 1920 must not also stop counting
+			// pages there.
+			//
+			// The extent is the render path's, term for term rather than
+			// re-derived: `top` here is exactly the `lineY` render.go
+			// places a line at, and the bottom adds the same
+			// FirstBaseline + LastDescent from the same vertical model.
+			if band.name == bandContent {
+				for i := range lines {
+					top, err := canvasLineTop(originY, i, vm.Advance)
+					if err != nil {
+						return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+					}
+					*column = append(*column, layout.ColumnItem{
+						ElementID: string(element.ID),
+						Top:       top,
+						Bottom:    top + vm.FirstBaseline + vm.LastDescent,
+						Runs:      []layout.TextRunRef{0},
+					})
+				}
+			}
 			budget := canvasFragmentBudget{}
 			for i, line := range painted {
 				top, err := canvasLineTop(originY, i, vm.Advance)
@@ -718,11 +911,11 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 	for _, projected := range bands {
 		var elements []template.Element
 		switch projected.Name {
-		case "pageHeader":
+		case bandPageHeader:
 			elements = t.doc.Bands.PageHeader.Elements
-		case "content":
+		case bandContent:
 			elements = t.doc.Bands.Content.Elements
-		case "pageFooter":
+		case bandPageFooter:
 			elements = t.doc.Bands.PageFooter.Elements
 		}
 		for _, element := range elements {

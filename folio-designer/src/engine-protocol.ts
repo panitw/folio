@@ -56,6 +56,27 @@ export const MAX_CANVAS_PROPERTY_STRING = 512
 export const MIN_LINE_SPACING_THOUSANDTHS = 1
 export const MAX_LINE_SPACING_THOUSANDTHS = 1000000
 
+// THE FIFTH MIRROR, and the first one that is a PREDICATE rather than a
+// number: which bands cap a component vertically.
+//
+// DW-25 closed the four size caps above. Band containment is a different
+// invariant that merely happens to live in the same file, and an audit closes
+// only what it measured — so the standing obligation is widened here from
+// "the size caps move together" to: ANY invariant duplicated across the
+// Go/TypeScript boundary moves in ONE commit, with a test that reads both
+// sides. `folio-go/component_commands.go` declares this same list under this
+// same name and `engine-bounds-mirror.test.ts` reads both files.
+//
+// The content band is absent by MEANING. A page header and a page footer
+// repeat on every page, so each is exactly one page tall; the content band is
+// a COLUMN that Go's internal/layout slices into page-height windows, so a
+// component below the foot of page one is on page two, not outside the
+// document. What a stale copy of this list costs is not a hidden component:
+// `isCanvas` returning false makes `parseInbound` return undefined, which
+// terminates the worker, rejects every in-flight request and leaves the
+// canvas blank — with no element id and no attributable error.
+export const BANDS_CAPPING_VERTICALLY = ['pageHeader', 'pageFooter']
+
 export type EngineError = Readonly<{
   code: string
   message: string
@@ -95,6 +116,13 @@ export type EngineSnapshot = Readonly<{
 export type CanvasProjection = Readonly<{
 	width: number; height: number; orientation: 'portrait' | 'landscape'; preset: 'A4' | 'Letter' | 'custom'
 	marginTop: number; marginRight: number; marginBottom: number; marginLeft: number; gridIncrement: number; commandWidth: number; commandHeight: number
+	// contentWindowHeight is ONE page's worth of content column, and
+	// contentWindowCount is how many of those windows the column occupies —
+	// both from Go, neither derived here. The count is a claim about the
+	// column as the ENGINE currently paints it, and a floor rather than a
+	// prediction wherever a bound table is involved: the canvas has no data,
+	// so a table contributes its header and none of its rows.
+	contentWindowHeight: number; contentWindowCount: number
 	// fontFamilies is the closed set style.fontFamily may name in THIS
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
@@ -153,9 +181,9 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'defaultFontSize', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
-  if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
+  if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
   // The declared font chain names, as Go sorted them: bounded in count and
   // length like every other list on this projection, unique, and in the order
   // Go sent so the browser never re-sorts an engine-owned set.
@@ -190,7 +218,12 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     const box = component as Record<string, number>
     const table = component.type === 'table'
     if (table ? component.resizable || box.height <= 0 : !component.resizable || box.width <= 0 || box.height <= 0) return false
-    if (!(box.x + box.width <= band.width && box.y + box.height <= band.height)) return false
+    // THE HORIZONTAL CAP IS UNIVERSAL; the vertical one is not. A band is as
+    // wide as the printable page and nothing may hang off its side, in any
+    // band. The vertical cap belongs only to the bands that HAVE a capacity —
+    // see BANDS_CAPPING_VERTICALLY, which Go's containComponent mirrors.
+    if (!(box.x + box.width <= band.width)) return false
+    if (BANDS_CAPPING_VERTICALLY.includes(component.band as string) && !(box.y + box.height <= band.height)) return false
     // THE FOURTH HAND-COPIED MIRROR (DW-25). This one predicate used to cap
     // `value` — the document's BODY TEXT — at the same 512 as seven
     // identifier and colour keys: maxCanvasPropertyString's two-jobs

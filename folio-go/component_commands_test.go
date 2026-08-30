@@ -565,6 +565,21 @@ func TestSetComponentBoundsMovesOriginAndSizeInOneCommand(t *testing.T) {
 	if component.X != 24005 || component.Y != 12006 || component.Width != 84007 || component.Height != 48008 {
 		t.Fatalf("bounds units = (%d,%d,%d,%d), want (24005,12006,84007,48008)", component.X, component.Y, component.Width, component.Height)
 	}
+	// A TALL CONTENT Y, ACCEPTED. This seam moves origin and size together
+	// and its refusal map below carries no y or height overflow probe at
+	// all, so the clause Story 7.5 lifted had zero coverage here on either
+	// side of the change. 2400pt is roughly three and a half windows down a
+	// content band 679.89pt tall.
+	tall, err := ApplyComponentCommand(tpl, []byte(`{"kind":"setComponentBounds","version":1,"id":"`+created.ID+`","x":0,"y":2400,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatalf("bounds three windows below the band foot were refused: %v", err)
+	}
+	if component = newProjectedComponent(t, before, tall); component.Y != 2400000 {
+		t.Fatalf("tall bounds y = %d, want 2400000", component.Y)
+	}
+	if roundTripped := reloadedComponent(t, tpl, created.ID); roundTripped.Y != 2400000 {
+		t.Fatalf("canonical bytes carried y = %d, want 2400000", roundTripped.Y)
+	}
 	canonical, _ := SerializeTemplate(tpl)
 	for name, command := range map[string]string{
 		"missing height":  `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":0,"y":0,"width":72,"snap":false}`,
@@ -611,11 +626,15 @@ func TestSnapDoesNotPushAnEdgeDragOutOfItsBand(t *testing.T) {
 	if component.X%GridIncrement != 0 || component.Y%GridIncrement != 0 {
 		t.Fatalf("pulled-back origin = (%d,%d), want grid multiples", component.X, component.Y)
 	}
-	if component.X+component.Width > band.Width || component.Y+component.Height > band.Height {
-		t.Fatalf("pulled-back geometry (%d,%d,%d,%d) leaves band %dx%d", component.X, component.Y, component.Width, component.Height, band.Width, band.Height)
+	// THE X HALF ONLY, since Story 7.5. The pull-back is a rescue of the
+	// grid's own rounding on the axis that still has an edge to be pulled
+	// back to; the content band has no bottom edge any more, so a snapped Y
+	// past `edgeY` is the position the author asked for and stays there.
+	if component.X+component.Width > band.Width {
+		t.Fatalf("pulled-back geometry (%d,%d,%d,%d) leaves band width %d", component.X, component.Y, component.Width, component.Height, band.Width)
 	}
-	if edgeX-component.X >= GridIncrement || edgeY-component.Y >= GridIncrement {
-		t.Fatalf("pull-back moved (%d,%d) further than one grid step from (%d,%d)", component.X, component.Y, edgeX, edgeY)
+	if edgeX-component.X >= GridIncrement {
+		t.Fatalf("pull-back moved x %d further than one grid step from %d", component.X, edgeX)
 	}
 	// Same for a bounds drag that lands its far edges exactly on the band.
 	bounded, err := ApplyComponentCommand(tpl, []byte(`{"kind":"setComponentBounds","version":1,"id":"`+created.ID+`","x":`+literal(edgeX)+`,"y":`+literal(edgeY)+`,"width":`+literal(created.Width)+`,"height":`+literal(created.Height)+`,"snap":true}`))
@@ -623,16 +642,15 @@ func TestSnapDoesNotPushAnEdgeDragOutOfItsBand(t *testing.T) {
 		t.Fatalf("edge bounds with snapping was refused: %v", err)
 	}
 	component = newProjectedComponent(t, before, bounded)
-	if component.X+component.Width > band.Width || component.Y+component.Height > band.Height {
-		t.Fatalf("pulled-back bounds (%d,%d,%d,%d) leave band %dx%d", component.X, component.Y, component.Width, component.Height, band.Width, band.Height)
+	if component.X+component.Width > band.Width {
+		t.Fatalf("pulled-back bounds (%d,%d,%d,%d) leave band width %d", component.X, component.Y, component.Width, component.Height, band.Width)
 	}
 	// The pull-back rescues the grid's own rounding and nothing else: a
 	// caller asking for geometry a whole grid step outside is still refused.
 	canonical, _ := SerializeTemplate(tpl)
 	for name, command := range map[string]string{
-		"a grid step past the right edge":  `{"kind":"moveComponent","version":1,"id":"` + created.ID + `","x":` + literal(edgeX+GridIncrement) + `,"y":0,"snap":true}`,
-		"a grid step past the bottom edge": `{"kind":"moveComponent","version":1,"id":"` + created.ID + `","y":` + literal(edgeY+GridIncrement) + `,"x":0,"snap":true}`,
-		"far past the right edge":          `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":` + literal(edgeX+100*GridIncrement) + `,"y":0,"width":72,"height":24,"snap":true}`,
+		"a grid step past the right edge": `{"kind":"moveComponent","version":1,"id":"` + created.ID + `","x":` + literal(edgeX+GridIncrement) + `,"y":0,"snap":true}`,
+		"far past the right edge":         `{"kind":"setComponentBounds","version":1,"id":"` + created.ID + `","x":` + literal(edgeX+100*GridIncrement) + `,"y":0,"width":72,"height":24,"snap":true}`,
 	} {
 		if _, err := ApplyComponentCommand(tpl, []byte(command)); err == nil {
 			t.Fatalf("%s unexpectedly succeeded", name)
@@ -641,6 +659,56 @@ func TestSnapDoesNotPushAnEdgeDragOutOfItsBand(t *testing.T) {
 			t.Fatalf("rejected %s changed canonical bytes", name)
 		}
 	}
+	// A grid step past what used to be the bottom edge, which was in that
+	// refusal map until Story 7.5 and is now an ordinary placement. The Y arm
+	// of the pull-back assertions above went vacuous when the cap lifted —
+	// nothing pulls a content Y back any more — so THIS is what carries the
+	// Y axis's discriminating power now: far below the foot of page one, the
+	// drag is accepted, still snaps to the grid, and is what the canonical
+	// bytes carry back on the next load.
+	far := band.Height*3 + 4321
+	dropped, err := ApplyComponentCommand(tpl, []byte(`{"kind":"moveComponent","version":1,"id":"`+created.ID+`","x":0,"y":`+literal(far)+`,"snap":true}`))
+	if err != nil {
+		t.Fatalf("a content drag three windows below the band was refused: %v", err)
+	}
+	component = newProjectedComponent(t, before, dropped)
+	if component.Y%GridIncrement != 0 {
+		t.Fatalf("snapped y = %d, want a grid multiple", component.Y)
+	}
+	if component.Y <= band.Height {
+		t.Fatalf("snapped y = %d, want a position below the one-window band height %d", component.Y, band.Height)
+	}
+	roundTripped := reloadedComponent(t, tpl, created.ID)
+	if roundTripped.Y != component.Y {
+		t.Fatalf("canonical bytes carried y = %d, want the placed %d", roundTripped.Y, component.Y)
+	}
+}
+
+// reloadedComponent serializes tpl, parses the bytes back and returns the
+// named component as the fresh projection sees it — a full round trip through
+// the canonical form, which is the only way to show that a placement PERSISTS
+// rather than merely being accepted by one command.
+func reloadedComponent(t *testing.T, tpl *Template, id string) CanvasComponent {
+	t.Helper()
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := ParseTemplate(canonical)
+	if err != nil {
+		t.Fatalf("canonical bytes did not load back: %v", err)
+	}
+	projection, err := Canvas(reloaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, component := range projection.Components {
+		if component.ID == id {
+			return component
+		}
+	}
+	t.Fatalf("component %q is absent from the reloaded projection", id)
+	return CanvasComponent{}
 }
 
 func TestComponentMoveResizeDeleteAreExactAndMonotonic(t *testing.T) {
@@ -763,11 +831,18 @@ func TestBandContainmentRefusalsCarryTheirExactMessages(t *testing.T) {
 		exactly(name, "y past the band height", containComponent(band, 0, geom.Length(band.Height)+1, 6000, 6000))
 		exactly(name, "height past the band height", containComponent(band, 0, 0, 6000, geom.Length(band.Height)+1))
 	}
-	// And the clause Story 7.5 exists to lift, asserted HERE WHILE IT IS
-	// STILL TRUE so that the lift has to come and change it in the open
-	// rather than arriving as an untested silence.
-	exactly("content", "y past the band height", containComponent(content, 0, geom.Length(content.Height)+1, 6000, 6000))
-	exactly("content", "height past the band height", containComponent(content, 0, 0, 6000, geom.Length(content.Height)+1))
+	// And the clause Story 7.5 LIFTED, asserted from the other side. This
+	// test landed with these two lines reading `exactly(...)`, red-proved,
+	// and one commit later they read this — which is the whole reason they
+	// were written first. The content band is a COLUMN: a Y past one
+	// window's worth of height is a position on a later page, not geometry
+	// outside the document.
+	if err := containComponent(content, 0, geom.Length(content.Height)*11, 6000, 6000); err != nil {
+		t.Fatalf("a content y eleven windows down = %v, want acceptance", err)
+	}
+	if err := containComponent(content, 0, 0, 6000, geom.Length(content.Height)*11); err != nil {
+		t.Fatalf("a content box eleven windows tall = %v, want acceptance", err)
+	}
 }
 
 // TestJavaScriptSafeGeometryBoundRefusalsCarryTheirExactMessages is the

@@ -3,11 +3,21 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-// D-7.4.5 / DW-25. `engine-protocol.ts` hand-copies the canvas projection
-// bounds `folio-go/page_setup.go` declares. There is no shared source and no
-// codegen, so the only thing standing between the two files is this test: it
-// reads BOTH sources and asserts the pairs are equal. A comment asking the
-// next person to remember is precisely what this replaces.
+// D-7.4.5 / DW-25, AS WIDENED BY STORY 7.5.
+//
+// THE STANDING OBLIGATION, in its current form: ANY invariant duplicated
+// across the Go/TypeScript boundary moves in ONE commit, with a test that
+// reads both sides. It used to read "the size caps move together", and that
+// wording was the defect — DW-25 audited and closed the four SIZE CAPS, and
+// band containment, a different invariant that merely lives in the same file,
+// was left untied and drifted anyway. An audit closes only what it measured.
+//
+// `engine-protocol.ts` hand-copies the canvas projection bounds
+// `folio-go/page_setup.go` declares, and the band-containment predicate
+// `folio-go/component_commands.go` declares. There is no shared source and no
+// codegen, so the only thing standing between the files is this test: it
+// reads BOTH sides and asserts they agree. A comment asking the next person
+// to remember is precisely what this replaces.
 //
 // WHAT THE TIE COMPARES, AND WHAT IT DOES NOT. It compares LITERALS, not
 // quantities. Go's `len()` counts BYTES; TypeScript's `.length` counts UTF-16
@@ -33,6 +43,10 @@ const sourceDir = path.dirname(fileURLToPath(import.meta.url))
 const goSources = {
   pageSetup: path.resolve(sourceDir, '../../folio-go/page_setup.go'),
   lineSpacing: path.resolve(sourceDir, '../../folio-go/internal/template/linespacing.go'),
+  // Story 7.5's mirror is a PREDICATE, not a numeral, and it lives in a third
+  // Go file. Reading it here is the point: a tie list that only ever reaches
+  // the files it already knew about is the audit's blind spot restated.
+  componentCommands: path.resolve(sourceDir, '../../folio-go/component_commands.go'),
 } as const
 const tsPath = path.join(sourceDir, 'engine-protocol.ts')
 
@@ -65,7 +79,7 @@ function tsConstant(source: string, name: string): string | undefined {
 }
 
 describe('canvas projection bounds mirror', () => {
-  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8') }
+  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8'), componentCommands: fs.readFileSync(goSources.componentCommands, 'utf8') }
   const goValue = (pair: Pair) => goConstant(sources[pair.source], pair.go)
   const ts = fs.readFileSync(tsPath, 'utf8')
 
@@ -79,6 +93,8 @@ describe('canvas projection bounds mirror', () => {
     // list that quietly lost its only linespacing.go member would otherwise
     // leave this file reading one source and still calling itself the tie.
     expect(pairs).toHaveLength(6)
+    // The NUMERAL pairs read two sources; componentCommands carries the
+    // predicate tie below and deliberately contributes no pair.
     expect(new Set(pairs.map((pair) => pair.source))).toEqual(new Set(['pageSetup', 'lineSpacing']))
   })
 
@@ -125,5 +141,79 @@ describe('canvas projection bounds mirror', () => {
     const driftedCeiling = sources.lineSpacing.replace(/^(\s+)MaxLineSpacingThousandths = (\d+)$/m, '$1MaxLineSpacingThousandths = 2000000')
     expect(driftedCeiling).not.toBe(sources.lineSpacing)
     expect(goConstant(driftedCeiling, 'MaxLineSpacingThousandths')).not.toBe(tsConstant(ts, 'MAX_LINE_SPACING_THOUSANDTHS'))
+  })
+})
+
+// Go declares the list through named constants, so the identifiers are
+// resolved before comparison: `[]string{bandPageHeader, bandPageFooter}` and
+// `['pageHeader', 'pageFooter']` are the same claim spelled two ways, and it
+// is the CLAIM that has to match, not the spelling.
+function goBandsCappingVertically(source: string): ReadonlyArray<string> {
+  const names = new Map<string, string>()
+  for (const match of source.matchAll(/^[ \t]*(band[A-Za-z]+)\s+= "([^"]+)"$/gm)) names.set(match[1] as string, match[2] as string)
+  const list = source.match(/^var bandsCappingVertically = \[\]string\{([^}]*)\}$/m)?.[1]
+  if (list === undefined) return []
+  return list.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0).map((entry) => names.get(entry) ?? entry)
+}
+
+function tsBandsCappingVertically(source: string): ReadonlyArray<string> {
+  const list = source.match(/^export const BANDS_CAPPING_VERTICALLY = \[([^\]]*)\]$/m)?.[1]
+  if (list === undefined) return []
+  return list.split(',').map((entry) => entry.trim().replace(/^'|'$/g, '')).filter((entry) => entry.length > 0)
+}
+
+// STORY 7.5's MIRROR, and the first one here that ties a PREDICATE rather
+// than a numeral.
+//
+// The invariant: which bands cap a component's vertical extent. Go enforces
+// it on the COMMAND path (containComponent) and TypeScript enforces it again
+// on the PROJECTION path (isCanvas) — and the asymmetry is what makes a
+// one-sided edit dangerous. Go's canvasComponents does not re-check
+// containment when projecting, so Go already projects an out-of-band element
+// happily and TypeScript alone kills it: lifting the cap in Go without
+// lifting it here would ship a story that is invisible in the running app,
+// because parseInbound would return undefined, terminate the worker and blank
+// the canvas for exactly the documents the story exists to make authorable.
+describe('band containment mirror', () => {
+  const go = fs.readFileSync(goSources.componentCommands, 'utf8')
+  const ts = fs.readFileSync(tsPath, 'utf8')
+
+  it('reads a non-empty list from both sides', () => {
+    // Non-vacuity first: a regex that quietly stops matching would make every
+    // equality below true and meaningless.
+    expect(goBandsCappingVertically(go)).toEqual(['pageHeader', 'pageFooter'])
+    expect(tsBandsCappingVertically(ts)).toEqual(['pageHeader', 'pageFooter'])
+  })
+
+  it('agrees on which bands cap a component vertically', () => {
+    expect(goBandsCappingVertically(go)).toEqual(tsBandsCappingVertically(ts))
+    // The content band is on NEITHER list, which is the whole of Story 7.5:
+    // a column has no height to be inside of.
+    expect(goBandsCappingVertically(go)).not.toContain('content')
+    expect(tsBandsCappingVertically(ts)).not.toContain('content')
+  })
+
+  it('consumes the list at the validator site it governs, on both sides', () => {
+    // A list nothing reads would tie two dead declarations together while the
+    // real gate kept its own inline spelling.
+    expect(go).toMatch(/if !outside && slices\.Contains\(bandsCappingVertically, band\.Name\) \{/)
+    expect(go).toMatch(/func containEdgeY\(band CanvasBand, value, limit geom\.Length\) geom\.Length \{\n\tif !slices\.Contains\(bandsCappingVertically, band\.Name\) \{/)
+    expect(ts).toMatch(/BANDS_CAPPING_VERTICALLY\.includes\(component\.band as string\) && !\(box\.y \+ box\.height <= band\.height\)/)
+  })
+
+  it('keeps the HORIZONTAL cap universal on both sides', () => {
+    // The column is unbounded vertically, never horizontally — so neither
+    // side may guard its x check by band.
+    expect(go).toMatch(/outside := x < 0 \|\| y < 0 \|\| width < 0 \|\| height < 0 \|\| x > geom\.Length\(band\.Width\) \|\| width > geom\.Length\(band\.Width\)-x$/m)
+    expect(ts).toMatch(/^ {4}if \(!\(box\.x \+ box\.width <= band\.width\)\) return false$/m)
+  })
+
+  it('turns a one-sided edit of the predicate red', () => {
+    const driftedTs = ts.replace(/^export const BANDS_CAPPING_VERTICALLY = \[([^\]]*)\]$/m, "export const BANDS_CAPPING_VERTICALLY = ['pageHeader', 'content', 'pageFooter']")
+    expect(driftedTs).not.toBe(ts)
+    expect(tsBandsCappingVertically(driftedTs)).not.toEqual(goBandsCappingVertically(go))
+    const driftedGo = go.replace(/^var bandsCappingVertically = \[\]string\{([^}]*)\}$/m, 'var bandsCappingVertically = []string{bandPageHeader}')
+    expect(driftedGo).not.toBe(go)
+    expect(goBandsCappingVertically(driftedGo)).not.toEqual(tsBandsCappingVertically(ts))
   })
 })

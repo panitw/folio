@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
-const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
+const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
 describe('canvas projection protocol guard', () => {
   it('accepts and deeply freezes the exact three bounded bands', () => {
@@ -24,10 +24,41 @@ describe('canvas projection protocol guard', () => {
   it.each([
     { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true }, { id: 'e1', type: 'rect', band: 'content', x: 20, y: 0, width: 10, height: 10, resizable: true }] },
     { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 991, y: 0, width: 10, height: 10, resizable: true }] },
+    // The two REPEATING bands still cap vertically, and nothing in this file
+    // exercised that before Story 7.5: every content component here sat at
+    // y: 0, so the vertical conjunct was never reached and a Y-only lift
+    // would have left the whole file green and vacuous.
+    { ...canvas, components: [{ id: 'e1', type: 'rect', band: 'pageHeader', x: 0, y: 0, width: 10, height: 101, resizable: true }] },
+    { ...canvas, components: [{ id: 'e1', type: 'rect', band: 'pageFooter', x: 0, y: 95, width: 10, height: 10, resizable: true }] },
     { ...canvas, components: [{ id: 'e1', type: 'table', band: 'content', x: 0, y: 0, width: 0, height: 10, resizable: true }] },
     { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: false }] },
   ])('rejects ambiguous, out-of-band, or incoherent component paint geometry', (bad) => {
     expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: bad } })).toBeUndefined()
+  })
+
+  it('admits a content component below the foot of page one, and only in the content band', () => {
+    // Story 7.5. The content band is a COLUMN: a component five windows down
+    // is on a later page, not outside the document. Dropping the snapshot for
+    // it would terminate the worker and blank the canvas with no attributable
+    // error, so the browser's copy of the band-containment gate has to lift
+    // with Go's — in the same commit, which engine-bounds-mirror.test.ts
+    // reads both sides to enforce.
+    const tall = { ...canvas, components: [{ id: 'e1', type: 'rect', band: 'content', x: 0, y: 9_000, width: 10, height: 10, resizable: true }] }
+    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: tall } })).toBeDefined()
+    // And the lift is vertical only: the column is unbounded downwards, never
+    // sideways.
+    const wide = { ...canvas, components: [{ id: 'e1', type: 'rect', band: 'content', x: 0, y: 9_000, width: 1_001, height: 10, resizable: true }] }
+    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: wide } })).toBeUndefined()
+  })
+
+  it('requires the engine-owned window height and window count', () => {
+    // hasOnly is exact-key and both fields are strictly positive integers, so
+    // a projection that omits either — or carries a zero count for a document
+    // that has at least one page — is not a projection this build understands.
+    const { contentWindowCount: _count, ...missing } = canvas
+    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: missing } })).toBeUndefined()
+    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, contentWindowCount: 0 } } })).toBeUndefined()
+    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, contentWindowCount: 4 } } })).toBeDefined()
   })
 
   it('bounds opaque producer failure provenance at the main-thread boundary', () => {

@@ -1292,11 +1292,11 @@ func bandByName(t *Template, name string) (*template.Band, CanvasBand, error) {
 			continue
 		}
 		switch name {
-		case "pageHeader":
+		case bandPageHeader:
 			return &t.doc.Bands.PageHeader, projected, nil
-		case "content":
+		case bandContent:
 			return &t.doc.Bands.Content, projected, nil
-		case "pageFooter":
+		case bandPageFooter:
 			return &t.doc.Bands.PageFooter, projected, nil
 		}
 	}
@@ -1408,7 +1408,7 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 		}
 		if containComponent(projected, unsnappedX, unsnappedY, width, height) == nil {
 			x = containEdge(x, geom.Length(projected.Width)-width)
-			y = containEdge(y, geom.Length(projected.Height)-height)
+			y = containEdgeY(projected, y, geom.Length(projected.Height)-height)
 		}
 	}
 	return createComponentInBand(t, elementType, projected.Name, x, y, width, height)
@@ -1502,11 +1502,11 @@ func hitTestBand(t *Template, x, y geom.Length) (*template.Band, CanvasBand, err
 			continue
 		}
 		switch band.Name {
-		case "pageHeader":
+		case bandPageHeader:
 			return &t.doc.Bands.PageHeader, band, nil
-		case "content":
+		case bandContent:
 			return &t.doc.Bands.Content, band, nil
-		case "pageFooter":
+		case bandPageFooter:
 			return &t.doc.Bands.PageFooter, band, nil
 		}
 	}
@@ -1514,7 +1514,7 @@ func hitTestBand(t *Template, x, y geom.Length) (*template.Band, CanvasBand, err
 }
 
 func findComponent(t *Template, id string) (*template.Band, CanvasBand, int, *template.Element, error) {
-	for _, name := range []string{"pageHeader", "content", "pageFooter"} {
+	for _, name := range []string{bandPageHeader, bandContent, bandPageFooter} {
 		band, projected, err := bandByName(t, name)
 		if err != nil {
 			return nil, CanvasBand{}, 0, nil, err
@@ -1564,7 +1564,7 @@ func moveComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	width, height := projectedSize(*element)
 	if snap && containComponent(projected, unsnappedX, unsnappedY, width, height) == nil {
 		x = containEdge(x, geom.Length(projected.Width)-width)
-		y = containEdge(y, geom.Length(projected.Height)-height)
+		y = containEdgeY(projected, y, geom.Length(projected.Height)-height)
 	}
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
@@ -1667,9 +1667,9 @@ func setComponentBounds(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	}
 	if snap && containComponent(projected, unsnappedX, unsnappedY, unsnappedWidth, unsnappedHeight) == nil {
 		width = containEdge(width, geom.Length(projected.Width)-x)
-		height = containEdge(height, geom.Length(projected.Height)-y)
+		height = containEdgeY(projected, height, geom.Length(projected.Height)-y)
 		x = containEdge(x, geom.Length(projected.Width)-width)
-		y = containEdge(y, geom.Length(projected.Height)-height)
+		y = containEdgeY(projected, y, geom.Length(projected.Height)-height)
 	}
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
@@ -1763,9 +1763,82 @@ func floorToGrid(value geom.Length) geom.Length {
 	return geom.Length(int64(value) / GridIncrement * GridIncrement)
 }
 
+// The three band identities, as page_setup.go mints them and as every command
+// path compares them. Story 7.5 made band identity LOAD-BEARING for the first
+// time — the content band's vertical cap lifts and the two repeating bands'
+// does not — and a fifth inline spelling of a bare string is exactly how a
+// distinction like that diverges without anything going red.
+const (
+	bandPageHeader = "pageHeader"
+	bandContent    = "content"
+	bandPageFooter = "pageFooter"
+)
+
+// bandsCappingVertically names the bands whose DECLARED HEIGHT bounds a
+// component's vertical extent.
+//
+// The content band is absent by MEANING, not by omission. A page header and a
+// page footer REPEAT on every page, so each is exactly one page tall and a
+// component that left it would have nowhere to be. The content band is a
+// COLUMN that pagination slices into page-height windows (internal/layout's
+// Paginate), so it has no single height to be inside of: a component below
+// the foot of page one is on page two, not outside the document.
+//
+// THE MIRROR. folio-designer/src/engine-protocol.ts declares this same list
+// under this same name, and engine-bounds-mirror.test.ts reads BOTH files and
+// asserts they agree. D-7.4.5, as widened by Story 7.5: any invariant
+// duplicated across the Go/TypeScript boundary moves in ONE commit, with a
+// test that reads both sides. Lifting this here alone would ship a story
+// invisible in the running app — the browser's copy of this gate drops the
+// whole snapshot, terminates the worker and blanks the canvas, with no
+// element id and no attributable error.
+var bandsCappingVertically = []string{bandPageHeader, bandPageFooter}
+
+// containComponent is the ONE band-extent validation in the designer command
+// path. It enforces two DIFFERENT KINDS of constraint, which used to share a
+// single eight-disjunct expression and are separated here by what they MEAN:
+//
+//   - REPRESENTATIONAL, and therefore universal: a negative coordinate or
+//     size is not geometry at all, in any band. This is also the only place
+//     negativity is caught — lengthField admits values down to
+//     -MaxCanvasMillipoints — so these terms are load-bearing.
+//   - HORIZONTAL, and therefore universal: the column is unbounded
+//     vertically, never horizontally. A band is as wide as the printable
+//     page and nothing may hang off its side.
+//   - BAND CAPACITY, and therefore only where a band HAS a capacity: see
+//     bandsCappingVertically.
+//
+// Every surviving refusal keeps the same message, to the byte, because from
+// the author's side they are one complaint: this component is not inside that
+// band.
+//
+// The split keys on band.Name INSIDE this function and never at a call site.
+// findComponent, bandByName and hitTestBand each range over all three names,
+// so every one of the eleven callers can receive any of the three bands.
 func containComponent(band CanvasBand, x, y, width, height geom.Length) error {
-	if x < 0 || y < 0 || width < 0 || height < 0 || x > geom.Length(band.Width) || y > geom.Length(band.Height) || width > geom.Length(band.Width)-x || height > geom.Length(band.Height)-y {
+	outside := x < 0 || y < 0 || width < 0 || height < 0 || x > geom.Length(band.Width) || width > geom.Length(band.Width)-x
+	if !outside && slices.Contains(bandsCappingVertically, band.Name) {
+		outside = y > geom.Length(band.Height) || height > geom.Length(band.Height)-y
+	}
+	if outside {
 		return fmt.Errorf("folio: component geometry must stay within %s", band.Name)
 	}
 	return nil
+}
+
+// containEdgeY is containEdge on the VERTICAL axis, and after Story 7.5 it is
+// a pull-back only in the bands that cap vertically.
+//
+// It exists because the pre-clamps at its call sites are GATED on the
+// unsnapped rectangle already fitting, so lifting the content band's cap does
+// not neutralise them — it WIDENS the gate. A drag that is refused outright
+// today starts passing the probe, and a containEdge left in place would then
+// quietly pull its Y back to the foot of page one: "this component may live
+// on page four" would become "this component snapped to the bottom of page
+// one", with no refusal and no explanation.
+func containEdgeY(band CanvasBand, value, limit geom.Length) geom.Length {
+	if !slices.Contains(bandsCappingVertically, band.Name) {
+		return value
+	}
+	return containEdge(value, limit)
 }
