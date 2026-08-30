@@ -165,7 +165,7 @@ development_status:
   # build are in the story's ## Delivery Log. DW-24 open (owner 7.3 + gate checklist, NOT
   # deferrable again); DW-26 open (fontSize range, unowned role); DW-25 open (owner 7.4).
   7-2-set-the-space-between-a-paragraph-s-lines: done
-  7-3-justify-a-paragraph-s-edges: in-progress
+  7-3-justify-a-paragraph-s-edges: done
   7-4-author-body-text-in-the-designer: backlog
   7-5-the-content-column-runs-past-the-first-page: backlog
   7-6-the-canvas-draws-every-page-the-document-will-produce: backlog

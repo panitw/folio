@@ -5,7 +5,7 @@ created: '2026-08-30'
 status: 'done'
 baseline_revision: '8fed42ffc5f9f5f9acf3c5f1277f9ff6616ac0ad'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['multiple-goals', 'oversized'] # multiple-goals: the justify feature and DW-24's corpus closure are separably shippable, and D-7.1.4 accepted that cost explicitly when it made 7.3 DW-24's owner. oversized: the ruling set (D-7.3.1, D-R7.9, D-7.1.5, D-7.2.1, D-7.2.6) plus a format MAJOR plus a six-site rounding closure are three wide surfaces that must be stated, not summarised.
 deferred:
@@ -134,15 +134,15 @@ deferred:
 
 ## In plain terms (read this first if you just want the gist)
 
-*Non-normative: this section settles nothing.*
+*Non-normative: this section settles nothing. It describes what actually happened.*
 
-Legal body copy is set with both edges flush: every line reaches the same right-hand margin, and the leftover space is shared out between the words. This library can already push a paragraph left, right or centre; this story adds the fourth setting, with the rules that make it read correctly. The last line of a paragraph stays ragged, because stretching it would look absurd. So does any line the author ended by typing a break, and any line with nowhere to put extra space. Space is shared in whole units, the leftover going to the earliest gaps in a fixed order, so the document prints identically on every machine.
+Legal body copy sets both edges flush: every line reaches the same right margin, with the leftover shared between the words. The library could already align left, right or centre; this adds the fourth. Last lines stay ragged, as do lines ended by a typed break or with nowhere to put the space. The leftover is shared in whole units in a fixed order, so documents print identically everywhere.
 
-There is a real cost. Older readers of this format reject any alignment word they do not recognise, on purpose, so a file can never be drawn wrongly by a reader that misunderstands it. A document using the new setting is therefore unreadable to them rather than quietly wrong, and the file's own version number moves up a whole step to say so honestly. Nothing has been released and nobody depends on the old numbering, so this is free now and would not be later.
+The cost is real, and it is the point. Older readers deliberately refuse an alignment word they do not recognise, so a file can never be drawn wrongly by a reader that misunderstands it. **A document using the new setting therefore cannot be opened at all by an older reader**, and the version number moves up a whole step to say so. Nothing has shipped, so this is free now and would not be later.
 
-This story also closes a standing hole in the corpus: no example document had ever used the centred settings, so the arithmetic that halves leftover space was never checked on real output.
+Two things should not be mistaken for defects. The owner asked mid-story whether Thai justifies too; it already did, and a worked Thai example now keeps it true. **No Thai reader has yet seen that page** — the first anywhere to put visible space between Thai words — so whether it reads correctly awaits a human. One test stays red by design: a standing marker, not a failure.
 
-One test is expected to stay red. It is a deliberate standing marker, not a defect.
+It also closed an old hole: no example document had ever used the centred settings, so the arithmetic that halves leftover space was never checked against real output.
 
 <intent-contract>
 
@@ -176,7 +176,7 @@ One test is expected to stay red. It is a deliberate standing marker, not a defe
 - The re-derived rounding enumeration returns a site that cannot be reached by any single document. HALT with blocking condition `rounding site unreachable by fixture`.
 
 **Never:**
-- Never add `justify` to the set `columns[].align` validates against, and never implement justified table cells. Justified columns are a separate scope decision, not a side effect of a map edit.
+- Never add `justify` to the set `columns[].align` validates against, and never implement justified table cells. Justified columns are a separate scope decision, not a side effect of a map edit. **(Story-close note, 2026-08-30: this bullet held — no justified cells were implemented. What it did not anticipate is that a table's `style.align`/`headerStyle.align` reaches the SAME consumer as `columns[].align` via `r.alignFallback`, so `justify` entered by the other door and renders as `left` while still forcing 2.0. The lead has ruled that path a load rejection, owned by Story 7.4; see DW-29, which also records the reusable lesson — partition a closed set by the code that CONSUMES the value, not by where the value is written in the document.)**
 - Never propose `style.justified` or any additive-key spelling as an alternative to the MAJOR. Explicitly rejected by D-R7.9: it reintroduces the silently-wrong render D-1.4.12 exists to prevent.
 - Never edit `internal/layout/paginate.go`. The window model is an input to Epic 7, not a target of it.
 - Never do designer **editor** work: no inspector control offering the new alignment, no multi-line value editing. That is Story 7.4.
@@ -376,6 +376,7 @@ exercises AC-TH2, say so rather than working around it — that combination is i
 - `folio-go/internal/template/parse_bands.go` -- Point `:399` at the **column** set and `:531` at the **style** set, and replace both hand-written literals (`:400`, `:532`) with a message **derived from the relevant ordered slice**, following `internal/expr/locale.go:126-133`. -- Rationale: two sets now exist; two literals that restate one of them would ship messages that lie about what is legal.
 - `folio-go/internal/template/closedsets_test.go` -- Add a test pinning each ordered slice against its map (both directions, exact sequence), and asserting the style set contains `justify` while the column set does not. -- Rationale: nothing enumerates these sets today, so the split has no guard.
 - `folio-go/internal/template/parse_bands_test.go` (or the nearest existing load-error test file) -- Assert `style.align: "justify"` and `headerStyle.align: "justify"` load; assert `columns[].align: "justify"` is a **located** load error; assert each message lists exactly its own set's members. -- Rationale: this is the split's behavioural red-proof.
+  - **SUPERSEDED FOR FUTURE WORK, 2026-08-30 (story close).** The clause requiring `headerStyle.align: "justify"` to **load** is no longer the project's direction. It was correct as written and 7.3 shipped exactly it, but the engineering lead has since ruled that a table's `style.align`/`headerStyle.align` carrying `justify` must be **rejected at load**, because loading it forces the document to 2.0 — unreadable to every 1.x reader — and then renders every cell at the start edge with no diagnostic, so the author pays the whole cost of the MAJOR and gets nothing for it. The change is **Story 7.4's**, as an explicit acceptance criterion (or a named Story 7.8 if 7.4's plan gate rejects it as `multiple-goals`). Tracked as **DW-29**. This sentence is left in place rather than rewritten, because it is what 7.3 was built against and the shipped behaviour matches it.
 - `folio-go/internal/template/version.go` -- Add `majorFeatureVersion = "2.0"`; set `SupportedMajor = 2` and `SupportedVersion = "2.0"`; replace `styleNeedsMinorVersion` with a **rank** (base / minor / major) and restructure `versionRequiredByContent` to take the **maximum rank over every attachment point** instead of returning on first hit. Extend the ceiling doc comment to name 2.0 and `align: justify` **without weakening its "not what this library authors for a brand-new document" correction**. -- Rationale: first-hit return would report 1.1 for a document that also uses justify; the doc comment is D-7.2.1's discharged debt and must not regress.
 - `folio-go/internal/template/version_test.go` -- Move `TestHigherMajorIsLoadError` from `"2.0"` to `"3.0"`. -- Rationale: 2.0 is now loadable; the test's subject is "higher than supported", not the literal 2.
 - `folio-go/internal/template/linespacing_test.go` (and/or a new justify version test) -- Add `majorFeatureVersion` to the `:186` and `:203` enumerations in `TestContentVersionNeverExceedsTheLibraryCeiling`; extend `TestVersionForSaveIsRaisedOnlyByContent` with justify cases: justify alone → 2.0; justify at the headerStyle attachment point → 2.0; lineSpacing on an earlier element and justify on a later one → **2.0**; justify with a loaded `2.1` → 2.1 (never lowered); neither key → unchanged. -- Rationale: the ceiling guard goes vacuous for an unenumerated constant, and the maximum-rule needs the ordering case that a first-hit implementation fails.
@@ -736,3 +737,182 @@ medium 4, low 2. No high severity, but the score `3 × 4 + 1 × 2 = 14` clears t
   silently.
 - The four earlier deferred items from dispatch 2 stand, in particular the unguarded `valign` command
   arm and the justified-table-styling scope question.
+
+## Delivery Log
+
+### 2026-08-30 — planned
+
+Baseline `0cd9491`. Plan-only dispatch, no code. The story carried a `multiple-goals` warning from
+the start and kept it: the justify feature and DW-24's corpus closure are separably shippable, and
+D-7.1.4 had already weighed that cost when it made 7.3 DW-24's owner ("a criterion that yields to a
+budget stops being a criterion"). `oversized` was added at step 6 for the same honest reason — the
+ruling set, a format MAJOR and a seven-site rounding closure are three wide surfaces.
+
+Four candidate intent gaps were examined and all four resolved against existing architecture rather
+than escalated, so nothing reached the engineering lead from this story. The planning dispatch also
+re-derived DW-24's enumeration by grep instead of reading the hand-list, and found the hand-list had
+rotted a **second** time — five of six anchors drifted, plus a seventh site it had never listed.
+
+### 2026-08-30 — built
+
+Baseline `20ccefa`; story commit `ff6d565`. `justify` joined the **style** alignment vocabulary only.
+The one shared `closedAligns` map was split at its declaration into two ordered token slices with
+their own maps, so justified table *columns* are impossible by construction rather than by
+discipline, and both rejection messages are derived from the relevant slice. Placement is one shared
+function called identically by the PDF line loop and the canvas projection. Extending a closed set is
+a MAJOR under D-1.4.12, so the format ceiling moved to 2.0 and `versionRequiredByContent` became a
+**maximum over every attachment point** instead of a first-hit return.
+
+**DW-24 was closed here, not deferred a third time.** `fixtures/alignment-rounding/` is the first
+document in the corpus to declare `center` or `valign` at all — the planning census measured 16
+`left`, 8 `right`, **0 `center`, 0 `valign`** across every fixture, so every rounding branch in the
+alignment feature had genuinely never been rendered.
+
+One review pass: **5 patched (1 high, 1 medium, 3 low), 4 deferred, 11 rejected**. The high was a
+remainder test that re-transcribed the rule in its own body and could not fail. That single high set
+`followup_review_recommended: true`.
+
+### 2026-08-30 — amended, at the owner's request
+
+Baseline `8fed42f`; commit `9898845`. **This stage exists because the owner asked directly, mid-story:
+"For 7.3, I'd like to make sure Thai text can be justified as well."** It is recorded separately
+because it is not review fallout and not a defect — it is scope the owner added to a story already
+built, and the spec carries a normative amendment section for it (AC-TH1/TH2/TH3).
+
+The orchestrator verified *before* amending that Thai already justified, so this is **coverage for
+behaviour that already worked, not a behaviour change** — and the scope fence said so: if Thai had
+turned out not to justify, the dispatch was to HALT rather than edit `justifiedLinePieces` to make a
+new fixture green. It did not need to. `folio-go/text_alignment.go` is byte-identical across
+`ff6d565`, `9898845` and `HEAD`, as are `render.go`, `page_setup.go`, `table_render.go` and all of
+`internal/` — verified at close by diff, not by claim.
+
+Second review pass: **6 patched (4 medium, 2 low), 3 deferred, 11 rejected**. Four of the six were
+the same defect class the first pass found — an assertion that could not fail — which is worth
+noticing as a pattern rather than four separate incidents.
+
+### 2026-08-30 — done
+
+Baseline `20ccefa`; story commits `ff6d565` and `9898845`; closed on `main`, **not pushed**. Status
+`done`; `sprint-status.yaml` key set to `done`; `epic-7` left `in-progress` for the orchestrator.
+
+**`followup_review_recommended` was `true`, so the close re-derived the build's central claims
+instead of relaying them. It has been cleared to `false` on the ground below.**
+
+**Gates measured at `3f99e7f`, with their printed numbers.**
+
+- `go test -count=1 ./...` — **1487 pass, 5 skip, exactly ONE distinct failure**:
+  `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)` (got 7, need >=20), the mandated permanent
+  red, untouched. Nothing else red.
+- `go vet -tags=matrix ./...` — clean, exit 0. `gofmt -l folio-go` from the repository root — no
+  output.
+- The three `FOLIO_HEAVY=1` table tests — **all three RAN and PASSED**, none skipped:
+  `TestFooterOrphanTieHoldsAcrossHundredsOfPagesWithByteStability`,
+  `TestTableHeaderRepeatAcrossHundredsOfPagesIsByteStable`,
+  `TestTwoTablesWithPageCountFooterRenderConsistently`.
+- `TestTargetRenderHash` — **run once per leg with `FOLIO_MATRIX_TARGET` actually set**:
+  `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm`, all PASS, and all three new fixtures named
+  in each leg. **The unset no-op was run as a control** and does print "asserts NOTHING", so the four
+  legs are known not to have been no-ops.
+- `TestCrossTargetByteIdentity` — PASS (21.45s).
+- `cd lint && go test -count=1 ./...` — 4 packages ok, 0 fail (uncached).
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck clean; lint exactly
+  the 4 pre-existing `only-export-components` warnings, 0 errors; **30 test files, 215 tests passed**.
+- **Nine corpus digests measured by `shasum`, not inferred from a green suite — all byte-identical to
+  the record:** `statement-1` 76,744 `114df1d6…`; `statement-5` 127,363 `70dce051…`; `statement-20`
+  269,884 `56bfbbd9…`; `statement-50` 555,829 `5d090b0f…`; `mandatory-break` 56,681 `7cf743de…`;
+  `line-spacing` 57,770 `de212115…`; `justified-text` 59,894 `6da3b12e…`; `alignment-rounding` 61,346
+  `986400a1…`; `justified-thai` 15,079 `58ca4777…`.
+- Nothing deferred to a later cadence. 7.3's correctness is byte-identity-shaped, so it carried the
+  heavy tests regardless of the per-epic cadence (D-R7.1), and they were run.
+- Known-environmental, not regressions: `TestShippedFacesReproduceFromUpstream` (no `fontTools`
+  here); `lint/internal/rules/licencegraph_test.go` gofmt (DW-23, Story 15.2).
+
+**The Thai fixture's central claim was reproduced, and it is stronger than the build stated.**
+Mutating `justifiedLinePieces` to skip zero-width opportunities — the bug that justifies Latin
+perfectly and silently sets Thai ragged left — left the **entire Latin `TestJustifiedText*` suite
+green (4/4)** and reddened three Thai tests. Run across the whole package, that mutation reddens
+**nothing else in the tree**: the Thai fixture is the only thing anywhere that catches it, which is
+the case for its existence made by measurement rather than by argument. `text_alignment.go` was
+restored and verified byte-identical afterwards.
+
+**Two other load-bearing claims were given teeth rather than read.** Forcing
+`versionRequiredByContent` back to a first-hit return reddens
+`TestVersionForSaveIsRaisedOnlyByContent`, so the maximum-over-attachment-points rule is really
+under test. And AC-TH2's zero-interior-opportunity precondition is a live `t.Fatalf` computed from
+production `text.Opportunities(text.Dictionary(), …)` — not a literal — so it cannot go vacuous if
+the dictionary later covers the run. AC-TH1's right-edge delta is asserted as **exactly 0** on every
+justified Thai line.
+
+**DW-24's closure is real, and was re-run per site at this revision.** All eight in-subject sites go
+**RED** under their mutation (both `text_alignment.go` arms under truncation, `textValignOffset`
+under the entry's own multiply-by-zero, and all four `table_render.go` cell sites plus the integer
+line-slot split), each reported by `TestAlignmentRoundingGoldenFixture`; `render.go:505`'s image
+centring is **GREEN**, correctly recorded out-of-subject.
+
+**But the closure note itself had rotted, and the close fixed it.** Its "closing revision" grep block
+published `table_render.go:716`, `:966`, `:1038` and `:1214` and asserted the `table_render.go`
+anchors were "unmoved". They had moved — to `:724`, `:974`, `:1046` and `:1230` — because one of this
+story's own review-pass patches corrected three cell-align `default:` arm comments *after* that block
+was captured, and the grep was never re-run. **DW-24's anchors therefore rotted a third time inside
+the very commit that closed the entry.** Re-derived and corrected in place, with the lesson recorded:
+publish anchors last, or name sites by function.
+
+The mod-4 reasoning was preserved at the lead's explicit request, and **generalised** so it survives
+being reused: `ScaleRound(slack,1,2)` under round-half-to-even sends `slack ≡ 1 (mod 4)` to the *same*
+answer truncation gives (`4m+1 → 2m`), so an "odd slack" is a coin flip; only `slack ≡ 3 (mod 4)`
+discriminates (`4m+3 → 2m+2` vs `2m+1`). The general form now in the record: **a red-proof against a
+rounding mode must use a value where the two modes actually disagree — a strictly stronger condition
+than "a value the operation does not divide exactly".** A fixture chosen on exactness alone can be
+green under the very mutation it was built to catch and report that as success.
+
+**Fences held.** `internal/layout/paginate.go` appears in neither commit. `9898845` minted no
+diagnostic code (its one new constant is a `FOLIO_SUBPROCESS_RENDER_*` test selector, one per
+fixture, following ten existing ones). `component_commands_test.go:336`'s `"justify"`-as-invalid-column
+case is still green, and the browser-side split holds: the component validator and type admit
+`justify` while `TableColumn.align` stays the triple. The 18 pre-existing `1.0` fixtures and the one
+`1.1` fixture still declare exactly what they declared; `alignment-rounding` is a nineteenth `1.0`.
+`SupportedVersion`'s corrected doc comment has not regressed — it still carries D-7.2.1's "IT IS NOT
+WHAT THIS LIBRARY AUTHORS FOR A BRAND-NEW DOCUMENT" and now names 2.0 without weakening it.
+
+**Deferred work filed with owners.** Four frontmatter deferrals were promoted to numbered items:
+**DW-27**, the missing human Thai sign-off for `fixtures/justified-thai/` — owner the **project
+owner**, who must commission a Thai reader; no `reader`/`date`/`examined` record was written, because
+an agent writing one would be fabricating an attestation. **DW-28**, the Thai render limit — every
+Thai codepoint renders in isolation (91/91), but any sequence stacking two marks over a base fails
+closed as a hard `Render` error, making `ครั้ง`, `ทั้งนี้` and `ตั้งแต่` unrenderable; **re-measured
+at close through the shipped CLI and confirmed to fail identically with no `align` declared**, so it
+is not justification's doing — the same entry records that `verticalOffsetError` has no test anywhere.
+**DW-29**, `style.align: "justify"` on a table or `headerStyle`, which loads, forces 2.0 and renders
+as `left` with no diagnostic — **ruled by the engineering lead to a load rejection, owned by Story 7.4
+as an explicit AC** (a named Story 7.8 if 7.4's gate rejects it as `multiple-goals`), and carrying the
+lead's own root-cause note: D-7.3.1's guardrail split the closed set **by JSON key location rather
+than by consumer**, and a table's `style.align` reaches `r.alignFallback` at the same consumer as
+`columns[].align`. **DW-30**, AC-TH2's wording.
+
+**AC-TH2's wording is wrong on the facts, and the amendment text is the owner's, so it was left
+alone.** It says "a Thai run **the dictionary does not cover**", but `กานต์` *is* in the shipped
+wordlist (verified at `words_th.txt:3084`) and the greedy matcher does propose a break; D-2.1.9's
+both-sides-coverable filter then withdraws it. The behaviour delivered is correct and the test never
+relied on the wrong reason. **Corrected wording, for whoever amends it: "a Thai run the segmenter
+proposes no interior opportunity inside."**
+
+**DW-25 remains open**, owner Story 7.4, including the fragment-cap ordering flip this story
+measured: justification makes the browser-side *cumulative* 512 cap reachable at **~73 justified
+lines** once 7.4 splits the 512-byte value cap, so DW-25's TS side and the value-cap split are now
+**coupled** — 7.4 cannot change the value cap without re-measuring the fragment peak in the same
+story. No bound was widened here. **DW-26 remains open**, not closed.
+
+**`followup_review_recommended` cleared to `false`.** Ground: the flag was set by a single high — a
+remainder test that could not fail — and the whole class it belongs to was independently re-checked
+at close. The load-bearing assertion was neutered and confirmed to redden (and nothing else in the
+tree catches it); the version maximum and AC-TH2's precondition were both given teeth; every in-subject
+DW-24 site was re-mutated per site at this revision; and the one thing the close found wrong — the
+stale anchors in DW-24's own closing note — was a **record** defect, not a code defect, and is fixed.
+No shipped behaviour changed at close.
+
+**Not done, and said plainly.** The 11+11 rejected findings were not re-verified one by one; the
+three named in the Triage Log were checked against their cited claims and are sound. And the residue
+of DW-24's closure noted in frontmatter — that closing the entry removes the only tracked address for
+`render.go:505`'s image-centring rounding, which this close re-measured as **GREEN** (golden-uncovered)
+— was **not** given a DW number, because the orchestrator named four deferrals to file and this was not
+among them. It is left for the orchestrator to decide.

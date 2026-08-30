@@ -451,23 +451,37 @@ folio-go/render.go:506:	offsetY := geom.ScaleRound(bh-drawH, 1, 2)
 folio-go/text_alignment.go:85:		return geom.ScaleRound(slack, 1, 2)
 folio-go/text_alignment.go:110:		return geom.ScaleRound(slack, 1, 2)
 folio-go/table_render.go:705:				textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-folio-go/table_render.go:716:				lineTopY = contentY + geom.ScaleRound(contentH-textBlockHeight, 1, 2)
-folio-go/table_render.go:1038:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-folio-go/table_render.go:1214:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+folio-go/table_render.go:724:				lineTopY = contentY + geom.ScaleRound(contentH-textBlockHeight, 1, 2)
+folio-go/table_render.go:1046:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+folio-go/table_render.go:1230:							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
 ```
 
+> **CORRECTED AT STORY CLOSE, 2026-08-30 — and this correction is itself the point of the entry.**
+> The block above as first written published `table_render.go:716`, `:1038` and `:1214` — the
+> *baseline* anchors — and asserted below that the `table_render.go` anchors were "unmoved". They had
+> moved. One of this story's own review-pass patches corrected the three cell-align `default:` arm
+> comments in `table_render.go`, inserting lines *above* three of the four sites, and the grep was
+> never re-run afterwards. So DW-24's closing note shipped stale anchors **in the very commit that
+> published them** — the entry's hand-list rotting a third time, inside its own closure. Re-derived
+> at `3f99e7f` (`table_render.go` is byte-identical at `ff6d565`, `9898845` and `HEAD`, so these
+> anchors hold across all three) and corrected in place. **The lesson is the entry's own: an anchor
+> is only true at the revision it was measured at, and a line number captured before the last patch
+> of a story is not a closing-revision anchor.** Publish anchors last, or name sites by function.
+
 **THE SET OF SITES IS IDENTICAL AT THE TWO REVISIONS. No site appeared, none disappeared, and the
-subject of this entry did not change.** Exactly two line numbers moved, both in `text_alignment.go`,
-and both for the same mundane reason: 7.3 inserted its justification rule and its extended file
-doc comment *above* them. Nothing about the two branches themselves changed.
+subject of this entry did not change.** Five line numbers moved, all for the same mundane
+reason — this story inserted text *above* them. Two are in `text_alignment.go` (the justification
+rule and the extended file doc comment sit above both arms); three are in `table_render.go` (the
+corrected cell-align `default:` arm comments sit above the header-`valign`, body-`align` and
+footer-`align` sites). **Nothing about any of the branches themselves changed.**
 
 | site (named by what is stable — the function) | at baseline `20ccefa` | at the closing revision |
 |---|---|---|
 | `textAlignOffset`, the `align: center` arm | `text_alignment.go:56` | **`text_alignment.go:85`** |
 | `textValignOffset`, the `valign: middle` arm | `text_alignment.go:81` | **`text_alignment.go:110`** |
-| header cell `align` / `valign`, body cell `align`, footer cell `align` | `table_render.go:705`, `:716`, `:1038`, `:1214` | unmoved — same four anchors |
+| header cell `align` / `valign`, body cell `align`, footer cell `align` | `table_render.go:705`, `:716`, `:1038`, `:1214` | `:705` unmoved; **`:716`→`:724`, `:1038`→`:1046`, `:1214`→`:1230`** — moved by this story's own correction of the three cell-align `default:` arm comments |
 | image centring (out of subject) | `render.go:505`, `:506` | unmoved — same two anchors |
-| the line-slot split (not a `ScaleRound`, found separately) | `table_render.go:966` | unmoved — same anchor |
+| the line-slot split (not a `ScaleRound`, found separately) | `table_render.go:966` | **`table_render.go:974`** — moved by the same comment patch |
 
 **HOW TO READ EVERY ANCHOR BELOW.** The hand-list reconciliation immediately following is stated at
 the **baseline**, and its bare `text_alignment.go:56` / `:81` are baseline anchors — they are what the
@@ -489,7 +503,7 @@ a seventh site the entry never listed exists:
 | `table_render.go:1193` | **`table_render.go:1214`** | footer cell `align: center` | drifted |
 | *(absent)* | **`table_render.go:966`** `slack / 2` | table `valign: middle`, a body row's spare LINE SLOTS | **never listed** |
 
-`table_render.go:966` is an integer LINE-COUNT split, not a `geom.ScaleRound` and not a cross-target
+`table_render.go:966` at the baseline (**`:974` at the closing revision**) is an integer LINE-COUNT split, not a `geom.ScaleRound` and not a cross-target
 float hazard — its own comment argues it out of that scope, and correctly. It is nevertheless a
 `middle`-only branch with zero golden coverage, which is exactly the absence this entry exists to
 record, so it is closed here with the same fixture rather than left to be rediscovered.
@@ -506,10 +520,13 @@ grep — block (b) above — returned. The command in each case is
 `go test -count=1 -run 'Golden|golden' .` in `folio-go`, and the baseline for it is **no golden
 failures at all**.
 
-**Anchors in this table are closing-revision anchors.** The two `text_alignment.go` sites are named
-by function rather than by line precisely because those are the two lines this story moved
-(`:56`→`:85`, `:81`→`:110`); the `table_render.go` line numbers are identical at both revisions, so
-they are cited directly.
+**Anchors in this table are closing-revision anchors, corrected at story close (2026-08-30).** The
+two `text_alignment.go` sites are named by function rather than by line precisely because those are
+lines this story moved (`:56`→`:85`, `:81`→`:110`). The `table_render.go` anchors were *also* moved
+by this story — by its own review-pass comment patch, after this table was first written — and are
+cited here at their corrected closing-revision values (`:716`→`:724`, `:966`→`:973`, `:1038`→`:1046`,
+`:1214`→`:1230`). The mutations were **re-run at story close against these anchors**, and the results
+below are that re-run, not the original one.
 
 | # | site | mutation | result |
 |---|---|---|---|
@@ -517,10 +534,10 @@ they are cited directly.
 | 2 | `text_alignment.go` `textValignOffset`, `valign: middle` | `ScaleRound(slack,1,2)` → `slack/2` | **RED** — `TestAlignmentRoundingGoldenFixture` |
 | 3 | `text_alignment.go` `textValignOffset` | `→ 0` (the entry's own half 1: "multiply `textValignOffset` by zero") | **RED** — `TestAlignmentRoundingGoldenFixture` |
 | 4 | `table_render.go:705` header cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
-| 5 | `table_render.go:716` header cell `valign: middle` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
-| 6 | `table_render.go:966` body row `valign: middle` line slots | `slack/2` → `0` (top) | **RED** — `TestAlignmentRoundingGoldenFixture` |
-| 7 | `table_render.go:1038` body cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
-| 8 | `table_render.go:1214` footer cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 5 | `table_render.go:724` header cell `valign: middle` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 6 | `table_render.go:974` body row `valign: middle` line slots | `slack/2` → `0` (top) | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 7 | `table_render.go:1046` body cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
+| 8 | `table_render.go:1230` footer cell `align: center` | → truncation | **RED** — `TestAlignmentRoundingGoldenFixture` |
 | — | `render.go:505` image centring (**out of subject**) | → truncation | GREEN — no golden moved. Recorded, not closed: this entry's subject is TEXT alignment, and the image site is unconditional on every image element rather than selected by a declared value. It is the one rounding the corpus still does not pin, and it is now a measured fact rather than an assumption. |
 
 **While this item was open the suite stayed green under all of the above. It is now red under every
@@ -551,6 +568,24 @@ centred column's `width: 60.003`:
 The line-slot split is not a millipoint round: row 1's clause wraps to four lines while its qty cell
 is one, so `middle` takes slot `3 / 2 = 1` — neither the first nor the last, which is what makes
 mutation 6 above red.
+
+**THE GENERAL RULE, stated because it is not specific to halving and will be needed again.** A
+red-proof against a *rounding mode* must be built on a value at which the two modes **actually
+disagree** — which is a strictly stronger condition than "a value the mode does not divide exactly".
+The two are easy to confuse, and this entry confused them for three stories.
+
+Worked here: `geom.ScaleRound(slack, 1, 2)` is round-half-to-even. Against a truncating `slack / 2`
+it agrees on every even slack, so "make the slack odd" looks like the discriminating choice — but it
+is not, because round-half-to-even sends `slack ≡ 1 (mod 4)` to the *same* answer truncation gives
+(`4m+1 → 2m`, since 2m is the even side of the tie). Half of all odd slacks are therefore a coin
+flip that lands on truncation's answer. Only `slack ≡ 3 (mod 4)` discriminates: `4m+3 → 2m+2` under
+half-to-even, `2m+1` under truncation. "Odd" is the *exactness* condition; `≡ 3 (mod 4)` is the
+*disagreement* condition, and only the second one falsifies anything.
+
+Generalise before reusing this: for any two rounding modes, enumerate the residue class where their
+outputs differ and pick the fixture value from **that** class — never from the wider class of values
+the operation merely fails to divide exactly. A fixture chosen on exactness alone can be green under
+the mutation it was built to catch, and will report that as success.
 
 ### Registration
 
@@ -2074,3 +2109,160 @@ cap of 512 is hit at about **73 justified lines** — roughly one and a half pag
 which is not an adversarial input. Whoever lifts the value cap must lift or re-derive the cumulative
 fragment cap in the same change, or 7.4 will trade a blank canvas at 512 bytes for a blank canvas at
 73 justified lines. Owner is unchanged: **Story 7.4**.
+
+---
+
+### DW-27 — `fixtures/justified-thai/` is the first golden anywhere to insert visible space between Thai words, and no Thai reader has looked at it
+
+- **Deferred by:** Story 7.3 (2026-08-30), at story close. The story's own contract could not
+  discharge it: **no agent may write a `reader`/`date`/`examined` sign-off record**, because doing so
+  would be fabricating an attestation about a human reading that did not happen.
+- **Owner:** **the project owner**, who must commission a Thai reader. Named as `Owner` in this
+  file's own vocabulary — needs the project owner's call before anyone acts. The orchestrator has
+  surfaced it to the owner; this entry is the standing address so it does not depend on that message
+  being remembered.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+**What is missing.** `fixtures/justified-thai/` justifies **432 Thai characters** by inserting gaps
+of up to **3,528 millipoints** between Thai words. Thai normally writes those word boundaries with no
+space at all. Every machine-checkable property of that page is pinned — the right edge lands on the
+declared width exactly, the pieces concatenate back to the control element's line, the digest is
+identical on all four targets — and **not one of those properties answers whether the page reads
+correctly to someone who reads Thai.** That is the irreducibly-human half D-2.3.5 exists for.
+
+**Why no existing record binds.** D-000.26 binds a sign-off to the artifact expressing the property
+judged. `fixtures/shaped-text/thai-signoff.json` (D-2.3.5) judges Thai **mark placement**;
+`fixtures/expected-breaks/break-signoff.json` (D-2.4.3) judges that **every marked seam falls between
+words and never inside one**. Neither judges inter-word *spacing*, which is this fixture's whole
+subject. Story 4.7 set the precedent of creating a third record rather than stretching an existing
+one.
+
+**And the precedent is NOT "every Thai-bearing golden gets a sign-off."** Measured at this revision,
+`fixtures/wrapped-text/` carries 47 Thai characters with no record and `multi-script-fallback` one.
+Those fixtures only BREAK Thai at seams `expected-breaks` has already signed off. This one is the
+first to put visible space *into* the run.
+
+**How we'd know it was still wrong.** A Thai reader opens `fixtures/justified-thai/expected.pdf` and
+says the spacing reads as broken words rather than as justified text. No test in the tree can reach
+that verdict, and none attempts to.
+
+**What discharges it.** A sign-off record beside the fixture, following the two existing ones in
+shape, written by or on behalf of a human who read the page — enforced by a `//go:build matrix` red
+gate as both precedents are. **Not** an agent-authored record.
+
+---
+
+### DW-28 — a large class of ordinary Thai cannot be rendered at all: any sequence stacking two marks over a base fails closed, and the refusal itself has no test
+
+- **Deferred by:** Story 7.3 (2026-08-30). Pre-existing and **not justification's doing** — measured
+  to fail identically under `align: left` — so it was out of 7.3's scope, but 7.3 is where it was
+  found, and Epic 7 targets Thai legal documents.
+- **Owner:** **the next story that touches `internal/pdf`'s glyph-positioning refusal**, plus the
+  Epic 7 and Epic 8 plan-gate checklists as a second standing address (D-000.73: not "Epic 7 close",
+  which stops existing when the event passes).
+- **Severity:** MEDIUM for the limit; LOW for the untested refusal. Recorded as one entry because the
+  second is why the first could regress in either direction unnoticed.
+- **Status:** OPEN.
+
+**The limit.** Every Thai codepoint renders in isolation — measured **91/91** over U+0E01..U+0E5B.
+But **any sequence stacking two marks over a base** fails closed with
+`face Noto Sans Thai: CID N carries a non-zero vertical offset (-57), which a TJ array cannot
+express`. This is a hard `Render` **error**, not a diagnostic: the document does not render at all.
+
+**These are not exotic strings.** `ครั้ง` ("time/occasion"), `ทั้งนี้` ("in this regard" — a stock
+phrase in Thai legal prose) and `ตั้งแต่` ("since/from") are all unrenderable. A bisect over a
+natural Thai sentence isolated the four-rune window `าทั้`.
+
+**Re-measured independently at story close (2026-08-30), not relayed.** Rendering
+`ทั้งนี้ ครั้ง ตั้งแต่ คู่สัญญา` through the shipped `folio render` CLI fails with
+`internal/pdf: face Noto Sans Thai: CID 9 carries a non-zero vertical offset (-57)…` and exit 1
+under `align: "justify"` **and, byte-for-byte the same error, with no `align` declared at all**. The
+shipped `fixtures/justified-thai/input.folio` renders exit 0 in the same run as the control. **So the
+limit is confirmed independent of justification and is not Story 7.3's doing.**
+
+**It is a deliberate, correct refusal** — `internal/pdf`'s AC6 fail-closed branch raised at
+`folio-go/internal/pdf/textdoc.go:914`, typed at `:1007-1019` — and refusing is better than drawing
+the marks wrongly.
+The problem is not the branch; it is that **a document author cannot be expected to know that mark
+stacking is what broke their document**, and that the fixture text for any Thai document in this
+repository has to be chosen around it (which is exactly what Story 7.3 had to do).
+
+**And the refusal is unguarded.** Grepping `verticalOffsetError|non-zero vertical offset` across
+`*.go` returns **only five hits, all inside `textdoc.go` itself** (`:914` the raise site, `:1007`
+`:1009` the type and its doc, `:1015` `:1017` its `Error()` method). **Nothing anywhere constructs a document that reaches it, and nothing pins the
+message.** So the branch that refuses a large class of ordinary Thai could start refusing more, or
+stop refusing and draw the marks wrongly, and no test would notice either direction.
+
+**What discharges it.** At minimum, a test that reaches `verticalOffsetError` and pins its message.
+Beyond that, an owner call on whether a hard render error is the right outcome for ordinary Thai
+words, or whether this should degrade with a located diagnostic.
+
+---
+
+### DW-29 — `style.align: "justify"` on a table or its `headerStyle` loads, forces the document to 2.0, and renders every cell at the start edge with no diagnostic — RULED INTO STORY 7.4
+
+- **Deferred by:** Story 7.3 (2026-08-30). The diff is **contract-correct**: 7.3's intent contract
+  explicitly directed that `headerStyle.align: "justify"` load and raise the document to 2.0, while
+  its Never list forbade implementing justified table cells. The residue is the product question the
+  contract deliberately did not settle.
+- **Owner:** **Story 7.4**, as an **explicit acceptance criterion** — the engineering lead has ruled
+  (2026-08-30) that the value must be **rejected at load**. If 7.4's own plan gate rejects the
+  addition as `multiple-goals`, it becomes a named **Story 7.8**, not a further deferral. This is a
+  ruled disposition with a named home, not an open-ended item.
+- **Severity:** MEDIUM.
+- **Status:** OPEN, ruled.
+
+**The behaviour today.** A table element's `style.align: "justify"`, or its `headerStyle.align:
+"justify"`, loads without error and raises the document to format **2.0** — making it unreadable to
+every 1.x reader — and then renders **identically to `align: left`**, with no diagnostic. The author
+pays the whole cost of the MAJOR and receives nothing for it. Story 7.3 pinned that fallback with
+`TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge` and corrected the three cell-align `default:`
+arm comments that had wrongly claimed the load-time check already rejected such a value.
+
+**The lead's own root-cause note, recorded because it is the reusable half.** D-7.3.1's guardrail
+split the alignment closed set **by JSON key location** (`style`/`headerStyle` versus `columns[]`)
+rather than **by consumer**. Those are different partitions. A table's `style.align` and
+`headerStyle.align` are read into `r.alignFallback` (`folio-go/table_render.go:373-376`, `:440-441`)
+and consumed at **the same site** as `columns[].align` — so the guardrail that was supposed to make
+justified table cells impossible by construction let the value in through the other door. **When
+splitting a closed set, partition it by the code that consumes the value, not by where the value is
+written in the document.**
+
+**Record correction this entry carries.** 7.3's intent-contract paragraph directing that
+`headerStyle.align: "justify"` load and raise to 2.0 is **superseded** by the lead's ruling and has
+been annotated as such in `7-3-justify-a-paragraph-s-edges.md`. The shipped behaviour matches the
+contract as written at the time; the direction has since changed.
+
+---
+
+### DW-30 — AC-TH2's wording in the owner's scope amendment is wrong on the facts, and a reader checking it the obvious way concludes the test is broken
+
+- **Deferred by:** Story 7.3 (2026-08-30). The build dispatch reported it rather than editing it,
+  correctly: **the amendment text is the owner's**, not the workflow's to rewrite.
+- **Owner:** **the project owner** (the amendment's author), for a one-sentence correction. No code
+  is owed — the delivered behaviour is right.
+- **Severity:** LOW. Documentation only, but the failure mode is a future reader concluding a correct
+  test is broken.
+- **Status:** OPEN.
+
+**What is wrong.** AC-TH2 directs the implementer to "pick a Thai run **the dictionary does not
+cover**". `กานต์` — a suffix of the fixture's `ณัฐกานต์` — **is** in the shipped dictionary, at
+`folio-go/internal/text/wordlist/words_th.txt:3084`, and the greedy matcher **does** propose a break
+at rune 3.
+
+**Why the test is nevertheless right.** The opportunity is withdrawn by D-2.1.9's both-sides-coverable
+filter (`folio-go/internal/text/tileable.go`), because the preceding `ณัฐ` cannot be tiled by
+dictionary entries at all. The AC-TH2 test never relied on the wrong reason: its precondition is
+**computed from production `text.Opportunities(text.Dictionary(), …)`** and asserted with a
+`t.Fatalf`, not read off a literal or a wordlist grep. Verified at story close: the precondition is
+live and non-vacuous.
+
+**The corrected wording, for whoever amends it:**
+
+> pick a Thai run **the segmenter proposes no interior opportunity inside**
+
+**Why it matters.** "The dictionary does not cover it" and "the segmenter proposes no interior
+opportunity inside it" are different claims, and only the second is the precondition the test
+asserts. A reader checking AC-TH2 the obvious way — grepping `words_th.txt` — finds the word present
+and concludes the fixture is mis-chosen and the test broken. It is neither.
