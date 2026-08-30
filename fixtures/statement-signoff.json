@@ -1,11 +1,11 @@
 {
   "reader": "Panit Wechasil",
-  "date": "2026-08-27",
-  "examined": "I opened and visually inspected the rendered pages of all four current PDFs: statement-1 and statement-50 in full, and the page-boundary pages of statement-5 and statement-20, including the last page before and first page after each break. I checked the drawn pages in a PDF viewer rather than using text extraction, copy-paste, pdftotext, or repository parsing tools. I confirmed that transaction rows carry the values declared by their data documents; all five column headers repeat on continuation pages; the total appears at the foot and equals the rows above it; the Thai reads correctly and its marks sit on the consonants they belong to; the Chinese uses the intended face and weight; the logo is present and legible rather than a black box; and the page numbering and supplied date are correct.",
+  "date": "2026-08-30",
+  "examined": "I opened and visually inspected the four rendered PDFs in a PDF viewer -- statement-1, statement-5, statement-20 and statement-50, as re-recorded at this story's commits and reproduced for reading at _bmad-output/implementation-artifacts/evidence/15-1/ -- rather than using text extraction, copy-paste, pdftotext, or repository parsing tools. This record SUPERSEDES my 2026-08-27 sign-off IN WHOLE: that one was given against pages whose 'Page N of M' footer sat at the left edge of its box, and all four documents have since been re-recorded, which invalidates it across every document rather than per document. I re-read them against the same scope I signed off before, and confirmed each part of it: transaction rows carry the values declared by their data documents; all five column headers repeat on continuation pages; the total appears at the foot and equals the rows above it; the Thai reads correctly and its marks sit on the consonants they belong to; the Chinese uses the intended face and weight; the logo is present and legible rather than a black box; and the page numbering and the supplied date are correct. The only difference from the pages I signed off on 2026-08-27 is the intended one this story exists to explain: the footer now sits flush with the right margin, as its style.align of 'right' has always declared and as the engine ignored until commit 791ed00 -- about 86pt further right on statement-1 and statement-5, and about 78pt on statement-20 and statement-50. I found nothing else changed and nothing incorrect.",
   "digests": {
-    "statement-1": "ef58bbf6dac1c3d4a5d679a77f9907a8d45f02ccd3f886c4d4e7cbdf9e86611d",
-    "statement-5": "7f67b317c0a1925a404f8435bd4736b85e831a213f5a69fc2a2934a742ff950f",
-    "statement-20": "be6f5e27af94e62e7c15a1814633cc48a2a91c5ee8686f5b76de5dc12e3cd4ed",
-    "statement-50": "9c5be7ba7b4f31c7d488c114a377058ec30cec5ffca082d9c76ee26f304c754c"
+    "statement-1": "114df1d6508981d4eb162c585ff6f01eedf2a75393a5a2a9b649809e8ac968db",
+    "statement-5": "70dce051495cf68daa71fe8185aa2467acfd82d10fb195439a4d71bcf41944d0",
+    "statement-20": "56bfbbd9a7d20a2a9404fc931dfbe70da9d25979eec17cc8027c0f1063f84b9e",
+    "statement-50": "5d090b0f01ddb5072636caded9feec2cad24cb16297a1afbba301b2a4802f171"
   }
 }
