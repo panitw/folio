@@ -1701,3 +1701,53 @@ that produced it, and the next such break will hide for exactly as long.
 **How we'd know it was still wrong.** Another genuine failure sitting green-adjacent in that workflow
 for multiple stories — or a boundary gate reporting "CI clean" on the strength of a badge that is red
 by design.
+
+---
+
+### DW-25 — a canvas text element whose value carries 256 or more typed breaks aborts the WHOLE canvas projection, and Story 7.1 is what made that reachable
+
+- **Deferred by:** Story 7.1 (2026-08-30), which created the reachability and whose own contract
+  forbids it the fix — no designer/editor surface work, and no new diagnostic code.
+- **Owner:** **UNASSIGNED — awaiting the engineering lead's ruling** on both the owner and the shape.
+  Story 7.1's implementer filed this at **low** and the orchestrator disagreed at closure; the
+  severity below is the orchestrator's, and the lead's ruling supersedes it either way. This entry is
+  the record that the question was asked, not an answer to it.
+- **Severity:** **MEDIUM**, not low, on blast radius rather than on likelihood.
+- **Status:** OPEN.
+
+**The defect.** `folio-go/page_setup.go:27` declares `const maxCanvasTextLines = 256`, enforced at
+`:456` inside `addCanvasTextPaint`, which projects **every** text element in **every** band. The
+guard `return`s an error rather than clamping, and that error is the function's own return, so one
+oversized element does not lose its own paint — it aborts the entire canvas projection. The designer
+gets no canvas at all, for a document that renders to a perfectly good PDF.
+
+**Why Story 7.1 is the story that has to record it.** Before 7.1 a canvas text element's line count
+was bounded by *wrapping*: a declared width produced as many lines as the text needed, and an element
+with no declared width produced exactly **one**. Neither path could reach 256 from an element's own
+value. Typed breaks now set the line count **directly** — 256 line feeds in a value is 257 lines
+whatever the box is, and on the no-declared-width path the breaks are the *only* delimiter. So the
+guard moved from unreachable-by-construction to reachable by pasting a long clause.
+
+**Why it is medium and not low.** Three things compound:
+
+1. **The blast radius is the whole projection, not the element.** Every other canvas bound in this
+   file — `maxCanvasPropertyString`, `maxCanvasTextFragments` — sits beside a projection that either
+   degrades or is bounded by construction. This one is the only reachable hard abort.
+2. **It is directly in Story 7.4's path.** 7.4 is "author body text in the designer", whose whole
+   point is typing and pasting multi-paragraph clause text into exactly this element on exactly this
+   surface. A pasted contract clause is not an adversarial input.
+3. **The failure is opaque where it lands.** The message names the element and "the line projection
+   bound"; what the author sees is that the canvas stopped working after a paste.
+
+**What it is not.** It is not a correctness or byte-identity defect: the PDF path has no such bound
+and renders the document correctly. It is a designer-surface availability defect.
+
+**The shapes the lead is being asked to choose between** (recorded so the ruling has options, not to
+pre-empt it): clamp the projection at the bound and report the truncation through Story 4.6's
+existing clip-and-warn vocabulary rather than minting a code; keep the error but scope it to the
+element so the rest of the canvas still projects; or raise the bound and re-derive it from the
+`Number.MAX_SAFE_INTEGER` argument the other canvas bounds are drawn from. Each is designer-surface
+work, which is why 7.1 could take none of them.
+
+**How we'd know it was still wrong.** Story 7.4 lands, someone pastes a real multi-paragraph clause
+into a canvas text element, and the canvas goes blank instead of showing the clause.

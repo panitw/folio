@@ -6,7 +6,7 @@ status: 'done'
 baseline_commit: '98cadf7fde2dcc69c29f7e8ae01e131a054a71f3'
 baseline_revision: '57a4f8eb0a8ce1f24c3a8169172011a8939f73e4'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
@@ -24,34 +24,33 @@ deferred:
       recorded for whoever owns the canvas surface next.
     location: >-
       folio-go/page_setup.go:27,456
-    severity: low
+    tracked_as: 'DW-25'
+    severity: medium # filed low by the implementer; raised at closure and routed to the engineering lead
 ---
 
 ## In plain terms (read this first if you just want the gist)
 
 *Non-normative orientation. The contract below governs; where the two differ, the contract wins.*
 
-Today a line break typed into a piece of text, or arriving inside the data a template is filled
-with, is treated as an ordinary space. The engine may break there or may not, depending on how much
-room is left on the line. A clause written as three paragraphs comes out as one run of prose, and a
-paragraph gap is inexpressible.
+A line break typed into text, or arriving in the data a template is filled with, was treated as an
+ordinary space — taken only if the line happened to be full. It now binds. Where the author put a
+break, the text starts a new line however much room remained. Two breaks in a row give the empty line
+between them, so a paragraph gap is finally expressible; a break at the start or the end gives its
+empty line too, and a carriage return with a line feed counts once. A break also survives inside a
+value the template declared must never be split: declaring a value unbreakable stops the engine
+guessing at a break, it does not throw away one somebody supplied.
 
-This story makes a typed break binding. Where the author put a break, the text starts a new line,
-however much width remained. Two breaks in a row give the empty line between them, so a
-paragraph gap becomes expressible; a break at the very start or end gives its empty line too. A
-carriage return and line feed together count as one break, never two. A break also survives inside a
-value the template declared must never be split: declaring a customer's name unbreakable stops the
-engine *guessing* at a break, it does not throw away a break somebody *supplied*. That distinction,
-inferring versus being told, is the shape of the whole story.
+Every document already committed still renders to identical bytes on all four target platforms, and a
+new one proves the behaviour by failing without it.
 
-It deliberately does not touch line spacing, justification, the designer's editing surface, or the
-pagination model; those are later stories.
+Two things will look wrong later and are not. One test stays red on purpose — a coverage
+floor this project decided not to fill, which must never be repaired. And the new document clears the
+font-coverage check for a reason unrelated to fonts: once a typed break is consumed, the character
+stops being reported as uncovered.
 
-Done looks like: every existing document still renders to identical bytes on all four target
-platforms, and the new behaviour is proved by documents that fail without it.
-
-One test stays red throughout, on purpose: a coverage floor this project decided not to fill. That
-red is expected and must never be repaired.
+Line spacing, justification, the designer's editing surface and the pagination model were left alone
+deliberately. One thing is recorded rather than fixed: enough typed breaks in text on the design
+canvas can now fail the whole canvas preview rather than just that item.
 
 <intent-contract>
 
@@ -479,3 +478,120 @@ sites, and `wrappedLine` records the kind of break that ended it for Story 7.3 /
 - `TestShippedFacesReproduceFromUpstream` was not exercised: the full `-tags=matrix` suite was not run, only the two named matrix tests. It is known-environmental here (no `fontTools`).
 - `mandatory-break` is the first document under `TestCorpusFixturesProduceNoMissingGlyphWarnings` to pass for a reason unrelated to glyph coverage; that green must not be read as coverage.
 - Story 7.3 (FR47) depends on `wrappedLine.endedBy` landed here.
+
+## Delivery Log
+
+### 2026-08-30 — planned
+
+Baseline `98cadf7`. Dispatch 1 halted `blocked` on three intent gaps the spec could not settle:
+whether the atomic-span exemption is keyed on the rune or on the opportunity's kind, whether k breaks
+yield k or k+1 lines, and which packer the change lands in. The engineering lead ruled all three
+before any code existed — D-7.1.1 (exemption **by kind, at the filter site**, with `atomicSpansFor`
+and `spansCover` untouched, so AD-25's rule is clarified rather than amended), D-7.1.2 (breaks are
+**separators**, achieved by scoping rather than special-casing), D-7.1.3 (the **shared** packer, every
+caller, no text-element-only flag) — with D-7.1.4 amending DW-24's scope and D-7.1.5 authorising the
+two named fields. D-R7.1 put this story on the heavy tests despite Epic 7's per-epic cadence, because
+its correctness is byte-identity-shaped. Dispatch 2 planned against the rulings and halted, as
+directed, without writing code. Committed `62a6af1`; status flipped at `57a4f8e`.
+
+### 2026-08-30 — built
+
+Baseline `57a4f8e`, delivered at `33bd942` (28 files, +2850/−71). D-7.1.6 fixed whole-run consumption
+and D-7.1.7 settled the two things the task list had not named: collect opportunities from index 0
+(a loop starting at 1 silently drops a leading break while every trailing-break test passes), and
+make the AC1 fixture element **fit** its box so it exercises the packer's short-circuit rather than a
+break taken for want of room.
+
+Review: 0 intent_gap, 0 bad_spec, 13 patched (1 high, 4 medium, 8 low), 1 deferred, 9 rejected. The
+high finding is the one that mattered: the first implementation suppressed the U+000A missing-glyph
+warning **globally**, and that suppression's premise — "the breaker consumes it" — is false on the
+table column-label path, which shapes and positions without ever packing. A line feed there really is
+dropped, and the warning was its only signal. The implementer also **corrected two of the reviewer's
+own patch instructions on the facts**: a footer cell's text is always an aggregate through a closed
+numeric format grammar, so a line feed cannot reach it (pinned as a tripwire rather than tested as a
+behaviour); and there is no `TEXT_CLIPPED_HEIGHT` to overflow, D-2.8.1 having ruled that a text
+element's declared height is not a clip bound. Two spec amendments were recorded rather than absorbed
+silently, both in `## Spec Change Log`.
+
+### 2026-08-30 — done
+
+Baseline `57a4f8e`, story commit `33bd942`, closed on `main`. `followup_review_recommended` was
+**cleared to false**: rather than a second builder review round, the high finding and the churn around
+it were given an independent adversarial pass at closure, and the six things that could have been
+wrong were each checked against the diff rather than against the build's report.
+
+**The caller enumeration is complete.** `shapeSegments` has six production callers and three in
+tests, all nine derived by grep and then checked against what each caller actually *does* rather than
+against what its argument claims. The two `breaksAreDrawn` sites genuinely do not pack — the column
+label hands its whole rune range to `positionSegments`, and the page-number digit table shapes the
+literal `0123456789`, which no line feed can reach. The four `breaksAreConsumed` production sites —
+the text element, both table-cell paths and the canvas projection — each call `packLines` a few lines
+below. No caller is missed, so there is no path where a line feed is dropped without a diagnostic.
+
+**Teeth, measured.** Neutering the kind-keyed exemption at the filter site reddens **five** distinct
+tests: the unit case, the chain-level case, the fixture's layout and declaration-is-load-bearing
+cases, and the golden hash. It does not redden for the wrong reason — with the exemption gone the
+surviving opportunity list is `[{LineEnd:3 NextStart:4 Kind:0}]`, which is the space inside the
+declared value still correctly suppressed, so the two failure directions really are distinguishable.
+The fixture routes its line feed through **data** on a declared path, never through literal template
+text, and both the unit and fixture tests carry `t.Fatalf` preconditions proving the feed is
+*strictly interior* to the span — the exemption is not proved by an input that never needed it. The
+`wrappedLine` break-kind field is asserted directly over fabricated input, naming Story 7.3 / FR47,
+with a discrimination check that the typed and inferred kinds differ; it is not an unread field.
+`internal/layout/paginate.go` is absent from the diff, and no new diagnostic code is minted — the
+diff references only the three existing codes.
+
+**One defect found and fixed at closure**, in this story's own test file: when the load-bearing
+assertion regressed, `TestMandatoryBreakSemanticAcceptance` **panicked** on a six-way index after
+reporting the wrong baseline count non-fatally, and a panic takes the whole `folio-go` test binary
+down with it — every other test in the package stops reporting. That is DW-23's shape in miniature,
+one signal swallowing another, and it would have turned a legible regression into an opaque one. A
+length guard now stops at the report; re-measured under the same neutering, all five tests fail
+individually and the rest of the package keeps reporting. Spot-checks of the nine rejections found
+them sound, including the two worth doubting: the `if` → `case` conversion preserves the `i > 0 && j
+< n` expression byte-for-byte and only changes the statement form, and the declined no-progress guard
+is genuinely unreachable, since every mandatory opportunity's `NextStart` is strictly greater than its
+`LineEnd` by construction.
+
+**Gates measured at closure, independently, not carried forward.** `go test -count=1 ./...`: 13
+packages ok, exactly one failure — `TestCorpusMeetsP6ExerciseFloors/P6g`, got 7 need >=20, the
+mandated permanent red (D-000.17 / D-2.1.14 / DW-11), untouched. `go vet -tags=matrix ./...` clean;
+`gofmt -l` empty. `TestTargetRenderHash` PASS on **all four legs** with `FOLIO_MATRIX_TARGET` set
+each time (`darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm`) — no leg logged "asserts
+NOTHING". `TestCrossTargetByteIdentity` PASS. `lint`: 4 packages ok. Designer: typecheck ok, 4
+pre-existing `only-export-components` warnings, 30 files / 213 tests pass. Corpus neutrality was
+confirmed twice over — the four statement goldens hash identically across all four legs **and** are
+byte-identical to their pre-story bytes at `57a4f8e`: `statement-1` 76,744 `114df1d6…`, `-5` 127,363
+`70dce051…`, `-20` 269,884 `56bfbbd9…`, `-50` 555,829 `5d090b0f…`. New `mandatory-break` 56,681
+`7cf743de…`, identical on all four. Not run: `TestShippedFacesReproduceFromUpstream` (no `fontTools`
+in this environment) and `lint/internal/rules/licencegraph_test.go`'s gofmt break (DW-23, owned by
+Story 15.2) — both known-environmental.
+
+**That the new fixture is green under `TestCorpusFixturesProduceNoMissingGlyphWarnings` is not a
+statement about glyph coverage**, and must never be read as one. `TEXT_MISSING_GLYPH` stops firing
+for a literal line feed precisely *because* the character is consumed by the breaker; this is the
+first document in the corpus to pass that test for a reason unrelated to whether any face covers its
+runes. A later reader treating that green as coverage evidence will be wrong.
+
+**Deferrals.** DW-24 was **inspected and declined on the criterion rather than on the budget**: its
+hazard is the unexercised *rounding* branch, and 7.1 touches neither the rounding nor the population
+that reaches it — no corpus document declares `center` or `valign`, and this story adds none — so
+closing it here would have discharged nothing 7.1 endangered. Its scope was amended instead (D-7.1.4)
+and verified at closure: owner **Story 7.3 plus the orchestrator's gate checklist**, explicitly not
+"Epic 7 close" since an owner that is an event stops existing when the event passes; six rounding
+sites, not two; and the re-derive-by-grep-at-closure instruction present. The six sites were
+re-derived by grep at `33bd942` — not merely at the baseline the entry cites — and all six answer at
+their stated lines. The entry is OPEN.
+
+**DW-25 is new**, and is the canvas line cap: `maxCanvasTextLines = 256` was unreachable from an
+element's own value before this story, because a canvas element's line count was bounded by wrapping
+and was exactly one when width was unset. Typed breaks set it directly, so the bound is now reachable
+by pasting a long clause — and it returns an error that aborts the **whole** canvas projection rather
+than degrading that one element. Filed at **medium** (the implementer's `low` was overridden at
+closure on blast radius), owner **UNASSIGNED, awaiting the engineering lead's ruling** on owner and
+shape, with the candidate shapes recorded so the ruling has options. It sits directly in Story 7.4's
+path, whose whole subject is typing and pasting multi-paragraph clause text onto that surface. Not
+fixed here: this story's contract forbids both designer-surface work and new diagnostic code.
+
+**Story 7.3 (FR47) depends on the `wrappedLine` break-kind field landed here.** D-R7.3's numeric
+order satisfies that dependency only by accident, so a reorder must not silently break it.

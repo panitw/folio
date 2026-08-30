@@ -184,6 +184,17 @@ func TestMandatoryBreakSemanticAcceptance(t *testing.T) {
 	//     D-7.1.2's height claim comes to in practice. Read off the
 	//     ARTIFACT, and compared between elements rather than against a
 	//     literal, so a uniform change to the advance cannot satisfy it.
+	// (a) has already REPORTED a wrong baseline count, but it reports
+	//     through t.Errorf and execution continues. Indexing six baselines
+	//     out of a shorter slice would PANIC, and a panic in one test takes
+	//     the whole package's test binary down with it — every other test in
+	//     folio-go would stop reporting, which is the DW-23 shape (one
+	//     signal swallowing another) in miniature. Measured at closure: with
+	//     the D-7.1.1 exemption neutered this test panicked rather than
+	//     failed. Stop at the report instead.
+	if len(ys) != len(mandatoryBreakDrawnBaselines()) {
+		return
+	}
 	e1Gap, e2Gap, e3Gap := ys[0]-ys[1], ys[2]-ys[3], ys[4]-ys[5]
 	if e1Gap != e3Gap {
 		t.Errorf("e1's and e3's baseline intervals differ (%d vs %d) — both hold two ordinary consecutive lines", e1Gap, e3Gap)

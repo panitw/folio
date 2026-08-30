@@ -157,7 +157,10 @@ development_status:
   # on it, not a target of it. Every field it adds is optional and absent-by-default, so
   # the existing corpus must hash identically.
   epic-7: in-progress
-  7-1-break-a-line-where-the-author-typed-a-break: in-progress
+  # 7.1 CLOSED 2026-08-30 at 33bd942: measured gates, teeth proof and deferrals in the story's
+  # ## Delivery Log. DW-24 open (owner 7.3 + gate checklist); DW-25 open (canvas line cap,
+  # medium, awaiting the engineering lead).
+  7-1-break-a-line-where-the-author-typed-a-break: done
   7-2-set-the-space-between-a-paragraph-s-lines: backlog
   7-3-justify-a-paragraph-s-edges: backlog
   7-4-author-body-text-in-the-designer: backlog
@@ -377,7 +380,7 @@ development_status:
   epic-15: in-progress
   # 15.1 CLOSED 2026-08-30 at 36bb3f5: attribution D-15.1.1, four goldens re-recorded on the
   # owner's ruling (D-R7.6), and the human sign-off written by the owner themselves. Full record,
-  # measured gates and deferrals in the story's ## Delivery Log; DW-24 open, owner Story 7.1.
+  # measured gates and deferrals in the story's ## Delivery Log; DW-24 open, owner Story 7.3.
   15-1-the-golden-report-s-moved-hash-is-explained: done
   15-2-ci-s-red-means-something: backlog
   15-3-folio-go-v0-1-0-is-cut: backlog
