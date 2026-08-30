@@ -2379,6 +2379,141 @@ to have been answered, not worked around
 
 ---
 
+### Story 7.9: The canvas tells the truth about keep-together groups
+
+As a template author,
+I want the design canvas to show the same page boundaries the engine will actually take when my
+document declares a keep-together group,
+So that the preview I lay out against is not confidently wrong about where my pages break.
+
+**Covers:** FR51 · AD-17, D-7.7.6, D-7.7.7, D-7.7.8, D-7.7.10 — DW-46 and DW-48, routed here by the
+engineering lead at Story 7.7's close (2026-08-31). **This story gates `epic-7: done`** (D-7.7.8).
+
+**What is wrong today.** Story 7.7 taught the render path to keep a declared group whole, and did
+not teach the canvas the same thing. `addCanvasWindowCount` builds its `layout.ColumnItem`s with no
+`Group` at all, so for a grouped document the canvas reports a window **count** that is too low and
+window **origins** that point at the wrong column positions — and it reports the count as
+**exact**, because grouping is not among the three causes `ContentWindowCountIsFloor` knows about.
+A measured case: a body element, a two-member group at y 700 / y 740 and an untagged tail at y 1440
+renders **3** pages while the canvas reports **2**, `IsFloor: false`, origins `[0, 740000]` where
+the render's second window begins at **700000**. Untag the group and the canvas is right.
+
+**Why this is a defect and not a shortfall — the ruling this story exists to carry.**
+`keepTogetherTags` takes the Template and nothing else: no data, no params, no font set. Grouping is
+a **pure template property**, so the canvas already holds every input it needs to be correct. That
+is the opposite side of the line from the flag's three legitimate causes, each of which is something
+the canvas genuinely cannot know. So this story **fixes the wiring**; it must **not** register a
+fourth floor cause. Registering one would park a defect inside the mechanism that exists to be
+honest about shortfalls, and the author has no way to avoid it — they declared a group in their file
+and the canvas is simply wrong about it.
+
+**One fix closes both halves.** A wrong origin is genuinely a different failure from a wrong count —
+a floor flag is a claim about a count and says nothing about where a window begins, and there is no
+flag on the origins array. But Story 7.6 **projected** origins from `pages[page].Shift` rather than
+computing them, so once the canvas's items carry their groups the real `Paginate` produces the true
+origins as a by-product. There is no second fix to write.
+
+**Acceptance Criteria:**
+
+**Given** a template declaring a keep-together group
+**When** the canvas projection is built
+**Then** its window count and its window origins are **equal to the render path's**, asserted
+directly against a real render rather than against the flag
+
+**Given** the same template
+**When** `ContentWindowCountIsFloor` is computed
+**Then** grouping adds **no** new floor cause — the flag keeps exactly its three existing causes,
+and the tag refusal on tables stays asserted, since that refusal is what stops a group inheriting a
+table's data dependency
+
+**Given** a tagged element that is duplicated in the designer
+**When** the copy is created
+**Then** the copy carries **no** group tag and the original is unchanged — a duplicate must not
+silently join a group the designer offers no way to see or clear
+
+**Given** a template declaring no groups
+**When** it is rendered and its canvas is projected
+**Then** its bytes and its projected values are unchanged
+
+**Limits to state.** Designer-side **authoring** of groups is deliberately out of Epic 7: FR51 asks
+only that a group can be declared, and file-only authoring is in scope. That is a stated scope
+boundary, not an omission; if a grouping control is wanted it belongs with the inspector work in
+Epic 12 or 14 and is the owner's to schedule. If the implementation finds a grouping case the canvas
+genuinely **cannot** know, it returns to the engineering lead before any fourth floor cause is
+added.
+
+---
+
+### Story 7.10: An over-tall element is refused whether or not it is grouped
+
+As a template author,
+I want an element I have declared too tall for the page to be refused the same way whether or not it
+carries a keep-together tag,
+So that tagging a component into a group cannot quietly turn a hard error into a warning.
+
+**Covers:** FR51 · AD-14, AD-22, D-4.6.2, D-2.6.1, D-7.7.9 — DW-47 and DW-50, ruled by the
+engineering lead at Story 7.7's close (2026-08-31).
+
+**This story does NOT gate `epic-7: done`. It DOES gate the `folio-go/v0.1.0` tag.** It changes
+**when a render fails**: documents that render today — clipped, with a true Warning — fail fatally
+afterwards. Under AD-22 that is breaking for every downstream suite, and it is free **only while
+nothing is released**. It sits with Story 7.8 in the set of narrowings that must precede the tag,
+because narrowing what is accepted is free exactly once.
+
+**The collision it resolves.** Story 7.7's contract matrix contradicts itself. Row 3 says an
+over-tall group is clipped and warned; row 5 says a single-member group changes nothing, and an
+untagged over-tall element is a fatal `OverflowError`. Measured at 7.7's close: an over-tall rect
+**tagged** renders 566 bytes with a `TABLE_ROW_CLIPPED_HEIGHT` Warning; the same rect **untagged**
+is a fatal `*folio.RenderError`. A long text element behaves the same way and worse — untagged it
+flows cleanly over 71,374 bytes with no diagnostic, tagged alone it is clipped to 66,636 bytes and
+**loses content**.
+
+**The ruling: the discriminator was split on the wrong axis.** It is not *is it grouped*. It is
+*what is over-tall*. An over-tall **individual element** is a located `OverflowError`, fatal,
+tagged or not. A group that exceeds a window **only in aggregate** — every member fitting, the sum
+not — takes Story 4.6's clip-and-warn.
+
+**The ground is D-4.6.2's own ratio: leniency follows authorship.** A table row's height is driven
+by data the author cannot fix, so failing them fatally is unjust. A loose element's height is
+declared by the author, determinable from the template alone, and fixable by them — which is why
+D-2.6.1 made page-edge overflow a located template error in the first place. **A group tag does not
+launder authorship.** And a group of one is a no-op, so it must be indistinguishable from no group;
+otherwise an author escapes a fatal error through an unrelated feature, and a rule that can be
+switched off by an unrelated declaration does not survive contact with a deadline.
+
+**Acceptance Criteria:**
+
+**Given** a single element taller than one content window, tagged into a keep-together group
+**When** the document is rendered
+**Then** it is refused with the same located fatal `OverflowError` the untagged element receives
+
+**Given** a two-member group whose members each fit a window but whose aggregate does not
+**When** the document is rendered
+**Then** Story 4.6's clip-and-warn applies — bytes, plus a Warning in `Pagination.Clipped`
+
+**Given** those two cases
+**When** they are covered
+**Then** they are asserted in **one fixture carrying both arms**, because either arm alone is also
+consistent with the rule being replaced and so proves nothing about the discriminator
+
+**Given** Story 7.7's third acceptance criterion, which reads *"a group taller than one window …
+never a fatal error"*
+**When** this story lands
+**Then** that clause is amended to read **"taller than one window in aggregate"** — the ruling makes
+the text stale, and correcting it is part of the ruling rather than follow-up, so that the next
+reader does not re-derive the collision from a paragraph contradicting the decision that answered it
+
+**Given** `ARCHITECTURE-SPINE.md`'s over-tall carve-out
+**When** this story lands
+**Then** it gains the discriminator clause — that an individually over-tall element is fatal
+regardless of tagging. (The *other* half of DW-49, widening the carve-out from "rows" to rows **and
+author-declared groups**, describes HEAD and lands earlier, with Story 7.9.)
+
+**Also worth fixing while here, if it is in reach:** the fatal message for an over-tall rect
+currently calls it *"table is taller than the content window"*. It is not a table.
+
+---
+
 ## Epic 8: A template author can choose a font, and the file carries it
 
 Ploy picks the firm's typeface from a catalogue inside the designer, lays out the statement, and

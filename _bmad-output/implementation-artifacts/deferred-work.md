@@ -2896,9 +2896,12 @@ filed at all because the drag is the one interaction where a per-frame cost is f
 ### DW-46 — for a grouped document the canvas reports an EXACT window count that is wrong, and window ORIGINS that are wrong in a way no floor flag discloses
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
-- **Owner:** **pending the engineering lead's ruling** — recorded as such rather than assigned. It is
-  not obviously one story: it may be a floor cause, a projection change, or a decision that the
-  canvas stops claiming exactness at all
+- **Owner:** **Story 7.9** — *the canvas tells the truth about keep-together groups*. Ruled by the
+  engineering lead 2026-08-31 (D-7.7.6, D-7.7.7, D-7.7.8): this is a **defect, not a shortfall**,
+  because `keepTogetherTags` takes the Template and nothing else, so grouping is a pure template
+  property the canvas already holds every input for. **No fourth floor cause is registered** — the
+  canvas's `ColumnItem`s are tagged with the same groups the render path uses, and the true origins
+  fall out of `Paginate` because 7.6 projected them from `Shift` rather than computing them
 - **Severity:** HIGH
 - **Status:** OPEN — **Epic 7's boundary is held on it**
 
@@ -2931,8 +2934,12 @@ questions**; whoever rules on this should read all three together.
 ### DW-47 — an over-tall SINGLE-member keep-together group is clipped and warned, where the same element untagged is a fatal error — the contract's own matrix rows 3 and 5 collide
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
-- **Owner:** **the engineering lead** — **this needs a ruling, not a patch**. Both dispositions are
-  defensible and the contract asserts both
+- **Owner:** **Story 7.10** — *an over-tall element is refused whether or not it is grouped*.
+  Ruled 2026-08-31 (D-7.7.9): the discriminator is **what** is over-tall, not **whether** it is
+  grouped. An over-tall individual element is fatal tagged or not; a group over-tall only **in
+  aggregate** takes 4.6's clip-and-warn. Does **not** gate `epic-7: done` — nothing lies to the
+  author here, both renders are self-consistent with true diagnostics — but it **gates the
+  `folio-go/v0.1.0` tag**, because it narrows what renders (AD-22)
 - **Severity:** MEDIUM
 - **Status:** OPEN
 
@@ -2958,8 +2965,10 @@ line anyway.
 ### DW-48 — `duplicateComponent` copies a keep-together tag into a group the designer offers no way to see or clear
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
-- **Owner:** **Epic 14's designer-panel work, or the story that first gives the designer a grouping
-  concept** — a gate, never an event, per D-000.73
+- **Owner:** **Story 7.9**, riding with DW-46. Ruled 2026-08-31 (D-7.7.10): a duplicated component
+  joins **no** group; drop the tag on copy, asserted rather than incidental. Designer-side group
+  **authoring** stays deliberately out of Epic 7 — a stated scope boundary, not an accident — but
+  creating state the author cannot reach or undo is refused, as it is everywhere else in this project
 - **Severity:** MEDIUM
 - **Status:** OPEN
 
@@ -2979,7 +2988,12 @@ join on duplicate is.
 ### DW-49 — `ARCHITECTURE-SPINE.md` still scopes the over-tall clip carve-out to "rows" although a second population is now clipped
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
-- **Owner:** **the engineering lead** — amending the spine is the lead's, never a story's
+- **Owner:** **SPLIT 2026-08-31 (D-7.7.13), two edits with two homes, neither held for the other.**
+  **(a)** Widening the carve-out from "rows" to rows **and author-declared groups** describes HEAD
+  and has been stale since `ed485eb` — it lands with **Story 7.9**, as bookkeeping inside that
+  story's record per D-000.6. **(b)** The discriminator clause — an individually over-tall element
+  is fatal regardless of tagging — describes behaviour that does not exist yet and rides **Story
+  7.10**. A spine running ahead of the code is the same defect as one lagging it
 - **Severity:** LOW
 - **Status:** OPEN
 
@@ -2996,8 +3010,8 @@ amendment was unauthorised.
 ### DW-50 — a tagged MULTI-LINE text element becomes atomic, so the matrix's "a single-member group changes nothing" holds only for single-line elements
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
-- **Owner:** **the same ruling as DW-47** — it is the same contract row, measured on a different
-  element kind, and splitting them would produce two answers to one question
+- **Owner:** **Story 7.10**, with DW-47 — same contract row, second element kind, one two-arm
+  fixture. Ruled 2026-08-31 (D-7.7.9)
 - **Severity:** LOW
 - **Status:** OPEN
 

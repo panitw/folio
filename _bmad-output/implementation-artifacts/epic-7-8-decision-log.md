@@ -1218,3 +1218,284 @@ becomes the owner's only if adding it would move the tag.**
    interesting region is the one a declared gap skips.** 7.6's zero-pixel drag committed a nine-window move
    because every offset the shipped round-trip sampled sat inside its own window. **Sample the
    discontinuities, not the interior.**
+
+## Story 7.7's deferrals — five rulings, and one story added to Epic 7 (2026-08-31)
+
+Story 7.7 closed at `c9039a3` with seven deferrals filed (DW-46 … DW-52). Three of them were
+routed to the engineering lead as decisions rather than patches. It ruled on all three plus two
+consequences. The rulings are recorded here in the lead's own reasoning, because in two places the
+ground matters more than the verdict — the verdicts are small and the grounds are reusable.
+
+### D-7.7.6 — DW-46 is a DEFECT, not a shortfall: the canvas is FIXED, and no fourth floor cause is registered
+
+**Ruling.** The canvas must tag its `layout.ColumnItem`s with the same keep-together groups the
+render path already uses, so that the window **count** and the window **origins** become correct by
+construction. `ContentWindowCountIsFloor` keeps **exactly its three existing causes**. Nothing is
+added to the disclosure surface.
+
+I had offered the lead two options — register grouping as a fourth floor cause, or something else —
+and it took neither, which is the interesting part.
+
+**The ground, and it is one measured fact.** `keepTogetherTags(t *Template) keepTogetherIndex`
+(`folio-go/render.go:2017`) takes **the Template and nothing else**. No data, no params, no
+`FontSet`. Grouping is therefore a **pure template property**, and the canvas — which holds the
+template — already holds every input it needs to be right.
+
+**That fact is the whole line between a floor cause and a defect.** The floor flag's three existing
+causes are each things the canvas *genuinely cannot know*: a bound table's row count needs the data,
+the taller-than-one-window degradation needs the render, a failed font chain needs the face. Those
+are shortfalls, and a disclosure is the honest response to a shortfall. Grouping is knowable
+canvas-side, so reporting it as unknowable would **park a defect inside a disclosure mechanism**.
+The lead gave the test for telling these apart, and it is worth keeping:
+
+> the test for that is whether the user could avoid it. They cannot: they declared a group in the
+> file and the canvas is simply wrong about it.
+
+**A plain-language way to say it.** A weather forecast that says "I can't see past the mountain" is
+honest. A forecast that says "clear skies, certain" while looking at the wrong valley is not — and
+adding "I can't see past the mountain" to it does not fix which valley it is looking at. DW-46 is
+the second kind. The canvas is not short-sighted here; it is reading the wrong document.
+
+**One fix closes both halves.** I had argued separately that a wrong *origin* is a different failure
+from a wrong count, because a floor flag is a claim about a **count** and says nothing about **where
+a window begins** — there is no flag on the origins array at all. The lead agreed with the argument
+and then dissolved it: once the items carry their groups, the real `Paginate` produces the true
+origins **as a by-product**, because Story 7.6 projected origins from `pages[page].Shift` rather
+than computing them. So the same wiring fixes count and origins together, and adds no new
+disclosure surface for either.
+
+**Guardrails carried into the story:**
+
+- **Assert the equality directly** — for a grouped document, the canvas's window count and origins
+  **equal the render path's**. That absent assertion is what let this ship, and it is stronger than
+  any test of the flag.
+- Confirm afterwards that grouping introduces **no** new floor cause. A group's aggregate height
+  still varies with bound text length, but that is the canvas-versus-bound-data divergence the
+  existing causes already name. **If the implementation finds a genuinely unknowable grouping case,
+  it returns to the lead before a fourth cause is added** — it does not add one.
+- `parse_bands.go` already refuses the tag on a table, so a group cannot inherit a table's data
+  dependency. **Keep that refusal asserted**, because it is what makes the previous bullet true.
+
+The mechanism needs no new code beyond the call: `keepTogetherGroup` and `orKeepTogether` are
+already methods in package `folio`, which is `page_setup.go`'s own package. This is one authority
+gaining a second caller — the same shape as Story 7.5's extents.
+
+### D-7.7.7 — DW-46 becomes a named Story 7.9, not a bare fix and not a passenger on 7.8
+
+**Ruling.** **Story 7.9**, in Epic 7, named for its subject: *the designer tells the truth about
+keep-together groups*. It carries D-7.7.6 and D-7.7.10.
+
+**Not folded into 7.8.** I raised that 7.8 and this work are unrelated in subject, and the lead
+made that the whole objection rather than a preference: folding unrelated work into a story's record
+**destroys the attribution the per-story log exists to preserve**. It named the precedent — the two
+unstoried commits that landed after the Epic 6 gate — and said it would not authorise "its tidier
+cousin". A story that quietly contains a second story's work is the same loss of provenance,
+arrived at politely.
+
+**Not a bare fix either.** It changes projected values the canvas draws from, it needs a grouped
+canvas fixture, and it needs the count-and-origins equality assertion. Work that ships a fixture and
+an assertion is a story; **calling it a fix is how it lands without a Delivery Log entry**.
+
+**On adding a story to an epic that was scoped closed.** The lead drew the line explicitly, and it
+is the line this run should keep using: a new story that adds **capability** to a closed epic is
+scope creep and would be refused; a new story that **restores a guarantee the epic already shipped**
+is the epic finishing its own work. 7.9 is entirely the second kind.
+
+### D-7.7.8 — DW-46 gates `epic-7: done`, and that call is the lead's, not the owner's
+
+**Ruling.** `epic-7: done` is not written until Story 7.9 lands. The heavy-suite catch-up is
+satisfied on evidence — every Epic 7 story ran the suites under the D-R7.1 override, measured
+per story at 7.7's close — but the boundary gate is not only about suites.
+
+**The ground is a false AC at HEAD.** Story 7.6's AC2 requires the window boundary to be *"marked
+where the engine will actually break, taken from the projection rather than computed in the
+browser."* For a grouped document the projection now reports boundaries the engine **will not
+take**. That is not a new deferral filed against a new feature; it is a **regression of an already
+accepted criterion**. A boundary gate that passes while a shipped story's AC is false is not a gate
+but a formality, and D-000.4 exists so that `done` means something.
+
+**The disclosure makes it worse rather than better**, which is what removed the lead's hesitation.
+Before 7.6 the canvas made no claim at all. Now it asserts exactness in exactly the case where the
+number is wrong. A confidently wrong disclosure is a liability the silence was not — and shipping
+one under a green gate teaches the next reader that the flag can be trusted when it cannot.
+
+**Why this is not the owner's call.** The owner decides what to build and what to trade away. This
+is not a trade: nobody chose to ship a false claim, and the fix is small and inside the epic. It is
+"does the epic meet its own criteria", which is the lead's.
+
+**The one condition that flips it back to the owner**, recorded so it is recognised if it happens:
+if Story 7.9 turns out **materially larger** than D-7.7.6 implies — for instance if the canvas
+cannot reuse `keepTogetherTags` for a reason not yet seen — then holding the epic starts costing
+schedule against the still-open v0.1.0 sequencing, and **that** trade is the owner's. It returns to
+the lead first, at 7.9's plan gate, and to the owner only if the plan gate says so.
+
+### D-7.7.9 — DW-47/DW-50: an over-tall ELEMENT stays fatal, tagged or not; the discriminator was split on the wrong axis
+
+**Ruling.** The question is **not** "is it grouped". It is **what is over-tall**:
+
+- an over-tall **individual element** is a located `OverflowError`, **fatal**, whether or not it
+  carries a group tag;
+- a group that exceeds a window **only in aggregate** — every member fitting, the sum not — takes
+  Story 4.6's clip-and-warn.
+
+Matrix rows 3 and 5 stop colliding because they were never really in conflict; they had been split
+on the wrong axis.
+
+**The ground is D-4.6.2's own ratio: leniency follows AUTHORSHIP**, and the direction of that ratio
+decides this. A table row's height is driven by **data the author cannot fix**, so failing them
+fatally is unjust — clip and warn. A loose element's height is **declared by the author**,
+determinable from the template alone, and fixable by them, which is exactly why D-2.6.1 made
+page-edge overflow a located template error in the first place. As the lead put it: **a group tag
+does not launder authorship.** The author who declared a 900pt box still declared it.
+
+**And a group of one is a no-op** — there is nothing to keep it together with — so it must be
+indistinguishable from no group. Any other answer hands the author an **escape hatch from a fatal
+error via an unrelated feature**: tag the element into a group of one and a hard error becomes a
+warning. The lead's line is worth keeping as a general rule: *rules that can be switched off by an
+unrelated declaration do not survive contact with a deadline.*
+
+This keeps Story 7.7's AC true **as written**, which is why it is a defect in the matrix rather than
+in the shipped story: the AC's clause is about **a group** being too tall, and a group whose single
+member is individually too tall was already fatal before the tag existed.
+
+**Guardrail: assert both halves in ONE fixture** — a single over-tall element tagged into a group is
+refused fatally, **and** a two-member group whose members each fit but whose sum does not is clipped
+and warned. Either half alone proves nothing about the discriminator, because either half alone is
+consistent with the old rule.
+
+**Home: Story 7.10** (D-7.7.12). By D-7.7.7's own reasoning it cannot ride Story 7.9 — 7.9's subject
+is the canvas telling the truth, and an element's fatality is a different subject — so it was routed
+back to the lead as a placement question and answered as a story of its own.
+
+**One correction the lead filed against its own ruling**, and it is the kind worth keeping visible.
+It had defended Story 7.7's third AC as "true as written" on the reading that the clause is *about a
+group being too tall*. It then withdrew that: read literally, *"Given a group taller than one window
+… never a fatal error"* **does** cover a single-member group whose member is individually over-tall,
+so the ruling makes the AC text stale. Its own words: *"That was me narrowing the AC to fit my
+ruling."* **Correcting the text is therefore part of the ruling, not follow-up** — 7.7's AC gains
+the qualifier *"taller than one window **in aggregate**"*, landing with Story 7.10, because a story
+paragraph left contradicting the ruling that answered it is how the next reader re-derives the
+collision.
+
+### D-7.7.10 — DW-48: `duplicateComponent` must NOT copy the group tag
+
+**Ruling.** A duplicated component joins **no** group. Drop the tag on copy. Rides in Story 7.9.
+
+**The ground is not "the designer should have a grouping UI".** The lead was explicit that
+file-only authoring is **in scope** — Epic 7 has no story making groups authorable, and FR51 says
+only that a group can be *declared*. What is **out** of scope is **creating state the author cannot
+reach or undo**. A duplicated signature block silently joining the original's group can force an
+unexpectedly large keep-together set, with no control anywhere in the product to explain it or
+remove it.
+
+The project refuses orphaned or unreachable document state consistently — Story 8.1's own AC refuses
+a chain delete that would orphan elements, *"never accepted with the orphaned elements left to fail
+at render"* — and this is that same principle applied at the copy path.
+
+**Guardrails:**
+
+- Record explicitly that **designer-side group authoring is out of Epic 7**, so the gap is a
+  **stated scope boundary** rather than an accident. If it is wanted it belongs with the inspector
+  work in Epic 12 or 14, and scheduling it is the owner's.
+- **The drop must be asserted, not incidental**: duplicate a tagged element, assert the copy carries
+  **no** tag and the original is **unchanged**.
+- If 7.9's plan gate calls the pair `multiple-goals`, **D-7.7.6 is the half that gates the epic**
+  and this one splits out. The split must not reverse.
+
+### D-7.7.11 — The mutation finding goes into the EPIC's boundary record, as evidence about the suite
+
+Story 7.7's builder mutated its own work and found that removing **all three**
+`contentColumnItems` substitutions left the **entire test suite green** — a wired page-count pass
+asserted by nothing, so `{{pages}}` could have printed the **ungrouped** total on every grouped
+document and no test anywhere would have noticed.
+
+The lead asked for this to be carried into Epic 7's boundary record as evidence **about the suite**,
+not as a story note, because it is the **second time this run** that a whole path turned out to be
+asserted by nothing. Recorded here for that purpose, with the standard it stated:
+
+> the person who writes the code must not be the only one who chooses the mutation, and deletion is
+> the cheapest screen.
+
+Deletion-mutation — remove the call entirely and see whether anything reddens — is cheaper than
+value-mutation and catches the failure class value-mutation cannot: a subject the tests never
+**reach**. It belongs at every gate from here, and the choice of what to delete belongs to someone
+other than the implementer.
+
+### D-7.7.12 — Story 7.10 is confirmed in Epic 7, under a criterion that bounds any further additions
+
+**Ruling.** **Story 7.10 — an over-tall element is refused whether or not it is grouped** — in
+Epic 7, carrying DW-47 and DW-50 with the single two-arm fixture D-7.7.9 mandates. Story 7.7
+created the collision, so Epic 7 owns it.
+
+I had flagged discomfort at a **second** story being added to an epic that was scoped closed, and
+rather than answering only this case the lead drew a line that answers every future one:
+
+> **Epic 7 may add a story that REPAIRS Epic 7. It may not add a story that EXTENDS Epic 7.**
+
+7.9 restores a guarantee 7.6 shipped and 7.7 broke. 7.10 corrects a disposition 7.7 introduced.
+Neither adds capability, neither covers a new FR, and both close on the epic's own regressions. **A
+proposed 7.11 that adds behaviour nobody shipped is a different epic's problem, and this orchestrator
+can refuse it on this line without asking again.**
+
+### D-7.7.13 — Story 7.10 does NOT gate `epic-7: done`, but it DOES gate the v0.1.0 tag
+
+**Ruling.** Write `epic-7: done` when Stories 7.8 and 7.9 land. Story 7.10 escapes the boundary
+gate — and acquires a **harder** deadline than the one it escaped.
+
+**Why the two defects gate differently, which is the distinction to keep:**
+
+- **DW-46 is a LIE.** `ContentWindowCountIsFloor` asserts exactness where the number is wrong, so
+  the product tells the author something false. That falsifies a shipped AC, and a gate that passes
+  over it is a formality.
+- **DW-47 is an INCONSISTENCY.** Both behaviours are self-consistent renders with correct
+  diagnostics — the tagged case clips and warns, and the warning is **true**. Nothing lies to
+  anyone. The harm is that a tag can launder a fatal error, which is real, but it is not "a
+  criterion of this epic is unmet". A documented matrix contradicting itself is a **specification**
+  defect; the ruling that resolves it is the repair, and it does not retroactively make the epic's
+  acceptance false.
+
+**The constraint that actually binds 7.10 is the TAG, not the epic boundary.** It changes **when a
+render fails**: documents that render today — clipped, with a true Warning — will fail **fatally**
+afterwards. Under AD-22 that is a breaking change for every downstream suite, and it is free **only
+while nothing is released**.
+
+> **Story 7.10 must land before `folio-go/v0.1.0` is cut.**
+
+That puts it in the same bucket as Story 7.8's load rejection, which the lead had already ruled must
+precede the tag for the identical reason: **narrowing what is accepted is free exactly once.** Under
+the sequencing the lead recommended to the owner — both epics before the tag — there is ample slack.
+If the owner instead tags early, 7.8 and 7.10 are **inside** that decision and go in front of it,
+rather than being discovered afterwards.
+
+### D-7.7.14 — DW-49 splits in two, and half of it is already overdue
+
+**Ruling.** Two edits, two homes, **neither held for the other**.
+
+- **(a) The half that describes HEAD lands with Story 7.9.** AD-14's carve-out is scoped to
+  over-tall **rows**, and that is **already false at HEAD** — Story 7.7 shipped clip-and-warn for
+  keep-together groups, which are not rows. This half is not waiting on 7.10 at all; it is a stale
+  spine sentence that has been stale since `ed485eb`. Widen the carve-out to cover rows **and
+  author-declared groups**, describing what the engine does today.
+- **(b) The half that states the discriminator rides Story 7.10** — that an individually over-tall
+  element is fatal regardless of tagging. That sentence describes behaviour **that does not exist
+  yet**, and a spine running ahead of the code is the same defect as one lagging it.
+
+**Why split rather than take either simple option.** Editing it all now would put a sentence in the
+spine that HEAD contradicts, on the promise that 7.10 will make it true — a doc correction resting
+on a deferral, which is a weak trigger holding a canonical document hostage. Waiting for 7.10 leaves
+the spine wrong about **shipped** behaviour for an unbounded interval, and this project has been
+bitten repeatedly by canonical documents that were confidently wrong. They compose cleanly — (b)
+adds a clause and does not undo (a) — so splitting costs no rework.
+
+**Half (a) is done inside Story 7.9's record, not as a bare orchestrator edit** — not for want of
+authority, but because D-000.6's amendments execute in a story so the doc change and its evidence
+sit together. An amendment recording what the epic already shipped is Epic 7's own bookkeeping, not
+a second subject, so it does not trip D-7.7.7's attribution concern.
+
+### Sequencing set by these rulings
+
+**7.8 → 7.9 → the Epic 7 boundary gate → 7.10, before the v0.1.0 tag.** 7.8 first because it is
+already specified and small — and, independently, because it is the load rejection that must precede
+the tag, so front-loading it removes the item most likely to be squeezed if the owner chooses to tag
+early. 7.9 last before the gate because the gate waits on it. `epic-7` stays `in-progress` until 7.9
+lands.
