@@ -92,3 +92,7 @@ _bmad/config.user.toml
 # Playwright output is disposable; Story 6.7 attaches a bounded JSON manifest
 # to its run rather than retaining PDFs or platform binaries in this tree.
 folio-designer/test-results/
+
+# Python bytecode from the BMAD skill scripts, regenerated on every run.
+__pycache__/
+*.py[cod]
