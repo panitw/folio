@@ -665,7 +665,7 @@ func collectBandTableRuns(
 			contentY := tableTop + padTop
 			contentH := tbl.HeaderHeight - padTop - padBottom
 
-			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, col.Label, fs, cache)
+			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, col.Label, fs, cache, breaksAreDrawn)
 			if serr != nil {
 				return nil, nil, nil, serr
 			}
@@ -865,7 +865,7 @@ func collectBandTableRuns(
 						continue
 					}
 
-					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache)
+					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache, breaksAreConsumed)
 					if serr != nil {
 						return nil, nil, nil, serr
 					}
@@ -1109,7 +1109,7 @@ func collectBandTableRuns(
 						continue
 					}
 
-					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache)
+					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache, breaksAreConsumed)
 					if serr != nil {
 						return nil, nil, nil, serr
 					}

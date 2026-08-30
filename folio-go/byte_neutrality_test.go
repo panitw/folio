@@ -320,6 +320,29 @@ var goldenDigestRecord = []struct {
 			{kind: "second-literal"},
 		},
 	},
+	{
+		// RECORDED by Story 7.1 (FR46). THE FIRST COMMITTED DOCUMENT IN
+		// THIS REPOSITORY WHOSE TEXT OR BOUND DATA CONTAINS A LINE FEED
+		// AT ALL. Measured at 7.1's baseline, `grep -l '\\n'
+		// fixtures/*/input.folio fixtures/*/*.json` returned NOTHING,
+		// so no recorded byte in the corpus could tell a build that
+		// honours a typed break from one that silently eats it — and
+		// AC6's "every existing golden hashes identically" guard is
+		// only falsifiable alongside a document that carries one.
+		//
+		// Its e3 is the D-7.1.1 element: one declared-unbreakable bound
+		// value holding BOTH a line feed and a space, so the fixture
+		// red-proves the exemption in both directions (the line feed
+		// must survive the declaration; the space must not). Its README
+		// quotes the digest.
+		dir:    "mandatory-break",
+		sha256: "7cf743deb8b9c6c300f31acd304b49de625def36a5b7d3e5e73d815336141f1d",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/mandatory-break/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/mandatory-break/README.md"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -674,6 +697,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: statement-50",           // Story 4.7 — legs RUN in-story (D-000.4 override, D-000.54)
 	"matrix-document: alternating-rows",       // Story 4.8 — native host leg RUN in-story (D-000.54); other targets deferred to Epic 4 boundary (D-000.4)
 	"matrix-document: component-asset-import", // Story 5.13 — AD-21 fixture pinning setComponentAsset's canonical output (digest-as-key, 76-col wrap, sorted keys, repoint); registered per engineering-lead ruling (2026-08-29) that Task 5's AD-21 obligation was owed in-story and guardrail 10 excluded only OTHER stories' fixtures; legs DEFERRED to the gate (D-5.13.5: this story's four-target matrix run declined)
+	"matrix-document: mandatory-break",        // Story 7.1 (FR46) — the first cross-target artifact carrying a line feed. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

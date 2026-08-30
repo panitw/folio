@@ -2,15 +2,29 @@
 title: 'Story 7.1: Break a line where the author typed a break'
 type: 'feature'
 created: '2026-08-30'
-status: 'ready-for-dev'
+status: 'done'
 baseline_commit: '98cadf7fde2dcc69c29f7e8ae01e131a054a71f3'
+baseline_revision: '57a4f8eb0a8ce1f24c3a8169172011a8939f73e4'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
 warnings: ['oversized'] # ~5800 tokens: the ruling set (D-7.1.1..D-7.1.5) is dense and must be stated, not summarised
-deferred: []
+deferred:
+  - summary: >-
+      A canvas text element whose value carries 256 or more typed breaks now makes the whole
+      canvas projection return a hard error, a failure mode that was unreachable before Story 7.1.
+    evidence: |-
+      page_setup.go's maxCanvasTextLines = 256 guard returns an error rather than degrading. Before
+      7.1 a canvas text element's line count was bounded by wrapping, and was exactly 1 when width
+      was unset, so the guard could not be reached from an element's own value. Typed breaks now
+      set the line count directly. Story 7.1's intent contract forbids designer/editor surface work
+      and forbids new diagnostic code, so clamping-and-warning is work this story cannot authorise;
+      recorded for whoever owns the canvas surface next.
+    location: >-
+      folio-go/page_setup.go:27,456
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -254,7 +268,103 @@ that ended it, for Story 7.3.
 
 ## Spec Change Log
 
+Two things the implementation had to settle that the task list did not name. Both are recorded here
+rather than absorbed silently, because each changes something outside this story's enumerated edits.
+
+**1. `TEXT_MISSING_GLYPH` no longer fires for U+000A, and it had to be MADE to stop.**
+The Delivery Log obligation states "`TEXT_MISSING_GLYPH` stops firing for a literal `\n` once the
+character is consumed". Measured, it did not: `shapeSegments` resolves every rune of the element's
+text BEFORE the packer ever sees an opportunity, so no face covered U+000A, and each of the new
+fixture's three elements returned a Warning saying the font chain was incomplete. That is a false
+statement about the fonts, and it made the spec-mandated registration in
+`TestCorpusFixturesProduceNoMissingGlyphWarnings` (which requires zero) unsatisfiable.
+
+The fix is one guard in `render.go`'s `shapeSegments`, keyed on a new `lineBreakHandling` parameter
+the CALLER supplies: where the caller hands the segments to `packLines` (`breaksAreConsumed` — the
+text element, both table-cell paths, the canvas projection), a U+000A emits no missing-glyph
+Diagnostic; where it does not (`breaksAreDrawn`), the Warning stands.
+
+**The parameter is not decoration.** The suppression's justifying premise is "the breaker consumes
+it", and that premise is FALSE on one production caller: `table_render.go:668` shapes a table COLUMN
+LABEL and hands the whole rune range straight to `positionSegments`, never packing it. A line feed in
+a label really is dropped — two words run together on one baseline — and the Warning is the only
+signal it has. A global suppression would have removed that signal on the one path where it is true.
+Caught in review; pinned by `TestLineFeedInAColumnLabelStillWarns`, which also pins that a label
+stays on ONE baseline, because the intent contract's caller enumeration is closed and a label is not
+a cell.
+
+Scoped to the diagnostic only — the SEGMENTATION is untouched on every caller, so the rune still
+claims its slot in the element-global rune index space, which is what keeps `internal/text`'s break
+positions meaningful. A lone `\r` is deliberately NOT included: it gains no meaning in this story,
+so nothing about it changes.
+
+**2. The missing-glyph corpus table's coupling to `baselineAcceptanceFixtures` was widened from
+EQUALITY to "superset, with the extras declared".**
+`TestCorpusFixturesProduceNoMissingGlyphWarnings` asserted its fixture table and
+`baselineAcceptanceFixtures` name the same set, and `baselineAcceptanceFixtures` is Story 2.5a's list
+of THE FIVE GOLDENS THAT STORY RE-RECORDED — its own
+`TestFirstBaselineSemanticAcceptanceAcrossEveryReRecordedGolden` asserts `len == 5`, and every entry
+carries hand-derived baseline arithmetic for that re-recording. Adding `mandatory-break` there would
+have been a false statement about what 2.5a did; not adding it made the spec-mandated registration
+impossible. The relation is now: every `baselineAcceptanceFixtures` entry must appear in the corpus
+table (unchanged — that is the direction the original Finding 11 was about), and every corpus entry
+that is not one of them must be DECLARED in a new one-line `beyondBaselineAcceptance` map naming the
+story that added it. A swap in either table still reddens, and so does an undeclared addition.
+
+**Not a change, but worth recording: `Block If` #4 was checked and cleared.** All four
+`table_render.go` rounding sites were confirmed by grep at their stated lines at baseline `98cadf7`:
+`:687` (header `align: center`), `:698` (header `valign: middle`), `:1017` (body `align: center`),
+`:1193` (footer `align: center`). The same grep also returns `render.go:482`/`:483`, which centre an
+IMAGE in its box — a different subject from DW-24's text alignment, recorded in DW-24 only so the
+next re-derivation is not surprised by them.
+
 ## Review Triage Log
+
+Adversarial review of the delivered diff: 0 intent_gap, 0 bad_spec, 13 patch findings. All 13
+applied; nothing inside `<intent-contract>` was edited, no existing golden hash moved, and
+`TestCorpusMeetsP6ExerciseFloors` was not touched.
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| P1 | HIGH | The U+000A missing-glyph suppression was global, but its premise is false on the table column-label path, which shapes without packing — the one place the rune really is dropped lost its only signal. | FIXED. `shapeSegments` now takes a `lineBreakHandling` parameter; the label site passes `breaksAreDrawn` and keeps warning. `TestLineFeedInAColumnLabelStillWarns` pins the Warning **and** that a label stays on one baseline (labels deliberately do not break — the contract's caller enumeration is closed). |
+| P2 | MED | `firstMandatoryFrom` rescanned `ops` from 0 per line, for every document including the ~100% of the corpus with no line feed. | FIXED. Replaced by a cursor carried across iterations, sound because `ops` is ascending and `start` is monotonic. `TestPackLinesTakesEveryTypedBreakAtEveryBoxWidth` is the new invariant that would catch a cursor that loses the *second* break — which every hand-written case would still pass. Byte-identical. |
+| P3 | MED | No test exercised the canvas projection, a caller the contract names, with a `\n`. | FIXED. `TestCanvasTextPaintHonoursATypedBreak`, deliberately on a NO-declared-box element (the canvas's own instance of the `maxWidth <= 0` hazard), with a space-instead-of-break negative control. |
+| P4 | MED | Only the body table-cell path had `\n` coverage; no trailing-`\n` row-height case. | FIXED, and one half **corrected**: a footer cell's text is *always* an aggregate rendered through `footerFormat`, whose pattern is a closed `#`/`0`/`,`/`.` grammar, so a line feed cannot reach it. `TestFooterCellTextCannotCarryATypedBreak` asserts that by construction and is the tripwire if the grammar is ever widened. `TestTrailingBreakInACellGrowsTheRowByOneAdvance` covers the trailing case — and asserts that both documents emit the same number of line RUNS, which is exactly why a run-counting test is blind to it. |
+| P5 | MED | `folio-format.md`'s Line breaking section still claimed a line may end after whitespace "and nowhere else", under a preamble promising "the **whole** rule". | FIXED. Split into *Inferred breaks* (the three script rules, unchanged) and a new *Mandatory breaks* section stating the separator model, the empty line's full Advance, CRLF folding, run consumption, and the `unbreakableValues` interaction. AD-25's rule and the `unbreakableValues` prose were left as already edited. |
+| P6 | LOW | The Design Notes decline a precedence guard in `add` on the grounds that the story "asserts the outcome"; no such assertion existed. | FIXED. `TestMandatoryBreakIsNeverDisplacedByAnotherRule` puts a line feed hard against Han, kana and Thai, with a precondition proving the other rules are live at those positions (measured on the same string with its feeds turned into spaces). No guard added. |
+| P7 | LOW | `beyondBaselineAcceptance`'s values were never read, so `{"foo": ""}` satisfied the documented convention. | FIXED — each value must be non-empty. |
+| P8 | LOW | `requireMandatoryBreakIsBroken` asserted a baseline TOTAL and a gap at hardcoded indices, and duplicated the advance literal. | FIXED. The baselines are declared once, per element, in `mandatoryBreakBaselinesMP`, and both the ordinary suite and every matrix leg run the same `mandatoryBreakAssertBaselines` — element identity plus each element's own interval. The fixture test now also compares e2's interval to e1's rather than to a literal, so a uniform advance change cannot satisfy it. |
+| P9 | LOW | DW-24's heading, closure sentence and Trigger block all contradicted the six-site body. | FIXED, entry left OPEN. Heading names six sites; the closure paragraph now says one document must reach every site the re-derived grep returns; the Trigger records that it already fired once (7.1 changed what feeds `textBlockHeight`) and the item was still declined on the criterion. Added *why* the pairs are uneven — verified in code: a body cell's valign is distributed in whole line slots (no remainder) and a footer cell has no vertical slack at all, so four `align` + two `valign` is the complete set. |
+| P10 | LOW | Comments said the four CI legs were "DEFERRED" while the workflow wires them under `if-no-files-found: error`. | FIXED. Both comments now state that CI produces and compares all four legs, and that this story additionally ran them. |
+| P11 | LOW | `multiRowTableDataWithBreak` panicked on a marshal error. | FIXED — takes `*testing.T`, calls `t.Fatalf`. |
+| P12 | LOW | The `maxWidth <= 0` test asserted only line count and text. | FIXED — same `from == to && width == 0` guard as the packing path, plus the `endedBy` kinds. |
+| P13 | LOW | No coverage of a typed break overflowing an element's HEIGHT. | FIXED, with a **correction**: there is no `TEXT_CLIPPED_HEIGHT` code — D-2.8.1 rules that a text element's declared height is not a clip bound. The reachable condition is Story 4.6's `TABLE_ROW_CLIPPED_HEIGHT`, which the contract's own I/O matrix names. `TestRowMadeTooTallByTypedBreaksIsTheExistingClipAndWarn` reaches it with typed breaks alone at an ordinary 8 pt, with a no-breaks negative control, and asserts no code outside the existing two is minted. |
+
+### 2026-08-30 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 13: (high 1, medium 4, low 8)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 9: (high 0, medium 0, low 9)
+- addressed_findings:
+  - `[high]` `[patch]` The U+000A `TEXT_MISSING_GLYPH` suppression was global to `shapeSegments`, but its justifying premise ("the breaker consumes it") is false on `table_render.go:668`, the one production caller that shapes a column label without ever packing it — a `\n` there was dropped with NO diagnostic where it previously warned. Fixed by threading a `lineBreakHandling` parameter; the label site and the digit table pass `breaksAreDrawn` and keep warning, the five packing sites pass `breaksAreConsumed`. `TestLineFeedInAColumnLabelStillWarns` pins both the Warning and that a label stays on one baseline.
+  - `[medium]` `[patch]` `firstMandatoryFrom` rescanned `ops` from index 0 once per line, making `packLines` O(lines x ops) for every document including the whole line-feed-free corpus. Replaced with a carried cursor; `TestPackLinesTakesEveryTypedBreakAtEveryBoxWidth` (24 input/box combinations) is the invariant that catches a cursor losing a later break.
+  - `[medium]` `[patch]` The canvas projection, a caller the contract names explicitly, had no `\n` test. Added `TestCanvasTextPaintHonoursATypedBreak` on a no-declared-box element with a space-instead-of-break control.
+  - `[medium]` `[patch]` Table-cell coverage was body-path only and used interior breaks only. Added `TestTrailingBreakInACellGrowsTheRowByOneAdvance` (+10,896 mp = exactly one Advance, and both documents emit the same run count, which is why run-counting tests are blind to it). The footer half was corrected on the facts: a footer cell's text is always an aggregate rendered through `footerFormat`'s closed `#`/`0`/`,`/`.` grammar, so a line feed cannot reach it; `TestFooterCellTextCannotCarryATypedBreak` pins that unreachability as a tripwire.
+  - `[medium]` `[patch]` `folio-format.md`'s primary Line breaking section still stated the Latin rule as "a line may end after a run of whitespace, and nowhere else" under a preamble promising "the whole rule" — false from FR46 on. Split into Inferred breaks (unchanged) and a new Mandatory breaks section. AD-25's rule text untouched.
+  - `[low]` `[patch]` The Design Notes decline a precedence guard in `add` because the story "asserts the outcome"; no such assertion existed. Added `TestMandatoryBreakIsNeverDisplacedByAnotherRule` (line feed against Han, kana and Thai, with a precondition proving the other rules are live there). No guard added.
+  - `[low]` `[patch]` `beyondBaselineAcceptance`'s values were never read, so the documented convention was unenforced. Each value must now be non-empty.
+  - `[low]` `[patch]` `requireMandatoryBreakIsBroken` asserted a baseline total and a gap at hardcoded indices without establishing element identity, and duplicated the advance literal. Baselines now declared once per element in `mandatoryBreakBaselinesMP`, shared by the ordinary suite and every matrix leg.
+  - `[low]` `[patch]` DW-24's heading, closure sentence and Trigger block all contradicted the six-site body it gained. All three reconciled, the uneven align/valign pairs explained from verified code, entry left OPEN.
+  - `[low]` `[patch]` Comments claimed the new fixture's four CI legs were "DEFERRED" while `.github/workflows/matrix.yml` wires them under `if-no-files-found: error`. Corrected to state CI runs all four and that this story ran them too.
+  - `[low]` `[patch]` `multiRowTableDataWithBreak` panicked on a marshal error instead of taking `*testing.T`.
+  - `[low]` `[patch]` `packMandatoryOnly`'s line widths were never asserted; it now carries the same `from == to && width == 0` guard as the packing path.
+  - `[low]` `[patch]` No coverage of a typed break overflowing a declared height. Corrected on the facts — there is no `TEXT_CLIPPED_HEIGHT` (D-2.8.1: a text element's declared height is not a clip bound); the reachable condition is Story 4.6's `TABLE_ROW_CLIPPED_HEIGHT`, which the I/O matrix names. `TestRowMadeTooTallByTypedBreaksIsTheExistingClipAndWarn` reaches it with typed breaks alone, with a negative control, minting no new code.
+
+**Deferred (1).** The canvas projection's `maxCanvasTextLines = 256` guard is newly reachable from an element's own value; recorded in frontmatter `deferred`, not fixed, because the contract forbids designer-surface work and new diagnostic code.
+
+**Rejected (9), each on the authority of the intent contract.** Making U+2028/U+2029/U+000B/U+000C/U+0085 mandatory (the contract scopes to the line feed, with `\r\n` folded and a lone `\r` unchanged); adding a precedence guard to `add` (the Never clause forbids defensive code for a collision that cannot occur — the outcome is asserted instead, see the patch above); changing whitespace-run consumption so a NBSP adjacent to a break survives (D-7.1.6 fixes whole-run consumption and forbids a new consumption model); a no-progress guard in `packLines` (a mandatory opportunity's `NextStart` is strictly greater than its `LineEnd` by construction, so the loop cannot spin); the `if` -> `case` conversion of the `i > 0 && j < n` guard (the expression and its governance are preserved; only the statement form changed); rewording the doc scope clause away from "control characters" (that phrasing is what the task list dictated); clamping the canvas 256-line guard instead of erroring (deferred above rather than redesigned here); the `internal/text` package binary reporting FAIL and thereby masking package-level signal (that is the mandated permanent P6g red); and the observation that the designer's single-line input still cannot type a break (the Never clause excludes designer/editor surface work).
 
 ## Design Notes
 
@@ -327,3 +437,45 @@ Dispatch 1's three intent-gap forks arrived pre-ruled (D-7.1.1 … D-7.1.5) and 
 without re-opening. No code was written and no commit was made. No verification command was run:
 `Halt after planning.` stops the workflow before step-03, so `## Verification` is a plan, not a
 measurement.
+
+
+---
+
+### Dispatch 3 — implement, review, commit (2026-08-30)
+
+Baseline `57a4f8eb0a8ce1f24c3a8169172011a8939f73e4`. Terminal status: **done**.
+
+**Implemented change.** A break opportunity now carries a named `text.BreakKind`. A whitespace run
+holding at least one line feed emits one **mandatory** opportunity per line feed *instead of* the
+single optional one, partitioned so k breaks yield k+1 lines; `\r\n` folds by counting only U+000A,
+and a lone `\r` is untouched. The atomic-span filter exempts mandatory opportunities **by kind, at
+the filter site** — `spansCover` and `atomicSpansFor` are unchanged. The collection loop was widened
+from 1 to 0 so a leading break is reachable. `packLines` honours mandatory breaks at all three hazard
+sites, and `wrappedLine` records the kind of break that ended it for Story 7.3 / FR47.
+
+**Files changed.**
+- `folio-go/internal/text/opportunity.go` — `BreakKind`, `Opportunity.Kind`, the mandatory partition, the kind-keyed exemption, collection from index 0.
+- `folio-go/wrap.go` — `wrappedLine.endedBy`, `packMandatoryOnly`, the three hazard sites, cursor-based `firstMandatoryFrom`.
+- `folio-go/render.go` — `shapeSegments` gains a `lineBreakHandling` parameter; U+000A emits no missing-glyph Diagnostic only where the caller actually consumes it.
+- `folio-go/table_render.go`, `page_setup.go`, `page_number.go` — pass the new parameter; no packer changes (they already share it, which is D-7.1.3's point).
+- `fixtures/mandatory-break/` + `mandatory_break_template.go` + `mandatory_break_fixture_test.go` — the new golden; registered in `goldenDigestRecord`, `matrixDocuments`, `declaredEpic2GateObligations`, the missing-glyph corpus, and `.github/workflows/matrix.yml`.
+- `missing_glyph_corpus_test.go` — corpus/`baselineAcceptanceFixtures` relation widened from equality to superset-with-declared-extras.
+- Tests in `opportunity_test.go`, `wrap_test.go`, `table_render_test.go`, `table_pagination_test.go`, `render_test.go`, `canvas_text_paint_test.go`, `matrix_test.go`, `byte_neutrality_test.go`.
+- Docs: `ARCHITECTURE-SPINE.md` (AD-25 third override), `folio-format.md` (scope clause + new Mandatory breaks section), `deferred-work.md` (DW-24 amended, left OPEN).
+
+**Review findings.** 13 patches applied (1 high, 4 medium, 8 low), 1 deferred, 9 rejected, 0 intent_gap, 0 bad_spec. Follow-up review recommended: **true** (a high-severity patched finding).
+
+**Verification measured after the patches.**
+- `cd folio-go && go test -count=1 ./...` — 13 packages ok; **exactly one** failure, `TestCorpusMeetsP6ExerciseFloors/P6g` (got 7, need >=20), the mandated permanent red. Untouched.
+- `go vet -tags=matrix ./...` — clean. `gofmt -l .` — empty.
+- `TestTargetRenderHash` ran on **all four legs** with `FOLIO_MATRIX_TARGET` set each time (`darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm`) — PASS on each, no "asserts NOTHING". All 17 documents byte-identical across the four.
+- Golden digests unchanged: `statement-1` 76,744 `114df1d6…`; `-5` 127,363 `70dce051…`; `-20` 269,884 `56bfbbd9…`; `-50` 555,829 `5d090b0f…`. New `mandatory-break` 56,681 `7cf743de…`, identical on all four targets.
+- `go test -tags=matrix -run TestCrossTargetByteIdentity .` — ok.
+- `cd lint && go test -count=1 ./...` — 4 packages ok.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck ok; 4 pre-existing `only-export-components` warnings; 30 files / 213 tests pass.
+
+**Residual risks.**
+- The canvas `maxCanvasTextLines` guard is newly reachable from an element's own value (see frontmatter `deferred`).
+- `TestShippedFacesReproduceFromUpstream` was not exercised: the full `-tags=matrix` suite was not run, only the two named matrix tests. It is known-environmental here (no `fontTools`).
+- `mandatory-break` is the first document under `TestCorpusFixturesProduceNoMissingGlyphWarnings` to pass for a reason unrelated to glyph coverage; that green must not be read as coverage.
+- Story 7.3 (FR47) depends on `wrappedLine.endedBy` landed here.

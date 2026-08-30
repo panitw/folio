@@ -428,7 +428,7 @@ type pendingPageSlot struct {
 // would already fail loudly (a different message) if coverage ever
 // broke for a digit.
 func digitTableRun(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (textRunSource, error) {
-	segs, _, err := shapeSegments("", chain, "0123456789", fs, cache)
+	segs, _, err := shapeSegments("", chain, "0123456789", fs, cache, breaksAreDrawn)
 	if err != nil {
 		return textRunSource{}, err
 	}

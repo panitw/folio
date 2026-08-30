@@ -481,7 +481,11 @@ that did not exist while omitting thirteen that did.
     indivisible. This is mechanical and needs no dictionary.
   - **A declared value is never split.** A document may declare, in its `unbreakableValues` list,
     which data paths hold values that must stay on one line; no break opportunity survives inside
-    a substituted value from a listed path. The engine **never infers** membership. It cannot:
+    a substituted value from a listed path. *This binds the break opportunities the engine
+    **infers** — from whitespace, a script, or the dictionary — not literal control characters
+    present in the input: a line feed the caller supplied is a break the engine was **told** about,
+    not one it proposed, so it survives (FR46, D-7.1.1).* The engine **never infers** membership.
+    It cannot:
     Thailand's Surname Act has every family coin a unique surname out of ordinary dictionary
     words, so a surname and the common words it was built from are character-for-character
     identical and no dictionary-coverage rule can separate them. The declaration reaches the

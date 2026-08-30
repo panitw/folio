@@ -1005,3 +1005,108 @@ func TestTableBesideSameYElementRenders(t *testing.T) {
 		t.Fatalf("Render: %v — a table beside an ordinary element merely sharing its y must render; this is Finding 1's regression", err)
 	}
 }
+
+// TestRowMadeTooTallByTypedBreaksIsTheExistingClipAndWarn is Story
+// 7.1's I/O-matrix row "Over-tall row -> existing
+// TABLE_ROW_CLIPPED_HEIGHT Warning", and it closes the one thing the
+// story's other height tests assert only by absence.
+//
+// Line feeds are a NEW ROUTE to an old condition: before FR46 a row
+// could only outgrow the content window through a large font size or a
+// long value, and now a cell carrying enough typed breaks does it at an
+// ordinary size. The behaviour must be Story 4.6's existing
+// Pagination.Clipped path, UNCHANGED — the same code, the same Warning
+// beside the bytes, never fatal, and NO NEW DIAGNOSTIC CODE minted for
+// the new cause.
+//
+// It is deliberately the same document shape as tooTallRowDoc's, with
+// the font size back at a readable 8 pt so that the breaks, and nothing
+// else, are what make the row too tall.
+func TestRowMadeTooTallByTypedBreaksIsTheExistingClipAndWarn(t *testing.T) {
+	const doc = `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 10,
+        "style": {"fontFamily": "latin", "fontSize": 8},
+        "columns": [{"id": "e2", "label": "A", "width": 80, "bind": "{{row.a}}"}]}
+    ]},
+    "pageFooter": {"elements": [], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {"latin": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": {"width": 200, "height": 150}},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	// 20 typed breaks -> 21 lines in one cell, at an ordinary 8 pt.
+	tall := strings.Repeat("R0W-x\n", 20) + "R0W-x"
+	dataJSON, merr := json.Marshal(map[string]any{"items": []tableRowJSON{{A: tall, B: "R0W-b"}}})
+	if merr != nil {
+		t.Fatalf("marshal: %v", merr)
+	}
+
+	tpl, err := ParseTemplate([]byte(doc))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+
+	// NEGATIVE CONTROL FIRST: the same value with its breaks replaced by
+	// spaces fits, and warns about nothing. Without it, "the row is too
+	// tall" could not be told from a document that was too tall anyway.
+	flat, ferr := json.Marshal(map[string]any{"items": []tableRowJSON{{A: strings.ReplaceAll(tall, "\n", " "), B: "R0W-b"}}})
+	if ferr != nil {
+		t.Fatalf("marshal: %v", ferr)
+	}
+	controlRes, cerr := Render(tpl, Data(string(flat)), nil, testShippedFontSet())
+	if cerr != nil {
+		t.Fatalf("control render: %v", cerr)
+	}
+	for _, d := range controlRes.Diagnostics {
+		if d.Code == DiagCodeTableRowClippedHeight {
+			t.Fatalf("presence precondition: the control document (no typed breaks) is ALREADY clipped for height (%+v) — the subject below would prove nothing", d)
+		}
+	}
+
+	// THE SUBJECT.
+	res, rerr := Render(tpl, Data(string(dataJSON)), nil, testShippedFontSet())
+	if rerr != nil {
+		t.Fatalf("Render returned %T: %v — an over-tall row is clipped and reported, never fatal (AD-14)", rerr, rerr)
+	}
+	if len(res.Bytes) == 0 {
+		t.Fatal("Render returned a nil error and zero bytes")
+	}
+
+	var clipped []Diagnostic
+	for _, d := range res.Diagnostics {
+		if d.Code == DiagCodeTableRowClippedHeight {
+			clipped = append(clipped, d)
+		}
+	}
+	if len(clipped) != 1 {
+		t.Fatalf("a row made too tall by TYPED BREAKS produced %d %s diagnostic(s), want exactly 1. All: %+v", len(clipped), DiagCodeTableRowClippedHeight, res.Diagnostics)
+	}
+	if clipped[0].Severity != SeverityWarning {
+		t.Errorf("Severity = %q, want a Warning — an over-tall row is never fatal", clipped[0].Severity)
+	}
+	if clipped[0].ElementID != "e1" {
+		t.Errorf("ElementID = %q, want %q", clipped[0].ElementID, "e1")
+	}
+	if !strings.Contains(clipped[0].Message, "row 0 of the bound collection") {
+		t.Errorf("the message does not name the row: %s", clipped[0].Message)
+	}
+
+	// NO NEW CODE WAS MINTED FOR THE NEW CAUSE. The only diagnostics
+	// this document may produce are the ones that already existed.
+	for _, d := range res.Diagnostics {
+		switch d.Code {
+		case DiagCodeTableRowClippedHeight, DiagCodeTextClippedWidth:
+		default:
+			t.Errorf("unexpected diagnostic %+v — a line feed is a new ROUTE to Story 4.6's existing condition, not a new condition", d)
+		}
+	}
+	t.Logf("Story 4.6's path, reached by typed breaks alone at 8 pt: %s", clipped[0].Message)
+}

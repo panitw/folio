@@ -180,17 +180,38 @@ all → **Fatal** on the vacuity path; moving the single declaration → **both*
 
 ## Open
 
-### DW-24 — `text_alignment.go`'s two ROUNDED branches — `align: "center"` and `valign: "middle"` — are declared by no fixture, so the only rounding site in the file has zero golden coverage
+### DW-24 — the SIX rounded alignment branches — `align: "center"` and `valign: "middle"`, in `text_alignment.go` and in all three table-cell paths — are declared by no fixture, so every rounding site in the feature has zero golden coverage
 
-**Owner:** **Story 7.1** — it is Epic 7's vertical-model story and it already carries a "the whole
-existing fixture corpus re-renders with every hash unchanged" criterion, which is exactly the guard
-this gap makes unfalsifiable. If 7.1 does not take it, **Epic 7 close**. Story 7.3 is the natural
-second home: it extends the closed align set with `justify` and will need a centred document anyway.
+**Owner:** **Story 7.3**, *and* the **orchestrator's own gate checklist** as a second standing
+address. Two addresses, on DW-21's precedent, because one of them is a person's checklist that
+outlives any single story.
 
-**Trigger (any one fires it, and the first is expected within this run):** any story that touches the
-vertical model — `verticalMetrics`, `FirstBaseline`, `Advance`, `textBlockHeight`, or
-`textValignOffset` (7.1, 7.2 and 7.7 all do) — any change to `folio-go/text_alignment.go`, and any
-change to `geom.ScaleRound` or its rounding rule.
+Story 7.1 **inspected this item and declined it, on the criterion rather than on the budget**
+(D-7.1.4). DW-24's stated hazard is the unexercised **rounding** branch, and 7.1 touches neither the
+rounding nor the population that reaches it: no corpus document declares `center` or `valign`, and
+7.1 adds none. It leaves the gap exactly as it found it, so closing it there would discharge nothing
+7.1 endangered. 7.1 did amend this entry's scope — see the enumeration below — because a deferral
+whose scope is known wrong is worse than one merely open.
+
+Story 7.3 is a real forcing function rather than a second guess: it extends the closed align set with
+`justify`, must author an aligned fixture anyway, and its slack-remainder rule is itself new integer
+rounding in the same neighbourhood.
+
+**NOT "Epic 7 close", and that is deliberate** (D-7.1.4, D-000.73). DW-14's owner was "the Epic 2
+boundary gate", which ran and closed without re-owning it; the item then survived a whole epic with
+nobody holding it. An owner that is an *event* stops existing the moment the event passes.
+
+**Trigger (any one fires it):** any story that touches the vertical model — `verticalMetrics`,
+`FirstBaseline`, `Advance`, `textBlockHeight`, or `textValignOffset` (7.2 and 7.7 both do) — any
+change to `folio-go/text_alignment.go` or to the table-cell alignment switches in
+`folio-go/table_render.go`, and any change to `geom.ScaleRound` or its rounding rule.
+
+**The trigger has already fired once, and the item was still declined.** Story 7.1 changed what
+FEEDS `textBlockHeight` — an empty line now contributes a full `Advance` — without touching the
+rounding or the population that reaches it. See the Owner note above: the criterion is the
+unexercised rounding branch, and a story that leaves that gap exactly as it found it discharges
+nothing by closing it. A future trigger fires the same way: it obliges the owner to *look*, not to
+close.
 
 **Raised at:** Story 15.1, from the population census that closed its attribution (D-15.1.1, D-R7.5),
 and **widened in that story's own review** from a `valign`-only item to this one.
@@ -202,12 +223,45 @@ all.** So of `text_alignment.go`'s six branches, the corpus exercises two — `l
 
 **Why those two specific absences matter more than the others, and it is not symmetry.** `center` and
 `middle` are the **only** branches that round: both return `geom.ScaleRound(slack, 1, 2)`
-(`folio-go/text_alignment.go:56` and `:74`), and that is the only rounding in the file. `right`
+(`folio-go/text_alignment.go:56` and `:74`), and that is the only rounding in that file. `right`
 returns `slack` unchanged and `left`/`top` return zero — neither can express a rounding defect. So the
 one construct in this feature where a cross-target byte divergence could plausibly appear — a
 half-to-even tie broken differently on a different target, which is what AD-2/AD-3 exist to prevent
 and what the four-target matrix exists to catch — is declared by **no document the matrix renders**.
 An exact-half slack in millipoints is not exotic; it is what a symmetric box gives you.
+
+**The enumeration is SIX sites, not two — amended by Story 7.1 (D-7.1.4).** This entry shipped naming
+only `text_alignment.go`'s pair, which is the rounding a centred *text element* reaches. A table's
+own cells round in the same way, in different code, and a centred text element does not cover them:
+
+| site | branch |
+|---|---|
+| `folio-go/text_alignment.go:56` | text element, `align: "center"` |
+| `folio-go/text_alignment.go:74` | text element, `valign: "middle"` |
+| `folio-go/table_render.go:687` | table **header** cell, `align: "center"` |
+| `folio-go/table_render.go:698` | table **header** cell, `valign: "middle"` |
+| `folio-go/table_render.go:1017` | table **body** cell, `align: "center"` |
+| `folio-go/table_render.go:1193` | table **footer** cell, `align: "center"` |
+
+All six were confirmed by grep at those exact lines at Story 7.1's baseline (`98cadf7`).
+
+**The pairs are deliberately uneven, and that is a fact about the code rather than a gap in this
+list.** A text element and a table HEADER cell each round on both axes; a table BODY cell rounds only
+horizontally, because a body cell's vertical slack is distributed in whole line SLOTS rather than in
+millipoints (a row's height is already an exact multiple of `vm.Advance`), so there is no remainder
+to round; and a FOOTER cell has no vertical slack of its own at all. So four `align` sites and two
+`valign` sites is the complete set, not four of an expected six pairs.
+
+The same grep also surfaces `folio-go/render.go:482`/`:483`, which centre an *image* inside its box —
+a different subject from this entry's text alignment, recorded here only so the next re-derivation is
+not surprised by them.
+
+**AT CLOSURE THE ENUMERATION MUST BE RE-DERIVED BY GREP AND RECORDED — NEVER READ OFF THIS
+HAND-LIST.** The list above is being amended today precisely because it had already rotted once: the
+closing fixture would have satisfied this entry's literal text while missing four of the six sites,
+and the entry would then have been marked closed. Run
+`grep -rn 'ScaleRound(.*1, 2)' folio-go --include='*.go' | grep -v _test`, record what it returns in
+the closing note, and close against **that**, not against this table.
 
 **Measured, in both directions, so this is a number rather than a worry.** Story 15.1 ran the
 zero-it-out experiment on the wiring. Multiplying `textAlignOffset` by zero in `render.go` turned all
@@ -233,8 +287,11 @@ uncovered branches: a text element with `style.align: "center"` and a second wit
 a declared `width`/`height` leaving slack, and **at least one of them with an ODD slack in
 millipoints** so the half-to-even tie is actually taken rather than avoided. Recorded as a golden,
 registered in `folio-go/byte_neutrality_test.go`'s `goldenDigestRecord`, and — because the rounding
-is the point — added to `matrixDocuments` so all four targets render it. It does not need a table, a
-second face, or fifty pages; it needs slack, a declared box, and a tie.
+is the point — added to `matrixDocuments` so all four targets render it. It needs no second face and
+no fifty pages; what it needs is slack, a declared box, a half-slack tie, and **one document reaching
+every site the re-derived enumeration returns** — which means a centred text element AND a table with
+a centred column (header, body and footer cells round in `table_render.go`, in different code from
+`text_alignment.go`, and a centred text element does not cover them).
 
 It should **not** be bolted onto a statement fixture: those four carry a human sign-off whose
 re-attestation costs a person reading four documents (D-4.7.1), and widening them makes every future
@@ -253,9 +310,12 @@ halves and **both** must be run — running only the first is what let this item
 
 1. Multiply `textValignOffset` by zero in `render.go` and run the whole golden suite.
 2. Change the `center` branch's `geom.ScaleRound(slack, 1, 2)` to `slack/2` (or to `slack`
-   outright) and run the whole golden suite.
+   outright) and run the whole golden suite. Do this at **every** site the re-derived enumeration
+   returns, not only at `text_alignment.go`'s pair.
 
 While this item is open, the suite stays green under both. When it is closed, **both** must go red.
+
+**This item is OPEN.** Story 7.1 amended its scope and re-addressed it; it closed nothing.
 
 ---
 

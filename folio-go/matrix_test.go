@@ -578,6 +578,15 @@ func captureHiddenImageRender(t *testing.T, target matrixTarget, binPath string)
 	return runOnTarget(t, target, binPath, map[string]string{subprocessHiddenImageEnvVar: "1"})
 }
 
+// captureMandatoryBreakRender runs Story 7.1's selector, rendering
+// fixtures/mandatory-break/ in a FRESH process — the same reason
+// multi-page and page-count-20 needed one: a golden recorded from one
+// process pins whatever that process happened to do.
+func captureMandatoryBreakRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessMandatoryBreakEnvVar: "1"})
+}
+
 func captureAlternatingRowsRender(t *testing.T, target matrixTarget, binPath string) []byte {
 	t.Helper()
 	return runOnTarget(t, target, binPath, map[string]string{subprocessAlternatingRowsEnvVar: "1"})
@@ -1051,6 +1060,51 @@ func requireWrappedTextIsWrapped(t *testing.T, target matrixTarget, raw []byte) 
 	}
 }
 
+// requireMandatoryBreakIsBroken is Story 7.1's OWN feature guard for
+// the mandatory-break document, and it is the reason registering the
+// legs is not a formality.
+//
+// "Contains a FontFile2" is satisfied by any embedding at all, and every
+// element of this document FITS its declared box (deliberately — see
+// mandatory_break_template.go), so a target that declined every typed
+// break would emit ONE baseline per element and three legs of that
+// would agree with each other byte for byte. This guard asserts, on
+// EVERY leg before any byte comparison, that the captured stream
+// actually carries the six drawn baselines the fixture's three elements
+// produce only when their breaks are taken — and that e2's paragraph
+// gap is present as a TWO-advance interval, which is the only
+// artifact-level evidence of a line nobody drew.
+func requireMandatoryBreakIsBroken(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+
+	runs := readEmittedRuns(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the mandatory-break leg emitted no text runs", target.name)
+	}
+	ys := linesByOrigin(runs)
+
+	// VACUITY GUARD FIRST, in this document's own terms: every element
+	// of it FITS its declared box, so a target that declined every typed
+	// break emits ONE baseline per element — and three such legs would
+	// agree with each other byte for byte and certify nothing.
+	if len(ys) <= len(mandatoryBreakBaselinesMP) {
+		t.Fatalf(
+			"%s: the mandatory-break leg occupies only %d baselines %v for %d text elements — no typed "+
+				"break was taken on this target",
+			target.name, len(ys), ys, len(mandatoryBreakBaselinesMP),
+		)
+	}
+
+	// Then the SAME per-element check the ordinary suite runs, from the
+	// same declaration — element identity and each element's own
+	// inter-baseline interval, not a total that a per-element regression
+	// could preserve. Fatal here: a matrix leg comparing bytes it has
+	// not first established are the right bytes is worse than no leg.
+	mandatoryBreakAssertBaselines(ys, func(format string, args ...any) {
+		t.Fatalf("%s: mandatory-break leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // requireShapedTextIsShaped is Story 2.3's OWN feature guard for the
 // shaped-text document, and it is the reason registering the legs is not
 // a formality.
@@ -1473,6 +1527,42 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:      []string{"fixtures", "component-asset-import", "expected.json"},
 		requireImageXObject: true,
 		wantPages:           1,
+	},
+	{
+		// Story 7.1's golden (FR46). THE FIRST REGISTERED DOCUMENT
+		// WHOSE TEXT OR BOUND DATA CONTAINS A LINE FEED: measured at
+		// 7.1's baseline no committed fixture did, so cross-target
+		// identity had never once been asserted over a document whose
+		// line count depends on a break the author typed.
+		//
+		// ITS FOUR LEGS ARE WIRED AND REQUIRED IN CI, AND WERE RUN
+		// IN-STORY. Registering a document here is not a promissory
+		// note: .github/workflows/matrix.yml carries the slug in its
+		// `docs="…"` comparison list and an upload-artifact path for
+		// every target under `if-no-files-found: error`, so each
+		// render-<target> job produces this document's hash and the
+		// compare job fails if any is missing or disagrees
+		// (TestMatrixDocumentSlugsAreRegisteredInCI pins that both
+		// lists agree). Story 7.1 additionally executed all four legs
+		// locally — TestTargetRenderHash once per FOLIO_MATRIX_TARGET
+		// plus the all-four-in-one-process TestCrossTargetByteIdentity;
+		// see the story's Verification section for the measured
+		// digests.
+		//
+		// D-000.4's cadence override was not NEEDED for that: honouring
+		// a mandatory break is integer index arithmetic over the
+		// existing opportunity list — it calls no shaper it did not
+		// already call, adds no dependency, and go list -m all stays at
+		// exactly two modules. The legs were run anyway because this
+		// story's own D-R7.1 makes 7.1's correctness byte-identity-
+		// shaped.
+		label:            "mandatory-break (a line break the author typed)",
+		slug:             "mandatory-break",
+		capture:          captureMandatoryBreakRender,
+		fixtureRelPath:   []string{"fixtures", "mandatory-break", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireMandatoryBreakIsBroken,
+		wantPages:        1,
 	},
 }
 

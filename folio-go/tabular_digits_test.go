@@ -95,7 +95,7 @@ func TestShippedFacesHaveUniformDigitAdvances(t *testing.T) {
 // a false credit).
 func TestUniformDigitAdvanceGuardRedProof(t *testing.T) {
 	cache := newFontCache()
-	segs, _, serr := shapeSegments("", []string{"Noto Sans"}, "0123456789", testShippedFontSet(), cache)
+	segs, _, serr := shapeSegments("", []string{"Noto Sans"}, "0123456789", testShippedFontSet(), cache, breaksAreDrawn)
 	if serr != nil {
 		t.Fatalf("shapeSegments(\"0123456789\"): %v", serr)
 	}

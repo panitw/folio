@@ -1,0 +1,21 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "Yours\nsincerely", "style": {"fontFamily": "body", "fontSize": 11}},
+        {"id": "e2", "type": "text", "x": 0, "y": 60, "width": 200, "height": 60, "value": "Clause 1.\n\nClause 2.", "style": {"fontFamily": "body", "fontSize": 11}},
+        {"id": "e3", "type": "text", "x": 0, "y": 140, "width": 40, "height": 40, "value": "{{customer.note}}", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "unbreakableValues": ["customer.note"],
+  "utcOffset": "+07:00",
+  "version": "1.0"
+}

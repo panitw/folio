@@ -1,6 +1,7 @@
 package folio
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/bind"
@@ -15,7 +16,7 @@ func shippedChain() []string { return []string{"Noto Sans", "Noto Sans Thai", "N
 
 func segmentsFor(t *testing.T, s string) []faceSegment {
 	t.Helper()
-	segs, _, err := shapeSegments("e-test", shippedChain(), s, testShippedFontSet(), newFontCache())
+	segs, _, err := shapeSegments("e-test", shippedChain(), s, testShippedFontSet(), newFontCache(), breaksAreConsumed)
 	if err != nil {
 		t.Fatalf("shapeSegments(%q): %v", s, err)
 	}
@@ -798,4 +799,474 @@ func TestLineAdvanceRefusesAnUnsatisfiableChain(t *testing.T) {
 	if err == nil {
 		t.Fatal("a chain with no face present in the FontSet must be an error, not a default line height")
 	}
+}
+
+// mandatoryBreakLines is a readability helper for the tests below: pack
+// s against box and report the lines as strings, so a case can state its
+// expectation as the text a reader sees rather than as rune indices.
+func mandatoryBreakLines(t *testing.T, s string, box geom.Length) ([]wrappedLine, []string) {
+	t.Helper()
+	segs := segmentsFor(t, s)
+	runes := []rune(s)
+	lines := packLines(segs, text.Opportunities(text.Dictionary(), s, nil), len(runes), geom.Length(11000), box)
+	out := make([]string, 0, len(lines))
+	for _, ln := range lines {
+		out = append(out, string(runes[ln.from:ln.to]))
+	}
+	return lines, out
+}
+
+// TestPackLinesTakesAMandatoryBreakRegardlessOfRemainingWidth is AC1,
+// aimed squarely at the site where AC1 is won or lost (D-7.1.7, finding
+// 2): packLines' "does everything that is left fit?" short-circuit
+// bypasses the opportunity list entirely, so a subject WIDER than its
+// box would never reach it and would pass green against a packer that
+// ignores mandatory breaks completely.
+//
+// The precondition is therefore the point: the whole value must FIT.
+func TestPackLinesTakesAMandatoryBreakRegardlessOfRemainingWidth(t *testing.T) {
+	const fontSize = geom.Length(11000)
+	const subject = "Yours\nsincerely"
+	const box = geom.Length(200000)
+
+	segs := segmentsFor(t, subject)
+	n := len([]rune(subject))
+	full := measureRuneRange(segs, 0, n, fontSize)
+	if full > box {
+		t.Fatalf("precondition: %q measures %d against a %d box — it does NOT fit, so this test exercises the packing loop rather than the short-circuit it is aimed at", subject, full, box)
+	}
+
+	lines, texts := mandatoryBreakLines(t, subject, box)
+	if len(lines) != 2 {
+		t.Fatalf("%q measures %d against a %d box and still carries a typed break: got %d line(s) %q, want 2 — the break must be taken regardless of how much width remained (FR46/AC1)", subject, full, box, len(lines), texts)
+	}
+	if texts[0] != "Yours" || texts[1] != "sincerely" {
+		t.Errorf("%q packed as %q, want [Yours sincerely]", subject, texts)
+	}
+}
+
+// TestPackLinesTreatsMandatoryBreaksAsSeparators is D-7.1.2's separator
+// model over the whole edge-case matrix: k breaks yield k+1 lines, and
+// the empty ones at the head, the tail and in between are real lines
+// rather than characters quietly thrown away.
+//
+// Every case's box is wide enough for the whole value, so every case
+// also re-exercises the short-circuit above.
+func TestPackLinesTreatsMandatoryBreaksAsSeparators(t *testing.T) {
+	const box = geom.Length(200000)
+	cases := []struct {
+		name string
+		text string
+		want []string
+	}{
+		{"paragraph gap", "Clause 1.\n\nClause 2.", []string{"Clause 1.", "", "Clause 2."}},
+		{"trailing break", "Clause 1.\n", []string{"Clause 1.", ""}},
+		{"leading break", "\nClause 1.", []string{"", "Clause 1."}},
+		{"break only", "\n", []string{"", ""}},
+		{"CRLF is one break", "one\r\ntwo", []string{"one", "two"}},
+		{"space adjacent to the break is consumed with it", "one \n two", []string{"one", "two"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lines, texts := mandatoryBreakLines(t, tc.text, box)
+			if len(lines) != len(tc.want) {
+				t.Fatalf("%q packed into %d line(s) %q, want %d %q", tc.text, len(lines), texts, len(tc.want), tc.want)
+			}
+			for i := range tc.want {
+				if texts[i] != tc.want[i] {
+					t.Errorf("%q line %d = %q, want %q", tc.text, i, texts[i], tc.want[i])
+				}
+			}
+			// An empty line is a real line box with nothing in it, not
+			// a degenerate range: from == to, and it measures zero.
+			for i, ln := range lines {
+				if texts[i] == "" && (ln.from != ln.to || ln.width != 0) {
+					t.Errorf("%q line %d is empty but reports %+v, want from == to and width 0", tc.text, i, ln)
+				}
+			}
+		})
+	}
+}
+
+// TestPackLinesLeavesALoneCarriageReturnOptional is the negative control
+// for the CRLF case above, and it is what proves the mandatory rule is
+// about U+000A rather than about "control characters".
+//
+// A lone \r carries no line feed, so its run stays an ordinary optional
+// whitespace break: with a box wide enough for the whole value the
+// packer declines it and the value is ONE line.
+func TestPackLinesLeavesALoneCarriageReturnOptional(t *testing.T) {
+	const subject = "one\rtwo"
+	lines, texts := mandatoryBreakLines(t, subject, geom.Length(200000))
+	if len(lines) != 1 {
+		t.Fatalf("%q packed into %d line(s) %q, want 1 — a lone carriage return is an ORDINARY optional whitespace break and this box fits the whole value", subject, len(lines), texts)
+	}
+	if lines[0].endedBy != text.BreakOptional {
+		t.Errorf("the single line reports endedBy = %v, want BreakOptional — nothing broke here at all", lines[0].endedBy)
+	}
+}
+
+// TestWrappedLineRecordsTheKindOfBreakThatEndedIt is D-7.1.5's second
+// field, asserted DIRECTLY because Story 7.3 / FR47 is the arriving
+// consumer and nothing in production reads it yet. The precedent for
+// this shape is verticalMetrics.LastDescent, which shipped stating
+// honestly that nothing consumed it and was pinned by a direct
+// assertion over fabricated input in the meantime.
+//
+// 7.3 must not justify "the last line of a paragraph, OR a line ended by
+// a mandatory break". Those are two independent conditions, which is why
+// the field is a NAMED KIND and not a bool: the subject below carries
+// all three cases at once — a line ended by a mandatory break, a line
+// ended by an optional one, and a last line no break ended.
+func TestWrappedLineRecordsTheKindOfBreakThatEndedIt(t *testing.T) {
+	// "one\ntwo three" in a box wide enough for "two" but not for
+	// "two three": line 0 ends at the typed break, line 1 ends at the
+	// space, line 2 ends at the end of the value.
+	const subject = "one\ntwo three"
+	const fontSize = geom.Length(11000)
+	segs := segmentsFor(t, subject)
+	n := len([]rune(subject))
+
+	twoThree := measureRuneRange(segs, 4, n, fontSize)
+	two := measureRuneRange(segs, 4, 7, fontSize)
+	box := (two + twoThree) / 2
+	if !(two <= box && twoThree > box) {
+		t.Fatalf("precondition: \"two\" measures %d and \"two three\" measures %d, so no box of %d separates them and the optional break would not be taken", two, twoThree, box)
+	}
+
+	lines, texts := mandatoryBreakLines(t, subject, box)
+	if len(lines) != 3 {
+		t.Fatalf("%q packed into %d line(s) %q, want 3 (mandatory, optional, end of value)", subject, len(lines), texts)
+	}
+	want := []text.BreakKind{text.BreakMandatory, text.BreakOptional, text.BreakOptional}
+	for i := range want {
+		if lines[i].endedBy != want[i] {
+			t.Errorf("line %d (%q) reports endedBy = %v, want %v", i, texts[i], lines[i].endedBy, want[i])
+		}
+	}
+	// THE DISCRIMINATION THAT MAKES THE FIELD LOAD-BEARING. Lines 1 and
+	// 2 agree; line 0 must differ from both, or 7.3 cannot tell a line
+	// it must leave ragged from one it must justify.
+	if lines[0].endedBy == lines[1].endedBy {
+		t.Errorf("the line ended by a TYPED break and the line ended by an INFERRED one report the same kind (%v) — Story 7.3 / FR47 cannot tell them apart", lines[0].endedBy)
+	}
+	t.Logf("D-7.1.5 seam for Story 7.3 / FR47: %q -> %q with endedBy %v", subject, texts, []text.BreakKind{lines[0].endedBy, lines[1].endedBy, lines[2].endedBy})
+}
+
+// TestPackLinesWithNoDeclaredWidthHonoursAMandatoryBreak is the
+// maxWidth <= 0 hazard: that early return used to hand back one line
+// spanning everything, which would have declined a typed break outright.
+//
+// Both polarities, because only the pair is a measurement: an element
+// with no declared width and NO line feed must still be exactly one
+// line — that is the property every pre-7.1 golden depends on.
+func TestPackLinesWithNoDeclaredWidthHonoursAMandatoryBreak(t *testing.T) {
+	const fontSize = geom.Length(11000)
+	dict := text.Dictionary()
+
+	const broken = "Clause 1.\n\nClause 2."
+	segs := segmentsFor(t, broken)
+	runes := []rune(broken)
+	lines := packLines(segs, text.Opportunities(dict, broken, nil), len(runes), fontSize, 0)
+	if len(lines) != 3 {
+		t.Fatalf("with no declared width, %q packed into %d line(s), want 3 — the lines are delimited by mandatory breaks alone", broken, len(lines))
+	}
+	if got := string(runes[lines[1].from:lines[1].to]); got != "" {
+		t.Errorf("with no declared width, the middle line of %q is %q, want empty", broken, got)
+	}
+	// The same guard the maxWidth > 0 path carries: an empty line is a
+	// real line box with nothing in it, not a degenerate range.
+	if lines[1].from != lines[1].to || lines[1].width != 0 {
+		t.Errorf("with no declared width, the middle line of %q reports %+v, want from == to and width 0", broken, lines[1])
+	}
+	if lines[0].endedBy != text.BreakMandatory || lines[1].endedBy != text.BreakMandatory {
+		t.Errorf("with no declared width, lines 0 and 1 report endedBy %v and %v, want both BreakMandatory — the only breaks on this path", lines[0].endedBy, lines[1].endedBy)
+	}
+	if lines[2].endedBy != text.BreakOptional {
+		t.Errorf("with no declared width, the last line reports endedBy %v, want the zero value — no break ended it", lines[2].endedBy)
+	}
+
+	const unbroken = "Page footer 0123456789"
+	usegs := segmentsFor(t, unbroken)
+	un := len([]rune(unbroken))
+	ulines := packLines(usegs, text.Opportunities(dict, unbroken, nil), un, fontSize, 0)
+	if len(ulines) != 1 || ulines[0].from != 0 || ulines[0].to != un {
+		t.Fatalf("with no declared width and no typed break, got %+v, want exactly one line [0,%d) — this is the property every pre-7.1 golden depends on", ulines, un)
+	}
+}
+
+// TestTextBlockHeightCountsAnEmptyLineAsOneAdvance is D-7.1.2's height
+// claim, asserted over FABRICATED metrics so the arithmetic is visible
+// rather than inferred from a rendered document.
+//
+// D-2.5a / DW-15's two-model split must hold IDENTICALLY for empty
+// lines: an extra line adds exactly one Advance and CANNOT move
+// FirstBaseline. That number is what textValignOffset distributes slack
+// against, and getting it wrong is the quiet path to a wrong page break.
+func TestTextBlockHeightCountsAnEmptyLineAsOneAdvance(t *testing.T) {
+	vm := verticalMetrics{FirstBaseline: 11759, Advance: 14982, LastDescent: 3223}
+
+	two := textBlockHeight(2, vm)
+	three := textBlockHeight(3, vm)
+	if got := three - two; got != vm.Advance {
+		t.Errorf("a third line (the empty one of a paragraph gap) adds %d mp, want exactly one Advance of %d", got, vm.Advance)
+	}
+
+	// The hand-derived values, so a change to the formula is caught
+	// here and not only as a difference between two of its own outputs.
+	if want := geom.Length(11759 + 14982 + 3223); two != want {
+		t.Errorf("textBlockHeight(2) = %d, want %d (FirstBaseline + 1*Advance + LastDescent)", two, want)
+	}
+	if want := geom.Length(11759 + 2*14982 + 3223); three != want {
+		t.Errorf("textBlockHeight(3) = %d, want %d (FirstBaseline + 2*Advance + LastDescent)", three, want)
+	}
+
+	// FIRSTBASELINE IS UNMOVED — BY CONSTRUCTION, WHICH IS WHY IT IS
+	// PINNED DIRECTLY. textBlockHeight never reads the line count into
+	// the first span, so an element that gains an empty line keeps its
+	// first baseline exactly where it was; only the block's total
+	// extent grows. Nothing else in the module asserts that a line
+	// COUNT cannot reach FirstBaseline.
+	for n := 1; n <= 5; n++ {
+		if got := textBlockHeight(n, vm) - geom.Length(int64(n-1))*vm.Advance - vm.LastDescent; got != vm.FirstBaseline {
+			t.Errorf("with %d lines the first span is %d mp, want the unmoved FirstBaseline of %d", n, got, vm.FirstBaseline)
+		}
+	}
+}
+
+// TestMandatoryBreakSurvivesTheSpanAtomicSpansForBuilds is D-7.1.1 at
+// the CHAIN level: the document's unbreakableValues declaration, meeting
+// the substitutions internal/bind actually reported, meeting the packer.
+//
+// THE FIXTURE TRAP, ASSERTED AS A PRECONDITION (D-7.1.1's correction).
+// bind.Substitution's Start/End bracket only what the PLACEHOLDER
+// substituted, so a line feed typed into an element's own literal text
+// is never inside an atomic span at all and would prove nothing here.
+// The precondition below establishes that the span this chain actually
+// produced STRICTLY CONTAINS the line feed's index, so the exemption is
+// exercised rather than merely available.
+//
+// Both directions, from one input, because either alone is ambiguous:
+// the line feed must survive the declaration and the space must not.
+func TestMandatoryBreakSurvivesTheSpanAtomicSpansForBuilds(t *testing.T) {
+	const fontSize = geom.Length(11000)
+	const value = "{{customer.note}}"
+	const dataJSON = `{"customer":{"note":"first\nsecond word"}}`
+
+	d, err := bind.DecodeData([]byte(dataJSON))
+	if err != nil {
+		t.Fatalf("decode data: %v", err)
+	}
+	p, err := bind.DecodeParams([]byte(`{}`))
+	if err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	boundText, subs, _, berr := bind.BindTextSpans(value, d, p, testFormatContext(), "e-test")
+	if berr != nil {
+		t.Fatalf("bind: %v", berr)
+	}
+
+	spans := atomicSpansFor([]string{"customer.note"}, subs)
+	if len(spans) != 1 {
+		t.Fatalf("precondition: atomicSpansFor produced %+v, want exactly one span — the declaration is not reaching the breaker", spans)
+	}
+	span := spans[0]
+
+	runes := []rune(boundText)
+	lf, sp := -1, -1
+	for i, r := range runes {
+		if r == '\n' {
+			lf = i
+		}
+		if r == ' ' {
+			sp = i
+		}
+	}
+	if lf < 0 || sp < 0 {
+		t.Fatalf("precondition: the bound value %q must hold both a line feed and a space; found lf=%d sp=%d", boundText, lf, sp)
+	}
+	if !(lf > span.Start && lf < span.End) {
+		t.Fatalf("precondition: the line feed at rune %d is not STRICTLY inside the span %+v that atomicSpansFor built — spansCover would never have suppressed it, and the exemption would be proved by an input that never needed it (the fixture trap)", lf, span)
+	}
+	if !(sp > span.Start && sp < span.End) {
+		t.Fatalf("precondition: the space at rune %d is not strictly inside the span %+v, so its suppression would prove nothing", sp, span)
+	}
+
+	// A box narrower than "second word" but wider than "second": with
+	// the space suppressed the second line overflows visibly (AC11),
+	// and without the declaration it would break there instead.
+	segs := segmentsFor(t, boundText)
+	secondWord := measureRuneRange(segs, lf+1, len(runes), fontSize)
+	second := measureRuneRange(segs, lf+1, sp, fontSize)
+	box := (second + secondWord) / 2
+	if !(second <= box && secondWord > box) {
+		t.Fatalf("precondition: %q measures %d and %q measures %d, so no box of %d separates them", string(runes[lf+1:sp]), second, string(runes[lf+1:]), secondWord, box)
+	}
+
+	declared := packLines(segs, text.Opportunities(text.Dictionary(), boundText, spans), len(runes), fontSize, box)
+	if len(declared) != 2 {
+		t.Fatalf("declared: %q packed into %d line(s), want 2 — the typed break must be taken and the space must not", boundText, len(declared))
+	}
+	if got := string(runes[declared[0].from:declared[0].to]); got != "first" {
+		t.Errorf("declared: line 0 = %q, want \"first\" — the mandatory break was suppressed by the declared span (D-7.1.1)", got)
+	}
+	if got := string(runes[declared[1].from:declared[1].to]); got != "second word" {
+		t.Errorf("declared: line 1 = %q, want \"second word\" — the declared value must not split at its space", got)
+	}
+	if declared[1].width <= box {
+		t.Errorf("declared: line 1 measures %d against a %d box, so nothing overflowed and this element does not discriminate the declaration", declared[1].width, box)
+	}
+
+	// Polarity 2 — UNDECLARED. Same value, same box, no spans: the
+	// space breaks too, and the element becomes three lines. Without
+	// this, "two lines" could not be told from a value that never had
+	// an interior opportunity at the space.
+	undeclared := packLines(segs, text.Opportunities(text.Dictionary(), boundText, nil), len(runes), fontSize, box)
+	if len(undeclared) != 3 {
+		t.Fatalf("undeclared: %q packed into %d line(s), want 3 — the space MUST break when nothing is declared, or the declared case proves nothing", boundText, len(undeclared))
+	}
+	t.Logf("D-7.1.1 at the chain level: span %+v of %q; declared -> %d lines, undeclared -> %d lines", span, boundText, len(declared), len(undeclared))
+}
+
+// TestRenderSurvivesAValueThatIsNothingButBreaks is the I/O matrix's
+// "never zero lines, never a nil deref" row, asserted through the PUBLIC
+// entry point rather than at the packer: an empty line draws no run, and
+// an element whose every line is empty draws none at all — which is
+// exactly the shape that reaches positionSegments with from == to and,
+// for a trailing break, with from == to == totalRunes, past the last
+// face segment's end.
+//
+// The heights are asserted alongside, because "it did not crash" is not
+// the property: a value that is one line feed occupies TWO lines, so its
+// block is one Advance taller than a single-line element's, and that is
+// what pagination will read.
+func TestRenderSurvivesAValueThatIsNothingButBreaks(t *testing.T) {
+	const tplJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 60, "value": "{{a}}", "style": {"fontFamily": "body", "fontSize": 11}},
+      {"id": "e2", "type": "text", "x": 0, "y": 80, "width": 200, "height": 60, "value": "{{b}}", "style": {"fontFamily": "body", "fontSize": 11}},
+      {"id": "e3", "type": "text", "x": 0, "y": 160, "width": 200, "height": 60, "value": "{{c}}", "style": {"fontFamily": "body", "fontSize": 11}}
+    ]},
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+	// a: a break at the very end. b: a break at the very start.
+	// c: nothing BUT a break — two empty lines, so this element draws
+	//    no run at all and still occupies two lines of height.
+	const dataJSON = `{"a": "text\n", "b": "\ntext", "c": "\n"}`
+
+	tpl, err := ParseTemplate([]byte(tplJSON))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	res, err := Render(tpl, Data(dataJSON), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("render: %v — a value that is nothing but a line feed must not fail the render", err)
+	}
+	if len(res.Bytes) == 0 {
+		t.Fatal("the render produced no bytes")
+	}
+	assertWellFormedPDF(t, "leading/trailing/only-break render", res.Bytes, 1)
+
+	want := map[string][]string{
+		"e1": {"text", ""},
+		"e2": {"", "text"},
+		"e3": {"", ""},
+	}
+	layouts := elementLayouts(t, tpl, dataJSON)
+	if len(layouts) != len(want) {
+		t.Fatalf("laid out %d elements, want %d — a value that is only a line feed must not vanish", len(layouts), len(want))
+	}
+	for _, el := range layouts {
+		w, ok := want[el.id]
+		if !ok {
+			t.Errorf("unexpected element %q", el.id)
+			continue
+		}
+		if got := lineTexts(el); !equalStrings(got, w) {
+			t.Errorf("%s (%q): laid out as %q, want %q", el.id, el.text, got, w)
+		}
+	}
+
+	// The height claim: two lines, whatever is on them.
+	vm, verr := chainVerticalModel([]string{"Noto Sans"}, geom.Length(11000), testShippedFontSet(), newFontCache())
+	if verr != nil {
+		t.Fatalf("chainVerticalModel: %v", verr)
+	}
+	if got, one := textBlockHeight(2, vm), textBlockHeight(1, vm); got-one != vm.Advance {
+		t.Errorf("an element of two lines is %d mp taller than one of a single line, want exactly one Advance of %d", got-one, vm.Advance)
+	}
+}
+
+// TestPackLinesTakesEveryTypedBreakAtEveryBoxWidth is the invariant that
+// keeps packLines' carried mandatory-break cursor honest: it advances
+// past entries permanently, so a bug there would silently LOSE a break
+// on the second or third one rather than on the first, which every
+// hand-written case above would still pass.
+//
+// The property is stated as a count that cannot be satisfied by luck:
+// over a spread of inputs and box widths, the number of lines reporting
+// endedBy == BreakMandatory must equal the number of line feeds in the
+// value, exactly. Box width is varied because "no declared box" and
+// "narrower than a word" take different paths through the packer.
+func TestPackLinesTakesEveryTypedBreakAtEveryBoxWidth(t *testing.T) {
+	const fontSize = geom.Length(11000)
+	dict := text.Dictionary()
+
+	subjects := []string{
+		"a\n\nb",
+		"one\ntwo\nthree\nfour",
+		"\none\n\ntwo\n",
+		"\n\n\n",
+		"one \n\n two\nthree",
+		"alpha\nbravo charlie delta\nechd",
+	}
+	boxes := []geom.Length{0, 5000, 20000, 200000}
+
+	compared := 0
+	for _, subject := range subjects {
+		wantBreaks := strings.Count(subject, "\n")
+		if wantBreaks == 0 {
+			t.Fatalf("test-data defect: %q carries no line feed", subject)
+		}
+		segs := segmentsFor(t, subject)
+		runes := []rune(subject)
+		ops := text.Opportunities(dict, subject, nil)
+		for _, box := range boxes {
+			lines := packLines(segs, ops, len(runes), fontSize, box)
+			if len(lines) == 0 {
+				t.Errorf("%q at box %d produced zero lines", subject, box)
+				continue
+			}
+			mandatory := 0
+			for _, ln := range lines {
+				if ln.endedBy == text.BreakMandatory {
+					mandatory++
+				}
+			}
+			if mandatory != wantBreaks {
+				t.Errorf("%q at box %d: %d line(s) ended by a typed break, want %d — one per line feed, at every width", subject, box, mandatory, wantBreaks)
+			}
+			// k breaks yield AT LEAST k+1 lines; more only when an
+			// optional break also fired inside a segment.
+			if len(lines) < wantBreaks+1 {
+				t.Errorf("%q at box %d produced %d line(s), want at least %d (k breaks are k+1 lines)", subject, box, len(lines), wantBreaks+1)
+			}
+			compared++
+		}
+	}
+	if compared != len(subjects)*len(boxes) {
+		t.Fatalf("vacuity: compared %d combinations, want %d", compared, len(subjects)*len(boxes))
+	}
+	t.Logf("%d (input, box width) combinations: every line feed produced exactly one mandatory-ended line", compared)
 }

@@ -802,6 +802,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(b)
 	}
+	if os.Getenv(subprocessMandatoryBreakEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(mandatoryBreakTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(mandatoryBreakDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	// Story 4.7's ELEVENTH..FOURTEENTH selectors: the Customer Account
 	// Statement at 1, 5, 20 and 50 pages. Four selectors rather than one
 	// parameterised selector because matrixDocuments' capture contract is
@@ -825,6 +838,13 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(m.Run())
 }
+
+// subprocessMandatoryBreakEnvVar is Story 7.1's selector, rendering
+// fixtures/mandatory-break/ — the first document in this repository
+// whose text or bound data carries a line feed — in a FRESH process,
+// for the same reason multi-page and page-count-20 needed one: a golden
+// recorded from one process pins whatever that process happened to do.
+const subprocessMandatoryBreakEnvVar = "FOLIO_SUBPROCESS_RENDER_MANDATORYBREAK"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

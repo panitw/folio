@@ -768,7 +768,7 @@ func collectBandTextRuns(
 		// runes sharing the same resolved face. Shaped ONCE here;
 		// every line below is a SLICE of these glyphs, never a
 		// re-shape of a shorter string (Story 2.4, AC10).
-		segs, glyphDiags, serr := shapeSegments(string(el.ID), chain, boundText, fs, cache)
+		segs, glyphDiags, serr := shapeSegments(string(el.ID), chain, boundText, fs, cache, breaksAreConsumed)
 		if serr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}
@@ -1139,6 +1139,32 @@ func missingGlyphMessage(elementID string, r rune, chain []string) string {
 	)
 }
 
+// lineBreakHandling tells shapeSegments what its CALLER will do with a
+// line feed in the text it is about to shape, and it exists because the
+// answer decides whether an uncoverable U+000A is a defect worth
+// reporting or the ordinary working of FR46.
+//
+// It is a parameter rather than a rule shapeSegments could work out for
+// itself: this function sees a rune and a font chain, and nothing about
+// whether the segments it returns are on their way to packLines.
+type lineBreakHandling uint8
+
+const (
+	// breaksAreDrawn: the caller positions the shaped runes directly and
+	// never packs them, so a line feed reaches the page as a rune no
+	// face covers — dropped, silently, exactly the condition FR41's
+	// fifth mode exists to report. Today one production caller is in
+	// this class: a table COLUMN LABEL (table_render.go), which shapes
+	// its text and hands the whole rune range to positionSegments.
+	breaksAreDrawn lineBreakHandling = iota
+
+	// breaksAreConsumed: the caller hands these segments to packLines,
+	// which takes every mandatory break the text carries (Story 7.1), so
+	// a line feed is absent from the drawn output BY DESIGN rather than
+	// for want of a glyph.
+	breaksAreConsumed
+)
+
 // shapeSegments performs Story 2.2's per-rune coverage resolution and
 // Story 2.3's per-face-segment shaping, ONCE, and returns the result
 // without positioning it.
@@ -1165,7 +1191,7 @@ func missingGlyphMessage(elementID string, r rune, chain []string) string {
 // positionSegments — all of which count rune positions against the
 // ORIGINAL elementText, via totalRunes) never silently renumbers a
 // later rune's position because an earlier one was dropped.
-func shapeSegments(elementID string, chain []string, elementText string, fs FontSet, cache *fontCache) ([]faceSegment, []Diagnostic, error) {
+func shapeSegments(elementID string, chain []string, elementText string, fs FontSet, cache *fontCache, breaks lineBreakHandling) ([]faceSegment, []Diagnostic, error) {
 	type segment struct {
 		face    string
 		runes   []rune
@@ -1189,21 +1215,49 @@ func shapeSegments(elementID string, chain []string, elementText string, fs Font
 			return nil, nil, err
 		}
 		if !found {
-			alreadySeen := false
-			for _, sr := range seenMissingRunes {
-				if sr == r {
-					alreadySeen = true
-					break
+			// A LINE FEED IS NOT A COVERAGE FAILURE — ON A CALLER
+			// THAT CONSUMES IT (Story 7.1). No face covers U+000A and
+			// none is expected to; where the caller hands these
+			// segments to packLines, the breaker takes it as a
+			// mandatory break, so it is absent from the drawn output
+			// by design rather than for want of a glyph. FR41's fifth
+			// mode reports a rune the document asked to be DRAWN and
+			// the chain could not draw; reporting one the engine
+			// deliberately consumed would say "your font chain is
+			// incomplete" about a character no font has ever carried,
+			// and would fire on every document holding a paragraph
+			// break.
+			//
+			// THE PREMISE IS THE CALLER'S, NOT THIS FUNCTION'S, WHICH
+			// IS WHY IT ARRIVES AS A PARAMETER. A table column label
+			// is shaped here and positioned directly, never packed, so
+			// a line feed in a LABEL really is dropped — and that path
+			// keeps its Warning, which is the only signal it has.
+			//
+			// SCOPED TO U+000A, AND ONLY THE DIAGNOSTIC. The
+			// segmentation below is untouched on every caller, so the
+			// rune still claims its slot in the element-global rune
+			// index space — which is exactly what keeps internal/text's
+			// break positions meaningful. And a lone carriage return
+			// gains no meaning in this story (it stays an ordinary
+			// optional whitespace break), so nothing about it changes.
+			if r != '\n' || breaks == breaksAreDrawn {
+				alreadySeen := false
+				for _, sr := range seenMissingRunes {
+					if sr == r {
+						alreadySeen = true
+						break
+					}
 				}
-			}
-			if !alreadySeen {
-				seenMissingRunes = append(seenMissingRunes, r)
-				diags = append(diags, Diagnostic{
-					Severity:  SeverityWarning,
-					Code:      DiagCodeTextMissingGlyph,
-					ElementID: elementID,
-					Message:   missingGlyphMessage(elementID, r, chain),
-				})
+				if !alreadySeen {
+					seenMissingRunes = append(seenMissingRunes, r)
+					diags = append(diags, Diagnostic{
+						Severity:  SeverityWarning,
+						Code:      DiagCodeTextMissingGlyph,
+						ElementID: elementID,
+						Message:   missingGlyphMessage(elementID, r, chain),
+					})
+				}
 			}
 			if n := len(segments); n > 0 && segments[n-1].missing {
 				segments[n-1].runes = append(segments[n-1].runes, r)

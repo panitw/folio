@@ -374,11 +374,43 @@ what follows is the **whole** rule — this section is deliberately written as a
 engine does **not** do as well as what it does, because every omission below is a deliberate
 narrowing rather than an unfinished edge.
 
+Two kinds of break exist, and the difference between them is the difference between the engine
+**guessing** and the engine **being told**:
+
+- an **inferred** break is an *opportunity*. The engine proposes it from the text's script, and the
+  line packer takes it only if the line needs it. The three script rules below are all of this kind.
+- a **mandatory** break is *not* an opportunity. It is a line feed the author, or the data, put in
+  the text, and the packer may not decline it (FR46).
+
+### Inferred breaks — where a line *may* end
+
 | Script | Rule |
 |---|---|
 | Latin, and anything with no rule of its own | A line may end **after** a run of whitespace, and nowhere else. The whitespace run is consumed by the break: it is drawn on neither line. |
 | CJK | A line may end between any two adjacent Han or kana characters. |
 | Thai | Thai is written without interword spaces, so break positions come from an embedded dictionary. A stretch of Thai the dictionary cannot account for is kept whole. |
+
+### Mandatory breaks — where a line *must* end
+
+A `U+000A` line feed in an element's text, or in a value bound into it, **always** ends the line —
+however much width remained. It is the only character with this meaning.
+
+- **Breaks are separators: *k* of them produce *k+1* lines.** `"a\nb"` is two lines. `"a\n\nb"` is
+  three, the middle one empty — which is how a paragraph gap is expressed. `"a\n"` is two lines, the
+  second empty; `"\na"` is two lines, the first empty; a value that is nothing but a line feed is two
+  empty lines.
+- **An empty line is a real line.** It draws nothing and occupies one full baseline-to-baseline
+  advance, so it adds to the element's height and to a table row's height exactly as a drawn line
+  does — and can therefore move a page break.
+- **`\r\n` is one break, never two.** A carriage return carries no line feed of its own; a lone `\r`
+  is ordinary whitespace and stays an inferred break.
+- **The whole whitespace run around the break is consumed**, exactly as an inferred whitespace break
+  consumes its run: `"a \n b"` is `a` / `b`, with neither space drawn on either line.
+- **A mandatory break is not affected by `unbreakableValues`** — see *Values that must never be
+  split*, below.
+
+The engine never *invents* a mandatory break: it does not break at a declared width, at a hyphen, or
+anywhere else on its own initiative. Only a line feed in the input produces one.
 
 **This is not UAX #14, and nothing in folio claims conformance to it.** Absent, by name:
 hyphenation; a break at `-` or any other punctuation; the contextual pair rules that make up the
@@ -455,8 +487,12 @@ person's name from the words it was built from — `ศรีสุข` as a sur
 the two common words `ศรี` and `สุข`.
 
 So a template **declares** it, in the document-level `unbreakableValues` list. Every value
-substituted from a listed path is kept on one line. Literal text around the placeholder is
-unaffected — `"Statement for {{customer.name}}"` still breaks between *Statement* and *for*.
+substituted from a listed path is kept on one line. This binds the break opportunities the engine
+**infers** — from whitespace, a script, or the dictionary — not literal control characters present
+in the input: a line feed the caller supplied is a break the engine was **told** about rather than
+one it proposed, so it is still taken inside a declared value (FR46). Literal text around the
+placeholder is unaffected — `"Statement for {{customer.name}}"` still breaks between *Statement* and
+*for*.
 
 **The declaration protects bound values only.** A Thai name that appears inside free-form literal
 text carries no declaration and remains breakable. That limitation is stated, not fixed.

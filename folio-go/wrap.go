@@ -144,14 +144,31 @@ func minInt(a, b int) int {
 }
 
 // wrappedLine is one laid-out line of a text element: the element-global
-// rune range it draws, and the width that range measured to.
+// rune range it draws, the width that range measured to, and the kind of
+// break that ended it.
 //
 // Width is recorded rather than recomputed by the caller, so the number
 // the packer decided with and the number anything downstream asserts on
 // are the same number.
+//
+// endedBy IS WRITTEN HERE AND READ BY STORY 7.3 / FR47 (D-7.1.5), which
+// must not justify "the last line of a paragraph, or a line ended by a
+// mandatory break". It lands at the site that already knows, because
+// reconstructing it later would be a SECOND derivation of where a break
+// came from — the hazard verticalMetrics' own doc comment says that type
+// exists to close. Nothing in production reads it yet; the precedent for
+// shipping such a field, and for asserting it directly over fabricated
+// input in the meantime, is verticalMetrics.LastDescent.
+//
+// A line that NO break ended — the last line of an element — carries the
+// zero value, text.BreakOptional. That is deliberate and it is why 7.3
+// must DERIVE the last-line case from the line's index rather than read
+// it here: this field answers "which break ended this line", not "is
+// this the last line", and the two are independent conditions.
 type wrappedLine struct {
 	from, to int
 	width    geom.Length
+	endedBy  text.BreakKind
 }
 
 // packLines is the greedy line breaker: given an element's segments,
@@ -172,25 +189,87 @@ type wrappedLine struct {
 // determined, it may not split. Clipping and the diagnostic are Story
 // 2.8's; this function's obligation is to not paper over it.
 //
-// maxWidth <= 0 means "no declared box": the element is one line,
-// exactly as it rendered before this story. That is what keeps every
-// existing golden still (AC13) — though see the Delivery Log for which
+// A MANDATORY BREAK IS NOT A CANDIDATE, IT IS A BOUND (Story 7.1,
+// FR46). Where the caller supplied a line feed the text starts a new
+// line, however much width remained — so this function never gets to
+// decline one. Three sites would each have declined one silently, and
+// all three are handled below: the maxWidth <= 0 early return, the
+// "does everything that is left fit?" short-circuit, and the candidate
+// loop's greedy "last that fits" (D-7.1.7).
+//
+// maxWidth <= 0 means "no declared box": the element's lines are
+// delimited by mandatory breaks ALONE, and an element carrying none is
+// one line, exactly as it rendered before Story 2.4. That is what keeps
+// every existing golden still (AC13) — no committed fixture's text
+// contains a line feed — though see the Delivery Log for which
 // population that claim was measured over.
 func packLines(segs []faceSegment, ops []text.Opportunity, totalRunes int, fontSize, maxWidth geom.Length) []wrappedLine {
 	if totalRunes == 0 {
 		return nil
 	}
 	if maxWidth <= 0 {
-		return []wrappedLine{{from: 0, to: totalRunes, width: measureRuneRange(segs, 0, totalRunes, fontSize)}}
+		return packMandatoryOnly(segs, ops, totalRunes, fontSize)
 	}
 
 	var lines []wrappedLine
 	start := 0
+	// endedByMandatory tracks the LAST line appended, so that an input
+	// ending ON a mandatory break gets the empty line that break
+	// separates from nothing. Mandatory breaks are separators: k of them
+	// yield k+1 lines, and "a\n" is two lines with the second empty
+	// (D-7.1.2). Without this, a trailing blank line is inexpressible
+	// and the character is thrown away without saying so.
+	endedByMandatory := false
+	// mandCursor is a CARRIED position, not a fresh scan per line. ops
+	// is in ascending LineEnd order and start only ever moves forward,
+	// so the search for the next mandatory break resumes where the last
+	// one left off — otherwise every line of every element would rescan
+	// the whole opportunity list, and the population that pays for it is
+	// the corpus, none of whose documents carries a line feed at all.
+	mandCursor := 0
 	for start < totalRunes {
-		// Does everything that is left fit? Then it is the last line.
-		if w := measureRuneRange(segs, start, totalRunes, fontSize); w <= maxWidth {
-			lines = append(lines, wrappedLine{from: start, to: totalRunes, width: w})
+		// The FIRST mandatory break at or after start bounds this line.
+		// It is not "a candidate that happens to be late": no line may
+		// extend past it, so it is where the candidate set stops.
+		mand := -1
+		for mandCursor < len(ops) {
+			op := ops[mandCursor]
+			// Skipping is PERMANENT and that is what makes the cursor
+			// sound: start never moves backwards, so a mandatory break
+			// already behind it can never qualify again, and an
+			// optional one is not what this search is looking for.
+			if op.Kind != text.BreakMandatory || op.LineEnd < start {
+				mandCursor++
+				continue
+			}
+			mand = mandCursor
 			break
+		}
+
+		// A mandatory break AT start ends a ZERO-LENGTH line. This is
+		// the leading-empty-line case ("\na", and every interior line
+		// of a paragraph gap). It is still progress, because the
+		// break's NextStart advances past the whitespace run it
+		// consumes.
+		if mand >= 0 && ops[mand].LineEnd == start {
+			lines = append(lines, wrappedLine{from: start, to: start, endedBy: text.BreakMandatory})
+			start = ops[mand].NextStart
+			endedByMandatory = true
+			continue
+		}
+
+		// Does everything that is left fit? Then it is the last line —
+		// BUT ONLY IF NO MANDATORY BREAK REMAINS. This short-circuit
+		// bypasses the opportunity list entirely, so it is exactly
+		// where "the break is taken regardless of how much width
+		// remained" is won or lost: a line feed in a value that fits
+		// its box would otherwise render as one line (D-7.1.7).
+		if mand < 0 {
+			if w := measureRuneRange(segs, start, totalRunes, fontSize); w <= maxWidth {
+				lines = append(lines, wrappedLine{from: start, to: totalRunes, width: w})
+				endedByMandatory = false
+				break
+			}
 		}
 
 		chosen := -1
@@ -198,6 +277,14 @@ func packLines(segs []faceSegment, ops []text.Opportunity, totalRunes int, fontS
 		for i, op := range ops {
 			if op.LineEnd <= start {
 				continue
+			}
+			// ops are in ascending LineEnd order, so this bounds the
+			// candidate set at the mandatory break rather than
+			// filtering around it: the greedy pick below then lands ON
+			// the mandatory break whenever it fits, and short of it
+			// otherwise.
+			if mand >= 0 && op.LineEnd > ops[mand].LineEnd {
+				break
 			}
 			if first < 0 {
 				first = i
@@ -217,21 +304,25 @@ func packLines(segs []faceSegment, ops []text.Opportunity, totalRunes int, fontS
 		case chosen >= 0:
 			op := ops[chosen]
 			lines = append(lines, wrappedLine{
-				from:  start,
-				to:    op.LineEnd,
-				width: measureRuneRange(segs, start, op.LineEnd, fontSize),
+				from:    start,
+				to:      op.LineEnd,
+				width:   measureRuneRange(segs, start, op.LineEnd, fontSize),
+				endedBy: op.Kind,
 			})
 			start = op.NextStart
+			endedByMandatory = op.Kind == text.BreakMandatory
 		case first >= 0:
 			// AC11: the first available unit does not fit. It goes on
 			// this line and overflows visibly.
 			op := ops[first]
 			lines = append(lines, wrappedLine{
-				from:  start,
-				to:    op.LineEnd,
-				width: measureRuneRange(segs, start, op.LineEnd, fontSize),
+				from:    start,
+				to:      op.LineEnd,
+				width:   measureRuneRange(segs, start, op.LineEnd, fontSize),
+				endedBy: op.Kind,
 			})
 			start = op.NextStart
+			endedByMandatory = op.Kind == text.BreakMandatory
 		default:
 			// No break opportunity remains at all — one atomic unit
 			// runs to the end of the element. Same rule: it overflows.
@@ -241,7 +332,46 @@ func packLines(segs []faceSegment, ops []text.Opportunity, totalRunes int, fontS
 				width: measureRuneRange(segs, start, totalRunes, fontSize),
 			})
 			start = totalRunes
+			endedByMandatory = false
 		}
+	}
+	if endedByMandatory {
+		lines = append(lines, wrappedLine{from: totalRunes, to: totalRunes})
+	}
+	return lines
+}
+
+// packMandatoryOnly is packLines' maxWidth <= 0 path: with no declared
+// box there is no width to break against, so the only breaks that apply
+// are the ones the caller supplied. An element carrying none comes back
+// as the single line it has always been.
+func packMandatoryOnly(segs []faceSegment, ops []text.Opportunity, totalRunes int, fontSize geom.Length) []wrappedLine {
+	var lines []wrappedLine
+	start := 0
+	endedByMandatory := false
+	for _, op := range ops {
+		if op.Kind != text.BreakMandatory {
+			continue
+		}
+		lines = append(lines, wrappedLine{
+			from:    start,
+			to:      op.LineEnd,
+			width:   measureRuneRange(segs, start, op.LineEnd, fontSize),
+			endedBy: text.BreakMandatory,
+		})
+		start = op.NextStart
+		endedByMandatory = true
+	}
+	switch {
+	case start < totalRunes:
+		lines = append(lines, wrappedLine{
+			from:  start,
+			to:    totalRunes,
+			width: measureRuneRange(segs, start, totalRunes, fontSize),
+		})
+	case endedByMandatory:
+		// The value ended ON a break: k breaks, k+1 lines.
+		lines = append(lines, wrappedLine{from: totalRunes, to: totalRunes})
 	}
 	return lines
 }

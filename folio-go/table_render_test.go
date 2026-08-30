@@ -1,6 +1,7 @@
 package folio
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -904,4 +905,407 @@ func TestTableInPageHeaderRepeatsIdenticallyAcrossPages(t *testing.T) {
 	if !r0.HasFill {
 		t.Fatal("presence precondition: the header rect must carry HasFill (style.background is declared)")
 	}
+}
+
+// mandatoryBreakTableDoc is one document holding the SAME bound value
+// twice: once in a text element and once in a table cell, in boxes of
+// the same declared width. It is the subject of D-7.1.3 — one packer,
+// one mandatory-break rule, every caller.
+func mandatoryBreakTableDoc() string {
+	return `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 180, "height": 40, "value": "{{note}}", "style": {"fontFamily": "latin", "fontSize": 8}},
+      {"id": "e2", "type": "table", "x": 0, "y": 60, "bind": "items[]", "headerHeight": 10,
+        "style": {"fontFamily": "latin", "fontSize": 8},
+        "columns": [
+          {"id": "e3", "label": "A", "width": 180, "bind": "{{row.a}}"}
+        ]}
+    ]},
+    "pageFooter": {"elements": [], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {"latin": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": {"width": 200, "height": 150}},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+}
+
+// tableCellPhysicalLines counts the DISTINCT physical lines a data row
+// occupies, read off the runs the table renderer actually produced —
+// never off cellResult, which is internal to the function under test.
+func tableCellPhysicalLines(t *testing.T, tplJSON, dataJSON string, rowIndex int) int {
+	t.Helper()
+	_, contentRuns, _ := paginateContentTableForTest(t, tplJSON, dataJSON)
+	seen := map[int]bool{}
+	for _, r := range contentRuns {
+		if r.isTableRowLine && r.rowIndex == rowIndex {
+			seen[r.lineIndex] = true
+		}
+	}
+	return len(seen)
+}
+
+// TestTableCellAndTextElementBreakTheSameValueIdentically is D-7.1.3:
+// the change lands in the SHARED packer, so a line feed in a table
+// cell's bound data breaks that cell exactly as it breaks a text
+// element's. table_render.go's own comment already declares it is "the
+// SAME packer text elements use"; this asserts the consequence.
+//
+// The text element's count is pinned to a LITERAL, and the cell's is
+// compared against the text element's, so the two live computations
+// cannot drift together into agreeing on a wrong answer.
+//
+// THE NEGATIVE CONTROL IS THE MEASUREMENT. The same value with the line
+// feed replaced by a space must be ONE line on BOTH sides, in the same
+// boxes: without it, "2 lines" could not be told from a value that was
+// simply too wide for its box, and the assertion would hold for a packer
+// that ignores mandatory breaks entirely.
+func TestTableCellAndTextElementBreakTheSameValueIdentically(t *testing.T) {
+	const broken = "first\nsecond word"
+	const unbroken = "first second word"
+
+	tpl, err := ParseTemplate([]byte(mandatoryBreakTableDoc()))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	dataFor := func(v string) string {
+		return fmt.Sprintf(`{"note": %q, "items": [{"a": %q}]}`, v, v)
+	}
+
+	// NEGATIVE CONTROL FIRST: with a space in place of the line feed,
+	// the value FITS both boxes and both sides are one line. That is
+	// what makes the broken case's 2 a consequence of the break rather
+	// than of the width.
+	controlText := elementLayoutByID(t, elementLayouts(t, tpl, dataFor(unbroken)), "e1")
+	if len(controlText.lines) != 1 {
+		t.Fatalf("presence precondition: %q occupies %d line(s) in a %d mp box — it must FIT, or the broken case below proves nothing about the break", unbroken, len(controlText.lines), controlText.box)
+	}
+	if got := tableCellPhysicalLines(t, mandatoryBreakTableDoc(), dataFor(unbroken), 0); got != 1 {
+		t.Fatalf("presence precondition: the table cell holding %q occupies %d physical line(s), want 1", unbroken, got)
+	}
+
+	// THE SUBJECT.
+	brokenText := elementLayoutByID(t, elementLayouts(t, tpl, dataFor(broken)), "e1")
+	const wantLines = 2 // stated as a literal, ahead of both measurements
+	if len(brokenText.lines) != wantLines {
+		t.Fatalf("text element e1 holding %q occupies %d line(s), want %d", broken, len(brokenText.lines), wantLines)
+	}
+	cellLines := tableCellPhysicalLines(t, mandatoryBreakTableDoc(), dataFor(broken), 0)
+	if cellLines != len(brokenText.lines) {
+		t.Errorf("the table cell holding %q occupies %d physical line(s) but the text element holding the same value occupies %d — one packer, one mandatory-break rule, every caller (D-7.1.3)", broken, cellLines, len(brokenText.lines))
+	}
+	t.Logf("D-7.1.3: %q -> %d lines in a text element and %d physical lines in a table cell; the control %q -> 1 and 1", broken, len(brokenText.lines), cellLines, unbroken)
+}
+
+// multiRowTableDataWithBreak builds `rows` bound rows in which breakRow
+// carries a TYPED LINE FEED rather than a value too long for its column
+// — so the row occupies several physical lines for the reason Story 7.1
+// introduces, and row atomicity is re-asserted against that cause.
+func multiRowTableDataWithBreak(t *testing.T, rows, breakRow int) string {
+	t.Helper()
+	items := make([]tableRowJSON, rows)
+	for i := range items {
+		marker := fmt.Sprintf("R%dW-", i)
+		a := marker + "x"
+		if i == breakRow {
+			a = marker + "Alpha\n" + marker + "Bravo\n" + marker + "Charlie"
+		}
+		items[i] = tableRowJSON{A: a, B: marker + "b"}
+	}
+	b, err := json.Marshal(map[string]any{"items": items})
+	if err != nil {
+		t.Fatalf("marshal table data: %v", err)
+	}
+	return string(b)
+}
+
+// TestDataRowWithATypedBreakIsNeverSplitAcrossPages re-asserts, rather
+// than assumes, the property D-7.1.3 warned about: a line feed in bound
+// data changes a cell's line count, hence its row height, hence where
+// the table breaks — and that must NEVER become a way to split a row
+// across a page boundary. The property is held by code this story does
+// not touch, which is exactly when it breaks.
+func TestDataRowWithATypedBreakIsNeverSplitAcrossPages(t *testing.T) {
+	const rows = 20
+	const breakRow = 5
+	plan, contentRuns, _ := paginateContentTableForTest(t, multiRowTableDoc(false), multiRowTableDataWithBreak(t, rows, breakRow))
+
+	if len(plan.Pages) < 2 {
+		t.Fatalf("presence precondition: the fixture must paginate to >= 2 pages, got %d — a row cannot be split across a boundary that does not exist", len(plan.Pages))
+	}
+	brokenLines := map[int]bool{}
+	for _, r := range contentRuns {
+		if r.isTableRowLine && r.rowIndex == breakRow {
+			brokenLines[r.lineIndex] = true
+		}
+	}
+	if len(brokenLines) < 3 {
+		t.Fatalf("presence precondition: row %d carries two typed breaks and must occupy >= 3 physical lines, got %d — the break is not reaching the table packer at all", breakRow, len(brokenLines))
+	}
+
+	linePages := map[int]map[int]bool{}
+	checked := 0
+	for p, pg := range plan.Pages {
+		for _, ref := range pg.ContentRuns {
+			r := contentRuns[ref]
+			if !r.isTableRowLine {
+				continue
+			}
+			if linePages[r.rowIndex] == nil {
+				linePages[r.rowIndex] = map[int]bool{}
+			}
+			linePages[r.rowIndex][p] = true
+			checked++
+		}
+	}
+	if checked == 0 {
+		t.Fatal("presence precondition: no table-row-line runs were examined")
+	}
+	for row, pages := range linePages {
+		if len(pages) != 1 {
+			t.Errorf("row %d's physical lines are spread across %d distinct pages — a row's lines must all land on ONE page, whatever made the row tall", row, len(pages))
+		}
+	}
+	if len(linePages[breakRow]) != 1 {
+		t.Errorf("the row carrying the typed breaks occupies %d pages", len(linePages[breakRow]))
+	}
+	t.Logf("D-7.1.3: row %d occupies %d physical lines from typed breaks alone, across %d pages, and every one of the %d examined row-line runs stayed on its row's single page", breakRow, len(brokenLines), len(linePages[breakRow]), checked)
+}
+
+// TestFooterCellTextCannotCarryATypedBreak discharges the intent
+// contract's "both table-cell paths" for the FOOTER path — by
+// construction, because a test that fed it a line feed cannot be
+// written.
+//
+// A footer cell's text is never bound data. It is always an aggregate
+// (`sum`, `count`, `avg`) rendered through `footerFormat`, whose pattern
+// is a CLOSED grammar of '#', '0', ',' and one '.'. There is no route by
+// which a U+000A reaches that cell, so the footer path's mandatory-break
+// behaviour is vacuously correct today — and this test is what makes
+// that a checked claim rather than an assumption.
+//
+// IT IS ALSO THE TRIPWIRE. If the pattern grammar is ever widened to
+// admit literal text, this test reddens and says so: the footer cell
+// path would then need the same `\n` coverage the body path carries.
+func TestFooterCellTextCannotCarryATypedBreak(t *testing.T) {
+	doc := func(footerFormat string) string {
+		return fmt.Sprintf(`{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 10,
+        "style": {"fontFamily": "latin", "fontSize": 8},
+        "columns": [
+          {"id": "e2", "label": "A", "width": 180, "bind": "{{formatNumber(row.a, \"#,##0\")}}", "footer": "sum", "footerOf": "items.a", "footerFormat": %q}
+        ]}
+    ]},
+    "pageFooter": {"elements": [], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {"latin": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": {"width": 200, "height": 150}},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`, footerFormat)
+	}
+	const dataJSON = `{"items":[{"a":1},{"a":2}]}`
+
+	// PRESENCE PRECONDITION: the well-formed pattern renders, so the
+	// refusal below is about the line feed and not about the document.
+	ok, err := ParseTemplate([]byte(doc("#,##0")))
+	if err != nil {
+		t.Fatalf("precondition: the control template must parse, got %v", err)
+	}
+	if _, err := Render(ok, Data(dataJSON), nil, testShippedFontSet()); err != nil {
+		t.Fatalf("precondition: the control template must render, got %v", err)
+	}
+
+	// THE SUBJECT: the only field on the footer path that carries author
+	// text at all, given a line feed.
+	tpl, err := ParseTemplate([]byte(doc("Total\n#,##0")))
+	if err == nil {
+		_, err = Render(tpl, Data(dataJSON), nil, testShippedFontSet())
+	}
+	if err == nil {
+		t.Fatal("a footerFormat carrying a line feed was accepted — the footer cell path can now receive a U+000A, and it needs the same mandatory-break coverage the body path carries (D-7.1.3, \"both table-cell paths\")")
+	}
+	if !containsSubstring(err.Error(), "closed number-pattern grammar") {
+		t.Errorf("the refusal was %q; expected it to come from the closed number-pattern grammar, which is what makes a footer cell line-feed-free BY CONSTRUCTION rather than by luck", err.Error())
+	}
+	t.Logf("footer cell path: a line feed is unreachable by construction — %v", err)
+}
+
+// TestTrailingBreakInACellGrowsTheRowByOneAdvance is the row-height half
+// of D-7.1.3, and it is the case the interior-break tests above cannot
+// reach: a TRAILING line feed adds an empty line that draws NO RUN, so
+// every run-counting assertion is blind to it — while the row still gets
+// one full Advance taller. That height is what moves a page boundary.
+func TestTrailingBreakInACellGrowsTheRowByOneAdvance(t *testing.T) {
+	dataFor := func(v string) string {
+		return fmt.Sprintf(`{"note": %q, "items": [{"a": %q}]}`, v, v)
+	}
+	rowExtent := func(dataJSON string) (top, bottom geom.Length, runLines int) {
+		t.Helper()
+		_, contentRuns, tableRects := paginateContentTableForTest(t, mandatoryBreakTableDoc(), dataJSON)
+		found := false
+		for _, r := range tableRects {
+			if r.isDataRow && r.rowIndex == 0 {
+				top, bottom, found = r.top, r.bottom, true
+			}
+		}
+		if !found {
+			t.Fatal("presence precondition: the table produced no data-row chrome rect for row 0")
+		}
+		seen := map[int]bool{}
+		for _, r := range contentRuns {
+			if r.isTableRowLine && r.rowIndex == 0 {
+				seen[r.lineIndex] = true
+			}
+		}
+		return top, bottom, len(seen)
+	}
+
+	plainTop, plainBottom, plainRuns := rowExtent(dataFor("abc"))
+	brokenTop, brokenBottom, brokenRuns := rowExtent(dataFor("abc\n"))
+
+	plainH := plainBottom - plainTop
+	brokenH := brokenBottom - brokenTop
+	if plainH <= 0 {
+		t.Fatalf("presence precondition: the unbroken row has height %d", plainH)
+	}
+
+	// THE BLINDNESS THIS TEST EXISTS FOR, stated rather than implied:
+	// the trailing empty line draws nothing, so both documents emit the
+	// SAME number of physical line runs. A run-counting assertion cannot
+	// see the difference at all.
+	if brokenRuns != plainRuns {
+		t.Errorf("the trailing-break row emitted %d line run(s) against the plain row's %d — an EMPTY line must draw nothing", brokenRuns, plainRuns)
+	}
+
+	vm, verr := chainVerticalModel([]string{"Noto Sans"}, geom.Length(8000), testShippedFontSet(), newFontCache())
+	if verr != nil {
+		t.Fatalf("chainVerticalModel: %v", verr)
+	}
+	if got := brokenH - plainH; got != vm.Advance {
+		t.Errorf("a cell value of %q makes its row %d mp taller than %q does, want exactly one Advance of %d — a trailing break adds a real line box, and that height is what moves a page boundary", "abc\n", got, "abc", vm.Advance)
+	}
+	t.Logf("D-7.1.3 row height: %q -> %d mp, %q -> %d mp (+%d = one Advance), both emitting %d line run(s)", "abc", plainH, "abc\n", brokenH, brokenH-plainH, plainRuns)
+}
+
+// TestLineFeedInAColumnLabelStillWarns is the other half of Story 7.1's
+// missing-glyph change, and it is the case that change could have
+// silently swallowed.
+//
+// A table COLUMN LABEL is shaped by shapeSegments and handed straight to
+// positionSegments — it is the one production caller that never packs,
+// so no mandatory break is ever taken there and a line feed in a label
+// really IS dropped: no glyph, no advance, two words run together on one
+// baseline. That is exactly the condition FR41's fifth mode exists to
+// report, and the Warning is the only signal it has.
+//
+// Suppressing the Warning globally would have removed that signal on the
+// one path where it is true, which is why shapeSegments takes the
+// caller's own lineBreakHandling rather than deciding for itself.
+//
+// COLUMN LABELS DELIBERATELY DO NOT BREAK. The intent contract's caller
+// enumeration is closed — "text elements, both table-cell paths, and the
+// canvas projection" — and a label is not a cell. Header line breaking
+// is out of scope for this story, and this test pins that too: the label
+// stays on ONE baseline.
+func TestLineFeedInAColumnLabelStillWarns(t *testing.T) {
+	doc := func(label string) string {
+		return fmt.Sprintf(`{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 10,
+        "style": {"fontFamily": "latin", "fontSize": 8},
+        "columns": [
+          {"id": "e2", "label": %q, "width": 180, "bind": "{{row.a}}"}
+        ]}
+    ]},
+    "pageFooter": {"elements": [], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {"latin": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": {"width": 200, "height": 150}},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`, label)
+	}
+	const dataJSON = `{"items":[{"a":"x"}]}`
+
+	countMissingGlyph := func(tplJSON string) (int, []Diagnostic) {
+		t.Helper()
+		tpl, err := ParseTemplate([]byte(tplJSON))
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		res, err := Render(tpl, Data(dataJSON), nil, testShippedFontSet())
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		n := 0
+		for _, d := range res.Diagnostics {
+			if d.Code == DiagCodeTextMissingGlyph {
+				n++
+				if d.ElementID != "e2" {
+					t.Errorf("the missing-glyph Warning names %q, want the column e2", d.ElementID)
+				}
+				if d.Severity != SeverityWarning {
+					t.Errorf("the missing-glyph diagnostic is %q, want a Warning", d.Severity)
+				}
+			}
+		}
+		return n, res.Diagnostics
+	}
+
+	// NEGATIVE CONTROL: an ordinary label warns about nothing, so the
+	// Warning below is the line feed and not the document.
+	if n, diags := countMissingGlyph(doc("Alpha Bravo")); n != 0 {
+		t.Fatalf("presence precondition: an ordinary column label produced %d missing-glyph Warning(s): %+v", n, diags)
+	}
+
+	// THE SUBJECT: a label carrying a line feed. The label path never
+	// packs, so the rune is genuinely dropped and must still be
+	// reported — exactly once, coalesced per distinct rune (D-3.7.3).
+	n, diags := countMissingGlyph(doc("Alpha\nBravo"))
+	if n != 1 {
+		t.Fatalf("a column label carrying a line feed produced %d missing-glyph Warning(s), want exactly 1 — the label path never packs, so the rune is DROPPED and the Warning is its only signal (diagnostics: %+v)", n, diags)
+	}
+
+	// ...and the label is still ONE baseline: header line breaking is
+	// out of this story's closed caller enumeration.
+	_, contentRuns, _ := paginateContentTableForTest(t, doc("Alpha\nBravo"), dataJSON)
+	baselines := map[geom.Length]bool{}
+	labelRuns := 0
+	for _, r := range contentRuns {
+		if r.isTableRowLine {
+			continue
+		}
+		if containsSubstring(r.text, "Alpha") || containsSubstring(r.text, "Bravo") {
+			baselines[r.itemTop] = true
+			labelRuns++
+		}
+	}
+	if labelRuns == 0 {
+		t.Fatal("presence precondition: no run carrying the column label was found, so the baseline assertion below is vacuous")
+	}
+	if len(baselines) != 1 {
+		t.Errorf("the column label occupies %d baselines, want 1 — a label is not a cell, and header line breaking is outside this story's closed caller enumeration", len(baselines))
+	}
+	t.Logf("label path: %d run(s) on %d baseline, %d missing-glyph Warning — the break is neither taken nor silently swallowed", labelRuns, len(baselines), n)
 }

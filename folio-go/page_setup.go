@@ -442,7 +442,7 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 			if element.Style.Set && !element.Style.Null && element.Style.Value.FontSize.Set && !element.Style.Value.FontSize.Null {
 				fontSize = element.Style.Value.FontSize.Value
 			}
-			segs, _, err := shapeSegments(string(element.ID), chain, element.Value.Value, fs, cache)
+			segs, _, err := shapeSegments(string(element.ID), chain, element.Value.Value, fs, cache, breaksAreConsumed)
 			if err != nil {
 				return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 			}

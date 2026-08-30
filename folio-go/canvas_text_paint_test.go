@@ -2,6 +2,7 @@ package folio
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -128,5 +129,73 @@ func TestCanvasTextPaintRejectsDerivedCoordinatesOutsideTheJSRange(t *testing.T)
 	}
 	if _, err := canvasDerivedSum(geom.Length(MaxCanvasMillipoints), 1); err == nil {
 		t.Fatal("overflowing baseline was accepted")
+	}
+}
+
+// TestCanvasTextPaintHonoursATypedBreak is the canvas half of D-7.1.3's
+// "every caller" — the caller the intent contract names alongside the
+// text element and the two table-cell paths, and the one Epic 5's
+// canvas/PDF agreement invariant binds: the designer must see the
+// breaks the PDF will take, because the browser never measures text and
+// never computes a break itself.
+//
+// The subject is deliberately an element with NO declared width. Before
+// Story 7.1 that path returned exactly one line unconditionally, so it
+// is the canvas's own instance of packLines' maxWidth <= 0 hazard, and
+// a test using a width-bearing element would not reach it.
+func TestCanvasTextPaintHonoursATypedBreak(t *testing.T) {
+	const tplJSON = `{"version":"1.0","page":{"size":"A4","orientation":"portrait","margin":{"top":36,"right":36,"bottom":36,"left":36}},"bands":{"pageHeader":{"height":20,"elements":[]},"content":{"elements":[{"id":"e1","type":"text","x":0,"y":0,"width":0,"height":60,"value":"Clause 1.\nClause 2.","style":{"fontFamily":"body","fontSize":12}}]},"pageFooter":{"height":20,"elements":[]}},"fonts":{"body":["Roboto-Regular"]},"locale":"en","utcOffset":"+00:00","assets":{},"nextId":2}`
+	tpl, err := ParseTemplate([]byte(tplJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := CanvasWithTextPaint(tpl, testFontSet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Components) == 0 || projection.Components[0].TextPaint == nil {
+		t.Fatalf("missing text paint projection: %#v", projection.Components)
+	}
+	// PRESENCE PRECONDITION: width 0, which is how "no declared box"
+	// reaches packLines (render.go and page_setup.go both gate boxWidth
+	// on Width.Set && !Width.Null, and an absent width is always 0).
+	// That is the path which used to return exactly one line whatever
+	// the value contained.
+	if w := projection.Components[0].Width; w != 0 {
+		t.Fatalf("precondition: the component reports width %d — this test must exercise the NO-declared-box path", w)
+	}
+
+	paint := projection.Components[0].TextPaint
+	if len(paint.Lines) != 2 {
+		t.Fatalf("the canvas projected %d line(s) for a value carrying one typed break, want 2 — the designer must see the break the PDF will take (Epic 5's canvas/PDF agreement)", len(paint.Lines))
+	}
+	for i, ln := range paint.Lines {
+		if len(ln.Fragments) == 0 {
+			t.Errorf("projected line %d carries no fragments", i)
+		}
+		if ln.Width <= 0 {
+			t.Errorf("projected line %d has width %d, want a positive measured width", i, ln.Width)
+		}
+	}
+	if got := paint.Lines[1].Top - paint.Lines[0].Top; got != paint.Lines[0].Advance {
+		t.Errorf("the two projected lines are %d mp apart, want the engine's own Advance of %d — the browser must never derive the second line's origin itself", got, paint.Lines[0].Advance)
+	}
+	if paint.Overflow {
+		t.Error("the projection reports overflow for an element with no declared width — there is no bound to overflow")
+	}
+
+	// THE NEGATIVE CONTROL. The same value with the line feed replaced
+	// by a space, same geometry: one line. Without it, "2 lines" could
+	// not be told from a canvas that breaks on something else.
+	control, err := ParseTemplate([]byte(strings.Replace(tplJSON, `Clause 1.\nClause 2.`, `Clause 1. Clause 2.`, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp, err := CanvasWithTextPaint(control, testFontSet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(cp.Components[0].TextPaint.Lines); n != 1 {
+		t.Fatalf("the control (a space in place of the line feed) projected %d line(s), want 1 — so the two lines above are the typed break and nothing else", n)
 	}
 }
