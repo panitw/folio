@@ -2,7 +2,7 @@
 title: 'Story 7.3: Justify a paragraph''s edges'
 type: 'feature'
 created: '2026-08-30'
-status: 'done'
+status: 'in-progress'
 baseline_revision: '20ccefaaa1ed2860ed68289354a1345ce678885c'
 review_loop_iteration: 0
 followup_review_recommended: true
@@ -142,6 +142,62 @@ One test is expected to stay red. It is a deliberate standing marker, not a defe
 | Canvas parity | justified element projected to the canvas | Fragment count, text and X match the shipping run path per line and per fragment | Divergence fails the parity test |
 
 </intent-contract>
+## Scope amendment — 2026-08-30, owner request
+
+**The owner asked directly: "For 7.3, I'd like to make sure Thai text can be justified as well."**
+This section is normative for the amending dispatch and sits inside the contract's scope.
+
+**Verified by the orchestrator before amending** (so this is coverage for behaviour that already works,
+not a change of behaviour). Rendering the same Thai paragraph justified vs left, `Noto Sans` /
+`Noto Sans Thai` / `Noto Sans SC` chain, 200pt box:
+
+| case | pieces on line 1 | TJ arrays | diagnostics |
+|---|---|---|---|
+| continuous Thai (no spaces), `justify` | **9** | 10 | 0 |
+| continuous Thai, left | 1 | 3 | 0 |
+| spaced Thai, `justify` | 8+ | 14 | 0 |
+
+Nine independently positioned pieces on one baseline proves the **dictionary-derived** break
+opportunities are being used as justification gaps — Thai is not silently falling back to ragged
+left. `justifiedLinePieces` distributes over the opportunity list and is script-agnostic.
+
+**The gap is coverage, not behaviour.** `fixtures/justified-text/` is pure Latin, and no test in the
+tree names Thai and justify together. This is the same absence that let `valign` ship uncovered and
+cost DW-24 three stories.
+
+### AC-TH1 — a justified Thai line is justified, not ragged
+**Given** a text element with `align: "justify"` whose value is **continuous Thai with no spaces**
+**When** it is rendered
+**Then** each non-last line is justified across its dictionary-derived break opportunities, and its
+right edge meets the declared width exactly — asserted at the same standard as the Latin case, in
+integer millipoints.
+
+### AC-TH2 — the no-interior-opportunity fallback is exercised, not just stated
+**Given** a Thai run that yields **zero** interior break opportunities (AD-25's atomic-unknown-run)
+**When** it is justified
+**Then** it is set at its natural start edge, exactly like a last line — the third ragged condition
+the ACs were originally silent on. **This must be a test, not a comment**: pick a Thai run the
+dictionary does not cover, and assert the precondition (zero interior opportunities) with a
+`t.Fatalf` so the case cannot go vacuous if the dictionary later covers it.
+
+### AC-TH3 — a Thai justified fixture joins the corpus
+**Given** the golden corpus
+**When** this story closes
+**Then** it contains a fixture whose justified content is Thai, registered at every golden surface
+(`goldenDigestRecord`, `matrixDocuments`, and the rest of the enumeration DW-24's closure re-derived),
+with a recorded digest identical on all four targets.
+
+**Scope fence.** This adds **coverage and its fixture only**. It changes no justification behaviour,
+no break rule, and no format field. If the Thai case turns out NOT to justify correctly, that is a
+finding to report — **HALT** rather than changing `justifiedLinePieces` to make a new fixture green.
+
+**Known pre-existing limit, NOT this story's to fix and NOT a justification defect.** Some Thai fails
+to render at all: `face Noto Sans Thai: CID 20 carries a non-zero vertical offset (-57), which a TJ
+array cannot express`. The orchestrator verified it fails **identically** with `align: left`, so it is
+independent of justification and is a deliberate documented refusal, not a crash. **Choose fixture
+text that renders** (the statement fixtures' Thai does). If you cannot find Thai that both renders and
+exercises AC-TH2, say so rather than working around it — that combination is itself a finding.
+
 
 ## Code Map
 
