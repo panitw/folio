@@ -229,7 +229,7 @@ var goldenDigestRecord = []struct {
 		// is ACCIDENTALLY TRUE (it has one page), which is why AC2
 		// excludes it by name.
 		dir:    "statement-1",
-		sha256: "ef58bbf6dac1c3d4a5d679a77f9907a8d45f02ccd3f886c4d4e7cbdf9e86611d",
+		sha256: "114df1d6508981d4eb162c585ff6f01eedf2a75393a5a2a9b649809e8ac968db",
 		sites: []goldenDigestSite{
 			{kind: "expected.json", relPath: "fixtures/statement-1/expected.json"},
 			{kind: "second-literal"},
@@ -243,7 +243,7 @@ var goldenDigestRecord = []struct {
 		// express a table header that fails to repeat, or a footer
 		// aggregate emitted somewhere other than the last page.
 		dir:    "statement-5",
-		sha256: "7f67b317c0a1925a404f8435bd4736b85e831a213f5a69fc2a2934a742ff950f",
+		sha256: "70dce051495cf68daa71fe8185aa2467acfd82d10fb195439a4d71bcf41944d0",
 		sites: []goldenDigestSite{
 			{kind: "expected.json", relPath: "fixtures/statement-5/expected.json"},
 			{kind: "second-literal"},
@@ -262,7 +262,7 @@ var goldenDigestRecord = []struct {
 		// statement-50 crosses it too, with the same table, recorded
 		// in the same commit (this story's review, Finding 15).
 		dir:    "statement-20",
-		sha256: "be6f5e27af94e62e7c15a1814633cc48a2a91c5ee8686f5b76de5dc12e3cd4ed",
+		sha256: "56bfbbd9a7d20a2a9404fc931dfbe70da9d25979eec17cc8027c0f1063f84b9e",
 		sites: []goldenDigestSite{
 			{kind: "expected.json", relPath: "fixtures/statement-20/expected.json"},
 			{kind: "second-literal"},
@@ -278,7 +278,7 @@ var goldenDigestRecord = []struct {
 		// prediction was measured against — see this story's
 		// Delivery Log; the prediction is REFUTED, not inherited.
 		dir:    "statement-50",
-		sha256: "9c5be7ba7b4f31c7d488c114a377058ec30cec5ffca082d9c76ee26f304c754c",
+		sha256: "5d090b0f01ddb5072636caded9feec2cad24cb16297a1afbba301b2a4802f171",
 		sites: []goldenDigestSite{
 			{kind: "expected.json", relPath: "fixtures/statement-50/expected.json"},
 			{kind: "second-literal"},

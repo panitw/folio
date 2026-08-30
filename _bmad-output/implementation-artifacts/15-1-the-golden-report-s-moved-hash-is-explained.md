@@ -2,14 +2,15 @@
 title: 'Story 15.1: The golden report''s moved hash is explained'
 type: 'bugfix'
 created: '2026-08-30'
-status: 'ready-for-dev'
+status: 'blocked'
+baseline_revision: 'f91246319751dcaa38abdd2ccc0bad04552a4589'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-15-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
 warnings: [multiple-goals, oversized]
-deferred: []
+deferred: ['DW-24 — style.valign renders but no fixture declares it, so textValignOffset has zero GOLDEN coverage; owner Story 7.1, trigger any story touching the vertical model or text_alignment.go']
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -347,19 +348,121 @@ This story is byte-identity-shaped, so it carries the heavy tests despite the ru
 - A `valign` fixture is added, or its absence is deferred with a named owner and trigger — AC4's
   "a fixture is added that would have caught it" applies to the uncovered half of `791ed00`.
 
+## Delivery Log
+
+**Dispatch 2 (implementation), 2026-08-30, baseline `f912463` on `main`.** Phase A and Phase B both
+ran; the ruling in the intent contract (D-R7.6) had already discharged the Phase A halt. Full
+evidence, with the command that produced every number, is
+`_bmad-output/implementation-artifacts/evidence/15-1/attribution.md`, and the four rendered PDFs sit
+beside it for the owner's visual pass.
+
+**AC1 — attribution by content-stream diff.** Rendered each fixture live through the same
+`renderStatement` seam the golden test uses, resolved both the produced and the recorded PDF with the
+EXISTING `splitPageContentStreams` (no third copy was written), and diffed the per-page streams. On
+every page of all four fixtures the stream grew by exactly 4 bytes and **exactly one line differed**,
+out of 230 lines on a `statement-1` page and 485–505 on the others:
+`1 0 0 1 436 53.88 Tm` → `1 0 0 1 522.474 53.88 Tm` (`statement-1`, `-5`) /
+`1 0 0 1 514.466 53.88 Tm` (`-20`, `-50`). The `Tj` glyph string on the next line is byte-identical.
+
+The three candidate classes were separated **mechanically** before one was named: an operator census
+(`re f S rg m l Tm Tj TJ q Q w`) over the joined page streams is IDENTICAL recorded vs produced for
+all four fixtures. That eliminates box paint (would add `re`/`f`/`S`/`m`/`l`; `appendEdge`'s
+`HasStroke` gate is never reached — confirmed, not assumed) and text ink (would add `rg`; zero bytes
+when `HasColor` is false, which is why Epic 10 moved nothing). Geometry is the only class that adds
+bytes without adding an operator, and it is what the diff shows.
+
+**The arithmetic.** `appendLength` spells `436` in 3 characters and `522.474`/`514.466` in 7 — **+4
+bytes, once per page**, on `pageFooter` element `e4`, the corpus's only element-level non-`left`
+`style.align`, drawn on every page. 4 × {1,5,20,50} = {4,20,80,200}, matching the file deltas exactly,
+with no residue. And the new position is provably the right one: `36 + 400 + 123 = 559` is the box's
+absolute right edge, and `522.474 + 36.526 = 559.000`, `514.466 + 44.534 = 559.000`. The recorded
+`436.000` was the box's LEFT edge on every page of every fixture.
+
+**A causal proof beyond the diff, which is the strongest thing in this story.** `render.go`'s two
+alignment offsets were temporarily multiplied by zero and the golden test re-run: **all four fixtures
+went green byte for byte** against their pre-existing recorded goldens. Edit reverted; `git diff`
+clean. Nothing else in the tree contributes a byte to this move.
+
+**AC5 — the heavy fixtures were actually run, not assumed.** All four rendered in full, each page
+tree resolved through `AssertPDFPageTreeResolves`, and each resolved page count compared against the
+declared one: 1/1, 5/5, 20/20, 50/50. Measured bytes and digests: 76,744 `114df1d6…`; 127,363
+`70dce051…`; 269,884 `56bfbbd9…`; 555,829 `5d090b0f…`. These are exactly the four counts D-R7.5
+predicted, so its falsification condition did not fire.
+
+**AC2 — ordering held.** `D-15.1.1` was appended to `folio-mvp-decision-log.md`, and the three wrong
+records were corrected, BEFORE any file under `fixtures/` was touched.
+
+**AC3 — the three wrong records corrected**, not repeated: `sprint-status.yaml` (Epic 9's false "no
+golden moved" note, the joint Epic 9/10 suspect framing in the readiness gate, and the Epic 15 block
+that named only `statement-1`), `epics.md`'s Epic 15 prose, and `epic-15-context.md`'s cross-story
+dependency. All now say all four fixtures moved, +4 bytes per page, Epic 9 alone implicated.
+
+**Phase B — re-recorded in this one commit:** 4 `expected.pdf`, 4 `expected.json`, 4 `README.md`
+(digest line, byte count, and a new section recording what moved and why), and the four
+`goldenDigestRecord` second literals in `byte_neutrality_test.go`. The independent-reader acceptance
+each README claims was **re-run on the new bytes** — `qpdf 12.4.0 --check` / `--show-npages`, same
+version, identical output, correct page count on all four.
+
+**`fixtures/statement-signoff.json` was NOT touched** — verified `git diff 09bb30e` on that path is
+empty. No `reader`, `date` or `examined` field was written, edited or synthesised.
+
+**AC4 / the `valign` obligation — deferred with a named owner and trigger, on a measurement.** The
+same experiment was run on the vertical half: multiplying `textValignOffset` alone by zero reddens
+`TestAlignedTextElementsMoveInsideTheirDeclaredBox` and
+`TestCanvasPaintMatchesTheShippingRunPathUnderAlignment` — the behaviour suite does cover it — and
+**no golden anywhere in the repository**. Filed as **DW-24** in `deferred-work.md`: owner **Story
+7.1**, trigger any story touching the vertical model or `text_alignment.go`. A fifth golden was not
+added here because it would put an unsigned new artifact into a corpus whose sign-off is mid-
+re-attestation and enlarge the diff the owner must read before signing.
+
+**AC7 — `TestCorpusMeetsP6ExerciseFloors` is still red and untouched** (P6g, got 7 need >= 20).
+
+### Measured verification (never "green")
+
+| Command | Result |
+|---|---|
+| `cd folio-go && go test ./...` | **2 failing tests**, both expected: `TestGoldenDigestAgreesAtEveryDeclaredSite` (the untouched sign-off names the four old digests — the designed red) and `TestCorpusMeetsP6ExerciseFloors` (P6g, the mandated permanent red). `TestStatementGoldenFixtures` **PASS** on all four. |
+| `cd folio-go && go vet -tags=matrix ./...` | clean, exit 0 |
+| `cd folio-go && FOLIO_MATRIX_TARGET=<t> go test -tags=matrix -run TestTargetRenderHash -v .` | run for **all four targets** — `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` — each PASS, each producing the four re-recorded digests exactly. Not a no-op: the target was set every time. |
+| `cd folio-go && go test -tags=matrix -run TestCrossTargetByteIdentity -v .` | PASS, 17.4s — all four targets agree on all documents |
+| `cd folio-go && go test -tags=matrix ./...` | same two expected reds, plus `TestStatementSemanticSignOffIsRecorded` (the matrix-gated sign-off gate — the designed red), plus `TestShippedFacesReproduceFromUpstream`, which is **environmental and pre-existing**: `fontTools` is not importable by this machine's Python 3.12. Unrelated to this story; no font byte was touched. |
+| `cd folio-go && go test -run 'TestStatement' -v .` | 19 tests PASS — the semantic acceptance step (`statement_semantics_test.go`, D-000.22) re-run against the re-recorded bytes |
+| `cd lint && go test ./...` | all 4 packages PASS |
+| `cd folio-designer && npm run typecheck && npm run lint && npm test` | typecheck clean; lint clean (4 pre-existing `only-export-components` warnings); **30 files / 213 tests PASS** |
+| `qpdf --check` + `--show-npages` on all four re-recorded goldens | no syntax or stream encoding errors; 1 / 5 / 20 / 50 pages |
+| `gofmt -l folio-go lint` | one hit, `lint/internal/rules/licencegraph_test.go` — pre-existing and already tracked as **DW-23**; untouched by this story |
+
 ## Auto Run Result
 
-Status: ready-for-dev
-Blocking condition: none — halted by the `Halt after planning.` directive at the ready-for-development gate.
+Status: blocked
+Blocking condition: `human sign-off required`
+
+**This is the designed halt, not a defect.** Every executable obligation of this story is discharged.
+What remains cannot be done by an agent: a named person must open the four re-recorded PDFs in
+`_bmad-output/implementation-artifacts/evidence/15-1/` — in a viewer, reading the drawn pages, never
+through text extraction (D-4.7.7) — and then write `fixtures/statement-signoff.json` with their own
+`reader`, `date` and `examined`, plus the four new digests:
+
+```
+statement-1   114df1d6508981d4eb162c585ff6f01eedf2a75393a5a2a9b649809e8ac968db
+statement-5   70dce051495cf68daa71fe8185aa2467acfd82d10fb195439a4d71bcf41944d0
+statement-20  56bfbbd9a7d20a2a9404fc931dfbe70da9d25979eec17cc8027c0f1063f84b9e
+statement-50  5d090b0f01ddb5072636caded9feec2cad24cb16297a1afbba301b2a4802f171
+```
+
+The sign-off is invalidated **in whole across all four documents** (D-4.7.1), so it is re-attested,
+never patched. Until it is, `TestGoldenDigestAgreesAtEveryDeclaredSite` and the matrix-gated
+`TestStatementSemanticSignOffIsRecorded` stay red, **and that red is the story working**.
+
+**What the reader should expect to see, so a genuine difference stands out:** the ONLY visible change
+from the previously-signed pages is the footer's `Page N of M` moving about 86pt to the right, to sit
+flush against the right margin. Anything else different falsifies the attribution and the re-record
+must be undone (D-15.1.1's own falsification condition).
 
 Dispatch: classic intent (no `stories.yaml` in this project). Epic context compiled to
-`_bmad-output/implementation-artifacts/epic-15-context.md`. Planning only; no implementation code
-written, no fixture touched, no commit created.
+`_bmad-output/implementation-artifacts/epic-15-context.md`.
 
 Warnings: `multiple-goals` (investigation/attribution, the AC5 heavy-fixture verification, and the
 ruling-gated remediation are independently shippable — carried forward per step-01 item 4, not
 split), `oversized` (the spec exceeds the 1600-token guide; the Code Map is deliberately dense
 because it is the implementer's diff map and the alternative is re-deriving it at dispatch time).
-
-Note for the next dispatch: this spec's `Block If` is a designed halt, not a defect. Phase B must not
-begin until the intent contract carries the owner's intended-or-not ruling.

@@ -77,9 +77,11 @@ other epic's work is unreleasable.
   unexplained; the tag also has to record a matrix result, which presumes a green one.
 - **15.2 before 15.3.** The release story's evidence rests on reading CI truthfully; while the
   workflow is permanently red, "CI clean" cannot be asserted.
-- **15.1 depends on the epics that most likely moved the hash** — the recent element-box paint and
-  text-ink work are the named suspects, because both were expected to leave the corpus hashing
-  identically.
+- **15.1 depends on Epic 9, and on Epic 9 alone** — settled by measurement rather than suspicion
+  (D-15.1.1, D-R7.5). All four golden statements moved, +4 bytes per page each. The mover is not the
+  element-box paint but `folio-go/text_alignment.go`, created in the same commit (`791ed00`) and
+  wired into the emitter, which finally acted on `style.align`. The text-ink work (Epic 10,
+  `304442f`) moved nothing and is not a suspect.
 - **15.3 discharges the long-open release-ownership item** and must explicitly re-affirm or amend the
   owner's earlier "cut after Epic 6" decision, naming which epics are inside v0.1.0 and which are
   not — the later epics all postdate that decision without amending it, and some have already added

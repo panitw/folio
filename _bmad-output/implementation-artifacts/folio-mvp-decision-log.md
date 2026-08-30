@@ -14676,3 +14676,102 @@ ship as an open question for that reason.
 **How we'd know it was wrong.** Authors regularly wanting a family the catalogue does not carry, with
 no way to supply one. The answer then is an author-supplied font file imported the way an image is —
 already an open question in SPEC-fonts — not a live font service.
+
+---
+
+### D-15.1.1 — The four statement goldens moved because `791ed00` wired `style.align` to the emitter; the move is INTENDED and the goldens are re-recorded, with the human sign-off re-attested rather than carried over
+
+**Orchestrator attribution (measured), with the intended-or-not call taken by the OWNER at the terminal
+on 2026-08-30 and recorded in `epic-7-8-decision-log.md` as [[D-R7.6]].** Story 15.1, at baseline
+`f912463`. The measurement in full, with its commands, is
+`_bmad-output/implementation-artifacts/evidence/15-1/attribution.md`; the four rendered PDFs sit
+beside it.
+
+**Verdict.** All four golden statements — not `statement-1` alone — moved by exactly **+4 bytes per
+page** (+4 / +20 / +80 / +200 at 1 / 5 / 20 / 50 pages). The whole delta is **one `Tm` x-coordinate
+operand** on the `pageFooter` element `e4`, emitted once per page. The cause is
+`folio-go/text_alignment.go`, **created in `791ed00`** (Epic 9, "Make a component's box print") with
+no story file, no AC and no FR, and wired into `render.go`'s band text collection in the same commit.
+**Epic 9's element-box paint moved nothing and Epic 10 (`304442f`) moved nothing.** The change is
+**intended**: the pre-`791ed00` output was the defect. The goldens are re-recorded, and the human
+sign-off is re-obtained from a person rather than edited.
+
+**Situation.** `TestStatementGoldenFixtures` was red on all four fixtures with no recorded
+explanation, which is counter-metric C6's failure mode one commit away — "golden hashes regenerated
+rather than investigated". [[AD-21]] makes a moved hash a defect until proven intended and [[AD-22]]
+makes it a versioned behaviour change. Two project records described the situation wrongly: they named
+only `statement-1`, and they named Epics 9 and 10 as joint suspects.
+
+**What the diff showed, because the attribution is the deliverable and not the commit name.** The
+produced and recorded PDFs were resolved with the existing `splitPageContentStreams` helper and
+compared per page. On every page of all four fixtures the stream grows by exactly 4 bytes and
+**exactly one line differs** out of 230–505:
+
+```
+recorded: 1 0 0 1 436 53.88 Tm
+produced: 1 0 0 1 522.474 53.88 Tm     (statement-1, statement-5)
+produced: 1 0 0 1 514.466 53.88 Tm     (statement-20, statement-50)
+```
+
+The glyph string on the next line is byte-identical: the same text, moved. An **operator census** over
+the joined page streams (`re f S rg m l Tm Tj TJ q Q w`) is **identical** recorded vs produced, which
+eliminates the other two candidate classes mechanically rather than by argument — box paint would have
+added `re`/`f`/`S`/`m`/`l` (and `rectdoc.go`'s `appendEdge` flip is gated on `HasStroke`, which no
+statement template sets), and the text-ink bracket would have added `rg`. Geometry is what is left,
+and geometry is the one class that adds bytes **without adding an operator**.
+
+**The arithmetic, which is the actual test.** `appendLength` spells `436` in 3 characters and
+`522.474` / `514.466` in 7: **+4 bytes, once per page**, on the one element the corpus repeats on
+every page. 4 × {1,5,20,50} = {4,20,80,200}, matching the file deltas with no residue.
+
+**Why the new bytes are the right ones.** Element coordinates are band-relative, so `e4`'s box spans
+`36 + 400 = 436` to `36 + 400 + 123 = 559` absolute, and 559 is the content right edge. The recorded
+`436.000` was the box's **left** edge on every page — `style.align: "right"` parsed, validated,
+round-tripped, shown in the inspector, and ignored at emission. The produced values are the box's
+**right** edge minus the packed line width: `522.474 + 36.526 = 559.000` and
+`514.466 + 44.534 = 559.000`, both exact. The two values are the two footer widths (11 glyphs for
+`Page N of {1,5}`, 13 for `Page NN of {20,50}`), 8.008pt apart, which is two 7pt digit advances.
+
+**The causal proof, which is stronger than the diff.** `render.go`'s two alignment offsets were
+temporarily multiplied by zero and the golden test re-run: **all four fixtures went green byte for
+byte** against their recorded goldens. The edit was reverted. Nothing else in the tree contributes a
+byte to this move.
+
+**The population, which closes the red set.** Exactly four templates in the corpus declare a non-`left`
+element alignment, and they are exactly the four that went red. (Each also declares `"align": "right"`
+on the Amount *table column* `ed` — a different, older mechanism that did not move; only the `e4` line
+differs.) And **no fixture anywhere declares `valign`**, so `textValignOffset` shipped in the same
+commit with zero corpus coverage — filed as DW-24 rather than closed here.
+
+**Options considered.** (a) *Unintended — revert the alignment rendering and leave the goldens
+untouched.* Rejected by the owner: the new output is demonstrably correct, and Story 7.3 is written
+assuming `align` already renders and adds `justify` to that same closed set. (b) *Intended, but revert
+now and re-land inside Story 7.3*, keeping the corpus green in the interim — rejected: it buys a delay
+for the price of a revert and a re-land, and pushes the sign-off past the `folio-go/v0.1.0` tag. (c)
+*Intended, re-record now* — chosen. The cost is lowest now: `version.go` still reads `0.0.0-dev` and no
+tag has been cut, so this is not yet an [[AD-22]] release event; after Story 15.3 the same move becomes
+a breaking change against a published artifact.
+
+**Consequences.**
+- Four `expected.pdf`, four `expected.json`, four `README.md` digest-and-byte-count lines and
+  `byte_neutrality_test.go`'s `goldenDigestRecord` literals are re-recorded in one commit. New digests:
+  `statement-1` `114df1d6…`, `statement-5` `70dce051…`, `statement-20` `56bfbbd9…`,
+  `statement-50` `5d090b0f…`.
+- **`fixtures/statement-signoff.json` is NOT touched.** [[D-4.7.1]] invalidates it **in whole across
+  all four documents**, and its `reader` / `date` / `examined` fields are a human attestation: an agent
+  filling them in is a fabricated record. The story therefore HALTS with blocking condition
+  `human sign-off required`, leaving that file byte-identical to its state at `09bb30e` and both
+  `TestGoldenDigestAgreesAtEveryDeclaredSite` (untagged) and `TestStatementSemanticSignOffIsRecorded`
+  (`//go:build matrix`) **red on purpose**.
+  That red is the story working, and it clears only when a person re-reads the four rendered documents
+  and writes the record.
+- The semantic acceptance step ([[D-000.22]], `statement_semantics_test.go`) is re-run against the
+  re-recorded bytes as part of the evidence the owner's visual pass rests on.
+- Epic 7 may now rely on `style.align` rendering; Story 7.3 extends a closed set rather than
+  introducing alignment.
+- `TestCorpusMeetsP6ExerciseFloors` stays red and untouched ([[D-000.17]], [[D-2.1.14]], DW-11).
+
+**How we'd know it was wrong.** If the owner's visual pass finds anything on the re-recorded pages
+different from the old ones beyond the footer's `Page N of M` sitting flush against the right margin,
+the attribution is incomplete and the re-record must be undone — the four byte counts 76,744 / 127,363
+/ 269,884 / 555,829 are predicted exactly by this entry, and any other difference falsifies it.

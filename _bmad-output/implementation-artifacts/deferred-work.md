@@ -180,6 +180,62 @@ all → **Fatal** on the vacuity path; moving the single declaration → **both*
 
 ## Open
 
+### DW-24 — `style.valign` renders but NO fixture in the corpus declares it, so `textValignOffset` has zero golden coverage
+
+**Owner:** **Story 7.1** — it is Epic 7's vertical-model story and it already carries a "the whole
+existing fixture corpus re-renders with every hash unchanged" criterion, which is exactly the guard
+this gap makes unfalsifiable for the vertical half. If 7.1 does not take it, **Epic 7 close**.
+
+**Trigger (either one fires it, and the first is expected within this run):** any story that touches
+the vertical model — `verticalMetrics`, `FirstBaseline`, `Advance`, `textBlockHeight`, or
+`textValignOffset` itself (7.1, 7.2 and 7.7 all do) — or any change to `folio-go/text_alignment.go`.
+
+**Raised at:** Story 15.1, from the population census that closed its attribution (D-15.1.1, D-R7.5).
+
+**What.** `791ed00` shipped `folio-go/text_alignment.go` with two halves. The horizontal half,
+`textAlignOffset`, is exercised by exactly four corpus documents — `fixtures/statement-{1,5,20,50}`,
+whose page-footer element declares `style.align: "right"` — and moving it reddened all four
+immediately, which is how Story 15.1 found it. The vertical half, `textValignOffset`, is exercised by
+**nothing**: `grep -rn 'valign' fixtures/` returns no hit at all.
+
+**Why this is a gap rather than a nice-to-have, stated from a measurement rather than a worry.**
+Story 15.1 ran the experiment in both directions. Multiplying `textAlignOffset` by zero in
+`render.go` turned all four statement goldens green against their PRE-`791ed00` recorded bytes —
+the corpus detects that half exactly. Multiplying `textValignOffset` by zero and running
+`go test ./...` reddened `TestAlignedTextElementsMoveInsideTheirDeclaredBox` and
+`TestCanvasPaintMatchesTheShippingRunPathUnderAlignment` and **not one golden anywhere in the
+repository**; every `expected.pdf` in `fixtures/` stayed byte-identical.
+
+So the honest statement of the gap is narrower than "untested" and still worth an entry: the
+behaviour suite covers `valign`, and the **golden corpus does not**. That matters here specifically
+because the golden corpus is the guard Epic 7's stories bind themselves to — 7.1, 7.2, 7.3, 7.5, 7.7,
+8.3 and 8.4 each carry a "the corpus hashes identically" criterion (D-R7.1), and for the vertical
+model that criterion is currently unfalsifiable: `valign` can move by any amount and every one of
+those criteria still passes. It is also the exact shape of the defect `791ed00` fixed — alignment
+that was parsed, validated and displayed while emitting nothing — which no golden caught for the
+whole life of the feature.
+
+**What closing it looks like.** One fixture under `fixtures/` whose template declares
+`style.valign` — `"middle"` and `"bottom"` on a text element with a declared `height` large enough to
+leave slack — recorded as a golden and registered in `folio-go/byte_neutrality_test.go`'s
+`goldenDigestRecord`. It does not need a table, a second face, or fifty pages; it needs slack and a
+declared height. It should NOT be bolted onto a statement fixture: those four carry a human sign-off
+whose re-attestation costs a person reading four documents (D-4.7.1), and widening them makes every
+future `valign` change cost that same re-read.
+
+**Why Story 15.1 did not simply add it.** 15.1's ruling is that the alignment move is *intended*
+(D-R7.6), so its remediation is a re-record, and its own halt is on a human sign-off. Adding a
+fifth golden in the same commit would put an unsigned new artifact into a corpus whose sign-off is
+mid-re-attestation, and it would enlarge the diff the owner has to read before signing. The gap is
+recorded here, with an owner and a trigger, exactly as that story's acceptance allows.
+
+**How we'd know it was still wrong.** A change to the vertical model landing with the corpus green
+while `valign` visibly moves — or, the cheap check, re-running Story 15.1's experiment: multiply
+`textValignOffset` by zero in `render.go` and run the whole golden suite. While this item is open,
+that suite stays green. When it is closed, it must go red.
+
+---
+
 ### DW-22 — `ImagePaint` fetches paintable bytes once per ELEMENT with no cache, not once per distinct asset
 
 **Owner:** **the second Epic 5 boundary gate** (already owed by Story 5.13's reopening, D-5.13.6) —

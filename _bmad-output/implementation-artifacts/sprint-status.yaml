@@ -193,12 +193,19 @@ development_status:
   # format version is added: every value this epic starts consuming is one the format already
   # carries and validates, so a document declaring no element background or border must hash
   # identically and the golden corpus stays a witness.
+  # CORRECTED 2026-08-30 by Story 15.1 (D-15.1.1, D-R7.5): that claim is TRUE of the box paint
+  # and FALSE AS SHIPPED. The same commit also created folio-go/text_alignment.go and wired
+  # style.align into the emitter, which moved ALL FOUR statement goldens by +4 bytes per page.
+  # The box paint moved nothing; the alignment did. See the second correction below.
   # Both stories implemented 2026-08-30 in the same session that filed the epic.
   # 9.1 also fixed a latent Epic 4 defect it surfaced: internal/pdf/rectdoc.go's
   # appendEdge emitted a stroked edge PREFIX ("m x1 y1 l x2 y2") in a postfix
   # format, so every four-edge border drew as diagonals between opposite corners.
-  # No golden moved — no document in the corpus renders a stroked edge — and the
-  # order is now pinned by TestAppendRectContentStreamEdgeOperandsArePostfix.
+  # No golden moved ON THAT FIX — no document in the corpus renders a stroked edge, and
+  # Story 15.1's operator census confirmed the path is never reached rather than assuming it —
+  # and the order is now pinned by TestAppendRectContentStreamEdgeOperandsArePostfix.
+  # 9.1 ALSO shipped folio-go/text_alignment.go with no story file, no AC and no FR, and that
+  # is what moved the corpus (D-15.1.1). Its valign half still has ZERO corpus coverage: DW-24.
   # NOT yet reviewed or retrospected; story files are not written.
   epic-9: in-progress
   9-1-the-engine-paints-a-component-s-background-and-border: review
@@ -284,8 +291,11 @@ development_status:
   #      records the question ("Do bold and italic get realized in this scope?"); no
   #      artifact records an answer. 11.1 must not enter a sprint before it is ruled.
   #   2. Epics 9 and 10 are `review` with no story files and no retrospective, and 15.1
-  #      most likely attributes the moved statement-1 golden to one of them -- so the
-  #      evidence 15.1 needs is the evidence those two epics never wrote down.
+  #      most likely attributes the moved goldens to one of them -- so the evidence 15.1
+  #      needs is the evidence those two epics never wrote down.
+  #      SETTLED 2026-08-30 by Story 15.1 (D-15.1.1): ALL FOUR statement goldens moved, not
+  #      statement-1 alone, and EPIC 9 ALONE is implicated -- Epic 10 (304442f) moved nothing,
+  #      because the text-ink bracket emits zero bytes when no colour is declared.
   #   3. Epic 8's prose still reads "Bold and italic are NOT in this epic ... a
   #      face-inventory decision SPEC-fonts leaves open". Epic 11 now owns it; that
   #      sentence should point there rather than dangle.
@@ -346,15 +356,29 @@ development_status:
   epic-14-retrospective: optional
 
   # Epic 15 is the release blocker set, and 15.1 is URGENT rather than merely first:
-  # main is RED on the cross-target matrix right now. statement-1 -- the golden report,
-  # the primary acceptance fixture -- produces 114df1d6... against a recorded ef58bbf6...
-  # All four targets agree, so CAP-13/S2/S3 hold; what failed is that a golden moved
-  # unexplained, which C6 makes a defect until proven intended. Epics 9 and 10 are the
-  # suspects: both promised the corpus would hash identically.
+  # main is RED on the cross-target matrix right now. ALL FOUR golden statements moved --
+  # statement-1, -5, -20 and -50 -- each by exactly +4 bytes per page (+4/+20/+80/+200).
+  # statement-1, the primary acceptance fixture, produced 114df1d6... against a recorded
+  # ef58bbf6...  All four targets agree, so CAP-13/S2/S3 hold; what failed is that a golden
+  # moved unexplained, which C6 makes a defect until proven intended.
+  # EPIC 9 ALONE is implicated (D-15.1.1): 791ed00 created folio-go/text_alignment.go and
+  # wired style.align to the emitter, moving one Tm x-operand on the per-page footer element.
+  # Epic 10 (304442f) moved nothing. The move is INTENDED (D-R7.6) and the goldens are
+  # re-recorded; the human sign-off is re-attested, never patched.
   # 15.1 pulled forward as story zero of the Epic 7-8 run (D-R7.0): both epics guard
   # themselves with "the corpus hashes identically", unevaluable while it is red.
   # Ruling and attribution in epic-7-8-decision-log.md (D-R7.5, D-R7.6).
   epic-15: in-progress
+  # 15.1 HALTED 2026-08-30 with blocking condition `human sign-off required`, which is its
+  # DESIGNED halt and not a defect. Attribution, record corrections, the AC5 heavy-fixture run
+  # and the re-record are all complete and committed; the four goldens now read
+  # 114df1d6 / 70dce051 / 56bfbbd9 / 5d090b0f, and all four matrix targets agree on them.
+  # What remains cannot be done by an agent: a person must open the four PDFs in
+  # _bmad-output/implementation-artifacts/evidence/15-1/ and write fixtures/statement-signoff.json
+  # themselves (D-4.7.1 invalidates it IN WHOLE; D-4.7.7 forbids checking by text extraction).
+  # Until they do, TestGoldenDigestAgreesAtEveryDeclaredSite and the matrix-gated
+  # TestStatementSemanticSignOffIsRecorded are RED ON PURPOSE. Deferred: DW-24 (valign has no
+  # golden coverage) — owner Story 7.1.
   15-1-the-golden-report-s-moved-hash-is-explained: in-progress
   15-2-ci-s-red-means-something: backlog
   15-3-folio-go-v0-1-0-is-cut: backlog

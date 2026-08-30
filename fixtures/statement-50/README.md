@@ -1,9 +1,50 @@
 # `statement-50` — the Customer Account Statement at 50 pages
 
 **Story 4.7** (the C4 gate · S1, S2, S3, S4 · AD-21, AD-22, AD-1, AD-5, AD-14, AD-23). Golden digest
-`9c5be7ba7b4f31c7d488c114a377058ec30cec5ffca082d9c76ee26f304c754c`.
+`5d090b0f01ddb5072636caded9feec2cad24cb16297a1afbba301b2a4802f171`.
 
-1085 bound transactions, 50 pages, 555629 bytes.
+1085 bound transactions, 50 pages, 555829 bytes.
+
+## RE-RECORDED 2026-08-30 by Story 15.1 — one `Tm` x-coordinate, and the sign-off it invalidated
+
+The previous digest was `9c5be7ba7b4f31c7d488c114a377058ec30cec5ffca082d9c76ee26f304c754c` at 555,629 bytes.
+This one is 555,829 bytes: **+200**, which is **+4 bytes per page** on 50 pages, the same
+per-page delta all four statement goldens took.
+
+**What moved, measured rather than reasoned about** (D-15.1.1; full evidence and commands in
+`_bmad-output/implementation-artifacts/evidence/15-1/attribution.md`). Commit `791ed00` created
+`folio-go/text_alignment.go` and wired `style.align` into the emitter for the first time. The page
+footer `e4` declares `"align": "right"`, and until that commit the engine parsed, validated,
+round-tripped and displayed that request and then drew the text at the **left** edge of its box
+anyway. Resolving both PDFs with `splitPageContentStreams` and diffing them page by page shows
+exactly one differing line per page, out of hundreds:
+
+```
+recorded: 1 0 0 1 436 53.88 Tm
+produced: 1 0 0 1 514.466 53.88 Tm
+```
+
+The glyph string on the next line is byte-identical — the same text, moved. `436` is 3 characters
+and the new value is 7: **+4 bytes, once per page**, on the one element this document repeats on
+every page. An operator census over the page streams (`re f S rg m l Tm Tj TJ q Q w`) is identical
+before and after, which rules out the element-box paint and the text-ink bracket mechanically:
+neither added or removed an operator, and a coordinate is the only thing that changes byte length
+without changing the operator sequence.
+
+`36 + 400 + 123 = 559` is the footer box's right edge in absolute page coordinates, and the new
+position is exactly that edge minus the packed line width. The old position was exactly the box's
+left edge. **The new rendering is the correct one and the old one was the defect** — the owner's
+ruling, D-R7.6.
+
+**The human sign-off does not transfer, and it was not edited.** D-4.7.1 invalidates
+`fixtures/statement-signoff.json` **in whole across all four documents** the moment any one digest
+moves. Story 15.1 left that file untouched and halted; a person re-reads the four rendered
+documents and writes the record. Until they do,
+`TestGoldenDigestAgreesAtEveryDeclaredSite` and the matrix-gated
+`TestStatementSemanticSignOffIsRecorded` are red, and that red is the process working.
+
+The independent-reader acceptance below was **re-run on these bytes**, same reader and same version,
+with identical output.
 
 ## Why this fixture exists
 
