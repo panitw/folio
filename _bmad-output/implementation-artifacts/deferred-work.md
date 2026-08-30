@@ -1990,7 +1990,7 @@ by design.
 
 ---
 
-### DW-25 — two canvas projection bounds abort the WHOLE projection instead of degrading, and Epic 7's own input reaches both; the 512-BYTE value cap binds first
+### DW-25 — two canvas projection bounds abort the WHOLE projection instead of degrading, and Epic 7's own input reaches both; the 512-BYTE value cap binds first — **CLOSED by Story 7.4, 2026-08-30**
 
 - **Deferred by:** Story 7.1 (2026-08-30), which created the reachability and whose own contract
   forbids it the fix — no designer/editor surface work, and no new diagnostic code.
@@ -2000,7 +2000,7 @@ by design.
 - **Severity:** **MEDIUM**, not the `low` Story 7.1's implementer filed it at. The lead went further:
   it is **Story 7.4's own acceptance criterion**, since 7.4's first AC ("the editor accepts and
   preserves multiple lines") cannot be demonstrated until these bounds lift.
-- **Status:** OPEN.
+- **Status:** **CLOSED** by Story 7.4, 2026-08-30. See the closing note at the end of this entry.
 
 **AMENDED 2026-08-30 by the engineering lead's ruling — the bound named in the original title is NOT
 the one that binds.** `page_setup.go:557-560`, in `canvasComponents` (a DIFFERENT function from the
@@ -2134,6 +2134,140 @@ fragment cap in the same change, or 7.4 will trade a blank canvas at 512 bytes f
 
 ---
 
+## DW-25 IS CLOSED — Story 7.4, 2026-08-30
+
+Closed against a **grep re-run at the closing revision**, not against the hand-list above: this
+entry's own enumeration was both stale and incomplete twice over, which is exactly how DW-24's first
+closure went wrong.
+
+### The enumeration, re-derived. `grep -n 'maxCanvasPropertyString\|maxCanvasBodyText' folio-go/page_setup.go`
+
+```
+38:const maxCanvasPropertyString = 512
+64:const maxCanvasBodyText = 1048576
+288:  if len(name) > maxCanvasPropertyString {            # font-family name
+623:  if len(fragment.text) > maxCanvasBodyText {         # BODY TEXT (was 512)
+726:  if len(element.Value.Value) > maxCanvasBodyText {   # BODY TEXT (was 512)
+735:  if len(element.VisibleIf.Value) > maxCanvasPropertyString {
+741:  if len(element.Table.Value.Bind) > maxCanvasPropertyString {
+786:  if len(style.FontFamily.Value) > maxCanvasPropertyString {
+818:  if len(style.Color.Value) > maxCanvasPropertyString {
+824:  if len(style.Background.Value) > maxCanvasPropertyString {
+839:  if len(border.Color.Value) > maxCanvasPropertyString {
+```
+
+**NINE sites, two of them body text, exactly as the plan gate re-derived.** The two body-text sites
+moved together — a value large enough to pass the first would otherwise have aborted at the second —
+and the **seven identifier, colour and expression sites keep 512 and keep aborting**. That residue is
+**recorded, not fixed** (D-7.4.2 §6): Epic 7 makes none of them newly reachable, and
+`TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve` (`folio-go/canvas_body_text_bounds_test.go`)
+is where "recorded" is executable — it asserts **all seven** still refuse at 513 bytes, with the
+identifier-bound refusal's own message rather than merely a non-nil error, **and** that a 513-byte
+clause no longer does.
+
+### What the fix actually is
+
+`maxCanvasPropertyString` was **split at the declaration**, not raised. Three new constants, each
+carrying its criterion and its arithmetic in its own doc comment:
+
+| Constant | Value | Derivation |
+|---|---|---|
+| `maxCanvasBodyTextLines` | 1920 | 40 pages × ⌊729890 mp content-band height ÷ 14982 mp advance at 11pt on the shipped chain⌋ = 40 × 48 |
+| `maxCanvasBodyTextFragments` | 65536 | cumulative per element; the same forty-page document justified at full A4 width, **18.05 fragments/line measured** (see the re-measurement below) → 1920 × 18.05 = 34 656, to the next power of two |
+| `maxCanvasBodyText` | 1048576 bytes | channel-representability backstop, a full power of two above 1920 lines × ~90 chars × 3 bytes = 518 400 bytes, so it cannot bind before the paint bounds |
+
+The two **paint** bounds now **degrade per element**: the element paints its first N lines, sets a new
+`CanvasTextPaint.Truncated` flag beside `Overflow`, and the projection continues — reusing verbatim
+the `fontChain` disposition eleven lines above the site, not a second one. `maxCanvasTextLines = 256`
+is **gone**, not renamed.
+
+**`maxCanvasBodyText` is the one site that still refuses, and that is deliberate.** Degradation lives
+on the paint side alone (D-7.4.2 §1): `component.Value` is what the properties panel edits and
+**saves**, so truncating it would write the truncation into the author's document. It is a
+channel-representability backstop at megabyte scale that Epic 7's input cannot reach, and its comment
+says so — following D-7.2.3's precedent for a stated sanity ceiling.
+
+### The fourth mirror, which is what made the Go-side fix observable
+
+`engine-protocol.ts:152-154`'s `optionalString` capped an element's `value` at 512 alongside seven
+identifier keys — this entry's own two-jobs conflation, reproduced exactly on the browser side.
+Splitting Go without splitting it would have changed **nothing observable**: the browser would have
+gone on dropping the whole response. All four mirrors are now hoisted to named constants
+(`MAX_CANVAS_BODY_TEXT`, `MAX_CANVAS_BODY_TEXT_LINES`, `MAX_CANVAS_BODY_TEXT_FRAGMENTS`,
+`MAX_CANVAS_PROPERTY_STRING`) and tied to the Go declarations by
+`folio-designer/src/engine-bounds-mirror.test.ts`, which reads **both files**, asserts all four pairs
+non-vacuously, asserts each constant is consumed at the validator site it bounds, and red-proofs a
+one-sided edit in both directions.
+
+**The unit mismatch is recorded, not "fixed".** Go counts BYTES (`len()`); TypeScript counts UTF-16
+CODE UNITS (`.length`). For non-ASCII the browser is the more permissive of the pair, so Go refuses
+first and nothing unrepresentable crosses. The tie compares **literals, not quantities**, and its own
+comment says so.
+
+### The re-measurement, at the closing revision, with the value cap lifted
+
+**Method.** Justified English contract prose, 11pt, the **shipped `["Noto Sans"]` chain** — the same
+face and size `maxCanvasBodyTextLines` is derived from, so the two bounds are measured against one
+document — projected through `CanvasWithTextPaint` and counted off the returned
+`CanvasTextPaint.Lines`:
+
+| column | words | lines | cumulative fragments | max per line | fragments/line |
+|---|---|---|---|---|---|
+| 523.276 pt (full A4 content width) | 912 | 51 | 911 | 21 | 17.86 |
+| 523.276 pt | 1824 | 101 | 1823 | 21 | **18.05** |
+| 240 pt (clause column) | 912 | 113 | 910 | 10 | 8.05 |
+| 240 pt | 1824 | 225 | 1822 | 10 | 8.10 |
+| 523.276 pt, SHORT-WORD worst case | 6400 | 207 | 6387 | 31 | 30.86 |
+
+The figure rises with sample length and settles at the words-per-line asymptote: a justified block's
+LAST line is drawn at its natural edge, so a short sample's average is dragged down by it. **18.05
+over 101 lines is the figure the constant is derived from**, and it supersedes two earlier ones that
+were not measured this way: the original briefing's **16.72** was a thirteen-line sample, and this
+entry's own first re-measurement of **19.35** used the `Roboto-Regular` TEST face rather than the
+shipped chain. `folio-go/page_setup.go` and `epic-7-8-decision-log.md` carry 18.05 too.
+
+**The geometry-free law holds and is the thing worth recording:** cumulative fragments ≈ the value's
+**word count**, at any column width (911/912, 1823/1824 — the last line contributes one).
+Consequences against the new bounds:
+
+- 1920 × 18.05 = **34 656**, which is ABOVE 32 768: the bound this entry first shipped did **not**
+  cover its own forty-page criterion, and binding at ~1 815 lines it fell short by a page and a half.
+  Raised to the next power of two, **65 536**.
+- 65 536 also clears the **short-word worst case**: 1920 × 30.86 = 59 251. The criterion therefore
+  holds for prose denser than a contract's, not only for the corpus it was measured on.
+- At a **240 pt clause column** the LINE bound binds first: 1 920 lines × 8.1 ≈ 15 600 fragments,
+  under a quarter of the cumulative allowance.
+- The **peak a single element can now emit** is `min(65 536, 1920 × fragments-per-line)` by
+  construction — the old figure of 256 (this entry's ~249 was itself an undercount) is retired along
+  with the 512-byte value cap that produced it.
+
+**Correction to this entry's own SCOPE AMENDMENT.** The "~73 justified lines" crossing point was a
+240 pt-column figure quoted as a general one; at full A4 content width the browser's old cumulative
+512 was crossed at ~28 lines (measured 18.05 fragments/line), not 73. The general statement is the
+word-count law above, not any lines figure.
+
+### One residue found while closing, noted and NOT fixed
+
+`CanvasTextPaint.Overflow` sets the CSS class `canvas-component-text-overflow` and **there is no rule
+for that class anywhere in `App.css`** — the existing degradation flag has always been invisible to
+the author. Story 7.4 did not fix it (out of contract) but deliberately did not repeat it: the new
+`Truncated` flag states its reason **in words** at the component and in the same sentence the
+component's accessible name carries. Whoever owns the overflow presentation next has a precedent to
+copy and a bug to close.
+
+### Verification at closure
+
+- `folio-go/canvas_body_text_bounds_test.go` — degradation past the line bound (prefix painted, flag
+  set, **every other component projects normally**, the document's own value untouched); truncated vs
+  empty distinguishable in one projection; the per-line/cumulative asymmetry; degradation past the
+  per-line guard through a real projection; `Paginate`'s page count independent of paint truncation.
+- `folio-designer/src/canvas-authority-contract.test.ts` — a new prohibited pattern banning any
+  height or window derivation from `textPaint…lines.length`, with its own red-proof.
+- All twenty recorded golden digests **measured** unchanged; four-target matrix legs run individually
+  and the cross-target gate passed.
+
+---
+
 ### DW-27 — `fixtures/justified-thai/` is the first golden anywhere to insert visible space between Thai words, and no Thai reader has looked at it
 
 - **Deferred by:** Story 7.3 (2026-08-30), at story close. The story's own contract could not
@@ -2222,18 +2356,37 @@ words, or whether this should degrade with a located diagnostic.
 
 ---
 
-### DW-29 — `style.align: "justify"` on a table or its `headerStyle` loads, forces the document to 2.0, and renders every cell at the start edge with no diagnostic — RULED INTO STORY 7.4
+### DW-29 — `style.align: "justify"` on a table or its `headerStyle` loads, forces the document to 2.0, and renders every cell at the start edge with no diagnostic — ROUTED TO STORY 7.8
 
 - **Deferred by:** Story 7.3 (2026-08-30). The diff is **contract-correct**: 7.3's intent contract
   explicitly directed that `headerStyle.align: "justify"` load and raise the document to 2.0, while
   its Never list forbade implementing justified table cells. The residue is the product question the
   contract deliberately did not settle.
-- **Owner:** **Story 7.4**, as an **explicit acceptance criterion** — the engineering lead has ruled
-  (2026-08-30) that the value must be **rejected at load**. If 7.4's own plan gate rejects the
-  addition as `multiple-goals`, it becomes a named **Story 7.8**, not a further deferral. This is a
-  ruled disposition with a named home, not an open-ended item.
+- **Owner:** **Story 7.8**, a named story now written into `epics.md`. Originally Story 7.4, as an
+  explicit acceptance criterion — the engineering lead ruled (2026-08-30) that the value must be
+  **rejected at load**. **Story 7.4's plan gate judged the addition `multiple-goals` and exercised
+  this entry's own escalation clause**, which provides for exactly that outcome. **This is not a
+  further deferral**: the ruling stands unchanged, and the work now has a numbered home with its
+  inheritances written down.
 - **Severity:** MEDIUM.
-- **Status:** OPEN, ruled.
+- **Status:** OPEN, ruled, **owned by Story 7.8**.
+
+**AMENDED 2026-08-30 at Story 7.4's close — what 7.4 discharged and what it did not.**
+
+7.4 discharged the **product** half and nothing else: the inspector's align control offers `justify`
+only when every selected component is text, and offers three segments for a table or a mixed
+text+table selection (`folio-designer/src/App.tsx`, pinned by *"offers justify for text alone, and
+never for a table or a mixed selection"* in `App.test.tsx`). So the designer can no longer author the
+defective document.
+
+The **format** half — the load-time refusal — is untouched, and 7.4's Never list forbade it. The
+reachability argument that put DW-25 into 7.4 runs the other way here: 7.4 does **not** make DW-29's
+condition newly reachable, precisely because the panel no longer offers the value. After 7.4 the
+defective document is reachable only by hand-editing a `.folio`, exactly as before. Three further
+reasons are recorded in `7-4-author-body-text-in-the-designer.md`'s Design Notes, the load-bearing one
+being that a located error naming the element and the field **cannot reach a designer author without
+a THIRD per-field style diagnostic code**, which `internal/diag/diag.go:249-252` explicitly reserves
+for a deliberate decision. That is a lead call, not a builder's.
 
 **The behaviour today.** A table element's `style.align: "justify"`, or its `headerStyle.align:
 "justify"`, loads without error and raises the document to format **2.0** — making it unreadable to

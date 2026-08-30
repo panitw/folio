@@ -1,5 +1,5 @@
 import './App.css'
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
 import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot, TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
@@ -852,7 +852,11 @@ const sizeFields: ReadonlyArray<FieldSpec> = [{ field: 'width', label: 'Width (p
 // before typing, with the same committed text showing in both rows. The field
 // routes on what was actually typed instead; the engine's two guards, and the
 // two spellings they accept, are unchanged.
-const contentField: FieldSpec = { field: 'value', label: 'Text', affix: 'Text', fx: 'placeholder' }
+// `prose` is what makes this a TEXTAREA rather than an <input type="text">,
+// which cannot hold a line feed at all — the whole of Story 7.4's first AC.
+// The flag was declared on FieldSpec long before anything set it; this is the
+// field it was anticipated for, and it stays the only one that sets it.
+const contentField: FieldSpec = { field: 'value', label: 'Text', affix: 'Text', prose: true, fx: 'placeholder' }
 // The picker can only carry a well-formed #RRGGBB — exactly what Go's
 // parseHexColor accepts — so an unset or half-typed field opens it on black
 // while the text beside it stays the committed truth.
@@ -862,9 +866,20 @@ function contentCommand(field: PropertyField, text: string): PropertyField { ret
 // TYPOGRAPHY is laid out as Main.dc.html draws it: the family row spans the
 // panel, the size sits beside the B/I pair, and align/valign are the design's
 // two segmented controls instead of free-text fields. Both are closed sets Go
-// already validates — left/center/right and top/middle/bottom — so the control
-// can offer exactly the accepted values and nothing else.
+// already validates, and the control offers exactly the values ITS OWN
+// selection accepts and nothing else.
+//
+// That is no longer one list. Since Story 7.3 `style.align` admits FOUR
+// values for text — left/center/right/justify — while a table's cells draw a
+// justified value at the start edge, so it means nothing there. The align
+// segments are therefore derived per selection in ComponentProperties, not a
+// module constant; valign stays the one triple top/middle/bottom.
 const fontSizeField: FieldSpec = { field: 'fontSize', label: 'Font size (pt)', unit: 'pt' }
+// Story 7.4. A dimensionless ratio, shown in the author's own units: the
+// engine carries thousandths and `points` already divides by 1000, so 1500
+// reads back as "1.5". Empty is the leading the declared font chain itself
+// rules, which is exactly a ratio of 1.
+const lineSpacingField: FieldSpec = { field: 'lineSpacing', label: 'Line spacing', affix: 'Leading', empty: '1' }
 // Story 10.1: the ink, in TYPOGRAPHY where the rest of the type lives —
 // it colours the glyphs, not the box, so it belongs beside the family and
 // the size rather than beside Background. Empty is the engine's own
@@ -878,11 +893,23 @@ const borderFields: ReadonlyArray<FieldSpec> = [{ field: 'borderWidth', label: '
 const backgroundField: FieldSpec = { field: 'background', label: 'Background', affix: 'Background', swatch: true, empty: 'none' }
 const visibilityField: FieldSpec = { field: 'visibleIf', label: 'Visible if', affix: 'Visibility', empty: 'always', fx: 'condition' }
 type SegmentSpec = Readonly<{ value: string; label: string; content: ReactNode }>
-const alignGlyphs: Readonly<Record<'left' | 'center' | 'right', string>> = { left: 'M2 4h12M2 8h8M2 12h11', center: 'M2 4h12M4 8h8M3 12h10', right: 'M2 4h12M6 8h8M3 12h11' }
-function AlignIcon({ variant }: { variant: 'left' | 'center' | 'right' }) {
+// The justify glyph is FOUR FLUSH RULES, drawn as an SVG path like its three
+// siblings. It is never the CSS justify declaration: the browser must not be
+// asked to justify anything, in production, unit or e2e sources, and
+// canvas-authority-contract.test.ts bans the property/value pair outright —
+// in comments too, which is why this sentence spells neither.
+type AlignVariant = 'left' | 'center' | 'right' | 'justify'
+const alignGlyphs: Readonly<Record<AlignVariant, string>> = { left: 'M2 4h12M2 8h8M2 12h11', center: 'M2 4h12M4 8h8M3 12h10', right: 'M2 4h12M6 8h8M3 12h11', justify: 'M2 3h12M2 7h12M2 11h12M2 15h12' }
+function AlignIcon({ variant }: { variant: AlignVariant }) {
   return <svg aria-hidden="true" className="segment-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2"><path d={alignGlyphs[variant]} /></svg>
 }
 const alignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'left', label: 'Align left', content: <AlignIcon variant="left" /> }, { value: 'center', label: 'Align center', content: <AlignIcon variant="center" /> }, { value: 'right', label: 'Align right', content: <AlignIcon variant="right" /> }]
+// Offered only when every selected component is text. A table element's
+// style.align cascades to its cells, which draw a justified value at their
+// start edge — so justify means nothing there, and a control must not offer a
+// value that is meaningless for the element type. A MIXED text+table
+// selection gets the triple too: one command goes to every id in it.
+const justifySegment: SegmentSpec = { value: 'justify', label: 'Align justify', content: <AlignIcon variant="justify" /> }
 const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vertical align top', content: 'TOP' }, { value: 'middle', label: 'Vertical align middle', content: 'MID' }, { value: 'bottom', label: 'Vertical align bottom', content: 'BOT' }]
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
@@ -896,6 +923,10 @@ function ComponentProperties({ components, fontFamilies, defaultFontSize, onComm
   const table = single?.type === 'table' ? single : undefined
   const image = single?.type === 'image' ? single : undefined
   const typographic = all((type) => type === 'text' || type === 'table')
+  // FOUR segments for an all-text selection, THREE for anything carrying a
+  // table. SegmentedProperty never sees component.type — the widening is a
+  // derivation here, where the selection's types are already known.
+  const alignChoices = all((type) => type === 'text') ? [...alignSegments, justifySegment] : alignSegments
   // A drag is the same transient local proposal the canvas is already
   // painting, shown in the same units. It is never committed from here; the
   // pointer release sends the one command and Go's accepted geometry then
@@ -910,7 +941,7 @@ function ComponentProperties({ components, fontFamilies, defaultFontSize, onComm
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -987,7 +1018,53 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // reader through the input's description, so the cue is never colour- or
   // sight-only.
   const description = [same ? undefined : 'Mixed value', fx ? fxHint[fx] : undefined].filter((part) => part !== undefined).join('. ') || undefined
-  return <div className="property-editor"><div className={`property-field${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}<input className={`property-value${prose ? ' property-value-prose' : ''}`} aria-label={label} aria-description={description} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} inputMode={unit === 'pt' ? 'decimal' : undefined} readOnly={live !== undefined} value={live ?? draft} placeholder={same ? empty : 'Mixed'} disabled={pending} onChange={(event) => setDraft(event.target.value)} onBlur={() => void commit()} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void commit() } if (event.key === 'Escape') { event.preventDefault(); revert(); (event.target as HTMLInputElement).blur() } }} />{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${/^#[0-9a-fA-F]{6}$/.test(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { setDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+  // Enter COMMITS in a single-line field and INSERTS A LINE FEED in a prose
+  // one — the one behaviour that differs between the two controls. Escape
+  // still reverts and blurs, blur still commits, and the single-flight submit
+  // and canonicalValue reconciliation are shared verbatim.
+  const keyDown = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !prose) { event.preventDefault(); void commit() }
+    if (event.key === 'Escape') { event.preventDefault(); revert(); event.currentTarget.blur() }
+  }
+  const proseField = useRef<HTMLTextAreaElement>(null)
+  const proseCaret = useRef<number | undefined>(undefined)
+  useLayoutEffect(() => {
+    const caret = proseCaret.current
+    if (caret === undefined || proseField.current === null) return
+    proseCaret.current = undefined
+    proseField.current.setSelectionRange(caret, caret)
+  })
+  // ONLY the plain flavour is ever read. A clipboard from a word processor
+  // also carries text/html and text/rtf, which is where its fonts, bold,
+  // italics and indents live; discarding them "without error" is achieved by
+  // never looking at them, and never by adding a sanitiser — a parser would
+  // be a new runtime dependency, and design-contract.test.ts pins the
+  // lockfile. Paragraph breaks survive because they are in the plain text,
+  // and a CRLF pair is folded into ONE mandatory break by the engine itself.
+  const pasteProse = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    // preventDefault FIRST, and UNCONDITIONALLY. A clipboard carrying only
+    // text/html or text/rtf has no plain flavour to insert, and returning
+    // before this call handed that paste to the BROWSER, which inserts text it
+    // derived from the HTML — the one outcome "only the plain flavour is ever
+    // read" exists to forbid. Nothing to insert must mean nothing inserted.
+    event.preventDefault()
+    const plain = event.clipboardData.getData('text/plain')
+    if (plain === '') return
+    const field = event.currentTarget
+    const head = field.selectionStart ?? field.value.length
+    const tail = field.selectionEnd ?? field.value.length
+    setDraft(`${field.value.slice(0, head)}${plain}${field.value.slice(tail)}`)
+    // The textarea is CONTROLLED, so React rewrites its value on the next
+    // render and the caret goes to the end of the whole field. Pasting into
+    // the middle of a long clause would then land the author's next keystroke
+    // in the wrong paragraph, so the caret is put back at the end of what was
+    // just inserted, in the layout effect that runs once the render commits.
+    proseCaret.current = head + plain.length
+  }
+  const shared = { 'aria-label': label, 'aria-description': description, 'aria-invalid': error ? ('true' as const) : undefined, 'aria-errormessage': errorId, readOnly: live !== undefined, value: live ?? draft, placeholder: same ? empty : 'Mixed', disabled: pending, onBlur: () => void commit(), onKeyDown: keyDown }
+  return <div className="property-editor"><div className={`property-field${prose ? ' property-field-prose' : ''}${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}{prose
+    ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} {...shared} onChange={(event) => setDraft(event.target.value)} onPaste={pasteProse} />
+    : <input className="property-value" {...shared} inputMode={unit === 'pt' || unit === undefined && (field === 'lineSpacing') ? 'decimal' : undefined} onChange={(event) => setDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${/^#[0-9a-fA-F]{6}$/.test(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { setDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 function canonicalValue(canvas: CanvasProjection, ids: ReadonlyArray<string>, field: PropertyField): string | undefined { const values = canvas.components.filter((component) => ids.includes(component.id)).map((component) => committedValue(component, field)); return values.length === ids.length && values.every((value) => value === values[0]) ? values[0] ?? '' : undefined }
 function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
@@ -1099,7 +1176,7 @@ function CanvasComponent({ component, limit, zoom, selected, preview, engine, ge
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const dy = canvasDisplay.documentDelta(rawDY, zoom) * 1000; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
 }
@@ -1169,11 +1246,24 @@ function TextPaint({ component, zoom }: { component: CanvasProjection['component
   const paint = component.textPaint!
   return <span className="canvas-text-paint" aria-hidden="true" style={{ '--text-font-size': canvasDisplay.css(component.fontSize ?? 12000, zoom), '--text-font-weight': component.bold ? 700 : 400, '--text-font-style': component.italic ? 'italic' : 'normal', ...(component.color === undefined ? {} : { '--text-ink': component.color }) } as CSSProperties}>{paint.lines.map((line, lineIndex) => <span className="canvas-text-line" key={`${component.id}-${lineIndex}`} style={{ '--text-line-baseline': canvasDisplay.css(line.baseline - component.y, zoom), '--text-line-advance': canvasDisplay.css(line.advance, zoom) } as CSSProperties}>{line.fragments.map((fragment, fragmentIndex) => <span className="canvas-text-fragment" key={`${component.id}-${lineIndex}-${fragmentIndex}`} style={{ '--text-fragment-x': canvasDisplay.css(fragment.x - component.x, zoom) } as CSSProperties}>{textRuns(fragment.text).map((part, partIndex) => isExpressionRun(part) ? <span className="canvas-text-expression" key={`${component.id}-${lineIndex}-${fragmentIndex}-${partIndex}`}>{part}</span> : part)}</span>)}</span>)}</span>
 }
+// The engine says this element's paint is a PREFIX. It is stated in words, at
+// the component, in the same sentence a screen reader gets — not by colour,
+// and not only by a class. (The older `overflow` flag sets
+// `canvas-component-text-overflow` and NOTHING ELSE: there is no CSS rule for
+// that class anywhere, so it is invisible to the author. Noted, deliberately
+// not fixed here; repeating the shape is what this avoids.)
+//
+// It says what is true of the CANVAS, and what is still true of the document:
+// the value is intact and prints whole. Nothing here is derived from how many
+// lines were painted — the canvas must never turn a truncated paint into a
+// number about the document.
+const canvasTruncationNotice = 'Canvas preview cut short. The whole text is in the document and prints in full.'
 function componentAccessibleName(component: CanvasProjection['components'][number]): string {
   if (component.type !== 'text') return `${component.type} component ${component.id}`
   const text = component.textPaint?.lines.map((line) => line.fragments.map((fragment) => fragment.text).join('').trim()).filter(Boolean).join(' ').slice(0, 160)
   const binding = component.binding ? `; bound to ${component.binding}` : ''
-  return text ? `text component ${component.id}: ${text}${binding}` : `text component ${component.id}${binding}`
+  const cut = component.textPaint?.truncated ? `; ${canvasTruncationNotice}` : ''
+  return text ? `text component ${component.id}: ${text}${binding}${cut}` : `text component ${component.id}${binding}${cut}`
 }
 // Story 9.2: the box the engine paints — style.background and
 // style.border — drawn on the canvas from the ENGINE's own projection, so

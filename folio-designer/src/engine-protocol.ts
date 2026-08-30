@@ -14,6 +14,48 @@ export const MAX_ENGINE_PARAMETER_NAME_LENGTH = 128
 // The same bound Go projects the document's declared font chains under.
 export const MAX_ENGINE_FONT_FAMILIES = 256
 
+// ---------------------------------------------------------------------------
+// THE CANVAS PROJECTION BOUNDS, MIRRORED FROM folio-go/page_setup.go.
+//
+// There is no shared source and no codegen: these are hand-copied, which is
+// the drift pattern in pure form — the Go side can be raised and this side
+// will silently keep rejecting, blanking the projection with no error anyone
+// can attribute (D-7.4.5). They are hoisted out of the validators and named
+// after their Go counterparts so `engine-bounds-mirror.test.ts` can read both
+// files and assert the pairs are equal. Change one, change the other, in the
+// same commit.
+//
+// A UNIT MISMATCH IS BUILT INTO THE TWO STRING BOUNDS, and it is recorded
+// rather than "fixed": Go counts BYTES (`len()`), these count UTF-16 CODE
+// UNITS (`.length`). For non-ASCII this side is the more permissive of the
+// pair, so the Go side refuses first and nothing unrepresentable arrives.
+// The tie assertion compares LITERALS, not quantities, and says so.
+//
+// maxCanvasBodyText — the body-text channel backstop (bytes/code units).
+export const MAX_CANVAS_BODY_TEXT = 1048576
+// maxCanvasBodyTextLines — 40 pages × 48 lines per A4 page at 11pt.
+export const MAX_CANVAS_BODY_TEXT_LINES = 1920
+// maxCanvasBodyTextFragments — CUMULATIVE across the whole component, which
+// is the quantity counted below. Go's own maxCanvasTextFragments bounds one
+// LINE and is deliberately NOT mirrored here; the two are different
+// quantities, and pairing them would be a false tie.
+export const MAX_CANVAS_BODY_TEXT_FRAGMENTS = 65536
+// maxCanvasPropertyString — identifiers, colours and expressions only. Body
+// text no longer shares it on either side of the channel (DW-25).
+export const MAX_CANVAS_PROPERTY_STRING = 512
+// THE FIFTH HAND-COPIED CROSS-LANGUAGE BOUND, and the only one that does not
+// come from `page_setup.go`: `template.MinLineSpacingThousandths` and
+// `template.MaxLineSpacingThousandths` (folio-go/internal/template/
+// linespacing.go), which Story 7.4 projects across the channel for the first
+// time. The Go comment there calls the maximum "A STATED SANITY CEILING, NOT
+// A DERIVED SAFETY BOUND" — i.e. a number somebody will one day adjust — and
+// a raised ceiling with these literals left behind would make `parseInbound`
+// drop every snapshot of such a document silently, with no canvas and no
+// error. So they are named here and tied to the Go declarations by
+// engine-bounds-mirror.test.ts alongside the other four.
+export const MIN_LINE_SPACING_THOUSANDTHS = 1
+export const MAX_LINE_SPACING_THOUSANDTHS = 1000000
+
 export type EngineError = Readonly<{
   code: string
   message: string
@@ -58,7 +100,7 @@ export type CanvasProjection = Readonly<{
 	// draws an element that commits none at. Neither is restated here.
 	fontFamilies: ReadonlyArray<string>; defaultFontSize: number
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -139,7 +181,7 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {
-	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
+	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
     ids.add(component.id)
     const bandIndex = bandNames.indexOf(component.band as string)
     if (bandIndex < priorBand) return false
@@ -149,9 +191,17 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     const table = component.type === 'table'
     if (table ? component.resizable || box.height <= 0 : !component.resizable || box.width <= 0 || box.height <= 0) return false
     if (!(box.x + box.width <= band.width && box.y + box.height <= band.height)) return false
-    const optionalString = (key: string) => component[key] === undefined || typeof component[key] === 'string' && (component[key] as string).length <= 512
+    // THE FOURTH HAND-COPIED MIRROR (DW-25). This one predicate used to cap
+    // `value` — the document's BODY TEXT — at the same 512 as seven
+    // identifier and colour keys: maxCanvasPropertyString's two-jobs
+    // conflation, reproduced exactly on the browser side. Splitting Go's
+    // constant without splitting this one would have changed nothing
+    // observable: the browser would go on dropping the whole response at 512
+    // bytes of clause text, with no attributable error.
+    const boundedString = (key: string, limit: number) => component[key] === undefined || typeof component[key] === 'string' && (component[key] as string).length <= limit
+    const optionalString = (key: string) => boundedString(key, MAX_CANVAS_PROPERTY_STRING)
     const optionalLength = (key: string) => component[key] === undefined || typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0
-	if (!['value', 'binding', 'visibleIf', 'fontFamily', 'color', 'background', 'borderColor', 'tableBind'].every(optionalString) || !['fontSize', 'borderWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].every(optionalLength) || (component.bold !== undefined && typeof component.bold !== 'boolean') || (component.italic !== undefined && typeof component.italic !== 'boolean')) return false
+	if (!boundedString('value', MAX_CANVAS_BODY_TEXT) || !['binding', 'visibleIf', 'fontFamily', 'color', 'background', 'borderColor', 'tableBind'].every(optionalString) || !['fontSize', 'borderWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].every(optionalLength) || (component.bold !== undefined && typeof component.bold !== 'boolean') || (component.italic !== undefined && typeof component.italic !== 'boolean')) return false
 	if (component.binding !== undefined && (typeof component.binding !== 'string' || component.binding.length === 0 || component.binding.length > MAX_ENGINE_BINDING_LENGTH)) return false
     // Story 7.3 / FR47: the COMPONENT alignment vocabulary admits
     // `justify`; the COLUMN one (isTableColumns, above) deliberately does
@@ -162,6 +212,13 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     // admitting the value is not offering it.
     if (component.align !== undefined && !['left', 'center', 'right', 'justify'].includes(component.align as string) || component.valign !== undefined && !['top', 'middle', 'bottom'].includes(component.valign as string)) return false
     if (component.borderEdges !== undefined && (!Array.isArray(component.borderEdges) || component.borderEdges.length === 0 || component.borderEdges.some((edge) => !['top', 'right', 'bottom', 'left'].includes(edge)))) return false
+    // style.lineSpacing, projected for the first time by Story 7.4: a
+    // dimensionless ratio in THOUSANDTHS, positive, and bounded by the same
+    // range the engine's one validator enforces at load and on the property
+    // command alike (template.MinLineSpacingThousandths ..
+    // MaxLineSpacingThousandths, D-7.2.3). Admitting the value is not
+    // adjudicating it — a value Go committed is a value Go already ruled on.
+    if (component.lineSpacing !== undefined && (typeof component.lineSpacing !== 'number' || !Number.isSafeInteger(component.lineSpacing) || component.lineSpacing < MIN_LINE_SPACING_THOUSANDTHS || component.lineSpacing > MAX_LINE_SPACING_THOUSANDTHS)) return false
 	if (component.type !== 'text' && component.value !== undefined) return false
 	if (component.type !== 'text' && component.binding !== undefined) return false
 	if (component.type !== 'table' && component.tableBind !== undefined) return false
@@ -228,9 +285,16 @@ const isImagePaint = (value: unknown, box: Record<string, number>): boolean => {
 // the next cliff.
 const isTextPaint = (value: unknown, component: Record<string, number>): boolean => {
   if (value === undefined) return true
-  if (!isRecord(value) || !hasOnly(value, ['overflow', 'lines']) || typeof value.overflow !== 'boolean' || !Array.isArray(value.lines) || value.lines.length > 256) return false
+  // `truncated` is required exactly as `overflow` is: Go emits both
+  // unconditionally, and a paint arriving without it is a producer that has
+  // drifted from this contract, not an older one to be tolerated.
+  if (!isRecord(value) || !hasOnly(value, ['overflow', 'truncated', 'lines']) || typeof value.overflow !== 'boolean' || typeof value.truncated !== 'boolean' || !Array.isArray(value.lines) || value.lines.length > MAX_CANVAS_BODY_TEXT_LINES) return false
   let priorTop = -1
   let priorAdvance = 0
+  // CUMULATIVE across every line of the component, never reset — which is a
+  // different quantity from Go's per-line maxCanvasTextFragments. Go carries
+  // its own cumulative counter (maxCanvasBodyTextFragments) precisely so it
+  // never emits a projection this line would discard.
   let fragments = 0
   return value.lines.every((line) => {
     if (!isRecord(line) || !hasOnly(line, ['top', 'baseline', 'advance', 'width', 'fragments']) || !['top', 'baseline', 'advance', 'width'].every((key) => typeof line[key] === 'number' && Number.isSafeInteger(line[key]))) return false
@@ -240,7 +304,7 @@ const isTextPaint = (value: unknown, component: Record<string, number>): boolean
     priorAdvance = paint.advance
     return line.fragments.every((fragment) => {
       fragments++
-      return fragments <= 512 && isRecord(fragment) && hasOnly(fragment, ['text', 'x']) && typeof fragment.text === 'string' && fragment.text.length > 0 && fragment.text.length <= 512 && typeof fragment.x === 'number' && Number.isSafeInteger(fragment.x) && fragment.x >= component.x && fragment.x <= component.x + Math.max(paint.width, component.width)
+      return fragments <= MAX_CANVAS_BODY_TEXT_FRAGMENTS && isRecord(fragment) && hasOnly(fragment, ['text', 'x']) && typeof fragment.text === 'string' && fragment.text.length > 0 && fragment.text.length <= MAX_CANVAS_BODY_TEXT && typeof fragment.x === 'number' && Number.isSafeInteger(fragment.x) && fragment.x >= component.x && fragment.x <= component.x + Math.max(paint.width, component.width)
     })
   })
 }

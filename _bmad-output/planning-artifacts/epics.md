@@ -477,10 +477,13 @@ and scrolls the canvas past the foot of page one onto page two and page three, w
 and the signature block sit. She sees page breaks where the engine will actually put them. She
 saves, and Anan renders forty pages of it from a longer contract without touching the template.
 
-Two pillars, and they are separable: **body text** (7.1–7.4) makes a text element hold a paragraph
+Two pillars, and they are separable: **body text** (7.1–7.4, and 7.8) makes a text element hold a paragraph
 rather than a line, and **the multi-page canvas** (7.5–7.6) makes the authoring surface as long as
 the document. 7.7 is the one legal-specific layout primitive neither pillar supplies, and it is the
-story to cut first if the epic needs trimming.
+story to cut first if the epic needs trimming. **7.8 was added mid-epic** (2026-08-30) when Story
+7.4's plan gate routed DW-29 out of it: 7.4 stopped the designer OFFERING a justified table, and 7.8
+makes the file format refuse one. It belongs to the body-text pillar and can ship independently of
+everything after 7.4.
 
 The engine's pagination model is **not** changed by this epic and must not be. `internal/layout`
 already treats the content band as a window onto one unbounded column, and `page-count-50` /
@@ -2304,6 +2307,75 @@ So that a signature block is never severed by a page boundary.
 **Given** a template declaring no groups
 **When** it is rendered
 **Then** its bytes are unchanged
+
+---
+
+### Story 7.8: Refuse a justified table at load, in the author's own terms
+
+As a template author,
+I want a `.folio` file that justifies a table's cells to be refused when it loads, with an error
+naming the element and the field,
+So that I am not silently charged a MAJOR format bump for a setting the renderer cannot honour.
+
+**Covers:** FR47 · AD-14, D-7.3.1, DW-29 — routed here from Story 7.4's plan gate (2026-08-30), which
+judged the addition `multiple-goals` under DW-29's own escalation clause. Story 7.4 discharged the
+**product** half: the inspector no longer offers `justify` for a table or a mixed selection. This
+story owns the **format** half.
+
+**The behaviour today.** A table element's `style.align: "justify"`, or its `headerStyle.align:
+"justify"`, loads without error, raises the document to format **2.0** — unreadable to every 1.x
+reader — and then renders **identically to `align: left`**, with no diagnostic. The author pays the
+whole cost of the MAJOR and receives nothing for it.
+
+**The reusable root cause, from the lead's own note.** D-7.3.1 split the alignment closed set **by
+JSON key location** (`style`/`headerStyle` versus `columns[]`) rather than **by consumer**. Those are
+different partitions: a table's `style.align` and `headerStyle.align` are read into `r.alignFallback`
+(`folio-go/table_render.go:373-376`, `:440-441`) and consumed at the **same site** as
+`columns[].align`, so the guardrail that was meant to make justified table cells impossible by
+construction let the value in through the other door. **When splitting a closed set, partition it by
+the code that consumes the value, not by where the value is written in the document.**
+
+**Three things this story inherits, written down so they are not rediscovered:**
+
+1. **Three shipped tests must be INVERTED, not deleted** — they pin today's acceptance and are
+   correct against the contract as it was written: `folio-go/internal/template/closedsets_test.go:287-292`;
+   `folio-go/line_spacing_test.go:168-175`, with its `justifyHeaderStyleDoc` const at `:311-331`; and
+   `folio-go/table_render_test.go:1338`
+   `TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge`. A version-test fixture is deleted with them.
+2. **A TEXT element's `justify` must stay accepted.** Story 7.3 shipped it, Story 7.4 offers it in
+   the inspector, and a golden fixture renders it. So the fix cannot be a blanket ban wearing a narrow
+   name; it must thread the consumer's element type into `decodeStyle`, which both callers already
+   have (`parse_bands.go:204` has `el.Type`; `:338` is statically `ElementTable`).
+3. **It must decide whether to mint a THIRD per-field style diagnostic code.** A load error raised
+   with `newLoadError` is **uncoded**, and `wasm/cmd/engine/main.go:276-281` destroys every uncoded
+   load error into "The template could not be processed" — so "a located error naming the element and
+   the field" cannot reach a designer author without one. `internal/diag/diag.go:249-252` explicitly
+   reserves that decision: *"Before a THIRD is minted, someone must decide whether the general form is
+   right or whether AD-14's closed registry accretes one entry per style field forever."* **That is a
+   lead call and this story must not settle it unattended.**
+
+**Acceptance Criteria:**
+
+**Given** a `.folio` file setting `style.align: "justify"` on a table element, or on its
+`headerStyle`
+**When** it is loaded
+**Then** it is refused with a located error naming the element and the field, and the document is
+never raised to format 2.0 for that value
+
+**Given** a `.folio` file setting `style.align: "justify"` on a **text** element
+**When** it is loaded
+**Then** it is accepted exactly as it is today, and the justified golden fixtures render
+byte-identically
+
+**Given** the alignment closed set
+**When** a value is validated
+**Then** it is validated against **the set its consumer accepts**, keyed on the element type, rather
+than on the value's JSON key path
+
+**Given** a designer author who opens such a file
+**When** the engine reports the refusal
+**Then** the reason reaches them in words — which requires the third-diagnostic-code question above
+to have been answered, not worked around
 
 ---
 

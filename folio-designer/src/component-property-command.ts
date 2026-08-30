@@ -1,22 +1,33 @@
 // This is an opaque Go command vocabulary, not a browser-side property or
 // style model. A caller sends exact local literals only on an explicit commit.
-export type PropertyField = 'x' | 'y' | 'width' | 'height' | 'value' | 'expression' | 'visibleIf' | 'fontFamily' | 'fontSize' | 'bold' | 'italic' | 'align' | 'valign' | 'color' | 'background' | 'borderWidth' | 'borderColor' | 'borderEdges' | 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
+export type PropertyField = 'x' | 'y' | 'width' | 'height' | 'value' | 'expression' | 'visibleIf' | 'fontFamily' | 'fontSize' | 'lineSpacing' | 'bold' | 'italic' | 'align' | 'valign' | 'color' | 'background' | 'borderWidth' | 'borderColor' | 'borderEdges' | 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
 
 export type PropertyIntent = Readonly<{ field: PropertyField; operation: 'set' | 'clear' | 'null'; value?: string | boolean | ReadonlyArray<string> }>
 
 const pointFields = new Set<PropertyField>(['x', 'y', 'width', 'height', 'fontSize', 'borderWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'])
+// lineSpacing travels unquoted like a point field but is NOT one, and the
+// distinction is worth a second set rather than an entry in the first.
+// It is a dimensionless RATIO. Go's decoder (template.DecodeLineSpacingRaw)
+// reads the author's own literal and performs the x1000 to thousandths
+// itself, exactly as it does for a `lineSpacing` written in a .folio file —
+// so `1.5` on the wire is 1500 thousandths in the document, and sending
+// `1500` would be refused as 1 500 000, outside the load-time range. Verified
+// against the engine, not inferred: the two entry points share one decoder
+// precisely so the inspector cannot mean something different from the file.
+const ratioFields = new Set<PropertyField>(['lineSpacing'])
 
 export function updateComponentPropertiesCommand(ids: ReadonlyArray<string>, intent: PropertyIntent): ArrayBuffer {
   const change = intent.operation === 'clear' || intent.operation === 'null'
     ? `{"op":${quote(intent.operation)}}`
-    : pointFields.has(intent.field)
-      ? `{"op":"set","value":${pointLiteral(intent.value)}}`
+    : pointFields.has(intent.field) || ratioFields.has(intent.field)
+      ? `{"op":"set","value":${rawNumberLiteral(intent.value)}}`
       : `{"op":"set","value":${propertyValue(intent.value)}}`
   return new TextEncoder().encode(`{"kind":"updateComponentProperties","version":1,"ids":[${ids.map(quote).join(',')}],"changes":{${quote(intent.field)}:${change}}}`).buffer
 }
 
-function pointLiteral(value: PropertyIntent['value']): string {
-  // Preserve the typed literal; Go alone decides whether it is a valid point.
+function rawNumberLiteral(value: PropertyIntent['value']): string {
+  // Preserve the typed literal, unquoted; Go alone decides whether it is a
+  // valid number, in whatever unit that field is carried in.
   return typeof value === 'string' ? value : ''
 }
 

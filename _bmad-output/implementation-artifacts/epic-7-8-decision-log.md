@@ -1032,3 +1032,72 @@ logged without interrupting the owner, and reported when the run next surfaces.
 **Consequence.** Reports become epic-boundary-shaped rather than story-shaped. The per-story record does
 not degrade: each story still gets its `## Delivery Log` entry and its decision-log entries, so the audit
 trail is unchanged — only the interruptions stop.
+
+---
+
+## Corrections to this log, filed at Story 7.4's close (2026-08-30)
+
+**Appended, not rewritten.** The rulings below stand exactly as given; what is corrected is three
+measurements quoted inside them, each of which later stories were going to reuse.
+
+### 1. `:891`'s vertical metrics are the **11pt** figures, not 12pt
+
+`FirstBaseline: 11759, Advance: 14982` on the shipped chain are **11pt**. The fixture they came
+from (`line_spacing_template.go:60-75`) declares `"fontSize": 11`. Re-measured at HEAD on
+`["Noto Sans"]`:
+
+| size | FirstBaseline | Advance | LastDescent |
+|---|---|---|---|
+| 11pt | 11759 | 14982 | 3223 |
+| 12pt | 12828 | 16344 | 3516 |
+
+The line in D-7.2.3's neighbourhood already carries an inline correction; this entry is the record
+of it, because the error propagated.
+
+### 2. D-7.4.2 §4's "~45 lines per A4 page at 11pt" is the **12pt** figure
+
+A4 content-band height is 729890 mp for the canonical 36pt margins with a 20pt header and footer
+(`internal/layout/band.go`, the value already shipped in `App.test.tsx`). So
+`⌊729890 ÷ 14982⌋ = **48** lines/page at 11pt` and `⌊729890 ÷ 16344⌋ = 44` at 12pt. Story 7.4's
+`maxCanvasBodyTextLines` is derived from **48**, which is the admitting figure of the two, giving
+40 × 48 = **1920**.
+
+The §4 argument is unaffected in substance and gets stronger: 256 lines is about **five** pages at
+11pt, not six — further short of the epic's own forty-page target, not nearer.
+
+### 3. D-7.4.5's "three hand-copied constants" is **four**
+
+The fourth is `engine-protocol.ts:152-154`'s `optionalString`, which capped an element's `value` at
+512 alongside seven identifier and colour keys — `maxCanvasPropertyString`'s two-jobs conflation
+reproduced exactly on the browser side. **Without splitting it too, a correct Go-side split changes
+nothing observable**: the browser goes on dropping the whole response at 512 bytes of clause text.
+D-7.4.5's consequence is otherwise unchanged, and Story 7.4 discharged it: all four are hoisted to
+named constants and tied by `folio-designer/src/engine-bounds-mirror.test.ts`, which reads both
+files, asserts the pairs non-vacuously, and red-proofs a one-sided edit in either direction.
+
+### 4. One measurement Story 7.4 added, because a later story will want it
+
+**Cumulative fragments ≈ the value's WORD COUNT, at any column width.** Measured through
+`CanvasWithTextPaint` on justified English contract prose at 11pt in the **shipped `["Noto Sans"]`
+chain** — the same face and size `maxCanvasBodyTextLines` is derived from: **18.05 fragments/line at
+523.276pt** (full A4 content width, over 101 lines) and **8.10 at 240pt**, with cumulative totals of
+1823 for 1824 words and 1822 for 1824. A short-word worst case at the same width measures 30.86.
+The "~73 justified lines" figure in DW-25's Story 7.3 amendment is a 240pt-column figure that was
+quoted as a general one; at full A4 width the old browser cumulative cap of 512 was crossed at ~28
+lines. Quote the law, never a lines figure.
+
+**This measurement moved a constant.** 1920 × 18.05 = 34 656 is above 32 768, so
+`maxCanvasBodyTextFragments` as first shipped did not cover the forty-page criterion its own comment
+claimed. It is **65 536** — the next power of two above the measured product, which also clears the
+short-word case at 1920 × 30.86 = 59 251. `page_setup.go`, `engine-protocol.ts`,
+`engine-bounds-mirror.test.ts` and `deferred-work.md` all carry the one figure. Earlier numbers in
+circulation (16.72, a thirteen-line sample; 19.35, the `Roboto-Regular` test face) are superseded.
+
+### 5. A pre-existing performance characteristic, observed and not fixed
+
+`packLines` is **superlinear in a value's break-opportunity count**: measured through
+`CanvasWithTextPaint` on one justified element, 1.2 s at 4,000 word opportunities and 9.8 s at
+8,000. This is why Story 7.4's cumulative-fragment assertion exercises the projection's own budget
+rule rather than a document that reaches 32,768 fragments — such a fixture would cost minutes of
+wall clock in the ordinary suite. Nothing in Epic 7 makes it reachable through the product; recorded
+so the next reader does not conclude the test was written that way out of convenience.

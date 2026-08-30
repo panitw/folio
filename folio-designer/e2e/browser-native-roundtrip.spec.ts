@@ -148,7 +148,11 @@ async function placeStatementText(page: Page, band: ReturnType<Page['getByRole']
   const field = page.getByRole('textbox', { name: 'Text', exact: true })
   const beforeValue = await revision(page)
   await field.fill(value)
-  await field.press('Enter')
+  // Story 7.4 made the CONTENT control a textarea: Enter inserts a paragraph
+  // break there instead of committing, so this witness commits it the way the
+  // field actually commits — by blurring, exactly as App.test.tsx does. Every
+  // other field here is single-line and still commits on Enter.
+  await field.blur()
   await waitForRevisionAdvance(page, beforeValue)
 }
 

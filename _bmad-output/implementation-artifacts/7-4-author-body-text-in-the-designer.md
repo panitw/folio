@@ -2,15 +2,53 @@
 title: 'Story 7.4: Author body text in the designer'
 type: 'feature'
 created: '2026-08-30'
-status: 'ready-for-dev'
-baseline_revision: '9f08adf191918992a7970b0789393bf30b331497'
+status: 'done'
+baseline_revision: '813a414e12198be86d28f61af741b56fd93fb40e'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
   - '{project-root}/_bmad-output/implementation-artifacts/deferred-work.md'
 warnings: ['multiple-goals', 'oversized'] # multiple-goals: DW-29 (the load-time refusal of `style.align: "justify"` on a table) is separably shippable from this story's designer surface and from DW-25, so the plan gate ROUTES IT OUT to a named Story 7.8 — see Design Notes, "The DW-29 judgment". DW-25 is NOT a second goal: it is AC1's own precondition. oversized: the DW-25 bounds rework, the four-way TypeScript mirror, and the designer editor are three wide surfaces that must be stated, not summarised.
-deferred: []
+deferred:
+  - summary: >-
+      The property-command encoder splices the author's typed text into the command JSON unquoted,
+      so a non-numeric line-spacing or point value produces malformed bytes instead of a located
+      engine error.
+    evidence: |-
+      `component-property-command.ts` routes `pointFields` and the new `ratioFields` through
+      `rawNumberLiteral`, which returns the typed string verbatim: typing `abc` emits
+      `{"op":"set","value":abc}`, which fails JSON parsing and yields a generic refusal rather than
+      the field-located message the panel is built to show. The pattern is PRE-EXISTING for the
+      point fields and the spec directed following it for line spacing, so it is not caused by this
+      story - but this story widened the set of fields on that path.
+    location: >-
+      folio-designer/src/component-property-command.ts:28
+    severity: medium
+  - summary: >-
+      When a text element's very first packed line already exceeds the per-line fragment guard, the
+      element paints ZERO lines - the author sees an empty box whose only signal is the truncation
+      notice.
+    evidence: |-
+      Measured during review: that path yields `Truncated=true, len(Lines)==0`. This is conformant
+      with the contract as written (painting "stops at the last whole line that fits", and no whole
+      line fits), and the state is still distinguishable from empty via the flag, so production
+      behaviour was deliberately NOT changed. Whether such a line should paint a partial prefix is a
+      design question the contract does not settle.
+    location: >-
+      folio-go/page_setup.go - the paint loop's per-line guard
+    severity: medium
+  - summary: >-
+      The canvas renders one DOM span per fragment for every projected line, so a document at the
+      new bounds can build tens of thousands of nodes with no virtualisation.
+    evidence: |-
+      The bounds this story raises make up to 1920 lines and 65536 fragments projectable where 256
+      and 512 were the ceiling before, and the painting code maps every line unconditionally. Not a
+      correctness defect and not newly introduced, but the scale at which it can now be reached is
+      new.
+    location: >-
+      folio-designer/src/App.tsx - the textPaint painting path
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -120,7 +158,7 @@ Nothing here changes how pages are decided, and the canvas still draws a single 
 ### The measured numbers (re-measured at HEAD — several published figures are wrong)
 
 - ⚠ **Today's peak cumulative fragment count for one component is 256, not the ~249 recorded in DW-25.** Measured by sweeping element width 1–600pt over an adversarial 512-byte value (256 single-character words), justified, shipped chain. The peak is the degenerate one-word-per-line case, jointly pinned by both caps: 512 bytes allows at most `⌊(512+1)/2⌋ = 256` words, and `maxCanvasTextLines = 256` caps the degenerate case at 256. Against the browser's cumulative 512 that is **2× headroom**.
-- ⚠ **"Roughly 73 justified lines" is true only for a ~240pt column.** Measured fragments-per-line, justified, on realistic prose: 16.72 at 11pt/523pt (full A4 content width) → cumulative 512 crossed at **~31 lines**; 13.99 at 468pt → ~37; 11.17 at 360pt → ~46; 6.99 at 240pt → ~73. At 12pt: 15.48/523pt → ~33; 6.99/240pt → ~73. **The general law is geometry-free: cumulative fragments ≈ the word count of the value**, so 512 is crossed at ~512 words at any width. Quote the law, not the 73.
+- ⚠ **"Roughly 73 justified lines" is true only for a ~240pt column.** Measured fragments-per-line, justified, on realistic prose: 16.72 at 11pt/523pt (full A4 content width) — **⚠ SUPERSEDED at the implementing dispatch: 16.72 came from a 13-line sample and understates the figure, which rises with sample length; re-measured on the shipped `["Noto Sans"]` chain it is 18.05 at 523pt (and the 19.35 recorded mid-run was the `Roboto-Regular` TEST face, not the shipped one). See the Spec Change Log** → cumulative 512 crossed at **~31 lines**; 13.99 at 468pt → ~37; 11.17 at 360pt → ~46; 6.99 at 240pt → ~73. At 12pt: 15.48/523pt → ~33; 6.99/240pt → ~73. **The general law is geometry-free: cumulative fragments ≈ the word count of the value**, so 512 is crossed at ~512 words at any width. Quote the law, not the 73.
 - ⚠ **The decision log's vertical metrics are mislabelled.** `epic-7-8-decision-log.md:891` and `7-2-…:701` attribute `FirstBaseline: 11759, Advance: 14982` to **12pt**; they are the **11pt** values (the fixture they came from, `line_spacing_template.go:60-75`, declares `"fontSize": 11`). Measured at HEAD on `["Noto Sans"]`: **11pt → FirstBaseline 11759, Advance 14982, LastDescent 3223; 12pt → 12828 / 16344 / 3516.**
 - ⚠ **"~45 lines per A4 page at 11pt" (D-7.4.2 §4) is the 12pt figure.** A4 page height 841890 mp (`render.go:26`); content-band height `ContentHeight(g)` (`internal/layout/band.go:75-77`) = 729890 mp for the canonical 36pt margins + 20pt header + 20pt footer (the exact value already shipped in `App.test.tsx:17`). `⌊729890/14982⌋ = **48** lines/page at 11pt`; `⌊729890/16344⌋ = 44` at 12pt.
 
@@ -185,12 +223,12 @@ Nothing here changes how pages are decided, and the canvas still draws a single 
 
 **Execution — Part 1: the projection bounds (DW-25). Do this first; the designer surface depends on it.**
 
-- `folio-go/page_setup.go` — **Split the const block.** Keep `maxCanvasPropertyString = 512` for identifiers, colours and expressions. Add `maxCanvasBodyText` (bytes), `maxCanvasBodyTextLines`, and `maxCanvasBodyTextFragments` (cumulative per element), each with a doc comment stating **the criterion and the arithmetic**. Derivations to record, using the corrected inputs in the Code Map: `maxCanvasBodyTextLines = 1920`, from `40 pages × ⌊729890 mp content-band height ÷ 14982 mp advance at 11pt on the shipped chain⌋ = 40 × 48`; `maxCanvasBodyTextFragments = 32768`, from the same forty-page document justified at full A4 content width, where a line averages ~17 word fragments (measured 16.72 at 11pt/523pt) — `1920 × 17 = 32 640`, taken to the next power of two; `maxCanvasBodyText = 1048576` bytes, a **channel-representability backstop** sized so it cannot bind before the paint bounds do (1920 lines × ~90 characters × 3 bytes for Thai/CJK ≈ 519 KB). -- Rationale: `maxCanvasPropertyString` does two jobs; splitting at the declaration is what makes an identifier bound structurally unable to govern body text. The numbers are derived so the next reader can re-derive them.
+- `folio-go/page_setup.go` — **Split the const block.** Keep `maxCanvasPropertyString = 512` for identifiers, colours and expressions. Add `maxCanvasBodyText` (bytes), `maxCanvasBodyTextLines`, and `maxCanvasBodyTextFragments` (cumulative per element), each with a doc comment stating **the criterion and the arithmetic**. Derivations to record, using the corrected inputs in the Code Map: `maxCanvasBodyTextLines = 1920`, from `40 pages × ⌊729890 mp content-band height ÷ 14982 mp advance at 11pt on the shipped chain⌋ = 40 × 48`; `maxCanvasBodyTextFragments = 65536` (**corrected at the implementing dispatch from the 32768 first specified here**), from the same forty-page document justified at full A4 content width, where a line averages 18.05 word fragments re-measured on the shipped chain — `1920 × 18.05 = 34 656`, taken to the next power of two. The 32768 first written here derived from the understated 16.72 and would have bound at ~1 690 lines, short of the forty-page criterion it claimed; `maxCanvasBodyText = 1048576` bytes, a **channel-representability backstop** sized so it cannot bind before the paint bounds do (1920 lines × ~90 characters × 3 bytes for Thai/CJK ≈ 519 KB). -- Rationale: `maxCanvasPropertyString` does two jobs; splitting at the declaration is what makes an identifier bound structurally unable to govern body text. The numbers are derived so the next reader can re-derive them.
 - `folio-go/page_setup.go` — **Point `:581` and `:522` at `maxCanvasBodyText`.** Both are body-text sites; a value that passed `:581` and failed `:522` would abort in the paint loop instead. Leave `:211`, `:590`, `:596`, `:640`, `:665`, `:671`, `:686` at `maxCanvasPropertyString`. -- Rationale: DW-25's enumeration named only one of the two body-text sites; re-derive by grep and record the corrected population in the closing note, per DW-31's own lesson.
 - `folio-go/page_setup.go` — **Turn `:455-458` and `:520-524` into per-element degradation, reusing `:427-435`'s shape exactly.** Instead of `return err`: paint the first `maxCanvasBodyTextLines` lines, stop at the last whole line before `maxCanvasBodyTextFragments` cumulative fragments would be exceeded, set the new truncation flag, and continue the element loop. `maxCanvasTextFragments` stays as the **per-line** guard. Do not mint a diagnostic code and do not add a registry entry. -- Rationale: D-7.4.2 — the precedent is eleven lines above the site and its stated rationale covers this case verbatim; a second disposition is the thing that makes a codebase incoherent.
 - `folio-go/page_setup.go` — **Add `Truncated bool \`json:"truncated"\`` to `CanvasTextPaint` beside `Overflow`**, set only at the degradation site. -- Rationale: today a 400-line element and an empty element both project `Lines: []` — the all-clear wearing the face of could-not-look.
 - `folio-go/page_setup.go` — **Project `lineSpacing`** on `CanvasComponent`, set in `applyCanvasStyle` alongside the other style fields. -- Rationale: the field is absent from the projection entirely, so an inspector control would have nothing to read back; this is a precondition of AC3, not a nicety.
-- `folio-designer/src/engine-protocol.ts` — **Update all four mirrors in this same commit**, and split `optionalString`: `value` takes the body-text bound, the other seven keys keep 512. Then `:231` `lines.length > 1920`; `:243` `fragments <= 32768` and `fragment.text.length <= 1048576`. Add `truncated` and `lineSpacing` to the component `hasOnly` allow-list (`:142`), to `isTextPaint`'s `hasOnly` (`:231`), and to the type at `:61`, with a `typeof … === 'boolean'`/number check. **Note the unit mismatch in the two string bounds and record it rather than "fixing" it:** Go counts **bytes** (`len()`), TypeScript counts **UTF-16 code units** (`.length`), so for non-ASCII the TS side is the more permissive of the pair. This asymmetry is pre-existing at 512/512 and is safe in that direction — the Go side refuses first — but the tie assertion compares literals, not quantities, and must say so in its own comment. -- Rationale: `hasOnly` is exact-key, so a Go-only field addition silently drops the entire snapshot; `:152-154` is `maxCanvasPropertyString`'s conflation reproduced on the TS side — the fourth mirror D-7.4.5 did not name, without which the Go split changes nothing observable; and an undocumented unit mismatch inside a test that claims to tie two constants is exactly the false assurance the tie exists to prevent.
+- `folio-designer/src/engine-protocol.ts` — **Update all four mirrors in this same commit**, and split `optionalString`: `value` takes the body-text bound, the other seven keys keep 512. Then `:231` `lines.length > 1920`; `:243` `fragments <= 65536` (see the corrected derivation above) and `fragment.text.length <= 1048576`. Add `truncated` and `lineSpacing` to the component `hasOnly` allow-list (`:142`), to `isTextPaint`'s `hasOnly` (`:231`), and to the type at `:61`, with a `typeof … === 'boolean'`/number check. **Note the unit mismatch in the two string bounds and record it rather than "fixing" it:** Go counts **bytes** (`len()`), TypeScript counts **UTF-16 code units** (`.length`), so for non-ASCII the TS side is the more permissive of the pair. This asymmetry is pre-existing at 512/512 and is safe in that direction — the Go side refuses first — but the tie assertion compares literals, not quantities, and must say so in its own comment. -- Rationale: `hasOnly` is exact-key, so a Go-only field addition silently drops the entire snapshot; `:152-154` is `maxCanvasPropertyString`'s conflation reproduced on the TS side — the fourth mirror D-7.4.5 did not name, without which the Go split changes nothing observable; and an undocumented unit mismatch inside a test that claims to tie two constants is exactly the false assurance the tie exists to prevent.
 - `folio-designer/src/` (new contract test, e.g. `engine-bounds-mirror.test.ts`) — **Read `folio-go/page_setup.go` and this repo's `engine-protocol.ts`, extract the four Go constants and the four TS literals by regex, and assert equality pairwise.** Include a non-vacuity assertion that all four were actually found, and a red-proof that a deliberately mismatched literal fails. Follow `canvas-authority-contract.test.ts`'s `readFileSync` shape. -- Rationale: D-7.4.5 requires a test that reads both, not a comment; and without the non-vacuity guard a regex that stops matching passes silently, which is the failure mode the tie exists to prevent.
 - `folio-go/page_setup_test.go` (or nearest) — **Assert the per-line/cumulative asymmetry explicitly**: a projection whose per-line fragment counts are all legal but whose cumulative total exceeds the browser bound must be degraded Go-side, not emitted. -- Rationale: the two sides bound different quantities; the Go side must not emit what the TS side will reject, or the canvas blanks with no attributable error.
 - `folio-go/` (nearest layout/canvas test) + `folio-designer/src/canvas-authority-contract.test.ts` — **Assert Story 7.5's window count is independent of the paint.** Positive half: a document whose paint truncates produces an identical `Paginate` page count to the same document untruncated. Negative half: add a prohibited pattern banning any height or window derivation from `textPaint…lines.length`, with its own red-proof. -- Rationale: D-7.4.2 §5 — the independence holds today but is one plausible line of designer code away from breaking, and 7.6 would then draw the wrong number of sheets. A positive test alone would not catch its introduction.
@@ -225,11 +263,133 @@ Nothing here changes how pages are decided, and the canvas still draws a single 
 
 ## Spec Change Log
 
-*Append-only. Empty until the first review loopback.*
+*Append-only.*
+
+### 2026-08-30 — the `lineSpacing` wire unit, corrected against the engine
+
+**Tasks Part 2 and the I/O matrix both say the command carries `lineSpacing` "as a raw JSON number in
+thousandths (`1.5` → `1500`)". The parenthetical is wrong on the facts, and implementing it as
+written would have shipped a control the engine refuses every time.**
+
+`template.DecodeLineSpacingRaw` → `decodeNumberRaw` → `DecodeLineSpacing` → `decodePoints`, and
+`decodePoints` performs the ×1000 itself — the very ×1000 a thousandths ratio needs, inherited rather
+than restated so there is no second decimal parser to drift from (`internal/template/linespacing.go`).
+So the wire carries **the author's own ratio**, and Go converts:
+
+| wire literal | committed | note |
+|---|---|---|
+| `1.5` | 1500 thousandths | correct |
+| `1500` | — | **refused**: 1 500 000 is outside D-7.2.3's `[1, 1000000]` |
+
+Verified by execution against `ApplyComponentCommand` before a line of the control was written, and
+pinned from both sides afterwards:
+`TestLineSpacingPropertyCommandDecodesThroughTheOneLoaderValidator` (`folio-go/component_properties_test.go`)
+asserts `1.5 → 1500` **and** that `1500` is refused; `component-property-command.test.ts` asserts the
+exact bytes the designer emits.
+
+**Everything else in that task holds unchanged**: it is a raw, UNQUOTED JSON number (a quoted `"1.5"`
+is refused as a non-number), and it is not a millipoint field. It is carried in its own
+`ratioFields` set rather than added to `pointFields`, because the mechanism is shared but the unit is
+not — `pointFields` means millipoints, and putting a dimensionless ratio in it would say the wrong
+thing about the number.
+
+### 2026-08-30 — the cumulative-fragment assertion is a rule test, not a document test
+
+Tasks Part 1 asks for "a projection whose per-line fragment counts are all legal but whose cumulative
+total exceeds the browser bound". A document that reaches 32 768 cumulative fragments cannot be
+projected inside an ordinary unit test: `packLines` is **superlinear in a value's break-opportunity
+count**, and a justified component's cumulative fragment count is ~ its word count. Measured at HEAD
+through `CanvasWithTextPaint` on one justified element: **1.2 s at 4,000 word opportunities, 9.8 s at
+8,000** — so ~33,000 would cost minutes of wall clock on every run.
+
+What shipped instead asserts the same claim in two halves, neither of which is weaker for it:
+
+1. `canvasFragmentBudget` — the projection's own rule, extracted as a named type and called at the
+   one enforcement site — is exercised directly with the **real constants**: a sequence of lines each
+   carrying exactly `maxCanvasTextFragments` fragments (per-line legal, none refused for its own
+   size) stops on the **cumulative** bound after exactly `65536 / 512` lines, and a fresh budget with
+   its whole allowance untouched still refuses one line past the per-line guard. That is the
+   asymmetry, stated on the quantity that carries it.
+2. Every projection-level paint test runs `assertWithinBrowserFragmentBounds`, so no test in the file
+   can emit a paint `engine-protocol.ts` would reject — per line or cumulatively.
+
+Plus `TestCanvasBodyTextDegradesPastThePerLineFragmentGuard`, which drives the refusal through a
+**real** projection at a feasible size. The `packLines` characteristic is pre-existing, is not made
+reachable by anything in Epic 7, and is recorded in the decision log rather than fixed here.
+
+### 2026-08-30 — Dispatch 2, review pass: `maxCanvasBodyTextFragments` corrected to 65536
+
+**Triggering finding.** The constant's own doc comment quoted "measured 16.72 fragments per line at
+11pt across 523pt", the figure this spec's Code Map carried, while the SAME commit's record files
+(`deferred-work.md`, `epic-7-8-decision-log.md`) reported a re-measurement of 19.35 at the same
+width. Three documents, two numbers, one commit — and materially, `1920 × 19.35 = 37 152` is above
+32 768, so the bound did **not** cover the forty-page criterion its comment claimed for it.
+
+**What was amended.** This spec's Tasks section prescribed `32768` and the arithmetic `1920 × 17 =
+32 640`; that instruction derived from the understated 16.72 and is corrected here to `65536`. The
+Code Map's measurement line and Dispatch 1's derived-bounds table are annotated as superseded rather
+than rewritten, so the figure that was believed at planning time stays legible.
+
+**The measurement that settles it.** Re-measured at the implementing dispatch through
+`CanvasWithTextPaint`, counting off `CanvasTextPaint.Lines`, justified English contract prose at
+11pt on the **shipped `["Noto Sans"]` chain** across 523.276pt of A4 content width: **18.05**
+fragments/line at 1824 words (17.86 at 912 words; 8.10 at a 240pt column; 30.86 in a short-word
+worst case). The figure rises with sample length because a short final line drags a small sample
+down — which is why the briefing's 16.72, taken from a 13-line sample, was low. The 19.35 recorded
+mid-run was measured on the `Roboto-Regular` TEST face, not the shipped chain, and is not the figure
+the constant should carry. `1920 × 18.05 = 34 656`, to the next power of two: **65 536**, which also
+clears the short-word worst case (`1920 × 30.86 = 59 251`).
+
+**Known-bad state avoided.** Shipping a bound that binds at ~1 690 lines while its own comment
+claims forty pages — the precise failure the contract's "every number is DERIVED and recorded, with
+the criterion written into the constant's own comment" clause exists to prevent.
+
+**Carried through in the same edit,** because the contract requires a bound and its mirror to move
+together: `folio-go/page_setup.go`, `folio-designer/src/engine-protocol.ts`, the numeral pinned in
+`engine-bounds-mirror.test.ts`, and both record files.
+
+### 2026-08-30 — Dispatch 2: the `lineSpacing` wire unit (recorded, contract not amended)
+
+The I/O matrix row for the line-spacing control states the command carries "a raw JSON number in
+thousandths (`1500`)". That parenthetical is **factually wrong about the engine** and was not
+implementable as written. Measured directly against `template.DecodeLineSpacingRaw`:
+
+    raw 1.5  -> 1500 thousandths, no error
+    raw 1500 -> refused: "lineSpacing must be between 1 and 1000000 thousandths (0.001 to 1000);
+                1500000 is outside that range"
+
+`decodePoints` performs the ×1000 itself, so the wire carries the author's **ratio** and the
+*document* holds thousandths. The row's substance — one command, the committed value read back — is
+satisfied; only its parenthetical about the encoding is wrong. Recorded here rather than routed to
+`intent_gap`, which would have reverted a correct implementation over a factual error in a
+non-normative aside. The encoding is now pinned from both sides.
 
 ## Review Triage Log
 
-*Append-only. Empty until the first review pass.*
+*Append-only.*
+
+### 2026-08-30 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 13: (high 1, medium 8, low 4)
+- defer: 3: (high 0, medium 2, low 1)
+- reject: 12
+- addressed_findings:
+  - `[high]` `[patch]` The browser e2e witness was left broken by this story's own Enter change. `browser-native-roundtrip.spec.ts:151` committed the CONTENT field with `press('Enter')`; `App.tsx:1026` now suppresses Enter-commit for the `prose` field, so the repository's ONLY cross-boundary authoring witness (browser wasm → saved bytes → native render → byte identity) would time out at its first of six calls. `test:e2e:compile` is `tsc --noEmit` and cannot see it. Changed to `field.blur()`, the idiom already used four times in that same spec. **Not executed** — browser e2e is deferred by D-000.4.
+  - `[medium]` `[patch]` `maxCanvasBodyTextFragments` derived from a stale measurement; corrected 32768 → 65536. See the Spec Change Log entry above for the measurement and the amendment.
+  - `[medium]` `[patch]` A FIFTH hand-copied cross-language bound shipped with none of the tie this story built for the other four: `engine-protocol.ts` hard-coded `lineSpacing < 1 || > 1000000`, mirroring `MinLineSpacingThousandths`/`MaxLineSpacingThousandths` — which `linespacing.go:44` itself calls "a STATED SANITY CEILING", i.e. a number that gets adjusted. Raising the Go ceiling would have passed every test while the browser silently dropped every snapshot. Hoisted to exported constants, consumed at the validator site, and tied by `engine-bounds-mirror.test.ts`, which now reads TWO Go sources; pair count 4 → 6, non-vacuity guard extended to assert both sources are represented. Red-proofed in three directions.
+  - `[medium]` `[patch]` `pasteProse` returned BEFORE `preventDefault()` when the clipboard had no `text/plain` flavour, handing the insertion to the browser's default paste — which inserts text derived from `text/html`, contradicting both the matrix row and the handler's own comment that other flavours are never read. Ordering fixed; test added.
+  - `[medium]` `[patch]` `pasteProse` never restored the caret. The textarea is controlled, so pasting into the middle of a clause moved the cursor to the end and the next keystrokes landed in the wrong paragraph. Caret restored via a ref and `useLayoutEffect`; red-proofed (29 vs the expected 20).
+  - `[medium]` `[patch]` The panel's line-spacing error test asserted a message the engine cannot produce. `component_commands.go:1140` wraps the validator error as `fmt.Errorf("%s: %w", key, err)`, so the real message DOUBLES the key (`lineSpacing: lineSpacing must be between…`); the mock omitted the prefix, so the test passed against a fiction. Corrected from a real run, and the Go-side test strengthened from `err != nil` to asserting `Message`, `DataPath` and `ElementID`.
+  - `[medium]` `[patch]` Nothing pinned that Go actually emits the `truncated` key, which the browser now REQUIRES (exact-key `hasOnly` plus a boolean check). Adding `,omitempty` — which every neighbouring optional field carries — would have kept both suites green while `parseInbound` discarded every real snapshot. Added a marshalling test; red-proofed by adding `,omitempty`.
+  - `[medium]` `[patch]` A vacuous assertion hid that one degradation path paints nothing. Measured: the per-line-guard path yields `Truncated=true, len(Lines)==0`, so `assertWithinBrowserFragmentBounds` was certifying an EMPTY slice. The helper now requires a caller-stated expected line count and fails on mismatch; all three callers state theirs, and the zero is explained rather than accidental.
+  - `[medium]` `[patch]` `TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve` — the executable form of "the seven surviving sites are RECORDED, not fixed" — probed only four of the seven and asserted merely that SOME error came back, so any unrelated parse failure kept it green. All seven sites now probed, each asserting its own refusal message.
+  - `[low]` `[patch]` `property-field-prose` was emitted on the prose row with no CSS rule anywhere — the same class-with-no-rule shape this story's contract names and forbids repeating. Rule added (tokens only) plus prose `min-height`/`resize`.
+  - `[low]` `[patch]` The typography-leak assertion (`component_properties_test.go:151`) was not extended to the newly projected `LineSpacing`. Added — and it was VACUOUS as written: the worked example carries only text and table elements, so a `rect` leak probe and a presence precondition were added with it.
+  - `[low]` `[patch]` Two false statements in constant comments the contract requires to be correct: `maxCanvasBodyText`'s "1 MiB is the next power of two above 519 KB" (it is 524 288), and `maxCanvasTextFragments`'s "256 lines is about six pages at 11pt" (this file's own 48 lines/page makes it five). Both corrected; neither constant changed.
+  - `[low]` `[patch]` Record and test tidy-ups: `epics.md`'s pillar still read "(7.1–7.4)" a sentence before Story 7.8 was added to the epic; two adjacent line-spacing tests both claimed to read the committed value back when only one did; and `TestMultiParagraphValue…` described a six-paragraph fixture as "four" while asserting only `len(Lines) < 4` — tightened to the claim the fixture actually guarantees (each of the six paragraph openings must start a painted line).
+
+**Rejected on verification, worth recording** (both were confidently asserted by a review layer and are wrong on the facts): that `deferred-work.md`'s DW-25 closing block breaks the file's heading hierarchy — `## DW-24 IS CLOSED — Story 7.3` at line 408 establishes H2 as that file's existing convention for a closing block; and that the decision log's correction §2 says "five pages" contradicting the code's "six" — no such correction exists, though the underlying arithmetic was wrong and was fixed on its own merits.
 
 ## Design Notes
 
@@ -300,7 +460,148 @@ Directive: `Halt after planning.` — spec written, **no implementation code, no
 | Constant | Value | Derivation |
 |---|---|---|
 | `maxCanvasBodyTextLines` | 1920 | 40 pages × ⌊729890 mp content-band height ÷ 14982 mp advance at 11pt⌋ = 40 × 48 |
-| `maxCanvasBodyTextFragments` | 32768 | same 40-page document justified at full A4 width, ~17 fragments/line measured → 1920 × 17 = 32 640, to the next power of two |
+| `maxCanvasBodyTextFragments` | ~~32768~~ **superseded → 65536** | same 40-page document justified at full A4 width; the ~17 fragments/line specified here was understated, re-measured 18.05 on the shipped chain → 1920 × 18.05 = 34 656, to the next power of two |
 | `maxCanvasBodyText` | 1048576 bytes | channel-representability backstop, sized above 1920 lines × ~90 chars × 3 bytes ≈ 519 KB so it cannot bind before the paint bounds |
 
 Verification was **not** run in this dispatch: no code changed. The `## Verification` section states what the implementing dispatch must measure.
+
+### Dispatch 2 — 2026-08-30, implement, review and commit
+
+Status: `done`
+Blocking condition: none
+Baseline: `813a414e12198be86d28f61af741b56fd93fb40e` on `main`, tree clean at start
+Directive: implement from `ready-for-dev`; no halt-after-planning.
+
+**Summary.** The two conflated canvas projection bounds were split at the declaration and the body-text pair turned from whole-projection aborts into per-element degradation, reusing the `fontChain` precedent; `lineSpacing` is projected for the first time; all four TypeScript mirrors were split and tied to Go by an executable assertion; and the designer gained a multi-line content editor, plain-text-only paste, a `justify` align segment offered for text alone, a line-spacing control, and a truncation notice stated in words.
+
+**Files changed**
+
+- `folio-go/page_setup.go` — const block split (`maxCanvasBodyText`, `maxCanvasBodyTextLines`, `maxCanvasBodyTextFragments`, each with its criterion and arithmetic in its own doc comment; `maxCanvasTextLines` gone, not renamed); both body-text sites repointed; the two paint bounds degrade per element via the extracted `canvasFragmentBudget`; `CanvasTextPaint.Truncated` added; `lineSpacing` projected.
+- `folio-designer/src/engine-protocol.ts` — all four mirrors hoisted to exported constants including `optionalString`'s split, plus the line-spacing range; `truncated` and `lineSpacing` through the exact-key `hasOnly` gates.
+- `folio-designer/src/engine-bounds-mirror.test.ts` (new) — reads `page_setup.go`, `internal/template/linespacing.go` and `engine-protocol.ts`, asserts six pairs non-vacuously, checks each constant is consumed at its validator site, and red-proofs one-sided edits in both directions.
+- `folio-go/canvas_body_text_bounds_test.go` (new) — degradation, distinguishability, the per-line/cumulative asymmetry, pagination independence, the seven surviving identifier sites, the channel-ceiling boundary, the at-the-bound untruncated case, and the marshalled wire keys.
+- `folio-designer/src/App.tsx`, `App.css`, `component-property-command.ts` — textarea content field, plain-only paste with caret preservation, the fourth align segment, the line-spacing control, the truncation notice.
+- `folio-go/component_properties_test.go`, `folio-designer/src/App.test.tsx`, `engine-protocol.test.ts`, `component-property-command.test.ts`, `canvas-authority-contract.test.ts` — coverage for the above.
+- `folio-designer/e2e/browser-native-roundtrip.spec.ts` — the witness's CONTENT commit gesture follows the field's new semantics.
+- `deferred-work.md` (DW-25 closed, DW-29 amended), `epic-7-8-decision-log.md` (corrections appended), `epics.md` (Story 7.8 written in).
+
+**Review findings breakdown:** 13 patches applied (1 high, 8 medium, 4 low); 3 deferred; 12 rejected; 0 intent_gap; 0 bad_spec. Detail in the Review Triage Log.
+
+**Follow-up review recommendation: `true`.** Patched severities: high 1, medium 8, low 4. A high-severity patched finding sets it true on its own; the score `3 × 8 + 1 × 4 = 28` is also at or above 5.
+
+**Verification performed (measured, at the committed tree)**
+
+- `cd folio-go && go test -count=1 ./...` — 16 packages ok; exactly ONE failure, `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)` (got 7, need >=20), the mandated permanent red. Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` PASS.
+- `go vet -tags=matrix ./...` — exit 0, no output. `gofmt -l folio-go` from the repo root — empty.
+- `go test -tags=matrix -run TestTargetRenderHash` — all four legs run individually with `FOLIO_MATRIX_TARGET` set (`darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm`); each `ok`, and each grepped for "asserts NOTHING" with a count of 0, so no leg was a no-op.
+- `go test -tags=matrix -run TestCrossTargetByteIdentity .` — ok (21.1s).
+- `cd lint && go test ./...` — 4 packages ok.
+- `cd folio-designer && npm run typecheck` clean; `npm run lint` exactly 4 warnings, all pre-existing `only-export-components`, no fifth; `npm test` **235 passed / 235, 31 files** (215 at the spec's stated baseline); `npm run test:e2e:compile` clean.
+- Nine golden digests re-measured from `fixtures/<name>/expected.pdf` at the final tree, all byte-identical to the recorded values: statement-1 76,744 `114df1d6`; statement-5 127,363 `70dce051`; statement-20 269,884 `56bfbbd9`; statement-50 555,829 `5d090b0f`; mandatory-break 56,681 `7cf743de`; line-spacing 57,770 `de212115`; justified-text 59,894 `6da3b12e`; alignment-rounding 61,346 `986400a1`; justified-thai 15,079 `58ca4777`. `git status fixtures/` empty. All twenty entries in `goldenDigestRecord` green via `TestGoldenDigestAgreesAtEveryDeclaredSite`.
+- Matrix Test Audit: all twelve I/O rows covered by tests that ran and passed. Two rows had no covering test at first pass — "value past the channel ceiling" and the untruncated side of "long clause under the new bounds" — and both were closed with boundary tests before review.
+- Known-environmental, not regressions: `TestShippedFacesReproduceFromUpstream` (no `fontTools` locally); `lint/internal/rules/licencegraph_test.go` not gofmt-clean (DW-23, Story 15.2).
+
+**Residual risks**
+
+- **Browser e2e was compiled, never executed** (D-000.4). The witness's commit gesture was corrected by reasoning, not by a browser run; it is the one change in this story with no executed proof.
+- The canvas breaks the **raw template string**, not bound data (`page_setup.go` passes nil substitutions to `atomicSpansFor`) — D-7.4.4. This story makes no parity claim.
+- **DW-28 is made more likely, not fixed:** a multi-line editor invites Thai text stacking two marks over a base, a hard `Render` error. The canvas projection does not go through `internal/pdf`, so the canvas paints it and only the preview fails — Story 6.6's honest-failure path.
+- `CanvasTextPaint.Overflow`'s CSS class still has no rule anywhere; recorded, deliberately not fixed, and the new truncation flag does not repeat the shape.
+
+## Delivery Log
+
+### Dispatch 2 — 2026-08-30, implementation
+
+Baseline `813a414`. Implemented in one pass, in the spec's own order: the projection bounds first,
+then the four-way TypeScript mirror and its tie assertion, then the designer surface, then the
+record.
+
+**Demonstrated end to end, which is the thing D-7.4.1 said a constant edit alone would not prove.**
+A real six-paragraph clause of 585 bytes — past the 512-byte cap that used to **reject the edit
+outright**, because `component_commands.go:833` re-projects inside the property command's own
+transaction — is committed through `ApplyComponentCommand`, round-trips byte-for-byte, comes back on
+the projection for the panel to read, and paints as six-plus `CanvasTextLine`s with its mandatory
+breaks intact (`TestMultiParagraphValueCommitsAndReProjectsAsSeveralCanvasLines`). The same test
+proves a CRLF pair folds to **one** break, not two. On the designer side a 1,900-paragraph value
+typed into the editor commits as **one** command, and a word-processor paste keeps its paragraph
+breaks while `text/html` and `text/rtf` are never read at all (`App.test.tsx`, Story 7.4 block).
+
+**What the bounds became.** `maxCanvasPropertyString` was split at the declaration, not raised;
+`maxCanvasTextLines = 256` is gone rather than renamed. Nine enforcement sites re-derived by grep at
+the closing revision, two of them body text; the seven identifier, colour and expression sites keep
+512 and keep aborting, and `TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve` is where
+that record is executable. Full arithmetic in each constant's own comment and in DW-25's closing
+note.
+
+**Two observations recorded, deliberately not fixed.**
+
+1. **`Overflow`'s CSS class does not exist.** `CanvasTextPaint.Overflow` sets
+   `canvas-component-text-overflow` on the component and **there is no rule for that class anywhere
+   in `App.css`** — the older degradation flag has always been invisible to the author. Out of this
+   story's contract to fix, but not repeated: the new `Truncated` flag states its reason **in words**
+   at the component and carries the same sentence into the component's accessible name, so it is
+   never colour-only and never class-only.
+2. **DW-28 will bite an author far sooner now.** Any Thai sequence stacking two marks over a base
+   (`ครั้ง`, `ทั้งนี้`, `ตั้งแต่`) is a hard `Render` error, not a diagnostic, and a multi-line editor
+   makes such text far more likely to be typed. The canvas projection does not go through
+   `internal/pdf`, so **the canvas will paint it happily and only the preview will fail** — which
+   Story 6.6's honest-failure path already handles. Noted; nothing changed.
+
+**Two claims this story does NOT make.** The canvas breaks the **raw template string**, `{{…}}` and
+all, because `page_setup.go` passes nil substitutions to `atomicSpansFor` (D-7.4.4) — it does not
+show where the engine will break a *bound* value. And a truncated paint says nothing about
+pagination: `Paginate`'s page count is asserted independent of it from both directions — positively
+by `TestPaginationIsIndependentOfCanvasPaintTruncation`, and negatively by a new prohibited pattern
+in `canvas-authority-contract.test.ts` that bans any height or window derivation from
+`textPaint…lines.length`, with its own red-proof.
+
+**Two spec corrections, both established by execution rather than by reading, are in the Spec Change
+Log**: the `lineSpacing` wire unit (the engine takes the author's ratio and converts; sending
+thousandths is refused), and why the cumulative-fragment assertion tests the projection's own budget
+rule rather than a 33,000-word document.
+
+**DW-29 was not implemented**, per the Never list. This story discharged its product half only — the
+align control offers `justify` for an all-text selection and three segments for a table or a mixed
+selection — and the format half is now **Story 7.8**, written into `epics.md` with its three
+inheritances named, including the third-diagnostic-code decision that `internal/diag/diag.go:249-252`
+reserves for a lead.
+
+### Verification — measured
+
+| Command | Result |
+|---|---|
+| `cd folio-go && go test -count=1 ./...` | **1 failure**, and it is the mandated permanent red: `TestCorpusMeetsP6ExerciseFloors/P6g` (`got 7, need >=20`). Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` **green**. Nothing else red. |
+| `cd folio-go && go vet -tags=matrix ./...` | clean |
+| `gofmt -l folio-go` (from repo root) | no output |
+| `cd folio-go && go test -tags=matrix -run TestTargetRenderHash -v .` | **all four legs run individually with `FOLIO_MATRIX_TARGET` set** — `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` — all **ok**; grep for "asserts NOTHING" returns **0**, so no leg was a no-op |
+| `cd folio-go && go test -tags=matrix -run TestCrossTargetByteIdentity .` | ok (20.2 s) |
+| `cd lint && go test ./...` | ok, 4 packages |
+| `cd folio-designer && npm run typecheck` | clean |
+| `cd folio-designer && npm run lint` | **exactly 4** pre-existing `only-export-components` warnings (`preview/pdf-viewer.tsx:16`, `:17`, `App.tsx:1136`, `:1143`) — no fifth |
+| `cd folio-designer && npm test` | **233 passed / 233**, 31 files (baseline was 215 / 30) |
+| `cd folio-designer && npm run test:e2e:compile` | clean. No Playwright spec added; browser e2e was **not executed** (D-000.4) |
+| `FOLIO_HEAVY=1 go test -run "Fixture\|Golden\|Statement" -v .` | all pass, **zero SKIPs** — the heavy statement legs actually ran |
+
+**Golden digests — measured, not assumed.** All twenty entries in `goldenDigestRecord` hold
+(`TestGoldenDigestAgreesAtEveryDeclaredSite`, plus every per-fixture test re-rendering its input and
+comparing bytes). The nine this run was asked to quote, measured at the closing revision:
+
+| fixture | bytes | sha256 |
+|---|---|---|
+| statement-1 | 76,744 | `114df1d6…` |
+| statement-5 | 127,363 | `70dce051…` |
+| statement-20 | 269,884 | `56bfbbd9…` |
+| statement-50 | 555,829 | `5d090b0f…` |
+| mandatory-break | 56,681 | `7cf743de…` |
+| line-spacing | 57,770 | `de212115…` |
+| justified-text | 59,894 | `6da3b12e…` |
+| alignment-rounding | 61,346 | `986400a1…` |
+| justified-thai | 15,079 | `58ca4777…` |
+
+Every one byte-identical to its recorded value. No golden fixture was added; no rendered byte moved.
+
+**Known-environmental, not regressions:** `TestShippedFacesReproduceFromUpstream` needs `fontTools`,
+absent here; `lint/internal/rules/licencegraph_test.go` is not gofmt-clean (DW-23, Story 15.2).
+
+**Repository-root `README.md` is byte-identical to its committed state** and appears in no staged
+change: `git status` lists only the fourteen modified and two added files this story owns.

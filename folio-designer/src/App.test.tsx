@@ -749,7 +749,7 @@ describe('application shell', () => {
   })
 
   it('paints only pre-broken engine text lines without changing local document state', () => {
-    const textCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true, value: 'do not paint this value', textPaint: { overflow: false, lines: [{ top: 0, baseline: 12000, advance: 16000, width: 24000, fragments: [{ text: 'engine ', x: 0 }, { text: 'line', x: 16000 }] }] } }] }
+    const textCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true, value: 'do not paint this value', textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 12000, advance: 16000, width: 24000, fragments: [{ text: 'engine ', x: 0 }, { text: 'line', x: 16000 }] }] } }] }
     const request = vi.fn()
     render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} />)
     expect(screen.getByText('engine', { exact: true })).toBeInTheDocument()
@@ -801,13 +801,18 @@ describe('application shell', () => {
     fireEvent.click(screen.getByLabelText('text component e1'))
     expect(screen.queryByRole('textbox', { name: 'Text expression' })).not.toBeInTheDocument()
     const field = screen.getByRole('textbox', { name: 'Text' })
+    // Story 7.4: CONTENT is a textarea, so Enter puts a line feed in the
+    // draft and commits NOTHING. Blur is this field's commit; every other
+    // field keeps Enter.
     fireEvent.change(field, { target: { value: 'Customer: {{customer.name}}' } })
     fireEvent.keyDown(field, { key: 'Enter' })
+    expect(sent).toHaveLength(0)
+    fireEvent.blur(field)
     await waitFor(() => expect(sent).toHaveLength(1))
     expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"expression":{"op":"set","value":"Customer: {{customer.name}}"}}}')
     const again = screen.getByRole('textbox', { name: 'Text' })
     fireEvent.change(again, { target: { value: 'Plain heading' } })
-    fireEvent.keyDown(again, { key: 'Enter' })
+    fireEvent.blur(again)
     await waitFor(() => expect(sent).toHaveLength(2))
     expect(new TextDecoder().decode(sent[1]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"Plain heading"}}}')
   })
@@ -867,7 +872,7 @@ describe('application shell', () => {
   })
 
   it('sets the text colour from TYPOGRAPHY and paints the canvas in it', async () => {
-    const inked = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', color: '#c81e1e', textPaint: { overflow: false, lines: [{ top: 0, baseline: 10_000, advance: 12_000, width: 30_000, fragments: [{ text: 'Hello', x: 0 }] }] } }
+    const inked = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', color: '#c81e1e', textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 10_000, advance: 12_000, width: 30_000, fragments: [{ text: 'Hello', x: 0 }] }] } }
     const sent: ArrayBuffer[] = []
     const componentCanvas = { ...canvas, components: [inked] }
     const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 1 + sent.length, byteLength: 3, canvas: componentCanvas } } })
@@ -890,7 +895,7 @@ describe('application shell', () => {
     fireEvent.click(screen.getByLabelText('text component e1'))
     const value = screen.getByRole('textbox', { name: 'Text' })
     fireEvent.change(value, { target: { value: 'newer literal' } })
-    fireEvent.keyDown(value, { key: 'Enter' })
+    fireEvent.blur(value)
     resolve!({ snapshot: { documentState: 'loaded', revision: 2, byteLength: 3, canvas: componentCanvas } })
     await waitFor(() => expect(value).toHaveValue('newer literal'))
     fireEvent.click(screen.getByLabelText('table component e2'))
@@ -940,11 +945,104 @@ describe('typography controls over the engine-projected closed sets', () => {
 
   it('commits alignment from the closed sets, and clears it by pressing the active segment again', async () => {
     const request = select()
-    for (const name of ['Align left', 'Align center', 'Align right', 'Vertical align top', 'Vertical align middle', 'Vertical align bottom']) {
+    for (const name of ['Align left', 'Align center', 'Align right', 'Align justify', 'Vertical align top', 'Vertical align middle', 'Vertical align bottom']) {
       expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false')
     }
     fireEvent.click(screen.getByRole('button', { name: 'Align center' }))
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
+  })
+
+  // Story 7.4 / AC3. `style.align` admits `justify` for a text element, and
+  // has since 7.3; a table's cells draw a justified value at their start
+  // edge, so the value is meaningless there and the control must not offer
+  // it. A MIXED selection is the case that decides the rule: one command goes
+  // to every id, so the segment is offered only when EVERY selected component
+  // is text.
+  it('offers justify for text alone, and never for a table or a mixed selection', async () => {
+    const table = { id: 'e2', type: 'table' as const, band: 'content' as const, x: 0, y: 30_000, width: 72_000, height: 12_000, resizable: false, tableBind: 'transactions[]' }
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
+    const componentCanvas = { ...canvas, components: [textComponent, table] }
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+
+    const alignNames = () => within(screen.getByRole('group', { name: 'Align' })).getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    expect(alignNames()).toEqual(['Align left', 'Align center', 'Align right', 'Align justify'])
+    // The glyph is an SVG path, never a CSS declaration asking the browser to
+    // justify: canvas-authority-contract.test.ts bans that across every
+    // production, unit and e2e source.
+    expect(screen.getByRole('button', { name: 'Align justify' }).querySelector('svg path')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('table component e2'))
+    expect(alignNames()).toEqual(['Align left', 'Align center', 'Align right'])
+
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.click(screen.getByLabelText('table component e2'), { shiftKey: true })
+    expect(alignNames()).toEqual(['Align left', 'Align center', 'Align right'])
+
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Align justify' }))
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"align":{"op":"set","value":"justify"}}}')
+  })
+
+  // Story 7.4 / AC4. lineSpacing is a dimensionless RATIO carried as a RAW,
+  // UNQUOTED JSON number: Go's own decoder performs the x1000 to thousandths,
+  // exactly as it does for a value written in a .folio file. Quoting it, or
+  // pre-multiplying it here, is refused by the engine.
+  it('shows an unset ratio as a placeholder and commits a typed one as a raw unquoted number', async () => {
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const leading = screen.getByRole('textbox', { name: 'Line spacing' })
+    // Empty is the leading the declared chain itself rules — a ratio of 1 —
+    // shown as a placeholder and never as a value.
+    expect(leading).toHaveValue('')
+    expect(leading).toHaveAttribute('placeholder', '1')
+    expect(leading).toHaveAttribute('inputMode', 'decimal')
+    fireEvent.change(leading, { target: { value: '1.5' } })
+    fireEvent.keyDown(leading, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"lineSpacing":{"op":"set","value":1.5}}}')
+  })
+
+  it('reads a committed line spacing back in the author\'s units and clears it from the same row', async () => {
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
+    const spaced = { ...canvas, components: [{ ...textComponent, lineSpacing: 1_500 }] }
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: spaced }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    // The engine carries thousandths; the author is shown the ratio.
+    expect(screen.getByRole('textbox', { name: 'Line spacing' })).toHaveValue('1.5')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Line spacing' }))
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"lineSpacing":{"op":"clear"}}}')
+  })
+
+  // The mock reproduces the engine's REAL rejection, measured by running the
+  // command through Go: applyPropertyChanges prefixes the command key and
+  // template's validator words its reason in terms of that same key, so the
+  // message the browser receives really does begin `lineSpacing: lineSpacing`.
+  // ComponentCommandError carries it verbatim, with DataPath
+  // `component.lineSpacing` on element `e1`; the Go half is pinned by
+  // TestLineSpacingPropertyCommandDecodesThroughTheOneLoaderValidator.
+  it('shows the engine\'s located line-spacing refusal and keeps the author\'s text', async () => {
+    const engineMessage = 'lineSpacing: lineSpacing must be between 1 and 1000000 thousandths (0.001 to 1000); 0 is outside that range'
+    const request = vi.fn((operation: string) => operation === 'command'
+      ? Promise.reject(Object.assign(new Error(engineMessage), { elementId: 'e1', dataPath: 'component.lineSpacing' }))
+      : Promise.resolve({ snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 } }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const leading = screen.getByRole('textbox', { name: 'Line spacing' })
+    fireEvent.change(leading, { target: { value: '0' } })
+    fireEvent.keyDown(leading, { key: 'Enter' })
+    // The WHOLE located sentence, not a prefix of it: the element, the field
+    // it was located to, and the engine's own reason including the offending
+    // value the author typed.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(`e1: component.lineSpacing: ${engineMessage}`))
+    expect(leading).toHaveValue('0')
+    expect(leading).toHaveAttribute('aria-invalid', 'true')
   })
 
   it('presses the segment the engine has committed, and clears it from the same control', async () => {
@@ -959,6 +1057,137 @@ describe('typography controls over the engine-projected closed sets', () => {
     fireEvent.click(right)
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
     expect(sent.map((payload) => new TextDecoder().decode(payload)).join('')).toContain('"op":"clear"')
+  })
+})
+
+// Story 7.4: authoring body text in the designer. The CONTENT control was an
+// <input type="text">, which cannot hold a line feed at all, so a
+// multi-paragraph clause could not be typed OR pasted — the story's first AC
+// in one sentence.
+describe('Story 7.4: authoring a multi-paragraph clause', () => {
+  const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }
+  const openEditor = (sent: ArrayBuffer[]) => {
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    return screen.getByRole('textbox', { name: 'Text' })
+  }
+
+  it('is a textarea, so Enter inserts a paragraph break instead of committing', async () => {
+    const sent: ArrayBuffer[] = []
+    const field = openEditor(sent)
+    expect(field.tagName).toBe('TEXTAREA')
+    // Three paragraphs, typed. Enter commits nothing; blur sends ONE command
+    // carrying the whole value with its line feeds intact.
+    fireEvent.change(field, { target: { value: 'First clause.\nSecond clause.\nThird clause.' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    expect(sent).toHaveLength(0)
+    fireEvent.blur(field)
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"First clause.\\nSecond clause.\\nThird clause."}}}')
+  })
+
+  it('commits a forty-page clause as one command, with every paragraph break intact', async () => {
+    const sent: ArrayBuffer[] = []
+    const field = openEditor(sent)
+    // Well past the 512 BYTES the projection used to cap an element's value
+    // at — about eighty English words, less than one numbered clause — which
+    // did not merely blank the canvas but REJECTED the edit, because the
+    // property command re-projects inside its own transaction.
+    const clause = Array.from({ length: 1_900 }, (_value, index) => `Clause ${index + 1}. The parties agree as set out above.`).join('\n')
+    expect(new TextEncoder().encode(clause).byteLength).toBeGreaterThan(512)
+    fireEvent.change(field, { target: { value: clause } })
+    fireEvent.blur(field)
+    await waitFor(() => expect(sent).toHaveLength(1))
+    const command = new TextDecoder().decode(sent[0]!)
+    expect(JSON.parse(command).changes.value.value).toBe(clause)
+    expect(sent).toHaveLength(1)
+  })
+
+  it('takes only the plain flavour of a word-processor paste, keeping paragraph breaks and dropping the formatting', async () => {
+    const sent: ArrayBuffer[] = []
+    const field = openEditor(sent)
+    fireEvent.change(field, { target: { value: '' } })
+    const flavours: Record<string, string> = {
+      'text/plain': 'Clause 1.\nClause 2.',
+      'text/html': '<p style="font-weight:700;font-family:Georgia">Clause 1.</p><p><em>Clause 2.</em></p>',
+      'text/rtf': '{\\rtf1 \\b Clause 1.\\par}',
+    }
+    const read: string[] = []
+    fireEvent.paste(field, { clipboardData: { getData: (flavour: string) => { read.push(flavour); return flavours[flavour] ?? '' } } })
+    // The formatting is discarded by never being looked at: no sanitiser, no
+    // new dependency, nothing to go wrong on an unusual clipboard.
+    expect(read).toEqual(['text/plain'])
+    expect(field).toHaveValue('Clause 1.\nClause 2.')
+    fireEvent.blur(field)
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(JSON.parse(new TextDecoder().decode(sent[0]!)).changes.value.value).toBe('Clause 1.\nClause 2.')
+  })
+
+  it('inserts nothing when the clipboard has no plain flavour, instead of letting the browser paste the HTML', () => {
+    const sent: ArrayBuffer[] = []
+    const field = openEditor(sent)
+    fireEvent.change(field, { target: { value: 'Clause 1.' } })
+    const read: string[] = []
+    const flavours: Record<string, string> = {
+      'text/html': '<p style="font-weight:700;font-family:Georgia">Pasted from a word processor</p>',
+      'text/rtf': '{\\rtf1 \\b Pasted from a word processor\\par}',
+    }
+    // fireEvent returns false when the event was cancelled, which is the only
+    // way to see from here that the BROWSER's own paste was refused. Without
+    // preventDefault the browser inserts text it derives from the text/html
+    // flavour — formatting laundered in through the door the story closed.
+    const dispatched = fireEvent.paste(field, { clipboardData: { getData: (flavour: string) => { read.push(flavour); return flavours[flavour] ?? '' } } })
+    expect(dispatched).toBe(false)
+    expect(read).toEqual(['text/plain'])
+    expect(field).toHaveValue('Clause 1.')
+    expect(sent).toHaveLength(0)
+  })
+
+  it('leaves the caret at the end of the pasted text, not at the end of the field', () => {
+    const sent: ArrayBuffer[] = []
+    const field = openEditor(sent) as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: 'Clause 1.\nClause 3.' } })
+    // The caret sits at the start of the LAST paragraph, and a clause is
+    // pasted in front of it. A controlled textarea re-rendered with a new
+    // value drops the caret at the very end unless it is restored, which would
+    // put the author's next keystroke in the wrong paragraph.
+    field.setSelectionRange(10, 10)
+    fireEvent.paste(field, { clipboardData: { getData: () => 'Clause 2.\n' } })
+    expect(field).toHaveValue('Clause 1.\nClause 2.\nClause 3.')
+    expect(field.selectionStart).toBe(20)
+    expect(field.selectionEnd).toBe(20)
+  })
+
+  it('reverts and blurs on Escape, exactly as every single-line field does', () => {
+    const sent: ArrayBuffer[] = []
+    const field = openEditor(sent)
+    fireEvent.change(field, { target: { value: 'a draft\nnobody wants' } })
+    fireEvent.keyDown(field, { key: 'Escape' })
+    expect(field).toHaveValue('Hello')
+    expect(sent).toHaveLength(0)
+  })
+
+  it('paints one canvas line per engine line and says, in words, when the paint is only a prefix', () => {
+    const line = (top: number, text: string) => ({ top, baseline: top + 10_000, advance: 14_000, width: 30_000, fragments: [{ text, x: 0 }] })
+    const cut = { ...canvas, components: [{ ...textComponent, textPaint: { overflow: false, truncated: true, lines: [line(0, 'First clause.'), line(14_000, 'Second clause.')] } }] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: cut }} />)
+    expect(document.querySelectorAll('.canvas-text-line')).toHaveLength(2)
+    // Stated in words at the component, and in the same sentence a screen
+    // reader gets — never by colour, and never only by a CSS class.
+    const notice = 'Canvas preview cut short. The whole text is in the document and prints in full.'
+    expect(screen.getByText(notice)).toBeInTheDocument()
+    expect(screen.getByLabelText(`text component e1: First clause. Second clause.; ${notice}`)).toBeInTheDocument()
+  })
+
+  it('says nothing about truncation for an untruncated paint or an empty one', () => {
+    const notice = 'Canvas preview cut short. The whole text is in the document and prints in full.'
+    const whole = { ...canvas, components: [
+      { ...textComponent, textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 10_000, advance: 14_000, width: 30_000, fragments: [{ text: 'First clause.', x: 0 }] }] } },
+      { id: 'e2', type: 'text' as const, band: 'content' as const, x: 0, y: 30_000, width: 72_000, height: 24_000, resizable: true, textPaint: { overflow: false, truncated: false, lines: [] } },
+    ] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: whole }} />)
+    expect(screen.queryByText(notice)).not.toBeInTheDocument()
   })
 })
 

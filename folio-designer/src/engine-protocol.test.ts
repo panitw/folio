@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ENGINE_PROTOCOL_VERSION, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
 const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
@@ -53,7 +53,7 @@ describe('canvas projection protocol guard', () => {
   })
 
   it('accepts only bounded, ordered engine text paint and rejects browser-shaped substitutes', () => {
-    const textPaint = { overflow: false, lines: [{ top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'engine line', x: 0 }] }] }
+    const textPaint = { overflow: false, truncated: false, lines: [{ top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'engine line', x: 0 }] }] }
     const response = (projection: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: projection } })
     expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint }] })).toBeDefined()
     expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { ...textPaint, viewportWidth: 100 } }] })).toBeUndefined()
@@ -69,7 +69,7 @@ describe('canvas projection protocol guard', () => {
   // its alignment.
   it('admits a justified component, refuses a justified table column, and accepts word-grained fragments', () => {
     const response = (projection: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: projection } })
-    const emptyPaint = { overflow: false, lines: [] }
+    const emptyPaint = { overflow: false, truncated: false, lines: [] }
     const component = (align: string) => ({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, align, textPaint: emptyPaint }] })
     for (const align of ['left', 'center', 'right', 'justify']) expect(response(component(align))).toBeDefined()
     for (const align of ['middle', 'JUSTIFY', 'flush', '']) expect(response(component(align))).toBeUndefined()
@@ -81,16 +81,60 @@ describe('canvas projection protocol guard', () => {
 
     // A justified line arrives as SEVERAL fragments with ascending x — the
     // engine positions each word; the browser never justifies anything.
-    const wordGrained = { overflow: false, lines: [{ top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'one', x: 0 }, { text: ' two', x: 4 }, { text: ' three', x: 8 }] }] }
+    const wordGrained = { overflow: false, truncated: false, lines: [{ top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'one', x: 0 }, { text: ' two', x: 4 }, { text: ' three', x: 8 }] }] }
     expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, align: 'justify', textPaint: wordGrained }] })).toBeDefined()
     // …and a fragment placed outside the component's own box is still
     // refused, word-grained or not.
     expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, align: 'justify', textPaint: { ...wordGrained, lines: [{ ...wordGrained.lines[0], fragments: [...wordGrained.lines[0].fragments, { text: 'far', x: 11 }] }] } }] })).toBeUndefined()
   })
 
+  // Story 7.4 / DW-25. The three places a body-text projection could still be
+  // dropped silently: the exact-key `hasOnly` on the paint, the split
+  // `optionalString`, and the line bound. Each of these failures blanks the
+  // WHOLE canvas — isTextPaint false fails the component, which fails
+  // isCanvas, isSnapshot and finally parseInbound — so there is no
+  // attributable error, only a designer with no snapshot.
+  it('admits a truncated prefix paint, a clause past the identifier bound, and a projected line spacing', () => {
+    const response = (component: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [component] } } })
+    const line = { top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'engine line', x: 0 }] }
+    const text = (extra: object) => ({ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, ...extra })
+
+    // A PREFIX with the flag set is the degraded state, and it is admitted.
+    expect(response(text({ textPaint: { overflow: false, truncated: true, lines: [line] } }))).toBeDefined()
+    // Both flags are required, exactly as `overflow` always was: a producer
+    // that has stopped emitting one has drifted from this contract.
+    expect(response(text({ textPaint: { overflow: false, lines: [line] } }))).toBeUndefined()
+    expect(response(text({ textPaint: { overflow: false, truncated: 'yes', lines: [line] } }))).toBeUndefined()
+    // And an unknown key still drops the response — hasOnly is exact-key.
+    expect(response(text({ textPaint: { overflow: false, truncated: false, clipped: true, lines: [line] } }))).toBeUndefined()
+
+    // THE FOURTH MIRROR. An element's value is BODY TEXT and no longer shares
+    // the identifier bound; the seven identifier keys still keep it.
+    const clause = 'x'.repeat(MAX_CANVAS_PROPERTY_STRING + 1)
+    expect(response(text({ value: clause, textPaint: { overflow: false, truncated: false, lines: [] } }))).toBeDefined()
+    expect(response(text({ fontFamily: clause, textPaint: { overflow: false, truncated: false, lines: [] } }))).toBeUndefined()
+    expect(response(text({ color: clause, textPaint: { overflow: false, truncated: false, lines: [] } }))).toBeUndefined()
+
+    // style.lineSpacing, projected for the first time: thousandths, inside
+    // the range the engine's one validator enforces on both entry points.
+    expect(response(text({ lineSpacing: 1500, textPaint: { overflow: false, truncated: false, lines: [] } }))).toBeDefined()
+    expect(response(text({ lineSpacing: 0, textPaint: { overflow: false, truncated: false, lines: [] } }))).toBeUndefined()
+    expect(response(text({ lineSpacing: 1000001, textPaint: { overflow: false, truncated: false, lines: [] } }))).toBeUndefined()
+    expect(response(text({ lineSpacing: '1.5', textPaint: { overflow: false, truncated: false, lines: [] } }))).toBeUndefined()
+  })
+
+  it('admits a forty-page paint and refuses one line past the mirrored bound', () => {
+    const response = (count: number) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 1800, resizable: true, textPaint: { overflow: false, truncated: false, lines: Array.from({ length: count }, (_value, index) => ({ top: index, baseline: index, advance: 1, width: 10, fragments: [] })) } }] } } })
+    expect(response(MAX_CANVAS_BODY_TEXT_LINES)).toBeDefined()
+    expect(response(MAX_CANVAS_BODY_TEXT_LINES + 1)).toBeUndefined()
+    // The old bound must no longer bite: 257 lines is about six pages, and
+    // refusing them here is what blanked the canvas after a paste.
+    expect(response(257)).toBeDefined()
+  })
+
   it('admits one bounded text-binding paint label but rejects an editable projection', () => {
     const response = (component: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [component] } } })
-    const text = { id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, binding: 'customer.name', textPaint: { overflow: false, lines: [] } }
+    const text = { id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, binding: 'customer.name', textPaint: { overflow: false, truncated: false, lines: [] } }
     expect(response(text)).toBeDefined()
     expect(response({ ...text, binding: 'a'.repeat(MAX_ENGINE_BINDING_LENGTH + 1) })).toBeUndefined()
     expect(response({ ...text, binding: '' })).toBeUndefined()
@@ -117,9 +161,9 @@ describe('canvas projection protocol guard', () => {
       snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint }] } },
     })
     const line = { top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'engine', x: 0 }] }
-    expect(response({ overflow: false, lines: [line, { ...line, top: 11, baseline: 19 }] })).toBeUndefined()
-    expect(response({ overflow: false, lines: [{ ...line, fragments: [{ text: 'engine', x: 11 }] }] })).toBeUndefined()
-    expect(response({ overflow: false, lines: [{ ...line, top: -1, baseline: 8 }] })).toBeUndefined()
+    expect(response({ overflow: false, truncated: false, lines: [line, { ...line, top: 11, baseline: 19 }] })).toBeUndefined()
+    expect(response({ overflow: false, truncated: false, lines: [{ ...line, fragments: [{ text: 'engine', x: 11 }] }] })).toBeUndefined()
+    expect(response({ overflow: false, truncated: false, lines: [{ ...line, top: -1, baseline: 8 }] })).toBeUndefined()
     // Story 7.2 / D-7.2.2, INVERTED DELIBERATELY. This assertion used to
     // read `.toBeUndefined()`: a baseline of 13 against top 0 and advance
     // 12 sits below the next line's top, so the line boxes overlap. That
@@ -134,7 +178,7 @@ describe('canvas projection protocol guard', () => {
     // `undefined` and would keep passing if the geometry were quietly
     // rewritten on the way through.
     const tightLine = { ...line, baseline: 13 }
-    const accepted = response({ overflow: false, lines: [tightLine] })
+    const accepted = response({ overflow: false, truncated: false, lines: [tightLine] })
     expect(admittedTextLines(accepted)).toEqual([tightLine])
   })
 
@@ -147,7 +191,7 @@ describe('canvas projection protocol guard', () => {
     // one such line failed isTextPaint, then isCanvas, then isSnapshot,
     // and parseInbound dropped the whole response.
     const tight = {
-      overflow: false,
+      overflow: false, truncated: false,
       lines: [
         { top: 0, baseline: 11, advance: 9, width: 10, fragments: [{ text: 'first', x: 0 }] },
         { top: 9, baseline: 20, advance: 9, width: 10, fragments: [{ text: 'second', x: 0 }] },
@@ -205,7 +249,7 @@ describe('canvas projection protocol guard', () => {
     // A non-image component must never carry an image paint.
     expect(parseInbound({
       protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
-      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, lines: [] }, image }] } },
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, truncated: false, lines: [] }, image }] } },
     })).toBeUndefined()
   })
 
@@ -222,7 +266,7 @@ describe('canvas projection protocol guard', () => {
     // Not a text component.
     expect(parseInbound({
       protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
-      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, lines: [] }, imageUnavailable: 'missing' }] } },
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, truncated: false, lines: [] }, imageUnavailable: 'missing' }] } },
     })).toBeUndefined()
     // Not alongside a PRESENT image paint — the two are one signal.
     const image = { mediaType: 'image/png', assetKey: 'ab'.repeat(32), width: 300, height: 150, drawX: 0, drawY: 0, drawWidth: 100, drawHeight: 50 }

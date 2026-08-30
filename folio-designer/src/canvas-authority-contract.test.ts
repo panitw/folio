@@ -26,6 +26,17 @@ const prohibited = [
   /\b(?:Range|document\.createRange|getSelection|Selection)\s*\(/,
   /\bgetComputedStyle\s*\(/,
   /(?:white-space|text-wrap|overflow-wrap|word-break|line-clamp|text-align)\s*:\s*(?:normal|wrap|balance|pretty|anywhere|break-word|justify|\d+)/,
+  // D-7.4.2 §5. The canvas paint is APPROXIMATE and, since Story 7.4, may be
+  // a deliberately truncated prefix; pagination is EXACT and comes from
+  // layout.Paginate. Deriving a height, a page count or a window count from
+  // the paint's line count would make a truncated paint shorten the reported
+  // column, and Story 7.6 would then draw the wrong number of sheets — the
+  // canvas lying about pagination. The independence holds in Go today by
+  // construction (nothing there reads CanvasTextPaint), but the data sits
+  // right here in `line.advance`, one plausible line of designer code away.
+  // A positive test would not catch that line being written; this does.
+  /\b(?:textPaint|paint)\??\.lines\.length\b/,
+  /\blines\.length\s*[*/]|[*/]\s*\blines\.length\b/,
 ]
 
 function violations(files: readonly string[]): string[] {
@@ -56,6 +67,8 @@ describe('canvas projection authority contract', () => {
     expect(violationsForSource('const style = getComputedStyle(node)')).not.toEqual([])
     expect(violationsForSource(`const range = ${['document', 'createRange'].join('.') }()`)).not.toEqual([])
     expect(violationsForSource('.paint { text-align: justify }')).not.toEqual([])
+    expect(violationsForSource('const height = component.textPaint.lines.length * line.advance')).not.toEqual([])
+    expect(violationsForSource('const windows = Math.ceil(paint.lines.length / perPage)')).not.toEqual([])
   })
 })
 

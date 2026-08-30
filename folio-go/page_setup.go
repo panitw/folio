@@ -23,9 +23,93 @@ const GridIncrement int64 = 6000
 // bound, so a successful command can never strand the worker with an
 // unrepresentable projection.
 const MaxCanvasMillipoints int64 = 9007199254740991
+
+// maxCanvasPropertyString bounds an IDENTIFIER, a COLOUR or an EXPRESSION —
+// a font-family name, `color`, `background`, `border.color`, `visibleIf` and
+// a table's `bind`. Seven sites, all legitimately short, and all of them
+// still ABORT the projection: Epic 7 makes none of them newly reachable, so
+// that residue is recorded rather than fixed (DW-25).
+//
+// It used to bound document body text as well, which is the two-jobs
+// conflation D-7.4.2 §3 ruled must be SPLIT rather than raised: 512 bytes is
+// ~80 English words, or ~170 Thai/CJK characters at three bytes each, which
+// is less than one numbered contract clause. Body text now has its own
+// derived bounds below; this constant governs identifiers only.
 const maxCanvasPropertyString = 512
-const maxCanvasTextLines = 256
+
+// maxCanvasTextFragments is the PER-LINE fragment guard, unchanged at 512 and
+// deliberately a different quantity from the cumulative per-element budget
+// below. It bounds one degenerate line; the browser mirrors only the
+// cumulative count, so the two are not each other's mirror and the tie
+// assertion does not pair them.
+//
+// Its sibling `maxCanvasTextLines = 256` is GONE, not renamed: 256 lines is
+// about five pages at 11pt — maxCanvasBodyTextLines' own derivation below
+// establishes 48 lines to an A4 page at that size — an order of magnitude
+// short of the epic's own
+// forty-page target, and D-7.4.2 rejected raising it in place — the cliff
+// was the defect, its position was not.
 const maxCanvasTextFragments = 512
+
+// maxCanvasBodyText is a CHANNEL-REPRESENTABILITY BACKSTOP, not a paint
+// bound, and it is the ONE body-text site that still refuses rather than
+// degrades. Degradation lives on the paint side alone (D-7.4.2 §1): a
+// component's Value is what the properties panel edits and SAVES, so
+// shortening it would write the truncation into the author's document.
+//
+// Criterion: it must not be able to bind before the paint bounds do. The
+// largest document the paint bounds admit is maxCanvasBodyTextLines lines of
+// ~90 characters, and the worst case is three bytes per character (Thai/CJK,
+// which NFR3 makes first-class): 1920 × 90 × 3 = 518 400 bytes. The next
+// power of two above that is 524 288 (512 KiB); this constant is the one
+// ABOVE it, and that extra doubling is deliberate rather than arithmetic —
+// the ~90-character line is an ESTIMATE of a line's width in characters, not
+// a bound on it, so the backstop is set a full power of two clear of the
+// estimate. Epic 7's own input cannot reach either figure. Recorded, not
+// fixed — following D-7.2.3's precedent for a stated sanity ceiling.
+const maxCanvasBodyText = 1048576
+
+// maxCanvasBodyTextLines is Epic 7's own forty-page target, measured:
+//
+//	40 pages × ⌊729890 mp content-band height ÷ 14982 mp advance⌋ = 40 × 48
+//
+// where 729890 mp is ContentHeight for a canonical A4 page (841890 mp tall,
+// internal/layout/band.go) with 36pt margins and 20pt header and footer, and
+// 14982 mp is the measured Advance of the shipped ["Noto Sans"] chain at
+// 11pt. (At 12pt the advance is 16344 mp and a page holds 44 lines, so 11pt
+// is the admitting figure of the two.) Past this the element paints its
+// first N lines and sets Truncated — it never aborts the projection.
+const maxCanvasBodyTextLines = 1920
+
+// maxCanvasBodyTextFragments is the CUMULATIVE per-element fragment budget,
+// mirroring the browser validator's own cumulative count (Go's per-line
+// maxCanvasTextFragments bounds a different quantity, and the Go side must
+// not emit what the browser will reject).
+//
+// Criterion: the same forty-page document, justified at full A4 content
+// width, where Story 7.3 makes a justified line project one fragment per
+// word-piece.
+//
+// MEASURED, at the closing revision of Story 7.4 and with the value cap
+// lifted, through CanvasWithTextPaint itself: justified English contract
+// prose at 11pt in the shipped ["Noto Sans"] chain — the same face and size
+// maxCanvasBodyTextLines is derived from — across 523.276 pt of A4 content
+// width gives 18.05 fragments per line over 101 lines (1 823 fragments for
+// 1 824 words). 1920 × 18.05 = 34 656, and the next power of two above that
+// is 65 536.
+//
+// 65 536 also clears a SHORT-WORD worst case measured the same way — "the cat
+// sat on a mat" prose packs 30.86 fragments per line, and 1920 × 30.86 =
+// 59 251 — so the forty-page criterion holds for text denser than a
+// contract's, not only for the corpus it was measured on. (The earlier 16.72
+// figure was a thirteen-line sample, where a justified block's short last
+// line still moves the average; the earlier 19.35 was the Roboto-Regular TEST
+// face rather than the shipped chain. Both are superseded by the figure
+// above, which deferred-work.md and epic-7-8-decision-log.md now also carry.)
+//
+// The geometry-free law behind it: a justified component's cumulative
+// fragment count ≈ the value's WORD COUNT, at any column width.
+const maxCanvasBodyTextFragments = 65536
 
 // CanvasTextFragment is a shaped, positioned paint fragment. It is not a
 // document text node: x is the engine-owned, band-relative paint origin.
@@ -48,8 +132,18 @@ type CanvasTextLine struct {
 // CanvasTextPaint is the closed browser paint plan for one text component.
 // It deliberately carries no CSS, browser metric, or document-schema input.
 type CanvasTextPaint struct {
-	Overflow bool             `json:"overflow"`
-	Lines    []CanvasTextLine `json:"lines"`
+	Overflow bool `json:"overflow"`
+	// Truncated says this paint is a PREFIX of the element's text: the value
+	// is intact in the document and renders whole to PDF, but the projection
+	// stopped at a painting bound (D-7.4.2 §2).
+	//
+	// It exists because without it a degraded element and an EMPTY element
+	// are indistinguishable — both used to project `Lines: []`, the all-clear
+	// wearing the face of could-not-look. It is a projection disposition, not
+	// a document validity rule: no diag.Diagnostic, no registry entry, and
+	// the render path has no such cap.
+	Truncated bool             `json:"truncated"`
+	Lines     []CanvasTextLine `json:"lines"`
 }
 
 // SnapToGrid is the reusable core-command seam for Story 5.7 placement.
@@ -81,10 +175,15 @@ type CanvasComponent struct {
 	// Binding is a bounded, Go-derived paint label for a direct text binding.
 	// It is not a general expression/template projection and cannot be used to
 	// reconstruct canonical document bytes in the browser.
-	Binding       *string           `json:"binding,omitempty"`
-	VisibleIf     *string           `json:"visibleIf,omitempty"`
-	FontFamily    *string           `json:"fontFamily,omitempty"`
-	FontSize      *int64            `json:"fontSize,omitempty"`
+	Binding    *string `json:"binding,omitempty"`
+	VisibleIf  *string `json:"visibleIf,omitempty"`
+	FontFamily *string `json:"fontFamily,omitempty"`
+	FontSize   *int64  `json:"fontSize,omitempty"`
+	// LineSpacing is style.lineSpacing in THOUSANDTHS, the unit the format
+	// and the property command both carry it in (template.LineSpacingUnit).
+	// It is dimensionless — a ratio applied to the vertical model's Advance —
+	// so it is not a geom.Length and is never treated as one.
+	LineSpacing   *int64            `json:"lineSpacing,omitempty"`
 	Bold          *bool             `json:"bold,omitempty"`
 	Italic        *bool             `json:"italic,omitempty"`
 	Align         *string           `json:"align,omitempty"`
@@ -453,9 +552,27 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 				boxWidth = element.Width.Value
 			}
 			lines := packLines(segs, ops, len([]rune(element.Value.Value)), fontSize, boxWidth)
-			if len(lines) > maxCanvasTextLines {
-				return fmt.Errorf("folio: canvas text element %s exceeds the line projection bound", element.ID)
+			// D-7.4.2: DEGRADE THIS ELEMENT, NEVER ABORT THE PROJECTION.
+			// This used to `return` an error, and that error was the
+			// function's own — one over-long clause blanked the whole
+			// canvas for a document that renders to a perfectly good PDF.
+			// The shape reused here is the fontChain path a few lines
+			// above: dispose of the one element and carry on. What is new
+			// is that the element keeps its first N lines and SAYS it was
+			// cut, rather than presenting an empty paint.
+			//
+			// The lines dropped here are dropped from the PAINT ONLY.
+			// element.Value is untouched, is what the properties panel
+			// saves, and renders whole.
+			painted := lines
+			if len(painted) > maxCanvasBodyTextLines {
+				painted = painted[:maxCanvasBodyTextLines]
+				paint.Truncated = true
 			}
+			// Overflow and the vertical origin below are still derived from
+			// the FULL line list, so the prefix paints at exactly the
+			// coordinates it occupies in the whole block: truncation must
+			// not silently move the text the author can still see.
 			_, paint.Overflow = detectWidthOverflow(string(element.ID), lines, boxWidth)
 			// AC6 / the Story 5.9 invariant: the canvas consumes the
 			// IDENTICAL advance the renderer does, ratio included — the
@@ -476,7 +593,8 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 				boxHeight = element.Height.Value
 			}
 			originY := element.Y + textValignOffset(valign, boxHeight, textBlockHeight(len(lines), vm))
-			for i, line := range lines {
+			budget := canvasFragmentBudget{}
+			for i, line := range painted {
 				top, err := canvasLineTop(originY, i, vm.Advance)
 				if err != nil {
 					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
@@ -518,9 +636,15 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 				}
 				paintLine := CanvasTextLine{Top: int64(top), Baseline: int64(baseline), Advance: int64(advance), Width: int64(width), Fragments: []CanvasTextFragment{}}
+				// A fragment's text is BODY TEXT, not an identifier: this
+				// site is the second of the two maxCanvasPropertyString
+				// conflations DW-25 undercounted, and a value that got past
+				// the value cap used to abort here instead.
+				oversized := false
 				for _, fragment := range placed {
-					if len(fragment.text) > maxCanvasPropertyString || len(paintLine.Fragments) >= maxCanvasTextFragments {
-						return fmt.Errorf("folio: canvas text element %s exceeds the fragment projection bound", element.ID)
+					if len(fragment.text) > maxCanvasBodyText {
+						oversized = true
+						break
 					}
 					x, err := canvasDerived("fragment x", fragment.x)
 					if err != nil {
@@ -528,6 +652,14 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 					}
 					paintLine.Fragments = append(paintLine.Fragments, CanvasTextFragment{Text: fragment.text, X: int64(x)})
 				}
+				// Painting stops at the last WHOLE line that fits. A half
+				// line would be a worse lie than a short one: the author
+				// would read a sentence the document does not contain.
+				if oversized || !budget.admits(len(paintLine.Fragments)) {
+					paint.Truncated = true
+					break
+				}
+				budget.take(len(paintLine.Fragments))
 				paint.Lines = append(paint.Lines, paintLine)
 			}
 			component.TextPaint = paint
@@ -535,6 +667,30 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 	}
 	return nil
 }
+
+// canvasFragmentBudget is the two fragment bounds a painted line must satisfy,
+// held in one place because they bound DIFFERENT QUANTITIES and are easy to
+// mistake for one another.
+//
+//   - maxCanvasTextFragments is PER LINE. It is Go's own long-standing guard
+//     on one degenerate line and has no counterpart in the browser.
+//   - maxCanvasBodyTextFragments is CUMULATIVE across the whole element. It
+//     exists to mirror engine-protocol.ts's `fragments` counter, which is
+//     declared once per component and never reset — so a projection whose
+//     every line is per-line legal can still be refused there, and a refusal
+//     there drops the ENTIRE engine response with no attributable error.
+//
+// The asymmetry is why the engine has to carry the cumulative count itself:
+// satisfying the per-line guard says nothing about the browser's bound.
+type canvasFragmentBudget struct{ used int }
+
+// admits reports whether a line carrying count fragments can still be
+// painted. Both bounds must hold; neither implies the other.
+func (b *canvasFragmentBudget) admits(count int) bool {
+	return count <= maxCanvasTextFragments && b.used+count <= maxCanvasBodyTextFragments
+}
+
+func (b *canvasFragmentBudget) take(count int) { b.used += count }
 
 func canvasDerived(name string, value geom.Length) (geom.Length, error) {
 	if value < 0 || value > geom.Length(MaxCanvasMillipoints) {
@@ -578,7 +734,18 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 			}
 			component := CanvasComponent{ID: string(element.ID), Type: string(element.Type), Band: projected.Name, X: int64(element.X), Y: int64(element.Y), Width: int64(width), Height: int64(height), Resizable: element.Type != template.ElementTable}
 			if element.Type == template.ElementText && element.Value.Set && !element.Value.Null {
-				if len(element.Value.Value) > maxCanvasPropertyString {
+				// BODY TEXT, so the body-text backstop — not the identifier
+				// bound this used to share. At 512 bytes this returned nil
+				// for the ENTIRE component list, and because the property
+				// command re-projects inside its own transaction
+				// (component_commands.go's updateComponentProperties) it did
+				// not merely blank the canvas: it REJECTED the author's edit
+				// at about eighty English words, or a hundred and seventy
+				// Thai characters. The refusal stays — a value may not be
+				// truncated, only its paint (D-7.4.2 §1) — but it is now a
+				// megabyte-scale channel backstop Epic 7's input cannot
+				// reach, not a clause-length cap.
+				if len(element.Value.Value) > maxCanvasBodyText {
 					return nil, fmt.Errorf("folio: component value exceeds the projection bound")
 				}
 				component.Value = stringPointer(element.Value.Value)
@@ -627,6 +794,7 @@ func directCanvasBinding(value string) string {
 
 func stringPointer(value string) *string     { return &value }
 func boolPointer(value bool) *bool           { return &value }
+func int64Pointer(value int64) *int64        { return &value }
 func lengthPointer(value geom.Length) *int64 { rendered := int64(value); return &rendered }
 func canvasPropertyLength(name string, value geom.Length) (*int64, error) {
 	if value < 0 || value > geom.Length(MaxCanvasMillipoints) {
@@ -648,6 +816,13 @@ func applyCanvasStyle(component *CanvasComponent, elementType template.ElementTy
 			return err
 		}
 		component.FontSize = value
+	}
+	// style.lineSpacing, projected for the first time (Story 7.4). Its range
+	// is already settled at load and on the property-command path by the one
+	// validator both call (template.DecodeLineSpacing, D-7.2.3), so this is a
+	// projection of a committed value and not a second opinion on it.
+	if (elementType == template.ElementText || elementType == template.ElementTable) && style.LineSpacing.Set && !style.LineSpacing.Null {
+		component.LineSpacing = int64Pointer(style.LineSpacing.Value)
 	}
 	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Bold.Set && !style.Bold.Null {
 		component.Bold = boolPointer(style.Bold.Value)
