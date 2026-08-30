@@ -2,7 +2,8 @@
 title: 'Story 7.5: The content column runs past the first page'
 type: 'feature'
 created: '2026-08-31'
-status: 'ready-for-dev'
+status: 'in-progress'
+baseline_revision: '4bf201abadeafe29f7a9c19efb6f50b302a1b8b0'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -563,3 +564,121 @@ Directive: `Halt after planning.` — **no implementation code, no commits, and 
 Verification was **not** run in this dispatch: no code changed. The `## Verification` section states what the implementing dispatch must measure.
 
 ## Delivery Log
+
+### Dispatch 3 — 2026-08-31, implemented
+
+Baseline: `4bf201abadeafe29f7a9c19efb6f50b302a1b8b0` on `main`, tree clean apart from this spec's own frontmatter.
+Commits: `deccd2f` (Part 1, characterization) and `cd196f0` (Parts 2–8).
+
+**Part 1 landed as its own commit, and was RED-PROVED before Part 2 touched anything.**
+`folio-go/component_commands_test.go` gained `TestBandContainmentRefusalsCarryTheirExactMessages`
+and `TestJavaScriptSafeGeometryBoundRefusalsCarryTheirExactMessages`, both by full-string
+equality and never `strings.Contains`. Three separate perturbations were applied and reverted:
+
+| Perturbation | What failed |
+|---|---|
+| `must stay within %s` → `must remain within %s` | `negative x in pageHeader = "folio: component geometry must remain within pageHeader", want exactly "folio: component geometry must stay within pageHeader"` |
+| `folio: component.%s: %w` → `folio: component %s: %w` | `move past the JavaScript-safe bound = folio: component y: … , want exactly "folio: component.y: y exceeds the JavaScript-safe geometry bound"` |
+| `page_setup.go`'s `JavaScript-safe` → `JS-safe` | `projection of an unrepresentable coordinate = folio: component exceeds the JS-safe geometry bound, want exactly "folio: component exceeds the JavaScript-safe geometry bound"` |
+
+The content band's own vertical cap was asserted in that first commit **while it was still
+true**, and the second commit changes those two lines into acceptance assertions — which is the
+whole point of the ordering.
+
+**The eleven-call-site band audit, RE-DERIVED BY GREP AT THE CLOSING REVISION.** `grep -n
+"containComponent(" folio-go/component_commands.go` returns twelve hits; the twelfth is the
+definition. The eleven call sites are at `:165`, `:300`, `:829`, `:1409`, `:1472`, `:1565`,
+`:1569`, `:1606`, `:1668`, `:1674`, `:1726` — the same line numbers the Code Map recorded,
+because everything this story added to that file sits below `:1766`. No site pins a band, so the
+split keys on `band.Name` **inside** `containComponent`, exactly as R3 required.
+
+Sites 4 (`:1409`), 6 (`:1565`) and 9 (`:1668`) are probes gating `containEdge` pull-backs, and
+lifting the cap **widens** those gates. Their vertical pull-backs now route through a new
+`containEdgeY(band, value, limit)`, which is a no-op in the bands that do not cap vertically —
+without it a drag that is refused outright today would have started passing the probe and been
+silently clamped to the foot of page one. Four sites moved: `:1411`, `:1567`, `:1670`, `:1672`.
+Site 11 (`duplicateComponent`, `:1726`) stops falling back near the old band bottom, which is the
+intended new behaviour: the duplicate lands one grid step down the column.
+
+**The `engine-protocol.ts` mirror inventory (R4), as the story's artifact.** 6 of ~35 duplicated
+Go/TS invariants were tied before this story; **7 are tied now**. DW-25 closed Group A only.
+
+*Group A — numeral pairs, TIED by `engine-bounds-mirror.test.ts` (unchanged, still six):*
+`MAX_CANVAS_BODY_TEXT` ↔ `page_setup.go` `maxCanvasBodyText` (1048576); `MAX_CANVAS_BODY_TEXT_LINES` ↔
+`maxCanvasBodyTextLines` (1920); `MAX_CANVAS_BODY_TEXT_FRAGMENTS` ↔ `maxCanvasBodyTextFragments`
+(65536); `MAX_CANVAS_PROPERTY_STRING` ↔ `maxCanvasPropertyString` (512);
+`MIN_LINE_SPACING_THOUSANDTHS` / `MAX_LINE_SPACING_THOUSANDTHS` ↔ `internal/template/linespacing.go`
+(1 / 1000000).
+
+*Newly TIED by this story — the first PREDICATE tie:* `BANDS_CAPPING_VERTICALLY` ↔
+`component_commands.go`'s `bandsCappingVertically`. The test resolves Go's named constants before
+comparing, asserts the list is non-empty on both sides, asserts `content` is on neither, asserts
+each side actually CONSUMES its list at the validator it governs, asserts the horizontal cap stays
+un-guarded on both sides, and red-proofs a one-sided edit in each direction. `goSources` now reads
+a third Go file; `pairs` is still six and `toHaveLength(6)` is unchanged, because this tie is a
+predicate and contributes no numeral pair.
+
+*Group B — numeric literals duplicated from Go, still UNTIED:* `MAX_ENGINE_FONT_FAMILIES` ↔
+`page_setup.go`'s `maxCanvasFontFamilies` (256); ⚠ **a bare inline `512`** for font-family name
+length ↔ `maxCanvasPropertyString`, invisible to the mirror test because its site regex only
+matches `boundedString(key, MAX_CANVAS_PROPERTY_STRING)`; `MAX_ENGINE_BINDING_LENGTH` ↔
+`maxCanvasBindingString` (256); `MAX_ENGINE_PAYLOAD_BYTES` ↔ `component_commands.go`'s 8 MiB, whose
+Go comment declares itself a mirror; `MAX_ENGINE_ELEMENT_ID_LENGTH`; `MAX_ENGINE_PARAMETER_NAME_LENGTH`
+↔ `parameter_references.go`; the inline `128` table-column cap ↔ `table_columns_projection.go`;
+the asset-key shape ↔ `asset_bytes.go`; the SHA-256 hex shape; the table field caps.
+
+*Group C — mirrored PREDICATES, all still untied except this story's:* the JS-safe bound
+(`Number.isSafeInteger` ↔ `MaxCanvasMillipoints`, structurally untieable as written and that
+spelling is the safer one); paint-inside-page; band contiguity; band count and order; image draw
+containment; `resizable ⇔ type≠table`; component band ordering; component id uniqueness;
+`fontFamilies` sortedness; text-paint line invariants; fragment x containment; the `align`/`valign`,
+`borderEdges`, `preset`/`orientation`, component `type`, band-name, `imageUnavailable` and
+table-column vocabularies; field/type coupling; the `lineSpacing` range predicate; parameter-name
+shape, sort and uniqueness.
+
+⚠ **Highest-risk untied item, recorded so the inventory is honest and NOT fixed here:** the bare
+inline `512` for font-family name length. A DW-25-style raise updates the named constant and leaves
+that literal behind, every test stays green, and documents with long family names silently blank the
+canvas — the same defect class DW-25 was created to close, still present in the file DW-25 hardened.
+
+**The fixture DISCRIMINATES, measured rather than argued.** `canvas_window_count_template.go`'s gap
+fixture (text at `y:0`, an unstyled rect at `y:7280pt`, one window = 727890 mp) reports **2**.
+Replacing the derivation with `ceil(lowestBottom / H)` locally turned the test red with the message
+`contentWindowCount = 11, want 2 (the forbidden closed form answers 11 here)`, and the control
+fixture (elements one window apart ⇒ **3** by both routes) stayed green under the same
+perturbation — which is exactly why the `page-count-*` fixtures could not have caught this.
+
+**Ruling C exercised, not assumed.** An over-tall content component (900pt in a 727.89pt column)
+reaches `layout.Paginate`'s `*OverflowError` from the canvas for the first time; the projection
+succeeds, reports one window, and keeps the component.
+
+**DW-33: flagged and provably untouched.** The count reads `lines`, `originY` and `vm`, never
+`painted`, `budget`, `oversized` or the placed runs. No ruling on the partial prefix is made.
+**No `.folio` format field was required; `SupportedMajor` stays 2.** DW-26 … DW-35 remain open.
+
+**Verification, measured.**
+
+- `cd folio-go && go test -count=1 ./...` — **exactly ONE failure**, the mandated permanent red:
+  `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)`, `got 7, need >=20`. Its drift twin
+  `TestCorpusP6StatsMatchDeclaredBaseline` is green. Identical to the baseline run taken before any
+  edit. All **20** `goldenDigestRecord` entries hold, so the nine reported digests —
+  statement-1 `114df1d6…`, statement-5 `70dce051…`, statement-20 `56bfbbd9…`, statement-50
+  `5d090b0f…`, mandatory-break `7cf743de…`, line-spacing `de212115…`, justified-text `6da3b12e…`,
+  alignment-rounding `986400a1…`, justified-thai `58ca4777…` — are byte-identical.
+  `git status fixtures/` was empty throughout.
+- `cd folio-go && go vet -tags=matrix ./...` — clean. `gofmt -l folio-go` from the repo root — no output.
+- `go test -tags=matrix -run TestTargetRenderHash -v .` — run once per leg with `FOLIO_MATRIX_TARGET`
+  set: **darwin/arm64, linux/amd64, linux/arm64, js/wasm**. `grep -c "asserts NOTHING"` was **0** on
+  every leg, so all four legs actually asserted. All four pass.
+- `go test -tags=matrix -run TestCrossTargetByteIdentity .` — pass.
+- `cd lint && go test ./...` — pass (4 packages).
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck clean; oxlint
+  **exactly 4 `only-export-components` warnings, 0 errors**, the baseline set (`preview/pdf-viewer.tsx:16,17`,
+  `App.tsx:1155,1162`) — no fifth, because the new export is in a `.ts` file. **248 tests / 32 files,
+  all passing**, against a 239/32 baseline: +9.
+- `cd folio-designer && npm run test:e2e:compile` — pass. Browser e2e is deferred by D-000.4 and did
+  not execute; no claim is made that it ran.
+- `git diff HEAD -- folio-go/internal/layout/ README.md` is **empty**: `paginate.go` is absent from
+  the diff and `README.md` appears in no commit. Nothing was staged with `git add -A` or `git add .`.
+- The Go split (`component_commands.go`) and the browser mirror (`engine-protocol.ts`) are in **one
+  commit**, `cd196f0`, confirmed by `git show --stat`.
