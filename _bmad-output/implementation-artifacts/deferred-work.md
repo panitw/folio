@@ -2012,6 +2012,28 @@ NFR3 makes first-class. Reaching the 256-line cap with real prose requires passi
 the value cap fires first for every realistic Epic 7 input; 256 is reachable only by a value that is
 almost entirely line feeds.
 
+**AMENDED 2026-08-30 at Story 7.4's plan gate — this entry UNDERCOUNTED on three axes, and one of
+them would have made a correct fix inert.**
+
+1. **`maxCanvasPropertyString` has NINE sites, not eight, and TWO of them are body text** — not one.
+   `page_setup.go:581` (an element's value) **and `:522` (a fragment's text)**, which nothing had named.
+   A value large enough to pass `:581` would still abort the projection at `:522`. Both move to the new
+   body-text constant; the other seven (`:211`, `:590`, `:596`, `:640`, `:665`, `:671`, `:686`) are
+   identifiers, colours and expressions and stay at 512.
+2. **The TypeScript mirrors are FOUR, not the three D-7.4.5 recorded.** The fourth is
+   `engine-protocol.ts:152-154`'s `optionalString`, which caps `value` at 512 alongside seven identifier
+   keys — `maxCanvasPropertyString`'s exact conflation, reproduced on the browser side. **Without
+   splitting it too, a correct Go-side fix changes nothing observable**: the browser rejects the
+   projection regardless.
+3. **The fragment peak is 256, not ~249**, and the "~73 justified lines" coupling figure holds only for
+   a ~240pt column — at full A4 width it is **~31 lines at 11pt**. The geometry-free statement, which is
+   what belongs in a record: cumulative fragments ≈ the value's **word count**, so the browser's 512 is
+   crossed at roughly **512 words**, at any column width.
+
+**Also found:** `CanvasTextPaint.Overflow` sets a CSS class for which **no rule exists anywhere**, so the
+existing degradation flag is invisible to the author. That is why the new truncation flag must state
+itself in text rather than only setting a class.
+
 **Root cause:** `maxCanvasPropertyString` does two jobs. At `:211`, `:567`, `:573`, `:617`, `:642`,
 `:648`, `:663` it bounds identifiers, colours and expressions — legitimately short. At `:558` it bounds
 document body text, which is not. **The fix is to SPLIT it, not to change its value.**

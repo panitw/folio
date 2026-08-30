@@ -888,7 +888,7 @@ guarantees by clamping `maxDescent`/`maxLineGap` at zero. Verified at `page_setu
 property**; it is a restatement of an engine invariant that `lineSpacing` deliberately dissolves, sitting
 on the wrong side of the channel. The predicate lives inside `isTextPaint`, so one bad line fails
 `isTextPaint` → `isCanvas` → `isSnapshot` and blanks the **whole projection**. Measured cliff on the
-shipped chain at 12pt (`FirstBaseline: 11759`, `Advance: 14982`): **784 thousandths rejects, 785 passes.**
+shipped chain at 11pt (`FirstBaseline: 11759`, `Advance: 14982`): **784 thousandths rejects, 785 passes.** *(Corrected 2026-08-30 at Story 7.4's plan gate: this line originally read "12pt". Those are the **11pt** metrics. The error propagated — D-7.4.2 §4's "~45 lines per A4 page at 11pt" is in fact the 12pt figure; at 11pt it is 48, which is what Story 7.4's derived line bound uses.)*
 
 **In simple terms.** `FirstBaseline > scaledAdvance` means one line's baseline sits below the next line's
 top — the line boxes overlap. **That is what tight leading is**, and it is exactly what the PDF will
