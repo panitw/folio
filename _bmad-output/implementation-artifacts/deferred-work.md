@@ -180,59 +180,82 @@ all → **Fatal** on the vacuity path; moving the single declaration → **both*
 
 ## Open
 
-### DW-24 — `style.valign` renders but NO fixture in the corpus declares it, so `textValignOffset` has zero golden coverage
+### DW-24 — `text_alignment.go`'s two ROUNDED branches — `align: "center"` and `valign: "middle"` — are declared by no fixture, so the only rounding site in the file has zero golden coverage
 
 **Owner:** **Story 7.1** — it is Epic 7's vertical-model story and it already carries a "the whole
 existing fixture corpus re-renders with every hash unchanged" criterion, which is exactly the guard
-this gap makes unfalsifiable for the vertical half. If 7.1 does not take it, **Epic 7 close**.
+this gap makes unfalsifiable. If 7.1 does not take it, **Epic 7 close**. Story 7.3 is the natural
+second home: it extends the closed align set with `justify` and will need a centred document anyway.
 
-**Trigger (either one fires it, and the first is expected within this run):** any story that touches
-the vertical model — `verticalMetrics`, `FirstBaseline`, `Advance`, `textBlockHeight`, or
-`textValignOffset` itself (7.1, 7.2 and 7.7 all do) — or any change to `folio-go/text_alignment.go`.
+**Trigger (any one fires it, and the first is expected within this run):** any story that touches the
+vertical model — `verticalMetrics`, `FirstBaseline`, `Advance`, `textBlockHeight`, or
+`textValignOffset` (7.1, 7.2 and 7.7 all do) — any change to `folio-go/text_alignment.go`, and any
+change to `geom.ScaleRound` or its rounding rule.
 
-**Raised at:** Story 15.1, from the population census that closed its attribution (D-15.1.1, D-R7.5).
+**Raised at:** Story 15.1, from the population census that closed its attribution (D-15.1.1, D-R7.5),
+and **widened in that story's own review** from a `valign`-only item to this one.
 
-**What.** `791ed00` shipped `folio-go/text_alignment.go` with two halves. The horizontal half,
-`textAlignOffset`, is exercised by exactly four corpus documents — `fixtures/statement-{1,5,20,50}`,
-whose page-footer element declares `style.align: "right"` — and moving it reddened all four
-immediately, which is how Story 15.1 found it. The vertical half, `textValignOffset`, is exercised by
-**nothing**: `grep -rn 'valign' fixtures/` returns no hit at all.
+**What the corpus actually declares.** `grep -oh '"align"[^,}]*' fixtures/*/input.folio` yields
+**16 `"left"` and 8 `"right"`. No `"center"`. And `grep -rn 'valign' fixtures/` returns nothing at
+all.** So of `text_alignment.go`'s six branches, the corpus exercises two — `left` (the no-op) and
+`right`.
 
-**Why this is a gap rather than a nice-to-have, stated from a measurement rather than a worry.**
-Story 15.1 ran the experiment in both directions. Multiplying `textAlignOffset` by zero in
-`render.go` turned all four statement goldens green against their PRE-`791ed00` recorded bytes —
-the corpus detects that half exactly. Multiplying `textValignOffset` by zero and running
-`go test ./...` reddened `TestAlignedTextElementsMoveInsideTheirDeclaredBox` and
+**Why those two specific absences matter more than the others, and it is not symmetry.** `center` and
+`middle` are the **only** branches that round: both return `geom.ScaleRound(slack, 1, 2)`
+(`folio-go/text_alignment.go:56` and `:74`), and that is the only rounding in the file. `right`
+returns `slack` unchanged and `left`/`top` return zero — neither can express a rounding defect. So the
+one construct in this feature where a cross-target byte divergence could plausibly appear — a
+half-to-even tie broken differently on a different target, which is what AD-2/AD-3 exist to prevent
+and what the four-target matrix exists to catch — is declared by **no document the matrix renders**.
+An exact-half slack in millipoints is not exotic; it is what a symmetric box gives you.
+
+**Measured, in both directions, so this is a number rather than a worry.** Story 15.1 ran the
+zero-it-out experiment on the wiring. Multiplying `textAlignOffset` by zero in `render.go` turned all
+four statement goldens green against their PRE-`791ed00` bytes — the corpus detects the `right`
+branch exactly. Multiplying `textValignOffset` by zero reddened
+`TestAlignedTextElementsMoveInsideTheirDeclaredBox` and
 `TestCanvasPaintMatchesTheShippingRunPathUnderAlignment` and **not one golden anywhere in the
-repository**; every `expected.pdf` in `fixtures/` stayed byte-identical.
+repository**; every `expected.pdf` stayed byte-identical. `center` cannot even be reached by that
+experiment, because no fixture selects it.
 
 So the honest statement of the gap is narrower than "untested" and still worth an entry: the
-behaviour suite covers `valign`, and the **golden corpus does not**. That matters here specifically
-because the golden corpus is the guard Epic 7's stories bind themselves to — 7.1, 7.2, 7.3, 7.5, 7.7,
-8.3 and 8.4 each carry a "the corpus hashes identically" criterion (D-R7.1), and for the vertical
-model that criterion is currently unfalsifiable: `valign` can move by any amount and every one of
-those criteria still passes. It is also the exact shape of the defect `791ed00` fixed — alignment
-that was parsed, validated and displayed while emitting nothing — which no golden caught for the
-whole life of the feature.
+behaviour suite covers all six branches, and the **golden corpus covers two**. That matters here
+specifically because the golden corpus is the guard Epic 7's stories bind themselves to — 7.1, 7.2,
+7.3, 7.5, 7.7, 8.3 and 8.4 each carry a "the corpus hashes identically" criterion (D-R7.1), and for
+the rounded branches that criterion is currently unfalsifiable: `center` or `middle` can move by any
+amount, or diverge between targets, and every one of those criteria still passes. It is also the
+exact shape of the defect `791ed00` fixed — alignment parsed, validated and displayed while emitting
+nothing — which no golden caught for the whole life of the feature.
 
-**What closing it looks like.** One fixture under `fixtures/` whose template declares
-`style.valign` — `"middle"` and `"bottom"` on a text element with a declared `height` large enough to
-leave slack — recorded as a golden and registered in `folio-go/byte_neutrality_test.go`'s
-`goldenDigestRecord`. It does not need a table, a second face, or fifty pages; it needs slack and a
-declared height. It should NOT be bolted onto a statement fixture: those four carry a human sign-off
-whose re-attestation costs a person reading four documents (D-4.7.1), and widening them makes every
-future `valign` change cost that same re-read.
+**What closing it looks like.** One fixture under `fixtures/` whose template declares **both**
+uncovered branches: a text element with `style.align: "center"` and a second with
+`style.valign: "middle"` (and ideally `"bottom"`, which is unrounded but also undeclared), each with
+a declared `width`/`height` leaving slack, and **at least one of them with an ODD slack in
+millipoints** so the half-to-even tie is actually taken rather than avoided. Recorded as a golden,
+registered in `folio-go/byte_neutrality_test.go`'s `goldenDigestRecord`, and — because the rounding
+is the point — added to `matrixDocuments` so all four targets render it. It does not need a table, a
+second face, or fifty pages; it needs slack, a declared box, and a tie.
+
+It should **not** be bolted onto a statement fixture: those four carry a human sign-off whose
+re-attestation costs a person reading four documents (D-4.7.1), and widening them makes every future
+alignment change cost that same re-read.
 
 **Why Story 15.1 did not simply add it.** 15.1's ruling is that the alignment move is *intended*
-(D-R7.6), so its remediation is a re-record, and its own halt is on a human sign-off. Adding a
-fifth golden in the same commit would put an unsigned new artifact into a corpus whose sign-off is
+(D-R7.6), so its remediation is a re-record, and its own halt is on a human sign-off. Adding a fifth
+golden in the same commit would put an unsigned new artifact into a corpus whose sign-off is
 mid-re-attestation, and it would enlarge the diff the owner has to read before signing. The gap is
 recorded here, with an owner and a trigger, exactly as that story's acceptance allows.
 
-**How we'd know it was still wrong.** A change to the vertical model landing with the corpus green
-while `valign` visibly moves — or, the cheap check, re-running Story 15.1's experiment: multiply
-`textValignOffset` by zero in `render.go` and run the whole golden suite. While this item is open,
-that suite stays green. When it is closed, it must go red.
+**How we'd know it was still wrong.** A change to the vertical model, or to the rounding rule,
+landing with the corpus green while `center` or `middle` visibly moves. The cheap check has two
+halves and **both** must be run — running only the first is what let this item ship as a
+`valign`-only note:
+
+1. Multiply `textValignOffset` by zero in `render.go` and run the whole golden suite.
+2. Change the `center` branch's `geom.ScaleRound(slack, 1, 2)` to `slack/2` (or to `slack`
+   outright) and run the whole golden suite.
+
+While this item is open, the suite stays green under both. When it is closed, **both** must go red.
 
 ---
 

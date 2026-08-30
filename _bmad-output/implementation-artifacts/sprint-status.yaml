@@ -205,7 +205,9 @@ development_status:
   # Story 15.1's operator census confirmed the path is never reached rather than assuming it —
   # and the order is now pinned by TestAppendRectContentStreamEdgeOperandsArePostfix.
   # 9.1 ALSO shipped folio-go/text_alignment.go with no story file, no AC and no FR, and that
-  # is what moved the corpus (D-15.1.1). Its valign half still has ZERO corpus coverage: DW-24.
+  # is what moved the corpus (D-15.1.1). Its two ROUNDED branches -- align:"center" and
+  # valign:"middle", the file's only geom.ScaleRound site -- are declared by NO fixture and so
+  # have zero golden coverage: DW-24.
   # NOT yet reviewed or retrospected; story files are not written.
   epic-9: in-progress
   9-1-the-engine-paints-a-component-s-background-and-border: review
@@ -355,12 +357,16 @@ development_status:
   14-10-a-table-column-is-bound-from-the-main-window: backlog
   epic-14-retrospective: optional
 
-  # Epic 15 is the release blocker set, and 15.1 is URGENT rather than merely first:
-  # main is RED on the cross-target matrix right now. ALL FOUR golden statements moved --
-  # statement-1, -5, -20 and -50 -- each by exactly +4 bytes per page (+4/+20/+80/+200).
-  # statement-1, the primary acceptance fixture, produced 114df1d6... against a recorded
-  # ef58bbf6...  All four targets agree, so CAP-13/S2/S3 hold; what failed is that a golden
-  # moved unexplained, which C6 makes a defect until proven intended.
+  # Epic 15 is the release blocker set, and 15.1 was URGENT rather than merely first.
+  # AS FOUND (before 15.1 ran): main was RED on the cross-target matrix. ALL FOUR golden
+  # statements had moved -- statement-1, -5, -20 and -50 -- each by exactly +4 bytes per page
+  # (+4/+20/+80/+200); statement-1, the primary acceptance fixture, produced 114df1d6...
+  # against a then-recorded ef58bbf6...  All four targets agreed throughout, so CAP-13/S2/S3
+  # never lapsed; what had failed was that a golden moved unexplained, which C6 makes a defect
+  # until proven intended.
+  # AS IT STANDS NOW: 114df1d6... IS statement-1's recorded digest, and all four targets agree
+  # on it and on the other three. The matrix is still red, but for an intended reason -- the
+  # human sign-off is pending re-attestation. There is no longer an unexplained hash.
   # EPIC 9 ALONE is implicated (D-15.1.1): 791ed00 created folio-go/text_alignment.go and
   # wired style.align to the emitter, moving one Tm x-operand on the per-page footer element.
   # Epic 10 (304442f) moved nothing. The move is INTENDED (D-R7.6) and the goldens are
@@ -377,8 +383,8 @@ development_status:
   # _bmad-output/implementation-artifacts/evidence/15-1/ and write fixtures/statement-signoff.json
   # themselves (D-4.7.1 invalidates it IN WHOLE; D-4.7.7 forbids checking by text extraction).
   # Until they do, TestGoldenDigestAgreesAtEveryDeclaredSite and the matrix-gated
-  # TestStatementSemanticSignOffIsRecorded are RED ON PURPOSE. Deferred: DW-24 (valign has no
-  # golden coverage) — owner Story 7.1.
+  # TestStatementSemanticSignOffIsRecorded are RED ON PURPOSE. Deferred: DW-24 (align:"center"
+  # and valign:"middle" -- the only rounded branches -- have no golden coverage) -- owner Story 7.1.
   15-1-the-golden-report-s-moved-hash-is-explained: in-progress
   15-2-ci-s-red-means-something: backlog
   15-3-folio-go-v0-1-0-is-cut: backlog

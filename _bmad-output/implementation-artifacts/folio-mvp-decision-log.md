@@ -14725,11 +14725,17 @@ and geometry is the one class that adds bytes **without adding an operator**.
 every page. 4 × {1,5,20,50} = {4,20,80,200}, matching the file deltas with no residue.
 
 **Why the new bytes are the right ones.** Element coordinates are band-relative, so `e4`'s box spans
-`36 + 400 = 436` to `36 + 400 + 123 = 559` absolute, and 559 is the content right edge. The recorded
-`436.000` was the box's **left** edge on every page — `style.align: "right"` parsed, validated,
-round-tripped, shown in the inspector, and ignored at emission. The produced values are the box's
-**right** edge minus the packed line width: `522.474 + 36.526 = 559.000` and
-`514.466 + 44.534 = 559.000`, both exact. The two values are the two footer widths (11 glyphs for
+`36 + 400 = 436` to `36 + 400 + 123 = 559` absolute. The recorded `436.000` was the box's **left**
+edge on every page — `style.align: "right"` parsed, validated, round-tripped, shown in the inspector,
+and ignored at emission. The produced values are the box's **right** edge minus the packed line
+width: `522.474 + 36.526 = 559.000` and `514.466 + 44.534 = 559.000`, both exact.
+
+**559 is the BOX's right edge, not the page's content right edge, and the distinction is worth
+keeping straight** because the looser phrasing appears in this story's intent contract and would
+otherwise propagate. The content right edge is `595.276 − 36 = 559.276` (A4 width from
+`folio-go/internal/pdf/document.go:22`), so the template's declared box stops **0.276pt inside** it.
+The alignment rule pins text to the box it is given and knows nothing about the margin; the near-miss
+is the template author's rounding, not the emitter's. The two values are the two footer widths (11 glyphs for
 `Page N of {1,5}`, 13 for `Page NN of {20,50}`), 8.008pt apart, which is two 7pt digit advances.
 
 **The causal proof, which is stronger than the diff.** `render.go`'s two alignment offsets were
@@ -14741,7 +14747,12 @@ byte to this move.
 element alignment, and they are exactly the four that went red. (Each also declares `"align": "right"`
 on the Amount *table column* `ed` — a different, older mechanism that did not move; only the `e4` line
 differs.) And **no fixture anywhere declares `valign`**, so `textValignOffset` shipped in the same
-commit with zero corpus coverage — filed as DW-24 rather than closed here.
+commit with zero corpus coverage. Nor does any fixture declare `align: "center"` — the census is 16
+`"left"`, 8 `"right"`, and nothing else — and `center` and `middle` are the only two branches that
+round (`geom.ScaleRound(slack, 1, 2)`, `text_alignment.go:56` and `:74`, the file's only rounding
+site). So the one construct in this feature where a cross-target byte divergence could plausibly
+appear is declared by no document the matrix renders. Filed together as DW-24 rather than closed
+here.
 
 **Options considered.** (a) *Unintended — revert the alignment rendering and leave the goldens
 untouched.* Rejected by the owner: the new output is demonstrably correct, and Story 7.3 is written

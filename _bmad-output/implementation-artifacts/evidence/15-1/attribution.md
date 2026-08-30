@@ -106,7 +106,19 @@ three trailing-zero-trimmed fractional digits. So:
 "514.466"  →  7 characters      +4 bytes
 ```
 
-Four bytes, once. The element that carries it is the page footer `e4`:
+Four bytes, once.
+
+**And +4 is contingent on the decimal spelling, not an invariant of alignment** — worth stating so a
+future reader does not carry it forward as a law. `appendLength` emits up to three fractional digits
+with trailing zeros trimmed, so the delta is +4 only because both new x-values happen to spell as
+seven characters against `436`'s three. A value spelling `522.47` would give +3 and `1022.474` would
+give +5; a value landing on a whole point would give +1 or less. The uniformity checked in §2 — and
+therefore the `move is not uniform` halt not firing — is a property **of these four documents**,
+which share one footer element, one page size and one margin. It does not generalise to a corpus
+whose aligned elements sit at different coordinates, and a future alignment change should re-measure
+rather than expect 4.
+
+The element that carries it is the page footer `e4`:
 
 ```json
 {"id": "e4", "type": "text", "x": 400, "y": 8, "width": 123, "height": 12,
@@ -124,8 +136,16 @@ Element coordinates are band-relative; the absolute position adds the 36pt page 
 
 ```
 box left  edge = 36 + 400       = 436.000
-box right edge = 36 + 400 + 123 = 559.000     (A4 595.276 − 36pt right margin = 559.276)
+box right edge = 36 + 400 + 123 = 559.000
 ```
+
+**559 is the BOX's right edge, and it is NOT the page's content right edge** — a distinction this
+story's intent contract blurs and this file corrects. The content right edge is
+`595.276 − 36 = 559.276` (A4 media-box width from `folio-go/internal/pdf/document.go:22`, less the
+36pt right margin), so the declared box stops **0.276pt inside** it. Alignment pins text to the box
+it is given and knows nothing about the margin; the 0.276pt is the template author's rounding. The
+arithmetic below is stated against 559.000, the box edge, which is the number the rule actually
+produces.
 
 - The **recorded** x is `436.000` on every page of every fixture — the box's **left** edge, exactly.
   `style.align: "right"` was parsed, validated, round-tripped and displayed, and then ignored at
@@ -186,8 +206,14 @@ recorded move.
   multiplying `textValignOffset` alone by zero and running `go test ./...` reddens
   `TestAlignedTextElementsMoveInsideTheirDeclaredBox` and
   `TestCanvasPaintMatchesTheShippingRunPathUnderAlignment` — the behaviour suite does cover it — and
-  **no golden anywhere in the repository**. Filed as **DW-24**, owner Story 7.1, trigger: any story
-  touching the vertical model or `text_alignment.go`.
+  **no golden anywhere in the repository**.
+- Nor does any fixture declare `align: "center"`. The full census is
+  `grep -oh '"align"[^,}]*' fixtures/*/input.folio` → **16 `"left"`, 8 `"right"`, no `"center"`**.
+  `center` and `middle` are the only two branches that round — both are
+  `geom.ScaleRound(slack, 1, 2)` at `text_alignment.go:56` and `:74`, the file's only rounding — so
+  the one construct where a cross-target divergence could plausibly appear is declared by no document
+  the matrix renders. Filed together as **DW-24**, owner Story 7.1, trigger: any story touching the
+  vertical model, `text_alignment.go`, or the rounding rule.
 
 ## 8. Heavy-fixture verification (AC5)
 

@@ -12,6 +12,16 @@
 * text=auto eol=lf
 
 fixtures/**/*.pdf binary
+
+# The same hazard, and the same remedy, for the rendered PDFs that evidence
+# directories carry. `_bmad-output/implementation-artifacts/evidence/15-1/`
+# holds the four re-recorded statement documents a human is asked to open and
+# attest to (Story 15.1), and they were falling under the blanket `* text=auto
+# eol=lf` above: `git check-attr text binary` reported `text: auto` /
+# `binary: unspecified` for them against `text: unset` / `binary: set` for the
+# fixtures, and three of the four diffed as TEXT in their own commit. A file a
+# person signs their name to must not be rewritable by a checkout.
+_bmad-output/**/*.pdf binary
 fixtures/**/*.json text eol=lf
 *.go text eol=lf
 

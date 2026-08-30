@@ -3862,13 +3862,15 @@ matrix's BOUND FIELD is display unless the owner rules otherwise
 Every epic above assumes a tree someone can ship. Today that assumption does not hold, and the
 reasons are process rather than product.
 
-**The golden report's hash has moved and nobody has said why.** The cross-target matrix is red on
-`main`, and it is red on **all four** golden statements — `statement-1`, `-5`, `-20` and `-50` — each
-by exactly **+4 bytes per page** (+4 / +20 / +80 / +200). `statement-1` — the Customer Account
-Statement, the primary acceptance fixture — produces `114df1d6…` against a recorded `ef58bbf6…`. The
-four targets agree with each other, so byte identity across `darwin/arm64`, `linux/amd64`,
-`linux/arm64` and `js/wasm` still holds and CAP-13 is intact; what has failed is that a golden moved
-unexplained. Counter-metric C6 makes that a defect until proven to be an intended versioned change.
+**The golden report's hash moved and nobody had said why.** *(Written before Story 15.1 ran; kept in
+the past tense it now belongs in, with the current state stated after it.)* The cross-target matrix
+was red on `main`, and red on **all four** golden statements — `statement-1`, `-5`, `-20` and `-50` —
+each by exactly **+4 bytes per page** (+4 / +20 / +80 / +200). `statement-1` — the Customer Account
+Statement, the primary acceptance fixture — produced `114df1d6…` against a then-recorded
+`ef58bbf6…`. The four targets agreed with each other throughout, so byte identity across
+`darwin/arm64`, `linux/amd64`, `linux/arm64` and `js/wasm` never lapsed and CAP-13 stayed intact;
+what had failed was that a golden moved unexplained. Counter-metric C6 makes that a defect until
+proven to be an intended versioned change.
 
 *Attributed 2026-08-30 by Story 15.1 (D-15.1.1): **Epic 9 alone** is implicated, and not through its
 element-box paint. `791ed00` also created `folio-go/text_alignment.go` and wired `style.align` into
@@ -3876,6 +3878,11 @@ the emitter, moving one `Tm` x-operand on the page-footer element that repeats o
 (`304442f`) moved nothing — its text-ink bracket emits zero bytes when no colour is declared. The
 move is ruled intended (D-R7.6): the pre-`791ed00` output drew right-aligned text at its box's left
 edge. The goldens are re-recorded and the human sign-off is re-attested rather than patched.*
+
+*Current state, so the paragraph above is not read as live: `114df1d6…` **is** now `statement-1`'s
+recorded digest, and all four targets agree on it and on the other three. The matrix is still red,
+but for a different and intended reason — the human sign-off is pending re-attestation, which
+Story 15.1 halted on deliberately rather than fabricate. There is no longer an unexplained hash.*
 
 **CI's red cannot be read.** The guardrails workflow contains `folio-go-known-red`, red by design so
 DW-11's unmet floor stays visible, which makes the whole workflow permanently red and camouflages
