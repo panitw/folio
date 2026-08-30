@@ -572,3 +572,53 @@ D-000.46's shape and is not authorised. A **named kind, not a bool**: 7.3's rule
 conditions and a bare `!hardBreak` invites the third case to be re-derived wrongly. 7.1's spec states
 that 7.3 depends on this field — D-R7.3's numeric order satisfies the dependency by accident, and relying
 on an accident is how it gets reordered later.
+
+### D-7.1.6 — Whitespace adjacent to a mandatory break is consumed with it
+**Orchestrator decision** (routine — Story 7.1's AC5 settles it unambiguously, so it took the fast path
+rather than a lead round-trip. Recorded here because it changes rendered output and the planner
+explicitly invited pushback on it).
+
+**Verdict.** A whitespace run containing one or more line feeds emits **mandatory** breaks *instead of*
+rule 1's single optional opportunity, and inherits rule 1's consumption at the run's outer edges. So
+`"a \n b"` renders as `a` / `b` with neither the space before nor the space after drawn on either line.
+
+**Situation.** The three ruled forks were silent on whitespace *adjacent* to a line feed. Rule 1 in
+`internal/text/opportunity.go` walks a whitespace run and emits one opportunity spanning the whole run,
+so the run is drawn on neither line. A line feed is itself whitespace, so a run like `" \n "` is one run
+today.
+
+**Why this and not "consume only the line feed".** Story 7.1's AC5 says the break character "is consumed
+and drawn on neither line, **exactly as a whitespace break already is**" — the comparison is the
+instruction. `Opportunity`'s own doc comment already models this: `LineEnd` and `NextStart` "differ only
+where the break CONSUMES text — today exactly one case, a run of whitespace", and it states that
+modelling the consumed range explicitly is what keeps "the trailing space does not count toward the
+line's width" a property of the break rather than a special case at the measuring site. Consuming only
+the `\n` would leave a trailing space measured into the previous line — a new polarity nothing asked for,
+and precisely the special-case-at-the-measuring-site that comment exists to prevent.
+
+**Consequences.** No new consumption model: the existing `{LineEnd, NextStart}` pair already expresses
+it. A run holding *k* line feeds emits *k* mandatory breaks, producing *k−1* empty lines between them,
+which is what D-7.1.2's separator model requires.
+
+**How we'd know it was wrong.** A justified or right-aligned line whose measured width includes a
+trailing space — the polarity error this avoids.
+
+### D-7.1.7 — Two silent-failure sites the rulings did not name, found at the plan gate
+**Orchestrator finding**, verified in the code before accepting the spec. Recorded because both are
+places where Story 7.1 would pass its tests while failing its ACs.
+
+1. **A leading empty line is unreachable, and D-7.1.2 did not name the site.** The ruling scoped
+   `opportunity.go:124`'s `i > 0 && j < n` guard and `packLines`' loop, which together cover `"a\n"`. They
+   do **not** cover `"\na"`: the collection loop at `opportunity.go:165` is `for i := 1; i < n; i++`, so
+   `LineEnd == 0` is unreachable and the leading empty line can never be emitted. Verified.
+2. **`packLines` bypasses the opportunity list entirely when the remainder fits.** `wrap.go:190` reads
+   `if w := measureRuneRange(segs, start, totalRunes, fontSize); w <= maxWidth { … break }`. Verified.
+   **This is exactly where AC1 is won or lost** — AC1 requires the break be taken "regardless of how much
+   width remained on the line before it", and this short-circuit is the path on which a mandatory break
+   inside text that otherwise fits would be silently ignored. A test using text too wide for its box
+   would never reach it and would pass green.
+
+**Consequences.** Both are carried in the spec as explicit hazards and task steps. The AC1 test must use
+a value that **fits** its declared width, so it exercises the short-circuit rather than the packing loop.
+
+**How we'd know it was wrong.** A `\n` in a short value rendering as one line.
