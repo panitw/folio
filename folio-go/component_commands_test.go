@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/geom"
 )
 
 func componentTemplate(t *testing.T) *Template {
@@ -675,5 +677,134 @@ func TestComponentMoveResizeDeleteAreExactAndMonotonic(t *testing.T) {
 	}
 	if newProjectedComponent(t, beforeNext, next).ID == created.ID {
 		t.Fatal("component id was reused after deletion")
+	}
+}
+
+// projectedBands is the three CanvasBands of a template, by name, so a test
+// can probe containComponent with the same rectangles the command path hands
+// it rather than with numbers it invented.
+func projectedBands(t *testing.T, tpl *Template) map[string]CanvasBand {
+	t.Helper()
+	projection, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bands := make(map[string]CanvasBand, len(projection.Bands))
+	for _, band := range projection.Bands {
+		bands[band.Name] = band
+	}
+	if len(bands) != 3 {
+		t.Fatalf("projection carries %d bands, want 3", len(bands))
+	}
+	return bands
+}
+
+// TestBandContainmentRefusalsCarryTheirExactMessages CHARACTERIZES the one
+// message every band-extent refusal in the designer command path produces,
+// by FULL-STRING equality, before Story 7.5 splits the predicate that
+// produces it.
+//
+// Until this test existed, `grep "must stay within" --include="*_test.go"`
+// returned nothing: "the message is unchanged" was a claim no test could
+// contradict. A story that splits first and asserts afterwards is asserting
+// whatever it happened to produce, so this lands first and on purpose.
+//
+// WHY FULL-STRING EQUALITY AND NEVER strings.Contains. This same file's
+// unrelated column refusal reads "footerOf must stay within the table
+// collection" — a substring assertion on "must stay within" is satisfied by
+// a message about table collections, which is the opposite of a
+// characterization.
+func TestBandContainmentRefusalsCarryTheirExactMessages(t *testing.T) {
+	tpl := componentTemplate(t)
+	bands := projectedBands(t, tpl)
+	// Spelled out here rather than assembled from the production format
+	// string: a characterization that reuses the code it characterizes
+	// asserts nothing at all.
+	want := map[string]string{
+		"pageHeader": "folio: component geometry must stay within pageHeader",
+		"content":    "folio: component geometry must stay within content",
+		"pageFooter": "folio: component geometry must stay within pageFooter",
+	}
+	exactly := func(name, probe string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatalf("%s in %s was accepted; want the refusal %q", probe, name, want[name])
+		}
+		if err.Error() != want[name] {
+			t.Fatalf("%s in %s = %q, want exactly %q", probe, name, err.Error(), want[name])
+		}
+	}
+	type probe struct {
+		name                string
+		x, y, width, height geom.Length
+	}
+	// REPRESENTATIONAL refusals. A negative coordinate is not a statement
+	// about how tall a band is, so it is refused in every band and stays
+	// refused in every band.
+	for _, name := range []string{"pageHeader", "content", "pageFooter"} {
+		for _, p := range []probe{
+			{"negative x", -1, 0, 6000, 6000},
+			{"negative y", 0, -1, 6000, 6000},
+			{"negative width", 0, 0, -1, 6000},
+			{"negative height", 0, 0, 6000, -1},
+		} {
+			exactly(name, p.name, containComponent(bands[name], p.x, p.y, p.width, p.height))
+		}
+	}
+	// The HORIZONTAL cap, in the content band: a column is unbounded
+	// vertically, never horizontally.
+	content := bands["content"]
+	exactly("content", "x past the band width", containComponent(content, geom.Length(content.Width)+1, 0, 6000, 6000))
+	exactly("content", "width past the band width", containComponent(content, 0, 0, geom.Length(content.Width)+1, 6000))
+	// The BAND-CAPACITY refusals, in the two repeating bands. A page header
+	// is exactly one page tall because that is what repeating means.
+	for _, name := range []string{"pageHeader", "pageFooter"} {
+		band := bands[name]
+		exactly(name, "y past the band height", containComponent(band, 0, geom.Length(band.Height)+1, 6000, 6000))
+		exactly(name, "height past the band height", containComponent(band, 0, 0, 6000, geom.Length(band.Height)+1))
+	}
+	// And the clause Story 7.5 exists to lift, asserted HERE WHILE IT IS
+	// STILL TRUE so that the lift has to come and change it in the open
+	// rather than arriving as an untested silence.
+	exactly("content", "y past the band height", containComponent(content, 0, geom.Length(content.Height)+1, 6000, 6000))
+	exactly("content", "height past the band height", containComponent(content, 0, 0, 6000, geom.Length(content.Height)+1))
+}
+
+// TestJavaScriptSafeGeometryBoundRefusalsCarryTheirExactMessages is the
+// SEPARATE, SURVIVING upper bound: it is a different path, with a different
+// message, upstream of containComponent, and Story 7.5's split does not
+// touch it. After the lift it is the only thing bounding a content
+// component's Y, so it is characterized here for the same reason as the
+// band messages — nothing asserted it before.
+func TestJavaScriptSafeGeometryBoundRefusalsCarryTheirExactMessages(t *testing.T) {
+	tpl := componentTemplate(t)
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := newProjectedComponent(t, before, createdProjection)
+	// One millipoint past Number.MAX_SAFE_INTEGER, as the command's own
+	// three-decimal point literal.
+	const past = "9007199254740.992"
+	_, err = ApplyComponentCommand(tpl, []byte(`{"kind":"moveComponent","version":1,"id":"`+created.ID+`","x":0,"y":`+past+`,"snap":false}`))
+	if want := "folio: component.y: y exceeds the JavaScript-safe geometry bound"; err == nil || err.Error() != want {
+		t.Fatalf("move past the JavaScript-safe bound = %v, want exactly %q", err, want)
+	}
+	// The projection-time sibling of the same bound, which is a different
+	// message and must stay one: the command path refuses first, so this is
+	// the backstop that keeps an unrepresentable coordinate from reaching
+	// the JSON/JS boundary at all.
+	stranded := componentTemplate(t)
+	if len(stranded.doc.Bands.Content.Elements) == 0 {
+		t.Fatal("fixture has no content element to strand")
+	}
+	stranded.doc.Bands.Content.Elements[0].X = geom.Length(MaxCanvasMillipoints) + 1
+	_, err = Canvas(stranded)
+	if want := "folio: component exceeds the JavaScript-safe geometry bound"; err == nil || err.Error() != want {
+		t.Fatalf("projection of an unrepresentable coordinate = %v, want exactly %q", err, want)
 	}
 }
