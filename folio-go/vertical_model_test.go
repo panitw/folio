@@ -279,7 +279,7 @@ func TestVerticalModelArithmeticOverFabricatedMetrics(t *testing.T) {
 
 			// (3) THE PRODUCTION ARITHMETIC AGREES. This is the actual
 			//     assertion; everything above makes it mean something.
-			got, err := verticalModel([]string{s.name}, s.metrics, s.fontSize)
+			got, err := verticalModel([]string{s.name}, s.metrics, s.fontSize, defaultLineSpacing)
 			if err != nil {
 				t.Fatalf("verticalModel: %v", err)
 			}
@@ -339,7 +339,7 @@ func TestVerticalModelArithmeticOverFabricatedMetrics(t *testing.T) {
 // constructible. See TestVerticalModelErrorPathsAreUnreachableThroughRender
 // for what that does and does not entitle this story to claim.
 func TestVerticalModelRefusesAChainWithNoPresentFace(t *testing.T) {
-	_, err := verticalModel([]string{"Nope", "Also Nope"}, nil, geom.Length(16000))
+	_, err := verticalModel([]string{"Nope", "Also Nope"}, nil, geom.Length(16000), defaultLineSpacing)
 	if err == nil {
 		t.Fatal("a chain with no present face must be a located error, not a default line height")
 	}
@@ -355,7 +355,7 @@ func TestVerticalModelRefusesANonPositiveLineHeight(t *testing.T) {
 	_, err := verticalModel([]string{"Degenerate"}, []fontset.LineMetrics{
 		{Ascent: 0, Descent: 0, LineGap: 0},
 		{Ascent: -50, Descent: 20, LineGap: -10},
-	}, geom.Length(16000))
+	}, geom.Length(16000), defaultLineSpacing)
 	if err == nil {
 		t.Fatal("a chain whose faces sum to a non-positive line height must be an error, not a zero-height line")
 	}
@@ -501,11 +501,11 @@ func TestChainVerticalModelIsOneWalkFeedingBothSpans(t *testing.T) {
 	checked := 0
 	for _, chain := range chains {
 		for _, size := range sizes {
-			vm, err := chainVerticalModel(chain, size, fs, newFontCache())
+			vm, err := chainVerticalModel(chain, size, defaultLineSpacing, fs, newFontCache())
 			if err != nil {
 				t.Fatalf("chainVerticalModel(%v, %d): %v", chain, size, err)
 			}
-			adv, aerr := lineAdvance(chain, size, fs, newFontCache())
+			adv, aerr := lineAdvance(chain, size, defaultLineSpacing, fs, newFontCache())
 			if aerr != nil {
 				t.Fatalf("lineAdvance(%v, %d): %v", chain, size, aerr)
 			}

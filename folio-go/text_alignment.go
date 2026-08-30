@@ -61,7 +61,14 @@ func textAlignOffset(align string, boxWidth, lineWidth geom.Length) geom.Length 
 
 // textValignOffset is the whole packed block's vertical offset inside the
 // element's declared height. It moves the block, never the spacing within it:
-// the inter-baseline advance is a property of the font chain and the size.
+// the inter-baseline advance is settled upstream, by the font chain, the size
+// and (since Story 7.2) style.lineSpacing, and this function only re-seats
+// whatever height that produced.
+//
+// So for valign middle/bottom a lineSpacing DOES move the drawn first
+// baseline — not because the ratio touched the first line, but because a
+// taller block seated against the box's bottom starts higher. Under the
+// default valign (top) the offset is 0 and the first baseline never moves.
 func textValignOffset(valign string, boxHeight, blockHeight geom.Length) geom.Length {
 	slack := boxHeight - blockHeight
 	if boxHeight <= 0 || slack <= 0 {

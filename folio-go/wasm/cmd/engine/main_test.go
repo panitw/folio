@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	folio "github.com/panitw/folio/folio-go"
 	"github.com/panitw/folio/folio-go/wasm"
 )
 
@@ -48,6 +49,34 @@ func TestWasmHostSanitizesTemplateDiagnostics(t *testing.T) {
 	}
 	if len(got.Message) > 512 || bytes.Contains([]byte(got.Message), []byte("xxx")) {
 		t.Fatalf("unsafe message = %q", got.Message)
+	}
+}
+
+// TestWasmHostReportsTheLineSpacingRefusalIntact is Story 7.2's AC7 at
+// the only place it is actually decided. reportableMessage replaces a
+// diagnostic's message with "The template could not be processed" for
+// TEMPLATE_MALFORMED and for that code ALONE — so an UNCODED lineSpacing
+// load error would be destroyed here, before the author ever saw which
+// element or which range it was about, and every Go-side assertion would
+// still be green. Minting STYLE_LINE_SPACING_INVALID is what makes the AC
+// reachable; this is where that is observable.
+func TestWasmHostReportsTheLineSpacingRefusalIntact(t *testing.T) {
+	engine := wasm.NewEngine()
+	doc := `{"assets":{},"bands":{"content":{"elements":[{"id":"e1","type":"text","x":0,"y":0,"width":200,"height":40,"value":"v","style":{"fontFamily":"body","fontSize":11,"lineSpacing":1000.001}}]},"pageFooter":{"elements":[],"height":20},"pageHeader":{"elements":[],"height":20}},"fonts":{"body":["Noto Sans"]},"locale":"en","nextId":2,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"1.0"}`
+	got := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(doc))})
+	if got.OK {
+		t.Fatalf("an out-of-range lineSpacing must fail the load: %#v", got)
+	}
+	if got.DiagnosticCode != folio.DiagCodeStyleLineSpacingInvalid {
+		t.Fatalf("code = %q, want %q", got.DiagnosticCode, folio.DiagCodeStyleLineSpacingInvalid)
+	}
+	if got.Message == "The template could not be processed" {
+		t.Fatal("the message was replaced by the malformed-template placeholder — the author is told nothing about which element or which range")
+	}
+	for _, want := range []string{"e1", "lineSpacing"} {
+		if !strings.Contains(got.Message, want) {
+			t.Fatalf("the message must name %q, got %q", want, got.Message)
+		}
 	}
 }
 

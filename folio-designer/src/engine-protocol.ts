@@ -196,6 +196,29 @@ const isImagePaint = (value: unknown, box: Record<string, number>): boolean => {
   return paint.drawX >= box.x && paint.drawY >= box.y && paint.drawX + paint.drawWidth <= box.x + box.width && paint.drawY + paint.drawHeight <= box.y + box.height
 }
 
+// isTextPaint admits the engine's own honest measurement and checks only
+// what the JS boundary can genuinely go wrong at. It deliberately does
+// NOT check `paint.baseline > paint.top + paint.advance` any more
+// (Story 7.2, D-7.2.2): the engine emits `baseline = top + FirstBaseline`
+// while `advance` is the SCALED value, so that clause reduced to
+// `FirstBaseline <= Advance` — an ENGINE invariant restated on the
+// browser's side of the channel, and one `style.lineSpacing`
+// deliberately dissolves.
+//
+// `FirstBaseline > Advance` means one line's baseline sits below the
+// next line's top: the line boxes overlap. That IS tight leading, it is
+// what the PDF draws, and refusing it here failed one line, then
+// isCanvas, then isSnapshot, and blanked the WHOLE projection. AD-17
+// says the canvas takes every text metric FROM the engine; the browser
+// adjudicating them was that invariant inverted, not enforced.
+//
+// The real invariants all survive on the line below and must stay:
+// `paint.advance <= 0`, `paint.baseline < paint.top` (FirstBaseline is
+// an ascent clamped at zero, and lineSpacing scales only Advance), the
+// Number.isSafeInteger checks (the actual JS-boundary concern), and
+// `paint.top < priorTop + priorAdvance` — which is `originY+i·A <
+// originY+i·A`, false for any positive advance, so it does not become
+// the next cliff.
 const isTextPaint = (value: unknown, component: Record<string, number>): boolean => {
   if (value === undefined) return true
   if (!isRecord(value) || !hasOnly(value, ['overflow', 'lines']) || typeof value.overflow !== 'boolean' || !Array.isArray(value.lines) || value.lines.length > 256) return false
@@ -205,7 +228,7 @@ const isTextPaint = (value: unknown, component: Record<string, number>): boolean
   return value.lines.every((line) => {
     if (!isRecord(line) || !hasOnly(line, ['top', 'baseline', 'advance', 'width', 'fragments']) || !['top', 'baseline', 'advance', 'width'].every((key) => typeof line[key] === 'number' && Number.isSafeInteger(line[key]))) return false
     const paint = line as Record<string, number>
-    if (paint.top < component.y || paint.baseline < paint.top || paint.baseline > paint.top + paint.advance || paint.advance <= 0 || paint.width < 0 || (priorTop >= 0 && paint.top < priorTop + priorAdvance) || (!value.overflow && paint.width > component.width) || !Array.isArray(line.fragments)) return false
+    if (paint.top < component.y || paint.baseline < paint.top || paint.advance <= 0 || paint.width < 0 || (priorTop >= 0 && paint.top < priorTop + priorAdvance) || (!value.overflow && paint.width > component.width) || !Array.isArray(line.fragments)) return false
     priorTop = paint.top
     priorAdvance = paint.advance
     return line.fragments.every((fragment) => {

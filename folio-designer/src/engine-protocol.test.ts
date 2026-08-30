@@ -71,6 +71,19 @@ describe('canvas projection protocol guard', () => {
     expect(response({ ...text, type: 'image' })).toBeUndefined()
   })
 
+  // admittedTextLines pulls the first component's paint lines out of a
+  // parsed inbound, failing the test if anything on the way is missing.
+  // It exists so the tight-leading cases can assert on VALUES: parseInbound
+  // is a type guard that returns its input unchanged, so `toBeDefined()`
+  // passes for anything non-undefined and would keep passing if the
+  // geometry were quietly rewritten on the way through.
+  const admittedTextLines = (parsed: ReturnType<typeof parseInbound>) => {
+    if (parsed === undefined || parsed.kind !== 'response' || !parsed.ok) throw new Error('the projection was rejected at the boundary')
+    const lines = parsed.snapshot.canvas?.components[0]?.textPaint?.lines
+    if (lines === undefined) throw new Error('the admitted snapshot carries no text paint lines')
+    return lines
+  }
+
   it('rejects non-advancing or out-of-box text paint geometry', () => {
     const response = (textPaint: object) => parseInbound({
       protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
@@ -78,9 +91,61 @@ describe('canvas projection protocol guard', () => {
     })
     const line = { top: 0, baseline: 8, advance: 12, width: 10, fragments: [{ text: 'engine', x: 0 }] }
     expect(response({ overflow: false, lines: [line, { ...line, top: 11, baseline: 19 }] })).toBeUndefined()
-    expect(response({ overflow: false, lines: [{ ...line, baseline: 13 }] })).toBeUndefined()
     expect(response({ overflow: false, lines: [{ ...line, fragments: [{ text: 'engine', x: 11 }] }] })).toBeUndefined()
     expect(response({ overflow: false, lines: [{ ...line, top: -1, baseline: 8 }] })).toBeUndefined()
+    // Story 7.2 / D-7.2.2, INVERTED DELIBERATELY. This assertion used to
+    // read `.toBeUndefined()`: a baseline of 13 against top 0 and advance
+    // 12 sits below the next line's top, so the line boxes overlap. That
+    // IS tight leading, it is what the PDF draws, and the clause refusing
+    // it restated an engine invariant on the browser's side of the
+    // channel — blanking the entire projection over one line. It is
+    // pinned here as deliberately gone rather than left silently untested.
+    //
+    // Asserted on the PARSED VALUES, not with `toBeDefined()`: the
+    // predicate is a type guard that returns the input unchanged, so
+    // `toBeDefined()` would pass for anything at all that is not
+    // `undefined` and would keep passing if the geometry were quietly
+    // rewritten on the way through.
+    const tightLine = { ...line, baseline: 13 }
+    const accepted = response({ overflow: false, lines: [tightLine] })
+    expect(admittedTextLines(accepted)).toEqual([tightLine])
+  })
+
+  it('accepts a whole snapshot whose text lines are set at tight leading', () => {
+    // The projection-level half of the assertion above: a MULTI-LINE
+    // component at an advance tighter than its own first-baseline
+    // offset. Every line here has baseline > top + advance, and
+    // consecutive tops still step by exactly one advance — the shape
+    // page_setup.go emits for `style.lineSpacing: 0.6`. Before D-7.2.2
+    // one such line failed isTextPaint, then isCanvas, then isSnapshot,
+    // and parseInbound dropped the whole response.
+    const tight = {
+      overflow: false,
+      lines: [
+        { top: 0, baseline: 11, advance: 9, width: 10, fragments: [{ text: 'first', x: 0 }] },
+        { top: 9, baseline: 20, advance: 9, width: 10, fragments: [{ text: 'second', x: 0 }] },
+        { top: 18, baseline: 29, advance: 9, width: 10, fragments: [{ text: 'third', x: 0 }] },
+      ],
+    }
+    const parsed = parseInbound({
+      protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 40, resizable: true, textPaint: tight }] } },
+    })
+    // Every line's own numbers must survive the boundary intact — the
+    // canvas paints from these, and the engine is the only thing allowed
+    // to have decided them (AD-17).
+    const lines = admittedTextLines(parsed)
+    expect(lines).toEqual(tight.lines)
+    expect(lines.map((l) => [l.top, l.baseline, l.advance])).toEqual([[0, 11, 9], [9, 20, 9], [18, 29, 9]])
+    // And the overlap really is present in what was admitted, so this
+    // case cannot quietly stop exercising tight leading.
+    expect(lines.every((l) => l.baseline > l.top + l.advance)).toBe(true)
+    // A non-advancing projection is still refused, so the acceptance
+    // above is not "the predicate stopped checking anything".
+    expect(parseInbound({
+      protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true,
+      snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 40, resizable: true, textPaint: { ...tight, lines: tight.lines.map((l) => ({ ...l, advance: 0 })) } }] } },
+    })).toBeUndefined()
   })
 
   it('accepts a well-formed image paint inside its own box and rejects malformed or out-of-box substitutes', () => {

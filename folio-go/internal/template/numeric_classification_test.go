@@ -10,12 +10,23 @@ import (
 
 // Numeric field kinds (AC24, AC29): kind 1 is "points" (geom.Length,
 // decoded through decodePoints/appendPoints); kind 2 is "plain integer"
-// (decimal, never scaled — only nextId). There is no third kind:
-// report-data numbers (AD-23's exact scaled decimals) are Story 1.6's,
-// not modelled here (D-1.4.3).
+// (decimal, never scaled — only nextId); kind 3 is "ratio" (a
+// DIMENSIONLESS exact decimal carried as a whole number of thousandths —
+// only style.lineSpacing). Report-data numbers (AD-23's exact scaled
+// decimals) are still Story 1.6's and are not modelled here (D-1.4.3).
+//
+// THE THIRD KIND IS STORY 7.2'S, AND IT IS ADDED RATHER THAN BORROWED.
+// This comment previously read "There is no third kind", written when
+// there was not. style.lineSpacing shares the points kind's DECIMAL PATH
+// (decodePoints' exact ×1000 big.Int arithmetic, appendPoints' spelling)
+// but not its MEANING: it is a ratio, not a length, and it never reaches
+// geom.Length or the millipoint unit system. Classifying it as points
+// would be the cheaper edit and a false one — this registry's whole
+// value is that its claims about each key are true.
 const (
 	numericKindPoints   = 1
 	numericKindPlainInt = 2
+	numericKindRatio    = 3
 )
 
 // numericFieldRegistry is AC29's enumeration: every numeric key named
@@ -28,6 +39,7 @@ var numericFieldRegistry = map[string]int{
 	"bottom":       numericKindPoints, // page.margin.bottom, style.padding.bottom
 	"fontSize":     numericKindPoints,
 	"headerHeight": numericKindPoints,
+	"lineSpacing":  numericKindRatio,  // style.lineSpacing, headerStyle.lineSpacing
 	"height":       numericKindPoints, // element height, page.size.height, band height
 	"left":         numericKindPoints, // page.margin.left, style.padding.left
 	"nextId":       numericKindPlainInt,
@@ -104,8 +116,12 @@ func TestNumericFieldClassificationInventory(t *testing.T) {
 	if tokensExtracted == 0 {
 		t.Fatal("coverage witness: zero numeric key/value tokens extracted from folio-format.md")
 	}
-	if len(documented) < 11 {
-		t.Fatalf("M-3 measured at least 11 distinct numeric keys in folio-format.md; extraction found only %d — extractNumericDocKeys may have regressed", len(documented))
+	// Story 7.2 raised this floor from 11 to 12: `lineSpacing` is the
+	// twelfth key, and it is the exact key extractNumericDocKeys' own
+	// doc comment names as the hypothetical that proved a hand-copied
+	// inventory could go stale silently.
+	if len(documented) < 12 {
+		t.Fatalf("folio-format.md documents at least 12 distinct numeric keys (M-3's 11, plus Story 7.2's lineSpacing); extraction found only %d — extractNumericDocKeys may have regressed", len(documented))
 	}
 
 	var names []string
@@ -122,8 +138,10 @@ func TestNumericFieldClassificationInventory(t *testing.T) {
 		t.Fatalf("fields folio-format.md documents with a numeric literal but numericFieldRegistry does not classify: %v", unclassified)
 	}
 	for _, f := range names {
-		if numericFieldRegistry[f] != numericKindPoints && numericFieldRegistry[f] != numericKindPlainInt {
-			t.Fatalf("field %q classified into neither kind 1 nor kind 2", f)
+		switch numericFieldRegistry[f] {
+		case numericKindPoints, numericKindPlainInt, numericKindRatio:
+		default:
+			t.Fatalf("field %q classified into none of kind 1 (points), kind 2 (plain integer) or kind 3 (ratio)", f)
 		}
 	}
 }

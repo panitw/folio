@@ -632,7 +632,7 @@ func TestLineAdvanceIsTheMaxOverTheDeclaredChain(t *testing.T) {
 	var vsFirstFace, vsSuperseded, controls int
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := lineAdvance(tc.chain, fontSize, fs, newFontCache())
+			got, err := lineAdvance(tc.chain, fontSize, defaultLineSpacing, fs, newFontCache())
 			if err != nil {
 				t.Fatalf("lineAdvance(%v): %v", tc.chain, err)
 			}
@@ -687,7 +687,7 @@ func TestLineAdvanceIsNotContentDependent(t *testing.T) {
 	chain := shippedChain()
 	fs := testShippedFontSet()
 
-	base, err := lineAdvance(chain, fontSize, fs, newFontCache())
+	base, err := lineAdvance(chain, fontSize, defaultLineSpacing, fs, newFontCache())
 	if err != nil {
 		t.Fatalf("lineAdvance: %v", err)
 	}
@@ -698,7 +698,7 @@ func TestLineAdvanceIsNotContentDependent(t *testing.T) {
 	// shaped-text fixture's very different scripts: nothing about the
 	// text can reach it.
 	for _, content := range []string{"Ada", "Ada 汉", "ณัฐวุฒิ", "结算单，共３页", ""} {
-		again, err := lineAdvance(chain, fontSize, fs, newFontCache())
+		again, err := lineAdvance(chain, fontSize, defaultLineSpacing, fs, newFontCache())
 		if err != nil {
 			t.Fatalf("lineAdvance: %v", err)
 		}
@@ -707,7 +707,7 @@ func TestLineAdvanceIsNotContentDependent(t *testing.T) {
 		}
 	}
 	// It DOES scale with size, which is the other half of constraint 1.
-	half, err := lineAdvance(chain, fontSize/2, fs, newFontCache())
+	half, err := lineAdvance(chain, fontSize/2, defaultLineSpacing, fs, newFontCache())
 	if err != nil {
 		t.Fatalf("lineAdvance: %v", err)
 	}
@@ -754,7 +754,7 @@ func TestLineAdvanceDeclinesTheSubstitutingAccessors(t *testing.T) {
 	measured := make(map[string]geom.Length, len(perFace))
 	for _, name := range shippedChain() {
 		want := perFace[name]
-		got, err := lineAdvance([]string{name}, fontSize, fs, newFontCache())
+		got, err := lineAdvance([]string{name}, fontSize, defaultLineSpacing, fs, newFontCache())
 		if err != nil {
 			t.Fatalf("lineAdvance(%q): %v", name, err)
 		}
@@ -795,7 +795,7 @@ func TestLineAdvanceDeclinesTheSubstitutingAccessors(t *testing.T) {
 // TestLineAdvanceRefusesAnUnsatisfiableChain: a chain with no member in
 // the FontSet is a located error, never a silently substituted default.
 func TestLineAdvanceRefusesAnUnsatisfiableChain(t *testing.T) {
-	_, err := lineAdvance([]string{"Nope", "Also Nope"}, geom.Length(16000), testShippedFontSet(), newFontCache())
+	_, err := lineAdvance([]string{"Nope", "Also Nope"}, geom.Length(16000), defaultLineSpacing, testShippedFontSet(), newFontCache())
 	if err == nil {
 		t.Fatal("a chain with no face present in the FontSet must be an error, not a default line height")
 	}
@@ -1199,7 +1199,7 @@ func TestRenderSurvivesAValueThatIsNothingButBreaks(t *testing.T) {
 	}
 
 	// The height claim: two lines, whatever is on them.
-	vm, verr := chainVerticalModel([]string{"Noto Sans"}, geom.Length(11000), testShippedFontSet(), newFontCache())
+	vm, verr := chainVerticalModel([]string{"Noto Sans"}, geom.Length(11000), defaultLineSpacing, testShippedFontSet(), newFontCache())
 	if verr != nil {
 		t.Fatalf("chainVerticalModel: %v", verr)
 	}

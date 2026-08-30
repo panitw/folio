@@ -119,7 +119,7 @@ func TestAlignedTextElementsMoveInsideTheirDeclaredBox(t *testing.T) {
 
 	// Vertical: e1/e4/e5 sit at declared y of 0/150/200 in the same band, so
 	// each one's own top is its declared origin plus its valign offset.
-	vm, err := chainVerticalModel([]string{"Roboto-Regular"}, 12_000, testFontSet(), newFontCache())
+	vm, err := chainVerticalModel([]string{"Roboto-Regular"}, 12_000, defaultLineSpacing, testFontSet(), newFontCache())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -311,7 +311,7 @@ func TestFirstBaselineSemanticAcceptanceAcrossEveryReRecordedGolden(t *testing.T
 			//     the table cannot drift from the committed faces.
 			fs := fixtureFontSetFor(t, fx.name)
 			for _, el := range fx.elements {
-				vm, err := chainVerticalModel(fx.chain, geom.Length(el.fontSizeMP), fs, newFontCache())
+				vm, err := chainVerticalModel(fx.chain, geom.Length(el.fontSizeMP), defaultLineSpacing, fs, newFontCache())
 				if err != nil {
 					t.Fatalf("%s/%s: chainVerticalModel(%v, %d): %v", fx.name, el.id, fx.chain, el.fontSizeMP, err)
 				}

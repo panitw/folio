@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `1.1` if any style sets `lineSpacing` or `color`, `1.0` otherwise — and saving raises it only when such content is introduced, never lowers it, and never stamps the library's own ceiling on a document that does not need it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -204,7 +204,7 @@ Common to all five types:
 |---|---|
 | `id` | `e` + the counter in lowercase base 36 — `e1`, `ea`, `e1z`. Opaque: never derived from position or content, never reused, never renumbered on save (AD-10). Every diagnostic that concerns an element carries this. |
 | `type` | `text` · `image` · `table` · `line` · `rect`. The set is closed (FR4); a sixth type is a load error. |
-| `x`, `y`, `width`, `height` | Band-relative position and size, in points. **A `table` declares `x` and `y` only** — see below. For a **text** element, `width` bounds the laid-out content: content wider than the declared `width` is clipped at the box's left/right edges, never reflowed and never dropped, and a diagnostic names the element (FR44, Story 2.8). `height` on a **text** element is **not** a clip bound — content taller than the declared `height` renders in full and no diagnostic is reported: no line-height key exists for an author to satisfy a vertical bound against, and no layout stage consults a text element's declared height. For an **image** element, `height` (together with `width`) is honoured: the image is scaled to fit the box and centred, never cropped and never stretched (AD-24), and is reserved for `valign` should a future story add one. |
+| `x`, `y`, `width`, `height` | Band-relative position and size, in points. **A `table` declares `x` and `y` only** — see below. For a **text** element, `width` bounds the laid-out content: content wider than the declared `width` is clipped at the box's left/right edges, never reflowed and never dropped, and a diagnostic names the element (FR44, Story 2.8). `height` on a **text** element is **not** a clip bound — content taller than the declared `height` renders in full and no diagnostic is reported, because no layout stage consults a text element's declared height. (`style.lineSpacing` does let an author set the leading, so a vertical bound is now something a template can be tuned towards by hand; it still is not something the engine checks the box against.) For an **image** element, `height` (together with `width`) is honoured: the image is scaled to fit the box and centred, never cropped and never stretched (AD-24), and is reserved for `valign` should a future story add one. |
 | `visibleIf` | *Optional.* A bare expression (no `{{ }}` wrapping — see Expressions, below); the element is absent from the page model when it evaluates false, and its siblings do not move (FR20, AD-24; Story 3.5). Evaluated during bind, before pagination — it can never depend on the page an element lands on (AD-4). Condition semantics are `if()`'s own, unchanged: `true`/`false` decide visibility directly; an explicit `null` result is silently `false` (no diagnostic); a path absent from the data is a located Error; a string or a number is a located Error (no truthiness). A **field that is absent, or present with the JSON value `null`** (`"visibleIf": null`) both mean "no condition declared" — the element is visible, and there is nothing to evaluate; this is a *different* null from the condition **resolving** to `null` at evaluation, which is what hides the element. A bare literal (e.g. `"visibleIf": "42"`) can never resolve to a boolean and is rejected at **load**, naming the element (Story 3.5, closing the same-shaped rejection `if()`'s own condition slot already has). **Not valid on a table column — rejected at load, naming the column id** (Story 3.5; row-level visibility would make pagination a function of data, which FR25 does not define). |
 | `style` | *Optional.* See below. |
 
@@ -304,6 +304,7 @@ Every field optional; omitted fields inherit the documented default.
   "fontFamily": "body",
   "fontSize": 9,
   "italic": false,
+  "lineSpacing": 1.5,
   "padding": { "bottom": 2, "left": 3, "right": 3, "top": 2 },
   "valign": "top"
 }
@@ -314,6 +315,7 @@ Every field optional; omitted fields inherit the documented default.
 | `fontFamily` | **none — required on any element carrying text** |
 | `fontSize` | `10` |
 | `bold`, `italic` | `false` |
+| `lineSpacing` | absent — the leading the declared font chain itself rules. A ratio scaling the baseline-to-baseline advance, and **only** that: the ascent above the first baseline and the descent below the last are untouched, so the ratio never re-measures a line, and a component's siblings never move. Under the default `valign` (`top`) the first baseline therefore stays exactly where it was. Note the one place the ratio is still visible in a first line's position: `valign: middle`/`bottom` seat the whole packed block inside the declared `height`, and a ratio makes that block taller, so the block is re-seated and its first baseline moves — measured at 11pt over two lines, `1.5` lifts a `bottom`-aligned first baseline by 7.491pt. That is `valign` doing its job on a taller block, not the ratio touching the first line. An exact decimal of at most three places, between `0.001` and `1000.0` inclusive; anything outside that, or a fourth decimal place, is a located load error naming the component — never a silent clamp. Values below `1` are legal and genuinely tight: one line's letters may reach into the line below, which is what tight leading is and what the page draws. |
 | `align` | `left` · also `center`, `right` |
 | `valign` | `top` · also `middle`, `bottom` |
 | `padding` | `0` on all four edges |

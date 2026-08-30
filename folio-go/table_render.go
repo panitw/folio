@@ -271,6 +271,12 @@ type resolvedHeaderStyle struct {
 	fontFamily    string
 	fontSize      geom.Length
 
+	// lineSpacing is Story 7.2's leading ratio in thousandths,
+	// cascaded exactly as fontSize is: headerStyle wins, then the
+	// table's own style, then the neutral default. D-7.1.3 — every
+	// caller, no carve-out; one rule for one property.
+	lineSpacing int64
+
 	hasBorder bool
 	border    template.Border
 
@@ -318,6 +324,14 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 		r.fontSize = header.FontSize.Value
 	case base.FontSize.Set && !base.FontSize.Null:
 		r.fontSize = base.FontSize.Value
+	}
+
+	r.lineSpacing = defaultLineSpacing
+	switch {
+	case hasHeader && header.LineSpacing.Set && !header.LineSpacing.Null:
+		r.lineSpacing = header.LineSpacing.Value
+	case base.LineSpacing.Set && !base.LineSpacing.Null:
+		r.lineSpacing = base.LineSpacing.Value
 	}
 
 	switch {
@@ -672,9 +686,13 @@ func collectBandTableRuns(
 			diags = append(diags, glyphDiags...)
 			totalRunes := len([]rune(col.Label))
 
-			vm, verr := chainVerticalModel(chain, hs.fontSize, fs, cache)
+			vm, verr := chainVerticalModel(chain, hs.fontSize, hs.lineSpacing, fs, cache)
 			if verr != nil {
-				return nil, nil, nil, verr
+				// Located: the leading model knows the chain and the
+				// resolved size but not which element declared them, so
+				// the element id is attached here, as it already is at
+				// this file's body/footer site below.
+				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, verr)
 			}
 
 			measured := measureRuneRange(segs, 0, totalRunes, hs.fontSize)
@@ -797,7 +815,10 @@ func collectBandTableRuns(
 			// R2: ONE vertical model for the WHOLE table's body, computed
 			// once outside the row loop — never recomputed per cell or
 			// per row.
-			vm, verr := chainVerticalModel(bodyChain, bodyFontSize, fs, cache)
+			// Read off el.Style directly, beside bodyFontSize and for the
+			// same reason bs does not carry it: this ONE model serves the
+			// body rows AND the footer row.
+			vm, verr := chainVerticalModel(bodyChain, bodyFontSize, styleLineSpacing(el.Style), fs, cache)
 			if verr != nil {
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, verr)
 			}

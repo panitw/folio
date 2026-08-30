@@ -15,18 +15,27 @@ import (
 // and Value are always populated so the message can name what a
 // person needs to fix, without minting a stable code for it.
 //
-// Code is Story 3.6's one addition (R8, DW-6), extended once at Story
-// 4.5: set ONLY at the three call sites (newLoadErrorCoded, below)
-// naming a footer SOURCE condition — D-1.4.2's
+// Code is Story 3.6's one addition (R8, DW-6), extended at Story 4.5 and
+// again at Story 7.2. It is set at the coded call sites only
+// (newLoadErrorCoded, below). Three of those name a footer SOURCE
+// condition — D-1.4.2's
 // TABLE_FOOTER_SOURCE_FORBIDDEN parenthetical (footerOf paired with
 // footer: "count", and a footer field present with no footer at all),
 // plus D-1.4.1's TABLE_FOOTER_SOURCE_UNRESOLVED "out-of-collection
 // source" arm (the footerOf prefix check), which Story 3.6 left
-// uncoded and Story 4.5 swept in under D-000.67 part 2.
+// uncoded and Story 4.5 swept in under D-000.67 part 2. Story 7.2 added
+// a FOURTH, non-footer coded site: STYLE_LINE_SPACING_INVALID, in
+// parse_bands.go, for an out-of-range or inexact `style.lineSpacing`.
+// So "coded" no longer means "about a footer source" — it means the
+// condition has a stable code of its own, whatever it is about.
 // Every other call site leaves it at its zero value (""), which
 // folio.ParseTemplate's boundary (this package may never import the
-// module root, AD-1) reads as "not one of the footer-source conditions
-// — mint TEMPLATE_MALFORMED instead." That is the CORRECT reading for
+// module root, AD-1) reads as "no stable code — mint TEMPLATE_MALFORMED
+// instead." Getting a NEW coded condition wrong is not cosmetic: the
+// WASM host replaces a TEMPLATE_MALFORMED message wholesale, so an
+// uncoded style rejection reaches the author as "The template could not
+// be processed" and names neither the element nor the range. That is the
+// CORRECT reading for
 // the four remaining uncoded footer sites (a `footer`/`footerOf`/
 // `footerFormat` that is not a string, and a `footer` outside the
 // closed set sum/count/avg): those are malformed-template/type

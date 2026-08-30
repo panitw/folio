@@ -2,16 +2,60 @@
 title: 'Story 7.2: Set the space between a paragraph''s lines'
 type: 'feature'
 created: '2026-08-30'
-status: 'ready-for-dev'
+status: 'done'
 baseline_commit: '02da139273bd9a4ce34874a64d6cadde826321c5'
+baseline_revision: 'f10454ae9d625fb57ace6bd19e0f0df627e73994'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
   - '{project-root}/_bmad-output/implementation-artifacts/2-5a-align-first-baseline-with-the-leading-model.md'
 warnings: ['oversized'] # the ruling set D-7.2.1..D-7.2.6 is dense, and the format-version debt D-7.2.1 obliges this story to discharge is a second wide surface; both must be stated, not summarised
-deferred: []
+deferred:
+  - summary: >-
+      The whole folio-go/wasm/cmd/engine package is excluded from every executed verification
+      path by its js/wasm build constraint, so the rule-level assertion for AC7 never runs.
+    evidence: |-
+      main_test.go and main.go both carry `//go:build js && wasm`. `go test -list '.*' ./wasm/...`
+      lists only the folio-go/wasm package and prints nothing for wasm/cmd/engine; naming the
+      package directly returns "build constraints exclude all Go files". CI's only Go test
+      invocation (.github/workflows/ci.yml) runs `go test ./...` on host GOOS, never js, and
+      folio-designer/scripts/build-wasm.mjs compiles the non-test files only. Changing
+      reportableMessage to replace every code leaves the whole suite green. The sibling
+      TestLineSpacingErrorMessageSurvivesTheWasmReportingRule does run, but asserts only the
+      properties the rule turns on (code != TEMPLATE_MALFORMED, message names the element,
+      length bound) -- it never calls reportableMessage. Pre-existing for the whole file:
+      TestWasmHostSanitizesTemplateDiagnostics and TestWasmHostRoundTripsCanonicalFixture are
+      equally unexecuted; Story 7.2 adds a third test to the same dead package.
+    location: >-
+      folio-go/wasm/cmd/engine/main_test.go
+    severity: medium
+  - summary: >-
+      TestEveryBlockHeightCopyReadsTheModelsAdvance pins the three longhand block-height copies by
+      exact source-text match rather than by behaviour.
+    evidence: |-
+      It os.ReadFile's text_alignment.go and table_render.go and strings.Contains three literal
+      expressions. It therefore reddens on any gofmt-neutral edit (renaming `vm`, wrapping the
+      expression across lines) and passes if the expression is merely duplicated somewhere else;
+      it also cannot see a fourth copy outside folio-go/. The structural pin was the deliberate
+      choice, because the footer-row copy is not artifact-observable -- so replacing it with a
+      behavioural assertion is a design change, not a patch.
+    location: >-
+      folio-go/line_spacing_test.go
+    severity: medium
+  - summary: >-
+      Two of the four construction sites carrying the lineSpacing cascade are structurally
+      unobservable, so "every caller, no carve-out" has no page-level witness at either.
+    evidence: |-
+      A table header label and a table footer row are always one line, so their (n-1)*Advance term
+      is always zero and no document can make the ratio's inheritance visible in the produced
+      bytes. The only discriminating evidence today is resolveHeaderStyle's returned struct field
+      and the source-text pin above -- neither is a rendered page. Replacing hs.lineSpacing with
+      defaultLineSpacing would leave the golden fixture byte-identical.
+    location: >-
+      folio-go/table_render.go
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -26,6 +70,12 @@ move the first line. The space above the first line comes from how tall the type
 not from the spacing choice, and leaving it alone keeps a component's top edge where the author put
 it. If spacing moved that too, every multi-line component would shift and every neighbour would
 appear to jump. This project made that mistake once and deliberately undid it.
+
+One honest qualification, found by the second review pass and measured on the page: if the author has
+asked for the text to sit against the *bottom* or the *middle* of its box, then widening the spacing
+makes the whole block taller and the box re-seats it, so the first line does move. That is the
+author's own alignment choice acting on a taller block — the spacing still never re-measures a line —
+but "the first line never moves" is true without qualification only for the default, top-set text.
 
 Tight spacing is allowed to be genuinely tight — tight enough that one line's letters reach into the
 line below. That is what tight leading is, and the printed page has always drawn it. The preview
@@ -461,7 +511,184 @@ onto it.
 
 ## Spec Change Log
 
+### 2026-08-30 — the contract's "top edge does not move" is true of the model, not of every drawn page
+
+Recorded, not amended: the sentence is inside `<intent-contract>` and this section is the sanctioned
+place to note it.
+
+The Always bullet reads "`lineSpacing` scales **`Advance` only**. `FirstBaseline` and `LastDescent`
+are untouched, **so** a multi-line element's top edge does not move and no sibling appears to shift."
+The first half is a normative requirement and is met exactly — verified structurally (the ratio is
+applied at one line inside `verticalModel`) and by assertion (`FirstBaseline`/`LastDescent` are
+bit-identical between the ruled and scaled models).
+
+The second half is a stated *consequence*, and it is true only under the default `valign` (`top`).
+Measured at 11pt over two lines: `valign: bottom` draws its first baseline at 704.095 ruled and
+711.586 under `1.5`; `valign: middle` at 739.113 and 742.859; `valign: top` at 774.131 under both.
+The cause is not the ratio reaching the first line — it is `textValignOffset` re-seating a taller
+block inside the declared height, which the contract's own Code Map **requires**, since it names
+`text_alignment.go:88` among the three longhand copies that must inherit the ratio.
+
+So the contract simultaneously requires the block height to inherit the ratio and asserts that the
+top edge never moves; under bottom/middle alignment those cannot both hold, and only one reading is
+possible (a bottom-seated block that did not move would overflow its box). The specific, operational
+instruction governs, so this is recorded here rather than routed to `intent_gap`, which would revert
+a correct implementation over a rationale clause. The over-broad claim was corrected everywhere it
+had been copied outward into non-contract prose: `folio-format.md`'s `lineSpacing` row,
+`text_alignment.go`'s doc comment, this spec's plain-terms opener, and the commit message.
+`TestValignReseatsTheTallerBlockAndOnlyThen` now pins both halves so they cannot be conflated again.
+
 ## Review Triage Log
+
+### 2026-08-30 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 10: (high 0, medium 3, low 7)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 7: (high 0, medium 2, low 5)
+- addressed_findings:
+  - `[medium]` `[patch]` `scaleAdvanceByLineSpacing`'s zero-advance refusal fired under the NEUTRAL
+    ratio, so a document carrying no `lineSpacing` at all was newly rejected — measured directly:
+    `verticalModel(probe, metrics, 0, defaultLineSpacing)` errored where baseline `f10454a`
+    returned a model. That contradicts the matrix row "Absent → No error expected". Fixed to refuse
+    only a zero the ratio itself caused; a `ruledAdvance <= 0` predates the ratio (DW-26's unbounded
+    `fontSize`) and now passes through untouched. `TestNeutralRatioNeverRefusesADegeneracyItDidNotCause`
+    pins both halves. Re-measured after the fix: neutral + `fontSize 0` → advance 0, no error.
+  - `[medium]` `[patch]` No executed test observed the element id on the two new render-time leading
+    errors: both guard tests called `verticalModel` directly, and deleting the element-id wrap at
+    `table_render.go:689` left the whole suite green. `TestRenderTimeLeadingErrorsNameTheElement` now
+    drives text element, table header label and table body row through public parse+render and
+    asserts the id, red-proved against that same deletion.
+  - `[medium]` `[patch]` DW-26 claimed "no panic is reachable from a template today". Measured false:
+    `verticalModel(probe, metrics, 1<<62, defaultLineSpacing)` panics `geom: ScaleRound: v*num
+    overflows int64` with `lineSpacing` absent, because the `fontSize` multiply in the same function
+    is unguarded. The spec forbids closing `fontSize`'s range check, so the claim was corrected
+    rather than the guard added; `wrap.go`'s and the test's doc comments were scoped down likewise.
+  - `[low]` `[patch]` `folio-format.md:207` still read "no line-height key exists for an author to
+    satisfy a vertical bound against" — the sentence this story falsifies. Corrected.
+  - `[low]` `[patch]` `"lineSpacing": null` surfaced the parser-internal `invalid numeric literal ""`
+    (encoding/json no-ops null into a json.Number). Now refused explicitly, covered on both `style`
+    and `headerStyle`.
+  - `[low]` `[patch]` The inverted designer assertions were `.toBeDefined()`, which passes for any
+    non-undefined value. Now assert the parsed line's `top`/`baseline`/`advance`, red-proved by
+    restoring the deleted clause.
+  - `[low]` `[patch]` `line_spacing_test.go` re-spelled `14982`/`22473`/`8989`/`11759` as bare
+    literals while named constants for exactly those values existed in the same package. Replaced.
+  - `[low]` `[patch]` `versionRequiredByContent`'s doc comment claimed an explicit null "on either
+    key" still declares the key; true for `color` only. Narrowed, with the asymmetry stated.
+  - `[low]` `[patch]` Nothing bounded `versionRequiredByContent` against `SupportedVersion`.
+    `TestContentVersionNeverExceedsTheLibraryCeiling` added.
+  - `[low]` `[patch]` The two leading errors printed the ratio in engine units (`600/1000`) and
+    worded the font size inconsistently. Both now use `template.FormatLineSpacing` ("line spacing 0.6").
+
+**Rejected (7), with the ground for each:**
+- Adding a box-relative upper bound on `paint.baseline` to `isTextPaint` (raised twice). The Block If
+  forbids weakening any surviving canvas clause beyond the one D-7.2.2 names, and a *new* browser-side
+  bound on an engine metric is the AD-17 inversion this story exists to remove.
+- `sprint-status.yaml` not updated — the closer owns it, by this spec's own Delivery Log obligations.
+- `LineSpacing.Null`'s unreachable guard — defensive, harmless.
+- `versionForSave(loaded, d)` taking a parameter it could read — design nit, no defect.
+- `maximalFixture` gaining `lineSpacing` and the 1.1 bump in one edit — the raise-by-`color` case is
+  covered independently by `TestVersionForSaveIsRaisedOnlyByContent`.
+- `headerStyle.lineSpacing` observing nothing — mandated by D-7.1.3 ("every caller, no carve-out")
+  and already stated in the fixture README.
+- `int64MulWouldOverflow` duplicating `internal/geom`'s unexported predicate — the spec mandates
+  exactly this ("use a root-package predicate"; do not export from `internal/geom`).
+
+### 2026-08-30 — Review pass (second, independent)
+
+Run by a re-dispatch after the pass above committed as `9006177` without its parent observing the
+result. Four fresh context-free layers over the same diff; findings below are only those the first
+pass did not already hold.
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 4, low 5)
+- defer: 2: (high 0, medium 1, low 1)
+- reject: 9: (high 0, medium 0, low 9)
+- addressed_findings:
+  - `[medium]` `[patch]` **`versionForSave` silently restamps a MAJOR-0 document.** `parseVersion`
+    admits `major >= 0` and `checkVersionLoadable` refuses only `major > SupportedMajor`, so a
+    `"0.9"` document loads. `versionRequiredByContent` returns `baseVersion` as a FLOOR, and
+    comparing that floor numerically raised any lower-declaring document: measured
+    `versionForSave("0.9", <no 1.1 content>) = "1.0"`. Story 1.4's stub returned `loaded` unchanged,
+    so this was a NEW edit-and-edit-back break (AD-9) on a save that changed nothing, and it
+    contradicts the format spec's own "saving raises it only when such content is introduced".
+    Fixed by answering "requires nothing newer" before the comparison, not through it. Two cases
+    added to `TestVersionForSaveIsRaisedOnlyByContent` (`0.9` in with no key stays `0.9`; `0.9` in
+    with `lineSpacing` still raises to `1.1`). Re-measured after the fix.
+  - `[medium]` `[patch]` **`lineSpacing` × `valign` moves the drawn first baseline, and the format
+    spec denied it unconditionally.** `folio-format.md`'s `lineSpacing` row claimed "the first line
+    does not move, so a component's top edge stays where the author put it". Measured false for
+    `valign: middle`/`bottom` (figures in the Spec Change Log entry above). The behaviour is correct
+    and contract-required; the sentence was not. Row qualified with the mechanism and a measured
+    figure.
+  - `[medium]` `[patch]` **Nothing anywhere composed `lineSpacing` with `valign`.** Every existing
+    acceptance used the default `top`, where the first baseline provably cannot move — which is what
+    let the unconditional claim stand unchallenged. Changing `render.go` to compute the block height
+    from a ruled model would misplace every middle/bottom element under a ratio with nothing going
+    red. `TestValignReseatsTheTallerBlockAndOnlyThen` pins the full/half/zero re-seating for
+    bottom/middle/top and asserts `FirstBaseline`/`LastDescent` identity alongside it.
+  - `[medium]` `[patch]` **Three of four cases in `TestVersionIsRaisedByContentAndNeverLowered` could
+    not fail for the reason the test's name gives** — they loaded `"1.1"` and wanted `"1.1"`, so the
+    never-lower arm satisfied them even if `styleNeedsMinorVersion` returned false for both keys.
+    Now load `"1.0"`, so each raise case actually exercises the raise.
+  - `[low]` `[patch]` **The untested render-time condition at the header site.**
+    `TestRenderTimeLeadingErrorsNameTheElement` drove the header label through the *overflow*
+    condition only; the zero-advance condition there had no test. Added, with the reason it is pinned
+    rather than "fixed": a header label is one line, so its `Advance` never reaches the page, and the
+    refusal reads as over-strict — but passing `defaultLineSpacing` at that one site is exactly the
+    carve-out D-7.1.3 forbids.
+  - `[low]` `[patch]` `internal/template/errors.go`'s `Code` doc said it is set "ONLY at the three
+    call sites naming a footer SOURCE condition". `parse_bands.go` is now a fourth, non-footer coded
+    site. This story's AC7 turns on that boundary reading, so the false comment was load-bearing.
+    Rewritten, including why a newly-coded condition matters (an uncoded one is replaced wholesale by
+    the WASM host).
+  - `[low]` `[patch]` `text_alignment.go`'s `textValignOffset` doc still said "the inter-baseline
+    advance is a property of the font chain and the size" — precisely what `style.lineSpacing` stops
+    being true. Rewritten, and it now states the middle/bottom consequence at the site that causes it.
+  - `[low]` `[patch]` DW-26 carried `**Owner:** unassigned` and no `Deferred by:`/`Severity:`/
+    `Status:` lines, against this file's own convention (DW-25 carries all of them) and against
+    DW-24's worked example of what an unowned item costs. Given the standing address D-000.73
+    requires — a role, not an event.
+  - `[low]` `[patch]` DW-25 says of `addCanvasTextPaint` "this one is the only reachable hard abort".
+    This story added a second route into that same function: a load-legal `lineSpacing` resolving to
+    a zero or overflowing advance now aborts the whole projection from the format side. Amended in
+    place, without widening DW-25's remedy (7.2's contract forbids it designer-surface work).
+
+**Deferred (2):**
+- `[medium]` `TestEveryBlockHeightCopyReadsTheModelsAdvance` pins three longhand copies by exact
+  source-text match, so it reddens on any gofmt-neutral edit (renaming `vm`, wrapping a line) and
+  passes if an expression is merely duplicated elsewhere; it also cannot see a copy outside
+  `folio-go/`. Replacing a structural pin with a behavioural one is a design change, not a patch.
+- `[low]` The table header label and footer row are wired to the cascade but structurally
+  unobservable — both are always one line, so their `(n-1)·Advance` term is always zero and no
+  document can make their inheritance visible in the produced bytes. "Every caller, no carve-out" is
+  this story's central claim and two of its four sites have no page-level witness.
+
+**Rejected (9), with the ground for each:**
+- A new box-relative upper bound on `paint.baseline` in `isTextPaint` (raised twice again, and
+  rejected again on the first pass's ground): D-7.2.2 deletes one clause and nothing else, and a new
+  browser-side bound on an engine metric is the AD-17 inversion this story exists to remove.
+- Carving `headerStyle.lineSpacing` out where `Advance` is unused — D-7.1.3, "every caller, no
+  carve-out"; the refusal is the matrix's specified behaviour and is now pinned by a test instead.
+- A load-time check that a declared `version` matches its content — not in the contract, and it would
+  redden the diff's own fixtures; raise-on-save is the specified rule.
+- That the `color` retrofit trips Block If 3 ("changing what an existing 1.0 document serializes to")
+  — the contract's own Approach *mandates* the retrofit and its Problem statement says colour-bearing
+  documents "declare 1.0 while requiring 1.1", so the Block If can only mean a document whose
+  CONTENT requires 1.0.
+- That a legal in-range ratio silently discards content (`lineSpacing: 50` "drawing one baseline,
+  the rest vanishing") — **measured false**: all three lines are drawn, paginated across four pages.
+- Guarding the six block-height multiplies against int64 overflow — speculative; `lineSpacing` is
+  load-bounded to 1000×, and the unbounded `fontSize` half is DW-26's, explicitly not this story's.
+- Simplifying `int64MulWouldOverflow` / its unreachable arms — the spec mandates the root-package
+  predicate; branch-level nit.
+- Adding a `null` arm to `writeStyle` for `lineSpacing` — `DecodeLineSpacingRaw` refuses null at both
+  attachment points and that refusal IS tested, so `Presence.Null` is unreachable by construction; a
+  writer arm for an unreachable state is the defensive guard the spec's own reasoning excludes.
+- No test asserts `lineSpacing` is refused on `rect`/`line`/`image` — the arm is type-gated, and
+  these are element types the story deliberately excluded.
 
 ## Design Notes
 
@@ -569,3 +796,143 @@ rather than left open:**
 **Measured at planning, so the implementer does not have to rediscover it:** no fixture under
 `fixtures/` declares `style.color`, and `worked-example.json` declares none, so the D-7.2.1 retrofit
 moves nothing in the corpus today.
+
+### Dispatch 2 — implement, review, commit (2026-08-30)
+
+Status: done
+Blocking condition: none
+
+Implemented from `ready-for-dev` at baseline `f10454ae9d625fb57ace6bd19e0f0df627e73994`.
+
+**Implemented change.** `style.lineSpacing` — an optional exact decimal carried as a whole number of
+thousandths in `[1, 1000000]` — scales the vertical model's `Advance` and nothing else. The ratio is
+applied at exactly one line in `verticalModel`, between `FirstBaseline: scale(maxAscent)` and
+`LastDescent: scale(maxDescent)`, so the D-2.5a/DW-15 two-model split holds *by construction*: both
+other spans stay bit-identical to the unscaled model and no multi-line element's top edge moves. The
+ratio is threaded by parameter, mirroring `fontSize`, to all four construction sites with no
+carve-out. Two typographic failures are refused where both operands exist — int64 overflow (before
+`geom.ScaleRound`, whose panic must never be reachable from authored input) and a ratio-induced zero
+advance. `STYLE_LINE_SPACING_INVALID` was minted so the load error survives `reportableMessage`
+instead of being replaced by the generic template-malformed text. `versionForSave` stopped being a
+stub and now derives the version the document's content requires, retrofitting Epic 10's `style.color`.
+One canvas clause was deleted so the browser stops refusing the engine's own honest measurement.
+
+**Files changed** (one line each):
+- `folio-go/wrap.go` — ratio threaded through `verticalModel`/`chainVerticalModel`/`lineAdvance`,
+  applied at the single `Advance` site; overflow and zero-advance guards; local overflow predicate.
+- `folio-go/render.go`, `table_render.go`, `page_setup.go` — the four construction sites extract and
+  pass the ratio; `resolvedHeaderStyle` gains the three-way cascade `fontSize` already uses.
+- `folio-go/component_commands.go` — `lineSpacing` on the property-command path through the *same*
+  validator; `cleanupEmptyStyle` taught about a `lineSpacing`-only style block.
+- `folio-go/internal/template/{model,parse_bands,serialize,version}.go` + new `linespacing.go` — the
+  key, its decode/emit, the one shared exported validator, and the content-derived version raise.
+- `folio-go/internal/diag/diag.go`, `folio-go/diagnostic.go` — the code mint and its public bridge.
+- `folio-designer/src/engine-protocol.ts` — deletes only `paint.baseline > paint.top + paint.advance`;
+  the other seven clauses on that line are byte-for-byte unchanged.
+- `fixtures/line-spacing/` + `folio-go/line_spacing_template.go` — the story's golden fixture,
+  registered at all four sites plus `.github/workflows/matrix.yml`.
+- `_bmad-output/specs/spec-folio/folio-format.md` — the key documented; the stale "no line-height key
+  exists" sentence at :207 corrected.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — DW-26 opened; DW-24 amended.
+
+**Review findings breakdown.** 10 patches applied (medium 3, low 7); 1 deferred (medium); 7 rejected.
+No intent_gap and no bad_spec, so no revert or re-derivation was needed. Details in the Review
+Triage Log above.
+
+**Follow-up review recommendation: true.** Patched this pass: high 0, medium 3, low 7. Score =
+3x3 + 1x7 = 16, which is >= 5.
+
+**Verification performed** (measured after the patches, not before):
+- `go test -count=1 ./...` — **1429 PASS, 2 FAIL**. Both failures are
+  `TestCorpusMeetsP6ExerciseFloors` and its `P6g` subtest: "P6g (opaque names) floor not met: got 7,
+  need >=20", stats `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}` — the mandated permanent
+  red, untouched. 5 skips, all pre-existing and unrelated.
+- `go vet -tags=matrix ./...` — no output, exit 0. `gofmt -l folio-go` — no output.
+- `TestTargetRenderHash` — run once per leg with `FOLIO_MATRIX_TARGET` set: darwin/arm64,
+  linux/amd64, linux/arm64, js/wasm. All four PASS, none vacuous, each logging line-spacing
+  `de212115…` at 57,770 bytes.
+- `TestCrossTargetByteIdentity` — PASS (19.8s).
+- Corpus digests re-measured: statement-1 `114df1d6…` 76,744 B; statement-5 `70dce051…` 127,363 B;
+  statement-20 `56bfbbd9…` 269,884 B; statement-50 `5d090b0f…` 555,829 B; mandatory-break
+  `7cf743de…` 56,681 B. **All five unchanged**, and no statement or mandatory-break fixture file is
+  modified in the diff.
+- `cd lint && go test ./...` — all four packages ok.
+- `folio-designer` — typecheck clean; lint 4 warnings, all the pre-existing `only-export-components`
+  set; 30 files / **214 tests pass**.
+- Matrix Test Audit: all 13 I/O matrix rows have a covering test that ran and passed.
+
+**Residual risks.**
+- A panic is still reachable through an unbounded authored `fontSize` (measured: `1<<62` with
+  `lineSpacing` absent panics in `ScaleRound`). This story is forbidden from closing `fontSize`'s
+  range check; DW-26 now records it accurately instead of claiming the path is panic-free.
+- AC7's rule-level assertion lives in `folio-go/wasm/cmd/engine`, a package no executed verification
+  path reaches (js/wasm build constraint). Deferred, with the measurement. An executed sibling test
+  covers the properties the rule turns on, but not the rule.
+- `headerStyle.lineSpacing` validates and cascades but observes nothing, because the header site
+  reads `FirstBaseline`/`LastDescent` only and never `Advance`.
+- The designer has no control that can send `lineSpacing` — deliberate, Story 7.4 owns it — so the
+  property-command path is exercised only by Go tests.
+- One of the three longhand block-height copies (the table footer row) cannot be made
+  artifact-observable and is pinned by a source-level assertion rather than by bytes.
+
+**DW-24 fired its trigger here and was declined** on the narrow ground that no fixture declares
+`valign` at all — not "a different call site". It is **not deferrable a third time**; Story 7.3 owns
+it as an acceptance criterion.
+
+### Dispatch 3 — second review pass, finalize, commit (2026-08-30)
+
+Status: done
+Blocking condition: none
+
+**Why this dispatch existed.** Dispatch 2's parent returned before the subagent it had handed the
+work to finished. That subagent kept running and, at 18:33:54, committed the whole story as
+`9006177` — correctly scoped (42 files, explicit paths, the required trailer, the untracked root
+`README.md` left alone) but unobserved by any parent. This dispatch re-reviewed the result from
+scratch rather than trusting it.
+
+**Summary of the change.** Unchanged from Dispatch 2 in substance: `style.lineSpacing` scales the
+leading model's `Advance` at one line of `verticalModel`, threaded to all four construction sites
+through the existing cascade; the canvas clause `paint.baseline > paint.top + paint.advance` is
+deleted and only it; `STYLE_LINE_SPACING_INVALID` is minted; `versionForSave` stops being a stub and
+derives the version from content, retrofitting `style.color`. `SupportedMajor` stays 1.
+
+**What this pass changed on top of it.** Nine patches (four medium, five low), listed in the Review
+Triage Log. One is a behavioural defect: `versionForSave` silently restamped a loadable MAJOR-0
+document to `1.0`. Three concern a claim that had been copied outward into four places and was false
+under `valign: middle`/`bottom` — see the Spec Change Log entry. The rest are a missing test at the
+header site, two comments this change falsified, and two deferred-work records.
+
+**Verification performed (all re-run after the patches, on darwin/arm64):**
+- `cd folio-go && go test -count=1 ./...` — exactly ONE failure, the mandated permanent red
+  `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)`: got 7, need >=20. Every other package `ok`.
+- `cd folio-go && go vet -tags=matrix ./...` — clean, no output.
+- `gofmt -l folio-go` — no output.
+- `cd folio-go && go test -tags=matrix -run TestTargetRenderHash -v .` — run once per leg with
+  `FOLIO_MATRIX_TARGET` set. All four legs PASS and agree on the new fixture:
+  `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` each produced
+  `sha256=de2121156d8c58e93a0c8b6032f338f4c24886145488aad248bc775fc83ee290` (57,770 bytes).
+- `cd folio-go && go test -tags=matrix -run TestCrossTargetByteIdentity .` — ok (19.073s).
+- `cd lint && go test ./...` — ok, all four packages.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck clean; lint shows
+  the 4 known `only-export-components` warnings and nothing else; **30 test files / 214 tests passed**.
+- **The five corpus digests, measured (not assumed) and unchanged**, with
+  `TestStatementGoldenFixtures` rendering and byte-comparing all four statement subtests (PASS):
+  `statement-1` 76,744 `114df1d6508981d4…`; `statement-5` 127,363 `70dce051495cf68d…`;
+  `statement-20` 269,884 `56bfbbd9a7d20a2a…`; `statement-50` 555,829 `5d090b0f01ddb507…`;
+  `mandatory-break` 56,681 `7cf743deb8b9c6c3…`.
+
+**Not run, and why:** `TestShippedFacesReproduceFromUpstream` — the matrix-tagged suite was invoked
+only with targeted `-run` patterns, so this test did not execute this dispatch. It is the known
+`fontTools`-absent environmental failure. `lint/internal/rules/licencegraph_test.go`'s gofmt break
+(DW-23) did not surface, because `gofmt -l` was run against `folio-go` as the spec's command
+specifies, not against `lint`.
+
+**Residual risks.**
+- The two deferred items added this pass are both about *witness*, not behaviour: two of the four
+  cascade sites cannot be observed on a page, and the pin standing in for them is a source-text
+  match. A refactor could satisfy both while dropping the cascade.
+- `folio-go/wasm/cmd/engine` remains excluded from every executed verification path (the first
+  pass's deferred item). The ordinary-suite sibling asserts the properties the rule turns on, not
+  the rule.
+- DW-26 stands open: a panic is still reachable from an authored `fontSize`, which D-7.2.4 puts
+  outside this story.

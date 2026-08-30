@@ -242,6 +242,24 @@ const DiagCodeDocumentDateInvalid = string(diag.CodeDocumentDateInvalid)
 // permanent.
 const DiagCodeStyleColorInvalid = string(diag.CodeStyleColorInvalid)
 
+// DiagCodeStyleLineSpacingInvalid names Story 7.2's own new LOAD-time
+// condition: a `style.lineSpacing` or `headerStyle.lineSpacing` outside
+// its declared domain — not a whole number of thousandths in
+// [1, 1000000], or carrying more than three decimal places. Loading
+// fails with a *RenderError carrying this code, naming the element and
+// the field.
+//
+// It is deliberately NOT DiagCodeTemplateMalformed: the WASM engine's
+// reportable-message rule replaces that one code's message with a
+// generic string, which would destroy the range and the element id
+// before the author saw them. The same value arriving through a
+// property command is refused by the same function, for the same
+// reason.
+//
+// Additive only (AD-14): once shipped, this string's meaning is
+// permanent.
+const DiagCodeStyleLineSpacingInvalid = string(diag.CodeStyleLineSpacingInvalid)
+
 // DiagCodeTableHeaderRepeatSuppressed names Story 4.4's own new condition
 // (FR26, DECISION-2 as ruled by the engineering lead): a table's repeated
 // header could not be honoured on one continuation page because the next

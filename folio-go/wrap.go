@@ -6,6 +6,7 @@ import (
 	"github.com/panitw/folio/folio-go/internal/bind"
 	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/template"
 	"github.com/panitw/folio/folio-go/internal/text"
 )
 
@@ -581,7 +582,14 @@ func chainLineMetrics(chain []string, fs FontSet, cache *fontCache) ([]fontset.L
 //
 // chain is carried for the error messages alone; nothing is read from
 // it, so a test may pass any label it likes.
-func verticalModel(chain []string, metrics []fontset.LineMetrics, fontSize geom.Length) (verticalMetrics, error) {
+//
+// lineSpacing is Story 7.2's author-set leading ratio in THOUSANDTHS
+// (template.LineSpacingUnit is the neutral value, and an absent
+// `style.lineSpacing` passes exactly that). It is threaded as a
+// parameter for the same reason fontSize is: neither constructor takes
+// a style, and the vertical model is a function of the chain, the size
+// and now the ratio — of nothing that is drawn.
+func verticalModel(chain []string, metrics []fontset.LineMetrics, fontSize geom.Length, lineSpacing int64) (verticalMetrics, error) {
 	if len(metrics) == 0 {
 		return verticalMetrics{}, fmt.Errorf(
 			"folio: none of the fallback chain's faces %v is present in the supplied FontSet, so no line height can be derived from it",
@@ -621,30 +629,137 @@ func verticalModel(chain []string, metrics []fontset.LineMetrics, fontSize geom.
 	scale := func(u int64) geom.Length {
 		return geom.ScaleRound(geom.Length(u), int64(fontSize), 1000)
 	}
+
+	// THE ONE SITE THE RATIO IS APPLIED AT. FirstBaseline and
+	// LastDescent are built from their own maxima and are not touched,
+	// which is what makes "lineSpacing scales Advance and nothing else"
+	// true BY CONSTRUCTION rather than by discipline — a multi-line
+	// element's top edge cannot move, so no sibling can appear to jump
+	// (D-2.5a/DW-15's two-model split; Story 2.5a exists solely because
+	// the two were once conflated).
+	//
+	// Everything downstream inherits the ratio for free precisely
+	// because it is applied HERE: the three longhand block-height copies
+	// (text_alignment.go's textBlockHeight, table_render.go's rowHeight
+	// and footerRowHeight) and the four `origin + i*Advance` stepping
+	// loops all read this Advance. Scaling at any consumer instead would
+	// need all seven to agree forever.
+	ruledAdvance := scale(units)
+	advance, err := scaleAdvanceByLineSpacing(chain, fontSize, ruledAdvance, lineSpacing)
+	if err != nil {
+		return verticalMetrics{}, err
+	}
 	return verticalMetrics{
 		FirstBaseline: scale(maxAscent),
-		Advance:       scale(units),
+		Advance:       advance,
 		LastDescent:   scale(maxDescent),
 	}, nil
 }
+
+// scaleAdvanceByLineSpacing applies the leading ratio to the ruled
+// advance, and is where D-7.2.4's two typographic failures are refused —
+// both of them CHECKED WHERE BOTH OPERANDS EXIST, which is the whole
+// reason neither is a load-time bound: a load-time check cannot see the
+// font size.
+//
+//  1. OVERFLOW. geom.ScaleRound PANICS when the exact product v*num
+//     overflows int64, and a Go panic aborts the package's whole test
+//     binary — every other test in folio-go then silently stops
+//     reporting, which is a suite-wide blindfold rather than a crash. So
+//     the precondition is discharged BEFORE the call.
+//
+//     SCOPED HONESTLY: this closes the panic route THE RATIO OPENS, and
+//     only that one. verticalModel's own `scale` closure multiplies by an
+//     UNBOUNDED authored fontSize and is NOT guarded, so a panic remains
+//     reachable from a template through that field alone, with no
+//     lineSpacing declared anywhere. That is DW-26, recorded rather than
+//     closed because bounding fontSize is a format-domain decision about
+//     a second field (D-7.2.4). Do not read this guard as making the
+//     function panic-free.
+//
+//  2. A RESOLVED ADVANCE OF ZERO — but ONLY ONE THE RATIO CAUSED.
+//     ScaleRound returns 0 whenever v*num < den/2 — measured:
+//     ScaleRound(400, 1, 1000) is 0 — so a small face at lineSpacing
+//     0.001 yields zero-height lines, which layout cannot draw and the
+//     canvas correctly refuses. It is a DISTINCT condition from the
+//     load-time range and carries its own error, never
+//     STYLE_LINE_SPACING_INVALID: raising the load-time minimum to
+//     prevent it would only move the blindness.
+//
+//     THE PASS-THROUGH BELOW IS LOAD-BEARING, NOT A CONVENIENCE. A ruled
+//     advance that is ALREADY non-positive is a degeneracy this story
+//     did not introduce and must not start refusing: it comes from an
+//     unbounded authored `fontSize` (DW-26, deliberately left open),
+//     it is reachable with no `lineSpacing` declared anywhere, and a
+//     document carrying none must produce byte-identical output to
+//     today. Refusing it here would make the neutral ratio reject
+//     templates that render at this story's baseline. Only a POSITIVE
+//     ruled advance driven to zero BY the ratio is this story's to
+//     refuse.
+func scaleAdvanceByLineSpacing(chain []string, fontSize geom.Length, ruledAdvance geom.Length, lineSpacing int64) (geom.Length, error) {
+	if ruledAdvance <= 0 {
+		// The degeneracy predates the ratio, so the ratio has no opinion
+		// about it. Hand back exactly what the unscaled model produced.
+		return ruledAdvance, nil
+	}
+	if int64MulWouldOverflow(int64(ruledAdvance), lineSpacing) {
+		return 0, fmt.Errorf(
+			"folio: line spacing %s applied to the ruled advance of %d millipoints (chain %v at font size %d millipoints) overflows int64",
+			template.FormatLineSpacing(lineSpacing), ruledAdvance, chain, fontSize,
+		)
+	}
+	advance := geom.ScaleRound(ruledAdvance, lineSpacing, template.LineSpacingUnit)
+	if advance <= 0 {
+		return 0, fmt.Errorf(
+			"folio: line spacing %s applied to the ruled advance of %d millipoints (chain %v at font size %d millipoints) resolves to an advance of %d — a line cannot be drawn in it",
+			template.FormatLineSpacing(lineSpacing), ruledAdvance, chain, fontSize, advance,
+		)
+	}
+	return advance, nil
+}
+
+// int64MulWouldOverflow reports whether a*b cannot be represented as an
+// int64. It is deliberately a ROOT-PACKAGE, UNEXPORTED predicate sitting
+// beside the one guard that uses it, and not a call into internal/geom.
+//
+// internal/geom already has this arithmetic (int64MulOverflows), but it
+// is unexported and must stay that way: scale_surface_test.go asserts
+// that package's exported surface is exactly {ScaleRound}, and AD-2's
+// "scaling is one function" is what that test protects. A local overflow
+// PREDICATE is not a second scaling door — it decides whether the one
+// door may be opened.
+func int64MulWouldOverflow(a, b int64) bool {
+	if a == 0 || b == 0 {
+		return false
+	}
+	if (a == minInt64 && b == -1) || (b == minInt64 && a == -1) {
+		return true
+	}
+	p := a * b
+	return p/b != a
+}
+
+// minInt64 is math.MinInt64, spelled as a literal to keep this file's
+// import list unchanged.
+const minInt64 = -1 << 63
 
 // chainVerticalModel is the production entry point: ONE chain walk
 // feeding the one arithmetic. A caller needing both the first-baseline
 // offset and the inter-baseline advance takes both from a single call —
 // AC1's "there is no second derivation left to drift".
-func chainVerticalModel(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (verticalMetrics, error) {
+func chainVerticalModel(chain []string, fontSize geom.Length, lineSpacing int64, fs FontSet, cache *fontCache) (verticalMetrics, error) {
 	metrics, err := chainLineMetrics(chain, fs, cache)
 	if err != nil {
 		return verticalMetrics{}, err
 	}
-	return verticalModel(chain, metrics, fontSize)
+	return verticalModel(chain, metrics, fontSize, lineSpacing)
 }
 
 // lineAdvance is the inter-baseline span of the ruled model, kept under
 // the name the rest of the module and its tests already use. It is a
 // PROJECTION of chainVerticalModel, never a second derivation.
-func lineAdvance(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (geom.Length, error) {
-	vm, err := chainVerticalModel(chain, fontSize, fs, cache)
+func lineAdvance(chain []string, fontSize geom.Length, lineSpacing int64, fs FontSet, cache *fontCache) (geom.Length, error) {
+	vm, err := chainVerticalModel(chain, fontSize, lineSpacing, fs, cache)
 	if err != nil {
 		return 0, err
 	}

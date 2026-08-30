@@ -282,6 +282,7 @@ var maximalFixture = []byte(`{
             },
             "fontFamily": "body",
             "fontSize": 9,
+            "lineSpacing": 1.25,
             "padding": {
               "bottom": 3,
               "left": 3,
@@ -306,6 +307,7 @@ var maximalFixture = []byte(`{
             "fontFamily": "body",
             "fontSize": 8,
             "italic": true,
+            "lineSpacing": 0.875,
             "padding": {
               "bottom": 2,
               "left": 3,
@@ -401,7 +403,7 @@ var maximalFixture = []byte(`{
     "customer.name"
   ],
   "utcOffset": "+07:00",
-  "version": "1.0"
+  "version": "1.1"
 }
 `)
 

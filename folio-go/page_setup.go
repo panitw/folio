@@ -457,7 +457,11 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 				return fmt.Errorf("folio: canvas text element %s exceeds the line projection bound", element.ID)
 			}
 			_, paint.Overflow = detectWidthOverflow(string(element.ID), lines, boxWidth)
-			vm, err := chainVerticalModel(chain, fontSize, fs, cache)
+			// AC6 / the Story 5.9 invariant: the canvas consumes the
+			// IDENTICAL advance the renderer does, ratio included — the
+			// browser never measures text and never adjudicates what the
+			// engine measured.
+			vm, err := chainVerticalModel(chain, fontSize, styleLineSpacing(element.Style), fs, cache)
 			if err != nil {
 				return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 			}

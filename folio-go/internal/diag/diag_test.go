@@ -42,6 +42,7 @@ var codePins = []struct {
 	{"CodeTableHeaderRepeatSuppressed", CodeTableHeaderRepeatSuppressed, "TABLE_HEADER_REPEAT_SUPPRESSED"},
 	{"CodeTableFooterOrphanSuppressed", CodeTableFooterOrphanSuppressed, "TABLE_FOOTER_ORPHAN_SUPPRESSED"},
 	{"CodeTableRowClippedHeight", CodeTableRowClippedHeight, "TABLE_ROW_CLIPPED_HEIGHT"},
+	{"CodeStyleLineSpacingInvalid", CodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
 }
 
 // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by

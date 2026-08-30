@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/template"
 )
 
 // minimalTemplateJSON is a well-formed `.folio` document (AC4): a
@@ -99,8 +101,14 @@ func TestHigherMajorVersionIsRejected(t *testing.T) {
 	// claimed the error names both versions — the stronger check existed
 	// only in internal/template/version_test.go, one layer down. Assert
 	// it here too, at the module-root public API this AC actually names.
-	if !strings.Contains(err.Error(), "9.0") || !strings.Contains(err.Error(), "1.0") {
-		t.Fatalf("error must name both the declared (9.0) and supported (1.0) version, got: %v", err)
+	//
+	// Story 7.2 raised the library ceiling from 1.0 to 1.1 (D-7.2.1), so
+	// the supported half is read from template.SupportedVersion rather
+	// than spelled as a literal here: this assertion is about the error
+	// NAMING both versions, and a hand-copied ceiling would make it a
+	// second, drifting declaration of what the ceiling is.
+	if !strings.Contains(err.Error(), "9.0") || !strings.Contains(err.Error(), template.SupportedVersion) {
+		t.Fatalf("error must name both the declared (9.0) and supported (%s) version, got: %v", template.SupportedVersion, err)
 	}
 }
 

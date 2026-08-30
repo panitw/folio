@@ -1192,7 +1192,7 @@ func TestTrailingBreakInACellGrowsTheRowByOneAdvance(t *testing.T) {
 		t.Errorf("the trailing-break row emitted %d line run(s) against the plain row's %d — an EMPTY line must draw nothing", brokenRuns, plainRuns)
 	}
 
-	vm, verr := chainVerticalModel([]string{"Noto Sans"}, geom.Length(8000), testShippedFontSet(), newFontCache())
+	vm, verr := chainVerticalModel([]string{"Noto Sans"}, geom.Length(8000), defaultLineSpacing, testShippedFontSet(), newFontCache())
 	if verr != nil {
 		t.Fatalf("chainVerticalModel: %v", verr)
 	}

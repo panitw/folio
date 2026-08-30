@@ -343,6 +343,33 @@ var goldenDigestRecord = []struct {
 			{kind: "readme", relPath: "fixtures/mandatory-break/README.md"},
 		},
 	},
+	{
+		// RECORDED by Story 7.2. THE FIRST COMMITTED DOCUMENT IN THIS
+		// REPOSITORY THAT DECLARES A LINE SPACING AT ALL — the key did
+		// not exist before it — so no recorded byte in the corpus could
+		// tell a build that honours an author's leading from one that
+		// silently ignores it, and the story's byte-neutrality guard
+		// over every OTHER golden is only falsifiable beside a document
+		// that does set one.
+		//
+		// It is also THE FIRST COMMITTED DOCUMENT DECLARING "1.1": under
+		// D-1.4.13 a document declares the lowest version its own
+		// content requires, and this one requires 1.1 because it sets
+		// lineSpacing.
+		//
+		// Its e1 declares no spacing and is the CONTROL that makes the
+		// rest discriminating; its e3 is set at tight leading (advance
+		// 8,989 mp below the 11,759 mp first-baseline offset), the
+		// overlapping geometry the designer canvas used to refuse
+		// outright. Its README quotes the digest.
+		dir:    "line-spacing",
+		sha256: "de2121156d8c58e93a0c8b6032f338f4c24886145488aad248bc775fc83ee290",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/line-spacing/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/line-spacing/README.md"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -698,6 +725,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: alternating-rows",       // Story 4.8 — native host leg RUN in-story (D-000.54); other targets deferred to Epic 4 boundary (D-000.4)
 	"matrix-document: component-asset-import", // Story 5.13 — AD-21 fixture pinning setComponentAsset's canonical output (digest-as-key, 76-col wrap, sorted keys, repoint); registered per engineering-lead ruling (2026-08-29) that Task 5's AD-21 obligation was owed in-story and guardrail 10 excluded only OTHER stories' fixtures; legs DEFERRED to the gate (D-5.13.5: this story's four-target matrix run declined)
 	"matrix-document: mandatory-break",        // Story 7.1 (FR46) — the first cross-target artifact carrying a line feed. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
+	"matrix-document: line-spacing",           // Story 7.2 — the first cross-target artifact declaring style.lineSpacing (and format version 1.1). Authorised by the story's own Verification section, which makes 7.2's correctness byte-identity-shaped and carries the heavy tests regardless of the per-epic cadence. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 }
 
 // TestEpic2GateObligationsMatchTheDeclaredSet asserts, mechanically

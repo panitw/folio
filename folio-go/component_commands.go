@@ -836,7 +836,7 @@ func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessag
 func propertyPath(changes map[string]json.RawMessage) string {
 	// This is a fixed command vocabulary, so use its canonical order rather
 	// than ranging a map (diagnostic location must be repeatable too).
-	for _, key := range []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+	for _, key := range []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "lineSpacing", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
 		if _, ok := changes[key]; ok {
 			return key
 		}
@@ -893,7 +893,7 @@ func styleFor(element *template.Element) *template.Style {
 
 func applyPropertyChanges(t *Template, element *template.Element, changes map[string]json.RawMessage) error {
 	allowed := map[string]bool{"x": true, "y": true, "visibleIf": true}
-	propertyOrder := []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
+	propertyOrder := []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "lineSpacing", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
 	if element.Type != template.ElementTable {
 		allowed["width"], allowed["height"] = true, true
 	}
@@ -910,7 +910,7 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 		// Story 10.1: `color` is the ink text prints in, so it is offered
 		// exactly where text is — never on a rect, line or image, which
 		// carry no glyphs for it to colour.
-		for _, key := range []string{"fontFamily", "fontSize", "bold", "italic", "align", "valign", "color"} {
+		for _, key := range []string{"fontFamily", "fontSize", "lineSpacing", "bold", "italic", "align", "valign", "color"} {
 			allowed[key] = true
 		}
 	}
@@ -1104,6 +1104,30 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					st.Border.Value.Color = template.Presence[string]{Set: true, Value: text}
 				}
 			}
+		case "lineSpacing":
+			// NOT propertyLength. That decoder reads POINTS and bounds
+			// them by MaxCanvasMillipoints; lineSpacing is a
+			// dimensionless ratio with its own domain, and borrowing a
+			// length decoder would give the inspector a different notion
+			// of a legal value from the one the file path enforces.
+			//
+			// D-7.2.3's "a value refused in a file is refused in the
+			// inspector for the SAME reason" is satisfied by calling the
+			// SAME function the loader calls — template.DecodeLineSpacing
+			// — not by mirroring its bounds here.
+			if setNull {
+				return fmt.Errorf("%s does not support null", key)
+			}
+			st := styleFor(element)
+			if clear {
+				st.LineSpacing = template.Presence[int64]{}
+				continue
+			}
+			thousandths, err := template.DecodeLineSpacingRaw(value)
+			if err != nil {
+				return fmt.Errorf("%s: %w", key, err)
+			}
+			st.LineSpacing = template.Presence[int64]{Set: true, Value: thousandths}
 		case "bold", "italic":
 			if setNull {
 				return fmt.Errorf("%s does not support null", key)
@@ -1178,7 +1202,7 @@ func cleanupEmptyStyle(element *template.Element) {
 			style.Padding = template.Presence[template.Padding]{}
 		}
 	}
-	if !style.Align.Set && !style.Background.Set && !style.Bold.Set && !style.Color.Set && !style.Italic.Set && !style.Border.Set && !style.FontFamily.Set && !style.FontSize.Set && !style.Padding.Set && !style.Valign.Set && len(style.Extra) == 0 {
+	if !style.Align.Set && !style.Background.Set && !style.Bold.Set && !style.Color.Set && !style.Italic.Set && !style.Border.Set && !style.FontFamily.Set && !style.FontSize.Set && !style.LineSpacing.Set && !style.Padding.Set && !style.Valign.Set && len(style.Extra) == 0 {
 		element.Style = template.Presence[template.Style]{}
 	}
 }

@@ -600,6 +600,27 @@ func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Sty
 		}
 		st.FontSize = present(v)
 	}
+	if r, ok := obj["lineSpacing"]; ok {
+		// Story 7.2 / D-7.2.3, D-7.2.5. The entry in `consumed` is not
+		// bookkeeping: without it the key falls through to extraFields
+		// and round-trips opaquely through Extra, silently ignored by
+		// every construction site — a documented format key the engine
+		// would appear to accept and then never honour.
+		consumed["lineSpacing"] = true
+		v, err := DecodeLineSpacingRaw(r)
+		if err != nil {
+			// CODED, not plain. An uncoded LoadError becomes
+			// TEMPLATE_MALFORMED at folio.ParseTemplate's boundary, and
+			// wasm/cmd/engine's reportableMessage replaces THAT code's
+			// message with "The template could not be processed" — so an
+			// uncoded lineSpacing refusal is destroyed before the author
+			// ever sees which element and which range it was about.
+			// Located at fieldPrefix, so a headerStyle value is located
+			// at headerStyle.lineSpacing rather than at its sibling.
+			return Style{}, newLoadErrorCoded(fieldPrefix+".lineSpacing", elementID, string(r), err.Error(), diag.CodeStyleLineSpacingInvalid)
+		}
+		st.LineSpacing = present(v)
+	}
 	if r, ok := obj["padding"]; ok {
 		consumed["padding"] = true
 		pd, err := decodePadding(elementID, r, fieldPrefix+".padding")

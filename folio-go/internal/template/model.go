@@ -261,8 +261,21 @@ type Style struct {
 	Border     Presence[Border]
 	FontFamily Presence[string]
 	FontSize   Presence[geom.Length]
-	Padding    Presence[Padding]
-	Valign     Presence[string]
+	// LineSpacing is Story 7.2's author-set leading ratio, carried as a
+	// WHOLE NUMBER OF THOUSANDTHS (the authored 1.5 is 1500, and the
+	// absent default is exactly LineSpacingUnit). It is an int64 count
+	// and deliberately NOT a geom.Length: it is dimensionless, and
+	// spelling it as a length would invite it into the millipoint
+	// arithmetic that AD-2 keeps to one unit.
+	//
+	// It scales the vertical model's Advance and NOTHING else, so a
+	// multi-line element's first baseline — hence its top edge — does
+	// not move when it changes (D-2.5a/DW-15's two-model split). Absent
+	// emits nothing, which is what leaves every document that declares
+	// no spacing byte-identical.
+	LineSpacing Presence[int64]
+	Padding     Presence[Padding]
+	Valign      Presence[string]
 
 	Extra []Field
 }

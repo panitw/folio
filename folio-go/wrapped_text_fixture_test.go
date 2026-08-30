@@ -169,7 +169,7 @@ func TestWrappedTextSemanticAcceptance(t *testing.T) {
 	// them first. It is kept as cheap belt-and-braces that ties the
 	// artifact back to the symbol that produced it — and it is
 	// explicitly NOT one of the checks this fixture claims as coverage.
-	got, err := lineAdvance([]string{"Noto Sans", "Noto Sans Thai", "Noto Sans SC"}, geom.Length(11000), testShippedFontSet(), newFontCache())
+	got, err := lineAdvance([]string{"Noto Sans", "Noto Sans Thai", "Noto Sans SC"}, geom.Length(11000), defaultLineSpacing, testShippedFontSet(), newFontCache())
 	if err != nil {
 		t.Fatalf("lineAdvance: %v", err)
 	}

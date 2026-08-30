@@ -115,7 +115,7 @@ func extraKVs(fields []Field) []kv {
 
 func writeDocument(dst []byte, d *Document) []byte {
 	fields := []kv{
-		{"version", writeString(versionForSave(d.Version))},
+		{"version", writeString(versionForSave(d.Version, d))},
 		{"locale", writeString(d.Locale)},
 		{"utcOffset", writeString(d.UTCOffset)},
 		{"page", func(dst []byte, depth int) []byte { return writePage(dst, depth, d.Page) }},
@@ -363,6 +363,14 @@ func writeStyle(dst []byte, depth int, st Style) []byte {
 	}
 	if st.FontSize.Set {
 		fields = append(fields, kv{"fontSize", writePoints(st.FontSize.Value)})
+	}
+	if st.LineSpacing.Set {
+		// Emitted in the SAME exact-decimal spelling it was authored in:
+		// thousandths through appendPoints is the identical ×1000
+		// decimal path decodePoints read it with, so 1500 round-trips as
+		// `1.5` and 1000 as `1`. AD-9's edit-and-edit-back byte
+		// identity, not a second number formatter.
+		fields = append(fields, kv{"lineSpacing", writePoints(geom.Length(st.LineSpacing.Value))})
 	}
 	if st.Padding.Set {
 		pd := st.Padding.Value

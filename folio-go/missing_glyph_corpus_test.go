@@ -104,6 +104,21 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 			data: Data(mandatoryBreakDataJSON),
 			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
 		},
+		{
+			// Story 7.2. Like mandatory-break above, not one of Story
+			// 2.5a's five re-recorded goldens — declared in
+			// beyondBaselineAcceptance below.
+			name: "line-spacing",
+			tpl: func(t *testing.T) *Template {
+				tpl, err := ParseTemplate([]byte(lineSpacingTemplateJSON))
+				if err != nil {
+					t.Fatalf("parse line-spacing template: %v", err)
+				}
+				return tpl
+			},
+			data: Data(lineSpacingDataJSON),
+			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
+		},
 	}
 
 	// Finding 11 (QA review, Minor): a length check alone cannot see a
@@ -129,6 +144,7 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 	// addition fails just as a disappearance does.
 	beyondBaselineAcceptance := map[string]string{
 		"mandatory-break": "Story 7.1 (FR46) — the first committed document whose text or bound data carries a line feed",
+		"line-spacing":    "Story 7.2 — the first committed document that declares style.lineSpacing, and the first declaring format version 1.1",
 	}
 
 	wantNames := make(map[string]bool, len(baselineAcceptanceFixtures))

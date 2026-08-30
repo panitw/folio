@@ -34,6 +34,29 @@ const (
 // concern).
 const defaultFontSizePt geom.Length = 12000
 
+// defaultLineSpacing is the neutral leading ratio: an element whose
+// style declares no `lineSpacing` is measured with exactly
+// template.LineSpacingUnit thousandths, so ScaleRound's quotient is the
+// ruled advance unchanged and every document written before Story 7.2
+// renders to the same bytes it did.
+const defaultLineSpacing int64 = template.LineSpacingUnit
+
+// styleLineSpacing extracts an element's leading ratio in thousandths,
+// beside — and in the same shape as — the fontSize extraction every
+// construction site already performs. Absent, null, or no style block at
+// all all mean the neutral ratio.
+//
+// It is a function rather than four inlined copies because Story 7.2
+// reaches FOUR construction sites (text element, table header labels,
+// table body-and-footer, canvas projection) and D-7.1.3's "every caller,
+// no carve-out" is a property that four hand-written copies cannot keep.
+func styleLineSpacing(st template.Presence[template.Style]) int64 {
+	if st.Set && !st.Null && st.Value.LineSpacing.Set && !st.Value.LineSpacing.Null {
+		return st.Value.LineSpacing.Value
+	}
+	return defaultLineSpacing
+}
+
 // pageDimensions resolves a Document's page geometry (band composition
 // needs page height and margins; see pageGeometryOf, which is the only
 // caller that reaches internal/layout with them). An unrecognised named size is a
@@ -845,7 +868,7 @@ func collectBandTextRuns(
 		// widens the set of inputs that can reach verticalModel's two
 		// error paths. That widening is measured rather than assumed:
 		// see TestVerticalModelErrorPathsAreUnreachableThroughRender.
-		vm, serr := chainVerticalModel(chain, fontSize, fs, cache)
+		vm, serr := chainVerticalModel(chain, fontSize, styleLineSpacing(el.Style), fs, cache)
 		if serr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}

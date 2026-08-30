@@ -218,6 +218,39 @@ const (
 	// Minted here, at the point the condition first ships (R7/D-000.65,
 	// D-1.4.2: never ahead of it).
 	CodeTableRowClippedHeight Code = "TABLE_ROW_CLIPPED_HEIGHT"
+
+	// CodeStyleLineSpacingInvalid names Story 7.2's own new condition
+	// (D-7.2.5): a `style.lineSpacing` (or `headerStyle.lineSpacing`)
+	// whose value is OUTSIDE ITS DECLARED DOMAIN — not a whole number of
+	// thousandths in [1, 1000000], or carrying more than three decimal
+	// places. Raised from the ONE validation function
+	// (internal/template's DecodeLineSpacing) that both the load path
+	// and the property-command path call.
+	//
+	// MINTING IS WHAT MAKES THE STORY'S DIAGNOSTIC AC REACHABLE AT ALL,
+	// not registry hygiene. Every load-time style rejection is otherwise
+	// uncoded, becomes CodeTemplateMalformed at folio.ParseTemplate's
+	// boundary, and wasm/cmd/engine's reportableMessage replaces
+	// TEMPLATE_MALFORMED's message — and only that one — with "The
+	// template could not be processed". So an uncoded lineSpacing error
+	// never reaches the author. That destruction rule exists because a
+	// malformed-template message quotes the offending document back; an
+	// engine-authored message naming an element id and a numeric range
+	// quotes nothing back, so the rule does not reach this case.
+	//
+	// SCOPE, against D-4.5.1's discriminator. This code names the
+	// FIELD'S VALUE being outside its declared domain, at LOAD. The two
+	// typographic failures Story 7.2 also guards — a resolved advance of
+	// zero, and int64 overflow at the scaling site — are different
+	// conditions at a different stage (render, where the font size
+	// finally exists) with a different remedy, and must NOT be folded in
+	// here to save a mint.
+	//
+	// Forward note, not a decision: with CodeStyleColorInvalid this is
+	// the second per-field style code. Before a THIRD is minted, someone
+	// must decide whether the general form is right or whether AD-14's
+	// closed registry accretes one entry per style field forever.
+	CodeStyleLineSpacingInvalid Code = "STYLE_LINE_SPACING_INVALID"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -241,6 +274,7 @@ var allCodes = []Code{
 	CodeTableHeaderRepeatSuppressed,
 	CodeTableFooterOrphanSuppressed,
 	CodeTableRowClippedHeight,
+	CodeStyleLineSpacingInvalid,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
@@ -274,6 +308,7 @@ var dispositions = map[Code]Disposition{
 	CodeTableHeaderRepeatSuppressed: DispositionWarning,
 	CodeTableFooterOrphanSuppressed: DispositionWarning,
 	CodeTableRowClippedHeight:       DispositionWarning,
+	CodeStyleLineSpacingInvalid:     DispositionError,
 }
 
 // Classified reports the registry-owned disposition for c. A registered code

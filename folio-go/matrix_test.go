@@ -587,6 +587,42 @@ func captureMandatoryBreakRender(t *testing.T, target matrixTarget, binPath stri
 	return runOnTarget(t, target, binPath, map[string]string{subprocessMandatoryBreakEnvVar: "1"})
 }
 
+// captureLineSpacingRender runs Story 7.2's selector, rendering
+// fixtures/line-spacing/ in a FRESH process — the same reason
+// mandatory-break needed one.
+func captureLineSpacingRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessLineSpacingEnvVar: "1"})
+}
+
+// requireLineSpacingIsHonoured is Story 7.2's OWN feature guard for the
+// line-spacing document, and it is the reason registering the legs is
+// not a formality.
+//
+// "Contains a FontFile2" is satisfied by any embedding at all, and every
+// element of this document fits its declared box, so a target that
+// IGNORED style.lineSpacing entirely would still emit every baseline —
+// just evenly spaced at the ruled advance — and four such legs would
+// agree with each other byte for byte and certify nothing. This guard
+// asserts, on EVERY leg before any byte comparison, that the captured
+// stream carries the three DIFFERENT intervals the document declares:
+// e1's ruled 14,982, e2's widened 22,473 and e3's tightened 8,989.
+func requireLineSpacingIsHonoured(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+
+	runs := readEmittedRuns(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the line-spacing leg emitted no text runs", target.name)
+	}
+	ys := linesByOrigin(runs)
+
+	// Fatal here: a matrix leg comparing bytes it has not first
+	// established are the RIGHT bytes is worse than no leg.
+	lineSpacingAssertBaselines(ys, func(format string, args ...any) {
+		t.Fatalf("%s: line-spacing leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 func captureAlternatingRowsRender(t *testing.T, target matrixTarget, binPath string) []byte {
 	t.Helper()
 	return runOnTarget(t, target, binPath, map[string]string{subprocessAlternatingRowsEnvVar: "1"})
@@ -1562,6 +1598,29 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "mandatory-break", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireMandatoryBreakIsBroken,
+		wantPages:        1,
+	},
+	{
+		// Story 7.2's document: the first that declares a line spacing
+		// at all, and the first declaring format version 1.1.
+		//
+		// Registered on the same terms as mandatory-break above — the
+		// slug lives in .github/workflows/matrix.yml's `docs="…"` list
+		// and in an upload-artifact path for every target under
+		// `if-no-files-found: error`, pinned by
+		// TestMatrixDocumentSlugsAreRegisteredInCI.
+		//
+		// D-000.4's cadence override was not NEEDED for it either:
+		// applying the ratio is one geom.ScaleRound call on an int64
+		// that was already being scaled, with no new dependency, no
+		// float and no vendor call. The legs are run because this
+		// story's correctness is byte-identity-shaped.
+		label:            "line-spacing (an author-set leading ratio)",
+		slug:             "line-spacing",
+		capture:          captureLineSpacingRender,
+		fixtureRelPath:   []string{"fixtures", "line-spacing", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireLineSpacingIsHonoured,
 		wantPages:        1,
 	},
 }

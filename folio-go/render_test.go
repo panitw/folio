@@ -815,6 +815,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessLineSpacingEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(lineSpacingTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(lineSpacingDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	// Story 4.7's ELEVENTH..FOURTEENTH selectors: the Customer Account
 	// Statement at 1, 5, 20 and 50 pages. Four selectors rather than one
 	// parameterised selector because matrixDocuments' capture contract is
@@ -845,6 +858,14 @@ func TestMain(m *testing.M) {
 // for the same reason multi-page and page-count-20 needed one: a golden
 // recorded from one process pins whatever that process happened to do.
 const subprocessMandatoryBreakEnvVar = "FOLIO_SUBPROCESS_RENDER_MANDATORYBREAK"
+
+// subprocessLineSpacingEnvVar is Story 7.2's selector, rendering
+// fixtures/line-spacing/ — the first document in this repository that
+// declares a line spacing at all, and the first declaring format
+// version 1.1 — in a FRESH process, for the same reason mandatory-break
+// needed one: a golden recorded from one process pins whatever that
+// process happened to do.
+const subprocessLineSpacingEnvVar = "FOLIO_SUBPROCESS_RENDER_LINESPACING"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

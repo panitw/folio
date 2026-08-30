@@ -1,0 +1,27 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "Ruled\nleading", "style": {"fontFamily": "body", "fontSize": 11}},
+        {"id": "e2", "type": "text", "x": 0, "y": 60, "width": 200, "height": 60, "value": "Open\nleading", "style": {"fontFamily": "body", "fontSize": 11, "lineSpacing": 1.5}},
+        {"id": "e3", "type": "text", "x": 0, "y": 140, "width": 200, "height": 60, "value": "Tight\nleading\nthrice", "style": {"fontFamily": "body", "fontSize": 11, "lineSpacing": 0.6}},
+        {"id": "e4", "type": "table", "x": 0, "y": 240, "bind": "clauses[]", "as": "clause", "headerHeight": 20,
+          "columns": [
+            {"id": "e5", "label": "No.", "width": 40, "bind": "{{clause.no}}"},
+            {"id": "e6", "label": "Clause", "width": 200, "bind": "{{clause.text}}"}
+          ],
+          "style": {"fontFamily": "body", "fontSize": 11, "lineSpacing": 1.5},
+          "headerStyle": {"fontSize": 11, "lineSpacing": 0.6}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 7,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+07:00",
+  "version": "1.1"
+}

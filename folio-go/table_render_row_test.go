@@ -109,7 +109,7 @@ func TestWrappedCellGrowsTheRowAndNeverTheColumn(t *testing.T) {
 			if linesWide < 2 {
 				t.Fatalf("%s: wide value did not wrap at all (observed %d line(s)) — this test's control precondition failed", c.name, linesWide)
 			}
-			vm, err := chainVerticalModel([]string{shippedFaceFor(c.name)}, defaultFontSizePt, testShippedFontSet(), newFontCache())
+			vm, err := chainVerticalModel([]string{shippedFaceFor(c.name)}, defaultFontSizePt, defaultLineSpacing, testShippedFontSet(), newFontCache())
 			if err != nil {
 				t.Fatalf("chainVerticalModel: %v", err)
 			}

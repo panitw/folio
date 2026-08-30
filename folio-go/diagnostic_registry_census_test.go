@@ -63,6 +63,18 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 			_, err = Render(tpl, Data(`{"customer":{"name":"Ada"},"transactions":[{"date":"2026-08-29","amount":1}]}`), Params(`{}`), testShippedFontSet())
 			return err
 		},
+		diag.CodeStyleLineSpacingInvalid: func(t *testing.T) error {
+			// Story 7.2. A LOAD-time trigger, unlike STYLE_COLOR_INVALID's
+			// render-time one: lineSpacing's domain is checked at the
+			// trust boundary by the one function both the file path and
+			// the property-command path call, so ParseTemplate is where
+			// the production condition actually occurs. 1000.001 is one
+			// thousandth past the stated sanity ceiling.
+			source := strings.Replace(roundTripGoldenSource(t), `"fontSize": 12`, `"fontSize": 12,
+            "lineSpacing": 1000.001`, 1)
+			_, err := ParseTemplate([]byte(source))
+			return err
+		},
 		diag.CodeTableFooterSourceUnresolved: func(t *testing.T) error {
 			source := roundTripGoldenSource(t)
 			source = strings.Replace(source, `{{formatNumber(transaction.amount, \"#,##0.00\")}}`, `{{transaction}}`, 1)

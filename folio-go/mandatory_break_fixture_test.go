@@ -458,7 +458,7 @@ func TestMandatoryBreakGoldenFixture(t *testing.T) {
 // (D-000.42) and NOT counted as this fixture's coverage: any change that
 // moved lineAdvance would redden the artifact assertion first.
 func TestMandatoryBreakAdvanceIsTheRuledOne(t *testing.T) {
-	got, err := lineAdvance([]string{"Noto Sans"}, geom.Length(11000), testShippedFontSet(), newFontCache())
+	got, err := lineAdvance([]string{"Noto Sans"}, geom.Length(11000), defaultLineSpacing, testShippedFontSet(), newFontCache())
 	if err != nil {
 		t.Fatalf("lineAdvance: %v", err)
 	}

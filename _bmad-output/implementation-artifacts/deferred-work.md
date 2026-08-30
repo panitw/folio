@@ -180,6 +180,74 @@ all → **Fatal** on the vacuity path; moving the single declaration → **both*
 
 ## Open
 
+### DW-26 — `style.fontSize` has no range check at all, and it is the other operand of the one product that can overflow `geom.ScaleRound`
+
+- **Deferred by:** Story 7.2 (2026-08-30), whose own contract forbids it the fix — D-7.2.4 rules a
+  bound on `fontSize` out of that story's scope explicitly, as a second field that would have earned
+  the story a `multiple-goals` warning.
+- **Owner:** the next story that bounds a numeric format field's legal range, plus the epic
+  plan-gate checklist as a second standing address. Named this way on purpose, following DW-25:
+  D-000.73 rules that an owner which is an EVENT ("Epic 7 close") stops existing when the event
+  passes, and this file's own DW-24 is the worked example of what an unowned item costs — it
+  survived two stories undischarged.
+- **Severity:** MEDIUM. The consequence is not a crash but a suite-wide blindfold (see below).
+- **Status:** OPEN. **Recorded, deliberately not closed** (D-7.2.4).
+
+**What is missing.** `style.fontSize` is decoded through `decodePointsRaw` →
+`decodePoints` (`folio-go/internal/template/decimal.go:30`), which enforces exactness (no more than
+three decimal places) and refuses int64 millipoint overflow — and **nothing else**. There is no
+minimum, no maximum, and no positivity check. `"fontSize": 0` loads. So does a font size of
+9,000,000,000 points.
+
+**Why it is recorded HERE and not merely as a nit. A PANIC IS STILL REACHABLE FROM A TEMPLATE
+THROUGH THIS FIELD, AND THAT IS WHY THIS ITEM IS OPEN.**
+
+`geom.ScaleRound` **panics** on int64 product overflow (`folio-go/internal/geom/scale.go:68`), and a
+Go panic aborts the package binary, so every other test in `folio-go` silently stops reporting — a
+suite-wide blindfold rather than a crash. `verticalModel` (`folio-go/wrap.go`) performs **two**
+multiplications, and only one of them is guarded:
+
+| multiply | operands | guarded? |
+|---|---|---|
+| the model's own `scale` closure — `ScaleRound(units, fontSize, 1000)` | font units × **`style.fontSize`** | **NO** |
+| the leading ratio — `ScaleRound(ruledAdvance, lineSpacing, 1000)` | ruled advance × `style.lineSpacing` | **yes**, by `int64MulWouldOverflow` immediately before the call |
+
+Story 7.2 discharged the precondition it introduced, and red-proved it by neutering the guard and
+observing the panic. It did **not** discharge the pre-existing one, because doing so means bounding
+`fontSize` — a format-domain decision about a second field's legal values, which D-7.2.4 rules out
+of that story's scope. **Measured:** `verticalModel([]string{"probe"}, notoSansMetrics,
+geom.Length(1<<62), 1000)` panics with *"geom: ScaleRound: v\*num overflows int64"* — **with
+`lineSpacing` absent entirely**, i.e. through nothing but an authored `fontSize`, on a document the
+7.2 feature never touches.
+
+So the honest statement of this item is: the ratio multiply is safe; the font-size multiply on the
+same function is not; and a template can still reach a panic through an unbounded `fontSize`. The
+shared site is named here so that whoever eventually bounds `fontSize` knows the ratio guard already
+standing beside it, and does not remove it as redundant — and so that the panic route is not
+mistaken for closed.
+
+**Related, and equally unbounded:** an absurd `fontSize` also reaches `measureRuneRange`'s glyph
+scaling and the canvas projection's `MaxCanvasMillipoints` bounds. Those refuse or clamp rather than
+panic. **No route through `fontSize` is closed; one route through `lineSpacing` is.**
+
+**Why not raise `lineSpacing`'s ceiling instead.** Deriving a load-time `lineSpacing` ceiling
+honestly from the overflow case gives roughly **1023 thousandths** — it would forbid `lineSpacing`
+above 1.0. That reductio is exactly why D-7.2.3's `1000000` ceiling is a stated sanity bound and
+nothing more, and why the honest remedy is a bound on `fontSize`, not a tighter one on the ratio.
+
+**Trigger:** any story that bounds a numeric format field's range, any story that changes
+`decodePoints` or `decodePointsRaw`, and any story that touches `geom.ScaleRound`'s preconditions or
+the leading model's guards in `folio-go/wrap.go`.
+
+**How we'd know it was CLOSED.** `verticalModel`'s `scale` closure can no longer be driven to a
+panic from an authored `fontSize` — either because the field is bounded at load, or because that
+multiply is guarded the way the ratio multiply is. Until one of those is true, this entry stands and
+the panic above is reproducible.
+
+**This item is OPEN.**
+
+---
+
 ### DW-24 — the SIX rounded alignment branches — `align: "center"` and `valign: "middle"`, in `text_alignment.go` and in all three table-cell paths — are declared by no fixture, so every rounding site in the feature has zero golden coverage
 
 **Owner:** **Story 7.3**, *and* the **orchestrator's own gate checklist** as a second standing
@@ -206,12 +274,27 @@ nobody holding it. An owner that is an *event* stops existing the moment the eve
 change to `folio-go/text_alignment.go` or to the table-cell alignment switches in
 `folio-go/table_render.go`, and any change to `geom.ScaleRound` or its rounding rule.
 
-**The trigger has already fired once, and the item was still declined.** Story 7.1 changed what
-FEEDS `textBlockHeight` — an empty line now contributes a full `Advance` — without touching the
-rounding or the population that reaches it. See the Owner note above: the criterion is the
-unexercised rounding branch, and a story that leaves that gap exactly as it found it discharges
-nothing by closing it. A future trigger fires the same way: it obliges the owner to *look*, not to
-close.
+**The trigger has now fired TWICE, and the item was declined both times. IT IS NOT DEFERRABLE A
+THIRD TIME** (D-7.2.6).
+
+*First firing — Story 7.1.* It changed what FEEDS `textBlockHeight` — an empty line now contributes
+a full `Advance` — without touching the rounding or the population that reaches it. See the Owner
+note above: the criterion is the unexercised rounding branch, and a story that leaves that gap
+exactly as it found it discharges nothing by closing it.
+
+*Second firing — Story 7.2, declined on a NARROWER ground than the one first offered.* The reasoning
+matters more than the outcome here, because the reasoning first proposed was wrong. It was that 7.2
+touches "a different call site, denominator and file". **It does not.** Story 7.2 genuinely DOES
+change the input to the unexercised rounding site: `textBlockHeight` is built from `Advance`, and
+`style.lineSpacing` scales `Advance`, so the slack that `ScaleRound(slack, 1, 2)` halves for
+`valign: "middle"` is a number this story moves. The exposure is unchanged for one reason only —
+**no fixture declares `valign` at all**, which is the very absence this entry exists to record.
+That, and not "a different call site", is the ground on which 7.2's decline stands.
+
+*Why there is no third time.* Story 7.3 is this item's owner (D-7.1.4). **7.3's plan gate treats it
+as an ACCEPTANCE CRITERION, not a deferred item**, and a decline there is an escalation to the
+engineering lead rather than another entry in this file. A trigger that has failed to fire twice
+stops being a trigger.
 
 **Raised at:** Story 15.1, from the population census that closed its attribution (D-15.1.1, D-R7.5),
 and **widened in that story's own review** from a `valign`-only item to this one.
@@ -315,7 +398,8 @@ halves and **both** must be run — running only the first is what let this item
 
 While this item is open, the suite stays green under both. When it is closed, **both** must go red.
 
-**This item is OPEN.** Story 7.1 amended its scope and re-addressed it; it closed nothing.
+**This item is OPEN.** Story 7.1 amended its scope and re-addressed it; Story 7.2 re-addressed it on
+the corrected ground above and fixed the deadline. Neither closed anything.
 
 ---
 
@@ -1756,7 +1840,14 @@ guard moved from unreachable-by-construction to reachable by pasting a long clau
 
 1. **The blast radius is the whole projection, not the element.** Every other canvas bound in this
    file — `maxCanvasPropertyString`, `maxCanvasTextFragments` — sits beside a projection that either
-   degrades or is bounded by construction. This one is the only reachable hard abort.
+   degrades or is bounded by construction. This one is the only reachable hard abort of the canvas
+   BOUNDS. **Amended 2026-08-30 by Story 7.2:** it is no longer the only hard abort reachable through
+   `addCanvasTextPaint`. That function now derives the leading model per element and returns its
+   error, so an authored, LOAD-LEGAL `style.lineSpacing` that resolves to a zero advance or an
+   overflowing product also aborts the whole projection — a second route in, from the format side
+   rather than the bounds side. This does not widen DW-25's own remedy (7.2's contract forbids it any
+   designer-surface work), but whoever lifts these bounds under Story 7.4 must know the function has
+   two classes of caller-visible failure to degrade, not one.
 2. **It is directly in Story 7.4's path.** 7.4 is "author body text in the designer", whose whole
    point is typing and pasting multi-paragraph clause text into exactly this element on exactly this
    surface. A pasted contract clause is not an adversarial input.
