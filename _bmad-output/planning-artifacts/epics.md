@@ -9,6 +9,9 @@ inputDocuments:
   - _bmad-output/specs/spec-folio/SPEC.md
   - _bmad-output/specs/spec-folio/acceptance.md
   - _bmad-output/specs/spec-folio/glossary.md
+  - _bmad-output/specs/spec-fonts/SPEC.md
+  - _bmad-output/specs/spec-fonts/format-changes.md
+  - _bmad-output/specs/spec-fonts/font-catalogue.md
 excludedDocuments:
   - docs/folio-mvp-plan.md  # superseded by PRD §4 departures D1-D7
   - "**/review-*.md, **/.memlog.md"  # process records, not content
@@ -104,6 +107,14 @@ FR48: Control the space between a text element's lines, as an integer ratio appl
 FR49: Author and edit multi-paragraph body text, its line spacing and its alignment in the designer.
 FR50: Author on a canvas that extends across every page the content column currently occupies, with page-header and page-footer chrome repeated per page and breaks drawn where the engine will take them.
 FR51: Declare a group of content-band elements that paginate together, so a signature block is never split across a page boundary.
+
+**Fonts an Author Can Choose and a File Can Carry** *(post-MVP, Epic 8)*
+
+FR52: Create, rename, reorder and delete the document's font chains and their entries from the designer, so `fontFamily` names a family the author chose.
+FR53: Embed a font face in the template, keyed by content hash like every other asset, and reference it from a chain entry.
+FR54: Render a template from its embedded faces alone — no network, no host-installed font, no install step on the rendering machine.
+FR55: Choose a family from a curated, freely-licensed catalogue that ships with the designer and works with the browser offline.
+FR56: Fail with a located error when a chain names a font that is neither a shipped face nor a present, decodable asset in the file.
 
 ### NonFunctional Requirements
 
@@ -306,6 +317,11 @@ in the PRD and a Non-goal in `SPEC.md`.
 | FR49 | Epic 7 | Body-text authoring in the designer |
 | FR50 | Epic 7 | Multi-page authoring canvas |
 | FR51 | Epic 7 | Keep-together groups |
+| FR52 | Epic 8 | Authorable font chains |
+| FR53 | Epic 8 | Font faces embedded in the template |
+| FR54 | Epic 8 | Render from embedded faces alone |
+| FR55 | Epic 8 | Curated offline font catalogue in the designer |
+| FR56 | Epic 8 | Located failure for a broken font reference |
 
 **NFR coverage:** NFR1 and NFR6 are established in Epic 1 and defended by every epic thereafter
 (AD-21: no change lands without a fixture). NFR3 and NFR7 land in Epic 2. NFR4 lands in Epic 2
@@ -446,6 +462,41 @@ hash identically after it. That is an acceptance criterion, not an aspiration.
 
 **FRs covered:** FR46, FR47, FR48, FR49, FR50, FR51
 **Also lands:** AD-4, AD-24 and D-2.6.1 upheld unchanged — the window model is a constraint on this epic, not a target of it
+---
+
+### Epic 8: A template author can choose a font, and the file carries it
+
+**Post-MVP.** Ploy needs the firm's typeface, not the three faces the library happens to ship. She
+searches a catalogue inside the designer — offline, no account, nothing fetched — picks a family,
+and saves. Anan renders that file on a build box with no fonts installed and no network, and gets
+the PDF she previewed, hash for hash. Nobody installed a font, and nobody had to be told which one
+was missing.
+
+The unit the author picks is a **face**; the unit the document names is a **chain** — an ordered
+list resolved per rune for coverage. Both halves are missing today: nothing edits the `fonts` map
+(so every document created in the designer offers exactly one family, `body`, from the starter
+file), and nothing but the three build-time faces can be named. 8.1–8.2 make chains authorable,
+8.3–8.4 make a face something the file carries and the engine renders from, 8.5–8.6 make choosing
+one a search rather than a hand-edit.
+
+`.folio` stays a **single JSON text file**. Font bytes ride the existing content-addressed `assets`
+map — the mechanism images already use — because the format exists so a person or an agent can edit
+a template without the designer (FR12) and so a hand-written template renders (S9). A container
+format ends both and puts entry order, timestamps and compression inside the byte-identity regime;
+SPEC-fonts records it as a non-goal with the CJK weight case named as the only trigger to revisit.
+
+Bold and italic are **not** in this epic. They are stored and projected today and consumed by no
+producer, and no weighted face ships; giving them meaning is a face-inventory decision SPEC-fonts
+leaves open, not a consequence of embedding.
+
+Every field this epic adds is optional and absent-by-default, so the existing golden corpus must
+hash identically after it. That is an acceptance criterion, not an aspiration. 8.5 is the story to
+trim rather than cut — the catalogue can ship with one family and grow by release.
+
+**FRs covered:** FR52, FR53, FR54, FR55, FR56
+**Also lands:** AD-9, AD-15, AD-22 and AD-26 upheld unchanged — canonical serialization, the
+engine's ownership of the document, byte identity, and licence provenance are constraints on this
+epic, not targets of it
 ---
 
 ## Epic 1: A Go developer can render a deterministic PDF
@@ -2222,3 +2273,228 @@ So that a signature block is never severed by a page boundary.
 **Given** a template declaring no groups
 **When** it is rendered
 **Then** its bytes are unchanged
+
+---
+
+## Epic 8: A template author can choose a font, and the file carries it
+
+Ploy picks the firm's typeface from a catalogue inside the designer, lays out the statement, and
+saves. Anan renders that file on a box with no fonts installed and no network, and gets her PDF
+byte for byte. The faces a document uses are declared in it, chosen in the designer, and carried in
+the file — because the `.folio` is the whole contract between the two of them, and a font nobody
+can install is not a choice she can make.
+
+### Story 8.1: The document's font chains become editable
+
+As a template author,
+I want to create, rename, reorder and delete the font chains my components name,
+So that `fontFamily` names a family I chose rather than whatever the starter file declared.
+
+**Covers:** FR52 · AD-9, AD-15, AD-22
+
+**Acceptance Criteria:**
+
+**Given** a loaded template
+**When** a font-chain change is commanded — a chain added, renamed, reordered, or an entry moved or
+removed
+**Then** it travels as one opaque command with one history entry, the engine owns the edit, and the
+designer re-projects from the engine's answer rather than writing the `fonts` map itself
+
+**Given** a chain that a `style.fontFamily` still names
+**When** its deletion is commanded
+**Then** it is refused with a located error naming the elements that would be left naming nothing —
+never accepted with the orphaned elements left to fail at render
+
+**Given** a chain rename
+**When** it is committed
+**Then** every element naming the old chain is updated inside that same command and history entry,
+so one undo restores both the map and the elements
+
+**Given** a command that would leave a chain with no entries
+**When** it is applied
+**Then** it is refused, upholding the existing rule that a chain with no entries is not a chain
+`fontFamily` may name
+
+**Given** a document whose chains are edited and then edited back
+**When** it is saved
+**Then** the bytes are identical to the original (AD-9), and the projection carries the chains in
+the engine's own order
+
+### Story 8.2: The chain editor sits where fonts are chosen
+
+As a template author,
+I want to see and edit the document's chains from the typography panel,
+So that choosing a font and defining what a font *is* are not two different tools.
+
+**Covers:** FR52 · UX-DR13, UX-DR24, UX-DR25
+
+**Acceptance Criteria:**
+
+**Given** a selected text component
+**When** the family control is opened
+**Then** it lists the chains the engine projects for this document, and offers an affordance that
+opens the chain editor on the same panel — no separate mode, no dialog stack
+
+**Given** the chain editor
+**When** a chain or entry is changed
+**Then** the change is a command to the engine, and every value shown afterwards comes from the
+engine's answer — the browser never holds its own model of the `fonts` map
+
+**Given** a chain entry that names an embedded face
+**When** it is displayed
+**Then** it reads as the face's family and style from the projection, never as an asset key or a
+file name
+
+**Given** a refused edit — an orphaning delete, an empty chain, a duplicate name
+**When** the engine answers
+**Then** the panel states the concrete reason in text at the control that caused it, following the
+existing property-panel error, focus and accessible-name conventions
+
+### Story 8.3: A font travels inside the template
+
+As an integrating Go developer,
+I want the faces a template uses to be inside the `.folio` file,
+So that rendering it needs no font install step and no knowledge of what it needs.
+
+**Covers:** FR53, FR56 · AD-9, AD-26, NFR1
+
+**Acceptance Criteria:**
+
+**Given** an embedded face
+**When** the document is serialized
+**Then** it is an `assets` entry keyed by the lowercase hex SHA-256 of its raw bytes, `data` base64
+hard-wrapped at 76 columns, a font `mediaType` from a closed set, and a `font` record carrying
+family, style, licence and source — the same asset mechanism images already use, with no second
+storage shape and no new canonical-serialization rule
+
+**Given** two chains naming the same face
+**When** the document is saved
+**Then** one copy is stored, and `assets` emission order is unchanged, so adding a font never moves
+an image
+
+**Given** a chain entry `{"asset": "<key>"}` whose key is not in `assets`
+**When** the template is loaded
+**Then** it is a located load error naming the chain, the entry index and the key — never a
+substituted face and never a silent drop
+
+**Given** an asset whose bytes do not decode as its declared font media type, or whose media type is
+outside the closed set
+**When** the template is loaded
+**Then** it is a located load error naming the asset
+
+**Given** the version rule, which makes a higher MAJOR a load error rather than a best-effort render
+**When** this story starts
+**Then** SPEC-fonts' open question on the bump is settled and written into `folio-format.md` before
+any code lands
+
+**Given** every template in the existing golden corpus, none of which embeds a font
+**When** it is rendered after this story
+**Then** its bytes are unchanged and its recorded digest still matches
+
+### Story 8.4: The engine renders from an embedded face
+
+As an integrating Go developer,
+I want a template with embedded faces to render on a machine that has never seen them,
+So that "the file is the contract" survives contact with a build box.
+
+**Covers:** FR54 · NFR1, NFR1.d, NFR1.e, AD-22
+
+**Acceptance Criteria:**
+
+**Given** a chain that mixes an embedded face with shipped faces
+**When** text is shaped
+**Then** the embedded face joins the same per-rune coverage resolution as a shipped one, in declared
+order, with no name-based substitution — the asset key decides, even where an embedded face and a
+shipped face share a family name
+
+**Given** a render whose supplied `FontSet` is the shipped set alone
+**When** the document names an embedded face
+**Then** it renders from the document's own bytes, reading no network, no host-installed font and no
+path on disk (FR33)
+
+**Given** the same document rendered on all four targets
+**When** the outputs are compared
+**Then** they are byte-identical, and the subset tag remains a deterministic hash of the glyph set —
+subsetting stays once per render inside the PDF producer, and no face is subset at save time
+
+**Given** the designer's canvas paint projection
+**When** a component uses an embedded face
+**Then** the preview measures with that same face through the same engine path, so the canvas and
+the PDF keep one measurement authority
+
+**Given** a fixture that embeds a face
+**When** it is added to the corpus
+**Then** it carries a recorded digest like every other fixture, so a later change to font handling
+cannot move these bytes silently (AD-21)
+
+### Story 8.5: A curated catalogue ships with the designer
+
+As a template author,
+I want a list of fonts I can legally use and actually reach,
+So that choosing one is a search rather than a hunt for a licence and a file.
+
+**Covers:** FR55 · NFR7, AD-26
+
+**Acceptance Criteria:**
+
+**Given** each catalogue face
+**When** it is prepared for the bundle
+**Then** it is a static, single-instance face derived ahead of the build by the same replayable
+derivation the shipped set uses, with its committed output, its licence text and its NOTICE
+recording the upstream release and both hashes — never generated at build time, which would make
+the PDF a function of the build environment
+
+**Given** the offline release
+**When** it is built and verified
+**Then** the catalogue and its faces are inside the bundle behind the same verified asset URLs as
+every other release asset, and the offline verification job covers them
+
+**Given** the browser offline
+**When** the author searches and picks a family
+**Then** the flow completes with no request leaving the machine — no `fonts.google.com`, no
+`fonts.gstatic.com`, no first-use download
+
+**Given** the bundle's size budget
+**When** the catalogue is added
+**Then** the added weight is measured and recorded against it, and each entry's own weight is
+visible to whoever curates the list
+
+**Given** a CJK family
+**When** the catalogue is assembled
+**Then** it is excluded in this epic — a full SC face is 10.6 MB against 646 KB and 47 KB for the
+shipped Latin and Thai faces — and the shipped SC face remains the coverage fallback
+
+### Story 8.6: Picking a family puts it in the file
+
+As a template author,
+I want picking a font to be all I do,
+So that the face, the chain and the fallback are already right when I save.
+
+**Covers:** FR55, FR53 · AD-15, UX-DR13, UX-DR20
+
+**Acceptance Criteria:**
+
+**Given** a catalogue pick
+**When** it is committed
+**Then** one command embeds the face and declares a chain naming it, as one history entry, and one
+undo removes both
+
+**Given** a family already embedded in this document
+**When** it is picked again
+**Then** no second copy is stored — the content hash decides — and the existing chain is offered
+rather than a duplicate declared
+
+**Given** a picked face that does not cover every script the document may render
+**When** the chain is proposed
+**Then** its tail is the shipped faces for the uncovered scripts, and the author can edit that tail
+in the chain editor
+
+**Given** the family control
+**When** the catalogue is shown
+**Then** entries the document already declares and entries it does not are visibly distinct — one is
+in the file, the other is not yet — and picking is what moves an entry from the second group to the
+first
+
+**Given** a font asset no chain names any longer
+**When** the document is saved
+**Then** it is dropped, so a file cannot accumulate megabytes of faces nothing draws with

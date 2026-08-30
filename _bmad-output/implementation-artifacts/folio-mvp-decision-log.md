@@ -14596,3 +14596,83 @@ and a page pin was never going to be one.
 it drift a page when the data changes, and having no way to express what they meant. That would be a
 signal for a stronger anchoring primitive (7.7 generalised, or an explicit page-break element), NOT
 for per-page layouts: the corpus finding above does not weaken with use.
+
+---
+
+### D-000.95 — A font travels in the assets map; `.folio` stays one JSON file
+**Owner decision**, taken while scoping Epic 8 (post-MVP), before any story was written.
+
+**Verdict.** The faces a template uses are embedded as ordinary `assets` entries — content-addressed
+by SHA-256, base64 hard-wrapped at 76 columns, deduplicated, emitted in stable order — and a `fonts`
+chain entry may reference one by key. `.folio` remains a **single JSON text file**. No zip, no
+directory package, no sidecar.
+
+**Situation.** The engine ships three Regular-only faces (`folio-go/fonts/fonts.go`: Noto Sans 646 KB,
+Noto Sans Thai 47 KB, Noto Sans SC 10.6 MB), embedded at build time. A document's `fonts` map declares
+named chains over those face names, no command edits that map, and the designer's starter declares
+exactly one chain. So the family control offers a list of length one, and no face the engine does not
+ship can be named at all. Any fix has to reach the developer's side of the file too: his render has no
+font install step, no network (FR33) and no way to be told what was missing.
+
+**Two readings were put to the owner.** (A) Embed the faces in the `assets` map that images already
+use, keeping one JSON file. (B) Upgrade `.folio` to a zip of folders and ship the fonts inside it.
+
+**Why B was rejected, and it was rejected on evidence rather than taste.** The owner raised B, on the
+reasonable ground that a package is the natural home for binary payloads. Three findings decided it:
+
+1. **A container ends the format's stated purpose.** `folio-format.md` opens by saying the format
+   exists because FR12 requires a person or an AI agent to edit a template without opening the
+   designer, and S9 requires a hand-written template to render. Both die with a zip, and both are
+   load-bearing claims of the product, not conveniences.
+2. **A container enlarges the byte-identity surface.** Entry order, timestamps, compression level and
+   extra fields would all have to be pinned for the four targets to keep producing identical bytes
+   (NFR1) — new invariants to hold, in exchange for storage the format already has.
+3. **A costs nothing new.** `assets` is already content-addressed, already deduplicated, already
+   base64-wrapped for readable diffs, already covered by canonical serialization (AD-9). Images prove
+   the mechanism. B additionally forces a MAJOR version break and a rewrite of every tool that reads a
+   `.folio`.
+
+**What the owner wanted from B is preserved.** The goal was that the file carries its fonts, so a
+template renders where no font is installed. A delivers exactly that; the container was the means, not
+the end.
+
+**Consequence, stated because it is A's one genuine weakness.** A face is stored whole — the data
+changes between saves, so a save-time subset would drop glyphs a later render needs — and base64
+inflates it by about a third. A full CJK face is 10.6 MB before wrapping, which is not a document
+anybody wants in Git. Epic 8 therefore keeps CJK on the shipped-face path and restricts the embeddable
+catalogue to Latin/Thai scale. PDF subsetting is unaffected: it stays once per render, inside the
+producer.
+
+**How we'd know it was wrong.** Authors routinely needing an embedded face in a megabyte-scale script,
+or `.folio` files becoming unreviewable in a diff because of the font payload. That would be the
+trigger to revisit the container — with the CJK case as its evidence — and not before.
+
+---
+
+### D-000.96 — The designer's font catalogue ships in the bundle; it is never fetched
+**Owner decision**, taken while scoping Epic 8 (post-MVP), before any story was written.
+
+**Verdict.** The list of choosable families, and their bytes, ship inside the designer's offline
+release behind the same verified asset URLs as every other release asset. The authoring path makes no
+request to `fonts.google.com`, `fonts.gstatic.com`, or any other host, at any point.
+
+**Situation.** The owner's direction was to show freely-usable Google fonts in the designer and ship
+the referenced faces in the saved file. The second half is D-000.95. The first half has a source
+question: a live catalogue from Google, or a curated one that ships with the app.
+
+**Why fetching was rejected.** The designer ships an offline release with a service worker and
+verified asset URLs, and the product's claim is that it opens with no account, no upload and no
+server. A live list makes the font control the one part of authoring that stops working on a plane,
+and puts a third-party request in the middle of a flow whose selling point is that no template or data
+byte leaves the machine. A fetched face would also arrive un-derived: the shipped set is a static
+instance produced ahead of the build by a replayable derivation precisely so the PDF is not a function
+of the build environment (D-2.2.4), and a downloaded upstream file has no such provenance.
+
+**Consequence, stated because it is the real cost.** The catalogue changes only when the designer is
+released, and somebody has to curate it. Each entry carries a licence, a NOTICE and a derivation, and
+each entry's bytes count against the offline bundle budget (NFR7). SPEC-fonts leaves which families
+ship as an open question for that reason.
+
+**How we'd know it was wrong.** Authors regularly wanting a family the catalogue does not carry, with
+no way to supply one. The answer then is an author-supplied font file imported the way an image is —
+already an open question in SPEC-fonts — not a live font service.

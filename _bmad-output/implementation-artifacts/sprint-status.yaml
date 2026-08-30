@@ -165,3 +165,21 @@ development_status:
   7-6-the-canvas-draws-every-page-the-document-will-produce: backlog
   7-7-keep-a-signature-block-together-across-a-page-break: backlog
   epic-7-retrospective: optional
+
+  # Epic 8 added 2026-08-30 (post-MVP). Fonts an author can choose and a file can carry,
+  # from SPEC-fonts (_bmad-output/specs/spec-fonts). Scoped in conversation against the
+  # alternative of a zip-of-folders .folio, which was REJECTED: the format exists so a
+  # person or an agent can edit a template without the designer (FR12) and so a
+  # hand-written template renders (S9), and a container puts entry order, timestamps and
+  # compression inside the byte-identity regime. Font bytes therefore ride the existing
+  # content-addressed assets map. Bold/italic are NOT in scope — they need a face
+  # inventory decision SPEC-fonts leaves open. Every field is optional and
+  # absent-by-default, so the existing corpus must hash identically.
+  epic-8: backlog
+  8-1-the-document-s-font-chains-become-editable: backlog
+  8-2-the-chain-editor-sits-where-fonts-are-chosen: backlog
+  8-3-a-font-travels-inside-the-template: backlog
+  8-4-the-engine-renders-from-an-embedded-face: backlog
+  8-5-a-curated-catalogue-ships-with-the-designer: backlog
+  8-6-picking-a-family-puts-it-in-the-file: backlog
+  epic-8-retrospective: optional
