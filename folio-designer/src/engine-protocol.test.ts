@@ -52,13 +52,27 @@ describe('canvas projection protocol guard', () => {
   })
 
   it('requires the engine-owned window height and window count', () => {
-    // hasOnly is exact-key and both fields are strictly positive integers, so
-    // a projection that omits either — or carries a zero count for a document
-    // that has at least one page — is not a projection this build understands.
-    const { contentWindowCount: _count, ...missing } = canvas
-    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: missing } })).toBeUndefined()
-    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, contentWindowCount: 0 } } })).toBeUndefined()
-    expect(parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, contentWindowCount: 4 } } })).toBeDefined()
+    // WHICH GUARD DOES WHAT, because the two are easy to confuse and only one
+    // of them is doing the work here. `hasOnly` is a SUBSET check — it rejects
+    // keys the build does not know, not keys it is missing (`hasExactKeys` is
+    // the strict sibling, and the canvas is not checked with it). What rejects
+    // an OMITTED field is `integer(key, true)`, which reads `undefined` and
+    // fails both `Number.isSafeInteger` and `> 0`. So both fields are required
+    // and both must be strictly positive: a zero count is not a document,
+    // since internal/layout answers ONE page for a column with no items.
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    const { contentWindowCount: _count, ...noCount } = canvas
+    const { contentWindowHeight: _height, ...noHeight } = canvas
+    expect(projection(noCount)).toBeUndefined()
+    // The second half, which the first version of this test never reached:
+    // omitting the HEIGHT has to be refused on the same terms, or a Go build
+    // that shipped one field and not the other would be admitted.
+    expect(projection(noHeight)).toBeUndefined()
+    for (const bad of [0, -1, 1.5, '4', null]) {
+      expect(projection({ ...canvas, contentWindowCount: bad })).toBeUndefined()
+      expect(projection({ ...canvas, contentWindowHeight: bad })).toBeUndefined()
+    }
+    expect(projection({ ...canvas, contentWindowCount: 4 })).toBeDefined()
   })
 
   it('bounds opaque producer failure provenance at the main-thread boundary', () => {

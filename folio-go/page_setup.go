@@ -493,6 +493,16 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 // element boxes with no background or border, correctly, because an unstyled
 // rect draws nothing on paper. This count is a claim about the column as the
 // CANVAS paints it, and the canvas paints every component's box.
+//
+// WITH ONE STATED EXCEPTION, so the sentence above is not read wider than it
+// is meant. "Styled or not" is about a box's APPEARANCE, not about whether an
+// element resolves to anything. Text contributes one item per SHAPED LINE and
+// never its box, so a text element that shapes no lines at all — an unset,
+// null or empty value, or a font chain that cannot be resolved —
+// contributes nothing, exactly as the render path treats a value that binds
+// to empty. Its box is still projected, so such an element placed windows
+// down is one more reason this number is a FLOOR rather than a prediction,
+// alongside the bound table whose rows the canvas has never been given.
 func addCanvasWindowCount(t *Template, projection *CanvasProjection, textItems []layout.ColumnItem) error {
 	g, err := canvasPageGeometry(t)
 	if err != nil {
@@ -676,9 +686,9 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 		name     string
 		elements []template.Element
 	}{
-		{"pageHeader", t.doc.Bands.PageHeader.Elements},
-		{"content", t.doc.Bands.Content.Elements},
-		{"pageFooter", t.doc.Bands.PageFooter.Elements},
+		{bandPageHeader, t.doc.Bands.PageHeader.Elements},
+		{bandContent, t.doc.Bands.Content.Elements},
+		{bandPageFooter, t.doc.Bands.PageFooter.Elements},
 	} {
 		for _, element := range band.elements {
 			if element.Type != template.ElementText {

@@ -2,13 +2,46 @@
 title: 'Story 7.5: The content column runs past the first page'
 type: 'feature'
 created: '2026-08-31'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '4bf201abadeafe29f7a9c19efb6f50b302a1b8b0'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized'] # oversized: the refusal-split surface, the Go/TS mirror inventory (R4) and the window-count derivation (R1) are three wide surfaces that must be stated, not summarised. NOT multiple-goals: the projection field is AC4 of this same story, not a second shippable.
-deferred: []
+deferred:
+  - summary: >-
+      The designer's live drag/resize clamp still bounds Y by band.height for all
+      three bands, so an author dragging in the canvas cannot reach past page one
+      even though the engine and the protocol guard now accept it.
+    evidence: |-
+      folio-designer/src/resize-anchor.ts:29 proposedBounds clamps y to
+      limitHeight - originalHeight (:34-35) and a south resize to limitHeight
+      (:52); App.tsx:701 fills DragLimit from { width: band.width, height:
+      band.height } for every band, and DragLimit carries no band name, so the
+      helper cannot tell the content band from a repeating one even in principle.
+      resize-anchor.test.ts:46,53 still pins the clamp and is unmodified.
+      Pre-existing, and the intent scopes this story to the command layer and the
+      projection-admission mirror; Design Notes judgment 3 assigns it to Story 7.6,
+      which is also the story that draws the later sheets a drag would target.
+    location: >-
+      folio-designer/src/resize-anchor.ts:29
+    severity: medium
+  - summary: >-
+      contentWindowCount has no upper bound, and the non-text extent is an
+      unguarded sum, so a content component placed at the JavaScript-safe ceiling
+      yields a count near 2.5e10 that the browser guard admits.
+    evidence: |-
+      After the lift the only remaining ceiling on a content Y is
+      MaxCanvasMillipoints (Design Notes judgment 1, which the ACs select). Text
+      line tops go through canvasLineTop's JS-safe guard, but the non-text branch
+      of addCanvasWindowCount builds Bottom: element.Y + height with a raw +, and
+      engine-protocol.ts requires only Number.isSafeInteger and > 0 of the count.
+      Nothing else on the projection is uncapped. Not reachable through any
+      shipped template, and Story 7.6 is the story that would try to draw one
+      sheet per window.
+    location: >-
+      folio-go/page_setup.go:496 (addCanvasWindowCount)
+    severity: low
 ---
 
 ## In plain terms
@@ -400,6 +433,23 @@ only. 7.5 imports `internal/layout` for `Paginate` regardless, so the collapse c
 
 ## Review Triage Log
 
+### 2026-08-31 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 0, medium 2, low 3)
+- defer: 2: (high 0, medium 1, low 1)
+- reject: 14: (high 0, medium 3, low 11)
+- addressed_findings:
+  - `[medium]` `[patch]` **`containEdgeY` was unverified at three of its four call sites.** Reverting `dropComponent`'s Y (`:1411`) and `setComponentBounds`' height and Y (`:1670`, `:1672`) to the unconditional `containEdge` left the ENTIRE Go suite green — measured, not assumed. Added `TestTheColumnLiftIsExercisedAtTheCommandSurface`, which drives a snapped `dropComponent` at the foot of the content band and a snapped `setComponentBounds` three windows down. Red-proved against both mutants separately: the drop mutant pulls the box back to `y=654000` inside the one-window band, and the bounds mutant commits `height = 0`, because `containEdge(height, band.Height-y)` sees a negative limit, `floorToGrid` returns 0, and the positivity guard ran long before.
+  - `[medium]` `[patch]` **`containEdgeY`'s CLAMPING branch was unexercised in every band.** No test snapped a component in `pageHeader` or `pageFooter`, so a `containEdgeY` rewritten to `return value` unconditionally stayed green at all four sites. Added a `pageHeader` edge move with an off-grid far edge (height 25pt against a 60pt band, so `edgeY = 35000` is not a grid multiple and snapping rounds it past the band foot). Red-proved: with the clamp removed the command is refused outright rather than rescued.
+  - `[low]` `[patch]` **AC1/AC2/AC3 were asserted at an internal proxy, not the surface the matrix names.** `TestBandContainmentRefusalsCarryTheirExactMessages` calls `containComponent` directly, and only the `pageHeader` property path asserted the `*ComponentCommandError` wrapping an author actually sees. Matrix row 1 also names `createComponent`, which no test exercised with a tall content Y. Added command-surface full-string message assertions for `content` and `pageFooter` (with `DataPath` and byte-immutability), and a `createComponent` four windows down that round-trips through the canonical bytes.
+  - `[low]` `[patch]` **`addCanvasTextPaint`'s own band table still spelled the three band names inline** (`page_setup.go:679-681`) — inside the very function that now compares `band.name == bandContent`, which is exactly the fifth-inline-spelling risk the constants' own comment names. Converted to `bandPageHeader`/`bandContent`/`bandPageFooter`; `page_setup.go` now carries zero inline band-name literals.
+  - `[low]` `[patch]` **Two comments claimed more than the code does.** `addCanvasWindowCount`'s "EVERY CONTENT COMPONENT CONTRIBUTES, STYLED OR NOT" omitted Ruling D's stated exception — a text element that shapes no lines contributes nothing, so an empty-valued text box windows down is one more reason the count is a floor. And the new TS test attributed the omitted-field rejection to `hasOnly`, which is a SUBSET check (`hasExactKeys` is the strict sibling); the rejection actually comes from `integer(key, true)` reading `undefined`. The same test exercised only a missing `contentWindowCount`. Corrected both comments and extended the test to cover a missing `contentWindowHeight` and five malformed values per field.
+
+**Rejected, with the reason each was tested against (not silently dropped):** swallowing `*MixedItemError` alongside `*OverflowError` — Part 6 says "on any `layout.Paginate` error"; `ENGINE_PROTOCOL_VERSION` not bumped for two added keys — `791ed00` added `fontFamilies`/`defaultFontSize` without bumping it and the wasm is rebuilt by `build:wasm` on every typecheck and test run; `BANDS_CAPPING_VERTICALLY` not `as const` — the mirror test's own regex terminates at `]`, so hardening it is churn against the tie; positional `Bands[1]` indexing in the new tests — the Code Map itself identifies `bands[1]` as the content band; the mirror test's source-formatting regexes — that is the in-tree idiom the six numeral pairs already use; `layout.PlaceInBand` instead of the inline `+= layout.Origins(g).Content` — Part 6 prescribed that spelling, and AD-24 governs the top-left → PDF-bottom-left flip, which this translation is not; `visibleIf` making the count an over-estimate — render-time visibility is outside what the canvas knows, the same family as the bound-table floor R2 already records; a corpus-wide projection enumeration — AC10's measurement is the twenty golden digests plus the pre-existing projection suite, and that suite is untouched in this diff (zero deleted lines in any pre-existing projection test file) and green; `Canvas()`'s hard-coded count of 1 — Ruling B; `addCanvasWindowCount` re-deriving `canvasPageGeometry` — a dead error branch, cosmetic; the `*[]layout.ColumnItem` out-parameter seam — cosmetic; no image/line window-count fixtures — the non-text branch is uniform through `projectedSize`; no `testing.Short()` guard on the truncation fixture; the fourth fixture inlined in the empty-column test.
+
+
 ## Design Notes
 
 ### The window-count gap — CLOSED by R1 (the contract's `Block If` no longer fires)
@@ -563,6 +613,46 @@ Directive: `Halt after planning.` — **no implementation code, no commits, and 
 
 Verification was **not** run in this dispatch: no code changed. The `## Verification` section states what the implementing dispatch must measure.
 
+### Dispatch 3 — 2026-08-31, implement, review and commit
+
+Status: `done`
+Blocking condition: none
+Baseline: `4bf201abadeafe29f7a9c19efb6f50b302a1b8b0` on `main`, tree clean. Only `_bmad-output/` moved between the Code Map's `83d49b6` and this baseline, so every anchor held.
+Directive: implement — no halt-after-planning.
+
+**What was implemented.** The content band's vertical cap is gone and only there. `containComponent` is split by MEANING inside the function, keyed on `band.Name` through a named `bandsCappingVertically = {pageHeader, pageFooter}`: representational refusals (negative coordinates) and the horizontal caps stay universal, band-capacity refusals apply to the two repeating bands alone, and every surviving refusal keeps `"folio: component geometry must stay within %s"` to the byte. `containEdgeY` makes the four vertical pull-backs no-ops in the content band — necessary, not cosmetic, because the pre-clamps are GATED on the probe succeeding, so lifting the cap widens the gate rather than neutralising it. The browser's copy of the same gate lifted in the same commit under a name both files declare. The projection gained `contentWindowHeight` and `contentWindowCount`, the count coming from the real `layout.Paginate` fed the extents the canvas paint plan already computed — one shaping, two consumers. `page_setup.go`'s second `ContentHeight` spelling collapsed into `layout.ContentHeight` (R5).
+
+**Files changed.**
+- `folio-go/component_commands.go` — the split, `containEdgeY`, band-name constants.
+- `folio-go/page_setup.go` — `canvasPageGeometry`, the R5 collapse, the two projection fields, the per-line extent emission in `addCanvasTextPaint`, `addCanvasWindowCount` as the third paint producer.
+- `folio-go/canvas_window_count_template.go` (new) — the first multi-page CANVAS fixtures: the ten-window gap, the one-window control, an over-tall component, a bound table.
+- `folio-go/canvas_window_count_test.go` (new) — the discriminating count, truncation independence, render-oracle agreement, Ruling C degradation, the bound-table floor, the empty column.
+- `folio-go/component_commands_test.go` — the Part 1 characterization, the inverted snap test, and (review pass) `TestTheColumnLiftIsExercisedAtTheCommandSurface`.
+- `folio-go/component_properties_test.go` — the `:829` property-edit surface, which had no band-bounds coverage at all.
+- `folio-designer/src/engine-protocol.ts` — `BANDS_CAPPING_VERTICALLY`, the vertical lift, the two fields in the type, the exact-key allow-list and the strictly-positive array.
+- `folio-designer/src/engine-bounds-mirror.test.ts` — the widened obligation and the first PREDICATE tie, reading both `component_commands.go` and `engine-protocol.ts`.
+- `folio-designer/src/engine-protocol.test.ts`, `App.test.tsx`, `DataPanel.test.tsx` — the admission cases and the three base fixture literals.
+
+**Review findings breakdown.** 4 layers ran (blind hunter, edge-case hunter, verification-gap, intent-alignment). intent_gap 0, bad_spec 0, **patch 5 applied** (2 medium, 3 low), **defer 2**, reject 14. Every patch is a verification or accuracy fix; no production behaviour changed in the review pass except two comments and one band-literal substitution. Details in the Review Triage Log.
+
+**Follow-up review recommendation: `true`.** Patched this pass: high 0, medium 2, low 3 → `3x2 + 1x3 = 9`, which is >= 5. Nothing high was patched; the score is carried by the two mutation-proved verification gaps.
+
+**Verification performed — measured, and re-run in full after the patches.**
+- `go test -count=1 ./...` — **exactly ONE** failure, `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)`, `got 7, need >=20`, the mandated permanent red. Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` ran and **passed**. Every other package `ok`.
+- `go vet -tags=matrix ./...` — clean, exit 0. `gofmt -l folio-go` from the repo root — no output.
+- `TestTargetRenderHash` once per leg with `FOLIO_MATRIX_TARGET` set: **darwin/arm64, linux/amd64, linux/arm64, js/wasm — all PASS, `grep -c "asserts NOTHING"` = 0 on every leg**, so no leg was a no-op. `TestCrossTargetByteIdentity` — `ok`.
+- `cd lint && go test -count=1 ./...` — 4/4 packages `ok`.
+- Designer: `typecheck` clean; `oxlint` **exactly 4 warnings, 0 errors**, the baseline `only-export-components` set (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1155,1162`) — no fifth, the new export is in a `.ts` file; `npm test` **248 passed / 32 files** (baseline 239/32); `test:e2e:compile` passes — browser e2e is deferred by D-000.4 and did **not** run.
+- **Nine digests re-measured byte-identical after the patches**, with `git status fixtures/` empty: statement-1 76,744 `114df1d6`; -5 127,363 `70dce051`; -20 269,884 `56bfbbd9`; -50 555,829 `5d090b0f`; mandatory-break 56,681 `7cf743de`; line-spacing 57,770 `de212115`; justified-text 59,894 `6da3b12e`; alignment-rounding 61,346 `986400a1`; justified-thai 15,079 `58ca4777`. All twenty `goldenDigestRecord` entries hold via `TestGoldenDigestAgreesAtEveryDeclaredSite` and the per-fixture golden tests.
+- **Manual checks.** `containComponent` re-grepped at the closing revision: **twelve hits, eleven call sites** (`:165`, `:300`, `:829`, `:1409`, `:1472`, `:1565`, `:1569`, `:1606`, `:1668`, `:1674`, `:1726`) plus the definition, matching the audit table exactly. `internal/layout/paginate.go` is **absent** from `git diff --name-only`. `README.md` appears in no commit and its md5 is `078d7d80d518d54af2fc04fb270d46b8`, unchanged. `git show --stat` confirms the Go split and `engine-protocol.ts` in the **same** commit.
+- Known-environmental, not regressions: `TestShippedFacesReproduceFromUpstream` (no `fontTools`); `lint/internal/rules/licencegraph_test.go` gofmt (DW-23).
+
+**Residual risks.**
+- The count is a **FLOOR**, by construction and irreparably within 7.5: `projectedSize` gives a table its header height and none of its rows, and a text element that shapes no lines contributes nothing. Story 7.6 must not read it as a prediction.
+- The two deferred items: the designer's live drag clamp (`resize-anchor.ts`) still stops an author at page one, and `contentWindowCount` has no upper bound.
+- An element windows down is **storable but not droppable-at**: `hitTestBand`'s rectangle is still one page tall, deliberately, and that asymmetry is Story 7.6's.
+- DW-33 flagged and **provably untouched** — the count reads `lines`, `originY` and `vm`, never `painted`, `budget` or `oversized`. No ruling on the partial prefix was made or needed.
+
 ## Delivery Log
 
 ### Dispatch 3 — 2026-08-31, implemented
@@ -682,3 +772,29 @@ succeeds, reports one window, and keeps the component.
   the diff and `README.md` appears in no commit. Nothing was staged with `git add -A` or `git add .`.
 - The Go split (`component_commands.go`) and the browser mirror (`engine-protocol.ts`) are in **one
   commit**, `cd196f0`, confirmed by `git show --stat`.
+
+### Review pass — 2026-08-31, the two mutation red-proofs the review added
+
+The review found that the Part 2 task "make the `containEdge` pull-backs correct under the lift"
+had landed correct but **unverified at three of its four sites**, and that `containEdgeY`'s
+clamping branch was unverified at all four. Both were established by mutation, not by reading:
+
+| Mutant | Suite before the patch | Suite after the patch |
+|---|---|---|
+| `dropComponent:1411` + `setComponentBounds:1670,:1672` → unconditional `containEdge` | **green** (only the mandated P6g red) | `dropped box (y 654000 + height 24000) was pulled back inside the one-window band height 679890` |
+| `setComponentBounds:1670,:1672` alone → unconditional `containEdge` | **green** | `snapped bounds committed height = 0; the pull-back collapsed the component` |
+| `containEdgeY` → `return value` in every band | **green** | `an edge move inside the pageHeader was refused; the pull-back did not rescue the grid's rounding` |
+
+The `height = 0` case is the expensive one and is worth stating plainly: the positivity guard at
+`component_commands.go:1665` runs **before** the pull-backs at `:1669-1672`, so
+`containEdge(height, band.Height-y)` with a negative limit returns `floorToGrid(negative) = 0` and
+the component is committed with no height at all. That is a silent data-loss path that this
+story's own lift opens (by widening the probe gate) and that nothing would have caught.
+
+`TestTheColumnLiftIsExercisedAtTheCommandSurface` also moves AC1/AC2/AC3 to the surface the I/O
+matrix names. The characterization tests call `containComponent` directly — correct for
+characterizing a predicate, but the matrix rows are phrased as commands, and the refusal an author
+sees is a `*ComponentCommandError` whose `Message` and `DataPath` the eleven call sites set. The
+new test asserts those, by full-string equality, for `content` and `pageFooter`; adds the
+`createComponent` case matrix row 1 names by name and nothing exercised; and round-trips each
+accepted placement through the canonical bytes.

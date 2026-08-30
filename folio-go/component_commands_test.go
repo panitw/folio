@@ -2,6 +2,7 @@ package folio
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -881,5 +882,160 @@ func TestJavaScriptSafeGeometryBoundRefusalsCarryTheirExactMessages(t *testing.T
 	_, err = Canvas(stranded)
 	if want := "folio: component exceeds the JavaScript-safe geometry bound"; err == nil || err.Error() != want {
 		t.Fatalf("projection of an unrepresentable coordinate = %v, want exactly %q", err, want)
+	}
+}
+
+// TestTheColumnLiftIsExercisedAtTheCommandSurface closes the gap between the
+// clause Story 7.5 moved and the surface the story is ABOUT.
+//
+// Two separate weaknesses live here, and neither shows up as a red test:
+//
+//  1. TestBandContainmentRefusalsCarryTheirExactMessages calls
+//     containComponent DIRECTLY. That is the right shape for characterizing a
+//     predicate, but the story's expectations are written at the command
+//     surface ("setComponentBounds / moveComponent / createComponent"), and
+//     the refusal an author actually sees is a *ComponentCommandError whose
+//     Message and DataPath are set by the eleven call sites, not by the
+//     predicate. Only the pageHeader property path asserted that wrapping.
+//
+//  2. containEdgeY has FOUR call sites and only one of them — moveComponent's
+//     y — was reachable from any test. Reverting the other three (
+//     dropComponent's y, and setComponentBounds' height and y) to the
+//     unconditional containEdge leaves the ENTIRE Go suite green, which was
+//     measured, not assumed. Those three are the sites whose pre-clamp gate
+//     the lift WIDENS: a drag that was refused outright before now passes the
+//     probe, so a containEdge left behind would quietly pull the component
+//     back onto page one instead of refusing it — and in the bounds case
+//     would also collapse its height to zero, because the positivity guard
+//     has already run by then.
+func TestTheColumnLiftIsExercisedAtTheCommandSurface(t *testing.T) {
+	tpl := componentTemplate(t)
+	bands := projectedBands(t, tpl)
+	content, header, footer := bands["content"], bands["pageHeader"], bands["pageFooter"]
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refusedAs := func(name string, err error, wantMessage string) {
+		t.Helper()
+		var failure *ComponentCommandError
+		if !errors.As(err, &failure) {
+			t.Fatalf("%s = %v, want a component command failure", name, err)
+		}
+		if failure.Message != wantMessage {
+			t.Fatalf("%s message = %q, want exactly %q", name, failure.Message, wantMessage)
+		}
+		if failure.DataPath != "component.geometry" {
+			t.Fatalf("%s data path = %q, want component.geometry", name, failure.DataPath)
+		}
+	}
+
+	// MATRIX ROW 1 NAMES createComponent, and nothing created a tall content
+	// component: the largest content y anywhere else in these tests is 40pt.
+	tall := content.Height*4 + 4321
+	createdProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"content","x":0,"y":`+pointLiteral(tall)+`,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatalf("createComponent four windows below the content top was refused: %v", err)
+	}
+	created := newProjectedComponent(t, before, createdProjection)
+	if created.Y != tall {
+		t.Fatalf("created y = %d, want the requested %d", created.Y, tall)
+	}
+	if roundTripped := reloadedComponent(t, tpl, created.ID); roundTripped.Y != tall {
+		t.Fatalf("canonical bytes carried y = %d, want %d", roundTripped.Y, tall)
+	}
+
+	// THE COMMAND-SURFACE MESSAGES, by full-string equality, for the two
+	// bands the property-panel test does not reach. The column is unbounded
+	// vertically and never horizontally, so content still refuses on x.
+	_, err = ApplyComponentCommand(tpl, []byte(`{"kind":"moveComponent","version":1,"id":"`+created.ID+`","x":`+pointLiteral(content.Width+1000)+`,"y":0,"snap":false}`))
+	refusedAs("a content x past the band width", err, "folio: component geometry must stay within content")
+
+	footerProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"pageFooter","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inFooter := newProjectedComponent(t, createdProjection, footerProjection)
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ApplyComponentCommand(tpl, []byte(`{"kind":"moveComponent","version":1,"id":"`+inFooter.ID+`","x":0,"y":`+pointLiteral(footer.Height+1000)+`,"snap":false}`))
+	refusedAs("a pageFooter y past the band height", err, "folio: component geometry must stay within pageFooter")
+	if after, _ := SerializeTemplate(tpl); !bytes.Equal(canonical, after) {
+		t.Fatal("a refused pageFooter move changed the canonical bytes")
+	}
+
+	// dropComponent's Y PULL-BACK, at a page point one point above the foot
+	// of the content band. hitTestBand's rectangle is still one page tall, so
+	// this is the lowest a drop can land — and the dropped box hangs past the
+	// band foot, which is the whole point. With containEdgeY the component
+	// keeps the grid position the author dropped it at; with the
+	// unconditional containEdge it is pulled back inside page one instead.
+	dropPageY := content.Y + content.Height - 1000
+	beforeDrop, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	droppedProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"dropComponent","version":1,"type":"rect","x":`+pointLiteral(content.X)+`,"y":`+pointLiteral(dropPageY)+`,"snap":true}`))
+	if err != nil {
+		t.Fatalf("a snapped drop at the foot of the content band was refused: %v", err)
+	}
+	dropped := newProjectedComponent(t, beforeDrop, droppedProjection)
+	if dropped.Y%GridIncrement != 0 {
+		t.Fatalf("dropped y = %d, want a grid multiple", dropped.Y)
+	}
+	if dropped.Y+dropped.Height <= content.Height {
+		t.Fatalf("dropped box (y %d + height %d) was pulled back inside the one-window band height %d", dropped.Y, dropped.Height, content.Height)
+	}
+
+	// setComponentBounds' HEIGHT and Y pull-backs, on a tall content
+	// component with snapping on and no coordinate on the grid. The mutant
+	// here is the expensive one: containEdge(height, band.Height-y) sees a
+	// negative limit and floorToGrid returns 0, so the component is committed
+	// with no height at all — the positivity guard at the top of the command
+	// ran long before.
+	boundsY := content.Height*3 + 500
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"setComponentBounds","version":1,"id":"`+created.ID+`","x":0.5,"y":`+pointLiteral(boundsY)+`,"width":72.5,"height":24.5,"snap":true}`)); err != nil {
+		t.Fatalf("a snapped bounds drag three windows down was refused: %v", err)
+	}
+	bounded := reloadedComponent(t, tpl, created.ID)
+	if bounded.Height <= 0 {
+		t.Fatalf("snapped bounds committed height = %d; the pull-back collapsed the component", bounded.Height)
+	}
+	if bounded.Height%GridIncrement != 0 || bounded.Y%GridIncrement != 0 {
+		t.Fatalf("snapped bounds (y %d, height %d) are not grid multiples", bounded.Y, bounded.Height)
+	}
+	if bounded.Y <= content.Height {
+		t.Fatalf("snapped bounds y = %d was pulled back inside the one-window band height %d", bounded.Y, content.Height)
+	}
+
+	// AND THE OTHER DIRECTION, which nothing exercised either: in a band that
+	// DOES cap, containEdgeY must still clamp. A pageHeader component whose
+	// far edge is off the grid snaps PAST the band foot, and the pull-back is
+	// what rescues it — a containEdgeY that returned its input unchanged in
+	// every band would make this command a refusal instead.
+	beforeHeader, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headerProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"rect","band":"pageHeader","x":0,"y":0,"width":72,"height":25,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inHeader := newProjectedComponent(t, beforeHeader, headerProjection)
+	headerEdgeY := header.Height - inHeader.Height
+	if headerEdgeY%GridIncrement == 0 {
+		t.Fatalf("this test needs an off-grid edge to say anything; edgeY %d is already a grid multiple", headerEdgeY)
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"moveComponent","version":1,"id":"`+inHeader.ID+`","x":0,"y":`+pointLiteral(headerEdgeY)+`,"snap":true}`)); err != nil {
+		t.Fatalf("an edge move inside the pageHeader was refused; the pull-back did not rescue the grid's rounding: %v", err)
+	}
+	movedInHeader := reloadedComponent(t, tpl, inHeader.ID)
+	if movedInHeader.Y+movedInHeader.Height > header.Height {
+		t.Fatalf("pageHeader component (y %d + height %d) left its band height %d; containEdgeY did not clamp", movedInHeader.Y, movedInHeader.Height, header.Height)
+	}
+	if headerEdgeY-movedInHeader.Y >= GridIncrement {
+		t.Fatalf("pageHeader pull-back moved y to %d, more than one grid step from the edge %d", movedInHeader.Y, headerEdgeY)
 	}
 }
