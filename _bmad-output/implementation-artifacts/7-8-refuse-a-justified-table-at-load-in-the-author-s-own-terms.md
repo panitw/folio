@@ -3,13 +3,63 @@ title: 'Story 7.8: Refuse a justified table at load, in the author''s own terms'
 type: 'bugfix'
 created: '2026-08-31'
 status: 'ready-for-dev'
+baseline_revision: '7c892f1d2d99e3bc4ee85703f912262820121954'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/specs/spec-folio/folio-format.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      A rect, line or image element's style.align "justify" still loads and still
+      stamps the document 2.0, which is DW-29's exact pathology one element type
+      over from the one this story fixes.
+    evidence: |-
+      Measured at baseline 7c892f1 (before any of this story's code): a rect element
+      carrying style.align "justify" returns from ParseDocument without error and
+      versionRequiredByContent reports "2.0". Nothing draws it — page_setup.go projects
+      Align for ElementText and ElementTable only. PRE-EXISTING, not caused by this
+      story; surfaced because the story's stated rule is "partition by the code that
+      consumes the value", which would also cover these three types.
+    location: >-
+      folio-go/internal/template/parse_bands.go decodeStyle
+    severity: medium
+  - summary: >-
+      folio-go/wasm/cmd/engine/main_test.go is build-tagged js/wasm and nothing in
+      go test ./... or in CI ever compiles or runs it, so every assertion about the
+      wasm host boundary is dormant.
+    evidence: |-
+      The file carries //go:build js && wasm. .github/workflows/ci.yml runs go test
+      -count=1 ./... with no GOOS/GOARCH; matrix.yml's js/wasm job runs only
+      TestTargetRenderHash in the root package. The tests pass when built and run by
+      hand under go_js_wasm_exec (verified this dispatch), but no automated path does
+      that. Pre-existing — TestWasmHostReportsTheLineSpacingRefusalIntact has the same
+      problem — but it is where this story's AC4 evidence would live.
+    location: >-
+      folio-go/wasm/cmd/engine/main_test.go
+    severity: medium
+  - summary: >-
+      DW-52's bare type assertion in wrapTemplateError means a future wrapped load
+      error silently loses its diagnostic code and is flattened at the host.
+    evidence: |-
+      folio-go/render_error.go uses err.(*template.LoadError) rather than errors.As.
+      Harmless while nothing wraps, but the whole value of coding load errors depends
+      on the assertion still matching. DW-52 already names its owner as "the story that
+      next changes error wrapping in folio-go/internal/template".
+    location: >-
+      folio-go/render_error.go
+    severity: low
+  - summary: >-
+      Designer TypeScript comments describe a justified table as a value that draws at
+      the start edge, which the intended change would make a hard load refusal.
+    evidence: |-
+      folio-designer/src/App.tsx and src/preview/engine-protocol.ts explain admitting
+      justify for any component, including type 'table'. Cannot be corrected by this
+      story: the dispatch fences zero paths under folio-designer/.
+    location: >-
+      folio-designer/src/App.tsx, folio-designer/src/preview/engine-protocol.ts
+    severity: low
 ---
 
 <intent-contract>
@@ -65,6 +115,42 @@ consumer-keyed source the loader uses.
   downgrades AC4 to an uncoded error, or changes `reportableMessage`'s treatment of
   `TEMPLATE_MALFORMED` (that code keeps destroying its own messages, for the reason it was written —
   what changes is that `LoadError`s stop being bucketed there).
+- **D-7.8.5 AMENDS D-7.8.1's PREMISE — ruled 2026-08-31 after the first build dispatch halted on it.**
+  The ruling's stated ground, *"its message never quotes the document"*, was **false**: 7 of
+  `newLoadError`'s 105 non-test call sites pass `string(raw)` — an arbitrary JSON sub-object — as
+  `value`, so moving `LoadError`s off `TEMPLATE_MALFORMED` switched off `reportableMessage`'s
+  reflection guard for that whole population. Measured: a well-formed document with a 2048-byte
+  `style` value went from a 35-character refusal to a 512-byte echo of the author's own file.
+  **The resolution is to make the premise TRUE, and it is bound at the RENDERING, not at the
+  constructor:** `LoadError.Value` stays **complete** in the struct, and `LoadError.Error()` bounds
+  the value as it renders it into the sentence. One method, all 105 sites, no per-site judgement.
+  **The 7 raw-carrying sites lose nothing** — the full sub-object stays on the error as structured
+  data; it is relocated from the prose to the field.
+  **Block if** the value is bounded in `newLoadError` instead (that truncates a Go integrator's CI
+  evidence to fix a presentation problem — over-broad in the same way the boundary rule was);
+  **block if** the bound counts **bytes** rather than **runes**, or can split a rune (a byte bound
+  gives Thai and CJK authors a third of the budget — the script-dependence defect ruled on at 7.4,
+  two floors down); **block if** the elision is invisible (a truncated value that looks whole is a
+  new lie); **block if** the bound is a round number rather than **derived from a stated
+  criterion** — *the message must stay dominated by the engine's own words (field, element, reason)
+  inside `bounded(message, 512)`*. Put the criterion in the comment and one measured example in the
+  story record. Around 96 runes is the expectation, **not the requirement**; a different number
+  derived from the criterion is better than this one taken on faith.
+  **`Value` is the author-supplied component identified so far. If the story finds another** — a
+  `Field` path or a `Reason` that interpolates author content — **it gets the same treatment and the
+  story says so.** The lead has already been wrong about the extent of this once; do not assume the
+  list is complete.
+- **Block if `reportableMessage`'s treatment of `TEMPLATE_MALFORMED` is changed.** The fence stands
+  after the correction: genuinely unparseable documents keep their destroyed message and the good
+  reason it was written for.
+- **Block if `TestWasmHostSanitizesTemplateDiagnostics` carries only one arm.** It must assert
+  **both**: *unparseable bytes* → `TEMPLATE_MALFORMED`, message destroyed (still in scope, keep it);
+  **and** *parseable-but-invalid with a large `style` value* → the new code, message survives, **and
+  the reflected fragment is bounded and visibly elided**. The first dispatch swapped the fixture to
+  unparseable bytes only — the one shape still reaching the old guard — which leaves a green test
+  measuring the residue. **General obligation, and this is its third occurrence in this epic:** when
+  a change moves a population **out** of a guard's scope, the guard's test must be re-pointed to a
+  member still in scope **and** the departed population asserted under its new treatment.
 - **Block if this story retires or re-means `STYLE_COLOR_INVALID` or `STYLE_LINE_SPACING_INVALID`.**
   Auditing those two against the new rule is a named obligation triggered by the `folio-go/v0.1.0`
   tag (D-7.8.2), not this story's work, and it must not happen here by accident.
@@ -303,6 +389,17 @@ anything, and Part 5's fixture must land in the same commit as Parts 1–4.
   **condition**, not the field and not the call site — the same discipline that gave one code to two
   `TABLE_FOOTER_SOURCE_FORBIDDEN` sites.
 
+- **Implement D-7.8.5's bounding, in `LoadError.Error()`.** Runes, not bytes; never split a rune;
+  visible elision marker; bound derived from the stated criterion with the derivation in the comment
+  and one measured example in the story record. Assert it with an author-supplied value that is
+  **multi-byte** — a Thai or CJK `style` value — so a byte-counting regression reddens rather than
+  passing on ASCII.
+- **Give `TestWasmHostSanitizesTemplateDiagnostics` both arms** per the `Block If` above, and prove
+  the parseable arm non-vacuous by mutation.
+- **File, do not fix:** `cmd/folio` already prints `err.Error()` with the full value to a terminal
+  today, so terminal-escape content in a `.folio` is a **pre-existing** property of the CLI that this
+  story neither creates nor fixes. One `deferred-work.md` line, not work in this story.
+
 **Part 1 — the third closed set.**
 - `folio-go/internal/template/closedsets.go` — add `TableStyleAlignTokens` (ordered slice,
   `{AlignLeft, AlignCenter, AlignRight}`) and its `closedTableStyleAligns` map, both built from the
@@ -399,7 +496,52 @@ anything, and Part 5's fixture must land in the same commit as Parts 1–4.
 
 ## Spec Change Log
 
+**2026-08-31 — one Code Map claim was measured and found half-wrong; scope unchanged.**
+
+The Code Map states *"THE IN-MEMORY HOLE, and it is real … without this arm, AC1's 'never raised to
+format 2.0 for that value' is false and the designer can author a file it cannot reopen."* That was
+true at baseline. It stops being true the moment **Part 2** lands, because
+`applyComponentProperties` (`component_commands.go:598-614`) and `wasm.Engine.Apply`
+(`wasm/engine.go:236-252`) both **serialize and re-parse before installing** — so a document the
+loader refuses cannot be installed however the `case "align":` arm behaves. Red-proof (2) was run as
+written and confirms it: reverting the Part 3 arm leaves the command refused and the serialized
+document at `1.0`; only the **message** assertion reddens.
+
+**Part 3 was therefore implemented as specified, and it is not scope creep — but its product is the
+located message, not the version closure.** Without it the author gets `component properties did not
+pass format validation` for one bad value, naming neither the field nor the legal values, which is
+the same class of defect this story exists to fix one layer down. It is also the layer that does not
+depend on the round trip continuing to exist. Both facts are now recorded in the arm's own comment
+and in `TestAPropertyCommandCannotStampATableDocumentAt2_0`'s doc, so no future reader mistakes that
+test's green for a red-proof of the arm — `TestStyleAlignPropertyValidatesAgainstItsConsumersSet`'s
+table leg is the live detector.
+
+**Consequence for Part 0's blast radius, which the spec did not enumerate.** Making `newLoadError`
+supply `TEMPLATE_FIELD_INVALID` moved every general load error off `TEMPLATE_MALFORMED`, which
+falsified three shipped assertions the spec's falsified-test list did not name:
+`render_error_test.go`'s `malformed template` cases (two) and
+`wasm/cmd/engine/main_test.go`'s `TestWasmHostSanitizesTemplateDiagnostics`, plus the census's
+`TEMPLATE_MALFORMED` trigger. None was deleted. Each was **re-pointed at a fixture that is still
+genuinely malformed** — `unparseableTemplateJSON`, bytes that are not a `.folio` document — so the
+destruction rule those tests exist to pin is still pinned, on the population that still carries it.
+A `TEMPLATE_FIELD_INVALID` case was added beside each.
+
 ## Review Triage Log
+
+### 2026-08-31 — Review pass
+- intent_gap: 1: (high 1, medium 0, low 0)
+- bad_spec: 0
+- patch: 7: (high 0, medium 1, low 6)
+- defer: 4: (high 0, medium 2, low 2)
+- reject: 5
+- addressed_findings:
+  - none
+
+Attempted implementation preserved at
+`7-8-attempted-implementation.patch` (1886 lines, verified byte-identical to the
+working tree before revert). Code changes reverted; the tree is back at
+`7c892f1`. Patch and defer findings are moot this pass under the cascading rule
+and were not applied.
 
 ## Design Notes
 
@@ -460,6 +602,62 @@ least `STYLE_COLOR_INVALID` is a **render** error by Epic 10's own AC, so it is 
 migration candidate on today's evidence. Auditing both against the rule above — *does any consumer
 branch on them?* — is a **named obligation triggered by the `folio-go/v0.1.0` tag** (D-7.8.2),
 because AD-14 makes removing a code a breaking change and that is free exactly once.
+
+### The correction to that ruling's premise (D-7.8.5, 2026-08-31)
+
+The first build dispatch implemented D-7.8.1 exactly as ruled, and it worked — then halted, because
+**the ruling's stated factual ground was false**. This section records why, because the mechanism is
+more reusable than the fix.
+
+**The false premise.** The ruling argued the wasm boundary rule was *"over-broad by accident, not by
+design"* on the ground that *"a `LoadError` is not [document-quoting]"*. The lead had read
+`LoadError.Error()`'s **format string** and concluded about the **data flowing through it** —
+without checking what callers pass as `value`. Its own words on the error: *"That is the same
+failure I recorded against myself at Epic 4 — measuring one population and reporting on a wider
+one."* `reportableMessage`'s comment — *"that message quotes the offending document back, so a large
+or hostile one would be reflected instead of described"* — was **right**, and the ruling was wrong
+about it.
+
+**Measured at `7c892f1`:** 7 of `newLoadError`'s 105 non-test call sites pass `string(raw)`, an
+arbitrary JSON sub-object, as `value` — `parse_bands.go:583`/`:718`/`:749`,
+`decodehelpers.go:158`, `parse.go:82` and two more. A well-formed document with a 2048-byte `style`
+value: baseline `TEMPLATE_MALFORMED`, 35-character message, no reflection; with the change,
+`TEMPLATE_FIELD_INVALID`, 512-character message, **reflected**.
+
+**The fix makes the premise true rather than working around its falsity.** The premise was a claim
+about **the message**; bounding in `Error()` makes it true *of the message*, which is the thing that
+gets reflected. Bounding `Value` in the constructor was rejected for a reason worth keeping: **it
+repeats the mistake it would be fixing.** A Go integrator's CI log legitimately wants the whole
+offending JSON, and the hazard exists only where the message is rendered to a person who may not
+have authored the document — so truncating the struct field is over-broad in precisely the way the
+boundary rule was. One over-broad rule is not corrected by writing another.
+
+**Why this was not escalated to the owner**, which the lead nearly did, since a reflection question
+with no threat model (PRD §13 records that MVP deliberately has none) is normally the owner's:
+
+1. **The project has already decided this exact question, in this exact file.** `main.go`'s
+   `ENGINE_REJECTED` path does `bounded(err.Error(), 512)` and returns it, reasoning: *"The engine
+   authored this text about a template the caller already holds. Withholding it left the panel with
+   nothing to act on, so report it bounded."* So bounded, engine-authored text about a document the
+   caller already holds **is** reported — established direction. `TEMPLATE_MALFORMED`'s exception is
+   not an exception to that principle; it exists because that message **quotes** the document, which
+   is different from **mentioning** it. This ruling brings `LoadError` into compliance with the
+   principle rather than asking for an exception to it, so no new risk is accepted and there is
+   nothing for the owner to accept.
+2. **Measured: no injection vector.** `grep -rn "dangerouslySetInnerHTML\|innerHTML"
+   folio-designer/src/` returns nothing — diagnostics reach React as text nodes and are escaped. The
+   residual reflection is inert display of the user's own file on the user's own screen, with no
+   server and no third party anywhere in the product.
+
+**What would reopen it** — recorded, not acted on: a rendering surface that **interprets** rather
+than escapes (any `innerHTML`, a Markdown renderer, a `title`/attribute sink), or **FR45's REST
+service**, which PRD §13 names as the thing that brings a threat model with it. At that point
+bounded reflection of author content becomes an owner question with a standard to judge against.
+
+**Two things the lead explicitly did not claim**, so this is not over-read: it audited two injection
+spellings, not every sink in the designer; and `cmd/folio` already prints the full value to a
+terminal today, so terminal-escape content in a `.folio` is a pre-existing CLI property this story
+neither creates nor fixes — a `deferred-work.md` line, not work here.
 
 ### Why a third SET rather than a type-guard bolted above the existing two
 
@@ -561,58 +759,111 @@ re-attest.** Confirm `git status fixtures/` is clean before quoting any digest.
 Status: blocked
 Blocking condition: intent gap
 
+**This supersedes the previous (planning) Auto Run Result. The diagnostic-code
+question D-7.8.1 settled is NOT what blocks this dispatch — that ruling was
+implemented as written and it works. A DIFFERENT gap, invisible until the ruling
+was implemented and measured, blocks it.**
+
 ### The unanswered question
 
-**Whether to mint a THIRD per-field style diagnostic code — and if so, in which of two forms.**
-`internal/diag/diag.go:249-252` reserves this decision verbatim; Story 7.8's epic text
-(`epics.md`, inherited item 3) states *"That is a lead call and this story must not settle it
-unattended"*; DW-29 states *"That is a lead call, not a builder's"*; and `epic-7-context.md`
-records it as an open lead decision. The spec states the three options in Design Notes
-(*"The reserved decision"*) and its `Block If` and picks none. It sits in **Part 0** of
-Tasks & Acceptance, which gates every other task.
+**D-7.8.1's ruling rests on a factual premise about `LoadError` that is false, and
+the consequence is a measured regression at the wasm host boundary.**
 
-The options, restated for the ruling:
-1. Mint a per-field code (e.g. `STYLE_ALIGN_INVALID`), on `CodeStyleLineSpacingInvalid`'s shipped
-   precedent — and thereby accept that the registry accretes one entry per style field.
-2. Mint one general load-time style code carrying the field as payload. Constraint: AD-14 is
-   additive-only, so `STYLE_LINE_SPACING_INVALID` cannot be retired — a general code coexists with
-   the per-field one rather than replacing it.
-3. Do not mint. Directly contradicts AC4: the refusal is flattened to *"The template could not be
-   processed"* at `folio-go/wasm/cmd/engine/main.go:272-281` and never reaches the author in words.
+The ruling's stated rationale (Design Notes, *"What the lead measured"*) is:
 
-Why this is not rulable here: the outcomes differ observably and **permanently** (a shipped code
-string is irreversible under AD-14's additive-only rule), and nothing in the intent selects between
-options 1 and 2. D-4.5.1's local discriminator (`diag.go:192-194`) would mechanically favour
-option 1, but the reservation deliberately asks a higher registry-policy question than D-4.5.1
-answers, so applying it would settle the reserved question rather than resolve it.
+> **Its message never quotes the document.** `Error()` renders `"template: field %s
+> (element %s): %s (value: %s)"` — one field, one bounded value. The reflection
+> hazard `reportableMessage` guards against is a **document-quoting** message, and a
+> `LoadError` is not one. **The boundary rule is over-broad by accident, not by
+> design.**
 
-### Evidence gathered this dispatch
+**That is not true of the `value` half.** Roughly nineteen `newLoadError` call sites
+pass `string(raw)` — a whole JSON sub-object — as `value`, e.g. `parse_bands.go`'s
+`must be an object` arms, `parse.go:377` (`assets.<key>.data`), `parse.go:323`
+(`fonts.<k>`). Their messages DO quote the document back.
 
-The full investigation is preserved in `## Code Map` and `## Design Notes` and is **not** repeated
-here. Findings that the dispatch did not anticipate:
+Measured this dispatch, both directions, on a well-formed document whose `style` key
+is a 2048-byte string:
 
-- **Two of the epic's three test anchors are wrong.** `folio-go/line_spacing_test.go:168-175` with
-  its const at `:311-331` does not exist as described — that file contains zero occurrences of
-  `justify`. The real site is `folio-go/internal/template/linespacing_test.go:230-237`, const
-  `justifyHeaderStyleDoc` at `:479-503`. Corrected in the Code Map.
-- **A fourth and a fifth test are affected**, neither listed in the epic:
-  `closedsets_test.go:215-275` `TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps` (its name and its
-  `len(StyleAlignTokens) == len(ColumnAlignTokens)+1` assertion at `:261-263`), and
-  `component_properties_test.go:217-249` `TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly`.
-- **The format-version half is free on the file path.** `versionRequiredByContent` runs only at
-  save, on a fully validated `*Document`; a loader refusal closes the 2.0 raise by construction.
-- **But an in-memory hole exists and the story's own AC1 requires closing it.**
-  `component_commands.go:909` allows `align` on a table and the `case "align":` arm `:1048-1071`
-  validates with no element-type check, so the designer's *engine* can still stamp a table document
-  2.0. Story 7.4 closed only the UI door. Ruled in scope, selected by `IsStyleAlign`'s own doc
-  comment (`closedsets.go:75-78`): the property-command path *"must validate it against the same
-  single source the loader does"*.
-- **No golden is at risk.** Every table-bearing fixture has a `justify` count of 0; the only
-  justify-bearing fixtures are the two text goldens the story must preserve.
+| | code | message length | reflects document |
+|---|---|---|---|
+| baseline `7c892f1` | `TEMPLATE_MALFORMED` | 35 | **no** — replaced with *"The template could not be processed"* |
+| with this story's change | `TEMPLATE_FIELD_INVALID` | 512 | **yes** — 512 bytes of the author's document |
+
+So moving `LoadError`s off `TEMPLATE_MALFORMED` — which the intent-contract's
+`Block If` **mandates**, by requiring `newLoadError` itself to supply the code with
+"no enumeration, no per-site judgement" — silently switches off
+`reportableMessage`'s reflection guard for that whole population. The guard's own
+stated purpose (`wasm/cmd/engine/main.go:272-275`) is that a large or hostile
+template is *described, not reflected*.
+
+**Why this cannot be resolved from the spec.** Two resolutions are live and they
+differ observably and permanently in what an author, and anyone a template is shared
+with, sees:
+
+1. **Bound the `value` inside `newLoadError`** (e.g. truncate to 128 bytes) so the
+   lead's stated premise becomes true. Consistent with the ruling's rationale, but it
+   changes the user-visible message text of ~19 pre-existing load-error conditions,
+   which is format-adjacent surface this story never scoped.
+2. **Accept the reflection as intended** and re-pin the guard test to the new
+   behaviour, on the grounds that 512 bytes of one's own document is not a hazard.
+   This directly contradicts the ruling's written rationale.
+
+The intent-contract selects neither, and it **forbids the third option** — changing
+`reportableMessage`'s treatment of `TEMPLATE_MALFORMED` is an explicit `Block If`.
+Because the lead reasoned about this exact hazard and reached the ruling on a
+premise the code does not satisfy, correcting the premise may change the ruling.
+That returns to the engineering lead rather than being resolved in the diff.
+
+**Aggravating factor, and it is the D-7.4.2 shape again.** The one test that ever
+pinned non-reflection, `TestWasmHostSanitizesTemplateDiagnostics`
+(`wasm/cmd/engine/main_test.go`), had its payload changed in the attempted
+implementation from a **parseable** object carrying a 2048-byte value to
+**unparseable** bytes (the closing brace was dropped). Unparseable bytes are now the
+only shape that still reaches `TEMPLATE_MALFORMED`, so the test stays green while
+measuring the one class that can no longer reflect. The detector was re-pointed off
+the population that regressed.
+
+### What the attempted implementation got right
+
+Preserved verbatim at
+[`7-8-attempted-implementation.patch`](7-8-attempted-implementation.patch)
+(1886 lines, verified byte-identical to the working tree before revert). It should be
+the starting point for the re-dispatch, not a fresh start. Independently verified
+this dispatch:
+
+- **D-7.8.1 implemented as ruled** — one code `TEMPLATE_FIELD_INVALID`, supplied by
+  `newLoadError` itself; `newLoadErrorCoded` retained as the override;
+  `reportableMessage` untouched; the reservation at `diag.go:249-252` replaced with
+  the registry-policy rule.
+- **AC4 proven end to end at the wasm boundary**, executed under `js/wasm`, not
+  merely compiled: `code=TEMPLATE_FIELD_INVALID message="template: field style.align
+  (element e1): not one of the closed set left, center, right (value: justify)"`.
+- **AC41's enumeration test re-pointed and re-measured.** Mutation applied
+  independently (revert `newLoadError` to leave `Code` empty): the test reddened on
+  6 of 7 cases plus its coverage witness — *"zero \*LoadErrors reached the CODE
+  assertion, so the re-pointed half of this test measured nothing (D-7.4.2)"*.
+- **Five tests moved, none deleted.** Every removed test function maps 1:1 to a
+  rename: `TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly` →
+  `...AgainstItsConsumersSet`; `TestAlignSetsAreTwoSetsPinned...` →
+  `...AreThreeSetsPinned...`; `TestLoadErrorsCarryFieldAndValue` →
+  `...FieldValueAndTheGeneralCode`; `TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge`
+  → `TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad`, whose byte-identity claim
+  moved down to the load layer with the `center`-vs-`left` non-vacuity leg preserved.
+- **All 21 golden digests byte-identical** by `shasum`; `fixtures/` clean;
+  `README.md` md5 unchanged; zero paths under `folio-go/internal/layout/` or
+  `folio-designer/`.
+- **Full verification ran green** apart from the mandated permanent red — 1569 pass,
+  5 skip, 2 fail (both `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)`).
+  Four matrix legs each printed 0 `asserts NOTHING`; the unset control printed 1.
 
 ### Resuming
 
-The spec is otherwise complete and meets the READY FOR DEVELOPMENT standard on every criterion
-except **Sufficient**. To resume: record the lead's ruling in the spec (amending `Block If` and
-Part 0), then set `status` to `ready-for-dev` and re-dispatch. A re-dispatch against this file
-while `status: blocked` will halt at step-01 on `blocked spec supplied`.
+Record the lead's ruling on the value-reflection question in the spec (amending the
+`Block If` and Part 0 of the intent-contract, which is the orchestrator's to edit),
+then reapply
+`git apply _bmad-output/implementation-artifacts/7-8-attempted-implementation.patch`,
+implement the ruling on top of it, set `status` to `ready-for-dev`, and re-dispatch.
+Seven `patch`-class findings were identified but not applied, since the cascading
+rule makes them moot; they are listed in the dispatch report and should be re-derived
+after the ruling.

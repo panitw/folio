@@ -1637,3 +1637,142 @@ must preserve.
 hand-list rotted three times, once inside its own closing commit): **an anchor written at a plan
 gate is a claim with an expiry date.** Anchors are re-verified against the current baseline at the
 gate that consumes them, never trusted from the gate that wrote them.
+
+## Story 7.8 — D-7.8.1's premise corrected at the build gate (2026-08-31)
+
+The first build dispatch implemented D-7.8.1 exactly as ruled, ran the whole verification block
+green, and then **halted `blocked` / `intent gap` on the ruling's own factual ground**. That is the
+most useful halt this run has produced, and it is worth reading as a process result before it is
+read as a technical one: the implementer found the decision-maker's premise false, measured the
+consequence in both directions, and refused to resolve it in the diff. HEAD stayed at `7c892f1`.
+
+### D-7.8.5 — `LoadError`'s value is bounded where it is RENDERED, not where it is constructed
+
+**The false premise.** D-7.8.1 argued the wasm boundary rule was *"over-broad by accident, not by
+design"*, on the ground that *"its message never quotes the document — one field, one bounded
+value."* That is not true of the code. The lead had read `LoadError.Error()`'s **format string** and
+concluded about **the data flowing through it**, without checking what callers pass as `value`.
+
+**Measured at `7c892f1`, by this orchestrator rather than relayed:** `newLoadError` has **105
+non-test call sites**, and **7** pass `string(raw)` — an arbitrary JSON sub-object — as `value`:
+`parse_bands.go:583` (`style`), `:718` (`padding`), `:749` (`border`), `decodehelpers.go:158`
+(`unbreakableValues`), `parse.go:82` (`locale`), and two more. The build reported ~19; only 7 are
+confirmable by the literal `string(raw)` spelling, and the conclusion does not turn on the number.
+
+**The consequence, measured in both directions** on a well-formed document whose `style` key is a
+2048-byte string:
+
+| | code | message length | reflects the document |
+|---|---|---|---|
+| baseline `7c892f1` | `TEMPLATE_MALFORMED` | 35 | **no** — replaced with *"The template could not be processed"* |
+| with D-7.8.1 as ruled | `TEMPLATE_FIELD_INVALID` | **512** | **yes** |
+
+So the ruling's *"no enumeration, no per-site judgement"* — the property that made it elegant — is
+also what switched `reportableMessage`'s reflection guard off for an entire population. And
+`reportableMessage`'s doc comment had said so all along: *"that message quotes the offending
+document back, so a large or hostile one would be reflected instead of described."* **The comment
+was right and the ruling was wrong about it.**
+
+**The lead's own account of the error, recorded because it names the shape:** *"I had read
+`LoadError.Error()`'s format string and concluded about the data flowing through it. I never checked
+what callers pass as `value`. That is the same failure I recorded against myself at Epic 4 —
+measuring one population and reporting on a wider one — and it is worse here because I used the
+conclusion to argue the boundary rule was over-broad by accident."*
+
+**Ruling.** `LoadError.Value` stays **complete** in the struct. `LoadError.Error()` bounds the value
+**as it renders it into the sentence**. One method, all 105 sites by construction, so D-7.8.1's
+no-per-site-judgement property survives intact.
+
+**The 7 raw-carrying sites lose nothing.** The full sub-object remains on the error as structured
+data; it is **relocated from the prose to the field**, not destroyed.
+
+**Why not the constructor** — which is what I proposed, and what the lead said it would otherwise
+have picked: **bounding `Value` itself repeats the exact mistake being corrected.** A Go
+integrator's CI log legitimately wants the whole offending JSON — that is the right place for it —
+and the hazard exists only where the message is rendered **to a person who may not have authored the
+document**. Truncating the struct field to fix a presentation problem is over-broad in precisely the
+way the boundary rule was. *One over-broad rule is not corrected by writing another.*
+
+**And it makes the premise TRUE rather than working around its falsity.** The premise was a claim
+about **the message**. Bounding in `Error()` makes that sentence true of the message, which is the
+thing that gets reflected.
+
+**Guardrails:**
+
+- **Bound in RUNES, never bytes, and never split a rune.** `len()` on a Go string counts bytes, so a
+  byte bound hands Thai and CJK authors a third of the budget — **the same script-dependence defect
+  ruled on at Story 7.4, two floors down.** Assert it with a multi-byte value so an ASCII-only test
+  cannot pass a byte-counting regression.
+- **The elision must be VISIBLE.** A truncated value that looks like a whole value is a new lie;
+  a marker keeps *"this is all of it"* distinguishable from *"there is more"*.
+- **Derive the bound from a stated criterion, not a round number:** *the message must stay dominated
+  by the engine's own words — field, element, reason — inside `bounded(message, 512)`.* The
+  criterion goes in the comment and one measured example in the story record. ~96 runes is the
+  lead's expectation, **explicitly not the requirement**; a different number derived from the
+  criterion is better than this one taken on faith.
+- **`Value` is the author-supplied component identified so far, and the list is not assumed
+  complete.** If the story finds another — a `Field` path or a `Reason` interpolating author content
+  — it gets the same treatment and the story says so. The lead's words: *"do not assume my list is
+  complete; I have already been wrong about this once in this thread."*
+
+**The `TEMPLATE_MALFORMED` fence stands.** `reportableMessage`'s treatment of that code is
+unchanged. Genuinely unparseable documents keep their destroyed message and the good reason it was
+written for.
+
+### D-7.8.6 — why this was NOT escalated to the owner, and what would reopen it
+
+The lead nearly escalated, and said so: a reflection question with **no threat model** — PRD §13
+records that the MVP deliberately has none — is normally the owner's. Two measured facts kept it.
+
+1. **The project has already decided this exact question, in this exact file.** `main.go`'s
+   `ENGINE_REJECTED` path does `bounded(err.Error(), 512)` and returns it, with the rationale beside
+   it: *"The engine authored this text about a template the caller already holds. Withholding it
+   left the panel with nothing to act on, so report it bounded, exactly as an ordinary render
+   diagnostic's message is reported."* So **bounded, engine-authored text about a document the
+   caller already holds is reported** — that is established direction, not a new concession.
+   `TEMPLATE_MALFORMED`'s exception is not an exception to the principle: it exists because that
+   message **QUOTES** the document, which is a different thing from **MENTIONING** it. D-7.8.5
+   brings `LoadError` into compliance with the principle rather than asking for an exception to it,
+   **so no new risk is accepted and there is nothing for the owner to accept.**
+2. **Measured: no injection vector.** `grep -rn "dangerouslySetInnerHTML\|innerHTML"
+   folio-designer/src/` returns nothing — diagnostics reach React as text nodes and are escaped. The
+   residual reflection is inert display of **the user's own file on the user's own screen**, with no
+   server and no third party anywhere in the product.
+
+**What would reopen this as an owner question** — recorded, deliberately not acted on: a rendering
+surface that **interprets** rather than escapes (any `innerHTML`, a Markdown renderer, a
+`title`/attribute sink), or **FR45's REST service**, which PRD §13 names as the thing that brings a
+threat model with it. At that point bounded reflection of author content acquires a standard to be
+judged against.
+
+**Two things explicitly NOT claimed**, so this is not over-read: only two injection spellings were
+audited, not every sink in the designer; and `cmd/folio` **already** prints `err.Error()` with the
+full value to a terminal today, so terminal-escape content in a `.folio` is a **pre-existing**
+property of the CLI that this ruling neither creates nor fixes. A `deferred-work.md` line, not work
+in Story 7.8.
+
+### D-7.8.7 — a general obligation about guards, after the THIRD instance in one epic
+
+The first dispatch also changed `TestWasmHostSanitizesTemplateDiagnostics`'s payload from a
+**parseable** object to **unparseable** bytes — the only shape still reaching `TEMPLATE_MALFORMED`
+after the change. The test stayed green while measuring the one class that could no longer reflect.
+
+That is the D-7.4.2 shape for the **third** time in this epic, after DW-24's rotted hand-list and
+the `contentColumnItems` page-count pass that no test reached. All three share one shape: **a test
+that kept passing because its SUBJECT moved, not because the property held.** Three in one epic is a
+rate, not an anecdote. So:
+
+> **When a change moves a population OUT of a guard's scope, the guard's test must be re-pointed to
+> a member still in scope AND the departed population asserted under its new treatment.** Narrowing
+> the fixture to whatever still trips the old guard leaves a green test measuring the residue.
+
+Applied here, `TestWasmHostSanitizesTemplateDiagnostics` gets **two arms**: *unparseable bytes* →
+`TEMPLATE_MALFORMED`, message destroyed (still in scope, keep it); **and** *parseable-but-invalid
+with a large `style` value* → the new code, message survives, **and the reflected fragment is
+bounded and visibly elided**. The second arm is the one that witnesses the property the test is
+named for.
+
+**This goes into the Epic 7 boundary record beside the `contentColumnItems` finding** (D-7.7.11),
+as evidence about **the suite** rather than about any one story, with the one thing all three have
+in common named so the Epic 8 gate has something specific to look for rather than a general
+exhortation to be careful.
