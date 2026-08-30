@@ -236,15 +236,20 @@ func TestVersionForSaveIsRaisedOnlyByContent(t *testing.T) {
 	// by a version rule (see the version half's own test,
 	// TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed).
 	//
-	// justifyHeaderStyleDoc was REWRITTEN onto a text element rather
-	// than deleted, because the property it was built to prove — that a
-	// rule walking only element.style would miss the second attachment
-	// point, exactly as style.color was missed — is still live for every
-	// 1.1 key. lineSpacingHeaderStyleDoc above keeps proving it for
-	// headerStyle; keeping a justify twin here would only have restated
-	// the text-element cases the table above already covers, so the
-	// const now carries the refusal the epic's own falsified-test list
-	// says must be inverted, not dropped.
+	// WHICH OF THE TWO OPTIONS WAS TAKEN, and why (the story required
+	// this to be stated): the const was NEITHER deleted NOR rewritten
+	// onto a text element. It is KEPT EXACTLY AS IT WAS — still a
+	// table, still carrying headerStyle.align: "justify" — and
+	// REPURPOSED from an acceptance fixture into the refusal fixture
+	// asserted just below. Rewriting it onto a text element would have
+	// destroyed the only justify-on-a-table document in this file and
+	// left the inverted assertion nothing to refuse; deleting it would
+	// have dropped the falsified test rather than inverting it, which
+	// the story forbids. The property the const was built to prove —
+	// that a rule walking only element.style misses the second
+	// attachment point, exactly as style.color was missed — is still
+	// live for every 1.1 key, and lineSpacingHeaderStyleDoc above keeps
+	// proving it for headerStyle.
 	if _, err := ParseDocument([]byte(justifyHeaderStyleDoc)); err == nil {
 		t.Fatal("a table's headerStyle.align: \"justify\" must now be REFUSED at load — no *Document exists for versionRequiredByContent to raise to 2.0 (Story 7.8, DW-29)")
 	} else if !strings.Contains(err.Error(), "headerStyle.align") || !strings.Contains(err.Error(), "e1") {

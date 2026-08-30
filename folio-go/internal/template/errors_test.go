@@ -104,7 +104,7 @@ func TestLoadErrorsCarryFieldValueAndTheGeneralCode(t *testing.T) {
 	t.Logf("enumerated %d load failures; %d were *LoadErrors and all carried %s", enumerated, coded, diag.CodeTemplateFieldInvalid)
 }
 
-// TestTheOverRIDINGConstructorStillWins is the other side of D-7.8.1's
+// TestTheOverridingConstructorStillWins is the other side of D-7.8.1's
 // ruling, and it is what stops "the constructor supplies the code" from
 // quietly meaning "there is only one code". The four conditions a named
 // consumer branches on keep theirs.
@@ -247,4 +247,85 @@ func parseAndRequireLoadError(t *testing.T, doc []byte) *LoadError {
 		t.Fatalf("expected a *LoadError, got %T: %v", err, err)
 	}
 	return le
+}
+
+// TestLoadErrorMessageFitsTheHostWindow is the second half of D-7.8.5,
+// and the half that was missing.
+//
+// The four per-fragment bounds above are each correct in isolation, but
+// the criterion they were derived from is a property of the ASSEMBLED
+// message — "the message must stay dominated by the engine's own words
+// … inside the wasm host's bounded(message, 512) window". Four
+// independent bounds share no budget: 84 + 24 + 96 + 256 = 460 runes of
+// author content plus the sentence frame, and a rune of arbitrary JSON
+// is up to utf8.UTFMax = 4 bytes.
+//
+// MEASURED: a document whose element id is 2048 Thai runes produced a
+// 1139-byte message. The host's bounded() is a raw BYTE slice
+// value[:512], so the author received that message cut mid-rune —
+// invalid UTF-8, no elision marker — which is exactly the "can split a
+// rune" and "invisible elision" that D-7.8.5 forbids. The host cut is
+// the last resort; this bound is what stops it ever firing.
+//
+// EVERY LEG USES MULTI-BYTE (Thai) CONTENT. A byte-counting regression
+// in the message bound must redden here rather than pass on ASCII.
+func TestLoadErrorMessageFitsTheHostWindow(t *testing.T) {
+	const thai = "ก"
+	long := strings.Repeat(thai, 2048)
+
+	assertFitsWindow := func(t *testing.T, msg string) {
+		t.Helper()
+		t.Logf("assembled message: bytes=%d runes=%d", len(msg), utf8.RuneCountInString(msg))
+		if len(msg) > loadErrorMessageBytes {
+			t.Fatalf("the assembled message is %d bytes; the host's window is %d, so bounded() would slice it raw at a byte offset (D-7.8.5)", len(msg), loadErrorMessageBytes)
+		}
+		if !utf8.ValidString(msg) {
+			t.Fatal("the message is not valid UTF-8: a bound split a rune")
+		}
+		if !strings.HasSuffix(msg, loadErrorElision) {
+			t.Fatalf("a message truncated to the window must END in a visible elision marker; got %q", msg)
+		}
+	}
+
+	t.Run("element-id-through-the-real-load-path", func(t *testing.T) {
+		// The multi-fragment vector: claimID passes the raw id as
+		// ElementID, again as Value, and again inside Reason via
+		// validateElementID's %q, so three per-fragment budgets are
+		// spent at once on one runaway id.
+		err := parseAndRequireLoadError(t, minimalDocWithElements([]string{long}, 5))
+		assertFitsWindow(t, err.Error())
+	})
+
+	t.Run("footer-of-shaped-reason", func(t *testing.T) {
+		// parse_bands.go's out-of-collection arm interpolates the
+		// table's own collection path into the reason with %q while the
+		// author's footerOf is the value, so both author fragments run
+		// long together.
+		e := &LoadError{
+			Field:     "footerOf",
+			ElementID: long,
+			Value:     long,
+			Reason:    `must be prefixed by the table's collection path "` + long + `" (D-1.4.2)`,
+		}
+		assertFitsWindow(t, e.Error())
+	})
+
+	t.Run("the-window-bound-never-fires-under-it", func(t *testing.T) {
+		// Nothing the engine actually authors goes near 512 bytes, and
+		// a Thai reason must not be touched either — this is the leg
+		// that reddens if the message bound is ever tightened or made
+		// byte-blind about what it is measuring.
+		e := &LoadError{Field: "style.align", ElementID: "e1", Value: "จัดชิดขอบ", Reason: "ต้องเป็นหนึ่งในชุดปิด left, center, right"}
+		want := "template: field style.align (element e1): ต้องเป็นหนึ่งในชุดปิด left, center, right (value: จัดชิดขอบ)"
+		got := e.Error()
+		if got != want {
+			t.Fatalf("Error() = %q, want %q — the message bound touched a message that fits the window", got, want)
+		}
+		if len(got) >= loadErrorMessageBytes {
+			t.Fatalf("witness broken: the leg's own message is %d bytes, not under the window", len(got))
+		}
+		if strings.Contains(got, loadErrorElision) {
+			t.Fatal("an elision marker appeared on a message that was never truncated")
+		}
+	})
 }

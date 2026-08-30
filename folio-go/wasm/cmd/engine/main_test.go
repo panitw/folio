@@ -117,6 +117,35 @@ func TestWasmHostSanitizesTemplateDiagnostics(t *testing.T) {
 		}
 		t.Logf("bounded reflection at the host: %d bytes, %d author runes, code=%s", len(got.Message), reflected, got.DiagnosticCode)
 	})
+
+	t.Run("a-multi-fragment-runaway-still-fits-the-host-window", func(t *testing.T) {
+		// The leg above spends ONE fragment budget. This one spends
+		// three at once: claimID passes a raw element id as ElementID,
+		// again as Value, and again inside Reason via
+		// validateElementID's %q. Four per-fragment rune bounds share
+		// no budget, so the assembled sentence measured 1142 bytes —
+		// and bounded() here is a raw BYTE slice value[:512], which
+		// delivered it to the author cut mid-rune with no elision
+		// marker. Thai on purpose, for the same reason as above.
+		const thai = "\u0e01"
+		id := strings.Repeat(thai, 2048)
+		doc := `{"assets":{},"bands":{"content":{"elements":[{"id":"` + id + `","type":"text","x":0,"y":0,"width":200,"height":40,"value":"v"}]},"pageFooter":{"elements":[],"height":20},"pageHeader":{"elements":[],"height":20}},"fonts":{"body":["Noto Sans"]},"locale":"en","nextId":2,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"1.0"}`
+		engine := wasm.NewEngine()
+		got := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(doc))})
+		if got.OK {
+			t.Fatalf("an id that is not an id must fail the load: %#v", got)
+		}
+		if len(got.Message) > 512 {
+			t.Fatalf("the host reported %d bytes, past its own 512-byte window", len(got.Message))
+		}
+		if !utf8.ValidString(got.Message) {
+			t.Fatalf("the reported message is not valid UTF-8 — the host's byte slice split a rune: %q", got.Message)
+		}
+		if !strings.Contains(got.Message, "\u2026") {
+			t.Fatalf("a message this long was truncated somewhere and must say so, got %q", got.Message)
+		}
+		t.Logf("multi-fragment runaway at the host: %d bytes, code=%s", len(got.Message), got.DiagnosticCode)
+	})
 }
 
 // TestWasmHostReportsTheTableJustifyRefusalIntact is Story 7.8's AC4,

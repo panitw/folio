@@ -1070,7 +1070,7 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					// comment requires this path to validate against
 					// the same single source the loader does.
 					//
-					// MEASURED, not assumed: applyComponentProperties
+					// MEASURED, not assumed: updateComponentProperties
 					// serializes and RE-PARSES before installing, so
 					// once the loader refuses a table's `justify` the
 					// round trip already stops the document reaching

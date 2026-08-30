@@ -597,7 +597,7 @@ func TestUpdateComponentPropertiesBandBoundsFollowTheColumnLift(t *testing.T) {
 // The property-command path holds an already-loaded document, so the
 // loader cannot reach it directly. It is closed TWICE over, and the
 // distinction is worth stating because a green here does not by itself
-// prove the align arm is doing anything: applyComponentProperties (and
+// prove the align arm is doing anything: updateComponentProperties (and
 // wasm.Engine.Apply) serialize and RE-PARSE before installing, so a
 // document the loader refuses cannot be installed whatever the arm
 // does. The arm is what makes the refusal LOCATED rather than a generic

@@ -71,11 +71,35 @@ type LoadError struct {
 // new lie in a message this story exists to make honest, so an elided
 // fragment ends in "…".
 //
-// THE CRITERION THE FOUR BOUNDS ARE DERIVED FROM: the message must stay
+// THE CRITERION, AND THE TWO LAYERS THAT MEET IT: the message must stay
 // dominated by the engine's own words — the sentence frame, the field,
 // the element and the reason — inside the wasm host's
-// bounded(message, 512) window (wasm/cmd/engine/main.go). Each bound is
-// derived below; none is a round number taken on faith.
+// bounded(message, 512) window (wasm/cmd/engine/main.go).
+//
+// That criterion is a property of the ASSEMBLED MESSAGE, so it cannot be
+// discharged by per-fragment bounds alone, and for a while it was not.
+// Four bounds with no shared budget admit 84 + 24 + 96 + 256 = 460 runes
+// of author content plus the frame, and one runaway datum can spend
+// several of those budgets at once. MEASURED: a document whose element
+// id is 2048 Thai runes — claimID passes the raw id as ElementID, again
+// as Value, and again inside Reason via validateElementID's %q —
+// assembled a message of 1142 bytes (436 runes). The host's bounded() is
+// a raw BYTE slice value[:512], so that message reached the author cut
+// mid-rune: invalid UTF-8, ending "\x81กกกก\xe0", with no elision
+// marker. Both of those are things this comment's own rules forbid.
+//
+// So there are two layers, and they do different jobs. The FOUR RUNE
+// BOUNDS below allocate the budget fairly across scripts: a Thai author
+// gets the same 84 runes of value as an English one, which is the
+// script-independence ruling from Story 7.4. The MESSAGE-LEVEL BYTE
+// BOUND (loadErrorMessageBytes, applied last in Error()) is what
+// actually GUARANTEES the criterion: the returned sentence is at most
+// the host's own window in bytes, cut only on a rune boundary and always
+// ending in the visible marker. The same 2048-rune id now yields 511
+// bytes of valid UTF-8 ending in "…" — 511 and not 512 because the cut
+// lands on the last WHOLE rune that fits, never spending a byte it
+// cannot spend on a whole rune — and the host's byte cut, the last
+// resort and never this package's bound, can no longer fire.
 //
 // FOUR, NOT ONE. D-7.8.5 named Value as "the author-supplied component
 // identified so far" and required any other found to get the same
@@ -87,14 +111,31 @@ type LoadError struct {
 // and the REASON interpolates the author's id (ids.go's %q arms) and a
 // table's own collection path (parse_bands.go's footerOf prefix check).
 const (
-	// A rune costs at most 3 bytes for every script the format admits —
-	// AD-12's closed locale set (en, th, zh-Hans, ja) is entirely
-	// within the BMP — so a bound of N runes costs at most 3N bytes.
+	// WHAT A RUNE COSTS, AND WHY THESE BOUNDS ARE STILL THE RIGHT
+	// SHAPE. An earlier note here claimed "a rune costs at most 3 bytes
+	// for every script the format admits — AD-12's closed locale set
+	// (en, th, zh-Hans, ja) is entirely within the BMP — so a bound of
+	// N runes costs at most 3N bytes". That is FALSE for the data that
+	// actually flows through these fragments. The locale set constrains
+	// the document's LANGUAGE, not its bytes: Value, Field, ElementID
+	// and Reason all carry arbitrary author-supplied JSON text, and one
+	// emoji or CJK Extension B character is utf8.UTFMax = 4 bytes. No
+	// count of runes bounds bytes here.
+	//
+	// The four bounds are therefore NOT a byte guarantee and are not
+	// asked to be one. Each is derived from what its fragment can
+	// legitimately hold, so that no engine-authored text is ever
+	// truncated and each script gets the same allowance — that is the
+	// fair-allocation job. The byte guarantee is loadErrorMessageBytes,
+	// applied to the assembled sentence at the end of Error().
 
 	// loadErrorValueRunes: the value is wholly the author's and is the
-	// fragment that regressed, so it takes at most HALF the host's
-	// 512-byte window and the engine's words keep the majority:
-	// 3N + 3 (the elision marker) <= 256 gives N <= 84.33, so 84.
+	// fragment that regressed, so it takes the largest single share —
+	// nominally half the host's 512-byte window, 84 runes being what
+	// 256 bytes buys at the 3 bytes a BMP rune costs, minus the elision
+	// marker: 3N + 3 <= 256 gives N <= 84.33, so 84. Read that as the
+	// SHARE it is, not a ceiling: 84 runes of 4-byte JSON is 336 bytes,
+	// and the message bound is what keeps the total honest.
 	loadErrorValueRunes = 84
 
 	// loadErrorElementIDRunes: an id is short BY CONTRACT (AD-10) — the
@@ -118,6 +159,20 @@ const (
 	// headroom over the stdlib text the `must be a …: ` arms append. No
 	// engine-authored reason is ever truncated.
 	loadErrorReasonRunes = 256
+
+	// loadErrorMessageBytes is the bound that actually discharges the
+	// criterion, and it is NOT a number of this package's choosing: it
+	// is the host's own window, bounded(message, 512) in
+	// wasm/cmd/engine/main.go. Matching it exactly is the point — one
+	// byte more and the host's raw slice fires and splits a rune; fewer
+	// would throw away words the author is entitled to read.
+	loadErrorMessageBytes = 512
+
+	// loadErrorElision is the visible marker every truncation leaves,
+	// at both layers. It is three bytes, which the message bound
+	// subtracts from its budget so the result INCLUDING the marker
+	// still fits the window.
+	loadErrorElision = "…"
 )
 
 // boundRunes returns s unchanged when it is at most max runes, and
@@ -129,11 +184,44 @@ func boundRunes(s string, max int) string {
 	runes := 0
 	for i := range s {
 		if runes == max {
-			return s[:i] + "…"
+			return s[:i] + loadErrorElision
 		}
 		runes++
 	}
 	return s
+}
+
+// boundBytes returns s unchanged when it is at most max BYTES, and
+// otherwise its longest whole-rune prefix that leaves room for the
+// elision marker, followed by that marker — so the returned string is
+// never longer than max bytes, marker included.
+//
+// This is the layer that discharges the criterion, and it is a BYTE
+// bound on purpose: the thing being satisfied is the host's byte window,
+// and only a byte bound can promise the host's own slice will not fire.
+// Cutting on a rune boundary is what keeps it from repeating the host's
+// defect. Ranging a string yields the byte index of each rune's FIRST
+// byte, so the largest such index at or below the budget is a legal cut
+// for any rune width up to utf8.UTFMax; invalid UTF-8 is yielded a byte
+// at a time and is equally safe to cut at. The per-fragment rune bounds
+// still run first and still do the fair-allocation work — this one only
+// ever fires when several fragments run long at once.
+func boundBytes(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	budget := max - len(loadErrorElision)
+	if budget < 0 {
+		budget = 0
+	}
+	cut := 0
+	for i := range s {
+		if i > budget {
+			break
+		}
+		cut = i
+	}
+	return s[:cut] + loadErrorElision
 }
 
 func (e *LoadError) Error() string {
@@ -141,9 +229,9 @@ func (e *LoadError) Error() string {
 	reason := boundRunes(e.Reason, loadErrorReasonRunes)
 	value := boundRunes(e.Value, loadErrorValueRunes)
 	if e.ElementID != "" {
-		return fmt.Sprintf("template: field %s (element %s): %s (value: %s)", field, boundRunes(e.ElementID, loadErrorElementIDRunes), reason, value)
+		return boundBytes(fmt.Sprintf("template: field %s (element %s): %s (value: %s)", field, boundRunes(e.ElementID, loadErrorElementIDRunes), reason, value), loadErrorMessageBytes)
 	}
-	return fmt.Sprintf("template: field %s: %s (value: %s)", field, reason, value)
+	return boundBytes(fmt.Sprintf("template: field %s: %s (value: %s)", field, reason, value), loadErrorMessageBytes)
 }
 
 // newLoadError is the single constructor every GENERAL load-error site

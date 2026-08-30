@@ -2,10 +2,10 @@
 title: 'Story 7.8: Refuse a justified table at load, in the author''s own terms'
 type: 'bugfix'
 created: '2026-08-31'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '0da98ecf4438375a38a6e5970783b3c21241be2a'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/specs/spec-folio/folio-format.md'
@@ -59,6 +59,35 @@ deferred:
       story: the dispatch fences zero paths under folio-designer/.
     location: >-
       folio-designer/src/App.tsx, folio-designer/src/preview/engine-protocol.ts
+    severity: low
+  - summary: >-
+      Documents already carrying a table's style.align/headerStyle.align "justify"
+      become permanently unloadable, with no migration path and no stated format
+      rule for NARROWING a closed set.
+    evidence: |-
+      Between Story 7.3 (which admitted justify) and this story, the designer's own
+      engine could author such a file through the component_commands.go align arm —
+      the in-memory door this story closes. Any file so written now fails ParseDocument
+      forever. D-1.4.12 states that EXTENDING a closed set is MAJOR; folio-format.md
+      says nothing about removing a member from one, so the version a narrowing lands
+      under is unstated. Caused by this change, but the intent's I/O matrix mandates
+      the refusal and its Never list excludes new designer work, so a migration path
+      is out of scope here.
+    location: >-
+      folio-go/internal/template/parse_bands.go decodeStyle
+    severity: medium
+  - summary: >-
+      wrapTemplateError passes LoadError.ElementID unbounded into the Diagnostic, and
+      the wasm host byte-cuts it at 128, so a multi-byte element id is split mid-rune
+      in the elementId field.
+    evidence: |-
+      folio-go/render_error.go passes le.ElementID straight through; the host applies
+      bounded(elementId, 128) — a raw value[:max] byte slice — in wasm/cmd/engine/main.go.
+      This is the same "runes, never bytes" property D-7.8.5 rules on, on a field the
+      story bounded only inside the MESSAGE. Pre-existing and unchanged by this story:
+      the elementId field was populated the same way before it.
+    location: >-
+      folio-go/render_error.go
     severity: low
 ---
 
@@ -587,6 +616,66 @@ visibly elided). Arm two was proved non-vacuous twice by mutation — see *Auto 
 
 ## Review Triage Log
 
+### 2026-08-31 — Review pass (re-dispatch)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 1, medium 1, low 3)
+- defer: 2: (high 0, medium 1, low 1)
+- reject: 7
+- addressed_findings:
+  - `[high]` `[patch]` `LoadError.Error()` bounded its four author-supplied fragments
+    independently but never bounded the ASSEMBLED message, while D-7.8.5's criterion is
+    stated over the message — *"inside `bounded(message, 512)`"*. Measured: a document
+    whose element id is 2048 Thai runes produced a **1139-byte** message (`claimID`
+    reflects the id as `ElementID`, as `Value`, and again inside `Reason`), which the
+    host's `bounded(message, 512)` byte-slices to **invalid UTF-8 with no elision
+    marker** — the two things D-7.8.5 explicitly blocks on. Added `boundBytes` and
+    `loadErrorMessageBytes = 512` (copied from the host's own window, not chosen), applied
+    last in `Error()`, cutting on a rune boundary with the marker's bytes budgeted.
+    Same document now yields **511 bytes**, valid UTF-8, visibly elided; the host's cut
+    can no longer fire. Also corrected the constants' false premise that *"a rune costs at
+    most 3 bytes for every script the format admits"* — the AD-12 locale set constrains the
+    document's language, not the arbitrary JSON flowing through these fragments, where one
+    non-BMP rune is `utf8.UTFMax` = 4 bytes. New `TestLoadErrorMessageFitsTheHostWindow`
+    (three legs, Thai content) and a third host arm.
+  - `[medium]` `[patch]` `internal/template/linespacing_test.go:239` claimed
+    `justifyHeaderStyleDoc` *"was REWRITTEN onto a text element"*; the const at `:499` is
+    still a table, as its own doc comment at `:494` and the assertion above it require.
+    Rewritten to state which of the story's two options was actually taken and why: the
+    const was neither deleted nor rewritten, but kept as a table and repurposed into the
+    refusal fixture.
+  - `[low]` `[patch]` `component_commands.go:1073` and `component_properties_test.go:600`
+    both named `applyComponentProperties`, which does not exist. The real symbol is
+    `updateComponentProperties` (`component_commands.go:592`).
+  - `[low]` `[patch]` `errors_test.go:107` doc comment read
+    `TestTheOverRIDINGConstructorStillWins` above `func TestTheOverridingConstructorStillWins`.
+  - `[low]` `[patch]` `folio-format.md:294` *"Neither does a table's own `style.align` or…"*
+    → *"Nor does…"*.
+
+**Rejected (7), with the authority each was tested against.** (1) *"The widened tripwire
+lost the style set's exact-size pinning"* — **false**: `TestAlignSetsAreThreeSetsPinnedAgainstTheirMaps`
+compares each set against an explicit `want` literal for both length and order, so a fifth
+member reddens. (2) *"Arm 1 should reuse `unparseableTemplateJSON`"* — mechanically
+impossible: that const is unexported in package `folio`, and `main_test.go` is package
+`main` under `wasm/cmd/engine`. (3) *"`folio-format.md` promotes the rect/line/image gap to a
+specification"* — `closedsets.go:45-47`'s invariant requires the document to describe the set
+actually enforced; the gap itself is already carried in `deferred:`. (4) *"New tests repeat
+DW-52's bare `err.(*LoadError)`"* — a package-wide pre-existing pattern (`ids_test.go:251`,
+`keeptogether_test.go:192` both predate this story) that DW-52 files and the spec explicitly
+defers. (5) *"`TestTheOverridingConstructorStillWins` calls the constructor rather than a
+production trigger"* — the override's live sites are covered by the census trigger and the
+line-spacing and footer-source tests. (6) *"The census trigger's whitespace-exact
+`strings.Replace` is brittle"* — it fatals with an explicit fixture-precondition message
+naming the cause. (7) *"`assertBoundedFragment` is coarse"* — the real gap it gestures at, no
+message-level assertion, is closed by the high patch above.
+
+**Not routed as an intent gap, and why.** The intent-alignment layer framed a genuine fork:
+whether *"partition by the code that CONSUMES the value"* refuses `justify` on `rect`, `line`
+and `image` too. The contract's I/O matrix enumerates only `table` and `text` rows, and its
+Never list forbids *"a blanket ban wearing a narrow name"*, so the matrix settles the scope at
+table-vs-text. The gap was already measured at baseline and already carried in `deferred:` by
+the planning dispatch; it is pre-existing, not caused here.
+
 ### 2026-08-31 — Review pass
 - intent_gap: 1: (high 1, medium 0, low 0)
 - bad_spec: 0
@@ -815,7 +904,7 @@ re-attest.** Confirm `git status fixtures/` is clean before quoting any digest.
 
 ## Auto Run Result
 
-Status: complete
+Status: done
 
 **This supersedes the previous (blocked) Auto Run Result.** The intent gap it raised was ruled on as
 **D-7.8.5** and written into the intent contract before this dispatch; the ruling is implemented, and
@@ -886,4 +975,55 @@ Deferred, unchanged and recorded in this spec's frontmatter: the rect/line/image
 dormancy of `main_test.go` in CI (it is build-tagged `js && wasm`; run by hand this dispatch),
 DW-52's bare type assertion, and the designer's stale TypeScript comments. **DW-53 is new** and is
 this story's "file, do not fix" line.
+
+### Review pass addendum (2026-08-31, re-dispatch)
+
+Four review layers ran in parallel over the diff since `0da98ec`. **One high-severity patch was
+applied after the implementation commit**, plus four low/medium ones; see the `## Review Triage Log`.
+The headline finding was corroborated independently by three of the four layers and then reproduced
+by the orchestrating dispatch before being routed:
+
+> `LoadError.Error()` bounded its four author-supplied fragments but never the assembled message.
+> A document whose element id is 2048 Thai runes rendered a **1139-byte** message, which the wasm
+> host's `bounded(message, 512)` byte-sliced into **invalid UTF-8 with no elision marker** — both of
+> the conditions D-7.8.5 blocks on, at the surface AC4 names. Now **511 bytes**, valid UTF-8, visibly
+> elided, with the host's cut unable to fire.
+
+**Verification re-run in full after the patches** (measured, not adjectives):
+
+- `go test -count=1 ./...` — **1579 pass, 5 skip, 2 fail**, both the mandated permanent
+  `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)` red (got 7, need >=20). One distinct
+  failure; drift twin `TestCorpusP6StatsMatchDeclaredBaseline` **PASS**.
+- `go vet -tags=matrix ./...` exit **0**. `gofmt -l folio-go` from the repo root: **no output**
+  (repo-wide, only the known DW-23 `lint/internal/rules/licencegraph_test.go` reports).
+- `TestTargetRenderHash` per leg with `FOLIO_MATRIX_TARGET` exported — `darwin/arm64`,
+  `linux/amd64`, `linux/arm64`, `js/wasm`: each **1 PASS, 0 `asserts NOTHING`**. Unset control:
+  **1 `asserts NOTHING`**, proving the four legs are not no-ops.
+- `TestCrossTargetByteIdentity` **PASS** (21.5s, all four targets from one process).
+- `cd lint && go test -count=1 ./...` — 4 packages **ok**.
+- Designer: typecheck **0**, oxlint **0 errors / exactly 4** `only-export-components` warnings,
+  **280 tests / 33 files pass**, `test:e2e:compile` **0** (`tsc --noEmit` only — browser e2e is
+  deferred by D-000.4 and **did not execute**).
+- `wasm/cmd/engine` **executed** under `go_js_wasm_exec`, not merely compiled: 5 tests / 3 subtests
+  pass, printing the located refusal at the host and both bounded-reflection measurements.
+- Heavy tests with `FOLIO_HEAVY=1`: the three table-shaped gated tests plus all four
+  `TestStatementGoldenFixtures` subtests **pass**.
+- **All 21 `goldenDigestRecord` digests re-verified by SHA-256 against the shipped `expected.pdf`
+  after the patches: 21 match, 0 moved.** `git status fixtures/` clean; `statement-signoff.json`
+  untouched and unmodified since `36bb3f5`.
+
+**Mutation proofs reproduced independently by the dispatch** (not accepted on report):
+
+| Mutation | Result |
+|---|---|
+| `boundRunes` counts bytes instead of runes | host arm 2 red — *"only 27 runes survived: the bound is counting BYTES, not runes"*; arm 1 stayed green, so the two arms measure different populations |
+| `newLoadError` leaves `Code` empty | AC41's re-point red on **6 of 7** cases plus the coverage witness — *"zero \*LoadErrors reached the CODE assertion, so the re-pointed half of this test measured nothing (D-7.4.2)"* |
+| `boundBytes` neutralised to identity | both new message-window legs red at **1142** and **1050** bytes; the under-the-bound leg correctly stayed green |
+
+Every mutation was restored and confirmed byte-identical by `cmp`.
+
+**Scope fences confirmed mechanically:** zero paths under `folio-go/internal/layout/` and zero under
+`folio-designer/` in the change set; `README.md` in no commit, md5 still
+`078d7d80d518d54af2fc04fb270d46b8`; every `justify` in `fixtures/` sits on a `"type": "text"` element
+or in README prose.
 
