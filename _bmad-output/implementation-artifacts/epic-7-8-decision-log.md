@@ -622,3 +622,132 @@ places where Story 7.1 would pass its tests while failing its ACs.
 a value that **fits** its declared width, so it exercises the short-circuit rather than the packing loop.
 
 **How we'd know it was wrong.** A `\n` in a short value rendering as one line.
+
+---
+
+## Canvas projection bounds — rulings carried into Story 7.4's plan gate
+
+Raised by the orchestrator at Story 7.1's close, after the implementer deferred `maxCanvasTextLines`
+as `low`. The lead **widened the predicate** and found a bound that binds far earlier. Filed as
+**DW-25**. All code claims below were verified in the tree by the orchestrator.
+
+### D-7.4.1 — Story 7.4 owns the canvas bounds, and the obligation is not "raise 256"
+**Lead ruling**, orchestrator-verified.
+
+**Verdict.** Owner is **Story 7.4**, with the orchestrator's 7.4 plan-gate checklist as a second
+standing address — not 7.6, not a new story, and explicitly not "Epic 7 close" (D-000.73: an owner that
+is an *event* stops existing when the event passes). The obligation is: **no canvas projection bound may
+abort the projection, and the bounds Epic 7's own input makes routinely reachable must admit that
+input.** At minimum `page_setup.go:558` and `:456`.
+
+**The finding that changed the question.** The orchestrator raised `maxCanvasTextLines = 256`
+(`page_setup.go:27`, enforced `:456`). The lead found that **it is not the bound that stops Story 7.4**:
+
+```go
+// page_setup.go:557-560, in canvasComponents — a DIFFERENT function from the paint loop
+if element.Type == template.ElementText && element.Value.Set && !element.Value.Null {
+    if len(element.Value.Value) > maxCanvasPropertyString {
+        return nil, fmt.Errorf("folio: component value exceeds the projection bound")
+```
+
+A text element's value is capped at **512 bytes**, and overrunning it returns `nil` for the **entire
+component list** — the whole canvas with no components, worse than the `:456` case and firing far
+earlier. Verified.
+
+**In simple terms.** 512 bytes is about eighty English words — less than one numbered contract clause.
+Story 7.4's promise is "type and paste a multi-paragraph clause". And because `len()` on a Go string
+counts **bytes**, not characters, Thai and CJK cost three bytes per character, so the ceiling lands near
+170 characters for exactly the two scripts NFR3 makes first-class. An author writing a Thai contract hits
+the wall at a third of the length an English author does. To reach the 256-line cap with real prose you
+must pass 512 bytes first, so in practice the value cap fires first for every realistic Epic 7 input; 256
+is reachable only by a value that is almost entirely line feeds.
+
+**The diagnosis underneath both.** `maxCanvasPropertyString` does **two different jobs**. At `:211`,
+`:567`, `:573`, `:617`, `:642`, `:648`, `:663` it bounds **identifiers, colours and expressions** —
+legitimately short. At `:558` it bounds **document body text**, which is not. One constant, two
+categories. **The fix is to split it, not to change its value.**
+
+**Why 7.4 and not elsewhere.** 7.4 is where the condition first becomes reachable through the product —
+the same logic D-000.65 applies to minting. Before 7.4 the properties surface is single-line; 7.4 hands
+the author the input, and its first AC is "the editor accepts and preserves multiple lines". An AC that
+cannot be demonstrated without lifting these bounds is not a neighbouring concern, it is 7.4's own
+acceptance. 7.6 is wrong — it draws pages and neither bound is a function of page count. 7.1's
+implementer deferred correctly (7.1's contract forbade designer-surface work); 7.4 is a designer-surface
+story, so that constraint is gone. **The severity was wrong, not the deferral.**
+
+**Consequence.** 7.4's Delivery Log must state that it verified an **actual pasted multi-paragraph clause
+reaches the canvas** — not that a constant was changed. A constant edit with no end-to-end demonstration
+is the shape that lets this survive.
+
+### D-7.4.2 — Degrade per element; never abort; mint no diagnostic code
+**Lead ruling.**
+
+**Verdict.** Shape **(b)** — degrade the offending element, keep the projection. The pattern already
+exists in the tree eleven lines above the site in question and must be reused, not reinvented:
+`page_setup.go:428-435` handles a `fontChain` failure by setting
+`component.TextPaint = &CanvasTextPaint{Lines: []CanvasTextLine{}}` and `continue`ing, with the rationale
+"Existing designer documents can be structurally valid while incomplete for production rendering … They
+remain loadable; there is simply no honest measured paint to display yet." Verified; that reasoning
+covers this case verbatim.
+
+**Options rejected.** (a) *Raise the constant* — rejected on the criterion, not the cost: moving a
+threshold so a symptom stops reporting is the twin of manufacturing data to meet a floor. **The cliff is
+the defect; its position is not.** (c) *A document-level limit with a located diagnostic* — rejected
+because there is no code to mint. The render path has **no such cap**: a 400-clause document renders
+correctly to PDF, so there is no render-time condition and D-000.65 never fires. Worse, it would let the
+**canvas refuse a document the engine renders**, inverting AD-15/AD-16 and the
+canvas-approximate/preview-exact asymmetry that is the product concept. **A canvas projection bound must
+never become a document validity rule.**
+
+**Guardrails — the first two carry most of the weight.**
+1. **Truncate the paint, never the value.** `CanvasTextPaint.Lines` is regenerated every projection and
+   never written back, so bounding it is safe. `component.Value` is what the properties panel edits and
+   **saves** — truncating it would write the truncation back into the document and destroy the author's
+   text. So `:558` gets body text its own genuinely large bound (a channel-size concern, megabytes, not
+   an identifier bound), and the degradation lives on the paint side alone.
+2. **The degraded state must be distinguishable from the empty one.** As written, a 400-line element and
+   an element with no text both project `Lines: []` — the all-clear wearing the face of could-not-look.
+   Add a field beside the existing `Overflow bool` (already the precedent for a paint-plan flag naming a
+   degraded state) and **paint the first N lines rather than none**, so the author sees their text and is
+   told it is cut. A projection field, not a `diag.Diagnostic`; no registry entry.
+3. **Split `maxCanvasPropertyString`.** It stays 512 for identifiers, colours and expressions (all seven
+   other sites are correct at that size). Body text gets its own named constant.
+4. **Whatever number replaces 256 must be derived and recorded, not chosen round**, with the criterion in
+   the constant's comment. Epic 7's narrative target is "forty pages"; at ~45 lines per A4 page at 11pt,
+   256 lines is about six pages — short of the epic's own stated target by most of an order of magnitude.
+5. **Verify, do not assume, that truncating the paint leaves Story 7.5's window count intact.** 7.5's AC
+   has the projection report "how many windows the column currently occupies"; that must come from layout,
+   not from `CanvasTextPaint`. If a truncated paint can shorten the reported column, 7.6 draws the wrong
+   number of sheets and **the canvas lies about pagination**. Assert the independence.
+6. The other seven `maxCanvasPropertyString` sites keep aborting, and that is **recorded, not fixed**:
+   Epic 7 makes none of them newly reachable. Naming the population is what stops the next reader
+   believing the whole class was closed.
+
+### D-7.4.3 — The three canvas constants are not a coordinated budget, and 256 protects nothing
+**Lead ruling**, answering the orchestrator's question of whether raising one number was safe.
+
+**Verdict.** `maxCanvasTextLines`, `maxCanvasPropertyString` and `maxCanvasTextFragments` are **three
+independent defensive caps that happen to share a const block** — not a projection-size budget.
+`maxCanvasTextLines` protects no invariant and may be raised or replaced on its own merits.
+
+**Grounding.** They bound three different axes at three different granularities: a string length at eight
+sites; fragments **per line** (`:499`); lines **per element** (`:456`). Their product, 256 × 512 × 512, is
+not a coherent total anyone budgeted. The only representational invariant in the file — nothing
+unrepresentable crosses the JS boundary (AD-15/AD-16) — is already enforced **per value** by
+`canvasLineTop` and `canvasDerived` against `MaxCanvasMillipoints`, each with its own error. 256 lines at
+a typical ~14,000 mp advance is ≈3.6e6 against 9.007e15: **ten orders of magnitude of headroom**. What 256
+does bound is projection payload size across the worker channel — a real concern and a legitimate reason
+to keep *a* cap, but a payload budget **degrades, it does not abort**, which is D-7.4.2.
+
+### D-7.4.4 — Watch item: the canvas breaks the raw template string, not bound data
+**Lead observation**, not a decision. Recorded so it is not discovered inside a story that assumed
+otherwise.
+
+`page_setup.go:449` calls `atomicSpansFor(t.doc.UnbreakableValues, nil)` — the canvas passes **nil**
+substitutions, so **no atomic span ever exists on the canvas**, and the canvas breaks the raw template
+string (`{{...}}` placeholders and all) rather than the bound data. Correct as designed, and untouched by
+D-7.1.1, which has no canvas-side effect.
+
+**Consequence.** Stories 7.4 and 7.6 both lean on canvas/PDF agreement. **If any story claims the canvas
+shows where the engine will break a _bound_ value, that claim is false today.** To be raised at 7.6's plan
+gate rather than decided now.

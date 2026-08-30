@@ -1704,16 +1704,40 @@ by design.
 
 ---
 
-### DW-25 — a canvas text element whose value carries 256 or more typed breaks aborts the WHOLE canvas projection, and Story 7.1 is what made that reachable
+### DW-25 — two canvas projection bounds abort the WHOLE projection instead of degrading, and Epic 7's own input reaches both; the 512-BYTE value cap binds first
 
 - **Deferred by:** Story 7.1 (2026-08-30), which created the reachability and whose own contract
   forbids it the fix — no designer/editor surface work, and no new diagnostic code.
-- **Owner:** **UNASSIGNED — awaiting the engineering lead's ruling** on both the owner and the shape.
-  Story 7.1's implementer filed this at **low** and the orchestrator disagreed at closure; the
-  severity below is the orchestrator's, and the lead's ruling supersedes it either way. This entry is
-  the record that the question was asked, not an answer to it.
-- **Severity:** **MEDIUM**, not low, on blast radius rather than on likelihood.
+- **Owner:** **Story 7.4**, plus the orchestrator's 7.4 plan-gate checklist as a second standing
+  address. Ruled 2026-08-30 — see `epic-7-8-decision-log.md` D-7.4.1 / D-7.4.2 / D-7.4.3. Explicitly
+  NOT "Epic 7 close" (D-000.73: an owner that is an event stops existing when the event passes).
+- **Severity:** **MEDIUM**, not the `low` Story 7.1's implementer filed it at. The lead went further:
+  it is **Story 7.4's own acceptance criterion**, since 7.4's first AC ("the editor accepts and
+  preserves multiple lines") cannot be demonstrated until these bounds lift.
 - **Status:** OPEN.
+
+**AMENDED 2026-08-30 by the engineering lead's ruling — the bound named in the original title is NOT
+the one that binds.** `page_setup.go:557-560`, in `canvasComponents` (a DIFFERENT function from the
+paint loop below), caps a text element's **value** at `maxCanvasPropertyString` = **512 bytes** and
+`return nil`s the ENTIRE component list — the whole canvas with no components at all. That is ~80
+English words, less than one numbered contract clause. `len()` on a Go string counts BYTES, so Thai and
+CJK cost 3 bytes per character and the ceiling lands near 170 characters — for exactly the two scripts
+NFR3 makes first-class. Reaching the 256-line cap with real prose requires passing 512 bytes first, so
+the value cap fires first for every realistic Epic 7 input; 256 is reachable only by a value that is
+almost entirely line feeds.
+
+**Root cause:** `maxCanvasPropertyString` does two jobs. At `:211`, `:567`, `:573`, `:617`, `:642`,
+`:648`, `:663` it bounds identifiers, colours and expressions — legitimately short. At `:558` it bounds
+document body text, which is not. **The fix is to SPLIT it, not to change its value.**
+
+**Ruled shape (D-7.4.2):** degrade per element, never abort, mint no diagnostic code. The precedent is
+eleven lines above the `:456` site — `page_setup.go:428-435`'s `fontChain` failure path already sets
+`TextPaint = &CanvasTextPaint{Lines: []}` and continues. Two guardrails carry the weight: **truncate
+the paint, never the value** (the properties panel writes the value back, so truncating it destroys the
+author's text), and **the degraded state must differ from the empty one** (today a 400-line element and
+an empty element both project `Lines: []`) — add a field beside `Overflow bool` and paint the first N
+lines rather than none. Raising the constant was rejected on the criterion: the cliff is the defect, its
+position is not.
 
 **The defect.** `folio-go/page_setup.go:27` declares `const maxCanvasTextLines = 256`, enforced at
 `:456` inside `addCanvasTextPaint`, which projects **every** text element in **every** band. The
