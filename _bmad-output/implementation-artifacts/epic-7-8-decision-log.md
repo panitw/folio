@@ -325,3 +325,60 @@ automated, or carried forward.
 pages beyond the footer's new position, the attribution was incomplete and the re-record must stop —
 D-R7.5 predicts exactly four moved goldens with byte counts 76,744 / 127,363 / 269,884 / 555,829, and
 any other difference falsifies it.
+
+### D-R7.7 — The sign-off gate is unfalsifiable, and this run does not fix it
+**Orchestrator decision** (routing, not remediation — the fix belongs to a story this run does not own).
+
+**Verdict.** Story 15.1's review found, and demonstrated, that
+`fixtures/statement-signoff.json`'s gate cannot distinguish a genuine re-attestation from someone
+pasting four new digests over the old prose. It is **deferred**, not fixed, and this run does not
+touch it. Its existence is disclosed to the owner **before** the attestation is requested, which is the
+only mitigation available inside this run.
+
+**Situation.** `statementSignOffFieldProblems` (`folio-go/statement_golden_fixture_test.go:237-252`)
+checks only that `reader`, `date` and `examined` are **non-empty**. `statementSignOffStaleness` and
+`byte_neutrality_test.go` compare only digest equality. A reviewer edited nothing but the four digest
+strings — leaving `reader "Panit Wechasil"`, `date 2026-08-27`, and prose describing pages whose footer
+sat at the box's *left* edge — and **both gates went green**. The file was restored. Nothing asserts the
+record is new: no check that the date advanced, that `examined` or `reader` changed, or that the record
+names what it supersedes.
+
+**In simple terms.** The signature on the back of the photograph is checked for being *present*, never
+for being *recent* or *about this photograph*. So the cheapest way past the gate is to keep the old
+signature and swap the picture — which is exactly the failure the gate exists to prevent, and exactly
+what an agent under pressure to turn a test green would reach for. The gate has been this way since it
+was written; Story 15.1 is simply the first time anything load-bearing has rested on it.
+
+**Why it is not fixed here.** The intent contract's `Never` assigns CI and gate restructuring to Story
+15.2, and this is pre-existing code untouched by 15.1's diff. Widening 15.1 to fix it would mean editing
+the very gate whose verdict 15.1 is currently waiting on — a conflict of interest in the literal sense.
+The accepted cost is that the gate stays weak until 15.2, and that the integrity of *this* attestation
+rests on process rather than on a check.
+
+**Consequences.**
+- **No agent in this run may write `reader`, `date` or `examined`.** Recorded in the intent contract as a
+  `Never`, and honoured: `git diff 09bb30e HEAD -- fixtures/statement-signoff.json` is 0 lines.
+- The orchestrator disclosed the weakness to the owner in the same message that requested the pass, so
+  the owner knew the record rests on their actually opening the files.
+- Story 15.2 inherits it. It should assert the record is *newer* than the goldens it covers and names
+  what it supersedes — not merely that three strings are non-empty.
+
+**How we'd know it was wrong.** A future sign-off whose `date` is older than the goldens it attests to,
+or whose `examined` prose describes a rendering the current bytes no longer produce.
+
+### D-R7.8 — The "second permanent red" deferral is transient and closes with the sign-off
+**Orchestrator decision** (a correction to a finding, recorded so the closer does not carry it forward).
+
+**Verdict.** Story 15.1's second high deferral — that the story leaves a second permanently-expected red
+which `.github/workflows/ci.yml`'s single-scalar `KNOWN_RED_TEST` rule forbids appending to — describes
+the **halt state, not the closed state**. `TestGoldenDigestAgreesAtEveryDeclaredSite` is red only while
+the sign-off is outstanding. A genuine attestation turns it green, and no second permanent red exists.
+The reviewer was right about the halt and wrong about the consequence.
+
+**Consequences.** The closer must verify this empirically — the suite must show **exactly one** red
+(`TestCorpusMeetsP6ExerciseFloors`, the mandated P6g floor) once the sign-off lands — and must not carry
+the deferral into `deferred-work.md` as an open item against Story 15.2. `KNOWN_RED_TEST` stays a single
+scalar and is not touched.
+
+**How we'd know it was wrong.** The sign-off lands and `TestGoldenDigestAgreesAtEveryDeclaredSite` is
+still red — which would mean the digests, not the attestation, are the problem.

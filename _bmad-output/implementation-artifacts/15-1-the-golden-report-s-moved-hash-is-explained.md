@@ -2,10 +2,10 @@
 title: 'Story 15.1: The golden report''s moved hash is explained'
 type: 'bugfix'
 created: '2026-08-30'
-status: 'blocked'
+status: 'done'
 baseline_revision: 'f91246319751dcaa38abdd2ccc0bad04552a4589'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-15-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
@@ -47,6 +47,11 @@ deferred:
       fair, the job was already red at baseline f912463 (TestStatementGoldenFixtures), so this
       trades one red for another rather than breaking a green build. Deferred on the authority of
       the intent's own Never clause: "no CI restructuring (that is 15.2)".
+      CLOSED at story close by D-R7.8, empirically rather than by argument: the attestation landed in
+      36bb3f5, TestGoldenDigestAgreesAtEveryDeclaredSite and TestStatementSemanticSignOffIsRecorded are
+      both green, and the suite carries exactly ONE red (the P6g floor). The finding described the halt
+      state, not the closed state; no second permanent red exists, ci.yml is untouched, and nothing was
+      filed against Story 15.2 for it. NOT carried forward.
     location: >-
       .github/workflows/ci.yml:54
     severity: high
@@ -133,35 +138,23 @@ deferred:
 
 *Owner summary; the intent contract below governs implementation.*
 
-Folio's central promise is that the same template and data always produce the same PDF, byte for
-byte. Four reference statements are committed to prove it. All four now render differently from the
-copies on record — every page four bytes bigger — and nobody has written down why. Until someone
-does, the reference suite has stopped being a test.
+Folio's central promise is that the same template and the same data always produce the same document,
+byte for byte. Four reference statements are kept on record to prove it, and all four had been failing
+that check for weeks — every page four bytes larger than its recorded copy, with no explanation on
+file.
 
-This story finds out what changed by opening both PDFs and comparing what the renderer actually
-wrote, rather than by reading commit messages and guessing. It names the change in ordinary language
-and writes that explanation where the next person will find it. It also corrects project records
-that describe the problem wrongly, and actually runs the three larger statements the automated build
-never runs, so their verification stops being an assumption.
+The cause turned out to be small and clearly right. Every page's footer reads "Page 1 of 1", and the
+template has always asked for it to sit against the right-hand margin. The engine read that request
+and accepted it, then drew the text at the left of its box anyway, because nothing was connected to
+act on it. That connection was made in an earlier release, the footer moved where it was always meant
+to be, and the number describing its position grew four characters longer. Comparing the old documents
+against the new shows that one number moving, once per page, and nothing else.
 
-The cause turns out to be small and the change turns out to be right. The footer of each statement
-reads "Page 1 of 1" and the template has always asked for it to sit against the right-hand margin.
-Until recently the renderer read that request, accepted it, and then drew the text at the left of its
-box anyway, because nothing had ever been connected to act on it. That connection was made, the text
-moved to where it was always meant to be, and the number describing its position grew four characters
-longer. Nothing else about any of the documents changed.
-
-The owner has ruled that this is wanted, so the reference copies are re-made to match. What this
-story deliberately does not do is quietly refresh them: the explanation is written down first, and
-the human confirmation that the reference documents still read correctly is asked for again rather
-than carried over — the old confirmation was given against pages that placed the footer differently,
-so it no longer describes what is on record.
-
-Done looks like: a written explanation naming the cause, the three larger statements actually
-rendered and measured rather than assumed, corrected project records, re-made references, and a fresh
-human sign-off. Two things will look wrong along the way and are not. The sign-off check is expected
-to be red until a person has genuinely re-read the pages. And one unrelated test about Thai name
-coverage fails permanently by an earlier decision; fixing it is explicitly forbidden.
+The owner ruled the change wanted, so the four reference copies were re-made — but only after the
+explanation was written down, and only against a fresh human reading of the re-made pages rather than
+the earlier confirmation carried over. That reading has since been done and recorded, so the reference
+suite is a real test again. One unrelated check, about Thai name coverage, stays red permanently by an
+earlier decision; that is intended, and fixing it is forbidden.
 
 <intent-contract>
 
@@ -667,6 +660,100 @@ deferred with a named owner and trigger").
 | `cd folio-designer && npm run typecheck && npm run lint && npm test` | typecheck clean; lint clean (4 pre-existing `only-export-components` warnings); **30 files / 213 tests PASS** |
 | `qpdf --check` + `--show-npages` on all four re-recorded goldens | no syntax or stream encoding errors; 1 / 5 / 20 / 50 pages |
 | `gofmt -l folio-go lint` | one hit, `lint/internal/rules/licencegraph_test.go` — pre-existing and already tracked as **DW-23**; untouched by this story |
+
+
+### 2026-08-30 — done
+
+Baseline `f912463`; closed at `36bb3f5` on `main` in three commits — `badc6d9` (attribution, record
+corrections, the re-record), `7abca8c` (review findings), `36bb3f5` (the owner's attestation).
+
+**Planned.** 15.1 was pulled forward as story zero of the Epic 7–8 run (D-R7.0): both epics guard
+themselves with "the corpus hashes identically", which is unevaluable while the corpus is red. The
+plan gate carried the owner's ruling into the contract *before* implementation began (D-R7.6) — the
+move is intended, `style.align` should render, and the pre-`791ed00` output was the defect — so the
+Phase A halt was discharged on arrival and the dispatch ran both phases.
+
+**Built.** The AC-by-AC narrative is the dispatch entry above; what it does not say is the delivery
+shape. This story changed **no production code at all**: across the whole range `f912463..36bb3f5`
+the only non-document edit is four digest literals in `folio-go/byte_neutrality_test.go`. Everything
+else is four re-recorded goldens, their metadata and READMEs, evidence, and corrected records. The
+four measured byte counts — 76,744 / 127,363 / 269,884 / 555,829 — are exactly the ones D-R7.5
+predicted, re-measured at close, so its falsification condition did not fire.
+
+**The halt held, and the attestation is real.** `fixtures/statement-signoff.json` is a 0-line diff
+between `09bb30e` and `7abca8c`, re-verified at close: no agent wrote, edited or synthesised the
+record. The owner performed the visual pass and wrote it themselves in `36bb3f5`. It is a genuinely
+new record rather than the digest-only paste D-R7.7 warns is possible — the `date` advanced from
+2026-08-27 to 2026-08-30, the `examined` prose is rewritten end to end, it names what it supersedes,
+and it states the expected footer distances (about 86pt and about 78pt) that only a reading of the
+re-recorded pages would produce.
+
+**Triage: 8 patched / 8 deferred / 6 rejected** (patched: 1 high, 5 medium, 2 low), which set
+`followup_review_recommended: true`. Rather than another builder review round, the closer gave the
+adversarial pass directly — this is evidence-path work where the reviewer and the reviewed share a
+file, so the checks that matter are the ones an interested party cannot fake. Three were re-derived
+from the repository rather than read from the report, and all three held:
+
+1. **No golden was regenerated to obtain green.** Diffing each `expected.pdf` at `f912463` against
+   its committed successor, and filtering only the xref offsets, `/Length` and the content-derived
+   `/ID`, leaves exactly one class of substantive change in all four files: the footer `Tm`
+   x-operand, `436` → `522.474` on `statement-1`/`-5` and `436` → `514.466` on `-20`/`-50`, appearing
+   1 / 5 / 20 / 50 times — once per page, matching each fixture's page count with no residue. No
+   glyph, no operator and no other coordinate moved.
+2. **The `<intent-contract>` was not edited after implementation began.** The block hashes to
+   `71d7e74e…` at `f912463`, `badc6d9`, `7abca8c`, `36bb3f5` and in the working tree.
+3. **The sign-off diff is empty**, as above.
+
+**Test teeth, proved not asserted.** With `textAlignOffset`'s `"right"` branch forced to return zero,
+`TestStatementGoldenFixtures` fails on all four subtests; restoring the file turns all four green
+again. The re-recorded goldens are bound to the alignment behaviour itself, not to a sibling guard or
+to digest self-consistency. On that evidence **`followup_review_recommended` is cleared to `false`**:
+a second review pass would re-read the same diff with less leverage than the neutering experiment
+already applied.
+
+**D-R7.8 confirmed empirically, and not carried forward.** The review's second high deferral — that
+this story leaves a second permanently-expected red against `.github/workflows/ci.yml`'s
+single-scalar `KNOWN_RED_TEST` rule — described the halt state, not the closed state. With the
+attestation landed, `TestGoldenDigestAgreesAtEveryDeclaredSite` and the matrix-gated
+`TestStatementSemanticSignOffIsRecorded` are both green, and the suite carries exactly one red.
+Nothing was filed in `deferred-work.md` against Story 15.2 for it; `ci.yml` is untouched.
+
+### Measured gates — this WAS the epic-boundary heavy run (per-epic cadence, D-R7.1)
+
+Nothing is deferred to a catch-up; every suite below was run at `36bb3f5`, on this machine, at close.
+
+| Gate | Measured |
+|---|---|
+| `cd folio-go && go test ./...` | **exactly ONE red**: `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` — got 7, need >=20 (P6 stats `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`), the mandated permanent red (D-000.17 / D-2.1.14 / DW-11), untouched. Every other package `ok`. |
+| `go test -count=1 -run 'TestStatementGoldenFixtures\|TestGoldenDigestAgreesAtEveryDeclaredSite\|TestStatementFixtureReadmesRecordTheCoverageHistory' -v .` | all PASS — `TestStatementGoldenFixtures` 4/4 subtests, digest-site agreement, README coverage history 4/4 |
+| Golden ↔ `expected.json` ↔ evidence PDF | all three sha256 agree per fixture, and each evidence PDF is byte-identical to its golden: `114df1d6…` 76,744 B · `70dce051…` 127,363 B · `56bfbbd9…` 269,884 B · `5d090b0f…` 555,829 B |
+| `go vet -tags=matrix ./...` | clean, exit 0 |
+| `FOLIO_MATRIX_TARGET=<t> go test -count=1 -tags=matrix -run TestTargetRenderHash -v .` | PASS on all four legs with the variable **set** on each — `darwin/arm64` 0.66s, `linux/amd64` 6.79s, `linux/arm64` 3.89s, `js/wasm` 7.55s. None was the documented no-op; the "asserts NOTHING" log line appeared on no leg. |
+| `go test -count=1 -tags=matrix -run TestCrossTargetByteIdentity -v .` | PASS, 17.18s — all four targets byte-identical on every registered document |
+| `cd folio-go && go test -count=1 -tags=matrix ./...` | two reds: the P6g floor above, and `TestShippedFacesReproduceFromUpstream`, which is **environmental** — `fontTools` is not importable by `/opt/homebrew/opt/python@3.12/bin/python3.12` on this machine, and `git diff --name-only f912463 36bb3f5` matches no font file, so no font byte was touched by this story. Confirmed, not re-litigated. |
+| `cd lint && go test -count=1 ./...` | 4/4 packages `ok` (`genmanifest`, `licence`, `manifest`, `rules`) |
+| `cd folio-designer && npm run typecheck && npm run lint && npm test` | typecheck clean; lint 0 errors / 4 pre-existing `only-export-components` warnings; **30 files, 213 tests passed**, 9.23s |
+| `gofmt -l folio-go lint` | one hit, `lint/internal/rules/licencegraph_test.go` — pre-existing, tracked as DW-23, untouched |
+
+**Commit hygiene.** All three commits are on `main`, contain only this story's files, and end with the
+required `Co-Authored-By:` trailer. `badc6d9` carries the fixtures, evidence, records and the four
+digest literals; `7abca8c` carries the review patches plus `.gitattributes` (`_bmad-output/**/*.pdf
+binary`, so a checkout cannot rewrite a document a person signed); `36bb3f5` touches
+`fixtures/statement-signoff.json` and nothing else. No unrelated churn, no branch, no push.
+
+**Deferred, with owners.**
+- **DW-24** — `align:"center"` and `valign:"middle"`, the only two rounding branches in
+  `folio-go/text_alignment.go`, are declared by no fixture, so the file's only `geom.ScaleRound` site
+  has zero golden coverage. Verified **OPEN** under `## Open` in `deferred-work.md`, owner **Story
+  7.1**, trigger any story touching the vertical model, `text_alignment.go`, or the rounding rule.
+  Due within this run: 7.1, 7.2 and 7.7 all touch the vertical model.
+- **D-R7.7** — the sign-off gate checks that `reader`/`date`/`examined` are non-empty and nothing
+  more, so it cannot distinguish a genuine re-attestation from a digest-only paste. Inherited by
+  **Story 15.2**, recorded as an orchestrator decision rather than a `deferred-work.md` item. This
+  story's own attestation was checked against that failure mode by hand (see above) and passes.
+- **DW-23** — `lint`'s pre-existing gofmt break; unchanged and still the only `gofmt -l` hit.
+
+Nothing was found wrong in the three commits, and no closing fix was needed.
 
 ## Auto Run Result
 

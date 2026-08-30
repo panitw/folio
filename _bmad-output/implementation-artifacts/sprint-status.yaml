@@ -375,17 +375,10 @@ development_status:
   # themselves with "the corpus hashes identically", unevaluable while it is red.
   # Ruling and attribution in epic-7-8-decision-log.md (D-R7.5, D-R7.6).
   epic-15: in-progress
-  # 15.1 HALTED 2026-08-30 with blocking condition `human sign-off required`, which is its
-  # DESIGNED halt and not a defect. Attribution, record corrections, the AC5 heavy-fixture run
-  # and the re-record are all complete and committed; the four goldens now read
-  # 114df1d6 / 70dce051 / 56bfbbd9 / 5d090b0f, and all four matrix targets agree on them.
-  # What remains cannot be done by an agent: a person must open the four PDFs in
-  # _bmad-output/implementation-artifacts/evidence/15-1/ and write fixtures/statement-signoff.json
-  # themselves (D-4.7.1 invalidates it IN WHOLE; D-4.7.7 forbids checking by text extraction).
-  # Until they do, TestGoldenDigestAgreesAtEveryDeclaredSite and the matrix-gated
-  # TestStatementSemanticSignOffIsRecorded are RED ON PURPOSE. Deferred: DW-24 (align:"center"
-  # and valign:"middle" -- the only rounded branches -- have no golden coverage) -- owner Story 7.1.
-  15-1-the-golden-report-s-moved-hash-is-explained: in-progress
+  # 15.1 CLOSED 2026-08-30 at 36bb3f5: attribution D-15.1.1, four goldens re-recorded on the
+  # owner's ruling (D-R7.6), and the human sign-off written by the owner themselves. Full record,
+  # measured gates and deferrals in the story's ## Delivery Log; DW-24 open, owner Story 7.1.
+  15-1-the-golden-report-s-moved-hash-is-explained: done
   15-2-ci-s-red-means-something: backlog
   15-3-folio-go-v0-1-0-is-cut: backlog
   epic-15-retrospective: optional
