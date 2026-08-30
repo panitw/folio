@@ -4,14 +4,15 @@
 
 ## Goal
 
-Folio can render statements but cannot author contracts. A contract is body copy — numbered clauses
+Folio can author a statement but not a contract. A contract is mostly body copy — numbered clauses
 running for paragraphs, justified, set at a house-style line spacing — followed by a schedule and a
-signature block that sit on later pages. Today a text element holds a single unbroken run and the
-authoring canvas is exactly one page tall, so neither half is expressible. This epic adds both: the
-typography that makes a text element hold a paragraph rather than a line (mandatory breaks, author-
-controlled line spacing, justified edges, and a designer editor that can accept them), and an
-authoring surface as long as the document's content column, with page breaks drawn where the engine
-will actually take them. It deliberately changes **nothing** about the pagination model itself.
+signature block on later pages. Today a text element holds one run of text with no way to express a
+break, and the canvas is one page tall, so neither half can be authored. This epic supplies both: it
+makes a text element hold a *paragraph* (mandatory breaks, author-controlled line spacing, justified
+edges, and a designer that can type and paste them), and it makes the authoring surface as long as
+the document the engine will actually produce. It changes **nothing** about pagination — the engine
+already treats the content band as a window onto one unbounded column, and that window model is an
+input to this epic, not a target of it.
 
 ## Stories
 
@@ -22,100 +23,92 @@ will actually take them. It deliberately changes **nothing** about the paginatio
 - Story 7.5: The content column runs past the first page
 - Story 7.6: The canvas draws every page the document will produce
 - Story 7.7: Keep a signature block together across a page break
+- Story 7.8: Refuse a justified table at load, in the author's own terms
 
 ## Requirements & Constraints
 
-- A line feed inside a text value is a **mandatory** break the line packer may never decline; two
-  consecutive feeds yield an empty line of one full advance; `\r\n` is one break, not two; the break
-  character is drawn on neither line.
-- Line spacing is an author-set integer ratio scaling the ruled baseline-to-baseline advance only.
-  Absent means today's font-derived leading. Out-of-range or non-integral values are located load
-  errors, never silent clamps.
-- Justification distributes slack across a line's break opportunities so the line meets its declared
-  width; the last line of a paragraph and any line ended by a mandatory break are set at the natural
-  start edge, unjustified. Remainder distribution needs one stated, ordered integer rule.
-- The align set stays closed — `justify` joins `left`/`center`/`right`; nothing else.
-- Overflow behaviour is unchanged: content wider than its declared width is clipped with a located
-  warning alongside successful output, never a fatal error.
-- The designer must accept and preserve multi-line values, including a clause pasted from a word
-  processor (paragraph breaks kept as mandatory breaks, other formatting silently discarded), and
-  must expose line spacing and alignment in the inspector beside existing typography controls.
-- Placement in the **content** band may extend past one page's content height; the `pageHeader` and
-  `pageFooter` bands remain one page tall by definition and keep refusing such placements. Negative
-  and beyond-safe-bound coordinates stay refused with unchanged messages.
-- The canvas draws one sheet per pagination window with header/footer chrome repeated, break marks
-  taken from the engine's projection, and must state plainly that a component's page is a consequence
-  of the content above it — a column position, not a pin to a page number.
-- Keep-together groups place entirely in one window or entirely in the next; a group taller than one
-  window keeps the existing exception (its own page, clipped, recorded as a warning beside the bytes).
-- **Every field this epic adds is optional and absent-by-default**, and the existing golden fixture
-  corpus must hash identically after it on all four targets. This is an acceptance criterion.
-- Every feature ships its golden fixture; a hash change is investigated as a defect until proven an
-  intended, versioned behaviour change. Any change to layout or emission is a breaking release for
-  downstream test suites.
+- A mandatory line break authored inside a text value survives to the PDF, so one component can hold
+  more than one paragraph. Two consecutive breaks produce an empty line, giving a paragraph gap.
+- A text element's line spacing is author-controlled, expressed as an integer ratio applied to the
+  ruled inter-baseline advance. Absent means today's font-derived leading.
+- A text element can be justified to its declared width; the last line of a paragraph is left
+  unjustified.
+- Multi-paragraph body text, its spacing and its alignment are all authorable in the designer, not
+  only by hand-editing the file.
+- The canvas extends across every page the content column currently occupies, with page-header and
+  page-footer chrome repeated per page and breaks drawn where the engine will take them.
+- A group of content-band elements can be declared to paginate together, so a signature block is
+  never severed by a page boundary.
+- **Every field this epic adds is optional and absent-by-default. The existing golden corpus must
+  hash identically afterwards on all four targets. That is an acceptance criterion, not an
+  aspiration** — and every feature here ships its own golden fixture.
+- Existing overflow behaviour is unchanged: content that exceeds its box is clipped with a located
+  warning beside the PDF bytes, never a fatal error. The over-tall-unit exception (a page of its own,
+  clipped, recorded as a warning) applies unchanged to keep-together groups.
 
 ## Technical Decisions
 
-- **Determinism boundary (AD-1/AD-2/AD-3).** All geometry is `int64` millipoints from the shared
-  geometry package; no `float64` in any layout, measurement, or emission signature; no transcendental
-  math, clock, environment, or map-order dependence in the render path. Line-spacing arithmetic is
-  therefore an integer ratio in thousandths applied to millipoints — a binary float here would break
-  byte identity across targets. Numbers reach output through exactly two emitters (thousandths-scaled
-  decimal, plain integer) and no other route.
-- **Exact-decimal discipline (AD-23).** The same ban on binary floating point that covers report data
-  covers any new ratio or slack arithmetic: exact scaled-integer decimals, round-half-to-even where a
-  division is unavoidable, defined scale stated rather than incidental.
-- **Break opportunities (AD-25).** The engine's contract is break *opportunities*, not segmentation.
-  Unknown Thai runs are atomic, clusters are indivisible, and declared unbreakable values admit no
-  interior break — but those constraints bind the breaks the engine *infers*. A line feed the caller
-  supplied is a break the engine was **told** about, so it survives inside a declared value.
-- **Stage ranks.** Strictly forward dependencies with `text` (5) below `layout` (7) below `pdf` (8);
-  a stage needing something later receives it as a parameter, never an import. The rank table is
-  executable and lives in the lint module, not in prose.
-- **Two passes (AD-4) and absolute boxes (AD-24).** Pass one produces the complete page model; pass
-  two serializes it and lays nothing out. Element coordinates are relative to their band, top-left
-  origin with Y down, flipped to PDF space in exactly one function. Nothing in a band reflows.
-  Pagination's window model over one unbounded content column is an **input** to this epic — no
-  per-page layouts, no second grouping model in layout; keep-together reuses the existing row-group
-  machinery.
-- **Canonical file form (AD-9).** One legal serialization: sorted keys, two-space indent, LF, trailing
-  newline; round-trip in both directions is a shipped test. New style fields are `lowerCamelCase` and
-  must survive an edit-and-edit-back with identical bytes.
-- **Engine owns the document (AD-15).** No TypeScript model of a template. Every committed change is
-  an opaque command over the one channel; the UI holds an immutable snapshot for painting. Transient
-  interaction state stays in the UI. Undo/redo is engine-side history over commands.
-- **The browser never measures text (AD-17).** The canvas gets every metric, line break, and now every
-  spaced advance and justified line position from the engine's measure/projection API, painting
-  pre-broken lines with browser wrapping and browser justification disabled. The canvas and the PDF
-  must consume the same advance.
-- **Diagnostics (AD-14).** One diagnostic type, one channel, stable codes from a closed additive
-  registry, element id attached. Errors abort; clipping and over-tall content are warnings returned
-  beside successful output.
+- **Integer arithmetic only.** All geometry is int64 millipoints; binary floats appear nowhere in the
+  engine core, for geometry or for data. Line spacing is therefore an integer ratio in thousandths,
+  and justification slack is distributed in integer millipoints by one stated, ordered remainder rule
+  — anything else breaks byte-identity across the four targets.
+- **Layout happens once.** Pass one produces the complete page model; pass two only serializes it.
+  The PDF writer performs no measurement, no line breaking, and no pagination.
+- **Boxes are absolute and nothing negotiates.** Coordinates are relative to the band's top-left, Y
+  down; elements never reflow or displace siblings. Line spacing must scale the baseline-to-baseline
+  advance and nothing else, so the first baseline — and the element's top edge — does not move.
+- **Mandatory breaks are not optional opportunities.** The text layer must report them as mandatory
+  and the line packer must always take them; a `\r\n` pair is one break; the break character itself is
+  consumed and drawn on neither line, as whitespace breaks already are.
+- **The engine owns the document.** There is no TypeScript model of a template. The designer holds an
+  immutable snapshot for painting and sends every committed mutation as an opaque command over one
+  channel; undo/redo is engine-side history. Transient interaction state stays in the UI.
+- **The browser never measures text.** The canvas gets every metric and line break from the engine's
+  measure API and paints pre-broken lines with browser wrapping and justification disabled. Anything
+  the canvas draws about page windows and break positions must come from the engine's projection, not
+  from a browser computation.
+- **Reuse the existing grouping machinery** for keep-together rather than introducing a second
+  grouping model into layout.
+- **Diagnostics are one type on one channel**, carrying a stable code from a closed registry, an
+  element id and a path. Out-of-range or malformed values are located load errors naming the element
+  and the field — never a silent clamp or no-op. An *uncoded* load error is flattened to a generic
+  message before it reaches a designer author, so any refusal that must be explained in the author's
+  terms needs a code; whether to mint another per-field style code is an open lead-level decision.
+- **Validate a closed set against the set its consumer accepts**, keyed on element type — not on where
+  the value sits in the JSON. That mis-partition is the root cause Story 7.8 exists to fix.
+- The file format has one canonical byte form; adding an optional field must not raise the format
+  version for documents that do not use it.
 
 ## UX & Interaction Patterns
 
-- Single dark-chrome / light-canvas theme; the page is the only bright surface, with contrast met on
-  dark chrome's own terms. Design tokens only — never hard-coded colour; cyan means structure, amber
-  means data.
-- The workspace is persistent regions (canvas, palette, properties, document bar) with the page at
-  true proportions, visible boundaries, three bands, and a snapping grid — the multi-page canvas
-  extends this rather than replacing it.
-- New controls follow the established component and property-field patterns; refusals state the
-  concrete reason in text at the control that caused it.
-- The accessibility floor binds: every control keyboard-reachable, visible focus, accessible names on
-  icon-only controls, diagnostics distinguished by shape before colour.
-- A single-page template must look and behave exactly as it does today.
+- The three bands are structural, not decorative — which band a component sits in determines whether
+  it repeats. Band identity and drop targeting stay unambiguous as the canvas grows past one page.
+- A component on a later page is at a **column position**, not pinned to page three. The interface
+  must say plainly that its page is a consequence of the content above it and can change with the
+  data.
+- The canvas is an approximation, the preview is exact, and the interface must make that asymmetry
+  legible without a tutorial.
+- Property fields commit on blur or Enter; a multi-selection marks divergent values as mixed rather
+  than picking one. The inspector must not offer a setting the renderer cannot honour for the
+  selected element type.
+- Pasting from a word processor preserves paragraph breaks and discards other formatting silently.
+- Undo covers every canvas and property mutation, and a single-page template behaves as it does today.
 
 ## Cross-Story Dependencies
 
-- Two separable pillars: body text (7.1–7.4) and the multi-page canvas (7.5–7.6). 7.7 supplies the one
-  legal-specific layout primitive neither pillar covers and is the story to cut first if the epic is
-  trimmed.
-- 7.4 depends on 7.1–7.3: the designer editor exposes multi-line values, line spacing and justify only
-  once the engine accepts them.
-- 7.6 depends on 7.5: the canvas can draw sheets only once the engine accepts and projects content-band
-  placement beyond one page, including the window height and window count.
-- 7.2 and 7.3 must hold the canvas/PDF agreement established earlier in the designer work — the canvas
-  text paint plan consumes the same advances the renderer does.
-- 7.7 reuses the existing table-row grouping machinery and the existing over-tall-group exception; it
-  adds no new pagination concept.
+- Two separable pillars: **body text** (7.1–7.4, plus 7.8) and **the multi-page canvas** (7.5–7.6).
+  7.7 is the one legal-specific layout primitive neither pillar supplies and is the story to cut first
+  if the epic needs trimming.
+- 7.1 (mandatory breaks) underpins 7.3, whose last-line rule must also treat a line ended by a
+  mandatory break as unjustified, and 7.4, whose paste path produces them.
+- 7.2 and 7.3 must both be reflected by the canvas text paint plan, which must consume the same
+  advance and the same line breaks the renderer does.
+- 7.4 needs 7.1–7.3 landed before the inspector can offer those capabilities.
+- 7.6 depends on 7.5: the canvas can only draw the page windows once the engine accepts content-band
+  placements beyond one page and reports the window height and count in its projection.
+- 7.8 was added mid-epic when 7.4's plan gate routed the justified-table problem out of it: 7.4 stops
+  the designer *offering* a justified table, 7.8 makes the format *refuse* one. It can ship
+  independently of everything after 7.4, and must invert (not delete) the shipped tests that pin
+  today's accepting behaviour while keeping a text element's justify accepted.
+- Wider line extents from 7.2 and taller content from 7.5 feed the existing pagination unchanged;
+  do not modify the layout package's break rules or window model to accommodate them.
