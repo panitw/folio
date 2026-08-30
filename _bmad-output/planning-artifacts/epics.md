@@ -2339,9 +2339,16 @@ the code that consumes the value, not by where the value is written in the docum
 
 1. **Three shipped tests must be INVERTED, not deleted** — they pin today's acceptance and are
    correct against the contract as it was written: `folio-go/internal/template/closedsets_test.go:287-292`;
-   `folio-go/line_spacing_test.go:168-175`, with its `justifyHeaderStyleDoc` const at `:311-331`; and
-   `folio-go/table_render_test.go:1338`
+   `folio-go/internal/template/linespacing_test.go:230-237`, with its `justifyHeaderStyleDoc` const
+   at `:479-503`; and `folio-go/table_render_test.go:1338`
    `TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge`. A version-test fixture is deleted with them.
+   *(Anchor corrected 2026-08-31 at 7.8's plan gate: the second was written against
+   `folio-go/line_spacing_test.go`, which contains zero occurrences of `justify`. Two further tests
+   the epic missed **rename-and-widen** rather than invert:
+   `closedsets_test.go:215-275` `TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps`, whose name asserts
+   two sets and whose `:261-263` asserts `len(StyleAlignTokens) == len(ColumnAlignTokens)+1`; and
+   `component_properties_test.go:217-249` `TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly`,
+   whose name becomes false.)*
 2. **A TEXT element's `justify` must stay accepted.** Story 7.3 shipped it, Story 7.4 offers it in
    the inspector, and a golden fixture renders it. So the fix cannot be a blanket ban wearing a narrow
    name; it must thread the consumer's element type into `decodeStyle`, which both callers already

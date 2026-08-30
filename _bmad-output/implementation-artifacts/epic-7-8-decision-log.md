@@ -1499,3 +1499,141 @@ already specified and small — and, independently, because it is the load rejec
 the tag, so front-loading it removes the item most likely to be squeezed if the owner chooses to tag
 early. 7.9 last before the gate because the gate waits on it. `epic-7` stays `in-progress` until 7.9
 lands.
+
+## Story 7.8 — the reserved diagnostic-code decision, ruled at the plan gate (2026-08-31)
+
+Story 7.8's plan dispatch halted `blocked` / `intent gap` exactly where it was told to: on the
+decision `internal/diag/diag.go:249-252` reserves. That halt is the correct outcome and not a
+failure — the spec stated three options and picked none, which is what a plan gate is for.
+
+### D-7.8.1 — ONE code, `TEMPLATE_FIELD_INVALID`, supplied by the CONSTRUCTOR
+
+**The reserved question, verbatim from the code:** *"Before a THIRD is minted, someone must decide
+whether the general form is right or whether AD-14's closed registry accretes one entry per style
+field forever."*
+
+**Ruling.** Mint **exactly one** code — `TEMPLATE_FIELD_INVALID`, for the category *a well-formed
+template carries a field value that is not acceptable* — and have **`newLoadError` itself supply
+it**. Every uncoded load-error site becomes coded at once, by construction: no enumeration, no
+per-site decision, no accretion. `newLoadErrorCoded` remains the override for conditions that
+genuinely need discrimination.
+
+**The lead took the general option, but by a narrower route than the three I framed, and it is
+cheaper than any of them because the structure to hold it already exists.** What it measured in
+`internal/template/errors.go:42-75`:
+
+- **`LoadError` is already structured** — `{Field, ElementID, Value, Reason, Code}`. The general
+  option's selling point, "carry element/field/value as data", **is already true today**. The only
+  missing piece is the `Code`.
+- **Its message never quotes the document.** `Error()` renders `"template: field %s (element %s):
+  %s (value: %s)"` — one field, one bounded value. The reflection hazard `reportableMessage` guards
+  against is a **document-quoting** message, and a `LoadError` is not one. **The boundary rule is
+  over-broad by accident, not by design** — which is the observation the whole ruling turns on.
+- **`newLoadError` is a SINGLE constructor** called by every uncoded site in the package, and
+  **AC41's enumeration test already walks those call sites.** The instrument that would otherwise
+  have to be built is already shipped.
+- **`newLoadErrorCoded` already exists**, already coding three footer-source conditions. Coding a
+  load error is established practice, not a new mechanism.
+
+**The registry-policy rule this establishes**, which is the part with a life beyond this story and
+which replaces the reservation in `diag.go`:
+
+> **The general code is the default. A specific code is minted only when a named consumer must
+> BRANCH on it to behave differently.** Everything else discriminates on the `Field` data, which can
+> grow freely without touching a closed registry.
+
+The lead confirmed this is D-7.3.1's own lesson applied one level up — *partition by what the
+consumer does, not by where the value is written* — and said so explicitly when I offered that
+reading tentatively. A designer receiving any of these does exactly one thing: locate the element,
+name the field, show the value and the reason. **One behaviour, one code.** `STYLE_COLOR_INVALID`
+versus `STYLE_LINE_SPACING_INVALID` buys a consumer nothing it cannot get from `Field`, which is
+why the registry was heading for one entry per style field forever.
+
+**Why the other two were rejected.** Minting a third per-field code answers *"is the general form
+right?"* with *"not yet"* — and the third mint is the moment the pattern becomes a policy by
+default, which is exactly the reservation's own worry coming true. Changing the wasm boundary rule
+was rejected too, **and this ruling gets its benefit without its blast radius**: `TEMPLATE_MALFORMED`
+keeps destroying its own messages, for the good reason it was written; what changes is that
+`LoadError`s **stop being bucketed there**. Nothing else reaching `reportableMessage` is affected,
+so there is no unaudited population — which is precisely what made option 3 expensive.
+
+**Guardrails, carried into the spec's Part 0:**
+
+1. **Assert the property END TO END, through the wasm entry point.** The requirement is that *a
+   `LoadError` must not reach the wasm boundary carrying `TEMPLATE_MALFORMED`* — a requirement, not
+   a mechanism. The defect lives **at the boundary**, so a Go-side-only assertion would pass while
+   the author still sees one sentence.
+2. **AC41's enumeration test must be RE-POINTED AND RE-MEASURED, not re-run.** Its subject is "call
+   sites of the uncoded constructor", and after this change that set is empty or means something
+   different. The lead named this against itself: it is **the dead-detector failure it caused at
+   D-7.4.2** — a test that keeps passing while measuring nothing.
+3. **Load-stage only.** `diag.go`'s own scope note for `STYLE_LINE_SPACING_INVALID` already draws
+   the line: a zero resolved advance and int64 overflow are render-stage conditions with a different
+   remedy.
+4. **The code names the CONDITION**, not the field and not the call site — the same discipline that
+   gave one code to two `TABLE_FOOTER_SOURCE_FORBIDDEN` sites.
+
+### D-7.8.2 — the two existing style codes are audited before the TAG, and not by Story 7.8
+
+**Ruling.** Story 7.8 establishes the rule; it does **not** retire `STYLE_COLOR_INVALID` or
+`STYLE_LINE_SPACING_INVALID`, and it must not do so by accident.
+
+At least `STYLE_COLOR_INVALID` is a **render** error by Epic 10's own AC (*"When the document
+renders, Then it is a located render error"*), so it is not in `TEMPLATE_FIELD_INVALID`'s load-stage
+category at all and may be correctly specific. `STYLE_LINE_SPACING_INVALID` spans a load path and a
+property-command path. Neither is a clean migration candidate on today's evidence, and 7.8 has no
+business auditing them.
+
+**But leaving them unexamined is how an arbitrary distinction ossifies.** So it becomes a **named
+obligation triggered by the `folio-go/v0.1.0` tag**: audit both against D-7.8.1's rule — *does any
+named consumer branch on them?* — and retire whichever fails. Not an event owner and not
+"opportunistically": AD-14 makes removing a code a breaking change, so this is free exactly once and
+the tag is the hard, dated boundary.
+
+### D-7.8.3 — the growing BEFORE-THE-TAG set, recorded in one place
+
+Three obligations now share one trigger, and they are recorded together so that a decision to tag
+early is made **with** them rather than discovering them afterwards. All three are free before
+`folio-go/v0.1.0` and breaking after it, for the same AD-22 reason: **narrowing what is accepted,
+or removing what is published, is free exactly once.**
+
+1. **Story 7.8** — a justified table is refused at load. Narrows what loads.
+2. **Story 7.10** (D-7.7.13) — an individually over-tall element is fatal whether or not it is
+   grouped. Narrows what renders.
+3. **D-7.8.2's audit** — retire whichever of the two existing style codes no consumer branches on.
+   Removes a published code.
+
+### D-7.8.4 — three corrections the plan gate found in the epic's own text
+
+The epic text for Story 7.8 was written at Story 7.4's plan gate and carried anchors that had not
+been re-verified. The plan dispatch checked all of them against baseline `53b2c1f` and found:
+
+- **Two of the three test anchors were wrong.** `folio-go/line_spacing_test.go:168-175` with a const
+  at `:311-331` **does not exist as described** — that file contains **zero** occurrences of
+  `justify`, and its `:168-175` is `TestNeutralRatioNeverRefusesADegeneracyItDidNotCause`. The real
+  site is `folio-go/internal/template/linespacing_test.go:230-237`, const `justifyHeaderStyleDoc` at
+  `:479-503`. `epics.md` is corrected.
+- **Two further tests are affected that the epic did not list**, and they **rename-and-widen**
+  rather than invert: `closedsets_test.go:215-275`
+  `TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps`, whose name asserts two sets and whose `:261-263`
+  asserts `len(StyleAlignTokens) == len(ColumnAlignTokens)+1` — a third set breaks both; and
+  `component_properties_test.go:217-249`
+  `TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly`, whose name becomes false.
+- **The version half is not where the epic said, and there is a SECOND DOOR.**
+  `versionRequiredByContent` runs **only at save**, on a fully validated `*Document`, so a loader
+  refusal closes the 2.0 raise **by construction** with no version code to change. But
+  `component_commands.go:909` allows `align` on a table and its `case "align":` arm validates with
+  **no element-type check** — so the designer's *engine* can still stamp a table document 2.0.
+  Story 7.4 closed only the **UI** door. AC1 is not satisfiable without closing this one, so it is
+  in scope, selected by a rule already written in the code: `IsStyleAlign`'s own doc comment
+  requires the property-command path to *"validate it against the same single source the loader
+  does."* It is Go engine code, so the Epic 7 designer fence holds.
+
+**Also verified, and it de-risks the story:** **no golden is at risk.** Every table-bearing fixture
+has a `justify` count of **0**; the only justify-bearing fixtures are the two text goldens the story
+must preserve.
+
+**The general lesson, since this is the second time this run an epic's anchors had rotted** (DW-24's
+hand-list rotted three times, once inside its own closing commit): **an anchor written at a plan
+gate is a claim with an expiry date.** Anchors are re-verified against the current baseline at the
+gate that consumes them, never trusted from the gate that wrote them.
