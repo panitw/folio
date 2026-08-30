@@ -4,7 +4,9 @@ import App, { placementPoint } from './App'
 import { shortcutHintsFor } from './shortcuts'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
+import type { CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
+import { MAX_CANVAS_SHEETS } from './sheet-stack'
 
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
@@ -14,7 +16,7 @@ vi.mock('./preview/pdf-viewer', () => ({
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsFloor: false, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
@@ -1418,5 +1420,211 @@ describe('Story 5.13: image asset selection', () => {
       (URL as unknown as { createObjectURL: typeof priorCreate }).createObjectURL = priorCreate
       ;(URL as unknown as { revokeObjectURL: typeof priorRevoke }).revokeObjectURL = priorRevoke
     }
+  })
+})
+
+// STORY 7.6 — THE CANVAS DRAWS EVERY PAGE THE DOCUMENT WILL PRODUCE.
+//
+// Every projection below is a fixture: the sheets, the seams and the
+// disclosures are read from `contentWindowOrigins` and
+// `contentWindowCountIsFloor`, so a test that changed the origins and saw the
+// same drawing would be a test of nothing.
+describe('canvas sheet stack', () => {
+  const origins = [0, 700_000, 1_400_000]
+  const threeWindows = { ...canvas, contentWindowCount: 3, contentWindowOrigins: origins }
+  const header = { id: 'h1', type: 'text' as const, band: 'pageHeader' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: true }
+  const footer = { id: 'f1', type: 'text' as const, band: 'pageFooter' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: true }
+  const at = (id: string, y: number, height = 24_000) => ({ id, type: 'text' as const, band: 'content' as const, x: 0, y, width: 72_000, height, resizable: true })
+  const snapshotOf = (projection: CanvasProjection) => ({ documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: projection })
+  const sheetLabels = () => Array.from(document.querySelectorAll('.page-surface')).map((surface) => surface.getAttribute('aria-label'))
+
+  it('draws one sheet per projected window, in order, repeating the two bands the engine repeats', () => {
+    render(<App engine={engine()} initialSnapshot={snapshotOf({ ...threeWindows, components: [header, at('e1', 0), footer] })} />)
+    expect(sheetLabels()).toEqual([
+      'Report page 1 of 3 with Page Header, Content, and Page Footer',
+      'Report page 2 of 3 with Page Header, Content, and Page Footer',
+      'Report page 3 of 3 with Page Header, Content, and Page Footer',
+    ])
+    // Each sheet carries all three bands, and the repeating bands carry their
+    // components — because the engine repeats them onto every printed page.
+    expect(document.querySelectorAll('.page-band-pageHeader')).toHaveLength(3)
+    expect(document.querySelectorAll('.page-band-pageFooter')).toHaveLength(3)
+    expect(document.querySelectorAll('.page-band-content')).toHaveLength(3)
+    // One accessible name each, though: a repeated component is one
+    // component, and two identical names would make selection ambiguous.
+    expect(screen.getByLabelText('text component h1')).toBeInTheDocument()
+    expect(screen.getByLabelText('text component f1')).toBeInTheDocument()
+    expect(document.querySelectorAll('.canvas-component-echo')).toHaveLength(4)
+  })
+
+  it('marks the seam at the projected origin of the NEXT window, and nowhere when that is past the foot', () => {
+    render(<App engine={engine()} initialSnapshot={snapshotOf(threeWindows)} />)
+    const seams = Array.from(document.querySelectorAll('.page-seam')).map((seam) => (seam as HTMLElement).style.getPropertyValue('--seam-display-y'))
+    // origins[1] − origins[0] and origins[2] − origins[1], at zoom 1. The
+    // last sheet has no next window, so it draws no marker.
+    expect(seams).toEqual(['700px', '700px'])
+    // RED PROOF, run and recorded: substituting the window height multiplied
+    // by an index for the projected origin gives 729.89px here — the wrong
+    // place by a tenth of an inch, and by nine whole sheets on a column with
+    // a declared gap. The origins move the marker; nothing else does.
+    expect(seams).not.toContain(`${canvas.contentWindowHeight / 1000}px`)
+  })
+
+  it('draws no in-sheet seam where the next window begins past the sheet own foot', () => {
+    // A declared gap: the next window begins far below this sheet, so the
+    // band's own foot IS the boundary and the skipped column region is drawn
+    // by nobody.
+    const declaredGap = { ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] }
+    render(<App engine={engine()} initialSnapshot={snapshotOf(declaredGap)} />)
+    expect(document.querySelectorAll('.page-surface')).toHaveLength(2)
+    expect(document.querySelectorAll('.page-seam')).toHaveLength(0)
+  })
+
+  it('draws a component that crosses a seam on both windows, with one interactive home', () => {
+    const spanning = at('e2', 650_000, 100_000)
+    render(<App engine={engine()} initialSnapshot={snapshotOf({ ...threeWindows, components: [spanning] })} />)
+    // getByLabelText throws on more than one match, so this assertion IS the
+    // uniqueness claim.
+    const home = screen.getByLabelText('text component e2')
+    expect(home.style.getPropertyValue('--component-y')).toBe('650px')
+    const echoes = Array.from(document.querySelectorAll('.canvas-component-echo')) as HTMLElement[]
+    expect(echoes).toHaveLength(1)
+    // The echo is positioned at the component's column offset MINUS the
+    // window it is drawn on, so the run reads as continuous across the seam.
+    expect(echoes[0]?.style.getPropertyValue('--component-y')).toBe('-50px')
+    expect(echoes[0]?.getAttribute('aria-hidden')).toBe('true')
+    expect(echoes[0]?.getAttribute('role')).toBeNull()
+  })
+
+  it('sends a later-sheet placement as the band-aware createComponent command, carrying a COLUMN coordinate', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshotOf(threeWindows)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    fireEvent.keyDown(screen.getByLabelText('Content on page 3 of 3'), { key: 'Enter' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    // 1400pt is contentWindowOrigins[2] in points — a position in the column,
+    // never a pin to sheet three. Go's hitTestBand rectangle is one page tall
+    // and is not moved: this routes around it rather than through it.
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"createComponent","version":1,"type":"text","band":"content","x":0,"y":1400,"width":72,"height":24,"snap":true}')
+  })
+
+  it('keeps the FIRST sheet on today dropComponent payload even when the stack is deep', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshotOf(threeWindows)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    fireEvent.keyDown(screen.getByLabelText('Content on page 1 of 3'), { key: 'Enter' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
+  })
+
+  it('drags a component across a seam onto a later sheet and commits a column coordinate', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshotOf({ ...threeWindows, components: [at('e1', 0)] })} />)
+    const component = screen.getByLabelText('text component e1')
+    // One whole sheet-plus-gap down the stack: 841.890pt of page and the 24px
+    // gap the stack declares.
+    fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(component, { pointerId: 1, clientX: 10, clientY: 875.89 })
+    // Tracking the hand means landing one WINDOW lower in the column — 700pt,
+    // the projected origin of window two — not 865.89pt, which is what the
+    // linear pixel delta this replaced would have proposed. The difference is
+    // exactly the page footer, the gap and the page header the pointer
+    // crossed.
+    expect(component.style.getPropertyValue('--component-y')).toBe('700px')
+    fireEvent.pointerUp(component, { pointerId: 1, clientX: 10, clientY: 875.89 })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e1","x":0,"y":700,"snap":true}')
+  })
+
+  it('lets a drag leave the content band vertically while still capping the repeating bands', () => {
+    render(<App engine={engine()} initialSnapshot={snapshotOf({ ...threeWindows, components: [at('e1', 0), footer] })} />)
+    const content = screen.getByLabelText('text component e1')
+    fireEvent.pointerDown(content, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(content, { pointerId: 1, clientX: 0, clientY: 800 })
+    // 800pt down a 729.89pt window. RED PROOF, run and recorded: restoring
+    // the clamp DW-36 lifted pins this at 705.89px — the band's own height
+    // less the component's — which is the whole of why the lifted column was
+    // reachable by command and not by hand.
+    expect(content.style.getPropertyValue('--component-y')).toBe('800px')
+    const repeated = screen.getByLabelText('text component f1')
+    fireEvent.pointerDown(repeated, { pointerId: 2, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(repeated, { pointerId: 2, clientX: 0, clientY: 400 })
+    // The page footer is 20pt tall and the component is 12pt tall, so the
+    // drag rests at the band foot exactly as it did before this story.
+    expect(repeated.style.getPropertyValue('--component-y')).toBe('8px')
+  })
+
+  it('states what the sheets claim, in accessible text, whenever there is more than one or the count is a floor', () => {
+    const claim = "A component's page is a consequence of the content above it and can change when the data does — it is a column position, not a pin to page three."
+    const floor = 'A document whose length comes from data prints more pages than are shown here.'
+    render(<App engine={engine()} initialSnapshot={snapshotOf(threeWindows)} />)
+    const disclosure = screen.getByRole('status', { name: 'Canvas sheet disclosure' })
+    expect(disclosure).toHaveTextContent('Showing 3 sheets.')
+    expect(disclosure).toHaveTextContent('These are the pages this content column occupies as the canvas has laid it out, not a prediction of the printed document.')
+    expect(disclosure).toHaveTextContent(claim)
+    // Not a floor, so it must NOT claim to be one: a disclosure that always
+    // said everything would say nothing.
+    expect(disclosure).not.toHaveTextContent(floor)
+  })
+
+  it('says a data-length document prints more pages than are drawn, even when it draws only one sheet', () => {
+    const floor = 'A document whose length comes from data prints more pages than are shown here.'
+    // The shipped statement shape: four byte-identical templates that print
+    // one, five, twenty and fifty pages and project ONE window each, because
+    // the canvas has never been given the data.
+    const bound = { ...canvas, contentWindowCountIsFloor: true, components: [{ id: 'e8', type: 'table' as const, band: 'content' as const, x: 0, y: 54_000, width: 400_000, height: 28_000, resizable: false, tableBind: 'transactions[]' }] }
+    render(<App engine={engine()} initialSnapshot={snapshotOf(bound)} />)
+    const disclosure = screen.getByRole('status', { name: 'Canvas sheet disclosure' })
+    expect(disclosure).toHaveTextContent('Showing 1 sheet.')
+    expect(disclosure).toHaveTextContent(floor)
+    // One window, so no seam and no page qualifier — the honesty is in the
+    // words, not in a drawing that would be a second lie.
+    expect(document.querySelectorAll('.page-seam')).toHaveLength(0)
+    expect(sheetLabels()).toEqual(['Report page with Page Header, Content, and Page Footer'])
+  })
+
+  it('carries the same claim into the accessible name of a component on a later sheet, and not onto a first-sheet one', () => {
+    render(<App engine={engine()} initialSnapshot={snapshotOf({ ...threeWindows, components: [at('e1', 0), at('e3', 1_450_000)] })} />)
+    // The exact sentence, so deleting it turns this red rather than merely
+    // shortening a string nobody asserted.
+    expect(screen.getByLabelText('text component e3; on canvas page 3 of 3, which is a consequence of the content above it and can change when the data does — a column position, not a pin to page 3')).toBeInTheDocument()
+    // The first sheet's component keeps the name it had before this story.
+    expect(screen.getByLabelText('text component e1')).toBeInTheDocument()
+  })
+
+  it('draws the first budgeted sheets, says it is showing the first N of M, and never blanks', () => {
+    const many = MAX_CANVAS_SHEETS + 5
+    const budgeted = { ...canvas, contentWindowCount: many, contentWindowOrigins: Array.from({ length: many }, (_value, index) => index * 700_000) }
+    render(<App engine={engine()} initialSnapshot={snapshotOf(budgeted)} />)
+    expect(document.querySelectorAll('.page-surface')).toHaveLength(MAX_CANVAS_SHEETS)
+    expect(screen.getByRole('status', { name: 'Canvas sheet disclosure' })).toHaveTextContent(`Showing the first ${MAX_CANVAS_SHEETS} sheets of ${many}.`)
+    expect(screen.queryByText('Waiting for Go page geometry.')).not.toBeInTheDocument()
+  })
+
+  // AC5, ASSERTED RATHER THAN ASSUMED. A template whose content column
+  // occupies one window and whose content band holds nothing whose length
+  // comes from data must render what it rendered at 2c5cfa1: the same DOM,
+  // the same accessible names, the same command payload. The compile-only e2e
+  // specs address these labels in Playwright STRICT MODE, where a duplicate
+  // or a renamed label would be caught by nothing executable.
+  it('renders a genuinely single-page template exactly as it did before this story', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshotOf({ ...canvas, components: [at('e1', 0)] })} />)
+    expect(sheetLabels()).toEqual(['Report page with Page Header, Content, and Page Footer'])
+    expect(screen.getByLabelText('Page Header')).toBeInTheDocument()
+    expect(screen.getByLabelText('Content')).toBeInTheDocument()
+    expect(screen.getByLabelText('Page Footer')).toBeInTheDocument()
+    expect(screen.getByLabelText('text component e1')).toBeInTheDocument()
+    // No seam, no stack wrapper, no clipping window, no echo, no disclosure.
+    expect(document.querySelectorAll('.page-seam')).toHaveLength(0)
+    expect(document.querySelectorAll('.sheet-stack')).toHaveLength(0)
+    expect(document.querySelectorAll('.band-window')).toHaveLength(0)
+    expect(document.querySelectorAll('.canvas-component-echo')).toHaveLength(0)
+    expect(screen.queryByRole('status', { name: 'Canvas sheet disclosure' })).not.toBeInTheDocument()
+    // And the payload, byte for byte.
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    fireEvent.keyDown(screen.getByLabelText('Content'), { key: 'Enter' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
   })
 })

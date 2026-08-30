@@ -37,6 +37,17 @@ const prohibited = [
   // A positive test would not catch that line being written; this does.
   /\b(?:textPaint|paint)\??\.lines\.length\b/,
   /\blines\.length\s*[*/]|[*/]\s*\blines\.length\b/,
+  // Story 7.6 / AC2, and the same guard one step further along. A window's
+  // COUNT may not come from the paint; a window's POSITION may not come from
+  // arithmetic at all. The window height multiplied by an index is the closed form
+  // internal/layout/paginate.go forbids by name — the window advances to the
+  // top of the first item that did not fit, never by a fixed height — and it
+  // is measurably wrong: 110 millipoints per window adrift on a column of
+  // round 728pt spacing, and eleven windows where the engine says two on a
+  // column with a declared gap. The origins are PROJECTED
+  // (contentWindowOrigins); multiplying is the one plausible line of designer
+  // code that would quietly replace them, in either operand order.
+  /\b(?:contentWindowHeight|windowHeight)\s*\*|\*\s*[\w.?]*\b(?:contentWindowHeight|windowHeight)\b/,
 ]
 
 function violations(files: readonly string[]): string[] {
@@ -69,6 +80,9 @@ describe('canvas projection authority contract', () => {
     expect(violationsForSource('.paint { text-align: justify }')).not.toEqual([])
     expect(violationsForSource('const height = component.textPaint.lines.length * line.advance')).not.toEqual([])
     expect(violationsForSource('const windows = Math.ceil(paint.lines.length / perPage)')).not.toEqual([])
+    expect(violationsForSource('const top = canvas.contentWindowHeight * index')).not.toEqual([])
+    expect(violationsForSource('const top = index * canvas.contentWindowHeight')).not.toEqual([])
+    expect(violationsForSource('const top = sheet * windowHeight')).not.toEqual([])
   })
 })
 

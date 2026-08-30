@@ -2,8 +2,8 @@
 title: 'Story 7.6: The canvas draws every page the document will produce'
 type: 'feature'
 created: '2026-08-31'
-status: 'ready-for-dev'
-baseline_revision: '2c5cfa1d074e80f24488b1ea7fa1621588c05cdb'
+status: 'review'
+baseline_revision: 'c95fa9bc6202142a69f52d571f04d86ab12c8edc'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -402,3 +402,114 @@ Verification was **not** run in this dispatch: no code changed. The `## Verifica
 what the implementing dispatch must measure.
 
 ## Delivery Log
+
+### Dispatch 2 — 2026-08-31, implemented
+
+Baseline: `c95fa9bc6202142a69f52d571f04d86ab12c8edc` on `main`. All seven Parts landed, in one commit.
+
+**What shipped.** `CanvasProjection` gained `ContentWindowOrigins []int64` and `ContentWindowCountIsFloor bool`.
+`addCanvasWindowCount` now reads `plan.Pages[i].Shift` — the datum `:557` used to discard while keeping
+`len(plan.Pages)` from the same value — so there is no second pagination and no derivation. The floor flag
+OR-s its three documented causes: a content-band table with a non-empty binding, the `layout.Paginate`
+degradation branch, and a content text element whose font chain would not resolve (carried out of
+`addCanvasTextPaint` on the new `canvasColumnExtents` struct, because the extents it would have contributed
+are indistinguishable from an element with nothing to say once they are gone). The protocol admits both
+fields with a `fontFamilies`-shaped guard. `resize-anchor.ts` reads `BANDS_CAPPING_VERTICALLY` and gates the
+ONE `limitHeight` both vertical clamps consume — `:49`/`:50`/`:51` untouched. `sheet-stack.ts` (new, `.ts`)
+holds the whole geometry as pure arithmetic; `App.tsx` draws one `.page-surface` per modelled sheet, repeats
+both repeating bands, echoes a spanning component onto every window it crosses with exactly one home, and
+translates later-sheet placement onto the band-aware `createComponent` that already existed.
+
+**Re-measured at the closing revision**, with a throwaway program outside the repo; the tree was left clean.
+
+| fixture | `contentWindowCount` | `contentWindowCountIsFloor` | `contentWindowOrigins` | rendered pages |
+|---|---|---|---|---|
+| `statement-1` | 1 | **true** | `[0]` | 1 |
+| `statement-5` | 1 | **true** | `[0]` | **5** |
+| `statement-20` | 1 | **true** | `[0]` | **20** |
+| `statement-50` | 1 | **true** | `[0]` | **50** |
+| `page-count-1` | 1 | false | `[0]` | 1 |
+| `page-count-5` | 5 | false | `[0 728000 1456000 2184000 2912000]` | 5 |
+| `page-count-20` | 20 | false | `[0 … 13832000]`, a round 728000 apart | 20 |
+| `page-count-50` | 50 | false | `[0 … 35672000]`, a round 728000 apart | 50 |
+
+The floor is unchanged and is now SAID: the four byte-identical statement templates still report one window
+each while printing 1/5/20/50 pages, and the flag is what makes the interface say so. The `page-count-*`
+origins are a live restatement of Ruling E — they are the elements' own tops, 728000 apart, where the closed
+form would answer 727890 apart, adrift by 110 millipoints per window.
+
+**Deferral register.** **DW-36 is CLOSED**: the drag clamp is the third consumer of the band-containment
+tie, reading the same list Go's `containComponent` and the protocol's `isCanvas` read, and
+`engine-bounds-mirror.test.ts` now reads all three sources with a fourth site regex and its own drift proof.
+**DW-37, DW-33, DW-34 and DW-35 are OPEN and untouched.** DW-37's subject — the unguarded non-text sum in
+`addCanvasWindowCount` and the protocol's admission of the resulting integer — was not changed; the drawing
+budget is an additive guard on the DRAWING, in the same relation to the count that a truncated paint has to
+a value. DW-33 is provably untouched: the origins and the count read `plan.Pages`, `lines`, `originY` and
+the vertical model, never `painted`, `budget`, `oversized` or `placed`. DW-34 is multiplied by the sheet
+count and bounded, not closed, by `MAX_CANVAS_SHEETS`. **DW-35 is now MORE VISIBLE and was not taken**: the
+canvas paints text through one hard-coded font stack, and drawing N sheets multiplies every glyph it paints,
+so a chain mismatch that reads as one page of wrong-looking text today reads as up to 120. It stays Epic 8's
+plan gate's.
+
+**`MAX_CANVAS_SHEETS = 120`, derived.** Epic 7's narrative target is forty pages. The projection's own
+body-text paint budget is 1920 lines (`maxCanvasBodyTextLines`), which at forty-to-fifty lines per A4 window
+is under fifty windows of solid prose — past that a window can only come from a declared placement gap. 120
+is three times the stated target and more than twice what the paint budget can fill. The value is never
+truncated, only the drawing, and the interface says it is showing the first N of M.
+
+**No `.folio` format field was required.** `SupportedMajor` stays **2**. `internal/layout/paginate.go` is
+absent from the diff; `folio-go/component_commands.go` is absent from the diff entirely, so `hitTestBand`'s
+half-open band rectangle is unchanged; `README.md` is untouched and its md5 is still
+`078d7d80d518d54af2fc04fb270d46b8`.
+
+**Verification, measured.**
+
+- `cd folio-go && go test -count=1 ./...` — **exactly one** failure, `TestCorpusMeetsP6ExerciseFloors/P6g`
+  (`got 7, need >=20`), the mandated permanent red; untouched. Its drift twin
+  `TestCorpusP6StatsMatchDeclaredBaseline` is **green**. Every other package: `ok`.
+- `cd folio-go && go vet -tags=matrix ./...` — clean, exit 0. `gofmt -l folio-go` from the repo root — no output.
+- `go test -tags=matrix -run TestTargetRenderHash` with `FOLIO_MATRIX_TARGET` set, once per leg —
+  `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` all **ok**, and each leg's verbose output contained
+  `asserts NOTHING` **0 times**, so all four legs really ran.
+- `go test -tags=matrix -run TestCrossTargetByteIdentity .` — ok.
+- `cd lint && go test ./...` — ok (4 packages).
+- **All twenty `goldenDigestRecord` entries hold**, measured: `TestGoldenDigestAgreesAtEveryDeclaredSite`
+  passes, `TestStatementGoldenFixtures` passes all four sizes, and every other golden fixture test passes.
+  `git status fixtures/` was empty before and after.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck clean; oxlint **4
+  `only-export-components` warnings, 0 errors**, exactly the baseline set (`preview/pdf-viewer.tsx:16,17`;
+  `App.tsx:1216,1223` — the same two declarations, moved by the added lines); **278 tests / 33 files**, all
+  passing, up from the 248 / 32 baseline.
+- `cd folio-designer && npm run test:e2e:compile` — passes. It is `tsc --noEmit` only: **browser e2e is
+  deferred by D-000.4 and did NOT execute.** The single-window labels were kept exact so the compile-only
+  Playwright strict-mode selectors still address one node each.
+
+**End to end, demonstrated rather than asserted about a conditional.**
+`TestAComponentAuthoredWindowsDownTheColumnLandsOnItsOwnSheet` creates a component two windows down through
+the same band-aware `createComponent` the later-sheet placement sends, serializes to canonical bytes, parses
+them back, and asks the projection which sheet the component is on — then moves it five windows down and
+asks again, checking the sheet index really increased and the bytes carried the column coordinate. On the
+browser side, `App.test.tsx` drags a component from sheet one across a seam and asserts the committed
+payload is `{"kind":"moveComponent",…,"y":700,…}` — 700pt being `contentWindowOrigins[1]` in points.
+
+**Red proofs, run and recorded.**
+
+1. **The origin seam against the closed form.** Replacing the projected origin with the window height
+   multiplied by an index turned **13 tests red** across `sheet-stack.test.ts` and `App.test.tsx` — the
+   sheet origins, both seam cases, the spanning component, the budget, all three zoom round trips and both
+   drag assertions. Spelled in `sheet-stack.ts`'s own identifiers it additionally turns the authority
+   contract's new prohibited pattern red. (`sheetStack`'s local is deliberately named `windowHeight`, not
+   `height`, so the text guard can see the plausible mutation.)
+2. **The AC4 sentences against deletion.** Emptying `canvasColumnClaim`, `canvasFloorClaim` and the
+   per-component notice turned **3 tests red**: the multi-sheet disclosure, the floor disclosure and the
+   later-sheet accessible name.
+3. **The content-band clamp lift against restoring the clamp.** Restoring
+   `limit ? limit.height : Number.POSITIVE_INFINITY` turned **4 tests red**: the content-band move and south
+   resize in `resize-anchor.test.ts`, both mirror assertions that read `resize-anchor.ts` as the third
+   consumer, and the App drag that runs 800pt down a 729.89pt window (pinned at 705.89px with the clamp back).
+
+**One judgement recorded, not hidden.** `MAX_ENGINE_CONTENT_WINDOWS = 100_000` in `engine-protocol.ts` is a
+channel backstop in the shape of `MAX_ENGINE_DIAGNOSTICS`, deliberately **not** added to the mirror's
+numeral `pairs` (still six, still `toHaveLength(6)`): Go declares no maximum window count, so there is
+nothing on the other side for it to drift against, and the constant is set orders of magnitude above
+anything the projection can produce because a field this side rejects discards the whole snapshot.

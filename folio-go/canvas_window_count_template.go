@@ -164,3 +164,40 @@ const canvasWindowCountBoundTableTemplateJSON = `{
   "version": "1.0"
 }
 `
+
+// canvasWindowCountUnshapedTextTemplateJSON is the floor's THIRD cause, the
+// one neither a table nor an over-tall box produces: a content text element
+// that HAS a value and no style.fontFamily to resolve a chain from. fontChain
+// refuses it, addCanvasTextPaint degrades that one element to an empty paint
+// — the pre-existing, deliberate behaviour, because such a document is
+// structurally valid and still loadable — and the extents its lines would
+// have contributed are simply missing from the column the count measures.
+//
+// The second element is shaped normally, so the fixture discriminates: the
+// column is counted, it is just counted short.
+const canvasWindowCountUnshapedTextTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "No chain resolves this"},
+        {"id": "e2", "type": "text", "x": 0, "y": 40, "width": 200, "height": 20, "value": "Shaped normally", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`

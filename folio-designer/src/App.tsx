@@ -10,9 +10,10 @@ import { LoadScreen } from './LoadScreen'
 import type { BindingErrorScope } from './DataPanel'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
-import { bindComponentScalarCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
+import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
 import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
+import { columnEdgeAfterDrag, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
 import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
 import { TableEditor } from './TableEditor'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
@@ -95,7 +96,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // client coordinate for chrome that never touches document geometry: it
   // places no component and proposes nothing to Go.
   const [placingAt, setPlacingAt] = useState<Readonly<{ x: number; y: number }>>()
-  const [hoverBand, setHoverBand] = useState<CanvasProjection['bands'][number]['name']>()
+  // The hovered band, keyed by SHEET as well as by band: three sheets carry
+  // three content bands, and highlighting all of them would be exactly the
+  // ambiguous drop target this epic's own rule forbids.
+  const [hoverBand, setHoverBand] = useState<string>()
   const [selected, setSelected] = useState<ReadonlyArray<string>>([])
   const [drag, setDrag] = useState<DragState>()
   const [preset, setPreset] = useState<string>(initialSnapshot?.canvas?.preset ?? 'A4')
@@ -435,6 +439,21 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     clearInteraction()
     void commitComponent(dropComponentCommand(kind, x, y, snapEnabled))
   }
+  // THE SECOND PLACEMENT SPELLING, for the sheets that did not exist before
+  // (Ruling H). `dropComponent` carries a PAGE point and Go hit-tests it, and
+  // hitTestBand's rectangle is one page tall — so a point on sheet three
+  // would resolve to whichever band of page ONE it happened to land in, and
+  // be created there rather than refused. `createComponent` already exists on
+  // the channel, already carries the band NAME and a band-relative
+  // coordinate, and Go already handles it; the first sheet keeps today's
+  // dropComponent payload byte for byte, because a single-page template must
+  // behave exactly as it did.
+  const placeInBand = (band: CanvasProjection['bands'][number]['name'], x: number, y: number) => {
+    if (!placing) return
+    const kind = placing
+    clearInteraction()
+    void commitComponent(createComponentCommand(kind, band, x, y, snapEnabled))
+  }
   const select = (id: string, extend: boolean) => { setBindingError(undefined); revokeTableEditor(); setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id]) }
   const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => { revokeTableEditor(); setSelected([]) }) }
   const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
@@ -686,6 +705,51 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const offlineLabel = import.meta.env.DEV && offlineState === 'dev-bypass' ? 'Offline layer bypassed (dev)' : offlineState === 'ready' ? 'Offline ready' : offlineState === 'checking' ? 'Offline cache checking' : offlineState === 'update-available' ? 'Update available; current release remains usable' : 'Offline cache unavailable'
   const dirty = !snapshot || savedRevision === undefined || snapshot.revision !== savedRevision
   const saveLabel = dirty ? 'Unsaved local changes' : 'Saved local file'
+  // ONE SHEET PER PROJECTED WINDOW, from the projection alone. The model is
+  // built in sheet-stack.ts, which is pure arithmetic over Go's numbers: the
+  // window origins, the window height and the page geometry. Nothing here
+  // measures the DOM and nothing multiplies a window height by an index.
+  const stack = canvas ? sheetStack(canvas) : undefined
+  const disclosure = stack ? sheetStackDisclosure(stack) : undefined
+  const sheetSurface = (projection: CanvasProjection, model: SheetStack, sheet: Sheet) => {
+    const sheets = model.sheets.length
+    // A single-sheet document must render exactly the DOM and exactly the
+    // accessible names it rendered before this story, so the page qualifier
+    // appears only once there is more than one page to be ambiguous about —
+    // and RTL and Playwright both fail outright on a duplicate exact label.
+    const many = sheets > 1
+    const pageOf = many ? ` ${sheet.index + 1} of ${sheets}` : ''
+    return <section key={sheet.index} className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label={`Report page${pageOf} with Page Header, Content, and Page Footer`} style={pageStyle(projection, zoom)} onClick={() => { revokeTableEditor(); setSelected([]) }}>
+      {projection.bands.map((band) => {
+        const content = band.name === 'content'
+        // The content band is one WINDOW of the column, so a component's
+        // in-sheet position is its column position minus this window's
+        // origin. A repeating band is the same band on every sheet, so its
+        // origin is zero on all of them.
+        const origin = content ? sheet.origin : 0
+        // The two repeating bands are drawn on every sheet because the engine
+        // repeats them — but exactly ONE occurrence of each of their
+        // components is interactive and accessibly named, the same rule a
+        // content component spanning two windows obeys (Ruling G). Two
+        // identical accessible names for one component would break selection,
+        // getByLabelText and Playwright's strict mode alike.
+        const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
+        const target = `${sheet.index}:${band.name}`
+        const paint = (occurrence: SheetOccurrence) => occurrence.home
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
+        // A band holding a drag in progress stops clipping for the duration.
+        // The dragged component's rendered position already tracks the
+        // pointer down the whole stack, so clipping it to one window would
+        // make it vanish at the very seam it is being dragged across. The
+        // element is NOT moved in the tree to achieve this — a reparented
+        // node loses its pointer capture mid-gesture — only the clip is
+        // lifted, on the one band that needs it.
+        const dragging = occurrences.some((occurrence) => drag?.id === occurrence.component.id)
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (sheet.index === 0) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (sheet.index === 0) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{many ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+      })}
+    </section>
+  }
   return <div className="app-shell" aria-label="Folio designer application shell" aria-busy={fileBusy}>
     <header className="document-bar" aria-label="Document bar">
       <span className="brand">FOLIO</span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
@@ -697,9 +761,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><PaletteIcon kind={kind} />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
       {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerLeave={() => setPlacingAt(undefined)} onClick={(event) => { if (event.target === event.currentTarget) { revokeTableEditor(); setSelected([]) } }} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
-        {canvas ? <section className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label="Report page with Page Header, Content, and Page Footer" style={pageStyle(canvas, zoom)} onClick={() => { revokeTableEditor(); setSelected([]) }}>
-          {canvas.bands.map((band) => <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === band.name ? ' page-band-target' : ''}`} aria-label={bandName(band.name)} aria-current={hoverBand === band.name ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(band.name)} onPointerLeave={() => setHoverBand((current) => current === band.name ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); place(point.x, point.y) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); place(band.x / 1000, band.y / 1000) } }}><span>{bandName(band.name)}</span>{canvas.components.filter((component) => component.band === band.name).map((component) => <CanvasComponent key={component.id} component={component} limit={{ width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(component.id)} preview={drag?.id === component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />)}</section>)}
-        </section> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
+        {disclosure && <p className="canvas-disclosure" role="status" aria-live="polite" aria-label="Canvas sheet disclosure">{disclosure}</p>}
+        {canvas && stack ? (stack.sheets.length === 1 ? sheetSurface(canvas, stack, stack.sheets[0] as Sheet) : <div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px` } as CSSProperties}>{stack.sheets.map((sheet) => sheetSurface(canvas, stack, sheet))}</div>) : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
@@ -1169,14 +1232,27 @@ function componentDiagnosticDetail(error: unknown): Readonly<{ elementId?: strin
 function componentDiagnostic(error: unknown): string { const received = componentDiagnosticDetail(error); const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message}` : received.message }
 
 type DragState = Readonly<{ id: string; mode: DragAnchor; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
-function CanvasComponent({ component, limit, zoom, selected, preview, engine, generation, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; limit: DragLimit; zoom: number; selected: boolean; preview?: DragState; engine?: EngineClient; generation: number; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+function CanvasComponent({ component, origin, note, limit, zoom, selected, preview, engine, generation, trackColumn, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
   const selectedByPointer = useRef(false)
-  const active = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
+  const proposal = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
+  // Component geometry is COLUMN geometry, in every band; this sheet shows one
+  // window of it, and `origin` is where that window begins. It is 0 for the
+  // repeating bands and 0 for the first window, which is why a single-sheet
+  // document paints at exactly the coordinates it painted at before.
+  const active = { ...proposal, y: proposal.y - origin }
   const begin = (event: PointerEvent, mode: DragAnchor) => { event.stopPropagation(); selectedByPointer.current = true; onSelect(component.id, event.shiftKey); if (event.shiftKey) return; event.currentTarget.setPointerCapture?.(event.pointerId); onDragStart({ id: component.id, mode, startClientX: event.clientX, startClientY: event.clientY, x: component.x, y: component.y, width: component.width, height: component.height, originalX: component.x, originalY: component.y, originalWidth: component.width, originalHeight: component.height, changed: false }) }
-  const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const dy = canvasDisplay.documentDelta(rawDY, zoom) * 1000; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
+  // Ruling I. A linear pixel delta knows nothing about the page footer, the
+  // gap and the page header standing between one window's foot and the next
+  // window's head, so across a seam the component drifts from the hand by
+  // exactly that much. `trackColumn` is the stack's own inverse: it converts
+  // the distance the pointer travelled DOWN THE STACK into the distance it
+  // travelled down the COLUMN, applied to the edge this anchor actually
+  // moves. What Go receives is still one opaque command carrying a column
+  // coordinate.
+  const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
 }
@@ -1258,12 +1334,48 @@ function TextPaint({ component, zoom }: { component: CanvasProjection['component
 // lines were painted — the canvas must never turn a truncated paint into a
 // number about the document.
 const canvasTruncationNotice = 'Canvas preview cut short. The whole text is in the document and prints in full.'
-function componentAccessibleName(component: CanvasProjection['components'][number]): string {
-  if (component.type !== 'text') return `${component.type} component ${component.id}`
+// AC4's PER-COMPONENT half, folded into the accessible name exactly as the
+// truncation notice above is — the shipped idiom, and the reason this is an
+// obligation rather than a tooltip nobody reads. A component that sits on a
+// later sheet is not pinned there: the sheet it lands on is a consequence of
+// everything above it in the column, and the canvas has no data, so the page
+// it prints on can differ from the page drawn here.
+const canvasColumnPositionNotice = (page: number, pages: number): string => `on canvas page ${page} of ${pages}, which is a consequence of the content above it and can change when the data does — a column position, not a pin to page ${page}`
+// AC4's CANVAS-WIDE half. The claim the sheets make is narrower than the
+// drawing looks: they show the pages this content column occupies AS THE
+// CANVAS HAS LAID IT OUT, never a forecast of the printed document. Where the
+// engine says the count is a floor — a bound table, a degraded pagination,
+// text that could not be shaped — the printed document is longer, and the
+// four shipped statement templates are the proof: byte-identical files that
+// print one, five, twenty and fifty pages and project ONE window each.
+const canvasColumnClaim = "A component's page is a consequence of the content above it and can change when the data does — it is a column position, not a pin to page three."
+const canvasFloorClaim = 'A document whose length comes from data prints more pages than are shown here.'
+function sheetStackDisclosure(stack: SheetStack): string | undefined {
+  // Silent for the document that has nothing to disclose: one window, and
+  // nothing about it a floor. Saying it anyway would be noise on every
+  // single-page template, and AC5 requires that template's accessible surface
+  // to be what it was.
+  if (stack.sheets.length <= 1 && !stack.isFloor) return undefined
+  const shown = stack.truncated ? `Showing the first ${stack.sheets.length} sheets of ${stack.windowCount}.` : `Showing ${stack.sheets.length} ${stack.sheets.length === 1 ? 'sheet' : 'sheets'}.`
+  return `${shown} These are the pages this content column occupies as the canvas has laid it out, not a prediction of the printed document. ${canvasColumnClaim}${stack.isFloor ? ` ${canvasFloorClaim}` : ''}`
+}
+function componentAccessibleName(component: CanvasProjection['components'][number], note?: string): string {
+  const page = note ? `; ${note}` : ''
+  if (component.type !== 'text') return `${component.type} component ${component.id}${page}`
   const text = component.textPaint?.lines.map((line) => line.fragments.map((fragment) => fragment.text).join('').trim()).filter(Boolean).join(' ').slice(0, 160)
   const binding = component.binding ? `; bound to ${component.binding}` : ''
   const cut = component.textPaint?.truncated ? `; ${canvasTruncationNotice}` : ''
-  return text ? `text component ${component.id}: ${text}${binding}${cut}` : `text component ${component.id}${binding}${cut}`
+  return text ? `text component ${component.id}: ${text}${binding}${cut}${page}` : `text component ${component.id}${binding}${cut}${page}`
+}
+// A component whose extent crosses a window boundary is drawn on every window
+// it intersects, because leaving the later sheets empty would make the
+// drawing a lie in a second way. Only the HOME occurrence carries the role,
+// the tab stop and the name; these echoes are decoration — aria-hidden, no
+// handlers, no handles — so one component never presents two identical
+// accessible names (Ruling G).
+function ComponentEcho({ component, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; y: number; zoom: number; engine?: EngineClient; generation: number }) {
+  const paint = component.textPaint
+  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}`} aria-hidden="true" style={componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}</span>
 }
 // Story 9.2: the box the engine paints — style.background and
 // style.border — drawn on the canvas from the ENGINE's own projection, so

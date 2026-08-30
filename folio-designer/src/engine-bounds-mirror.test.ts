@@ -49,6 +49,13 @@ const goSources = {
   componentCommands: path.resolve(sourceDir, '../../folio-go/component_commands.go'),
 } as const
 const tsPath = path.join(sourceDir, 'engine-protocol.ts')
+// Story 7.6's THIRD consumer of the band-containment tie. The drag clamp used
+// to cap every band vertically with its own inline rule — a fourth spelling
+// of an invariant three files already state — and lifting the content band in
+// Go and in the protocol while leaving it clamped here would have shipped a
+// column reachable by command and not by hand. It reads the list; this test
+// reads it reading the list.
+const dragClampPath = path.join(sourceDir, 'resize-anchor.ts')
 
 type GoSource = keyof typeof goSources
 type Pair = Readonly<{ go: string; source: GoSource; ts: string; sites: ReadonlyArray<RegExp> }>
@@ -177,8 +184,9 @@ function tsBandsCappingVertically(source: string): ReadonlyArray<string> {
 describe('band containment mirror', () => {
   const go = fs.readFileSync(goSources.componentCommands, 'utf8')
   const ts = fs.readFileSync(tsPath, 'utf8')
+  const dragClamp = fs.readFileSync(dragClampPath, 'utf8')
 
-  it('reads a non-empty list from both sides', () => {
+  it('reads a non-empty list from every side', () => {
     // Non-vacuity first: a regex that quietly stops matching would make every
     // equality below true and meaningless.
     expect(goBandsCappingVertically(go)).toEqual(['pageHeader', 'pageFooter'])
@@ -193,19 +201,27 @@ describe('band containment mirror', () => {
     expect(tsBandsCappingVertically(ts)).not.toContain('content')
   })
 
-  it('consumes the list at the validator site it governs, on both sides', () => {
-    // A list nothing reads would tie two dead declarations together while the
-    // real gate kept its own inline spelling.
+  it('consumes the list at the site it governs, in all three consumers', () => {
+    // A list nothing reads would tie dead declarations together while the
+    // real gates kept their own inline spellings.
     expect(go).toMatch(/if !outside && slices\.Contains\(bandsCappingVertically, band\.Name\) \{/)
     expect(go).toMatch(/func containEdgeY\(band CanvasBand, value, limit geom\.Length\) geom\.Length \{\n\tif !slices\.Contains\(bandsCappingVertically, band\.Name\) \{/)
     expect(ts).toMatch(/BANDS_CAPPING_VERTICALLY\.includes\(component\.band as string\) && !\(box\.y \+ box\.height <= band\.height\)/)
+    // The DRAG CLAMP (DW-36), which reads the list from engine-protocol.ts
+    // rather than restating it, and gates the ONE vertical limit both of its
+    // vertical clamps consume.
+    expect(dragClamp).toMatch(/import \{ BANDS_CAPPING_VERTICALLY, type CanvasProjection \} from '\.\/engine-protocol'/)
+    expect(dragClamp).toMatch(/^ {2}const limitHeight = limit && BANDS_CAPPING_VERTICALLY\.includes\(limit\.band\) \? limit\.height : Number\.POSITIVE_INFINITY$/m)
   })
 
-  it('keeps the HORIZONTAL cap universal on both sides', () => {
+  it('keeps the HORIZONTAL cap universal in every consumer', () => {
     // The column is unbounded vertically, never horizontally — so neither
     // side may guard its x check by band.
     expect(go).toMatch(/outside := x < 0 \|\| y < 0 \|\| width < 0 \|\| height < 0 \|\| x > geom\.Length\(band\.Width\) \|\| width > geom\.Length\(band\.Width\)-x$/m)
     expect(ts).toMatch(/^ {4}if \(!\(box\.x \+ box\.width <= band\.width\)\) return false$/m)
+    // The drag clamp's width limit takes the band's size unconditionally,
+    // with no band in the condition at all.
+    expect(dragClamp).toMatch(/^ {2}const limitWidth = limit \? limit\.width : Number\.POSITIVE_INFINITY$/m)
   })
 
   it('turns a one-sided edit of the predicate red', () => {
@@ -215,5 +231,12 @@ describe('band containment mirror', () => {
     const driftedGo = go.replace(/^var bandsCappingVertically = \[\]string\{([^}]*)\}$/m, 'var bandsCappingVertically = []string{bandPageHeader}')
     expect(driftedGo).not.toBe(go)
     expect(goBandsCappingVertically(driftedGo)).not.toEqual(tsBandsCappingVertically(ts))
+    // And the third consumer's own drift: a drag clamp that stopped reading
+    // the list and re-stated the rule inline is the shape DW-36 named — "a
+    // fourth spelling of the tie" — and it would be invisible to every
+    // assertion above, because both declarations would still agree.
+    const driftedClamp = dragClamp.replace(/const limitHeight = limit && BANDS_CAPPING_VERTICALLY\.includes\(limit\.band\) \? limit\.height : Number\.POSITIVE_INFINITY/, 'const limitHeight = limit ? limit.height : Number.POSITIVE_INFINITY')
+    expect(driftedClamp).not.toBe(dragClamp)
+    expect(driftedClamp).not.toMatch(/BANDS_CAPPING_VERTICALLY\.includes\(limit\.band\)/)
   })
 })

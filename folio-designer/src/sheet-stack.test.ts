@@ -1,0 +1,160 @@
+import { describe, expect, it } from 'vitest'
+import type { CanvasProjection } from './engine-protocol'
+import { MAX_CANVAS_SHEETS, columnEdgeAfterDrag, columnForStackY, sheetPitch, sheetStack, stackYForColumn } from './sheet-stack'
+
+// The page-count matrix's own geometry, so every number below is one the
+// engine really produces: A4 portrait, margins {30, 54, 42, 36}, page header
+// 18pt, page footer 24pt, and therefore a content window of
+// 841890 − 30000 − 42000 − 18000 − 24000 = 727890 millipoints.
+const WINDOW = 727890
+const CONTENT_TOP = 48000
+const component = (id: string, y: number, height = 24_000): CanvasProjection['components'][number] => ({ id, type: 'text', band: 'content', x: 0, y, width: 72_000, height, resizable: true })
+const canvas = (patch: Partial<CanvasProjection>): CanvasProjection => ({
+  width: 595276, height: 841890, orientation: 'portrait', preset: 'A4',
+  marginTop: 30_000, marginRight: 54_000, marginBottom: 42_000, marginLeft: 36_000,
+  gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890,
+  fontFamilies: ['body'], defaultFontSize: 12_000,
+  contentWindowHeight: WINDOW, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsFloor: false,
+  bands: [
+    { name: 'pageHeader', x: 36_000, y: 30_000, width: 505_276, height: 18_000 },
+    { name: 'content', x: 36_000, y: CONTENT_TOP, width: 505_276, height: WINDOW },
+    { name: 'pageFooter', x: 36_000, y: 775_890, width: 505_276, height: 24_000 },
+  ],
+  components: [],
+  ...patch,
+}) as CanvasProjection
+
+// The projection's own answer for the Story 7.5 control fixture: three
+// elements a round 728pt apart. The closed form would answer
+// [0, 727890, 1455780].
+const control = { contentWindowCount: 3, contentWindowOrigins: [0, 728_000, 1_456_000] }
+// A column of ordinary prose: each window begins at the top of the first line
+// that did not fit, which is a little SHORT of the previous window's foot.
+const prose = { contentWindowCount: 3, contentWindowOrigins: [0, 715_000, 1_430_000] }
+
+describe('sheet stack model', () => {
+  it('draws one sheet per projected window, at the projected origin', () => {
+    const stack = sheetStack(canvas(control))
+    expect(stack.sheets.map((sheet) => sheet.index)).toEqual([0, 1, 2])
+    expect(stack.sheets.map((sheet) => sheet.origin)).toEqual([0, 728_000, 1_456_000])
+    expect(stack.windowCount).toBe(3)
+    expect(stack.truncated).toBe(false)
+  })
+
+  it('puts the seam where the NEXT window begins, and nowhere when that is past the foot', () => {
+    // Ordinary prose: the next window begins inside this sheet, and the space
+    // below the marker is the leftover the engine will not use.
+    expect(sheetStack(canvas(prose)).sheets.map((sheet) => sheet.seam)).toEqual([715_000, 715_000, undefined])
+    // The control fixture, where the elements sit 728000 apart in a 727890
+    // window: the next window begins 110 millipoints PAST this sheet's own
+    // foot, so there is no in-sheet marker and the band foot is the boundary.
+    expect(sheetStack(canvas(control)).sheets.map((sheet) => sheet.seam)).toEqual([undefined, undefined, undefined])
+    // A declared ten-window gap: two windows, and the skipped column region
+    // between them is drawn by nobody.
+    const gap = sheetStack(canvas({ contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] }))
+    expect(gap.sheets.map((sheet) => sheet.seam)).toEqual([undefined, undefined])
+  })
+
+  it('RED PROOF: the closed form puts the seam somewhere else, on the very fixture that hides the count', () => {
+    // Substituting the window height multiplied by an index for the projected origin —
+    // the spelling paginate.go forbids by name — on the control fixture,
+    // where the COUNT is three either way. The seams disagree: the closed
+    // form draws a marker at the foot of every sheet; the engine draws none.
+    const closedForm = canvas({ contentWindowCount: 3, contentWindowOrigins: [0, WINDOW, 2 * WINDOW] })
+    expect(sheetStack(closedForm).sheets.map((sheet) => sheet.seam)).toEqual([WINDOW, WINDOW, undefined])
+    expect(sheetStack(closedForm).sheets.map((sheet) => sheet.seam)).not.toEqual(sheetStack(canvas(control)).sheets.map((sheet) => sheet.seam))
+    // And on the gap fixture it is not even the same number of sheets.
+    expect(sheetStack(canvas({ contentWindowCount: 11, contentWindowOrigins: Array.from({ length: 11 }, (_value, index) => index * WINDOW) })).sheets).toHaveLength(11)
+    expect(sheetStack(canvas({ contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] })).sheets).toHaveLength(2)
+  })
+
+  it('draws a component on every window it intersects, with exactly one home', () => {
+    // e2 begins in window one and runs 400pt past the seam into window two.
+    const spanning = sheetStack(canvas({ ...prose, components: [component('e1', 0), component('e2', 600_000, 400_000), component('e3', 1_450_000)] }))
+    expect(spanning.sheets.map((sheet) => sheet.content.map((occurrence) => occurrence.component.id))).toEqual([['e1', 'e2'], ['e2'], ['e3']])
+    // The in-sheet Y is the column offset MINUS this window's origin — the
+    // second occurrence is drawn above its own sheet's content top, which is
+    // what makes the run continuous across the seam.
+    expect(spanning.sheets.map((sheet) => sheet.content.map((occurrence) => occurrence.y))).toEqual([[0, 600_000], [600_000 - 715_000], [1_450_000 - 1_430_000]])
+    // Exactly one occurrence of e2 is the home, and it is the window its own
+    // top falls in. Two homes would be two identical accessible names for one
+    // component.
+    const homes = spanning.sheets.flatMap((sheet) => sheet.content.filter((occurrence) => occurrence.home).map((occurrence) => `${occurrence.component.id}@${sheet.index}`))
+    expect(homes).toEqual(['e1@0', 'e2@0', 'e3@2'])
+  })
+
+  it('gives a component the engine never paginated a home anyway, rather than losing it', () => {
+    // A text element whose font chain will not resolve contributes no extents,
+    // so no window was ever opened at its top. It is still a component the
+    // author has to be able to select.
+    const orphan = sheetStack(canvas({ contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000], components: [component('e9', 3_000_000)] }))
+    expect(orphan.sheets.flatMap((sheet) => sheet.content.map((occurrence) => `${occurrence.component.id}@${sheet.index}:${occurrence.home}`))).toEqual(['e9@0:true'])
+  })
+
+  it('draws the first budgeted sheets and says the value was larger', () => {
+    const many = MAX_CANVAS_SHEETS + 40
+    const stack = sheetStack(canvas({ contentWindowCount: many, contentWindowOrigins: Array.from({ length: many }, (_value, index) => index * 700_000) }))
+    expect(stack.sheets).toHaveLength(MAX_CANVAS_SHEETS)
+    expect(stack.windowCount).toBe(many)
+    expect(stack.truncated).toBe(true)
+    // The budget truncates the DRAWING and never the value: the last drawn
+    // sheet is still at its own projected origin.
+    expect(stack.sheets[MAX_CANVAS_SHEETS - 1]?.origin).toBe((MAX_CANVAS_SHEETS - 1) * 700_000)
+  })
+
+  it('carries the floor claim through from the projection rather than deciding it', () => {
+    expect(sheetStack(canvas({ contentWindowCountIsFloor: true })).isFloor).toBe(true)
+    expect(sheetStack(canvas({ contentWindowCountIsFloor: false })).isFloor).toBe(false)
+  })
+})
+
+describe('sheet stack display-space inverse', () => {
+  const model = sheetStack(canvas(prose))
+  const projection = canvas(prose)
+
+  it('is the pitch of one whole page plus the stack own gap, at every zoom', () => {
+    expect(sheetPitch(projection, 1)).toBe(841_890 + 24_000)
+    // The gap is a CSS length, so it grows in document space as the canvas
+    // shrinks: at half zoom, 24 screen pixels are 48 points of document.
+    expect(sheetPitch(projection, 0.5)).toBe(841_890 + 48_000)
+  })
+
+  // The expected window is written out rather than re-derived from the
+  // function under test: a round trip that computed its own answer with the
+  // same rule would agree with any rule at all.
+  it.each([1, 0.5, 1.7])('round-trips a column offset through its own sheet at zoom %s', (zoom) => {
+    for (const [columnY, window] of [[0, 0], [1_000, 0], [714_999, 0], [715_000, 1], [1_000_000, 1], [1_430_000, 2], [2_100_000, 2]] as const) {
+      const stackY = stackYForColumn(model, projection, zoom, columnY)
+      expect(columnForStackY(model, projection, zoom, stackY)).toEqual({ window, columnY })
+    }
+  })
+
+  it('keeps a drag tracking the hand across a seam instead of drifting by the chrome', () => {
+    // A component at the foot of window one, dragged down by the height of one
+    // whole sheet-plus-gap. Tracking the hand means it lands one WINDOW lower
+    // in the column — not one page-plus-gap lower, which is what a linear
+    // pixel delta would have proposed.
+    const pitch = sheetPitch(projection, 1)
+    expect(columnEdgeAfterDrag(model, projection, 1, 700_000, pitch)).toBe(700_000 + 715_000)
+    // RED PROOF of the same gesture without the inverse: the linear delta the
+    // drag used to apply lands the component 149,890 millipoints — a footer,
+    // a gap and a header — below the hand.
+    expect(700_000 + pitch).not.toBe(700_000 + 715_000)
+    expect(700_000 + pitch - (700_000 + 715_000)).toBe(150_890)
+  })
+
+  it('RED PROOF: the closed form lands the same drag on the wrong column offset', () => {
+    const closedForm = sheetStack(canvas({ contentWindowCount: 3, contentWindowOrigins: [0, WINDOW, 2 * WINDOW] }))
+    const pitch = sheetPitch(projection, 1)
+    expect(columnEdgeAfterDrag(closedForm, projection, 1, 700_000, pitch)).not.toBe(columnEdgeAfterDrag(model, projection, 1, 700_000, pitch))
+  })
+
+  it('never proposes a sheet the stack does not draw', () => {
+    const pitch = sheetPitch(projection, 1)
+    expect(columnForStackY(model, projection, 1, -10_000).window).toBe(0)
+    expect(columnForStackY(model, projection, 1, 99 * pitch).window).toBe(model.sheets.length - 1)
+    // Above the first sheet's content band the offset goes negative, which is
+    // a proposal the drag clamp floors at zero and Go validates regardless.
+    expect(columnForStackY(model, projection, 1, 0).columnY).toBe(-CONTENT_TOP)
+  })
+})

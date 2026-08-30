@@ -13,6 +13,16 @@ export const MAX_ENGINE_PARAMETER_REFERENCES = 128
 export const MAX_ENGINE_PARAMETER_NAME_LENGTH = 128
 // The same bound Go projects the document's declared font chains under.
 export const MAX_ENGINE_FONT_FAMILIES = 256
+// A CHANNEL BACKSTOP, NOT A MIRROR. Go declares no maximum number of content
+// windows — internal/layout bounds the count only by the column-item count —
+// so this number is deliberately NOT in the pair list below: there is nothing
+// on the Go side for it to drift against. It exists for the reason
+// MAX_ENGINE_DIAGNOSTICS does, to keep an absurd array from being iterated,
+// and it is set orders of magnitude above anything the projection produces
+// because the cost of it biting is severe and silent: a rejected field
+// discards the WHOLE snapshot and blanks the canvas. Epic 7's narrative
+// target is forty pages; the canvas's own sheet budget is 120.
+export const MAX_ENGINE_CONTENT_WINDOWS = 100_000
 
 // ---------------------------------------------------------------------------
 // THE CANVAS PROJECTION BOUNDS, MIRRORED FROM folio-go/page_setup.go.
@@ -123,6 +133,19 @@ export type CanvasProjection = Readonly<{
 	// prediction wherever a bound table is involved: the canvas has no data,
 	// so a table contributes its header and none of its rows.
 	contentWindowHeight: number; contentWindowCount: number
+	// contentWindowOrigins is where each of those windows BEGINS, in the
+	// content column's own band-relative frame — one entry per window,
+	// origins[0] === 0, strictly increasing. It comes from Go's own
+	// PageAssignment.Shift and is NEVER the window height multiplied by an
+	// index: that
+	// closed form is the spelling internal/layout/paginate.go forbids by
+	// name, and it is wrong by 110 millipoints per window on a column of
+	// round 728pt spacing and by nine whole windows on a column with a
+	// declared gap. contentWindowCountIsFloor is Go saying the count is a
+	// FLOOR rather than a prediction — a bound table, a pagination that
+	// degraded, or text that could not be shaped. Both are engine facts, and
+	// neither is a rule this side gets to restate.
+	contentWindowOrigins: ReadonlyArray<number>; contentWindowCountIsFloor: boolean
 	// fontFamilies is the closed set style.fontFamily may name in THIS
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
@@ -181,13 +204,22 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsFloor', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
   if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
   // The declared font chain names, as Go sorted them: bounded in count and
   // length like every other list on this projection, unique, and in the order
   // Go sent so the browser never re-sorts an engine-owned set.
   if (!Array.isArray(value.fontFamilies) || value.fontFamilies.length > MAX_ENGINE_FONT_FAMILIES || !value.fontFamilies.every((name) => typeof name === 'string' && name.length > 0 && name.length <= 512) || value.fontFamilies.some((name, index, names) => index > 0 && (names[index - 1] as string) >= (name as string))) return false
+  // The window origins, in the same shape: bounded in count, every entry a
+  // safe non-negative integer, and in the order and at the length Go's own
+  // pagination fixes. `hasOnly` is a SUBSET check, so an origins key Go
+  // simply failed to send is caught HERE and nowhere else — as is a `nil`
+  // slice, which marshals to null and is not an array.
+  const origins = value.contentWindowOrigins
+  if (!Array.isArray(origins) || origins.length === 0 || origins.length > MAX_ENGINE_CONTENT_WINDOWS || origins.length !== value.contentWindowCount) return false
+  if (!origins.every((origin) => typeof origin === 'number' && Number.isSafeInteger(origin) && origin >= 0) || origins[0] !== 0 || origins.some((origin, index) => index > 0 && (origins[index - 1] as number) >= (origin as number))) return false
+  if (typeof value.contentWindowCountIsFloor !== 'boolean') return false
   const bands = value.bands
   const components = value.components
   if (!Array.isArray(bands) || bands.length !== 3 || !Array.isArray(components)) return false

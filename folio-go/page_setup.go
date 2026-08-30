@@ -329,6 +329,51 @@ type CanvasProjection struct {
 	//
 	// Always at least 1: a column with nothing in it is one page, not zero.
 	ContentWindowCount int64 `json:"contentWindowCount"`
+	// ContentWindowOrigins is where each of those windows BEGINS, in the
+	// content column's own band-relative frame — the same frame
+	// CanvasComponent.Y is already in for a content component. origins[0] is
+	// 0, because window one starts at the top of the column and internal/
+	// layout guarantees that unconditionally; every later entry is the
+	// column offset the engine slid that window to. There is exactly one
+	// entry per window, so len(ContentWindowOrigins) == ContentWindowCount.
+	//
+	// They come from internal/layout's own PageAssignment.Shift — the value
+	// Paginate had already computed while deciding the count — and are NEVER
+	// `index * ContentWindowHeight`. That closed form is the spelling
+	// paginate.go forbids by name for the count, and origins expose it more
+	// sharply than the count does: the window advances to the TOP OF THE
+	// FIRST ITEM THAT DID NOT FIT, never by a fixed height, so three
+	// elements a round 728pt apart begin at 0, 728000 and 1456000 where the
+	// closed form answers 0, 727890 and 1455780 — adrift by 110 millipoints
+	// per window — and a column with a declared ten-window gap begins two
+	// windows where the closed form answers eleven.
+	//
+	// The window HEIGHT does not vary: window i spans
+	// [origins[i], origins[i]+ContentWindowHeight). Only the tops slide.
+	//
+	// It is ALWAYS non-empty. A nil slice marshals to JSON null, the browser
+	// protocol rejects it, and rejecting one field discards the whole
+	// snapshot — which blanks the canvas with nothing to attribute the blank
+	// to.
+	ContentWindowOrigins []int64 `json:"contentWindowOrigins"`
+	// ContentWindowCountIsFloor states, as a value rather than only in the
+	// comment above, that ContentWindowCount is a FLOOR and not a
+	// prediction. It is true when any of THREE things is so, and the ENGINE
+	// reports it because only the engine knows all three:
+	//
+	//	(a) a content-band table carries a non-empty binding, so the column
+	//	    being counted holds that table's header and none of the rows its
+	//	    data will grow;
+	//	(b) Paginate could not place the column at all — a component taller
+	//	    than one window — and the count degraded to the documented one;
+	//	(c) a content-band text element contributed no extents because its
+	//	    font chain would not resolve, so its lines are absent from the
+	//	    column the count measures.
+	//
+	// The designer states the consequence in words. What it must never do is
+	// decide for itself that, say, a table means more pages: that would be a
+	// second authority on a question this flag answers exactly.
+	ContentWindowCountIsFloor bool `json:"contentWindowCountIsFloor"`
 }
 
 // maxCanvasFontFamilies bounds the projected name list the way every other
@@ -396,6 +441,13 @@ func canvasPageGeometry(t *Template) (layout.PageGeometry, error) {
 // every mutating command's own Canvas(t) is discarded and recomputed there
 // with fonts. A floor of one is what a column with nothing placeable in it
 // occupies anyway; a silent zero would be a page count no document has.
+//
+// ContentWindowOrigins and ContentWindowCountIsFloor are the SAME admission,
+// spelled in the two fields that carry it: one window beginning at column
+// offset zero, declared a floor. The struct is shared with the entry point
+// that can shape, so these values never reach the browser — but a shared
+// struct's values must be honest wherever they are set, and a `nil` origins
+// slice would marshal to a JSON null the protocol rejects.
 func Canvas(t *Template) (CanvasProjection, error) {
 	if t == nil {
 		return CanvasProjection{}, errNilTemplate
@@ -448,7 +500,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1}, nil
+	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsFloor: true}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,
@@ -464,7 +516,7 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 	// shaping produced and the window count is the other. A second shaping
 	// pass would be a second derivation of the same numbers, which is the
 	// thing internal/layout's ColumnItem doc forbids.
-	column := make([]layout.ColumnItem, 0)
+	column := canvasColumnExtents{Items: make([]layout.ColumnItem, 0)}
 	if err := addCanvasTextPaint(t, &projection, fs, &column); err != nil {
 		return CanvasProjection{}, err
 	}
@@ -477,9 +529,78 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 	return projection, nil
 }
 
+// canvasColumnExtents is what addCanvasTextPaint hands addCanvasWindowCount:
+// the content column's per-line extents, and the ONE thing about them the
+// count cannot see for itself.
+//
+// Items is the same slice this function used to pass on its own. FontChain-
+// Degraded is the addition: a content-band text element whose font chain
+// would not resolve is skipped with an empty paint a few lines into
+// addCanvasTextPaint, and the extents it would have contributed are simply
+// absent from Items. The count that measures Items is therefore a FLOOR for
+// that document, and nothing downstream of Items could tell — the missing
+// lines look exactly like an element that had nothing to say. Carrying the
+// fact beside the extents is what keeps the flag an ENGINE fact rather than
+// a browser rule about what an empty paint might mean.
+type canvasColumnExtents struct {
+	Items             []layout.ColumnItem
+	FontChainDegraded bool
+}
+
+// canvasWindowOrigins reads the window tops out of the very Pagination the
+// count is taken from: PageAssignment.Shift IS window i's band-relative
+// column offset, already computed by the one function permitted to decide
+// where a page begins. Nothing is derived, and in particular nothing is
+// multiplied — `index * ContentWindowHeight` is the closed form
+// internal/layout/paginate.go forbids by name, and it is wrong here by 110
+// millipoints per window on a column of round 728pt spacing and by nine whole
+// windows on a column with a declared gap.
+//
+// It STATES the three properties the browser protocol independently requires
+// — a non-empty sequence, a first origin of zero, strictly increasing — and
+// refuses rather than returning a sequence that would fail them. A refused
+// sequence degrades exactly as a refused pagination does; a sequence the
+// protocol rejects would discard the whole snapshot and blank the canvas with
+// nothing to attribute the blank to.
+func canvasWindowOrigins(plan layout.Pagination) ([]int64, bool) {
+	if len(plan.Pages) == 0 {
+		return nil, false
+	}
+	origins := make([]int64, 0, len(plan.Pages))
+	for i, page := range plan.Pages {
+		shift := page.Shift
+		if shift < 0 || shift > geom.Length(MaxCanvasMillipoints) {
+			return nil, false
+		}
+		if i == 0 && shift != 0 {
+			return nil, false
+		}
+		if i > 0 && int64(shift) <= origins[i-1] {
+			return nil, false
+		}
+		origins = append(origins, int64(shift))
+	}
+	return origins, true
+}
+
+// canvasContentBandHasBoundTable is the FIRST of the floor's three causes: a
+// table in the content band with a non-empty binding. projectedSize gives
+// such a table its header height and not one row, because the canvas has
+// never been given the data — so the column being counted is one header tall
+// however many hundred rows the finished document runs to.
+func canvasContentBandHasBoundTable(t *Template) bool {
+	for _, element := range t.doc.Bands.Content.Elements {
+		if element.Type == template.ElementTable && element.Table.Set && !element.Table.Null && element.Table.Value.Bind != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // addCanvasWindowCount is the THIRD paint producer, beside addCanvasTextPaint
 // and addCanvasImagePaint: it reports how many page-height windows the
-// content column occupies.
+// content column occupies, WHERE EACH ONE BEGINS, and whether the number is a
+// floor.
 //
 // It calls internal/layout's Paginate — the one function that decides how
 // many pages a column has — and never a second pagination of its own. What it
@@ -503,13 +624,18 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 // to empty. Its box is still projected, so such an element placed windows
 // down is one more reason this number is a FLOOR rather than a prediction,
 // alongside the bound table whose rows the canvas has never been given.
-func addCanvasWindowCount(t *Template, projection *CanvasProjection, textItems []layout.ColumnItem) error {
+func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canvasColumnExtents) error {
 	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return err
 	}
-	items := make([]layout.ColumnItem, 0, len(textItems)+len(t.doc.Bands.Content.Elements))
-	items = append(items, textItems...)
+	// TWO of the floor's three causes are known before Paginate runs; the
+	// third is the degradation branch below. They are OR-ed rather than
+	// ranked because the flag reports that the count is a floor, not which
+	// of the three made it one.
+	floor := column.FontChainDegraded || canvasContentBandHasBoundTable(t)
+	items := make([]layout.ColumnItem, 0, len(column.Items)+len(t.doc.Bands.Content.Elements))
+	items = append(items, column.Items...)
 	for _, element := range t.doc.Bands.Content.Elements {
 		if element.Type == template.ElementText {
 			// Text contributes one item PER SHAPED LINE, never its box: a
@@ -551,10 +677,29 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, textItems [
 		// Paginate's own answer for a column it cannot place, and it is the
 		// same shape as this file's other degradations: dispose of the
 		// number, keep the canvas.
+		//
+		// The origins degrade with the count they describe — one window
+		// beginning at the top of the column — and the flag says the number
+		// is a floor, because a column Paginate could not place is
+		// emphatically not a prediction of the document's length.
 		projection.ContentWindowCount = 1
+		projection.ContentWindowOrigins = []int64{0}
+		projection.ContentWindowCountIsFloor = true
+		return nil
+	}
+	origins, ok := canvasWindowOrigins(plan)
+	if !ok {
+		// The same degradation, for the same reason: a sequence that would
+		// not survive the browser's own validation must never be sent, and
+		// discarding the number is cheaper than discarding the snapshot.
+		projection.ContentWindowCount = 1
+		projection.ContentWindowOrigins = []int64{0}
+		projection.ContentWindowCountIsFloor = true
 		return nil
 	}
 	projection.ContentWindowCount = int64(len(plan.Pages))
+	projection.ContentWindowOrigins = origins
+	projection.ContentWindowCountIsFloor = floor
 	return nil
 }
 
@@ -675,7 +820,7 @@ func addCanvasImagePaint(t *Template, projection *CanvasProjection) error {
 	return nil
 }
 
-func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, column *[]layout.ColumnItem) error {
+func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, column *canvasColumnExtents) error {
 	components := make(map[string]*CanvasComponent, len(projection.Components))
 	for i := range projection.Components {
 		component := &projection.Components[i]
@@ -704,6 +849,18 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 				// incomplete for production rendering (for example, a text
 				// component without a chosen font chain). They remain loadable;
 				// there is simply no honest measured paint to display yet.
+				//
+				// AND THE WINDOW COUNT LOSES THIS ELEMENT'S EXTENTS. Nothing
+				// downstream of the column could tell — an element with
+				// nothing to say and an element that could not be shaped
+				// contribute the identical nothing — so the fact is recorded
+				// here, where it is known, and reported as the floor flag.
+				// Only an element that actually HAS a value loses anything:
+				// an unset or empty one would have contributed no lines with
+				// a perfectly good chain.
+				if band.name == bandContent && element.Value.Set && !element.Value.Null && element.Value.Value != "" {
+					column.FontChainDegraded = true
+				}
 				component.TextPaint = &CanvasTextPaint{Lines: []CanvasTextLine{}}
 				continue
 			}
@@ -788,7 +945,7 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 					if err != nil {
 						return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 					}
-					*column = append(*column, layout.ColumnItem{
+					column.Items = append(column.Items, layout.ColumnItem{
 						ElementID: string(element.ID),
 						Top:       top,
 						Bottom:    top + vm.FirstBaseline + vm.LastDescent,

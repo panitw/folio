@@ -57,6 +57,32 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .placement-ghost .palette-icon { width: 12px; height: 12px; }
 .canvas-tools { position: sticky; top: 0; z-index: 1; display: flex; gap: var(--space-2); padding: var(--space-2); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-mono); }
 .canvas-tools button { border: var(--hairline) solid var(--color-edge); background: var(--color-raised); color: var(--color-ink-high); }
+/* Story 7.6: the run of sheets, one per projected window. The gap is written
+   in from sheet-stack.ts's own SHEET_STACK_GAP rather than taken from a
+   spacing token, because the stack has to be able to INVERT its own display
+   geometry to keep a drag tracking the pointer across a seam — and reading a
+   token back would be exactly the getComputedStyle measurement this canvas
+   may not make. */
+.sheet-stack { display: grid; justify-items: center; gap: var(--sheet-stack-gap); }
+/* Each window's content, clipped to its own window. The clip CANNOT live on
+   .page-band: ::before, ::after and > span all position themselves outside
+   the band with negative offsets, and hiding the band's overflow would cut
+   off the band tab and the boundary rule. It is transparent to the pointer so
+   a placement released over the band still lands on the band; the components
+   inside take their own events back. */
+.band-window { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.band-window-open { overflow: visible; }
+.band-window > .canvas-component { pointer-events: auto; }
+/* A component drawn on a window it merely crosses. Decoration only — the home
+   occurrence owns the role, the tab stop and the name. */
+.canvas-component-echo { pointer-events: none; cursor: default; }
+/* The seam: where the engine will really break, at the projected origin of
+   the NEXT window, with the space below it shown as the leftover the engine
+   will not use. Absent when the next window begins past this sheet's own
+   foot, because then the foot is the boundary. */
+.page-seam { position: absolute; left: 0; right: 0; top: var(--seam-display-y); bottom: 0; border-top: 2px dashed var(--color-select); background: var(--color-page-shell); pointer-events: none; }
+/* What the sheets claim, said out loud rather than in a tooltip. */
+.canvas-disclosure { max-width: 640px; margin: 0; padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-body); }
 .page-surface { width: var(--page-display-width); height: var(--page-display-height); min-width: 1px; position: relative; flex: none; background-color: var(--color-page); box-shadow: var(--shadow-page); color: var(--color-page-ink); }
 .page-surface::before { content: ''; position: absolute; left: var(--page-margin-left); right: var(--page-margin-right); top: 0; bottom: 0; border-left: var(--hairline) solid var(--color-page-guide); border-right: var(--hairline) solid var(--color-page-guide); pointer-events: none; }
 .page-grid { background-image: radial-gradient(var(--color-page-dot) 1px, transparent 1px); background-size: var(--grid-display-pitch) var(--grid-display-pitch); background-position: 0 0; }

@@ -39,7 +39,7 @@ describe('resize anchors', () => {
     // The reported behaviour: dragging past the left edge used to hand Go a
     // negative x, which it rejected, which put the component back where the
     // drag started. It now rests against the edge and keeps its y.
-    const band = { width: 523_276, height: 669_000 }
+    const band = { band: 'pageHeader' as const, width: 523_276, height: 669_000 }
     expect(proposedBounds('move', origin, -110_000, -100_000, band)).toEqual({ x: 0, y: 0, width: 72_000, height: 24_000 })
     expect(proposedBounds('move', origin, -110_000, 30_000, band)).toEqual({ x: 0, y: 50_000, width: 72_000, height: 24_000 })
     expect(proposedBounds('move', origin, 900_000, 30_000, band)).toEqual({ x: 451_276, y: 50_000, width: 72_000, height: 24_000 })
@@ -47,7 +47,7 @@ describe('resize anchors', () => {
   })
 
   it('stops a resize at the band edge instead of proposing a rectangle that leaves it', () => {
-    const band = { width: 523_276, height: 669_000 }
+    const band = { band: 'pageHeader' as const, width: 523_276, height: 669_000 }
     expect(proposedBounds('w', origin, -30_000, 0, band)).toEqual({ x: 0, y: 20_000, width: 82_000, height: 24_000 })
     expect(proposedBounds('n', origin, 0, -30_000, band)).toEqual({ x: 10_000, y: 0, width: 72_000, height: 44_000 })
     expect(proposedBounds('se', origin, 900_000, 900_000, band)).toEqual({ x: 10_000, y: 20_000, width: 513_276, height: 649_000 })
@@ -55,6 +55,39 @@ describe('resize anchors', () => {
 
   it('leaves a component alone when no band limit is supplied', () => {
     expect(proposedBounds('move', origin, 900_000, 900_000)).toEqual({ x: 910_000, y: 920_000, width: 72_000, height: 24_000 })
+  })
+
+  // DW-36, and Story 7.6's prerequisite for dragging onto a later sheet. The
+  // content band is a COLUMN, not a page-tall box: clamping a drag at its
+  // height pinned every component to the first window of a document the
+  // canvas now draws every window of, so the lifted column was reachable by
+  // command and not by hand.
+  //
+  // These are the RED PROOFS for the lift. Restoring the clamp — dropping the
+  // BANDS_CAPPING_VERTICALLY gate in proposedBounds — turns the two vertical
+  // assertions here back into 645_000 and 649_000, exactly the pageHeader
+  // numbers above, which is what makes this a twin of that test rather than a
+  // second copy of it.
+  it('lets a move and a south resize run past one window in the content band, and still holds the sides', () => {
+    const band = { band: 'content' as const, width: 523_276, height: 669_000 }
+    // Three windows down the column, well past the band's own height.
+    expect(proposedBounds('move', origin, 20_000, 900_000, band)).toEqual({ x: 30_000, y: 920_000, width: 72_000, height: 24_000 })
+    expect(proposedBounds('se', origin, 900_000, 900_000, band)).toEqual({ x: 10_000, y: 20_000, width: 513_276, height: 924_000 })
+    // What the lift does NOT touch, asserted in the same breath: the width is
+    // still capped at the band's, in the content band as in every other, and
+    // the band-origin floor still keeps y at or above zero.
+    expect(proposedBounds('move', origin, 900_000, 30_000, band)).toEqual({ x: 451_276, y: 50_000, width: 72_000, height: 24_000 })
+    expect(proposedBounds('move', origin, -110_000, -100_000, band)).toEqual({ x: 0, y: 0, width: 72_000, height: 24_000 })
+    expect(proposedBounds('n', origin, 0, -30_000, band)).toEqual({ x: 10_000, y: 0, width: 72_000, height: 44_000 })
+  })
+
+  it('keeps the page footer capped exactly as the page header is', () => {
+    // The lift is keyed on band identity, so the OTHER repeating band has to
+    // be shown capped too — otherwise the gate could be reading nothing and
+    // every assertion above would still pass.
+    const band = { band: 'pageFooter' as const, width: 523_276, height: 669_000 }
+    expect(proposedBounds('move', origin, 20_000, 900_000, band)).toEqual({ x: 30_000, y: 645_000, width: 72_000, height: 24_000 })
+    expect(proposedBounds('se', origin, 900_000, 900_000, band)).toEqual({ x: 10_000, y: 20_000, width: 513_276, height: 649_000 })
   })
 
   it('leaves a component already smaller than the floor where it is', () => {

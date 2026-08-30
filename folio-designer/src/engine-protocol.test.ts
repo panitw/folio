@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
-const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
+const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsFloor: false, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
 describe('canvas projection protocol guard', () => {
   it('accepts and deeply freezes the exact three bounded bands', () => {
@@ -72,7 +72,60 @@ describe('canvas projection protocol guard', () => {
       expect(projection({ ...canvas, contentWindowCount: bad })).toBeUndefined()
       expect(projection({ ...canvas, contentWindowHeight: bad })).toBeUndefined()
     }
-    expect(projection({ ...canvas, contentWindowCount: 4 })).toBeDefined()
+    expect(projection({ ...canvas, contentWindowCount: 4, contentWindowOrigins: [0, 1800, 3600, 5400] })).toBeDefined()
+  })
+
+  // Story 7.6. The origins are what the canvas draws every sheet boundary
+  // from, so a malformed sequence is not a cosmetic problem: the browser
+  // would either draw a boundary in the wrong place or, worse, derive one
+  // itself. Every shape below is refused by the SAME path as any other
+  // malformed projection field — parseInbound returns undefined and the
+  // whole snapshot is discarded — which is what makes an honest Go field the
+  // only way to get a drawing at all.
+  it('requires one window origin per window, starting at zero and strictly increasing', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    const three = { ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 1800, 5400] }
+    // The positive case first, so every rejection below is a discrimination
+    // rather than a fixture that never parsed.
+    expect(projection(three)).toBeDefined()
+    // Windows do NOT have to be one window apart: the engine advances to the
+    // top of the first item that did not fit, so a declared gap is a legal
+    // and expected sequence. A validator that required a fixed stride would
+    // be the forbidden closed form wearing a guard's clothes.
+    expect(projection({ ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] })).toBeDefined()
+    const { contentWindowOrigins: _origins, ...noOrigins } = canvas
+    const { contentWindowCountIsFloor: _floor, ...noFloor } = canvas
+    // Absent entirely. `hasOnly` is a subset check and says nothing about a
+    // MISSING key; these two value predicates are the whole guard.
+    expect(projection(noOrigins)).toBeUndefined()
+    expect(projection(noFloor)).toBeUndefined()
+    // A nil Go slice marshals to null, not to [].
+    expect(projection({ ...canvas, contentWindowOrigins: null })).toBeUndefined()
+    expect(projection({ ...canvas, contentWindowOrigins: 1 })).toBeUndefined()
+    expect(projection({ ...canvas, contentWindowOrigins: [] })).toBeUndefined()
+    // Wrong length, both directions.
+    expect(projection({ ...three, contentWindowOrigins: [0, 1800] })).toBeUndefined()
+    expect(projection({ ...three, contentWindowOrigins: [0, 1800, 5400, 9000] })).toBeUndefined()
+    // Not starting at zero: window one begins at the top of the column,
+    // unconditionally, and internal/layout guarantees it.
+    expect(projection({ ...three, contentWindowOrigins: [900, 1800, 5400] })).toBeUndefined()
+    // Not increasing, and not strictly increasing.
+    expect(projection({ ...three, contentWindowOrigins: [0, 5400, 1800] })).toBeUndefined()
+    expect(projection({ ...three, contentWindowOrigins: [0, 1800, 1800] })).toBeUndefined()
+    // Entries that are not safe non-negative integers.
+    for (const bad of [-1, 1.5, '1800', null, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(projection({ ...three, contentWindowOrigins: [0, 1800, bad] })).toBeUndefined()
+    }
+    // The floor flag is a boolean and nothing else — never a truthy string a
+    // disclosure would then render.
+    for (const bad of [0, 1, 'true', null]) {
+      expect(projection({ ...canvas, contentWindowCountIsFloor: bad })).toBeUndefined()
+    }
+    expect(projection({ ...canvas, contentWindowCountIsFloor: true })).toBeDefined()
+    // The declared cap, at its edge on both sides.
+    const long = (count: number) => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, (_value, index) => index * 1800) })
+    expect(projection(long(MAX_ENGINE_CONTENT_WINDOWS))).toBeDefined()
+    expect(projection(long(MAX_ENGINE_CONTENT_WINDOWS + 1))).toBeUndefined()
   })
 
   it('bounds opaque producer failure provenance at the main-thread boundary', () => {
