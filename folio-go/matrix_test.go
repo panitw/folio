@@ -658,6 +658,40 @@ func requireJustifiedTextIsJustified(t *testing.T, target matrixTarget, raw []by
 	})
 }
 
+// captureJustifiedThaiRender runs Story 7.3's Thai-coverage selector,
+// rendering fixtures/justified-thai/ in a FRESH process — the same
+// reason justified-text needed one.
+func captureJustifiedThaiRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessJustifiedThaiEnvVar: "1"})
+}
+
+// requireJustifiedThaiIsJustified is the Thai document's OWN feature
+// guard, and it is the reason registering these legs is not a formality.
+//
+// The failure it exists to catch is SCRIPT-SHAPED and would be invisible
+// to justified-text's guard: a build that justified Latin correctly and
+// quietly set Thai ragged left would satisfy every other leg in this
+// table. Every line of this document FITS its box, so such a build would
+// still emit all fourteen baselines — just one run each, at the
+// element's own left edge, which is exactly what the document's control
+// element e2 already is. This guard asserts, on EVERY leg before any
+// byte comparison, that the justified element is drawn PIECE BY PIECE
+// across its DICTIONARY-DERIVED gaps: eight, seven, one, six, ten and
+// one runs across its six lines, against the control's one per line.
+func requireJustifiedThaiIsJustified(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	runs := readEmittedRuns(t, raw)
+	if len(runs) == 0 {
+		t.Fatalf("%s: the justified-thai leg emitted no text runs", target.name)
+	}
+	// Fatal here: a matrix leg comparing bytes it has not first
+	// established are the RIGHT bytes is worse than no leg.
+	justifiedThaiAssertGeometry(t, runs, func(format string, args ...any) {
+		t.Fatalf("%s: justified-thai leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // captureAlignmentRoundingRender runs Story 7.3's second selector,
 // rendering fixtures/alignment-rounding/ in a FRESH process.
 func captureAlignmentRoundingRender(t *testing.T, target matrixTarget, binPath string) []byte {
@@ -1711,6 +1745,29 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "justified-text", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireJustifiedTextIsJustified,
+		wantPages:        1,
+	},
+	{
+		// Story 7.3's Thai-coverage document, added by the owner's
+		// scope amendment. It is HERE because the divergence risk is
+		// the same one justified-text carries — an ordered remainder
+		// over an integer slack — measured over a DIFFERENT source of
+		// gaps: Thai's opportunities come from the shipped dictionary
+		// walk (AD-25), not from a whitespace scan, and this is the
+		// only cross-target artifact in which those two derivations
+		// meet the justification rule.
+		//
+		// Registered on the same terms as justified-text above — the
+		// slug lives in .github/workflows/matrix.yml's `docs="…"` list
+		// and in an upload-artifact path for every target under
+		// `if-no-files-found: error`, pinned by
+		// TestMatrixDocumentSlugsAreRegisteredInCI.
+		label:            "justified-thai (both edges flush, no spaces)",
+		slug:             "justified-thai",
+		capture:          captureJustifiedThaiRender,
+		fixtureRelPath:   []string{"fixtures", "justified-thai", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireJustifiedThaiIsJustified,
 		wantPages:        1,
 	},
 	{

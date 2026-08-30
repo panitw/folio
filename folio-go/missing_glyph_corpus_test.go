@@ -137,6 +137,23 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
 		},
 		{
+			// Story 7.3, owner scope amendment. It matters here
+			// specifically: this is the only committed document whose
+			// word-grained pieces are cut at DICTIONARY seams rather
+			// than at spaces, so a missing glyph exposed by a Thai
+			// piece boundary would show up nowhere else.
+			name: "justified-thai",
+			tpl: func(t *testing.T) *Template {
+				tpl, err := ParseTemplate([]byte(justifiedThaiTemplateJSON))
+				if err != nil {
+					t.Fatalf("parse justified-thai template: %v", err)
+				}
+				return tpl
+			},
+			data: Data(justifiedThaiDataJSON),
+			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
+		},
+		{
 			// Story 7.3, closing DW-24.
 			name: "alignment-rounding",
 			tpl: func(t *testing.T) *Template {
@@ -176,6 +193,7 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 		"mandatory-break":    "Story 7.1 (FR46) — the first committed document whose text or bound data carries a line feed",
 		"line-spacing":       "Story 7.2 — the first committed document that declares style.lineSpacing, and the first declaring format version 1.1",
 		"justified-text":     "Story 7.3 (FR47) — the first committed document that is justified at all, the first whose drawn runs are word-grained, and the first declaring format version 2.0",
+		"justified-thai":     "Story 7.3, owner scope amendment — the first committed document whose justified content carries no spaces, so its pieces are cut at dictionary seams (AD-25) rather than at whitespace",
 		"alignment-rounding": "Story 7.3, closing DW-24 — the first committed document declaring align center or valign at all, and therefore the first that reaches any of the branches which halve a slack",
 	}
 

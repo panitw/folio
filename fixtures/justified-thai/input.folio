@@ -1,0 +1,20 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 220, "height": 105, "value": "คู่สัญญาตกลงรักษาความลับของข้อตกลงฉบับนี้ตลอดเวลาและจะเปิดเผยข้อมูลต่อบุคคลภายนอกเฉพาะกรณีที่กฎหมายกำหนด\nใบเสร็จรับเงินค่าน้ำประปาประจำเดือนมกราคมออกให้แก่ผู้รับบริการในประเทศไทยตามที่ระบุไว้ในเอกสารแนบท้ายสัญญา", "style": {"fontFamily": "body", "fontSize": 11, "align": "justify"}},
+        {"id": "e2", "type": "text", "x": 0, "y": 115, "width": 220, "height": 105, "value": "คู่สัญญาตกลงรักษาความลับของข้อตกลงฉบับนี้ตลอดเวลาและจะเปิดเผยข้อมูลต่อบุคคลภายนอกเฉพาะกรณีที่กฎหมายกำหนด\nใบเสร็จรับเงินค่าน้ำประปาประจำเดือนมกราคมออกให้แก่ผู้รับบริการในประเทศไทยตามที่ระบุไว้ในเอกสารแนบท้ายสัญญา", "style": {"fontFamily": "body", "fontSize": 11}},
+        {"id": "e3", "type": "text", "x": 0, "y": 230, "width": 50, "height": 40, "value": "ณัฐกานต์ ปฐพี", "style": {"fontFamily": "body", "fontSize": 11, "align": "justify"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans", "Noto Sans Thai"]},
+  "locale": "th",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+07:00",
+  "version": "2.0"
+}

@@ -841,6 +841,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessJustifiedThaiEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(justifiedThaiTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(justifiedThaiDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessAlignmentRoundingEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(alignmentRoundingTemplateJSON))
 		if err != nil {
@@ -899,6 +912,14 @@ const subprocessLineSpacingEnvVar = "FOLIO_SUBPROCESS_RENDER_LINESPACING"
 // FRESH process, for the same reason line-spacing needed one: a golden
 // recorded from one process pins whatever that process happened to do.
 const subprocessJustifiedTextEnvVar = "FOLIO_SUBPROCESS_RENDER_JUSTIFIEDTEXT"
+
+// subprocessJustifiedThaiEnvVar is Story 7.3's Thai-coverage selector,
+// rendering fixtures/justified-thai/ — the first document in this
+// repository whose justified content has no SPACES in it, so that every
+// gap its slack is distributed into is a seam the shipped dictionary
+// proposed (AD-25) rather than a run of whitespace the author typed —
+// in a FRESH process, for the same reason justified-text needed one.
+const subprocessJustifiedThaiEnvVar = "FOLIO_SUBPROCESS_RENDER_JUSTIFIEDTHAI"
 
 // subprocessAlignmentRoundingEnvVar is Story 7.3's second selector,
 // rendering fixtures/alignment-rounding/ — DW-24's closing document, the

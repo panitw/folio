@@ -2,8 +2,8 @@
 title: 'Story 7.3: Justify a paragraph''s edges'
 type: 'feature'
 created: '2026-08-30'
-status: 'in-progress'
-baseline_revision: '20ccefaaa1ed2860ed68289354a1345ce678885c'
+status: 'done'
+baseline_revision: '8fed42ffc5f9f5f9acf3c5f1277f9ff6616ac0ad'
 review_loop_iteration: 0
 followup_review_recommended: true
 context: []
@@ -50,6 +50,22 @@ deferred:
       folio-go/render.go:505-506
     severity: low
   - summary: >-
+      A large class of ordinary Thai cannot be rendered at all: any sequence that stacks two marks
+      above a base (for example `ท` + `ั` + `้`) fails closed with
+      `face Noto Sans Thai: CID N carries a non-zero vertical offset`.
+    evidence: |-
+      Measured while choosing this story's Thai fixture text. Every Thai codepoint renders in
+      isolation (91/91 over U+0E01..U+0E5B), but a bisect over a natural Thai sentence found the
+      four-rune window `าทั้` failing. It is independent of justification: the same string fails
+      identically with `align: left`, so it is not a justification defect and is not this story's to
+      fix. It is `internal/pdf`'s deliberate AC6 fail-closed branch (`textdoc.go:1006-1019`) and the
+      refusal is correct as written, but it means the fixture text for any Thai document has to be
+      chosen around mark stacking, which is not a property a document author can be expected to know.
+      Nothing in the tree tracks this today.
+    location: >-
+      folio-go/internal/pdf/textdoc.go:1006-1019
+    severity: medium
+  - summary: >-
       `CanvasTextLine.Width` still projects the packer's ragged measurement for a justified line,
       though the line's fragments now span the full declared width.
     evidence: |-
@@ -60,6 +76,59 @@ deferred:
       wrong on exactly the lines this story adds. Not contract-covered either way.
     location: >-
       folio-go/page_setup.go
+    severity: low
+  - summary: >-
+      `fixtures/justified-thai/` is the first golden anywhere to insert visible inter-word space into
+      continuous Thai, and it carries no human Thai sign-off record.
+    evidence: |-
+      The repository has a decided mechanism for exactly the irreducibly-human half of D-000.22:
+      `fixtures/shaped-text/thai-signoff.json` (D-2.3.5, Thai mark placement) and
+      `fixtures/expected-breaks/break-signoff.json` (D-2.4.3, "every marked seam falls between words
+      and never inside one"), each enforced by a `//go:build matrix` red gate so the story commits
+      green and the epic gate cannot pass. Neither binds here: D-000.26 binds a sign-off to the
+      artifact expressing the property judged, and Story 4.7 created a third record rather than
+      reusing an existing one.
+      The precedent is NOT "every Thai-bearing golden gets a sign-off" -- measured at this revision,
+      `fixtures/wrapped-text/` carries 47 Thai characters with no record, and `multi-script-fallback`
+      one. Those fixtures only BREAK Thai at seams `expected-breaks` already signed off. This one
+      inserts gaps of up to 3,528 mp between Thai words that Thai normally writes with no space at
+      all, across 432 Thai characters -- more than any other golden. Whether that reads correctly is
+      a question no machine test can answer and none of the new tests attempts.
+      Not routed as an intent gap: the amendment enumerates AC-TH3's completion condition
+      (`goldenDigestRecord`, `matrixDocuments`, the re-derived enumeration, a digest identical on all
+      four targets) and the diff satisfies it exactly. Recorded here because only the owner can
+      decide to commission a Thai reader, and an agent writing a `reader`/`date`/`examined` record
+      would be fabricating an attestation.
+    location: >-
+      fixtures/justified-thai/ (precedent: folio-go/shaped_signoff_matrix_test.go)
+    severity: medium
+  - summary: >-
+      No Thai instance exists anywhere in the canvas/PDF justification parity claim.
+    evidence: |-
+      `TestCanvasPaintMatchesTheShippingRunPathUnderJustification` runs on `justifyTemplateJSON`
+      ("alpha beta gamma delta epsilon", Roboto), and the browser-side half validates a justified
+      component against fabricated Latin fragments. This dispatch changed nothing under
+      `folio-designer/`, so the contract's `Canvas parity` row and the AD-17 / Story 5.9 invariant are
+      still witnessed only by Latin. The amendment's ACs are all PDF-surface (its own evidence table
+      counts pieces, TJ arrays and diagnostics), so this is outside AC-TH1/2/3 rather than a miss --
+      but a word-grained Thai line is where the projection would diverge first, and DW-25 already
+      owns the neighbouring fragment-cap question for Story 7.4.
+    location: >-
+      folio-go/text_alignment_test.go (TestCanvasPaintMatchesTheShippingRunPathUnderJustification)
+    severity: low
+  - summary: >-
+      `verticalOffsetError`, the AC6 fail-closed branch that refuses a large class of ordinary Thai,
+      has no test anywhere.
+    evidence: |-
+      Pre-existing, surfaced while choosing this story's fixture text. Grepping
+      `verticalOffsetError|non-zero vertical offset` across `*.go` returns only the four hits inside
+      `internal/pdf/textdoc.go` itself -- the raise site, the type, and its `Error()` method. Nothing
+      constructs a document that reaches it and nothing pins the message, even though it is a hard
+      `Render` error rather than a diagnostic and it is what makes `ครั้ง`, `ทั้งนี้` and `ตั้งแต่`
+      unrenderable. Distinct from the sibling entry above, which records the LIMIT; this one records
+      that the refusal itself is unguarded and could regress in either direction unnoticed.
+    location: >-
+      folio-go/internal/pdf/textdoc.go
     severity: low
 ---
 
@@ -356,6 +425,24 @@ exercises AC-TH2, say so rather than working around it — that combination is i
   - `[low]` `[patch]` `justifyTemplateJSON`'s doc comment claimed "four justified text elements … plus a control" covering the ragged, no-width and overflow cases; the constant holds two elements and covers none of those. Comment rewritten to describe what it actually contains and what actually covers those rows.
   - `[low]` `[patch]` The `{{page}}` slot-straddle located error named only a "face-segment or line boundary"; a justified piece boundary is now a third way to reach it. Message extended so the diagnostic tells the author the truth.
 
+### 2026-08-30 — Review pass (Thai scope amendment)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 6: (high 0, medium 4, low 2)
+- defer: 3: (high 0, medium 1, low 2)
+- reject: 11: (high 0, medium 0, low 11)
+- addressed_findings:
+  - `[medium]` `[patch]` The AC-TH2 fixture's atomic run was documented in four places as "a given name the shipped dictionary does not cover". Verified false: `กานต์`, a suffix of `ณัฐกานต์`, is line 3084 of `internal/text/wordlist/words_th.txt`, and the greedy matcher does propose a break at rune 3 — D-2.1.9's both-sides-coverable filter (`internal/text/tileable.go`) then withdraws it, because the preceding `ณัฐ` cannot be tiled by dictionary entries at all. The asserted behaviour was always right (the precondition is computed from production `text.Opportunities`/`text.Dictionary()`, not from a literal); only the stated reason was wrong, and a reader checking it by grepping the wordlist would have concluded the test was broken. Corrected in the fixture README, the template const comment, the test comments, the `t.Fatalf` message and this spec, with the real mechanism named after it was verified rather than assumed.
+  - `[medium]` `[patch]` `justifiedThaiAssertGeometry`'s discriminating relation — `e1 runs > e2 runs`, the one assertion that a silent ragged-left fallback for Thai cannot satisfy — rested on an unasserted premise: that the control element e2 carries the same string in the same box at the same size as e1. Nothing checked it, so a drifted control would have left the relation green and meaningless. Added `justifiedThaiControlPremise`, asserting value, declared width and font size equality through one parse path, called immediately before the relation. Red-proofed by pointing the comparison at e3.
+  - `[medium]` `[patch]` Nothing asserted that a justified line's pieces still spell the line. e1's lines are split into 8/7/6/10 separately positioned runs, and splitting Thai per word is exactly where a combining mark could be dropped or reordered across a piece boundary — a failure the golden digest reports only as "hash mismatch". AC-TH1 now concatenates each line's piece texts in ascending x and compares against the control element's single-run line, so the expected string comes from production rather than a hand transcription. Red-proofed by dropping the first piece.
+  - `[medium]` `[patch]` The two ragged lines' stated causes were claimed in comments ("only the break-kind field can answer this", "only the line INDEX can answer") but asserted nowhere — the tests checked only "one piece at the natural start edge", so a build that set line 2 ragged for the wrong reason stayed green. This is the same defect class as the vacuous remainder test the previous pass found. Added `TestJustifiedThaiRaggedLinesAreRaggedForTheReasonsClaimed`, asserting line 2's `wrappedLine.endedBy == text.BreakMandatory` and non-final index, line 5's final index and `BreakOptional`, and that BOTH hold interior break opportunities so the zero-gap condition is not what made them ragged. Measured: line 2 mandatory with 4 interior ops, line 5 optional with 2. Red-proofed by swapping the rows and by forcing the interior count to zero.
+  - `[low]` `[patch]` Two hand-maintained-table walks could panic instead of reporting: `wantCounts[i]` index-out-of-range if the run-count and baseline tables ever disagree in length (which would kill the whole test binary, including every matrix leg that calls this as its guard), and `slack / gaps` divide-by-zero for a `justifiedThaiLines` row authored with `gaps: 0` and no ragged reason. Both now fail with a message naming the inconsistent tables.
+  - `[low]` `[patch]` The comment deriving the fourteen baseline literals mixed units — every constant in millipoints, `y` in points — and it is the sole record of how those literals were obtained. Rewritten so the arithmetic resolves as written.
+
+**Not addressed, and why.** Three findings were routed to `defer` and recorded in frontmatter: the absent human Thai sign-off for the first golden to insert inter-word space into continuous Thai (only the owner can commission a Thai reader; an agent writing that record would be fabricating an attestation), the absence of any Thai instance in the canvas parity claim (7.4 owns that surface), and `verticalOffsetError` being untested (pre-existing). Eleven were rejected, the notable ones being: the per-leg matrix guard not checking a right edge (true, and identical to the Latin precedent this amendment names as its standard), the new limitation not being promoted into `deferred-work.md` (the workflow's `defer` route is frontmatter; promotion to a DW number is the closer's), and `epics.md` not carrying AC-TH1/2/3 (the amendment lives in this spec by the orchestrator's own design).
+
+**One finding this pass could not act on.** AC-TH2's own wording, inside the owner's scope amendment, directs the implementer to "pick a Thai run the dictionary does not cover" — the same framing corrected in the first patch above. The behaviour it asks for is right and is delivered; the stated test for it is not. That text is the orchestrator's amendment, not this workflow's to rewrite, so it is reported rather than edited. Suggested rewording: "pick a Thai run the segmenter proposes no interior opportunity inside".
+
 ## Design Notes
 
 **Why the slack is based on the summed piece widths rather than the packer's line width.** Splitting a line into pieces means each piece's advance is rounded on its own, and a sum of roundings is not the rounding of a sum — so a justified line positioned from `ln.width` could miss the declared right edge by a millipoint or two. `measureRuneRange`'s doc comment states it *is* `positionSegments`' cursor arithmetic, so measuring the pieces with the same function the packer already uses and taking `slack = boxWidth − Σ pieceWidths` makes the right edge land exactly, with one derivation and no new measurement path. Overflow detection keeps reading `ln.width`, so FR44 is untouched.
@@ -464,3 +551,188 @@ Baseline: `20ccefaaa1ed2860ed68289354a1345ce678885c`, tree clean, branch `main`
 - `followup_review_recommended: true` — a high-severity patch (a test that could not fail) was applied in this pass.
 
 **Known-environmental, not regressions:** `TestShippedFacesReproduceFromUpstream` fails under `-tags=matrix` when `fontTools` is absent; `lint/internal/rules/licencegraph_test.go` is not gofmt-clean (DW-23, owned by Story 15.2).
+
+### Dispatch 3 — the owner's Thai scope amendment (2026-08-30)
+
+Status: `done`
+Blocking condition: none
+Baseline: `8fed42ffc5f9f5f9acf3c5f1277f9ff6616ac0ad`, branch `main`
+
+**Summary.** AC-TH1/AC-TH2/AC-TH3 only. No justification behaviour, break rule or format field
+changed: `folio-go/text_alignment.go` is byte-identical to its committed state, and so is every
+other production file. What this dispatch adds is the coverage the amendment says was missing —
+`fixtures/justified-thai/`, a golden whose justified content is Thai, plus the tests that make Thai
+justification falsifiable.
+
+**Verified BEFORE any byte was recorded** (the scope fence's own requirement — if Thai did not
+justify, the instruction was to HALT rather than change the rule). Rendering the amendment's own
+cases at the baseline, `justifiedLinePieces` distributes over the dictionary-derived opportunity
+list unchanged: a spaceless Thai paragraph in a 220 pt box packs into six lines of which four are
+justified into 7, 6, 5 and 9 interior gaps, every one of them a wordlist seam, with each line's last
+piece ending on 220,000 mp exactly.
+
+**Files added.**
+- `fixtures/justified-thai/` — `input.folio` (three elements, `"version": "2.0"`), `README.md`,
+  `expected.json`, `expected.pdf`.
+- `folio-go/justified_thai_template.go` — the template const kept byte-identical to `input.folio`,
+  plus the empty data const, following `justified_text_template.go`.
+- `folio-go/justified_thai_fixture_test.go` — semantic acceptance, AC-TH1, AC-TH2, the version
+  declaration, and the golden LAST (D-000.22).
+
+**Files changed — registration only.** `folio-go/render_test.go` (a fifth subprocess selector),
+`folio-go/matrix_test.go` (capture + per-leg feature guard + `matrixDocuments`),
+`folio-go/byte_neutrality_test.go` (`goldenDigestRecord` + `declaredEpic2GateObligations`),
+`folio-go/missing_glyph_corpus_test.go` (corpus table + `beyondBaselineAcceptance`),
+`.github/workflows/matrix.yml` (`docs=` + all four upload blocks).
+
+**What the fixture covers.**
+- `e1` — `align: "justify"`, two Thai paragraphs, **not one space character** in the value, so every
+  interior opportunity is a dictionary seam (asserted, not assumed: the test fails outright if a
+  space appears). Six lines: four justified (gaps 7/6/5/9, slacks 13,893 / 12,771 / 7,942 / 31,757,
+  remainders 5/3/2/5 — all non-zero, three of the four larger than half the gap count), one ragged
+  by mandatory break and not last, one ragged as the last line.
+- `e2` — the control: same string, chain, size and box, no align. One run per line at the left edge.
+- `e3` — AC-TH2. `"ณัฐกานต์ ปฐพี"` in a 50 pt box. The segmenter proposes **zero** break
+  opportunities strictly inside its first line `"ณัฐกานต์"` — measured through the production
+  `text.Opportunities` against the shipped `text.Dictionary()`, not assumed; that line is justified,
+  is not the last line, was not ended by a mandatory break, and leaves **9,179 mp of positive
+  slack** — each of those exclusions asserted — and is still set at the natural start edge. The
+  zero-opportunity precondition is a `t.Fatalf`, so the case cannot go vacuous if the segmenter's
+  answer for this run ever changes.
+
+  *The reason is not "the wordlist lacks the name", and the docs and comments that said so have been
+  corrected.* `words_th.txt` does contain `กานต์`, a suffix of the run: the greedy matcher matches it
+  and proposes a break in front of it, and D-2.1.9's both-sides-coverable filter
+  (`internal/text/tileable.go`) then withdraws that proposal because the preceding stretch cannot be
+  tiled by dictionary entries at all. What the fixture asserts is the net answer the justification
+  rule actually reads — no interior opportunity — whatever entries the wordlist happens to hold.
+
+**Verification performed (measured, not assumed).**
+- `cd folio-go && go test -count=1 ./...` — **1486 pass, 5 skip, 2 fail entries constituting exactly
+  ONE distinct failure**: `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest
+  (got 7, need >=20), the mandated permanent red. Untouched. Nothing else red.
+- `cd folio-go && go vet -tags=matrix ./...` — clean, exit 0.
+- `gofmt -l folio-go` — no output.
+- `cd lint && go test ./...` — 4 packages ok, 0 fail.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck clean; lint
+  exactly the 4 pre-existing `only-export-components` warnings, 0 errors; **30 test files, 215 tests
+  passed** — unchanged, as the amendment adds no browser-side behaviour.
+- `TestTargetRenderHash` run once per leg with `FOLIO_MATRIX_TARGET` actually set: **`darwin/arm64`,
+  `linux/amd64`, `linux/arm64`, `js/wasm` all pass, and all four report the SAME digest for
+  justified-thai**, `58ca4777…`, 15,079 bytes — AC-TH3's four-target identity.
+- `TestCrossTargetByteIdentity` — pass (26.8s).
+- **All eight previously recorded corpus digests measured unchanged**, by direct `shasum`, not
+  inferred from a green suite: `statement-1` `114df1d6…`; `statement-5` `70dce051…`; `statement-20`
+  `56bfbbd9…`; `statement-50` `5d090b0f…`; `mandatory-break` `7cf743de…`; `line-spacing`
+  `de212115…`; `justified-text` `6da3b12e…`; `alignment-rounding` `986400a1…`. No existing fixture
+  file was touched.
+
+**Red-proofs (each mutation reverted byte-identically, verified by sha256).**
+1. *The failure this fixture exists to catch.* Making `justifiedLinePieces` skip zero-width
+   opportunities (`op.LineEnd == op.NextStart`) — a script-shaped bug that justifies Latin correctly
+   and silently sets Thai ragged left — leaves **every `TestJustifiedText*` assertion green** and
+   reddens the Thai ones: four lines drawn as 1 run instead of 8/7/6/10, plus
+   "the justified element draws 6 runs and the unaligned control 6". Before this fixture, no
+   recorded byte in the repository could tell that build from a correct one.
+2. *The ordered remainder, over dictionary gaps.* Reversing the remainder to the last gaps reddens
+   every justified Thai line (`gap 0 is 1984, want 1985 …`).
+3. *AC-TH2's non-vacuity.* Simulating the segmenter proposing an interior opportunity inside the
+   atomic run fires the precondition `t.Fatalf` with its intended message, so the case cannot pass
+   by having quietly stopped being AD-25's atomic run.
+
+**Registration red-proofed too:** dropping `justified-thai` from `matrix.yml`'s `docs=` list reddens
+`TestMatrixDocumentSlugsAreRegisteredInCI`, which also pins the four per-target upload paths.
+
+**Finding, reported rather than worked around.** The amendment's "known pre-existing limit" was
+characterised: every Thai codepoint renders in isolation (91/91 over U+0E01..U+0E5B), but any
+sequence that **stacks two marks above a base** (for example `ท` + `ั` + `้`) fails closed with
+`CID N carries a non-zero vertical offset`. It fails identically under `align: left`, so it is
+independent of justification and is not a justification defect; it is `internal/pdf`'s deliberate
+AC6 fail-closed branch. It is recorded as a new frontmatter `deferred` entry because nothing in the
+tree tracked it and it constrains what Thai any future fixture can contain. Thai that both renders
+and exercises AC-TH2 was found, so no HALT condition was reached.
+
+**Review patches applied to this dispatch (test and documentation only; no production file touched,
+no golden re-recorded).**
+- *A factual claim corrected in four places.* "A given name the shipped dictionary does not cover"
+  was false — see the e3 bullet above. The prose in `fixtures/justified-thai/README.md`, in the
+  template const's comment, in the test's comments and messages, and here now states the property
+  that is actually asserted.
+- *The control's premise is asserted.* `justifiedThaiAssertGeometry`'s `e1 <= e2` relation is
+  evidence about justification only if e2 carries the same string in the same box at the same size.
+  `justifiedThaiControlPremise` now asserts all three with `t.Fatalf` (and that e1's declared width
+  is `justifiedThaiBoxWidthMP`), recovered from the parsed document. The function takes `*testing.T`
+  as a result; `matrix_test.go`'s call was updated with it.
+- *The justified pieces must still spell the line.* AC-TH1 now concatenates each line's piece texts
+  in ascending x and compares them to the same line as the **control** sets it — an expected string
+  from production, never a hand-transcribed one — for the ragged lines too.
+- *Two table-walk panics turned into reported failures.* A length disagreement between
+  `justifiedThaiRunsPerBaseline()` and `justifiedThaiBaselinesMP` (an index-out-of-range that would
+  have killed the binary, matrix legs included) and a `justifiedThaiLines` row authored `gaps: 0`
+  with no ragged reason (a divide-by-zero) now each fail with a message naming the inconsistency.
+- *The ragged lines' causes are asserted.* New
+  `TestJustifiedThaiRaggedLinesAreRaggedForTheReasonsClaimed` packs e1 through the production path
+  and asserts line 2's `wrappedLine.endedBy` really is `text.BreakMandatory` and is not the last
+  index, line 5's index really is the final one and no mandatory break ended it, and that **both**
+  hold interior break opportunities — so neither is quietly AC-TH2's zero-gap case.
+- *Units made explicit* in the fourteen-baseline derivation comment, which mixed millipoint
+  constants with a point-valued `y`.
+
+Each of the six was red-proofed by mutation and reverted; the whole suite's only failure remains
+`TestCorpusMeetsP6ExerciseFloors` (P6g, the mandated permanent red), and all nine recorded corpus
+digests are unchanged.
+
+**Review findings breakdown (this dispatch).** 6 patches applied (0 high, 4 medium, 2 low); 3 items
+deferred (1 medium, 2 low, recorded in frontmatter `deferred`); 11 rejected. No intent gap and no
+bad-spec loopback: the amendment enumerates AC-TH3's completion condition — `goldenDigestRecord`,
+`matrixDocuments`, the re-derived enumeration, and a digest identical on all four targets — and the
+diff satisfies it exactly, so the one finding that looked like a scope defect (the missing human Thai
+sign-off) was routed to `defer` on the intent's own authority rather than escalated.
+
+**Follow-up review recommendation:** `true`. Patched findings this pass by severity: high 0,
+medium 4, low 2. No high severity, but the score `3 × 4 + 1 × 2 = 14` clears the threshold of 5.
+
+**Verification re-performed by the reviewing pass (measured independently, not taken on report).**
+- `cd folio-go && go test -count=1 ./...` — **1487 pass, 5 skip, 2 fail entries constituting exactly
+  ONE distinct failure**: `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest
+  (got 7, need >=20), the mandated permanent red. Untouched. Nothing else red. (1486 before the
+  patches; `TestJustifiedThaiRaggedLinesAreRaggedForTheReasonsClaimed` is the +1.)
+- The 5 skips are the two always-on ones (`TestBrowserAuthoredRoundTripWitness`,
+  `TestXrefEntriesRejectsMalformedSubprocess`) plus the three `FOLIO_HEAVY`-gated table tests, which
+  were then run with `FOLIO_HEAVY=1` and all three pass. No skip conceals an I/O-matrix row.
+- `cd folio-go && go vet -tags=matrix ./...` — clean, exit 0.
+- `gofmt -l folio-go` from the repository root — no output.
+- `cd lint && go test -count=1 ./...` — 4 packages ok, 0 fail (run uncached).
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` — typecheck exit 0; lint
+  exactly the 4 pre-existing `only-export-components` warnings; **30 test files, 215 tests passed**,
+  unchanged, as this dispatch adds no browser-side behaviour.
+- `TestTargetRenderHash` with `FOLIO_MATRIX_TARGET` actually set on each of four legs — none was the
+  unset no-op that "asserts NOTHING": `darwin/arm64`, `linux/amd64`, `linux/arm64` and `js/wasm` all
+  pass, and all four report the identical `justified-thai` digest `58ca4777…`, 15,079 bytes.
+- `TestCrossTargetByteIdentity` — pass (22.1s).
+- **All nine corpus digests measured by direct `shasum`, not inferred from a green suite.** The eight
+  pre-existing ones are byte-identical: `statement-1` 76,744 `114df1d6…`; `statement-5` 127,363
+  `70dce051…`; `statement-20` 269,884 `56bfbbd9…`; `statement-50` 555,829 `5d090b0f…`;
+  `mandatory-break` 56,681 `7cf743de…`; `line-spacing` 57,770 `de212115…`; `justified-text` 59,894
+  `6da3b12e…`; `alignment-rounding` 61,346 `986400a1…`. The ninth is `justified-thai` 15,079
+  `58ca4777…`.
+- **Independent red-proof of the fixture's reason to exist**, performed by the reviewing pass rather
+  than accepted on report: mutating `justifiedLinePieces` to skip zero-width opportunities
+  (`op.LineEnd == op.NextStart`) — a script-shaped bug that justifies Latin correctly and silently
+  sets Thai ragged left — leaves the entire Latin `TestJustifiedText*` suite **green** and reddens
+  three Thai tests. `text_alignment.go` was then restored and proven byte-identical by sha256 and an
+  empty `git diff`. Before this fixture, no recorded byte in the repository could tell that build
+  from a correct one.
+
+**Residual risks.**
+- The absent human Thai sign-off, recorded as a deferred item. `fixtures/justified-thai/` is the
+  first golden anywhere to insert visible space between Thai words, it is now defended on four
+  targets in CI, and whether that reads correctly is a question no test here answers.
+- The fixture's text was chosen around a hard render refusal: stacked-mark sequences (vowel-above
+  plus tone-above) cannot be rendered at all, which excludes very common vocabulary. This dispatch
+  characterised the limit and recorded it; it did not fix it, and it is independent of justification.
+- Line breaks, gap counts and slacks are hand-stated and depend on the shipped Noto Sans Thai metrics
+  and the shipped wordlist. A face or wordlist change reddens this loudly rather than degrading it
+  silently.
+- The four earlier deferred items from dispatch 2 stand, in particular the unguarded `valign` command
+  arm and the justified-table-styling scope question.

@@ -398,6 +398,36 @@ var goldenDigestRecord = []struct {
 		},
 	},
 	{
+		// RECORDED by Story 7.3, under the owner's scope amendment
+		// ("I'd like to make sure Thai text can be justified as
+		// well"). THE FIRST COMMITTED DOCUMENT WHOSE JUSTIFIED CONTENT
+		// HAS NO SPACES IN IT.
+		//
+		// fixtures/justified-text/ above is pure Latin, so every gap it
+		// distributes slack into is a run of whitespace the author
+		// typed. Thai writes its sentences without spaces: its break
+		// opportunities come from the shipped dictionary walk (AD-25).
+		// Measured at this amendment's baseline, no test in the tree
+		// named Thai and `justify` together, so no recorded byte could
+		// tell a build that justifies Thai from one that sees a
+		// spaceless run and quietly falls back to ragged left — which
+		// is the same shape of absence that let valign ship uncovered
+		// and cost DW-24 three stories. The behaviour was verified
+		// correct BEFORE any byte was recorded; this document is what
+		// makes it falsifiable.
+		//
+		// Its e2 is the CONTROL, and its e3 is AD-25's atomic unknown
+		// run — the third ragged condition, which only Thai makes
+		// reachable. Its README quotes the digest.
+		dir:    "justified-thai",
+		sha256: "58ca47772e144c4b123c45e1eec3c893cd1e8c2a0e26d3f3af1ba504e6ff94fb",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/justified-thai/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/justified-thai/README.md"},
+		},
+	},
+	{
 		// RECORDED by Story 7.3, CLOSING DW-24. THE FIRST COMMITTED
 		// DOCUMENT IN THIS REPOSITORY DECLARING `align: "center"` OR
 		// `valign` AT ALL. Measured at 7.3's baseline the corpus held 16
@@ -784,6 +814,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: mandatory-break",        // Story 7.1 (FR46) — the first cross-target artifact carrying a line feed. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: line-spacing",           // Story 7.2 — the first cross-target artifact declaring style.lineSpacing (and format version 1.1). Authorised by the story's own Verification section, which makes 7.2's correctness byte-identity-shaped and carries the heavy tests regardless of the per-epic cadence. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: justified-text",         // Story 7.3 (FR47) — the first cross-target artifact that is justified at all, and the first declaring format version 2.0. Authorised by the story's own Verification section, which makes 7.3's correctness byte-identity-shaped (D-R7.1): a slack remainder placed in a different ORDER is precisely the defect that agrees with itself on one host and disagrees across four. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
+	"matrix-document: justified-thai",         // Story 7.3, owner scope amendment — the first cross-target artifact whose justified content carries no spaces, so its gaps come from the shipped dictionary walk (AD-25) rather than a whitespace scan. Registered on justified-text's terms: legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
 	"matrix-document: alignment-rounding",     // Story 7.3, CLOSING DW-24 — the first cross-target artifact declaring align center or valign at all, and therefore the first that takes a half-to-even tie in the alignment feature. DW-24's own closure conditions require the fixture be "added to matrixDocuments so all four targets render it", which is the ruling authorising this entry. Legs wired in matrix.yml and run in-story alongside justified-text
 }
 
