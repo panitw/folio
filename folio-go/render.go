@@ -843,11 +843,23 @@ func collectBandTextRuns(
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}
 
-		elementY := layout.PlaceInBand(b.origin, el.Y)
+		// The element's committed alignment, applied here and nowhere else
+		// in this loop: valign moves the whole block once, align moves each
+		// line inside the declared width. Both distribute slack only
+		// (text_alignment.go), so an element that fits exactly, one with no
+		// alignment, and one that overflows all draw exactly where they drew
+		// before this rule existed.
+		align, valign := elementAlignment(el)
+		boxHeight := geom.Length(0)
+		if el.Height.Set && !el.Height.Null {
+			boxHeight = el.Height.Value
+		}
+		elementY := layout.PlaceInBand(b.origin, el.Y) + textValignOffset(valign, boxHeight, textBlockHeight(len(lines), vm))
 		startPending := len(pending)
 		for i, ln := range lines {
 			lineY := elementY + geom.Length(int64(i))*vm.Advance
-			placed, poserr := positionSegments(segs, ln.from, ln.to, el.X, lineY, fontSize, vm.FirstBaseline, slots)
+			lineX := el.X + textAlignOffset(align, boxWidth, ln.width)
+			placed, poserr := positionSegments(segs, ln.from, ln.to, lineX, lineY, fontSize, vm.FirstBaseline, slots)
 			if poserr != nil {
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, poserr)
 			}
@@ -1493,7 +1505,22 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	if ftterr != nil {
 		return nil, nil, nil, nil, ftterr
 	}
+	// Story 9.1: element boxes FIRST, then the tables' own chrome. Both
+	// populations travel in one slice because both are rect groups with a
+	// band and an extent, and everything downstream — contentColumnItems'
+	// page-count pass, paginateDocument's placement, the page assembler's
+	// header/footer repetition — already reads exactly that. Element boxes
+	// lead so a box painted behind a table sits UNDER that table's cell
+	// chrome; within each population the order is documentBands' band
+	// order and then declaration order, which is the emitted byte order.
+	// An element declaring neither background nor border contributes
+	// nothing here, which is what leaves the corpus byte-identical.
+	elementBoxes, eberr := collectElementBoxRects(bands, visible)
+	if eberr != nil {
+		return nil, nil, nil, nil, eberr
+	}
 	var tableRects []tableRectSource
+	tableRects = append(tableRects, elementBoxes...)
 	tableRects = append(tableRects, headerTableRects...)
 	tableRects = append(tableRects, contentTableRects...)
 	tableRects = append(tableRects, footerTableRects...)

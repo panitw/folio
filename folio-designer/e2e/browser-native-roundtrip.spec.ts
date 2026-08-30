@@ -76,11 +76,15 @@ async function openTab(page: Page, name: 'PROPERTIES' | 'DATA' | 'INPUTS'): Prom
   await page.getByRole('tab', { name }).click()
 }
 
+// The family is chosen from the engine's own declared chains — Go projects
+// them (CanvasProjection.fontFamilies) and the inspector searches that list —
+// so this picks the option rather than typing a value at the field.
 async function setFontFamily(page: Page): Promise<void> {
   await openTab(page, 'PROPERTIES')
-  const font = page.getByRole('textbox', { name: 'Font family' })
+  const font = page.getByRole('combobox', { name: 'Font family' })
+  await font.click()
   await font.fill('body')
-  await font.press('Enter')
+  await page.getByRole('option', { name: 'body', exact: true }).click()
   await expect(font).toHaveValue('body')
 }
 
@@ -123,7 +127,7 @@ async function bindTextToCustomer(page: Page, content: ReturnType<Page['getByRol
   await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
 }
 
-async function placeStatementText(page: Page, band: ReturnType<Page['getByRole']>, value: string, y: number, expression = false): Promise<void> {
+async function placeStatementText(page: Page, band: ReturnType<Page['getByRole']>, value: string, y: number): Promise<void> {
   const texts = band.getByRole('button', { name: /text component/ })
   const beforeCount = await texts.count()
   await page.getByRole('button', { name: 'Place Text' }).click()
@@ -141,7 +145,7 @@ async function placeStatementText(page: Page, band: ReturnType<Page['getByRole']
     await yField.press('Enter')
     await waitForRevisionAdvance(page, beforeY)
   }
-  const field = page.getByRole('textbox', { name: expression ? 'Text expression' : 'Text value' })
+  const field = page.getByRole('textbox', { name: 'Text', exact: true })
   const beforeValue = await revision(page)
   await field.fill(value)
   await field.press('Enter')
@@ -172,11 +176,11 @@ async function authorStatementFraming(page: Page): Promise<void> {
   await (await chooser).setFiles({ name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from(statementLogoBase64, 'base64') })
   await expect(logo.locator('img.canvas-image-paint')).toBeVisible()
   await placeStatementText(page, header, 'CUSTOMER ACCOUNT STATEMENT', 30)
-  await placeStatementText(page, content, 'Customer: {{customer.name}}', 30, true)
-  await placeStatementText(page, content, 'Account: {{account.number}}', 60, true)
-  await placeStatementText(page, content, 'Statement period: {{period.from}} to {{period.to}}', 90, true)
-  await placeStatementText(page, footer, 'Confidential — generated {{params.generatedDate}} / report {{params.reportDate}}', 0, true)
-  await placeStatementText(page, footer, 'Page {{page}} of {{pages}}', 12, true)
+  await placeStatementText(page, content, 'Customer: {{customer.name}}', 30)
+  await placeStatementText(page, content, 'Account: {{account.number}}', 60)
+  await placeStatementText(page, content, 'Statement period: {{period.from}} to {{period.to}}', 90)
+  await placeStatementText(page, footer, 'Confidential — generated {{params.generatedDate}} / report {{params.reportDate}}', 0)
+  await placeStatementText(page, footer, 'Page {{page}} of {{pages}}', 12)
 }
 
 async function authorTableWithFooter(page: Page, content: ReturnType<Page['getByRole']>): Promise<void> {
@@ -243,7 +247,7 @@ async function authorAlternateReport(page: Page): Promise<void> {
   const content = page.getByRole('region', { name: 'Content', exact: true })
   const footer = page.getByRole('region', { name: 'Page Footer', exact: true })
   await placeStatementText(page, header, 'ACCOUNT NOTICE', 30)
-  await placeStatementText(page, footer, 'Archive copy — {{params.reportDate}}', 0, true)
+  await placeStatementText(page, footer, 'Archive copy — {{params.reportDate}}', 0)
   await page.getByRole('button', { name: 'Place Rectangle' }).click()
   await content.press('Enter')
   await expect(content.getByRole('button', { name: /rect component/ })).toHaveCount(1)

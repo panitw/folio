@@ -390,14 +390,14 @@ type verticalMetrics struct {
 	// LastDescent is last baseline -> the bottom of the text's vertical
 	// extent: max(|D|) scaled.
 	//
-	// STATED HONESTLY, because a field nothing calls is exactly the
-	// thing D-000.46 warns about: NOTHING IN PRODUCTION CONSUMES THIS
-	// FIELD TODAY. It is the third span of the ruled model and it is
-	// computed here so the model is stated ONCE, in the one place that
-	// walks the chain, rather than re-derived by whoever first needs it
-	// — which is the second-derivation hazard this type exists to
-	// close. Its production consumer arrives with clipping and overflow
-	// diagnostics (Story 2.8, FR44/AD-14). It IS asserted today, by
+	// It is the third span of the ruled model, computed here so the model
+	// is stated ONCE, in the one place that walks the chain, rather than
+	// re-derived by whoever first needs it — the second-derivation hazard
+	// this type exists to close. It went a long time with no production
+	// consumer at all, stated honestly as such. Two consume it now: the
+	// per-line item extent the page splitter reads, and textBlockHeight,
+	// which is the height vertical alignment distributes an element's
+	// slack against (text_alignment.go). It is also asserted directly by
 	// TestVerticalModelArithmeticOverFabricatedMetrics.
 	LastDescent geom.Length
 }

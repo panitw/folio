@@ -183,3 +183,24 @@ development_status:
   8-5-a-curated-catalogue-ships-with-the-designer: backlog
   8-6-picking-a-family-puts-it-in-the-file: backlog
   epic-8-retrospective: optional
+
+  # Epic 9 added 2026-08-30 (post-MVP). Reported from the designer: BOX properties set on a
+  # text element (and on a Rectangle) have no effect. Traced — render.go references neither
+  # Background nor Border; the only producer of pagemodel.Rect on the whole render path is
+  # tableRects (render.go:1866), fed from the TABLE element's own style (table_render.go:293),
+  # so element background/border are inert on text/image/rect/line, and rect/line never reach
+  # the page model at all (render_visibility.go's "LATENT, not broken"). No field, property or
+  # format version is added: every value this epic starts consuming is one the format already
+  # carries and validates, so a document declaring no element background or border must hash
+  # identically and the golden corpus stays a witness.
+  # Both stories implemented 2026-08-30 in the same session that filed the epic.
+  # 9.1 also fixed a latent Epic 4 defect it surfaced: internal/pdf/rectdoc.go's
+  # appendEdge emitted a stroked edge PREFIX ("m x1 y1 l x2 y2") in a postfix
+  # format, so every four-edge border drew as diagonals between opposite corners.
+  # No golden moved — no document in the corpus renders a stroked edge — and the
+  # order is now pinned by TestAppendRectContentStreamEdgeOperandsArePostfix.
+  # NOT yet reviewed or retrospected; story files are not written.
+  epic-9: in-progress
+  9-1-the-engine-paints-a-component-s-background-and-border: review
+  9-2-line-and-rectangle-draw-in-the-designer-and-in-the-pdf: review
+  epic-9-retrospective: optional

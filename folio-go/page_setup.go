@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
@@ -174,6 +176,46 @@ type CanvasProjection struct {
 	CommandHeight int64             `json:"commandHeight"`
 	Bands         []CanvasBand      `json:"bands"`
 	Components    []CanvasComponent `json:"components"`
+	// FontFamilies is the closed set style.fontFamily may name in THIS
+	// document: the declared, non-empty font chains, by name, sorted so the
+	// projection is deterministic. It is names only — never the chains, the
+	// faces or the bytes behind them — so it cannot reconstruct the fonts
+	// map; it exists so the designer can offer the author exactly the
+	// families the engine will accept (knownFontFamily), instead of a free
+	// text field whose every rejection is a round trip.
+	FontFamilies []string `json:"fontFamilies"`
+	// DefaultFontSize is the size the producer draws a text element at when
+	// its style carries no fontSize, in millipoints. It is projected rather
+	// than restated in the browser for the ordinary reason: it is the
+	// engine's number, and a second copy of it in the designer would be a
+	// second authority on what an unset size means.
+	DefaultFontSize int64 `json:"defaultFontSize"`
+}
+
+// maxCanvasFontFamilies bounds the projected name list the way every other
+// list in this projection is bounded. A document declaring more chains than
+// this is refused a projection with a stated reason, never silently cut.
+const maxCanvasFontFamilies = 256
+
+// canvasFontFamilies is the projection of the document's declared chains:
+// exactly the names knownFontFamily accepts, in sorted order.
+func canvasFontFamilies(t *Template) ([]string, error) {
+	names := make([]string, 0, len(t.doc.Fonts))
+	// slices.Sorted(maps.Keys(...)) is the module's one way to walk a map:
+	// map order is not an order, and this list is projected output.
+	for _, name := range slices.Sorted(maps.Keys(t.doc.Fonts)) {
+		if len(t.doc.Fonts[name]) == 0 {
+			continue
+		}
+		if len(name) > maxCanvasPropertyString {
+			return nil, fmt.Errorf("folio: font family name exceeds the projection bound")
+		}
+		names = append(names, name)
+	}
+	if len(names) > maxCanvasFontFamilies {
+		return nil, fmt.Errorf("folio: document declares more font families than the projection bound")
+	}
+	return names, nil
 }
 
 // Canvas returns immutable paint geometry. It intentionally exposes neither
@@ -217,7 +259,11 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components}, nil
+	families, err := canvasFontFamilies(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt)}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,
@@ -414,12 +460,24 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet) e
 			if err != nil {
 				return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 			}
+			// The same slack-only alignment rule the PDF producer applies
+			// (text_alignment.go), from the same committed style: the canvas
+			// has to show what prints. Both offsets are non-negative, so every
+			// projected coordinate stays inside the band-relative, JS-safe
+			// bound canvasLineTop and canvasDerived check.
+			align, valign := elementAlignment(element)
+			boxHeight := geom.Length(0)
+			if element.Height.Set && !element.Height.Null {
+				boxHeight = element.Height.Value
+			}
+			originY := element.Y + textValignOffset(valign, boxHeight, textBlockHeight(len(lines), vm))
 			for i, line := range lines {
-				top, err := canvasLineTop(element.Y, i, vm.Advance)
+				top, err := canvasLineTop(originY, i, vm.Advance)
 				if err != nil {
 					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 				}
-				placed, err := positionSegments(segs, line.from, line.to, element.X, top, fontSize, vm.FirstBaseline, nil)
+				lineX := element.X + textAlignOffset(align, boxWidth, line.width)
+				placed, err := positionSegments(segs, line.from, line.to, lineX, top, fontSize, vm.FirstBaseline, nil)
 				if err != nil {
 					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 				}

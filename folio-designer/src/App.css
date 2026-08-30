@@ -80,7 +80,14 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-image-paint { position: absolute; display: block; pointer-events: none; -webkit-user-drag: none; user-drag: none; }
 .canvas-image-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; pointer-events: none; -webkit-user-drag: none; user-drag: none; color: var(--color-page-placeholder); font: var(--type-page-mono); line-height: 1; text-align: center; }
 .canvas-placeholder-icon { width: 14px; height: 14px; flex: none; }
-.canvas-component-line { height: max(2px, var(--component-height)); background: var(--color-page-ink); }
+/* Story 9.2: the component's own box — the fill and border the engine will
+   paint — beneath the content and beneath the selection chrome. */
+.canvas-box { position: absolute; inset: 0; box-sizing: border-box; pointer-events: none; }
+/* A line is its box now: its fill comes from the document through .canvas-box,
+   not from a canvas-only ink colour that no PDF would print. The height floor
+   stays — a 1pt rule is under two device pixels at 100% — as it does for every
+   component's width and height. */
+.canvas-component-line { height: max(2px, var(--component-height)); }
 .canvas-component-line::after { content: none; }
 .canvas-component-selected { background: var(--tint-select-fill-soft); }
 .canvas-component-selected::after { content: ''; border-style: solid; border-color: var(--color-select); }
@@ -123,6 +130,12 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .property-editor { display: grid; gap: var(--space-1); min-width: 0; }
 .property-field { display: flex; align-items: center; gap: var(--space-2); min-height: 26px; margin: 0; padding: 0 var(--space-1) 0 var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); }
 .property-field-live { border-color: var(--color-select); background: var(--color-select-tint); }
+/* A property row is one control — affix, value, unit, actions — so the row's
+   own chrome takes the focus ring and the value keeps its flush alignment
+   against the affix. The ring lands on the border, a full padding-left away
+   from the caret, instead of on top of it. */
+.property-field:focus-within { border-color: var(--color-select); outline: 2px solid var(--color-select); outline-offset: -2px; }
+.property-field .property-value:focus-visible { outline: none; }
 .property-affix { flex: none; color: var(--color-ink-ghost); font: var(--type-mono); }
 .property-unit { flex: none; color: var(--color-ink-ghost); font: var(--type-body); }
 .property-value { flex: 1; min-width: 0; min-height: 24px; padding: 0; border: 0; background: transparent; color: var(--color-ink-high); font: var(--type-mono-em); }
@@ -130,14 +143,55 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .property-inline-action:hover { color: var(--color-ink-high); }
 .property-inline-action:disabled { color: var(--color-ink-disabled); cursor: not-allowed; }
 .property-error { margin: 0; padding: var(--space-2); border-left: 2px solid var(--color-danger); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body); }
-.property-toggle-row { display: flex; align-items: center; gap: var(--space-5); }
+/* TYPOGRAPHY, as Main.dc.html draws it: family row, then size beside the B/I
+   pair on a 88px/1fr split, then the two segmented controls side by side. */
+.property-size-row { display: grid; grid-template-columns: 88px 1fr; gap: var(--space-2); align-items: start; }
+.property-value-prose { font: var(--type-body-em); }
+/* The font family row: the engine's declared chains, searched in place. The
+   list overlays the rows beneath it rather than pushing them down, so the
+   section keeps the design's height while it is open. */
+.property-combobox { position: relative; }
+.property-disclosure { font: var(--type-body); }
+.property-options { position: absolute; z-index: 5; top: 100%; right: 0; left: 0; max-height: 168px; overflow-y: auto; margin: 2px 0 0; padding: 0; list-style: none; border: var(--hairline) solid var(--color-edge); background: var(--color-panel); box-shadow: var(--shadow-page); }
+.property-option { padding: var(--space-2) var(--space-3); color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
+.property-option-active { background: var(--color-active); color: var(--color-ink-high); }
+.property-option[aria-selected="true"] { color: var(--color-select); }
+.property-option-empty { color: var(--color-ink-low); font: var(--type-body); cursor: default; }
+/* The fx marker: a field the engine reads as an expression carries it, in the
+   same accent the canvas paints a placeholder run with, and it brightens once
+   the field actually holds one. */
+.property-fx { flex: none; padding: 0 3px; border: var(--hairline) solid var(--color-line-strong); color: var(--color-ink-ghost); font: var(--type-mono); font-style: italic; }
+.property-fx-active { border-color: var(--color-bind); color: var(--color-bind); }
+/* The swatch IS the picker: a native colour input trimmed back to the chip the
+   design draws, so the row keeps one line while the value stays typeable. */
+.property-swatch { width: 14px; height: 14px; min-height: 0; flex: none; padding: 0; border: var(--hairline) solid var(--color-edge-strong); border-radius: var(--radius-default); cursor: pointer; }
+.property-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.property-swatch::-webkit-color-swatch { border: 0; }
+.property-swatch::-moz-color-swatch { border: 0; }
+.property-swatch:disabled { cursor: not-allowed; }
+/* Nothing committed is not black: an unset colour reads as an empty chip in a
+   dashed outline, so the picker never claims a value the document lacks. */
+.property-swatch-unset { border-style: dashed; }
+.property-swatch-unset::-webkit-color-swatch { opacity: 0.15; }
+.property-swatch-unset::-moz-color-swatch { opacity: 0.15; }
+.property-toggle-row { display: flex; align-items: center; gap: var(--space-1); }
 .property-toggle-group { display: flex; align-items: center; gap: var(--space-1); }
-.property-toggle { width: 26px; min-height: 26px; display: grid; place-items: center; padding: 0; border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-low); font: var(--type-body-em); }
+.property-toggle { width: 28px; min-height: 26px; display: grid; place-items: center; padding: 0; border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-low); font: var(--type-body-em); }
 .property-toggle[aria-pressed="true"] { border-color: var(--color-edge-strong); background: var(--color-active); color: var(--color-ink-high); font-weight: 600; }
-.property-toggle-mixed { color: var(--color-bind); font: var(--type-mono); }
+.property-toggle-mixed { flex: none; padding: 0 var(--space-1); color: var(--color-bind); font: var(--type-mono); }
+.property-segmented { display: flex; align-items: stretch; min-width: 0; border: var(--hairline) solid var(--color-edge); background: var(--color-raised); }
+.property-segment { flex: 1; min-width: 0; min-height: 26px; display: grid; place-items: center; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--color-ink-low); font: var(--type-body); letter-spacing: var(--tracking-brand); }
+.property-segment[aria-pressed="true"] { background: var(--color-active); color: var(--color-ink-high); font-weight: 500; }
+.property-segment:disabled { color: var(--color-ink-disabled); cursor: not-allowed; }
+.segment-icon { width: 12px; height: 12px; }
+/* BOX rows read as label and value, the way the design writes Border, Padding,
+   Background and Visibility: the name in body at ink-low, the machine value
+   right-aligned against it. */
+.property-section-box .property-affix { color: var(--color-ink-low); font: var(--type-body); }
+.property-section-box .property-value { text-align: right; }
 .property-edges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; margin: 0; padding: var(--space-2) var(--space-1) var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); }
 .property-edges label { display: flex; align-items: center; gap: var(--space-1); margin: 0; color: var(--color-ink); font: var(--type-body); }
-.property-edges input { width: 11px; min-height: 11px; }
+.property-edges input { width: 11px; min-height: 11px; accent-color: var(--color-select); }
 .property-edges .property-inline-action { margin-left: auto; }
 .table-editor-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: var(--space-10); background: color-mix(in srgb, var(--color-base) 86%, transparent); }
 .table-editor { width: min(1440px, calc(100vw - 80px)); max-height: calc(100vh - 80px); overflow: auto; padding: var(--space-6); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); box-shadow: var(--shadow-page); }
@@ -164,7 +218,12 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .engine-starting { height: 100%; display: grid; place-items: center; background: var(--color-ground); color: var(--color-ink); font: var(--type-mono); }
 label { display: grid; gap: var(--space-1); margin-bottom: var(--space-3); color: var(--color-ink); font: var(--type-mono); }
 input, select { width: 100%; min-height: 28px; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-mono); }
-textarea { width: 100%; min-height: 120px; resize: vertical; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-mono); }
+textarea { width: 100%; min-height: 120px; resize: vertical; padding: var(--space-2); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-mono); }
+/* The focus ring is drawn 2px INSIDE the control, so a field whose text starts
+   at column 0 has its caret underneath the ring: focused and empty, it reads as
+   a label rather than as somewhere to type. Every text control keeps enough
+   horizontal padding to sit clear of its own ring. */
+input:not([type="checkbox"], [type="color"]), select { padding: 0 var(--space-2); }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .preview-region { min-width: 0; overflow: auto; padding: var(--space-6); background: var(--color-ground-preview); color: var(--color-ink-high); }
 .preview-heading, .pdf-preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }

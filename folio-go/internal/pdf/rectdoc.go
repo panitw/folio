@@ -15,7 +15,7 @@ import (
 // edges. Stroke draws only the EDGES the template asked for
 // (style.border.edges) — PDF's own rectangle stroke ("re S") always
 // strokes all four sides, so a stroked SUBSET is built from explicit
-// "m ... l ..." subpaths and closed off by a single "S": a stroke
+// "... m ... l" subpaths and closed off by a single "S": a stroke
 // operator paints every subpath the current path holds, so N
 // one-segment subpaths plus one S draws N independent lines.
 //
@@ -79,18 +79,30 @@ func appendRectContentStream(dst []byte, page pagemodel.Page) []byte {
 	return dst
 }
 
-// appendEdge appends one "m x1 y1 l x2 y2" subpath — a single stroked
+// appendEdge appends one "x1 y1 m x2 y2 l" subpath — a single stroked
 // line segment, one of a Rect's up-to-four edges.
+//
+// OPERANDS PRECEDE THE OPERATOR. PDF content streams are postfix, like
+// every other operator this package emits ("<w> w", "<r> <g> <b> RG",
+// "<x> <y> <w> <h> re f"). This function shipped prefix — "m x1 y1 l x2
+// y2" — from Story 4.1 until Story 9.1, which is not a cosmetic
+// difference: a reader binds each pair of numbers to the operator that
+// FOLLOWS them, so the leading "m" ran with an empty operand stack and
+// every subsequent pair bound one operator late. Four edges came out as
+// a moveto/lineto chain zig-zagging between opposite corners — the
+// familiar "crossed box". It was never caught because the byte-level
+// tests count "m " occurrences (how many subpaths) rather than reading
+// the operand order, and no golden was ever opened and looked at with a
+// stroked edge in it.
 func appendEdge(dst []byte, x1, y1, x2, y2 geom.Length) []byte {
-	dst = append(dst, "m "...)
 	dst = appendLength(dst, x1)
 	dst = append(dst, ' ')
 	dst = appendLength(dst, y1)
-	dst = append(dst, " l "...)
+	dst = append(dst, " m "...)
 	dst = appendLength(dst, x2)
 	dst = append(dst, ' ')
 	dst = appendLength(dst, y2)
-	dst = append(dst, '\n')
+	dst = append(dst, " l\n"...)
 	return dst
 }
 

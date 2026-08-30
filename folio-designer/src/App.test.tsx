@@ -14,7 +14,7 @@ vi.mock('./preview/pdf-viewer', () => ({
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], defaultFontSize: 12000, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
@@ -793,13 +793,86 @@ describe('application shell', () => {
     expect(x).toHaveAttribute('aria-invalid', 'true')
   })
 
+  it('routes the one CONTENT field to the value or expression command by what was typed', async () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }] }
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 1 + sent.length, byteLength: 3, canvas: componentCanvas } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    expect(screen.queryByRole('textbox', { name: 'Text expression' })).not.toBeInTheDocument()
+    const field = screen.getByRole('textbox', { name: 'Text' })
+    fireEvent.change(field, { target: { value: 'Customer: {{customer.name}}' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"expression":{"op":"set","value":"Customer: {{customer.name}}"}}}')
+    const again = screen.getByRole('textbox', { name: 'Text' })
+    fireEvent.change(again, { target: { value: 'Plain heading' } })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(2))
+    expect(new TextDecoder().decode(sent[1]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"Plain heading"}}}')
+  })
+
+  it('marks the expression-bearing fields with fx, and lights it once the field holds one', () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const text = screen.getByRole('textbox', { name: 'Text' })
+    const marker = (input: HTMLElement) => input.parentElement!.querySelector('.property-fx')
+    expect(text).toHaveAttribute('aria-description', 'Accepts literal text, or {{ }} expressions')
+    expect(marker(text)).toHaveTextContent('fx')
+    expect(marker(text)).not.toHaveClass('property-fx-active')
+    fireEvent.change(text, { target: { value: 'Customer: {{customer.name}}' } })
+    expect(marker(text)).toHaveClass('property-fx-active')
+    // A geometry field is a literal to Go, which rejects a placeholder in it:
+    // it must carry no cue at all.
+    expect(marker(screen.getByRole('textbox', { name: 'X (pt)' }))).toBeNull()
+    const visible = screen.getByRole('textbox', { name: 'Visible if' })
+    expect(visible).toHaveAttribute('aria-description', 'Accepts a boolean data path or call, written without {{ }} — the grammar has no comparisons')
+    expect(marker(visible)).not.toHaveClass('property-fx-active')
+    fireEvent.change(visible, { target: { value: 'customer.isActive' } })
+    expect(marker(visible)).toHaveClass('property-fx-active')
+  })
+
+  it('authors BOX colours through the picker, states pt on an empty size, and drops the padding rows', async () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }] }
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 1 + sent.length, byteLength: 3, canvas: componentCanvas } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    // An unset size still says which unit it wants.
+    const border = screen.getByRole('textbox', { name: 'Border width (pt)' })
+    expect(border).toHaveValue('')
+    expect(border.parentElement).toHaveTextContent('pt')
+    for (const label of ['Padding top (pt)', 'Padding right (pt)', 'Padding bottom (pt)', 'Padding left (pt)']) expect(screen.queryByRole('textbox', { name: label })).not.toBeInTheDocument()
+    const picker = screen.getByLabelText('Pick Border colour')
+    fireEvent.change(picker, { target: { value: '#c81e1e' } })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"borderColor":{"op":"set","value":"#c81e1e"}}}')
+    fireEvent.change(screen.getByLabelText('Pick Background'), { target: { value: '#0b1120' } })
+    await waitFor(() => expect(sent).toHaveLength(2))
+    expect(new TextDecoder().decode(sent[1]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"background":{"op":"set","value":"#0b1120"}}}')
+  })
+
+  it('paints the engine-projected box on the canvas, and nothing where none is projected', () => {
+    const boxed = { id: 'e1', type: 'rect' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, background: '#1b2a4a', borderWidth: 2_000, borderColor: '#c81e1e', borderEdges: ['bottom' as const] }
+    const plain = { id: 'e2', type: 'text' as const, band: 'content' as const, x: 0, y: 40_000, width: 72_000, height: 24_000, resizable: true, value: 'Plain' }
+    render(<App initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [boxed, plain] } }} />)
+    const box = screen.getByLabelText('rect component e1').querySelector('.canvas-box') as HTMLElement
+    expect(box).not.toBeNull()
+    expect(box.style.background).toBe('rgb(27, 42, 74)')
+    expect(box.style.borderBottom).toBe('2px solid rgb(200, 30, 30)')
+    // An edge the engine does not paint is not painted here either.
+    expect(box.style.borderTop).toBe('0px')
+    expect(screen.getByLabelText('text component e2').querySelector('.canvas-box')).toBeNull()
+  })
+
   it('keeps a newer property draft through an unrelated successful snapshot and exposes table truth', async () => {
     const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }, { id: 'e2', type: 'table' as const, band: 'content' as const, x: 0, y: 30_000, width: 72_000, height: 12_000, resizable: false, tableBind: 'transactions[]' }] }
     let resolve: ((value: { snapshot: { documentState: 'loaded'; revision: number; byteLength: number; canvas: typeof componentCanvas } }) => void) | undefined
     const request = vi.fn((operation: string) => operation === 'command' ? new Promise<{ snapshot: { documentState: 'loaded'; revision: number; byteLength: number; canvas: typeof componentCanvas } }>((done) => { resolve = done }) : Promise.resolve({ snapshot: snapshot(1) }))
     render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
     fireEvent.click(screen.getByLabelText('text component e1'))
-    const value = screen.getByRole('textbox', { name: 'Text value' })
+    const value = screen.getByRole('textbox', { name: 'Text' })
     fireEvent.change(value, { target: { value: 'newer literal' } })
     fireEvent.keyDown(value, { key: 'Enter' })
     resolve!({ snapshot: { documentState: 'loaded', revision: 2, byteLength: 3, canvas: componentCanvas } })
@@ -807,6 +880,69 @@ describe('application shell', () => {
     fireEvent.click(screen.getByLabelText('table component e2'))
     expect(screen.queryByRole('textbox', { name: 'Width (pt)' })).not.toBeInTheDocument()
     expect(screen.getByText('Table binding: transactions[] (display only)')).toBeInTheDocument()
+  })
+})
+
+describe('typography controls over the engine-projected closed sets', () => {
+  const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }
+  const select = (request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } }))) => {
+    const componentCanvas = { ...canvas, components: [textComponent] }
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    return request
+  }
+
+  it('offers the document\'s declared font chains, searched, and commits the chosen one', async () => {
+    const request = select()
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    fireEvent.focus(combobox)
+    const listed = () => within(screen.getByRole('listbox', { name: 'Declared fonts' })).queryAllByRole('option').map((option) => option.textContent)
+    expect(listed()).toEqual(['body', 'heading'])
+    fireEvent.change(combobox, { target: { value: 'head' } })
+    expect(listed()).toEqual(['heading'])
+    fireEvent.click(screen.getByRole('option', { name: 'heading' }))
+    await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
+    // The typed search text is never a value: only a listed family is sent.
+    expect(screen.queryByRole('listbox', { name: 'Declared fonts' })).not.toBeInTheDocument()
+  })
+
+  it('states a search that matches no declared chain instead of offering to invent one', () => {
+    select()
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    fireEvent.focus(combobox)
+    fireEvent.change(combobox, { target: { value: 'Helvetica' } })
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    expect(screen.getByText('No declared font matches "Helvetica".')).toBeInTheDocument()
+  })
+
+  it('shows the engine\'s own default size for an element that commits none, as a placeholder and not a value', () => {
+    select()
+    const size = screen.getByRole('textbox', { name: 'Font size (pt)' })
+    expect(size).toHaveValue('')
+    expect(size).toHaveAttribute('placeholder', '12')
+  })
+
+  it('commits alignment from the closed sets, and clears it by pressing the active segment again', async () => {
+    const request = select()
+    for (const name of ['Align left', 'Align center', 'Align right', 'Vertical align top', 'Vertical align middle', 'Vertical align bottom']) {
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false')
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Align center' }))
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+  })
+
+  it('presses the segment the engine has committed, and clears it from the same control', async () => {
+    const aligned = { ...canvas, components: [{ ...textComponent, align: 'right' as const, valign: 'middle' as const }] }
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: aligned }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const right = screen.getByRole('button', { name: 'Align right' })
+    expect(right).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Vertical align middle' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(right)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sent.map((payload) => new TextDecoder().decode(payload)).join('')).toContain('"op":"clear"')
   })
 })
 

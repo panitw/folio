@@ -159,3 +159,32 @@ func TestAppendRectContentStreamEmptyPageProducesEmptyStream(t *testing.T) {
 		t.Errorf("nil Rects must append nothing, got %q", got)
 	}
 }
+
+// TestAppendRectContentStreamEdgeOperandsArePostfix pins the ORDER of a
+// stroked edge's operands, which no test read until Story 9.1: a PDF
+// content stream is postfix, so an edge is "<x1> <y1> m <x2> <y2> l".
+// Story 4.1 shipped it prefix ("m <x1> <y1> l <x2> <y2>"), which a reader
+// parses as an m with no operands followed by every later pair binding one
+// operator late — four edges came out as a chain of diagonals between
+// opposite corners, the "crossed box" a rectangle element made visible.
+// The pre-existing edge tests count "m " occurrences, so both spellings
+// satisfied them equally; this one fails on the prefix spelling.
+func TestAppendRectContentStreamEdgeOperandsArePostfix(t *testing.T) {
+	page := pagemodel.Page{
+		Width: 600000, Height: 800000,
+		Rects: []pagemodel.Rect{{
+			X: 0, Y: 0, W: 100000, H: 50000,
+			HasStroke: true, Stroke: pagemodel.Color{}, StrokeWidth: 1000,
+			Edges: pagemodel.RectEdges{Top: true},
+		}},
+	}
+	got := string(appendRectContentStream(nil, page))
+	if !strings.Contains(got, "0 800 m 100 800 l\n") {
+		t.Errorf("stroked edge = %q, want the subpath spelled postfix: %q", got, "0 800 m 100 800 l")
+	}
+	// The prefix spelling is not merely absent by accident: an "m" that
+	// leads its own operands is the defect itself.
+	if strings.Contains(got, "m 0 800") {
+		t.Errorf("stroked edge is spelled prefix (operator before its operands), got %q", got)
+	}
+}

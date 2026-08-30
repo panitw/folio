@@ -9,6 +9,10 @@ import { pdfjsRuntimeAssets, pdfjsViewerAssets } from '../generated/pdfjs-assets
 type ActiveDocument = { loading: PDFDocumentLoadingTask; document?: PDFDocumentProxy; task?: RenderTask; canvas?: HTMLCanvasElement }
 
 export type PDFPreviewViewState = Readonly<{ page: number; scale: number; scrollTop: number; scrollLeft: number }>
+// How many bitmap pixels the preview rasterizes per displayed pixel. Two
+// covers the common Retina case; a third would quadruple the bitmap for a
+// difference few displays can resolve.
+const previewOversample = 2
 export const initialPDFPreviewViewState: PDFPreviewViewState = { page: 1, scale: 1, scrollTop: 0, scrollLeft: 0 }
 export const samePDFPreviewViewState = (left: PDFPreviewViewState, right: PDFPreviewViewState) => left.page === right.page && left.scale === right.scale && left.scrollTop === right.scrollTop && left.scrollLeft === right.scrollLeft
 
@@ -52,9 +56,23 @@ export function PDFPreviewViewer({ bytes, label, describedBy, state, onStateChan
         if (safePage !== page) onStateChange({ ...state, page: safePage })
         const pdfPage = await document.getPage(safePage)
         if (cancelled || active.current !== current) return
-        const viewport = pdfPage.getViewport({ scale })
+        // The page is rasterized at a FIXED multiple of the size it is
+        // shown at, and displayed at that shown size. A canvas with no CSS
+        // size is painted one bitmap pixel per CSS pixel, which a display
+        // with more device pixels than CSS pixels — every Retina-class
+        // screen — then magnifies: the preview looked soft next to the
+        // crisp chrome around it. The multiplier is a CONSTANT, never
+        // read from the display: the designer never asks the browser to
+        // measure anything (AD-17, Story 5.9's contract bans the window
+        // pixel-ratio property by name, and its scanner reads comments
+        // too), and a constant keeps the raster identical on
+        // every machine — this is image fidelity, not geometry, and no
+        // command, coordinate or document value is derived from it.
+        const shown = pdfPage.getViewport({ scale })
+        const viewport = pdfPage.getViewport({ scale: scale * previewOversample })
         const canvas = window.document.createElement('canvas')
         canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height)
+        canvas.style.width = `${Math.ceil(shown.width)}px`; canvas.style.height = `${Math.ceil(shown.height)}px`
         canvas.setAttribute('aria-label', `${label}, page ${safePage} of ${document.numPages}; visual PDF canvas`)
         const context = canvas.getContext('2d')
         if (!context) throw new Error('PDF canvas is unavailable')

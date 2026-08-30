@@ -1302,6 +1302,12 @@ func createComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 const dropWidth, dropHeight geom.Length = 72000, 24000
 const imageDropWidth, imageDropHeight geom.Length = 96000, 48000
 
+// Story 9.2: a line's declared HEIGHT is its thickness — element_box.go
+// paints a line as a filled bar of its declared box — so a line drops as a
+// 1pt rule rather than as a 72x24 slab. Off the 6pt grid on purpose: a
+// rule's thickness is not a position, and snapping applies to x/y alone.
+const lineDropHeight geom.Length = 1000
+
 func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 6); err != nil {
 		return CanvasProjection{}, err
@@ -1333,6 +1339,9 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	width, height := dropWidth, dropHeight
 	if elementType == template.ElementImage {
 		width, height = imageDropWidth, imageDropHeight
+	}
+	if elementType == template.ElementLine {
+		height = lineDropHeight
 	}
 	x, y := pageX-geom.Length(projected.X), pageY-geom.Length(projected.Y)
 	unsnappedX, unsnappedY := x, y
@@ -1383,6 +1392,21 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 			if chain := defaultFontFamily(t); chain != "" {
 				styleFor(&element).FontFamily = template.Presence[string]{Set: true, Value: chain}
 			}
+		}
+		// Story 9.2: a line and a rect ARE their box — they carry no text
+		// and no asset — so a placed one with no style would render, and
+		// paint on the canvas, as nothing at all. Each starts with the one
+		// declaration that makes it the shape its palette entry names: a
+		// line is a filled rule, a rect is an outlined box. Both are
+		// ordinary style values the author edits or clears like any other.
+		if elementType == template.ElementLine {
+			styleFor(&element).Background = template.Presence[string]{Set: true, Value: "#000000"}
+		}
+		if elementType == template.ElementRect {
+			styleFor(&element).Border = template.Presence[template.Border]{Set: true, Value: template.Border{
+				Color: template.Presence[string]{Set: true, Value: "#000000"},
+				Width: template.Presence[geom.Length]{Set: true, Value: 1000},
+			}}
 		}
 		if elementType == template.ElementImage {
 			// A placed image starts empty: the author positions and sizes the

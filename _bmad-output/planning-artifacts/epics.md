@@ -2498,3 +2498,112 @@ first
 **Given** a font asset no chain names any longer
 **When** the document is saved
 **Then** it is dropped, so a file cannot accumulate megabytes of faces nothing draws with
+
+## Epic 9: A component's box prints
+
+Ploy sets a border and a fill on a heading, drops a rule under it and a tinted panel behind the
+totals, previews, and sees exactly what she drew. Today she sees none of it: `style.background` and
+`style.border` are parsed, validated, round-tripped — and then consumed by nothing outside a table's
+cell chrome, so on a text, image, rect or line element they are inert. Line and Rectangle are worse
+than inert: they are two of FR4's five palette components and they never reach the page model at
+all, so a rectangle prints nothing whatever it is styled with. The designer offers all four controls
+on all five components, which makes the panel a promise the engine does not keep.
+
+Closing the gap uncovered a second defect underneath it, fixed by Story 9.1: `appendEdge`
+(`internal/pdf/rectdoc.go`) had emitted a stroked edge's operands BEFORE its operator since Story
+4.1 — `m x1 y1 l x2 y2` in a format that is postfix — so every pair of numbers bound one operator
+late and a four-edge border drew as diagonals between opposite corners. The existing byte-level
+tests count how many subpaths an edge set produces, never what they say, so both spellings passed;
+no golden moved when it was corrected, because no document in the corpus renders a stroked edge.
+
+This epic closes that gap and nothing else. It adds no field, no property and no format version:
+every value it starts consuming is one the format already carries, already validates and already
+round-trips. A document whose elements declare no `background` and no `border` must hash identically,
+which is what keeps the whole golden corpus a witness rather than a casualty.
+
+### Story 9.1: The engine paints a component's background and border
+
+As a template author,
+I want the background and border I set on a component to appear in the PDF,
+So that the box I drew in the designer is the box that prints.
+
+**Covers:** FR4, FR5 · AD-5, AD-21, AD-24
+
+**Acceptance Criteria:**
+
+**Given** a text, image, rect or line element declaring `style.background`
+**When** the document renders
+**Then** its declared box is filled with that colour, beneath that element's own text or picture, in
+every band
+
+**Given** an element declaring `style.border`
+**When** the document renders
+**Then** its declared box is stroked at the border's width and colour, on the edges `border.edges`
+names — the same width default, colour default and edge set a table cell already resolves, through
+the same builder, never a second implementation of the same rule
+
+**Given** an element carrying a box in the page header or page footer
+**When** the document paginates
+**Then** the box repeats on every page, exactly as that band's text already does
+
+**Given** an element carrying a box in the content band
+**When** the content column paginates
+**Then** the box travels with the column like any other content item, and is clipped and shifted by
+the same rules that already govern a table's chrome
+
+**Given** an element whose visibility condition is false
+**When** the document renders
+**Then** it contributes no box at all — absent from the page model, leaving no gap (AD-24)
+
+**Given** a table element
+**When** it declares `style.background` or `style.border`
+**Then** nothing changes: its style keeps painting as the cell chrome Epic 4 already draws, and is
+never painted a second time as an element box
+
+**Given** an element whose declared rectangle has no area — a zero or negative width or height,
+which the loader accepts
+**When** the document renders
+**Then** no box is drawn — there is no rectangle to draw — and the render is otherwise unaffected
+
+**Given** a stroked edge
+**When** it is emitted into the content stream
+**Then** its operands precede its operator, as every other operator this module emits already does,
+and a test reads the ORDER rather than counting the subpaths
+
+**Given** the entire existing golden corpus, none of which declares an element background or border
+**When** it is rendered on every target
+**Then** the bytes are identical to before this story (AD-21)
+
+### Story 9.2: Line and Rectangle draw, in the designer and in the PDF
+
+As a template author,
+I want the Line and Rectangle I place to be visible on the canvas and in the PDF,
+So that the palette's five components are five components, not three plus two that print nothing.
+
+**Covers:** FR1, FR4, FR5 · UX-DR10, UX-DR25
+
+**Acceptance Criteria:**
+
+**Given** a rect element carrying a background or a border
+**When** the document renders
+**Then** it prints as that box — the same box Story 9.1 paints for every other kind, with no
+rect-specific rule
+
+**Given** a line element
+**When** the document renders
+**Then** it prints as a filled bar of its declared box, so its declared height is its thickness
+
+**Given** a Line or Rectangle placed from the palette
+**When** it is dropped
+**Then** it starts visible — the engine gives it a fill it can be seen by — rather than as an
+invisible element the author must style before anything appears
+
+**Given** a component carrying a background or border
+**When** the canvas draws it
+**Then** the canvas paints the same fill, the same border width and colour, and the same edge set the
+engine will paint, from the engine's own projection — never from a browser-side model of style
+
+**Given** a component whose box the engine refuses
+**When** the value is committed
+**Then** the canvas keeps showing the engine's last accepted box, exactly as every other property
+already behaves

@@ -1,5 +1,5 @@
 import './App.css'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
 import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot, TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
@@ -705,7 +705,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
@@ -830,18 +830,59 @@ type CommitProperties = (ids: ReadonlyArray<string>, intent: PropertyIntent, gen
 // Panel sections mirror the UX design's inspector: an identity row, then
 // POSITION / CONTENT / TYPOGRAPHY / BOX / BINDING. Each field keeps its exact
 // engine field name and accessible label; only the presentation is grouped.
-type FieldSpec = Readonly<{ field: PropertyField; label: string; affix: string; unit?: string }>
+// `empty` is the engine's behaviour when the field carries no committed value —
+// no border, no padding, no fill, always visible. It is shown as a placeholder,
+// never as a value: the field stays empty and nothing is written to the
+// document until the author types.
+// `fx` marks a field the engine will read as an expression rather than as a
+// literal, and says which of the two spellings it accepts — so the cue is on
+// the exact fields that accept one, and never on a field where Go rejects a
+// placeholder outright.
+type FieldExpression = 'placeholder' | 'condition'
+type FieldSpec = Readonly<{ field: PropertyField; label: string; affix?: string; unit?: string; swatch?: true; prose?: true; empty?: string; fx?: FieldExpression }>
+const fxHint: Readonly<Record<FieldExpression, string>> = { placeholder: 'Accepts literal text, or {{ }} expressions', condition: 'Accepts a boolean data path or call, written without {{ }} — the grammar has no comparisons' }
+// A condition field IS the expression, so any text in it is one; a text field
+// holds an expression only where a placeholder is spelled.
+function holdsExpression(fx: FieldExpression, text: string): boolean { return fx === 'placeholder' ? containsPlaceholder(text) : text !== '' }
 const positionFields: ReadonlyArray<FieldSpec> = [{ field: 'x', label: 'X (pt)', affix: 'X', unit: 'pt' }, { field: 'y', label: 'Y (pt)', affix: 'Y', unit: 'pt' }]
 const sizeFields: ReadonlyArray<FieldSpec> = [{ field: 'width', label: 'Width (pt)', affix: 'W', unit: 'pt' }, { field: 'height', label: 'Height (pt)', affix: 'H', unit: 'pt' }]
-const contentFields: ReadonlyArray<FieldSpec> = [{ field: 'value', label: 'Text value', affix: 'Value' }, { field: 'expression', label: 'Text expression', affix: 'Expr' }]
-const typographyFields: ReadonlyArray<FieldSpec> = [{ field: 'fontFamily', label: 'Font family', affix: 'Font' }, { field: 'fontSize', label: 'Font size (pt)', affix: 'Size', unit: 'pt' }, { field: 'align', label: 'Align', affix: 'Align' }, { field: 'valign', label: 'Vertical align', affix: 'V-align' }]
-const boxFields: ReadonlyArray<FieldSpec> = [{ field: 'background', label: 'Background', affix: 'Fill' }, { field: 'borderWidth', label: 'Border width (pt)', affix: 'Border', unit: 'pt' }, { field: 'borderColor', label: 'Border colour', affix: 'Colour' }]
-const paddingFields: ReadonlyArray<FieldSpec> = [{ field: 'paddingTop', label: 'Padding top (pt)', affix: 'Top', unit: 'pt' }, { field: 'paddingRight', label: 'Padding right (pt)', affix: 'Right', unit: 'pt' }, { field: 'paddingBottom', label: 'Padding bottom (pt)', affix: 'Bottom', unit: 'pt' }, { field: 'paddingLeft', label: 'Padding left (pt)', affix: 'Left', unit: 'pt' }]
-const visibilityField: FieldSpec = { field: 'visibleIf', label: 'Visible if', affix: 'Visible if' }
-function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
-  return <section className={`property-section${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
+// One CONTENT field, not two. Go keeps two commands behind the same
+// element.Value — `value` rejects a placeholder, `expression` requires one —
+// and splitting the panel along that seam made the author pick the command
+// before typing, with the same committed text showing in both rows. The field
+// routes on what was actually typed instead; the engine's two guards, and the
+// two spellings they accept, are unchanged.
+const contentField: FieldSpec = { field: 'value', label: 'Text', affix: 'Text', fx: 'placeholder' }
+// The picker can only carry a well-formed #RRGGBB — exactly what Go's
+// parseHexColor accepts — so an unset or half-typed field opens it on black
+// while the text beside it stays the committed truth.
+function swatchColor(text: string): string { return /^#[0-9a-fA-F]{6}$/.test(text) ? text : '#000000' }
+function containsPlaceholder(text: string): boolean { return text.includes('{{') || text.includes('}}') }
+function contentCommand(field: PropertyField, text: string): PropertyField { return field === 'value' && containsPlaceholder(text) ? 'expression' : field }
+// TYPOGRAPHY is laid out as Main.dc.html draws it: the family row spans the
+// panel, the size sits beside the B/I pair, and align/valign are the design's
+// two segmented controls instead of free-text fields. Both are closed sets Go
+// already validates — left/center/right and top/middle/bottom — so the control
+// can offer exactly the accepted values and nothing else.
+const fontSizeField: FieldSpec = { field: 'fontSize', label: 'Font size (pt)', unit: 'pt' }
+// BOX: a Border row, the edge set, then the Background and Visibility rows the
+// design shows as label-and-value. The four padding rows are deliberately not
+// here (owner's call, 2026-08-30): style.padding stays an engine property that
+// a loaded document keeps and renders — the panel simply does not author it.
+const borderFields: ReadonlyArray<FieldSpec> = [{ field: 'borderWidth', label: 'Border width (pt)', affix: 'Border', unit: 'pt', empty: 'none' }, { field: 'borderColor', label: 'Border colour', affix: 'Colour', swatch: true, empty: 'none' }]
+const backgroundField: FieldSpec = { field: 'background', label: 'Background', affix: 'Background', swatch: true, empty: 'none' }
+const visibilityField: FieldSpec = { field: 'visibleIf', label: 'Visible if', affix: 'Visibility', empty: 'always', fx: 'condition' }
+type SegmentSpec = Readonly<{ value: string; label: string; content: ReactNode }>
+const alignGlyphs: Readonly<Record<'left' | 'center' | 'right', string>> = { left: 'M2 4h12M2 8h8M2 12h11', center: 'M2 4h12M4 8h8M3 12h10', right: 'M2 4h12M6 8h8M3 12h11' }
+function AlignIcon({ variant }: { variant: 'left' | 'center' | 'right' }) {
+  return <svg aria-hidden="true" className="segment-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2"><path d={alignGlyphs[variant]} /></svg>
 }
-function ComponentProperties({ components, onCommit, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+const alignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'left', label: 'Align left', content: <AlignIcon variant="left" /> }, { value: 'center', label: 'Align center', content: <AlignIcon variant="center" /> }, { value: 'right', label: 'Align right', content: <AlignIcon variant="right" /> }]
+const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vertical align top', content: 'TOP' }, { value: 'middle', label: 'Vertical align middle', content: 'MID' }, { value: 'bottom', label: 'Vertical align bottom', content: 'BOT' }]
+function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
+  return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
+}
+function ComponentProperties({ components, fontFamilies, defaultFontSize, onCommit, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; defaultFontSize: number; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -856,14 +897,17 @@ function ComponentProperties({ components, onCommit, documentGeneration, propert
   // replaces it through the committed value below.
   const dragging = single && drag?.id === single.id ? drag : undefined
   const live = (field: PropertyField): string | undefined => dragging && (field === 'x' || field === 'y' || field === 'width' || field === 'height') ? points(dragging[field]) : undefined
-  const draftFor = (spec: FieldSpec) => <PropertyDraft key={spec.field} spec={spec} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} live={live(spec.field)} error={scopedError?.field === spec.field ? scopedError : undefined} />
+  // The CONTENT field sends `value` or `expression` depending on the typed
+  // text, so it owns the rejection of either command.
+  const errorFor = (field: PropertyField) => scopedError && (scopedError.field === field || (field === 'value' && scopedError.field === 'expression')) ? scopedError : undefined
+  const draftFor = (spec: FieldSpec) => <PropertyDraft key={spec.field} spec={spec} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} live={live(spec.field)} error={errorFor(spec.field)} />
   return <>
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
-    {single && types.has('text') && <PropertySection title="CONTENT">{contentFields.map(draftFor)}</PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY">{typographyFields.map(draftFor)}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></PropertySection>}
+    {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div><div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
-    <PropertySection title="BOX">{boxFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} /><div className="property-grid">{paddingFields.map(draftFor)}</div>{draftFor(visibilityField)}</PropertySection>
+    <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
     <PropertySection title="BINDING" tone="bind">{single?.binding ? <p className="binding-chip"><span className="binding-dot" aria-hidden="true" />Bound to <code>{single.binding}</code></p> : <p className="honest-note">{single ? 'No engine binding on this component. Pick a root scalar in the Data tab.' : 'Binding is shown for one selected component.'}</p>}</PropertySection>
     <p className="honest-note">{types.has('table') ? 'Table size and binding are not editable here; table geometry is derived from columns.' : 'Only committed engine values are shown. Arbitrary CSS is not editable here.'}</p>
@@ -902,7 +946,7 @@ function committedValue(component: PanelComponent, field: PropertyField): string
   return typeof value === 'string' ? value : undefined
 }
 function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, live, error }: { spec: FieldSpec; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; live?: string; error?: PropertyCommitError }) {
-  const { field, label, affix, unit } = spec
+  const { field, label, affix, unit, swatch, prose, empty, fx } = spec
   const values = components.map((component) => committedValue(component, field))
   const same = values.every((value) => value === values[0])
   const committed = same ? values[0] ?? '' : ''
@@ -926,11 +970,19 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     setPending(false)
     if (accepted && reconcileDraft) setDraft(canonicalValue(accepted, ids, field) ?? draft)
   }
-  const commit = async () => { if (draft !== committed) await submit({ field, operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true) }
-  const canClear = field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height' && field !== 'value' && field !== 'expression'
+  const commit = async () => { if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true) }
+  // The design draws an unset row as empty chrome, and there is nothing to
+  // clear on one: the reset action appears with the value it resets, and with a
+  // mixed selection, which also has committed values behind it.
+  const canClear = field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height' && field !== 'value' && field !== 'expression' && (!same || (live ?? draft) !== '')
   const canNull = field === 'visibleIf' || field === 'background'
   const errorId = error ? `property-error-${field}` : undefined
-  return <div className="property-editor"><div className={`property-field${live === undefined ? '' : ' property-field-live'}`}><span className="property-affix">{affix}</span><input className="property-value" aria-label={label} aria-description={same ? undefined : 'Mixed value'} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} inputMode={unit === 'pt' ? 'decimal' : undefined} readOnly={live !== undefined} value={live ?? draft} placeholder={same ? undefined : 'Mixed'} disabled={pending} onChange={(event) => setDraft(event.target.value)} onBlur={() => void commit()} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void commit() } if (event.key === 'Escape') { event.preventDefault(); revert(); (event.target as HTMLInputElement).blur() } }} />{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+  // The fx cue is a marker, not a control: it states, in the row itself, that
+  // this field is read as an expression. The same sentence reaches a screen
+  // reader through the input's description, so the cue is never colour- or
+  // sight-only.
+  const description = [same ? undefined : 'Mixed value', fx ? fxHint[fx] : undefined].filter((part) => part !== undefined).join('. ') || undefined
+  return <div className="property-editor"><div className={`property-field${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}<input className={`property-value${prose ? ' property-value-prose' : ''}`} aria-label={label} aria-description={description} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} inputMode={unit === 'pt' ? 'decimal' : undefined} readOnly={live !== undefined} value={live ?? draft} placeholder={same ? empty : 'Mixed'} disabled={pending} onChange={(event) => setDraft(event.target.value)} onBlur={() => void commit()} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void commit() } if (event.key === 'Escape') { event.preventDefault(); revert(); (event.target as HTMLInputElement).blur() } }} />{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${/^#[0-9a-fA-F]{6}$/.test(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { setDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 function canonicalValue(canvas: CanvasProjection, ids: ReadonlyArray<string>, field: PropertyField): string | undefined { const values = canvas.components.filter((component) => ids.includes(component.id)).map((component) => committedValue(component, field)); return values.length === ids.length && values.every((value) => value === values[0]) ? values[0] ?? '' : undefined }
 function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
@@ -938,9 +990,77 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
   const uniform = values.every((value) => value === values[0])
   const active = uniform && values[0] === true
   const [pending, setPending] = useState(false); const pendingRef = useRef(false); const commit = async (operation: PropertyIntent['operation'], value?: boolean) => { if (pendingRef.current) return; pendingRef.current = true; setPending(true); await onCommit(ids, { field, operation, value }, documentGeneration, ids.join(',')); pendingRef.current = false; setPending(false) }
-  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className="property-toggle" disabled={pending} aria-pressed={active} aria-label={uniform ? label : `${label}, mixed`} onClick={() => void commit('set', !active)}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}<button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onClick={() => void commit('clear')}>×</button></div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+  const set = values.some((value) => value !== undefined)
+  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className="property-toggle" disabled={pending} aria-pressed={active} aria-label={uniform ? label : `${label}, mixed`} onClick={() => void commit('set', !active)}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}{set && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onClick={() => void commit('clear')}>×</button>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
 }
-function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, error }: { components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) { const values = components.map((component) => (component.borderEdges ?? []).join(',')); const same = values.every((value) => value === values[0]); const [edges, setEdges] = useState<string[]>(same && values[0] ? values[0].split(',') : []); const pending = useRef(false); const update = async (next: string[]) => { if (pending.current) return; pending.current = true; setEdges(next); await onCommit(ids, { field: 'borderEdges', operation: next.length ? 'set' : 'clear', ...(next.length ? { value: next } : {}) }, documentGeneration, ids.join(',')); pending.current = false }; return <div className="property-editor"><div className="property-edges" role="group" aria-label="Border edges"><span className="property-affix">Edges</span>{['top', 'right', 'bottom', 'left'].map((edge) => <label key={edge}><input type="checkbox" aria-label={`Border ${edge}`} checked={edges.includes(edge)} onChange={() => void update(edges.includes(edge) ? edges.filter((value) => value !== edge) : [...edges, edge])} />{edge}</label>)}{!same && <span aria-label="Border edges mixed">Mixed</span>}<button type="button" className="property-inline-action" aria-label="Clear Border edges" title="Clear Border edges" onClick={() => void update([])}>×</button></div>{error && <p role="alert" className="property-error">{error.message}</p>}</div> }
+// The font family is a closed set too, but a per-DOCUMENT one: style.fontFamily
+// must name a declared, non-empty font chain, and Go now projects exactly those
+// names (CanvasProjection.fontFamilies). So this is a search-and-select over the
+// engine's own list rather than a free-text field whose every typo is a round
+// trip to a rejection. The typed text filters; it is never committed as a value.
+function FontFamilyProperty({ families, components, ids, onCommit, documentGeneration, error }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+  const values = components.map((component) => committedValue(component, 'fontFamily'))
+  const uniform = values.every((value) => value === values[0])
+  const committed = uniform ? values[0] ?? '' : ''
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
+  const [pending, setPending] = useState(false)
+  const pendingRef = useRef(false)
+  const listId = useId()
+  const needle = query.trim().toLowerCase()
+  const matches = needle === '' ? families : families.filter((name) => name.toLowerCase().includes(needle))
+  const close = () => { setOpen(false); setQuery(''); setActive(0) }
+  const commit = async (intent: PropertyIntent) => {
+    if (pendingRef.current) return
+    pendingRef.current = true
+    setPending(true)
+    await onCommit(ids, intent, documentGeneration, ids.join(','))
+    pendingRef.current = false
+    setPending(false)
+  }
+  const choose = (name: string) => { close(); void commit({ field: 'fontFamily', operation: 'set', value: name }) }
+  const move = (step: number) => { if (matches.length > 0) setActive((current) => (current + step + matches.length) % matches.length) }
+  const errorId = error ? 'property-error-fontFamily' : undefined
+  return <div className="property-editor property-combobox" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close() }}>
+    <div className="property-field">
+      <input className="property-value property-value-prose" role="combobox" aria-label="Font family" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" aria-activedescendant={open && matches.length > 0 ? `${listId}-${active}` : undefined} aria-description={uniform ? undefined : 'Mixed value'} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} disabled={pending} value={open ? query : committed} placeholder={!uniform ? 'Mixed' : open ? 'Search fonts' : families.length > 0 ? 'Choose a font' : 'No font declared'} onFocus={() => setOpen(true)} onChange={(event) => { setOpen(true); setQuery(event.target.value); setActive(0) }} onKeyDown={(event) => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); move(event.key === 'ArrowDown' ? 1 : -1); return }
+        if (event.key === 'Enter') { event.preventDefault(); const name = matches[active]; if (open && name) choose(name); return }
+        if (event.key === 'Escape') { event.preventDefault(); close() }
+      }} />
+      <button type="button" className="property-inline-action property-disclosure" aria-label={open ? 'Hide fonts' : 'Show fonts'} title={open ? 'Hide fonts' : 'Show fonts'} disabled={pending} tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => (open ? close() : setOpen(true))}>{open ? '⌃' : '⌄'}</button>
+      {(committed !== '' || !uniform) && <button type="button" className="property-inline-action" aria-label="Clear Font family" title="Clear Font family" disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); void commit({ field: 'fontFamily', operation: 'clear' }) }}>×</button>}
+    </div>
+    {open && <ul className="property-options" id={listId} role="listbox" aria-label="Declared fonts">
+      {matches.map((name, index) => <li key={name} id={`${listId}-${index}`} role="option" aria-selected={name === committed} className={`property-option${index === active ? ' property-option-active' : ''}`} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(name)}>{name}</li>)}
+      {matches.length === 0 && <li className="property-option property-option-empty" role="presentation">{families.length === 0 ? 'This document declares no font chains.' : `No declared font matches "${query.trim()}".`}</li>}
+    </ul>}
+    {error && <p id={errorId} role="alert" className="property-error">{error.message}</p>}
+  </div>
+}
+// The design's segmented control over one closed-set engine field. There is no
+// separate clear button in the design and no room for one in a 1fr cell, so
+// pressing the active segment again clears the property — the only way back to
+// the value the document inherits, and the state the control already shows as
+// "no segment pressed".
+function SegmentedProperty({ label, field, segments, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'align' | 'valign'; segments: ReadonlyArray<SegmentSpec>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+  const values = components.map((component) => committedValue(component, field))
+  const uniform = values.every((value) => value === values[0])
+  const current = uniform ? values[0] : undefined
+  const [pending, setPending] = useState(false)
+  const pendingRef = useRef(false)
+  const commit = async (value: string) => {
+    if (pendingRef.current) return
+    pendingRef.current = true
+    setPending(true)
+    await onCommit(ids, current === value ? { field, operation: 'clear' } : { field, operation: 'set', value }, documentGeneration, ids.join(','))
+    pendingRef.current = false
+    setPending(false)
+  }
+  return <div className="property-editor"><div className="property-segmented" role="group" aria-label={uniform ? label : `${label}, mixed`}>{segments.map((segment) => <button key={segment.value} type="button" className="property-segment" disabled={pending} aria-pressed={current === segment.value} aria-label={segment.label} title={current === segment.value ? `${segment.label}, press again to clear` : segment.label} onClick={() => void commit(segment.value)}>{segment.content}</button>)}{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+}
+function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, error }: { components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) { const values = components.map((component) => (component.borderEdges ?? []).join(',')); const same = values.every((value) => value === values[0]); const [edges, setEdges] = useState<string[]>(same && values[0] ? values[0].split(',') : []); const pending = useRef(false); const update = async (next: string[]) => { if (pending.current) return; pending.current = true; setEdges(next); await onCommit(ids, { field: 'borderEdges', operation: next.length ? 'set' : 'clear', ...(next.length ? { value: next } : {}) }, documentGeneration, ids.join(',')); pending.current = false }; return <div className="property-editor"><div className="property-edges" role="group" aria-label="Border edges"><span className="property-affix">Edges</span>{['top', 'right', 'bottom', 'left'].map((edge) => <label key={edge}><input type="checkbox" aria-label={`Border ${edge}`} checked={edges.includes(edge)} onChange={() => void update(edges.includes(edge) ? edges.filter((value) => value !== edge) : [...edges, edge])} />{edge}</label>)}{!same && <span aria-label="Border edges mixed">Mixed</span>}{(edges.length > 0 || !same) && <button type="button" className="property-inline-action" aria-label="Clear Border edges" title="Clear Border edges" onClick={() => void update([])}>×</button>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div> }
 
 type Draft = { width: string; height: string; top: string; right: string; bottom: string; left: string }
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label>{label}<input aria-label={label} inputMode="decimal" value={value} onChange={(event) => onChange(event.target.value)} /></label> }
@@ -974,7 +1094,7 @@ function CanvasComponent({ component, limit, zoom, selected, preview, engine, ge
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const dy = canvasDisplay.documentDelta(rawDY, zoom) * 1000; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}>{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
 }
@@ -1049,6 +1169,32 @@ function componentAccessibleName(component: CanvasProjection['components'][numbe
   const text = component.textPaint?.lines.map((line) => line.fragments.map((fragment) => fragment.text).join('').trim()).filter(Boolean).join(' ').slice(0, 160)
   const binding = component.binding ? `; bound to ${component.binding}` : ''
   return text ? `text component ${component.id}: ${text}${binding}` : `text component ${component.id}${binding}`
+}
+// Story 9.2: the box the engine paints — style.background and
+// style.border — drawn on the canvas from the ENGINE's own projection, so
+// what the author sees is what will print. Painted as a child beneath the
+// content rather than on the component itself, which leaves the selection
+// tint and the dotted placement outline the canvas already draws alone.
+//
+// The engine's own defaults are mirrored where a border declares less than
+// all of itself: 0.5pt, #000000, all four edges (buildCellRectWithBackground-
+// Field). A border declared with NO fields at all (`"border": {}`, reachable
+// only by hand — the designer's own clear drops an empty border) projects
+// nothing at all, so the canvas cannot see it; the PDF still draws it.
+const boxEdges = ['top', 'right', 'bottom', 'left'] as const
+function ComponentBox({ component, zoom }: { component: CanvasProjection['components'][number]; zoom: number }) {
+  const bordered = component.borderWidth !== undefined || component.borderColor !== undefined || component.borderEdges !== undefined
+  if (component.background === undefined && !bordered) return undefined
+  const edges = component.borderEdges ?? boxEdges
+  // The declared width, through the one zoom mapping every other painted
+  // length goes through — not floored at a device pixel. A 0.5pt hairline
+  // draws as the sub-pixel line it is, because inflating it would show the
+  // author a border the PDF will not print.
+  const stroke = `${canvasDisplay.css(component.borderWidth ?? 500, zoom)} solid ${component.borderColor ?? '#000000'}`
+  const style: Record<string, string> = {}
+  if (component.background !== undefined) style.background = component.background
+  if (bordered) for (const edge of boxEdges) style[`border${edge[0]!.toUpperCase()}${edge.slice(1)}`] = edges.includes(edge) ? stroke : '0'
+  return <span className="canvas-box" aria-hidden="true" style={style as CSSProperties} />
 }
 function componentStyle(component: { x: number; y: number; width: number; height: number }, zoom: number): CSSProperties { return { '--component-x': canvasDisplay.css(component.x, zoom), '--component-y': canvasDisplay.css(component.y, zoom), '--component-width': canvasDisplay.css(component.width, zoom), '--component-height': canvasDisplay.css(component.height, zoom) } as CSSProperties }
 

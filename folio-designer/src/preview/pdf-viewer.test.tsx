@@ -11,9 +11,11 @@ vi.mock('pdfjs-dist/build/pdf.worker.mjs?url', () => ({ default: '/assets/pdf.wo
 
 import { PDFPreviewViewer } from './pdf-viewer'
 
+// The mock's viewport scales, so a test can tell the raster viewport from
+// the displayed one — the whole point of the oversampled canvas.
 const pdf = (numPages = 1) => ({
   numPages,
-  getPage: vi.fn(async () => ({ getViewport: () => ({ width: 20, height: 30 }), render: state.render })),
+  getPage: vi.fn(async () => ({ getViewport: ({ scale }: { scale: number }) => ({ width: 20 * scale, height: 30 * scale }), render: state.render })),
   destroy: state.documentDestroy,
 })
 const viewerProps = (overrides = {}) => ({ bytes: new Uint8Array([1, 2, 3]).buffer, label: 'Exact PDF', describedBy: 'preview-freshness-status', state: { page: 1, scale: 1, scrollTop: 0, scrollLeft: 0 }, onStateChange: vi.fn(), onError: vi.fn(), onPageCount: vi.fn(), ...overrides })
@@ -68,5 +70,21 @@ describe('local PDF preview owner', () => {
     await waitFor(() => expect(getByRole('status', { name: 'PDF page status' })).toHaveTextContent('Page 1 of 50'))
     getByRole('button', { name: 'Next PDF page' }).click()
     expect(onStateChange).toHaveBeenCalledWith({ page: 2, scale: 1, scrollTop: 0, scrollLeft: 0 })
+  })
+
+  it('rasterizes above the displayed size, so the page is not magnified on a denser display', async () => {
+    state.render.mockReturnValue({ promise: Promise.resolve(), cancel: state.cancel })
+    state.getDocument.mockReturnValue({ promise: Promise.resolve(pdf()), destroy: state.loadingDestroy })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as CanvasRenderingContext2D)
+    const view = render(<PDFPreviewViewer {...viewerProps()} />)
+    await waitFor(() => expect(state.render).toHaveBeenCalledOnce())
+    const canvas = view.container.querySelector('canvas')!
+    // Displayed at the page's own size; rasterized at twice it.
+    expect(canvas.style.width).toBe('20px')
+    expect(canvas.style.height).toBe('30px')
+    expect(canvas.width).toBe(40)
+    expect(canvas.height).toBe(60)
+    // And pdf.js is asked to paint the LARGER viewport, not the shown one.
+    expect((state.render.mock.calls[0]![0] as { viewport: { width: number } }).viewport.width).toBe(40)
   })
 })
