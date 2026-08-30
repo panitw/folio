@@ -13225,6 +13225,42 @@ shape as the census guards, and cheap.
 
 ---
 
+
+**AMENDED 2026-08-31 by the engineering lead, at Story 7.7's plan gate — the tripwire fired exactly as
+designed, and this is the deliberate widening it reserved.**
+
+`TestAPresentItemGroupIsAlwaysATableRow` (`folio-go/table_row_clip_test.go:1062`) named the only two
+lawful arms: *"give the new grouping its own placement rule, or take the decision to widen the clip
+deliberately and update D-4.6.2."* **This entry records the second arm.** Story 7.7 introduces
+author-declared keep-together groups of loose content elements, which breaks the accidental
+co-extensiveness this entry warned of.
+
+**The widening:** an over-tall **keep-together group** takes the Story 4.6 exception unchanged — a page
+of its own, **clipped**, recorded in `Pagination.Clipped` as a **Warning beside the PDF bytes**, never a
+fatal error.
+
+**Why this is applying the criterion rather than overriding the reservation.** This entry's ratio is
+*leniency follows **authorship***, and a keep-together group is author-declared, so the original
+criterion reaches the new population directly. Contrast D-2.6.5, which carried an explicit
+owner-reservation in its text and was escalated; this entry carries the opposite — a tripwire
+anticipating this exact extension. **A ruling that names its own extension case and states the criterion
+is built to be extended by that criterion.** Story 7.7's own AC3, ratified after this entry and naming
+this precise population, is the deliberate decision the tripwire reserved.
+
+**The grounding does not rest on analogy.** AD-14 names over-tall **rows** (FR25) by name and FR51 is not
+named there — but AD-14 independently makes **clipped content (FR44)** a Warning returned alongside the
+bytes, and this is clipped content.
+
+**A consequence AC3 does not mention, consciously accepted:** the clip drops whole members' runs and
+images (`paginate.go:900-931`, `:1137-1144`), so **a signature *image* inside an over-tall group is
+removed, not moved**. That is the cost of reusing the 4.6 exception unchanged rather than inventing a
+second disposition, and it is accepted knowingly.
+
+**No new diagnostic code.** `TABLE_ROW_CLIPPED_HEIGHT` is reused with a fourth role arm — which is **not
+optional**: without it `clippedRowDiagnostic` (`render.go:2296-2304`) announces a signature block as
+*"row 0 of the bound collection"*. Anything other than clip-and-warn — a fatal error, a silent drop, or a
+minted code — is a departure from the AC and returns to the engineering lead.
+
 ### D-4.6.3 — Mint `TABLE_ROW_CLIPPED_HEIGHT`, and SHARE it across header and footer rows: the first time D-4.5.1's discriminator has merged rather than split
 
 **[[D-4.5.1]]'s test applied in BOTH directions by the creator, rather than reflexing either way.**

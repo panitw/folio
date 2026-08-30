@@ -1101,3 +1101,120 @@ circulation (16.72, a thirteen-line sample; 19.35, the `Roboto-Regular` test fac
 rule rather than a document that reaches 32,768 fragments — such a fixture would cost minutes of
 wall clock in the ordinary suite. Nothing in Epic 7 makes it reachable through the product; recorded
 so the next reader does not conclude the test was written that way out of convenience.
+
+---
+
+## Story 7.7 gate + two cross-cutting rulings (2026-08-31)
+
+### D-7.7.1 — The Epic 7 scope fence is re-anchored on the invariant, not on a filename
+**Lead ruling.** 7.7 is the deliberate exception to "`paginate.go` absent from the diff": its AC says the
+group *"reuses that machinery"* — `ItemGroup` — *"rather than adding a second grouping model to
+`internal/layout`"*, which is an instruction to work **inside** it.
+
+**But file-absence was always a PROXY.** D-7.1.3 ruled that the epic header's "changes nothing about
+pagination" means the **model**, proven by 7.2's AC5 requiring page breaks to move *with `internal/layout`
+unchanged*. `paginate.go`-absent was a cheap stand-in that happened to be correct while 7.1–7.6 had no
+business in the file. **At 7.7 the proxy and the purpose come apart — and a tripwire keyed on a proxy is
+the shape the lead has twice refused.**
+
+**The fence for 7.7 is the property, not the filename:** (a) the four pagination rules, (b) window advance
+to the first unplaced item and **no page is ever empty**, (c) one `Shift` per page, (d) the column is never
+mutated. Those already have tests. **`TestPaginateNeverProducesAnEmptyPage` and the four-rule tests must
+stay green AND unmodified** — an anchor the story cannot move, unlike a filename.
+
+**The co-extensiveness audit has measured teeth.** `ItemGroupKey` carries `IsHeader` and an `ElementID`
+meaning *the table*. Four sites assume it: `paginate.go:833` (`!it.Group.Key.IsHeader`), `:839`
+(`tbl := it.Group.Key.ElementID`), `:949-950` (`headerPageOf[...]`), `:960-962`
+(`headerExtent(...)`). A keep-together group has **no header and is not a table**, so each must be
+re-examined, and `:783`'s comment ("Keyed on `Group.Present`, and NOT on the item's kind") is the decision
+7.7 puts under load. **Enumerate them in the story record; a group that silently acquires header semantics
+is the failure mode.**
+
+### D-7.7.2 — The group key gets its own rank at 1.2 — not 1.1, not 2.0
+**Lead ruling**, agreeing with the plan gate's independent conclusion.
+
+Applying D-7.3.1's test — *would a pre-V reader refuse it or render it wrong*:
+- **Not 1.1.** A 1.1 reader predates the group key: it loads the file and **silently splits the signature
+  block**. Declaring 1.1 would claim a reader sufficient for content it cannot render — a version that
+  lies, the defect option 3 was rejected for at D-R7.9.
+- **Not 2.0.** The key is additive; a 1.x reader can load and ignore it. Declaring 2.0 **overstates** the
+  requirement and orphans the document from every 1.x reader for a feature that never needed a MAJOR.
+  `style.color` is the standing precedent: an additive key whose absence renders *wrong* is still MINOR.
+
+So `baseVersion "1.0"`, `minorFeatureVersion "1.1"`, **a new `"1.2"`**, `majorFeatureVersion "2.0"`. A
+document with a group only is **1.2**; group + `justify` is 2.0 by the max 7.3's rank fix already built.
+Note the key is **element-level**, so `styleVersionRank` is the wrong site — `versionRequiredByContent`
+needs a new probe in its element loop.
+
+**Guardrail, because this fails silently.** `versionForRank` is `[...]string` **indexed by an `iota`
+rank**; inserting `1.2` renumbers `rankMajorFeature`. An array literal keyed by constant names follows
+correctly, anything assuming a numeric rank does not. **Assert `versionForRank` is strictly ascending by
+parsed version** — that catches a mis-ordered insertion now and every future one, and it is the anchor
+that table currently lacks. The hand-enumerated lists at `linespacing_test.go:229` and `:246` go vacuous
+otherwise.
+
+### D-7.7.3 — DW-38: the engine owns per-kind creation defaults; a PROJECTION is not a MIRROR
+**Lead ruling.** Engine-side constants exposed through the existing projection channel alongside
+`DefaultFontSize`. **Not** a browser-side table, tied or otherwise.
+
+**AD-15 settles ownership:** a creation default ends up *in the document*, and AD-15 gives the engine the
+document while the UI only sends commands. A browser-side default table would be the browser deciding
+document content.
+
+**The distinction worth keeping:** *a projection is not a mirror.* A mirror is a second hardcoded spelling
+that can drift; a projected value is transmitted at runtime from one source, so there is no second
+spelling. Projecting per-kind defaults adds **zero** mirrored numerals; hardcoding five kinds browser-side
+would add **ten** to a set of six that has already produced five defects.
+
+**Guardrails.** **No browser-side `?? 72` fallback** — it re-creates the mirror and stays silently correct
+until the engine changes; an absent projection must fail visibly. **Characterize before fixing:** the
+reported symptom (a later-sheet image getting a different box) does not follow from a constant 72×24 on
+its face, so something else — containment, or grid snapping at a window edge — is contributing, and the
+story must reproduce it in a test *first*. Also worth naming: 72×24 makes a **Line** a **24pt-thick bar**
+under Story 9.2's "declared height is its thickness" — the sharpest instance and the one an author notices
+first.
+
+**Owner: Epic 14.2**, which already owns the two kinds whose defaults are most obviously wrong. **Not 7.7**
+— that is a layout story and this is creation/designer.
+
+### D-7.7.4 — DW-42: story-owned, and the deliverable is an inventory WITNESS, not 29 tests
+**Lead ruling.**
+
+**Opportunistic discharge cannot reach the seams that matter** — its trigger is unrelated activity, so it
+covers exactly what someone happened to touch and never what nobody touches, which are the ones that rot.
+That is the deferral shape refused three times this run (DW-14's spent event owner, DW-24's twice-renewed
+trigger). **A rule whose trigger is "someone walks past" is not a trigger.**
+
+**But "tie the remaining 29" solves the instances, not the class.** What made 7.6's defect possible was not
+that 29 were untied — it was that **nobody knew which were untied**. Six of ~35 is a number somebody had to
+go and count. **The artifact that closes this is the count becoming automatic.**
+
+**The shape:** a build-failing check enumerating duplicated Go/TS invariants, requiring each to be
+**either tied by an assertion or explicitly listed as exempt with a reason** — an unlisted, untied
+duplicate fails. That is the coverage-witness form that closed `ScanAbsences` and the licence manifest's
+extension allowlist, and it is the anchor DW-24's hand-list never had (three rots, the last inside its own
+closing commit). Ties then land as the witness demands them.
+
+**Guardrails.** The **exemption list is the dangerous half** — every exemption carries a reason and the
+reasons are re-read at each boundary gate; an exemption list nobody re-reads is an allowlist, and
+allowlists rot in both directions. Tie DW-42's own instance (`SHEET_STACK_GAP` ↔ its CSS gap) **in the same
+story**, as the witness's first customer, so the mechanism is proved by use. Fold in the five known mirrors
+so the enumeration starts from measurement.
+
+**Placement: a named story in Epic 15, before the v0.1.0 tag** — this is build integrity, not UI coherence,
+so Epic 14 is the wrong home. Under D-R7.9 (nothing released, no tag scheduled) there is slack. **It
+becomes the owner's only if adding it would move the tag.**
+
+### D-7.7.5 — Two lessons recorded as general rules, not story notes
+**Lead ruling**, on the run's two sharpest findings.
+
+1. **When a consumer needs a datum the producer computed and dropped, the fix is to stop dropping it —
+   never to recompute it.** The banned closed form reappeared at 7.6 precisely because
+   `addCanvasWindowCount` discarded `PageAssignment.Shift` while keeping `len(plan.Pages)` from the same
+   value: *the second derivation was created by throwing away the first.* The control fixture asserting the
+   true origins **and separately pinning the closed form's** is the construction that stops a
+   discrimination decaying into a coincidence.
+2. **A round-trip test over a sampled domain proves nothing about the region the samples avoid, and the
+   interesting region is the one a declared gap skips.** 7.6's zero-pixel drag committed a nine-window move
+   because every offset the shipped round-trip sampled sat inside its own window. **Sample the
+   discontinuities, not the interior.**

@@ -1,0 +1,307 @@
+---
+title: 'Keep a signature block together across a page break'
+type: 'feature'
+created: '2026-08-31'
+status: 'ready-for-dev'
+review_loop_iteration: 0
+followup_review_recommended: false
+context: []
+warnings: [oversized]
+deferred: []
+---
+
+## In plain terms
+
+*Non-normative. This section explains the story in ordinary language and settles nothing; the contract below governs.*
+
+A contract ends with a signature block — a name, a date, a ruled line to sign on. Those few pieces belong together. Today the engine treats every line of the content column as its own unit, so if the page happens to run out halfway through that block, the name prints at the foot of one page and the date at the head of the next. Nobody signs a document like that.
+
+This story lets a template author say "these pieces travel together". When the engine works out where pages break, it treats such a set as one indivisible unit: the whole set stays on the page it started on, or the whole set moves to the next one. Nothing else moves, no gap is invented, and no page is left empty.
+
+There is one case that cannot be honoured: a set so tall it would not fit even on an empty page. Rather than refusing to produce a document at all, the engine gives that set a page of its own, prints as much as the page holds, and returns a warning alongside the finished file saying what was cut. The author gets a document and an explanation, not a failure.
+
+A template declaring no such sets prints exactly the bytes it prints today.
+
+One check in this repository is required to stay failing — the text-corpus exercise-floor check. That red is expected and must never be repaired.
+
+<intent-contract>
+
+## Intent
+
+**Problem:** A signature block authored as several loose content-band elements is severed by a page boundary, because the paginator's only unit of atomicity is the individual line, image or table row. FR51 requires an author-declared set of content-band elements to paginate as one.
+
+**Approach:** Add one optional, absent-by-default element key naming a keep-together group, and tag the affected column items with the *existing* `layout.ItemGroup` so the paginator's shipped grouping machinery — union extent, ride-along, the Story 4.6 over-tall clip — carries the whole feature. `internal/layout` gains nothing and changes nothing.
+
+## Boundaries & Constraints
+
+**Always:**
+- `internal/layout` is READ-ONLY. `internal/layout/paginate.go` must be **absent from `git diff --name-only`**. D-2.6.1's window model and the four rules are inputs, not targets: no element's declared column position changes, no sibling moves, no band reflows, no page-count closed form appears, and the window still advances to the first unplaced item.
+- Reuse `layout.ItemGroup` exactly as shipped. `ItemGroupKey`'s three fields are sufficient — two items are one group iff their `Key` compares equal (`paginate.go:167`), and the paginator requires **no contiguity** (`paginate.go:619-635` records the contiguity premise as measured false). No second grouping model, no new layout type, no key extension.
+- A keep-together group's `Key.ElementID` must lie in a namespace that **cannot** be a valid element id, and `Key.IsHeader` must be false. This is what provably keeps the group out of every FR26 header-repeat, row-displacement, header-suppression and footer-orphan path.
+- Every field this epic adds is optional and absent-by-default; a template declaring no groups renders byte-identically.
+- Any invariant duplicated across the Go/TS boundary moves in one commit, with a test reading both sides.
+
+**Block If:**
+- Honouring a group would require any edit to `internal/layout` -> HALT, blocking condition `window model change`.
+- The nine digests or any of the twenty `goldenDigestRecord` entries move for a template declaring no groups -> HALT, blocking condition `AC4 byte-identity lost`.
+- **The engineering lead has not recorded the D-4.6.2 amendment in the decision log at the time of commit** -> HALT, blocking condition `D-4.6.2 amendment not recorded`. This story deliberately widens a ratified carve-out; landing the code while the log still says the carve-out is table-only would amend architecture silently, which is exactly what D-4.6.2's tripwire exists to prevent.
+- The lead overturns the diagnostic-code ruling recorded in Design Notes (Flag 2) -> re-plan; do not mint a code unattended.
+
+**Never:**
+- Never mint a diagnostic code in this story (see Flag 2 — the dissent is recorded, the decision is the lead's).
+- Never make the canvas group-aware, and never claim the canvas previews grouping. Never touch `hitTestBand`, the sheet stack, or `MAX_CANVAS_SHEETS`.
+- Never close DW-26/27/28/30/31/32/33/34/35/37/38-45. DW-33 and DW-38 need rulings, not patches. DW-35 is Epic 8's. DW-29 is Story 7.8's.
+- Never move `SupportedMajor` (stays 2) or `SupportedVersion` (stays "2.0"); never regress `SupportedVersion`'s doc comment (D-1.4.13).
+- Never modify, move, delete or commit `README.md` (md5 `078d7d80d518d54af2fc04fb270d46b8`). Never `git add -A`. Never branch, never push.
+- Never repair `TestCorpusMeetsP6ExerciseFloors` or the P6g floor.
+
+## I/O & Edge-Case Matrix
+
+| Scenario | Input / State | Expected Output / Behavior | Error Handling |
+|----------|--------------|---------------------------|----------------|
+| Group fits below the window start | Three content-band text/image elements sharing one tag; union extent within the current window | All three placed on the same page, each at its own declared column position; nothing shifts | No error expected |
+| Group crosses the window ceiling | Same three, union extent crossing the ceiling | All three move whole to the next window; the window starts at the group's **earliest Top** | No error expected |
+| Group taller than one window | Union extent > content window height | A page of its own, clipped at that page's content bottom, one `TABLE_ROW_CLIPPED_HEIGHT` **Warning** beside the PDF bytes, located at the group's first member, message naming the keep-together group (not a row) | Warning, never fatal, never silent |
+| No group declared | Any existing corpus template | Byte-identical bytes; all twenty golden digests unchanged; saved `version` unchanged | No error expected |
+| Single-member group | One element tagged | Placement identical to the same element untagged | No error expected |
+| Two distinct tags | Two groups in one content band | Independent; each moves whole on its own; neither constrains the other | No error expected |
+| Tag on a non-content-band element | The key on a `pageHeader` or `pageFooter` element | Refused at load, naming the element and the field | Located load error |
+| Tag on a table element | The key on `type: "table"` | Refused at load, naming the element and the field | Located load error (a table's items already carry a row key; honouring both would be a second grouping model, which AC2 forbids) |
+| Tag present anywhere | Document declaring the key | Saved `version` is `"1.2"`; a document not declaring it is unchanged; a document also using `align: "justify"` still saves `"2.0"` | No error expected |
+| Tag absent / JSON null | Key absent, or explicitly `null` | Ungrouped; zero-value `ItemGroup`; bytes unchanged | No error expected |
+
+</intent-contract>
+## Gate rulings applied — 2026-08-31
+
+Full text in `epic-7-8-decision-log.md` as **D-7.7.1 … D-7.7.5**. Settled; do not re-open.
+
+**D-4.6.2 IS NOW AMENDED — the `Block If` on `D-4.6.2 amendment not recorded` is DISCHARGED.**
+`folio-mvp-decision-log.md`'s D-4.6.2 entry carries the widening: an over-tall **keep-together group**
+takes the Story 4.6 exception unchanged — a page of its own, clipped, a **Warning beside the bytes**,
+never fatal. The tripwire fired exactly as designed and this is the second of the two arms it named.
+It is **applying the criterion, not overriding a reservation**: D-4.6.2's ratio is *leniency follows
+authorship*, and a keep-together group is author-declared. The grounding needs no analogy — AD-14 makes
+**clipped content (FR44)** a Warning returned alongside bytes independently of its "rows" noun.
+**Consciously accepted:** the clip drops whole members' runs and images, so a signature **image** inside
+an over-tall group is **removed, not moved**. **No new diagnostic code** — `TABLE_ROW_CLIPPED_HEIGHT`
+gains a fourth role arm, which is **not optional** (without it a signature block is announced as "row 0
+of the bound collection"). Anything other than clip-and-warn returns to the lead.
+
+**D-7.7.1 — the fence is the invariant, not the filename.** File-absence was always a proxy for "the
+model must not change" (D-7.1.3, proven by 7.2's AC5 requiring page breaks to move *with
+`internal/layout` unchanged*). At 7.7 the proxy and the purpose come apart. **The fence is: the four
+pagination rules, window advance to the first unplaced item, no page is ever empty, one `Shift` per
+page, and the column is never mutated — and `TestPaginateNeverProducesAnEmptyPage` plus the four-rule
+tests stay green AND UNMODIFIED.**
+
+**The co-extensiveness audit is mandatory and has measured teeth.** `ItemGroupKey` carries `IsHeader` and
+an `ElementID` meaning *the table*. Four sites assume it — `paginate.go:833` (`!it.Group.Key.IsHeader`),
+`:839` (`tbl := it.Group.Key.ElementID`), `:949-950` (`headerPageOf[...]`), `:960-962` (`headerExtent(...)`)
+— and `:783`'s comment ("Keyed on `Group.Present`, and NOT on the item's kind") is the decision this story
+puts under load. **Enumerate all of them in the record. A group that silently acquires header semantics is
+the failure mode.**
+
+**D-7.7.2 — the version rank is `1.2`, its own new rank.** Confirmed against the plan gate's independent
+conclusion. **Not 1.1** (a 1.1 reader predates the key and silently splits the block — a version claiming
+a reader sufficient for content it cannot render). **Not 2.0** (additive; a 1.x reader loads and ignores
+it, so 2.0 overstates and needlessly orphans). `style.color` is the precedent: an additive key whose
+absence renders *wrong* is still MINOR. `SupportedMajor` stays **2**.
+**Guardrail:** `versionForRank` is `[...]string` indexed by an `iota` rank, so inserting `1.2` renumbers
+`rankMajorFeature`. **Assert `versionForRank` is strictly ascending by parsed version** — the anchor that
+table lacks. The hand-enumerated lists at `linespacing_test.go:229` and `:246` go vacuous otherwise.
+
+**Not this story's:** DW-38 → **Epic 14.2** (engine-owned per-kind defaults, projected — *a projection is
+not a mirror*). DW-42 → a named **Epic 15** story before the tag (a build-failing inventory witness, not
+29 tests). Neither is taken here.
+
+
+## Code Map
+
+**Every anchor below was verified by reading the file at the baseline `ae82752`.**
+
+### `folio-go/internal/layout/paginate.go` -- READ-ONLY. It must be absent from the diff.
+
+The whole feature is already here. Nothing needs adding.
+
+- **`ItemGroup` `:157-168`** -- exactly two fields: `Present bool` `:161`, `Key ItemGroupKey` `:167`. `Key`'s doc `:167`: *"Two grouped items with equal Key belong to the same group."* **`ItemGroupKey` `:175-179`** -- `{ElementID string; IsHeader bool; Index int}`.
+- **`ColumnItem.Group` doc `:129-142`** -- *"ORTHOGONAL to the Runs/Images/Rects exclusivity check ... a SEPARATE statement about which items must land on the same page."* So a group may span a `Runs` item, an `Images` item and a `Rects` item; exclusivity is **per item**, confirmed at `:567-584` where the counter resets per item and `Group` is never read.
+- **The three lines that ARE the feature.** Union pre-pass `:643-659` (`groups map[ItemGroupKey]*groupExtent`, one unordered scan); ride-along `:743-751` (`if p, ok := groupPage[it.Group.Key]; ok { pageOf[idx] = p; continue }`); effective extent `:762-768` (`effectiveTop, effectiveBottom = e.top, e.bottom`). The slide at `:986-1002` then reads `effectiveTop`, which is the group's earliest Top.
+- ⚠ **THE LOAD-BEARING FACT.** `paginate.go:619-635` records R7's contiguity premise as **measured FALSE** and removed: *"a group's members are contiguous in column order by construction — is FALSE for real templates."* **A keep-together group of loose, non-adjacent elements therefore needs no new mechanism and no key extension.** (Story 4.3's review prose at `4-3-...:1402` says the key "groups exactly one row and never a run of rows"; re-measured at this baseline that is a statement about the *values package folio produces*, not about what the type can express. Do not plan from that sentence.)
+- `internal/layout` **attaches no meaning to `Index`** beyond equality -- `:372-374`.
+- Story 4.6 clip branch `:790-953`, entered by `if it.Group.Present { if effectiveBottom-effectiveTop > height {`. Its own page advance `:794-800` duplicates `:995-1001` deliberately. Records `TableRowClipped` at `:935-941`. ⚠ The cut at `:900-931` sets `dropped[j] = true`, and emission `:1137-1144` omits **both `Runs` and `Images`** of dropped members -- an image inside an over-tall group is removed, not moved.
+- Ungrouped over-tall -> `*OverflowError` `:1075-1090`; comment `:1066-1074`: *"a grouped item took the clip branch above and never reaches here."*
+- R6 guard `:1101-1120` -- key-agnostic; fires only if `groupPage[Key] != pageOf[idx]`. No table assumption.
+- `Pagination.Clipped []TableRowClipped` `:354`; `TableRowClipped` `:357-381` carries both `ElementID` (the real element) and `Key`.
+
+### The paths a non-table group must provably avoid -- verified gates
+
+- **`headerExtent` `:675-682`** -- exact-struct lookup of `{ElementID: table, IsHeader: true, Index: 0}`. **Gate B `:956-964`**: `table` stays `""` unless `Group.Present && !IsHeader && headerExtent(Key.ElementID)` hits. `table == ""` disables `ceilingFor`'s narrowing `:972-979` and the whole reservation block `:1008-1062`.
+- **Clip-branch repeat `:832-889`** -- guarded by `!IsHeader` **and** `hasHeader` **and** `headerPlaced`. `RowDisplacement` produced only at `:866-867` and `:1026-1027`; `Suppressed` only at `:880-886` and `:1045-1051`, and `TableHeaderSuppressed` carries **no Key**, so a spurious entry would be indistinguishable at the caller.
+- **`footerOrphanTargetsFrom` `folio-go/table_footer.go:112-149`** -- skips `IsHeader`; `hasFooter[id]` requires `Index == footerGroupIndex` (`:68`, `-1`). `applyFooterMerge` `:346-362` rewrites only keys present in `mergeKey`, built solely from targets' `footerKey`.
+- ⚠ **The collision consequence, measured:** a keep-together `Key.ElementID` equal to a real table's id would let the group *decide* FR26 reservation for that table's rows, emit a `TableHeaderRepeat` whose `Shift` is computed from the group's own top, and emit a `TableHeaderSuppressed` quoting an unrelated height. **The namespace rule in Boundaries is what makes all of this unreachable, not a comment.**
+- **`validateElementID` `folio-go/internal/template/ids.go:46-69`** -- grammar `^e[0-9a-z]+$`, lowercase base-36, no leading zero, decoded counter >= 1. Any string containing a character outside `[0-9a-z]` (e.g. `:`) is therefore impossible as an element id, and enforced document-wide at `parse.go:34-46`.
+
+### The tripwire this story is required to trip -- `folio-go/table_row_clip_test.go`
+
+- **`TestAPresentItemGroupIsAlwaysATableRow` `:1062-1168`**, doc `:1042-1061`, banner `:1040`. An **AST scan**, not a behavioural test: `os.ReadDir(".")` `:1063-1069`, skipping dirs / non-`.go` / `_test.go` `:1084-1088`. Whitelist `:1076-1079` = `{"chromeRowGroup", "lineRowGroup"}`. Two spellings caught: a `.Present` **assignment** `:1111-1127` and a `layout.ItemGroup{...}` **composite literal** with `Present` set to anything but literal `false` `:1129-1141`. Vacuity floor `:1155-1168`, `const derivationFloor = 2`. Helpers `isLayoutItemGroupType` `:1173-1180` (matches only the spelling `layout.ItemGroup`), `setsPresentTrue` `:1194+`.
+- Its own error text names the two lawful arms: *"Either give the new grouping its own placement rule, or take the decision to widen the clip deliberately and update D-4.6.2."*
+- ⚠ **Three escape hatches that would leave it green and MUST NOT be used:** the scan is root-directory only (anything under `internal/**` is invisible); it matches only the literal `layout.ItemGroup` selector (a package alias hides it); it is name-based (a helper called *by* a whitelisted function is invisible). Tripping it honestly and widening it deliberately is the story.
+
+### Where the tagging goes -- package folio, root
+
+- **`paginateDocument` `folio-go/render.go:1974`**, appending **rects -> text -> images**. Rects `:2005-2036` (`Group: ts.chromeRowGroup()` `:2033`); text, **one item per shaped line**, `:2043-2097` (`Group: runs[i].lineRowGroup()` `:2086`); images `:2103-2126` -- ⚠ **images set no `Group` at all** (`:2119-2125`).
+- **`contentColumnItems` `folio-go/page_number.go:87`** -- the PHASE A page-count pass, appending **text -> images -> rects** (the reverse order, stated at `:44-48`). `Group` at `:99` and `:151`; images `:112-124` ungrouped. **Both passes must agree or the page-count and the render disagree.**
+- The two existing derivations: `tableRectSource.chromeRowGroup` `folio-go/table_render.go:243-256` and `textRunSource.lineRowGroup` `folio-go/render.go:233-255`. Both return `layout.ItemGroup{}` in their `default` arm -- **that zero return is the substitution point**: a tagged element's item is ungrouped today, so filling only the not-`Present` case leaves every table row untouched and is what preserves AC4.
+- Element boxes travel the **rect** path: `collectElementBoxRects` `folio-go/element_box.go:53-56`, deliberately zero-group at `:103-107`. `declaredBox` `:126-136`.
+- Extents: text `render.go:930-938` carried, never re-derived; image `render.go:2121-2122`; box `element_box.go:100-101`. Band translation is `layout.PlaceInBand` `internal/layout/band.go:121-123`; content band index `render.go:1946`, hard guard `render.go:2065-2067`.
+- Build order is **element declaration order within a band** (`render.go:715`, `table_render.go:602`, `element_box.go:56`); pagination order is **stable sort by `Top`** (`paginate.go:585-604`). Neither needs changing.
+
+### The diagnostic surface
+
+- `clippedRowDiagnostic` **`folio-go/render.go:2291-2313`**, called unconditionally for every `plan.Clipped` entry at `:2157-2160`. The role switch `:2296-2304` has three arms: `IsHeader` -> `"the header row"`; `Index == footerGroupIndex` -> `"the footer row"`; default -> `fmt.Sprintf("row %d of the bound collection", c.Key.Index)`. Message `:2310` ends *"Reduce this row's height (font size or cell padding)"*. ⚠ **Without a fourth arm a signature block is announced as "row 0 of the bound collection".**
+- `diag.CodeTableRowClippedHeight` `internal/diag/diag.go:220`, `allCodes :276`, `dispositions :310` (**Warning**), public alias `folio-go/diagnostic.go:314`. Census witness `diagnostic_registry_census_test.go:174-184`; pin `internal/diag/diag_test.go:44`. Public result type `Result{Bytes, Diagnostics}` `diagnostic.go:384-387`.
+- Uncoded load errors: `newLoadError` `internal/template/errors.go:52` -> `TEMPLATE_MALFORMED` at `render_error.go:97-106`, and the designer **destroys the message** at `wasm/cmd/engine/main.go:276-279`.
+
+### Format, version and the fences
+
+- `Element` `internal/template/model.go:191-211`; optional-key slot beside `VisibleIf :198` / `Style :199`, **before** the kind-specific keys and `Extra :210`. `Presence[T]` `presence.go:17-21`, constructors `present :24`, `presentNull :29`, `absent :35`.
+- Decode `decodeElement` `parse_bands.go:105`; `consumed` seeded `:124`; copy the `visibleIf` shape `:186-197`; **insertion point `:210`**, before the `switch el.Type` at `:212`. `bandField` (`:105`, values from `decodeBands :36/:40/:44`) is the existing hook for a band-scoped refusal; the column precedent for refusing a key in the wrong place is `:498-500`. Unknown keys -> `extraFields` `decodehelpers.go:116-135`.
+- Serialize `writeElement` `serialize.go:224-289`; **insertion point after `:257`**; ⚠ **must use the unkeyed `{"key", …}` literal form** -- `drift_test.go`'s AST reader (`extractGoKeys :58-99`) is blind to a keyed literal, red-proved at `:459-485`. Sorting is `writeObject :38-42`; passthrough merges at `:287`.
+- `version.go`: `SupportedMajor = 2` / `SupportedVersion = "2.0"` `:55-58` (doc `:20-54` -- **the discharged D-1.4.13 debt; do not regress**); `baseVersion`/`minorFeatureVersion`/`majorFeatureVersion` `:70-74`; `versionRank` `:230-236`; `versionForRank` `:241-245`; `versionRequiredByContent` `:196-219` (element loop `:201-217`, consults **only** `el.Style` and `el.Table.Value.HeaderStyle` -- an element-level key needs a **new probe**, `styleVersionRank :257-266` is the wrong site); `versionForSave` `:149-166`, sole production caller `serialize.go:118`.
+- Version tests: `TestContentVersionNeverExceedsTheLibraryCeiling` `linespacing_test.go:221-257` -- ⚠ **hand-enumerates the constants at `:229` and document shapes at `:246`; it goes vacuous unless both are extended.** `TestVersionForSaveIsRaisedOnlyByContent` `:111-205` (table `:118-142`, ordering pair `:183-198`). `TestNewContentIsNeverStampedWithTheLibraryCeiling` `version_test.go:65-93` builds only through a **style** helper -- a new element-level doc builder is needed. `TestHigherMajorIsLoadError` `version_test.go:22-30` uses `"3.0"` and is **untouched** by a MINOR.
+- Fences: `numericFieldRegistry` `numeric_classification_test.go:38-51` + floor `:123` -- ⚠ **a string-valued key is NOT captured** (the extractor regex `:74` matches only a documented key whose value is a number literal), so keep the documented value a string. `TestDriftGoToDoc :232-263` / `TestDriftDocToGo :269-300` -- bidirectional, **no allowlist**. `maximalFixture fixtures_test.go:236-408` (52 keys; canonical, insert in sort position) + `TestDriftASTMatchesRuntimeEmission drift_test.go:402-450`. `TestWorkedExampleMatchesGoldenFixture goldenfixture_test.go:16-25` -- ⚠ **only reddens if the doc's worked example is edited; document the key in the field table instead.**
+- `folio-format.md` (`_bmad-output/specs/spec-folio/folio-format.md`): the "common to all five types" field table **`:213-219`** is the natural home; MINOR/MAJOR rules `:67-72`; the version sentence enumerating what raises which version is **`:47`** and is itself an edit site.
+
+### Golden-fixture registration -- thirteen sites
+
+`fixtures/<slug>/` (`input.folio`, `expected.json`, `expected.pdf`, `README.md`) plus: (1) `goldenDigestRecord` `folio-go/byte_neutrality_test.go:92-459` -- ⚠ its completeness half `:693-718` scans `goldenDigestSearchScope :482` and **fails on any undeclared occurrence**, so a README quoting the digest makes the `readme` site mandatory; (2) `declaredEpic2GateObligations` `:789-819`; (3) `matrixDocuments` `folio-go/matrix_test.go:1414-1788` + a capture func (pattern `:696-720`); (4-8) `.github/workflows/matrix.yml` -- **five edits**: `:73`, `:114`, `:155`, `:196` and the `docs="…"` list at `:255`, tied by `TestMatrixDocumentSlugsAreRegisteredInCI` `matrix_registration_test.go:39`; (9) `missing_glyph_corpus_test.go:41-169` fixtures table; (10) `beyondBaselineAcceptance :192-198` -- ⚠ the identity at `:235-237` fatals unless `len(fixtures) == len(baselineAcceptanceFixtures) + len(beyondBaselineAcceptance)`, and `baselineAcceptanceFixtures` is **frozen at 5** (`first_baseline_acceptance_test.go:100`, `:258-259`) -- **never add there**; (11) the Go template const + data const pair, byte-identical to `input.folio` (pattern `alignment_rounding_template.go:3`/`:85`, drift assert `alignment_rounding_fixture_test.go:289-302`); (12) `render_test.go` subprocess selector const (newest `:868`); (13) its `TestMain` arm (`:920-932`).
+
+### Canvas -- unchanged, and it does not preview grouping
+
+- `addCanvasWindowCount` `folio-go/page_setup.go:627`, its two item literals `:647-657` and `:948-953` -- ⚠ **neither sets `Group`**, so the canvas paginates ungrouped. `CanvasProjection` `:266`; `ContentWindowHeight :306`, `ContentWindowCount :331` (floor doctrine `:307-330`), `ContentWindowOrigins :358` and `ContentWindowCountIsFloor :376` (both 7.6). Floor causes computed at `:635` -- grouping is **not** among them. `atomicSpansFor(..., nil)` at `:880` (D-7.4.4). Three browser seams confirmed: `wasm/engine.go:119`, `:255`, `:294`.
+- Tests to keep green: `canvas_window_count_test.go:64/:102/:127/:161/:190/:213/:270/:299/:352/:395` -- none of their fixtures declares a group, so all are unaffected.
+- Designer: **no grouping concept exists** (`component-command.ts` zero hits). `PropertyField` `component-property-command.ts:3` (23 keys) mirrors `component_commands.go:839`/`:896`. **No test asserts the designer offers every format key**, and `unbreakableValues` is the shipped precedent: a document-level format key with zero designer references. `engine-ownership-contract.test.ts:63` forbids a browser-side schema; unknown keys survive a designer open/save through Go's `Extra`, not through TypeScript.
+
+## Tasks & Acceptance
+
+**The ordering is normative.** Parts 1-2 must land before Part 3 can tag anything; Part 5's fixture is the proof and must land in the same commit as Parts 1-4.
+
+**Execution -- Part 1: the format key.**
+- `folio-go/internal/template/model.go` -- add `KeepTogether Presence[string]` to `Element` beside `VisibleIf`/`Style` (`:198-199`) -- an element-level optional key needs no cross-reference and cannot dangle when its element is deleted.
+- `folio-go/internal/template/parse_bands.go` -- decode at `:210` on the `visibleIf` pattern (`:186-197`), adding `"keepTogether"` to `consumed` at `:124`; refuse a non-empty tag when `bandField` is not the content band, and when `el.Type` is a table, as located load errors naming the element and the field -- FR51 scopes the feature to content-band elements, and AC2 forbids the second grouping model a tagged table would require.
+- `folio-go/internal/template/serialize.go` -- emit after `:257` **in the unkeyed literal form**, or `TestDriftGoToDoc`'s AST reader cannot see it.
+
+**Part 2: the version rank.**
+- `folio-go/internal/template/version.go` -- add the constant `"1.2"` for this key's MINOR, one `versionRank` member **between** `rankMinorFeature` and `rankMajorFeature`, its `versionForRank` entry, and a **new element-level probe** inside `versionRequiredByContent`'s element loop (`:201-217`) -- `styleVersionRank` (`:257-266`) is the wrong site because the key is not a style key. `SupportedMajor` stays 2 and `SupportedVersion` stays `"2.0"` (2.0 already exceeds 1.2); do not touch the `:20-54` doc comment except to extend its history.
+  **Why `"1.2"` and not `"1.1"`:** D-1.4.13 makes a document declare *the lowest version its own content requires*, and the shipped precedent fixes what "requires" means -- `lineSpacing` and `color` took 1.1 even though a 1.0 reader loads such a file and merely ignores them (D-1.4.9). By exact parallel, a 1.1 reader would load a keep-together document and silently ignore the grouping, so 1.1 would be a document claiming a fidelity it does not have. This is additive-optional-key MINOR either way (`folio-format.md:67-72`); it extends **no** closed set, so it is not a D-1.4.12 question.
+
+**Part 3: tag the column items.**
+- `folio-go/render.go` -- add **one** derivation function returning `layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: <namespaced tag>, IsHeader: false, Index: <keep-together sentinel>}}`, with the composite literal lexically inside it and nowhere else. Build the element-id -> tag lookup once from the document (lookups only, never a map range that reaches output order -- D-1.3.5/R5). In `paginateDocument`, substitute it **only where the existing group is not `Present`**, at the rect site `:2033`, the text site `:2086` and the image site `:2119-2125` -- filling only the ungrouped case is what leaves every table row and every untagged document byte-identical.
+- `folio-go/page_number.go` -- apply the identical substitution in `contentColumnItems` at `:99`, `:151` and the image block `:112-124`, calling the same derivation -- PHASE A and PHASE B must agree or the page count and the render disagree.
+- `folio-go/render.go` -- add a **fourth role arm** to `clippedRowDiagnostic`'s switch (`:2296-2304`) and a group-appropriate remedy clause in the message (`:2310`), recognising the keep-together key. The code stays `TABLE_ROW_CLIPPED_HEIGHT` (Flag 2).
+
+**Part 4: widen the tripwire deliberately.**
+- `folio-go/table_row_clip_test.go` -- add the new derivation's name to `rowGroupDerivations` `:1076-1079`, raise `derivationFloor` `:1155-1168` from 2 to 3, **rename the test** (its current name asserts a property this story makes false), and rewrite the doc comment `:1042-1061` to state the new invariant: a present `ItemGroup` is a table row **or** an author-declared keep-together group, and nothing else. Keep both spelling checks and the vacuity floor intact.
+- `_bmad-output/specs/spec-folio/folio-format.md` -- document the key in the field table `:213-219` with a **string**-valued example (a number-valued example would make it the 13th `numericFieldRegistry` entry), extend the version sentence `:47`, and extend D-4.6.2's authorship sentence so *"Folio absorbs what the data made too tall, and refuses what the author typed too tall"* also states what an over-tall declared group does.
+
+**Part 5: the discriminating fixture.**
+- `fixtures/keep-together/` + `folio-go/keep_together_template.go` -- a content band whose body text fills most of window one, followed by a three-element signature block positioned so that **ungrouped it splits across the window boundary and grouped it moves whole to window two.** Ship the template const byte-identical to `input.folio`, **plus a second const identical except that the keep-together keys are absent** -- the ungrouped twin is the discriminator.
+- `folio-go/keep_together_fixture_test.go` -- assert the difference, not the feature: render both consts and assert (a) grouped, every signature element's runs are on page 2 and page 1 carries none of them; (b) ungrouped, the first signature element is on page 1 and the others on page 2; (c) the two renders differ in bytes. Add the over-tall case asserting one `TABLE_ROW_CLIPPED_HEIGHT` Warning with non-empty bytes and a message that does **not** contain "of the bound collection". Add the union-extent/no-contiguity case: a group whose members are separated by an intervening ungrouped element.
+- Register the fixture at all thirteen sites listed in the Code Map, and add it to `beyondBaselineAcceptance` with a story-naming reason -- **never** to `baselineAcceptanceFixtures`.
+- Version tests -- extend `linespacing_test.go:229` and `:246`, add cases to `:118-142` including an ordering case proving the new element-level probe participates in the maximum, and add an element-level document builder for `version_test.go:65-93`.
+
+**Acceptance Criteria:**
+- Given a set of content-band elements declared one keep-together group, when the document paginates, then every member is placed within one window or entirely within the next, at its own declared column position, with no sibling moved.
+- Given the shipped `ItemGroup` machinery, when a keep-together group paginates, then `git diff --name-only` contains **no path under `folio-go/internal/layout/`**, and no new grouping type, field or key exists anywhere.
+- Given a group taller than one window, when it paginates, then the render returns non-empty PDF bytes plus exactly one `TABLE_ROW_CLIPPED_HEIGHT` Warning located at the group's first member, and never an error.
+- Given any template declaring no group, when it renders, then all twenty `goldenDigestRecord` entries and the nine reported digests are byte-identical, and its saved `version` is unchanged.
+- Given the keep-together fixture, when the grouping tags are removed from the template, then the rendered page assignment **changes** and the test asserting the grouped placement **fails** -- the fixture discriminates rather than passing under any derivation.
+- Given the widened tripwire, when a present `ItemGroup` is constructed in package folio outside the three named derivations, then the build fails naming the function and position.
+
+## Spec Change Log
+
+## Review Triage Log
+
+## Design Notes
+
+### Ruling A -- the key needs no extension, because the paginator was already general
+
+The obvious reading of AC2 is that `ItemGroupKey{ElementID, IsHeader, Index}` "groups exactly one row and never a run of rows" and must therefore be extended. **Re-measured at this baseline, that is false.** `Key`'s own doc (`paginate.go:167`) defines a group as *equality of Key*, and R7's contiguity premise was measured false and **removed** (`:619-635`) precisely because real table rows are not contiguous in column order. N loose elements sharing one `Key` value already *are* one group, and the union pre-pass, the ride-along and the R6 guard are all key-agnostic. So AC2 is satisfied in its strongest form: `internal/layout` is not merely "not a second model" -- it is **untouched**, and that is assertable by `git diff --name-only` rather than argued.
+
+### Ruling B -- the declaration is an element key, not a document-level id list
+
+FR51 (`epics.md:109`) ratifies no shape: *"Declare a group of content-band elements that paginate together."* Both an element-level tag and a document-level array of id lists satisfy it, and `unbreakableValues` (`model.go:73`) is a real precedent for the latter. The element key wins on a stated principle rather than taste: **a document-level id list is a second place element ids appear, and something must prune it when a component is deleted.** The engine owns the document and the designer has no grouping concept, so that pruning would be new engine logic serving a referential integrity problem the element key does not have -- a tag is deleted with its element, automatically, and can never dangle. It also needs no existence or band validation of referenced ids; the band and type refusals are local to the element being decoded, where `bandField` already is.
+
+### Ruling C -- the group key lives in a namespace no element id can occupy
+
+`validateElementID` (`ids.go:46-69`) admits only `^e[0-9a-z]+$` with no leading zero and a decoded counter >= 1, enforced document-wide at `parse.go:34-46`. A group key whose `ElementID` contains any character outside `[0-9a-z]` is therefore **provably** never equal to a real element's id. With `IsHeader: false`, that single choice makes every table-shaped path unreachable at once: `headerExtent` cannot match, so Gate B leaves `table == ""` and `ceilingFor` is unnarrowed; no `HeaderRepeats`, `RowDisplacement` or `TableHeaderSuppressed` can be produced; `headerContentOf` cannot match; `footerOrphanTargetsFrom` builds no target and `applyFooterMerge` cannot re-key it. This is a correctness argument with a grammar behind it, not a naming convention -- **assert the namespace in a test**, because the day someone "tidies" the prefix, every one of those paths reopens silently.
+
+### Flag 1 for the engineering lead -- D-4.6.2's leniency, and my reading
+
+**My reading: AC3's extension holds, but only because the intent takes the decision D-4.6.2 explicitly reserved -- and the log must be amended to say so.**
+
+D-4.6.2 grounded the clip carve-out on **two** reasons, and the lead preferred the second: AD-14's ratified noun is *"Over-tall **rows**"* (`ARCHITECTURE-SPINE.md:320-321`), and *"Arm B would extend it beyond what any invariant grants."* Its documentation obligation states the principle as authorship: *"Folio absorbs what the data made too tall, and refuses what the author typed too tall."*
+
+**On that principle alone the extension fails.** I tested the tempting counter-argument -- that a group's union extent is *derived* rather than typed, like a row's -- and it does not survive: because `ColumnItem.Group` is one key per item, a keep-together group **cannot contain a table** (its rows already carry their row key), so every member's height is author-typed. The union is derived from typed inputs by an author-declared membership. Under D-4.6.2's own test, an over-tall keep-together group is *"what the author typed too tall"*, and D-2.6.5 says such an item is a **located error**, not a clip.
+
+**What selects the other way is the intent, twice and unqualified:** AC3 says *"the Story 4.6 exception applies unchanged"*, and the epic's own constraints repeat it. D-4.6.2's tripwire names exactly two lawful arms -- *"give the new grouping its own placement rule, or take the decision to widen the clip deliberately and update D-4.6.2"* -- and a ratified AC that postdates D-4.6.2 and speaks to this precise population **is** that deliberate decision. I have therefore planned the widening rather than halting, and I did not conclude the extension is unsafe.
+
+**What remains the lead's, and why `Block If` holds the commit:** the amendment itself. Landing Part 4's widened tripwire while the decision log still says the carve-out is table-only would amend architecture silently -- the one outcome D-4.6.2 built the tripwire to prevent. The lead should record the amendment (quoted before/after, in the same commit as the code), and confirm one consequence AC3 does not mention: **an over-tall group's clip DROPS whole members' runs and images** (`paginate.go:900-931`, `:1137-1144`), so a signature *image* inside such a group is removed from the document. That follows from "unchanged", but it deserves a conscious yes.
+
+### Flag 2 for the engineering lead -- the diagnostic code, and my dissent
+
+**Applied as dispatched: no code is minted, and `TABLE_ROW_CLIPPED_HEIGHT` is reused with a fourth role arm.** I am recording the dissent rather than acting on it.
+
+D-4.5.1's discriminator: *"Two conditions share a code only if the author would take the same action AND the same thing happened to their document."* Applied here, the first limb arguably holds (content present and truncated) and **the second fails**: the remedy for an over-tall row is *"reduce this row's height (font size or cell padding), shorten the data"*, while the remedy for an over-tall keep-together group is *remove a member, or stop declaring the group* -- a different action on a different object. D-000.65 puts the mint in the story where the condition first ships, which is this one. On the architecture's own tests the answer is **mint**.
+
+Against that: minting costs seven registration sites plus a census witness, and the dispatch settles it as the lead's call. Reuse is also not indefensible -- both conditions are "an atomic unit exceeded the window and was truncated", which is arguably one condition with a second site.
+
+**The part that is not optional either way:** without the fourth role arm, an author's signature block is reported as *"row 0 of the bound collection"* with a remedy about cell padding. That defect is fixed by Part 3 regardless of how the lead rules; only the `Code` string is in question.
+
+### Limits to state, not to fix
+
+- **The canvas does not preview grouping, and this story must not claim it does.** The canvas builds its column items ungrouped (`page_setup.go:647-657`, `:948-953`), and grouping is not among the three floor causes at `:635`. A declared group can therefore move a break the canvas does not draw. **I have not proved grouping preserves the count's floor property in both directions** -- a group can pull a later-visited member *earlier* via the ride-along -- so this story neither claims nor tests that. Do not add a floor cause and do not touch the projection: making the canvas group-aware is a separate story, and DW-40/DW-41 already own the neighbouring honesty questions.
+- **D-7.4.4 stands.** The canvas breaks the raw template string with `nil` substitutions (`page_setup.go:880`), so nothing here claims anything about where a bound value breaks.
+- **DW-43's owner is this plan gate.** Its subject -- no shipped fixture draws an in-sheet seam -- is answered: the keep-together fixture is exactly that instrument, and Part 5 ships one whose column really breaks inside a sheet. **DW-43 is not closed** (the dispatch fences 38-45); amend its entry to name this fixture and leave it open for whoever confirms the canvas draws that seam.
+- **DW-37/DW-40/DW-41/DW-44 are read and left open**; none is touched, because the projection is not modified. DW-32 and DW-38 are untouched because no designer control and no palette kind is added.
+- **No Go/TS mirror obligation arises.** The key is never projected, so `engine-protocol.ts`'s `hasOnly` allow-lists (`:207`, `:244`) are unchanged and `engine-bounds-mirror.test.ts`'s six pairs stay six. Confirm this by grepping the diff for `folio-designer/src` and expecting nothing -- if the designer must change, the plan was wrong.
+
+## Verification
+
+This story changes pagination inputs and the file format, so it carries the heavy tests regardless of the per-epic cadence (D-R7.1). **Report measured pass/fail counts, never "green".**
+
+**Commands:**
+- `cd folio-go && go test -count=1 ./...` -- expected: **exactly ONE** failure, `TestCorpusMeetsP6ExerciseFloors` (`internal/text/corpus_test.go:169`, P6g subtest, floor `:184`, `got 7, need >=20`), the **mandated permanent red**. Never touch it or the P6g floor. Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` (`:243`) must stay **green**. Anything else red is a defect.
+- `cd folio-go && go vet -tags=matrix ./...` -- expected: clean, exit 0.
+- `gofmt -l folio-go` -- run **from the repo root**; expected: no output.
+- `cd folio-go && go test -tags=matrix -run TestTargetRenderHash -v .` -- run **once per leg** with `FOLIO_MATRIX_TARGET` set: `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` (`matrix_test.go:69-74`). ⚠ **Unset, this test logs "asserts NOTHING" and returns -- a no-op is not a pass.** Grep each leg for `asserts NOTHING` and report the count per leg; name the legs that ran.
+- `cd folio-go && go test -tags=matrix -run TestCrossTargetByteIdentity .` -- expected: pass; all four targets from one process.
+- `cd lint && go test ./...` -- expected: pass.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test` -- expected: pass, **280 tests / 33 files unchanged** (this story adds none). **oxlint baseline is exactly 4 `only-export-components` warnings and 0 errors**; a fifth is a regression.
+- `cd folio-designer && npm run test:e2e:compile` -- expected: pass. ⚠ `tsc --noEmit` only. **Browser e2e is deferred by D-000.4 and does NOT execute -- say so rather than implying it ran.**
+
+**Nine digests to report byte-identical** (all **twenty** `goldenDigestRecord` entries must hold): statement-1 76,744 `114df1d6…`; statement-5 127,363 `70dce051…`; statement-20 269,884 `56bfbbd9…`; statement-50 555,829 `5d090b0f…`; mandatory-break 56,681 `7cf743de…`; line-spacing 57,770 `de212115…`; justified-text 59,894 `6da3b12e…`; alignment-rounding 61,346 `986400a1…`; justified-thai 15,079 `58ca4777…`. **This is AC4 -- assert, do not assume.** Confirm `git status fixtures/` shows only the new directory before quoting any digest.
+
+**Known-environmental, not regressions:** `TestShippedFacesReproduceFromUpstream` (`fontgen_matrix_test.go:64`) fails under `-tags=matrix` without `fontTools`; `lint/internal/rules/licencegraph_test.go` is not gofmt-clean (DW-23).
+
+**Manual checks:**
+- **Confirm `git diff --name-only` contains no path under `folio-go/internal/layout/`.** This is AC2's proof and it is mechanical.
+- **Confirm `README.md` appears in no commit and its md5 is still `078d7d80d518d54af2fc04fb270d46b8`.** Stage explicit paths; never `git add -A`.
+- **Red-proof each of these and record what failed:** (1) remove the grouping tags from the fixture template -- the grouped placement assertion must fail, not the ungrouped one; (2) revert the Part 3 substitution so no item is tagged -- the difference assertion must fail; (3) revert the fourth role arm -- the over-tall message assertion must fail on "of the bound collection"; (4) restore `derivationFloor` to 2 and remove one derivation name -- the tripwire must fire naming the function.
+- **Matrix Test Audit:** for every I/O matrix row, grep the covering test for a call to the symbol under test. A test that re-derives a rule instead of calling it is a false green, not a nit.
+- **Verify the namespace claim rather than asserting it in prose:** a test showing the group key's `ElementID` is rejected by `validateElementID`.
+- **Demonstrate end to end** that a signature block authored across a window boundary prints whole on the next page in the real PDF -- not that a conditional changed.
+
+## Auto Run Result
+
+Status: ready-for-dev
+Blocking condition: none
+Dispatch: classic intent, Story 7.7, Epic 7. `Halt after planning.` honoured — spec written, no implementation code, no commits.
+Baseline: `ae8275205b576e3f8cfebe128a1e25e486952122`, working tree clean at dispatch and at halt (this spec is the only untracked addition).
+Epic context: `epic-7-context.md` cache was VALID (mtime 2026-08-30 23:54:50 > newest planning artifact 2026-08-30 23:25:04) and was loaded; not recompiled, so it is unmodified.
+Continuity source: `7-6-the-canvas-draws-every-page-the-document-will-produce.md` (`status: done`).
+Verification: none run — planning-only dispatch executes no build or test commands.
+
+Two items are flagged for the engineering lead at the plan gate; both are ruled in the spec so it is implementable as written, and both are the lead's to overturn:
+1. **D-4.6.2's leniency extended to author-declared groups** (Design Notes, Flag 1). Planned as holding, on AC3's explicit ratified wording, which is the deliberate decision D-4.6.2's own tripwire reserved. It is NOT supported by D-4.6.2's authorship rationale, and the log must be amended. `Block If` holds the commit until it is.
+2. **The diagnostic code** (Design Notes, Flag 2). Applied as dispatched — no mint; `TABLE_ROW_CLIPPED_HEIGHT` is reused with a fourth role arm. Dissent recorded: D-4.5.1's second limb and D-000.65 both point at a mint.
