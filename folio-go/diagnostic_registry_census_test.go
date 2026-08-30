@@ -23,7 +23,28 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 
 	triggers := map[diag.Code]func(*testing.T) error{
 		diag.CodeTemplateMalformed: func(t *testing.T) error {
-			_, err := ParseTemplate([]byte(malformedTemplateJSON))
+			// Story 7.8: this trigger used to be malformedTemplateJSON —
+			// a well-formed document missing a required field — which is
+			// TEMPLATE_FIELD_INVALID now. The production condition this
+			// code still names is a document that is not a `.folio`
+			// document at all, which is the one whose message may quote
+			// the input back.
+			_, err := ParseTemplate([]byte(unparseableTemplateJSON))
+			return err
+		},
+		diag.CodeTemplateFieldInvalid: func(t *testing.T) error {
+			// Story 7.8, D-7.8.1. The GENERAL load-stage condition, and
+			// the census's own reason for existing applies to it as much
+			// as to any specific code: it needs a real production
+			// trigger, not a constructor call. This is the story's own
+			// condition — a table carrying `style.align: "justify"`,
+			// which cascades into cells that cannot draw it — and it
+			// arrives located at the element and the field.
+			source := strings.Replace(roundTripGoldenSource(t), "\"id\": \"e2\",\n          \"style\": {", "\"id\": \"e2\",\n          \"style\": {\n            \"align\": \"justify\",", 1)
+			if source == roundTripGoldenSource(t) {
+				t.Fatal("fixture precondition: the table element's style block was not found, so this trigger would exercise nothing")
+			}
+			_, err := ParseTemplate([]byte(source))
 			return err
 		},
 		diag.CodeExpressionInvalid: func(t *testing.T) error {

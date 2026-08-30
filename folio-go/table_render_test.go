@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -1319,29 +1320,47 @@ const justifyCascadeColumns = `[
   {"id": "e3", "label": "Amount", "width": 160, "bind": "{{row.b}}", "footer": "count"}
 ]`
 
-// TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge pins the scope
-// boundary the three `default:` arms in table_render.go now name, and it
-// pins the CURRENT behaviour rather than a wished-for one.
+// TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad is Story 7.3's
+// TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge, INVERTED at Story
+// 7.8. It is not deleted, and the assertion it carried is not dropped —
+// it MOVED DOWN A LAYER, because its subject no longer exists.
 //
-// `justify` is admitted at style.align and headerStyle.align — the
-// contract REQUIRES it to load, and to raise the document to 2.0 — and
-// those two are exactly what a table cell without its own
-// `columns[].align` falls back to. So a cascaded `justify` really does
-// reach the header, body and footer align switches. None of them has a
-// justify arm, because the contract equally forbids implementing
-// justified table cells: they all take `default:` and draw at the
-// cell's start edge, which is where `left` draws.
+// What it used to pin: `justify` was admitted at style.align and
+// headerStyle.align — the contract REQUIRED such a document to load and
+// to be raised to 2.0 — and those two are exactly what a table cell
+// without its own `columns[].align` falls back to. So a cascaded
+// `justify` really did reach the header, body and footer align
+// switches, none of which has a justify arm, and every cell drew at the
+// start edge. The test asserted byte-identity against `left`, and it was
+// correct against the contract as written.
 //
-// The assertion is therefore byte-identity against `left`, and the
-// `center` leg beside it is what stops that from passing vacuously: if
-// the cascade were being ignored altogether, centred would match too.
-func TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge(t *testing.T) {
+// What DW-29 recorded about that: the author paid a MAJOR version bump
+// — a document unreadable to every 1.x reader — for a render identical
+// to `left`, with no diagnostic anywhere. Story 7.8 refuses the value at
+// load instead, keyed on the CONSUMER: a table's style.align and
+// headerStyle.align validate against the same three values its
+// columns[].align does, because all three meet in one alignFallback.
+//
+// So the byte-identity claim is now UNREACHABLE — no such document can
+// exist — and this test asserts the refusal that makes it unreachable,
+// through the same real load path (ParseTemplate over
+// tableHeaderDocFull, which injects the style at BOTH attachment
+// points).
+//
+// The `center`-vs-`left` leg is PRESERVED, and it is still doing the
+// same job: it proves the cascade genuinely reaches the cell align
+// switches for the values that still load. Without it, "justify is
+// refused" would be consistent with a table that ignores its cascaded
+// align entirely.
+func TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad(t *testing.T) {
 	const data = `{"items": [{"a": "Jan", "b": "7"}, {"a": "Feb", "b": "12"}]}`
+	docFor := func(align string) []byte {
+		style := `{"fontFamily": "latin", "fontSize": 9, "align": "` + align + `"}`
+		return []byte(tableHeaderDocFull(style, style, justifyCascadeColumns, 20))
+	}
 	render := func(align string) []byte {
 		t.Helper()
-		style := `{"fontFamily": "latin", "fontSize": 9, "align": "` + align + `"}`
-		doc := tableHeaderDocFull(style, style, justifyCascadeColumns, 20)
-		tpl, err := ParseTemplate([]byte(doc))
+		tpl, err := ParseTemplate(docFor(align))
 		if err != nil {
 			t.Fatalf("ParseTemplate(align %q): %v", align, err)
 		}
@@ -1352,17 +1371,39 @@ func TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge(t *testing.T) {
 		return res.Bytes
 	}
 
-	justified, left, centred := render("justify"), render("left"), render("center")
-	if sha256Hex(justified) != sha256Hex(left) {
-		t.Errorf(
-			"a table whose cascaded align is \"justify\" rendered differently from the same table at \"left\" "+
-				"(%s vs %s) — justified TABLE CELLS are outside this story's contract, so every cell must take "+
-				"the `default:` arm and draw at the start edge",
-			sha256Hex(justified), sha256Hex(left),
-		)
+	// THE INVERSION. The document tableHeaderDocFull builds carries the
+	// same style at the table's own `style` and at its `headerStyle`, so
+	// whichever the loader reaches first must refuse it, located.
+	_, err := ParseTemplate(docFor("justify"))
+	if err == nil {
+		t.Fatal("a table whose cascaded align is \"justify\" must be REFUSED at load — it would otherwise raise the document to 2.0 and then render identically to \"left\" (DW-29)")
 	}
+	var renderErr *RenderError
+	if !errors.As(err, &renderErr) {
+		t.Fatalf("the refusal must reach the caller as a *RenderError: %T %v", err, err)
+	}
+	if renderErr.Diagnostic.Code != DiagCodeTemplateFieldInvalid {
+		t.Errorf("Code = %q, want %q — an uncoded load error is flattened to \"The template could not be processed\" at the WASM boundary and never reaches the author", renderErr.Diagnostic.Code, DiagCodeTemplateFieldInvalid)
+	}
+	if renderErr.Diagnostic.ElementID != "e1" {
+		t.Errorf("ElementID = %q, want %q — the refusal must name the element", renderErr.Diagnostic.ElementID, "e1")
+	}
+	msg := err.Error()
+	for _, want := range []string{"e1", "align", "left, center, right"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal must contain %q, got: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "right, justify") {
+		t.Errorf("a table's refusal must not name justify among the legal values, got: %s", msg)
+	}
+
+	// THE NON-VACUITY LEG, preserved verbatim in intent: the values that
+	// still load must still reach the cell align switches, or "justify
+	// is refused" would be true of a table that ignores its align.
+	left, centred := render("left"), render("center")
 	if sha256Hex(centred) == sha256Hex(left) {
-		t.Fatal("the centred table renders byte-identically to the left-aligned one, so the cascade is not reaching the cell align switches at all and the identity above is vacuous")
+		t.Fatal("the centred table renders byte-identically to the left-aligned one, so the cascade is not reaching the cell align switches at all and the refusal above proves nothing about a table's alignment")
 	}
-	t.Logf("cascaded justify == left (%s); centred differs (%s)", sha256Hex(left)[:12], sha256Hex(centred)[:12])
+	t.Logf("justify refused at load (%v); centred still differs from left (%s vs %s)", renderErr.Diagnostic.Code, sha256Hex(centred)[:12], sha256Hex(left)[:12])
 }

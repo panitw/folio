@@ -246,11 +246,68 @@ const (
 	// finally exists) with a different remedy, and must NOT be folded in
 	// here to save a mint.
 	//
-	// Forward note, not a decision: with CodeStyleColorInvalid this is
-	// the second per-field style code. Before a THIRD is minted, someone
-	// must decide whether the general form is right or whether AD-14's
-	// closed registry accretes one entry per style field forever.
+	// The forward note this comment used to carry — "before a THIRD
+	// per-field style code is minted, someone must decide whether the
+	// general form is right" — was DECIDED at Story 7.8 (D-7.8.1). The
+	// answer is CodeTemplateFieldInvalid, below, and the rule it
+	// establishes is stated there so the next reader finds the answer
+	// where they would have found the question.
 	CodeStyleLineSpacingInvalid Code = "STYLE_LINE_SPACING_INVALID"
+
+	// CodeTemplateFieldInvalid names the GENERAL LOAD-STAGE condition: a
+	// well-formed template carries a field value that is not acceptable.
+	// A closed-set member that is not in the set, a missing required
+	// field, a value of the wrong JSON kind, an id that is misspelled or
+	// duplicated — every one of them is the same thing happening to the
+	// document and the same thing the reader must do about it.
+	//
+	// THE REGISTRY-POLICY RULE THIS SETTLES (D-7.8.1, ruled 2026-08-31,
+	// answering the reservation this const block carried until Story
+	// 7.8):
+	//
+	//	The GENERAL code is the DEFAULT. A SPECIFIC code is minted only
+	//	when a NAMED CONSUMER must BRANCH on it to behave differently.
+	//	Everything else discriminates on the FIELD datum, which can grow
+	//	freely without touching a closed registry.
+	//
+	// That is D-7.3.1's own lesson applied one level up — partition by
+	// what the consumer DOES, not by where the value is written. A
+	// designer receiving any of these does exactly one thing: locate the
+	// element, name the field, show the value and the reason. One
+	// behaviour, one code. Without this rule AD-14's closed registry
+	// accretes one entry per style field forever.
+	//
+	// SUPPLIED BY THE CONSTRUCTOR, not by a per-site decision:
+	// internal/template's newLoadError attaches it, so every uncoded
+	// load-error site in that package became coded by construction, with
+	// no enumeration and no per-site judgement. newLoadErrorCoded stays
+	// as the override for the conditions that genuinely need
+	// discrimination.
+	//
+	// WHY IT HAD TO EXIST AT ALL. An uncoded *template.LoadError became
+	// CodeTemplateMalformed at folio.ParseTemplate's boundary, and
+	// wasm/cmd/engine's reportableMessage replaces THAT code's message —
+	// and only that one — with "The template could not be processed". So
+	// every located load error in the format was destroyed before its
+	// author saw it. That destruction rule exists because a
+	// malformed-template message quotes the offending document back; a
+	// LoadError's message is "field F (element E): reason (value: V)",
+	// which does not. TEMPLATE_MALFORMED keeps destroying its own
+	// messages, for the reason it was written; what changed at Story 7.8
+	// is that LoadErrors stopped being bucketed there. It still names
+	// the genuinely malformed template — bytes that are not a JSON
+	// object, an unreadable value under an unknown key, a MAJOR the
+	// library cannot load.
+	//
+	// LOAD STAGE ONLY. It does not absorb render-stage conditions:
+	// CodeStyleLineSpacingInvalid's own scope note above already draws
+	// that line, and CodeStyleColorInvalid is a render error by Epic
+	// 10's own AC. Auditing those two against the rule above — does any
+	// consumer BRANCH on them? — is a named obligation triggered by the
+	// folio-go/v0.1.0 tag (D-7.8.2), because AD-14 makes removing a code
+	// a breaking change and that is free exactly once. It is
+	// deliberately NOT this story's work.
+	CodeTemplateFieldInvalid Code = "TEMPLATE_FIELD_INVALID"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -275,6 +332,7 @@ var allCodes = []Code{
 	CodeTableFooterOrphanSuppressed,
 	CodeTableRowClippedHeight,
 	CodeStyleLineSpacingInvalid,
+	CodeTemplateFieldInvalid,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
@@ -309,6 +367,7 @@ var dispositions = map[Code]Disposition{
 	CodeTableFooterOrphanSuppressed: DispositionWarning,
 	CodeTableRowClippedHeight:       DispositionWarning,
 	CodeStyleLineSpacingInvalid:     DispositionError,
+	CodeTemplateFieldInvalid:        DispositionError,
 }
 
 // Classified reports the registry-owned disposition for c. A registered code

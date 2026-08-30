@@ -45,6 +45,7 @@ var diagCodeBridgePins = []struct {
 	{"DiagCodeTableFooterOrphanSuppressed", DiagCodeTableFooterOrphanSuppressed, "TABLE_FOOTER_ORPHAN_SUPPRESSED"},
 	{"DiagCodeTableRowClippedHeight", DiagCodeTableRowClippedHeight, "TABLE_ROW_CLIPPED_HEIGHT"},
 	{"DiagCodeStyleLineSpacingInvalid", DiagCodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
+	{"DiagCodeTemplateFieldInvalid", DiagCodeTemplateFieldInvalid, "TEMPLATE_FIELD_INVALID"},
 }
 
 // declaredDiagCodeConstants enumerates every exported DiagCode* CONSTANT

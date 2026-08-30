@@ -2371,7 +2371,7 @@ words, or whether this should degrade with a located diagnostic.
 
 ---
 
-### DW-29 — `style.align: "justify"` on a table or its `headerStyle` loads, forces the document to 2.0, and renders every cell at the start edge with no diagnostic — ROUTED TO STORY 7.8
+### DW-29 — `style.align: "justify"` on a table or its `headerStyle` loads, forces the document to 2.0, and renders every cell at the start edge with no diagnostic — **CLOSED by Story 7.8, 2026-08-31**
 
 - **Deferred by:** Story 7.3 (2026-08-30). The diff is **contract-correct**: 7.3's intent contract
   explicitly directed that `headerStyle.align: "justify"` load and raise the document to 2.0, while
@@ -2384,7 +2384,8 @@ words, or whether this should degrade with a located diagnostic.
   further deferral**: the ruling stands unchanged, and the work now has a numbered home with its
   inheritances written down.
 - **Severity:** MEDIUM.
-- **Status:** OPEN, ruled, **owned by Story 7.8**.
+- **Status:** **CLOSED** by Story 7.8 (`7-8-refuse-a-justified-table-at-load-in-the-author-s-own-terms.md`),
+  2026-08-31. See *DW-29 IS CLOSED* below for what shipped.
 
 **AMENDED 2026-08-30 at Story 7.4's close — what 7.4 discharged and what it did not.**
 
@@ -2423,6 +2424,53 @@ written in the document.**
 `headerStyle.align: "justify"` load and raise to 2.0 is **superseded** by the lead's ruling and has
 been annotated as such in `7-3-justify-a-paragraph-s-edges.md`. The shipped behaviour matches the
 contract as written at the time; the direction has since changed.
+
+## DW-29 IS CLOSED — Story 7.8, 2026-08-31
+
+**What shipped.** The alignment vocabulary is re-partitioned **by consumer, keyed on element type**,
+which is the partition this entry's own root-cause note said was needed:
+
+- A third closed set, `TableStyleAlignTokens` / `closedTableStyleAligns` — `left, center, right` —
+  in `folio-go/internal/template/closedsets.go`, with an `IsTableStyleAlign` predicate beside
+  `IsStyleAlign`.
+- `decodeStyle` (`folio-go/internal/template/parse_bands.go`) takes an `ElementType` and selects the
+  set by it. A table's `style.align` and `headerStyle.align` are now a **located** load error naming
+  the element and the field, with a message derived from the set that rejected it — so it never
+  names `justify` as legal for a table. A text element's `justify` is untouched and still raises the
+  document to `2.0`.
+- The property-command arm (`folio-go/component_commands.go`) selects the same way, discharging
+  `IsStyleAlign`'s own obligation that the command path validate against the same single source the
+  loader does. That was the one remaining route by which a table document could reach `2.0`.
+- The format-version half needed no code at all on the file path and is asserted rather than
+  implemented: `versionRequiredByContent` runs only at save, on a fully validated `*Document`, so a
+  loader refusal closes the `2.0` raise by construction.
+
+**The blocker this entry recorded is discharged, and by a different answer than it framed.** The
+entry said a located error "cannot reach a designer author without a THIRD per-field style
+diagnostic code", and that this was a lead call. The lead ruled (**D-7.8.1**, 2026-08-31) for the
+**general** form instead: one code, `TEMPLATE_FIELD_INVALID`, supplied by `newLoadError` itself, so
+every uncoded load-error site in `internal/template` became coded by construction. The
+registry-policy rule it establishes is written into `internal/diag/diag.go` in place of the
+reservation that asked the question: **the general code is the default; a specific code is minted
+only when a named consumer must BRANCH on it to behave differently.** `TEMPLATE_MALFORMED` keeps
+destroying its own messages, for the reason it was written — it now names the genuinely malformed
+template rather than every located field error as well.
+
+**Follow-on obligation, deliberately NOT done here.** Auditing `STYLE_COLOR_INVALID` and
+`STYLE_LINE_SPACING_INVALID` against that rule is **D-7.8.2**, triggered by the `folio-go/v0.1.0`
+tag, because AD-14 makes removing a code a breaking change and that is free exactly once.
+
+**And the correction that ruling needed (D-7.8.5).** D-7.8.1's stated ground — *"a `LoadError`'s
+message never quotes the document"* — was **false**, and moving this population off
+`TEMPLATE_MALFORMED` therefore switched off `reportableMessage`'s reflection guard for it. Measured
+at this story's baseline: a well-formed document whose `style` key held 2048 Thai characters went
+from a 35-character refusal to 512 bytes of the author's own file, cut mid-rune. The resolution
+makes the premise **true** — `LoadError.Error()` bounds every author-supplied fragment as it renders
+it into the sentence, in **runes**, with a visible `…`, while the struct fields stay **complete** for
+a Go integrator's CI log. Four fragments were found and bounded, not one: the **value** (84 runes),
+the **element id** (24), the **field path** (96) and the **reason** (256), each derived in
+`errors.go`'s own comment. The same document now produces a 430-byte message of which 347 bytes are
+the engine's own words. `reportableMessage`'s treatment of `TEMPLATE_MALFORMED` is unchanged.
 
 ---
 
@@ -3066,3 +3114,29 @@ correct the comment.
 starts wrapping, those assertions do not become wrong, they become **unreachable**: the test fails
 loudly rather than silently, which is the good direction, but the diagnostic surface a
 `TEMPLATE_MALFORMED` consumer sees would already have changed.
+
+---
+
+### DW-53 — `cmd/folio` prints a load error's full text to a terminal, so terminal-escape content in a `.folio` reaches the terminal
+- **Deferred by:** Story 7.8 (2026-08-31), which **filed rather than fixed** it by explicit
+  instruction in its own intent contract
+- **Owner:** **the story that next changes `folio-go/cmd/folio`'s error reporting, or Story 15.3
+  before the `folio-go/v0.1.0` tag (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** LOW
+- **Status:** OPEN — **pre-existing; this story neither created it nor fixed it**
+
+**The gap.** `cmd/folio` writes `err.Error()` straight to a terminal. A `.folio` whose field values
+carry ANSI escape sequences therefore reaches a terminal that interprets them. Nothing in Story 7.8
+introduced this: the CLI printed the full message before the story and prints it after.
+
+**What Story 7.8 changed, and what it deliberately did not.** D-7.8.5 bounds every author-supplied
+fragment of the message *in runes* at render (`internal/template/errors.go`), so the volume a
+hostile document can push through the CLI is now capped where it was previously unbounded. That is a
+side effect, not a fix: **bounding is not escaping**, and a short escape sequence passes a length
+bound untouched. The remedy is a sanitizing writer in the shell, which is `cmd/folio`'s concern and
+not the format's.
+
+**Why it is filed and not urgent.** The residual is the user's own file rendered on the user's own
+terminal, with no server and no third party anywhere in the product — the same position PRD §13
+records for MVP, which deliberately has no threat model. **FR45's REST service is what reopens it**,
+exactly as it reopens the reflection question D-7.8.5 ruled on.

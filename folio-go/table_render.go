@@ -703,14 +703,16 @@ func collectBandTableRuns(
 				textX = contentX + contentW - measured
 			case "center":
 				textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-			// "left" is the header cell's start edge — and so is "justify".
-			// style.align and headerStyle.align both admit "justify" (it
-			// raises the document to 2.0), and it cascades into a header
-			// cell through alignFallback, but the contract forbids
-			// IMPLEMENTING justified table cells, so a justified table's
-			// header labels are drawn at the start edge. That is a
-			// deliberate, tracked scope boundary, not an oversight. Any
-			// OTHER value the load-time closed-set check already rejected.
+			// "left" is the header cell's start edge. Every other
+			// value the load-time closed-set check already rejected,
+			// and since Story 7.8 that includes "justify": a TABLE's
+			// style.align and headerStyle.align validate against
+			// TableStyleAlignTokens — the same three values
+			// columns[].align admits — precisely because all three
+			// meet here, in alignFallback. A justified value can no
+			// longer cascade into a header cell at all, because the
+			// document carrying it does not load. The scope boundary
+			// this arm used to describe is enforced one stage earlier.
 			default:
 				textX = contentX
 			}
@@ -1044,14 +1046,13 @@ func collectBandTableRuns(
 							textX = contentX + contentW - measured
 						case "center":
 							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-						// "left" is the cell's start edge — and so is
-						// "justify", which style.align admits and cascades
-						// into a body cell through alignFallback. The
-						// contract forbids implementing justified table
-						// cells, so a justified table draws at the start
-						// edge: a deliberate, tracked scope boundary, not an
-						// oversight. Any OTHER value the load-time
-						// closed-set check already rejected.
+						// "left" is the cell's start edge. Every other
+						// value the load-time closed-set check already
+						// rejected — including "justify" since Story
+						// 7.8, which refuses it on a TABLE's own
+						// style.align rather than letting it cascade
+						// into a body cell through alignFallback. This
+						// arm therefore catches only "left".
 						default:
 							textX = contentX
 						}
@@ -1228,14 +1229,13 @@ func collectBandTableRuns(
 							textX = contentX + contentW - measured
 						case "center":
 							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-						// "left" is the cell's start edge — and so is
-						// "justify", which style.align admits and cascades
-						// into a footer cell through alignFallback. The
-						// contract forbids implementing justified table
-						// cells, so a justified table draws at the start
-						// edge: a deliberate, tracked scope boundary, not an
-						// oversight. Any OTHER value the load-time
-						// closed-set check already rejected.
+						// "left" is the cell's start edge. Every other
+						// value the load-time closed-set check already
+						// rejected — including "justify" since Story
+						// 7.8, which refuses it on a TABLE's own
+						// style.align rather than letting it cascade
+						// into a footer cell through alignFallback. This
+						// arm therefore catches only "left".
 						default:
 							textX = contentX
 						}

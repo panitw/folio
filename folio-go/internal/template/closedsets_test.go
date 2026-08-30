@@ -172,11 +172,14 @@ func alignDocWithStyle(style string) []byte {
 `)
 }
 
-// alignDocWithTable is one table carrying a headerStyle and a single
-// column, so a case can put an align spelling at EITHER of the two
-// remaining attachment points — headerStyle (a STYLE set member) and
-// columns[] (a COLUMN set member) — and see which one rejected it.
-func alignDocWithTable(headerStyle, columnExtra string) []byte {
+// alignDocWithTable is one table carrying a headerStyle, a single
+// column and — since Story 7.8 — its own `style` block, so a case can
+// put an align spelling at any of the THREE table attachment points and
+// see which one rejected it. The table's own `style` was absent from
+// this helper until Story 7.8, which is why nothing in the repository
+// pinned a table's `style.align: "justify"` while it was silently
+// accepted (DW-29).
+func alignDocWithTable(tableStyle, headerStyle, columnExtra string) []byte {
 	return []byte(`{
   "assets": {},
   "bands": {
@@ -184,6 +187,7 @@ func alignDocWithTable(headerStyle, columnExtra string) []byte {
       "elements": [
         {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "rows[]", "as": "row", "headerHeight": 20,
           "columns": [{"id": "e2", "label": "L", "width": 100, "bind": "{{row.v}}"` + columnExtra + `}],
+          "style": {` + tableStyle + `},
           "headerStyle": {` + headerStyle + `}}
       ]
     },
@@ -200,11 +204,12 @@ func alignDocWithTable(headerStyle, columnExtra string) []byte {
 `)
 }
 
-// TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps is Story 7.3's structural
-// guard, and it exists because NOTHING enumerated closedAligns' members
-// before the split — TestClosedSetsNeverIncludeMediaType scans this
-// file's inventory but only for media-type shapes, so a `justify` added
-// to the shared map would have passed every test in the repository while
+// TestAlignSetsAreThreeSetsPinnedAgainstTheirMaps is Story 7.3's
+// structural guard, WIDENED at Story 7.8 from two sets to three. It
+// exists because NOTHING enumerated the shared map's members before the
+// first split — TestClosedSetsNeverIncludeMediaType scans this file's
+// inventory but only for media-type shapes, so a `justify` added to the
+// shared map would have passed every test in the repository while
 // silently legalising justified table cells.
 //
 // It pins each ordered slice against its map in BOTH directions and as
@@ -212,7 +217,16 @@ func alignDocWithTable(headerStyle, columnExtra string) []byte {
 // gains a member without gaining it in the slice ships a rejection
 // message that lies about what is legal, and a slice reordered by
 // accident reorders the message every load error prints.
-func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
+//
+// THE ASSERTION THIS TEST USED TO CARRY WAS WRONG, and its name said
+// so. `len(StyleAlignTokens) == len(ColumnAlignTokens)+1` states "there
+// are exactly two sets and they differ by `justify`", which was true of
+// the KEY-PATH partition Story 7.3 shipped and false of the CONSUMER
+// partition that actually holds. The replacement below states the
+// consumer invariant instead: `justify` is admitted by exactly one of
+// the three sets, and the two TABLE sets are the same three values
+// because one alignFallback consumes both.
+func TestAlignSetsAreThreeSetsPinnedAgainstTheirMaps(t *testing.T) {
 	for _, c := range []struct {
 		name   string
 		tokens []string
@@ -220,6 +234,7 @@ func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
 		want   []string
 	}{
 		{"style", StyleAlignTokens, closedStyleAligns, []string{"left", "center", "right", "justify"}},
+		{"table-style", TableStyleAlignTokens, closedTableStyleAligns, []string{"left", "center", "right"}},
 		{"column", ColumnAlignTokens, closedColumnAligns, []string{"left", "center", "right"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -244,26 +259,59 @@ func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
 		})
 	}
 
-	// THE SPLIT ITSELF, stated as the two facts D-7.3.1 turns on.
+	// THE PARTITION ITSELF, stated as the facts D-7.3.1 and Story 7.8
+	// turn on. `justify` belongs to exactly ONE of the three sets: the
+	// one whose consumer is the paragraph justifier.
 	if !closedStyleAligns[AlignJustify] {
-		t.Error("style.align must admit justify (FR47)")
+		t.Error("a non-table element's style.align must admit justify (FR47)")
+	}
+	justifying := 0
+	for _, set := range []map[string]bool{closedStyleAligns, closedTableStyleAligns, closedColumnAligns} {
+		if set[AlignJustify] {
+			justifying++
+		}
+	}
+	if justifying != 1 {
+		t.Fatalf("%d of the three align sets admit justify, want exactly 1 — the paragraph justifier's set alone. A table's style.align, its headerStyle.align and its columns[].align are read into ONE alignFallback and drawn by ONE set of switches, so any of them admitting justify re-opens DW-29", justifying)
+	}
+	if closedTableStyleAligns[AlignJustify] {
+		t.Fatal("a table's style.align/headerStyle.align must NEVER admit justify — it cascades into the same cell switches columns[].align feeds, and the document would pay a MAJOR version bump for a render identical to `left` (DW-29, D-7.3.1's partition corrected at Story 7.8)")
 	}
 	if closedColumnAligns[AlignJustify] {
 		t.Fatal("columns[].align must NEVER admit justify — justified table cells are a separate scope decision, not a side effect of a map edit (D-7.3.1)")
 	}
-	// And neither set is the other by subtraction: every column value is
-	// a style value, and the style set is exactly one larger.
-	for _, tok := range ColumnAlignTokens {
-		if !closedStyleAligns[tok] {
-			t.Errorf("%q is a legal column align but not a legal style align — the two sets have diverged in the wrong direction", tok)
+
+	// THE TWO TABLE SETS ARE THE SAME SET OF VALUES, and that is the
+	// consumer partition made visible: one alignFallback, one
+	// vocabulary. They are separate DECLARATIONS (separately documented
+	// closed sets, either free to move) but a divergence between them
+	// would mean the same switch could receive a value it cannot draw.
+	if len(TableStyleAlignTokens) != len(ColumnAlignTokens) {
+		t.Errorf("the table-style set has %d members and the column set %d — both feed the same alignFallback, so a value legal at one and not the other is a value the cell switches cannot account for", len(TableStyleAlignTokens), len(ColumnAlignTokens))
+	}
+	for i, tok := range TableStyleAlignTokens {
+		if i < len(ColumnAlignTokens) && ColumnAlignTokens[i] != tok {
+			t.Errorf("table-style token %d is %q but column token %d is %q", i, tok, i, ColumnAlignTokens[i])
 		}
 	}
-	if len(StyleAlignTokens) != len(ColumnAlignTokens)+1 {
-		t.Errorf("the style set has %d members and the column set %d — after Story 7.3 they differ by exactly one, `justify`", len(StyleAlignTokens), len(ColumnAlignTokens))
+
+	// And no set is another by subtraction at a call site: every table
+	// value is also a legal non-table style value, so the three sets
+	// have not diverged in the wrong direction.
+	for _, tok := range TableStyleAlignTokens {
+		if !closedStyleAligns[tok] {
+			t.Errorf("%q is a legal table align but not a legal style align — the sets have diverged in the wrong direction", tok)
+		}
+	}
+	for _, tok := range ColumnAlignTokens {
+		if !closedStyleAligns[tok] {
+			t.Errorf("%q is a legal column align but not a legal style align — the sets have diverged in the wrong direction", tok)
+		}
 	}
 
-	// IsStyleAlign is the exported single source the property-command
-	// path validates through; it must agree with the map it wraps.
+	// The exported predicates are the single source the property-command
+	// path validates through; each must agree with the map it wraps, and
+	// they must disagree with each other on exactly `justify`.
 	for _, tok := range StyleAlignTokens {
 		if !IsStyleAlign(tok) {
 			t.Errorf("IsStyleAlign(%q) = false", tok)
@@ -272,26 +320,56 @@ func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
 	if IsStyleAlign("middle") || IsStyleAlign("") {
 		t.Error("IsStyleAlign admits a value the closed set does not")
 	}
+	for _, tok := range TableStyleAlignTokens {
+		if !IsTableStyleAlign(tok) {
+			t.Errorf("IsTableStyleAlign(%q) = false", tok)
+		}
+	}
+	if IsTableStyleAlign(AlignJustify) {
+		t.Error("IsTableStyleAlign admits justify — the property-command path would write onto a table exactly the value the loader refuses")
+	}
+	if IsTableStyleAlign("middle") || IsTableStyleAlign("") {
+		t.Error("IsTableStyleAlign admits a value the closed set does not")
+	}
 }
 
 // TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage is the
-// split's BEHAVIOURAL red-proof: the same word, `justify`, must load at
-// the two style attachment points and be a located load error at the
-// column one — and each message must list exactly the members of the set
-// that rejected it, not the other set's.
+// partition's BEHAVIOURAL red-proof: the same word, `justify`, must load
+// at a TEXT element's style.align and be a located load error at all
+// three of a table's attachment points — and each message must list
+// exactly the members of the set that rejected it, not another set's.
+//
+// Legs (b) and (b2) are Story 7.8's inversion. (b) asserted that
+// `headerStyle.align: "justify"` MUST LOAD, which was correct against
+// the contract as Story 7.3 wrote it and is the shipped behaviour
+// DW-29 records as the defect. It now asserts the refusal. (b2) is new:
+// a table's OWN style.align was pinned by nothing at all, because the
+// helper emitted no table `style` block.
 func TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage(t *testing.T) {
-	// (a) justify LOADS at style.align.
+	// (a) justify LOADS at a TEXT element's style.align.
 	if _, err := ParseDocument(alignDocWithStyle(`"align": "justify"`)); err != nil {
-		t.Errorf("style.align: \"justify\" must load: %v", err)
+		t.Errorf("style.align: \"justify\" on a text element must load: %v", err)
 	}
-	// (b) justify LOADS at headerStyle.align — the second style
-	//     attachment point, which decodeStyle serves through the same
-	//     fieldPrefix parameter.
-	if _, err := ParseDocument(alignDocWithTable(`"align": "justify"`, "")); err != nil {
-		t.Errorf("headerStyle.align: \"justify\" must load: %v", err)
+	// (b) justify is REFUSED at a table's headerStyle.align, located at
+	//     the element and the field.
+	_, berr := ParseDocument(alignDocWithTable("", `"align": "justify"`, ""))
+	if berr == nil {
+		t.Fatal("headerStyle.align: \"justify\" must be a load error — a header cell is a table cell, and it takes the same alignFallback columns[].align feeds (DW-29)")
 	}
+	assertLocatedTableAlignRefusal(t, berr, "headerStyle.align")
+
+	// (b2) justify is REFUSED at a table's OWN style.align. This is the
+	//      door D-7.3.1's key-path partition left open: the guard was
+	//      written for `columns[]` versus `style`, but a table's own
+	//      style cascades into every cell that declares no column align.
+	_, b2err := ParseDocument(alignDocWithTable(`"align": "justify"`, "", ""))
+	if b2err == nil {
+		t.Fatal("a TABLE's own style.align: \"justify\" must be a load error — it cascades into every header, body and footer cell through alignFallback (DW-29)")
+	}
+	assertLocatedTableAlignRefusal(t, b2err, "style.align")
+
 	// (c) justify is REFUSED at columns[].align, located at the column.
-	_, err := ParseDocument(alignDocWithTable("", `, "align": "justify"`))
+	_, err := ParseDocument(alignDocWithTable("", "", `, "align": "justify"`))
 	if err == nil {
 		t.Fatal("columns[].align: \"justify\" must be a load error — justified table cells are not in scope")
 	}
@@ -309,10 +387,11 @@ func TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage(t *testing.T) {
 		t.Errorf("the column rejection must not name justify as legal, got: %v", err)
 	}
 
-	// (d) An illegal STYLE value is rejected with the STYLE set, which
-	//     includes justify. This is the honesty half: before the split
-	//     both sites printed one hand-written literal, so extending
-	//     either set would have shipped a message that lied.
+	// (d) An illegal value on a TEXT element's style is rejected with
+	//     the STYLE set, which includes justify. This is the honesty
+	//     half: before the split both sites printed one hand-written
+	//     literal, so extending either set would have shipped a message
+	//     that lied.
 	_, serr := ParseDocument(alignDocWithStyle(`"align": "middle"`))
 	if serr == nil {
 		t.Fatal("style.align: \"middle\" must be a load error")
@@ -325,23 +404,82 @@ func TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage(t *testing.T) {
 		t.Errorf("the style rejection must be located at style.align, got: %v", serr)
 	}
 
-	// (e) …and at headerStyle it names headerStyle, not its sibling.
-	_, herr := ParseDocument(alignDocWithTable(`"align": "middle"`, ""))
+	// (e) …and at a table's headerStyle it names headerStyle, not its
+	//     sibling — and it does NOT name justify, because that element
+	//     can never carry it. A type-guard bolted above the two shipped
+	//     sets would pass every other leg here and fail this one.
+	_, herr := ParseDocument(alignDocWithTable("", `"align": "middle"`, ""))
 	if herr == nil {
 		t.Fatal("headerStyle.align: \"middle\" must be a load error")
 	}
 	if !strings.Contains(herr.Error(), "headerStyle.align") {
 		t.Errorf("the headerStyle rejection must be located at headerStyle.align, got: %v", herr)
 	}
+	if !strings.Contains(herr.Error(), closedSetMessage(TableStyleAlignTokens)) {
+		t.Errorf("a table's headerStyle rejection must list the TABLE set, got: %v", herr)
+	}
+	if strings.Contains(herr.Error(), AlignJustify) {
+		t.Errorf("a table's rejection message must never name justify as legal — no table element can carry it, got: %v", herr)
+	}
+
+	// (e2) …and at a table's OWN style.align, the same. This is the
+	//      I/O matrix's "table style middle" row: the message must
+	//      list left, center, right and must NOT name justify.
+	_, terr := ParseDocument(alignDocWithTable(`"align": "middle"`, "", ""))
+	if terr == nil {
+		t.Fatal("a table's style.align: \"middle\" must be a load error")
+	}
+	if !strings.Contains(terr.Error(), "style.align") || !strings.Contains(terr.Error(), "e1") {
+		t.Errorf("the table-style rejection must be located at the element and style.align, got: %v", terr)
+	}
+	if !strings.Contains(terr.Error(), closedSetMessage(TableStyleAlignTokens)) {
+		t.Errorf("a table's style rejection must list the TABLE set, got: %v", terr)
+	}
+	if strings.Contains(terr.Error(), AlignJustify) {
+		t.Errorf("a table's rejection message must never name justify as legal, got: %v", terr)
+	}
 
 	// (f) THE MESSAGES ARE DERIVED, not restated: each one contains the
-	//     exact rendering of its own ordered slice. A future edit to
-	//     either set changes both the enforcement and the message, or
-	//     this fails.
+	//     exact rendering of its own ordered slice. A future edit to any
+	//     set changes both the enforcement and the message, or this
+	//     fails.
 	if !strings.Contains(msg, closedSetMessage(ColumnAlignTokens)) {
 		t.Errorf("the column message is not derived from ColumnAlignTokens: %v", err)
 	}
 	if !strings.Contains(smsg, closedSetMessage(StyleAlignTokens)) {
 		t.Errorf("the style message is not derived from StyleAlignTokens: %v", serr)
+	}
+	if !strings.Contains(b2err.Error(), closedSetMessage(TableStyleAlignTokens)) {
+		t.Errorf("the table-style message is not derived from TableStyleAlignTokens: %v", b2err)
+	}
+}
+
+// assertLocatedTableAlignRefusal is AC1's "located" clause, checked the
+// same way at both of a table's style attachment points: the element id,
+// the field, and a legal-values list that is the TABLE set and names no
+// value that element cannot carry.
+func assertLocatedTableAlignRefusal(t *testing.T, err error, field string) {
+	t.Helper()
+	le, ok := err.(*LoadError)
+	if !ok {
+		t.Fatalf("the refusal must be a *LoadError so the field and element travel as DATA, got %T: %v", err, err)
+	}
+	if le.ElementID != "e1" {
+		t.Errorf("LoadError.ElementID = %q, want %q — the refusal must name the element", le.ElementID, "e1")
+	}
+	if le.Field != field {
+		t.Errorf("LoadError.Field = %q, want %q", le.Field, field)
+	}
+	if le.Value != AlignJustify {
+		t.Errorf("LoadError.Value = %q, want %q", le.Value, AlignJustify)
+	}
+	msg := le.Error()
+	for _, want := range []string{"e1", field, closedSetMessage(TableStyleAlignTokens)} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal message must contain %q, got: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, AlignJustify+",") || strings.Contains(msg, ", "+AlignJustify) {
+		t.Errorf("the refusal must not name justify among the legal values for a table, got: %s", msg)
 	}
 }

@@ -227,13 +227,28 @@ func TestVersionForSaveIsRaisedOnlyByContent(t *testing.T) {
 		t.Errorf("a document whose only 1.1 key is on headerStyle requires %q, want %q", got, minorFeatureVersion)
 	}
 
-	// Story 7.3: the SECOND attachment point reaches the 2.0 rule too.
-	dh, err := ParseDocument([]byte(justifyHeaderStyleDoc))
-	if err != nil {
-		t.Fatalf("parse justify headerStyle doc: %v", err)
-	}
-	if got := versionRequiredByContent(dh); got != majorFeatureVersion {
-		t.Errorf("a document whose only justify is on headerStyle requires %q, want %q", got, majorFeatureVersion)
+	// Story 7.3 asserted here that the SECOND attachment point reaches
+	// the 2.0 rule too: justifyHeaderStyleDoc — a TABLE's
+	// headerStyle.align: "justify" — had to LOAD and had to require
+	// 2.0. Story 7.8 INVERTS that. The document is now refused at load,
+	// so it never becomes a *Document and versionRequiredByContent
+	// never sees it; the 2.0 raise is closed by construction rather than
+	// by a version rule (see the version half's own test,
+	// TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed).
+	//
+	// justifyHeaderStyleDoc was REWRITTEN onto a text element rather
+	// than deleted, because the property it was built to prove — that a
+	// rule walking only element.style would miss the second attachment
+	// point, exactly as style.color was missed — is still live for every
+	// 1.1 key. lineSpacingHeaderStyleDoc above keeps proving it for
+	// headerStyle; keeping a justify twin here would only have restated
+	// the text-element cases the table above already covers, so the
+	// const now carries the refusal the epic's own falsified-test list
+	// says must be inverted, not dropped.
+	if _, err := ParseDocument([]byte(justifyHeaderStyleDoc)); err == nil {
+		t.Fatal("a table's headerStyle.align: \"justify\" must now be REFUSED at load — no *Document exists for versionRequiredByContent to raise to 2.0 (Story 7.8, DW-29)")
+	} else if !strings.Contains(err.Error(), "headerStyle.align") || !strings.Contains(err.Error(), "e1") {
+		t.Errorf("the refusal must name the element and the field, got: %v", err)
 	}
 
 	// THE ORDERING CASE, and it is the one a first-hit implementation
@@ -476,10 +491,11 @@ const lineSpacingHeaderStyleDoc = `{
 }
 `
 
-// justifyHeaderStyleDoc is lineSpacingHeaderStyleDoc's Story 7.3 twin:
-// the 2.0 value sits on the OTHER attachment point, a table's
-// headerStyle, which a rule that walked only element.style would miss
-// exactly the way style.color was missed.
+// justifyHeaderStyleDoc was lineSpacingHeaderStyleDoc's Story 7.3 twin,
+// asserting that the 2.0 value on a table's headerStyle raised the
+// document the same way an element's own style does. Story 7.8 refuses
+// that document at load, so the const is now the REFUSAL fixture: the
+// one document in this file whose justify sits on a table.
 const justifyHeaderStyleDoc = `{
   "assets": {},
   "bands": {

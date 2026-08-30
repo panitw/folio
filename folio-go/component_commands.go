@@ -1056,15 +1056,39 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					// Story 7.3. This arm set style.align to WHATEVER
 					// STRING ARRIVED — pre-existing, and harmless only
 					// while one closed set served both vocabularies.
-					// With two live it is the one remaining place they
-					// could be conflated, so it validates through the
-					// STYLE set's own exported predicate, and names the
-					// legal values from that set's ordered slice rather
-					// than from a literal restating it. The COLUMN arm
-					// (updateTableColumn, above) keeps its own triple
-					// and still refuses "justify".
-					if !template.IsStyleAlign(text) {
-						return fmt.Errorf("align must be one of %s", strings.Join(template.StyleAlignTokens, ", "))
+					// With more than one live it is the one remaining
+					// place they could be conflated, so it validates
+					// through the closed sets' own exported predicates,
+					// and names the legal values from the matching
+					// ordered slice rather than from a literal
+					// restating it. The COLUMN arm (updateTableColumn,
+					// above) keeps its own triple and still refuses
+					// "justify".
+					//
+					// Story 7.8: SELECTED BY ELEMENT TYPE, the same way
+					// decodeStyle selects. IsStyleAlign's own doc
+					// comment requires this path to validate against
+					// the same single source the loader does.
+					//
+					// MEASURED, not assumed: applyComponentProperties
+					// serializes and RE-PARSES before installing, so
+					// once the loader refuses a table's `justify` the
+					// round trip already stops the document reaching
+					// 2.0 through this door — with the generic
+					// "component properties did not pass format
+					// validation". What this arm adds is the REFUSAL
+					// THE AUTHOR CAN ACT ON: the field named, and the
+					// legal values for a table rather than for a
+					// paragraph. Without it the inspector would report
+					// a whole-command failure for one bad value and
+					// name neither. It is also the layer that does not
+					// depend on the round trip continuing to exist.
+					admits, tokens := template.IsStyleAlign, template.StyleAlignTokens
+					if element.Type == template.ElementTable {
+						admits, tokens = template.IsTableStyleAlign, template.TableStyleAlignTokens
+					}
+					if !admits(text) {
+						return fmt.Errorf("align must be one of %s", strings.Join(tokens, ", "))
 					}
 					st.Align = template.Presence[string]{Set: true, Value: text}
 				}

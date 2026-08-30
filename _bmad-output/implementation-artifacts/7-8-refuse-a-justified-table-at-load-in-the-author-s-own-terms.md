@@ -2,8 +2,8 @@
 title: 'Story 7.8: Refuse a justified table at load, in the author''s own terms'
 type: 'bugfix'
 created: '2026-08-31'
-status: 'ready-for-dev'
-baseline_revision: '7c892f1d2d99e3bc4ee85703f912262820121954'
+status: 'in-progress'
+baseline_revision: '0da98ecf4438375a38a6e5970783b3c21241be2a'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -526,6 +526,65 @@ genuinely malformed** — `unparseableTemplateJSON`, bytes that are not a `.foli
 destruction rule those tests exist to pin is still pinned, on the population that still carries it.
 A `TEMPLATE_FIELD_INVALID` case was added beside each.
 
+**2026-08-31 — D-7.8.5 implemented, and the ruling's "identify any other author-supplied
+component" clause paid out THREE more.**
+
+The bound lives in `LoadError.Error()` (`folio-go/internal/template/errors.go`). The struct fields
+stay complete; only the sentence rendered for a person is bounded; `reportableMessage`'s treatment of
+`TEMPLATE_MALFORMED` is untouched.
+
+**The criterion, stated once and derived four ways.** *The message must stay dominated by the
+engine's own words — the sentence frame, the field, the element and the reason — inside the wasm
+host's `bounded(message, 512)` window.* Every rune the format admits is BMP (AD-12's closed locale
+set is `en`, `th`, `zh-Hans`, `ja`), so a rune costs **at most 3 bytes** and a bound of *N* runes
+costs at most *3N*.
+
+| Fragment | Bound | Derivation |
+|---|---|---|
+| `Value` | **84 runes** | Wholly the author's, and the fragment that regressed: it takes at most **half** the 512-byte window, so `3N + 3` (the elision marker) `<= 256` → `N <= 84.33`. |
+| `ElementID` | **24 runes** | An id is short **by contract** (AD-10). The longest LEGAL one is 14 runes — `e` plus the 13 base-36 digits the int64 counter ceiling allows — so a longer one is by definition not an id. |
+| `Field` | **96 runes** | The longest path the format can legitimately produce is `assets.<64-hex>.mediaType` = **81 runes**. No engine-authored path is ever truncated; a runaway author key is. |
+| `Reason` | **256 runes** | The longest reason this loader can author is the asset-digest mismatch at **exactly 200 runes** (it names two 64-character digests), plus headroom for the stdlib text the `must be a …: ` arms append. |
+
+**Around 96 was "the expectation, not the requirement"; 84 is the number the criterion actually
+yields, and it is used.**
+
+**Three more author-supplied components, found by measurement rather than by reading the format
+string — which is the mistake D-7.8.5 exists to correct.** Measured at this story's tree before the
+bound:
+
+| Vector | Document | Message |
+|---|---|---|
+| `Value` (the known one) | a well-formed `.folio` whose `style` key holds 2048 Thai characters | **6,323 bytes**; the host reported 512 of them, **cut mid-rune** |
+| `ElementID` **+ `Value` + `Reason`** | `"id"` holding 4096 characters | **12,424 bytes** — `claimID` passes the raw id as ElementID, as Value, and again inside the Reason via `validateElementID`'s `%q`, so one runaway id was reflected **three times in one message** |
+| `Field` | an `assets` key of 4096 characters | **4,263 bytes** — `"assets."+k` splices an author-supplied object key |
+
+`Reason` also interpolates a table's own collection path at `parse_bands.go`'s `footerOf` prefix
+check. Nine `newLoadError` call sites (not seven) pass `string(raw)` as `value`.
+
+**The measured example the ruling asked for.** The same 2048-Thai-character `style` document, through
+the real wasm host under `go_js_wasm_exec`:
+
+```
+code=TEMPLATE_FIELD_INVALID
+430 bytes, 83 author runes reflected, valid UTF-8, visibly elided
+"template: field style (element e1): must be an object: template: expected a JSON object:
+ json: cannot unmarshal string into Go value of type map[string]json.RawMessage (value: \"กกก…83 runes…\")"
+```
+
+347 of those 430 bytes are the engine's own words, and the whole message now fits inside the host's
+window rather than being cut by it. Baseline: **35 characters**, all of them the placeholder.
+
+**`TestWasmHostSanitizesTemplateDiagnostics` carries both arms**, per the `Block If`. Arm one keeps
+the destruction rule on the population that still carries it (unparseable bytes → `TEMPLATE_MALFORMED`,
+message replaced). Arm two asserts the departed population under its new treatment (parseable-but-invalid
+→ `TEMPLATE_FIELD_INVALID`, message survives naming element and field, reflection bounded in runes and
+visibly elided). Arm two was proved non-vacuous twice by mutation — see *Auto Run Result*.
+
+**`cmd/folio` filed, not fixed**, as instructed: `deferred-work.md` **DW-53**. The bound caps the
+*volume* a hostile document pushes through the CLI, which is a side effect and not a fix —
+**bounding is not escaping**, and a short escape sequence passes a length bound untouched.
+
 ## Review Triage Log
 
 ### 2026-08-31 — Review pass
@@ -756,114 +815,75 @@ re-attest.** Confirm `git status fixtures/` is clean before quoting any digest.
 
 ## Auto Run Result
 
-Status: blocked
-Blocking condition: intent gap
+Status: complete
 
-**This supersedes the previous (planning) Auto Run Result. The diagnostic-code
-question D-7.8.1 settled is NOT what blocks this dispatch — that ruling was
-implemented as written and it works. A DIFFERENT gap, invisible until the ruling
-was implemented and measured, blocks it.**
+**This supersedes the previous (blocked) Auto Run Result.** The intent gap it raised was ruled on as
+**D-7.8.5** and written into the intent contract before this dispatch; the ruling is implemented, and
+the premise D-7.8.1 rested on is now true of the message rather than merely asserted about it.
 
-### The unanswered question
+### What was done
 
-**D-7.8.1's ruling rests on a factual premise about `LoadError` that is false, and
-the consequence is a measured regression at the wasm host boundary.**
+The preserved patch (`7-8-attempted-implementation.patch`, 1886 lines) was reapplied as the
+`Resuming` section directs, and D-7.8.5 was implemented on top of it: `LoadError.Error()` bounds every
+author-supplied fragment in **runes**, never splitting one, with a visible `…`; the struct fields stay
+complete. Three author-supplied components beyond `Value` were found by measurement and given the same
+treatment (see the Spec Change Log entry above). `TestWasmHostSanitizesTemplateDiagnostics` was given
+both arms.
 
-The ruling's stated rationale (Design Notes, *"What the lead measured"*) is:
+### Verification — measured, not "green"
 
-> **Its message never quotes the document.** `Error()` renders `"template: field %s
-> (element %s): %s (value: %s)"` — one field, one bounded value. The reflection
-> hazard `reportableMessage` guards against is a **document-quoting** message, and a
-> `LoadError` is not one. **The boundary rule is over-broad by accident, not by
-> design.**
+| Command | Result |
+|---|---|
+| `go test -count=1 ./...` (folio-go) | **1575 pass, 5 skip, 2 fail** — both fails are `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)`, `got 7, need >=20`, the mandated permanent red (parent + subtest). Its drift twin `TestCorpusP6StatsMatchDeclaredBaseline` **PASS**. |
+| `go vet -tags=matrix ./...` | exit 0, no output |
+| `gofmt -l folio-go` (from repo root) | no output |
+| `TestTargetRenderHash`, four legs, `FOLIO_MATRIX_TARGET` exported | `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` — each **1 PASS, 0 FAIL, 0 `asserts NOTHING`** |
+| unset control | **1 `asserts NOTHING`** — the four legs are not no-ops |
+| `TestCrossTargetByteIdentity -tags=matrix` | PASS (21.1s), all four targets from one process |
+| `lint` module `go test ./...` | 4 packages ok |
+| designer `npm run typecheck` | clean |
+| designer `npm run lint` (oxlint) | **exactly 4 `only-export-components` warnings, 0 errors** — the baseline |
+| designer `npm test` | **33 files, 280 tests pass** — unchanged, this story adds none |
+| designer `npm run test:e2e:compile` | clean. **`tsc --noEmit` only; browser e2e is deferred by D-000.4 and did NOT execute.** |
+| wasm host tests under `go_js_wasm_exec` (node v24.16.0) | 5 pass, 0 fail — **executed, not merely compiled** |
 
-**That is not true of the `value` half.** Roughly nineteen `newLoadError` call sites
-pass `string(raw)` — a whole JSON sub-object — as `value`, e.g. `parse_bands.go`'s
-`must be an object` arms, `parse.go:377` (`assets.<key>.data`), `parse.go:323`
-(`fonts.<k>`). Their messages DO quote the document back.
+**All twenty-one `goldenDigestRecord` digests verified byte-identical by hashing the shipped
+`fixtures/<dir>/expected.pdf`: 21 OK, 0 moved.** `git status fixtures/` clean before quoting.
 
-Measured this dispatch, both directions, on a well-formed document whose `style` key
-is a 2048-byte string:
+**Manual checks.** `git diff --name-only`: **0 paths** under `folio-go/internal/layout/`, **0** under
+`folio-designer/`. `README.md` md5 still `078d7d80d518d54af2fc04fb270d46b8`.
+`fixtures/statement-signoff.json` unmodified. `grep -rln justify fixtures/` returns only
+`justified-text` and `justified-thai` (`"type": "text"` in both) plus README prose in those two and
+`statement-20`.
 
-| | code | message length | reflects document |
-|---|---|---|---|
-| baseline `7c892f1` | `TEMPLATE_MALFORMED` | 35 | **no** — replaced with *"The template could not be processed"* |
-| with this story's change | `TEMPLATE_FIELD_INVALID` | 512 | **yes** — 512 bytes of the author's document |
+### Red-proofs, each run and each recorded
 
-So moving `LoadError`s off `TEMPLATE_MALFORMED` — which the intent-contract's
-`Block If` **mandates**, by requiring `newLoadError` itself to supply the code with
-"no enumeration, no per-site judgement" — silently switches off
-`reportableMessage`'s reflection guard for that whole population. The guard's own
-stated purpose (`wasm/cmd/engine/main.go:272-275`) is that a large or hostile
-template is *described, not reflected*.
+| Mutation | What reddened |
+|---|---|
+| **(1)** `decodeStyle` no longer selects by element type | `TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage`, `TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed` (both legs), `TestLoadErrorsCarryFieldValueAndTheGeneralCode/table-style-justify`, `TestVersionForSaveIsRaisedOnlyByContent`, `TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad`, the census. **Every text-justify leg stayed PASS** — verified subtest by subtest. |
+| **(2)** Part 3 command arm reverted to the single predicate | `TestStyleAlignPropertyValidatesAgainstItsConsumersSet`. As the earlier Spec Change Log entry records, `TestAPropertyCommandCannotStampATableDocumentAt2_0` stays green because the round trip re-parses — the message is the arm's product, and that test's doc says so. |
+| **(3)** table message derived from `StyleAlignTokens` | `TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage`, `TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad` — `justify` appears in a table's rejection text |
+| **(4a)** fixture element `table` → `text` | refusal assertions fail: `refusal = field "width" element "e1", want field "style.align"` |
+| **(4b)** partition by KEY PATH (`fieldPrefix == "headerStyle"`) instead of consumer | `a table carrying justify at style.align must be refused at load` — **the sharp proof: the tests key on the consumer, not on the key path, which is the exact defect D-7.3.1 shipped** |
+| **(V)** `styleVersionRank`'s justify arm deleted | `TestVersionForSaveIsRaisedOnlyByContent/justify_alone,_1.0_in` (`"1.0", want "2.0"`), `/justify,_1.1_in`, `TestNewContentIsNeverStampedWithTheLibraryCeiling/the_2.0_alignment`. The version claim is mutation-proved in **both** directions. |
+| **(C)** `newLoadError` reverted to leave `Code` empty (AC41 re-measurement) | `TestLoadErrorsCarryFieldValueAndTheGeneralCode` on **6 of 7** cases, `TestDiagnosticRegistryErrorCensus/TEMPLATE_FIELD_INVALID`, `TestFourErrorModesCarrySeverityErrorDiagnostics/invalid_template_field`, and at the host `TestWasmHostSanitizesTemplateDiagnostics/parseable-but-invalid…` (`code = "TEMPLATE_MALFORMED"`) plus `TestWasmHostReportsTheTableJustifyRefusalIntact`. The re-pointed enumeration test is **not** a dead detector. |
+| **(B1)** `boundRunes` counts BYTES | all four bounding legs: *"only 27 runes survived a bound of 84 … the bound is counting BYTES"*, and *"the message is not valid UTF-8: a bound split a rune"* |
+| **(B2)** bounding removed entirely | *"the message reflected 2048 runes of the author's own document; the bound is 84"*; at the host, *"the host reported 111 runes … the bound is 84"* |
 
-**Why this cannot be resolved from the spec.** Two resolutions are live and they
-differ observably and permanently in what an author, and anyone a template is shared
-with, sees:
+### AC4, end to end at the wasm boundary
 
-1. **Bound the `value` inside `newLoadError`** (e.g. truncate to 128 bytes) so the
-   lead's stated premise becomes true. Consistent with the ruling's rationale, but it
-   changes the user-visible message text of ~19 pre-existing load-error conditions,
-   which is format-adjacent surface this story never scoped.
-2. **Accept the reflection as intended** and re-pin the guard test to the new
-   behaviour, on the grounds that 512 bytes of one's own document is not a hazard.
-   This directly contradicts the ruling's written rationale.
+Executed under `go_js_wasm_exec`, not merely compiled:
 
-The intent-contract selects neither, and it **forbids the third option** — changing
-`reportableMessage`'s treatment of `TEMPLATE_MALFORMED` is an explicit `Block If`.
-Because the lead reasoned about this exact hazard and reached the ruling on a
-premise the code does not satisfy, correcting the premise may change the ruling.
-That returns to the engineering lead rather than being resolved in the diff.
+```
+code=TEMPLATE_FIELD_INVALID
+message="template: field style.align (element e1): not one of the closed set left, center, right (value: justify)"
+; the same value on a text element loaded
+```
 
-**Aggravating factor, and it is the D-7.4.2 shape again.** The one test that ever
-pinned non-reflection, `TestWasmHostSanitizesTemplateDiagnostics`
-(`wasm/cmd/engine/main_test.go`), had its payload changed in the attempted
-implementation from a **parseable** object carrying a 2048-byte value to
-**unparseable** bytes (the closing brace was dropped). Unparseable bytes are now the
-only shape that still reaches `TEMPLATE_MALFORMED`, so the test stays green while
-measuring the one class that can no longer reflect. The detector was re-pointed off
-the population that regressed.
+### Nothing left blocking
 
-### What the attempted implementation got right
+Deferred, unchanged and recorded in this spec's frontmatter: the rect/line/image `justify` gap, the
+dormancy of `main_test.go` in CI (it is build-tagged `js && wasm`; run by hand this dispatch),
+DW-52's bare type assertion, and the designer's stale TypeScript comments. **DW-53 is new** and is
+this story's "file, do not fix" line.
 
-Preserved verbatim at
-[`7-8-attempted-implementation.patch`](7-8-attempted-implementation.patch)
-(1886 lines, verified byte-identical to the working tree before revert). It should be
-the starting point for the re-dispatch, not a fresh start. Independently verified
-this dispatch:
-
-- **D-7.8.1 implemented as ruled** — one code `TEMPLATE_FIELD_INVALID`, supplied by
-  `newLoadError` itself; `newLoadErrorCoded` retained as the override;
-  `reportableMessage` untouched; the reservation at `diag.go:249-252` replaced with
-  the registry-policy rule.
-- **AC4 proven end to end at the wasm boundary**, executed under `js/wasm`, not
-  merely compiled: `code=TEMPLATE_FIELD_INVALID message="template: field style.align
-  (element e1): not one of the closed set left, center, right (value: justify)"`.
-- **AC41's enumeration test re-pointed and re-measured.** Mutation applied
-  independently (revert `newLoadError` to leave `Code` empty): the test reddened on
-  6 of 7 cases plus its coverage witness — *"zero \*LoadErrors reached the CODE
-  assertion, so the re-pointed half of this test measured nothing (D-7.4.2)"*.
-- **Five tests moved, none deleted.** Every removed test function maps 1:1 to a
-  rename: `TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly` →
-  `...AgainstItsConsumersSet`; `TestAlignSetsAreTwoSetsPinned...` →
-  `...AreThreeSetsPinned...`; `TestLoadErrorsCarryFieldAndValue` →
-  `...FieldValueAndTheGeneralCode`; `TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge`
-  → `TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad`, whose byte-identity claim
-  moved down to the load layer with the `center`-vs-`left` non-vacuity leg preserved.
-- **All 21 golden digests byte-identical** by `shasum`; `fixtures/` clean;
-  `README.md` md5 unchanged; zero paths under `folio-go/internal/layout/` or
-  `folio-designer/`.
-- **Full verification ran green** apart from the mandated permanent red — 1569 pass,
-  5 skip, 2 fail (both `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)`).
-  Four matrix legs each printed 0 `asserts NOTHING`; the unset control printed 1.
-
-### Resuming
-
-Record the lead's ruling on the value-reflection question in the spec (amending the
-`Block If` and Part 0 of the intent-contract, which is the orchestrator's to edit),
-then reapply
-`git apply _bmad-output/implementation-artifacts/7-8-attempted-implementation.patch`,
-implement the ruling on top of it, set `status` to `ready-for-dev`, and re-dispatch.
-Seven `patch`-class findings were identified but not applied, since the cascading
-rule makes them moot; they are listed in the dispatch report and should be re-derived
-after the ruling.

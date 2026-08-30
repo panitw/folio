@@ -203,19 +203,27 @@ func mustSerialize(t *testing.T, tpl *Template) []byte {
 	return value
 }
 
-// TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly is Story 7.3's
-// guard on the one place the two alignment vocabularies could still be
-// conflated.
+// TestStyleAlignPropertyValidatesAgainstItsConsumersSet is Story 7.3's
+// guard on the one place the alignment vocabularies could still be
+// conflated, RENAMED and EXTENDED at Story 7.8.
 //
 // This arm previously set style.align to WHATEVER STRING ARRIVED, with no
 // closed-set check at all — harmless only while one shared set served both
-// `style.align` and `columns[].align`. With two live sets it validates
-// through the STYLE set's own exported predicate, so a component may be
-// justified, a nonsense value is refused, and the COLUMN arm
-// (updateTableColumn, TestTableColumnRejectionsDoNotMutate) still refuses
-// `justify` — which is what makes that older test a red-proof of the
-// split rather than a coincidence.
-func TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly(t *testing.T) {
+// `style.align` and `columns[].align`. Story 7.3 gave it the STYLE set's
+// exported predicate, so a component could be justified and a nonsense
+// value was refused, and the COLUMN arm (updateTableColumn,
+// TestTableColumnRejectionsDoNotMutate) still refused `justify`.
+//
+// The name it carried — "…AgainstTheStyleSetOnly" — became FALSE at
+// Story 7.8, and so did its coverage. There is no single style set: a
+// table's style.align is consumed by the cell renderer and admits three
+// values, a text element's is consumed by the paragraph justifier and
+// admits four. This test ran only on `e1`, a TEXT element, so it stayed
+// green while the table half went unwritten — and IsStyleAlign's own doc
+// comment obliges this path to validate against the same single source
+// the loader does. The table leg below is that obligation, and it is the
+// last door by which a table document could still reach format 2.0.
+func TestStyleAlignPropertyValidatesAgainstItsConsumersSet(t *testing.T) {
 	tpl := componentTemplate(t)
 	for _, align := range []string{"left", "center", "right", "justify"} {
 		cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
@@ -247,6 +255,50 @@ func TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly(t *testing.T) {
 		if !bytes.Equal(canonical, after) {
 			t.Errorf("rejecting %q mutated the canonical bytes", align)
 		}
+	}
+
+	// THE TABLE LEG (Story 7.8). `e2` in this fixture is a table, and
+	// `align` is offered on a table exactly as it is on text
+	// (applyPropertyChanges' allowed set) — so before this story the
+	// engine accepted `justify` here, styleFor wrote it onto the
+	// table's style, and the very next SerializeTemplate stamped the
+	// document 2.0. The designer could author, through its own engine, a
+	// file it could not reopen. Story 7.4 closed the UI door only.
+	//
+	// A FRESH template: the text legs above deliberately left `e1`
+	// justified, which raises this document to 2.0 for a legitimate
+	// reason, and that would confound the version assertion below.
+	tpl = componentTemplate(t)
+	for _, align := range []string{"left", "center", "right"} {
+		cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e2"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
+		if _, err := ApplyComponentCommand(tpl, cmd); err != nil {
+			t.Errorf("a table's style.align %q must be accepted: %v", align, err)
+		}
+	}
+	tableCanonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e2"],"changes":{"align":{"op":"set","value":"justify"}}}`)
+	if _, err := ApplyComponentCommand(tpl, cmd); err == nil {
+		t.Fatal("a TABLE's style.align must refuse \"justify\" — the loader refuses it, and this path is required to validate against the same single source (closedsets.go's IsStyleAlign doc comment)")
+	} else {
+		if !strings.Contains(err.Error(), "left, center, right") {
+			t.Errorf("the rejection must name the TABLE set's own members, got: %v", err)
+		}
+		if strings.Contains(err.Error(), "justify") {
+			t.Errorf("the rejection must not name justify among a table's legal values, got: %v", err)
+		}
+	}
+	afterTable, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(tableCanonical, afterTable) {
+		t.Error("refusing a table's justify mutated the canonical bytes")
+	}
+	if bytes.Contains(afterTable, []byte(`"version": "2.0"`)) {
+		t.Error("the refused command still raised the serialized document to 2.0 — the whole point of refusing it is that the author never pays a MAJOR for a value nothing draws")
 	}
 }
 
@@ -531,5 +583,80 @@ func TestUpdateComponentPropertiesBandBoundsFollowTheColumnLift(t *testing.T) {
 	}
 	if after, _ := SerializeTemplate(tpl); !bytes.Equal(canonical, after) {
 		t.Fatal("a refused property change moved the canonical bytes")
+	}
+}
+
+// TestAPropertyCommandCannotStampATableDocumentAt2_0 is Story 7.8's
+// version half on the IN-MEMORY path, end to end: command in, canonical
+// bytes out, and those bytes loaded again.
+//
+// The file path closes by construction — a loader refusal means no
+// *Document ever reaches versionRequiredByContent, which runs only at
+// save.
+//
+// The property-command path holds an already-loaded document, so the
+// loader cannot reach it directly. It is closed TWICE over, and the
+// distinction is worth stating because a green here does not by itself
+// prove the align arm is doing anything: applyComponentProperties (and
+// wasm.Engine.Apply) serialize and RE-PARSE before installing, so a
+// document the loader refuses cannot be installed whatever the arm
+// does. The arm is what makes the refusal LOCATED rather than a generic
+// "component properties did not pass format validation" — which is what
+// TestStyleAlignPropertyValidatesAgainstItsConsumersSet's table leg
+// pins, and that leg is the live red-proof of the arm itself.
+//
+// THE TWO LEGS TOGETHER ARE THE DISCRIMINATOR. The text leg is what
+// distinguishes this from a blanket ban on `justify`, which Story 7.3,
+// Story 7.4 and two shipped goldens forbid.
+func TestAPropertyCommandCannotStampATableDocumentAt2_0(t *testing.T) {
+	command := func(id, align string) []byte {
+		return []byte(`{"kind":"updateComponentProperties","version":1,"ids":["` + id + `"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
+	}
+
+	// THE TABLE: refused, and the document it would have raised stays
+	// where it was — and stays loadable by a 1.x reader.
+	tableTpl := componentTemplate(t)
+	before, err := SerializeTemplate(tableTpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(before, []byte(`"version": "1.0"`)) {
+		t.Fatalf("fixture precondition: worked-example.json must start at 1.0, got:\n%s", before)
+	}
+	if _, err := ApplyComponentCommand(tableTpl, command("e2", "justify")); err == nil {
+		t.Fatal("the property command must refuse justify on a table — otherwise the designer's own engine authors a 2.0 document whose value nothing draws and which the loader then refuses to reopen (AC1)")
+	} else {
+		t.Logf("refused: %v", err)
+	}
+	after, err := SerializeTemplate(tableTpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("the refused command mutated the document")
+	}
+	if !bytes.Contains(after, []byte(`"version": "1.0"`)) {
+		t.Errorf("the serialized document is no longer 1.0 after a REFUSED command:\n%s", after)
+	}
+	if _, err := ParseTemplate(after); err != nil {
+		t.Errorf("the document the engine still holds must remain loadable: %v", err)
+	}
+
+	// THE TEXT ELEMENT: accepted exactly as today, and it DOES raise the
+	// document to 2.0 — which is the honest cost of FR47 and is not what
+	// this story removes.
+	textTpl := componentTemplate(t)
+	if _, err := ApplyComponentCommand(textTpl, command("e1", "justify")); err != nil {
+		t.Fatalf("justify on a TEXT element must still be accepted: %v", err)
+	}
+	textBytes, err := SerializeTemplate(textTpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(textBytes, []byte(`"align": "justify"`)) {
+		t.Errorf("the accepted value did not reach the canonical bytes:\n%s", textBytes)
+	}
+	if !bytes.Contains(textBytes, []byte(`"version": "2.0"`)) {
+		t.Errorf("a justified TEXT element must still raise the document to 2.0 — narrowing by consumer is not a ban:\n%s", textBytes)
 	}
 }

@@ -82,20 +82,31 @@ func newRenderError(code, elementID, dataPath string, err error) *RenderError {
 	}
 }
 
-// wrapTemplateError is ParseTemplate's boundary for FR41's "malformed
-// template" mode (AC4/AC8) AND for R8's TABLE_FOOTER_SOURCE_FORBIDDEN
-// (DW-6): both originate inside internal/template, which may not
-// import the module root (AD-1) and so cannot construct a Diagnostic
-// itself. A *template.LoadError with an explicit Code (set only at
-// parse_bands.go's three footer-source sites — two DW-6 FORBIDDEN
-// sites, plus the out-of-collection UNRESOLVED site swept in at Story
-// 4.5 per D-000.67 part 2 — see internal/template/errors.go's own doc
-// comment) keeps that code; every other LoadError — the
-// overwhelming majority of load-time failures — becomes
-// DiagCodeTemplateMalformed. A non-LoadError (should not occur; kept
-// as a fallback rather than a panic, AD-14) is wrapped the same way.
+// wrapTemplateError is ParseTemplate's boundary for the load path:
+// internal/template may not import the module root (AD-1) and so cannot
+// construct a Diagnostic itself.
+//
+// A *template.LoadError always carries a Code now (Story 7.8, D-7.8.1):
+// diag.CodeTemplateFieldInvalid by default, supplied by newLoadError
+// itself, or one of the four overriding specific codes — the three
+// footer-source ones and STYLE_LINE_SPACING_INVALID. Whichever it is,
+// it is kept. Until Story 7.8 the general population arrived UNCODED and
+// was bucketed under DiagCodeTemplateMalformed, whose message the WASM
+// host replaces wholesale — so every located field error was destroyed
+// before its author could read it. That boundary rule is unchanged and
+// still correct for what it now names.
+//
+// DiagCodeTemplateMalformed remains FR41's "malformed template" mode
+// (AC4/AC8) and is what a NON-LoadError load failure becomes: bytes that
+// are not a JSON object, an unreadable value under an unknown key, or a
+// MAJOR version the library cannot load — the failures that have no
+// field to name, and whose messages can quote the offending document
+// back.
 func wrapTemplateError(err error) error {
 	if le, ok := err.(*template.LoadError); ok {
+		// The zero-Code fallback is retained for a LoadError value
+		// constructed outside this package's two constructors; neither
+		// constructor can produce one.
 		code := DiagCodeTemplateMalformed
 		if le.Code != "" {
 			code = string(le.Code)

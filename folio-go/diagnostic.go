@@ -260,6 +260,33 @@ const DiagCodeStyleColorInvalid = string(diag.CodeStyleColorInvalid)
 // permanent.
 const DiagCodeStyleLineSpacingInvalid = string(diag.CodeStyleLineSpacingInvalid)
 
+// DiagCodeTemplateFieldInvalid names the GENERAL load-stage condition
+// (Story 7.8, D-7.8.1): a well-formed `.folio` document carries a field
+// value that is not acceptable — a closed-set member that is not in the
+// set, a missing required field, a value of the wrong JSON kind, a
+// misspelled or duplicated element id. Loading fails with a
+// *RenderError carrying this code, and the wrapped *template.LoadError
+// names the field, the element (where one applies) and the value.
+//
+// It is deliberately NOT DiagCodeTemplateMalformed. The WASM engine's
+// reportable-message rule replaces that one code's message with a
+// generic string, because a malformed-template message quotes the
+// offending document back; a located field error does not, and being
+// bucketed under TEMPLATE_MALFORMED destroyed every one of them before
+// its author could read it. TEMPLATE_MALFORMED still names the
+// genuinely malformed template — bytes that are not a JSON object, an
+// unreadable value under an unknown key, a MAJOR the library cannot
+// load.
+//
+// Callers DISCRIMINATE ON THE FIELD, not on a per-field code: the rule
+// D-7.8.1 settled is that the general code is the default and a
+// specific code is minted only when a named consumer must BRANCH on it
+// (internal/diag/diag.go states it in full).
+//
+// Additive only (AD-14): once shipped, this string's meaning is
+// permanent.
+const DiagCodeTemplateFieldInvalid = string(diag.CodeTemplateFieldInvalid)
+
 // DiagCodeTableHeaderRepeatSuppressed names Story 4.4's own new condition
 // (FR26, DECISION-2 as ruled by the engineering lead): a table's repeated
 // header could not be honoured on one continuation page because the next

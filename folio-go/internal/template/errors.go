@@ -7,69 +7,181 @@ import (
 )
 
 // LoadError is every load-time failure this package produces (AC41,
-// D-1.4.2): a plain Go error for the overwhelming majority of sites —
-// internal/diag did not exist before Story 3.6 (D-1.4.2's sequencing
-// ruling), and R7's criterion (D-3.6.6) does not license minting a code
-// for every one of them now that it does: "an internal-invariant
-// violation stays a plain error." Field, ElementID (where applicable)
-// and Value are always populated so the message can name what a
-// person needs to fix, without minting a stable code for it.
+// D-1.4.2): Field, ElementID (where applicable) and Value are always
+// populated so the message can name what a person needs to fix.
 //
-// Code is Story 3.6's one addition (R8, DW-6), extended at Story 4.5 and
-// again at Story 7.2. It is set at the coded call sites only
-// (newLoadErrorCoded, below). Three of those name a footer SOURCE
-// condition — D-1.4.2's
-// TABLE_FOOTER_SOURCE_FORBIDDEN parenthetical (footerOf paired with
-// footer: "count", and a footer field present with no footer at all),
-// plus D-1.4.1's TABLE_FOOTER_SOURCE_UNRESOLVED "out-of-collection
-// source" arm (the footerOf prefix check), which Story 3.6 left
-// uncoded and Story 4.5 swept in under D-000.67 part 2. Story 7.2 added
-// a FOURTH, non-footer coded site: STYLE_LINE_SPACING_INVALID, in
-// parse_bands.go, for an out-of-range or inexact `style.lineSpacing`.
-// So "coded" no longer means "about a footer source" — it means the
-// condition has a stable code of its own, whatever it is about.
-// Every other call site leaves it at its zero value (""), which
-// folio.ParseTemplate's boundary (this package may never import the
-// module root, AD-1) reads as "no stable code — mint TEMPLATE_MALFORMED
-// instead." Getting a NEW coded condition wrong is not cosmetic: the
-// WASM host replaces a TEMPLATE_MALFORMED message wholesale, so an
-// uncoded style rejection reaches the author as "The template could not
-// be processed" and names neither the element nor the range. That is the
-// CORRECT reading for
-// the four remaining uncoded footer sites (a `footer`/`footerOf`/
-// `footerFormat` that is not a string, and a `footer` outside the
-// closed set sum/count/avg): those are malformed-template/type
-// failures, not statements about a footer's numeric SOURCE.
+// CODE, and how it stopped being an exception (Story 7.8, D-7.8.1).
+// Until Story 7.8 the overwhelming majority of these carried NO code:
+// internal/diag did not exist before Story 3.6 (D-1.4.2's sequencing
+// ruling), and R7's criterion (D-3.6.6) did not license minting a code
+// for every one of them once it did. Four sites were coded by hand —
+// three footer-source conditions (D-1.4.2's TABLE_FOOTER_SOURCE_FORBIDDEN
+// parenthetical, plus D-1.4.1's TABLE_FOOTER_SOURCE_UNRESOLVED
+// out-of-collection arm swept in at Story 4.5 under D-000.67 part 2) and
+// Story 7.2's STYLE_LINE_SPACING_INVALID.
+//
+// That left every OTHER load error uncoded, which folio.ParseTemplate's
+// boundary (this package may never import the module root, AD-1) read
+// as "no stable code — mint TEMPLATE_MALFORMED instead". The WASM host
+// replaces a TEMPLATE_MALFORMED message wholesale, so a located load
+// error reached the author as "The template could not be processed" and
+// named neither the element nor the field. Story 7.2 minted a code to
+// escape that for ONE field; Story 7.8 ruled that the escape belongs to
+// the whole category, and put diag.CodeTemplateFieldInvalid in
+// newLoadError itself. Code is therefore NEVER "" on an error this
+// package constructs: newLoadError supplies the general code, and
+// newLoadErrorCoded overrides it for the four conditions a consumer can
+// genuinely branch on.
 type LoadError struct {
 	Field     string
 	ElementID string // empty when the error is not scoped to one element/column
 	Value     string
 	Reason    string
-	Code      diag.Code // "" unless this is one of the three coded footer-source conditions
+	Code      diag.Code // never "": the general code, or an overriding specific one
+}
+
+// THE MESSAGE IS BOUNDED WHERE IT IS RENDERED, NOT WHERE IT IS BUILT
+// (Story 7.8, D-7.8.5). D-7.8.1 moved this whole population off
+// TEMPLATE_MALFORMED so a located refusal could reach its author in
+// words — and TEMPLATE_MALFORMED's message is destroyed at the WASM
+// host precisely because "that message quotes the offending document
+// back, so a large or hostile one would be reflected instead of
+// described". The ruling's stated ground for the move was that a
+// LoadError's message is not one of those. MEASURED at 7c892f1 and
+// again here, THAT WAS FALSE: nine of this package's newLoadError call
+// sites pass string(raw) — an arbitrary JSON sub-object — as Value, and
+// a well-formed document whose `style` key holds 2048 characters went
+// from a 35-character refusal to 512 bytes of the author's own file.
+//
+// The fix makes the premise TRUE rather than working around its
+// falsity: the premise was a claim about THE MESSAGE, so the bound
+// belongs to the message. The struct fields stay COMPLETE — a Go
+// integrator's CI log legitimately wants the whole offending JSON, and
+// truncating the datum to fix a presentation problem would be
+// over-broad in exactly the way the boundary rule was. One method, all
+// call sites, no per-site judgement.
+//
+// RUNES, NEVER BYTES, AND NEVER A SPLIT RUNE. A byte bound hands a Thai
+// or CJK author a third of the budget an English one gets — the
+// script-dependence defect ruled on at Story 7.4 — and can cut a rune
+// in half. (The host's own bounded() is a byte cut and does exactly
+// that today; it is the last resort, not this bound.)
+//
+// THE ELISION IS VISIBLE. A truncated fragment that looks whole is a
+// new lie in a message this story exists to make honest, so an elided
+// fragment ends in "…".
+//
+// THE CRITERION THE FOUR BOUNDS ARE DERIVED FROM: the message must stay
+// dominated by the engine's own words — the sentence frame, the field,
+// the element and the reason — inside the wasm host's
+// bounded(message, 512) window (wasm/cmd/engine/main.go). Each bound is
+// derived below; none is a round number taken on faith.
+//
+// FOUR, NOT ONE. D-7.8.5 named Value as "the author-supplied component
+// identified so far" and required any other found to get the same
+// treatment. Three more were found and measured (see the story record):
+// the ELEMENT ID is the raw string from the document at claimID's two
+// sites, so an invalid 4096-character id was reflected three times over
+// in one 12,424-byte message; the FIELD splices an author-supplied
+// object key at `assets.<k>` and `fonts.<k>`, measured at 4,263 bytes;
+// and the REASON interpolates the author's id (ids.go's %q arms) and a
+// table's own collection path (parse_bands.go's footerOf prefix check).
+const (
+	// A rune costs at most 3 bytes for every script the format admits —
+	// AD-12's closed locale set (en, th, zh-Hans, ja) is entirely
+	// within the BMP — so a bound of N runes costs at most 3N bytes.
+
+	// loadErrorValueRunes: the value is wholly the author's and is the
+	// fragment that regressed, so it takes at most HALF the host's
+	// 512-byte window and the engine's words keep the majority:
+	// 3N + 3 (the elision marker) <= 256 gives N <= 84.33, so 84.
+	loadErrorValueRunes = 84
+
+	// loadErrorElementIDRunes: an id is short BY CONTRACT (AD-10) — the
+	// longest LEGAL one is 14 runes, "e" plus the 13 base-36 digits the
+	// int64 counter ceiling allows — so a long one is by definition not
+	// an id and holds nothing to read. 24 is comfortably above every
+	// legal id and reflects nothing beyond it.
+	loadErrorElementIDRunes = 24
+
+	// loadErrorFieldRunes: a field path is engine-shaped with an author
+	// key spliced in, so the bound is the longest path the format can
+	// legitimately produce — `assets.` + a 64-character digest +
+	// `.mediaType` = 81 runes — rounded up to 96. No engine-authored
+	// path is ever truncated; an author's runaway key is.
+	loadErrorFieldRunes = 96
+
+	// loadErrorReasonRunes: a reason is engine prose that at a few sites
+	// quotes the author back, so the bound is the longest reason this
+	// loader can author — the asset-digest mismatch, exactly 200 runes
+	// because it names two 64-character digests — rounded up to 256 for
+	// headroom over the stdlib text the `must be a …: ` arms append. No
+	// engine-authored reason is ever truncated.
+	loadErrorReasonRunes = 256
+)
+
+// boundRunes returns s unchanged when it is at most max runes, and
+// otherwise its first max runes followed by the elision marker. Ranging
+// a string yields the byte index of each rune's FIRST byte, so the cut
+// can never land inside one; invalid UTF-8 is yielded a byte at a time
+// and is equally safe to cut at.
+func boundRunes(s string, max int) string {
+	runes := 0
+	for i := range s {
+		if runes == max {
+			return s[:i] + "…"
+		}
+		runes++
+	}
+	return s
 }
 
 func (e *LoadError) Error() string {
+	field := boundRunes(e.Field, loadErrorFieldRunes)
+	reason := boundRunes(e.Reason, loadErrorReasonRunes)
+	value := boundRunes(e.Value, loadErrorValueRunes)
 	if e.ElementID != "" {
-		return fmt.Sprintf("template: field %s (element %s): %s (value: %s)", e.Field, e.ElementID, e.Reason, e.Value)
+		return fmt.Sprintf("template: field %s (element %s): %s (value: %s)", field, boundRunes(e.ElementID, loadErrorElementIDRunes), reason, value)
 	}
-	return fmt.Sprintf("template: field %s: %s (value: %s)", e.Field, e.Reason, e.Value)
+	return fmt.Sprintf("template: field %s: %s (value: %s)", field, reason, value)
 }
 
-// newLoadError is the single constructor every UNCODED load-error site
+// newLoadError is the single constructor every GENERAL load-error site
 // in this package calls (AC41's enumeration test walks call sites of
 // this function).
+//
+// Story 7.8, D-7.8.1: it SUPPLIES diag.CodeTemplateFieldInvalid itself.
+// Until this story it left Code at "", which folio.ParseTemplate's
+// boundary read as TEMPLATE_MALFORMED — whose message the WASM host
+// replaces wholesale with "The template could not be processed". Every
+// located load error in the format was therefore destroyed before its
+// author could read it: the field, the element and the value all
+// travelled inside a message nothing was allowed to show. Putting the
+// code in the CONSTRUCTOR rather than at the call sites is what makes
+// that structural rather than enumerative — there is no per-site
+// judgement to get wrong, and no new site can be added uncoded.
+//
+// The condition it names is one condition, not one per field: "a
+// well-formed template carries a field value that is not acceptable".
+// A consumer discriminates on Field, which grows freely; the registry
+// does not. See internal/diag/diag.go's CodeTemplateFieldInvalid for
+// the rule in full.
 func newLoadError(field, elementID, value, reason string) error {
-	return &LoadError{Field: field, ElementID: elementID, Value: value, Reason: reason}
+	return &LoadError{Field: field, ElementID: elementID, Value: value, Reason: reason, Code: diag.CodeTemplateFieldInvalid}
 }
 
-// newLoadErrorCoded is Story 3.6's second constructor (R8/DW-6),
-// called ONLY at parse_bands.go's three footer-source sites: the two
-// TABLE_FOOTER_SOURCE_FORBIDDEN ones (one code, two sites, because the
-// code names the CONDITION, not the line) and the single
-// TABLE_FOOTER_SOURCE_UNRESOLVED one (the out-of-collection footerOf
-// prefix check, swept in at Story 4.5 under D-000.67 part 2 — Story
-// 3.6 coded the two FORBIDDEN checks beside it and left this one
-// plain, which was an absorption gap, not a decision).
+// newLoadErrorCoded is Story 3.6's second constructor (R8/DW-6): the
+// OVERRIDE for a condition that carries a code of its own rather than
+// the general one newLoadError supplies. Called at parse_bands.go's
+// three footer-source sites — the two TABLE_FOOTER_SOURCE_FORBIDDEN
+// ones (one code, two sites, because the code names the CONDITION, not
+// the line) and the single TABLE_FOOTER_SOURCE_UNRESOLVED one (the
+// out-of-collection footerOf prefix check, swept in at Story 4.5 per
+// D-000.67 part 2) — plus Story 7.2's STYLE_LINE_SPACING_INVALID.
+//
+// D-7.8.1 fixes when a new one is warranted: only when a NAMED CONSUMER
+// must BRANCH on the code to behave differently. Everything else takes
+// the general code and discriminates on Field.
 func newLoadErrorCoded(field, elementID, value, reason string, code diag.Code) error {
 	return &LoadError{Field: field, ElementID: elementID, Value: value, Reason: reason, Code: code}
 }

@@ -27,6 +27,19 @@ const malformedTemplateJSON = `{
 }
 `
 
+// unparseableTemplateJSON is what FR41's "malformed template" mode
+// actually names since Story 7.8: bytes that are not a `.folio`
+// DOCUMENT at all. It has no field to be located at, and its own error
+// text can quote the offending input back — which is exactly why
+// wasm/cmd/engine's reportableMessage replaces TEMPLATE_MALFORMED's
+// message and only that one.
+//
+// malformedTemplateJSON above (a well-formed JSON object missing the
+// required `version` key) is the OTHER half of what that one code used
+// to carry, and it is now TEMPLATE_FIELD_INVALID: a located field error
+// whose message names the field and quotes nothing.
+const unparseableTemplateJSON = `["not", "a", "folio", "document"]`
+
 const invalidExpressionTemplateJSON = `{
   "assets": {},
   "bands": {
@@ -72,6 +85,11 @@ const unresolvableBindingTemplateJSON = `{
 // &RenderError), carrying a DISTINCT registry code, SeverityError, and
 // a message locating the element — WITHOUT reading Message to learn
 // which mode fired (AC9: match on the code, never on message text).
+//
+// Story 7.8 splits the "malformed template" mode into the two codes it
+// always contained: TEMPLATE_MALFORMED for a document that is not a
+// document, TEMPLATE_FIELD_INVALID for a well-formed document carrying
+// an unacceptable field value. Five cases, four FR41 modes.
 func TestFourErrorModesCarrySeverityErrorDiagnostics(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -82,10 +100,26 @@ func TestFourErrorModesCarrySeverityErrorDiagnostics(t *testing.T) {
 		{
 			name: "malformed template",
 			build: func(t *testing.T) error {
-				_, err := ParseTemplate([]byte(malformedTemplateJSON))
+				_, err := ParseTemplate([]byte(unparseableTemplateJSON))
 				return err
 			},
 			wantCode:      DiagCodeTemplateMalformed,
+			wantElementID: "",
+		},
+		{
+			// Story 7.8, D-7.8.1: FR41's "malformed template" mode
+			// covers two observably different failures, and until this
+			// story both carried one code — so a LOCATED field error
+			// was flattened at the WASM boundary along with the
+			// document-quoting one the flattening exists for. They are
+			// now distinct codes, and the pairwise-distinctness check
+			// below is what holds them apart.
+			name: "invalid template field",
+			build: func(t *testing.T) error {
+				_, err := ParseTemplate([]byte(malformedTemplateJSON))
+				return err
+			},
+			wantCode:      DiagCodeTemplateFieldInvalid,
 			wantElementID: "",
 		},
 		{
@@ -249,7 +283,12 @@ func TestMessageRewriteDoesNotAffectCodeRecovery(t *testing.T) {
 		wantMessageSubstr string // a real, production-owned phrase — never derived from wantCode
 	}{
 		{
-			name: "malformed template",
+			// Repointed at Story 7.8: this fixture's condition — a
+			// required field missing from an otherwise well-formed
+			// document — is TEMPLATE_FIELD_INVALID now, not
+			// TEMPLATE_MALFORMED. The property under test is unchanged:
+			// Code is recovered without reading Message.
+			name: "invalid template field",
 			build: func(t *testing.T) (string, string) {
 				_, err := ParseTemplate([]byte(malformedTemplateJSON))
 				if err == nil {
@@ -261,7 +300,7 @@ func TestMessageRewriteDoesNotAffectCodeRecovery(t *testing.T) {
 				}
 				return renderErr.Diagnostic.Code, renderErr.Diagnostic.Message
 			},
-			wantCode:          DiagCodeTemplateMalformed,
+			wantCode:          DiagCodeTemplateFieldInvalid,
 			wantMessageSubstr: "missing required field",
 		},
 		{

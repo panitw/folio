@@ -233,3 +233,67 @@ func TestVersionForRankIsStrictlyAscending(t *testing.T) {
 		t.Errorf("versionForRank does not map each named rank to its own constant: got %v", versionForRank)
 	}
 }
+
+// TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed is Story
+// 7.8's version half, asserted rather than coded — because on the file
+// path there is nothing to code.
+//
+// versionRequiredByContent runs ONLY at save: its one non-test caller is
+// versionForSave, whose one non-test caller is serialize.go. The load
+// path touches version only at parse.go's checkVersionLoadable, on the
+// DECLARED STRING, before bands are decoded at all. So once decodeStyle
+// refuses a table's justify, ParseDocument returns (nil, err) and no
+// *Document ever exists for the version probe to observe. The 2.0 raise
+// is closed by construction; styleVersionRank needs no element type and
+// is not a defect for lacking one.
+//
+// THE TWO LEGS TOGETHER ARE THE DISCRIMINATOR. Either alone is equally
+// consistent with a blanket ban on `justify`, which Story 7.3, Story 7.4
+// and two shipped goldens forbid. The text leg is what proves the
+// refusal is keyed on the CONSUMER and not on the word.
+func TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed(t *testing.T) {
+	// Leg 1 — the TABLE. Refused at load, at both of its style
+	// attachment points, so no *Document reaches the probe.
+	for _, c := range []struct {
+		name      string
+		doc       []byte
+		wantField string
+	}{
+		{"table style.align", alignDocWithTable(`"align": "justify"`, "", ""), "style.align"},
+		{"table headerStyle.align", alignDocWithTable("", `"align": "justify"`, ""), "headerStyle.align"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d, err := ParseDocument(c.doc)
+			if err == nil {
+				t.Fatalf("a table carrying justify at %s must be refused at load", c.wantField)
+			}
+			if d != nil {
+				t.Fatalf("ParseDocument returned a non-nil *Document alongside its error; versionRequiredByContent could observe it: %+v", d)
+			}
+			le, ok := err.(*LoadError)
+			if !ok {
+				t.Fatalf("want a located *LoadError, got %T: %v", err, err)
+			}
+			if le.Field != c.wantField || le.ElementID != "e1" {
+				t.Fatalf("refusal = field %q element %q, want field %q element %q", le.Field, le.ElementID, c.wantField, "e1")
+			}
+			// And the refusal PRECEDES the version entirely: the
+			// document declares 2.0 in its own bytes and is still
+			// refused, so nothing about this outcome came from a
+			// version comparison.
+			if !strings.Contains(string(c.doc), `"version": "2.0"`) {
+				t.Fatal("fixture precondition: the document must declare 2.0 itself, so the refusal cannot be mistaken for a version check")
+			}
+		})
+	}
+
+	// Leg 2 — the TEXT element, unchanged. It loads, and it still
+	// requires 2.0. Remove this and a blanket ban passes the file.
+	d, err := ParseDocument(alignDocWithStyle(`"align": "justify"`))
+	if err != nil {
+		t.Fatalf("a TEXT element's style.align: \"justify\" must still load (FR47, Story 7.3): %v", err)
+	}
+	if got := versionRequiredByContent(d); got != majorFeatureVersion {
+		t.Errorf("versionRequiredByContent over a justified TEXT element = %q, want %q — this story narrows the set by consumer, it does not ban the value", got, majorFeatureVersion)
+	}
+}

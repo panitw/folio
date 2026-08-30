@@ -207,7 +207,7 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 		if rawIsNull(styRaw) {
 			el.Style = presentNull[Style]()
 		} else {
-			st, err := decodeStyle(string(id), styRaw, "style")
+			st, err := decodeStyle(string(id), el.Type, styRaw, "style")
 			if err != nil {
 				return Element{}, err
 			}
@@ -394,7 +394,11 @@ func decodeTableExt(ctx *parseCtx, id string, obj map[string]json.RawMessage) (T
 		if rawIsNull(hsRaw) {
 			t.HeaderStyle = presentNull[Style]()
 		} else {
-			hs, err := decodeStyle(id, hsRaw, "headerStyle")
+			// Statically a table: decodeTableExt's only caller sits
+			// under `case ElementTable:`. The constant is passed
+			// rather than a variable because there is no type in
+			// scope to pass, and a headerStyle exists on nothing else.
+			hs, err := decodeStyle(id, ElementTable, hsRaw, "headerStyle")
 			if err != nil {
 				return TableExt{}, nil, err
 			}
@@ -577,7 +581,17 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 // (finisher fix, Story 4.1 review Finding 5 — previously EVERY
 // diagnostic raised inside a headerStyle block named "style", sending
 // the template author to the wrong block).
-func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Style, error) {
+//
+// elementType is the CONSUMER (Story 7.8). A Style block's meaning is
+// not fixed by the key it was written under — a table's `style.align`
+// is consumed by the cell renderer, exactly like its `columns[].align`,
+// while a text element's is consumed by the paragraph justifier — so
+// the closed set `align` validates against is selected by the element
+// that owns the block, never by the key path. Both callers already hold
+// the type: decodeElement has el.Type live, and decodeTableExt is
+// statically a table. See closedsets.go's header for why this is the
+// partition that holds.
+func decodeStyle(elementID string, elementType ElementType, raw json.RawMessage, fieldPrefix string) (Style, error) {
 	obj, err := decodeObjectMap(raw)
 	if err != nil {
 		return Style{}, newLoadError(fieldPrefix, elementID, string(raw), "must be an object: "+err.Error())
@@ -591,10 +605,21 @@ func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Sty
 		if err != nil {
 			return Style{}, newLoadError(fieldPrefix+".align", elementID, string(r), "must be a string: "+err.Error())
 		}
-		// THE STYLE SET (Story 7.3, D-7.3.1): the column triple plus
-		// `justify` (FR47). Same derived message, from the other slice.
-		if !closedStyleAligns[s] {
-			return Style{}, newLoadError(fieldPrefix+".align", elementID, s, closedSetMessage(StyleAlignTokens))
+		// THE SET IS CHOSEN BY THE CONSUMER (Story 7.8), not by the
+		// key this block was written under. A table's style.align and
+		// headerStyle.align feed the same alignFallback its
+		// columns[].align does, so they admit the same three values;
+		// every other element's style.align is the paragraph
+		// justifier's own input and admits `justify` (FR47). The
+		// message is derived from whichever ordered slice did the
+		// rejecting, so it can never name `justify` as legal for an
+		// element that cannot carry it.
+		tokens, admits := StyleAlignTokens, closedStyleAligns
+		if elementType == ElementTable {
+			tokens, admits = TableStyleAlignTokens, closedTableStyleAligns
+		}
+		if !admits[s] {
+			return Style{}, newLoadError(fieldPrefix+".align", elementID, s, closedSetMessage(tokens))
 		}
 		st.Align = present(s)
 	}

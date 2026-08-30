@@ -1,0 +1,1886 @@
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 67472e3..cc5a256 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -2371,7 +2371,7 @@ words, or whether this should degrade with a located diagnostic.
+ 
+ ---
+ 
+-### DW-29 — `style.align: "justify"` on a table or its `headerStyle` loads, forces the document to 2.0, and renders every cell at the start edge with no diagnostic — ROUTED TO STORY 7.8
++### DW-29 — `style.align: "justify"` on a table or its `headerStyle` loads, forces the document to 2.0, and renders every cell at the start edge with no diagnostic — **CLOSED by Story 7.8, 2026-08-31**
+ 
+ - **Deferred by:** Story 7.3 (2026-08-30). The diff is **contract-correct**: 7.3's intent contract
+   explicitly directed that `headerStyle.align: "justify"` load and raise the document to 2.0, while
+@@ -2384,7 +2384,8 @@ words, or whether this should degrade with a located diagnostic.
+   further deferral**: the ruling stands unchanged, and the work now has a numbered home with its
+   inheritances written down.
+ - **Severity:** MEDIUM.
+-- **Status:** OPEN, ruled, **owned by Story 7.8**.
++- **Status:** **CLOSED** by Story 7.8 (`7-8-refuse-a-justified-table-at-load-in-the-author-s-own-terms.md`),
++  2026-08-31. See *DW-29 IS CLOSED* below for what shipped.
+ 
+ **AMENDED 2026-08-30 at Story 7.4's close — what 7.4 discharged and what it did not.**
+ 
+@@ -2424,6 +2425,41 @@ written in the document.**
+ been annotated as such in `7-3-justify-a-paragraph-s-edges.md`. The shipped behaviour matches the
+ contract as written at the time; the direction has since changed.
+ 
++## DW-29 IS CLOSED — Story 7.8, 2026-08-31
++
++**What shipped.** The alignment vocabulary is re-partitioned **by consumer, keyed on element type**,
++which is the partition this entry's own root-cause note said was needed:
++
++- A third closed set, `TableStyleAlignTokens` / `closedTableStyleAligns` — `left, center, right` —
++  in `folio-go/internal/template/closedsets.go`, with an `IsTableStyleAlign` predicate beside
++  `IsStyleAlign`.
++- `decodeStyle` (`folio-go/internal/template/parse_bands.go`) takes an `ElementType` and selects the
++  set by it. A table's `style.align` and `headerStyle.align` are now a **located** load error naming
++  the element and the field, with a message derived from the set that rejected it — so it never
++  names `justify` as legal for a table. A text element's `justify` is untouched and still raises the
++  document to `2.0`.
++- The property-command arm (`folio-go/component_commands.go`) selects the same way, discharging
++  `IsStyleAlign`'s own obligation that the command path validate against the same single source the
++  loader does. That was the one remaining route by which a table document could reach `2.0`.
++- The format-version half needed no code at all on the file path and is asserted rather than
++  implemented: `versionRequiredByContent` runs only at save, on a fully validated `*Document`, so a
++  loader refusal closes the `2.0` raise by construction.
++
++**The blocker this entry recorded is discharged, and by a different answer than it framed.** The
++entry said a located error "cannot reach a designer author without a THIRD per-field style
++diagnostic code", and that this was a lead call. The lead ruled (**D-7.8.1**, 2026-08-31) for the
++**general** form instead: one code, `TEMPLATE_FIELD_INVALID`, supplied by `newLoadError` itself, so
++every uncoded load-error site in `internal/template` became coded by construction. The
++registry-policy rule it establishes is written into `internal/diag/diag.go` in place of the
++reservation that asked the question: **the general code is the default; a specific code is minted
++only when a named consumer must BRANCH on it to behave differently.** `TEMPLATE_MALFORMED` keeps
++destroying its own messages, for the reason it was written — it now names the genuinely malformed
++template rather than every located field error as well.
++
++**Follow-on obligation, deliberately NOT done here.** Auditing `STYLE_COLOR_INVALID` and
++`STYLE_LINE_SPACING_INVALID` against that rule is **D-7.8.2**, triggered by the `folio-go/v0.1.0`
++tag, because AD-14 makes removing a code a breaking change and that is free exactly once.
++
+ ---
+ 
+ ### DW-30 — AC-TH2's wording in the owner's scope amendment is wrong on the facts, and a reader checking it the obvious way concludes the test is broken
+diff --git a/_bmad-output/specs/spec-folio/folio-format.md b/_bmad-output/specs/spec-folio/folio-format.md
+index 93247c4..eab6e02 100644
+--- a/_bmad-output/specs/spec-folio/folio-format.md
++++ b/_bmad-output/specs/spec-folio/folio-format.md
+@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
+ 
+ | Field | Meaning |
+ |---|---|
+-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"`, else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
++| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is three closed sets* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+ | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
+ | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
+ | `page` | Page setup (below). |
+@@ -76,9 +76,37 @@ Top-level keys appear sorted, as does every object in the file — that is the s
+ > MINOR could have carried — was rejected deliberately: an older reader would have ignored the
+ > unknown key and drawn the paragraph ragged while believing it had rendered the document
+ > correctly, which is precisely the silently-wrong render the closed-set rule exists to prevent. A
+-> `2.0` document is *unreadable* to a `1.x` reader, and that is the honest outcome. Note that
+-> `align` is now **two** closed sets, not one: `columns[].align` keeps exactly `left`, `center`,
+-> `right`, and a justified table cell remains a separate scope decision that has not been taken.
++> `2.0` document is *unreadable* to a `1.x` reader, and that is the honest outcome.
++
++### Alignment is three closed sets, partitioned by consumer
++
++`align` is not one closed set, and it is not two. It is **three**, and they are keyed on **the code
++that consumes the value**, which in this format means **the element type that owns the style block**:
++
++| Set | Where it applies | Legal values |
++|---|---|---|
++| Style align | a **non-table** element's own `style.align` | `left` · `center` · `right` · `justify` |
++| Table style align | a **table**'s `style.align` and its `headerStyle.align` | `left` · `center` · `right` |
++| Column align | `columns[].align` | `left` · `center` · `right` |
++
++A value outside its own set is a **located load error** naming the element and the field, and the
++message lists exactly the members of the set that rejected it — so a table's rejection never names
++`justify` as legal, and a text element's always does.
++
++**Why the partition is by consumer and not by key path, which is the reusable half.** Story 7.3
++split the original single set in two along the JSON key — `style`/`headerStyle` on one side,
++`columns[]` on the other — intending to make justified table cells impossible. It did not, because a
++table's `style.align`, its `headerStyle.align` and its `columns[].align` are all read into one
++fallback and drawn by one set of cell switches: they are **one consumer wearing three key paths**.
++So a table declaring `style.align: "justify"` loaded, paid the MAJOR version bump, and rendered
++identically to `left` with no diagnostic — the author paid the whole cost of `2.0` and received
++nothing (Story 7.8, DW-29).
++
++> **When splitting a closed set, partition it by the code that consumes the value, not by where the
++> value is written in the document.**
++
++Justified table cells remain a scope decision that has not been taken. What changed at Story 7.8 is
++that the format now *refuses* the declaration instead of accepting it and ignoring it.
+ 
+ ## `page`
+ 
+@@ -263,8 +291,8 @@ designer and the engine disagree.
+ | `bind` | The collection path, suffixed `[]`. |
+ | `as` | The row-scope alias. Optional; defaults to `row`. Inside the table, `<alias>.field` is the current row; unqualified paths still resolve from the document root (AD-11). |
+ | `headerHeight` | Height of the repeated header row, in points. Accounted for on **every** continuation page. |
+-| `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. `columns[].align` is its **own** closed set — `left` · `center` · `right` — and does **not** admit `style.align`'s fourth value `justify` (Story 7.3, D-7.3.1). Justified table cells are a separate scope decision, and the two sets are separate declarations so that extending one cannot legalise the other by accident. |
+-| `headerStyle` | *Optional.* A `Style` block (same vocabulary as an element's own `style`, below) governing the header row ONLY — never a data row. A field the header style leaves absent falls back to the table's own `style` for that field, then to that field's documented default (Story 4.1). `columns[].align` still wins over both for that column's own header cell (see `style`, below). |
++| `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. `columns[].align` is its **own** closed set — `left` · `center` · `right` — and does **not** admit `justify` (Story 7.3, D-7.3.1). Neither does a table's own `style.align` or its `headerStyle.align`, which feed the same cell alignment and therefore carry the same three values (Story 7.8). The sets are separate declarations so that extending one cannot legalise another by accident. |
++| `headerStyle` | *Optional.* A `Style` block governing the header row ONLY — the same vocabulary as an element's own `style` (below) **except for `align`**, which admits `left` · `center` · `right` here and never `justify`, because a header cell is a table cell (see *Alignment is three closed sets*, above). A table's own `style.align` carries the same three values, for the same reason — never a data row. A field the header style leaves absent falls back to the table's own `style` for that field, then to that field's documented default (Story 4.1). `columns[].align` still wins over both for that column's own header cell (see `style`, below). |
+ | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
+ | `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 3.2, this derivation runs at load time** (`folio.ParseTemplate`) and the derived value is resolved alongside the document, never written back into it — a document that omits `footerOf` still serializes without it. **As of Story 4.5, the aggregate is computed** (`sum`/`count`/`avg`) and can be formatted (`formatNumber`), then rendered into the footer cell through the same expression evaluator used by ordinary bindings. Story 3.6 supplies the diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape). |
+ | `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer value. Legal with all three `footer` operations. |
+@@ -337,7 +365,7 @@ Every field optional; omitted fields inherit the documented default.
+ | `fontSize` | `10` |
+ | `bold`, `italic` | `false` |
+ | `lineSpacing` | absent — the leading the declared font chain itself rules. A ratio scaling the baseline-to-baseline advance, and **only** that: the ascent above the first baseline and the descent below the last are untouched, so the ratio never re-measures a line, and a component's siblings never move. Under the default `valign` (`top`) the first baseline therefore stays exactly where it was. Note the one place the ratio is still visible in a first line's position: `valign: middle`/`bottom` seat the whole packed block inside the declared `height`, and a ratio makes that block taller, so the block is re-seated and its first baseline moves — measured at 11pt over two lines, `1.5` lifts a `bottom`-aligned first baseline by 7.491pt. That is `valign` doing its job on a taller block, not the ratio touching the first line. An exact decimal of at most three places, between `0.001` and `1000.0` inclusive; anything outside that, or a fourth decimal place, is a located load error naming the component — never a silent clamp. Values below `1` are legal and genuinely tight: one line's letters may reach into the line below, which is what tight leading is and what the page draws. |
+-| `align` | `left` · also `center`, `right`, `justify` — **`justify` is style-only** (Story 7.3, FR47); `columns[].align` keeps the three-value set above. `justify` flushes both edges by distributing the line's leftover width across its interior break opportunities, in whole millipoints: every gap receives `slack / gaps` and the first `slack mod gaps` gaps *in reading order* each receive one more, so the distributed amounts sum to the slack exactly and the last piece's right edge meets the declared `width` exactly. Three independent conditions leave a line ragged at the element's own start edge: it is the **last line** of the element; it was ended by a **mandatory break** the author typed; or it has **no interior break opportunity** to place slack in (an atomic unknown Thai run offers none). An element with no declared `width` has no box to justify to, and a line that meets or overflows its width has no slack — FR44's clip-and-warn applies unchanged. Declaring `justify` anywhere raises the document to version `2.0`. |
++| `align` | `left` · also `center`, `right`, `justify` — **`justify` is for a non-table element's own `style` only** (Story 7.3, FR47; narrowed at Story 7.8); `columns[].align`, a table's `style.align` and its `headerStyle.align` all keep the three-value set. `justify` flushes both edges by distributing the line's leftover width across its interior break opportunities, in whole millipoints: every gap receives `slack / gaps` and the first `slack mod gaps` gaps *in reading order* each receive one more, so the distributed amounts sum to the slack exactly and the last piece's right edge meets the declared `width` exactly. Three independent conditions leave a line ragged at the element's own start edge: it is the **last line** of the element; it was ended by a **mandatory break** the author typed; or it has **no interior break opportunity** to place slack in (an atomic unknown Thai run offers none). An element with no declared `width` has no box to justify to, and a line that meets or overflows its width has no slack — FR44's clip-and-warn applies unchanged. Declaring `justify` raises the document to version `2.0`. It is legal **only on a non-table element's own `style`**: a table's `style.align`, its `headerStyle.align` and its `columns[].align` all admit `left` · `center` · `right` alone, and `justify` at any of the three is a located load error naming the element and the field (Story 7.8 — see *Alignment is three closed sets*). So a table can never reach `2.0` through `align`. |
+ | `valign` | `top` · also `middle`, `bottom` |
+ | `padding` | `0` on all four edges |
+ | `border` | absent — no border drawn |
+diff --git a/folio-go/component_commands.go b/folio-go/component_commands.go
+index 33ac0f2..2b2df1e 100644
+--- a/folio-go/component_commands.go
++++ b/folio-go/component_commands.go
+@@ -1056,15 +1056,39 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
+ 					// Story 7.3. This arm set style.align to WHATEVER
+ 					// STRING ARRIVED — pre-existing, and harmless only
+ 					// while one closed set served both vocabularies.
+-					// With two live it is the one remaining place they
+-					// could be conflated, so it validates through the
+-					// STYLE set's own exported predicate, and names the
+-					// legal values from that set's ordered slice rather
+-					// than from a literal restating it. The COLUMN arm
+-					// (updateTableColumn, above) keeps its own triple
+-					// and still refuses "justify".
+-					if !template.IsStyleAlign(text) {
+-						return fmt.Errorf("align must be one of %s", strings.Join(template.StyleAlignTokens, ", "))
++					// With more than one live it is the one remaining
++					// place they could be conflated, so it validates
++					// through the closed sets' own exported predicates,
++					// and names the legal values from the matching
++					// ordered slice rather than from a literal
++					// restating it. The COLUMN arm (updateTableColumn,
++					// above) keeps its own triple and still refuses
++					// "justify".
++					//
++					// Story 7.8: SELECTED BY ELEMENT TYPE, the same way
++					// decodeStyle selects. IsStyleAlign's own doc
++					// comment requires this path to validate against
++					// the same single source the loader does.
++					//
++					// MEASURED, not assumed: applyComponentProperties
++					// serializes and RE-PARSES before installing, so
++					// once the loader refuses a table's `justify` the
++					// round trip already stops the document reaching
++					// 2.0 through this door — with the generic
++					// "component properties did not pass format
++					// validation". What this arm adds is the REFUSAL
++					// THE AUTHOR CAN ACT ON: the field named, and the
++					// legal values for a table rather than for a
++					// paragraph. Without it the inspector would report
++					// a whole-command failure for one bad value and
++					// name neither. It is also the layer that does not
++					// depend on the round trip continuing to exist.
++					admits, tokens := template.IsStyleAlign, template.StyleAlignTokens
++					if element.Type == template.ElementTable {
++						admits, tokens = template.IsTableStyleAlign, template.TableStyleAlignTokens
++					}
++					if !admits(text) {
++						return fmt.Errorf("align must be one of %s", strings.Join(tokens, ", "))
+ 					}
+ 					st.Align = template.Presence[string]{Set: true, Value: text}
+ 				}
+diff --git a/folio-go/component_properties_test.go b/folio-go/component_properties_test.go
+index 15533e2..dd8aa21 100644
+--- a/folio-go/component_properties_test.go
++++ b/folio-go/component_properties_test.go
+@@ -203,19 +203,27 @@ func mustSerialize(t *testing.T, tpl *Template) []byte {
+ 	return value
+ }
+ 
+-// TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly is Story 7.3's
+-// guard on the one place the two alignment vocabularies could still be
+-// conflated.
++// TestStyleAlignPropertyValidatesAgainstItsConsumersSet is Story 7.3's
++// guard on the one place the alignment vocabularies could still be
++// conflated, RENAMED and EXTENDED at Story 7.8.
+ //
+ // This arm previously set style.align to WHATEVER STRING ARRIVED, with no
+ // closed-set check at all — harmless only while one shared set served both
+-// `style.align` and `columns[].align`. With two live sets it validates
+-// through the STYLE set's own exported predicate, so a component may be
+-// justified, a nonsense value is refused, and the COLUMN arm
+-// (updateTableColumn, TestTableColumnRejectionsDoNotMutate) still refuses
+-// `justify` — which is what makes that older test a red-proof of the
+-// split rather than a coincidence.
+-func TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly(t *testing.T) {
++// `style.align` and `columns[].align`. Story 7.3 gave it the STYLE set's
++// exported predicate, so a component could be justified and a nonsense
++// value was refused, and the COLUMN arm (updateTableColumn,
++// TestTableColumnRejectionsDoNotMutate) still refused `justify`.
++//
++// The name it carried — "…AgainstTheStyleSetOnly" — became FALSE at
++// Story 7.8, and so did its coverage. There is no single style set: a
++// table's style.align is consumed by the cell renderer and admits three
++// values, a text element's is consumed by the paragraph justifier and
++// admits four. This test ran only on `e1`, a TEXT element, so it stayed
++// green while the table half went unwritten — and IsStyleAlign's own doc
++// comment obliges this path to validate against the same single source
++// the loader does. The table leg below is that obligation, and it is the
++// last door by which a table document could still reach format 2.0.
++func TestStyleAlignPropertyValidatesAgainstItsConsumersSet(t *testing.T) {
+ 	tpl := componentTemplate(t)
+ 	for _, align := range []string{"left", "center", "right", "justify"} {
+ 		cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
+@@ -248,6 +256,50 @@ func TestStyleAlignPropertyValidatesAgainstTheStyleSetOnly(t *testing.T) {
+ 			t.Errorf("rejecting %q mutated the canonical bytes", align)
+ 		}
+ 	}
++
++	// THE TABLE LEG (Story 7.8). `e2` in this fixture is a table, and
++	// `align` is offered on a table exactly as it is on text
++	// (applyPropertyChanges' allowed set) — so before this story the
++	// engine accepted `justify` here, styleFor wrote it onto the
++	// table's style, and the very next SerializeTemplate stamped the
++	// document 2.0. The designer could author, through its own engine, a
++	// file it could not reopen. Story 7.4 closed the UI door only.
++	//
++	// A FRESH template: the text legs above deliberately left `e1`
++	// justified, which raises this document to 2.0 for a legitimate
++	// reason, and that would confound the version assertion below.
++	tpl = componentTemplate(t)
++	for _, align := range []string{"left", "center", "right"} {
++		cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e2"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
++		if _, err := ApplyComponentCommand(tpl, cmd); err != nil {
++			t.Errorf("a table's style.align %q must be accepted: %v", align, err)
++		}
++	}
++	tableCanonical, err := SerializeTemplate(tpl)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cmd := []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e2"],"changes":{"align":{"op":"set","value":"justify"}}}`)
++	if _, err := ApplyComponentCommand(tpl, cmd); err == nil {
++		t.Fatal("a TABLE's style.align must refuse \"justify\" — the loader refuses it, and this path is required to validate against the same single source (closedsets.go's IsStyleAlign doc comment)")
++	} else {
++		if !strings.Contains(err.Error(), "left, center, right") {
++			t.Errorf("the rejection must name the TABLE set's own members, got: %v", err)
++		}
++		if strings.Contains(err.Error(), "justify") {
++			t.Errorf("the rejection must not name justify among a table's legal values, got: %v", err)
++		}
++	}
++	afterTable, err := SerializeTemplate(tpl)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(tableCanonical, afterTable) {
++		t.Error("refusing a table's justify mutated the canonical bytes")
++	}
++	if bytes.Contains(afterTable, []byte(`"version": "2.0"`)) {
++		t.Error("the refused command still raised the serialized document to 2.0 — the whole point of refusing it is that the author never pays a MAJOR for a value nothing draws")
++	}
+ }
+ 
+ // TestLineSpacingPropertyCommandDecodesThroughTheOneLoaderValidator is the
+@@ -533,3 +585,78 @@ func TestUpdateComponentPropertiesBandBoundsFollowTheColumnLift(t *testing.T) {
+ 		t.Fatal("a refused property change moved the canonical bytes")
+ 	}
+ }
++
++// TestAPropertyCommandCannotStampATableDocumentAt2_0 is Story 7.8's
++// version half on the IN-MEMORY path, end to end: command in, canonical
++// bytes out, and those bytes loaded again.
++//
++// The file path closes by construction — a loader refusal means no
++// *Document ever reaches versionRequiredByContent, which runs only at
++// save.
++//
++// The property-command path holds an already-loaded document, so the
++// loader cannot reach it directly. It is closed TWICE over, and the
++// distinction is worth stating because a green here does not by itself
++// prove the align arm is doing anything: applyComponentProperties (and
++// wasm.Engine.Apply) serialize and RE-PARSE before installing, so a
++// document the loader refuses cannot be installed whatever the arm
++// does. The arm is what makes the refusal LOCATED rather than a generic
++// "component properties did not pass format validation" — which is what
++// TestStyleAlignPropertyValidatesAgainstItsConsumersSet's table leg
++// pins, and that leg is the live red-proof of the arm itself.
++//
++// THE TWO LEGS TOGETHER ARE THE DISCRIMINATOR. The text leg is what
++// distinguishes this from a blanket ban on `justify`, which Story 7.3,
++// Story 7.4 and two shipped goldens forbid.
++func TestAPropertyCommandCannotStampATableDocumentAt2_0(t *testing.T) {
++	command := func(id, align string) []byte {
++		return []byte(`{"kind":"updateComponentProperties","version":1,"ids":["` + id + `"],"changes":{"align":{"op":"set","value":"` + align + `"}}}`)
++	}
++
++	// THE TABLE: refused, and the document it would have raised stays
++	// where it was — and stays loadable by a 1.x reader.
++	tableTpl := componentTemplate(t)
++	before, err := SerializeTemplate(tableTpl)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Contains(before, []byte(`"version": "1.0"`)) {
++		t.Fatalf("fixture precondition: worked-example.json must start at 1.0, got:\n%s", before)
++	}
++	if _, err := ApplyComponentCommand(tableTpl, command("e2", "justify")); err == nil {
++		t.Fatal("the property command must refuse justify on a table — otherwise the designer's own engine authors a 2.0 document whose value nothing draws and which the loader then refuses to reopen (AC1)")
++	} else {
++		t.Logf("refused: %v", err)
++	}
++	after, err := SerializeTemplate(tableTpl)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(before, after) {
++		t.Error("the refused command mutated the document")
++	}
++	if !bytes.Contains(after, []byte(`"version": "1.0"`)) {
++		t.Errorf("the serialized document is no longer 1.0 after a REFUSED command:\n%s", after)
++	}
++	if _, err := ParseTemplate(after); err != nil {
++		t.Errorf("the document the engine still holds must remain loadable: %v", err)
++	}
++
++	// THE TEXT ELEMENT: accepted exactly as today, and it DOES raise the
++	// document to 2.0 — which is the honest cost of FR47 and is not what
++	// this story removes.
++	textTpl := componentTemplate(t)
++	if _, err := ApplyComponentCommand(textTpl, command("e1", "justify")); err != nil {
++		t.Fatalf("justify on a TEXT element must still be accepted: %v", err)
++	}
++	textBytes, err := SerializeTemplate(textTpl)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Contains(textBytes, []byte(`"align": "justify"`)) {
++		t.Errorf("the accepted value did not reach the canonical bytes:\n%s", textBytes)
++	}
++	if !bytes.Contains(textBytes, []byte(`"version": "2.0"`)) {
++		t.Errorf("a justified TEXT element must still raise the document to 2.0 — narrowing by consumer is not a ban:\n%s", textBytes)
++	}
++}
+diff --git a/folio-go/diag_bridge_test.go b/folio-go/diag_bridge_test.go
+index c5711c2..4614991 100644
+--- a/folio-go/diag_bridge_test.go
++++ b/folio-go/diag_bridge_test.go
+@@ -45,6 +45,7 @@ var diagCodeBridgePins = []struct {
+ 	{"DiagCodeTableFooterOrphanSuppressed", DiagCodeTableFooterOrphanSuppressed, "TABLE_FOOTER_ORPHAN_SUPPRESSED"},
+ 	{"DiagCodeTableRowClippedHeight", DiagCodeTableRowClippedHeight, "TABLE_ROW_CLIPPED_HEIGHT"},
+ 	{"DiagCodeStyleLineSpacingInvalid", DiagCodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
++	{"DiagCodeTemplateFieldInvalid", DiagCodeTemplateFieldInvalid, "TEMPLATE_FIELD_INVALID"},
+ }
+ 
+ // declaredDiagCodeConstants enumerates every exported DiagCode* CONSTANT
+diff --git a/folio-go/diagnostic.go b/folio-go/diagnostic.go
+index 75dd0ff..83a65a5 100644
+--- a/folio-go/diagnostic.go
++++ b/folio-go/diagnostic.go
+@@ -260,6 +260,33 @@ const DiagCodeStyleColorInvalid = string(diag.CodeStyleColorInvalid)
+ // permanent.
+ const DiagCodeStyleLineSpacingInvalid = string(diag.CodeStyleLineSpacingInvalid)
+ 
++// DiagCodeTemplateFieldInvalid names the GENERAL load-stage condition
++// (Story 7.8, D-7.8.1): a well-formed `.folio` document carries a field
++// value that is not acceptable — a closed-set member that is not in the
++// set, a missing required field, a value of the wrong JSON kind, a
++// misspelled or duplicated element id. Loading fails with a
++// *RenderError carrying this code, and the wrapped *template.LoadError
++// names the field, the element (where one applies) and the value.
++//
++// It is deliberately NOT DiagCodeTemplateMalformed. The WASM engine's
++// reportable-message rule replaces that one code's message with a
++// generic string, because a malformed-template message quotes the
++// offending document back; a located field error does not, and being
++// bucketed under TEMPLATE_MALFORMED destroyed every one of them before
++// its author could read it. TEMPLATE_MALFORMED still names the
++// genuinely malformed template — bytes that are not a JSON object, an
++// unreadable value under an unknown key, a MAJOR the library cannot
++// load.
++//
++// Callers DISCRIMINATE ON THE FIELD, not on a per-field code: the rule
++// D-7.8.1 settled is that the general code is the default and a
++// specific code is minted only when a named consumer must BRANCH on it
++// (internal/diag/diag.go states it in full).
++//
++// Additive only (AD-14): once shipped, this string's meaning is
++// permanent.
++const DiagCodeTemplateFieldInvalid = string(diag.CodeTemplateFieldInvalid)
++
+ // DiagCodeTableHeaderRepeatSuppressed names Story 4.4's own new condition
+ // (FR26, DECISION-2 as ruled by the engineering lead): a table's repeated
+ // header could not be honoured on one continuation page because the next
+diff --git a/folio-go/diagnostic_registry_census_test.go b/folio-go/diagnostic_registry_census_test.go
+index f46b7c7..ed5df0d 100644
+--- a/folio-go/diagnostic_registry_census_test.go
++++ b/folio-go/diagnostic_registry_census_test.go
+@@ -23,7 +23,28 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
+ 
+ 	triggers := map[diag.Code]func(*testing.T) error{
+ 		diag.CodeTemplateMalformed: func(t *testing.T) error {
+-			_, err := ParseTemplate([]byte(malformedTemplateJSON))
++			// Story 7.8: this trigger used to be malformedTemplateJSON —
++			// a well-formed document missing a required field — which is
++			// TEMPLATE_FIELD_INVALID now. The production condition this
++			// code still names is a document that is not a `.folio`
++			// document at all, which is the one whose message may quote
++			// the input back.
++			_, err := ParseTemplate([]byte(unparseableTemplateJSON))
++			return err
++		},
++		diag.CodeTemplateFieldInvalid: func(t *testing.T) error {
++			// Story 7.8, D-7.8.1. The GENERAL load-stage condition, and
++			// the census's own reason for existing applies to it as much
++			// as to any specific code: it needs a real production
++			// trigger, not a constructor call. This is the story's own
++			// condition — a table carrying `style.align: "justify"`,
++			// which cascades into cells that cannot draw it — and it
++			// arrives located at the element and the field.
++			source := strings.Replace(roundTripGoldenSource(t), "\"id\": \"e2\",\n          \"style\": {", "\"id\": \"e2\",\n          \"style\": {\n            \"align\": \"justify\",", 1)
++			if source == roundTripGoldenSource(t) {
++				t.Fatal("fixture precondition: the table element's style block was not found, so this trigger would exercise nothing")
++			}
++			_, err := ParseTemplate([]byte(source))
+ 			return err
+ 		},
+ 		diag.CodeExpressionInvalid: func(t *testing.T) error {
+diff --git a/folio-go/internal/diag/diag.go b/folio-go/internal/diag/diag.go
+index 2e5866a..5fa2907 100644
+--- a/folio-go/internal/diag/diag.go
++++ b/folio-go/internal/diag/diag.go
+@@ -246,11 +246,68 @@ const (
+ 	// finally exists) with a different remedy, and must NOT be folded in
+ 	// here to save a mint.
+ 	//
+-	// Forward note, not a decision: with CodeStyleColorInvalid this is
+-	// the second per-field style code. Before a THIRD is minted, someone
+-	// must decide whether the general form is right or whether AD-14's
+-	// closed registry accretes one entry per style field forever.
++	// The forward note this comment used to carry — "before a THIRD
++	// per-field style code is minted, someone must decide whether the
++	// general form is right" — was DECIDED at Story 7.8 (D-7.8.1). The
++	// answer is CodeTemplateFieldInvalid, below, and the rule it
++	// establishes is stated there so the next reader finds the answer
++	// where they would have found the question.
+ 	CodeStyleLineSpacingInvalid Code = "STYLE_LINE_SPACING_INVALID"
++
++	// CodeTemplateFieldInvalid names the GENERAL LOAD-STAGE condition: a
++	// well-formed template carries a field value that is not acceptable.
++	// A closed-set member that is not in the set, a missing required
++	// field, a value of the wrong JSON kind, an id that is misspelled or
++	// duplicated — every one of them is the same thing happening to the
++	// document and the same thing the reader must do about it.
++	//
++	// THE REGISTRY-POLICY RULE THIS SETTLES (D-7.8.1, ruled 2026-08-31,
++	// answering the reservation this const block carried until Story
++	// 7.8):
++	//
++	//	The GENERAL code is the DEFAULT. A SPECIFIC code is minted only
++	//	when a NAMED CONSUMER must BRANCH on it to behave differently.
++	//	Everything else discriminates on the FIELD datum, which can grow
++	//	freely without touching a closed registry.
++	//
++	// That is D-7.3.1's own lesson applied one level up — partition by
++	// what the consumer DOES, not by where the value is written. A
++	// designer receiving any of these does exactly one thing: locate the
++	// element, name the field, show the value and the reason. One
++	// behaviour, one code. Without this rule AD-14's closed registry
++	// accretes one entry per style field forever.
++	//
++	// SUPPLIED BY THE CONSTRUCTOR, not by a per-site decision:
++	// internal/template's newLoadError attaches it, so every uncoded
++	// load-error site in that package became coded by construction, with
++	// no enumeration and no per-site judgement. newLoadErrorCoded stays
++	// as the override for the conditions that genuinely need
++	// discrimination.
++	//
++	// WHY IT HAD TO EXIST AT ALL. An uncoded *template.LoadError became
++	// CodeTemplateMalformed at folio.ParseTemplate's boundary, and
++	// wasm/cmd/engine's reportableMessage replaces THAT code's message —
++	// and only that one — with "The template could not be processed". So
++	// every located load error in the format was destroyed before its
++	// author saw it. That destruction rule exists because a
++	// malformed-template message quotes the offending document back; a
++	// LoadError's message is "field F (element E): reason (value: V)",
++	// which does not. TEMPLATE_MALFORMED keeps destroying its own
++	// messages, for the reason it was written; what changed at Story 7.8
++	// is that LoadErrors stopped being bucketed there. It still names
++	// the genuinely malformed template — bytes that are not a JSON
++	// object, an unreadable value under an unknown key, a MAJOR the
++	// library cannot load.
++	//
++	// LOAD STAGE ONLY. It does not absorb render-stage conditions:
++	// CodeStyleLineSpacingInvalid's own scope note above already draws
++	// that line, and CodeStyleColorInvalid is a render error by Epic
++	// 10's own AC. Auditing those two against the rule above — does any
++	// consumer BRANCH on them? — is a named obligation triggered by the
++	// folio-go/v0.1.0 tag (D-7.8.2), because AD-14 makes removing a code
++	// a breaking change and that is free exactly once. It is
++	// deliberately NOT this story's work.
++	CodeTemplateFieldInvalid Code = "TEMPLATE_FIELD_INVALID"
+ )
+ 
+ // allCodes is the registry's own enumeration, in the order the codes
+@@ -275,6 +332,7 @@ var allCodes = []Code{
+ 	CodeTableFooterOrphanSuppressed,
+ 	CodeTableRowClippedHeight,
+ 	CodeStyleLineSpacingInvalid,
++	CodeTemplateFieldInvalid,
+ }
+ 
+ // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
+@@ -309,6 +367,7 @@ var dispositions = map[Code]Disposition{
+ 	CodeTableFooterOrphanSuppressed: DispositionWarning,
+ 	CodeTableRowClippedHeight:       DispositionWarning,
+ 	CodeStyleLineSpacingInvalid:     DispositionError,
++	CodeTemplateFieldInvalid:        DispositionError,
+ }
+ 
+ // Classified reports the registry-owned disposition for c. A registered code
+diff --git a/folio-go/internal/diag/diag_test.go b/folio-go/internal/diag/diag_test.go
+index f51920a..a99e2b3 100644
+--- a/folio-go/internal/diag/diag_test.go
++++ b/folio-go/internal/diag/diag_test.go
+@@ -43,6 +43,7 @@ var codePins = []struct {
+ 	{"CodeTableFooterOrphanSuppressed", CodeTableFooterOrphanSuppressed, "TABLE_FOOTER_ORPHAN_SUPPRESSED"},
+ 	{"CodeTableRowClippedHeight", CodeTableRowClippedHeight, "TABLE_ROW_CLIPPED_HEIGHT"},
+ 	{"CodeStyleLineSpacingInvalid", CodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
++	{"CodeTemplateFieldInvalid", CodeTemplateFieldInvalid, "TEMPLATE_FIELD_INVALID"},
+ }
+ 
+ // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by
+diff --git a/folio-go/internal/template/closedsets.go b/folio-go/internal/template/closedsets.go
+index cc53da4..0019347 100644
+--- a/folio-go/internal/template/closedsets.go
++++ b/folio-go/internal/template/closedsets.go
+@@ -30,13 +30,45 @@ var closedPageSizeNames = map[string]bool{
+ 	"A4": true, "Letter": true,
+ }
+ 
+-// THE ALIGNMENT VOCABULARY IS TWO SETS, NOT ONE (Story 7.3, D-7.3.1).
+-// Until this story both `style.align`/`headerStyle.align` and
+-// `columns[].align` validated against ONE shared map, so extending it
+-// with `justify` would have silently legalised justified TABLE CELLS —
+-// a scope decision nobody made, arriving as a side effect of a map
+-// edit. The two sets are therefore SEPARATE DECLARATIONS, and neither
+-// is derived from the other by subtraction at a call site.
++// THE ALIGNMENT VOCABULARY IS THREE SETS, PARTITIONED BY CONSUMER
++// (Story 7.3 D-7.3.1, re-partitioned at Story 7.8).
++//
++// Before Story 7.3 one shared map served every align field, so
++// extending it with `justify` would have silently legalised justified
++// TABLE CELLS — a scope decision nobody made, arriving as a side effect
++// of a map edit. Story 7.3 split it in two.
++//
++// IT SPLIT IT ALONG THE WRONG SEAM, and that is the reusable lesson.
++// The split was BY JSON KEY LOCATION — `style`/`headerStyle` on one
++// side, `columns[]` on the other — but a table's `style.align` and its
++// `columns[].align` are read into the SAME variable
++// (table_render.go's r.alignFallback) and consumed at the SAME four
++// switches. They are one consumer wearing two key paths, so the
++// guardrail meant to make justified table cells impossible let the
++// value straight in through the other door: a table declaring
++// `style.align: "justify"` loaded, paid a MAJOR version bump, and drew
++// every cell at the start edge with no diagnostic (DW-29).
++//
++//	WHEN SPLITTING A CLOSED SET, PARTITION IT BY THE CODE THAT
++//	CONSUMES THE VALUE, NOT BY WHERE THE VALUE IS WRITTEN IN THE
++//	DOCUMENT.
++//
++// So the sets are keyed on the CONSUMER, which here means the ELEMENT
++// TYPE that owns the style block:
++//
++//   - StyleAlignTokens — a NON-TABLE element's own `style.align`. The
++//     paragraph justifier consumes it, and `justify` (FR47) means
++//     something there.
++//   - TableStyleAlignTokens — a TABLE's `style.align` and
++//     `headerStyle.align`. The table cell renderer consumes it, through
++//     exactly the same alignFallback as the column set, so it admits
++//     exactly what that consumer can draw.
++//   - ColumnAlignTokens — `columns[].align`. Same consumer, same three
++//     values; kept as its own declaration because it is a separately
++//     documented closed set in the format.
++//
++// The three are SEPARATE DECLARATIONS and none is derived from another
++// by subtraction at a call site.
+ //
+ // The tokens are named constants, and the ordered slices are built from
+ // THEM rather than from a second set of string literals — locale.go's
+@@ -44,7 +76,11 @@ var closedPageSizeNames = map[string]bool{
+ // ranging a map anywhere under internal/ is a BUILD FAILURE, and because
+ // the rejection MESSAGE is derived from the slice rather than restated
+ // as a literal: after Story 7.3 no message may claim a set of legal
+-// values that differs from the set actually enforced.
++// values that differs from the set actually enforced. That invariant is
++// what forced a third SET rather than a type-guard bolted above the
++// existing two — under a bare guard a table's `align: "middle"` would
++// still be rejected by the style map and would report `left, center,
++// right, justify`, naming as legal a value that element can never carry.
+ const (
+ 	AlignLeft    = "left"
+ 	AlignCenter  = "center"
+@@ -52,13 +88,36 @@ const (
+ 	AlignJustify = "justify"
+ )
+ 
+-// StyleAlignTokens is the closed set `style.align` and
+-// `headerStyle.align` admit, in the exact order the load error lists
+-// them. `justify` (FR47) joins THIS set and only this set — extending a
+-// closed set is a MAJOR version change under D-1.4.12, which is why the
+-// format moved to 2.0 in the same story.
++// StyleAlignTokens is the closed set a NON-TABLE element's own
++// `style.align` admits, in the exact order the load error lists them.
++// `justify` (FR47) is in THIS set and no other — extending a closed set
++// is a MAJOR version change under D-1.4.12, which is why the format
++// moved to 2.0 in the same story, and it is why declaring it is the one
++// thing in the format that raises a document to 2.0.
++//
++// It is NOT what `headerStyle.align` admits, and not what a table's own
++// `style.align` admits: those two attachment points belong to a table,
++// whose consumer is TableStyleAlignTokens below (Story 7.8). The
++// sentence this doc comment carried until then — "the closed set
++// `style.align` and `headerStyle.align` admit" — described the key
++// path, which is exactly the partition that shipped the defect.
+ var StyleAlignTokens = []string{AlignLeft, AlignCenter, AlignRight, AlignJustify}
+ 
++// TableStyleAlignTokens is the closed set a TABLE's `style.align` and
++// `headerStyle.align` admit (Story 7.8). It is the column triple, and
++// it is the column triple for a reason that is not coincidence: those
++// two attachment points and `columns[].align` are read into one
++// alignFallback and consumed at one set of switches, so they must admit
++// exactly what that consumer can draw. Justified table cells remain a
++// separate scope decision, and this is the set that actually makes them
++// impossible.
++//
++// A separate declaration from ColumnAlignTokens rather than an alias of
++// it: they are separately documented closed sets in folio-format.md,
++// and either could move without the other. TestAlignSetsAreThreeSets…
++// pins them against their own maps and against each other.
++var TableStyleAlignTokens = []string{AlignLeft, AlignCenter, AlignRight}
++
+ // ColumnAlignTokens is the closed set `columns[].align` admits. It keeps
+ // exactly the three values it has always had: justified table cells are
+ // a separate scope decision.
+@@ -68,16 +127,31 @@ var closedStyleAligns = map[string]bool{
+ 	AlignLeft: true, AlignCenter: true, AlignRight: true, AlignJustify: true,
+ }
+ 
++var closedTableStyleAligns = map[string]bool{
++	AlignLeft: true, AlignCenter: true, AlignRight: true,
++}
++
+ var closedColumnAligns = map[string]bool{
+ 	AlignLeft: true, AlignCenter: true, AlignRight: true,
+ }
+ 
+-// IsStyleAlign reports whether s is a member of the STYLE alignment set.
+-// Exported for the property-command path (component_commands.go), which
+-// sets style.align from a command and must validate it against the same
+-// single source the loader does rather than against a second literal.
++// IsStyleAlign reports whether s is a member of a NON-TABLE element's
++// style alignment set. Exported for the property-command path
++// (component_commands.go), which sets style.align from a command and
++// must validate it against the same single source the loader does
++// rather than against a second literal.
+ func IsStyleAlign(s string) bool { return closedStyleAligns[s] }
+ 
++// IsTableStyleAlign reports whether s is a member of a TABLE's style
++// alignment set — its own `style.align` and its `headerStyle.align`.
++// Exported for the same reason and under the same obligation as
++// IsStyleAlign: the property-command path selects between the two on
++// the element's type, exactly as decodeStyle does, so the command door
++// and the file door cannot admit different values (Story 7.8). Without
++// it the designer's engine could still stamp a table document 2.0 with
++// a value the loader would then refuse to reopen.
++func IsTableStyleAlign(s string) bool { return closedTableStyleAligns[s] }
++
+ // closedSetMessage renders an ordered token slice as the tail of a
+ // closed-set load error. Derived from the slice, never hand-written, so
+ // a set that gains or loses a member cannot ship a message that lies
+diff --git a/folio-go/internal/template/closedsets_test.go b/folio-go/internal/template/closedsets_test.go
+index 02c813d..ad0e8a0 100644
+--- a/folio-go/internal/template/closedsets_test.go
++++ b/folio-go/internal/template/closedsets_test.go
+@@ -172,11 +172,14 @@ func alignDocWithStyle(style string) []byte {
+ `)
+ }
+ 
+-// alignDocWithTable is one table carrying a headerStyle and a single
+-// column, so a case can put an align spelling at EITHER of the two
+-// remaining attachment points — headerStyle (a STYLE set member) and
+-// columns[] (a COLUMN set member) — and see which one rejected it.
+-func alignDocWithTable(headerStyle, columnExtra string) []byte {
++// alignDocWithTable is one table carrying a headerStyle, a single
++// column and — since Story 7.8 — its own `style` block, so a case can
++// put an align spelling at any of the THREE table attachment points and
++// see which one rejected it. The table's own `style` was absent from
++// this helper until Story 7.8, which is why nothing in the repository
++// pinned a table's `style.align: "justify"` while it was silently
++// accepted (DW-29).
++func alignDocWithTable(tableStyle, headerStyle, columnExtra string) []byte {
+ 	return []byte(`{
+   "assets": {},
+   "bands": {
+@@ -184,6 +187,7 @@ func alignDocWithTable(headerStyle, columnExtra string) []byte {
+       "elements": [
+         {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "rows[]", "as": "row", "headerHeight": 20,
+           "columns": [{"id": "e2", "label": "L", "width": 100, "bind": "{{row.v}}"` + columnExtra + `}],
++          "style": {` + tableStyle + `},
+           "headerStyle": {` + headerStyle + `}}
+       ]
+     },
+@@ -200,11 +204,12 @@ func alignDocWithTable(headerStyle, columnExtra string) []byte {
+ `)
+ }
+ 
+-// TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps is Story 7.3's structural
+-// guard, and it exists because NOTHING enumerated closedAligns' members
+-// before the split — TestClosedSetsNeverIncludeMediaType scans this
+-// file's inventory but only for media-type shapes, so a `justify` added
+-// to the shared map would have passed every test in the repository while
++// TestAlignSetsAreThreeSetsPinnedAgainstTheirMaps is Story 7.3's
++// structural guard, WIDENED at Story 7.8 from two sets to three. It
++// exists because NOTHING enumerated the shared map's members before the
++// first split — TestClosedSetsNeverIncludeMediaType scans this file's
++// inventory but only for media-type shapes, so a `justify` added to the
++// shared map would have passed every test in the repository while
+ // silently legalising justified table cells.
+ //
+ // It pins each ordered slice against its map in BOTH directions and as
+@@ -212,7 +217,16 @@ func alignDocWithTable(headerStyle, columnExtra string) []byte {
+ // gains a member without gaining it in the slice ships a rejection
+ // message that lies about what is legal, and a slice reordered by
+ // accident reorders the message every load error prints.
+-func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
++//
++// THE ASSERTION THIS TEST USED TO CARRY WAS WRONG, and its name said
++// so. `len(StyleAlignTokens) == len(ColumnAlignTokens)+1` states "there
++// are exactly two sets and they differ by `justify`", which was true of
++// the KEY-PATH partition Story 7.3 shipped and false of the CONSUMER
++// partition that actually holds. The replacement below states the
++// consumer invariant instead: `justify` is admitted by exactly one of
++// the three sets, and the two TABLE sets are the same three values
++// because one alignFallback consumes both.
++func TestAlignSetsAreThreeSetsPinnedAgainstTheirMaps(t *testing.T) {
+ 	for _, c := range []struct {
+ 		name   string
+ 		tokens []string
+@@ -220,6 +234,7 @@ func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
+ 		want   []string
+ 	}{
+ 		{"style", StyleAlignTokens, closedStyleAligns, []string{"left", "center", "right", "justify"}},
++		{"table-style", TableStyleAlignTokens, closedTableStyleAligns, []string{"left", "center", "right"}},
+ 		{"column", ColumnAlignTokens, closedColumnAligns, []string{"left", "center", "right"}},
+ 	} {
+ 		t.Run(c.name, func(t *testing.T) {
+@@ -244,26 +259,59 @@ func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
+ 		})
+ 	}
+ 
+-	// THE SPLIT ITSELF, stated as the two facts D-7.3.1 turns on.
++	// THE PARTITION ITSELF, stated as the facts D-7.3.1 and Story 7.8
++	// turn on. `justify` belongs to exactly ONE of the three sets: the
++	// one whose consumer is the paragraph justifier.
+ 	if !closedStyleAligns[AlignJustify] {
+-		t.Error("style.align must admit justify (FR47)")
++		t.Error("a non-table element's style.align must admit justify (FR47)")
++	}
++	justifying := 0
++	for _, set := range []map[string]bool{closedStyleAligns, closedTableStyleAligns, closedColumnAligns} {
++		if set[AlignJustify] {
++			justifying++
++		}
++	}
++	if justifying != 1 {
++		t.Fatalf("%d of the three align sets admit justify, want exactly 1 — the paragraph justifier's set alone. A table's style.align, its headerStyle.align and its columns[].align are read into ONE alignFallback and drawn by ONE set of switches, so any of them admitting justify re-opens DW-29", justifying)
++	}
++	if closedTableStyleAligns[AlignJustify] {
++		t.Fatal("a table's style.align/headerStyle.align must NEVER admit justify — it cascades into the same cell switches columns[].align feeds, and the document would pay a MAJOR version bump for a render identical to `left` (DW-29, D-7.3.1's partition corrected at Story 7.8)")
+ 	}
+ 	if closedColumnAligns[AlignJustify] {
+ 		t.Fatal("columns[].align must NEVER admit justify — justified table cells are a separate scope decision, not a side effect of a map edit (D-7.3.1)")
+ 	}
+-	// And neither set is the other by subtraction: every column value is
+-	// a style value, and the style set is exactly one larger.
+-	for _, tok := range ColumnAlignTokens {
++
++	// THE TWO TABLE SETS ARE THE SAME SET OF VALUES, and that is the
++	// consumer partition made visible: one alignFallback, one
++	// vocabulary. They are separate DECLARATIONS (separately documented
++	// closed sets, either free to move) but a divergence between them
++	// would mean the same switch could receive a value it cannot draw.
++	if len(TableStyleAlignTokens) != len(ColumnAlignTokens) {
++		t.Errorf("the table-style set has %d members and the column set %d — both feed the same alignFallback, so a value legal at one and not the other is a value the cell switches cannot account for", len(TableStyleAlignTokens), len(ColumnAlignTokens))
++	}
++	for i, tok := range TableStyleAlignTokens {
++		if i < len(ColumnAlignTokens) && ColumnAlignTokens[i] != tok {
++			t.Errorf("table-style token %d is %q but column token %d is %q", i, tok, i, ColumnAlignTokens[i])
++		}
++	}
++
++	// And no set is another by subtraction at a call site: every table
++	// value is also a legal non-table style value, so the three sets
++	// have not diverged in the wrong direction.
++	for _, tok := range TableStyleAlignTokens {
+ 		if !closedStyleAligns[tok] {
+-			t.Errorf("%q is a legal column align but not a legal style align — the two sets have diverged in the wrong direction", tok)
++			t.Errorf("%q is a legal table align but not a legal style align — the sets have diverged in the wrong direction", tok)
+ 		}
+ 	}
+-	if len(StyleAlignTokens) != len(ColumnAlignTokens)+1 {
+-		t.Errorf("the style set has %d members and the column set %d — after Story 7.3 they differ by exactly one, `justify`", len(StyleAlignTokens), len(ColumnAlignTokens))
++	for _, tok := range ColumnAlignTokens {
++		if !closedStyleAligns[tok] {
++			t.Errorf("%q is a legal column align but not a legal style align — the sets have diverged in the wrong direction", tok)
++		}
+ 	}
+ 
+-	// IsStyleAlign is the exported single source the property-command
+-	// path validates through; it must agree with the map it wraps.
++	// The exported predicates are the single source the property-command
++	// path validates through; each must agree with the map it wraps, and
++	// they must disagree with each other on exactly `justify`.
+ 	for _, tok := range StyleAlignTokens {
+ 		if !IsStyleAlign(tok) {
+ 			t.Errorf("IsStyleAlign(%q) = false", tok)
+@@ -272,26 +320,56 @@ func TestAlignSetsAreTwoSetsPinnedAgainstTheirMaps(t *testing.T) {
+ 	if IsStyleAlign("middle") || IsStyleAlign("") {
+ 		t.Error("IsStyleAlign admits a value the closed set does not")
+ 	}
++	for _, tok := range TableStyleAlignTokens {
++		if !IsTableStyleAlign(tok) {
++			t.Errorf("IsTableStyleAlign(%q) = false", tok)
++		}
++	}
++	if IsTableStyleAlign(AlignJustify) {
++		t.Error("IsTableStyleAlign admits justify — the property-command path would write onto a table exactly the value the loader refuses")
++	}
++	if IsTableStyleAlign("middle") || IsTableStyleAlign("") {
++		t.Error("IsTableStyleAlign admits a value the closed set does not")
++	}
+ }
+ 
+ // TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage is the
+-// split's BEHAVIOURAL red-proof: the same word, `justify`, must load at
+-// the two style attachment points and be a located load error at the
+-// column one — and each message must list exactly the members of the set
+-// that rejected it, not the other set's.
++// partition's BEHAVIOURAL red-proof: the same word, `justify`, must load
++// at a TEXT element's style.align and be a located load error at all
++// three of a table's attachment points — and each message must list
++// exactly the members of the set that rejected it, not another set's.
++//
++// Legs (b) and (b2) are Story 7.8's inversion. (b) asserted that
++// `headerStyle.align: "justify"` MUST LOAD, which was correct against
++// the contract as Story 7.3 wrote it and is the shipped behaviour
++// DW-29 records as the defect. It now asserts the refusal. (b2) is new:
++// a table's OWN style.align was pinned by nothing at all, because the
++// helper emitted no table `style` block.
+ func TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage(t *testing.T) {
+-	// (a) justify LOADS at style.align.
++	// (a) justify LOADS at a TEXT element's style.align.
+ 	if _, err := ParseDocument(alignDocWithStyle(`"align": "justify"`)); err != nil {
+-		t.Errorf("style.align: \"justify\" must load: %v", err)
++		t.Errorf("style.align: \"justify\" on a text element must load: %v", err)
+ 	}
+-	// (b) justify LOADS at headerStyle.align — the second style
+-	//     attachment point, which decodeStyle serves through the same
+-	//     fieldPrefix parameter.
+-	if _, err := ParseDocument(alignDocWithTable(`"align": "justify"`, "")); err != nil {
+-		t.Errorf("headerStyle.align: \"justify\" must load: %v", err)
++	// (b) justify is REFUSED at a table's headerStyle.align, located at
++	//     the element and the field.
++	_, berr := ParseDocument(alignDocWithTable("", `"align": "justify"`, ""))
++	if berr == nil {
++		t.Fatal("headerStyle.align: \"justify\" must be a load error — a header cell is a table cell, and it takes the same alignFallback columns[].align feeds (DW-29)")
+ 	}
++	assertLocatedTableAlignRefusal(t, berr, "headerStyle.align")
++
++	// (b2) justify is REFUSED at a table's OWN style.align. This is the
++	//      door D-7.3.1's key-path partition left open: the guard was
++	//      written for `columns[]` versus `style`, but a table's own
++	//      style cascades into every cell that declares no column align.
++	_, b2err := ParseDocument(alignDocWithTable(`"align": "justify"`, "", ""))
++	if b2err == nil {
++		t.Fatal("a TABLE's own style.align: \"justify\" must be a load error — it cascades into every header, body and footer cell through alignFallback (DW-29)")
++	}
++	assertLocatedTableAlignRefusal(t, b2err, "style.align")
++
+ 	// (c) justify is REFUSED at columns[].align, located at the column.
+-	_, err := ParseDocument(alignDocWithTable("", `, "align": "justify"`))
++	_, err := ParseDocument(alignDocWithTable("", "", `, "align": "justify"`))
+ 	if err == nil {
+ 		t.Fatal("columns[].align: \"justify\" must be a load error — justified table cells are not in scope")
+ 	}
+@@ -309,10 +387,11 @@ func TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage(t *testing.T) {
+ 		t.Errorf("the column rejection must not name justify as legal, got: %v", err)
+ 	}
+ 
+-	// (d) An illegal STYLE value is rejected with the STYLE set, which
+-	//     includes justify. This is the honesty half: before the split
+-	//     both sites printed one hand-written literal, so extending
+-	//     either set would have shipped a message that lied.
++	// (d) An illegal value on a TEXT element's style is rejected with
++	//     the STYLE set, which includes justify. This is the honesty
++	//     half: before the split both sites printed one hand-written
++	//     literal, so extending either set would have shipped a message
++	//     that lied.
+ 	_, serr := ParseDocument(alignDocWithStyle(`"align": "middle"`))
+ 	if serr == nil {
+ 		t.Fatal("style.align: \"middle\" must be a load error")
+@@ -325,23 +404,82 @@ func TestAlignClosedSetsRejectAtTheRightSiteWithTheirOwnMessage(t *testing.T) {
+ 		t.Errorf("the style rejection must be located at style.align, got: %v", serr)
+ 	}
+ 
+-	// (e) …and at headerStyle it names headerStyle, not its sibling.
+-	_, herr := ParseDocument(alignDocWithTable(`"align": "middle"`, ""))
++	// (e) …and at a table's headerStyle it names headerStyle, not its
++	//     sibling — and it does NOT name justify, because that element
++	//     can never carry it. A type-guard bolted above the two shipped
++	//     sets would pass every other leg here and fail this one.
++	_, herr := ParseDocument(alignDocWithTable("", `"align": "middle"`, ""))
+ 	if herr == nil {
+ 		t.Fatal("headerStyle.align: \"middle\" must be a load error")
+ 	}
+ 	if !strings.Contains(herr.Error(), "headerStyle.align") {
+ 		t.Errorf("the headerStyle rejection must be located at headerStyle.align, got: %v", herr)
+ 	}
++	if !strings.Contains(herr.Error(), closedSetMessage(TableStyleAlignTokens)) {
++		t.Errorf("a table's headerStyle rejection must list the TABLE set, got: %v", herr)
++	}
++	if strings.Contains(herr.Error(), AlignJustify) {
++		t.Errorf("a table's rejection message must never name justify as legal — no table element can carry it, got: %v", herr)
++	}
++
++	// (e2) …and at a table's OWN style.align, the same. This is the
++	//      I/O matrix's "table style middle" row: the message must
++	//      list left, center, right and must NOT name justify.
++	_, terr := ParseDocument(alignDocWithTable(`"align": "middle"`, "", ""))
++	if terr == nil {
++		t.Fatal("a table's style.align: \"middle\" must be a load error")
++	}
++	if !strings.Contains(terr.Error(), "style.align") || !strings.Contains(terr.Error(), "e1") {
++		t.Errorf("the table-style rejection must be located at the element and style.align, got: %v", terr)
++	}
++	if !strings.Contains(terr.Error(), closedSetMessage(TableStyleAlignTokens)) {
++		t.Errorf("a table's style rejection must list the TABLE set, got: %v", terr)
++	}
++	if strings.Contains(terr.Error(), AlignJustify) {
++		t.Errorf("a table's rejection message must never name justify as legal, got: %v", terr)
++	}
+ 
+ 	// (f) THE MESSAGES ARE DERIVED, not restated: each one contains the
+-	//     exact rendering of its own ordered slice. A future edit to
+-	//     either set changes both the enforcement and the message, or
+-	//     this fails.
++	//     exact rendering of its own ordered slice. A future edit to any
++	//     set changes both the enforcement and the message, or this
++	//     fails.
+ 	if !strings.Contains(msg, closedSetMessage(ColumnAlignTokens)) {
+ 		t.Errorf("the column message is not derived from ColumnAlignTokens: %v", err)
+ 	}
+ 	if !strings.Contains(smsg, closedSetMessage(StyleAlignTokens)) {
+ 		t.Errorf("the style message is not derived from StyleAlignTokens: %v", serr)
+ 	}
++	if !strings.Contains(b2err.Error(), closedSetMessage(TableStyleAlignTokens)) {
++		t.Errorf("the table-style message is not derived from TableStyleAlignTokens: %v", b2err)
++	}
++}
++
++// assertLocatedTableAlignRefusal is AC1's "located" clause, checked the
++// same way at both of a table's style attachment points: the element id,
++// the field, and a legal-values list that is the TABLE set and names no
++// value that element cannot carry.
++func assertLocatedTableAlignRefusal(t *testing.T, err error, field string) {
++	t.Helper()
++	le, ok := err.(*LoadError)
++	if !ok {
++		t.Fatalf("the refusal must be a *LoadError so the field and element travel as DATA, got %T: %v", err, err)
++	}
++	if le.ElementID != "e1" {
++		t.Errorf("LoadError.ElementID = %q, want %q — the refusal must name the element", le.ElementID, "e1")
++	}
++	if le.Field != field {
++		t.Errorf("LoadError.Field = %q, want %q", le.Field, field)
++	}
++	if le.Value != AlignJustify {
++		t.Errorf("LoadError.Value = %q, want %q", le.Value, AlignJustify)
++	}
++	msg := le.Error()
++	for _, want := range []string{"e1", field, closedSetMessage(TableStyleAlignTokens)} {
++		if !strings.Contains(msg, want) {
++			t.Errorf("the refusal message must contain %q, got: %s", want, msg)
++		}
++	}
++	if strings.Contains(msg, AlignJustify+",") || strings.Contains(msg, ", "+AlignJustify) {
++		t.Errorf("the refusal must not name justify among the legal values for a table, got: %s", msg)
++	}
+ }
+diff --git a/folio-go/internal/template/errors.go b/folio-go/internal/template/errors.go
+index 11455fd..3d35d58 100644
+--- a/folio-go/internal/template/errors.go
++++ b/folio-go/internal/template/errors.go
+@@ -7,45 +7,37 @@ import (
+ )
+ 
+ // LoadError is every load-time failure this package produces (AC41,
+-// D-1.4.2): a plain Go error for the overwhelming majority of sites —
++// D-1.4.2): Field, ElementID (where applicable) and Value are always
++// populated so the message can name what a person needs to fix.
++//
++// CODE, and how it stopped being an exception (Story 7.8, D-7.8.1).
++// Until Story 7.8 the overwhelming majority of these carried NO code:
+ // internal/diag did not exist before Story 3.6 (D-1.4.2's sequencing
+-// ruling), and R7's criterion (D-3.6.6) does not license minting a code
+-// for every one of them now that it does: "an internal-invariant
+-// violation stays a plain error." Field, ElementID (where applicable)
+-// and Value are always populated so the message can name what a
+-// person needs to fix, without minting a stable code for it.
++// ruling), and R7's criterion (D-3.6.6) did not license minting a code
++// for every one of them once it did. Four sites were coded by hand —
++// three footer-source conditions (D-1.4.2's TABLE_FOOTER_SOURCE_FORBIDDEN
++// parenthetical, plus D-1.4.1's TABLE_FOOTER_SOURCE_UNRESOLVED
++// out-of-collection arm swept in at Story 4.5 under D-000.67 part 2) and
++// Story 7.2's STYLE_LINE_SPACING_INVALID.
+ //
+-// Code is Story 3.6's one addition (R8, DW-6), extended at Story 4.5 and
+-// again at Story 7.2. It is set at the coded call sites only
+-// (newLoadErrorCoded, below). Three of those name a footer SOURCE
+-// condition — D-1.4.2's
+-// TABLE_FOOTER_SOURCE_FORBIDDEN parenthetical (footerOf paired with
+-// footer: "count", and a footer field present with no footer at all),
+-// plus D-1.4.1's TABLE_FOOTER_SOURCE_UNRESOLVED "out-of-collection
+-// source" arm (the footerOf prefix check), which Story 3.6 left
+-// uncoded and Story 4.5 swept in under D-000.67 part 2. Story 7.2 added
+-// a FOURTH, non-footer coded site: STYLE_LINE_SPACING_INVALID, in
+-// parse_bands.go, for an out-of-range or inexact `style.lineSpacing`.
+-// So "coded" no longer means "about a footer source" — it means the
+-// condition has a stable code of its own, whatever it is about.
+-// Every other call site leaves it at its zero value (""), which
+-// folio.ParseTemplate's boundary (this package may never import the
+-// module root, AD-1) reads as "no stable code — mint TEMPLATE_MALFORMED
+-// instead." Getting a NEW coded condition wrong is not cosmetic: the
+-// WASM host replaces a TEMPLATE_MALFORMED message wholesale, so an
+-// uncoded style rejection reaches the author as "The template could not
+-// be processed" and names neither the element nor the range. That is the
+-// CORRECT reading for
+-// the four remaining uncoded footer sites (a `footer`/`footerOf`/
+-// `footerFormat` that is not a string, and a `footer` outside the
+-// closed set sum/count/avg): those are malformed-template/type
+-// failures, not statements about a footer's numeric SOURCE.
++// That left every OTHER load error uncoded, which folio.ParseTemplate's
++// boundary (this package may never import the module root, AD-1) read
++// as "no stable code — mint TEMPLATE_MALFORMED instead". The WASM host
++// replaces a TEMPLATE_MALFORMED message wholesale, so a located load
++// error reached the author as "The template could not be processed" and
++// named neither the element nor the field. Story 7.2 minted a code to
++// escape that for ONE field; Story 7.8 ruled that the escape belongs to
++// the whole category, and put diag.CodeTemplateFieldInvalid in
++// newLoadError itself. Code is therefore NEVER "" on an error this
++// package constructs: newLoadError supplies the general code, and
++// newLoadErrorCoded overrides it for the four conditions a consumer can
++// genuinely branch on.
+ type LoadError struct {
+ 	Field     string
+ 	ElementID string // empty when the error is not scoped to one element/column
+ 	Value     string
+ 	Reason    string
+-	Code      diag.Code // "" unless this is one of the three coded footer-source conditions
++	Code      diag.Code // never "": the general code, or an overriding specific one
+ }
+ 
+ func (e *LoadError) Error() string {
+@@ -55,21 +47,42 @@ func (e *LoadError) Error() string {
+ 	return fmt.Sprintf("template: field %s: %s (value: %s)", e.Field, e.Reason, e.Value)
+ }
+ 
+-// newLoadError is the single constructor every UNCODED load-error site
++// newLoadError is the single constructor every GENERAL load-error site
+ // in this package calls (AC41's enumeration test walks call sites of
+ // this function).
++//
++// Story 7.8, D-7.8.1: it SUPPLIES diag.CodeTemplateFieldInvalid itself.
++// Until this story it left Code at "", which folio.ParseTemplate's
++// boundary read as TEMPLATE_MALFORMED — whose message the WASM host
++// replaces wholesale with "The template could not be processed". Every
++// located load error in the format was therefore destroyed before its
++// author could read it: the field, the element and the value all
++// travelled inside a message nothing was allowed to show. Putting the
++// code in the CONSTRUCTOR rather than at the call sites is what makes
++// that structural rather than enumerative — there is no per-site
++// judgement to get wrong, and no new site can be added uncoded.
++//
++// The condition it names is one condition, not one per field: "a
++// well-formed template carries a field value that is not acceptable".
++// A consumer discriminates on Field, which grows freely; the registry
++// does not. See internal/diag/diag.go's CodeTemplateFieldInvalid for
++// the rule in full.
+ func newLoadError(field, elementID, value, reason string) error {
+-	return &LoadError{Field: field, ElementID: elementID, Value: value, Reason: reason}
++	return &LoadError{Field: field, ElementID: elementID, Value: value, Reason: reason, Code: diag.CodeTemplateFieldInvalid}
+ }
+ 
+-// newLoadErrorCoded is Story 3.6's second constructor (R8/DW-6),
+-// called ONLY at parse_bands.go's three footer-source sites: the two
+-// TABLE_FOOTER_SOURCE_FORBIDDEN ones (one code, two sites, because the
+-// code names the CONDITION, not the line) and the single
+-// TABLE_FOOTER_SOURCE_UNRESOLVED one (the out-of-collection footerOf
+-// prefix check, swept in at Story 4.5 under D-000.67 part 2 — Story
+-// 3.6 coded the two FORBIDDEN checks beside it and left this one
+-// plain, which was an absorption gap, not a decision).
++// newLoadErrorCoded is Story 3.6's second constructor (R8/DW-6): the
++// OVERRIDE for a condition that carries a code of its own rather than
++// the general one newLoadError supplies. Called at parse_bands.go's
++// three footer-source sites — the two TABLE_FOOTER_SOURCE_FORBIDDEN
++// ones (one code, two sites, because the code names the CONDITION, not
++// the line) and the single TABLE_FOOTER_SOURCE_UNRESOLVED one (the
++// out-of-collection footerOf prefix check, swept in at Story 4.5 per
++// D-000.67 part 2) — plus Story 7.2's STYLE_LINE_SPACING_INVALID.
++//
++// D-7.8.1 fixes when a new one is warranted: only when a NAMED CONSUMER
++// must BRANCH on the code to behave differently. Everything else takes
++// the general code and discriminates on Field.
+ func newLoadErrorCoded(field, elementID, value, reason string, code diag.Code) error {
+ 	return &LoadError{Field: field, ElementID: elementID, Value: value, Reason: reason, Code: code}
+ }
+diff --git a/folio-go/internal/template/errors_test.go b/folio-go/internal/template/errors_test.go
+index be93002..4d765a6 100644
+--- a/folio-go/internal/template/errors_test.go
++++ b/folio-go/internal/template/errors_test.go
+@@ -3,16 +3,30 @@ package template
+ import (
+ 	"strings"
+ 	"testing"
++
++	"github.com/panitw/folio/folio-go/internal/diag"
+ )
+ 
+-// TestLoadErrorsCarryFieldAndValue is AC41: 1.4 must not mint stable
+-// diagnostic codes — its load failures are plain Go errors naming
+-// field, element id (where applicable) and value. This test enumerates
+-// a representative set of this package's load-error call sites (every
+-// one of them constructs through the single newLoadError constructor,
+-// errors.go) and asserts each *LoadError carries a non-empty Field. It
+-// reports how many it enumerated and fails on zero (D-000.9 shape).
+-func TestLoadErrorsCarryFieldAndValue(t *testing.T) {
++// TestLoadErrorsCarryFieldValueAndTheGeneralCode is AC41, RE-POINTED at
++// Story 7.8.
++//
++// Its subject was "call sites of the UNCODED constructor": 1.4 minted no
++// stable codes, so its load failures were plain Go errors naming field,
++// element id and value, and this test enumerated a representative set of
++// them. D-7.8.1 emptied that set — newLoadError now supplies
++// diag.CodeTemplateFieldInvalid itself — so an unchanged test would have
++// kept passing while measuring a population that no longer exists, which
++// is the dead-detector failure recorded at D-7.4.2.
++//
++// The subject is therefore now "call sites of the GENERAL constructor",
++// and the property is the one that actually matters at the boundary: a
++// general load error carries field, value, element id where applicable,
++// AND the general code — never "", which folio.ParseTemplate would read
++// as TEMPLATE_MALFORMED and the WASM host would then replace the whole
++// message of. The code assertion is the half that reddens if anyone
++// reverts the constructor, and it is the half that did not exist before.
++// It reports how many it enumerated and fails on zero (D-000.9 shape).
++func TestLoadErrorsCarryFieldValueAndTheGeneralCode(t *testing.T) {
+ 	base := string(minimalDocWithElements([]string{"e1"}, 2))
+ 	cases := []struct {
+ 		name   string
+@@ -25,11 +39,15 @@ func TestLoadErrorsCarryFieldAndValue(t *testing.T) {
+ 		{"bad-id-spelling", minimalDocWithElements([]string{"e01"}, 5), true},
+ 		{"nextid-too-low", minimalDocWithElements([]string{"e1", "e2"}, 2), false},
+ 		{"higher-major", withVersion("9.0"), false},
++		// Story 7.8's own site, enumerated here rather than only in
++		// closedsets_test.go: the refusal this story adds must be a
++		// general-code load error like every other, not a special case.
++		{"table-style-justify", alignDocWithTable(`"align": "justify"`, "", ""), true},
+ 	}
+ 	if len(cases) == 0 {
+ 		t.Fatal("coverage witness: zero cases enumerated")
+ 	}
+-	enumerated := 0
++	enumerated, coded := 0, 0
+ 	for _, c := range cases {
+ 		t.Run(c.name, func(t *testing.T) {
+ 			_, err := ParseDocument(c.doc)
+@@ -43,7 +61,9 @@ func TestLoadErrorsCarryFieldAndValue(t *testing.T) {
+ 				// *LoadError, but it still names both versions in text
+ 				// (asserted separately in version_test.go) — accept it
+ 				// here as a valid "load error" shape while still
+-				// counting it toward the enumeration.
++				// counting it toward the enumeration. It is also the one
++				// load failure that legitimately still becomes
++				// TEMPLATE_MALFORMED at the boundary: it names no field.
+ 				if !strings.Contains(err.Error(), "version") {
+ 					t.Fatalf("error is neither a *LoadError nor a version error: %v", err)
+ 				}
+@@ -58,9 +78,42 @@ func TestLoadErrorsCarryFieldAndValue(t *testing.T) {
+ 			if c.wantID && le.ElementID == "" {
+ 				t.Fatalf("expected ElementID to be populated: %+v", le)
+ 			}
++			// STORY 7.8, and the re-measurement this test exists for.
++			// An empty Code here is not cosmetic: folio.ParseTemplate
++			// reads it as TEMPLATE_MALFORMED, and wasm/cmd/engine's
++			// reportableMessage replaces that one code's message with
++			// "The template could not be processed" — so everything
++			// asserted above would be true of a value the author never
++			// gets to read.
++			if le.Code == "" {
++				t.Fatalf("LoadError.Code is empty: %+v — an uncoded load error is destroyed at the WASM boundary before its field and element reach the author (D-7.8.1)", le)
++			}
++			if le.Code != diag.CodeTemplateFieldInvalid {
++				t.Fatalf("LoadError.Code = %q, want the general code %q — a specific code is minted only when a named consumer must BRANCH on it (D-7.8.1); these sites have no such consumer", le.Code, diag.CodeTemplateFieldInvalid)
++			}
++			coded++
+ 		})
+ 	}
+ 	if enumerated == 0 {
+ 		t.Fatal("coverage witness: zero load errors actually enumerated")
+ 	}
++	if coded == 0 {
++		t.Fatal("coverage witness: zero *LoadErrors reached the CODE assertion, so the re-pointed half of this test measured nothing (D-7.4.2)")
++	}
++	t.Logf("enumerated %d load failures; %d were *LoadErrors and all carried %s", enumerated, coded, diag.CodeTemplateFieldInvalid)
++}
++
++// TestTheOverRIDINGConstructorStillWins is the other side of D-7.8.1's
++// ruling, and it is what stops "the constructor supplies the code" from
++// quietly meaning "there is only one code". The four conditions a named
++// consumer branches on keep theirs.
++func TestTheOverridingConstructorStillWins(t *testing.T) {
++	err := newLoadErrorCoded("style.lineSpacing", "e1", "1000.001", "out of range", diag.CodeStyleLineSpacingInvalid)
++	le, ok := err.(*LoadError)
++	if !ok {
++		t.Fatalf("newLoadErrorCoded returned %T", err)
++	}
++	if le.Code != diag.CodeStyleLineSpacingInvalid {
++		t.Fatalf("Code = %q, want %q — the override must not be overwritten by the general code", le.Code, diag.CodeStyleLineSpacingInvalid)
++	}
+ }
+diff --git a/folio-go/internal/template/linespacing_test.go b/folio-go/internal/template/linespacing_test.go
+index c68f0c5..5058f7c 100644
+--- a/folio-go/internal/template/linespacing_test.go
++++ b/folio-go/internal/template/linespacing_test.go
+@@ -227,13 +227,28 @@ func TestVersionForSaveIsRaisedOnlyByContent(t *testing.T) {
+ 		t.Errorf("a document whose only 1.1 key is on headerStyle requires %q, want %q", got, minorFeatureVersion)
+ 	}
+ 
+-	// Story 7.3: the SECOND attachment point reaches the 2.0 rule too.
+-	dh, err := ParseDocument([]byte(justifyHeaderStyleDoc))
+-	if err != nil {
+-		t.Fatalf("parse justify headerStyle doc: %v", err)
+-	}
+-	if got := versionRequiredByContent(dh); got != majorFeatureVersion {
+-		t.Errorf("a document whose only justify is on headerStyle requires %q, want %q", got, majorFeatureVersion)
++	// Story 7.3 asserted here that the SECOND attachment point reaches
++	// the 2.0 rule too: justifyHeaderStyleDoc — a TABLE's
++	// headerStyle.align: "justify" — had to LOAD and had to require
++	// 2.0. Story 7.8 INVERTS that. The document is now refused at load,
++	// so it never becomes a *Document and versionRequiredByContent
++	// never sees it; the 2.0 raise is closed by construction rather than
++	// by a version rule (see the version half's own test,
++	// TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed).
++	//
++	// justifyHeaderStyleDoc was REWRITTEN onto a text element rather
++	// than deleted, because the property it was built to prove — that a
++	// rule walking only element.style would miss the second attachment
++	// point, exactly as style.color was missed — is still live for every
++	// 1.1 key. lineSpacingHeaderStyleDoc above keeps proving it for
++	// headerStyle; keeping a justify twin here would only have restated
++	// the text-element cases the table above already covers, so the
++	// const now carries the refusal the epic's own falsified-test list
++	// says must be inverted, not dropped.
++	if _, err := ParseDocument([]byte(justifyHeaderStyleDoc)); err == nil {
++		t.Fatal("a table's headerStyle.align: \"justify\" must now be REFUSED at load — no *Document exists for versionRequiredByContent to raise to 2.0 (Story 7.8, DW-29)")
++	} else if !strings.Contains(err.Error(), "headerStyle.align") || !strings.Contains(err.Error(), "e1") {
++		t.Errorf("the refusal must name the element and the field, got: %v", err)
+ 	}
+ 
+ 	// THE ORDERING CASE, and it is the one a first-hit implementation
+@@ -476,10 +491,11 @@ const lineSpacingHeaderStyleDoc = `{
+ }
+ `
+ 
+-// justifyHeaderStyleDoc is lineSpacingHeaderStyleDoc's Story 7.3 twin:
+-// the 2.0 value sits on the OTHER attachment point, a table's
+-// headerStyle, which a rule that walked only element.style would miss
+-// exactly the way style.color was missed.
++// justifyHeaderStyleDoc was lineSpacingHeaderStyleDoc's Story 7.3 twin,
++// asserting that the 2.0 value on a table's headerStyle raised the
++// document the same way an element's own style does. Story 7.8 refuses
++// that document at load, so the const is now the REFUSAL fixture: the
++// one document in this file whose justify sits on a table.
+ const justifyHeaderStyleDoc = `{
+   "assets": {},
+   "bands": {
+diff --git a/folio-go/internal/template/parse_bands.go b/folio-go/internal/template/parse_bands.go
+index 85523fb..5695cbb 100644
+--- a/folio-go/internal/template/parse_bands.go
++++ b/folio-go/internal/template/parse_bands.go
+@@ -207,7 +207,7 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
+ 		if rawIsNull(styRaw) {
+ 			el.Style = presentNull[Style]()
+ 		} else {
+-			st, err := decodeStyle(string(id), styRaw, "style")
++			st, err := decodeStyle(string(id), el.Type, styRaw, "style")
+ 			if err != nil {
+ 				return Element{}, err
+ 			}
+@@ -394,7 +394,11 @@ func decodeTableExt(ctx *parseCtx, id string, obj map[string]json.RawMessage) (T
+ 		if rawIsNull(hsRaw) {
+ 			t.HeaderStyle = presentNull[Style]()
+ 		} else {
+-			hs, err := decodeStyle(id, hsRaw, "headerStyle")
++			// Statically a table: decodeTableExt's only caller sits
++			// under `case ElementTable:`. The constant is passed
++			// rather than a variable because there is no type in
++			// scope to pass, and a headerStyle exists on nothing else.
++			hs, err := decodeStyle(id, ElementTable, hsRaw, "headerStyle")
+ 			if err != nil {
+ 				return TableExt{}, nil, err
+ 			}
+@@ -577,7 +581,17 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
+ // (finisher fix, Story 4.1 review Finding 5 — previously EVERY
+ // diagnostic raised inside a headerStyle block named "style", sending
+ // the template author to the wrong block).
+-func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Style, error) {
++//
++// elementType is the CONSUMER (Story 7.8). A Style block's meaning is
++// not fixed by the key it was written under — a table's `style.align`
++// is consumed by the cell renderer, exactly like its `columns[].align`,
++// while a text element's is consumed by the paragraph justifier — so
++// the closed set `align` validates against is selected by the element
++// that owns the block, never by the key path. Both callers already hold
++// the type: decodeElement has el.Type live, and decodeTableExt is
++// statically a table. See closedsets.go's header for why this is the
++// partition that holds.
++func decodeStyle(elementID string, elementType ElementType, raw json.RawMessage, fieldPrefix string) (Style, error) {
+ 	obj, err := decodeObjectMap(raw)
+ 	if err != nil {
+ 		return Style{}, newLoadError(fieldPrefix, elementID, string(raw), "must be an object: "+err.Error())
+@@ -591,10 +605,21 @@ func decodeStyle(elementID string, raw json.RawMessage, fieldPrefix string) (Sty
+ 		if err != nil {
+ 			return Style{}, newLoadError(fieldPrefix+".align", elementID, string(r), "must be a string: "+err.Error())
+ 		}
+-		// THE STYLE SET (Story 7.3, D-7.3.1): the column triple plus
+-		// `justify` (FR47). Same derived message, from the other slice.
+-		if !closedStyleAligns[s] {
+-			return Style{}, newLoadError(fieldPrefix+".align", elementID, s, closedSetMessage(StyleAlignTokens))
++		// THE SET IS CHOSEN BY THE CONSUMER (Story 7.8), not by the
++		// key this block was written under. A table's style.align and
++		// headerStyle.align feed the same alignFallback its
++		// columns[].align does, so they admit the same three values;
++		// every other element's style.align is the paragraph
++		// justifier's own input and admits `justify` (FR47). The
++		// message is derived from whichever ordered slice did the
++		// rejecting, so it can never name `justify` as legal for an
++		// element that cannot carry it.
++		tokens, admits := StyleAlignTokens, closedStyleAligns
++		if elementType == ElementTable {
++			tokens, admits = TableStyleAlignTokens, closedTableStyleAligns
++		}
++		if !admits[s] {
++			return Style{}, newLoadError(fieldPrefix+".align", elementID, s, closedSetMessage(tokens))
+ 		}
+ 		st.Align = present(s)
+ 	}
+diff --git a/folio-go/internal/template/version_test.go b/folio-go/internal/template/version_test.go
+index c5dc68d..93cf3bc 100644
+--- a/folio-go/internal/template/version_test.go
++++ b/folio-go/internal/template/version_test.go
+@@ -233,3 +233,67 @@ func TestVersionForRankIsStrictlyAscending(t *testing.T) {
+ 		t.Errorf("versionForRank does not map each named rank to its own constant: got %v", versionForRank)
+ 	}
+ }
++
++// TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed is Story
++// 7.8's version half, asserted rather than coded — because on the file
++// path there is nothing to code.
++//
++// versionRequiredByContent runs ONLY at save: its one non-test caller is
++// versionForSave, whose one non-test caller is serialize.go. The load
++// path touches version only at parse.go's checkVersionLoadable, on the
++// DECLARED STRING, before bands are decoded at all. So once decodeStyle
++// refuses a table's justify, ParseDocument returns (nil, err) and no
++// *Document ever exists for the version probe to observe. The 2.0 raise
++// is closed by construction; styleVersionRank needs no element type and
++// is not a defect for lacking one.
++//
++// THE TWO LEGS TOGETHER ARE THE DISCRIMINATOR. Either alone is equally
++// consistent with a blanket ban on `justify`, which Story 7.3, Story 7.4
++// and two shipped goldens forbid. The text leg is what proves the
++// refusal is keyed on the CONSUMER and not on the word.
++func TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed(t *testing.T) {
++	// Leg 1 — the TABLE. Refused at load, at both of its style
++	// attachment points, so no *Document reaches the probe.
++	for _, c := range []struct {
++		name      string
++		doc       []byte
++		wantField string
++	}{
++		{"table style.align", alignDocWithTable(`"align": "justify"`, "", ""), "style.align"},
++		{"table headerStyle.align", alignDocWithTable("", `"align": "justify"`, ""), "headerStyle.align"},
++	} {
++		t.Run(c.name, func(t *testing.T) {
++			d, err := ParseDocument(c.doc)
++			if err == nil {
++				t.Fatalf("a table carrying justify at %s must be refused at load", c.wantField)
++			}
++			if d != nil {
++				t.Fatalf("ParseDocument returned a non-nil *Document alongside its error; versionRequiredByContent could observe it: %+v", d)
++			}
++			le, ok := err.(*LoadError)
++			if !ok {
++				t.Fatalf("want a located *LoadError, got %T: %v", err, err)
++			}
++			if le.Field != c.wantField || le.ElementID != "e1" {
++				t.Fatalf("refusal = field %q element %q, want field %q element %q", le.Field, le.ElementID, c.wantField, "e1")
++			}
++			// And the refusal PRECEDES the version entirely: the
++			// document declares 2.0 in its own bytes and is still
++			// refused, so nothing about this outcome came from a
++			// version comparison.
++			if !strings.Contains(string(c.doc), `"version": "2.0"`) {
++				t.Fatal("fixture precondition: the document must declare 2.0 itself, so the refusal cannot be mistaken for a version check")
++			}
++		})
++	}
++
++	// Leg 2 — the TEXT element, unchanged. It loads, and it still
++	// requires 2.0. Remove this and a blanket ban passes the file.
++	d, err := ParseDocument(alignDocWithStyle(`"align": "justify"`))
++	if err != nil {
++		t.Fatalf("a TEXT element's style.align: \"justify\" must still load (FR47, Story 7.3): %v", err)
++	}
++	if got := versionRequiredByContent(d); got != majorFeatureVersion {
++		t.Errorf("versionRequiredByContent over a justified TEXT element = %q, want %q — this story narrows the set by consumer, it does not ban the value", got, majorFeatureVersion)
++	}
++}
+diff --git a/folio-go/render_error.go b/folio-go/render_error.go
+index 338dfb9..42988a1 100644
+--- a/folio-go/render_error.go
++++ b/folio-go/render_error.go
+@@ -82,20 +82,31 @@ func newRenderError(code, elementID, dataPath string, err error) *RenderError {
+ 	}
+ }
+ 
+-// wrapTemplateError is ParseTemplate's boundary for FR41's "malformed
+-// template" mode (AC4/AC8) AND for R8's TABLE_FOOTER_SOURCE_FORBIDDEN
+-// (DW-6): both originate inside internal/template, which may not
+-// import the module root (AD-1) and so cannot construct a Diagnostic
+-// itself. A *template.LoadError with an explicit Code (set only at
+-// parse_bands.go's three footer-source sites — two DW-6 FORBIDDEN
+-// sites, plus the out-of-collection UNRESOLVED site swept in at Story
+-// 4.5 per D-000.67 part 2 — see internal/template/errors.go's own doc
+-// comment) keeps that code; every other LoadError — the
+-// overwhelming majority of load-time failures — becomes
+-// DiagCodeTemplateMalformed. A non-LoadError (should not occur; kept
+-// as a fallback rather than a panic, AD-14) is wrapped the same way.
++// wrapTemplateError is ParseTemplate's boundary for the load path:
++// internal/template may not import the module root (AD-1) and so cannot
++// construct a Diagnostic itself.
++//
++// A *template.LoadError always carries a Code now (Story 7.8, D-7.8.1):
++// diag.CodeTemplateFieldInvalid by default, supplied by newLoadError
++// itself, or one of the four overriding specific codes — the three
++// footer-source ones and STYLE_LINE_SPACING_INVALID. Whichever it is,
++// it is kept. Until Story 7.8 the general population arrived UNCODED and
++// was bucketed under DiagCodeTemplateMalformed, whose message the WASM
++// host replaces wholesale — so every located field error was destroyed
++// before its author could read it. That boundary rule is unchanged and
++// still correct for what it now names.
++//
++// DiagCodeTemplateMalformed remains FR41's "malformed template" mode
++// (AC4/AC8) and is what a NON-LoadError load failure becomes: bytes that
++// are not a JSON object, an unreadable value under an unknown key, or a
++// MAJOR version the library cannot load — the failures that have no
++// field to name, and whose messages can quote the offending document
++// back.
+ func wrapTemplateError(err error) error {
+ 	if le, ok := err.(*template.LoadError); ok {
++		// The zero-Code fallback is retained for a LoadError value
++		// constructed outside this package's two constructors; neither
++		// constructor can produce one.
+ 		code := DiagCodeTemplateMalformed
+ 		if le.Code != "" {
+ 			code = string(le.Code)
+diff --git a/folio-go/render_error_test.go b/folio-go/render_error_test.go
+index c856b8f..e49bf9c 100644
+--- a/folio-go/render_error_test.go
++++ b/folio-go/render_error_test.go
+@@ -27,6 +27,19 @@ const malformedTemplateJSON = `{
+ }
+ `
+ 
++// unparseableTemplateJSON is what FR41's "malformed template" mode
++// actually names since Story 7.8: bytes that are not a `.folio`
++// DOCUMENT at all. It has no field to be located at, and its own error
++// text can quote the offending input back — which is exactly why
++// wasm/cmd/engine's reportableMessage replaces TEMPLATE_MALFORMED's
++// message and only that one.
++//
++// malformedTemplateJSON above (a well-formed JSON object missing the
++// required `version` key) is the OTHER half of what that one code used
++// to carry, and it is now TEMPLATE_FIELD_INVALID: a located field error
++// whose message names the field and quotes nothing.
++const unparseableTemplateJSON = `["not", "a", "folio", "document"]`
++
+ const invalidExpressionTemplateJSON = `{
+   "assets": {},
+   "bands": {
+@@ -72,6 +85,11 @@ const unresolvableBindingTemplateJSON = `{
+ // &RenderError), carrying a DISTINCT registry code, SeverityError, and
+ // a message locating the element — WITHOUT reading Message to learn
+ // which mode fired (AC9: match on the code, never on message text).
++//
++// Story 7.8 splits the "malformed template" mode into the two codes it
++// always contained: TEMPLATE_MALFORMED for a document that is not a
++// document, TEMPLATE_FIELD_INVALID for a well-formed document carrying
++// an unacceptable field value. Five cases, four FR41 modes.
+ func TestFourErrorModesCarrySeverityErrorDiagnostics(t *testing.T) {
+ 	cases := []struct {
+ 		name          string
+@@ -82,12 +100,28 @@ func TestFourErrorModesCarrySeverityErrorDiagnostics(t *testing.T) {
+ 		{
+ 			name: "malformed template",
+ 			build: func(t *testing.T) error {
+-				_, err := ParseTemplate([]byte(malformedTemplateJSON))
++				_, err := ParseTemplate([]byte(unparseableTemplateJSON))
+ 				return err
+ 			},
+ 			wantCode:      DiagCodeTemplateMalformed,
+ 			wantElementID: "",
+ 		},
++		{
++			// Story 7.8, D-7.8.1: FR41's "malformed template" mode
++			// covers two observably different failures, and until this
++			// story both carried one code — so a LOCATED field error
++			// was flattened at the WASM boundary along with the
++			// document-quoting one the flattening exists for. They are
++			// now distinct codes, and the pairwise-distinctness check
++			// below is what holds them apart.
++			name: "invalid template field",
++			build: func(t *testing.T) error {
++				_, err := ParseTemplate([]byte(malformedTemplateJSON))
++				return err
++			},
++			wantCode:      DiagCodeTemplateFieldInvalid,
++			wantElementID: "",
++		},
+ 		{
+ 			name: "invalid expression",
+ 			build: func(t *testing.T) error {
+@@ -249,7 +283,12 @@ func TestMessageRewriteDoesNotAffectCodeRecovery(t *testing.T) {
+ 		wantMessageSubstr string // a real, production-owned phrase — never derived from wantCode
+ 	}{
+ 		{
+-			name: "malformed template",
++			// Repointed at Story 7.8: this fixture's condition — a
++			// required field missing from an otherwise well-formed
++			// document — is TEMPLATE_FIELD_INVALID now, not
++			// TEMPLATE_MALFORMED. The property under test is unchanged:
++			// Code is recovered without reading Message.
++			name: "invalid template field",
+ 			build: func(t *testing.T) (string, string) {
+ 				_, err := ParseTemplate([]byte(malformedTemplateJSON))
+ 				if err == nil {
+@@ -261,7 +300,7 @@ func TestMessageRewriteDoesNotAffectCodeRecovery(t *testing.T) {
+ 				}
+ 				return renderErr.Diagnostic.Code, renderErr.Diagnostic.Message
+ 			},
+-			wantCode:          DiagCodeTemplateMalformed,
++			wantCode:          DiagCodeTemplateFieldInvalid,
+ 			wantMessageSubstr: "missing required field",
+ 		},
+ 		{
+diff --git a/folio-go/table_render.go b/folio-go/table_render.go
+index c633378..143879d 100644
+--- a/folio-go/table_render.go
++++ b/folio-go/table_render.go
+@@ -703,14 +703,16 @@ func collectBandTableRuns(
+ 				textX = contentX + contentW - measured
+ 			case "center":
+ 				textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+-			// "left" is the header cell's start edge — and so is "justify".
+-			// style.align and headerStyle.align both admit "justify" (it
+-			// raises the document to 2.0), and it cascades into a header
+-			// cell through alignFallback, but the contract forbids
+-			// IMPLEMENTING justified table cells, so a justified table's
+-			// header labels are drawn at the start edge. That is a
+-			// deliberate, tracked scope boundary, not an oversight. Any
+-			// OTHER value the load-time closed-set check already rejected.
++			// "left" is the header cell's start edge. Every other
++			// value the load-time closed-set check already rejected,
++			// and since Story 7.8 that includes "justify": a TABLE's
++			// style.align and headerStyle.align validate against
++			// TableStyleAlignTokens — the same three values
++			// columns[].align admits — precisely because all three
++			// meet here, in alignFallback. A justified value can no
++			// longer cascade into a header cell at all, because the
++			// document carrying it does not load. The scope boundary
++			// this arm used to describe is enforced one stage earlier.
+ 			default:
+ 				textX = contentX
+ 			}
+@@ -1044,14 +1046,13 @@ func collectBandTableRuns(
+ 							textX = contentX + contentW - measured
+ 						case "center":
+ 							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+-						// "left" is the cell's start edge — and so is
+-						// "justify", which style.align admits and cascades
+-						// into a body cell through alignFallback. The
+-						// contract forbids implementing justified table
+-						// cells, so a justified table draws at the start
+-						// edge: a deliberate, tracked scope boundary, not an
+-						// oversight. Any OTHER value the load-time
+-						// closed-set check already rejected.
++						// "left" is the cell's start edge. Every other
++						// value the load-time closed-set check already
++						// rejected — including "justify" since Story
++						// 7.8, which refuses it on a TABLE's own
++						// style.align rather than letting it cascade
++						// into a body cell through alignFallback. This
++						// arm therefore catches only "left".
+ 						default:
+ 							textX = contentX
+ 						}
+@@ -1228,14 +1229,13 @@ func collectBandTableRuns(
+ 							textX = contentX + contentW - measured
+ 						case "center":
+ 							textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
+-						// "left" is the cell's start edge — and so is
+-						// "justify", which style.align admits and cascades
+-						// into a footer cell through alignFallback. The
+-						// contract forbids implementing justified table
+-						// cells, so a justified table draws at the start
+-						// edge: a deliberate, tracked scope boundary, not an
+-						// oversight. Any OTHER value the load-time
+-						// closed-set check already rejected.
++						// "left" is the cell's start edge. Every other
++						// value the load-time closed-set check already
++						// rejected — including "justify" since Story
++						// 7.8, which refuses it on a TABLE's own
++						// style.align rather than letting it cascade
++						// into a footer cell through alignFallback. This
++						// arm therefore catches only "left".
+ 						default:
+ 							textX = contentX
+ 						}
+diff --git a/folio-go/table_render_test.go b/folio-go/table_render_test.go
+index 4bb1880..ba59238 100644
+--- a/folio-go/table_render_test.go
++++ b/folio-go/table_render_test.go
+@@ -4,6 +4,7 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"strings"
+ 	"testing"
+ 
+ 	"github.com/panitw/folio/folio-go/internal/geom"
+@@ -1319,29 +1320,47 @@ const justifyCascadeColumns = `[
+   {"id": "e3", "label": "Amount", "width": 160, "bind": "{{row.b}}", "footer": "count"}
+ ]`
+ 
+-// TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge pins the scope
+-// boundary the three `default:` arms in table_render.go now name, and it
+-// pins the CURRENT behaviour rather than a wished-for one.
++// TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad is Story 7.3's
++// TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge, INVERTED at Story
++// 7.8. It is not deleted, and the assertion it carried is not dropped —
++// it MOVED DOWN A LAYER, because its subject no longer exists.
+ //
+-// `justify` is admitted at style.align and headerStyle.align — the
+-// contract REQUIRES it to load, and to raise the document to 2.0 — and
+-// those two are exactly what a table cell without its own
+-// `columns[].align` falls back to. So a cascaded `justify` really does
+-// reach the header, body and footer align switches. None of them has a
+-// justify arm, because the contract equally forbids implementing
+-// justified table cells: they all take `default:` and draw at the
+-// cell's start edge, which is where `left` draws.
++// What it used to pin: `justify` was admitted at style.align and
++// headerStyle.align — the contract REQUIRED such a document to load and
++// to be raised to 2.0 — and those two are exactly what a table cell
++// without its own `columns[].align` falls back to. So a cascaded
++// `justify` really did reach the header, body and footer align
++// switches, none of which has a justify arm, and every cell drew at the
++// start edge. The test asserted byte-identity against `left`, and it was
++// correct against the contract as written.
+ //
+-// The assertion is therefore byte-identity against `left`, and the
+-// `center` leg beside it is what stops that from passing vacuously: if
+-// the cascade were being ignored altogether, centred would match too.
+-func TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge(t *testing.T) {
++// What DW-29 recorded about that: the author paid a MAJOR version bump
++// — a document unreadable to every 1.x reader — for a render identical
++// to `left`, with no diagnostic anywhere. Story 7.8 refuses the value at
++// load instead, keyed on the CONSUMER: a table's style.align and
++// headerStyle.align validate against the same three values its
++// columns[].align does, because all three meet in one alignFallback.
++//
++// So the byte-identity claim is now UNREACHABLE — no such document can
++// exist — and this test asserts the refusal that makes it unreachable,
++// through the same real load path (ParseTemplate over
++// tableHeaderDocFull, which injects the style at BOTH attachment
++// points).
++//
++// The `center`-vs-`left` leg is PRESERVED, and it is still doing the
++// same job: it proves the cascade genuinely reaches the cell align
++// switches for the values that still load. Without it, "justify is
++// refused" would be consistent with a table that ignores its cascaded
++// align entirely.
++func TestATableWhoseCascadedAlignIsJustifyIsRefusedAtLoad(t *testing.T) {
+ 	const data = `{"items": [{"a": "Jan", "b": "7"}, {"a": "Feb", "b": "12"}]}`
++	docFor := func(align string) []byte {
++		style := `{"fontFamily": "latin", "fontSize": 9, "align": "` + align + `"}`
++		return []byte(tableHeaderDocFull(style, style, justifyCascadeColumns, 20))
++	}
+ 	render := func(align string) []byte {
+ 		t.Helper()
+-		style := `{"fontFamily": "latin", "fontSize": 9, "align": "` + align + `"}`
+-		doc := tableHeaderDocFull(style, style, justifyCascadeColumns, 20)
+-		tpl, err := ParseTemplate([]byte(doc))
++		tpl, err := ParseTemplate(docFor(align))
+ 		if err != nil {
+ 			t.Fatalf("ParseTemplate(align %q): %v", align, err)
+ 		}
+@@ -1352,17 +1371,39 @@ func TestTableCellsCascadedJustifyIsDrawnAtTheStartEdge(t *testing.T) {
+ 		return res.Bytes
+ 	}
+ 
+-	justified, left, centred := render("justify"), render("left"), render("center")
+-	if sha256Hex(justified) != sha256Hex(left) {
+-		t.Errorf(
+-			"a table whose cascaded align is \"justify\" rendered differently from the same table at \"left\" "+
+-				"(%s vs %s) — justified TABLE CELLS are outside this story's contract, so every cell must take "+
+-				"the `default:` arm and draw at the start edge",
+-			sha256Hex(justified), sha256Hex(left),
+-		)
++	// THE INVERSION. The document tableHeaderDocFull builds carries the
++	// same style at the table's own `style` and at its `headerStyle`, so
++	// whichever the loader reaches first must refuse it, located.
++	_, err := ParseTemplate(docFor("justify"))
++	if err == nil {
++		t.Fatal("a table whose cascaded align is \"justify\" must be REFUSED at load — it would otherwise raise the document to 2.0 and then render identically to \"left\" (DW-29)")
++	}
++	var renderErr *RenderError
++	if !errors.As(err, &renderErr) {
++		t.Fatalf("the refusal must reach the caller as a *RenderError: %T %v", err, err)
+ 	}
++	if renderErr.Diagnostic.Code != DiagCodeTemplateFieldInvalid {
++		t.Errorf("Code = %q, want %q — an uncoded load error is flattened to \"The template could not be processed\" at the WASM boundary and never reaches the author", renderErr.Diagnostic.Code, DiagCodeTemplateFieldInvalid)
++	}
++	if renderErr.Diagnostic.ElementID != "e1" {
++		t.Errorf("ElementID = %q, want %q — the refusal must name the element", renderErr.Diagnostic.ElementID, "e1")
++	}
++	msg := err.Error()
++	for _, want := range []string{"e1", "align", "left, center, right"} {
++		if !strings.Contains(msg, want) {
++			t.Errorf("the refusal must contain %q, got: %s", want, msg)
++		}
++	}
++	if strings.Contains(msg, "right, justify") {
++		t.Errorf("a table's refusal must not name justify among the legal values, got: %s", msg)
++	}
++
++	// THE NON-VACUITY LEG, preserved verbatim in intent: the values that
++	// still load must still reach the cell align switches, or "justify
++	// is refused" would be true of a table that ignores its align.
++	left, centred := render("left"), render("center")
+ 	if sha256Hex(centred) == sha256Hex(left) {
+-		t.Fatal("the centred table renders byte-identically to the left-aligned one, so the cascade is not reaching the cell align switches at all and the identity above is vacuous")
++		t.Fatal("the centred table renders byte-identically to the left-aligned one, so the cascade is not reaching the cell align switches at all and the refusal above proves nothing about a table's alignment")
+ 	}
+-	t.Logf("cascaded justify == left (%s); centred differs (%s)", sha256Hex(left)[:12], sha256Hex(centred)[:12])
++	t.Logf("justify refused at load (%v); centred still differs from left (%s vs %s)", renderErr.Diagnostic.Code, sha256Hex(centred)[:12], sha256Hex(left)[:12])
+ }
+diff --git a/folio-go/wasm/cmd/engine/main_test.go b/folio-go/wasm/cmd/engine/main_test.go
+index cdcb4a9..5ecd72f 100644
+--- a/folio-go/wasm/cmd/engine/main_test.go
++++ b/folio-go/wasm/cmd/engine/main_test.go
+@@ -40,11 +40,25 @@ func TestWasmHostRoundTripsCanonicalFixture(t *testing.T) {
+ 	}
+ }
+ 
++// TestWasmHostSanitizesTemplateDiagnostics pins the destruction rule
++// itself: TEMPLATE_MALFORMED's message is replaced wholesale, because
++// that message may quote the offending document back and a large or
++// hostile one would be reflected instead of described.
++//
++// Story 7.8 re-pointed the FIXTURE, not the rule. The payload was a
++// well-formed JSON object with a 2048-byte value, which reached this
++// boundary as an UNCODED *LoadError and so was bucketed under
++// TEMPLATE_MALFORMED — along with every located field error in the
++// format. D-7.8.1 stopped bucketing LoadErrors there, so a document that
++// is merely WRONG is no longer the way to exercise this rule; a
++// document that is not a document is. The payload is therefore
++// unparseable bytes rather than a parseable object, and it still carries
++// the 2048-byte run this test exists to prove is never reflected.
+ func TestWasmHostSanitizesTemplateDiagnostics(t *testing.T) {
+ 	engine := wasm.NewEngine()
+-	malicious := `{"version":"1.0","page":"` + string(bytes.Repeat([]byte("x"), 2048)) + `"}`
++	malicious := `{"version":"1.0","page":"` + string(bytes.Repeat([]byte("x"), 2048)) + `"`
+ 	got := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(malicious))})
+-	if got.OK || got.DiagnosticCode == "" || got.Message != "The template could not be processed" {
++	if got.OK || got.DiagnosticCode != folio.DiagCodeTemplateMalformed || got.Message != "The template could not be processed" {
+ 		t.Fatalf("diagnostic = %#v", got)
+ 	}
+ 	if len(got.Message) > 512 || bytes.Contains([]byte(got.Message), []byte("xxx")) {
+@@ -52,6 +66,55 @@ func TestWasmHostSanitizesTemplateDiagnostics(t *testing.T) {
+ 	}
+ }
+ 
++// TestWasmHostReportsTheTableJustifyRefusalIntact is Story 7.8's AC4,
++// asserted at the only place it is actually decided: the wasm boundary.
++//
++// A designer author opens a hand-edited `.folio` whose table carries
++// `style.align: "justify"`. Before this story that document LOADED,
++// paid a MAJOR version bump and drew every cell at the start edge with
++// no diagnostic at all. Refusing it at load is only half the fix — an
++// UNCODED refusal would have arrived here as TEMPLATE_MALFORMED, whose
++// message reportableMessage replaces with "The template could not be
++// processed", and the author would be told nothing about which element
++// or which field. Every Go-side assertion would still have been green.
++//
++// This is why D-7.8.1 had to be settled before the story could be
++// written, and it is the shape of
++// TestWasmHostReportsTheLineSpacingRefusalIntact above.
++func TestWasmHostReportsTheTableJustifyRefusalIntact(t *testing.T) {
++	const doc = `{"assets":{},"bands":{"content":{"elements":[{"id":"e1","type":"table","x":0,"y":0,"bind":"rows[]","as":"row","headerHeight":20,"columns":[{"id":"e2","label":"L","width":100,"bind":"{{row.v}}"}],"style":{"fontFamily":"body","fontSize":11,"align":"justify"}}]},"pageFooter":{"elements":[],"height":20},"pageHeader":{"elements":[],"height":20}},"fonts":{"body":["Noto Sans"]},"locale":"en","nextId":3,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"2.0"}`
++	engine := wasm.NewEngine()
++	got := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(doc))})
++	if got.OK {
++		t.Fatalf("a table carrying style.align: \"justify\" must fail the load: %#v", got)
++	}
++	if got.DiagnosticCode != folio.DiagCodeTemplateFieldInvalid {
++		t.Fatalf("code = %q, want %q", got.DiagnosticCode, folio.DiagCodeTemplateFieldInvalid)
++	}
++	if got.Message == "The template could not be processed" {
++		t.Fatal("the message was replaced by the malformed-template placeholder — the author is told neither which element nor which field")
++	}
++	for _, want := range []string{"e1", "style.align", "left, center, right"} {
++		if !strings.Contains(got.Message, want) {
++			t.Fatalf("the message must name %q, got %q", want, got.Message)
++		}
++	}
++	if strings.Contains(got.Message, "right, justify") {
++		t.Fatalf("the message must not name justify among a table's legal values, got %q", got.Message)
++	}
++
++	// The SAME value on a TEXT element still loads. Without this leg the
++	// assertions above are equally consistent with a blanket ban, which
++	// Story 7.3, Story 7.4 and two shipped goldens forbid.
++	const textDoc = `{"assets":{},"bands":{"content":{"elements":[{"id":"e1","type":"text","x":0,"y":0,"width":200,"height":40,"value":"v","style":{"fontFamily":"body","fontSize":11,"align":"justify"}}]},"pageFooter":{"elements":[],"height":20},"pageHeader":{"elements":[],"height":20}},"fonts":{"body":["Noto Sans"]},"locale":"en","nextId":2,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"2.0"}`
++	textEngine := wasm.NewEngine()
++	textGot := dispatch(textEngine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(textDoc))})
++	if !textGot.OK {
++		t.Fatalf("a TEXT element's style.align: \"justify\" must still load (FR47): %#v", textGot)
++	}
++	t.Logf("table refusal at the host: code=%s message=%q; the same value on a text element loaded", got.DiagnosticCode, got.Message)
++}
++
+ // TestWasmHostReportsTheLineSpacingRefusalIntact is Story 7.2's AC7 at
+ // the only place it is actually decided. reportableMessage replaces a
+ // diagnostic's message with "The template could not be processed" for
