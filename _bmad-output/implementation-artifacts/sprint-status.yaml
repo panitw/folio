@@ -156,8 +156,8 @@ development_status:
   # Epic 7 changes the AUTHORING SURFACE and TYPOGRAPHY only; pagination is a constraint
   # on it, not a target of it. Every field it adds is optional and absent-by-default, so
   # the existing corpus must hash identically.
-  epic-7: backlog
-  7-1-break-a-line-where-the-author-typed-a-break: backlog
+  epic-7: in-progress
+  7-1-break-a-line-where-the-author-typed-a-break: in-progress
   7-2-set-the-space-between-a-paragraph-s-lines: backlog
   7-3-justify-a-paragraph-s-edges: backlog
   7-4-author-body-text-in-the-designer: backlog
