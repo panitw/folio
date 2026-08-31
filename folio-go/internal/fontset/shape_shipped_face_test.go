@@ -1,4 +1,4 @@
-package text_test
+package fontset_test
 
 import (
 	"os"
@@ -27,10 +27,19 @@ import (
 // AS A TEST, AND MUST NAME THE POPULATION IT MEASURED RATHER THAN THE
 // POPULATION IT CONCLUDED ABOUT.
 //
-// It is an EXTERNAL test package because the shipped face bytes live
-// outside internal/ by AD-8 ("no package under internal/ embeds font
-// data"), and it reads the file directly rather than importing the
-// fonts package, which imports the root package that imports this one.
+// IT LIVES IN fontset, NOT IN text, AND THE REASON IS A RULE THIS FILE
+// BROKE ON ITS FIRST ATTEMPT. D-000.16 ranks the pipeline strictly
+// forward — geom 0, diag 1, pagemodel 1, template 2, expr 3, bind 4,
+// text 5, fontset 6, layout 7, pdf 8 — and a package may import only a
+// STRICTLY LOWER rank. Written under internal/text this file imported
+// fontset, rank 6 from rank 5, and `lint`'s stage-rank scan caught it.
+// fontset already imports text and constructs the Shaper, so the test
+// belongs on this side of the boundary; the claim it corrects still
+// lives in text/shape.go's comment, which points here.
+//
+// It is an EXTERNAL test package reading the face from its own file
+// rather than importing the fonts package, because AD-8 keeps font data
+// outside internal/ and fonts imports the root package.
 
 // shippedThai loads the shipped Noto Sans Thai from its own file. If the
 // path moves this test fails loudly rather than skipping — a guard that

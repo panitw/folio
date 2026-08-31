@@ -16,7 +16,7 @@ import (
 // GSUB's answer (Thai's lowered mark forms, Latin's ligatures);
 // XAdvance carries GPOS kerning; XOffset carries mark positioning;
 // YOffset carries vertical mark positioning — RED-PROVED against the
-// shipped Noto Sans Thai by shape_shipped_face_test.go, which shapes
+// shipped Noto Sans Thai by internal/fontset/shape_shipped_face_test.go, which shapes
 // ทั้ and finds a displaced glyph, with ที่ as the control that comes
 // back at zero because the face resolves that pair by a GSUB
 // lowered-form substitution instead; Cluster

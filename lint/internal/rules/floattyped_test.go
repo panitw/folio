@@ -160,7 +160,7 @@ func TestFloatTypedTestScopeInventory(t *testing.T) {
 	// cannot arrive unnoticed.
 	want := []findingSite{
 		// The pre-2.3 negative control for TestShapedExpectationsObservability.
-		{Path: "shaping_expectations_test.go", Rule: RuleNoFloatTypedValue, Line: 341},
+		{Path: "shaping_expectations_test.go", Rule: RuleNoFloatTypedValue, Line: 357},
 		// D-2.2.4's sanctioned V5 tag-discrimination test: PinAxisLocation(…, 700).
 		{Path: "internal/fontset/fontset_test.go", Rule: RuleNoFloatTypedValue, Line: 529},
 		// The INTACT anchor for gid 36's advance (Story 2.3a Finding 6),
