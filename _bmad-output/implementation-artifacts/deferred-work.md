@@ -4427,3 +4427,99 @@ Delivery Log says so rather than implying they were.
 
 **What discharges it.** Record each rejection the way `addressed_findings` records a patch: the
 claim, its location, and the ground on which it was refused.
+
+---
+
+### DW-88 — the corpus's only Thai-bearing golden with no human reading attestation, and no red gate that a person must clear — **OPEN QUESTION WITH THE ENGINEERING LEAD**
+
+- **Deferred by:** Story 8.4 (2026-09-01). Filed by the build in the spec's frontmatter as two
+  entries; entered into this register at close as one, because they are one question — the
+  attestation and the gate that would hold it open are the same obligation.
+- **Owner:** **Engineering lead**, routed by the run orchestrator at Story 8.4's close and awaiting a
+  ruling. The reading itself, if the ruling authorises the gate, is the **project owner's** — **no
+  agent may write `reader`, `date` or `examined` in any sign-off file.**
+- **Severity:** LOW as measured, **but it is the kind of gap D-2.3.5 calls "an obligation nobody
+  trips over"**, which is why it is registered rather than left in a spec's frontmatter.
+- **Status:** **OPEN — awaiting the engineering lead's ruling.** Nothing was minted at close.
+
+**The gap.** `fixtures/embedded-font/expected.pdf` ships from Story 8.4 onwards and its page is Thai
+drawn from the face the document carries. Every OTHER Thai-bearing golden pairs a human reading
+sign-off with a failing `//go:build matrix` gate and a `goldenDigestRecord` site of
+`{kind: "signoff"}` — `fixtures/shaped-text/thai-signoff.json` under D-2.3.5,
+`fixtures/thai-stacked-marks/signoff.json` under Story 8.0. This one has neither.
+
+**Why Story 8.4 could not discharge it, and was right not to try.** The spec's `Block If` halts the
+story if a `//go:build matrix` sign-off gate is left red, so minting the gate inside the story would
+force the very halt the gate exists to prevent. The build filed it rather than minting; that was the
+correct call and it is recorded here so the choice is visible.
+
+**What is already attested, measured rather than assumed.** The drawn string is `สัญญา`, which is
+byte-for-byte the string `fixtures/thai-stacked-marks/` draws as its **e2 zero-offset control**, at
+the same 12pt, shaped by the **same** face — `folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf`,
+whose bytes this document merely carries a second copy of. So the shaping and the reading of those
+five glyphs are attested by the owner (2026-08-31); what is unattested is **this subset and this
+page**. Re-checked at close: the full `-tags=matrix` sweep leaves **no** sign-off gate red and
+invalidates **no** existing attestation, so AC6's three grounds for closing `done` without a new
+sign-off all held.
+
+**What discharges it.** A ruling that authorises minting the gate together with scheduling the human
+reading — the two must land together, or the gate is a red nobody has decided about, which is the
+DW-23 shape.
+
+---
+
+### DW-89 — a readable embedded entry that nothing ever draws with still contributes its metrics, so line advance can move across the 8.4 boundary
+
+- **Deferred by:** Story 8.4 (2026-09-01), recorded on closing it.
+- **Owner:** **Engineering lead** to pin the intended answer; due at **Epic 8 close**. Nothing pins
+  it either way today, so a later change in either direction is currently unfalsifiable.
+- **Severity:** LOW. No committed golden can observe it.
+- **Status:** OPEN.
+
+**The gap.** `fontCache.metricsFace` treats any embedded name as declared and decodes it, so
+`chainLineMetrics`/`chainVerticalModel` see a carried face even when no rune ever resolves to it.
+Measured at close: only `fixtures/embedded-font/` has an embedded chain entry, so all 22 pre-existing
+digests are unmoved and no golden can see the difference. But an integrator's document that carries a
+face it never draws from could see its **line advance change across this version boundary**, with
+nothing in the repo asserting whether that is right.
+
+**What discharges it.** A ruling on the intended answer plus a test that pins it — either "a carried
+face constrains the vertical model whether or not it draws" or "only faces that draw constrain it".
+
+---
+
+### DW-90 — a chain whose ONLY entry is an unreadable embedded one produces the right error by evaluation order, not by assertion
+
+- **Deferred by:** Story 8.4 (2026-09-01), recorded on closing it.
+- **Owner:** **Epic 8 close.**
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+**The gap.** Both new tests that exercise a non-font chain entry
+(`TestNonFontAssetDrawnErrorsAtRenderAndAtValidate`,
+`TestChainOfOnlyUnusableEntriesProducesTheExistingLocatedError`) place the failing entry **behind** a
+shipped face that supplies the vertical model. A probe of the single-entry case returns the located
+capability error rather than the generic empty-metrics error, so the behaviour is right today — but
+which of the two errors wins depends on evaluation order that no test fixes. Confirmed still true at
+close: the single-entry shape projects and refuses correctly, and nothing asserts which error it
+must be.
+
+**What discharges it.** A test that fixes the answer for a chain whose only entry is unreadable.
+
+---
+
+### DW-91 — two error branches the code itself documents as structurally unreachable are untested
+
+- **Deferred by:** Story 8.4 (2026-09-01), recorded on closing it.
+- **Owner:** **Epic 8 close.**
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+**The gap.** `predictDocument`'s `if cache.isEmbedded(name)` arm is commented *"Unreachable in
+practice: a name only reaches this loop by having already been parsed"*, and
+`embeddedFaceSource.decode`'s `if !s.present` arm is *"structurally unreachable today"*. Neither is
+exercised. An untested unreachable error path is the one that is wrong when a later change makes it
+fire.
+
+**What discharges it.** This repo's own idiom elsewhere: an unreachability tripwire that reddens when
+the branch becomes reachable, rather than a test that contrives the impossible state.

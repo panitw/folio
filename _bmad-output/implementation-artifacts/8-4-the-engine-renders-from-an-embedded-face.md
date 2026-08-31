@@ -102,6 +102,30 @@ deferred:
     severity: low
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative. The intent contract below governs the implementation; where the two differ, the
+contract wins.*
+
+A template could already carry a typeface inside itself, but nothing could draw with one. Now a
+document that carries a face renders from it, on a machine that has never seen that font installed.
+The sample document now prints Thai — text the shipped Latin face covers not one character of — so
+its recorded output can tell a working implementation from an inert one. It ships its first recorded
+page; the twenty-two recorded before it are unchanged to the byte.
+
+A document naming a picture where a font belongs is still accepted when opened, and is now refused
+the moment something has to draw with it — naming the fallback list and the position in it the
+author must fix. Checking a document without rendering gives the identical refusal.
+
+Review caught three defects no automated check saw: the designer refused to open the very document
+an author needed it for, a refusal could name a fallback list the text does not draw through, and a
+diagnostic printed a long digest where a font's name belongs. All three are fixed and pinned.
+
+Three things will look wrong later and are not. The designer measures with a carried face but cannot
+yet paint with it; that is the next story, disclosed by a test. Two long-standing failures stay red
+on purpose and are registered elsewhere. And the new Thai page has no human reading sign-off — that
+question is open with the engineering lead, and no agent may invent one.
+
 <intent-contract>
 
 ## Intent
@@ -520,7 +544,7 @@ the same commit** (D-8.2.3: a hole in one arm of an enumeration is evidence abou
   origins and advances are **identical** to the PDF path's for the same inputs, asserted by a test.
 - Given `fixtures/embedded-font/`, when this story closes, then its document draws text only the
   embedded face covers, it ships an `expected.pdf` recorded in `goldenDigestRecord`, the embedded
-  face's presence on the page is asserted **by identity and not by count**, and the other 21 digests
+  face's presence on the page is asserted **by identity and not by count**, and the other 22 digests
   are unmoved.
 
 ## Spec Change Log
@@ -548,6 +572,17 @@ nothing, the second-literal-less `expected.json`, and the two reds that are the 
 red-proof); the instruction to copy `chain_face_names_test.go:176-211` and **not**
 `render_image_test.go:258`; and the measured coverage fact that a **pure-Thai** string is the sharp
 witness while a mixed one is not.
+
+### 2026-09-01 — corrected at close: the golden count outside the frozen contract
+
+The build's own triage caught the brief's off-by-one and fixed it in the two Go files. Four prose
+sites still carried it. Three are corrected here — the AC6 acceptance line, the AC6 sign-off note in
+`## Design Notes`, and the digest-diff bullet in `## Verification`. The fourth, the `Always` bullet
+reading *"the other 21 must not move"*, is **inside `<intent-contract>` and was left byte-identical**:
+the contract is the record of what was promised, and this dispatch verified its byte-identity as an
+invariant. The measurement, reconstructed out of git rather than from any file this run wrote:
+`fixtures/*/expected.pdf` holds **22** blobs at `15ca0dd` and **23** at `cca0c3c` — one added line
+(`embedded-font`), zero moved. **Read that bullet as 22.**
 
 ## Review Triage Log
 
@@ -780,7 +815,7 @@ AC4→AD-14, D-1.8.1; AC5→AD-17; AC6→AD-21. **No omission remains.**
 
 **AC6's human sign-off, checked rather than assumed.** Story 8.0's measured precedent: a new golden
 that invalidates no existing attestation and leaves no `//go:build matrix` sign-off gate red closes
-`done`. The three grounds hold here — the other 21 digests are unmoved, no existing sign-off's
+`done`. The three grounds hold here — the other 22 digests are unmoved, no existing sign-off's
 `sha256` is touched, and no agent writes `reader`/`date`/`examined`. **But the fixture's subject is
 now Thai rendered from an embedded face**, and if the full `-tags=matrix` sweep leaves a sign-off
 gate red, that is the `Block If` firing. Record any new human-reading question as a **deferral** with
@@ -811,8 +846,9 @@ cache is not an anchor):
   typecheck clean; oxlint exactly **4** pre-existing `only-export-components` warnings; Vitest at or
   above the **323 tests / 35 files** baseline (report actual numbers); e2e **compiles only** and
   executes nowhere by design.
-- `shasum -a 256 fixtures/*/expected.pdf | diff - <scratch>/digests.before` — **the 21 digests other
-  than `embedded-font` must be byte-identical.** `embedded-font` appears as a new line (it ships no
+- `shasum -a 256 fixtures/*/expected.pdf | diff - <scratch>/digests.before` — **all 22 digests
+  recorded at the baseline must be byte-identical** (corrected from 21 at close: `embedded-font`
+  carried no `expected.pdf` at `15ca0dd`, so every one of the 22 baseline lines is an *other*). `embedded-font` appears as a new line (it ships no
   `expected.pdf` today); its digest is the one deliberate, story-owned re-record (D-8.4.4b). Any
   other movement is a failure, not a re-record.
 - `cd folio-go && GOOS=js GOARCH=wasm go test -count=1
@@ -946,3 +982,130 @@ line advance change across this version boundary; no committed golden can observ
 attestation — filed as a deferral with the README stating the gap, never a fabricated sign-off. Its
 grounds for closing were checked rather than assumed: the full `-tags=matrix` sweep leaves no sign-off
 gate red and invalidates no existing attestation.
+
+## Delivery Log
+
+### 2026-09-01 — done
+
+Baseline `15ca0dd`, closed at `cca0c3c` (implementation `1446b87`, review patches `cca0c3c`), on
+`main`, never pushed. Heavy-test cadence for this run is **every story**, so nothing was deferred to
+an epic catch-up: both the plain and the full `-tags=matrix` sweeps were run here, `-count=1`, and
+every figure below is this close's own measurement, not the build's.
+
+**The disposition on `followup_review_recommended: true`, recorded because it was a judgement and not
+a default.** The build patched 0 high, 3 medium, 6 low. The orchestrator's ruling was to spend the
+follow-up as a **hard adversarial pass at close** rather than re-dispatching a separate review loop,
+and to leave the flag set unless that pass supported clearing it. **The pass supports clearing it;
+the flag is left set anyway**, because clearing it is the orchestrator's call and this entry is where
+the evidence for that call lives.
+
+**The three behavioural defects were re-probed independently, not accepted from the report.** Each
+was invisible in the diff and each was found by review rather than by a gate.
+1. *The canvas aborting a document the format calls valid.* The concern that mattered was blast
+   radius, not the fix: a repair that degrades for the probed input and aborts for a neighbour is the
+   same defect, smaller. Seven reachable shapes were projected through `CanvasWithTextPaint` and
+   **all seven returned nil** — the bad entry at index 1 (the reviewed case), at index 0, as a chain's
+   *only* entry, in the pageHeader band, in the pageFooter band, present-but-never-consulted behind a
+   covering face, and a rune no face in the chain covers. The surrounding audit is what makes that a
+   bound rather than a sample: the capability error can reach `addCanvasTextPaint` only through
+   `shapeSegments`, because `metricsFace` swallows an embedded face's decode failure, so
+   `chainVerticalModel`'s abort arm cannot see it; and the other two paint producers take
+   pre-computed extents and resolve no fonts at all, while `collectBandTableRuns` has no caller on
+   the canvas path.
+2. *The located error naming a chain the element does not draw through.* The shipped pin uses `aaa`
+   vs `body`, and `body` is the fixture's default family — so it cannot separate "names the drawn
+   chain" from "names the default". Re-probed on three chains `aaa`/`body`/`zzz` with the element
+   drawing through **`zzz`** — non-first in sorted order and non-default: the error reads
+   `font chain "zzz" entry 1` and names neither of the other two, and `Validate` returns it
+   byte-identically.
+3. *The missing-glyph diagnostic printing an asset digest.* Re-probed: the message now reads
+   `no face in chain [Noto Sans, embedded "Noto Sans Thai"] covers U+6F22 (漢)…`, with no `asset:`
+   prefix and no 64-hex key anywhere in it.
+
+**Test teeth, measured here — the build's redden-counts were not carried forward.** Six mutation
+screens, each reverted, tree verified clean after each. Reverting `chainFaceNames`' embedded arm to
+the pre-8.4 drop reddens **15 top-level tests (22 including subtests)**, not the 11 the build
+reported. Making `Validate` swallow `predictDocument`'s error while leaving `Render` intact reddens
+**5 top-level (7 including subtests)** — AC4's third half reddens on its own, through
+`TestNonFontAssetDrawnErrorsAtRenderAndAtValidate`. Neutering the canvas degrade reddens exactly
+`TestCanvasDegradesRatherThanAbortingOnANonFontChainEntry`; unscoping the chain view reddens exactly
+`TestTheLocatedErrorNamesTheChainTheElementDrawsThrough`; dropping the display spelling reddens
+exactly `TestMissingGlyphMessageSpellsACarriedFaceForAHuman`.
+
+**The restored count bound was audited against the defect it is named for, not against a degenerate
+mutant.** Flipping the expected count proves only that the clause is live — which it is, both
+in-process and inside a real AD-21 leg (`FOLIO_MATRIX_TARGET=darwin/arm64` reddens at
+`matrix_test.go`). The finding's actual claim was that *a third, unrelated subset face satisfies every
+identity clause*. Reproduced: a second element drawing `漢` through a `Noto Sans SC` chain puts **2**
+font programs on the page while all three identity clauses stay green (the carried face's resource is
+present, the shipped Latin face is absent, `+NotoSansThai-Regular` is present). Identity-only would
+have shipped that; the bound is what reddens. The build's decision to patch rather than reject was
+correct.
+
+**Gates, measured at `cca0c3c`.** `go test -count=1 ./...` **1798 pass / 2 fail / 5 skip**;
+`-tags=matrix ./...` **1808 pass / 3 fail / 5 skip**. **Exactly the two standing reds and no third**:
+`TestCorpusMeetsP6ExerciseFloors` with its `P6g_(opaque_names)` subtest (got 7, need ≥20), and
+`TestShippedFacesReproduceFromUpstream` under `matrix` only (DW-86). Its drift twin
+`TestCorpusP6StatsMatchDeclaredBaseline` passes, as it should while `baselineP6g = 7`.
+`go vet -tags=matrix ./...` exit 0; `gofmt -l folio-go` empty. All four AD-21 legs `ok` with
+`embedded-font` at `f533b04b…d851832` and 3,225 bytes on every one (darwin/arm64 0.68s,
+linux/amd64 6.33s, linux/arm64 4.91s, js/wasm 10.79s), plus the unset control `ok` at 0.00s — the
+deliberate no-op, and the timing contrast is the evidence the four legs asserted.
+`TestCrossTargetByteIdentity` `ok` 22.97s. `lint` four packages `ok`. Designer: typecheck clean,
+oxlint **exactly 4** pre-existing `only-export-components` warnings, Vitest **325 passed / 35 files**,
+e2e compiles. `GOOS=js GOARCH=wasm` engine package `ok`.
+
+**The baseline comparison was redone by the honest method, because the naive one lies here.** Story
+8.3's close found that a detached worktree fails `TestShippedFacesReproduceFromUpstream` one gate
+*earlier* — on missing `.font-sources`, which is untracked and therefore absent from any worktree —
+which is a **different** error wearing the same test's name. Re-run at `15ca0dd` in a detached
+worktree **with `FOLIO_FONT_SOURCES` supplied**: plain **1783 / 2 fail / 5 skip**, matrix
+**1793 / 3 fail / 5 skip**, and the baseline failure text is the same *"fontgen: fontTools is not
+importable"* as HEAD's. Failure sets byte-identical; the +15 on each is this story's new tests.
+
+**The golden claim was reconstructed out of git, never from a file this run wrote.**
+`git ls-tree` at `15ca0dd` lists **22** `fixtures/*/expected.pdf` blobs; at `cca0c3c`, **23**. The
+diff of the two digest lists is a single added line — `fixtures/embedded-font/expected.pdf` at
+`f533b04b…d851832` — and **zero moved**. What was *re-recorded* is `expected.json`'s recorded sha256
+(`db400698…e513ad` → `f533b04b…d851832`); the PDF is new, so it moved nothing. The orchestrator's
+brief said "the other 21"; the answer is **22**. Three surviving prose sites were corrected at close
+and the fourth, inside the frozen `<intent-contract>`, was deliberately left byte-identical with the
+correction recorded in `## Spec Change Log`.
+
+**Rejection audit (DW-87).** All six rejections are enumerated with claim, cited location and
+refuting ground, and **all six were spot-checked at their cited locations** — none is "a true fact
+about nearby code". R1: `git show 15ca0dd:folio-go/render.go` confirms the `folio: Render:` prefix
+already existed inside `predictDocument` on a path `Validate` already called. R2: `newEmbeddedFaceIndex`
+populates the embedded view *only* from `entry.Embedded()` chain entries, and `fontCache.get` falls
+through to the `FontSet` for every other name, so the posited shadowing needs the document to carry
+that very asset. R3: `internal/template/parse.go` computes `sha256HexOf(decoded)` and refuses a
+mismatched key at load. R4: the contract's Approach does say *"So: **extract the LOOKUP, not the
+filter.**"* and names `table_render.go:653-660`. R5: the convention it cites is real — DW-83's own
+entry states that a build-filed deferral lives in the spec frontmatter and enters the register at
+close — **and this close discharges it** (see below). R6: `pdfNameEscape` is unexported in
+`internal/pdf` while the helper is in `package folio`, so the duplication is a package boundary, not
+a choice.
+
+**Commit hygiene, including the out-of-order commit.** A step-03 subagent committed on its own,
+which step-03 does not authorise; the builder re-measured rather than accepting its report, and both
+commits were audited here independently. `1446b87` (24 files) and `cca0c3c` (14 files) contain only
+this story's paths. The repo-root `README.md` is in neither and still hashes
+`078d7d80d518d54af2fc04fb270d46b8`. Neither `fixtures/statement-signoff.json` nor
+`fixtures/thai-stacked-marks/signoff.json` appears in either diff, and no `reader`/`date`/`examined`
+field was written anywhere. Both messages carry the required trailer. Nothing was pushed; no branch
+was created.
+
+**Deferrals — the four filed in this spec's frontmatter are now in the register as DW-88 … DW-91**,
+which is what R5's rejection deferred to this step. **DW-88 is the open question and it is NOT
+closed here**: `fixtures/embedded-font/expected.pdf` draws Thai and has neither a human reading
+attestation nor a `//go:build matrix` sign-off gate, unlike every other attested golden — and minting
+the gate inside this story would fire the spec's own `Block If` by leaving it red. It is **routed to
+the engineering lead and awaiting a ruling**; no gate was minted and no attestation field was
+written. DW-89 — a never-drawn embedded entry still contributes metrics, so line advance can move
+across this version boundary for such a document — needs the engineering lead to pin the intended
+answer, due at Epic 8's close. DW-90 (a chain whose only entry is an unreadable embedded one is right
+by evaluation order rather than by assertion) and DW-91 (two documented-as-unreachable branches are
+untested) are both owned by **Epic 8 close**.
+
+**Sequencing.** `sprint-status.yaml` sets this story to `done`. **`epic-8` stays `backlog`** —
+**8.4a** is sequenced immediately after this story, and 8.5 and 8.6 remain.
