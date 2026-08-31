@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/pagemodel"
 )
 
@@ -855,13 +856,13 @@ func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) 
 	return c, nil
 }
 
-// appendShapedRun writes one shaped run's show-text operator (AC6).
+// appendShapedRun writes one shaped run's show-text operators (AC6).
 //
 // A glyph carries three numbers the plain Tj operator cannot express:
 // an x-offset (GPOS mark positioning), an x-advance that may differ from
 // the glyph's own /W width (GPOS kerning), and a y-offset. The first two
-// become integer adjustments inside a TJ array; the third has no TJ
-// expression at all and FAILS CLOSED — see below.
+// become integer adjustments inside a TJ array; the third becomes PDF's
+// text-rise operator Ts, which is inside AD-6's pinned profile.
 //
 // The arithmetic, per glyph i, with W_i the glyph's /W width:
 //
@@ -877,60 +878,102 @@ func buildTextContentStream(page pagemodel.Page, faces map[string]EmbeddedFace) 
 //
 //	<hex...> Tj
 //
-// — EXACTLY the bytes folio emitted before this story. That is not an
+// — EXACTLY the bytes folio emitted before Story 2.3. That is not an
 // optimisation: it is what keeps the three pre-2.3 golden fixtures
 // byte-identical (measured: none of their text is shape-observable), and
 // it is the condition under which AC6 and AC14 are both true at once.
 //
-// Every number here reaches the output through numbers.go's appendInt
-// (AD-3: "no number reaches an output byte by any other route"). The
-// CIDs do not, and must not: D-1.1.b, verbatim — "Glyph ids under
-// Identity-H take neither route — they are a big-endian hex pair inside
-// a string literal, i.e. a byte encoding like /ID, not a number. Same
-// for the six-letter subset tag. This must be said in a code comment or
-// a later agent will 'unify' it."
+// THE VERTICAL OFFSET (Story 8.0). Ts sets the text rise, a persistent
+// text-state parameter in text space, y-up — the same convention and the
+// same sign the shaper's YOffset already carries (render.go's producer
+// never negates it). The rise is
+//
+//	geom.ScaleRound(run.FontSize, g.YOffset, 1000)
+//
+// — millipoints, integer, round-half-to-even, no float intermediate
+// (AD-23), which is what makes all four AD-21 targets agree on it.
+//
+// Because Ts is text state rather than a per-glyph parameter, the run is
+// PARTITIONED into maximal contiguous segments of equal rise, walked in
+// index order, and each segment gets its own show-text operator. The
+// rise in effect is 0 on entry to every run; a segment whose rise
+// differs from the rise in effect emits "<rise> Ts" first, and after the
+// last segment a non-zero rise is restored to "0 Ts". The restore is
+// NOT optional and NOT provided by anything else: buildTextContentStream
+// brackets a run in q/Q only when it is clipped or coloured, and text
+// rise survives ET regardless, so a run that left the rise set would
+// displace whatever drew next.
+//
+// The adjustment term sitting BEFORE glyph i leads the segment glyph i
+// opens; the trailing term belongs to the final segment. Ts moves no
+// pen, so moving a term across a segment boundary changes nothing about
+// where the glyphs land.
+//
+// A run whose every glyph carries YOffset 0 is ONE segment with rise 0:
+// no Ts operator is emitted, no restore is emitted, and the bytes are
+// exactly the bytes this function produced before Story 8.0. That is the
+// whole of this story's byte-identity claim and it is asserted, not
+// assumed — TestZeroOffsetRunIsByteIdenticalToItsRisenTwin.
+//
+// The fail-closed branch NARROWS rather than vanishes: see
+// verticalOffsetError.
+//
+// Every number here reaches the output through numbers.go's emitters
+// (AD-3: "no number reaches an output byte by any other route") —
+// appendInt for the TJ adjustments, appendLength for the rise. The CIDs
+// do not, and must not: D-1.1.b, verbatim — "Glyph ids under Identity-H
+// take neither route — they are a big-endian hex pair inside a string
+// literal, i.e. a byte encoding like /ID, not a number. Same for the
+// six-letter subset tag. This must be said in a code comment or a later
+// agent will 'unify' it."
 func appendShapedRun(dst []byte, run pagemodel.TextRun, face EmbeddedFace) ([]byte, error) {
 	// adjustments[i] is the combined term that sits BEFORE glyph i;
 	// adjustments[len] is the trailing term after the last glyph, which
 	// is emitted so the run's total advance is exactly the shaped
 	// advance rather than the sum of the /W widths.
 	adjustments := make([]int64, len(run.Glyphs)+1)
+	// rises[i] is glyph i's text rise in millipoints. Zero for the
+	// overwhelming majority of glyphs, and a whole run of zeroes is the
+	// case that must emit today's bytes.
+	rises := make([]geom.Length, len(run.Glyphs))
 	for i, g := range run.Glyphs {
 		if g.YOffset != 0 {
-			// FAIL CLOSED. TJ cannot express a vertical offset, and the
-			// alternative — splitting the run and emitting a fresh text
-			// matrix per glyph — is not built here.
-			//
-			// THIS BRANCH IS REACHABLE, AND THE COMMENT THAT STOOD
-			// HERE SAID IT WAS NOT. It read: "Measured at Story 2.3:
-			// YOffset is 0 for every glyph of every sample across all
-			// three shipped faces, so this branch is UNREACHABLE
-			// through the render path with the shipped set and cannot
-			// be red-proved through it." Both halves are false. Story
-			// 2.3 measured ITS OWN SAMPLES and reported on THE SHIPPED
-			// SET — two different populations — and the samples
-			// happened to contain no Thai sequence stacking two marks
-			// over one base. Ordinary Thai does: ทั้งสิ้น, ครั้ง,
-			// ทั้งนี้, ตั้งแต่ all reach here through ParseTemplate +
-			// Render on the shipped Noto Sans Thai, so a large class of
-			// ordinary Thai legal prose does not render at all
-			// (DW-28). It was found in production, not by a test,
-			// because this comment is what a reader checked first.
-			//
-			// It is now red-proved through a real document by
-			// thai_mark_stacking_test.go, alongside the synthetic
-			// TestShapedRunFailsClosedOnYOffset that has always
-			// exercised it directly.
-			//
-			// The refusal itself stays. Silently dropping the offset is
-			// the alternative and is worse in exactly the way this
-			// project keeps getting burned by: the healthy output and
-			// the broken output would be the same bytes. The RIGHT fix
-			// is to express the offset rather than refuse it — PDF's
-			// text-rise operator (Ts) does exactly that and is inside
-			// AD-6's pinned profile — and that is Epic 8's opening
-			// story, not this comment's to make.
-			return nil, &verticalOffsetError{face: face.Name, cid: g.CID, offset: g.YOffset}
+			rise := geom.ScaleRound(run.FontSize, g.YOffset, 1000)
+			if rise == 0 {
+				// FAIL CLOSED, on the ONE condition left after Ts.
+				//
+				// The branch that stood here refused EVERY non-zero
+				// YOffset, and the comment above it said the refusal was
+				// unreachable through the render path. Both were wrong,
+				// and both were load-bearing. The unreachability claim
+				// was measured over Story 2.3's OWN SAMPLES and reported
+				// over THE SHIPPED SET — two different populations — and
+				// ordinary Thai (ทั้งสิ้น, ครั้ง, ทั้งนี้, ตั้งแต่) reaches
+				// it on the shipped Noto Sans Thai, which is why a large
+				// class of ordinary Thai legal prose did not render at
+				// all (DW-28). The refusal is now the fix's own
+				// boundary rather than the feature's ceiling.
+				//
+				// What is left to catch: the offset is real but the rise
+				// ROUNDS AWAY to zero. Emitting "0 Ts" there would drop
+				// the offset silently, and the healthy output and the
+				// broken output would be the same bytes — the posture
+				// this project keeps getting burned by.
+				//
+				// IT IS REACHABLE, and the population that claim is
+				// measured over is: documents parsed by the shipped
+				// parser and rendered by the shipped renderer. fontSize
+				// has no positivity floor at parse (parse.go's
+				// decodePoints), so a stacked-mark document at
+				// fontSize 0.008 loads and arrives here with
+				// ScaleRound(8, -57, 1000) == 0. It is red-proved
+				// through a real document by thai_mark_stacking_test.go
+				// and directly by textdoc_test.go. At any fontSize of
+				// 1pt or more, |rise| >= |YOffset| millipoints and is
+				// never zero, so no ordinary document reaches it.
+				return nil, &verticalOffsetError{face: face.Name, cid: g.CID, offset: g.YOffset, fontSize: run.FontSize}
+			}
+			rises[i] = rise
 		}
 		width, ok := face.WidthForGlyph[glyphForCID(face, g.CID)]
 		if !ok {
@@ -940,8 +983,68 @@ func appendShapedRun(dst []byte, run pagemodel.TextRun, face EmbeddedFace) ([]by
 		adjustments[i+1] += g.XOffset + (width - g.XAdvance)
 	}
 
+	if len(run.Glyphs) == 0 {
+		// Degenerate, and kept here so the segment walk below never has
+		// to reason about an empty partition: no glyphs means no rise
+		// and the same empty show-text operator this function emitted
+		// before Story 8.0. buildTextContentStream skips a run this
+		// shape before it ever calls here.
+		return appendShowText(dst, nil, adjustments), nil
+	}
+
+	// The rise in effect. Zero on entry to every run, and restored to
+	// zero before the caller's ET.
+	var current geom.Length
+	for start := 0; start < len(run.Glyphs); {
+		end := start + 1
+		for end < len(run.Glyphs) && rises[end] == rises[start] {
+			end++
+		}
+
+		if rises[start] != current {
+			dst = appendLength(dst, rises[start])
+			dst = append(dst, " Ts\n"...)
+			current = rises[start]
+		}
+
+		// terms[j] is the adjustment before this segment's glyph j.
+		// terms[len] is the trailing term, which exists ONLY for the
+		// final segment: for any other segment adjustments[end] is the
+		// term that leads the NEXT segment, and emitting it here as well
+		// would double it.
+		terms := make([]int64, end-start+1)
+		copy(terms, adjustments[start:end])
+		if end == len(run.Glyphs) {
+			terms[end-start] = adjustments[end]
+		}
+		dst = appendShowText(dst, run.Glyphs[start:end], terms)
+		start = end
+	}
+	if current != 0 {
+		// The restore goes through appendLength like every other number
+		// this function emits (AD-3: "no number reaches an output byte
+		// by any other route"). appendLength(0) is exactly "0" — one
+		// digit, no sign, no fractional part — so this is byte-identical
+		// to the literal it replaces, and the invariant stated in the
+		// doc comment above is now literally true of every number here
+		// rather than true of all but one.
+		dst = appendLength(dst, 0)
+		dst = append(dst, " Ts\n"...)
+	}
+	return dst, nil
+}
+
+// appendShowText writes ONE show-text operator for one segment of a run:
+// a bare "<hex…> Tj" when every one of that segment's terms is zero, and
+// a "[…] TJ" array otherwise. terms has one more entry than glyphs — the
+// leading term of each glyph, then the segment's trailing term.
+//
+// This is Story 2.3's emitter, moved out of appendShapedRun's body
+// unchanged so that a run split by text rise emits each segment by the
+// identical rule. A one-segment run therefore emits the identical bytes.
+func appendShowText(dst []byte, glyphs []pagemodel.ShapedGlyph, terms []int64) []byte {
 	anyAdjustment := false
-	for _, a := range adjustments {
+	for _, a := range terms {
 		if a != 0 {
 			anyAdjustment = true
 			break
@@ -950,22 +1053,22 @@ func appendShapedRun(dst []byte, run pagemodel.TextRun, face EmbeddedFace) ([]by
 
 	if !anyAdjustment {
 		dst = append(dst, '<')
-		for _, g := range run.Glyphs {
+		for _, g := range glyphs {
 			dst = appendHexCID(dst, g.CID)
 		}
 		dst = append(dst, "> Tj\n"...)
-		return dst, nil
+		return dst
 	}
 
 	dst = append(dst, '[')
 	open := false
-	for i, g := range run.Glyphs {
-		if adjustments[i] != 0 {
+	for i, g := range glyphs {
+		if terms[i] != 0 {
 			if open {
 				dst = append(dst, '>')
 				open = false
 			}
-			dst = appendInt(dst, adjustments[i])
+			dst = appendInt(dst, terms[i])
 		}
 		if !open {
 			dst = append(dst, '<')
@@ -976,11 +1079,11 @@ func appendShapedRun(dst []byte, run pagemodel.TextRun, face EmbeddedFace) ([]by
 	if open {
 		dst = append(dst, '>')
 	}
-	if trailing := adjustments[len(run.Glyphs)]; trailing != 0 {
+	if trailing := terms[len(glyphs)]; trailing != 0 {
 		dst = appendInt(dst, trailing)
 	}
 	dst = append(dst, "] TJ\n"...)
-	return dst, nil
+	return dst
 }
 
 // glyphForCID resolves a CID back to the subset glyph it addresses:
@@ -1023,17 +1126,32 @@ func (e *missingGlyphError) Error() string {
 		"content-stream assembly disagree about what this document draws"
 }
 
-// verticalOffsetError is AC6's fail-closed branch: a shaped glyph
-// carrying a non-zero YOffset, which the TJ array cannot express.
+// verticalOffsetError is the fail-closed branch AC6 opened and Story 8.0
+// NARROWED: a shaped glyph whose non-zero YOffset scales to a text rise
+// of ZERO at this run's font size.
+//
+// It is no longer "a TJ array cannot express this". Ts expresses it, and
+// the emitter uses Ts. What survives is the rounding boundary: an offset
+// the shaper really asked for, scaled by a font size small enough that
+// geom.ScaleRound returns 0. Emitting "0 Ts" there would silently place
+// the mark on the baseline, and the reason clause below — kept verbatim
+// from the branch this narrows, because it is still exactly why refusing
+// beats degrading — says what that would cost.
+//
+// fontSize is carried so the message can state the two numbers that
+// produced the zero rather than only the offset; it is in millipoints,
+// the unit run.FontSize is stated in.
 type verticalOffsetError struct {
-	face   string
-	cid    uint16
-	offset int64
+	face     string
+	cid      uint16
+	offset   int64
+	fontSize geom.Length
 }
 
 func (e *verticalOffsetError) Error() string {
 	return "internal/pdf: face " + e.face + ": CID " + itoa(int64(e.cid)) +
-		" carries a non-zero vertical offset (" + itoa(e.offset) + "), which a TJ array cannot express. " +
+		" carries a non-zero vertical offset (" + itoa(e.offset) + " thousandths of an em) that scales to " +
+		"a text rise of zero at this run's font size (" + itoa(int64(e.fontSize)) + " millipoints). " +
 		"Emitting the glyph without its offset would place it wrongly with no observable difference in " +
 		"the output bytes, so this fails rather than degrades."
 }

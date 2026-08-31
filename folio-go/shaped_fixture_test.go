@@ -657,8 +657,24 @@ func parseContentStreamRuns(t *testing.T, content []byte) []emittedRun {
 		// run's total advance equal the shaped advance rather than the
 		// sum of its /W widths — and the `<`-driven loop can never reach
 		// it (Story 2.3 finisher, Finding 5).
+		//
+		// IT KNOWS ABOUT `Ts` (Story 8.0), and it has to. A text rise
+		// lives in exactly the spans this function scans, and left to
+		// itself the scan was wrong in BOTH directions: a rise that is a
+		// whole number of points ("-12 Ts") parses as an integer and is
+		// silently recorded as a TJ adjustment, and a fractional one
+		// ("-0.684 Ts") fails ParseInt and is silently dropped. ~18 call
+		// sites read Adjustments, so a phantom term is a wrong answer
+		// handed to all of them. Ts takes ONE operand and it precedes
+		// the operator, so the token before a "Ts" is that operand and
+		// is never an adjustment — read explicitly here rather than left
+		// to the operand happening to be fractional.
 		scanAdjustments := func(span string) {
-			for _, num := range strings.Fields(strings.NewReplacer("[", " ", "]", " ", "TJ", " ", "Tj", " ").Replace(span)) {
+			fields := strings.Fields(strings.NewReplacer("[", " ", "]", " ", "TJ", " ", "Tj", " ").Replace(span))
+			for i, num := range fields {
+				if num == "Ts" || (i+1 < len(fields) && fields[i+1] == "Ts") {
+					continue
+				}
 				v, err := strconv.ParseInt(num, 10, 64)
 				if err != nil {
 					continue
@@ -701,6 +717,54 @@ func parseContentStreamRuns(t *testing.T, content []byte) []emittedRun {
 		t.Fatal("content stream carries no text runs")
 	}
 	return runs
+}
+
+// TestParseContentStreamRunsNeverMistakesATextRiseForAnAdjustment is
+// Story 8.0's red-proof for the same parser, in the other direction.
+//
+// A text rise lives in exactly the spans scanAdjustments scans, and
+// before it was taught the operator the helper was wrong BOTH ways: a
+// whole-point rise ("-12 Ts") parsed as an integer and was recorded as a
+// TJ adjustment that no emitter ever wrote, and a fractional one
+// ("-0.684 Ts") failed ParseInt and vanished — as did the "0" of every
+// restoring "0 Ts". ~18 call sites read Adjustments, so a phantom term
+// is a wrong answer handed to all of them.
+//
+// The synthetic stream below carries one of each kind, deliberately: run
+// it against the untaught helper and Adjustments comes back
+// [-12 -30 0 0 7 0] instead of [-30 7].
+func TestParseContentStreamRunsNeverMistakesATextRiseForAnAdjustment(t *testing.T) {
+	const stream = "BT\n/F1 12 Tf\n1 0 0 1 0 0 Tm\n" +
+		"-12 Ts\n[-30<0001>] TJ\n0 Ts\n" + // a rise that IS a valid integer
+		"-0.684 Ts\n<0002> Tj\n0 Ts\n" + // a rise that is not
+		"[7<0003>] TJ\nET\n"
+
+	runs := parseContentStreamRuns(t, []byte(stream))
+	if len(runs) != 1 {
+		t.Fatalf("one BT..ET block is one run however many show-text operators it holds; got %d", len(runs))
+	}
+	got := runs[0]
+	wantCIDs := []uint16{1, 2, 3}
+	if len(got.CIDs) != len(wantCIDs) {
+		t.Fatalf("CIDs = %v, want %v — every segment's glyphs belong to the run", got.CIDs, wantCIDs)
+	}
+	for i, c := range wantCIDs {
+		if got.CIDs[i] != c {
+			t.Fatalf("CIDs = %v, want %v", got.CIDs, wantCIDs)
+		}
+	}
+	wantAdj := []int64{-30, 7}
+	if len(got.Adjustments) != len(wantAdj) {
+		t.Fatalf("Adjustments = %v, want %v — a Ts operand is not a TJ adjustment in either direction", got.Adjustments, wantAdj)
+	}
+	for i, a := range wantAdj {
+		if got.Adjustments[i] != a {
+			t.Fatalf("Adjustments = %v, want %v", got.Adjustments, wantAdj)
+		}
+	}
+	if !got.NonZeroAdjust {
+		t.Fatal("NonZeroAdjust is false for a run carrying -30 and 7")
+	}
 }
 
 // TestReadEmittedRunsScansEveryTJAdjustment guards the PARSER two guards

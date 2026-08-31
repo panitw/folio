@@ -421,6 +421,28 @@ func splitPageContentStreams(t *testing.T, b []byte) []string {
 	return out
 }
 
+// PageContentStreams is splitPageContentStreams, reachable from
+// package folio_test.
+//
+// It exists for the same reason MatrixDocumentSlugsFromSource is
+// exported, and the reasoning is worth repeating rather than
+// re-discovered: byte_neutrality_test.go is package folio_test, and a
+// guard there that needs to look at what the emitter WROTE must look at
+// the page content streams and nothing else. Re-implementing a stream
+// walk over there would be a second parser with a second set of
+// assumptions — and the assumption that matters is precisely the one a
+// naive whole-file scan gets wrong: an embedded FontFile2 is arbitrary
+// binary, so any operator's bytes can occur inside one by chance. This
+// walker follows each page object's OWN /Contents reference, so a font
+// program is never even visited.
+//
+// It is test-only source, so nothing is added to the module's public
+// API.
+func PageContentStreams(t *testing.T, b []byte) []string {
+	t.Helper()
+	return splitPageContentStreams(t, b)
+}
+
 // TestMultiPageGoldenFixtureMatchesTheInRepoTemplate is the precondition
 // every other assertion in this file rests on: the constant compiled into the
 // test binary and the committed fixture are THE SAME DOCUMENT. Without it,

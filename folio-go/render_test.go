@@ -867,6 +867,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessThaiStackedMarksEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(thaiStackedMarksTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(thaiStackedMarksDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessKeepTogetherEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(keepTogetherTemplateJSON))
 		if err != nil {
@@ -953,6 +966,18 @@ const subprocessAlignmentRoundingEnvVar = "FOLIO_SUBPROCESS_RENDER_ALIGNMENTROUN
 // because this story changes what the paginator is GIVEN, and a page
 // assignment is the one quantity a whole document's bytes hang off.
 const subprocessKeepTogetherEnvVar = "FOLIO_SUBPROCESS_RENDER_KEEPTOGETHER"
+
+// subprocessThaiStackedMarksEnvVar is Story 8.0's selector, rendering
+// fixtures/thai-stacked-marks/ — the first document in this repository
+// carrying a glyph the shaper gives a non-zero YOffset, and therefore
+// the first whose content stream holds a text-rise operator at all — in
+// a FRESH process, for the same reason keep-together needed one: a
+// golden recorded from one process pins whatever that process happened
+// to do. It matters here specifically because the rise operand is
+// derived by geom.ScaleRound from the run's font size and spelled out by
+// appendLength, and both halves of that are what AD-21's four targets
+// exist to hold to one answer.
+const subprocessThaiStackedMarksEnvVar = "FOLIO_SUBPROCESS_RENDER_THAISTACKEDMARKS"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

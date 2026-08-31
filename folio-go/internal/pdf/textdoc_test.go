@@ -5,6 +5,8 @@ import "github.com/panitw/folio/folio-go/internal/pagemodel"
 import (
 	"bytes"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/geom"
 )
 
 // fakeFace is a minimal, synthetic EmbeddedFace for exercising
@@ -119,38 +121,253 @@ func TestSerializeTextDocumentUnknownCIDIsLocatedError(t *testing.T) {
 	}
 }
 
-// TestShapedRunFailsClosedOnYOffset is AC6's fail-closed branch, tested
-// DIRECTLY — which is still worth doing, but no longer because the
-// branch is unreachable any other way.
+// TestShapedRunExpressesAYOffsetAsATextRise is Story 8.0's re-pointing
+// of TestShapedRunFailsClosedOnYOffset (D-7.8.7: re-point, never
+// delete). The synthetic run and its non-vacuity leg are the same two
+// runs; what they assert is turned over.
 //
-// This comment used to say: "Measured across all three shipped faces at
-// Story 2.3: YOffset is 0 for every glyph of every sample, so no
-// production input triggers this and the branch has NO available
+// The comment that stood here said: "Measured across all three shipped
+// faces at Story 2.3: YOffset is 0 for every glyph of every sample, so
+// no production input triggers this and the branch has NO available
 // red-proof through a rendered document." That was false. Story 2.3
-// measured its own samples and reported on the shipped set, and
-// ordinary Thai stacking two marks over one base reaches this branch
-// through the public entry point on the shipped Noto Sans Thai — see
-// thai_mark_stacking_test.go, which pins the message an author actually
-// receives and holds the branch to a real document (DW-28).
+// measured its own samples and reported on the shipped set — two
+// different populations — and ordinary Thai whose marks the shaper
+// displaces vertically reaches the emitter through the public entry
+// point on the shipped Noto Sans Thai (thai_mark_stacking_test.go,
+// fixtures/thai-stacked-marks/, DW-28).
 //
-// The synthetic run keeps its own value: it exercises the branch
-// without depending on a face, so it survives any change to the shipped
-// set. What it must no longer be credited with is being the only
-// possible proof.
-func TestShapedRunFailsClosedOnYOffset(t *testing.T) {
+// The synthetic run keeps its own value: it exercises the rise without
+// depending on a face, so it survives any change to the shipped set.
+func TestShapedRunExpressesAYOffsetAsATextRise(t *testing.T) {
 	face := fakeFace("Body")
 	run := pagemodel.TextRun{Face: "Body", SourceText: "A", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
 		{CID: 1, XAdvance: 500, YOffset: 37},
 	}}
-	if _, err := appendShapedRun(nil, run, face); err == nil {
-		t.Fatal("a glyph carrying a non-zero YOffset must be a located error, not a silently dropped offset")
+	got, err := appendShapedRun(nil, run, face)
+	if err != nil {
+		t.Fatalf("a glyph carrying a non-zero YOffset must be EXPRESSED, not refused: %v", err)
+	}
+	// ScaleRound(12000, 37, 1000) = 444 millipoints. The sign passes
+	// through untouched: YOffset is y-up and so is Ts.
+	if string(got) != "0.444 Ts\n<0001> Tj\n0 Ts\n" {
+		t.Fatalf("want the rise set, the glyph shown, and the rise given back; got %q", got)
 	}
 
-	// ...and the same run with YOffset zeroed must succeed, so the test
-	// above cannot pass for an unrelated reason.
+	// ...and the same run with YOffset zeroed must emit with NO rise at
+	// all, so the test above cannot pass for an unrelated reason.
 	run.Glyphs[0].YOffset = 0
-	if _, err := appendShapedRun(nil, run, face); err != nil {
+	plain, err := appendShapedRun(nil, run, face)
+	if err != nil {
 		t.Fatalf("the same run with YOffset 0 must emit cleanly, got: %v", err)
+	}
+	if string(plain) != "<0001> Tj\n" {
+		t.Fatalf("a zero-offset run must emit today's exact bytes with no Ts operator, got %q", plain)
+	}
+}
+
+// TestShapedRunFailsClosedOnARiseThatRoundsAway is the fail-closed
+// branch, NARROWED rather than deleted.
+//
+// With Ts in place every ShapedGlyph field is expressible, so the only
+// condition left is the rounding boundary: an offset the shaper really
+// asked for whose rise scales to zero. Emitting "0 Ts" there would drop
+// the offset silently — the healthy output and the broken output would
+// be the same bytes.
+//
+// It is reachable through a real document, not only here: fontSize has
+// no positivity floor at parse, and a stacked-mark document at
+// fontSize 0.008 reaches this branch on the shipped face
+// (thai_mark_stacking_test.go's
+// TestAStackedMarkWhoseRiseRoundsAwayIsStillRefused).
+func TestShapedRunFailsClosedOnARiseThatRoundsAway(t *testing.T) {
+	face := fakeFace("Body")
+	// ScaleRound(8, -57, 1000) = 0 — the offset is real and the rise is
+	// not.
+	run := pagemodel.TextRun{Face: "Body", SourceText: "A", FontSize: 8, Glyphs: []pagemodel.ShapedGlyph{
+		{CID: 1, XAdvance: 500, YOffset: -57},
+	}}
+	got, err := appendShapedRun(nil, run, face)
+	if err == nil {
+		t.Fatalf("an offset whose rise rounds to zero must be a located error, not a silently dropped offset; got %q", got)
+	}
+	if got != nil {
+		t.Fatalf("a refusal must return no bytes, got %q", got)
+	}
+
+	// NON-VACUITY: the same offset at an ordinary font size must emit.
+	// Without this leg the assertion above would pass for a build that
+	// refused every offset again.
+	run.FontSize = 12000
+	if _, err := appendShapedRun(nil, run, face); err != nil {
+		t.Fatalf("the same offset at 12 pt must emit cleanly (ScaleRound(12000, -57, 1000) = -684), got: %v", err)
+	}
+}
+
+// TestShapedRunRoundsTheRiseHalfToEven is the assertion that makes this
+// story's four-target matrix obligation mean something.
+//
+// EVERY rise the shipped documents produce divides exactly by 1000
+// (12000x-57, 12000x-2, 12000x-59, 12000x37, 8x-57), so on all of them
+// geom.ScaleRound and a plain truncating `int64(FontSize)*YOffset/1000`
+// return the identical value — measured: swapping ScaleRound for
+// truncation produced ZERO test failures across the whole suite. The
+// round-half-to-even rule is the STATED justification for registering
+// this document on all four targets, and until this test nothing in the
+// tree observed it.
+//
+// Both cases below sit exactly on a tie, which is the only place the two
+// rules can disagree:
+//
+//	11500 x -57 = -655_500;  q = -655, |r| = 500 = |den|/2, q odd  -> -656
+//	                         truncation would give                    -655
+//	10500 x -59 = -619_500;  q = -619, |r| = 500 = |den|/2, q odd  -> -620
+//	                         truncation would give                    -619
+//
+// Asserted on the EXACT BYTES rather than on the Length, because the
+// operand is what crosses to another target.
+func TestShapedRunRoundsTheRiseHalfToEven(t *testing.T) {
+	face := fakeFace("Body")
+	cases := []struct {
+		name     string
+		fontSize int64
+		yOffset  int64
+		want     string
+		truncate string // what the discarded truncating rule would have emitted
+	}{
+		{"a tie rounding away from zero to an even quotient", 11500, -57, "-0.656 Ts\n<0001> Tj\n0 Ts\n", "-0.655"},
+		{"a second, independent tie", 10500, -59, "-0.62 Ts\n<0001> Tj\n0 Ts\n", "-0.619"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			run := pagemodel.TextRun{Face: "Body", SourceText: "A", FontSize: geom.Length(tc.fontSize), Glyphs: []pagemodel.ShapedGlyph{
+				{CID: 1, XAdvance: 500, YOffset: tc.yOffset},
+			}}
+			got, err := appendShapedRun(nil, run, face)
+			if err != nil {
+				t.Fatalf("appendShapedRun: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Fatalf("rise rounding:\n got  %q\n want %q", got, tc.want)
+			}
+			// NON-VACUITY, stated rather than implied: this test is only
+			// worth having because the discarded rule produces a
+			// DIFFERENT operand, and that operand must be absent.
+			if bytes.Contains(got, []byte(tc.truncate)) {
+				t.Fatalf("the emitted rise %q carries the truncating rule's operand %q — the rise must be rounded half to even (AD-1/AD-23), which is what makes all four AD-21 targets agree on it", got, tc.truncate)
+			}
+		})
+	}
+}
+
+// TestZeroOffsetRunIsByteIdenticalToItsRisenTwin is Story 8.0's whole
+// byte-identity claim, asserted rather than assumed — and it is
+// TestColouredRunBracketsItsInk's fourth move, transposed onto the rise:
+// build the stream with the condition ABSENT, flip one field on the SAME
+// run, then delete the new bytes from the positive output and assert
+// byte-equality with the negative output.
+//
+// This is what says the 21 goldens committed before this story cannot
+// move. The claim is not "the Ts path is small"; it is that a run whose
+// every glyph carries zero offset takes no part of it.
+func TestZeroOffsetRunIsByteIdenticalToItsRisenTwin(t *testing.T) {
+	faces := map[string]EmbeddedFace{"Body": fakeFace("Body")}
+	page := func(run pagemodel.TextRun) pagemodel.Page {
+		return pagemodel.Page{Width: 600000, Height: 800000, Runs: []pagemodel.TextRun{run}}
+	}
+	run := pagemodel.TextRun{Face: "Body", SourceText: "AB", FontSize: 12000, X: 1000, Y: 2000, Glyphs: []pagemodel.ShapedGlyph{
+		{CID: 1, XAdvance: 500},
+		{CID: 2, XAdvance: 600},
+	}}
+
+	plain, err := buildTextContentStream(page(run), faces)
+	if err != nil {
+		t.Fatalf("buildTextContentStream: %v", err)
+	}
+	if bytes.Contains(plain, []byte(" Ts")) {
+		t.Errorf("a zero-offset run emitted a text-rise operator: %q", plain)
+	}
+
+	// ONE FIELD FLIPS, on both glyphs, so the run is a single segment.
+	run.Glyphs[0].YOffset, run.Glyphs[1].YOffset = 37, 37
+	risen, err := buildTextContentStream(page(run), faces)
+	if err != nil {
+		t.Fatalf("buildTextContentStream (risen): %v", err)
+	}
+	if !bytes.Contains(risen, []byte("0.444 Ts\n")) {
+		t.Errorf("a risen run must set the rise, got %q", risen)
+	}
+	if !bytes.Contains(risen, []byte("0 Ts\nET\n")) {
+		t.Errorf("a risen run must give the rise back before its ET — rise survives ET, and an unclipped uncoloured run has no q/Q bracket to restore it — got %q", risen)
+	}
+
+	// THE MOVE THAT MATTERS. Delete exactly the bytes the rise added and
+	// what is left must be the zero-offset stream, byte for byte.
+	stripped := bytes.ReplaceAll(risen, []byte("0.444 Ts\n"), nil)
+	stripped = bytes.ReplaceAll(stripped, []byte("0 Ts\n"), nil)
+	if !bytes.Equal(stripped, plain) {
+		t.Errorf("giving a run a vertical offset changed more than its rise:\n risen-minus-rise %q\n plain            %q", stripped, plain)
+	}
+}
+
+// TestShapedRunSplitsOnEveryChangeOfRise pins the run-splitting rule on
+// a sequence no shipped document happens to produce: offsets 0, -57,
+// -57, 0. Three segments in index order, the two middle glyphs sharing
+// ONE Ts, and the rise given back before the run ends.
+//
+// The adjustment term that sits before a glyph leads the segment that
+// glyph opens; Ts moves no pen, so a term crossing a segment boundary
+// changes nothing about where the glyphs land.
+func TestShapedRunSplitsOnEveryChangeOfRise(t *testing.T) {
+	face := fakeFace("Body")
+	run := pagemodel.TextRun{Face: "Body", SourceText: "AAAA", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
+		{CID: 1, XAdvance: 500},
+		{CID: 1, XAdvance: 500, YOffset: -57},
+		{CID: 1, XAdvance: 500, YOffset: -57},
+		{CID: 1, XAdvance: 500},
+	}}
+	got, err := appendShapedRun(nil, run, face)
+	if err != nil {
+		t.Fatalf("appendShapedRun: %v", err)
+	}
+	const want = "<0001> Tj\n-0.684 Ts\n<00010001> Tj\n0 Ts\n<0001> Tj\n"
+	if string(got) != want {
+		t.Fatalf("run splitting:\n got  %q\n want %q", got, want)
+	}
+}
+
+// TestShapedRunMovesStraightFromOneRiseToTheNext covers the transition
+// the sequence above cannot: rises[start] != current with BOTH of them
+// non-zero.
+//
+// fixtures/thai-stacked-marks/ passes through a restoring `0 Ts` between
+// its -0.684 and -0.708 segments, because a zero-offset glyph happens to
+// sit between them, and TestShapedRunSplitsOnEveryChangeOfRise's
+// 0,-57,-57,0 sequence never leaves zero either. So without this case the
+// emitter could be restoring to 0 before EVERY rise change — emitting a
+// byte nothing asked for, on a path no golden covers — and every other
+// assertion in the tree would still pass.
+//
+// Ts SETS the rise, it does not accumulate one, so moving straight from
+// -0.684 to -0.708 is correct and the intervening restore would be
+// noise.
+func TestShapedRunMovesStraightFromOneRiseToTheNext(t *testing.T) {
+	face := fakeFace("Body")
+	run := pagemodel.TextRun{Face: "Body", SourceText: "AA", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{
+		{CID: 1, XAdvance: 500, YOffset: -57},
+		{CID: 1, XAdvance: 500, YOffset: -59},
+	}}
+	got, err := appendShapedRun(nil, run, face)
+	if err != nil {
+		t.Fatalf("appendShapedRun: %v", err)
+	}
+	const want = "-0.684 Ts\n<0001> Tj\n-0.708 Ts\n<0001> Tj\n0 Ts\n"
+	if string(got) != want {
+		t.Fatalf("a non-zero to non-zero rise change:\n got  %q\n want %q", got, want)
+	}
+	// Said explicitly, because it is the property this case exists for:
+	// exactly ONE restore, at the end.
+	if n := bytes.Count(got, []byte("0 Ts\n")); n != 1 {
+		t.Fatalf("want exactly one restoring `0 Ts`, at the end; got %d in %q", n, got)
 	}
 }
 

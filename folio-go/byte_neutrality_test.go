@@ -482,6 +482,36 @@ var goldenDigestRecord = []struct {
 			{kind: "readme", relPath: "fixtures/keep-together/README.md"},
 		},
 	},
+	{
+		// RECORDED by Story 8.0 (DW-28, HIGH). THE FIRST COMMITTED
+		// DOCUMENT IN THIS REPOSITORY CARRYING A GLYPH THE SHAPER GIVES
+		// A NON-ZERO YOffset — and the first that COULD carry one:
+		// internal/pdf refused such a glyph outright until this story,
+		// so a fixture holding one would have had zero bytes to record.
+		// That is why the twenty-one goldens above go without one, and
+		// why "ordinary Thai does not render" was found by the owner
+		// pasting a real contract into the shipped designer rather than
+		// by a test.
+		//
+		// A NEW DIGEST, NOT A MOVED ONE. Emitting Ts for glyphs that
+		// used to refuse can move no existing golden BY CONSTRUCTION: a
+		// document containing such a glyph produced no bytes at all, so
+		// no committed fixture can contain one. The zero-offset path is
+		// untouched, which TestNoPreStory80GoldenCarriesATextRise
+		// asserts over every other artifact above.
+		//
+		// Its e1 is the owner's clause verbatim; its e2 is the CONTROL —
+		// สัญญา, the same script and chain at the same size, with no
+		// vertical offset on any glyph and therefore no Ts in its run.
+		// Its README does NOT quote the digest, so this record and
+		// expected.json are the only two sites.
+		dir:    "thai-stacked-marks",
+		sha256: "d5077f3346e10abb17ec69d2d6e2a975d02524d6e2eebcbec3b85ff30ca48eb1",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/thai-stacked-marks/expected.json"},
+			{kind: "second-literal"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -841,6 +871,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: justified-text",         // Story 7.3 (FR47) — the first cross-target artifact that is justified at all, and the first declaring format version 2.0. Authorised by the story's own Verification section, which makes 7.3's correctness byte-identity-shaped (D-R7.1): a slack remainder placed in a different ORDER is precisely the defect that agrees with itself on one host and disagrees across four. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: justified-thai",         // Story 7.3, owner scope amendment — the first cross-target artifact whose justified content carries no spaces, so its gaps come from the shipped dictionary walk (AD-25) rather than a whitespace scan. Registered on justified-text's terms: legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
 	"matrix-document: keep-together",          // Story 7.7 (FR51) — the first cross-target artifact whose column is broken by an author's own declaration rather than by the four pagination rules alone, and the first declaring format version 1.2. Authorised by the story's own Verification section, which makes 7.7's correctness byte-identity-shaped (D-R7.1): this story changes PAGINATION INPUTS, and a page assignment that agrees with itself on one host and disagrees across four is exactly the defect the four legs exist to catch. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
+	"matrix-document: thai-stacked-marks",     // Story 8.0 (DW-28, HIGH) — the first cross-target artifact carrying a glyph the shaper gives a non-zero YOffset, and therefore the first whose content stream contains a text-rise operator at all. It is HERE because the rise is derived by geom.ScaleRound from the run's font size, which is precisely the integer half-to-even arithmetic AD-21's four legs exist to hold to one answer, and because until this entry no document the matrix renders could contain the operator. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
 	"matrix-document: alignment-rounding",     // Story 7.3, CLOSING DW-24 — the first cross-target artifact declaring align center or valign at all, and therefore the first that takes a half-to-even tie in the alignment feature. DW-24's own closure conditions require the fixture be "added to matrixDocuments so all four targets render it", which is the ruling authorising this entry. Legs wired in matrix.yml and run in-story alongside justified-text
 }
 
@@ -1275,4 +1306,93 @@ func repoRootForByteNeutrality(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+// textRiseExemptGoldens declares, by name, every committed golden that
+// is ALLOWED to contain a text-rise operator. Exactly one document is,
+// and it is the one whose whole subject the operator is.
+//
+// It is a declared list rather than a hard-coded skip so that a second
+// entry has to be written down and read in a diff — the same
+// derive-from-a-declarative-spec move goldenDigestRecord itself makes.
+var textRiseExemptGoldens = map[string]string{
+	"thai-stacked-marks": "Story 8.0 (DW-28) — the document the Ts operator exists for; its own fixture test asserts the rises are present AND restored",
+}
+
+// TestNoPreStory80GoldenCarriesATextRise is Story 8.0's byte-identity
+// guardrail, stated over the artifacts rather than over the code.
+//
+// The one thing this story could do wrong to the twenty-one goldens
+// committed before it is enter the Ts path for a glyph that does not
+// need it. The digest guard above would catch that — but it would report
+// it as "a hash moved", which is the message that gets answered by
+// re-recording. This one names the cause.
+//
+// It is cheap and it is not vacuous: `Ts` appears in no committed
+// artifact before this story, and content streams are UNCOMPRESSED
+// (internal/pdf's document.go: "classic (uncompressed) PDF 1.7 ... No
+// compression"), so a substring scan really does see every operator the
+// emitter wrote.
+//
+// IT SCANS THE PAGE CONTENT STREAMS, NOT THE FILE. A golden also carries
+// embedded FontFile2 programs, which are arbitrary binary: the three
+// bytes 0x20 0x54 0x73 can occur inside a font subset by chance, and a
+// whole-file scan would then report an emitter defect — under a message
+// that says "this is a defect in the emitter, not a fixture to
+// re-record" — about bytes no emitter wrote. The exemption leg has the
+// mirror-image problem: it could be satisfied by a chance byte sequence
+// instead of a real operator, which would leave this whole guard vacuous
+// and say nothing. folio.PageContentStreams follows each page object's
+// own /Contents reference, so a font program is never visited.
+//
+// The exempt document is scanned too, in the OTHER direction: it must
+// contain the operator. Without that leg the whole test would keep
+// passing on a build that had stopped emitting Ts anywhere at all.
+func TestNoPreStory80GoldenCarriesATextRise(t *testing.T) {
+	root := repoRootForByteNeutrality(t)
+
+	if len(goldenDigestRecord) == 0 {
+		t.Fatal("vacuity guard: the digest declaration is empty, so this test would scan nothing")
+	}
+
+	scanned, exemptScanned := 0, 0
+	for _, fx := range goldenDigestRecord {
+		path := filepath.Join(root, "fixtures", fx.dir, "expected.pdf")
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("presence precondition: %s could not be read: %v", path, err)
+			continue
+		}
+		if len(body) == 0 {
+			t.Errorf("presence precondition: %s is empty — an empty file contains no substring, so it would pass this scan by being absent", path)
+			continue
+		}
+
+		carries := false
+		for _, content := range folio.PageContentStreams(t, body) {
+			if strings.Contains(content, " Ts") {
+				carries = true
+				break
+			}
+		}
+		if why, exempt := textRiseExemptGoldens[fx.dir]; exempt {
+			exemptScanned++
+			if !carries {
+				t.Errorf("no page content stream of fixtures/%s/expected.pdf carries a text rise, though it is declared to (%s) — either the fixture stopped witnessing its subject, or this whole scan has gone vacuous because nothing emits Ts any more", fx.dir, why)
+			}
+			continue
+		}
+		scanned++
+		if carries {
+			t.Errorf("a page content stream of fixtures/%s/expected.pdf contains the text-rise operator ` Ts`. The Ts path must be entered ONLY when a glyph's YOffset != 0, and no document recorded before Story 8.0 has such a glyph — one that refused to render at all is how it would have been recorded. This is a defect in the emitter, not a fixture to re-record.", fx.dir)
+		}
+	}
+
+	if exemptScanned != len(textRiseExemptGoldens) {
+		t.Errorf("textRiseExemptGoldens declares %d document(s) but %d were found in goldenDigestRecord — an exemption for a fixture that is not registered exempts nothing", len(textRiseExemptGoldens), exemptScanned)
+	}
+	if scanned == 0 {
+		t.Fatal("vacuity guard: no non-exempt golden was scanned")
+	}
+	t.Logf("text-rise witness — %d committed golden(s) carry no ` Ts` operator in any page content stream; %d declared exception(s) carry one", scanned, exemptScanned)
 }

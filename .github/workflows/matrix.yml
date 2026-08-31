@@ -71,6 +71,7 @@ jobs:
             folio-go/.matrix-build/hash.darwin-arm64.justified-text.txt
             folio-go/.matrix-build/hash.darwin-arm64.justified-thai.txt
             folio-go/.matrix-build/hash.darwin-arm64.alignment-rounding.txt
+            folio-go/.matrix-build/hash.darwin-arm64.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.darwin-arm64.keep-together.txt
           if-no-files-found: error
 
@@ -113,6 +114,7 @@ jobs:
             folio-go/.matrix-build/hash.linux-amd64.justified-text.txt
             folio-go/.matrix-build/hash.linux-amd64.justified-thai.txt
             folio-go/.matrix-build/hash.linux-amd64.alignment-rounding.txt
+            folio-go/.matrix-build/hash.linux-amd64.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.linux-amd64.keep-together.txt
           if-no-files-found: error
 
@@ -155,6 +157,7 @@ jobs:
             folio-go/.matrix-build/hash.linux-arm64.justified-text.txt
             folio-go/.matrix-build/hash.linux-arm64.justified-thai.txt
             folio-go/.matrix-build/hash.linux-arm64.alignment-rounding.txt
+            folio-go/.matrix-build/hash.linux-arm64.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.linux-arm64.keep-together.txt
           if-no-files-found: error
 
@@ -197,6 +200,7 @@ jobs:
             folio-go/.matrix-build/hash.js-wasm.justified-text.txt
             folio-go/.matrix-build/hash.js-wasm.justified-thai.txt
             folio-go/.matrix-build/hash.js-wasm.alignment-rounding.txt
+            folio-go/.matrix-build/hash.js-wasm.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.js-wasm.keep-together.txt
           if-no-files-found: error
 
@@ -256,7 +260,7 @@ jobs:
           # `go test ./...` and not only at the epic boundary gate. Running
           # every story is what makes it worth having; matrix_test.go would
           # have been the wrong home for exactly that reason.
-          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image statement-1 statement-5 statement-20 statement-50 alternating-rows component-asset-import mandatory-break line-spacing justified-text justified-thai alignment-rounding keep-together"
+          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image statement-1 statement-5 statement-20 statement-50 alternating-rows component-asset-import mandatory-break line-spacing justified-text justified-thai alignment-rounding keep-together thai-stacked-marks"
           targets="darwin-arm64 linux-amd64 linux-arm64 js-wasm"
 
           overall_fail=0

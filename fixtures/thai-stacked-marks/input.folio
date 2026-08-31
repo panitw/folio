@@ -1,0 +1,19 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 100, "value": "การที่ผู้รับจ้างเป็นผู้ประกอบธุรกิจทวงถามหนี้ เป็นผู้มีความรู้ ความชำนาญ มีความสามารถเป็นพิเศษในงานที่รับจ้าง จึงทราบและเข้าใจในพระราชบัญญัติ การทวงถามหนี้ พ.ศ. 2558 และกฎหมายอื่น ๆ ที่เกี่ยวข้องกับกิจการงานที่มารับจ้างตามที่ระบุอยู่ในสัญญาจ้างเป็นอย่างดี ผู้รับจ้างย่อมต้องรับผิดเป็นการส่วนตัวทั้งสิ้น", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "text", "x": 0, "y": 110, "width": 400, "height": 30, "value": "สัญญา", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans", "Noto Sans Thai"]},
+  "locale": "th",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+07:00",
+  "version": "1.0"
+}

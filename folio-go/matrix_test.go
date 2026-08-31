@@ -692,6 +692,39 @@ func requireJustifiedThaiIsJustified(t *testing.T, target matrixTarget, raw []by
 	})
 }
 
+// captureThaiStackedMarksRender runs Story 8.0's selector, rendering
+// fixtures/thai-stacked-marks/ in a FRESH process — the same reason
+// justified-thai needed one.
+func captureThaiStackedMarksRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessThaiStackedMarksEnvVar: "1"})
+}
+
+// requireThaiStackedMarksCarriesTheRise is Story 8.0's per-leg feature
+// guard, and it is why registering these legs is not a formality.
+//
+// The rise is derived by geom.ScaleRound from the run's font size —
+// integer, round-half-to-even, no float intermediate — and it is then
+// spelled out by appendLength. Both are exactly the arithmetic AD-21's
+// four legs exist to hold to ONE answer, and until this document no
+// artifact the matrix renders contained the operator at all. A target
+// that rounded the rise differently, or spelled -0.684 differently,
+// would produce a file that hashes differently and says nothing about
+// why; this guard runs on EVERY leg before any byte comparison and names
+// the cause.
+//
+// It reads thaiStackedMarksAssertRises — the SAME guard the untagged
+// fixture test uses, declared once in thai_stacked_marks_fixture_test.go
+// rather than copied here.
+func requireThaiStackedMarksCarriesTheRise(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	// Fatal here: a matrix leg comparing bytes it has not first
+	// established are the RIGHT bytes is worse than no leg.
+	thaiStackedMarksAssertRises(t, raw, func(format string, args ...any) {
+		t.Fatalf("%s: thai-stacked-marks leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // captureAlignmentRoundingRender runs Story 7.3's second selector,
 // rendering fixtures/alignment-rounding/ in a FRESH process.
 func captureAlignmentRoundingRender(t *testing.T, target matrixTarget, binPath string) []byte {
@@ -1846,6 +1879,31 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "alignment-rounding", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireAlignmentRoundingRounds,
+		wantPages:        1,
+	},
+	{
+		// Story 8.0's document (DW-28, HIGH). It is HERE because it is
+		// the first cross-target artifact carrying a glyph the shaper
+		// gives a non-zero YOffset, and therefore the first whose
+		// content stream contains a text-rise operator at all — an
+		// operand derived by geom.ScaleRound from the run's font size
+		// and spelled out by appendLength, which is precisely the
+		// integer half-to-even arithmetic these four legs exist to hold
+		// to one answer. Before this entry no document the matrix
+		// renders could contain one: internal/pdf refused such a glyph
+		// outright, so a fixture holding one would have had zero bytes.
+		//
+		// Registered on the same terms as justified-thai above — the
+		// slug lives in .github/workflows/matrix.yml's `docs="…"` list
+		// and in an upload-artifact path for every target under
+		// `if-no-files-found: error`, pinned by
+		// TestMatrixDocumentSlugsAreRegisteredInCI.
+		label:            "thai-stacked-marks (a mark lifted off the baseline by Ts)",
+		slug:             "thai-stacked-marks",
+		capture:          captureThaiStackedMarksRender,
+		fixtureRelPath:   []string{"fixtures", "thai-stacked-marks", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireThaiStackedMarksCarriesTheRise,
 		wantPages:        1,
 	},
 	{
