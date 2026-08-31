@@ -81,8 +81,16 @@ import (
 // then invalidated (D-000.41).
 type goldenDigestSite struct {
 	// kind is one of "expected.json", "second-literal", "readme",
-	// "signoff". The artifact itself is not listed: it is what gets
-	// hashed.
+	// "signoff", "transfer-anchor". The artifact itself is not listed:
+	// it is what gets hashed.
+	//
+	// "transfer-anchor" is D-8.4.8's addition and it is the only kind
+	// that records a digest OTHER than its own fixture's: a transferred
+	// reading names, in `transfer.anchor_sha256`, the digest of the
+	// fixture whose human reading it borrows. So the same file is a
+	// "signoff" site under fixtures/embedded-font (its own digest) and a
+	// "transfer-anchor" site under fixtures/thai-stacked-marks (the
+	// anchor's), and re-recording EITHER fixture reddens.
 	kind string
 	// relPath is repo-root-relative, or "" for "second-literal", which
 	// is this very declaration.
@@ -518,6 +526,15 @@ var goldenDigestRecord = []struct {
 			// and so invalidates the attestation BY CONSTRUCTION, which
 			// is D-2.3.5's second condition.
 			{kind: "signoff", relPath: "fixtures/thai-stacked-marks/signoff.json"},
+			// D-8.4.8: fixtures/embedded-font/signoff.json records THIS
+			// digest too, as its `transfer.anchor_sha256`, and it is a
+			// recording site in the strictest sense — the transferred
+			// reading it carries is valid only while this artifact still
+			// hashes to that value. A re-record must therefore invalidate
+			// TWO records, not one, which is why the site is declared here
+			// rather than left as the undeclared fifth site D-000.47 exists
+			// to make impossible.
+			{kind: "transfer-anchor", relPath: "fixtures/embedded-font/signoff.json"},
 			{kind: "second-literal"},
 		},
 	},
@@ -558,6 +575,15 @@ var goldenDigestRecord = []struct {
 			{kind: "expected.json", relPath: "fixtures/embedded-font/expected.json"},
 			{kind: "second-literal"},
 			{kind: "readme", relPath: "fixtures/embedded-font/README.md"},
+			// D-8.4.8's TRANSFERRED reading, declared here for exactly the
+			// reason fixtures/thai-stacked-marks/signoff.json is: a record
+			// that names a digest is a recording site, and an undeclared
+			// site is one a future re-record silently misses. It is NOT a
+			// human reading — it carries no `reader`, no `date` and no
+			// `examined`, deliberately — but the digest it names binds the
+			// same way, so a re-record of THIS fixture invalidates it by
+			// construction too.
+			{kind: "signoff", relPath: "fixtures/embedded-font/signoff.json"},
 		},
 	},
 }
@@ -745,6 +771,37 @@ func TestGoldenDigestAgreesAtEveryDeclaredSite(t *testing.T) {
 					t.Errorf("%s names digest %s, but fixtures/%s's declared digest is %s. The sign-off is STALE: the fixture moved since it was signed off, and D-2.3.5's anti-rot condition says that must invalidate the record, not survive it.", site.relPath, got, fx.dir, fx.sha256)
 				}
 				checkedSites++
+			case "transfer-anchor":
+				// D-8.4.8. A TRANSFERRED reading names the digest of the
+				// fixture whose human reading it borrows, in
+				// `transfer.anchor_sha256`. That is a recording of the
+				// ANCHOR's digest, not of its own, so it is checked against
+				// this entry the same way a sign-off is — and the whole
+				// point is that a re-record of the anchor reddens here.
+				path := filepath.Join(root, site.relPath)
+				body, rerr := os.ReadFile(path)
+				if rerr != nil {
+					t.Errorf("presence precondition: %s could not be read: %v", path, rerr)
+					continue
+				}
+				var rec struct {
+					Transfer struct {
+						AnchorSHA256 string `json:"anchor_sha256"`
+					} `json:"transfer"`
+				}
+				if jerr := json.Unmarshal(body, &rec); jerr != nil {
+					t.Errorf("presence precondition: %s is not valid JSON: %v", path, jerr)
+					continue
+				}
+				got := rec.Transfer.AnchorSHA256
+				if len(got) != 64 || strings.ToLower(got) != got {
+					t.Errorf("presence precondition: %s's \"transfer.anchor_sha256\" is %q, which is not 64 lowercase hex characters — the property this test asserts does not live in this artifact", path, got)
+					continue
+				}
+				if got != fx.sha256 {
+					t.Errorf("%s transfers a reading anchored on digest %s, but fixtures/%s now hashes to %s. THE TRANSFER HAS LAPSED (D-8.4.8): the borrowed reading was of bytes that no longer exist, so both fixtures need a real human reading — which no agent may write.", site.relPath, got, fx.dir, fx.sha256)
+				}
+				checkedSites++
 			default:
 				t.Errorf("%s declares a site of unknown kind %q", fx.dir, site.kind)
 			}
@@ -896,6 +953,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-file: shaped_signoff_matrix_test.go",             // Story 2.3 — Thai READING sign-off (D-2.3.5)
 	"matrix-file: expected_breaks_signoff_matrix_test.go",    // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
 	"matrix-file: statement_signoff_matrix_test.go",          // Story 4.7 — the Customer Account Statement READING sign-off, ONE record over FOUR digests (engineering lead's ruling, this story; D-2.3.5 mechanism, D-000.41 dilution)
+	"matrix-file: embedded_font_signoff_matrix_test.go",      // Story 8.4 follow-up (DW-88), authorised by D-8.4.8 — the gate over the corpus's only TRANSFERRED reading. It is NOT a human-reading gate and its record deliberately carries no `reader`, `date` or `examined`; what it holds open is the LAPSE CONDITION: the transfer is valid only while fixtures/thai-stacked-marks/expected.pdf still hashes to the anchor digest the owner's 2026-08-31 reading was of. Re-record that golden and this gate goes RED, because the borrowed reading then covers bytes nobody looked at and BOTH fixtures need a real human reading. A gate that only checked the record's presence would let the transfer silently outlive its own basis, which is the DW-23 shape
 	"matrix-file: thai_stacked_marks_signoff_matrix_test.go", // Story 8.0 — the READING sign-off for the first artifact whose marks are placed by a GPOS vertical displacement and emitted through the text-rise operator (DW-28 HIGH; D-2.3.5 mechanism). It is a SEPARATE obligation from shaped_signoff_matrix_test.go rather than an extension of it, because that record attests marks placed by a GSUB lowered-form substitution at ZERO offset — a different mechanism, which can be correct in the shaper while this one is wrong on the page. Authorised by Story 8.0's close, which filed the missing sign-off as a HIGH deferral owned by the human reader (DW-56) and forbade any agent from writing it; discharged 2026-08-31 when the owner read the page
 
 	// The documents whose four legs the gate runs and compares.
@@ -1004,6 +1062,25 @@ func TestEpic2GateObligationsMatchTheDeclaredSet(t *testing.T) {
 		filepath.Join("fixtures", "thai-stacked-marks", "signoff.json"),
 		liveThaiStackedMarksDigest(t, root),
 	)
+	// D-8.4.8's TRANSFERRED record — fixtures/embedded-font/signoff.json — is
+	// the fourth, and it is deliberately NOT checked through the helper
+	// above: that helper demands reader, date and examined, and a transferred
+	// reading must carry none of the three. Its schema check, its
+	// impersonation check and its LAPSE condition live in
+	// embedded_font_signoff_transfer_test.go, which is package folio (this
+	// file is folio_test, so the shared checker is not reachable from here)
+	// and is UNTAGGED — so the ordinary suite enforces it continuously, on
+	// the same terms as the three records above, and the matrix gate in
+	// embedded_font_signoff_matrix_test.go calls the same checker rather than
+	// a second copy of it.
+	//
+	// What THIS file contributes to that record is the digest half, and it
+	// does it declaratively rather than here: goldenDigestRecord declares
+	// fixtures/embedded-font/signoff.json twice — as a "signoff" site under
+	// embedded-font (the digest it covers) and as a "transfer-anchor" site
+	// under thai-stacked-marks (the anchor digest it borrows a reading of) —
+	// so re-recording EITHER fixture reddens TestGoldenDigestAgreesAtEveryDeclaredSite
+	// in the ordinary suite.
 
 	// (b) The OBSERVED obligation set, gathered from the tree itself.
 	moduleRoot := filepath.Join(root, "folio-go")

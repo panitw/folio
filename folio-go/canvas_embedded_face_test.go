@@ -1,6 +1,11 @@
 package folio
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -262,5 +267,96 @@ func TestCanvasDegradesRatherThanAbortingOnANonFontChainEntry(t *testing.T) {
 	// leaked into Render.
 	if _, rerr := Render(tpl, Data(`{}`), nil, fs); rerr == nil {
 		t.Error("Render must still refuse this document (DW-83) — the canvas's tolerance leaked onto the render path")
+	}
+}
+
+// TestCanvasStillAbortsOnAnUnreadableCarriedFace is D-8.4.9(a)'s OTHER HALF,
+// and it is a CHARACTERIZATION test: it records what this build does today,
+// not what the project has decided it should do.
+//
+// WHY IT EXISTS. Story 8.4 changed a failure mode CONDITIONALLY —
+// addCanvasTextPaint's shapeSegments arm degrades for
+// template.UnsupportedFontMediaTypeError and keeps aborting for everything
+// else — and D-8.4.9(a) is the obligation not to change a failure mode without
+// naming what asserts it. Measured: reverting the fix to an unconditional
+// `return` reddens exactly ONE test
+// (TestCanvasDegradesRatherThanAbortingOnANonFontChainEntry, above), and
+// DROPPING THE SCOPING ALTOGETHER — degrading unconditionally — reddened
+// NOTHING in the whole suite. So the changed half was pinned and the retained
+// half was not pinned at all, which is a stronger version of the "keeps
+// passing while measuring nothing" defect that obligation is about. This is
+// the retained half.
+//
+// AND IT RECORDS A MEASUREMENT THAT DOES NOT AGREE WITH THE SCOPING'S STATED
+// PREMISE, rather than smoothing it. addCanvasTextPaint's comment justifies
+// keeping the abort by saying "a genuine internal shaping fault is not a
+// document property, has no author repair". The document below shows that is
+// not the whole population: a carried face whose bytes are a STRUCTURALLY
+// VALID sfnt with unreadable contents LOADS — checkSfnt is explicit that it
+// checks the table directory and never a table's contents, leaving that to the
+// shaper — and then aborts the entire projection at fontset.New. That is a
+// document property, it has an author repair (fix or replace the chain entry),
+// and the surface the repair happens on is the one this abort closes. It is
+// the SAME D-7.4.2 shape Story 8.4 fixed on the neighbouring arm.
+//
+// THIS TEST DOES NOT RATIFY THAT. The scoping was a deliberate ruling, and
+// whether it should widen is not a question a test may settle; it is referred
+// up with this measurement attached. What the test does is make the current
+// behaviour FALSIFIABLE, so that widening the arm is a visible, deliberate
+// change to this file rather than a silent one nothing observes.
+func TestCanvasStillAbortsOnAnUnreadableCarriedFace(t *testing.T) {
+	// A structurally valid sfnt: the single-face version tag, one declared
+	// table, a whole table directory, and that table's (offset, length)
+	// inside the file — everything checkSfnt looks at. Its CONTENTS are
+	// absent, which is everything checkSfnt deliberately does not look at.
+	raw := make([]byte, 28)
+	binary.BigEndian.PutUint32(raw[0:], 0x00010000)
+	binary.BigEndian.PutUint16(raw[4:], 1)   // numTables
+	binary.BigEndian.PutUint16(raw[6:], 16)  // searchRange
+	copy(raw[12:16], "cmap")                 // the one declared table
+	binary.BigEndian.PutUint32(raw[20:], 28) // offset: end of file
+	binary.BigEndian.PutUint32(raw[24:], 0)  // length: zero
+
+	key := fmt.Sprintf("%x", sha256.Sum256(raw))
+	source := embeddedChainDocText(t, `["Noto Sans", {"asset": "`+key+`"}]`, "สัญญา")
+	const anchor = "  \"assets\": {\n"
+	at := strings.Index(source, anchor)
+	if at < 0 {
+		t.Fatal("fixture assumption violated: the generated document has no assets block")
+	}
+	blob := "    \"" + key + "\": {\n      \"data\": [\"" + base64.StdEncoding.EncodeToString(raw) + "\"],\n      \"mediaType\": \"font/ttf\"\n    },\n"
+	source = source[:at+len(anchor)] + blob + source[at+len(anchor):]
+
+	// THE PRECONDITION THAT MAKES THIS A D-7.4.2 QUESTION AT ALL: the format
+	// calls this document valid. If a future story moves the check into the
+	// loader, this Fatal is where that is found, and the abort below stops
+	// being reachable from document content.
+	tpl, err := ParseTemplate([]byte(source))
+	if err != nil {
+		t.Fatalf("PRECONDITION CHANGED: this document no longer LOADS, so the abort below is no longer reachable from document content and this characterization is stale — re-read D-8.4.9(a) before deleting it: %v", err)
+	}
+	// The geometry-only projection never shaped anything and always worked;
+	// asserting it here is what makes the paint half's failure specific.
+	if _, gerr := Canvas(tpl); gerr != nil {
+		t.Fatalf("the geometry projection must succeed: %v", gerr)
+	}
+
+	_, perr := CanvasWithTextPaint(tpl, testShippedFontSet())
+	if perr == nil {
+		t.Fatal("CHARACTERIZATION CHANGED, AND THAT MAY BE THE RIGHT CHANGE. addCanvasTextPaint no longer aborts on a non-capability shaping fault. If that is deliberate — D-7.4.2 says degrade the element and never abort the projection, and this arm is reachable from a document the format calls valid — then convert this test to assert the degrade the way TestCanvasDegradesRatherThanAbortingOnANonFontChainEntry does, and record the ruling. Do not simply delete it.")
+	}
+	// It aborts with the element located, which is the one thing that makes
+	// the abort actionable at all today.
+	if !strings.Contains(perr.Error(), "canvas text element e1") {
+		t.Errorf("the projection aborted without naming the element that caused it: %v", perr)
+	}
+
+	// AND THE RENDER PATH AGREES. Render refusing this document is not in
+	// question — a page drawn with an unreadable face would be wrong — so it
+	// is asserted here to keep the two paths' dispositions visible side by
+	// side, which is what makes the canvas's copy of the refusal a decision
+	// rather than an accident.
+	if _, rerr := Render(tpl, Data(`{}`), nil, testShippedFontSet()); rerr == nil {
+		t.Error("Render must refuse a document whose only usable face cannot be read")
 	}
 }
