@@ -3271,3 +3271,132 @@ can prove the derivation, the registration **call**, the fragment attribute, the
 protocol shape — **nothing here can execute a real font load, a real `document.fonts.add`, or a
 rasterized glyph.** Written into the spec's Design Notes so the closer inherits it, because **a
 compile pass must never be reported as a run.**
+
+---
+
+### D-8.4.14 — 8.4a closes ONE of DW-35's two causes; Story 8.4b owns the other, and the register's blocker was false
+
+**(a) Confirmed: 8.4a closes cause two only, and AC4's tie must be scoped to the carried case.** The
+gate's cheap-overrule offer was declined. Verified rather than taken:
+`canvas-font-stack.test.ts` asserts engine/browser family disjointness **in both directions** over
+`['Noto Sans','Noto Sans Thai','Noto Sans SC']` vs `['IBM Plex Sans','IBM Plex Mono','IBM Plex Sans
+Thai']`. **A builder handed the universal form of AC4 finds it red and weakens it** — which is
+precisely the failure AC4 exists to prevent, and the failure mode flagged all run: **an AC that
+restates a ruling too broadly gets implemented faithfully and shipped wrong.**
+
+**(b) Cause one gets an owner by ruling — and the blocker the register recorded is FALSE.** DW-35
+called cause one *"a design-system decision above a builder's authority"*, meaning **renaming the
+generated `@font-face` families to Noto**. Measured: `build-wasm.mjs` gives IBM Plex family names to
+three **Noto** files, and `find -iname '*plex*'` is **empty**.
+
+**The lead's own first reading was "mislabel — rename it, the escalation collapses", and a single grep
+flipped it.** IBM Plex is the UX design system's specified typeface, named throughout `DESIGN.md`, and
+promised in `epics.md`'s release **licence manifest**. **The tree is the stand-in, not the label.**
+Renaming would have abandoned a real decision and falsified a release artifact.
+
+**So the fork dissolves rather than escalating: DW-35 is about what the CANVAS paints with and says
+nothing about chrome.** Verdict — register the shipped faces **additionally** under the engine's own
+face names, point the canvas fragment rule there, and **edit no chrome token at all**. No new
+binaries, no visual change, no doc amendment. Grounded on **AD-17**: the browser contributes
+rasterization only, so it must rasterize with the face the engine measured with — **and it cannot
+unless it can name that face.** It is also **D-8.4.1 one case over**: a carried face's browser family
+derives from the engine's identity for it (the asset key); a shipped face's from the engine's identity
+for it (the `FontSet` name). **One rule for one question.** A mapping table is the alternative and it
+is the wrong shape — a second authority maintained in lockstep with the shipped `FontSet`.
+
+**Owner: Story 8.4b**, written into the epic and sequenced after 8.4a. Per D-8.4.1's standing rule this
+is a **ruling**, not a recommendation, so **DW-35 survives 8.4a WITH a named successor rather than
+without one** — which is the exact state that rule exists to prevent.
+
+**Guardrail carried into 8.4b:** the disjointness assertion is **replaced, not weakened** — it records
+the old state and *should* go red; and *"the vocabularies now meet"* is **not** licence to make chrome
+ask for Noto. That is D-8.4.15's question, settled there and settled the other way.
+
+---
+
+### D-8.4.15 — OWNER DECISION: ship IBM Plex for real. The lead recommended the opposite, and its own hedge is what settled it
+
+**The escalation.** The product **specifies** IBM Plex throughout `DESIGN.md`, **promises** it in the
+redistributed-asset **licence manifest**, and **ships no IBM Plex file** — three generated
+`@font-face` rules put IBM Plex family names over three Noto files. A licence manifest naming a font
+the product does not contain is **compliance-shaped**, and a collision with established direction is
+an escalation by the lead's own standing rule.
+
+**The owner chose option 1: ship IBM Plex for real.** Add the OFL binaries, keep the names honest,
+make the manifest true.
+
+**The lead recommended option 2 (adopt Noto, amend the docs) — and named the fact that would flip
+it:** *"option 1 is the right answer instead if the IBM Plex choice was real and the Noto files were a
+stand-in nobody replaced — which is exactly the fact I cannot establish and you can."* **It was.**
+The recommendation rested on *"the product has rendered in Noto its entire life"*, which was true and
+**not decisive: it described the stand-in, not the intent.** The hedge is what let this be answered in
+one pass instead of two, and it is the pattern to repeat — **a recommendation that names its own
+defeater costs one sentence and saves a round trip.**
+
+**Second answer: the `--font-mono` defect is fixed NOW, separately.** `'IBM Plex Mono'` is bound to
+`noto-sans-cjk.*.ttf` — a CJK sans — so `--type-mono*`, `--type-brand*`, `--type-band-tab` and
+`--type-numeric-lg` render chrome in a CJK face today.
+
+**A COUPLING RESOLVED BY INTERPRETATION, AND LABELLED AS ONE.** With option 1 chosen, the honest fix
+for the mono defect **is** adding a real IBM Plex Mono binary — so *"fix it now, separately"* and
+*"ship IBM Plex"* became the same work, differing only in scope and order. Read as **its own commit,
+landing first**, within **Story 8.4c**, rather than as a separate story. **That reading is the
+orchestrator's, not the owner's words**, and is recorded as such in the epic so a later reader does not
+attribute it to the owner.
+
+**The acceptance risk of the chosen option is written into 8.4c rather than left to be discovered:**
+someone must confirm **IBM Plex has the Thai coverage `--font-page` asks for** before that binding is
+trusted. And the bundle weight the owner accepted is **measured and recorded**, not absorbed.
+
+**Net shape after 8.4b and 8.4c:** chrome asks for **real IBM Plex**; the canvas asks for the
+**engine's Noto face names**. The two vocabularies stay separate **by design rather than by
+accident** — which is what 8.4b was ruled on AD-17 grounds *before* this decision was known.
+
+---
+
+### D-8.4.16 — D-8.4.12 implemented, with one placement deviation reported rather than worked around
+
+**Landed at `5d705b6`.** Verification: untagged **1805/2/5**, matrix **1816/3/5** — the two standing
+reds, no third; 23 goldens, none moved; baseline measured at `e25381a` rather than assumed.
+
+**The ruling's MECHANISM held; its PLACEMENT did not.** The assumption the lead flagged as the one that
+would flip guardrail 1 — *that the `fontCache` door can carry the attribution without a caller passing
+it in* — is **true**, and `get`'s two arms are the whole attributability axis.
+
+**What failed was anticipated by nobody: the stamp cannot be a type declared in a root file of package
+`folio`.** `TestFolioMethodNamesAreInjective` walks that package's root non-test files and fails when
+two receiver types declare the same method name; `*RenderError` already declares `Error` and `Unwrap`.
+A package-local error type reddened it twice. Its own two stated remedies are **rename the methods**
+(impossible — `error` mandates `Error() string`) and **take DW-20 now** (a `go/types` walker, a
+separate story). The guard is deliberate, has no allowlist, and its doc comment says loosening it is
+the exact failure it exists to prevent.
+
+**So the carrier moved and the door did not.** `template.CarriedFaceError` sits beside
+`UnsupportedFontMediaTypeError` — the document-attribution error it generalises and now wraps — and is
+still minted at **exactly one site**. **No allowlist.** The argument for it being better on the merits
+rather than merely tolerable: **attribution is a format fact, so it belongs in the package that owns
+the format.**
+
+**Two consequences the lead was asked to weigh.** **DW-20's pressure is now real rather than
+theoretical** — the guard fired for the first time on a legitimate change, and the *next*
+package-level error type in `folio` fires it again with no route around it. And **the constraint was
+invisible in the ruling and would have been invisible in any spec: it is only findable by running the
+suite.**
+
+**Guardrail 2 got more than it asked for.** The three dispositions reconciled to **two**: `metricsFace`
+now reads the same stamp instead of re-deciding attribution from the face's **name** — a consumer
+re-deciding the axis, the exact shape the ruling condemned at the canvas gate.
+
+**Guardrail 3 discharged, with the number.** The arm that reddened **nothing** now reddens
+`TestCanvasStillAbortsOnAHostFontSetFaceThatWillNotParse`, which differs from the degrading document in
+**one variable: who supplied the face**. Guardrail 6 is asserted directly — `errors.As` must be
+**false** for the `FontSet` arm — so the axis cannot collapse silently. Restoring the old allowlist
+reddens **exactly one** test, so the widening is observed and nothing else moved.
+
+**Two self-caught failures worth more than the feature.** A **third red appeared mid-run** —
+`TestFolioMethodNamesAreInjective`, real, from the builder's own first implementation — and it surfaced
+**only because the full suite was run under mutation**; the targeted run was green while the arch guard
+was red. And the **first mutation harness silently let a non-compiling mutation through and reported
+`pass: 753` for a package that never ran**; it was rebuilt to fail loudly and everything re-run. Both
+are this run's recurring family: **a green that measured nothing** — here caught by the builder on
+itself.

@@ -3126,6 +3126,116 @@ the story most likely to delete rather than widen them.
 `document.fonts` occurrence globally **before** the prohibition scan, which makes its own rule at
 `:24` dead and would let a measurement call through unnoticed (found at Story 8.4's plan gate)
 
+### Story 8.4b: The canvas can name the face the engine measured
+
+As a template author,
+I want the canvas to draw shipped faces with the same faces the PDF uses,
+So that a chain I did not embed still previews the way it prints.
+
+**Covers:** FR34 · AD-8, AD-17, UX-DR13 — and **DW-35's cause one**, which Story 8.4a does not close.
+
+**RULED INTO EXISTENCE 2026-09-01 (D-8.4.14), and the register's stated blocker was FALSE.**
+DW-35 has **two** causes. 8.4a closes cause two (a carried face has no browser family at all). **Cause
+one** is shipped chains: the engine measures `Noto Sans Thai` while the browser asks
+`IBM Plex Sans Thai`, and `canvas-font-stack.test.ts` asserts those vocabularies **disjoint in both
+directions**, deliberately.
+
+The register called cause one *"a design-system decision above a builder's authority"* — **renaming
+the generated `@font-face` families to Noto.** Measured at the ruling: that is **not the decision**,
+and doing it would be **wrong**. IBM Plex is the UX design system's specified typeface, named
+throughout `DESIGN.md`, and promised in the release **licence manifest**. Renaming would abandon a
+real choice and falsify a release artifact.
+
+**The fork dissolves instead of escalating, because DW-35 is about what the CANVAS paints with and
+says nothing about chrome.** The two vocabularies never needed merging.
+
+**Acceptance Criteria:**
+
+**Given** the shipped faces
+**When** the designer's stylesheet is generated
+**Then** each is registered **additionally** under **the engine's own face name** — the same file, a
+second `@font-face` per face, the family named from the `FontSet`'s own spelling
+
+**Given** the canvas text fragment rule
+**When** it asks for a family
+**Then** it asks for the engine's face names, so the canvas vocabulary becomes the engine's **by
+identity rather than by a mapping table** — a mapping table would be a second authority on which
+browser family corresponds to which engine face, maintained in lockstep with the shipped `FontSet`,
+which this codebase rejects by name everywhere else
+
+**Given** every chrome token — `--font-sans`, `--font-mono`, `--font-page` and every `--type-*`
+**When** this story is complete
+**Then** **not one of them is edited.** No new binaries, no visual change to chrome, no doc
+amendment. AD-17 is the ground: the browser contributes rasterization only, so it must rasterize with
+the face the engine measured with — **and it cannot unless it can name that face.**
+
+**Given** `canvas-font-stack.test.ts`'s disjointness assertion
+**When** it is updated
+**Then** it is **REPLACED, not weakened.** It records the old state and *should* go red. Its
+successor asserts the canvas fragment stack's families **contain** the engine's face names. It must
+**not** assert global disjointness, which will now be false, and it must **not** be softened to an
+`arrayContaining` on the chrome half to keep it passing.
+
+**THE DISJOINTNESS THIS REMOVES IS THE CANVAS'S, NOT CHROME'S.** A future reader taking "the
+vocabularies now meet" as licence to make chrome ask for Noto is reading it wrong — that is Story
+8.4c's question, settled there, and settled the other way.
+
+### Story 8.4c: The designer ships the typeface it specifies
+
+As the product owner,
+I want the designer to render in the typeface its design system names,
+So that the tokens, the design documents and the licence manifest all describe what actually ships.
+
+**Covers:** NFR7, AD-26 · UX-DR13
+
+**OWNER DECISION, 2026-09-01 (D-8.4.15).** The escalation was: the product **specifies** IBM Plex
+throughout `DESIGN.md`, **promises** IBM Plex in `epics.md`'s redistributed-asset licence manifest,
+and **ships no IBM Plex file at all** — `find -iname '*plex*'` is empty, and three generated
+`@font-face` rules give IBM Plex family names to three **Noto** files. Three options were put to the
+owner: ship IBM Plex for real; adopt Noto and amend the documents; or keep the alias and record it.
+
+**The owner chose to ship IBM Plex for real.** The engineering lead had recommended adopting Noto, on
+the ground that the product has rendered in Noto its entire life — **and had named the fact that would
+flip it**: whether the IBM Plex choice was real and the Noto files an unreplaced stand-in. It was. The
+lead's hedge is what let this be answered in one pass, and the recommendation described the stand-in
+rather than the intent.
+
+**Acceptance Criteria — AC1 LANDS AS ITS OWN COMMIT, FIRST**
+
+**Given** the family named `IBM Plex Mono`
+**When** its `@font-face` source is read
+**Then** it is an actual monospace IBM Plex face — **not `noto-sans-cjk.ttf`, a CJK sans**, which is
+what it is bound to today, so `--type-mono*`, `--type-brand*`, `--type-band-tab` and
+`--type-numeric-lg` render chrome in a CJK face
+
+**THE OWNER ASKED FOR THIS "NOW, SEPARATELY", AND THE INTERPRETATION IS RECORDED AS AN
+INTERPRETATION.** With "ship IBM Plex for real" chosen, the honest fix for the mono defect **is**
+adding a real IBM Plex Mono binary — so "fix it separately" and "ship IBM Plex" became the same work,
+differing only in scope and order. This is read as *its own commit, landing first*, rather than a
+different story. **That reading is the orchestrator's, not the owner's words.**
+
+**Given** the chrome families `IBM Plex Sans` and `IBM Plex Sans Thai`
+**When** the stylesheet is generated
+**Then** each names an actual IBM Plex OFL binary, and **someone confirms IBM Plex has the Thai
+coverage `--font-page` asks for before that binding is trusted** — this is the acceptance risk of the
+chosen option and is written here rather than discovered
+
+**Given** the release licence manifest
+**When** it lists IBM Plex among redistributed assets requiring licence text and copyright lines
+**Then** the statement is **true** — the binaries are present, their OFL text and NOTICE ship with
+them, and `lint`'s licence check covers them under AD-26
+
+**Given** the bundle size budget
+**When** the IBM Plex binaries are added
+**Then** the added weight is measured and recorded against it — the cost the owner accepted in
+choosing this option, made visible rather than absorbed
+
+**Given** Story 8.4b's second registration
+**When** both stories have landed
+**Then** chrome asks for **real IBM Plex** and the canvas asks for the **engine's Noto face names**,
+and the two vocabularies are separate **by design rather than by accident** — which is what 8.4b was
+ruled on AD-17 grounds before this decision was known
+
 ### Story 8.5: A curated catalogue ships with the designer
 
 As a template author,
