@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: '3f9205790598831d47a44e080daaa8d4d5a3245a'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized', 'multiple-goals']
 deferred:
@@ -61,6 +61,29 @@ deferred:
       folio-designer/src/FontChainEditor.tsx
     severity: low
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative. The intent contract below governs the implementation; where the two differ, the
+contract wins.*
+
+A template hands a document a set of named font families, each one an ordered list of typefaces to
+fall back through. Until now an author could pick one of those families but could never make, rename
+or remove one, so a document was stuck with whatever its starter file happened to declare. This story
+delivers the missing half: an author can now build those families from the very panel where fonts are
+chosen — creating a family, renaming it, deleting it, and adding, reordering or removing the typefaces
+inside it — without leaving that panel or opening a separate window.
+
+The engine stays the only thing that decides whether an edit is allowed. The panel asks; it never
+judges. When the engine refuses — a name already taken, a family still in use, a last remaining
+typeface being removed — the author reads the engine's own words, unaltered, at the control they just
+used. Nothing is second-guessed in the browser first, and two separate safeguards exist to keep it
+that way.
+
+Two faults sitting on this path were repaired: one that blanked the canvas the moment an author typed
+certain names, and one that mangled pasted text before the engine could explain it.
+
+What is not shown: all of this was measured in a simulated browser. Nobody has clicked it.
 
 <intent-contract>
 
@@ -769,3 +792,128 @@ which is compiled and never run. jsdom applies no stylesheet, so no unit test pr
 appearance or focus ring. None of this may be reported as verified.
 Also unproven: `invalidatePreview()`'s isolable half on the chain path (see `deferred`); and the
 refusal sentences are coupled to Go by transcription, since no test reads both languages.
+
+## Delivery Log
+
+### 2026-08-31 — planned
+
+Planned at baseline `bc671da` on a clean tree, halt-after-planning. The plan gate raised two warnings
+and resolved the load-bearing one by **splitting**: the spec had three independently shippable goals,
+and DW-32's shared command-JSON authority left for **Story 15.2a** in Epic 15, sequenced before the
+tag (D-8.2.6). DW-70 **stayed** as a precondition — this story is what first lets an author type a
+chain name — and a deliberately minimal `quote()` fix stayed with it. The gate also ruled AC3's
+positive half unsatisfiable before Story 8.3 and delivered its negative half as a forward-compatible
+display rule (D-8.2.5, D-8.2.7, with D-8.1.2/D-8.1.3 standing behind them).
+
+### 2026-08-31 — built
+
+**The first implementation dispatch halted, and the contradiction was the orchestrator's own.** The
+scope block settling D-8.2.4…D-8.2.7 was **appended** to an intent contract whose Approach, one
+Always bullet, one acceptance criterion, four tasks and two mutation proofs had all been written
+under the opposite assumption — that this story *would* build the shared authority. The contract
+therefore both mandated and forbade the same work, and its own stated trigger (*"HALT if an AC seems
+to require any of it"*) was met. **The halt was correct, and the reason it was correct is
+structural:** the implementation handoff passes the spec **verbatim**, as the subagent's sole source
+of truth, so there was no sanctioned lever by which a builder reading that contract would have built
+the minimal fix. It would have built exactly the three things the rulings forbid, and the review
+layer would then have graded it against acceptance criteria its own code could not satisfy. Nothing
+was written, nothing was committed; the orchestrator amended all seven items and re-dispatched. This
+is the halt working as designed, not a builder being timid.
+
+The third dispatch implemented against the repaired contract and committed at `e3ba0a2` (17 files,
++1513/-19). **No file under `folio-go/` or `lint/` is in the diff**, so the byte-identity claim is
+structural as well as measured.
+
+**DW-70 was a two-keystroke worker kill, not a cosmetic disagreement.** Go sorts the projected chain
+names by byte; the browser's guard compared UTF-16 code units. They disagree wherever a name mixes
+the astral planes with U+E000–U+FFFF, and the consequence was not a dropped frame — the guard failed,
+the whole snapshot was discarded, and the engine worker was **terminated**, leaving the canvas
+permanently blank. Reachability was total the moment this story shipped, because the engine accepts
+any non-empty bounded name. **The fix had to go on the TypeScript side and must stay there:** those
+keys are sorted into the canonical document's own `fonts` order under AD-9, so Go's comparator *is*
+the document's byte order and is normative. Fixing the cheaper-looking side would have moved golden
+bytes. The spec says so twice, and it was right to.
+
+**`quote()` was the third premise about that one file to be falsified inside a single story.** The
+dispatch asserted that chain names would travel through the numeric splice; measurement showed they
+do not — they route through the quoter. The plan gate then cleared that route. And the cleared route
+was **still broken one level down**: the quoter escaped five characters where JSON requires all of
+U+0000–U+001F, so a pasted control character produced malformed bytes and the engine answered with a
+generic parse failure instead of the located refusal that would have named the field. Engine-side
+validation could not have substituted, because the bytes never reached the rule. Each premise was
+narrower than the last and each was wrong; the file was only understood by being executed.
+
+**The refusal-vocabulary prohibition initially matched ordinary English, and edited the codebase to
+suit itself.** Its first version scanned raw file text, so its patterns — *already exists*, *is
+declared*, *is out of range* — collided with prose that had nothing to do with an engine rule. Two
+unrelated comments, in the panel and in the sheet stack, were reworded purely to get the guard green:
+the guard editing the codebase rather than the codebase answering to the guard, and it would have
+recurred on every future occurrence. It now strips comments with a character scanner that tests
+quotes before comment openers. **Both reworded comments were restored verbatim as the fix's own
+proof, and the sheet-stack file consequently left the diff entirely.** Five further refusals Go
+actually emits were then added safely, taking the guard from seven literals to twelve.
+
+Review: 12 patched (0 high, 6 medium, 6 low), 4 deferred, 5 rejected, 0 intent gaps, 0 bad spec.
+Two of the twelve were surfaced by an executed mutation rather than by inspection.
+
+### 2026-08-31 — done
+
+Closed at `e3ba0a2` on `main`, baseline `3f92057`. Every gate below was **re-run at close**, not taken
+on the build's report, and every number is the closer's own measurement.
+
+**Measured green.** `go test -count=1 ./...` — 13 packages `ok`, exactly **one** distinct red,
+`TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`, the mandated permanent red; since this story
+changes no Go file, that is the whole Go story. `go vet -tags=matrix ./...` exit 0; `gofmt -l folio-go`
+from the repo root, no output. `TestTargetRenderHash` on **four exported legs** — `darwin/arm64`
+(0.73s), `linux/amd64` (7.33s), `linux/arm64` (4.66s), `js/wasm` (10.58s) — each emitting 23 real
+per-document hashes, **plus the unset control**, which passes in 0.375s while printing that it asserts
+nothing. The control is what proves the four legs were not the same no-op.
+`TestCrossTargetByteIdentity` ok (22.2s); `TestThaiStackedMarksSemanticSignOffIsRecorded` ok.
+`cd lint && go test -count=1 ./...` — four packages `ok`, the mandatory `-count=1` per D-7.9.5, and
+`TestFloatTypedTestScopeInventory`'s line-number pins did not move. The designer gate — typecheck,
+oxlint, unit, e2e-compile — all four exit 0: **oxlint exactly 4** pre-existing `only-export-components`
+warnings and nothing else, and **319 tests / 35 files** passing against a 285/34 baseline. All **22**
+golden digests diffed against a baseline reconstructed from the pre-story tree: **empty**.
+
+**Re-derived, not relayed.** The two anti-pre-emption locks were reproduced by adding real local rules:
+a duplicate-name pre-check and an emptying-remove pre-check each turn the dispatch assertion red with
+*"expected [] to deeply equal [Array(1)]"* — nothing sent. That is the assertion that matters, because
+a passing *"the error shows"* test is satisfied equally well by a TypeScript copy of the rule. The
+prohibition was proved **both ways with the same literal**: clean in a comment, red in a string, naming
+the file and both patterns — so the comment-stripping fix is measured, not asserted. DW-70 was proved
+in **both directions**: reverting the comparator to UTF-16 reddens the accepted private-use/astral pair (U+E000 before U+1F600),
+and deleting the ordering check outright reddens the out-of-order half. **No Go comparator moved** —
+zero `folio-go/` paths in the diff, mechanically confirmed. `quote()`'s C0 assertion reddens under the
+restored five-character table (*Bad control character*), and the departed population — those five
+characters plus a lone surrogate — is re-asserted in the same test, so the fix widens and does not
+narrow. Both Matrix Test Audit cells filled before review — rename onto an existing key, and the
+out-of-range reorder — carry real refusal assertions and are **non-vacuous**: making the panel invent
+its own refusal text reddens all six refusal tests. Scope was verified mechanically: zero paths under
+`folio-go/` or `lint/`, no `command-json.ts`, the four other encoders untouched, DW-32 not closed, and
+`rawNumberLiteral` and `role="dialog"` each appearing in the diff **only inside a comment**.
+
+**Not measured, and not to be read as verified.** Browser e2e never executed — `test:e2e:compile` is a
+type-check only, and Playwright appears in no workflow (D-000.4). **This is a panel story, so the
+surface an author actually touches is the one nothing runs.** Unproven: keyboard operability end to
+end in a real browser, the visible focus ring, whether the alert is announced, whether the six commands
+survive the real worker round trip, and whether the DW-70 fix keeps a real worker alive. jsdom applies
+no stylesheet, so no unit test can reach appearance or focus either. The full `-tags=matrix ./...`
+sweep was **not** run, so `TestShippedFacesReproduceFromUpstream` is unmeasured here and comes due at
+Epic 8's close; `lint/…/licencegraph_test.go`'s gofmt deviation remains DW-23 and is outside this path.
+
+**Deferrals filed at close.** All four of the build's deferrals were recorded only in the spec's
+frontmatter and are now in the register: **DW-75 (HIGH)**, **DW-76**, **DW-77**, **DW-78** — plus
+**DW-79**, found by the closer's own mutation screen. DW-75 is the one that matters: the two
+hand-rolled escapers iterate by code point but escape from the first UTF-16 unit, so an astral
+character is emitted as a **lone surrogate**, Go substitutes U+FFFD, and a bind segment or asset key
+**binds to a different path than the author typed**, silently. Re-confirmed at close **by executing
+the function**, not by reading it. It is Story 15.2a's, and DW-32's owner line now points at it so that
+story knows its consolidation is a repair rather than a tidy-up. DW-79 records that the value-signature
+fix the review pass made is correct and load-bearing (forcing it false reddens 4 tests, true reddens 1)
+but that **no test distinguishes it from the array-identity check it replaced** — reverting that
+specific defect would go unnoticed by all 319.
+
+**`followup_review_recommended` cleared to `false`.** The flag was raised on patch volume (12 patches,
+score 24), with **no high-severity finding among them**. Every load-bearing claim was independently
+re-derived at close, as recorded above; the one new gap found is DW-79, filed at LOW. Nothing was
+re-opened.

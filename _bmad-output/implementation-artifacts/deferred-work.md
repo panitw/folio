@@ -2627,7 +2627,11 @@ three times, the third time *inside the commit that closed it*.
 - **Deferred by:** Story 7.4's review pass (2026-08-30); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
 - **Owner:** **Story 15.2a** — *a component command means exactly what it names* — filed 2026-08-31
-  in Epic 15 and **sequenced before Story 15.3 cuts the tag**. Not Epic 8: D-7.7.12 holds and Epic 8
+  in Epic 15 and **sequenced before Story 15.3 cuts the tag**. **15.2a MUST ALSO READ
+  [DW-75](#dw-75), filed at Story 8.2's close:** two of the five encoders this entry consolidates do
+  not merely spell escaping differently, they **corrupt non-BMP text** and bind to the wrong path.
+  That is the same story's scope and was proved by execution, so the consolidation is a repair, not a
+  tidy-up, and its acceptance must assert a non-BMP round trip explicitly. Not Epic 8: D-7.7.12 holds and Epic 8
   does not widen this defect, unlike Story 8.0's case. **Its Go half JOINS D-7.8.3's before-the-tag
   set**, which is therefore **two** items, not one — a duplicate-key refusal narrows the exported
   `ApplyComponentCommand` and has not shipped. **Both enforcement points are ONE subject and land in
@@ -3894,7 +3898,8 @@ reads as closed.
 
 **Measured, not inferred.** The designer has **five** command encoders giving **three** different
 answers: `table-column-command.ts` uses `JSON.stringify` (the correct model); `component-command.ts`
-and `component-asset-command.ts` carry byte-identical hand-rolled escapers; `component-property-command.ts`
+and `component-asset-command.ts` carry byte-identical hand-rolled escapers **which are byte-identically
+WRONG on non-BMP input — see [DW-75](#dw-75)**; `component-property-command.ts`
 carried an incomplete one (its `quote()` half was fixed by Story 8.2 — see DW-32's status note); and
 **numbers are not encoded at all**, in two files. That is D-8.1.3's exact shape: no single authority,
 so no single place to be right.
@@ -3927,3 +3932,154 @@ the designer tests green (their canvas fixtures are hand-authored object literal
 **Why it is reported and not fixed here.** Story 8.2 is designer-only and adds no projection field, so
 it cannot make this reachable and a Go-side test change would be outside its diff. It is the gap DW-35's
 eventual fix walks into, which is why the owner is pointed at the same story.
+
+---
+
+### DW-75 — `component-command.ts` and `component-asset-command.ts` CORRUPT non-BMP text: they iterate by code point but escape from `charCodeAt(0)`, so an astral character becomes a LONE SURROGATE and binds to a different path than the author typed
+- **Deferred by:** Story 8.2's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Story 15.2a** — *a component command means exactly what it names* — the same owner as
+  **DW-32**, and **sequenced before Story 15.3 cuts the tag**. This is not an additional candidate for
+  that story; it is what that story's consolidation actually **fixes**, and 15.2a must know it is
+  repairing a live corruption rather than tidying three spellings of one idea.
+- **Severity:** **HIGH** — not "the encoders differ" but "two of them silently produce the wrong
+  document path". Re-verified **by execution** at Story 8.2's close, not carried on report.
+- **Status:** OPEN
+
+**The defect, re-derived by executing the function at Story 8.2's close.** Both encoders read
+`for (const character of value) { const code = character.charCodeAt(0); ... }`. `for...of` over a
+string iterates **by code point**, so for U+1F600 the loop variable is the whole two-unit string.
+`charCodeAt(0)` then reads only the **first** UTF-16 unit — the high surrogate `0xD83D` — which falls
+in the `code >= 0xd800 && code <= 0xdfff` branch and is emitted as `\ud83d`. The loop has already
+consumed the whole code point, so **the low surrogate is never emitted at all.**
+
+Executed at close: `quote('a' + U+1F600 + 'b')` returns `"a\ud83db"`, which parses back to the three
+code points `U+0061 U+D83D U+0062` — a **lone surrogate**, not the author's emoji. Go's
+`encoding/json` substitutes **U+FFFD** for an unpaired surrogate, so the value the engine stores is
+not the value the author typed.
+
+**Why it matters beyond mojibake.** These two encoders carry **bind segments** and **asset keys** —
+values that are *addresses*, not display text. A bind segment or asset key holding an astral character
+therefore binds to a **different path than the author typed**, silently, and the engine's refusal names
+a path the author never picked. There is no error anywhere on this route: the JSON is well-formed, the
+arity is right, and both languages agree on a value neither of them received.
+
+**Why every existing test misses it.** `component-command.test.ts`'s "complete JSON escaping" case
+uses only BMP inputs. A lone surrogate reaching Go is invisible to any test written with BMP text,
+which is why the register recorded these encoders as merely "unconverted" for as long as they were
+read rather than run. **15.2a must assert the non-BMP case explicitly**; a consolidation that routes
+both through `JSON.stringify` fixes this as a side effect, and a test that only proves "the payload is
+valid JSON" would go green without ever proving the round trip.
+
+**Why it is not fixed by Story 8.2.** D-8.2.6 settled these two encoders as Story 15.2a's, and 8.2's
+contract forbids touching them by name (*"do not consolidate the five encoders"*). Story 8.2 fixed only
+`component-property-command.ts`'s `quote()`, which is on its own path. Story 15.2a's scope in
+`epics.md` was amended at `7692b50` to carry this finding; this entry is the register's half of it.
+
+---
+
+### DW-76 — nothing ties `font-chain-command.ts`'s six command kinds and field arities to the Go dispatch table they must match, so a rename in Go alone leaves every test in both languages green
+- **Deferred by:** Story 8.2's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 8 close** — due before that epic's key is marked `done`, alongside **DW-71**,
+  which is the same boundary one layer up. Every remaining story in Epic 8 adds command surface behind
+  this same untied seam.
+- **Severity:** MEDIUM — **the same shape as DW-42 and the five untied Go/TS invariants** Story 7.5's
+  inventory found: two sides of one contract, each asserted against its own independently hand-written
+  literal, coupled by nothing executable. That class has already produced one high-severity defect in
+  this project.
+- **Status:** OPEN
+
+**The gap.** `font-chain-command.ts` builds six payloads at the exact arities `componentFields` counts
+(4/4/3/5/5/4) and with the field names Go's dispatch reads. Both sides then assert against
+**independently hand-written literals**: `font-chain-command.test.ts` and `App.test.tsx` on the
+TypeScript side, `component_commands_test.go` on the Go side. Renaming `from`/`to` on
+`moveFontChainEntry`, or changing one `componentFields(raw, N)`, **in Go alone** leaves every test in
+both languages passing while the designer dispatches payloads the engine refuses with an arity error
+at every move — a feature that is green in CI and broken for every author.
+
+`canvas_projection_wire_test.go` closes exactly this seam for the **Go to browser projection**
+direction. The **browser to Go command** direction has no counterpart at all.
+
+**The same shape, one layer down, is the refusal text itself.** The sentences an author reads are
+coupled to Go **by transcription only** — no test reads both languages — so a reworded Go refusal
+leaves the designer's fixtures asserting a string the engine no longer emits, green on both sides.
+Story 8.2's own contract test forbids a TypeScript *copy of a rule*; it cannot detect a *stale
+transcription of a message*. Both halves belong to whoever closes this entry.
+
+**Scope.** Pre-existing for the five older encoders; Story 8.2 adds six more command kinds to the same
+gap and so widens it without creating it. Reported rather than fixed because 8.2 is designer-only by
+acceptance criterion and the fix is a Go-side test.
+
+---
+
+### DW-77 — the isolable half of `invalidatePreview()` on the chain path is unverified: deleting the call leaves every test green, because a second mechanism produces the same user-facing result
+- **Deferred by:** Story 8.2's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Story 8.4** — the first story to hold a render open across an edit (its preview is
+  measured through the engine's own path), and therefore the first with the fixture this proof needs;
+  **or Epic 8's close**, whichever comes first, per D-000.73
+- **Severity:** MEDIUM — a coverage gap, not a live defect. The behaviour is correct today; nothing
+  would catch it ceasing to be.
+- **Status:** OPEN
+
+**The gap, and the reason it is honest rather than hidden.** Story 8.2 added a test asserting that an
+accepted chain command marks a rendered PDF stale, and it passes. But **deleting `invalidatePreview()`
+leaves all tests green**: re-entering Preview re-requests identity, and `renderPreview`'s own
+identity-mismatch branch sets the stale reason independently, so the user-facing property holds either
+way. The passing test therefore measures the *sibling* mechanism, not the call it appears to cover.
+
+This is the failure mode where a test passes because a **different** mechanism covers the case.
+Isolating the token bump — the half that revokes an **in-flight** render — needs a render held open
+**across** the chain command, which Story 8.2 did not build.
+
+**Recorded as reported, not as covered.** The implementer found this by mutation and flagged it rather
+than claiming the coverage, which is the reason it is a register entry instead of a future surprise.
+
+---
+
+### DW-78 — `FontChainEditor` reads its form values through `document.getElementById` on the GLOBAL document, so a second mount collides on ids and reads the wrong field
+- **Deferred by:** Story 8.2's build (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **the plan gate of the first story that mounts a second `App`, a portal, or a preview pane
+  carrying the property panel** — a gate, never an event, per D-000.73
+- **Severity:** LOW — unreachable today and correct today; a latent coupling, not a defect
+- **Status:** OPEN
+
+**The gap.** `typed()` resolves its ids against the **global** `document`, as does the focus-restore
+pass in the settle effect. The ids are `useId`-scoped, so they are unique per mount — but the *lookup*
+is not scoped to the component's own subtree. Two `App` instances in one test file, a future portal, or
+a preview pane rendering the panel a second time would each resolve against whichever node the global
+document returns first. A `useRef` map would be local, typed, and immune to this by construction.
+
+**Why it holds today.** Exactly one `App` mounts, in production and in every test. This is filed so the
+constraint is written down somewhere other than in the fact that nothing has violated it yet.
+
+---
+
+### DW-79 — the chain editor decides "the list moved" by a VALUE SIGNATURE rather than array identity, and nothing pins that choice: reverting it to a reference check goes unnoticed by all 319 tests
+- **Deferred by:** Story 8.2's **close** (2026-08-31) — found by the closer's own mutation screen, not
+  by the build's review pass
+- **Owner:** **the plan gate of the next story that changes the chain editor's focus or settle
+  behaviour**, or **Epic 8's close**, whichever comes first, per D-000.73
+- **Severity:** LOW — the code is correct and strictly better than what it replaced; what is missing is
+  the guard that keeps it that way
+- **Status:** OPEN
+
+**What was measured at close.** Story 8.2's review pass found and fixed a real defect: the editor
+originally decided whether an edit had landed by comparing the `chains` **array identity**, which would
+call an accepted no-op edit a move, and which was unfalsifiable in test because a fixture legitimately
+reuses one array across snapshots. The fix compares a value signature over names and entries. **The fix
+is real and is in the code**, and the mechanism it feeds has teeth in both directions — the closer
+proved this by mutation:
+
+- forcing `landed = false` reddens **4** tests (both keyboard-reorder focus tests and both
+  add-field-clearing tests);
+- forcing `landed = true` reddens **1** (`empties the add fields once the add has actually landed`).
+
+**The gap.** Replacing the value signature with a faithful **array-identity** comparison — the exact
+defect that was fixed — leaves **all 118 `App.test.tsx` tests green** (and the whole suite at 319/35
+green). No test discriminates the value signature from the reference check, so the specific choice that
+was the subject of the finding is unguarded, and a future refactor could reinstate the original defect
+silently. Closing this needs a test in which two successive snapshots are **equal in value but distinct
+objects** (or the reverse), which is precisely the fixture shape the original finding named.

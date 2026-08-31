@@ -200,7 +200,7 @@ development_status:
   # `epic-7: done`, but it must precede the folio-go/v0.1.0 tag (D-7.7.13), and a position in a
   # sequence is the only owner that has worked on this project. Its key stays under epic-7.
   8-1-the-document-s-font-chains-become-editable: done
-  8-2-the-chain-editor-sits-where-fonts-are-chosen: backlog
+  8-2-the-chain-editor-sits-where-fonts-are-chosen: done
   8-3-a-font-travels-inside-the-template: backlog
   8-4-the-engine-renders-from-an-embedded-face: backlog
   8-5-a-curated-catalogue-ships-with-the-designer: backlog
