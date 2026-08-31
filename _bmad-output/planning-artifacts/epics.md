@@ -2840,16 +2840,23 @@ As an integrating Go developer,
 I want the faces a template uses to be inside the `.folio` file,
 So that rendering it needs no font install step and no knowledge of what it needs.
 
-**Covers:** FR53, FR56 · AD-9, AD-26, NFR1
+**Covers:** FR53, FR56 · AD-8, AD-9, AD-14, AD-21, AD-26, NFR1
+
+**`Covers:` CORRECTED 2026-08-31 at this story's plan gate — the THIRD consecutive story to omit an
+AD its own acceptance criteria state.** **AD-8** is AC3's rule (*"never a substituted face"*);
+**AD-21** is AC6's (*"its recorded digest still matches"*); AD-14 binds the located load errors. The
+`Covers:` lines name FRs and NFRs reliably and ADs unreliably, which makes the omission systematic
+rather than incidental — hence the standing plan-gate check: **read the ACs, list the invariants they
+paraphrase, diff against `Covers:`.**
 
 **Acceptance Criteria:**
 
 **Given** an embedded face
 **When** the document is serialized
 **Then** it is an `assets` entry keyed by the lowercase hex SHA-256 of its raw bytes, `data` base64
-hard-wrapped at 76 columns, a font `mediaType` from a closed set, and a `font` record carrying
-family, style, licence and source — the same asset mechanism images already use, with no second
-storage shape and no new canonical-serialization rule
+hard-wrapped at 76 columns, a font `mediaType`, and a `font` record carrying family, style, licence
+and source — the same asset mechanism images already use, with no second storage shape and no new
+canonical-serialization rule
 
 **Given** two chains naming the same face
 **When** the document is saved
@@ -2861,15 +2868,42 @@ an image
 **Then** it is a located load error naming the chain, the entry index and the key — never a
 substituted face and never a silent drop
 
-**Given** an asset whose bytes do not decode as its declared font media type, or whose media type is
-outside the closed set
+**THE ENTRY INDEX DOES NOT EXIST YET, measured at this gate.** The array decoder collapses a chain
+into **one** error located at `fonts.<name>`, with no index. So *"naming the entry index"* is not a
+reporting detail this story inherits — **it is work this story must do**, threading the index through
+that decoder. An AC that reads as a formatting requirement and is actually a plumbing change is the
+kind that gets silently under-delivered.
+
+**Given** an asset whose bytes do not decode as its declared font media type
 **When** the template is loaded
 **Then** it is a located load error naming the asset
 
+**Given** an asset whose media type is one this build does not recognise
+**When** the template is loaded
+**Then** it is **preserved**, and it errors at **render** — never refused at load
+
+**AC1 AND AC4 AMENDED 2026-08-31: THERE IS NO CLOSED SET OF FONT MEDIA TYPES, AND THERE MUST NOT
+BE.** Both criteria said *"from a closed set"* / *"outside the closed set"*, and that contradicts
+binding **D-1.8.1 as amended**, which forbids `mediaType` from ever being a closed set — its own note
+**predicted this exact recurrence** *"later for font formats"*, and
+`TestClosedSetsNeverIncludeMediaType` fatals on a media-type-shaped key. **The engineering lead had
+already ruled the collision at this run's setup:** *"unrecognised media type is preserved at load and
+errors at render; a recognised type whose bytes do not decode stays a load error."* The two halves
+are now separate criteria because they have **different outcomes**, which is what the single
+"closed set" wording concealed.
+
 **Given** the version rule, which makes a higher MAJOR a load error rather than a best-effort render
 **When** this story starts
-**Then** SPEC-fonts' open question on the bump is settled and written into `folio-format.md` before
-any code lands
+**Then** the bump is **written into `folio-format.md` before any code lands** — it is **MAJOR, and it
+joins the existing `2.0`**, adding no new rank
+
+**AC5's PREMISE WAS ALREADY FALSE when it was written: the question is not open.** **D-R7.9 is an
+owner decision naming this story and this version literally** — *"Epic 8's format change joins the
+same 2.0 at Story 8.3"* — and it dissolved the only standing objection (*"no need to tag now"*).
+Corroborated independently: a 1.x reader meeting an **object** where it expects a string refuses the
+file, which is D-1.4.12's mechanism exactly. **So the trigger is the ENTRY SHAPE, not the presence of
+a font asset**, and it maps onto the existing rank — no new constant, no renumbering. The obligation
+that survives is the **writing-it-down**, not the deciding.
 
 **Given** every template in the existing golden corpus, none of which embeds a font
 **When** it is rendered after this story

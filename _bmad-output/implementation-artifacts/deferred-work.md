@@ -4083,3 +4083,51 @@ green). No test discriminates the value signature from the reference check, so t
 was the subject of the finding is unguarded, and a future refactor could reinstate the original defect
 silently. Closing this needs a test in which two successive snapshots are **equal in value but distinct
 objects** (or the reverse), which is precisely the fixture shape the original finding named.
+
+---
+
+### DW-80 — `assetKeyReferenced` returns false for EVERY font asset, so an orphan collector would delete fonts a document is using
+
+- **Deferred by:** Story 8.3's plan gate (2026-08-31), which measured it while checking what of the
+  image-asset mechanism is reused. **Not reachable today** — nothing collects orphans — so it is a
+  trap laid for a later story rather than a live defect.
+- **Owner:** **Story 8.6**, or whichever story first collects, prunes or garbage-collects unreferenced
+  assets. A named story with a position in the sequence, per D-8.0.5 — **not** a checklist item; a
+  checklist address was read past by eight consecutive plan gates in this run (DW-28).
+- **Severity:** MEDIUM as filed, **HIGH the moment anything collects orphans** — it is silent data
+  loss of an embedded face, and the document then fails to render for want of bytes it used to carry.
+- **Status:** OPEN.
+
+**The gap.** `assetKeyReferenced` answers *"does any element name this asset?"* by walking **image**
+elements. A font asset is named from a **font chain entry** (`{"asset": "<key>"}`), which that walk
+does not visit. So it returns **false for every font asset a document embeds**, however many chains
+name it.
+
+**Why it is filed now rather than found later.** Story 8.3 stores fonts as assets and adds no
+collector, so nothing acts on the wrong answer today. The next story that prunes unreferenced assets
+will call this function, receive a confident `false`, and delete a face the document is using. **The
+function is not wrong about images and gives no sign that it is partial** — which is the shape this
+run has now recorded eight times.
+
+**What discharges it.** Extend the walk to font-chain entries **and** add a test that embeds a face,
+names it from a chain, and asserts the answer is `true` — the arm that a `false` answer for images
+would never reach.
+
+---
+
+### DW-81 — `linespacing_test.go`'s version-trigger list is hand-enumerated while its comment claims a derivation
+
+- **Deferred by:** Story 8.3's plan gate (2026-08-31).
+- **Owner:** **Story 8.3**, if it mints a font-shaped version trigger; otherwise the next story that
+  adds one.
+- **Severity:** LOW as a defect, **MEDIUM as a trap** — a version trigger that is never checked is
+  the failure mode the file exists to prevent.
+- **Status:** OPEN.
+
+**The gap.** The comment claims the trigger set is **derived**; the code **hand-enumerates** builder
+loops. So a new trigger — a font-shaped one, for instance — is **silently never checked** unless
+someone remembers to add a loop. **A comment asserting a derivation the code does not perform carries
+the same evidentiary burden as a test** (D-8.0.1), and this one is false.
+
+**What discharges it.** Either derive the list, or correct the comment to say it is hand-maintained
+and add the missing loop in the same commit as any new trigger.
