@@ -15,11 +15,14 @@ import (
 // This file is Story 8.3's evidence: the I/O matrix, every row, for a font
 // that travels inside the template.
 //
-// WHAT IT DOES NOT COVER, deliberately: rendering FROM an embedded face. That
-// is Story 8.4. The interim behaviour — a chain may legally hold an entry
-// nothing can draw — is not left to a comment either; it is pinned below
-// (TestEmbeddedEntryIsInertUntilStory84), because a negative assertion carries
-// a test's evidentiary burden.
+// WHAT IT DOES NOT COVER, deliberately and still: rendering FROM an embedded
+// face. Story 8.4 built that, in `package folio` — this package structurally
+// cannot reach Render or Validate, so what belongs here is the FORMAT's half
+// and nothing else. The half that is this package's, and that Story 8.4 must
+// not have "fixed", is D-1.8.1 as amended: the load path neither resolves an
+// embedded entry to a face nor refuses a chain for holding one. That is pinned
+// below (TestLoadNeitherResolvesNorRefusesAnEmbeddedEntry), because a negative
+// assertion carries a test's evidentiary burden.
 
 // embeddedFontKey is the SHA-256 of embeddedFontBytes below, and the key the
 // documents in this file use. It is the same 156-byte hand-built sfnt
@@ -828,20 +831,44 @@ func TestUnrecognisedFontMediaTypeLoadsClean(t *testing.T) {
 // TestUnrecognisedFontMediaTypeErrorsOnlyAtTheRenderSurface is the other half
 // of the same rule: the capability error EXISTS, and it is reachable only
 // through the render-surface predicate, never through the loader.
+//
+// Story 8.4 widened the error's address from (asset, element) to the whole
+// FontChainSite — the chain NAME and the ENTRY INDEX are what make it
+// actionable, because a chain is shared by many elements and "asset K is not
+// a font" does not say which of a chain's entries to go and edit. Both new
+// coordinates are asserted in the MESSAGE and not only in the struct: a field
+// that never reaches a reader is a field that is not carrying the error.
 func TestUnrecognisedFontMediaTypeErrorsOnlyAtTheRenderSurface(t *testing.T) {
-	err := DecodeFontForRender("font/woff2", []byte("whatever"), embeddedFontKey, "e1")
+	site := FontChainSite{AssetKey: embeddedFontKey, ElementID: "e1", ChainName: "body", EntryIndex: 1}
+	err := DecodeFontForRender("font/woff2", []byte("whatever"), site)
 	var unsupported *UnsupportedFontMediaTypeError
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("DecodeFontForRender over an unrecognised type = %v, want an *UnsupportedFontMediaTypeError", err)
 	}
-	if unsupported.MediaType != "font/woff2" || unsupported.AssetKey != embeddedFontKey || unsupported.ElementID != "e1" {
+	if unsupported.MediaType != "font/woff2" || unsupported.Site != site {
 		t.Errorf("the capability error does not locate itself: %#v", unsupported)
 	}
-	if !strings.Contains(unsupported.Error(), "the document is valid") {
-		t.Errorf("the capability error must say the DOCUMENT is valid, got: %s", unsupported.Error())
+	for _, want := range []string{
+		"the document is valid",     // the DOCUMENT is valid; this is a capability limit
+		"element e1",                // where it was asked for
+		"asset " + embeddedFontKey,  // which asset
+		`font chain "body" entry 1`, // WHICH ENTRY of which chain — Story 8.4's addition
+	} {
+		if !strings.Contains(unsupported.Error(), want) {
+			t.Errorf("the capability error's message is missing %q, got: %s", want, unsupported.Error())
+		}
+	}
+	// The element clause is OMITTED rather than printed as a hole when the
+	// caller supplies its own located prefix — the render path's shape.
+	unlocated := &UnsupportedFontMediaTypeError{
+		Site:      FontChainSite{AssetKey: embeddedFontKey, ChainName: "body", EntryIndex: 1},
+		MediaType: "font/woff2",
+	}
+	if strings.Contains(unlocated.Error(), "element ") {
+		t.Errorf("an empty ElementID must be omitted, not printed as a hole: %s", unlocated.Error())
 	}
 	// A recognised type over good bytes is accepted by the same predicate.
-	if err := DecodeFontForRender("font/ttf", embeddedFontRawBytes(t), embeddedFontKey, "e1"); err != nil {
+	if err := DecodeFontForRender("font/ttf", embeddedFontRawBytes(t), site); err != nil {
 		t.Errorf("DecodeFontForRender over a recognised type and valid bytes = %v, want nil", err)
 	}
 }
@@ -910,23 +937,28 @@ func TestPlainFontAssetNeedsNoRecord(t *testing.T) {
 	}
 }
 
-// TestEmbeddedEntryIsInertUntilStory84 pins N7's interim state, because a
-// negative assertion carries a test's evidentiary burden and must name the
-// population it measured.
+// TestLoadNeitherResolvesNorRefusesAnEmbeddedEntry is what
+// TestEmbeddedEntryIsInertUntilStory84 became when Story 8.4 landed, and it
+// was renamed and re-aimed rather than retired.
 //
-// WHAT IS MEASURED: that this package's load path neither resolves an embedded
-// entry to a face nor refuses a chain for holding one. The population is the
-// whole of internal/template's exported and package-level surface at f51dd5e:
-// nothing here maps an asset key to font bytes for rendering, and
-// DecodeFontForRender — the only door onto the recognised-type set — has ZERO
-// call sites in this package (the render path acquires one in Story 8.4).
+// THE CLAIM IT USED TO MAKE IS NOW FALSE. It pinned that "the render path
+// acquires a call site for DecodeFontForRender in Story 8.4" as a NEGATIVE
+// about the present, and 8.4 is the present: folio.fontCache.get (render.go)
+// calls it. A negative assertion whose subject has arrived is a test that
+// passes while documenting the opposite of the truth.
 //
-// If pinning this ever appears to require IMPLEMENTING the resolution, that is
-// the story's Block If firing, not a gap in this test.
-func TestEmbeddedEntryIsInertUntilStory84(t *testing.T) {
+// WHAT IS MEASURED NOW, and it is the half that is still true and still worth
+// a test: this package's LOAD path neither resolves an embedded entry to a
+// face nor refuses a chain for holding one. That is D-1.8.1 as amended —
+// preserve at load, error at render — and it is the property Story 8.4 must
+// not have "fixed" by tightening decodeFontChainEntry. Where an embedded
+// entry's bytes are actually read is a question about `package folio`, which
+// this package structurally cannot reach; folio/chain_face_names_test.go is
+// where that half lives.
+func TestLoadNeitherResolvesNorRefusesAnEmbeddedEntry(t *testing.T) {
 	// A chain of NOTHING BUT an embedded entry loads. It is not refused for
-	// being unrenderable — the format can express it and the renderer cannot
-	// yet draw it, and that is the honest interim state.
+	// holding no face the caller supplies — the format can express it, and
+	// since Story 8.4 the renderer can draw it.
 	source := embeddedFontDoc(fontAssetBody, `[{"asset": "`+embeddedFontKey+`"}]`)
 	d, err := ParseDocument([]byte(source))
 	if err != nil {
@@ -936,8 +968,10 @@ func TestEmbeddedEntryIsInertUntilStory84(t *testing.T) {
 	if !ok || len(chain) != 1 || !chain[0].Embedded() {
 		t.Fatalf("chain = %#v, ok = %v — want one embedded entry", chain, ok)
 	}
-	// And the entry carries NO face name: nothing has resolved it to one.
+	// And the entry carries NO face name: the LOADER resolves nothing. The
+	// render path derives a face name from the ASSET KEY (D-8.4.1), at render,
+	// and never writes one back into the parsed document.
 	if chain[0].Face != "" {
-		t.Errorf("an embedded entry must not acquire a face name at load, got %q — resolving one is Story 8.4", chain[0].Face)
+		t.Errorf("an embedded entry must not acquire a face name at load, got %q — resolution is the render path's, from the asset key", chain[0].Face)
 	}
 }

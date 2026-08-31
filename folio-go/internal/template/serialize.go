@@ -197,8 +197,10 @@ func writeFonts(dst []byte, depth int, f Fonts) []byte {
 //
 // A string entry is emitted EXACTLY as writeStringArray emitted it, so a
 // document with no embedded entry is byte-identical to what it was
-// before this function existed — the 22 recorded golden digests are the
-// population that proves it.
+// before this function existed — the recorded golden digests are the
+// population that proves it (22 of them when Story 8.3 measured this;
+// 23 since Story 8.4, which added the one fixture that HAS an embedded
+// entry, and moved no other).
 func writeFontChain(dst []byte, depth int, chain []FontChainEntry) []byte {
 	if len(chain) == 0 {
 		return append(dst, "[]"...)

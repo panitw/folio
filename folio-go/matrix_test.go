@@ -1929,43 +1929,46 @@ var matrixDocuments = []matrixDocument{
 		wantPages:        2,
 	},
 	{
-		// Story 8.3's document (FR53/FR56) — THE FIRST `.folio` THIS MATRIX
-		// RENDERS THAT CARRIES A FONT FACE, and the first to declare version
-		// 2.0 for a reason other than `align: "justify"`.
+		// Story 8.3's document (FR53/FR56), and Story 8.4's subject — THE
+		// FIRST `.folio` THIS MATRIX RENDERS THAT CARRIES A FONT FACE, the
+		// first to declare version 2.0 for a reason other than
+		// `align: "justify"`, and now the first whose page is DRAWN with a
+		// face the document itself carries.
 		//
-		// It is HERE for a reason that reads backwards and is the point: this
-		// story does NOT render from the embedded face (that is Story 8.4), so
-		// what the four legs certify is that ~47 KB of carried font reaches
-		// the LOADER on every target and reaches the PAGE on none of them. A
-		// target that quietly started drawing with the carried face would
-		// diverge from the other three rather than pass, and
-		// requireEmbeddedFaceStaysOffThePage below is what makes that a stated
-		// assertion rather than a hope.
+		// STORY 8.3 REGISTERED IT FOR A NEGATIVE PROPERTY and said so: that
+		// story rendered from the embedded face nowhere, so the four legs
+		// certified that ~47 KB of carried font reached the LOADER on every
+		// target and reached the PAGE on none of them. Story 8.4 inverts the
+		// property, and the fixture's document changed with it: its text is
+		// PURE THAI now, which the shipped Latin face the chain names first
+		// covers not one codepoint of, so the carried face is the only face
+		// that can draw the page. What the four legs certify is that a font
+		// program decoded out of the document's own base64, subset and
+		// embedded, produces identical bytes on darwin/arm64, linux/amd64,
+		// linux/arm64 and js/wasm.
 		//
-		// It ships NO expected.pdf, on the hidden-image precedent: an
-		// expected.pdf is a human-attested artifact (AD-21/D-4.7.1) and this
-		// story cannot produce the one that matters — a page drawn WITH the
-		// embedded face. goldenDigestRecord therefore stays at 22.
+		// It SHIPS AN expected.pdf now. Story 8.3 correctly shipped none: an
+		// expected.pdf is a human-attested artifact (AD-21/D-4.7.1) and 8.3
+		// could not produce the page that matters. 8.4 produces it, so the
+		// golden ships and goldenDigestRecord holds 23 entries.
 		//
 		// Registered on the same terms as keep-together above — the slug lives
 		// in .github/workflows/matrix.yml's `docs="…"` list and in an
 		// upload-artifact path for every target under `if-no-files-found:
 		// error`, pinned by TestMatrixDocumentSlugsAreRegisteredInCI.
 		//
-		// ALL FOUR LEGS WERE RUN IN-STORY, not merely the native one D-000.54
-		// requires: darwin/arm64, linux/amd64, linux/arm64 and js/wasm all
-		// produce sha256 db400698…e513ad at 55,513 bytes, and
-		// TestCrossTargetByteIdentity agrees. Running them was cheap and the
-		// question they answer is this document's whole point — whether ~47 KB
-		// of carried asset survives four toolchains identically — so deferring
-		// them to the Epic 8 gate would have deferred the only thing worth
-		// measuring.
+		// ALL FOUR LEGS ARE RUN IN-STORY, not merely the native one D-000.54
+		// requires, and for the same reason 8.3 ran them: the question they
+		// answer — whether a face carried inside the document survives four
+		// toolchains identically — is this document's whole point, and it is
+		// a sharper question now that the carried face is the one being
+		// SUBSET and EMBEDDED rather than merely carried.
 		label:            "embedded-font (a face carried inside the document)",
 		slug:             "embedded-font",
 		capture:          captureEmbeddedFontRender,
 		fixtureRelPath:   []string{"fixtures", "embedded-font", "expected.json"},
 		requireFontFile2: true,
-		extraGuard:       requireEmbeddedFaceStaysOffThePage,
+		extraGuard:       requireEmbeddedFaceDrawsThePage,
 		wantPages:        1,
 	},
 }
@@ -1977,32 +1980,28 @@ func captureEmbeddedFontRender(t *testing.T, target matrixTarget, binPath string
 	return runOnTarget(t, target, binPath, map[string]string{subprocessEmbeddedFontEnvVar: "1"})
 }
 
-// requireEmbeddedFaceStaysOffThePage is the embedded-font document's OWN
-// feature guard, and it is a NEGATIVE one — the only such guard in this list —
-// because Story 8.3's correctness is partly about what does NOT happen yet.
+// requireEmbeddedFaceDrawsThePage is the embedded-font document's OWN feature
+// guard, run on EVERY leg before any byte comparison.
 //
-// "Contains a FontFile2" is satisfied by any embedding at all, and this
-// document's page is drawn entirely with the SHIPPED Noto Sans its chain names
-// first. So four legs of it would agree byte for byte whether or not the
-// carried face ever reached a page. This asserts, on EVERY leg before any byte
-// comparison, that exactly ONE font program is embedded: the shipped face the
-// chain resolved to. The carried Noto Sans Thai contributes nothing, which is
-// the honest interim state until Story 8.4 renders from it.
+// IT REPLACED A NEGATIVE GUARD, AND THE REPLACEMENT IS THE POINT (Story 8.4,
+// TRAP 2). Until this story the guard was requireEmbeddedFaceStaysOffThePage,
+// which asserted `len(programs) != 1` — exactly one embedded font program,
+// the shipped face the chain named first — and its own doc comment said "WHEN
+// STORY 8.4 LANDS THIS GUARD MUST CHANGE, and having to change it deliberately
+// … is exactly why it is written down".
 //
-// WHEN STORY 8.4 LANDS THIS GUARD MUST CHANGE, and having to change it
-// deliberately — rather than watching a golden move and re-recording it — is
-// exactly why it is written down.
-func requireEmbeddedFaceStaysOffThePage(t *testing.T, target matrixTarget, raw []byte) {
+// INVERTING THE COUNT TO 2 WOULD HAVE BEEN WRONG. With this document's
+// pure-Thai text on this chain, a CORRECT Story 8.4 embeds exactly ONE program
+// — the carried Thai face — because the shipped Latin face covers none of the
+// page and is therefore never subset. The count is 1 before and 1 after: it
+// passes identically on both implementations and certifies neither. So the
+// guard asks WHICH face, by identity, off the produced bytes.
+//
+// "Contains a FontFile2" (requireFontFile2 above) is satisfied by any
+// embedding at all, which is why this exists alongside it.
+func requireEmbeddedFaceDrawsThePage(t *testing.T, target matrixTarget, raw []byte) {
 	t.Helper()
-	programs := extractAllFontFile2Programs(t, raw)
-	if len(programs) != 1 {
-		t.Fatalf(
-			"target %s: the embedded-font document embeds %d font programs, want exactly 1 — the face the "+
-				"document CARRIES must not reach the page until Story 8.4 renders from it (D-000.9: four legs "+
-				"agreeing about the wrong thing certify nothing)",
-			target.name, len(programs),
-		)
-	}
+	requireEmbeddedFaceDrewThePage(t, "target "+target.name, raw)
 }
 
 // TestCrossTargetByteIdentity is AC1's single local entry point and AC7's

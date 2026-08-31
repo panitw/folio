@@ -3,13 +3,38 @@ title: 'The engine renders from an embedded face'
 type: 'feature'
 created: '2026-08-31'
 replanned: '2026-09-01'
-status: 'ready-for-dev'
-baseline_revision: 'de87bef5e858815af2ac046a71c6ecba5645494b'
+status: 'in-progress'
+baseline_revision: '15ca0ddbc4565d935fde026bfbad463be8ddd182'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
 warnings: ['oversized', 'multiple-goals']
-deferred: []
+deferred:
+  - summary: >-
+      fixtures/embedded-font/expected.pdf is a Thai-bearing golden that no human
+      has read, and it is now the only one in the corpus without a reading
+      attestation.
+    evidence: |-
+      Story 8.4 recorded this fixture's first expected.pdf, and its page is Thai
+      drawn from the embedded face. Every OTHER Thai-bearing golden carries a
+      human reading sign-off declared as a gate obligation (shaped-text's
+      thai-signoff.json under D-2.3.5; thai-stacked-marks' signoff.json under
+      Story 8.0), and this one carries none. No agent may write one.
+
+      IT IS FILED AS LOW RATHER THAN AS A HALT, on a measurement rather than on
+      convenience: the drawn string is สัญญา, which is byte-for-byte the string
+      fixtures/thai-stacked-marks/ draws as its e2 ZERO-OFFSET CONTROL, at the
+      same 12pt, shaped by the SAME face — folio-go/fonts/notosansthai/
+      NotoSansThai-Regular.ttf, whose bytes this document merely carries a second
+      copy of. So the shaping and the reading of these five glyphs are already
+      attested by the owner (2026-08-31); what is unattested is this particular
+      subset and page. The full -tags=matrix sweep leaves NO sign-off gate red
+      and invalidates no existing attestation — checked, not assumed — so AC6's
+      three grounds for closing without a new sign-off all hold, and this entry
+      exists so the gap is disclosed rather than discovered.
+    location: >-
+      fixtures/embedded-font/expected.pdf
+    severity: low
 ---
 
 <intent-contract>

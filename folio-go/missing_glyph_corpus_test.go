@@ -189,15 +189,20 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
 		},
 		{
-			// Story 8.3 (FR53/FR56). It matters here specifically because
-			// it is the only committed document whose chain contains an
-			// entry that resolves to NO FACE — the embedded one, which
-			// Story 8.4 has not yet taught the renderer to read. An
-			// implementation that let such an entry reach resolveRuneFace
-			// as a face NAME would find nothing in the FontSet under a
-			// 64-character digest and would warn on every rune; this table
-			// is where that would be seen, because a chain that silently
-			// stopped covering its text is exactly a missing-glyph
+			// Story 8.3 (FR53/FR56), rendering from the carried face since
+			// Story 8.4 (FR54). It matters here specifically because it is
+			// the only committed document whose text is covered by NO face
+			// the caller supplies: its runes are Thai, its chain's first
+			// entry is the shipped Latin Noto Sans, and the only face that
+			// covers them is the one the DOCUMENT carries.
+			//
+			// So this row is now a direct test of the feature, in the
+			// negative form this table is built for. An implementation that
+			// dropped the embedded entry — the pre-8.4 boundary — would
+			// leave every rune on the page uncovered and would emit one
+			// missing-glyph Warning per distinct rune, and this is where
+			// that is seen. It reads as a coverage test because a chain
+			// that silently stops covering its text IS a missing-glyph
 			// warning.
 			name: "embedded-font",
 			tpl: func(t *testing.T) *Template {
@@ -253,7 +258,7 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 		"justified-thai":     "Story 7.3, owner scope amendment — the first committed document whose justified content carries no spaces, so its pieces are cut at dictionary seams (AD-25) rather than at whitespace",
 		"alignment-rounding": "Story 7.3, closing DW-24 — the first committed document declaring align center or valign at all, and therefore the first that reaches any of the branches which halve a slack",
 		"thai-stacked-marks": "Story 8.0 (DW-28) — the first committed document carrying a glyph the shaper gives a non-zero YOffset, and the only one whose runs are split into segments by a text rise",
-		"embedded-font":      "Story 8.3 (FR53/FR56) — the first committed document that CARRIES a font face rather than naming one, and the only one whose chain holds an entry resolving to no face at all (rendering from an embedded face is Story 8.4)",
+		"embedded-font":      "Story 8.3 (FR53/FR56), rendering from the carried face since Story 8.4 (FR54) — the first committed document that CARRIES a font face rather than naming one, and the only one whose text no face the CALLER supplies covers a rune of",
 		"keep-together":      "Story 7.7 (FR51) — the first committed document that declares a keep-together group, the first whose page break is placed by an author's own declaration rather than by the four pagination rules alone, and the first declaring format version 1.2",
 	}
 

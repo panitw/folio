@@ -64,24 +64,47 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(undeclared).toEqual([])
   })
 
-  // STORY 8.2 / DW-35 TRIPWIRE. This story is the first to let an author BUILD
-  // a chain, so it is the first at which a document can name a chain whose
-  // first covering entry is not `Noto Sans` — `["Noto Sans Thai"]`, say. From
-  // that moment the engine MEASURES with that face while the browser paints
-  // with the fixed Latin-first stack below, and the two disagree exactly as
-  // they did in the reported defect this file was written for. 8.2 does not
-  // fix it (that is Story 8.4, whose AC4 is DW-35 written as an acceptance
-  // criterion); it records it here, where a comment asserting a negative would
-  // otherwise be carrying a test's evidentiary burden.
+  // DW-35 TRIPWIRE, RE-RECORDED AT STORY 8.4. It has two causes now, and the
+  // second is strictly worse than the first.
   //
-  // THE MEASURED OBSTACLE, unrecorded anywhere before this story. The two
-  // sides do not merely differ in stack ORDER — they use different NAMES for
-  // the same shipped files. The generator registers the three Noto faces under
-  // IBM Plex family names (the design system's vocabulary); a chain's entries
-  // are the ENGINE's face names. So a chain entry cannot be used as a CSS
-  // family name at all, and the fix needs a face-name -> CSS-family mapping
-  // that exists on NEITHER side, or a rename of the generated families that
-  // ripples into the design tokens and their contract test.
+  // CAUSE ONE (Story 8.2, still open). 8.2 was the first story to let an author
+  // BUILD a chain, so it was the first at which a document could name a chain
+  // whose first covering entry is not `Noto Sans` — `["Noto Sans Thai"]`, say.
+  // From that moment the engine MEASURES with that face while the browser
+  // paints with the fixed Latin-first stack below, and the two disagree exactly
+  // as they did in the reported defect this file was written for.
+  //
+  // CAUSE TWO (Story 8.4, NEW). The engine now renders — and measures — with a
+  // face the DOCUMENT ITSELF CARRIES, decoded out of its `assets` map. For
+  // cause one there is at least a shipped file behind the name, registered
+  // under some family the browser knows. For a carried face there is NOTHING:
+  // no `@font-face`, no family name, no bytes in the browser at all, so the
+  // fragment stack below falls straight through to generic `sans-serif` — the
+  // owner-reported defect this file exists for, rebuilt for the headline use
+  // case of the story that created the condition.
+  //
+  // FIXING IT IS **STORY 8.4a**, "The canvas paints with the face the engine
+  // measured", sequenced immediately after 8.4 (D-8.4.1). 8.4 does not fix it,
+  // and does not pretend to: `folio-go/canvas_embedded_face_test.go` pins that
+  // the engine MEASURES with the carried face, and this records that the
+  // browser cannot PAINT with it. A comment asserting that negative would be
+  // carrying a test's evidentiary burden.
+  //
+  // THE DESIGN DECISION 8.4a INHERITS IS ALREADY MADE (D-8.4.1): a carried
+  // face's CSS family name derives from its ASSET KEY, never from the asset's
+  // `font.family`. AD-8 makes the asset key the resolver, and deriving from
+  // `font.family` would let a document's "Inter" collide with a shipped
+  // "Inter" in the browser's own font registry — AD-8's hazard, one layer down.
+  //
+  // THE MEASURED OBSTACLE for cause one, unrecorded anywhere before Story 8.2.
+  // The two sides do not merely differ in stack ORDER — they use different
+  // NAMES for the same shipped files. The generator registers the three Noto
+  // faces under IBM Plex family names (the design system's vocabulary); a
+  // chain's entries are the ENGINE's face names. So a chain entry cannot be
+  // used as a CSS family name at all, and the fix needs a face-name ->
+  // CSS-family mapping that exists on NEITHER side, or a rename of the
+  // generated families that ripples into the design tokens and their contract
+  // test.
   it('records that the fragment stack is a stylesheet constant with no document input', () => {
     // NON-VACUITY FIRST. `find(...) ?? ''` yields an empty string the moment
     // the rule is reformatted onto several lines, and `expect('').not.toMatch`
@@ -103,6 +126,39 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(declared).toEqual(expect.arrayContaining(['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai']))
     expect(engineFaces.filter((face) => declared.includes(face))).toEqual([])
     expect(declared.filter((family) => engineFaces.includes(family))).toEqual([])
+  })
+
+  // STORY 8.4's OWN DISCLOSURE, and the assertion that will have to be deleted
+  // by 8.4a rather than merely edited. Every family the browser can rasterize
+  // with is BUILT IN at generator time; not one of them can come from a
+  // document. So a face the document CARRIES — which the engine now measures
+  // with — has no family here at all, and the fragment stack falls through to
+  // generic `sans-serif`.
+  //
+  // It is asserted over the generator's whole source rather than over its
+  // declaration list, because the mechanism 8.4a needs is runtime
+  // registration: `new FontFace`, `document.fonts.add`, or an injected
+  // `@font-face` whose `src` is a data/blob URL. None exists anywhere in this
+  // build. When one arrives, this reddens — which is the point.
+  it('records that the browser has no family for a face the document carries (DW-35, Story 8.4a)', () => {
+    // Non-vacuity: the generator really does declare the build-time faces, so
+    // "no runtime registration" below is a statement about a file that has
+    // font registration in it, not about an empty or unread one.
+    expect(declared.length).toBeGreaterThanOrEqual(3)
+    for (const declaration of declared) {
+      expect(generator).toContain(`@font-face { font-family: '${declaration}'`)
+    }
+    // Every @font-face src in the generator is a build-time asset, never a
+    // document's bytes.
+    expect(generator).not.toMatch(/new FontFace\b/)
+    const sources = fs.readdirSync(here, { recursive: true })
+      .filter((entry): entry is string => typeof entry === 'string' && /\.(?:ts|tsx)$/.test(entry) && !/\.test\.(?:ts|tsx)$/.test(entry))
+      .map((entry) => fs.readFileSync(path.join(here, entry), 'utf8'))
+    expect(sources.length).toBeGreaterThan(10)
+    expect(sources.filter((source) => /new FontFace\b|document\.fonts\.add\b/.test(source))).toEqual([])
+    // And the canvas fragment rule asks for none of it: no `assetKey`, no
+    // derived family, nothing a document could supply.
+    expect(requested.filter((family) => !declared.includes(family))).toEqual([])
   })
 
   it('records that no designer source names a chain entry in a font-family declaration', () => {

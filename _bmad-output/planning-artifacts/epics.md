@@ -3005,6 +3005,21 @@ arriving one layer down.
 story sequenced immediately after 8.4** — not "later in Epic 8" — and 8.4's record states the canvas
 limitation explicitly, so it is **disclosed rather than discovered**.
 
+**SIZING EXERCISED 2026-09-01 (D-8.4.6): the gate returned `multiple-goals` and THE PAINT HALF IS
+STORY 8.4a's.** Read this AC as its measurement half alone — *"the preview measures with that same
+face through the same engine path, asserted, not assumed"*. The clause *"and rasterizes with it
+too"*, and the CSS-family derivation that goes with it, are **Story 8.4a's** first two acceptance
+criteria verbatim; the D-8.4.1 ruling above stays binding there and is quoted into DW-35's register
+entry, so the decision travels with the work rather than staying behind in this paragraph.
+
+**What Story 8.4 delivered against the half that remained here.** `CanvasWithTextPaint` over
+`fixtures/embedded-font/` produces fragment origins, advances and line widths **identical** to the
+PDF path's, pinned by `folio-go/canvas_embedded_face_test.go` and red-proved by building the
+canvas's own `fontCache` without the document — the one thing the two paths do not share.
+**The limitation is disclosed by a test, not a comment**:
+`folio-designer/src/canvas-font-stack.test.ts` records that the browser has no family for a carried
+face and names 8.4a.
+
 **Given** a fixture that embeds a face
 **When** it is added to the corpus
 **Then** it carries a recorded digest like every other fixture, so a later change to font handling

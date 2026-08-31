@@ -3,6 +3,7 @@ package template
 import (
 	"encoding/binary"
 	"fmt"
+	"strconv"
 )
 
 // This file is image.go's shape, for fonts (Story 8.3). It is a
@@ -13,8 +14,54 @@ import (
 // would put a pixel-dimension trust boundary on a code path that has no
 // pixels.
 //
-// Rendering FROM an embedded face is Story 8.4. Nothing here parses a
-// face for glyphs, shapes with one, or subsets one.
+// Rendering FROM an embedded face is Story 8.4, and it is the render
+// path (folio.fontCache, render.go) that calls DecodeFontForRender
+// below. Nothing HERE parses a face for glyphs, shapes with one, or
+// subsets one: this file still stops at "can this build read these
+// bytes at all".
+
+// FontChainSite is WHERE in a document a font asset was asked for, and
+// it exists because Story 8.4 gave the capability error two more
+// coordinates than its image twin needs.
+//
+// An image asset is placed by an ELEMENT and that is the whole address.
+// A font asset is named by an ENTRY of a named fallback CHAIN, and the
+// chain may be shared by many elements — so "asset K is not a font this
+// build reads" is only actionable when the reader is told which chain
+// and which position in it to go and edit. The four fields are carried
+// as one value rather than as four positional parameters because they
+// are one address, and because a six-argument decode call is how two of
+// them come to be passed in the wrong order.
+//
+// ElementID is OPTIONAL and is empty on the render path, deliberately.
+// render.go's own caller wraps every error out of shapeSegments with
+// "folio: Render: element %s:" naming the element that actually needed
+// the face — a better locator than the first element that happened to
+// reference the chain, and printing both would name an element twice in
+// one sentence. A caller that does NOT supply its own located prefix
+// (internal/template's own tests, a future non-render consumer) fills
+// this in and gets it in the message.
+type FontChainSite struct {
+	AssetKey   string
+	ElementID  string
+	ChainName  string
+	EntryIndex int
+}
+
+// String is the site as a message fragment, with each coordinate omitted
+// when it is not known rather than printed as a hole (Story 1.8's
+// Finding 4, applied before it can recur here).
+func (s FontChainSite) String() string {
+	out := ""
+	if s.ElementID != "" {
+		out += "element " + s.ElementID + ": "
+	}
+	out += "asset " + s.AssetKey
+	if s.ChainName != "" {
+		out += ": font chain " + strconv.Quote(s.ChainName) + " entry " + strconv.Itoa(s.EntryIndex)
+	}
+	return out
+}
 
 // UnsupportedFontMediaTypeError is the font analogue of
 // UnsupportedMediaTypeError (image.go): the document is VALID — a font
@@ -22,18 +69,23 @@ import (
 // THIS version of the library cannot render this container. Like its
 // image twin it is never raised by the loader; only by a render-surface
 // caller that actually needs the face.
+//
+// Story 8.4 widened it from (AssetKey, ElementID, MediaType) to carry
+// the whole FontChainSite. The widening is ADDITIVE and the message
+// text is safe to change under AD-14 because every consumer matches on
+// the TYPE, never on the text (measured: errors.As is the only match in
+// the module).
 type UnsupportedFontMediaTypeError struct {
-	AssetKey  string
-	ElementID string
+	Site      FontChainSite
 	MediaType string
 }
 
 func (e *UnsupportedFontMediaTypeError) Error() string {
 	return fmt.Sprintf(
-		"template: element %s: asset %s: this version cannot render font media type %q "+
+		"template: %s: this version cannot render font media type %q "+
 			"(the document is valid — mediaType is an open set, D-1.4.12; this is a library "+
 			"capability limit, not a format error)",
-		e.ElementID, e.AssetKey, e.MediaType,
+		e.Site, e.MediaType,
 	)
 }
 
@@ -79,17 +131,21 @@ func decodeRecognisedFont(mediaType string, data []byte) (recognised bool, err e
 
 // DecodeFontForRender is DecodeImageForRender's twin: the ONE named
 // predicate that turns an unrecognised media type into an error, and it
-// is never called from the load path. Story 8.4 is what gives it a call
-// site on the render path; it is declared here, with the set it guards,
-// so that set has exactly one exported door rather than acquiring one
-// per consumer later.
-func DecodeFontForRender(mediaType string, data []byte, assetKey, elementID string) error {
+// is never called from the load path. Story 8.4 gave it its call site on
+// the render path (folio.fontCache.get, render.go); it is declared here,
+// with the set it guards, so that set has exactly one exported door
+// rather than acquiring one per consumer.
+//
+// It answers "can this build read these bytes as a single face", and
+// nothing more — building the glyph source from them is internal/fontset's
+// job, at the call site, after this returns nil.
+func DecodeFontForRender(mediaType string, data []byte, site FontChainSite) error {
 	recognised, err := decodeRecognisedFont(mediaType, data)
 	if !recognised {
-		return &UnsupportedFontMediaTypeError{AssetKey: assetKey, ElementID: elementID, MediaType: mediaType}
+		return &UnsupportedFontMediaTypeError{Site: site, MediaType: mediaType}
 	}
 	if err != nil {
-		return newLoadError("assets."+assetKey, elementID, mediaType, err.Error())
+		return newLoadError("assets."+site.AssetKey, site.ElementID, mediaType, err.Error())
 	}
 	return nil
 }
@@ -122,7 +178,8 @@ const sfntCollectionVersion = 0x74746366
 // the same principle: it establishes that the file is not lying about
 // what it is, and nothing more. It does not build a glyph source, does
 // not read a cmap and does not validate a single table's contents; all
-// of that belongs to the shaper, at render, in Story 8.4.
+// of that belongs to the shaper, at render — internal/fontset, reached
+// from folio.fontCache.get since Story 8.4.
 //
 // What it checks: the file opens with a SINGLE-FACE sfnt version tag,
 // declares at least one table, carries a whole table directory, and

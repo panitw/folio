@@ -1091,6 +1091,36 @@ func millipoints(v geom.Length) string {
 	return strconv.FormatInt(int64(v), 10) + "mp"
 }
 
+// lookupFontChain is THE one site that turns a style.fontFamily NAME
+// into the document's entries, and the one owner of the error when the
+// name resolves to nothing.
+//
+// IT WAS EXTRACTED BECAUSE IT HAD ALREADY DRIFTED INTO TWO (Story 8.4,
+// Task 3). fontChain below and collectBandTableRuns (table_render.go)
+// each held their own copy of the Fonts.Chain call and their own copy of
+// its message, the second under a comment that said so verbatim —
+// "Mirrors fontChain's own error, verbatim in shape (render.go)". A
+// message maintained in two places is a message that will be maintained
+// in one.
+//
+// WHAT IS NOT SHARED, deliberately: the "this element has no
+// style.fontFamily at all" check. Its two spellings say genuinely
+// different things — a text element "has text but no style.fontFamily",
+// a table column "has a column label but no style.fontFamily (nor
+// headerStyle.fontFamily)" — and collapsing them would tell a table
+// author about a field their element does not have.
+//
+// The error is returned BARE, without the "folio: Render: element %s:"
+// prefix, because both callers already apply their own (fontChain's
+// caller in collectBandTextRuns, and collectBandTableRuns inline).
+func lookupFontChain(doc *Template, chainName string) ([]template.FontChainEntry, error) {
+	chain, ok := doc.doc.Fonts.Chain(chainName)
+	if !ok {
+		return nil, fmt.Errorf("style.fontFamily %q names a chain with no entries in the document's fonts map", chainName)
+	}
+	return chain, nil
+}
+
 // fontChain resolves one text element's style.fontFamily to its ordered
 // fallback chain of face names (AD-8's Rule; AC3). It does not touch
 // coverage — resolveRuneFace does that, per rune, against this chain.
@@ -1098,46 +1128,75 @@ func fontChain(doc *Template, el template.Element) ([]string, error) {
 	if !el.Style.Set || el.Style.Null || !el.Style.Value.FontFamily.Set || el.Style.Value.FontFamily.Null {
 		return nil, fmt.Errorf("has text but no style.fontFamily to resolve a font from")
 	}
-	chainName := el.Style.Value.FontFamily.Value
-	chain, ok := doc.doc.Fonts.Chain(chainName)
-	if !ok {
-		return nil, fmt.Errorf("style.fontFamily %q names a chain with no entries in the document's fonts map", chainName)
+	chain, err := lookupFontChain(doc, el.Style.Value.FontFamily.Value)
+	if err != nil {
+		return nil, err
 	}
 	return chainFaceNames(chain), nil
 }
 
 // chainFaceNames is THE one boundary between the document's chain and
-// the render path's face-name list, and it is where Story 8.3 stops.
+// the render path's face-name list.
 //
-// WHAT IT DOES: keeps the entries that name a face the FontSet could
-// supply, and drops the entries that name a face the DOCUMENT carries.
-// After Story 8.3 a chain may legally contain an embedded entry that
-// nothing can render — the format can express it and the renderer
-// cannot yet draw it — and this is the honest interim state, not an
-// oversight. Story 8.4 is the story that renders from an embedded face;
-// until it lands, an embedded entry contributes no face, exactly as a
-// named face absent from the FontSet contributes none (resolveRuneFace
-// skips one, chainLineMetrics skips one).
+// WHAT IT DOES, SINCE STORY 8.4: it maps EVERY entry to a face name,
+// preserving the document's authored order. An entry naming a face the
+// FontSet supplies contributes that name; an entry naming a face the
+// DOCUMENT carries contributes the reserved name embeddedFaceName
+// derives from its ASSET KEY (embedded_face.go — and the asset key, never
+// font.family, is what AD-8/D-8.4.1 make the resolver). Nothing is
+// dropped any more.
 //
-// THE CONSEQUENCES ARE THE EXISTING ONES, unchanged and deliberately not
-// widened: a chain whose OTHER entries cover the text renders exactly as
-// it did before, and a chain left with no usable entry produces the
-// located render error the empty-metrics path already produces. Neither
-// is new behaviour, and both are pinned by test rather than left to this
-// comment — chain_face_names_test.go, in THIS package, which is the only
-// package that can call Render. (An earlier version of this comment cited
+// UNTIL STORY 8.4 AN EMBEDDED ENTRY WAS DROPPED HERE, and the comment
+// that stood in this place said so. That was the honest interim state:
+// the format could express a face the renderer could not draw. It is no
+// longer the state, and the change is visible at exactly one line —
+// which is the whole reason this boundary exists as a function.
+//
+// THE NAME IS ALL THIS FUNCTION KNOWS. It resolves no bytes and reads no
+// asset: whether the minted name can actually supply a face is the
+// fontCache's question, asked lazily at the point of use, so an entry
+// naming a non-font asset that nothing ever draws from costs a render
+// nothing and errors nowhere (Story 8.4's I/O matrix, "never drawn").
+//
+// Both consequences are pinned by test rather than left to this comment
+// — chain_face_names_test.go, in THIS package, which is the only package
+// that can call Render. (An earlier version of this comment cited
 // internal/template's fonts_embedded_test.go, which is `package template`
 // and structurally cannot reach Render at all; the citation was wrong and
 // the tests it claimed did not exist.)
 //
-// It is filtered HERE, at one boundary, rather than by widening
-// resolveRuneFace/chainLineMetrics/shapeSegments/formatFontChain to the
-// richer type: those four would each have to answer the same question,
-// and four answers is how they come to differ.
+// IT IS CONVERTED HERE, AT ONE BOUNDARY, rather than by widening the
+// consumers to the richer type. That comment used to name FOUR of them —
+// resolveRuneFace/chainLineMetrics/shapeSegments/formatFontChain — and
+// the four were neither the population nor the risk set (D-8.2.3: a hole
+// in one arm of an enumeration is evidence about the enumeration).
+// MEASURED at 15ca0dd: `chain []string` is a parameter of TEN non-test
+// functions, and the SIX that also take (FontSet, *fontCache) are the
+// real seam:
+//
+//	resolveRuneFace (render.go)        FontSet + fontCache   named before
+//	shapeSegments (render.go)          FontSet + fontCache   named before
+//	digitTableRun (page_number.go)     FontSet + fontCache   NOT named
+//	chainLineMetrics (wrap.go)         FontSet + fontCache   named before
+//	chainVerticalModel (wrap.go)       FontSet + fontCache   NOT named
+//	lineAdvance (wrap.go)              FontSet + fontCache   NOT named
+//	formatFontChain (render.go)        neither               named before
+//	missingGlyphMessage (render.go)    neither               NOT named
+//	verticalModel (wrap.go)            neither               NOT named
+//	scaleAdvanceByLineSpacing (wrap.go) neither              NOT named
+//
+// None of the ten can reach a *Template, so none can reach Assets. The
+// four that take neither consume the chain for MESSAGES and vertical
+// arithmetic only — they need the names and never the bytes — and that
+// asymmetry is why Story 8.4 put the name -> bytes view behind the
+// fontCache the six already hold, instead of widening six signatures into
+// six answer sites. See embedded_face.go for the choice and the rejected
+// alternative.
 func chainFaceNames(chain []template.FontChainEntry) []string {
 	names := make([]string, 0, len(chain))
 	for _, entry := range chain {
 		if entry.Embedded() {
+			names = append(names, embeddedFaceName(entry.AssetKey))
 			continue
 		}
 		names = append(names, entry.Face)
@@ -1151,21 +1210,109 @@ func chainFaceNames(chain []template.FontChainEntry) []string {
 // so without this a long document would re-parse the same face
 // repeatedly). Looked up and written only by key — NEVER ranged
 // (ScanMapRange, D-2.2.3's whole-module scan).
+//
+// SINCE STORY 8.4 IT IS ALSO THE ONE ANSWER SITE for "where do this
+// face's bytes come from". Two sources, in a fixed PRECEDENCE: a name in
+// the reserved embedded namespace resolves from the DOCUMENT's own
+// assets and the supplied FontSet is not consulted for it at all; every
+// other name resolves from the FontSet. That order is what makes a
+// collision harmless in both directions — a caller cannot shadow a
+// document's carried face, and a document cannot capture a caller's
+// (embedded_face.go states the rule; TestEmbeddedFaceWinsOverAColliding-
+// FontSetKey pins it).
 type fontCache struct {
 	byName map[string]*fontset.Font
+	// embedded is the per-render name -> asset view. Empty for a cache
+	// built without a document, which is exactly the pre-8.4 behaviour.
+	embedded embeddedFaceIndex
+	// failedEmbedded memoizes an embedded face's DECODE FAILURE, so a
+	// document whose chain names a non-font asset does not re-base64 and
+	// re-sniff ~47 KB once per element that consults the chain. Only
+	// embedded failures are cached: the FontSet arm's error is a map miss
+	// and costs nothing to recompute.
+	failedEmbedded map[string]error
 }
 
+// newFontCache builds a cache with NO document behind it: every name
+// resolves from the supplied FontSet, which is the pre-Story-8.4
+// behaviour and is all a test fixture over shipped faces needs.
+//
+// PRODUCTION CODE HOLDING A *Template MUST USE newDocumentFontCache.
+// There are exactly two such sites (predictDocument here, and
+// addCanvasTextPaint in page_setup.go) and they must agree, or the canvas
+// measures with a different set of faces than the page prints with —
+// which is AD-17's whole subject. TestCanvasMeasuresWithTheEmbeddedFace
+// is the pin.
 func newFontCache() *fontCache {
-	return &fontCache{byName: map[string]*fontset.Font{}}
+	return &fontCache{
+		byName:         map[string]*fontset.Font{},
+		embedded:       embeddedFaceIndex{},
+		failedEmbedded: map[string]error{},
+	}
 }
 
-// get parses and caches fs[name] on first use. A face NAMED in a chain
+// newDocumentFontCache is newFontCache plus the document's own carried
+// faces (Story 8.4).
+func newDocumentFontCache(t *Template) *fontCache {
+	return &fontCache{
+		byName:         map[string]*fontset.Font{},
+		embedded:       newEmbeddedFaceIndex(t),
+		failedEmbedded: map[string]error{},
+	}
+}
+
+// isEmbedded reports whether name is one this cache resolves from the
+// document rather than from a FontSet. It is the discriminant, spelled
+// once.
+func (c *fontCache) isEmbedded(name string) bool {
+	_, ok := c.embedded[name]
+	return ok
+}
+
+// declares reports whether name COULD supply a face at all — the
+// tolerance predicate a chain walk applies before consulting an entry.
+// It replaced the open-coded `_, ok := fs[name]` at resolveRuneFace and
+// chainLineMetrics, which could not see an embedded name and so silently
+// skipped every carried face.
+//
+// It answers from DECLARATIONS ONLY and decodes nothing: an embedded name
+// declares a face whether or not its bytes turn out to be readable. That
+// is deliberate — the readability question is asked at the point of use,
+// by get, and answering it here would make it fire for a document that
+// never draws with the entry.
+func (c *fontCache) declares(name string, fs FontSet) bool {
+	if c.isEmbedded(name) {
+		return true
+	}
+	_, ok := fs[name]
+	return ok
+}
+
+// get parses and caches the face on first use. A face NAMED in a chain
 // but ABSENT from fs is reported here, once, the first time that chain
 // entry is actually consulted — not a document-wide upfront validation
 // pass, matching this package's existing "validate at the point of use"
-// shape (resolveFace's prior behaviour).
+// shape (resolveFace's prior behaviour). Story 8.4's embedded arm keeps
+// exactly that shape: the document's asset is base64-decoded, checked
+// against the recognised-font set and parsed HERE, the first time
+// something must actually draw with it.
+//
+// THE EMBEDDED ARM IS CHECKED FIRST, and that ordering is the precedence
+// rule the type's doc comment states.
 func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 	if f, ok := c.byName[name]; ok {
+		return f, nil
+	}
+	if src, ok := c.embedded[name]; ok {
+		if err, failed := c.failedEmbedded[name]; failed {
+			return nil, err
+		}
+		f, err := c.parseEmbedded(name, src)
+		if err != nil {
+			c.failedEmbedded[name] = err
+			return nil, err
+		}
+		c.byName[name] = f
 		return f, nil
 	}
 	data, ok := fs[name]
@@ -1178,6 +1325,58 @@ func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 	}
 	c.byName[name] = f
 	return f, nil
+}
+
+// parseEmbedded is the font analogue of predictDocument's image loop
+// (below): decode the asset's bytes, refuse a media type this build
+// cannot read, and hand the bytes to internal/fontset — which takes
+// bytes and does not care where they came from. No network, no host font,
+// no path on disk is read on this path, which is AC2's whole claim.
+func (c *fontCache) parseEmbedded(name string, src embeddedFaceSource) (*fontset.Font, error) {
+	raw, err := src.decode()
+	if err != nil {
+		return nil, err
+	}
+	f, err := fontset.New(name, raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", src.site, err)
+	}
+	return f, nil
+}
+
+// metricsFace is chainLineMetrics' door onto the cache, and it exists
+// because the vertical-model walk and coverage resolution ask DIFFERENT
+// questions of the same chain.
+//
+// chainLineMetrics walks EVERY entry of a chain to derive the line
+// height, tolerating a member the caller did not supply on the stated
+// ground that such a member "cannot appear in the element, so it does not
+// constrain the vertical model". An embedded entry whose asset this build
+// cannot read as a font cannot appear in the element either, for exactly
+// the same reason — so it is tolerated on exactly the same ground, and
+// contributes no metrics.
+//
+// IT IS NOT TOLERATED AT COVERAGE RESOLUTION (resolveRuneFace), which is
+// where the renderer is actually asked to DRAW with the entry and refuses,
+// located. The two answers are consistent rather than contradictory: if a
+// render completes at all, coverage never reached the entry, and its
+// absence from the vertical model is then exactly right — nothing it
+// could have constrained was drawn with it.
+//
+// A FontSet face that fails to PARSE is still a hard error here, unchanged.
+// Only the embedded arm is tolerated, and only for a decode failure.
+func (c *fontCache) metricsFace(name string, fs FontSet) (*fontset.Font, bool, error) {
+	if !c.declares(name, fs) {
+		return nil, false, nil
+	}
+	f, err := c.get(name, fs)
+	if err != nil {
+		if c.isEmbedded(name) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return f, true, nil
 }
 
 // resolveRuneFace is AC4's COVERAGE-based resolution: walk chain in
@@ -1201,9 +1400,15 @@ func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 // not be folded into it.
 func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (name string, found bool, err error) {
 	for _, name := range chain {
-		if _, present := fs[name]; !present {
+		if !cache.declares(name, fs) {
 			continue
 		}
+		// Story 8.4: THIS is "something must actually draw from that
+		// entry". An embedded entry whose asset is not a font this build
+		// can read fails HERE, located, rather than at load (D-1.8.1 as
+		// amended keeps load accepting it) and rather than never
+		// (DW-83). An entry the chain never reaches for any rune is
+		// never decoded and never complains.
 		f, ferr := cache.get(name, fs)
 		if ferr != nil {
 			return "", false, ferr
@@ -1627,7 +1832,14 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// embedding (subsetting) below, so a face is ever parsed at most
 	// once per render regardless of how many chain members or runes
 	// consult it. Only ever looked up by key, never ranged.
-	cache := newFontCache()
+	//
+	// It is built FROM THE DOCUMENT (Story 8.4) so that a chain entry
+	// naming a face the document CARRIES resolves to that face's own
+	// bytes. This is the site that makes AC4's Validate half true by
+	// construction: folio.Validate calls predictDocument directly, so
+	// every check reached from here is a check Validate reaches too —
+	// there is no second rule system to keep in step.
+	cache := newDocumentFontCache(t)
 
 	bands, bandsErr := documentBands(t)
 	if bandsErr != nil {
@@ -1827,6 +2039,14 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	for _, name := range faceNames {
 		font, ferr := cache.get(name, fs)
 		if ferr != nil {
+			if cache.isEmbedded(name) {
+				// A face the DOCUMENT carries is never "missing from the
+				// FontSet" — it was never looked for there. Its own error
+				// already names the chain, the entry and the asset key.
+				// (Unreachable in practice: a name only reaches this loop
+				// by having already been parsed to shape a glyph.)
+				return nil, nil, nil, nil, fmt.Errorf("folio: Render: %w", ferr)
+			}
 			return nil, nil, nil, nil, fmt.Errorf("folio: Render: face %q was resolved from a fallback chain but is missing from the FontSet: %w", name, ferr)
 		}
 		// ONE subsetting call per font per document (AC9), over the

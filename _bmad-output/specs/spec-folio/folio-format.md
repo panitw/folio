@@ -170,6 +170,23 @@ besides `asset` — is a **load error naming the chain and the entry's index**, 
 load error, and it names the chain, the index and the key: `fonts.body[1].asset`. A chain entry is
 never silently dropped and never coerced.
 
+**An entry naming an asset that is not a font is ACCEPTED AT LOAD and errors at RENDER.** The load
+path checks that the key exists in `assets` and nothing else — it never inspects the asset's
+`mediaType` or its bytes to decide whether the entry is legal. That is D-1.8.1 as amended, the same
+rule the open `mediaType` set rests on (see *A font asset* below), and it applies to a *wrong-kind*
+asset exactly as it does to an unrecognised font container: a chain entry naming an `image/png`
+asset is a valid `.folio`. The failure arrives at render, and **only when something must actually
+draw with that entry** — when a rune reaches it because no earlier entry in the chain covers that
+rune. It is a located error naming **the chain, the entry's index and the asset key**. A document
+whose text is covered entirely by the entries ahead of it renders clean and says nothing, because
+nothing ever asked what those bytes were.
+
+**A face is resolved by ASSET KEY, never by name.** An embedded entry's `font.family` is display
+identity — what a chain editor shows a person — and is never used to resolve or substitute a face.
+Where a document carries a face whose `font.family` is `"Inter"` and the renderer is also given a
+face named `"Inter"`, the two are **different faces** and neither ever stands in for the other; the
+chain entry's shape decides which one is meant (AD-8).
+
 The map's keys have **no authored order**: they are sorted on write, like every other object in the
 file (AD-9). Only the array *inside* a chain is ordered, and that order is the author's and is
 preserved verbatim.
@@ -509,6 +526,14 @@ a MAJOR bump, which would make every new font container a breaking format change
   **loads clean**. The document is valid and the asset is preserved verbatim. The failure, if any,
   arrives at **render**, and only when something actually needs to draw that face — a library
   capability limit, not a format error.
+- A media type that is not a font type **at all** — an `image/png` asset named by a chain entry —
+  takes the same path as the unrecognised one, for the same reason: it **loads clean**, and it
+  errors at render only when something must draw with it. See *`fonts`* above for the shape of that
+  error.
+
+Both render-time refusals report the same thing, and it is a statement about **this build**, never
+about the document: *the document is valid — `mediaType` is an open set — and this library cannot
+draw with these bytes.*
 
 ## Line breaking
 

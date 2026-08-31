@@ -550,14 +550,20 @@ type verticalMetrics struct {
 func chainLineMetrics(chain []string, fs FontSet, cache *fontCache) ([]fontset.LineMetrics, error) {
 	out := make([]fontset.LineMetrics, 0, len(chain))
 	for _, name := range chain {
-		if _, ok := fs[name]; !ok {
-			// A chain member the caller did not supply cannot appear in
-			// the element, so it does not constrain the vertical model.
-			continue
-		}
-		f, err := cache.get(name, fs)
+		// A chain member the caller did not supply cannot appear in the
+		// element, so it does not constrain the vertical model. Since
+		// Story 8.4 the same tolerance covers a member the DOCUMENT
+		// carries whose asset this build cannot read as a font: it cannot
+		// appear in the element either. metricsFace is where that one
+		// rule is stated, and where the asymmetry with resolveRuneFace —
+		// which REFUSES the same entry, because it is being asked to draw
+		// with it — is written down.
+		f, present, err := cache.metricsFace(name, fs)
 		if err != nil {
 			return nil, err
+		}
+		if !present {
+			continue
 		}
 		out = append(out, f.LineMetrics())
 	}

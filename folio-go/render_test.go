@@ -998,13 +998,15 @@ const subprocessThaiStackedMarksEnvVar = "FOLIO_SUBPROCESS_RENDER_THAISTACKEDMAR
 // thai-stacked-marks needed one: a golden recorded from one process pins
 // whatever that process happened to do.
 //
-// It matters here specifically for a NEGATIVE reason, which is unusual and is
-// why it is written down. This story does not render from the embedded face
-// (that is Story 8.4), so what the four legs certify is that the ~47 KB the
-// document carries reaches the LOADER on every target and reaches the PAGE on
-// none of them: the fixture's extraGuard asserts exactly one embedded font
-// program, and a target that started drawing with the carried face would
-// diverge from the other three rather than pass quietly.
+// STORY 8.3 REGISTERED IT FOR A NEGATIVE REASON — the carried face reached the
+// loader on every target and the page on none — and Story 8.4 inverted that.
+// The document's text is pure Thai now, the shipped Latin face the chain names
+// first covers none of it, and what the four legs certify is that a font
+// program decoded out of the document's own base64, subset and embedded,
+// produces identical bytes on all four targets. The fixture's extraGuard
+// asserts WHICH face reached the page, by identity: a target that drew with
+// the shipped face, or with none, fails its own leg rather than merely
+// diverging from the other three.
 const subprocessEmbeddedFontEnvVar = "FOLIO_SUBPROCESS_RENDER_EMBEDDEDFONT"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering

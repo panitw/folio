@@ -11,29 +11,43 @@ import (
 	"testing"
 )
 
-// fixtures/embedded-font/ is Story 8.3's artifact: THE FIRST `.folio` IN THIS
-// REPOSITORY THAT CARRIES A FONT FACE.
+// fixtures/embedded-font/ is Story 8.3's artifact and Story 8.4's subject:
+// THE FIRST `.folio` IN THIS REPOSITORY THAT CARRIES A FONT FACE, and now the
+// first whose page is DRAWN with one.
 //
 // WHAT IT RED-PROVES: that a face can travel inside a template — stored,
-// loaded, round-tripped and projected — through the same `assets` mechanism
-// images already use, and that a document declaring one declares format
-// version 2.0.
+// loaded, round-tripped, projected — through the same `assets` mechanism
+// images already use, that a document declaring one declares format version
+// 2.0, and (Story 8.4) that the renderer draws from it, on four targets, with
+// no such face installed on the machine and none supplied for it in the
+// FontSet.
 //
-// WHAT IT DOES NOT COVER: rendering FROM the embedded face. That is Story 8.4.
-// The chain's FIRST entry is the shipped Noto Sans, and that is the face the
-// page is drawn with; the embedded entry contributes nothing, which is why
-// this fixture's own matrix guard asserts the rendered PDF embeds EXACTLY ONE
-// font program. When 8.4 lands, that guard is what will have to change, and
-// deliberately.
+// THE DOCUMENT'S TEXT IS PURE THAI, AND THAT IS THE WHOLE MEASUREMENT
+// (D-8.4.4b). Measured from the shipped cmaps: NotoSans-Regular covers ZERO
+// codepoints in U+0E00–U+0E7F, and NotoSansThai-Regular covers 87 of them. The
+// chain is ["Noto Sans", <the carried face>], so every rune on this page falls
+// through the shipped entry and can only be drawn by the face the document
+// carries. Story 8.3's version drew LATIN — which the carried Thai face also
+// covers — so its bytes could not tell a correct implementation from an inert
+// one, and its digest observed nothing. A PURE-THAI string is the sharp
+// witness; a mixed one is not.
 //
-// IT SHIPS NO expected.pdf, on the hidden-image precedent (Story 3.5). An
-// `expected.pdf` is a human-attested artifact under AD-21/D-4.7.1, and this
-// story cannot produce the one that matters — a page drawn WITH the embedded
-// face. Recording a page drawn with the shipped face under the name
-// "embedded-font" would attest the wrong thing. So goldenDigestRecord stays at
-// 22 and this fixture's acceptance is STRUCTURAL: it is registered in
-// matrixDocuments with a recorded cross-target hash, and its input.folio is
-// pinned byte-for-byte against the template constant below.
+// IT SHIPPED NO expected.pdf UNTIL STORY 8.4, and that was correct: an
+// `expected.pdf` is a human-attested artifact under AD-21/D-4.7.1, and Story
+// 8.3 could not produce the one that matters — a page drawn WITH the embedded
+// face. Recording a page drawn with the SHIPPED face under the name
+// "embedded-font" would have attested the wrong thing. Story 8.4 produces that
+// page, so the golden ships and is registered in goldenDigestRecord, which
+// now holds 23 entries.
+//
+// THE COUNT ASSERTIONS ARE GONE, DELIBERATELY (Story 8.4, TRAP 1). This file
+// and matrix_test.go both used to assert that the render embeds EXACTLY ONE
+// font program, as the honest statement of the interim state. With a pure-Thai
+// document on this chain a CORRECT Story 8.4 also embeds exactly one program —
+// the carried Thai face instead of the shipped Latin one — so the count passes
+// identically before and after and certifies the opposite of what it says.
+// Both are IDENTITY assertions now: WHICH face reached the page, read off the
+// produced bytes.
 
 // embeddedFontAssetBytes is the face the fixture carries: the SHIPPED Noto
 // Sans Thai, embedded a second time as an ASSET rather than supplied through
@@ -42,10 +56,12 @@ import (
 // commits, reached through the test binary's own embed (testfont_embed_test.go)
 // so the bytes travel to every cross-target leg, js/wasm included.
 //
-// Thai deliberately, and Latin text on the page deliberately: the face the
-// document carries is the one the page does NOT need, so an implementation
-// that silently started rendering from the embedded face would change the
-// page's bytes and be caught rather than absorbed.
+// Thai deliberately, and since Story 8.4 THAI TEXT ON THE PAGE deliberately:
+// the shipped Latin face the chain names first covers none of it, so the face
+// the document carries is the only face that can draw this page. Story 8.3
+// drew Latin here, on the opposite reasoning — that the carried face was the
+// one the page did NOT need — which was right for a story that rendered from
+// it nowhere and is exactly wrong for one that does.
 func embeddedFontAssetBytes() []byte { return testShippedNotoSansThai }
 
 // embeddedFontAssetKey is the key the format's own rule produces: the
@@ -105,7 +121,7 @@ func embeddedFontTemplateJSON() string {
             "fontSize": 12
           },
           "type": "text",
-          "value": "A font travels inside the template.",
+          "value": "สัญญา",
           "width": 400,
           "x": 0,
           "y": 0
@@ -201,7 +217,8 @@ func TestEmbeddedFontFixtureIsCanonicalAndDeclaresTwoPointZero(t *testing.T) {
 	if !strings.Contains(source, `"version": "2.0"`) {
 		t.Error("a document declaring an embedded-face entry must declare version 2.0")
 	}
-	// And it really renders, with the shipped face, against the shipped set.
+	// And it really renders — from the face the document CARRIES, against a
+	// FontSet that supplies no face capable of drawing a word of it.
 	res, err := Render(tpl, Data(`{}`), nil, testShippedFontSet())
 	if err != nil {
 		t.Fatalf("render: %v", err)
@@ -209,14 +226,52 @@ func TestEmbeddedFontFixtureIsCanonicalAndDeclaresTwoPointZero(t *testing.T) {
 	if len(res.Bytes) == 0 {
 		t.Fatal("the fixture rendered zero bytes")
 	}
-	// THE INTERIM STATE, PINNED. Exactly one font program reaches the page:
-	// the shipped Noto Sans the chain's FIRST entry names. The embedded Noto
-	// Sans Thai contributes nothing, because rendering from an embedded face
-	// is Story 8.4. When that story lands this assertion must change, and
-	// changing it deliberately is the point of writing it down.
-	programs := extractAllFontFile2Programs(t, res.Bytes)
-	if len(programs) != 1 {
-		t.Fatalf("the fixture's render embeds %d font programs, want exactly 1 — the embedded face must not reach the page until Story 8.4", len(programs))
+	if len(res.Diagnostics) != 0 {
+		t.Fatalf("the fixture rendered with diagnostics — its runes fell through the chain uncovered: %+v", res.Diagnostics)
+	}
+	// THE FACE ON THE PAGE, PINNED BY IDENTITY AND NEVER BY COUNT (Story
+	// 8.4, TRAP 1). A count of embedded programs is exactly 1 both before
+	// this story and after it — the shipped Latin face then, the carried Thai
+	// face now — so it distinguishes nothing.
+	requireEmbeddedFaceDrewThePage(t, "the fixture's render", res.Bytes)
+}
+
+// requireEmbeddedFaceDrewThePage reads, off produced PDF bytes, that
+// fixtures/embedded-font/'s page was drawn with the face the document CARRIES
+// and with no other.
+//
+// It is stated in three ways, because each catches a different wrong answer:
+//
+//   - the font RESOURCE NAME derived from the asset key is present. Only a
+//     face resolved through the document's own assets can produce it — it IS
+//     the asset key, and internal/pdf spells a resource name from the caller's
+//     FontSet key. This is the positive identity.
+//   - the shipped LATIN face is absent. It is the chain's FIRST entry, so a
+//     build that resolved by name, or that fell back when coverage failed,
+//     would put it on the page.
+//   - /BaseFont names the Thai program. The six-letter subset tag is stripped
+//     off, so this reads the embedded program's OWN PostScript name (ISO
+//     32000-1 Table 117) rather than any key the renderer chose.
+//
+// It is shared by this file and by matrix_test.go's per-leg guard, so the four
+// cross-target legs and the in-process render assert the identical property
+// rather than two drifting spellings of it.
+func requireEmbeddedFaceDrewThePage(t *testing.T, label string, raw []byte) {
+	t.Helper()
+	body := string(raw)
+	if want := pdfEscapedEmbeddedFaceName(embeddedFontAssetKey()); !strings.Contains(body, want) {
+		t.Errorf("%s: no font resource named %q — the page was NOT drawn with the face the document carries", label, want)
+	}
+	if strings.Contains(body, "+NotoSans-Regular") {
+		t.Errorf("%s: the SHIPPED Latin Noto Sans reached the page, though it covers none of this document's Thai", label)
+	}
+	if !strings.Contains(body, "+NotoSansThai-Regular") {
+		t.Errorf("%s: no /BaseFont names NotoSansThai-Regular — the embedded program is not the Thai face the document carries", label)
+	}
+	// Vacuity guard: the three assertions above are substring scans, and a PDF
+	// that embedded no font at all would satisfy the negative one for free.
+	if len(extractAllFontFile2Programs(t, raw)) == 0 {
+		t.Errorf("%s: the render embeds no font program at all", label)
 	}
 }
 
@@ -241,26 +296,65 @@ func firstBytes(s string) string {
 // `Render` accepts — or accepted what `Render` refuses — would be a second
 // rule system. It is the arm a "closed set of font media types" implementation
 // fails.
+//
+// STORY 8.4 SPLIT IT IN TWO, because the document's text became Thai and the
+// chain's unrecognised entry is now the only entry that could draw it. The
+// rule D-1.8.1 as amended actually states has both halves in it, and only the
+// second existed here before:
+//
+//	NOTHING DRAWS FROM IT  -> valid, silent, renders clean
+//	SOMETHING MUST DRAW IT -> a located capability error, at Render and at
+//	                          Validate alike
+//
+// A test asserting only the first half would pass on a build that never looked
+// at the media type at all; one asserting only the second would pass on a
+// build that refused every unrecognised type at LOAD, which is precisely what
+// D-1.8.1 forbids.
 func TestUnrecognisedFontMediaTypeIsValidToo(t *testing.T) {
-	source := strings.Replace(embeddedFontTemplateJSON(), `"mediaType": "font/ttf"`, `"mediaType": "font/woff2"`, 1)
-	if !strings.Contains(source, "font/woff2") {
+	unrecognised := strings.Replace(embeddedFontTemplateJSON(), `"mediaType": "font/ttf"`, `"mediaType": "font/woff2"`, 1)
+	if !strings.Contains(unrecognised, "font/woff2") {
 		t.Fatal("fixture assumption violated: the media type was not substituted")
 	}
-	diags, err := Validate([]byte(source), Data(`{}`), nil, testShippedFontSet())
+
+	// HALF ONE: nothing draws from it. The Thai is replaced with Latin, which
+	// the chain's FIRST entry covers completely, so coverage resolution never
+	// reaches the carried entry and never asks what its bytes are.
+	neverDrawn := strings.Replace(unrecognised, `"value": "สัญญา"`, `"value": "Latin only"`, 1)
+	if !strings.Contains(neverDrawn, `"value": "Latin only"`) {
+		t.Fatal("fixture assumption violated: the drawn text was not substituted")
+	}
+	diags, err := Validate([]byte(neverDrawn), Data(`{}`), nil, testShippedFontSet())
 	if err != nil {
-		t.Fatalf("a font asset with an unrecognised mediaType must be VALID (D-1.8.1 amended), got: %v", err)
+		t.Fatalf("a font asset with an unrecognised mediaType that nothing draws from must be VALID (D-1.8.1 amended), got: %v", err)
 	}
 	if len(diags) != 0 {
 		t.Fatalf("Validate must be SILENT over an unrecognised font media type, got %d diagnostic(s): %+v", len(diags), diags)
 	}
-	// And it still renders — the page is drawn with the shipped face the chain
-	// names first, and the carried asset is simply along for the ride.
-	tpl, err := ParseTemplate([]byte(source))
+	tpl, err := ParseTemplate([]byte(neverDrawn))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	if _, err := Render(tpl, Data(`{}`), nil, testShippedFontSet()); err != nil {
 		t.Fatalf("render: %v", err)
+	}
+
+	// HALF TWO: the fixture's own Thai, which only the carried entry could
+	// draw. The document still LOADS — mediaType is an open set — and fails
+	// at the moment the renderer is asked to draw with it.
+	tpl, err = ParseTemplate([]byte(unrecognised))
+	if err != nil {
+		t.Fatalf("an unrecognised font media type must still LOAD (D-1.8.1 amended): %v", err)
+	}
+	_, rerr := Render(tpl, Data(`{}`), nil, testShippedFontSet())
+	if rerr == nil {
+		t.Fatal("a chain entry this build cannot read, that something must draw from, must fail at Render")
+	}
+	if !strings.Contains(rerr.Error(), `cannot render font media type "font/woff2"`) {
+		t.Errorf("the render error does not name the capability limit: %v", rerr)
+	}
+	_, verr := Validate([]byte(unrecognised), Data(`{}`), nil, testShippedFontSet())
+	if verr == nil || verr.Error() != rerr.Error() {
+		t.Errorf("Validate must return the IDENTICAL error Render does:\n\tValidate: %v\n\tRender:   %v", verr, rerr)
 	}
 }
 
@@ -284,8 +378,10 @@ func TestUnrecognisedFontMediaTypeIsValidToo(t *testing.T) {
 // here rather than slipping past.
 //
 // The stronger statement — that no committed byte moved at all — is carried by
-// the 22 recorded golden PDF digests (AC6, unchanged) and by the diff itself,
-// which touches no pre-existing fixture.
+// the recorded golden PDF digests (goldenDigestRecord). Story 8.4 moved
+// EXACTLY ONE of them, embedded-font's, deliberately and as the story that
+// owns that fixture; the other 21 are unmoved, and the record holds 23 entries
+// now because embedded-font ships an expected.pdf for the first time.
 func TestTheFontRecordCostsAnExistingDocumentNothing(t *testing.T) {
 	dir := filepath.Join(repoRootFromTest(t), "fixtures")
 	entries, err := os.ReadDir(dir)

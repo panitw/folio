@@ -651,15 +651,20 @@ func collectBandTableRuns(
 
 		var chain []string
 		if hs.hasFontFamily {
-			entries, ok := doc.doc.Fonts.Chain(hs.fontFamily)
-			if !ok {
-				// Mirrors fontChain's own error, verbatim in shape
-				// (render.go) — a text element with the same defect
-				// fails the same way, plain-wrapped, no *RenderError:
-				// this story does not widen that existing behaviour.
-				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: style.fontFamily %q names a chain with no entries in the document's fonts map", el.ID, hs.fontFamily)
+			// Story 8.4, Task 3: THE SHARED lookup, not a hand-mirrored
+			// copy of it. This site used to carry its own Fonts.Chain
+			// call and its own spelling of fontChain's error, under a
+			// comment saying it "mirrors fontChain's own error, verbatim
+			// in shape" — which is a duplicate announcing itself. The
+			// message is now owned once, by lookupFontChain (render.go),
+			// and it is still plain-wrapped with this element's id and
+			// still no *RenderError: the behaviour is unchanged, only its
+			// number of homes.
+			entries, cerr := lookupFontChain(doc, hs.fontFamily)
+			if cerr != nil {
+				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, cerr)
 			}
-			// AFTER the !ok check, deliberately: on the not-found path
+			// AFTER the lookup, deliberately: on the not-found path
 			// there is nothing to project, and calling it first would
 			// also turn `chain` from nil into a non-nil empty slice on
 			// the way to an error return.

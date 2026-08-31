@@ -2779,8 +2779,46 @@ unvirtualised path by the page count. The two questions are the same question an
   `Noto Sans Thai` / `Noto Sans SC`, so **a chain's entries cannot be used as CSS family names**.
   That is what D-8.4.1 now settles for the embedded case.
 
-- **Status:** OPEN — **and what Story 8.2 newly made reachable is now recorded by a TEST rather than
-  by a comment.** 8.2 is the story that lets an author BUILD a chain, so it is the first at which a
+- **Status:** OPEN, **now with TWO causes, and Story 8.4 (2026-09-01) added the second and worse
+  one.** It is owned by **Story 8.4a**, sequenced immediately after 8.4, and the design decision it
+  inherits is already made (D-8.4.1, quoted below): *an embedded face's CSS family name is derived
+  from its **asset key**, never from `font.family`.*
+
+  **CAUSE TWO — a face the DOCUMENT CARRIES has no family in the browser at all.** For cause one
+  there is at least a shipped file behind the chain entry, registered under *some* family the browser
+  knows; the defect is that the two vocabularies do not meet. For a carried face there is **nothing**
+  — no `@font-face`, no family name, no bytes in the browser — so `.canvas-text-fragment` falls
+  straight through to generic `sans-serif`. That is the `c6e4d03` defect rebuilt for the headline use
+  case of the story that created the condition.
+
+  **Story 8.4 delivered the MEASUREMENT half and disclosed the paint half, both by test.**
+  `folio-go/canvas_embedded_face_test.go` pins that `CanvasWithTextPaint` over the embedded-face
+  document produces fragment origins, advances and line widths **identical** to the PDF path's, from
+  the render path's own `fontChain`/`shapeSegments`/`chainVerticalModel` — red-proved by building the
+  canvas's `fontCache` without the document, which is the one thing the two paths do not share.
+  `folio-designer/src/canvas-font-stack.test.ts` records the paint gap and names 8.4a, and its new
+  assertion — that **no** designer source registers a font at runtime (`new FontFace`,
+  `document.fonts.add`) — is written to redden when 8.4a arrives.
+
+  **What 8.4a owns, recorded so it is disclosed rather than discovered** (measured at `15ca0dd`):
+  per-fragment face attribution on `CanvasTextFragment` — the value is already in scope at
+  `page_setup.go`'s fragment loop and **discarded**, and a fragment is exactly one face by
+  construction, so per-component attribution would be wrong for any mixed-script element; its TS type
+  and the `hasOnly` guard at `engine-protocol.ts` in the same commit (an unlisted key blanks the
+  canvas with **no diagnostic**); a **new** fragment-level record in `canvas_projection_wire_test.ts`
+  (the wire test records the top level and the two font-chain levels only, so a new field would
+  redden nothing); a named asset-key → CSS-family derivation module; runtime `FontFace` registration
+  at **document** scope, not per component (the `ImagePaint` effect in `App.tsx` is the closest
+  pattern and is the *wrong* lifetime); the `.canvas-text-fragment` `font-family` var head; the
+  `canvas-font-stack.test.ts` re-author, which must **keep** its shipped-face guarantees while adding
+  the embedded exception with its own teeth; and a deliberate narrowing of
+  `canvas-authority-contract.test.ts`, whose blanket `document.fonts` → `fontReadinessOnly` rewrite
+  makes its own prohibition dead and would let a measurement call in unnoticed. The asset bytes
+  themselves need no new transport: `AssetBytes` is media-type agnostic end to end and is usable for
+  font bytes as-is; the only image-specific hop is its consumer in `App.tsx`.
+
+  **What Story 8.2 made reachable is recorded by a TEST rather than by a comment.** 8.2 is the story
+  that lets an author BUILD a chain, so it is the first at which a
   document can declare one whose first covering entry is not `Noto Sans` — `["Noto Sans Thai"]`, say —
   after which the engine measures with that face while the browser paints the fixed Latin-first stack.
   8.2 states this and does not fix it: the fix is a design-system decision (rename the generated
@@ -4202,7 +4240,7 @@ which is a larger change than this story's, and DW-74 is where it belongs.
 
 ---
 
-### DW-83 — a chain entry may name a NON-FONT asset: correct to accept at load, but it errors nowhere at render either, so D-1.8.1's shape is half-built
+### DW-83 — a chain entry may name a NON-FONT asset: correct to accept at load, but it errors nowhere at render either, so D-1.8.1's shape is half-built — **CLOSED by Story 8.4, 2026-09-01**
 
 - **Deferred by:** Story 8.3 (2026-08-31), recorded on closing it. Filed by the build in the spec's
   frontmatter only; entered into this register at close.
@@ -4211,9 +4249,31 @@ which is a larger change than this story's, and DW-74 is where it belongs.
   the sequence, per D-8.0.5, not a checklist item.
 - **Severity:** MEDIUM. Not reachable as data loss; reachable as a document that is accepted, drawn
   wrongly and never explained.
-- **Status:** OPEN. **Per D-8.3.5 it lands in Story 8.4 as an ACCEPTANCE CRITERION, not as a
-  deferral note** — the half most likely to be dropped is the third one below, and a note is what
-  drops it.
+- **Status:** **CLOSED by Story 8.4 (2026-09-01)**, as an ACCEPTANCE CRITERION and not as a deferral
+  note — which is what D-8.3.5 required, because the half most likely to be dropped is the third one
+  below and a note is what drops it.
+
+  **All three parts, and where each is asserted.** Every one is red-proved by reverting its own
+  production expression, and the three are asserted by **separate named tests**, so removing any one
+  arm reddens a test of its own rather than being covered by a sibling:
+
+  | part | asserted by | reddens if |
+  |---|---|---|
+  | Load **accepts** an entry naming a non-font asset | `TestNonFontAssetIsAcceptedAtLoad` (`folio-go/chain_face_names_test.go`) | anyone "fixes" this by tightening `decodeFontChainEntry` |
+  | `Render` **errors, located** — naming the chain, the entry index and the asset key | `TestNonFontAssetDrawnErrorsAtRenderAndAtValidate` | the decode is removed from `fontCache.get`, or the error stops carrying `template.FontChainSite` |
+  | `Validate` returns the **identical** error | the same test's second half, asserted by `verr.Error() != rerr.Error()` **and** a zero diagnostic count | the `Validate` arm is removed while the `Render` arm remains |
+  | An entry **nothing draws from** stays silent | `TestNonFontAssetNeverDrawnRendersClean` | the decode is hoisted out of the point of use into an upfront pass |
+
+  **`Validate`'s half is true BY CONSTRUCTION, not by a second rule system.** The resolution lands
+  inside `predictDocument` — the single derivation `folio.Validate` calls directly and `Render`
+  reaches through `renderDocument`/`buildPageModel` — so there is nothing to keep in step.
+  `TestValidateNeverReachesRenderOrInternalPDF` makes a `Render`-only placement structurally visible,
+  and the separate `Validate` assertion above is the second defence.
+
+  **The load behaviour was NOT touched.** `decodeFontChainEntry` still checks only that the key is
+  present in `assets`. D-1.8.1 as amended is now stated in `folio-format.md` for the wrong-kind case
+  as well as the unrecognised-type case, so the rule is written down where an implementer reads it
+  rather than only where it was decided.
 
 **The gap, as measured.** The entry decoder checks only that the `{"asset": "<key>"}` key is
 **present** in the assets map, never that the asset is a font. Refusing it at load would violate
@@ -4222,10 +4282,21 @@ render — **so the load behaviour is correct as shipped and must not be "fixed"
 loader.** But `chainFaceNames` drops every embedded entry before face resolution, so the render half
 never fires either. The result is D-1.8.1's shape with one of three parts built.
 
-**What discharges it, all three parts, in Story 8.4.** Load continues to **accept**; `Render`
+**What discharged it, all three parts, in Story 8.4.** Load continues to **accept**; `Render`
 **errors, located**, when something actually needs to draw from that entry; and **`Validate` predicts
 what `Render` would do** rather than answering from a second rule system. The third is the one that
-gets dropped, which is why it is an AC.
+gets dropped, which is why it was an AC.
+
+**"When something actually needs to draw from that entry" was given an operational meaning, and it
+is worth recording because it decided where the decode goes.** The entry is decoded at **coverage
+resolution** (`resolveRuneFace`) — the first moment a rune reaches it because no earlier entry in the
+chain covers that rune. It is deliberately **not** decoded by the vertical-model walk
+(`chainLineMetrics`), which visits every entry of a chain to derive a line height: an entry that
+cannot supply a face cannot appear in the element, so it does not constrain the model, which is the
+same tolerance that walk already applied to a chain member the caller did not supply. The two answers
+are consistent rather than contradictory — **if a render completes at all, coverage never reached the
+entry**, so its absence from the vertical model is exactly right. `fontCache.metricsFace`
+(`folio-go/render.go`) is where that one rule is written down.
 
 ---
 

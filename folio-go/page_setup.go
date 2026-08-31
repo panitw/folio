@@ -1142,7 +1142,12 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 	// it for the non-text arm; the two arms must tag from the same index
 	// or the column is grouped in halves.
 	keepTogether := keepTogetherTags(t)
-	cache := newFontCache()
+	// FROM THE DOCUMENT (Story 8.4), and this is the second of the two
+	// sites that must be — predictDocument (render.go) is the other. The
+	// canvas consumes the IDENTICAL advance the renderer does (AD-17), so
+	// a canvas cache that could not see the document's carried faces would
+	// measure a document the PDF does not print.
+	cache := newDocumentFontCache(t)
 	for _, band := range []struct {
 		name     string
 		elements []template.Element
