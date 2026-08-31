@@ -2915,8 +2915,18 @@ As an integrating Go developer,
 I want a template with embedded faces to render on a machine that has never seen them,
 So that "the file is the contract" survives contact with a build box.
 
-**Covers:** FR54 · AD-8, AD-14, AD-22, D-1.8.1, NFR1, NFR1.d, NFR1.e — and **DW-35**, re-owned
-here at Story 8.2's close because AC4 below **is DW-35 stated as an acceptance criterion**.
+**Covers:** FR54, FR33 · AD-7, AD-8, AD-14, AD-17, AD-21, AD-22, D-1.8.1, NFR1, NFR1.d, NFR1.e —
+and **DW-83** (AC4) and **DW-35** (AC5).
+
+**`Covers:` CORRECTED 2026-08-31 at this story's plan gate (D-8.4.5), on two counts.**
+*(a) An off-by-one that both this document and the deferral register carried.* The line previously
+read "**DW-35** … because **AC4** below is DW-35 stated as an acceptance criterion". **AC4 is DW-83**
+(D-8.3.5); **DW-35 is AC5**. Both are re-owned here, by **different** criteria. The epic text and the
+register agreed only because one was derived from the other — when two documents agree, check whether
+they are two sources or one source copied.
+*(b) Four omissions, D-8.2.8(a)'s third occurrence in four stories.* **FR33** is AC2's in its own
+words; **AD-7** binds AC3's subset tag and the pinned profile; **AD-17** is AC5's whole subject; and
+**AD-21** is AC6's ("it carries a recorded digest like every other fixture").
 
 **Acceptance Criteria:**
 
@@ -2933,8 +2943,18 @@ path on disk (FR33)
 
 **Given** the same document rendered on all four targets
 **When** the outputs are compared
-**Then** they are byte-identical, and the subset tag remains a deterministic hash of the glyph set —
-subsetting stays once per render inside the PDF producer, and no face is subset at save time
+**Then** they are byte-identical, and the subset tag remains a deterministic hash of the **emitted
+subset program bytes** — subsetting stays once per render inside the PDF producer, and no face is
+subset at save time
+
+**AC3 CORRECTED 2026-08-31 at this story's plan gate (D-8.4.2).** It previously said "a deterministic
+hash of the **glyph set**", which is the reading **AD-7 names and rejects**: the tag is derived from
+*"a hash of the embedded font program's own bytes — the value `subset.Subset()` returns, in full —
+and, unlike a hash of the sorted glyph-id set alone, discriminates two pinned instances of one
+variable face."* **D-1.5.8** rejected the glyph-set reading after two instances collided. Implementing
+the old wording literally would have moved all 22 recorded digests. An acceptance criterion that
+contradicts an invariant is not a fork to be routed — it is an error to be corrected, and it is
+corrected in the **epic**, because the epic is the artifact later stories re-derive from.
 
 **Given** a chain entry naming an asset that is **not a font** — an image, say
 **When** the document is loaded, rendered, and validated
@@ -2952,13 +2972,51 @@ an acceptance criterion rather than left as a deferral note for exactly that rea
 
 **Given** the designer's canvas paint projection
 **When** a component uses an embedded face
-**Then** the preview measures with that same face through the same engine path, so the canvas and
-the PDF keep one measurement authority
+**Then** the preview **measures** with that same face through the same engine path — asserted, not
+assumed — **and rasterizes with it too**: the face's bytes reach the browser through the projection
+and are registered as a `FontFace` under a CSS family name **derived from the asset key**
+
+**AC5 RULED AND WIDENED 2026-08-31 (D-8.4.1). The measurement half is already true and must be
+PINNED; the paint half is this story's, because this story creates the condition.**
+
+*Measurement.* **AD-17** draws the line in its own words — the canvas *"gets every text metric and
+line break from the engine's measure API … The browser contributes rasterization only"* — and this
+criterion says "measures" twice. The plan gate measured that `addCanvasTextPaint` already calls the
+render path's own `fontChain` / `shapeSegments` / `chainVerticalModel`. So this half is satisfied
+**structurally**. It is stated as a *verified* criterion rather than deleted, so that a later story
+cannot quietly fork the path.
+
+*Paint (DW-35).* This story does not merely **widen** DW-35 — it **creates the condition**. Before
+it, an embedded face cannot render at all, so no author can reach the state; after it, the engine
+measures with the embedded face while the browser has **no CSS family for it at all** and falls
+through to `sans-serif`. That is the owner-reported defect fixed at `c6e4d03`, rebuilt for this
+story's own headline use case. Under the rule set at Story 8.0 — **a defect a story makes reachable
+is a precondition of that story** — the paint half is 8.4's.
+
+*The design decision that blocked it, made (D-8.4.1).* **An embedded face's CSS family name is
+derived from its ASSET KEY, never from `font.family`.** AD-8: *"the asset key decides, even where an
+embedded face and a shipped face share a family name"*; and `font.family`/`font.style` are display
+identity, *"never used to resolve or substitute a face — resolution is by asset key alone."*
+Deriving the CSS family from `font.family` would let an embedded "Inter" collide with a shipped
+"Inter" in the browser's font registry — precisely the hazard AD-8's sentence exists to prevent,
+arriving one layer down.
+
+*Sizing.* If the plan gate returns `multiple-goals`, the paint half splits to a **named successor
+story sequenced immediately after 8.4** — not "later in Epic 8" — and 8.4's record states the canvas
+limitation explicitly, so it is **disclosed rather than discovered**.
 
 **Given** a fixture that embeds a face
 **When** it is added to the corpus
 **Then** it carries a recorded digest like every other fixture, so a later change to font handling
-cannot move these bytes silently (AD-21)
+cannot move these bytes silently (AD-21) — **and the fixture's document draws text the embedded face
+actually covers**
+
+**THE SECOND CLAUSE IS NOT DECORATION (D-8.4.4).** Measured at this story's plan gate:
+`fixtures/embedded-font/` draws **Latin** text while carrying a **Thai** face, on purpose. A digest
+over that document **cannot observe the embedded face being used at all**, so AC6 as previously
+written asserted nothing and its protection was nominal. The fixture's document must change.
+Re-recording that fixture's digest is deliberate and correct **within the story that owns it**, and
+it is free before the tag.
 
 ### Story 8.5: A curated catalogue ships with the designer
 
@@ -2966,7 +3024,15 @@ As a template author,
 I want a list of fonts I can legally use and actually reach,
 So that choosing one is a search rather than a hunt for a licence and a file.
 
-**Covers:** FR55 · NFR7, AD-26
+**Covers:** FR55, FR33 · NFR1, NFR7, AD-7, AD-26
+
+**`Covers:` SWEPT 2026-08-31 (D-8.4.5), before this story is planned rather than at its gate.**
+**AD-7** — *"the core never reads the world for it"* — is AC1's ground for deriving the catalogue
+ahead of the build and AC3's for the offline pick; **FR33** is AC3 in its own words (no request
+leaves the machine); **NFR1** is what AC1's *"would make the PDF a function of the build
+environment"* is protecting. Three of the four preceding stories omitted a `Covers:` reference the
+gate then had to add, so the omission is a **rate**, not three incidents, and a rate is worth one
+batch rather than two more gate cycles.
 
 **Acceptance Criteria:**
 
@@ -3003,7 +3069,14 @@ As a template author,
 I want picking a font to be all I do,
 So that the face, the chain and the fallback are already right when I save.
 
-**Covers:** FR55, FR53 · AD-15, UX-DR13, UX-DR20
+**Covers:** FR55, FR53 · AD-8, AD-15, AD-16, UX-DR13, UX-DR20 — and **DW-80**
+
+**`Covers:` SWEPT 2026-08-31 (D-8.4.5), same pass as Story 8.5.** **AD-16** binds AC1 (*"one command
+… as one history entry, and one undo removes both"*); **AD-8** binds AC3, since a proposed chain tail
+for uncovered scripts is chain identity, not a convenience; and **DW-80** — font assets invisible to
+`assetKeyReferenced` — is named here because **AC5 is DW-80's fix stated as an acceptance
+criterion**, and this story has been its owner by ruling since Story 8.3's close. Naming it in
+`Covers:` is what stops it depending on a reader noticing the connection.
 
 **Acceptance Criteria:**
 

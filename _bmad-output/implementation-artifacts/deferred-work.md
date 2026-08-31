@@ -2726,26 +2726,53 @@ unvirtualised path by the page count. The two questions are the same question an
 ### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
-- **Owner:** **Story 8.2** — RE-OWNED 2026-08-31 at Story 8.1's close, per D-8.0.5 and Story 8.1's
-  Design Notes R7. The original owner was *"Epic 8's plan gate"*, which has now passed. Reachability is
-  the test: 8.1 is engine-side and the designer sends no chain command until 8.2's editor exists, so the
-  divergence is not reachable **through the product** until 8.2 — and DW-35's own fix needs the projected
-  per-component chain, which 8.2 needs anyway. A named story with a position in the sequence beats a
-  spent gate. This remains the class D-7.4.4 belongs to: a limit to STATE, not to fix, until the product
-  makes it reachable
-- **Severity:** MEDIUM
-- **Owner:** **RE-OWNED to Story 8.4** 2026-08-31, and the placement ground recorded here previously
-  was **falsified**. This entry said the fix *"needs the projected per-component chain, which 8.2
-  needs anyway"* — **both halves are wrong.** Story 8.1 already landed `CanvasComponent.FontFamily`
-  and `FontChains[].Entries`, and 8.2 edits the document-level map and never needs the per-component
-  join. **The real obstacle was recorded nowhere:** the browser's `@font-face` families are
-  `IBM Plex Sans` / `IBM Plex Mono` / `IBM Plex Sans Thai` (the shipped **Noto** files registered
-  under IBM Plex names), while the engine's face names in a chain are `Noto Sans` / `Noto Sans Thai`
-  / `Noto Sans SC`. **A chain's entries cannot be used as CSS family names**; the fix needs a mapping
-  that exists on neither side, or a rename of the generated families that ripples into the design
-  tokens and their contract test — **a design-system decision above a builder's authority**. Story
-  8.4's AC4 — *"the preview measures with that same face through the same engine path, so the canvas
-  and the PDF keep one measurement authority"* — **is this entry written as an acceptance criterion**
+- **Owner:** **Story 8.4 — RULED 2026-08-31 (D-8.4.1)**, and this is now a *ruling*, not a
+  recommendation. **Severity:** MEDIUM.
+
+  **THIS ENTRY PREVIOUSLY CARRIED TWO CONTRADICTORY `Owner:` BULLETS** (Story 8.2, then Story 8.4)
+  with a `Severity:` bullet wedged between them. That is a **defect in the entry**, not an ambiguity
+  for a downstream reader to resolve — the entry could not have been read consistently by anyone.
+  Collapsed to one bullet here; the superseded placement grounds are preserved below as history.
+
+  **Standing rule set with this ruling:** *a "recommended owner" written by a story's spec is **not**
+  an owner until a ruling or a decision-log entry adopts it.* DW-35's assignment to Story 8.4
+  originated as "Recommended owner: Story 8.4" in **Story 8.2's spec**; `awk` over the run's decision
+  log found **zero** occurrences of `DW-35`. It propagated for two stories as a recommendation that
+  every downstream reader took for a decision. This was the **fourth** ownership-mechanism failure of
+  the run.
+
+  **The AC number was wrong here and in the epic, identically.** This entry said Story 8.4's **AC4**
+  is DW-35 as an acceptance criterion. **AC4 is DW-83** (D-8.3.5); **DW-35 is AC5**. The epic text
+  carried the same off-by-one, so cross-checking one against the other could never have caught it —
+  **they are not independent witnesses, because one was derived from the other.**
+
+  **Why 8.4 and not a neighbour: 8.4 does not widen this defect, it CREATES the condition.** Before
+  8.4 an embedded face cannot render at all, so no author can reach the state. After it, the engine
+  measures with the embedded face while the browser has **no CSS family for it at all** and falls
+  through to `sans-serif` — the owner-reported defect fixed at `c6e4d03`, rebuilt for 8.4's own
+  headline use case. By the rule set at Story 8.0, **a defect a story makes reachable is a
+  precondition of that story.**
+
+  **The blocker is removed: the design decision above a builder's authority has been MADE (D-8.4.1).**
+  *An embedded face's CSS family name is derived from its **asset key**, never from `font.family`.*
+  AD-8 — *"the asset key decides, even where an embedded face and a shipped face share a family
+  name"*; and `font.family`/`font.style` are display identity, *"never used to resolve or substitute
+  a face — resolution is by asset key alone."* Deriving the CSS family from `font.family` would let
+  an embedded "Inter" collide with a shipped "Inter" in the browser's font registry — AD-8's own
+  hazard, one layer down. If 8.4's plan gate sizes the paint half out, it goes to a **named successor
+  sequenced immediately after 8.4**, and 8.4's record states the canvas limitation explicitly.
+
+- **Superseded placement grounds, kept as history.** Owner was *"Epic 8's plan gate"*, then Story
+  8.2 (at 8.1's close, per D-8.0.5 and 8.1's Design Notes R7, on reachability), then Story 8.4. The
+  8.2 placement recorded a ground that was later **falsified**: it claimed the fix *"needs the
+  projected per-component chain, which 8.2 needs anyway"* — both halves wrong, since 8.1 already
+  landed `CanvasComponent.FontFamily` and `FontChains[].Entries`, and 8.2 edits the document-level
+  map and never needs the per-component join. **The real obstacle was recorded nowhere:** the
+  browser's `@font-face` families are `IBM Plex Sans` / `IBM Plex Mono` / `IBM Plex Sans Thai` (the
+  shipped **Noto** files registered under IBM Plex names) while a chain's entries are `Noto Sans` /
+  `Noto Sans Thai` / `Noto Sans SC`, so **a chain's entries cannot be used as CSS family names**.
+  That is what D-8.4.1 now settles for the embedded case.
+
 - **Status:** OPEN — **and what Story 8.2 newly made reachable is now recorded by a TEST rather than
   by a comment.** 8.2 is the story that lets an author BUILD a chain, so it is the first at which a
   document can declare one whose first covering entry is not `Noto Sans` — `["Noto Sans Thai"]`, say —

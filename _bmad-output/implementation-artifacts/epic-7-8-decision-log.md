@@ -2761,3 +2761,150 @@ formatting detail and was actually a change to a decoder that collapsed a whole 
 unindexed error.
 
 Measured by the orchestrator, not relayed from the build.
+
+---
+
+### D-8.4.1 — AC5 is measurement, the paint half is still 8.4's, and the design decision that blocked it is made
+
+Story 8.4's plan gate halted `intent gap` on AC5 (*"the preview **measures** … one **measurement**
+authority"*) against DW-35, whose filed fix is that the canvas fragment rule derives its CSS family
+list from the projected chain — **rasterization**. AD-17 separates those two by name. Routed to the
+lead. **Three rulings in one.**
+
+**(a) AC5 is measurement, and the already-true half is PINNED rather than deleted.** AD-17 in its own
+words: the canvas *"gets **every** text metric and line break from the engine's measure API … The
+browser contributes rasterization only."* AC5 says "measures" twice. The gate measured that
+`addCanvasTextPaint` already routes through the render path's own `fontChain` / `shapeSegments` /
+`chainVerticalModel` (`page_setup.go:1162,1192,1229`), so the half is satisfied **structurally**.
+A satisfied criterion is not a dead one: it is stated as **verified**, asserted by a test, so a later
+story cannot quietly fork the path. Deleting it would have removed the only thing standing between
+"shared today" and "shared by luck".
+
+**(b) 8.4 does not WIDEN DW-35 — it CREATES the condition, which is why the paint half stays here.**
+Before 8.4 an embedded face cannot render at all, so no author can reach the state. After it, the
+engine measures with the embedded face while the browser has **no CSS family for it at all** and
+falls to `sans-serif` — the owner-reported canvas defect fixed at `c6e4d03`, rebuilt for 8.4's own
+headline use case. By the rule set at Story 8.0, **a defect a story makes reachable is a precondition
+of that story.** Orphaning it to a neighbour would have shipped 8.4 knowingly broken for the exact
+document 8.4 exists to make possible.
+
+**(c) The blocker was a design decision above a builder's authority — Story 8.2's Design Note N3 said
+so correctly — so the LEAD MADE IT:**
+
+> **An embedded face's CSS family name is derived from its ASSET KEY, never from `font.family`.**
+
+Grounded, not chosen. AD-8: *"the asset key decides, even where an embedded face and a shipped face
+share a family name."* `format-changes.md`: `font.family`/`font.style` are display identity, *"never
+used to resolve or substitute a face — resolution is by asset key alone."* Deriving the CSS family
+from `font.family` would let an embedded "Inter" collide with a shipped "Inter" in the browser's font
+registry — **AD-8's own hazard, arriving one layer down**. The face bytes reach the browser through
+the projection and register as a `FontFace` under the derived name, parallel to what `c6e4d03`
+already built for the shipped faces.
+
+**Sizing is the gate's call, not the lead's.** If the gate returns `multiple-goals`, the paint half
+splits to a story **sequenced immediately after 8.4** — not "later in Epic 8" — and 8.4's record
+states the canvas limitation explicitly, so it is **disclosed rather than discovered**.
+
+**Ownership, and the fourth ownership-mechanism failure of this run.** "Recommended owner: Story 8.4"
+originates in **Story 8.2's spec**. `awk` over this log found **zero** occurrences of `DW-35`. Nobody
+ever ratified it; it propagated for two stories as a recommendation everyone downstream read as a
+decision. The register entry also carried **two contradictory `Owner:` bullets**.
+
+> **Standing rule:** a *"recommended owner"* written by a story is **not** an owner until a ruling or
+> a decision-log entry adopts it. A register entry carrying two `Owner:` bullets is a **defect in the
+> entry**, not an ambiguity to be resolved downstream.
+
+**And the orchestrator's own error, with the lesson that generalises.** The dispatch asserted "the
+fourth AC is DW-35 stated as an acceptance criterion." **AC4 is DW-83; DW-35 is AC5.** The epic text
+and the register carried the *same* off-by-one — so cross-checking one against the other could never
+have caught it. **When two documents agree, check whether they are two sources or one source
+copied.** Both corrected (epic and register), not just the one that was noticed.
+
+---
+
+### D-8.4.2 — AC3 stated the thing AD-7 names and rejects; corrected in the EPIC, not just the spec
+
+AC3 said the subset tag is *"a deterministic hash of the **glyph set**"*. `deriveTag`
+(`internal/fontset/fontset.go:910-924`) is FNV-1a over the emitted subset **program bytes**. This is
+not a near-miss: **AD-7's Rule names the glyph-set reading and rejects it** — the tag is *"a hash of
+the embedded font program's own bytes — the value `subset.Subset()` returns, in full — and, **unlike
+a hash of the sorted glyph-id set alone**, discriminates two pinned instances of one variable face."*
+**D-1.5.8** rejected it after two instances collided. Implementing AC3 literally would have moved
+**all 22 recorded digests**.
+
+**Ruling it at the gate was right; recording it to the lead was also right, and for a reason worth
+keeping: an AC that contradicts an invariant is an ERROR to correct, not a FORK to route** — but the
+correction belongs in the **epic**, because the epic is the artifact later stories re-derive from.
+Fixing only the spec leaves the falsehood to be re-injected into every future reader. Same class as
+the two surviving FR52 spellings.
+
+---
+
+### D-8.4.3 — AC4's render refusal joins the before-the-tag set, which is now THREE
+
+AC4 introduces a **render-time refusal that has never shipped** for a chain entry naming a non-font
+asset, reachable through the exported API. **D-8.2.2(b)** applies cleanly: documents that render
+today — by silently dropping the entry — would fail after.
+
+**The "silently wrong rather than shipped-correct" distinction does NOT keep it out, and Story 8.3 is
+the precedent that settles it.** There the old behaviour was *also* an AD-8 silent substitution, and
+the **only** reason DW-84 stayed out of the set was that it had **already shipped** (`af4efde`).
+**The set tracks TIMING, not merit.** AC4 has not shipped, so it is in.
+
+The set: (1) Story 7.8's justified-table load narrowing · (2) DW-32's command-shape injection, Story
+15.2a · (3) **AC4's non-font-asset render refusal, Story 8.4**. Item 3 **discharges the moment 8.4
+ships it**, returning the set to two — which is the practical value of listing it: it cannot be
+quietly deferred out of 8.4.
+
+**`UnsupportedFontMediaTypeError` extension is in-scope repair, confirmed.** It names asset key,
+element id and media type but **not** the chain or the entry index AC4 requires; an error type that
+cannot say what the AC requires must be extended, and that is the AC's own requirement, not new work.
+Two guardrails: **adding fields is additive** and safe on an exported type; **changing message text
+is safe under AD-14** (*callers match on the code, never on message text*) — but any existing test
+asserting the old string must be **re-pointed and re-measured**, never merely updated.
+
+---
+
+### D-8.4.4 — two structural findings: one corrected at the layer that changes the repair, one confirmed
+
+**(a) CORRECTION to the gate's finding, and the correction changes the fix.** The gate reported
+`table_render.go:654-666` as *"a second, independent chain→names conversion"*. It is not:
+at `:665` it **calls `chainFaceNames(entries)`** — a second *caller*, not a second conversion.
+**`chainFaceNames` IS the single boundary.** What is duplicated is **`fontChain`'s lookup and its
+error**, hand-mirrored at `:653-660` under a comment that says so outright — *"Mirrors fontChain's
+own error, verbatim in shape (render.go)."* So the repair is **extract the chain LOOKUP, not the
+filter**; the filter is already sole. The gate's "four documentless `(chain []string, fs FontSet)`
+consumers" is the real remaining seam, and it is the set `chainFaceNames`' own comment names as the
+thing it exists to avoid widening.
+
+**The finding was right to raise and was raised in the right place.** At Story 8.1 the orchestrator
+asserted a nonexistent single authority as a *premise*; the standing rule from that ruling —
+*"route through the single authority X" is a CLAIM the plan gate VERIFIES, never a premise it
+accepts* — is what caught this one, at the gate rather than in the code. Right rule, right venue,
+wrong layer inside the finding.
+
+**(b) AC6 is vacuous as the fixture stands — CONFIRMED, and it must be fixed IN 8.4.**
+`fixtures/embedded-font/` draws **Latin** text while carrying a **Thai** face on purpose, so its
+digest **cannot observe the embedded face being used** and AC6 asserts nothing. The document must
+draw text the embedded face actually covers. Re-recording that fixture's digest is deliberate and
+correct **within the story that owns it**, and free before the tag. Left alone it would be the
+eleventh asserted-by-nothing path of this run — **and the only one shipped knowingly.**
+
+---
+
+### D-8.4.5 — sweep Epic 8's remaining `Covers:` lines now, because three-in-four is a rate
+
+Story 8.4's `Covers:` omitted **FR33** (AC2's own words), **AD-7** (AC3's subset tag), **AD-17**
+(AC5's entire subject) and **AD-21** (AC6's recorded digest) — **D-8.2.8(a)'s third occurrence in
+four stories**.
+
+**Not because per-story correction failed — the gate caught all three, so it works. Because a batch
+is cheaper.** Two stories remain; the sweep is one pass; and it removes from two future gates the
+attention they would otherwise spend on a known systematic omission. **Three in four is a rate, and a
+rate is worth one batch rather than three more instances.**
+
+Swept: **8.5** gains FR33, NFR1, AD-7. **8.6** gains AD-8, AD-16 and **DW-80** — named explicitly
+because **8.6's AC5 is DW-80's fix stated as an acceptance criterion**, and naming it is what stops
+the link depending on a reader noticing it. D-8.2.8(a)'s mechanical check stays at the gate. Extend
+the same sweep to Epic 15's stories when they are planned — the omission is an **authoring-time**
+property and Epic 15's stories are authored the same way.
