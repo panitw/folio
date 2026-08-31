@@ -574,6 +574,20 @@ func buildCellRectWithBackgroundField(elementID string, x, y, w, h geom.Length, 
 	return rect, nil
 }
 
+// tableDrawsColumns is THE ONE READING of "this table has something to
+// draw": a table extension carrying at least one column. A table declaring
+// `"columns": []` parses — parse_bands.go imposes no minimum — and
+// collectBandTableRuns below returns no rect source for it, so it reaches
+// no content-column item at all.
+//
+// It is a predicate rather than an inlined test because page_setup.go's
+// canvas window count must ask the same question of the same element, and
+// a second spelling of it there would put a header rect in the counted
+// column that the printed document has nothing in.
+func tableDrawsColumns(el template.Element) bool {
+	return el.Table.Set && len(el.Table.Value.Columns) > 0
+}
+
 // collectBandTableRuns walks one band's table elements and returns the
 // header-row label runs (through the SAME shape/position pipeline
 // every text element uses — D-16's forcing function: buildShapedPDFRuns
@@ -615,10 +629,10 @@ func collectBandTableRuns(
 		if !el.Table.Set {
 			continue // structurally unreachable (a table element always carries TableExt), defensive
 		}
-		tbl := el.Table.Value
-		if len(tbl.Columns) == 0 {
+		if !tableDrawsColumns(el) {
 			continue // nothing to lay out or draw
 		}
+		tbl := el.Table.Value
 		hasAltBackground := tbl.AltRowBackground.Set && !tbl.AltRowBackground.Null
 		altBackground := tbl.AltRowBackground.Value
 

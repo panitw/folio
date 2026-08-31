@@ -467,3 +467,236 @@ const canvasWindowCountConditionalTemplateJSON = `{
   "version": "1.2"
 }
 `
+
+// THE PLACEMENT PAIRS (Story 7.9's review pass). Each is one document and a
+// twin differing in EXACTLY the substring that decides whether the render
+// path places a content-column item for its second element — and in nothing
+// else, asserted mechanically in canvas_window_count_test.go, on
+// fixtures/keep-together/'s pattern. In each pair the second element sits at
+// y 1440, two windows down, so its placement is worth a whole sheet: the
+// document that places it occupies two windows and its twin one. "The canvas
+// answers one" is a fact many wrong implementations produce; "one HERE and
+// two THERE, for a pair differing in one substring" is not.
+//
+// They exist because canvasElementIsPlaced's first version exempted images
+// and tables UNCONDITIONALLY, on the claim that those two kinds are "always
+// placed". Neither is.
+
+// canvasWindowCountUnfilledImageTemplateJSON is an image element with NO FILE
+// CHOSEN — `"asset": null`, which createComponent gives every image the
+// designer drops, so this is the ordinary state of a newly placed image and
+// not an exotic one. collectImageRuns returns no run for it, and it declares
+// no box either, so the render path places nothing for it and the document
+// prints ONE page.
+//
+// The asset the twin below references is declared here too and simply goes
+// unreferenced (an orphan asset is preserved through parse and serialize by
+// design), so the pair differs in the asset VALUE alone.
+const canvasWindowCountUnfilledImageTemplateJSON = `{
+  "assets": {
+    "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAGElEQVR42mL6z8DAAMZMEOo/AwMg",
+        "AAD//zwUBf/NjsW5AAAAAElFTkSuQmCC"
+      ],
+      "mediaType": "image/png"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "image", "x": 0, "y": 1440, "width": 240, "height": 20, "asset": null}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// canvasWindowCountFilledImageTemplateJSON is that document with a FILE
+// CHOSEN and nothing else changed: the same image box now names the 3x2 PNG
+// declared in its assets map, collectImageRuns returns a run for it, and the
+// document prints TWO pages. It is the discriminator — without it, "the
+// canvas answers one for the unfilled image" would be satisfied by a canvas
+// that never counted an image at all.
+const canvasWindowCountFilledImageTemplateJSON = `{
+  "assets": {
+    "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078": {
+      "data": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAGElEQVR42mL6z8DAAMZMEOo/AwMg",
+        "AAD//zwUBf/NjsW5AAAAAElFTkSuQmCC"
+      ],
+      "mediaType": "image/png"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "image", "x": 0, "y": 1440, "width": 240, "height": 20, "asset": "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078"}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// canvasWindowCountFlatRectTemplateJSON is a STYLED rect with NO HEIGHT.
+// element_box.go's rule has two clauses, not one — a declared background or
+// border AND a rectangle with area — and this document satisfies only the
+// first. The loader accepts a zero rectangle (element_box.go's own comment
+// names it as the reachable case), nothing is drawn for it, and the document
+// prints ONE page. A canvas gating on the style clause alone counts a second
+// window here and calls the count exact.
+const canvasWindowCountFlatRectTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "rect", "x": 0, "y": 1440, "width": 240, "height": 0, "style": {"background": "#000000"}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// canvasWindowCountTallRectTemplateJSON is that document with a rectangle
+// that has area and nothing else changed: both clauses hold, the render path
+// draws the box, and the document prints TWO pages.
+const canvasWindowCountTallRectTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "rect", "x": 0, "y": 1440, "width": 240, "height": 20, "style": {"background": "#000000"}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// canvasWindowCountColumnlessTableTemplateJSON is a table declaring NO
+// COLUMNS. internal/template/parse_bands.go imposes no minimum, so
+// `"columns": []` loads; collectBandTableRuns skips such a table outright
+// ("nothing to lay out or draw"), so it reaches no content-column item and
+// the document prints ONE page.
+//
+// Both templates in this pair carry a content-band table with a non-empty
+// binding, so their projected count is NOT exact — cause (a) applies whatever
+// the columns say. That is why this pair is asserted in a test of its own
+// rather than as a row of the placement matrix, and why both are rendered
+// against `{"transactions": []}`: an absent binding is a render error.
+const canvasWindowCountColumnlessTableTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "table", "x": 0, "y": 1440, "as": "row", "bind": "transactions[]", "headerHeight": 16, "columns": [], "style": {"fontFamily": "body", "fontSize": 8}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// canvasWindowCountOneColumnTableTemplateJSON is that document with ONE
+// COLUMN and nothing else changed: the table now has a header row to draw, it
+// contributes its header rect to the content column, and the document prints
+// TWO pages.
+const canvasWindowCountOneColumnTableTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "table", "x": 0, "y": 1440, "as": "row", "bind": "transactions[]", "headerHeight": 16, "columns": [{"id": "e3", "label": "Date", "width": 80, "align": "left", "bind": "{{row.date}}"}], "style": {"fontFamily": "body", "fontSize": 8}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`

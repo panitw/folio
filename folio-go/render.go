@@ -412,6 +412,20 @@ type imageRunSource struct {
 	band int
 }
 
+// imageDrawsItsAsset is THE ONE READING of "this image element has a file
+// to draw": a PRESENT, non-null `asset`. An image whose asset is null is a
+// box the author has placed and not yet filled, and collectImageRuns below
+// returns no run for it — so it reaches no content-column item by that
+// route, exactly as an undeclared box reaches none by element_box.go's.
+//
+// It is a predicate rather than an inlined test because page_setup.go's
+// canvas window count must ask the same question, and a second spelling of
+// it there would be the drift element_box.go's elementDeclaresBox was
+// extracted to stop.
+func imageDrawsItsAsset(el template.Element) bool {
+	return el.Asset.Set && !el.Asset.Null
+}
+
 // collectImageRuns walks every band in authored order and returns one
 // imageRunSource per image element (AD-24, source AC3/AC4). It does not
 // decode or validate the referenced asset — that is
@@ -456,7 +470,7 @@ func collectImageRuns(doc *Template) ([]imageRunSource, error) {
 				// handled rather than assumed.
 				return nil, fmt.Errorf("folio: Render: element %s: image element has no asset", el.ID)
 			}
-			if el.Asset.Null {
+			if !imageDrawsItsAsset(el) {
 				// A placed but unfilled image box: the author has chosen
 				// no file yet. There is nothing to draw and nothing has
 				// gone wrong, so the run is simply absent and the render

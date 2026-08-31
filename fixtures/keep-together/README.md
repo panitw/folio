@@ -72,13 +72,14 @@ ruled line falls out of window one.
 pagination of this very document, rather than against a flag.
 
 Grouping is **not** among the causes that make `contentWindowCountIsExact` false, and it never
-becomes one. Those causes — a content-band table with a non-empty binding, a pagination that
-degraded, a text element whose font chain would not resolve, and an element whose visibility depends
-on data — are each things the canvas **genuinely cannot know without the data**. A declared group is
-not one of them: `keepTogetherTags` takes the template and nothing else, so getting grouping wrong
-is a defect to fix rather than a shortfall to disclose. What keeps that true for *this* fixture is
-`parse_bands.go`'s refusal of `keepTogether` on a **table**, which stops a group inheriting a
-table's data dependency.
+becomes one. Three of those causes are things the canvas **genuinely cannot know without the data**:
+a content-band table with a non-empty binding, a text element whose font chain would not resolve, and
+an element whose visibility depends on data. The fourth is not about data at all — a pagination that
+degraded is a shortfall the canvas **observed in its own answer**, and reports rather than hides. A
+declared group is neither kind: `keepTogetherTags` takes the template and nothing else, so getting
+grouping wrong is a defect to fix rather than a shortfall to disclose. What keeps that true for
+*this* fixture is `parse_bands.go`'s refusal of `keepTogether` on a **table**, which stops a group
+inheriting a table's data dependency.
 
 One thing the canvas does **not** place, and neither does the printed document: a `rect` or a `line`
 declaring neither a background nor a border. `e3` here declares `"background": "#000000"`, so it is

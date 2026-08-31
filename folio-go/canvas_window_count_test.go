@@ -202,6 +202,22 @@ func TestCanvasGroupedTwinDiffersOnlyByTheTags(t *testing.T) {
 		!strings.Contains(canvasWindowCountGroupedTemplateJSON, `"type": "rect", "x": 0, "y": 740, "width": 240, "height": 20, "keepTogether": "signature"`) {
 		t.Fatal("the group must span a text member and a non-text member; without both, tagging one canvas arm would satisfy this file")
 	}
+
+	// THE CONDITIONAL TWIN, held to the same mechanical equality. It is the
+	// grouped template with `visibleIf` added to its rect member and nothing
+	// else, and the test that uses it (TestConditionalVisibilityIsWhyTheCount
+	// IsNotAlwaysExact) reads its inexactness as evidence about CONDITIONAL
+	// VISIBILITY specifically. If the pair ever drifted into differing for a
+	// second reason — a bound table, an unresolvable font chain — that
+	// document would still be inexact and the test would still be green while
+	// measuring something else entirely.
+	const conditional = `"keepTogether": "signature", "visibleIf": "showRule", "style"`
+	if n := strings.Count(canvasWindowCountConditionalTemplateJSON, conditional); n != 1 {
+		t.Fatalf("the conditional template must carry exactly one visibleIf, on the group's rect member, found %d", n)
+	}
+	if plain := strings.Replace(canvasWindowCountConditionalTemplateJSON, conditional, `"keepTogether": "signature", "style"`, 1); plain != canvasWindowCountGroupedTemplateJSON {
+		t.Fatalf("the conditional template is not the grouped one plus a visibleIf — the pair differs for some SECOND reason, so its inexactness is no longer evidence about conditional visibility:\n%s", plain)
+	}
 }
 
 // assertCanvasAgreesWithTheRenderPath is Story 7.9's spine, and it is stated
@@ -325,6 +341,13 @@ func TestCanvasCountsOnlyWhatTheRenderActuallyPlaces(t *testing.T) {
 		{"untagged + unstyled", canvasWindowCountGroupedUngroupedUnstyledTemplateJSON, 2},
 		{"tagged + styled", canvasWindowCountGroupedTemplateJSON, 3},
 		{"tagged + unstyled", canvasWindowCountGroupedUnstyledTemplateJSON, 2},
+		// The kinds the first version of canvasElementIsPlaced exempted
+		// UNCONDITIONALLY, and the clause of the box rule it dropped. Each
+		// row's second element sits two windows down, so counting one the
+		// render path does not place is worth a whole sheet.
+		{"image with no file chosen", canvasWindowCountUnfilledImageTemplateJSON, 1},
+		{"styled rect with no height", canvasWindowCountFlatRectTemplateJSON, 1},
+		{"styled rect with a height", canvasWindowCountTallRectTemplateJSON, 2},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			tpl := parseWindowCountTemplate(t, row.source)
@@ -369,6 +392,99 @@ func TestCanvasCountsOnlyWhatTheRenderActuallyPlaces(t *testing.T) {
 	}
 	if stripped := strings.Replace(canvasWindowCountGroupedUngroupedTemplateJSON, `, "style": {"background": "#000000"}}`, "}", 1); stripped != canvasWindowCountGroupedUngroupedUnstyledTemplateJSON {
 		t.Fatalf("the untagged unstyled twin is not its own template minus the style:\n%s", stripped)
+	}
+	// THE IMAGE DISCRIMINATOR, and it cannot be a row above. renderPathWindows
+	// passes `nil` image runs, so the origins oracle every row is checked
+	// against has no opinion about an image at all; only the SHIPPING render
+	// can judge this pair. Without it, "the canvas answers 1 for an image with
+	// no file chosen" would be satisfied by a canvas that never counted an
+	// image at all.
+	filledTpl := parseWindowCountTemplate(t, canvasWindowCountFilledImageTemplateJSON)
+	filled := projectWithPaint(t, filledTpl)
+	assertWindowOriginsAreWellFormed(t, "image with a file chosen", filled)
+	if pages := renderPathPages(t, filledTpl, testFontSet(), `{}`); filled.ContentWindowCount != int64(pages) || pages != 2 {
+		t.Errorf("image with a file chosen: the canvas draws %d sheets and the document prints %d pages, want 2 and 2", filled.ContentWindowCount, pages)
+	}
+	unfilled := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountUnfilledImageTemplateJSON))
+	if filled.ContentWindowCount == unfilled.ContentWindowCount {
+		t.Fatalf("an image with a file and an image without one both occupy %d windows; this pair discriminates nothing", filled.ContentWindowCount)
+	}
+	// And the two pairs added here differ in exactly the substring that
+	// decides placement, the same mechanical check the styled pair gets.
+	const assetKey = `"5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078"`
+	if n := strings.Count(canvasWindowCountUnfilledImageTemplateJSON, `"asset": null`); n != 1 {
+		t.Fatalf("the unfilled image template must carry exactly one null asset, found %d", n)
+	}
+	if chosen := strings.Replace(canvasWindowCountUnfilledImageTemplateJSON, `"asset": null`, `"asset": `+assetKey, 1); chosen != canvasWindowCountFilledImageTemplateJSON {
+		t.Fatalf("the filled image twin is not the unfilled one with a file chosen — the pair differs for some SECOND reason:\n%s", chosen)
+	}
+	if n := strings.Count(canvasWindowCountFlatRectTemplateJSON, `"height": 0,`); n != 1 {
+		t.Fatalf("the flat rect template must declare exactly one zero height, found %d", n)
+	}
+	if raised := strings.Replace(canvasWindowCountFlatRectTemplateJSON, `"height": 0,`, `"height": 20,`, 1); raised != canvasWindowCountTallRectTemplateJSON {
+		t.Fatalf("the tall rect twin is not the flat one given a height — the pair differs for some SECOND reason:\n%s", raised)
+	}
+}
+
+// TestCanvasCountsOnlyTheTablesTheRenderDraws is the same defect one kind
+// over. canvasElementIsPlaced's first version returned true for every table
+// unconditionally, on the claim that a table is "always placed"; it is not.
+// internal/template/parse_bands.go imposes no minimum column count, so
+// `"columns": []` loads, and collectBandTableRuns skips such a table outright
+// — nothing to lay out or draw — so it reaches no content-column item and the
+// printed document is one page shorter than the canvas drew.
+//
+// IT IS A TEST OF ITS OWN rather than a row of the matrix above, for two
+// reasons that are both properties of tables and not of this pair. A table
+// needs a BINDING to render at all, and a content-band table with a non-empty
+// binding is registered cause (a), so neither document here can claim an
+// exact count — while every row of the matrix asserts exactness. And
+// renderPathWindows collects no table rects, so the origins oracle those rows
+// are checked against has no opinion about a table either. What is left is
+// the strongest oracle available anyway: the SHIPPING render, buildPageModel.
+func TestCanvasCountsOnlyTheTablesTheRenderDraws(t *testing.T) {
+	// Empty rather than absent: an absent binding is a render error, and this
+	// pair is about the COLUMNS, so the data must not be what discriminates.
+	const data = `{"transactions": []}`
+	for _, row := range []struct {
+		name      string
+		source    string
+		wantCount int64
+	}{
+		{"table with no columns", canvasWindowCountColumnlessTableTemplateJSON, 1},
+		{"table with one column", canvasWindowCountOneColumnTableTemplateJSON, 2},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			tpl := parseWindowCountTemplate(t, row.source)
+			projection := projectWithPaint(t, tpl)
+			assertWindowOriginsAreWellFormed(t, row.name, projection)
+			if pages := renderPathPages(t, tpl, testFontSet(), data); projection.ContentWindowCount != int64(pages) {
+				t.Errorf("the canvas draws %d sheets and the document prints %d pages", projection.ContentWindowCount, pages)
+			}
+			if projection.ContentWindowCount != row.wantCount {
+				t.Errorf("canvas count %d, want %d", projection.ContentWindowCount, row.wantCount)
+			}
+			// Cause (a) applies to both, and it is asserted so that "the
+			// canvas agrees with the render here" is never read as a claim
+			// that a bound table's count can be trusted: with rows in the
+			// data the render runs longer and the canvas cannot know it.
+			if projection.ContentWindowCountIsExact {
+				t.Errorf("contentWindowCountIsExact is true for a document whose content band carries a bound table")
+			}
+		})
+	}
+	// The discrimination, stated rather than left implicit.
+	columnless := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountColumnlessTableTemplateJSON))
+	oneColumn := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountOneColumnTableTemplateJSON))
+	if columnless.ContentWindowCount == oneColumn.ContentWindowCount {
+		t.Fatalf("a table with no columns and a table with one both occupy %d windows; this pair discriminates nothing", columnless.ContentWindowCount)
+	}
+	const column = `{"id": "e3", "label": "Date", "width": 80, "align": "left", "bind": "{{row.date}}"}`
+	if n := strings.Count(canvasWindowCountColumnlessTableTemplateJSON, `"columns": []`); n != 1 {
+		t.Fatalf("the columnless table template must declare exactly one empty column list, found %d", n)
+	}
+	if filled := strings.Replace(canvasWindowCountColumnlessTableTemplateJSON, `"columns": []`, `"columns": [`+column+`]`, 1); filled != canvasWindowCountOneColumnTableTemplateJSON {
+		t.Fatalf("the one-column twin is not the columnless template given a column — the pair differs for some SECOND reason:\n%s", filled)
 	}
 }
 

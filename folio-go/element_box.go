@@ -62,24 +62,29 @@ func collectElementBoxRects(bands []bandWithOrigin, visible visibilityVerdicts) 
 				// from the page model entirely, and no sibling moves.
 				continue
 			}
+			if !elementDeclaresBox(el) {
+				// BOTH halves of the rule, in one gate, so that the
+				// predicate page_setup.go calls IS the condition this loop
+				// applies rather than its first clause:
+				//
+				//   no declaration — the corpus's own path: no
+				//   style.background and no style.border, so no source and
+				//   no change to the emitted bytes;
+				//
+				//   no rectangle — a box needs one with area. parse_bands.go
+				//   makes width and height REQUIRED on every non-table
+				//   element, so the absent case is defensive; the reachable
+				//   one is a zero or negative rectangle, which the loader
+				//   accepts and which has no box to draw. Nothing is drawn
+				//   and the render is otherwise unaffected — the null-asset
+				//   image's precedent, where the element is present and the
+				//   paint is absent.
+				continue
+			}
 			style, hasBackground, hasBorder := elementBoxDeclaration(el)
-			if !hasBackground && !hasBorder {
-				// The corpus's own path: no declaration, no source, no
-				// change to the emitted bytes.
-				continue
-			}
-			w, h, sized := declaredBox(el)
-			if !sized {
-				// A box needs a rectangle with area. parse_bands.go makes
-				// width and height REQUIRED on every non-table element, so
-				// the absent case here is defensive; the reachable one is a
-				// zero or negative rectangle, which the loader accepts and
-				// which has no box to draw. Nothing is drawn and the render
-				// is otherwise unaffected — the null-asset image's
-				// precedent, where the element is present and the paint is
-				// absent.
-				continue
-			}
+			// sized is necessarily true here: elementDeclaresBox above is
+			// the conjunction, and declaredBox is a pure function of el.
+			w, h, _ := declaredBox(el)
 			rect, err := buildCellRectWithBackgroundField(
 				string(el.ID),
 				el.X, layout.PlaceInBand(b.origin, el.Y), w, h,
@@ -123,21 +128,47 @@ func elementBoxDeclaration(el template.Element) (style template.Style, hasBackgr
 	return s, s.Background.Set && !s.Background.Null, s.Border.Set && !s.Border.Null
 }
 
-// elementDeclaresBox is that rule as a predicate, for the SECOND caller
-// Story 7.9 gives it: page_setup.go's window count, which must contribute
-// a column item exactly where this file contributes a rect source and
-// nowhere else.
+// elementDeclaresBox is THE WHOLE PLACEMENT RULE for an element box, as a
+// predicate: a present, non-null background or border AND a declared
+// rectangle with area. collectElementBoxRects above gates on exactly this
+// call, so the two cannot drift; page_setup.go's window count is its
+// second caller.
 //
-// It exists so that "styled means background or border" is written down
-// once. The canvas used to place every non-text component whatever its
-// style, so an unstyled rect occupied a window the printed document does
-// not have — invisible while the two answers were both ungrouped, and a
-// confidently wrong count the moment a group made the canvas's partition
-// matter. A second copy of the rule in page_setup.go would have been the
-// same defect waiting on the next divergence.
+// BOTH CLAUSES ARE LOAD-BEARING, and the second one is why this predicate
+// is not just elementBoxDeclaration's verdict. A styled element whose
+// height is zero or negative is a rectangle the loader accepts and this
+// file draws nothing for, so a caller that read only the style clause
+// would place a column item the printed document has nothing in — the
+// same shape of error as the unstyled rect that made this predicate
+// necessary, one clause further down.
+//
+// WHAT IT DELIBERATELY LEAVES TO ITS CALLER, because neither is a
+// property of the element alone:
+//
+//	the VISIBILITY verdict — collectElementBoxRects consults
+//	isVisible before it asks this question at all, and the canvas has
+//	no verdicts, having no data (page_setup.go registers that as a
+//	cause of inexactness rather than resolving it);
+//
+//	the TABLE exclusion — a table never reaches this file (excluded by
+//	name above), so this predicate's answer for one is meaningless and
+//	page_setup.go's switch must not ask it.
+//
+// It exists so that "an element box is a declared style over a declared
+// rectangle" is written down once. The canvas used to place every
+// non-text component whatever its style, so an unstyled rect occupied a
+// window the printed document does not have — invisible while the two
+// answers were both ungrouped, and a confidently wrong count the moment a
+// group made the canvas's partition matter. A second copy of the rule in
+// page_setup.go would have been the same defect waiting on the next
+// divergence.
 func elementDeclaresBox(el template.Element) bool {
 	_, hasBackground, hasBorder := elementBoxDeclaration(el)
-	return hasBackground || hasBorder
+	if !hasBackground && !hasBorder {
+		return false
+	}
+	_, _, sized := declaredBox(el)
+	return sized
 }
 
 // elementStyle returns el's style block, and whether it has one at all.

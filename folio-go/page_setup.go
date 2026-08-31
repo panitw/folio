@@ -476,13 +476,15 @@ func canvasPageGeometry(t *Template) (layout.PageGeometry, error) {
 // Canvas returns immutable paint geometry. It intentionally exposes neither
 // template fields nor elements, canonical bytes, or browser measurements.
 //
-// ContentWindowCount is the documented FLOOR of one window here. Counting
-// windows needs shaped lines, which needs a FontSet this entry point does not
-// receive — and it does not need to: every projection that reaches the
-// browser is a CanvasWithTextPaint (wasm/engine.go's three seams), because
-// every mutating command's own Canvas(t) is discarded and recomputed there
-// with fonts. A floor of one is what a column with nothing placeable in it
-// occupies anyway; a silent zero would be a page count no document has.
+// ContentWindowCount is a documented ONE window here, declared NOT EXACT.
+// Counting windows needs shaped lines, which needs a FontSet this entry point
+// does not receive — and it does not need to: every projection that reaches
+// the browser is a CanvasWithTextPaint (wasm/engine.go's three seams),
+// because every mutating command's own Canvas(t) is discarded and recomputed
+// there with fonts. One window is what a column with nothing placeable in it
+// occupies anyway; a silent zero would be a page count no document has. The
+// number is not a claim of any kind — neither a floor nor a ceiling — which
+// is exactly what the flag below says.
 //
 // ContentWindowOrigins and ContentWindowCountIsExact are the SAME admission,
 // spelled in the two fields that carry it: one window beginning at column
@@ -650,22 +652,43 @@ func canvasContentBandHasBoundTable(t *Template) bool {
 // counts a column the document does not have.
 //
 // Three routes reach the render path's contentColumnItems, and the kinds
-// divide by which one they take (page_number.go):
+// divide by which ones they can take (page_number.go). NO KIND IS PLACED
+// UNCONDITIONALLY — each route has a condition, every one of them is a pure
+// property of the template, and this predicate is the conjunction the canvas
+// can therefore evaluate with no data at all:
 //
-//	table — its header rect, from collectBandTableRuns. Always placed, and
-//	        never through element_box.go, which excludes a table by name.
-//	image — its image run, from collectImageRuns. Always placed, whatever
-//	        the element's style says.
+//	table — its header rect, from collectBandTableRuns, and never through
+//	        element_box.go, which excludes a table by name. Placed while it
+//	        declares at least one COLUMN: `"columns": []` parses, and a
+//	        table with no columns has nothing to lay out or draw.
+//	image — its image run, from collectImageRuns, which is placed while the
+//	        element's `asset` is present and non-null; createComponent gives
+//	        every newly dropped image a NULL asset, so an unfilled box is
+//	        the designer's ordinary state and not an exotic one. An image
+//	        may ALSO declare a box, and a styled one reaches a column item
+//	        that way even with no file chosen — so the two routes are OR-ed
+//	        rather than ranked.
 //	rect,
 //	line  — element_box.go's rect source, and NOTHING ELSE. So these two are
 //	        placed exactly where they declare a box.
 //
-// The declaration test is element_box.go's own predicate, called rather than
-// restated: one authority, two callers, the same shape as keepTogetherTags.
+// Each condition is the render path's own predicate, called rather than
+// restated: one authority per route, two callers each, the same shape as
+// keepTogetherTags. elementDeclaresBox carries BOTH halves of the box rule —
+// the style declaration and the positive rectangle — so a styled element of
+// zero height is placed by neither side.
+//
+// WHAT THIS DOES NOT ANSWER, deliberately: whether the element is VISIBLE.
+// The render path consults its visibility verdicts before asking any of
+// these questions, and the canvas has no data to resolve a visibleIf with —
+// which is why conditional visibility is a registered cause of inexactness
+// rather than a clause here.
 func canvasElementIsPlaced(element template.Element) bool {
 	switch element.Type {
-	case template.ElementTable, template.ElementImage:
-		return true
+	case template.ElementTable:
+		return tableDrawsColumns(element)
+	case template.ElementImage:
+		return imageDrawsItsAsset(element) || elementDeclaresBox(element)
 	default:
 		return elementDeclaresBox(element)
 	}
@@ -690,9 +713,17 @@ func canvasElementIsPlaced(element template.Element) bool {
 // Content band only, like every other cause here: this flag is a claim about
 // the content column, and a conditional element in a repeated band changes
 // what that band draws, never how many windows the column occupies.
+//
+// PRESENT AND NON-NULL IS THE WHOLE TEST. It carried a third clause,
+// `Value != ""`, which was unreachable — the loader refuses an empty
+// expression outright ("visibleIf \"\" is not a valid expression: empty
+// expression") — and unreachable in the unsafe direction: had a document
+// ever carried one, that clause would have made this flag claim exactness
+// for an element whose placement the canvas cannot decide. A hazard test
+// does not need an escape hatch for a document the loader cannot produce.
 func canvasContentBandHasConditionalVisibility(t *Template) bool {
 	for _, element := range t.doc.Bands.Content.Elements {
-		if element.VisibleIf.Set && !element.VisibleIf.Null && element.VisibleIf.Value != "" {
+		if element.VisibleIf.Set && !element.VisibleIf.Null {
 			return true
 		}
 	}
@@ -701,8 +732,8 @@ func canvasContentBandHasConditionalVisibility(t *Template) bool {
 
 // addCanvasWindowCount is the THIRD paint producer, beside addCanvasTextPaint
 // and addCanvasImagePaint: it reports how many page-height windows the
-// content column occupies, WHERE EACH ONE BEGINS, and whether the number is a
-// floor.
+// content column occupies, WHERE EACH ONE BEGINS, and whether that number can
+// be trusted as the printed document's page count.
 //
 // It calls internal/layout's Paginate — the one function that decides how
 // many pages a column has — and never a second pagination of its own. What it
@@ -712,33 +743,38 @@ func canvasContentBandHasConditionalVisibility(t *Template) bool {
 // PageGeometry and ColumnItems, no data, no bindings and no template, because
 // receiving caller-derived extents is exactly what it is for.
 //
-// A COMPONENT CONTRIBUTES EXACTLY WHERE THE RENDER PATH PLACES ONE, and the
-// previous sentence here said the opposite ("every content component
-// contributes, styled or not"). It was wrong, and Story 7.9 is where it
-// started to matter: an unstyled rect reaches no column item on the render
-// path, because element_box.go builds a rect source only for an element that
-// declares a background or a border, so a canvas that counted it drew a
-// window the printed document does not have. That was invisible while the two
-// answers were both ungrouped and merely differed on origins; the moment a
-// declared group made the canvas's partition matter, it became a count that
-// was confidently wrong. The rule is not restated here — this arm calls
-// element_box.go's own elementDeclaresBox.
+// A NON-TEXT COMPONENT CONTRIBUTES EXACTLY WHERE THE RENDER PATH PLACES ONE
+// — canvasElementIsPlaced above is that whole rule, calling each route's own
+// predicate rather than restating it — and the sentence here used to say the
+// opposite ("every content component contributes, styled or not"). It was
+// wrong, and Story 7.9 is where it started to matter: an unstyled rect
+// reaches no column item on the render path, so a canvas that counted it drew
+// a window the printed document does not have. That was invisible while the
+// two answers were both ungrouped and merely differed on origins; the moment
+// a declared group made the canvas's partition matter, it became a count that
+// was confidently wrong.
 //
-// THE PREDICATE GOVERNS ONLY THE KINDS element_box.go GOVERNS, which is why
-// this is a switch and not one condition. A TABLE never reaches
-// collectElementBoxRects at all (it is excluded by name; its chrome is drawn
-// per cell) and always contributes its header rect on the render path. An
-// IMAGE reaches the render path's column items through the separate image-run
-// arm, styled or not. Only a rect or a line depends on the box declaration,
-// because a box is the only route those two kinds have.
+// ⚠ THE SENTENCE IS QUALIFIED FOR A REASON, AND THE QUALIFIER IS TEXT. It
+// holds for the kinds this arm carries and NOT in the other direction for
+// text, which is why "non-text" is not decoration. Text contributes one item
+// per SHAPED LINE and never its box, so a text element that shapes no lines
+// at all — an unset, null or empty value, or a font chain that cannot be
+// resolved — contributes nothing here, exactly as the render path treats a
+// value that binds to empty. But collectElementBoxRects accepts TEXT as well
+// (element_box.go's four eligible kinds are text, image, rect and line), so a
+// content-band text element declaring a background or a border ALSO
+// contributes a full-declared-box column item on the render path, and the
+// canvas contributes only its shaped lines. A short value in a tall styled
+// box therefore occupies more column on the render path than on the canvas.
+// Measured: a styled text element at y 700 with a declared height of 200 and
+// a one-line value gives a canvas count of 1 against a real render of 2.
 //
-// Text is different again, and stated so the sentence above is not read wider
-// than it is meant: text contributes one item per SHAPED LINE and never its
-// box, so a text element that shapes no lines at all — an unset, null or
-// empty value, or a font chain that cannot be resolved — contributes nothing,
-// exactly as the render path treats a value that binds to empty. Its box is
-// still projected as a component, so such an element placed windows down is
-// one of the reasons ContentWindowCountIsExact exists.
+// That divergence is LEFT AS IT IS, deliberately and out of this arm's
+// subject: closing it means adding a second canvas item source for a text
+// element — its box, beside its lines — which is new placement rather than
+// the removal of placement this arm performs, and it is not what RULING B
+// asked for. It is recorded here so the invariant above is never read wider
+// than it holds.
 func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canvasColumnExtents) error {
 	g, err := canvasPageGeometry(t)
 	if err != nil {
@@ -816,7 +852,7 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 		//
 		// The origins degrade with the count they describe — one window
 		// beginning at the top of the column — and the flag says the number
-		// is a floor, because a column Paginate could not place is
+		// is NOT EXACT, because a column Paginate could not place is
 		// emphatically not a prediction of the document's length.
 		projection.ContentWindowCount = 1
 		projection.ContentWindowOrigins = []int64{0}
@@ -999,7 +1035,7 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 				// downstream of the column could tell — an element with
 				// nothing to say and an element that could not be shaped
 				// contribute the identical nothing — so the fact is recorded
-				// here, where it is known, and reported as the floor flag.
+				// here, where it is known, and reported as the honesty flag.
 				// Only an element that actually HAS a value loses anything:
 				// an unset or empty one would have contributed no lines with
 				// a perfectly good chain.

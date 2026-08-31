@@ -2,15 +2,57 @@
 title: 'Story 7.9: The canvas tells the truth about the window count'
 type: 'bugfix'
 created: '2026-08-31'
-status: 'ready-for-dev'
-baseline_revision: '26bfd49ef68e212ef041c8449f3ad7e2bfc3cc35'
+status: 'done'
+baseline_revision: 'ddd6a3ffdcb3f39bc4a91bc4210bd5f5b4e6b94c'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      A content-band TEXT element declaring a background or border contributes a
+      full declared-box column item on the render path, while the canvas
+      contributes only its shaped lines, so the canvas can UNDER-count.
+    evidence: |-
+      collectElementBoxRects is eligible for four kinds including text
+      (folio-go/element_box.go's own header lists text, image, rect and line),
+      and buildPageModel folds its output into the slice contentColumnItems
+      turns into content-column items. Measured: a content band of a text at
+      y 0 plus a styled text element at y 700 with height 200 and a short
+      value projects canvas count 1, origins [0], exact TRUE against a real
+      buildPageModel render of 2 pages. Every text element in every canvas
+      window-count fixture is unstyled, so nothing reddens.
+      NOT fixed here: closing it adds a NEW canvas column-item source rather
+      than removing a spurious one, which is outside RULING B's stated subject
+      (the unstyled NON-TEXT element) and is the kind of growth the spec's
+      `story materially larger than the ruling implies` Block If guards. The
+      overstated comment that claimed the invariant unconditionally WAS fixed.
+    location: >-
+      folio-go/page_setup.go (addCanvasWindowCount's text arm)
+    severity: medium
+  - summary: >-
+      folio-go/diagnostic.go still restates AD-14 as "over-tall rows (FR25, not
+      yet built)"; Story 7.7 built them and Story 7.9 widened the spine clause
+      to cover author-declared keep-together groups.
+    evidence: |-
+      The spine sentence this comment paraphrases now reads "Rows and
+      author-declared keep-together groups too tall for one content window
+      (FR25, FR51)". The "not yet built" half has been false since ed485eb.
+    location: >-
+      folio-go/diagnostic.go:344
+    severity: low
+  - summary: >-
+      folio-go/internal/diag/diag.go cites ARCHITECTURE-SPINE.md by line number
+      and that line falls inside a mermaid ER diagram.
+    evidence: |-
+      Already stale before this story touched anything; the AD-14 rewrap
+      deliberately held the file at 722 lines so the citation is no worse. The
+      spec's Design Notes direct that it be carried, not repaired here.
+    location: >-
+      folio-go/internal/diag/diag.go:10
+    severity: low
 ---
 
 <intent-contract>
@@ -353,70 +395,156 @@ the dispatch were re-measured and are corrected at the end of this section.
 
 ## Tasks & Acceptance
 
-**Execution:**
+⚠ **This section was re-derived on 2026-08-31 from the AMENDED intent contract (rulings A / A2 / B / C)
+and from the retained commit `6a31a7f`. See `## Spec Change Log`.** The contract itself is unchanged
+and remains the sole authority; this section had been left describing only the pre-halt work.
 
-- `folio-go/page_setup.go` -- build the keep-together index once from the `*Template` already in scope
-  and tag **both** column-item literals with it: the non-text arm at `:647-657` and the text-line arm at
-  `:948-953` inside `addCanvasTextPaint`. Use the existing `keepTogetherGroup` / `orKeepTogether`
-  methods; construct no `layout.ItemGroup` literal in this file (the AST tripwire). -- This is the whole
-  defect: untagged items are why count and origins are wrong, and the tags are the only missing input.
-- `folio-go/canvas_window_count_test.go` -- **fix the vacuous oracle**: `renderPathWindows` at `:46` must
-  pass the real `keepTogetherTags(tpl)` instead of `nil`, and must return the window **origins** as well
-  as the count, so an origins oracle exists at all. -- An oracle that disables grouping on the render
-  side cannot detect a grouping divergence; this is the absence that let the defect ship.
-- `folio-go/canvas_window_count_template.go` -- add a grouped template const in the established idiom
-  (body element, two-member group at y 700 / y 740, untagged tail at y 1440) **and its untagged twin**,
-  differing only by the tags. -- The shipped fixture is an origins divergence; this const supplies the
-  **count** divergence (3 vs 2), and the twin is what makes "differs only by the tags" checkable. This
-  precedes the test task below, which consumes both consts.
-- `folio-go/canvas_window_count_test.go` -- add the **count-and-origins equality** tests for a grouped
-  document, asserting against a real render, plus the `no-new-floor-cause` assertion and the ungrouped-twin
-  control. Use the grouped const for the count arm and `fixtures/keep-together/` for the origins arm.
-  Red-proof each by reverting the tagging in `page_setup.go` and confirming they fail. -- The AC is an
-  equality with the render path, so the test must observe both sides rather than the flag.
-- `folio-go/component_commands.go` -- in `duplicateComponent`, clear the cloned tag immediately after
-  `:1743` with `clone.KeepTogether = template.Presence[string]{}` (the zero `Presence`, **not** an explicit
-  null). -- DW-48/D-7.7.10: a duplicate must not silently join a group the designer offers no way to see
-  or clear.
-- `folio-go/component_commands_test.go` -- assert the drop directly: duplicate a **content-band** element
-  carrying `keepTogether`, assert the copy's `KeepTogether` is absent (`Set == false`) **and the original
-  element is unchanged**. Read the template's `Element.KeepTogether` (or the serialized bytes), not the
-  `CanvasProjection`, which carries no tag field. -- D-7.7.10 requires the drop be asserted, not
-  incidental; nothing today asserts any field-copy behaviour.
-- `fixtures/keep-together/README.md` -- rewrite the `## What it does not cover` section at `:60-64`,
-  which becomes false when this lands, to state that the canvas now previews grouping and that its window
-  count and origins agree with the render path. **Leave the recorded sha256 string untouched.** -- A
-  fixture README that contradicts HEAD is the same defect DW-49(a) exists to fix.
+### Already delivered at `6a31a7f` — RE-VERIFY, do not redo and do not revert
+
+The halt was on the spec's own `Block If`; the commit was retained, and it is correct for its subject.
+Build **forward** on it. Confirm each of these still holds, then leave it alone:
+
+- `folio-go/page_setup.go` — both column-item literals carry the document's author-declared groups,
+  taken from one `keepTogetherTags(t)` index (the non-text arm and the per-shaped-line text arm inside
+  `addCanvasTextPaint`). No `layout.ItemGroup` literal is constructed in `page_setup.go`.
+- `folio-go/canvas_window_count_test.go` — `renderPathWindows` passes the real `keepTogetherTags(tpl)`
+  as `contentColumnItems`' fifth argument instead of `nil`, and returns **origins as well as the
+  count**. The equality, ungrouped-twin and no-fourth-cause tests exist.
+- `folio-go/canvas_window_count_template.go` — the grouped count discriminator and its untagged twin.
+- `folio-go/component_commands.go` — `duplicateComponent` clears `clone.KeepTogether` to the zero
+  `Presence` (DW-48 / D-7.7.10).
+- `folio-go/component_commands_test.go` — the drop is asserted, along with the untouched original.
+- `fixtures/keep-together/README.md`, `ARCHITECTURE-SPINE.md` — see the two tasks below, which
+  **amend** what landed rather than starting it.
+
+### This dispatch's work — the three rulings
+
+**RULING A2 — rename the flag and INVERT its sense.**
+
+- `folio-go/page_setup.go` -- rename the `CanvasProjection` field `ContentWindowCountIsFloor` to
+  **`ContentWindowCountIsExact`** (json tag `contentWindowCountIsExact`) and **invert its sense at
+  every write and read site**: it is `true` only when the canvas's count is trustworthy, and `false`
+  whenever any registered cause applies. There is **one Go field, no enum**. The pre-existing write
+  sites of `true` become writes of `false`, and the default/exact path must now set `true`
+  explicitly. -- The zero value must be the safe claim: `false` reads *"do not trust this count"*, so
+  a projection path that forgets to set it degrades to the honest claim instead of claiming exactness.
+- `folio-go/page_setup.go` -- rewrite the field's doc comment: it now enumerates the **causes that make
+  the count untrustworthy**, in **both** directions, and it must carry the sentence that **direction
+  was deliberately dropped and lives with the causes if anyone ever needs it**. Without that line a
+  future reader restores the floor claim mistaking it for lost fidelity. -- D-7.9.6 requires the note
+  be written where the field is declared; the projection carries only the boolean, not a cause set.
+- `folio-go/page_setup.go` -- register **conditional visibility** as a cause, named for what it is:
+  *an element whose visibility depends on data*. The register entry must state that it applies to an
+  **ungrouped** `visibleIf` element exactly as much as to a grouped one, that AD-24 makes a hidden
+  element absent **with no gap**, and that it has been **undisclosed since Story 7.5** shipped the
+  count. **Grouping is how it was found, not what caused it.** -- RULING A: `page_setup.go` only
+  projects `VisibleIf` as a string; nothing evaluates it, so the canvas cannot resolve it without data.
+- `folio-go/page_setup.go:503` -- the shapeless `Canvas` entry point hardcoded the old flag `true`
+  (*"this is a floor"*); under the inverted sense it must hardcode `ContentWindowCountIsExact: false`.
+  ⚠ A mechanical rename that leaves this literal as `true` silently converts a documented floor into a
+  claim of exactness. -- This is the single highest-risk site of the inversion.
+- `folio-designer/src/engine-protocol.ts` -- rename the mirrored field on the canvas projection type,
+  in `hasOnly`'s **exact key list** (`:207`) and in the `typeof … !== 'boolean'` guard (`:222`), and
+  update the comment at `:144`. ⚠ `hasOnly` is an exact-key check: a Go-side rename without this one
+  makes `parseInbound` discard the **whole snapshot** with no attributable error.
+- `folio-designer/src/sheet-stack.ts` -- rename the derived `isFloor` field (`:69`, `:133`) to match
+  the inverted sense, and `folio-designer/src/App.tsx` -- invert the condition at `:1358`/`:1360` and
+  **rewrite the one UI string** `canvasFloorClaim` (`:1352`). Its current text, *"prints more pages
+  than are shown here"*, is direction-committed and is now false for a ceiling cause. -- One UI string,
+  and nothing else in the designer changes; grouping **authoring** stays out of scope.
+- `folio-designer/src/*.test.ts(x)` -- update the fixtures and assertions that name the old key
+  (`engine-protocol.test.ts`, `sheet-stack.test.ts`, `App.test.tsx`, `DataPanel.test.tsx`).
+- **MUTATION-PROVE THE FLIP IN BOTH DIRECTIONS — mandatory, and this is the acceptance for the
+  inversion.** (i) Force the field `false` on a document that *should* be exact and confirm a test
+  reddens; (ii) force it `true` on a document carrying a registered cause and confirm a test reddens.
+  Record both mutants and their verbatim failure output. -- Inverting a boolean flips every call site
+  and assertion, and **the corpus will not catch a backwards one, because most documents are exact**.
+
+**RULING B — fix the unstyled non-text element; do NOT disclose it.**
+
+- `folio-go/element_box.go` -- extract the styled test currently inlined at `:69-74`
+  (`style.Background.Set && !style.Background.Null`, `style.Border.Set && !style.Border.Null`) into
+  **one named predicate in this file**, and have `collectElementBoxRects` call it. -- **One authority,
+  two callers**, the same shape as `keepTogetherTags`. A second copy of *"styled means background or
+  border"* is the drift this project keeps paying for; **do not restate the rule in `page_setup.go`**.
+- `folio-go/page_setup.go` -- make the canvas's non-text arm contribute a column item only where the
+  **render path** would, calling that predicate rather than restating it, and correct the arm's comment
+  (which currently asserts *"EVERY CONTENT COMPONENT CONTRIBUTES, STYLED OR NOT"*). ⚠ **Measure before
+  gating: the predicate governs the kinds `element_box.go` itself governs.** `collectElementBoxRects`
+  skips `template.ElementTable` outright, and an unstyled **image** still reaches the render path's
+  column items through the separate image-run arm (`page_number.go:115`). Gating all three kinds on
+  the styled test would drop tables and unstyled images the render path does place. The acceptance is
+  the measured four-row table below, not any particular placement of the predicate.
+- **Verify ALL FOUR rows, canvas against a REAL render** (`buildPageModel`), not only the regressed
+  one — the two untagged rows are correct today and changing what the canvas places can move them:
+
+  | document | canvas must be | real render |
+  |---|---|---|
+  | untagged + styled | 2, origins `[0 740000]` | 2 |
+  | untagged + unstyled | 2, origins `[0 740000]` | 2 |
+  | tagged + styled | 3, origins `[0 700000 1440000]` | 3 |
+  | tagged + unstyled | **2** | 2 |
+
+**RULING C and the two documents.**
+
+- `fixtures/keep-together/README.md` -- the `## What it does not cover` section is **false at
+  `6a31a7f`** and must be rewritten to describe HEAD: the canvas now previews grouping, and its window
+  count and origins agree with the render path. **Leave the recorded sha256 digest string untouched** —
+  it is a declared `readme` digest site in `goldenDigestRecord` and the completeness half of
+  `TestGoldenDigestAgreesAtEveryDeclaredSite` requires the string to stay present.
 - `_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md` --
-  widen AD-14's over-tall carve-out at `:319` from `Over-tall rows (FR25)` to cover rows **and
-  author-declared keep-together groups**, citing FR51 alongside FR25, describing what the engine does
-  **today**. Prefer a rewrap that leaves the file's total line count unchanged. Add **no** discriminator
-  clause. -- DW-49(a)/D-7.7.14: the sentence has been stale since `ed485eb`, and half (b) rides Story 7.10.
+  widen AD-14's over-tall carve-out from **rows** to rows **and author-declared keep-together groups**,
+  citing FR51 alongside FR25, **describing what the engine does today**. Add **no** discriminator
+  clause — that describes behaviour which does not exist yet and rides Story 7.10. Prefer a rewrap that
+  leaves the file's total line count unchanged. -- DW-49(a) / D-7.7.14 half (a).
 
 **Acceptance Criteria:**
 
 - Given a template declaring a keep-together group, when the canvas projection is built, then its
   `ContentWindowCount` equals the page count of a **real render** of the same template, and its
   `ContentWindowOrigins` equals the render path's `plan.Pages[i].Shift` sequence computed with the real
-  `keepTogetherTags` — asserted directly, not via `ContentWindowCountIsFloor`.
-- Given the same template, when `ContentWindowCountIsFloor` is computed, then it is **false**, and
-  `page_setup.go:359-375`'s enumeration of exactly three causes is still accurate — no fourth cause was
-  added anywhere.
+  `keepTogetherTags` — asserted directly against the render, **not** via the honesty flag.
+- Given each of the four documents in the table above, when its canvas projection is compared to a real
+  `buildPageModel` render, then the counts agree on **all four rows**.
+- Given a well-formed grouped document with no registered cause, when the projection is built, then
+  `ContentWindowCountIsExact` is **true**; and given a document carrying a registered cause, then it is
+  **false**. No `ContentWindowCountIsFloor` identifier survives anywhere in Go or TypeScript.
+- Given the honesty flag is forced to the wrong value in either direction, when the suite runs, then it
+  **reddens** — both mutations are recorded with their verbatim output.
+- Given the `CanvasProjection` field declaration, when it is read, then its comment states that
+  direction was **deliberately dropped** and lives with the causes.
 - Given an element of type `table` carrying `keepTogether` in either its tag or its explicit-null form,
   when the document is parsed, then it is refused with a located load error, and
   `TestKeepTogetherIsNotValidOnATable` is green and unmodified.
 - Given a content-band element carrying a `keepTogether` tag, when `duplicateComponent` runs, then the
-  copy's `KeepTogether` is absent and the original element is byte-for-byte unchanged.
-- Given a template declaring no groups, when it is rendered and its canvas projected, then its bytes and
-  every projected canvas value are identical to baseline, and all 21 `goldenDigestRecord` digests are
-  unchanged.
-- Given the tagging is reverted in `page_setup.go`, when the new equality tests run, then they **fail** —
-  each new assertion is red-proved rather than assumed to bite.
+  copy's `KeepTogether` is absent (zero `Presence`, **not** an explicit null) and the original element
+  is unchanged.
+- Given a template declaring no groups, when it is rendered and its canvas projected, then its bytes are
+  identical to baseline and all **22** `goldenDigestRecord` digests are unchanged.
+- Given the tagging is reverted in `page_setup.go`, or the oracle's fifth argument is reverted to `nil`,
+  when the equality tests run, then they **fail** — each is red-proved rather than assumed to bite.
 - Given `folio-go/internal/layout/`, when the diff is inspected, then it contains **zero** paths under it.
 
 ## Spec Change Log
 
-_Empty until the first `bad_spec` loopback._
+### 2026-08-31 — `## Tasks & Acceptance` and `## Verification` re-derived from the amended contract
+
+Not a `bad_spec` loopback. The `<intent-contract>` was amended twice after this spec was planned
+(commits `b6b21be` and `ddd6a3f`) to carry rulings D-7.9.1 … D-7.9.7, but the **derived** sections
+below the contract were left describing only the pre-halt work. Three contradictions resulted, all of
+which would have misdirected an implementer reading the spec as its own source of truth:
+
+1. `## Tasks & Acceptance` listed only the tagging / oracle / duplicate / documents work — every item
+   of which **already shipped at `6a31a7f`** — and named none of rulings A, A2 or B.
+2. An acceptance criterion required `ContentWindowCountIsFloor` to be computed and `false`. RULING A2
+   renames that field and **inverts** it, so the criterion had become unsatisfiable by construction.
+3. `## Verification` said **21** `goldenDigestRecord` digests. Dispatch 2 measured **22** — Story 8.0
+   added `thai-stacked-marks` at `26bfd49`. It also omitted `-count=1` on the `lint` module, whose
+   cached green had been hiding two reds (D-7.9.5).
+
+The contract itself was **not** edited. Both sections were re-derived from it, from the retained
+commit, and from Dispatch 2's measurements; the four-row acceptance table and the both-directions flip
+mutation are transcribed from the rulings rather than re-derived.
 
 ## Review Triage Log
 
@@ -526,6 +654,72 @@ a speculative duplicate-`Shift` origin-protocol failure (not demonstrated — th
 held on every document measured, and grouping never set the floor); and DW-46/DW-48 still
 reading `OPEN` in `deferred-work.md` (that register is not this workflow's file).
 
+### 2026-08-31 — Review pass (Dispatch 3)
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 10: (high 1, medium 4, low 5)
+- defer: 3: (high 0, medium 1, low 2)
+- reject: 6: (high 0, medium 0, low 6)
+- addressed_findings:
+  - `[high]` `[patch]` `canvasElementIsPlaced`'s image arm returned `true` unconditionally while
+    `collectImageRuns` (`render.go:459-467`) skips a **null-asset** image — and `createComponent`
+    (`component_commands.go:1486-1494`) gives EVERY newly dropped image exactly that state. Measured:
+    canvas 2, origins `[0 1440000]`, exact **true** against a real render of **1** page. Fixed by
+    extracting `imageDrawsItsAsset` in `render.go` and calling it (OR-ed with `elementDeclaresBox`,
+    since a null-asset image that declares a box still reaches an element-box rect source). New matrix
+    row plus a filled-asset discriminator; red-proved.
+  - `[medium]` `[patch]` the same function's table arm ignored `collectBandTableRuns`' zero-column skip
+    (`table_render.go:615-621`); `"columns": []` parses. Fixed by extracting `tableDrawsColumns` and
+    calling it; new `TestCanvasCountsOnlyTheTablesTheRenderDraws`; red-proved.
+  - `[medium]` `[patch]` the extracted "one authority" carried only the style clause of a two-clause
+    render condition — `collectElementBoxRects` also requires `declaredBox`, which demands a strictly
+    positive rectangle the loader accepts as zero or negative. Measured: a styled rect with
+    `"height": 0` gave canvas 2 against a real render of 1. The positivity test was folded into
+    `elementDeclaresBox` so the shared predicate is the whole rule; red-proved.
+  - `[medium]` `[patch]` nothing tied the renamed wire key across the Go/TypeScript seam: Go tests read
+    the struct field and the TS tests hand-author the string, so both sides could agree with themselves
+    while disagreeing with each other, and `hasOnly` is an exact-key check whose failure mode is a blank
+    canvas with nothing to attribute it to. Added `canvas_projection_wire_test.go`, which asserts the
+    marshalled key set against a recorded literal AND extracts `isCanvas`'s own `hasOnly` list from
+    `engine-protocol.ts` and asserts it against the same record. Red-proved in BOTH directions.
+  - `[medium]` `[patch]` `canvasElementIsPlaced` and `elementDeclaresBox` both carried doc comments
+    stating parity claims that were false ("Always placed, whatever the element's style says";
+    "exactly where this file contributes a rect source and nowhere else"). Rewritten to the real
+    per-kind conditions and to name what the predicate leaves to its caller.
+  - `[low]` `[patch]` `addCanvasWindowCount` asserted "A COMPONENT CONTRIBUTES EXACTLY WHERE THE RENDER
+    PATH PLACES ONE" unconditionally; it is false for a styled TEXT element in the opposite direction.
+    The claim is now scoped to non-text components with the exception written out. Behaviour
+    deliberately unchanged — see `deferred:`.
+  - `[low]` `[patch]` `canvasContentBandHasConditionalVisibility`'s `VisibleIf.Value != ""` clause was
+    unreachable (an empty `visibleIf` is refused at load) and unreachable **in the unsafe direction** —
+    it would have claimed exactness. Dropped, with the reason recorded.
+  - `[low]` `[patch]` stale "floor" prose survived at the two most-read sites and at two further
+    comments, though the rename's whole point is that the word is wrong. Reworded to the inverted flag.
+  - `[low]` `[patch]` the conditional fixture escaped the mechanical twin-equality discipline the file
+    establishes for its other twins, so it could drift into differing for a second reason. Assertion
+    added; red-proved by injecting a second difference.
+  - `[low]` `[patch]` `fixtures/keep-together/README.md` called all the causes "things the canvas
+    genuinely cannot know without the data", untrue of the Paginate-degradation cause, which the canvas
+    observed in its own answer. Corrected; the recorded sha256 string untouched.
+
+**Deferred (3)** — written to `deferred:`: the styled-TEXT box divergence (real, measured canvas 1 vs
+render 2, but closing it ADDS a canvas item source and is outside RULING B's subject);
+`diagnostic.go:344`'s "FR25, not yet built"; `internal/diag/diag.go:10`'s stale line citation.
+
+**Rejected (6, all `[low]`)**, with the authority each was tested against:
+- *AD-14's superseded wording still quoted in `internal/layout/paginate.go` and
+  `paginate_group_test.go`* — the contract's `Never` fences **ZERO paths** under `internal/layout/`.
+- *Cause (d) over-discloses: any content-band `visibleIf` sets the flag even where the element could
+  not move a boundary* — a real observation, but D-7.9.6 settles the direction: the flag must fail
+  toward the honest claim, so conservative over-disclosure is the intended behaviour, not a defect.
+- *"The defect cause (d) discloses is not registered anywhere"* — it **is** registered, as cause (d) at
+  the field's declaration, and RULING A directs that it be registered rather than fixed.
+- *`sprint-status.yaml` still reads `ready-for-dev`* — that register is not this workflow's file.
+- *"The mandatory mutation evidence is absent"* — it belongs in `## Auto Run Result`, not the diff, and
+  it was performed; it is recorded below.
+- *Two comments rewrapped raggedly* — cosmetic; `gofmt -l folio-go` is clean.
+
 ## Design Notes
 
 **Why one fix closes both halves.** A wrong origin is genuinely a different failure from a wrong count —
@@ -582,14 +776,34 @@ deferred register.
   no-op — that control is what proves the four legs were not no-ops. Say which legs ran.
   `TestShippedFacesReproduceFromUpstream` fails/skips without `fontTools`; environmental, not a regression.
 - `cd folio-go && go test -tags=matrix -count=1 -run TestCrossTargetByteIdentity -v .` -- expected: pass.
-- `cd lint && go test ./...` -- expected: pass.
+- `cd lint && go test -count=1 ./...` -- ⚠ **`-count=1` is MANDATORY here.** The `rules` package scans
+  `folio-go` by walking the directory and Go's test cache does not track `ReadDir` results, so a new
+  file never invalidates it: this command was returning a **cached** four-`ok` while two tests were RED
+  (D-7.9.5). Expected: **4 packages `ok`**. A cached green is no measurement at all.
 - `cd folio-designer && npm run typecheck && npm run lint && npm test && npm run test:e2e:compile` --
   expected: typecheck clean; lint with **exactly 4** pre-existing `only-export-components` warnings (a
   fifth is a regression); vitest **284 tests across 34 files** as the arithmetic HEAD baseline — report
   the measured numbers, and note that no in-tree guard asserts them; e2e compile-only (D-000.4).
-- `shasum -a 256` over all **21** `expected.pdf` paths named in `goldenDigestRecord`
+- `shasum -a 256` over all **22** `expected.pdf` paths named in `goldenDigestRecord`
   (`byte_neutrality_test.go:92-487`) -- expected: **every digest identical to baseline `c3df718`**. Any
   movement is the `golden digest moved` HALT, not a re-record.
+
+**Mandatory proofs for this dispatch** (report each verbatim; a prose "red-proved" line is not evidence):
+
+- **The honesty-flag flip, BOTH directions.** (i) A document that should be exact reddens when
+  `ContentWindowCountIsExact` is forced `false`; (ii) a document carrying a registered cause reddens
+  when it is forced `true`. Neither is optional, and the corpus will not catch a backwards flip on its
+  own because most documents are exact.
+- **The four-row table**, canvas against a real `buildPageModel` render — all four rows, not only the
+  regressed one.
+- **The oracle revert.** Restore `renderPathWindows`' fifth argument to `nil` with production left
+  correct; it must redden. This proves the repair is still non-vacuous.
+- **Each column-item arm in isolation.** Neutralise the non-text arm's tagging alone, then the text
+  arm's alone; each must redden on its own. A combined mutant hides whether the second site is covered.
+- **The duplicate drop.** Remove the `clone.KeepTogether` clear; it must redden.
+- ⚠ **Assert the mutation landed before concluding anything from it.** Count the occurrences of the
+  substring being replaced — a doc comment carrying the same expression has silently absorbed a
+  mutation in this repo before, which reads as "the test is vacuous" when it is not.
 
 **Manual checks:**
 
@@ -733,3 +947,106 @@ restored and `cmp`-verified byte-identical afterwards:
   `:716`) and its three-cause doc comment is unmodified — but that comment is now *incomplete*
   rather than wrong, which is the substance of the ruling being requested.
 
+### Dispatch 3 — 2026-08-31, implement / review / triage (the three rulings)
+
+Status: `done`
+Blocking condition: none
+Baseline revision: `ddd6a3ffdcb3f39bc4a91bc4210bd5f5b4e6b94c` (`main`)
+Commits: `36e4718c31207b7bc7f16b5702d01fddf133c5c9` (implementation) and the finalize commit carrying
+the review patches and this record. **`6a31a7f` was retained and built forward on, never reverted.**
+
+**Summary.** The halt is resolved. RULING A2 renames `ContentWindowCountIsFloor` to
+`ContentWindowCountIsExact` and **inverts its sense**, so the zero value `false` reads *"do not trust
+this count"* and a forgotten set degrades to the honest claim; one Go field, its TypeScript mirror and
+one UI string, no enum. RULING A registers **conditional visibility** as a cause named for what it is,
+recorded as applying to an ungrouped `visibleIf` element exactly as much as a grouped one and as
+undisclosed since Story 7.5. RULING B fixes the unstyled non-text element rather than disclosing it, by
+giving `element_box.go`'s placement rule a second caller instead of a second copy. RULING C's widened
+subject is carried into the fixture README and AD-14.
+
+**Files changed** (14 in `36e4718`, 8 in finalize; no path under `folio-go/internal/layout/`)
+- `folio-go/page_setup.go` — the renamed and inverted field with its cause register and the
+  direction-dropped note; `canvasElementIsPlaced`; `canvasContentBandHasConditionalVisibility`.
+- `folio-go/element_box.go` — `elementBoxDeclaration` / `elementDeclaresBox`, the one authority.
+- `folio-go/render.go`, `folio-go/table_render.go` — `imageDrawsItsAsset`, `tableDrawsColumns`
+  extracted for the same one-authority-two-callers reason.
+- `folio-go/canvas_window_count_template.go`, `canvas_window_count_test.go` — the four-row matrix, the
+  three added rows, the table test, the twin disciplines.
+- `folio-go/canvas_projection_wire_test.go` (new) — the Go↔TypeScript wire-key tripwire.
+- `folio-designer/src/{engine-protocol,sheet-stack,App}.ts(x)` + four test files — the mirror and the
+  one UI string.
+- `fixtures/keep-together/README.md`, `ARCHITECTURE-SPINE.md`, `folio-go/table_row_clip_test.go`.
+
+**Review findings breakdown:** patches applied **10** (high 1, medium 4, low 5); items deferred **3**;
+items rejected **6**.
+
+**Follow-up review recommendation: `true`** — one patched finding was `high` severity (the null-asset
+image, which is the default state of every image dropped in the designer). Patched counts: high 1,
+medium 4, low 5; the `high` alone sets the flag, and the score `3×4 + 1×5 = 17` also exceeds 5.
+
+**Verification performed** — re-run independently by the parent after the patches, not accepted from a
+subagent:
+- `cd folio-go && go test -count=1 ./...` — **13 packages `ok`, 4 `[no test files]`, exactly ONE red**:
+  the mandated `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`, "floor not met: got 7, need >=20".
+- `go vet -tags=matrix ./...` exit 0, no output. `gofmt -l folio-go` **from the repo root** — no output.
+- `TestTargetRenderHash` four legs, each with `FOLIO_MATRIX_TARGET` exported: `darwin/arm64` ok 1.11s,
+  `linux/amd64` ok 6.51s, `linux/arm64` ok 5.03s, `js/wasm` ok 10.99s. **UNSET control** ok 0.39s,
+  printing "this test asserts NOTHING and is a deliberate no-op" — which is what proves the four legs
+  were not no-ops. `TestCrossTargetByteIdentity` ok 22.71s.
+- `cd lint && go test -count=1 ./...` — **4 packages `ok`**. `-count=1` is mandatory here (D-7.9.5); the
+  two reds that record names were fixed at `de7b126` and do not reproduce.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test && npm run test:e2e:compile` —
+  typecheck 0; lint **exactly 4** pre-existing `only-export-components` warnings; vitest **284 passed
+  across 34 files**; e2e compile 0.
+- **All 22 `goldenDigestRecord` digests re-hashed with `shasum -a 256`: 22 identical, 0 moved.** The
+  contract's "21" predates Story 8.0's `thai-stacked-marks`.
+- `fixtures/statement-signoff.json` unmodified. Root `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`,
+  unchanged and never staged.
+
+**The four rows, measured canvas against a REAL `buildPageModel` render:**
+
+| document | canvas | real render |
+|---|---|---|
+| untagged + styled | 2, origins `[0 740000]` | 2 pages, origins `[0 740000]` |
+| untagged + unstyled | 2, origins `[0 1440000]` | 2 pages, origins `[0 1440000]` |
+| tagged + styled | 3, origins `[0 700000 1440000]` | 3 pages, origins `[0 700000 1440000]` |
+| tagged + unstyled | 2, origins `[0 1440000]` | 2 pages, origins `[0 1440000]` |
+
+⚠ **The dispatch's expected origins for `untagged + unstyled` were `[0 740000]`; the measured value is
+`[0 1440000]` on BOTH sides.** `[0 740000]` was the **pre-fix canvas** value — the wrong answer RULING B
+removes — transcribed from D-7.9.2's `canvas @6a31a7f` column rather than from the render. All four
+**counts** match the dispatch exactly, and every row's origins now equal the render's.
+
+**Mutation proofs, run by the parent (each landed-check asserted by occurrence count, each file
+restored and `cmp`-verified):**
+
+| mutant | result |
+|---|---|
+| `exact` forced **false** (documents that should be exact) | RED — all 4 matrix rows "…is false for a document carrying no registered cause", plus gap, empty column, windows-down |
+| `exact` forced **true** (document carrying a registered cause) | RED — "bound table: count 1, origins [0], exact true; want 1, [0] and false" |
+| cause (d) neutralised alone | RED — "conditional visibility: …is true, but whether one content element is placed at all is a property of data the canvas has never been given" |
+| placement gate removed | RED — "the canvas draws 3 sheets and the document prints 2 pages" (reproduces D-7.9.2 exactly) |
+| non-text tagging arm alone | RED — canvas 2 vs render 3, `[0 740000]` vs `[0 700000 1440000]` |
+| text tagging arm alone | RED — both the count and the origins subtests |
+| oracle's 5th arg back to `nil` | RED — canvas 3 vs the crippled oracle's 2 |
+| `Canvas`'s hardcoded `false` → `true` | RED — "the shapeless entry point cannot count and must not claim it can" |
+| `clone.KeepTogether` clear removed | RED — "the duplicate carries keepTogether …Value:\"signature\"" |
+| image arm → unconditional `true` | RED — canvas 2 vs render 1, plus "an image with a file and an image without one both occupy 2 windows" |
+| table arm → unconditional `true` | RED — canvas 2 vs render 1, plus the discriminator |
+| positivity clause dropped | RED — "styled_rect_with_no_height: canvas count 2, want 1" |
+| wire key renamed on **Go** only | RED — "CanvasProjection marshals the keys … and the recorded protocol set is …" |
+| wire key renamed on **TypeScript** only | RED — "the designer's isCanvas guard accepts the keys … one side of this seam has been renamed and the other has not" |
+
+⚠ Two mutants were rejected as invalid before being counted: forcing the field at its assignment
+produced a *compile* error ("declared and not used"), not a test failure, and a three-tab pattern for
+the non-text arm matched **both** arms. Both were re-run correctly. An unexpectedly-green or
+unexpectedly-broken mutant is a reason to prove the mutation landed, not a conclusion about coverage.
+
+**Residual risks**
+- The **styled-TEXT** divergence is live and deliberately unclosed — see `deferred:`. The comment that
+  claimed the parity invariant unconditionally has been corrected, so nothing in-tree overstates it.
+- `canvas_projection_wire_test.go` reads `folio-designer/src/engine-protocol.ts` by walking to the repo
+  root; the `folio-go` package suite now fails rather than skips if the designer tree is absent. That is
+  the intended strictness for a cross-language seam, but it is a new coupling.
+- Cause (d) is a conservative over-disclosure: any content-band `visibleIf` marks the count
+  untrustworthy, including where the element could not move a window boundary. Intended per D-7.9.6.
