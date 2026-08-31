@@ -4496,6 +4496,17 @@ content** reach `rawNumberLiteral` — a value round-tripped as a string, a past
 immediately**. The type signature and the projection's numeric typing were measured; **not every
 panel path was.** Treat that as a strong indication to confirm, not a finding to rely on.
 
+**TWO OF THE FIVE ENCODERS ARE NOT MERELY "UNCONVERTED" — THEY CORRUPT NON-BMP TEXT, and this was
+found by executing them at Story 8.2's build (2026-08-31).** `component-command.ts` and
+`component-asset-command.ts` iterate their input **by code point** but escape from
+**`charCodeAt(0)`** — the first UTF-16 unit. So `'a😀b'` encodes as `"a\ud83db"`: a **lone
+surrogate**, which Go replaces with U+FFFD. **A bind segment or an asset key therefore binds to a
+DIFFERENT PATH than the author typed**, silently. That is a live data-integrity bug in its own
+right, not a stylistic inconsistency, and it means this story's scope is larger than "consolidate
+five encoders behind one authority": **two of them are actively wrong today**, and the
+consolidation is what fixes them. Assert the non-BMP case explicitly — a lone surrogate reaching Go
+is the failure, and it is invisible to any test using only BMP text.
+
 **One file-level coordination note.** Story 8.2 makes a **minimal** fix to `quote()` in the same
 file — routing it through `JSON.stringify`, because it escapes only `\`, `"`, `\n`, `\r` and
 `\t` and JSON requires all of U+0000–U+001F. **This story must re-read that file rather than assume

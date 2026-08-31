@@ -370,7 +370,7 @@ Rejected (dropped): a lone-surrogate case for `compareCodePoints` (Go cannot emi
 
 **Two deviations recorded rather than repaired.**
 1. Task 9 says the prohibition covers `src/**`; it is implemented over PRODUCTION source only. This is forced by the spec itself: the AC requiring the rendered refusal to be `===` to the engine's `message` obliges a test to hold that sentence as a fixture, so a literal `src/**` scan would redden on its own evidence. Production is where a rule would have to live to reach an author, so the AC's substance is served; the narrower scope is documented in the test.
-2. Design Note N4 still narrates "the authority is created (Task 1)" and "Raise DW-32 to HIGH at close" — residue of the pre-amendment scope that amendment item 5's second half did not re-point at Story 15.2a. It is explanatory prose, not a task, AC, boundary or mutation proof, and nothing in the story is unsatisfiable without the consolidation, so the contract's halt trigger ("HALT if an AC seems to require any of it") was not met. Flagged for the orchestrator.
+2. Design Note N4 still narrates "the authority is created (**Story 15.2a's Task 1, not this story's** — re-pointed 2026-08-31)" and "Raise DW-32 to HIGH — **done 2026-08-31 by the orchestrator; DW-32 is Story 15.2a's and is NOT closed by this story**" — residue of the pre-amendment scope that amendment item 5's second half did not re-point at Story 15.2a. It is explanatory prose, not a task, AC, boundary or mutation proof, and nothing in the story is unsatisfiable without the consolidation, so the contract's halt trigger ("HALT if an AC seems to require any of it") was not met. Flagged for the orchestrator.
 
 ## Design Notes
 
@@ -438,7 +438,7 @@ says this story "carries author-typed chain names through that same splice". Mea
 would have touched that splice. The conclusion survives in a sharper form: there is **no single command-JSON
 authority** — five encoders give three different answers (`JSON.stringify`; two byte-identical complete
 hand-rolled copies; one incomplete copy escaping only five characters; and none at all for numbers) — which
-is D-8.1.3's exact shape, so the authority is created (Task 1) and that is a real change in this story's
+is D-8.1.3's exact shape, so the authority is created (**Story 15.2a's Task 1, not this story's** — re-pointed 2026-08-31) and that is a real change in this story's
 size.
 Two defects found while measuring, both worse than recorded:
 - `quote` at `:40` does not escape C0 controls. `quote("a\u0001b")` emits a raw `0x01` inside a JSON
@@ -450,7 +450,7 @@ Two defects found while measuring, both worse than recorded:
   keys, which Go decodes into `map[string]json.RawMessage` (last key wins) while `componentFields(raw, 4)`
   still counts 4 — so the command mutates a different component's different property. Escalation to a
   different `kind` is blocked only by an arity coincidence (`componentFields(raw, 3)` at `:1721` seeing 5),
-  which is an accident, not a guard. Raise DW-32 to HIGH at close.
+  which is an accident, not a guard. Raise DW-32 to HIGH — **done 2026-08-31 by the orchestrator; DW-32 is Story 15.2a's and is NOT closed by this story**.
 
 **N5 — findings against the epic and register text, measured at `bc671da`.**
 (i) Story 8.2's `Covers:` line names `FR52 · UX-DR13, UX-DR24, UX-DR25` but omits **AD-15** and **AD-16**,
@@ -662,7 +662,7 @@ read-only to this workflow.
 4. **Tasks 1-4** — replace with one task: route `component-property-command.ts:41` `quote()` through
    `JSON.stringify`, one line, leaving `rawNumberLiteral` and the other four encoders untouched.
 5. **Task 15** — DW-32 is **not** closed by this story; it is Story 15.2a. DW-70 still closes here. Design
-   Note N4's "Raise DW-32 to HIGH at close" and its framing ("the authority is created (Task 1) and that
+   Note N4's "Raise DW-32 to HIGH — **done 2026-08-31 by the orchestrator; DW-32 is Story 15.2a's and is NOT closed by this story**" and its framing ("the authority is created (**Story 15.2a's Task 1, not this story's** — re-pointed 2026-08-31) and that
    is a real change in this story's size") should be re-pointed at 15.2a. The severity re-rating is
    evidence worth keeping wherever it lands.
 6. **Mutation proofs** — drop the `rawNumberLiteral` restoration and the "departed population" proof.
