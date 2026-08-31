@@ -2632,8 +2632,15 @@ three times, the third time *inside the commit that closed it*.
   than sequence: **8.2 carries author-typed chain NAMES through that same splice**, where a `"` or a `\`
   is worse than the numeric case this entry describes — it does not merely malform the bytes, it lets
   the author's text change the command's shape. Still a story, never an event, per D-000.73
-- **Severity:** MEDIUM — the author sees a generic refusal instead of the field-located message the
-  panel is built around, but no bad value reaches the document
+- **Severity:** **HIGH** — raised from medium 2026-08-31 at Story 8.2's plan gate, which measured the
+  mechanism rather than the symptom. **This is not "a bad value reaches the document"; it is
+  COMMAND-SHAPE INJECTION.** The designer's numeric encoder splices author text into command JSON
+  **unquoted**, so a value of
+  `0}},"ids":["other"],"changes":{"width":{"op":"set","value":10` yields **valid JSON with duplicate
+  keys**. Go decodes into `map[string]json.RawMessage` where **last key wins**, while the arity check
+  still counts four fields — so the command mutates **a different component's different property**.
+  Escalation to another command `kind` is blocked only by an **arity coincidence**, not by a check.
+  The register's previous claim that no bad value reaches the document is **false**.
 - **Status:** OPEN
 
 **The gap.** `folio-designer/src/component-property-command.ts` routes `pointFields` and Story 7.4's new
@@ -2712,7 +2719,19 @@ unvirtualised path by the page count. The two questions are the same question an
   per-component chain, which 8.2 needs anyway. A named story with a position in the sequence beats a
   spent gate. This remains the class D-7.4.4 belongs to: a limit to STATE, not to fix, until the product
   makes it reachable
-- **Severity:** MEDIUM once Epic 8 lands; **latent today**
+- **Severity:** MEDIUM
+- **Owner:** **RE-OWNED to Story 8.4** 2026-08-31, and the placement ground recorded here previously
+  was **falsified**. This entry said the fix *"needs the projected per-component chain, which 8.2
+  needs anyway"* — **both halves are wrong.** Story 8.1 already landed `CanvasComponent.FontFamily`
+  and `FontChains[].Entries`, and 8.2 edits the document-level map and never needs the per-component
+  join. **The real obstacle was recorded nowhere:** the browser's `@font-face` families are
+  `IBM Plex Sans` / `IBM Plex Mono` / `IBM Plex Sans Thai` (the shipped **Noto** files registered
+  under IBM Plex names), while the engine's face names in a chain are `Noto Sans` / `Noto Sans Thai`
+  / `Noto Sans SC`. **A chain's entries cannot be used as CSS family names**; the fix needs a mapping
+  that exists on neither side, or a rename of the generated families that ripples into the design
+  tokens and their contract test — **a design-system decision above a builder's authority**. Story
+  8.4's AC4 — *"the preview measures with that same face through the same engine path, so the canvas
+  and the PDF keep one measurement authority"* — **is this entry written as an acceptance criterion**
 - **Status:** OPEN
 
 **The gap.** `folio-designer/src/App.css`'s `.canvas-text-fragment` rule names a **fixed** three-family

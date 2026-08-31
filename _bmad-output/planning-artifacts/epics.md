@@ -2782,7 +2782,22 @@ As a template author,
 I want to see and edit the document's chains from the typography panel,
 So that choosing a font and defining what a font *is* are not two different tools.
 
-**Covers:** FR52 · UX-DR13, UX-DR24, UX-DR25
+**Covers:** FR52 · AD-15, AD-16, UX-DR13, UX-DR24, UX-DR25
+
+**`Covers:` CORRECTED 2026-08-31 at this story's plan gate**, the same omission caught on Story
+8.1's line at its own gate. **AD-15** (no TypeScript document model) is the literal substance of AC2
+— *"the browser never holds its own model of the `fonts` map"* — and **AD-16** (commands are opaque)
+is the substance of AC1. Both were unnamed.
+
+**AC3 IS NOT SATISFIABLE BEFORE STORY 8.3, measured at `bc671da`.** It asks that an entry naming an
+embedded face *"reads as the face's family and style from the projection"*. There is no such
+projection: `decodeFonts` routes every chain through a decoder requiring each element to be a JSON
+**string**, `Fonts` is `map[string][]string`, no `FontRecord` type exists anywhere, and `"asset"` in
+the format refers exclusively to image elements. **There is no family/style pair to read.** So this
+story delivers AC3's **negative** half — the displayed text of an entry is the projected entry
+**unmodified**: no parsing, no key detection, no extension stripping — which is assertable today and
+is forward-compatible with 8.3. The projection validator rejects unknown entry shapes in **both**
+directions, so 8.3 cannot change the entry shape without moving that validator in the same commit.
 
 **Acceptance Criteria:**
 

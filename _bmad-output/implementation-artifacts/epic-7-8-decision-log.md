@@ -2428,3 +2428,74 @@ dispatches:
 **The encouraging half**, and it is the same shape as `paginate.go`'s falsified negative one story
 earlier: **both were found by looking rather than by being burned. The search is now cheaper than
 the incident.**
+
+## DW-69 and the tagged-surface line, stated once (2026-08-31)
+
+Story 8.1 added projection bounds on font chains, so a pre-existing `.folio` with a longer chain now
+fails to **open**. I asked whether that narrowing joins D-7.8.3's before-the-tag set, relaying the
+closer's ground for saying no.
+
+### D-8.2.1 — DW-69 stays out, but the closer's ground was FACTUALLY WRONG
+
+**Ruling:** DW-69 does not join the set. It holds exactly **one** open item — D-7.8.2's code audit.
+
+**The correction matters more than the verdict.** The closer argued the narrowing was confined to
+the designer because *"`cmd/folio` never calls `Canvas`"*. Measured at `bc671da`:
+
+- `func Canvas(t *Template) (CanvasProjection, error)` is at `page_setup.go:545` and is **exported
+  from package `folio`**; so is `CanvasWithTextPaint`;
+- `canvasFontChains(t)` is called at **`page_setup.go:593` — inside `Canvas`**, not only from the
+  wasm `Engine.load` path.
+
+So a Go integrator calling `folio.Canvas` on a template with a 65-entry chain now gets an error where
+they previously got a projection. **The narrowing is on the library's exported API surface.**
+*"`cmd/folio` never calls it"* is true and **is not the test** — the tag versions the module's
+exported identifiers, not what any particular binary happens to exercise.
+
+**Why it still stays out: TIMING, not surface.** The before-the-tag set exists for changes that must
+**land** before the tag because making them afterwards would be breaking. **DW-69's bound already
+shipped at `bc671da`** — it is inside whatever v0.1.0 tags. And every correction anyone might later
+want is a **widening**: raise the bound, or move it off the public path. Both are safe after the tag.
+**A narrowing already inside the tag needs no before-the-tag action.**
+
+### D-8.2.2 — the tagged-surface line, for Epic 8's five remaining stories
+
+Two questions, kept apart, so this is not re-derived per case:
+
+> **(a) Is it in the tagged surface?** — **is it reachable through the module's EXPORTED API?**
+> Exported identifiers of `folio-go` are in: `folio.Canvas`, `folio.CanvasWithTextPaint`, `Render`,
+> `LoadTemplate`. A `main` package inside the module (`wasm/cmd/engine`) is not importable and is
+> out. **"Which binary calls it" is not the test** and would mis-classify **every** projection bound
+> in this epic, because `Canvas` is public.
+>
+> **(b) Must it land before the tag?** — only if it is a **narrowing or a removal that has not landed
+> yet.** Widenings are always safe. So the set collects **unshipped** narrowings and removals, which
+> is why D-7.8.2's audit (retiring a code — a removal) is in it and DW-69 (a narrowing already
+> shipped) is not.
+
+My framing — *AD-22 versions the library, so a narrowing only a designer session can encounter is
+not a narrowing of the library's inputs* — survives, **with the correction that "only a designer
+session can encounter it" must be MEASURED against the exported surface, not assumed from which
+product uses the feature.**
+
+**One thing deliberately deferred, and named so it is not settled by accumulation:** a **JS-safety
+bound sitting on the library's exported API refuses a Go integrator for a constraint they do not
+have.** That is the same over-broad shape as bounding a stored value to fix a presentation hazard —
+D-7.8.5's mistake, one level up. Relaxing it later is free, so it is genuinely cheap to defer; but
+**Epic 8 will add four more instances of the pattern, so it must be decided ONCE and deliberately
+before then.**
+
+### D-8.2.3 — two lessons from the FR52 spellings and the unproved band
+
+**The person who records a gap is a likely author of a surviving spelling of it.** Two FR52 spellings
+survived the three the lead named, and both were mine — one a **bolded block** headed *"...AND THAT
+IS A GAP THIS EPIC DOES NOT CLOSE"*, written in the very commit that recorded the gap. It is the
+hardest kind to find afterwards **precisely because it reads as authoritative and recent.**
+Retracting in place with the old wording quoted is the right repair; a silent edit would leave no
+trace that the record had once been wrong.
+
+**A hole in one arm of an enumeration is evidence about THE ENUMERATION, not about that arm.**
+`pageFooter` was unproved, so `pageHeader` and `content` were checked too — and rightly: the
+mechanism that missed one band had no reason to have covered the others. Treating the found instance
+as the whole population is how these become the eighth occurrence rather than the last. Same move as
+re-deriving DW-24's site list by grep instead of trusting the hand-list.
