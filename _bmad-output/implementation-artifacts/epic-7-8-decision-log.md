@@ -2908,3 +2908,75 @@ because **8.6's AC5 is DW-80's fix stated as an acceptance criterion**, and nami
 the link depending on a reader noticing it. D-8.2.8(a)'s mechanical check stays at the gate. Extend
 the same sweep to Epic 15's stories when they are planned — the omission is an **authoring-time**
 property and Epic 15's stories are authored the same way.
+
+---
+
+### D-8.4.6 — the gate sized the paint half out; Story 8.4a is written and sequenced immediately after 8.4
+
+D-8.4.1 left sizing to the plan gate and bound the outcome in advance: split is legal, silent drop is
+not, and any successor is sequenced **immediately after 8.4**. The gate returned `multiple-goals`,
+standing, on **three measured grounds** — not on feel:
+
+1. **Separably shippable.** The engine half discharges FR54 and 8.4's own *"As an integrating Go
+   developer"* sentence **in full**. The paint half serves a **different user on a different
+   surface**.
+2. **No precedent anywhere in the designer.** No `new FontFace`, no `document.fonts.add`, no dynamic
+   style injection — all three shipped faces are build-time.
+3. **It requires re-authoring two guards written to forbid exactly this shape.**
+   `canvas-font-stack.test.ts:100-106` asserts the fragment stack contains no `var(`; `:123-132`
+   forbids naming a chain entry in a font-family position. A third becomes false in spirit.
+
+**Ground 3 is why Story 8.4a carries an acceptance criterion about its own guards.** A story whose
+job is to make two deliberate guards false is the story most likely to **delete** rather than
+**widen** them, and a guard re-authored to let a feature through is the cheapest way to lose one.
+8.4a's AC4 requires each to be widened to a strictly stronger claim.
+
+**The disclosure is a TEST, not a comment (8.4's Task 14), on Story 8.2's precedent.** The whole risk
+of a split is that the gap becomes something a later reader must notice. A comment describing the
+limitation would carry a test's evidentiary burden — the same defect DW-35's own entry was corrected
+for.
+
+**`oversized` also stands.** Accepted rather than split further: the contract is dense because the
+story is dense, and the previous split already removed the one separable deliverable.
+
+**DW-35 re-owned to 8.4a**, and the D-8.4.1 ruling anticipated it in its own words — *"8.4, or the
+named successor story if the gate splits it"* — so this is the ruling executing, not a new owner
+being invented. `sprint-status.yaml` carries `8-4a-…: backlog` **between** 8.4 and 8.5, so the
+sequencing lives in the file the run reads rather than in this paragraph.
+
+---
+
+### D-8.4.7 — the gate corrected the orchestrator's "four consumers" the OTHER way, and found four traps that would have shipped green
+
+**The seam is larger than reported, and the number came from a doc comment.** The orchestrator
+relayed *"four documentless `(chain []string, fs FontSet)` consumers"* as the remaining seam. Measured:
+`chain []string` is a parameter of **ten** non-test functions, **six** of which take
+`(FontSet, *fontCache)`. The "four" is **`chainFaceNames`' own doc comment** — and it is neither the
+population nor the risk set: one of its four takes no `FontSet` at all, and three that do are unnamed.
+**None of the ten can reach `Assets`**, which is the actual constraint the story must change.
+
+Worth recording because it is the **inverse** of the D-8.4.4(a) correction and the same root cause:
+**a number read out of a comment was carried forward as a measurement.** The comment was not wrong
+about its own subject; it was answering a different question. 8.4's Task 2 corrects it.
+
+**D-8.4.4(b) sharpened by measurement of the shipped cmaps.** `NotoSans-Regular.ttf` covers **zero**
+of U+0E00–U+0E7F; `NotoSansThai-Regular.ttf` covers **87**. But the Thai face **also covers Latin**,
+so **a pure-Thai string is the sharp witness and a mixed one is not** — a mixed string would let the
+Thai face satisfy the whole run and prove nothing about resolution order. Three Ts-free Thai strings
+already in the corpus are named in the spec.
+
+**Four traps that would have shipped green and proved nothing.** The most serious:
+`embedded_font_fixture_test.go:218` and `matrix_test.go:1998` both assert `len(programs) != 1` — and
+with a pure-Thai document on this chain a **correct** 8.4 also embeds exactly one program, so **both
+pass identically on either side of the feature**, certifying the opposite of what they claim.
+Inverting to `!= 2` would also be wrong. The others: `expected.json` has no second literal, so its
+re-record is invisible; `canvas_projection_wire_test.go` records nothing for the paint tree; and
+`canvas-authority-contract.test.ts:145` rewrites every `document.fonts` occurrence **globally before**
+the prohibition scan, making its own rule at `:24` **dead** — a measurement call would pass unnoticed.
+That last one is carried into **Story 8.4a as an acceptance criterion**, since 8.4a is the story that
+would rely on it.
+
+**Two transient reds are expected mid-implementation** — `chain_face_names_test.go:125-127` and
+`missing_glyph_corpus_test.go:33` — the moment the fixture text becomes Thai and before resolution
+lands. **They are the feature's own red-proof.** The spec says never to relax a diagnostic check to
+clear them.

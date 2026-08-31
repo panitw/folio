@@ -2726,8 +2726,14 @@ unvirtualised path by the page count. The two questions are the same question an
 ### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
-- **Owner:** **Story 8.4 — RULED 2026-08-31 (D-8.4.1)**, and this is now a *ruling*, not a
-  recommendation. **Severity:** MEDIUM.
+- **Owner:** **Story 8.4a — RULED 2026-08-31 (D-8.4.1) to Story 8.4, then SPLIT to its named
+  successor 2026-09-01 (D-8.4.6)** when 8.4's plan gate returned `multiple-goals`. The ruling
+  anticipated this: *"8.4, or the named successor story if the gate splits it."* **Severity:** MEDIUM.
+  This is a *ruling*, not a recommendation — see the standing rule below.
+
+  **The successor is sequenced IMMEDIATELY after 8.4, not "later in Epic 8"**, and Story 8.4
+  discloses the canvas limitation as a **test** rather than a comment, so the gap between the two
+  stories is asserted rather than described.
 
   **THIS ENTRY PREVIOUSLY CARRIED TWO CONTRADICTORY `Owner:` BULLETS** (Story 8.2, then Story 8.4)
   with a `Severity:` bullet wedged between them. That is a **defect in the entry**, not an ambiguity

@@ -3018,6 +3018,70 @@ written asserted nothing and its protection was nominal. The fixture's document 
 Re-recording that fixture's digest is deliberate and correct **within the story that owns it**, and
 it is free before the tag.
 
+### Story 8.4a: The canvas paints with the face the engine measured
+
+As a template author,
+I want the canvas to draw my embedded face, not a fallback that happens to be installed,
+So that what I position on screen is what the PDF puts on the page.
+
+**Covers:** FR54, FR34 · AD-8, AD-15, AD-17, UX-DR13 — and **DW-35**, which is this story's subject.
+
+**SPLIT FROM STORY 8.4 ON 2026-09-01 (D-8.4.6), AND SEQUENCED IMMEDIATELY AFTER IT — not "later in
+Epic 8".** Story 8.4's plan gate returned `multiple-goals` on three measured grounds: the engine half
+is **separably shippable** (it discharges FR54 and 8.4's own "As an integrating Go developer"
+sentence in full, while this half serves a different user on a different surface); this half carries
+a mechanism with **no precedent anywhere in the designer** — no `new FontFace`, no
+`document.fonts.add`, no dynamic style injection, all three shipped faces being build-time; and it
+requires **re-authoring two guards that were written to forbid exactly this shape**
+(`canvas-font-stack.test.ts:100-106` asserts the fragment stack contains no `var(`; `:123-132`
+forbids naming a chain entry in a font-family position), with a third becoming false in spirit.
+**Splitting on size was legal; dropping it silently was not** — Story 8.4 therefore discloses the
+canvas limitation as a **test** (its Task 14), not a comment, so the gap is asserted rather than
+described.
+
+**Acceptance Criteria:**
+
+**Given** a component whose chain resolves a rune to an embedded face
+**When** the canvas paints it
+**Then** the face's own bytes reach the browser through the projection and are registered as a
+`FontFace`, and the fragment rule asks for that face — no fallback, no host-installed font
+
+**Given** an embedded face and a shipped face that share a `font.family`
+**When** both are registered for the canvas
+**Then** they get **distinct** CSS family names, because an embedded face's family name is derived
+from its **asset key** and never from `font.family` (**D-8.4.1**) — `font.family` is display
+identity, never used to resolve or substitute a face, and deriving from it would let an embedded
+"Inter" collide with a shipped "Inter" in the browser's font registry, which is AD-8's own hazard
+one layer down
+
+**Given** the canvas fragment rule
+**When** a component's chain is projected
+**Then** the family list follows the **engine's chain order**, not `tokens.css`'s `--font-page` —
+which puts Thai first and would hand Latin text Noto Sans Thai's Latin glyphs (the order constraint
+the `c6e4d03` fix already discovered)
+
+**Given** the two guards that currently forbid this shape
+**When** they are re-authored
+**Then** each is **widened, never weakened**: `canvas-font-stack.test.ts`'s tie moves from "every
+family the rule asks for is declared" to "the families the rule asks for are the ones the engine
+measured with", and the prohibition on naming a chain entry in a font-family position is replaced by
+a rule that permits **only** an asset-key-derived name
+
+**THIS AC EXISTS BECAUSE A GUARD RE-AUTHORED TO LET A FEATURE THROUGH IS THE CHEAPEST WAY TO LOSE
+ONE.** Both guards were written deliberately, and a story whose job is to make them false is exactly
+the story most likely to delete rather than widen them.
+
+**Given** the browser never measures text (AD-17)
+**When** this story is complete
+**Then** every metric and line break still comes from the engine's measure API — this story changes
+**rasterization only**, and Story 8.4's assertion that the measurement path is shared must still hold
+
+**Given** `canvas-authority-contract.test.ts`
+**When** it scans for prohibited `document.fonts` usage
+**Then** the scan is measured to actually run — at `:145` it currently rewrites every
+`document.fonts` occurrence globally **before** the prohibition scan, which makes its own rule at
+`:24` dead and would let a measurement call through unnoticed (found at Story 8.4's plan gate)
+
 ### Story 8.5: A curated catalogue ships with the designer
 
 As a template author,
