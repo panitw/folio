@@ -4430,7 +4430,7 @@ claim, its location, and the ground on which it was refused.
 
 ---
 
-### DW-88 — the corpus's only Thai-bearing golden with no human reading attestation, and no red gate that a person must clear — **OPEN QUESTION WITH THE ENGINEERING LEAD**
+### DW-88 — the corpus's only Thai-bearing golden with no human reading attestation — **RULED (D-8.4.8): the attestation TRANSFERS by asserted shaped-run equality**
 
 - **Deferred by:** Story 8.4 (2026-09-01). Filed by the build in the spec's frontmatter as two
   entries; entered into this register at close as one, because they are one question — the
@@ -4440,7 +4440,48 @@ claim, its location, and the ground on which it was refused.
   agent may write `reader`, `date` or `examined` in any sign-off file.**
 - **Severity:** LOW as measured, **but it is the kind of gap D-2.3.5 calls "an obligation nobody
   trips over"**, which is why it is registered rather than left in a spec's frontmatter.
-- **Status:** **OPEN — awaiting the engineering lead's ruling.** Nothing was minted at close.
+- **Status:** **RULED 2026-09-01 (D-8.4.8) — a FOURTH disposition, better than the three put to the
+  lead and grounded on measurement rather than on any of them.** The transferred record is written at
+  `fixtures/embedded-font/signoff.json`; the asserting test and its matrix gate are the follow-up.
+
+  **The premise the orchestrator offered was REFUTED, and that matters more than the verdict.** The
+  question routed was whether *"Ts-free"* makes the stacked-mark hazard structurally absent, which
+  would have strengthened the do-nothing disposition. **It does not.** This repo's own
+  `fixtures/thai-stacked-marks/README.md` records that `ที่`, `ป้ำ` and `ปั` stack **two** marks over
+  one base and are resolved by a **GSUB lowered-form substitution at zero offset**. Ts-freeness means
+  every glyph has `YOffset == 0` — it excludes only the **GPOS vertical-displacement** leg, and
+  nothing about X-offsets, glyph selection, base-mark association or cluster order, which are exactly
+  the **eye-only** failure modes. `สัญญา` carries **U+0E31 MAI HAN-AKAT** (`Mn`), whose eye-only
+  failures — the mark over ญ instead of ส, a spacing glyph, a cluster reorder — all survive it.
+
+  **Why the transfer is sound.** `fixtures/embedded-font/`'s `e1` and `thai-stacked-marks`' `e2` are
+  identical in every input that determines a shaped run (same string, `body`, 12pt, width 400, x 0),
+  differing only in `y`/`height` — **placement, not shaping** — and the face is the same **program**,
+  measured rather than taken from the asset's prose `source`:
+  `sha256(fonts/notosansthai/NotoSansThai-Regular.ttf)` = the embedded **asset key** = `sha256` of its
+  decoded 47788 bytes = `c94562c1…73caf`. The PDFs differ (different subset, AD-7); the attested layer
+  does not.
+
+  **TWO CONDITIONS, and the first is a LAPSE CONDITION rather than a task.** (1) The equality is
+  live-vs-live, so it is non-vacuous **only because** `fixtures/thai-stacked-marks/expected.pdf` is
+  byte-pinned and the sign-off names its digest — **if that golden is ever re-recorded the transfer
+  LAPSES and both fixtures need a real human reading.** (2) The transfer holds only while the embedded
+  bytes are a shipped face's. **Checked before adding a tripwire, and none is needed:**
+  `embeddedFontAssetBytes()` returns `testShippedNotoSansThai`, which is
+  `//go:embed fonts/notosansthai/NotoSansThai-Regular.ttf` — the shipped file **directly**, so the
+  condition is held by construction. **Standing rule:** a future fixture embedding a face that is
+  **not** a shipped face's bytes owes a **real human reading** and must go **red rather than
+  transfer**.
+
+  **The anchor is SCOPELESS, and that limit is recorded rather than smoothed.** It reads, in full,
+  *"The rendering at fixtures/thai-stacked-marks/expected.pdf looks ok."* — naming no scope, unlike
+  `fixtures/statement-signoff.json`. **An attestation's scope is what transfers, so a scopeless one
+  transfers scopelessly.** Accepted here because it is the owner's eye on a page whose entire subject
+  is Thai mark placement. **It must not become the template — future readings name what was checked.**
+
+  **No agent wrote `reader`, `date` or `examined`.** The transferred record carries neither field at
+  all, plus an explicit `NOT_A_HUMAN_READING` statement, because a reconstructed record that does not
+  say it is reconstructed is the failure this run has flagged before.
 
 **The gap.** `fixtures/embedded-font/expected.pdf` ships from Story 8.4 onwards and its page is Thai
 drawn from the face the document carries. Every OTHER Thai-bearing golden pairs a human reading

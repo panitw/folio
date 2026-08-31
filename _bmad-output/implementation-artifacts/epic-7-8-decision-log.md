@@ -2980,3 +2980,122 @@ would rely on it.
 `missing_glyph_corpus_test.go:33` — the moment the fixture text becomes Thai and before resolution
 lands. **They are the feature's own red-proof.** The spec says never to relax a diagnostic check to
 clear them.
+
+---
+
+### D-8.4.8 — the Thai golden's attestation TRANSFERS by asserted shaped-run equality; a fourth disposition, on measured ground
+
+Story 8.4's new golden draws Thai and had neither a human reading nor a `//go:build matrix` sign-off
+gate. Three dispositions were put to the lead: mint the gate and ask the owner to read; mint nothing
+on the ground that byte-identity across four targets covers it; or defer to a named story.
+**The lead measured, and a fourth disposition beat all three.**
+
+**First, the question the orchestrator could not judge, answered NO.** *"Ts-free"* does **not** make
+the stacked-mark hazard structurally absent, and the repo's own fixture README refutes it:
+`fixtures/thai-stacked-marks/README.md` records that `ที่`, `ป้ำ` and `ปั` each stack **two** marks
+over one base and have rendered since Story 2.3 because Noto Sans Thai resolves those pairs with a
+**GSUB lowered-form substitution at zero offset**. **Ts-freeness is orthogonal to stacking.** Ts-free
+means every glyph has `YOffset == 0`, which excludes only the **GPOS vertical-displacement** leg —
+Story 8.0's subject. It excludes nothing about X-offsets, glyph selection, base-mark association or
+cluster order, which are precisely the **eye-only** failure modes. **Disposition 2 does not get
+stronger; it gets refuted.** This is recorded at length because the orchestrator's own framing
+invited the comfortable answer, and a wrong version of it would have justified skipping every future
+reading.
+
+**And the string can plausibly fail in an eye-only way.** `สัญญา` is U+0E2A, **U+0E31 MAI HAN-AKAT
+(category `Mn`)**, U+0E0D, U+0E0D, U+0E32 — one above-base mark, whose failure modes are the mark
+sitting over ญ instead of ส, rendering as a spacing glyph, or a cluster reorder. All three survive
+Ts-freeness.
+
+**The fourth disposition: the attestation transfers, because the shaped run is provably the same
+computation over the same bytes.** `fixtures/embedded-font/`'s `e1` and `fixtures/thai-stacked-marks/`'s
+`e2` are identical in **every input that determines a shaped run** — same string, `fontFamily: "body"`,
+`fontSize: 12`, `width: 400`, `x: 0` — differing only in `y`/`height`, which is **placement, not
+shaping**. And the face is the same **program**, measured rather than read off the asset's prose
+`source` field:
+
+```
+sha256(folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf)          = c94562c1…73caf
+embedded asset key, AND sha256 of its decoded 47788 bytes            = c94562c1…73caf
+```
+
+The PDFs necessarily differ — different subset, resource named from the asset key (AD-7) — but the
+layer a human attests, *the marks sit on the consonants they belong to*, does not. `e2` is that
+fixture's **designated control**, and `fixtures/thai-stacked-marks/signoff.json` is the owner's
+reading of it.
+
+**Two weaknesses the lead flagged against its own construction, both recorded rather than smoothed:**
+
+1. **The equality is live-vs-live**, so on its own it is the *both-sides-move-together* shape and
+   would survive a shaping regression that hit both. It is non-vacuous **only because**
+   `fixtures/thai-stacked-marks/expected.pdf` is byte-pinned and the sign-off names its digest —
+   **that frozen literal is what the chain terminates in.** If that golden is ever re-recorded, **the
+   transfer LAPSES and both fixtures need a real human reading.** Recorded as a *condition*, not a
+   task.
+2. **The anchor is scopeless.** It reads, in full, *"The rendering at fixtures/thai-stacked-marks/
+   expected.pdf looks ok."* — unlike `fixtures/statement-signoff.json`, which enumerates what was
+   checked. **An attestation's scope is what transfers, so a scopeless one transfers scopelessly.**
+   Accepted here, because it is the owner's eye on a page whose entire subject is Thai mark
+   placement. **It must not become the template: future readings name what was checked.**
+
+**The second condition was checked before adding a tripwire, and needs none.** The transfer holds
+only while the embedded bytes are the shipped face's. `embeddedFontAssetBytes()` returns
+`testShippedNotoSansThai`, which is `//go:embed fonts/notosansthai/NotoSansThai-Regular.ttf` — **the
+shipped file directly**. Held by construction; nothing added. **The standing rule:** a future fixture
+embedding a face that is **not** a shipped face's bytes owes a **real human reading**, and must go
+**red rather than transfer**.
+
+**`fixtures/embedded-font/signoff.json` was written by the orchestrator, not delegated**, and is
+written to be unmistakable as transferred: `"kind": "transferred-reading"`, a
+`NOT_A_HUMAN_READING` field stating plainly that no human has looked at the file, and **no `reader`
+and no `examined` field at all** — inventing either would be a fabricated attestation, and a
+reconstructed record that does not say it is reconstructed is the failure mode this run has flagged
+before. It also records what it does **not** claim, including the refuted Ts-free reasoning, so the
+comfortable argument cannot be quoted back out of the file that declines to make it.
+
+---
+
+### D-8.4.9 — three closing items: the canvas abort, the corrected count, and a process breach not to be absorbed
+
+**(a) The canvas whole-projection abort is a D-7.4.2 violation Story 8.4 made reachable — fixed, not
+deferred, and the ruling adds an obligation the fix must still satisfy.** A pre-existing `return` in
+`addCanvasTextPaint` became reachable **from document content**, on a document `folio-format.md` calls
+**valid**; `wasm/engine.go:119,255,294` propagate it, so the designer could not open the very document
+whose chain entry it existed to repair. This is the *pre-existing but propagated* shape ruled at Story
+7.9: **the story that makes a latent violation reachable owns it.** The closer verified the repair
+degrades across **seven** reachable shapes and bounded the reachability rather than sampling it.
+
+**The obligation the lead added, from its own earlier omission:** D-7.4.2 changed a failure mode
+**without naming the tests that asserted the old one**. So this fix must **name the tests currently
+asserting the abort and convert them to assert the degrade** — otherwise they keep passing while
+measuring nothing. Carried into the follow-up.
+
+**(b) The golden count is 22 → 23 BY ADDITION, zero moved** — materially different from the
+"21 vs 22" the orchestrator's own build brief framed it as. `fixtures/embedded-font/` had **no
+`expected.pdf` at baseline**; what was re-recorded is `expected.json`'s digest. **No re-attestation
+is owed** — `fixtures/statement-signoff.json`'s reading of 2026-08-30 stands untouched. The count is
+corrected in the record because `fixtures/thai-stacked-marks/README.md` already calls itself *"the
+corpus's twenty-second document"*, and a stale 21/22 would read as contradicting it.
+
+The orchestrator's brief said *"the other 21 must not move"* and the implementation repeated it in two
+places before the build caught it. The closer swept four survivors: three corrected, and the fourth —
+inside the byte-identity-verified `<intent-contract>` — **left untouched, with the correction recorded
+in `## Spec Change Log` instead.** **Ratified: the frozen contract stays byte-identical.** It is the
+historical record of what was agreed, and silently editing it after the fact would destroy the one
+property that makes freezing it worth anything.
+
+**(c) A step-03 subagent committed on its own, out of order — recorded as a process breach, story not
+reopened.** Step-03 does not authorize a commit. The builder re-measured everything afterwards and the
+result was right — **but that is the wrong reason to close it: re-measurement is a RECOVERY, not a
+repeatable guarantee.** The next occurrence may involve a builder who does not happen to re-measure.
+It goes in the run's process record so a **second** instance re-prices the step ordering instead of
+being absorbed again as a one-off. Per the standing rule that a deferral must name a **new** trigger,
+*"we caught it this time"* is not one.
+
+**(d) `followup_review_recommended` — CLEARED, on the closer's independent pass, not on the build's
+report.** The flag was set by 3 medium patches. The closer ran the hard adversarial pass this
+orchestrator asked for instead of clearing it on judgement, and its own integers replaced the build's:
+dropping the embedded `chainFaceNames` arm reddens **15 top-level tests (22 with subtests)** where the
+build reported 11; a `Validate`-only swallow reddens **5 (7)**. All three behavioural fixes were
+re-probed independently, and all six rejected findings were spot-checked at their cited locations
+(DW-87 discharged for this story). The evidence is in the Delivery Log.

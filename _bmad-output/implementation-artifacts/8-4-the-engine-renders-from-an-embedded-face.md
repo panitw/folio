@@ -6,7 +6,7 @@ replanned: '2026-09-01'
 status: 'done'
 baseline_revision: '15ca0ddbc4565d935fde026bfbad463be8ddd182'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized', 'multiple-goals']
 deferred:

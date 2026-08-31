@@ -1,0 +1,29 @@
+{
+  "kind": "transferred-reading",
+  "NOT_A_HUMAN_READING": "No human has looked at fixtures/embedded-font/expected.pdf. This record deliberately carries NO 'reader' and NO 'examined' field, because inventing either would be a fabricated attestation. It transfers an existing human reading of a DIFFERENT file, on an asserted equality, and it is written to be unmistakable as such.",
+  "sha256": "f533b04b7a4ccb20587f096c9e3173a48fbc870b8c718a73fecf869c6d851832",
+  "transfer": {
+    "basis": "shaped-run equality, pre-subset",
+    "from_fixture": "fixtures/thai-stacked-marks",
+    "from_element": "e2",
+    "to_element": "e1",
+    "anchor_signoff": "fixtures/thai-stacked-marks/signoff.json",
+    "anchor_sha256": "d5077f3346e10abb17ec69d2d6e2a975d02524d6e2eebcbec3b85ff30ca48eb1",
+    "anchor_reader": "Panit Wechasil",
+    "anchor_date": "2026-08-31",
+    "asserted_by": "TestEmbeddedFontShapedRunEqualsAttestedControl",
+    "granted_by": "the engineering lead, 2026-09-01, recorded as D-8.4.8"
+  },
+  "why_the_transfer_is_sound": [
+    "The two elements are identical in EVERY input that determines a shaped run: the same string, fontFamily 'body', fontSize 12, width 400, x 0. They differ only in y and height, which is placement, not shaping.",
+    "The face is the same PROGRAM, measured rather than taken from the asset's prose 'source' field: sha256(folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf) equals the embedded asset key AND the sha256 of its decoded 47788 bytes, all three being c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf.",
+    "So the glyph ids and x/y offsets are necessarily identical whether the face arrives by name through the FontSet or by asset key out of the document. The PDFs differ (different subset, resource named from the asset key), but the layer a human attests -- the marks sit on the consonants they belong to -- is the same computation over the same bytes.",
+    "fixtures/thai-stacked-marks/README.md designates e2 as THE CONTROL for that fixture: same script, same chain, same 12pt size, same 400pt box, and not one glyph with a vertical offset."
+  ],
+  "what_this_record_does_NOT_claim": [
+    "It does not claim Ts-freeness makes the stacked-mark hazard structurally absent. It does not. Ts-free means every glyph has YOffset == 0, which excludes only the GPOS vertical-displacement leg (Story 8.0's subject). It excludes nothing about X-offsets, glyph selection, base-mark association or cluster order -- the eye-only failure modes. fixtures/thai-stacked-marks/README.md records that THI, PAM and PA stack two marks over one base and are resolved by a GSUB lowered-form substitution at ZERO offset.",
+    "It does not claim the string is incapable of an eye-only failure. U+0E2A, U+0E31 MAI HAN-AKAT (category Mn), U+0E0D, U+0E0D, U+0E32 carries one above-base mark, whose eye-only failure modes -- the mark sitting over the wrong consonant, rendering as a spacing glyph, or a cluster reorder -- all survive Ts-freeness. The transfer answers this by equality with an attested rendering, NOT by arguing the hazard away.",
+    "It does not claim a scope the anchor did not have. The anchor reads, in full, 'The rendering at fixtures/thai-stacked-marks/expected.pdf looks ok.' It names no scope, unlike fixtures/statement-signoff.json, which enumerates what was checked. AN ATTESTATION'S SCOPE IS WHAT TRANSFERS, SO A SCOPELESS ONE TRANSFERS SCOPELESSLY. This is accepted here because the anchor is the owner's eye on a page whose entire subject is Thai mark placement -- and it MUST NOT become the template. Future readings name what was checked."
+  ],
+  "the_transfer_LAPSES_if": "fixtures/thai-stacked-marks/expected.pdf is ever re-recorded. The equality is between two LIVE computations, so on its own it is the both-sides-move-together shape and would survive a shaping regression that hit both. It is non-vacuous ONLY because that golden is byte-pinned and this record names its digest -- that frozen literal is what the chain terminates in. If it moves, this transfer lapses and BOTH fixtures need a real human reading."
+}
