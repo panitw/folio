@@ -2324,7 +2324,7 @@ gate as both precedents are. **Not** an agent-authored record.
 
 ---
 
-### DW-28 — a large class of ordinary Thai cannot be rendered at all: any sequence stacking two marks over a base fails closed, and a code comment said the branch was unreachable
+### DW-28 — a large class of ordinary Thai cannot be rendered at all: any glyph the shaper gives a non-zero vertical offset fails closed, and a code comment said the branch was unreachable
 
 - **Deferred by:** Story 7.3 (2026-08-30). Pre-existing and **not justification's doing** — measured
   to fail identically under `align: left` — so it was out of 7.3's scope, but 7.3 is where it was
@@ -2343,9 +2343,25 @@ gate as both precedents are. **Not** an agent-authored record.
   lies to the author"** — AD-5 makes the page model blind to the emission stage, so the canvas
   drawing the text correctly is an invariant working as designed, not a defect. The severity comes
   from the outcome: no bytes at all.
-- **Status:** **OPEN** — the fix is Story 8.0's. **The characterization half is CLOSED**
-  (`folio-go/thai_mark_stacking_test.go`, 2026-08-31), landed separately at the owner's direction so
-  the branch could not drift while the fix waited.
+- **Status:** **CLOSED 2026-08-31 by Story 8.0** (build `26e3ba1`). The characterization half had
+  closed first (`folio-go/thai_mark_stacking_test.go`, landed separately at the owner's direction so
+  the branch could not drift while the fix waited); the fix half shipped with it. Measured at close:
+  the owner's clause renders exit 0 through the shipped CLI, its bytes are identical on all four
+  AD-21 targets, and all 21 pre-existing goldens are unmoved.
+  **THREE SUCCESSOR OBLIGATIONS WERE CREATED BY THE FIX AND ARE FILED SEPARATELY — this entry is
+  closed, they are not:** **DW-56** (HIGH — the new golden's human reading sign-off, owner: the human
+  reader), **DW-57** and **DW-60** (the two remaining sites of the falsified unreachability claim
+  below). Closing this entry is a statement about *ordinary Thai reaching the page*, which is
+  measured, and not about those three.
+
+- **PREDICATE CORRECTED 2026-08-31 at Story 8.0's plan gate, in this entry's own heading.** It read
+  *"any sequence stacking two marks over a base fails closed"*. Measured wrong, and over-broad: `ที่`,
+  `ป้ำ` and `ปั` each stack two marks over one base and rendered exit 0 throughout, because the
+  shipped face resolves that case by a GSUB lowered-form substitution **at zero offset**, and only
+  the `ั`+tone case by a GPOS y-displacement. `ที่` appears in `fixtures/shaped-text`, in all four
+  `statement-*` fixtures and in `justified-thai`. **The trigger is a non-zero `YOffset`, full stop** —
+  an implementer taking the old predicate at face value would have built the wrong test and then read
+  the shipped goldens as contradicting the story. Corrected in `epics.md` at the same gate.
 
 **FOUND IN PRODUCTION, 2026-08-31.** The owner pasted a contractor-liability clause from a real Thai
 contract into a text element. The canvas rendered it; the PDF preview failed with
@@ -2359,7 +2375,10 @@ understated in another.**
 
 **(a) It is not untested in both directions.** This entry said the branch *"could start refusing
 more, or stop refusing and draw the marks wrongly, and no test would notice either direction."* Too
-strong: `internal/pdf/textdoc_test.go`'s `TestShapedRunFailsClosedOnYOffset` exercises it with a
+strong: `internal/pdf/textdoc_test.go`'s `TestShapedRunFailsClosedOnYOffset` — **re-pointed by Story
+8.0 to `TestShapedRunExpressesAYOffsetAsATextRise`, with the fail-closed half kept as
+`TestShapedRunFailsClosedOnARiseThatRoundsAway`** (D-7.8.7: re-point, never delete) — exercises it
+with a
 synthetic run **and carries a non-vacuity leg** — the same run with `YOffset` zeroed must emit
 cleanly — so the *stop refusing* direction has always reddened. What was genuinely unpinned was the
 **message** and **reachability through a real document**, and both are now pinned.
@@ -3270,3 +3289,143 @@ only on rune boundaries with a visible marker, and the assembled sentence fits t
 `bounded(message, 512)` can no longer fire. The `elementId` field never went through that seam, so
 the host's byte cut is still the only bound on it. The ruling's own reasoning applies unchanged; only
 its scope did not reach here.
+
+---
+
+### DW-56 — the `thai-stacked-marks` golden has no human reading sign-off, and its subject is a placement mechanism nothing in the corpus has ever judged
+- **Deferred by:** Story 8.0 (2026-08-31), recorded in the spec's frontmatter at the build and filed
+  into this register at the story's close
+- **Owner:** **the human reader.** Not a story, not a gate, not a checklist — **no agent may write
+  `reader`, `date` or `examined`**, and the owner has already been asked to perform the visual pass
+  out of band. This entry is discharged only by a sign-off record a person writes
+- **Severity:** **HIGH**
+- **Status:** OPEN — **caused by this change** (the fixture is new). **Not discharged.** The visual
+  pass had not been performed when the story closed
+
+**The gap.** `fixtures/thai-stacked-marks/expected.pdf` is the first committed document whose Thai
+mark placement is produced by a **text-rise operator**. Every machine gate this story ran proves the
+bytes are *stable and identical across four targets* — none of them proves the marks are *at the
+right height on the page*. Only a person reading the rendered document can say that.
+
+**Why the existing attestation does not cover it.** `fixtures/shaped-text/thai-signoff.json`
+(D-2.3.5) attests **GSUB lowered-form placement at zero offset** — a different mechanism, reached by
+a different code path, and one whose correctness this story does not touch. Reading it as covering
+vertical displacement would be the same measure-one-report-wider error D-8.0.1 exists to stop, one
+artifact over.
+
+**Why it was routed as a deferral and not a halt.** The spec's `Block If` says to state a needed
+human sign-off and stop. On three measured grounds it did not engage: **no existing attestation was
+invalidated** (all 21 pre-existing digests are unmoved, so D-4.7.1's whole-file invalidation is not
+reached), **no sign-off gate is left red**, and **no agent wrote an attestation field**. The
+distinction that matters is between *a new artifact awaiting a reader* and *an existing attestation
+broken by a change* — only the second is a halt.
+
+---
+
+### DW-57 — the shaped-expectation table's YOffset guard has an available red-proof that is not built, because the table is bound to a frozen oracle
+- **Deferred by:** Story 8.0 (2026-08-31)
+- **Owner:** **the story that next re-records
+  `fixtures/shaped-text/harfbuzz-oracle.json`, or Story 8.4 (rendering from an embedded face,
+  which is the first work that can introduce a fourth face) — whichever first** — a gate, never an
+  event, per D-000.73
+- **Severity:** LOW — **the false half is already corrected; only the missing proof remains**
+- **Status:** OPEN — **pre-existing** (the claim predates this story) — **the comment half is
+  CLOSED** (`folio-go/shaping_expectations_test.go`, corrected at Story 8.0's close, 2026-08-31)
+
+**What was corrected, and what is left.** The comment above `shapedExpectations` asserted that
+YOffset is *"a FORWARD GUARD WITH NO AVAILABLE RED-PROOF"*, measured as *"0 for every glyph of every
+row across all three shipped faces"*, and instructed the next reader **not to manufacture a red-proof
+for it**. This was the **fourth** surviving instance of the population error D-8.0.1 names — measured
+over **this table's sixteen rows**, reported over **the shipped faces** — and Story 8.0 disproves the
+wider half outright: the shipped Noto Sans Thai gives `ั`+tone a y-displacement of −57. The comment
+now scopes the measurement to the rows it was taken over, quotes the false claim rather than deleting
+it, and names the red-proof as available-but-unbuilt.
+
+**Why the proof itself was out of scope.** Red-proving YOffset means adding a `ทั้ง` row, and every
+row of that table is bound to `fixtures/shaped-text/harfbuzz-oracle.json`. Re-recording the oracle is
+a separate obligation with its own evidentiary burden, and Story 8.0's contract fences it out. Until
+it lands, all 16 rows carry YOffset 0, which also means `shaping_oracle_test.go`'s HarfBuzz `Dy`
+cross-check compares 0 against 0 for every row — the guard exists and asserts, but on a population
+where it cannot fail.
+
+---
+
+### DW-58 — a negative `fontSize` now silently INVERTS the text rise, where the pre-change engine refused the glyph outright
+- **Deferred by:** Story 8.0 (2026-08-31)
+- **Owner:** **the story that next changes `folio-go/parse.go`'s `decodePoints`, or Story 15.3
+  before the `folio-go/v0.1.0` tag (whichever first)** — a gate, never an event, per D-000.73. It
+  belongs at **parse-time validation**, not in the emitter
+- **Severity:** MEDIUM
+- **Status:** OPEN — **the exposure is caused by this change; the missing validation is
+  pre-existing.** Explicitly **NOT a spec deviation**: the implementation follows the narrowing rule
+  the intent contract states, exactly
+
+**The gap.** Measured at Story 8.0's dispatch: rendering the new fixture with `"fontSize": -12` exits
+0 and emits `+0.024`, `+0.684`, `+0.708` rises instead of the negative operands — the marks are
+placed **above** the baseline instead of below. Before this story any non-zero vertical offset was
+refused outright, so a hard refusal has become silently wrong output.
+
+**Why the emitter is the wrong place to fix it.** The narrowed refusal fires only when the offset is
+non-zero **and** the rise rounds to zero; a negative font size produces a perfectly non-zero rise, so
+the emitter has nothing to catch. Making the emitter reject a negative rise would put a document-level
+validity rule inside the byte-emission stage, where it can neither name the offending element nor
+reach the author in their own terms. `fontSize` has **no positivity floor at parse** — the same
+absence that lets `0.008` through, which is what makes the narrowed refusal reachable at all. One
+floor at parse closes both.
+
+---
+
+### DW-59 — a very large `fontSize` panics during wrapping instead of returning a located error
+- **Deferred by:** Story 8.0 (2026-08-31)
+- **Owner:** **the story that next changes `folio-go/wrap.go`'s `measureRuneRange`, or Story 15.3
+  before the `folio-go/v0.1.0` tag (whichever first)** — a gate, never an event, per D-000.73
+- **Severity:** MEDIUM
+- **Status:** OPEN — **pre-existing and not caused by this change.** The panic is reached during
+  wrapping, **before** the new emitter code runs
+
+**The gap.** Measured at Story 8.0's dispatch: `fontSize` 9223372036854 panics with
+`geom: ScaleRound: v*num overflows int64` at `folio-go/wrap.go:128`. It is the same defect class
+`line_spacing_test.go:93` already names — **a panic must be a returned error** — and it shares
+DW-58's root cause: `decodePoints` applies no bound to `fontSize` in either direction. A single
+parse-time range check discharges both, which is why they are filed adjacently rather than merged:
+the *fixes* coincide, the *symptoms* and severities do not.
+
+---
+
+### DW-60 — `internal/text/shape.go` carries the same falsified YOffset unreachability claim, and here the red-proof IS available
+- **Deferred by:** Story 8.0 (2026-08-31)
+- **Owner:** **the story that next changes `folio-go/internal/text/shape.go`, or Story 8.4
+  (rendering from an embedded face) — whichever first** — a gate, never an event, per D-000.73
+- **Severity:** MEDIUM — higher than DW-57 because this is **production source**, not a test comment,
+  and because the proof is available with no blocker
+- **Status:** OPEN — **pre-existing.** Not touched by this story, which fenced `internal/text` out
+
+**The gap.** `shape.go:18-21` states as measured fact that YOffset is *"zero for every glyph of every
+sample across all three shipped faces today"* and is a forward guard with no available red-proof.
+Story 8.0 disproves it: a reviewer confirmed by mutation that **zeroing YOffset in `shape.go` now
+reddens five tests**. This is a **third site** of the D-8.0.1 error beyond the two the spec's own
+frontmatter named, and unlike DW-57 nothing blocks the proof — the reddening tests already exist.
+
+**Why it is worth a number rather than a comment fix folded into Story 8.0.** Story 8.0's contract
+fences `internal/text` out, and the honest fix here is comment **and** red-proof together: a comment
+correction alone would trade a false claim for an unproved one in production source, which is the
+weaker of the two available outcomes when the proof is right there. D-8.0.1's lesson is that a
+comment asserting a negative carries a test's evidentiary burden.
+
+---
+
+### DW-61 — the golden count 21 is hard-coded as a literal at six sites with nothing binding it to the record's length
+- **Deferred by:** Story 8.0 (2026-08-31)
+- **Owner:** **the story that next adds a golden to `goldenDigestRecord`** — a gate, never an event,
+  per D-000.73. That is the exact moment every one of these literals becomes false
+- **Severity:** LOW
+- **Status:** OPEN — **pre-existing in kind, and this story added to the population** rather than
+  creating it
+
+**The gap.** The number 21 appears as a bare literal in `thai_stacked_marks_template.go`,
+`byte_neutrality_test.go` (two sites), `thai_stacked_marks_fixture_test.go`,
+`internal/pdf/textdoc_test.go` and the new fixture's README, with no assertion tying any of them to
+`len(goldenDigestRecord)`. A 23rd golden makes each of them a false statement and **nothing goes
+red** — the failure mode this project has repeatedly recorded as the expensive one, because a stale
+count reads as a verified count. The remedy is one derivation, not six edits.
+

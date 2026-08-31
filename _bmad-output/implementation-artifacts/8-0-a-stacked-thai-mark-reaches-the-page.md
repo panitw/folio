@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: '3d630ab3cff89cf160cf04aec89375772ecb483f'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized']
 deferred:
@@ -70,6 +70,31 @@ deferred:
     location: '_bmad-output/implementation-artifacts/deferred-work.md:2327'
     severity: 'low'
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative. The intent contract below governs the implementation; where the two differ, the
+contract wins.*
+
+Ordinary Thai would not print. Whenever the shaping step lifted a tone mark to sit clear of the
+vowel beneath it — which is what ordinary Thai does, and what the owner's own contract clause does —
+the final stage refused the whole document and wrote no file at all. The canvas drew the text
+perfectly, so the failure surfaced only at the end, and a comment in the code claimed the branch
+could not be reached, which is why nobody had looked.
+
+Those marks now reach the page at the height the shaper asked for, through a positioning
+instruction the page format has always had and this project had simply never emitted. The owner's
+clause joins the documents rebuilt and re-checked on every run.
+
+Nothing else moved. Every document that printed before produces byte-for-byte the same file, on all
+four platforms kept in step — that was the real risk here, and it is measured rather than assumed.
+
+One refusal survives on purpose. Text set at a small fraction of a point rounds the mark's
+displacement away to nothing, and printing it would place the mark wrongly while producing a file
+indistinguishable from a correct one, so that case still refuses rather than quietly degrading.
+
+Two things stay open: no person has yet read the new document to confirm the marks sit right, and a
+negative text size now shifts marks the wrong way instead of refusing.
 
 <intent-contract>
 
@@ -275,3 +300,133 @@ Dispatch: implement + review + triage + local commit. Baseline 3d630ab3cff89cf16
 - The new fixture has no human reading sign-off, and none was written. Recorded as a HIGH deferred item; only the owner can commission a reader.
 - A negative or extremely large `fontSize` remains unguarded (both deferred, medium) — the first now silently inverts the rise, the second panics during wrapping before the emitter is reached.
 
+
+## Delivery Log
+
+### 2026-08-31 — planned
+
+Dispatched against baseline `3d630ab` to close **DW-28**, and dispatched **out of sequence**: 8.0
+belongs to Epic 8, which is `backlog`, and it jumped ahead of Story 7.9 — the story that gates
+`epic-7: done` — **by the owner's own call, after they hit the defect a third time** (D-8.0.5). The
+sequence from here is unchanged: 7.9, then 7.10, then 8.1–8.6.
+
+**The defect was found in production, by the owner, not by a test.** They pasted a contractor
+liability clause from a real Thai contract into a text element; the canvas drew it and the PDF stage
+returned a hard refusal with no bytes at all. **A code comment is why nobody had looked** (D-8.0.1):
+the refusal branch carried a comment stating, as measured fact, that it was unreachable through the
+render path with the shipped set and could not be red-proved through it. Both halves were false —
+Story 2.3 had measured **its own samples** and reported on **the shipped set**. The comment was
+load-bearing twice over: it justified the fail-closed choice and it justified the absence of any
+render-path test, so it protected itself.
+
+**The plan gate found the epic's own predicate wrong and corrected it before any code was derived
+from it.** The epic said the trigger was *"two stacked marks over one base"*. Measured: `ที่`, `ป้ำ`
+and `ปั` each stack two marks and render exit 0 today, because the shipped face resolves that case
+by a GSUB lowered-form substitution at zero offset and only the `ั`+tone case by a GPOS
+y-displacement. `ที่` already sits in `fixtures/shaped-text`, in all four `statement-*` fixtures and
+in `justified-thai`, so a two-marks predicate would have built the wrong test and then read the
+shipped corpus as contradicting the story. The trigger is a non-zero vertical offset, full stop. The
+gate also settled that *"a message pinned as it is today"* means pinned by a test, not frozen prose,
+and that the reason clause naming the TJ array becomes false for the case that still refuses.
+
+### 2026-08-31 — built
+
+**The characterization landed first, deliberately** (`c3df718`, Story 7.8's close), so the fix would
+have something to move rather than something to replace — D-7.8.7's re-point-never-delete obligation
+applied in advance.
+
+**The builder's own mutation found its rounding rule unverified, and that is the finding worth
+carrying forward.** Swapping the half-to-even scaler for truncation originally produced **zero**
+failures: every rise input in the change divided exactly by 1000, so the two rules were
+indistinguishable by any test in the suite — while the four-target agreement obligation rests
+entirely on that rounding mode. The gap was closed with two genuine ties before it left the
+dispatch. The build also warns, usefully, that its first mutation attempt landed on a doc comment
+rather than the code; the same trap was avoided at close by mutating the call site and printing the
+mutated line back.
+
+Review triage: **7 patched (high 0, medium 3, low 4) / 5 newly deferred / 7 rejected**, no intent gap
+and no spec deviation. Three of the patches are the ones that gave the guards teeth: the corpus-wide
+no-text-rise scan was narrowed to page content streams (it had been scanning embedded font programs,
+where arbitrary binary can spell any operator by chance); the restoration check was rebuilt to read
+the operand of each `Ts` per `BT…ET` block and to **return a count** so no caller can pass
+vacuously; and a segment-classification check that had been counting a zero-rise segment toward a
+non-zero claim was corrected.
+
+### 2026-08-31 — done
+
+Baseline `3d630ab`; build commit `26e3ba1`, closed at `HEAD` by a separate `Close Story 8.0`
+commit, per this project's convention. Decisions applied:
+**D-8.0.1** (the comment asserting unreachability, corrected at its sites and the population each
+negative claim was measured over now stated), **D-8.0.2** (HIGH on the outcome — no bytes at all —
+explicitly *not* on "the product lies to the author"; the canvas is blind by design under AD-5),
+**D-8.0.3** (it opens Epic 8 because 8.4 widens the branch it removes), **D-8.0.4** (`Ts` is inside
+AD-6's pinned profile, and this does not join D-7.8.3's before-the-tag set), **D-8.0.5** (the owner's
+sequencing call, and a checklist-as-owner that failed for the third time), **D-7.8.7** (re-point,
+never delete).
+
+**The byte-identity guardrail was the whole risk, and it was verified independently rather than
+relayed.** All **21** pre-existing goldens hashed at baseline and at HEAD by reconstructing each blob
+from the baseline tree: the diff is exactly **one added line** and no moved digest. The new fixture's
+`d5077f3346e10abb17ec69d2d6e2a975d02524d6e2eebcbec3b85ff30ca48eb1` is **new, not moved** — a moved
+digest would have been a halt, not a re-record, and none occurred. `fixtures/statement-signoff.json`
+was not touched and no agent wrote `reader`, `date` or `examined` anywhere.
+
+**Teeth proved by mutation at close, both reverted.** Substituting truncation for the half-to-even
+scaler at the real call site reddens **both** subtests of the rounding test with the exact operands
+the story pins (`-0.655` for `-0.656`, `-0.619` for `-0.62`). Widening the emission gate so a
+zero-rise segment also emits the operator reddens **21 golden fixture tests, the unit byte-identity
+test, the zero-adjustment `Tj` pin and the untouched control arm** — the load-bearing assertion has
+real teeth, and the file was restored byte-identical to `HEAD` afterwards.
+
+**Gates measured at close, not relayed.** Full Go suite `-count=1`: 17 packages, **exactly one
+distinct red** — the mandated `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`, floor not met,
+got 7 need >=20, untouched along with its drift twin. `go vet -tags=matrix ./...` exit 0, no output.
+`gofmt -l folio-go` from the repo root, no output; `gofmt -l lint` still reports only the known
+DW-23 file. `TestTargetRenderHash` on all four legs with the target exported — darwin/arm64 1.43s,
+linux/amd64 10.58s, linux/arm64 5.15s, js/wasm 10.89s — every leg PASS and every leg wrote
+`d5077f33…` for the new fixture, against an unset control that logged *"asserts NOTHING and is a
+deliberate no-op"* while the four legs logged their witness lines instead, which is what proves the
+legs were not no-ops. `TestCrossTargetByteIdentity` PASS, 22.35s. Lint module: 4 packages ok.
+Designer, which this story touches **zero** paths of: typecheck exit 0, oxlint exactly the 4 baseline
+`only-export-components` warnings and 0 errors, **284 tests / 34 files** passed, `test:e2e:compile`
+clean — unchanged, so the fence held at the surface as well as in the diff. The owner's acceptance
+`go run ./cmd/folio render` on the new fixture: **exit 0, 65257 bytes, sha256 `d5077f33…`**,
+identical to the golden; the same command wrote no file before this change. **Nothing was deferred
+to a catch-up run:** the heavy legs and the cross-target check ran in this story.
+`TestShippedFacesReproduceFromUpstream` remains red for an environmental reason only — fontTools is
+not importable by the pinned interpreter — and it is `//go:build matrix`, so it never enters the
+ordinary suite; reported rather than called green.
+
+**Scope fences verified mechanically, not by reading.** Zero paths under `folio-go/internal/layout/`
+and zero under `folio-designer/` in the commit's file list; `internal/geom` still exports exactly
+`{ScaleRound}`; `baselineAcceptanceFixtures` untouched and still hard-pinned at 5 by its own
+assertion in a file this commit does not contain; the new fixture's `goToolchain` is `go1.26.0`. All
+twelve registration sites present, including **two** declarations in the missing-glyph corpus (the
+corpus table and the beyond-baseline accounting, whose identity check fatals if only one moves) and
+**five** edits in `matrix.yml` (the docs list plus one upload path per target). Test-function names
+diffed across the commit: **56 → 67, zero net deletions** — the three names that disappear are all
+re-points with a successor asserting the same subject, and the refused arms' two properties (a
+refusal emits zero bytes, and the message is pinned verbatim) moved intact onto the rounding-boundary
+refusal. The pinned message's second half was reconstructed from its concatenated literals at both
+revisions and is **byte-identical**, 109 characters, same digest; the false *"which a TJ array cannot
+express"* clause survives only in comments explaining its removal.
+
+**One finding re-opened at close and fixed here.** The falsified unreachability claim's **fourth**
+surviving site was deferred whole, but the register's own text conceded that correcting the comment
+was in scope and only the red-proof was not. It had not been corrected. Done at close, comment-only:
+the claim is now scoped to the sixteen rows it was actually measured over, the wider claim is quoted
+and marked false rather than deleted, and the available-but-unbuilt red-proof is named with its
+blocker. The red-proof half is filed as **DW-57**.
+
+Deferred with owners: **DW-56** (HIGH, the new fixture's human reading sign-off — **owner: the human
+reader**, not discharged and no record written), **DW-57**, **DW-58** (a negative font size now
+inverts the rise where it previously refused; the fix is parse-time validation, not the emitter),
+**DW-59** (a very large font size panics during wrapping, pre-existing and reached before the new
+code), **DW-60** (a further site of the same falsified claim, in the shaping layer's own source, where a
+red-proof *is* available) and
+**DW-61** (the golden count 21 hard-coded as a literal at six sites with nothing binding it to the
+record's length). **DW-28 is CLOSED.** Its own subject — ordinary Thai reaching the page —
+is measured shipped, its heading's corrected-away *"two stacked marks"* predicate is fixed in place
+with the correction shown, and the test it cited by its old name now carries both successors. It is
+closed rather than held open on the sign-off, because the sign-off is a **new** obligation the fix
+created and it has its own number (DW-56); an entry held open on its own successors never closes.

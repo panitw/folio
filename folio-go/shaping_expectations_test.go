@@ -30,14 +30,30 @@ import (
 // YOffset is the field a fourth face would use. Count the places the
 // meaning lives, then assert all of them.
 //
-// **YOffset is a FORWARD GUARD WITH NO AVAILABLE RED-PROOF.** Measured:
-// it is 0 for every glyph of every row across all three shipped faces,
-// so zeroing YOffset after shaping reddens NOTHING. That is the correct
-// and expected result at these faces, and it is stated here rather than
-// papered over: a guard credited with a red-proof it does not have is
-// worse than one openly labelled unproven, because the label tells the
-// next reader where to look. Do not manufacture a red-proof for it, and
-// do not weaken the other four fields to match it.
+// **YOffset is UNPROVED BY THIS TABLE, and the population that is
+// measured over is THIS TABLE'S SIXTEEN ROWS — not the shipped faces.**
+// Measured: YOffset is 0 for every glyph of every row here, so zeroing
+// YOffset after shaping reddens nothing *in this file*.
+//
+// THE WIDER CLAIM THIS COMMENT USED TO MAKE WAS FALSE, and it is
+// corrected rather than deleted so the next reader can see the shape of
+// the error. It read: YOffset "is 0 for every glyph of every row across
+// all three shipped faces ... Do not manufacture a red-proof for it."
+// The shipped Noto Sans Thai gives ั+tone a GPOS y-displacement of -57,
+// which is the entire subject of Story 8.0 (DW-28, HIGH): the defect
+// reached the owner in production, and a comment asserting the same
+// unreachability in the emitter is why nobody looked (D-8.0.1). Story
+// 2.3 measured ITS OWN SAMPLES and reported on THE SHIPPED SET — two
+// different populations, the same measure-one-report-wider error this
+// run has now recorded four times, this being the fourth site.
+//
+// A RED-PROOF IS THEREFORE AVAILABLE, and it is deliberately NOT taken
+// here: adding a ทั้ง row would red-prove YOffset, but this table is
+// bound to fixtures/shaped-text/harfbuzz-oracle.json and re-recording
+// that oracle is outside Story 8.0's scope. Filed as deferred work at
+// Story 8.0's close. Until it lands, treat YOffset as a forward guard
+// whose red-proof exists but has not been built, and do not weaken the
+// other four fields to match it.
 //
 // The other four ARE red-proved, and each red-proof was run:
 //   - replace the shaper call with the rune->cmap loop it supersedes:

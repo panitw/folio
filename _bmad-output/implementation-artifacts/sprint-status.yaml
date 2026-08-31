@@ -191,7 +191,7 @@ development_status:
   # 8.0 added 2026-08-31: DW-28, ruled HIGH after the owner hit it on a real Thai contract
   # clause. It OPENS the epic and is a PRECONDITION of 8.4 -- embedding arbitrary faces widens
   # the fail-closed branch it removes. Numbered 8.0 so 8.1..8.6 keep the keys they already have.
-  8-0-a-stacked-thai-mark-reaches-the-page: backlog
+  8-0-a-stacked-thai-mark-reaches-the-page: done
   # 7.10 is sequenced HERE by the owner's call: after 8.0, before 8.1. It does not gate
   # `epic-7: done`, but it must precede the folio-go/v0.1.0 tag (D-7.7.13), and a position in a
   # sequence is the only owner that has worked on this project. Its key stays under epic-7.
