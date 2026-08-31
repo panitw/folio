@@ -2585,9 +2585,19 @@ rather than having to build one.**
 
 **Acceptance Criteria:**
 
-**Given** a text element whose value contains a Thai base carrying two stacked marks
+**Given** a text element containing a glyph the shaper gives a **non-zero vertical offset**
 **When** the document renders
-**Then** it produces a PDF, with each mark placed at the vertical offset the shaper computed
+**Then** it produces a PDF, with the mark placed at the offset the shaper computed
+
+**PREDICATE CORRECTED 2026-08-31 at the plan gate, which measured it.** This story's original wording
+said *"a Thai base carrying two stacked marks"*, and that is **over-broad**: `ที่`, `ป้ำ` and `ปั`
+each stack two marks over one base and render **exit 0 today**. Noto Sans Thai resolves the
+`ี`+tone case with a **GSUB lowered-form substitution** — one glyph, zero offset — and only the
+`ั`+tone case with a **GPOS y-displacement** of −57. `ที่` already appears in `fixtures/shaped-text`,
+in all four `statement-*` fixtures and in `justified-thai`, so an implementer building a
+two-marks predicate would write the wrong test and then conclude the shipped goldens contradict this
+story. **The trigger is a non-zero `YOffset`, full stop** — mark stacking is how Thai reaches it, not
+what defines it.
 
 **Given** the 21 shipped golden fixtures, in none of which any glyph carries a non-zero vertical
 offset
@@ -2596,10 +2606,23 @@ offset
 **only** when `YOffset != 0`, and that is asserted rather than assumed. This is the whole of the
 byte-identity risk in this story.
 
-**Given** a glyph whose positioning still cannot be expressed
+**Given** a glyph whose positioning still cannot be expressed — after this story, one whose offset
+**rounds away to a zero rise**, which is reachable only at sub-point font sizes because `fontSize`
+has no positivity floor at parse
 **When** it is emitted
-**Then** it still refuses, with a message pinned as it is today — the fail-closed branch narrows, it
-does not disappear, and `thai_mark_stacking_test.go`'s arms become this story's before/after
+**Then** it still refuses and emits zero bytes, and that refusal is **pinned by a test** — the
+fail-closed branch narrows to `YOffset != 0 && rise == 0`, it does not disappear, and
+`thai_mark_stacking_test.go`'s arms become this story's before/after, **re-pointed and never
+deleted** (D-7.8.7)
+
+**"Pinned as it is today" means PINNED BY A TEST, not byte-identical prose** — settled 2026-08-31 at
+the plan gate, which raised it rather than deciding it silently. The message's reason clause, *"which
+a TJ array cannot express"*, becomes **false** for the narrowed case: a TJ array is no longer why the
+glyph is refused; a rise that rounded to zero is. Shipping a canonical statement that misdescribes
+its own condition is exactly the failure D-8.0.1 was written to stop, so the reason clause is
+**rewritten to describe the narrowed condition**. Its second half — *"would place it wrongly with no
+observable difference in the output bytes, so this fails rather than degrades"* — stays **verbatim**,
+because it remains true and is the sentence that explains why refusing beats degrading.
 
 **Given** every number reaching an output byte
 **When** the rise is emitted
