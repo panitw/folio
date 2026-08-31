@@ -3,6 +3,7 @@ package folio
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -1148,6 +1149,23 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 	// a canvas cache that could not see the document's carried faces would
 	// measure a document the PDF does not print.
 	cache := newDocumentFontCache(t)
+	// degrade disposes of ONE element and carries on, and it is spelled
+	// once because two different conditions reach it (D-7.4.2: DEGRADE
+	// THIS ELEMENT, NEVER ABORT THE PROJECTION). See both call sites
+	// below for what each one is.
+	degrade := func(band string, element template.Element, component *CanvasComponent) {
+		// AND THE WINDOW COUNT LOSES THIS ELEMENT'S EXTENTS. Nothing
+		// downstream of the column could tell — an element with nothing
+		// to say and an element that could not be shaped contribute the
+		// identical nothing — so the fact is recorded here, where it is
+		// known, and reported as the honesty flag. Only an element that
+		// actually HAS a value loses anything: an unset or empty one
+		// would have contributed no lines with a perfectly good chain.
+		if band == bandContent && element.Value.Set && !element.Value.Null && element.Value.Value != "" {
+			column.FontChainDegraded = true
+		}
+		component.TextPaint = &CanvasTextPaint{Lines: []CanvasTextLine{}}
+	}
 	for _, band := range []struct {
 		name     string
 		elements []template.Element
@@ -1170,21 +1188,14 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 				// incomplete for production rendering (for example, a text
 				// component without a chosen font chain). They remain loadable;
 				// there is simply no honest measured paint to display yet.
-				//
-				// AND THE WINDOW COUNT LOSES THIS ELEMENT'S EXTENTS. Nothing
-				// downstream of the column could tell — an element with
-				// nothing to say and an element that could not be shaped
-				// contribute the identical nothing — so the fact is recorded
-				// here, where it is known, and reported as the honesty flag.
-				// Only an element that actually HAS a value loses anything:
-				// an unset or empty one would have contributed no lines with
-				// a perfectly good chain.
-				if band.name == bandContent && element.Value.Set && !element.Value.Null && element.Value.Value != "" {
-					column.FontChainDegraded = true
-				}
-				component.TextPaint = &CanvasTextPaint{Lines: []CanvasTextLine{}}
+				degrade(band.name, element, component)
 				continue
 			}
+			// SCOPED TO THIS ELEMENT'S CHAIN (fontCache.forChain), shadowing
+			// the shared cache for the rest of the iteration: the canvas is
+			// the surface an author repairs a chain on, so a message about a
+			// chain entry must name the chain their element draws through.
+			cache := cache.forChain(element.Style.Value.FontFamily.Value)
 			paint := &CanvasTextPaint{Lines: []CanvasTextLine{}}
 			if !element.Value.Set || element.Value.Null || element.Value.Value == "" {
 				component.TextPaint = paint
@@ -1196,7 +1207,31 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 			}
 			segs, _, err := shapeSegments(string(element.ID), chain, element.Value.Value, fs, cache, breaksAreConsumed)
 			if err != nil {
-				return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				// A CHAIN ENTRY THIS BUILD CANNOT DRAW WITH IS A DOCUMENT
+				// THE FORMAT CALLS VALID, and it degrades exactly as an
+				// unresolvable chain does above (D-7.4.2, stated at the
+				// truncation arm below in this same function).
+				//
+				// Story 8.4 made this reachable from document CONTENT: a
+				// chain entry naming a non-font asset loads (D-1.8.1 as
+				// amended) and is refused at coverage resolution, which is
+				// right for Render — the page would be wrong — and wrong
+				// here. The designer is the ONE surface on which an author
+				// can repair that entry, and a projection that returns an
+				// error opens no document at all, so the defect would lock
+				// the author out of its own repair.
+				//
+				// SCOPED TO THE CAPABILITY ERROR, deliberately. Only
+				// template.UnsupportedFontMediaTypeError is tolerated: a
+				// genuine internal shaping fault is not a document
+				// property, has no author repair, and still aborts the
+				// projection as it always did.
+				var unsupported *template.UnsupportedFontMediaTypeError
+				if !errors.As(err, &unsupported) {
+					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
+				}
+				degrade(band.name, element, component)
+				continue
 			}
 			atomic := atomicSpansFor(t.doc.UnbreakableValues, nil)
 			ops := text.Opportunities(text.Dictionary(), element.Value.Value, atomic)

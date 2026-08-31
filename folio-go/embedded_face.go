@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 
 	"github.com/panitw/folio/folio-go/internal/template"
 )
@@ -43,9 +44,14 @@ import (
 // THE COST, STATED: the view must be built at BOTH fontCache construction
 // sites (predictDocument, render.go; addCanvasTextPaint, page_setup.go),
 // or the canvas silently keeps the pre-8.4 behaviour. Both use
-// newDocumentFontCache below, and TestCanvasMeasuresWithTheEmbeddedFace
-// is what reddens if a third site ever calls newFontCache() with a
-// document in hand.
+// newDocumentFontCache below, and a THIRD production site calling
+// newFontCache() with a document in hand is caught by
+// TestOnlyTheTwoDocumentAwareSitesBuildAFontCache (font_cache_sites_test.go),
+// which scans this package's own non-test sources for the call. That guard
+// exists because the claim used to be made for
+// TestCanvasMeasuresWithTheEmbeddedFace, which cannot support it: that test
+// exercises addCanvasTextPaint alone, so a NEW third call site would ship
+// green past it.
 
 // embeddedFaceNamePrefix is the reserved head of every face name this
 // package mints for a face the DOCUMENT carries.
@@ -81,7 +87,7 @@ const embeddedFaceNamePrefix = "asset:"
 func embeddedFaceName(assetKey string) string { return embeddedFaceNamePrefix + assetKey }
 
 // embeddedFaceSource is one carried face's resolution record: the asset
-// to decode, and the address to put in the error if it cannot be.
+// to decode, and the addresses to put in the error if it cannot be.
 type embeddedFaceSource struct {
 	assetKey string
 	// asset is the document's own asset record, captured at index time so
@@ -92,17 +98,110 @@ type embeddedFaceSource struct {
 	// condition.
 	asset   template.Asset
 	present bool
-	// site is where the render error points the reader: the chain and the
-	// entry index, which is what makes "asset K is not a font" actionable
-	// when one chain is shared by many elements. ElementID is left EMPTY
-	// on purpose — see template.FontChainSite's own doc comment.
-	site template.FontChainSite
+	// sites are EVERY place this asset key is named by a chain entry, in
+	// the order newEmbeddedFaceIndex visits them (chains in sorted name
+	// order, entries in the document's authored order). ElementID is left
+	// EMPTY on every one of them on purpose — see template.FontChainSite's
+	// own doc comment.
+	//
+	// THERE IS A LIST RATHER THAN ONE SITE BECAUSE THE FACE NAME IS
+	// DERIVED FROM THE ASSET KEY ALONE (AD-8/D-8.4.1: the key decides, and
+	// it must, or a document's face and a caller's could collide). So one
+	// asset key is one face name however many chains name it — while the
+	// ADDRESS the error prints is per chain. Keeping only the first
+	// occurrence made the error name a chain the failing element may not
+	// draw through at all, which sends the author to the wrong line of
+	// their own document.
+	sites []template.FontChainSite
+}
+
+// siteIn is the address to print for a failure discovered while drawing
+// through chainName: the entry of THAT chain, so the coordinates match
+// the element's own chain rather than whichever chain sorted first.
+//
+// The chain name reaches this through the CACHE rather than through the
+// ten chain consumers' signatures: fontCache.forChain returns a view of
+// the cache scoped to one document chain, and the three sites that resolve
+// a chain name (collectBandTextRuns and collectBandTableRuns in render.go
+// and table_render.go, addCanvasTextPaint in page_setup.go) hand the scoped
+// view down. Nothing between them had to widen.
+//
+// It falls back to the first recorded site when the chain is not known —
+// a caller with no document chain in hand (the PDF producer's post-shaping
+// loops, a test passing an ad-hoc chain) — which keeps the pre-existing
+// deterministic answer for everything that stays global.
+func (s embeddedFaceSource) siteIn(chainName string) template.FontChainSite {
+	if chainName != "" {
+		for _, site := range s.sites {
+			if site.ChainName == chainName {
+				return site
+			}
+		}
+	}
+	if len(s.sites) == 0 {
+		return template.FontChainSite{AssetKey: s.assetKey}
+	}
+	return s.sites[0]
+}
+
+// displayName is how a MESSAGE spells this face for a person, and it is
+// the only place an embedded entry is spelled as anything other than the
+// reserved name that resolves it.
+//
+// WHY IT EXISTS. The reserved name is "asset:" + 64 hex characters,
+// because the asset key is what AD-8 makes the resolver. Printed in a
+// missing-glyph diagnostic it reads as though the author mistyped a font
+// name, and the digest is not something they can act on — while D-000.37
+// makes the diagnostic's job "here is what to fix".
+//
+// WHY font.family IS THE RIGHT SOURCE **HERE** AND ONLY HERE. D-8.4.1
+// calls font.family DISPLAY IDENTITY — "what a chain editor shows a
+// person" — and forbids it from resolving or substituting a face. This is
+// display, and nothing on this path reaches the fontCache, a
+// pagemodel.TextRun.Face or a PDF resource dictionary.
+//
+// A carried face with no font.family (the record is optional, and so is
+// every key in it) is spelled by a SHORT key prefix instead: something to
+// tell two unnamed carried faces apart, without putting a 64-character
+// digest in a sentence a person reads.
+func (s embeddedFaceSource) displayName() string {
+	if family := s.familyName(); family != "" {
+		return "embedded " + strconv.Quote(family)
+	}
+	key := s.assetKey
+	if len(key) > 8 {
+		key = key[:8] + "…"
+	}
+	return "embedded font asset " + key
+}
+
+// familyName is the asset's declared font.family, or "" when the record,
+// the key or the value is absent. Presence all the way down: `"font":
+// null` and `"family": null` are legal spellings and neither is a name.
+func (s embeddedFaceSource) familyName() string {
+	if !s.asset.Font.Set || s.asset.Font.Null {
+		return ""
+	}
+	family := s.asset.Font.Value.Family
+	if !family.Set || family.Null {
+		return ""
+	}
+	return family.Value
 }
 
 // embeddedFaceIndex maps a minted face name to the asset behind it. It is
-// LOOKED UP BY KEY ONLY and never ranged (ScanMapRange, D-2.2.3): its
-// only iteration is at construction, over a SORTED chain-name slice.
+// the RESOLUTION namespace, keyed by the asset key alone (AD-8), which is
+// what reaches the fontCache, pagemodel.TextRun.Face and the PDF resource
+// dictionary. It is LOOKED UP BY KEY ONLY and never ranged (ScanMapRange,
+// D-2.2.3): its only iteration is at construction, over a SORTED
+// chain-name slice.
 type embeddedFaceIndex map[string]embeddedFaceSource
+
+// source is the by-name lookup, spelled once.
+func (x embeddedFaceIndex) source(name string) (embeddedFaceSource, bool) {
+	src, ok := x[name]
+	return src, ok
+}
 
 // newEmbeddedFaceIndex builds the per-render view from the document's
 // own fonts map. It DECODES NOTHING — it costs one map walk and no
@@ -110,42 +209,41 @@ type embeddedFaceIndex map[string]embeddedFaceSource
 //
 // DETERMINISM. One asset key may appear in several chains, and the face
 // name is derived from the asset key ALONE (AD-8: the key decides), so
-// exactly one record survives per key and which one must not depend on
-// map order. Chains are visited in SORTED NAME order and entries in the
-// document's authored order; the first occurrence wins and is the address
-// the error names.
+// exactly one RESOLUTION record survives per key. Its ADDRESSES do not
+// collapse that way: every occurrence is recorded, and the one printed is
+// chosen by the chain being drawn (embeddedFaceSource.siteIn). Chains are
+// visited in SORTED NAME order and entries in the document's authored
+// order, so both the fallback address and the sequence-collision tie-break
+// are independent of map order.
 func newEmbeddedFaceIndex(t *Template) embeddedFaceIndex {
-	if t == nil || t.doc == nil {
-		return embeddedFaceIndex{}
-	}
 	index := embeddedFaceIndex{}
-	chainNames := slices.Sorted(maps.Keys(t.doc.Fonts)) // sorted: deterministic first-occurrence.
+	if t == nil || t.doc == nil {
+		return index
+	}
+	chainNames := slices.Sorted(maps.Keys(t.doc.Fonts)) // sorted: deterministic addresses.
 	for _, chainName := range chainNames {
 		for i, entry := range t.doc.Fonts[chainName] {
 			if !entry.Embedded() {
 				continue
 			}
 			name := embeddedFaceName(entry.AssetKey)
-			if _, seen := index[name]; seen {
-				continue
+			src, seen := index[name]
+			if !seen {
+				asset, present := t.doc.Assets[entry.AssetKey]
+				src = embeddedFaceSource{assetKey: entry.AssetKey, asset: asset, present: present}
 			}
-			asset, present := t.doc.Assets[entry.AssetKey]
-			index[name] = embeddedFaceSource{
-				assetKey: entry.AssetKey,
-				asset:    asset,
-				present:  present,
-				site: template.FontChainSite{
-					AssetKey:   entry.AssetKey,
-					ChainName:  chainName,
-					EntryIndex: i,
-				},
-			}
+			src.sites = append(src.sites, template.FontChainSite{
+				AssetKey:   entry.AssetKey,
+				ChainName:  chainName,
+				EntryIndex: i,
+			})
+			index[name] = src
 		}
 	}
 	return index
 }
 
-// decode is the font analogue of predictDocument's image loop
+// decodeAt is the font analogue of predictDocument's image loop
 // (render.go): DecodeAssetBytes -> template.DecodeFontForRender, in that
 // order, with prose location and NO diagnostic code — D-7.8.1, and the
 // image precedent (render.go's `fmt.Errorf("folio: Render: %w", derr)`)
@@ -158,18 +256,22 @@ func newEmbeddedFaceIndex(t *Template) embeddedFaceIndex {
 // needed the face. That is why FontChainSite leaves ElementID empty
 // here: prefixing again would name the element twice in one sentence.
 //
+// The SITE IS A PARAMETER rather than a field, because one asset key can
+// be named by several chains and the address to print is the one the
+// failing element draws through — see embeddedFaceSource.sites.
+//
 // It is called from fontCache.parseEmbedded and nowhere else, so a face
 // is decoded at most once per render even though this function memoizes
 // nothing itself.
-func (s embeddedFaceSource) decode() ([]byte, error) {
+func (s embeddedFaceSource) decodeAt(site template.FontChainSite) ([]byte, error) {
 	if !s.present {
-		return nil, fmt.Errorf("%s: names an asset that is not present in the document's assets map", s.site)
+		return nil, fmt.Errorf("%s: names an asset that is not present in the document's assets map", site)
 	}
 	raw, derr := template.DecodeAssetBytes(s.asset)
 	if derr != nil {
 		return nil, fmt.Errorf("asset %q: %w", s.assetKey, derr)
 	}
-	if derr := template.DecodeFontForRender(s.asset.MediaType, raw, s.site); derr != nil {
+	if derr := template.DecodeFontForRender(s.asset.MediaType, raw, site); derr != nil {
 		return nil, derr
 	}
 	return raw, nil

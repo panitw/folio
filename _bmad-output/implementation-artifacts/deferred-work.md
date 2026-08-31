@@ -4253,9 +4253,11 @@ which is a larger change than this story's, and DW-74 is where it belongs.
   note — which is what D-8.3.5 required, because the half most likely to be dropped is the third one
   below and a note is what drops it.
 
-  **All three parts, and where each is asserted.** Every one is red-proved by reverting its own
-  production expression, and the three are asserted by **separate named tests**, so removing any one
-  arm reddens a test of its own rather than being covered by a sibling:
+  **All four rows, and where each is asserted.** The first three are D-1.8.1's three parts; the
+  fourth is the silence that bounds them, and it is in the same table because the placement of the
+  decode is what makes both true at once. Every one is red-proved by reverting its own production
+  expression, and each is asserted by a **separate named test**, so removing any one arm reddens a
+  test of its own rather than being covered by a sibling:
 
   | part | asserted by | reddens if |
   |---|---|---|
@@ -4288,15 +4290,25 @@ what `Render` would do** rather than answering from a second rule system. The th
 gets dropped, which is why it was an AC.
 
 **"When something actually needs to draw from that entry" was given an operational meaning, and it
-is worth recording because it decided where the decode goes.** The entry is decoded at **coverage
-resolution** (`resolveRuneFace`) — the first moment a rune reaches it because no earlier entry in the
-chain covers that rune. It is deliberately **not** decoded by the vertical-model walk
-(`chainLineMetrics`), which visits every entry of a chain to derive a line height: an entry that
-cannot supply a face cannot appear in the element, so it does not constrain the model, which is the
-same tolerance that walk already applied to a chain member the caller did not supply. The two answers
-are consistent rather than contradictory — **if a render completes at all, coverage never reached the
-entry**, so its absence from the vertical model is exactly right. `fontCache.metricsFace`
-(`folio-go/render.go`) is where that one rule is written down.
+is worth recording because it decided where the decode is REFUSED.** The refusal is at **coverage
+resolution** (`resolveRuneFace`) — the first moment a rune reaches the entry because no earlier entry
+in the chain covers that rune.
+
+**The vertical-model walk decodes too; what it does not do is refuse.** This paragraph used to say
+the entry "is deliberately **not** decoded by the vertical-model walk (`chainLineMetrics`)", and that
+mechanism claim was false. `fontCache.metricsFace` (`folio-go/render.go`) calls `declares()`, which
+is true for any embedded name, and then `get()`, which base64-decodes the asset and parses it — so
+the decode **is** attempted on every metrics walk, and a **readable** carried face is decoded there
+and **does** contribute its metrics, which is what makes the canvas and the page agree on line
+advance. What `metricsFace` does with an **unreadable** one is swallow the error: an entry that
+cannot supply a face cannot appear in the element, so it does not constrain the model — the same
+tolerance that walk already applied to a chain member the caller did not supply.
+
+The paragraph's conclusion was right and is unchanged: the two answers are consistent rather than
+contradictory — **if a render completes at all, coverage never reached the entry**, so its absence
+from the vertical model is exactly right. `metricsFace` is where that one rule is written down, and
+its doc comment now states the decode-attempted / failure-tolerated shape rather than the
+never-decoded one.
 
 ---
 

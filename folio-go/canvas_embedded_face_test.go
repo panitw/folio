@@ -198,3 +198,69 @@ func TestCanvasVerticalModelUsesTheEmbeddedFacesOwnMetrics(t *testing.T) {
 		t.Fatal("vacuity guard: the projection carries no painted line, so nothing was compared")
 	}
 }
+
+// TestCanvasDegradesRatherThanAbortingOnANonFontChainEntry pins D-7.4.2 on the
+// element arm Story 8.4 made reachable.
+//
+// THE CONDITION IS NEW AND IT COMES FROM DOCUMENT CONTENT. Before this story a
+// chain entry naming a non-font asset resolved to nothing anywhere; since it,
+// coverage resolution refuses it, located — which is DW-83's whole point on
+// the render path, and exactly the wrong answer on the canvas. The designer is
+// the ONE surface on which an author can repair such an entry, and a
+// projection that returns an error opens no document at all.
+//
+// So the capability refusal is tolerated HERE, per element, in the shape
+// addCanvasTextPaint's own fontChain arm a few lines above already uses: an
+// empty paint, the column flagged as degraded, and on to the next element. It
+// is scoped to the capability error (template.UnsupportedFontMediaTypeError)
+// so a genuine internal shaping fault still aborts the projection as it did.
+//
+// RED-PROOF: restore the unconditional `return` in addCanvasTextPaint's
+// shapeSegments arm and this test fails on the projection error.
+func TestCanvasDegradesRatherThanAbortingOnANonFontChainEntry(t *testing.T) {
+	source := nonFontChainDoc(t, `["Noto Sans", {"asset": "`+nonFontAssetKey+`"}]`, "สัญญา")
+	tpl, err := ParseTemplate([]byte(source))
+	if err != nil {
+		t.Fatalf("the document must LOAD: %v", err)
+	}
+	fs := testShippedFontSet()
+
+	// The geometry-only projection never shaped anything and always worked;
+	// asserting it here is what makes the paint half's failure specific.
+	if _, gerr := Canvas(tpl); gerr != nil {
+		t.Fatalf("the geometry projection must succeed: %v", gerr)
+	}
+
+	projection, err := CanvasWithTextPaint(tpl, fs)
+	if err != nil {
+		t.Fatalf("a document the FORMAT calls valid must still open in the designer — the surface on which its chain can be repaired: %v", err)
+	}
+	found := false
+	for _, component := range projection.Components {
+		if component.ID != "e1" {
+			continue
+		}
+		found = true
+		if component.TextPaint == nil {
+			t.Fatal("the element carries no paint at all — it must carry an EMPTY paint, which is what the canvas draws as nothing")
+		}
+		if len(component.TextPaint.Lines) != 0 {
+			t.Errorf("the element painted %d line(s) from a chain entry the engine refuses to draw with", len(component.TextPaint.Lines))
+		}
+	}
+	if !found {
+		t.Fatal("vacuity guard: the projection carries no component e1")
+	}
+	// AND IT SAYS SO. A silently-degraded element and a well-measured one are
+	// indistinguishable downstream, which is why the honesty flag exists.
+	if projection.ContentWindowCountIsExact {
+		t.Error("the projection reports an EXACT window count for a document whose only text element could not be shaped — the degradation is not disclosed")
+	}
+
+	// The render path is unchanged: this document is still refused there,
+	// located. The canvas tolerance is a canvas decision and must not have
+	// leaked into Render.
+	if _, rerr := Render(tpl, Data(`{}`), nil, fs); rerr == nil {
+		t.Error("Render must still refuse this document (DW-83) — the canvas's tolerance leaked onto the render path")
+	}
+}

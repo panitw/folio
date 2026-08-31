@@ -786,6 +786,11 @@ func collectBandTextRuns(
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
 		}
+		// SCOPED TO THIS ELEMENT'S CHAIN, shadowing the parameter for the
+		// rest of the iteration so nothing below can consult the unscoped
+		// one by accident. It is the same cache — same maps, same parsed
+		// faces — carrying the chain name a located error needs.
+		cache := cache.forChain(el.Style.Value.FontFamily.Value)
 		if boundText == "" {
 			// AC9: a placeholder resolving to explicit JSON null
 			// renders as empty — nothing left to draw for this run
@@ -1230,7 +1235,53 @@ type fontCache struct {
 	// re-sniff ~47 KB once per element that consults the chain. Only
 	// embedded failures are cached: the FontSet arm's error is a map miss
 	// and costs nothing to recompute.
+	//
+	// KEYED BY FACE NAME **AND CHAIN NAME**, because the error's printed
+	// address is per chain (embeddedFaceSource.siteIn): the same
+	// unreadable asset named by two chains is one failure with two
+	// addresses, and one memo entry would hand the second chain's element
+	// the first chain's coordinates. It matters more since the canvas
+	// degrades rather than aborting — a projection walks every element of
+	// a broken document instead of stopping at the first.
 	failedEmbedded map[string]error
+	// chainName is the DOCUMENT CHAIN this view of the cache is being
+	// consulted through, or "" for an unscoped one. See forChain.
+	chainName string
+}
+
+// forChain returns a view of this cache scoped to one document chain, and
+// it is how the chain's NAME reaches a located error without widening a
+// single one of the ten chain consumers.
+//
+// WHY IT IS NEEDED. The face name a carried face resolves under is derived
+// from the ASSET KEY ALONE (AD-8/D-8.4.1), so one asset named by two chains
+// is ONE face name — while the address an author must be sent to is per
+// chain. Nothing downstream of chainFaceNames carries a chain name: they
+// carry a []string. Without this, the error names whichever chain sorted
+// first, which may be a chain the failing element does not draw through.
+//
+// WHY IT IS A VIEW AND NOT A SECOND CACHE. All three maps are shared by
+// reference, so a face parsed through one chain is not re-parsed through
+// another and the whole memoization argument for this type survives intact.
+// Only the printed address differs.
+//
+// The three production sites that know a chain's name call it:
+// collectBandTextRuns (render.go), collectBandTableRuns (table_render.go)
+// and addCanvasTextPaint (page_setup.go) — the same three that call
+// fontChain/lookupFontChain. A caller with no chain name uses the cache
+// unscoped and gets the deterministic first-occurrence address.
+func (c *fontCache) forChain(chainName string) *fontCache {
+	if c == nil || c.chainName == chainName {
+		return c
+	}
+	scoped := *c
+	scoped.chainName = chainName
+	return &scoped
+}
+
+// failedEmbeddedKey is the memo key, spelled once.
+func failedEmbeddedKey(name string, site template.FontChainSite) string {
+	return name + "\x00" + site.ChainName
 }
 
 // newFontCache builds a cache with NO document behind it: every name
@@ -1241,8 +1292,12 @@ type fontCache struct {
 // There are exactly two such sites (predictDocument here, and
 // addCanvasTextPaint in page_setup.go) and they must agree, or the canvas
 // measures with a different set of faces than the page prints with —
-// which is AD-17's whole subject. TestCanvasMeasuresWithTheEmbeddedFace
-// is the pin.
+// which is AD-17's whole subject. TWO tests pin it, and each covers what
+// the other cannot: TestOnlyTheTwoDocumentAwareSitesBuildAFontCache
+// (font_cache_sites_test.go) scans this package's non-test sources and
+// fails on a THIRD site or a missing one, and
+// TestCanvasMeasuresWithTheEmbeddedFace fails if the canvas's own site
+// loses the document.
 func newFontCache() *fontCache {
 	return &fontCache{
 		byName:         map[string]*fontset.Font{},
@@ -1265,7 +1320,7 @@ func newDocumentFontCache(t *Template) *fontCache {
 // document rather than from a FontSet. It is the discriminant, spelled
 // once.
 func (c *fontCache) isEmbedded(name string) bool {
-	_, ok := c.embedded[name]
+	_, ok := c.embedded.source(name)
 	return ok
 }
 
@@ -1303,13 +1358,18 @@ func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 	if f, ok := c.byName[name]; ok {
 		return f, nil
 	}
-	if src, ok := c.embedded[name]; ok {
-		if err, failed := c.failedEmbedded[name]; failed {
+	if src, ok := c.embedded.source(name); ok {
+		// The chain this cache is SCOPED TO decides the address in the
+		// error, not whichever chain naming this asset sorted first. An
+		// unscoped cache gets the deterministic first-occurrence answer.
+		site := src.siteIn(c.chainName)
+		key := failedEmbeddedKey(name, site)
+		if err, failed := c.failedEmbedded[key]; failed {
 			return nil, err
 		}
-		f, err := c.parseEmbedded(name, src)
+		f, err := c.parseEmbedded(name, src, site)
 		if err != nil {
-			c.failedEmbedded[name] = err
+			c.failedEmbedded[key] = err
 			return nil, err
 		}
 		c.byName[name] = f
@@ -1332,14 +1392,14 @@ func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 // cannot read, and hand the bytes to internal/fontset — which takes
 // bytes and does not care where they came from. No network, no host font,
 // no path on disk is read on this path, which is AC2's whole claim.
-func (c *fontCache) parseEmbedded(name string, src embeddedFaceSource) (*fontset.Font, error) {
-	raw, err := src.decode()
+func (c *fontCache) parseEmbedded(name string, src embeddedFaceSource, site template.FontChainSite) (*fontset.Font, error) {
+	raw, err := src.decodeAt(site)
 	if err != nil {
 		return nil, err
 	}
 	f, err := fontset.New(name, raw)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", src.site, err)
+		return nil, fmt.Errorf("%s: %w", site, err)
 	}
 	return f, nil
 }
@@ -1355,6 +1415,13 @@ func (c *fontCache) parseEmbedded(name string, src embeddedFaceSource) (*fontset
 // cannot read as a font cannot appear in the element either, for exactly
 // the same reason — so it is tolerated on exactly the same ground, and
 // contributes no metrics.
+//
+// THE DECODE IS ATTEMPTED HERE, AND ONLY ITS FAILURE IS TOLERATED. An
+// embedded name always declares (fontCache.declares), so this walk calls
+// get, which base64-decodes the asset and parses it. A READABLE carried
+// face is therefore decoded on the metrics walk and DOES constrain the
+// vertical model, which is what makes the canvas and the page agree on
+// line advance. What is swallowed is the error, and nothing else.
 //
 // IT IS NOT TOLERATED AT COVERAGE RESOLUTION (resolveRuneFace), which is
 // where the renderer is actually asked to DRAW with the entry and refuses,
@@ -1425,8 +1492,32 @@ func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (name
 // Diagnostic's message tells its reader not just what is wrong but
 // what was actually searched (D-000.37: an actionable diagnostic names
 // the chain, not only the rune).
-func formatFontChain(chain []string) string {
-	return "[" + strings.Join(chain, ", ") + "]"
+//
+// IT IS THE MESSAGE PATH, AND SINCE STORY 8.4 THAT IS A DISTINCTION
+// WORTH MAKING. A carried face's render-path name is "asset:" plus the
+// asset key's 64 hex characters, because AD-8/D-8.4.1 make the asset key
+// the resolver. Printed verbatim in a diagnostic it reads as though the
+// author mistyped a font name. So an embedded entry is spelled HERE by
+// the display identity the asset itself carries
+// (embeddedFaceSource.displayName) — and nowhere else: the reserved name
+// is untouched everywhere it resolves a face, keys the fontCache, names a
+// pagemodel.TextRun.Face or reaches a PDF resource dictionary.
+//
+// cache may be nil, and then every name is printed verbatim: a caller
+// with no cache has no document behind the chain either, so there is no
+// embedded entry in it to spell.
+func formatFontChain(chain []string, cache *fontCache) string {
+	out := make([]string, len(chain))
+	for i, name := range chain {
+		out[i] = name
+		if cache == nil {
+			continue
+		}
+		if src, ok := cache.embedded.source(name); ok {
+			out[i] = src.displayName()
+		}
+	}
+	return "[" + strings.Join(out, ", ") + "]"
 }
 
 // missingGlyphMessage is the one construction site for FR41's fifth
@@ -1434,11 +1525,11 @@ func formatFontChain(chain []string) string {
 // id, the rune as BOTH its U+XXXX form and its literal character, and
 // the exact chain that was searched — naming the chain is what turns
 // "something is wrong" into "here is what to fix" (D-000.37).
-func missingGlyphMessage(elementID string, r rune, chain []string) string {
+func missingGlyphMessage(elementID string, r rune, chain []string, cache *fontCache) string {
 	return fmt.Sprintf(
 		"no face in chain %s covers %U (%c) in element %s — the rune is omitted from the rendered output (no glyph, no advance); "+
 			"it is not substituted or drawn as a blank box (AD-8)",
-		formatFontChain(chain), r, r, elementID,
+		formatFontChain(chain, cache), r, r, elementID,
 	)
 }
 
@@ -1558,7 +1649,7 @@ func shapeSegments(elementID string, chain []string, elementText string, fs Font
 						Severity:  SeverityWarning,
 						Code:      DiagCodeTextMissingGlyph,
 						ElementID: elementID,
-						Message:   missingGlyphMessage(elementID, r, chain),
+						Message:   missingGlyphMessage(elementID, r, chain, cache),
 					})
 				}
 			}

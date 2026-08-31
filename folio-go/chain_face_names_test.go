@@ -44,6 +44,14 @@ import (
 // so an `{"asset": …}` entry has something real to name.
 func embeddedChainDoc(t *testing.T, chain string) string {
 	t.Helper()
+	return embeddedFontsBlockDoc(t, `"body": `+chain)
+}
+
+// embeddedFontsBlockDoc is the same splice for a WHOLE fonts block, so a test
+// can give one document several chains. embeddedChainDoc is the one-chain
+// case of it.
+func embeddedFontsBlockDoc(t *testing.T, fontsBody string) string {
+	t.Helper()
 	source := embeddedFontTemplateJSON()
 	// Spliced between the two keys that BRACKET the fonts block in canonical
 	// (sorted) order — `bands` before it, `locale` after it — rather than by
@@ -56,7 +64,7 @@ func embeddedChainDoc(t *testing.T, chain string) string {
 	if start < 0 || end < 0 || end < start {
 		t.Fatalf("fixture assumption violated: the generated document's fonts block is not bracketed by %q and %q", open, next)
 	}
-	return source[:start] + "  \"fonts\": {\"body\": " + chain + "},\n" + source[end:]
+	return source[:start] + "  \"fonts\": {" + fontsBody + "},\n" + source[end:]
 }
 
 // embeddedChainDocText is embeddedChainDoc with the drawn text substituted
@@ -93,7 +101,13 @@ const nonFontAssetData = `"iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAGElEQ
 // image and names it where a face belongs.
 func nonFontChainDoc(t *testing.T, chain, text string) string {
 	t.Helper()
-	source := embeddedChainDocText(t, chain, text)
+	return withNonFontAsset(t, embeddedChainDocText(t, chain, text))
+}
+
+// withNonFontAsset is the assets-map half of nonFontChainDoc on its own, for a
+// test that builds its own fonts block rather than a single `body` chain.
+func withNonFontAsset(t *testing.T, source string) string {
+	t.Helper()
 	const anchor = "  \"assets\": {\n"
 	at := strings.Index(source, anchor)
 	if at < 0 {
@@ -439,4 +453,156 @@ func TestChainOfOnlyUnusableEntriesProducesTheExistingLocatedError(t *testing.T)
 	if len(diags) != 0 {
 		t.Errorf("Validate returned %d diagnostic(s) alongside a hard error: %+v", len(diags), diags)
 	}
+}
+
+// TestTheLocatedErrorNamesTheChainTheElementDrawsThrough pins the COORDINATES
+// AC4 asks for against the case that can get them wrong: one asset key named
+// by TWO chains.
+//
+// The address is (chain, entry index, asset key), and the face name the render
+// path carries is derived from the ASSET KEY ALONE (AD-8/D-8.4.1 — the key
+// decides, and it must, or a document's face and a caller's could collide). So
+// one asset key is one face name however many chains name it, and the index
+// behind that name must not answer with whichever chain happened to be visited
+// first: an author sent to `fonts.aaa[1]` to repair an element that draws
+// through `fonts.body` is sent to the wrong line of their own document.
+//
+// Both chains here are byte-identical apart from their names, so the ONLY
+// thing that can make the message name "body" is reading the chain the element
+// actually draws through.
+func TestTheLocatedErrorNamesTheChainTheElementDrawsThrough(t *testing.T) {
+	const chain = `["Noto Sans", {"asset": "` + nonFontAssetKey + `"}]`
+	source := withNonFontAsset(t, embeddedFontsBlockDoc(t, `"aaa": `+chain+`, "body": `+chain))
+
+	tpl, err := ParseTemplate([]byte(source))
+	if err != nil {
+		t.Fatalf("the document must LOAD: %v", err)
+	}
+	_, rerr := Render(tpl, Data(`{}`), nil, testShippedFontSet())
+	if rerr == nil {
+		t.Fatal("a chain entry naming a non-font asset must fail at Render once something must draw from it (DW-83)")
+	}
+	if !strings.Contains(rerr.Error(), `font chain "body" entry 1`) {
+		t.Errorf("the error does not name the chain element e1 draws through: %v", rerr)
+	}
+	// The witness that the assertion above is not passing by accident: the
+	// OTHER chain, which no element draws through, must not be named at all.
+	if strings.Contains(rerr.Error(), `font chain "aaa"`) {
+		t.Errorf("the error names a chain the element does not draw through — the author is sent to the wrong entry: %v", rerr)
+	}
+
+	diags, verr := Validate([]byte(source), Data(`{}`), nil, testShippedFontSet())
+	if verr == nil || verr.Error() != rerr.Error() {
+		t.Errorf("Validate must return the identical error:\n\tValidate: %v\n\tRender:   %v", verr, rerr)
+	}
+	if len(diags) != 0 {
+		t.Errorf("Validate returned %d diagnostic(s) alongside a hard error: %+v", len(diags), diags)
+	}
+}
+
+// TestMissingGlyphMessageSpellsACarriedFaceForAHuman pins D-000.37 against the
+// spelling Story 8.4 created.
+//
+// The face name the render path carries for a carried face is the RESERVED,
+// asset-key-derived one, and it must stay exactly that everywhere it resolves
+// a face, keys the cache, names a run or reaches a PDF resource dictionary. It
+// is the wrong thing to show a person: `no face in chain [Noto Sans,
+// asset:c94562c1…64 hex characters…] covers U+6F22` reads as though the author
+// mistyped a font name, and the digest is not a thing they can act on.
+//
+// So the MESSAGE PATH — and only the message path — spells an embedded entry
+// by the display identity the asset itself carries. font.family is display
+// identity by D-8.4.1's own words; using it HERE is exactly what it is for,
+// and using it to resolve a face is what that decision forbids.
+func TestMissingGlyphMessageSpellsACarriedFaceForAHuman(t *testing.T) {
+	key := embeddedFontAssetKey()
+	source := embeddedChainDocText(t, `["Noto Sans", {"asset": "`+key+`"}]`, "สัญญา 漢")
+	tpl, err := ParseTemplate([]byte(source))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	res, err := Render(tpl, Data(`{}`), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	var missing []Diagnostic
+	for _, d := range res.Diagnostics {
+		if d.Code == DiagCodeTextMissingGlyph {
+			missing = append(missing, d)
+		}
+	}
+	if len(missing) == 0 {
+		t.Fatal("presence precondition: no missing-glyph diagnostic was produced, so nothing below is asserted")
+	}
+	for _, d := range missing {
+		if strings.Contains(d.Message, key) {
+			t.Errorf("the author-facing diagnostic prints the 64-hex asset digest: %s", d.Message)
+		}
+		if strings.Contains(d.Message, embeddedFaceNamePrefix) {
+			t.Errorf("the author-facing diagnostic prints the render path's reserved internal face name: %s", d.Message)
+		}
+		if !strings.Contains(d.Message, `embedded "Noto Sans Thai"`) {
+			t.Errorf("the author-facing diagnostic does not spell the carried face by its own display identity: %s", d.Message)
+		}
+		// The rest of the sentence still does its job.
+		if !strings.Contains(d.Message, "Noto Sans,") || !strings.Contains(d.Message, "U+6F22") {
+			t.Errorf("the diagnostic stopped naming the chain that was searched or the rune: %s", d.Message)
+		}
+	}
+	// AND THE RESOLUTION NAMESPACE DID NOT MOVE. The reserved name is what the
+	// produced PDF names its font resource, which is the identity witness the
+	// fixture's golden rests on.
+	if !strings.Contains(string(res.Bytes), pdfEscapedEmbeddedFaceName(key)) {
+		t.Error("the reserved face name no longer reaches the PDF resource dictionary — the spelling change escaped the message path")
+	}
+}
+
+// TestANonFontAssetRefusesWhereAnUnsuppliedFaceSkips pins an asymmetry that is
+// real, deliberate and was undocumented and untested until this test.
+//
+// Both arms below name a chain of THREE entries whose LAST entry covers every
+// rune drawn. They differ only in what the middle entry is:
+//
+//   - a chain entry naming a NON-FONT ASSET refuses the whole render at that
+//     entry, even though a later entry covers the text;
+//   - a chain entry naming a face the FontSet does not supply is silently
+//     SKIPPED, and the later entry draws.
+//
+// That is not an inconsistency to repair. A non-font asset is a DOCUMENT
+// DEFECT that travels inside the file — it is wrong on every machine, forever,
+// and D-1.8.1 as amended puts its refusal at the moment something must draw
+// with it. An unsupplied face is a DEPLOYMENT CONDITION: the same document is
+// correct on a host that supplies it, and AD-8's chain exists precisely so a
+// document survives one. The rule is written down in folio-format.md; this
+// test is what stops either arm flipping unnoticed.
+func TestANonFontAssetRefusesWhereAnUnsuppliedFaceSkips(t *testing.T) {
+	t.Run("a non-font asset refuses even though a later entry covers", func(t *testing.T) {
+		source := nonFontChainDoc(t, `["Noto Sans", {"asset": "`+nonFontAssetKey+`"}, "Noto Sans Thai"]`, "สัญญา")
+		tpl, err := ParseTemplate([]byte(source))
+		if err != nil {
+			t.Fatalf("the document must LOAD: %v", err)
+		}
+		_, rerr := Render(tpl, Data(`{}`), nil, testShippedFontSet())
+		if rerr == nil {
+			t.Fatal("a chain entry naming a non-font asset must refuse, even though the entry after it covers every rune")
+		}
+		if !strings.Contains(rerr.Error(), `font chain "body" entry 1`) {
+			t.Errorf("the refusal does not name the offending entry: %v", rerr)
+		}
+	})
+
+	t.Run("an unsupplied face is skipped and the later entry draws", func(t *testing.T) {
+		source := embeddedChainDoc(t, `["Noto Sans", "No Such Face At All", "Noto Sans Thai"]`)
+		tpl, err := ParseTemplate([]byte(source))
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		res, err := Render(tpl, Data(`{}`), nil, testShippedFontSet())
+		if err != nil {
+			t.Fatalf("a chain entry naming a face the FontSet does not supply must be SKIPPED, not refused: %v", err)
+		}
+		if len(res.Diagnostics) != 0 {
+			t.Fatalf("the skipped entry produced diagnostics — the later entry did not draw: %+v", res.Diagnostics)
+		}
+	})
 }

@@ -95,7 +95,11 @@ recorded by a test rather than by a comment:
 | `expected.json` | The recorded render hash, toolchain and library version for the matrix legs. |
 
 The golden's digest is
-`f533b04b7a4ccb20587f096c9e3173a48fbc870b8c718a73fecf869c6d851832`.
+`f533b04b7a4ccb20587f096c9e3173a48fbc870b8c718a73fecf869c6d851832`, at 3,225 bytes. Story 8.3
+recorded `db400698567a45b5fc529849453c72845c4074958a9945390fced41459e513ad` at 55,513 bytes in
+`expected.json` and shipped no `expected.pdf` at all. Both numbers moved for the same reason: the
+drawn text became Thai, so the page is drawn with the carried face and only the five glyphs it
+actually uses are subset into the file.
 
 **No human reading sign-off is recorded for this page**, and that is stated rather than left to be
 noticed. Every other Thai-bearing golden carries one (`fixtures/shaped-text/thai-signoff.json`,
@@ -106,8 +110,11 @@ the same face — the shipped `NotoSansThai-Regular.ttf`, of which this document
 second copy. Those five glyphs are therefore already read and attested; what is unattested is this
 particular subset and page.
 
-**All four legs are run in-story**, not merely the native one D-000.54 requires: `darwin/arm64`,
-`linux/amd64`, `linux/arm64` and `js/wasm`, with `TestCrossTargetByteIdentity` agreeing. The
-question those legs answer — does a font program decoded out of the document's own base64, subset
-and embedded, survive four toolchains identically? — is this document's whole reason to exist, so
-deferring them to the Epic 8 boundary gate would defer the only thing worth measuring.
+**All four legs were run in-story and all four produce
+`f533b04b7a4ccb20587f096c9e3173a48fbc870b8c718a73fecf869c6d851832` at 3,225 bytes** — `darwin/arm64`,
+`linux/amd64`, `linux/arm64` and `js/wasm`, with `TestCrossTargetByteIdentity` agreeing — rather than
+merely the native leg D-000.54 requires. That is the recorded RESULT and not a statement about
+procedure: "the legs are run" is true of a run that disagreed. The question those legs answer — does
+a font program decoded out of the document's own base64, subset and embedded, survive four
+toolchains identically? — is this document's whole reason to exist, so deferring them to the Epic 8
+boundary gate would defer the only thing worth measuring.

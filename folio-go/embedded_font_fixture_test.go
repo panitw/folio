@@ -268,10 +268,17 @@ func requireEmbeddedFaceDrewThePage(t *testing.T, label string, raw []byte) {
 	if !strings.Contains(body, "+NotoSansThai-Regular") {
 		t.Errorf("%s: no /BaseFont names NotoSansThai-Regular — the embedded program is not the Thai face the document carries", label)
 	}
-	// Vacuity guard: the three assertions above are substring scans, and a PDF
-	// that embedded no font at all would satisfy the negative one for free.
-	if len(extractAllFontFile2Programs(t, raw)) == 0 {
-		t.Errorf("%s: the render embeds no font program at all", label)
+	// Vacuity guard AND the bound this story must not lose. The three
+	// assertions above are substring scans: a PDF that embedded no font at
+	// all would satisfy the negative one for free, and a PDF that embedded
+	// some THIRD, unrelated face alongside the carried one would satisfy all
+	// three. The count is not the identity check — TRAP 1 is right that 1 is
+	// the answer both before this story and after it, so it distinguishes
+	// nothing on its own — but as a BOUND beside the identity it is what the
+	// pre-8.4 guard supplied, and dropping it would let an extra subset face
+	// onto the page unnoticed on every cross-target leg.
+	if n := len(extractAllFontFile2Programs(t, raw)); n != 1 {
+		t.Errorf("%s: the render embeds %d font programs, want exactly 1 (the carried Thai face and nothing else)", label, n)
 	}
 }
 
@@ -378,10 +385,14 @@ func TestUnrecognisedFontMediaTypeIsValidToo(t *testing.T) {
 // here rather than slipping past.
 //
 // The stronger statement — that no committed byte moved at all — is carried by
-// the recorded golden PDF digests (goldenDigestRecord). Story 8.4 moved
-// EXACTLY ONE of them, embedded-font's, deliberately and as the story that
-// owns that fixture; the other 21 are unmoved, and the record holds 23 entries
-// now because embedded-font ships an expected.pdf for the first time.
+// the recorded golden PDF digests (goldenDigestRecord). Story 8.4 touched
+// EXACTLY ONE fixture there, embedded-font's, deliberately and as the story
+// that owns it; the other 22 are unmoved. Two artifacts of that one fixture
+// moved in two different ways, and one word will not do for both:
+// `expected.json`'s recorded sha256 genuinely CHANGED (db400698…e513ad became
+// f533b04b…6d851832, the document's drawn text having gone from Latin to Thai),
+// while `expected.pdf` is NEW — it ships for the first time, which is why the
+// record holds 23 entries now and held 22 before.
 func TestTheFontRecordCostsAnExistingDocumentNothing(t *testing.T) {
 	dir := filepath.Join(repoRootFromTest(t), "fixtures")
 	entries, err := os.ReadDir(dir)

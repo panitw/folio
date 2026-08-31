@@ -650,6 +650,11 @@ func collectBandTableRuns(
 		padTop, padRight, padBottom, padLeft := paddingEdges(hs.padding)
 
 		var chain []string
+		// headerCache is the cache scoped to the HEADER's chain (see
+		// fontCache.forChain): a located capability error must name the
+		// chain this label draws through, and a table's header and body
+		// chains can be different chains of the same document.
+		headerCache := cache
 		if hs.hasFontFamily {
 			// Story 8.4, Task 3: THE SHARED lookup, not a hand-mirrored
 			// copy of it. This site used to carry its own Fonts.Chain
@@ -669,6 +674,7 @@ func collectBandTableRuns(
 			// also turn `chain` from nil into a non-nil empty slice on
 			// the way to an error return.
 			chain = chainFaceNames(entries)
+			headerCache = cache.forChain(hs.fontFamily)
 		}
 
 		for i, col := range tbl.Columns {
@@ -702,14 +708,14 @@ func collectBandTableRuns(
 			contentY := tableTop + padTop
 			contentH := tbl.HeaderHeight - padTop - padBottom
 
-			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, col.Label, fs, cache, breaksAreDrawn)
+			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, col.Label, fs, headerCache, breaksAreDrawn)
 			if serr != nil {
 				return nil, nil, nil, serr
 			}
 			diags = append(diags, glyphDiags...)
 			totalRunes := len([]rune(col.Label))
 
-			vm, verr := chainVerticalModel(chain, hs.fontSize, hs.lineSpacing, fs, cache)
+			vm, verr := chainVerticalModel(chain, hs.fontSize, hs.lineSpacing, fs, headerCache)
 			if verr != nil {
 				// Located: the leading model knows the chain and the
 				// resolved size but not which element declared them, so
@@ -830,6 +836,8 @@ func collectBandTableRuns(
 			if cerr != nil {
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, cerr)
 			}
+			// The BODY's chain, scoped for the same reason headerCache is.
+			bodyCache := cache.forChain(el.Style.Value.FontFamily.Value)
 			bodyFontSize := defaultFontSizePt
 			if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
 				bodyFontSize = el.Style.Value.FontSize.Value
@@ -851,7 +859,7 @@ func collectBandTableRuns(
 			// Read off el.Style directly, beside bodyFontSize and for the
 			// same reason bs does not carry it: this ONE model serves the
 			// body rows AND the footer row.
-			vm, verr := chainVerticalModel(bodyChain, bodyFontSize, styleLineSpacing(el.Style), fs, cache)
+			vm, verr := chainVerticalModel(bodyChain, bodyFontSize, styleLineSpacing(el.Style), fs, bodyCache)
 			if verr != nil {
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, verr)
 			}
@@ -919,7 +927,7 @@ func collectBandTableRuns(
 						continue
 					}
 
-					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache, breaksAreConsumed)
+					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, bodyCache, breaksAreConsumed)
 					if serr != nil {
 						return nil, nil, nil, serr
 					}

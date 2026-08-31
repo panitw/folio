@@ -181,6 +181,24 @@ rune. It is a located error naming **the chain, the entry's index and the asset 
 whose text is covered entirely by the entries ahead of it renders clean and says nothing, because
 nothing ever asked what those bytes were.
 
+**Validation returns the identical error.** Validating that document — without rendering it —
+returns the *same* error, with the same text and the same coordinates, and no diagnostics alongside
+it. A validator that accepted a document the renderer refuses would be a second rule system, and the
+one an author would trust is the one that says yes.
+
+**Refusing is NOT what happens when a chain names a face nobody supplied, and the difference is
+deliberate.** Given `["Noto Sans", <a non-font asset>, "Noto Sans Thai"]`, the render is refused at
+the middle entry even though the entry after it covers every rune. Given
+`["Noto Sans", "No Such Face", "Noto Sans Thai"]`, the middle entry is **skipped in silence** and the
+third entry draws. The two conditions are not the same kind of thing:
+
+- A chain entry naming a **non-font asset** is a defect *inside the document*. It travels with the
+  file, it is wrong on every machine that will ever open it, and no deployment can make it right —
+  so the moment something must draw with it, it is refused and located.
+- A chain entry naming a **face the renderer was not given** is a property of *this* render, not of
+  the document. The same file is correct wherever that face is supplied, and a fallback chain exists
+  precisely so a document survives a host that is missing one of its faces (AD-8).
+
 **A face is resolved by ASSET KEY, never by name.** An embedded entry's `font.family` is display
 identity — what a chain editor shows a person — and is never used to resolve or substitute a face.
 Where a document carries a face whose `font.family` is `"Inter"` and the renderer is also given a

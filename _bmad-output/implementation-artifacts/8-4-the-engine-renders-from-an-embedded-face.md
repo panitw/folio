@@ -3,10 +3,10 @@ title: 'The engine renders from an embedded face'
 type: 'feature'
 created: '2026-08-31'
 replanned: '2026-09-01'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '15ca0ddbc4565d935fde026bfbad463be8ddd182'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized', 'multiple-goals']
 deferred:
@@ -34,6 +34,71 @@ deferred:
       exists so the gap is disclosed rather than discovered.
     location: >-
       fixtures/embedded-font/expected.pdf
+    severity: low
+  - summary: >-
+      The new Thai golden's sign-off obligation exists only as a register
+      entry; unlike every other attested golden it has no red gate that a
+      person must clear.
+    evidence: |-
+      Every other attested fixture pairs its attestation with a failing
+      //go:build matrix gate (folio-go/shaped_signoff_matrix_test.go,
+      thai_stacked_marks_signoff_matrix_test.go,
+      statement_signoff_matrix_test.go) and a goldenDigestRecord site of
+      {kind: "signoff"}. fixtures/embedded-font/'s record uses neither, so the
+      obligation is held only where someone has to go looking for it -- the
+      condition D-2.3.5 calls "an obligation nobody trips over".
+
+      It is NOT actionable inside this story: the spec's Block If halts the
+      story if a //go:build matrix sign-off gate would be left red, so minting
+      the gate here would force the halt it is meant to prevent. It needs a
+      ruling that authorises the gate together with the human reading.
+    location: >-
+      folio-go/byte_neutrality_test.go (goldenDigestRecord, embedded-font entry)
+    severity: low
+  - summary: >-
+      A readable embedded entry that no rune ever resolves to still contributes
+      its metrics to the vertical model, so line advance can differ from
+      pre-8.4 for such a document.
+    evidence: |-
+      fontCache.metricsFace treats any embedded name as declared and decodes
+      it, so chainLineMetrics/chainVerticalModel now see the carried face even
+      when nothing draws with it. Measured: only fixtures/embedded-font/ has an
+      embedded chain entry, so no committed golden can observe the difference
+      and all 22 pre-existing digests are unmoved -- but an integrator's
+      document with a carried face it never draws from could see its line
+      advance change across this version boundary. Nothing pins the intended
+      answer either way.
+    location: >-
+      folio-go/render.go (fontCache.metricsFace) and folio-go/wrap.go
+    severity: low
+  - summary: >-
+      A chain whose ONLY entry is an unreadable embedded one is untested; the
+      error it produces today is right by ordering rather than by assertion.
+    evidence: |-
+      Both new tests that exercise a non-font chain entry
+      (TestNonFontAssetDrawnErrorsAtRenderAndAtValidate and
+      TestChainOfOnlyUnusableEntriesProducesTheExistingLocatedError) place the
+      failing entry BEHIND a shipped face that supplies the vertical model. A
+      probe of the single-entry case returns the located capability error
+      rather than the generic empty-metrics error, so the behaviour is correct
+      today -- but which of the two errors wins depends on evaluation order
+      that no test fixes.
+    location: >-
+      folio-go/chain_face_names_test.go
+    severity: low
+  - summary: >-
+      Two error branches the code itself documents as structurally unreachable
+      are untested.
+    evidence: |-
+      predictDocument's `if cache.isEmbedded(name)` arm is commented
+      "Unreachable in practice: a name only reaches this loop by having already
+      been parsed", and embeddedFaceSource.decode's `if !s.present` arm is
+      "structurally unreachable today". Neither is exercised, and an untested
+      unreachable error path is the one that is wrong when a later change makes
+      it fire. This repo's own idiom elsewhere is an unreachability tripwire
+      that reddens when the branch becomes reachable.
+    location: >-
+      folio-go/render.go (predictDocument) and folio-go/embedded_face.go
     severity: low
 ---
 
@@ -486,6 +551,140 @@ witness while a mixed one is not.
 
 ## Review Triage Log
 
+### 2026-09-01 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 3, low 6)
+- defer: 4: (high 0, medium 0, low 4)
+- reject: 6: (high 0, medium 0, low 6)
+- addressed_findings:
+  - `[medium]` `[patch]` **The canvas aborted the whole projection on a document the format calls
+    valid.** `page_setup.go`'s `shapeSegments` arm returned an error, and this story made that
+    pre-existing `return` reachable from document content. Verified by probe: `CanvasWithTextPaint`
+    over chain `["Noto Sans", {asset: image/png}]` with Thai text errored, where the same document
+    projected clean at baseline `15ca0dd`; `wasm/engine.go:119,255,294` all propagate it, so the
+    designer could not open the one document whose bad chain entry it was needed to repair. Fixed by
+    tolerating `*template.UnsupportedFontMediaTypeError` via `errors.As` and degrading the element the
+    way the adjacent `fontChain` arm does under **D-7.4.2** ("DEGRADE THIS ELEMENT, NEVER ABORT THE
+    PROJECTION"), setting `column.FontChainDegraded`. Any other shaping error still aborts. Pinned by
+    `TestCanvasDegradesRatherThanAbortingOnANonFontChainEntry`; re-probed: canvas now returns nil.
+  - `[medium]` `[patch]` **The located error could name a chain the element does not draw through.**
+    `newEmbeddedFaceIndex` stored one `FontChainSite` per asset key, first occurrence in sorted chain
+    order. Verified by probe: with chains `aaa` and `body` both naming asset K and element `e1`
+    drawing through `body`, Render reported `font chain "aaa" entry 1` — sending the author to edit
+    the wrong entry, against AC4's requirement that the error name the chain. Fixed by carrying every
+    occurrence and scoping resolution to the drawn chain via `fontCache.forChain`, which shares the
+    cache's maps so no chain-consumer signature widened and no face is re-parsed. Pinned by
+    `TestTheLocatedErrorNamesTheChainTheElementDrawsThrough`; re-probed: now names `body`.
+  - `[medium]` `[patch]` **The author-facing missing-glyph diagnostic printed a 64-hex asset digest.**
+    Verified by probe: `no face in chain [Noto Sans, asset:c94562c1…73caf] covers U+6F22 (漢)`. The
+    assertion that forbade this was deleted in the implementation — correctly, since its premise was
+    that an embedded entry never reaches the chain as a face name, which this story reverses — but the
+    harm it predicted became real and unguarded, against D-000.37's "here is what to fix". Fixed with a
+    display spelling used in the message path ONLY (`embedded "Noto Sans Thai"`); the reserved
+    `asset:<key>` name is unchanged everywhere it resolves, caches, names a run or reaches the PDF.
+    Pinned by `TestMissingGlyphMessageSpellsACarriedFaceForAHuman`; re-probed: reads
+    `[Noto Sans, embedded "Noto Sans Thai"]`, and no rendered byte moved.
+  - `[low]` `[patch]` **A false mechanism claim in the permanent register.** `deferred-work.md` stated
+    the embedded entry "is deliberately **not** decoded by the vertical-model walk
+    (`chainLineMetrics`)". Verified false by reading `fontCache.metricsFace`: it calls `declares()`
+    (true for any embedded name) then `get()`, which runs `parseEmbedded` and base64-decodes; only the
+    *failure* is swallowed. Corrected to describe what the code does, with `metricsFace`'s own doc
+    comment brought into line, and the entry's "three parts" heading reconciled with its four-row table.
+  - `[low]` `[patch]` **Golden-count prose off by one.** Verified by counting `goldenDigestRecord`
+    entries at both revisions: 22 at `15ca0dd`, 23 now — so 22 others, not 21. Fixed in
+    `byte_neutrality_test.go` and `embedded_font_fixture_test.go`, and the sentence made
+    artifact-specific: `expected.json`'s recorded sha256 genuinely moved
+    (`db400698…e513ad` → `f533b04b…d851832`) while `expected.pdf` ships for the first time.
+    `fixtures/embedded-font/README.md` restored to recording a measured RESULT (the digest at 3,225
+    bytes) rather than the present-tense procedure claim that had replaced 8.3's record.
+  - `[low]` `[patch]` **A comment claimed a guard that did not exist.** `embedded_face.go` said
+    `TestCanvasMeasuresWithTheEmbeddedFace` "reddens if a third site ever calls `newFontCache()` with a
+    `*Template`"; that test only exercises `addCanvasTextPaint`, so a new third production site would
+    have shipped green. Replaced with a real AST scan,
+    `TestOnlyTheTwoDocumentAwareSitesBuildAFontCache`, pinning the two `newDocumentFontCache` sites
+    (`render.go:predictDocument`, `page_setup.go:addCanvasTextPaint`) and zero production
+    `newFontCache` callers; red-proved by swapping the canvas site.
+  - `[low]` `[patch]` **Task 14's disclosure test named three mechanisms and scanned two.**
+    `canvas-font-stack.test.ts` asserted "None exists anywhere in this build. When one arrives, this
+    reddens" while scanning only `new FontFace` and `document.fonts.add` — an injected `@font-face`
+    with a `data:`/`blob:` `src`, the third mechanism its own comment names, would have left it green.
+    Since this test *is* the split's disclosure obligation, it must not overclaim. Fixed with a
+    `registersAFaceAtRuntime()` detector covering all three, plus a test that the detector matches four
+    spellings and rejects three benign ones so the negative scan cannot go vacuous.
+  - `[low]` `[patch]` **An undocumented, untested semantic asymmetry.** Verified by probe: chain
+    `["Noto Sans", {asset: image/png}, "Noto Sans Thai"]` over Thai text fails the whole render at
+    entry 1 even though entry 2 covers every rune, while the control
+    `["Noto Sans", "No Such Face At All", "Noto Sans Thai"]` renders clean — a non-font asset refuses
+    where an unsupplied face skips. Behaviour KEPT (a non-font asset is a document defect that travels
+    with the file; an absent face is a deployment condition; the spec puts the decode at
+    `resolveRuneFace`); what was missing was the pin and the disclosure. Added
+    `TestANonFontAssetRefusesWhereAnUnsuppliedFaceSkips` fixing both arms, and stated the rule in
+    `folio-format.md` — which also gained the `Validate`-returns-the-identical-error half it had
+    omitted, the half D-8.3.5 says always gets dropped.
+  - `[low]` `[patch]` **The story removed an exact-count bound without replacing it.** The pre-8.4
+    guards bounded the render to exactly one embedded program; replacing them with identity-only
+    assertions left a third, unrelated subset face able to reach the page unnoticed on every
+    cross-target leg, since the identity scan only names two faces. TRAP 1 is right that the count
+    cannot BE the identity check — 1 is the answer on both sides of the story — but as a bound beside
+    the identity it is not the same claim. Restored in the shared helper
+    `requireEmbeddedFaceDrewThePage` (used by the in-process test and all four matrix legs) and
+    red-proved by flipping the expected count.
+
+**Deferred (4), all low, recorded in the frontmatter `deferred:` list:** the new Thai golden's
+sign-off obligation exists only as a register entry with no red gate, and cannot be given one inside
+this story without firing its own `Block If`; a readable-but-never-drawn embedded entry now
+contributes metrics to the vertical model, so line advance can differ from pre-8.4 for such a
+document (no committed golden can observe it, since only `embedded-font` has an embedded entry); a
+chain whose ONLY entry is an unreadable embedded one is untested, its correct error owed to
+evaluation order nothing fixes; and two branches the code documents as structurally unreachable are
+untested.
+
+**Rejected (6), enumerated with the ground each was refused on (DW-87). Each ground refutes the
+specific claim at the cited location.**
+
+1. **Claim:** "`Validate` now returns errors whose text says `Render`" — cited at `render.go:787/810/887`
+   reached through `predictDocument`. **Refused:** not caused by this change, and refusing it is
+   required by the story's own AC. Verified at baseline `15ca0dd`: `render.go:1921` already returned
+   `fmt.Errorf("folio: Render: %w", derr)` for the image decode, inside `predictDocument`, which
+   `Validate` has called since before this story — so the prefix predates the diff on a path the diff
+   did not touch. Independently, AC4 requires `Validate`'s and `Render`'s strings be byte-identical, so
+   altering the prefix on the `Validate` side would break the criterion the finding sits beside.
+2. **Claim:** "A plain string chain entry spelled `asset:<key>` silently resolves from the document's
+   assets, shadowing the caller's `FontSet`" — cited at `render.go:1195-1205`. **Refused:** verified by
+   reading `fontCache.get`: the embedded arm is consulted only via `c.embedded[name]`, a map populated
+   solely from the document's own embedded chain entries. A name in the reserved namespace therefore
+   resolves to the document's own asset of exactly that name and to nothing else, which is the stated
+   precedence rule at `render.go:1214-1221` and is pinned by
+   `TestEmbeddedFaceWinsOverACollidingFontSetKey`. Where the document does not carry that key the name
+   falls through to the `FontSet` unchanged.
+3. **Claim:** "`nonFontAssetKey` / `nonFontAssetData` are copy-pasted and nothing ties the key to the
+   bytes — edit the data and the key silently stops being its SHA-256" — cited at
+   `chain_face_names_test.go:81-83`. **Refused:** the posited silent failure does not exist. Verified at
+   `internal/template/parse.go:487`: the load path computes `gotDigest := sha256HexOf(decoded)` and
+   compares it to the key, so a mismatched pair fails loudly at `ParseTemplate` rather than surfacing
+   later as something unrelated.
+4. **Claim:** "The `lookupFontChain` extraction is unrelated refactoring riding along in a story
+   already flagged `oversized`/`multiple-goals`" — cited at `table_render.go`. **Refused:** on the
+   intent's own authority, not the spec's. The `<intent-contract>`'s Approach section names this work
+   verbatim — *"So: extract the LOOKUP, not the filter"* — and the same paragraph identifies the
+   hand-mirrored copy at `table_render.go:653-660` as its target. It is inside the contract, not
+   alongside it.
+5. **Claim:** "The story's `deferred:` frontmatter entry carries no DW identifier and never reaches
+   `deferred-work.md`" — cited at the spec frontmatter. **Refused:** this is the recorded convention
+   working as designed, not a gap. DW-83's own register entry states it: a build-filed deferral lives
+   in the spec's frontmatter and is entered into the register at close. Close is the story-closer's
+   step, not this dispatch's; writing it here would duplicate the entry under a DW number this
+   dispatch has no authority to mint.
+6. **Claim:** "`pdfEscapedEmbeddedFaceName` re-implements `internal/pdf`'s name escaping by hand, so a
+   change to the real rule leaves the test helper green" — cited at `embedded_font_fixture_test.go`.
+   **Refused:** the helper is in `package folio` and `internal/pdf`'s escaper is unexported, so the
+   duplication is a package-boundary consequence rather than a choice, and the assertion it feeds is
+   corroborated on the same bytes by two independent checks that do not use it (the `/BaseFont`
+   identity scan and the exact-count bound). A drift in the escape rule would move the fixture's
+   recorded digest and redden all four matrix legs before it could make this assertion vacuous.
+
 ## Design Notes
 
 **AC3's false premise — CLOSED by D-8.4.2; do not re-open.** This heading is kept alive because the
@@ -656,82 +855,94 @@ and `missing_glyph_corpus_test.go:33`. **Never relax a diagnostic check to clear
 
 ## Auto Run Result
 
-Status: ready-for-dev
+Status: done
 Blocking condition: none
 
-Re-plan dispatch, halt-after-planning. Baseline `de87bef5e858815af2ac046a71c6ecba5645494b` on `main`.
-No code written, no commit, no branch, nothing staged. The `<intent-contract>` was preserved
-**byte-identical** (verified by diff after composition and again after the final edit).
+Implement-review-commit dispatch. Baseline `15ca0ddbc4565d935fde026bfbad463be8ddd182` on `main`.
+The `<intent-contract>` was preserved **byte-identical** (sha256 of the block verified against the
+baseline copy before and after every edit). Never pushed, never branched; explicit paths staged only.
 
-**The gap that halted the first dispatch is closed.** D-8.4.1 ruled AC5, made the CSS-family design
-decision, and delegated sizing to this gate. Sizing is exercised below; nothing else remained open.
+**What shipped.** `chainFaceNames` now MAPS an embedded chain entry to a reserved face name derived
+from its asset key (`asset:<key>`, D-8.4.1 — never `font.family`) instead of dropping it, and
+`fontCache` became the single answer site for "where do this face's bytes come from", with a stated
+precedence: a name in the reserved namespace resolves from the document's own assets and the supplied
+`FontSet` is never consulted for it. The seam chosen was a per-render name→bytes view upstream of the
+`[]string` narrowing — the alternative, widening the six `(FontSet, *fontCache)` consumers, is
+recorded as rejected in `embedded_face.go`'s doc comment — so none of the ten chain-taking signatures
+moved. Both `fontCache` construction sites now build from the document (`predictDocument`,
+`addCanvasTextPaint`), which makes AC4's `Validate` half true by construction and AC5's measurement
+half true by sharing rather than by a second rule system. The decode is lazy, at `resolveRuneFace`,
+which is what keeps "an entry nothing draws from renders clean" true.
 
-**Warnings verdict — both stand, and one is now a decision rather than an observation.**
-- **`multiple-goals`: STANDS.** The paint half splits to a **named successor sequenced immediately
-  after 8.4**. Grounds, measured at `de87bef`: it is separably shippable (the engine half discharges
-  FR54 and the story's own user sentence in full; the paint half serves a different user on a
-  different surface); it carries a mechanism with **no precedent anywhere in the designer** — there
-  is no `new FontFace`, no `document.fonts.add` and no dynamic style injection in the tree, all three
-  shipped faces being build-time; and it requires **re-authoring two guards written to forbid exactly
-  this shape** (`canvas-font-stack.test.ts:100-106` asserts the fragment stack contains no `var(`;
-  `:123-132` forbids naming a chain entry in a font-family position), with a third becoming false in
-  spirit. The contract's own **Block If** authorises the split in its own words.
-- **`oversized`: STANDS.** Well past 1600 tokens even after the split, because the Code Map is the
-  investigation the implementer must not repeat.
+**Files changed** (24 in the implementation commit, 15 more touched by the review patches):
+`folio-go/embedded_face.go` (new — the seam, the index, the lazy decode); `folio-go/render.go`
+(`chainFaceNames` mapping, `fontCache` embedded arm + `declares`/`metricsFace`/`forChain`, the
+extracted `lookupFontChain`, the corrected "four consumers" comment); `folio-go/table_render.go`
+(hand-mirrored lookup retired); `folio-go/page_setup.go` (document-aware canvas cache; the
+capability-error degrade); `folio-go/internal/template/fontasset.go` (`FontChainSite`, the widened
+`UnsupportedFontMediaTypeError`); `fixtures/embedded-font/{input.folio,expected.pdf,expected.json,README.md}`
+(text → `สัญญา`, first golden); `folio-go/byte_neutrality_test.go` (`goldenDigestRecord` 22 → 23);
+`folio-go/{chain_face_names,embedded_font_fixture,canvas_embedded_face,font_cache_sites,matrix,missing_glyph_corpus,render}_test.go`;
+`folio-designer/src/canvas-font-stack.test.ts` (the DW-35 / 8.4a disclosure);
+`_bmad-output/specs/spec-folio/folio-format.md`; `_bmad-output/implementation-artifacts/deferred-work.md`
+(DW-83 closed, DW-35 re-owned to 8.4a); `_bmad-output/planning-artifacts/epics.md`.
 
-**The canvas limitation is disclosed explicitly, as the ruling requires** — in the Design Notes, in
-the Spec Change Log, and as **Task 14**, which updates `canvas-font-stack.test.ts`'s DW-35 tripwire
-to record the new true state (*the engine measures with an embedded face and the browser has no CSS
-family for it*), naming the successor. A test, not a comment — 8.2's precedent. Task 16 re-owns
-DW-35 to the successor by name and repairs its two contradictory `Owner:` bullets. **The successor
-still needs writing into the epics file; an unwritten story is a deferral wearing a story's name.**
+**Review findings: 9 patched (3 medium, 6 low), 4 deferred (all low), 6 rejected — each rejection
+enumerated with its refuting ground in the Review Triage Log above, per DW-87.** No `intent_gap` and
+no `bad_spec`: the three medium patches were a canvas projection that aborted where D-7.4.2 says to
+degrade, a located error that could name a chain the element does not draw through, and an
+author-facing diagnostic that printed a 64-hex asset digest. All three were confirmed by direct probe
+before triage and re-probed after the fix.
 
-**The four rulings that asked to be verified, verified.**
-- **D-8.4.4(a) CONFIRMED, and my first-dispatch finding was wrong at the layer.** `table_render.go:666`
-  calls `chainFaceNames`; there is **no `entry.Embedded()` anywhere in `table_render.go`**. What is
-  duplicated is `fontChain`'s **lookup and its error** (`render.go:1102/1104` vs
-  `table_render.go:654/660`), under a comment admitting it verbatim at `:656-659` — plus a **second**
-  duplicated message (`render.go:1099` vs `table_render.go:688`) the ruling did not name. Task 3
-  extracts the lookup.
-- **The "four documentless consumers" needed correcting in the other direction.** `chain []string` is
-  a parameter of **TEN** non-test functions; **SIX** take `(FontSet, *fontCache)` and are the real
-  seam. The "four" is the list in `chainFaceNames`' own doc comment (`render.go:1133-1136`), and it
-  is neither the population nor the risk set: one of its four (`formatFontChain`) takes no `FontSet`,
-  while three that do (`digitTableRun`, `chainVerticalModel`, `lineAdvance`) are unnamed. **None of
-  the ten can reach `Assets`.** Task 2 corrects the comment (D-8.2.3).
-- **D-8.4.4(b) CONFIRMED and sharpened.** Measured from the shipped cmaps: `NotoSans-Regular.ttf`
-  covers **zero** of U+0E00–U+0E7F; `NotoSansThai-Regular.ttf` covers **87**. So any Thai rune falls
-  through to the embedded entry — but because the Thai face *also* covers Latin, **a pure-Thai string
-  is the sharp witness and a mixed one is not.** Three Ts-free Thai strings already committed are
-  named in the Code Map.
-- **D-8.4.2 / D-8.4.3 / D-8.4.5 applied.** AD-7 and D-1.5.8 both cited for the tag; AC4's narrowing
-  recorded as before-the-tag item 3, discharging when 8.4 ships; `Covers:` re-checked post-sweep
-  against every AC — **no omission remains**.
+**Follow-up review recommended: true.** Patched findings only: 0 high, 3 medium, 6 low →
+`3 × 3 + 1 × 6 = 15`, at or above the threshold of 5.
 
-**Four traps the plan gate found that would have shipped green and proved nothing.**
-1. `embedded_font_fixture_test.go:218` and `matrix_test.go:1998` **both** assert
-   `len(programs) != 1`. With a pure-Thai document on this chain a **correct** 8.4 also embeds
-   exactly one program — so both counts pass identically before and after, certifying the opposite of
-   what they say. Task 9 replaces both with **identity** assertions. `requireEmbeddedFaceStaysOffThePage`'s
-   own doc says it "MUST CHANGE" when 8.4 lands; inverting it to `!= 2` would be wrong.
-2. `fixtures/embedded-font/expected.json` has **no second literal** (the fixture is not in
-   `goldenDigestRecord`), so its hash can be re-recorded invisibly. Nothing regenerates it — a human
-   copies it from the matrix legs' `hash.<target>.<slug>.txt`.
-3. `canvas_projection_wire_test.go` records key sets for the **top level and the two font-chain
-   levels only** — **nothing for the paint tree** — so the successor's new `CanvasTextFragment` field
-   would not redden it while `engine-protocol.ts:452`'s `hasOnly` subset check blanks the canvas with
-   no diagnostic. Recorded for the successor.
-4. `canvas-authority-contract.test.ts:145` rewrites **every** `document.fonts` occurrence to
-   `fontReadinessOnly` before the prohibition scan, globally and unscoped — so its own
-   `/\bdocument\.fonts\b/` rule at `:24` is **dead**, and `document.fonts.check` (a measurement call)
-   would pass unnoticed. Unlike the sibling neutralizer at `:217-229`, it asserts nothing first.
-   Flagged for the successor to narrow deliberately.
+**Verification — what it actually printed** (every Go gate `-count=1`; all figures measured in this
+dispatch, not carried over from the subagents' reports):
+- `go test -count=1 ./...` — **1798 pass, 2 fail, 5 skip**; the two failures are
+  `TestCorpusMeetsP6ExerciseFloors` and its subtest `P6g_(opaque_names)` (got 7, need ≥20).
+- `go test -count=1 -tags=matrix ./...` — **1808 pass, 3 fail**; the same P6g pair plus
+  `TestShippedFacesReproduceFromUpstream` (`fontgen: fontTools is not importable`, DW-86).
+- **Both standing reds confirmed AT THIS STORY'S BASELINE** `15ca0dd` in a detached worktree before
+  any edit — plain 2 fails, matrix 3 fails, byte-identical sets. **No third red at any point.**
+- `go vet -tags=matrix ./...` exit 0; `gofmt -l folio-go` empty.
+- Four AD-21 legs, all `ok`, `embedded-font` → `f533b04b…d851832` on every one: darwin/arm64 1.075s,
+  linux/amd64 6.809s, linux/arm64 5.456s, js/wasm 11.265s. **Unset control** `ok` in 0.383s — the
+  deliberate no-op; the timing contrast is the evidence the four legs asserted.
+- `TestCrossTargetByteIdentity` `ok` 23.178s.
+- `cd lint && go test -count=1 ./...` — 4 packages `ok`.
+- Designer: typecheck clean; oxlint **exactly 4** pre-existing `only-export-components` warnings;
+  Vitest **325 passed / 35 files** (baseline 323/35); `test:e2e:compile` clean.
+- `GOOS=js GOARCH=wasm go test ./wasm/cmd/engine/` — `ok` 0.411s.
+- **Golden digests: `shasum -a 256 fixtures/*/expected.pdf` captured BEFORE the first edit (22 lines)
+  and diffed after (23 lines) — exactly one ADDED line, zero moved.** `fixtures/embedded-font/`
+  ships its first `expected.pdf`; `expected.json`'s recorded sha256 moved
+  `db400698…e513ad` → `f533b04b…d851832`, the one deliberate story-owned re-record (D-8.4.4b).
+- Root `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8` unchanged; neither human sign-off JSON
+  appears in the diff.
 
-**Two TRANSIENT reds are expected mid-implementation and are the feature's own red-proof**, not
-failures to silence: `chain_face_names_test.go:125-127` and `missing_glyph_corpus_test.go:33` both go
-red the moment the fixture text becomes Thai and before the resolution lands. The spec says never to
-relax a diagnostic check to clear them — that is the likeliest wrong repair.
+**Mutation proofs run by this dispatch, independently of the implementer's own:** reverting
+`chainFaceNames`' embedded arm to the pre-8.4 drop reddens **11 named tests**, including the fixture
+identity pin and both canvas pins — so the coverage is not vacuous. Making `Validate` swallow
+`predictDocument`'s error while leaving `Render` intact reddens **4 named tests**, including
+`TestNonFontAssetDrawnErrorsAtRenderAndAtValidate` — AC4's third half reddens on its own. The
+restored exact-count bound was red-proved by flipping the expected count. All mutations reverted; tree
+verified clean after each.
 
-**No verification suite was run.** This is a halt-after-planning dispatch; the `## Verification`
-section carries the full cadence with both standing reds named, and instructs re-measuring the
-baseline red set at `de87bef` in a detached worktree rather than assuming it.
+**Matrix test audit.** Every I/O row is covered by a test that ran and passed, except the two rows the
+plan gate reassigned to **Story 8.4a** ("Canvas PAINTS with the embedded face" and "Embedded and
+shipped share `font.family`"), on the authority of the contract's own `Block If`, which authorises the
+split in its own words and requires the limitation be disclosed. The disclosure is **Task 14's test**,
+not a comment — `canvas-font-stack.test.ts` now records that the engine measures with a carried face
+while the browser has no CSS family for it, and scans for all three registration mechanisms so it
+reddens when 8.4a lands.
+
+**Residual risks.** The carried face's CSS-family rule is honoured one layer below where the contract's
+Always bullet names it — the Go `FontSet` namespace, not the browser's font registry — because the
+paint half is 8.4a's; nothing here asserts anything about CSS family names. A readable but never-drawn
+embedded entry now contributes metrics to the vertical model, so an integrator's document could see its
+line advance change across this version boundary; no committed golden can observe it. And
+`fixtures/embedded-font/expected.pdf` is the corpus's only Thai-bearing golden with no human reading
+attestation — filed as a deferral with the README stating the gap, never a fabricated sign-off. Its
+grounds for closing were checked rather than assumed: the full `-tags=matrix` sweep leaves no sign-off
+gate red and invalidates no existing attestation.

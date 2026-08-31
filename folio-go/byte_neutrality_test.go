@@ -542,10 +542,10 @@ var goldenDigestRecord = []struct {
 		// this page, and the digest observes it being used. With the
 		// Latin text it observed nothing (D-8.4.4b).
 		//
-		// THAT RE-RECORD IS THIS STORY'S AND NO OTHER'S. The 21 goldens
-		// above are unmoved; only a document with an embedded chain
-		// entry can be touched by this story at all, and this is the
-		// only one in the repository that has one.
+		// THAT RE-RECORD IS THIS STORY'S AND NO OTHER'S. The other 22
+		// goldens in this record are unmoved; only a document with an
+		// embedded chain entry can be touched by this story at all, and
+		// this is the only one in the repository that has one.
 		//
 		// Its own fixture test and matrix_test.go's per-leg guard assert
 		// WHICH face reached the page, by identity — never by counting

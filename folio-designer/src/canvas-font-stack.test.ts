@@ -42,6 +42,24 @@ function requestedFamilies(css: string): ReadonlyArray<string> {
   return [...declaration[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
 }
 
+/**
+ * Whether a source registers a font face AT RUNTIME — the mechanism Story 8.4a
+ * needs and this build has none of.
+ *
+ * Three spellings, because the disclosure names three: the `FontFace`
+ * constructor, `document.fonts.add`, and an `@font-face` rule injected as text
+ * whose `src` is a `data:` or `blob:` URL (a build-time `@font-face` points at
+ * a bundled asset path, so the URL scheme is what separates the two).
+ */
+function registersAFaceAtRuntime(source: string): boolean {
+  if (/new FontFace\b|document\.fonts\.add\b/.test(source)) return true
+  // The injected-rule form: an `@font-face` and, within the same rule, a `src`
+  // fed from a data/blob URL. Bounded rather than greedy so a build-time
+  // `@font-face` early in a file cannot pair with an unrelated `data:` URL far
+  // below it.
+  return /@font-face[\s\S]{0,400}?src\s*:[^;}]{0,200}?(?:data:|blob:)/.test(source)
+}
+
 describe('the canvas paints with the faces the engine measured', () => {
   const generator = fs.readFileSync(generatorPath, 'utf8')
   const css = fs.readFileSync(cssPath, 'utf8')
@@ -140,6 +158,14 @@ describe('the canvas paints with the faces the engine measured', () => {
   // registration: `new FontFace`, `document.fonts.add`, or an injected
   // `@font-face` whose `src` is a data/blob URL. None exists anywhere in this
   // build. When one arrives, this reddens — which is the point.
+  //
+  // ALL THREE ARE SCANNED, and that is a correction rather than a detail. The
+  // scan used to cover the first two while the sentence above named three, so
+  // 8.4a could have landed through an injected `@font-face` with a data/blob
+  // `src` and left this test green while it asserted the opposite. A
+  // disclosure test that overclaims is worse than none: this file IS Story
+  // 8.4's disclosure obligation (Task 14), so what it says and what it checks
+  // have to be the same list.
   it('records that the browser has no family for a face the document carries (DW-35, Story 8.4a)', () => {
     // Non-vacuity: the generator really does declare the build-time faces, so
     // "no runtime registration" below is a statement about a file that has
@@ -150,15 +176,37 @@ describe('the canvas paints with the faces the engine measured', () => {
     }
     // Every @font-face src in the generator is a build-time asset, never a
     // document's bytes.
-    expect(generator).not.toMatch(/new FontFace\b/)
+    expect(registersAFaceAtRuntime(generator)).toBe(false)
     const sources = fs.readdirSync(here, { recursive: true })
       .filter((entry): entry is string => typeof entry === 'string' && /\.(?:ts|tsx)$/.test(entry) && !/\.test\.(?:ts|tsx)$/.test(entry))
       .map((entry) => fs.readFileSync(path.join(here, entry), 'utf8'))
     expect(sources.length).toBeGreaterThan(10)
-    expect(sources.filter((source) => /new FontFace\b|document\.fonts\.add\b/.test(source))).toEqual([])
+    expect(sources.filter((source) => registersAFaceAtRuntime(source))).toEqual([])
     // And the canvas fragment rule asks for none of it: no `assetKey`, no
     // derived family, nothing a document could supply.
     expect(requested.filter((family) => !declared.includes(family))).toEqual([])
+  })
+
+  // THE DETECTOR IS ITSELF ASSERTED, because a negative scan is only as strong
+  // as the pattern behind it and a regex that matches nothing passes every
+  // "no offender" assertion in this file. Each mechanism the comment above
+  // names is shown to be caught, and ordinary source is shown not to be.
+  it('detects each of the three runtime-registration mechanisms it claims to scan for', () => {
+    for (const mechanism of [
+      "const face = new FontFace('x', 'url(data:font/ttf;base64,AA)')",
+      "document.fonts.add(face)",
+      "style.textContent = `@font-face { font-family: 'x'; src: url(data:font/ttf;base64,AA); }`",
+      "sheet.insertRule(\"@font-face { font-family: 'x'; src: url(blob:http://a/b) }\")",
+    ]) {
+      expect(registersAFaceAtRuntime(mechanism), mechanism).toBe(true)
+    }
+    for (const benign of [
+      "const url = 'data:image/png;base64,AA'",
+      "createObjectURL(new Blob([bytes], { type: image.mediaType }))",
+      "// the generator writes an @font-face per shipped face at build time",
+    ]) {
+      expect(registersAFaceAtRuntime(benign), benign).toBe(false)
+    }
   })
 
   it('records that no designer source names a chain entry in a font-family declaration', () => {
