@@ -3099,3 +3099,57 @@ dropping the embedded `chainFaceNames` arm reddens **15 top-level tests (22 with
 build reported 11; a `Validate`-only swallow reddens **5 (7)**. All three behavioural fixes were
 re-probed independently, and all six rejected findings were spot-checked at their cited locations
 (DW-87 discharged for this story). The evidence is in the Delivery Log.
+
+---
+
+### D-8.4.10 — the orchestrator shipped the Story 7.10 defect, in the commit arguing for honest records, after briefing against it
+
+**Commit `4219a1b` left a standing red.** `fixtures/embedded-font/signoff.json` carries **two**
+digests — its own fixture's and the anchor's — and **neither was registered**, so
+`TestGoldenDigestAgreesAtEveryDeclaredSite` was **failing at HEAD** from that commit until `43da56a`.
+
+This is **exactly the Story 7.10 defect**: adding a sign-off record and a matrix gate without
+registering either, which produced two lint reds there and which that story's builder correctly
+refused to fix on its own authority. Three aggravations, recorded because the pattern is the point:
+
+1. It was made in the commit whose own message argues that a reconstructed record must say it is
+   reconstructed — a commit about recording things honestly.
+2. It was made **after** the orchestrator briefed the follow-up builder, in writing, *"Adding a
+   sign-off record and a matrix gate without registering them produced two lint reds at Story 7.10 …
+   Do not repeat it."*
+3. The follow-up builder found it **only because it measured the baseline instead of assuming it** —
+   the same discipline that caught the false `ShippedFaces` comparison at Story 8.3's close.
+
+**The generalisation, which is the lead's own from the FR52 spellings: the person who writes the rule
+is a likely author of the first violation of it.** Recording a hazard does not inoculate the recorder,
+and the interval between writing the warning and committing the violation was one commit.
+
+**One mitigating fact that is also the more useful finding: the registration was NOT EXPRESSIBLE in
+the existing vocabulary.** The declared-site machinery's `signoff` case compares a record's
+**top-level** `sha256`; the anchor digest lives at `transfer.anchor_sha256`, so declaring it would
+have compared the wrong field and passed while measuring nothing. A **new site kind,
+`transfer-anchor`**, was required. So the omission was not purely carelessness — but the correct move
+on hitting an inexpressible registration was to **stop and say so**, which is what the follow-up
+builder did and what the orchestrator did not.
+
+---
+
+### D-8.4.11 — D-8.4.9(a) discharged with the answer "none", shown rather than asserted
+
+The obligation was to **name** the tests asserting the canvas abort and convert them, precisely
+because D-7.4.2 had changed a failure mode without naming them. **The answer is that there were
+none** — and the distinction that matters is that this was **searched three ways and shown**, not
+reported as silence:
+
+1. The suite is **green with the degrade in place**; an abort-asserting test would be red **now**.
+2. `git show <c> | grep "^-func Test"` and the TypeScript equivalent across all five 8.4-era commits
+   (`15ca0dd`, `1446b87`, `cca0c3c`, `b2efdb4`, `4219a1b`): the five removed Go tests are all about
+   the embedded entry being **skipped at Render**, none about the canvas; **zero** TS tests removed.
+   This is the check that distinguishes *"no test asserted it"* from *"a test asserted it and was
+   deleted"* — the two states an unexamined green suite cannot tell apart.
+3. **No** Go or TS test anywhere expects a non-nil error from `CanvasWithTextPaint`.
+
+**Why none existed: the abort was unreachable from document content before Story 8.4**, so nothing had
+ever constructed a document to reach it. That is the same fact that made the defect invisible in the
+diff — and it is why "no test asserted the old behaviour" was, here, a **finding** rather than a
+relief. See **DW-92**: the arm's *retained* half is pinned by nothing either.

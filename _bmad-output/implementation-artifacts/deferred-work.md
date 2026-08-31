@@ -4483,6 +4483,55 @@ claim, its location, and the ground on which it was refused.
   all, plus an explicit `NOT_A_HUMAN_READING` statement, because a reconstructed record that does not
   say it is reconstructed is the failure this run has flagged before.
 
+  **DISCHARGED 2026-09-01 at `43da56a`.** `TestEmbeddedFontShapedRunEqualsAttestedControl` compares
+  at `shapeSegments`, whose glyphs are documented as *"the glyph index in the SOURCE face's numbering
+  — not a subset glyph id and not a PDF CID"* — so **pre-subset was reachable and nothing weaker was
+  substituted**. Five glyphs, identical GlyphID/XOffset/YOffset, with both fixtures read from their
+  committed `input.folio` rather than the Go mirror constants. The test asserts the **difference
+  first** — the control's faces in the `FontSet`, the carried face as `asset:c94562c1…` and **not** in
+  it — before asserting the equality, so it cannot pass by the two sides being the same thing.
+
+  **The lapse condition is asserted TWICE, independently** (`TestEmbeddedFontTransferredReadingHolds`,
+  `//go:build matrix`): a frozen literal of the anchor digest in the gate file **and** a live re-hash
+  of `fixtures/thai-stacked-marks/expected.pdf`. Appending one byte to that golden reddens the gate
+  with **"THE TRANSFER HAS LAPSED"**. The frozen literal sits deliberately **outside
+  `goldenDigestSearchScope`** — that scope exists to find sites a re-record must update *together*,
+  and this is one that must **never** be updated. Adding a `"reader"` field reddens two tests.
+
+  **Registration required a NEW SITE KIND, `transfer-anchor`** — the existing `signoff` case compares
+  a record's *top-level* `sha256`, which is the wrong field for the anchor digest. So the omission at
+  `4219a1b` (below) was not merely forgotten; it was **not expressible in the existing vocabulary**.
+
+---
+
+### DW-92 — the canvas-abort scoping rests on a premise `checkSfnt` does not hold, and the retained half was pinned by nothing
+
+- **Deferred by:** Story 8.4's D-8.4.8 follow-up (2026-09-01), found while building the transfer
+  assertion. **Routed to the engineering lead the same day; awaiting a ruling.**
+- **Owner:** **Engineering lead.** The builder deliberately did **not** widen the arm: the scoping was
+  a deliberate ruling, and **a ruling with a false factual premise is an intent gap, not a bug to
+  patch.**
+- **Severity:** MEDIUM — a document the designer cannot open, with an author repair available.
+- **Status:** OPEN.
+
+**The gap.** `internal/template/fontasset.go:checkSfnt` validates **the table directory only, never a
+table's contents** — its own comment says so. So a carried face that is a **structurally valid sfnt
+with unreadable contents LOADS**, and then aborts the **whole canvas projection** at `fontset.New`,
+propagated by `wasm/engine.go:119,255,294`. Truncated and corrupt bytes **are** caught at load, so
+this is the narrow surviving hole rather than a general one.
+
+**Why it is the same shape Story 8.4 just fixed.** It is a **document property with an author repair,
+aborting the one surface the author would use to make it** — the D-7.4.2 violation, surviving on the
+neighbouring arm of the very branch 8.4 repaired.
+
+**What makes it more than a corner: mutating that arm to degrade unconditionally reddened NOTHING in
+the entire suite.** The half Story 8.4 changed was pinned by one test; the half it **retained** was
+pinned by **none**. The scoping has been resting on a premise nothing measured, on either side.
+`TestCanvasStillAbortsOnAnUnreadableCarriedFace` now pins it as a **characterization** test — it
+records the measured behaviour and **explicitly declines to ratify it**.
+
+---
+
 **The gap.** `fixtures/embedded-font/expected.pdf` ships from Story 8.4 onwards and its page is Thai
 drawn from the face the document carries. Every OTHER Thai-bearing golden pairs a human reading
 sign-off with a failing `//go:build matrix` gate and a `goldenDigestRecord` site of
