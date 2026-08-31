@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: 'f51dd5e4c7f8a993eb0b735496bf44c8164191df'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized']
 deferred:
@@ -53,6 +53,31 @@ deferred:
       folio-go/embedded_font_fixture_test.go
     severity: low
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative. The intent contract below governs the implementation; where the two differ, the
+contract wins.*
+
+Until now a template could name a typeface but never carry one, so any document that wanted a face
+the renderer did not already ship was really an install instruction wearing a document's clothes. A
+font can now live inside the template file itself, stored the same way the pictures a document
+carries already are. It travels with the file, and nothing has to be installed anywhere for that file
+to be complete.
+
+A file that names a font it does not actually carry is refused when it is opened, and the refusal
+names the family and the position within that family's fallback list where the missing entry sits,
+rather than pointing at the file as a whole. Because carrying a font changes what an older reader has
+to understand, such a document declares the newer format version — the one an earlier story already
+opened, not a further one.
+
+Two things will look wrong to a later reader and are not. Drawing text from a carried font is the
+next story's work, so a document may legally carry a face that nothing yet draws with; that interim
+state is deliberate and is pinned by test rather than left to a comment. And a document that carries
+no font is unchanged to the byte — every one of the twenty-two recorded outputs is identical.
+
+One narrowing came with it, and it is recorded rather than hidden: a fallback entry naming nothing at
+all is now refused, where it used to be silently ignored.
 
 <intent-contract>
 
@@ -678,3 +703,126 @@ finding sets this true on its own; the score `3 x 4 + 1 x 3 = 15` is also >= 5.
   where a non-font asset named by a chain entry must produce a located render error.
 - DW-80 (`assetKeyReferenced` blind to font assets) remains open and owned by Story 8.6. Nothing
   collects orphans today, so it is not reachable; no collector was added.
+
+## Delivery Log
+
+### 2026-08-31 — planned
+
+Planned at baseline `f51dd5e` on a clean tree, halt-after-planning. **The plan gate's load-bearing
+find was in the epic, not in the code.** Epic 8's own text specified a *"closed set of font media
+types"*, and that contradicts **D-1.8.1 as amended** — binding, and carrying a note that predicted
+this exact recurrence *"later for font formats"*. The gate struck the closed set before any code was
+derived from it, which is why `closedsets.go` is untouched by the delivery commit rather than
+corrected in it.
+
+**The version rank was never actually open.** It read like the story's big question and it was not:
+**D-R7.9**, an owner decision of 2026-08-30, had already named this story and this version literally
+— *"Epic 8's format change joins the same 2.0 at Story 8.3"* — and had already dissolved the only
+standing objection to it (the imminent-tag worry) in the same breath. The surviving obligation was
+therefore **writing it down before code landed**, not deciding it, which is what AC5's ordering
+requirement encodes. `SupportedMajor` never moved and no version constant or rank was added.
+
+The gate also measured, and filed rather than fixed, the two traps this story would otherwise have
+laid for later ones: the orphan-collection blindness to font assets (DW-80, Story 8.6) and the
+hand-enumerated version-trigger list whose comment claimed a derivation the code does not perform
+(DW-81).
+
+### 2026-08-31 — built
+
+One dispatch, no halt, one local commit — 39 files (the build's own summary says 38; the stat says
+39). Nine findings patched, three deferred, six rejected.
+
+**AC3's entry index did not exist and was plumbing this story had to build.** Before it, every
+refusal in a chain collapsed into one error at the chain, with no position in it; the loader now
+walks each chain array itself so `fonts.<name>[<i>]` and `fonts.<name>[<i>].asset` reach the author.
+That is why the story mints no diagnostic code: the field path is what a consumer discriminates on,
+and it now carries the position, so a new code would buy nothing.
+
+**Two HIGH findings were invisible to a fully green suite, and one of them cited a test that does not
+exist.** Deleting the single filter where this story stops left the entire Go suite green — and the
+comment above that filter claimed the behaviour was *"pinned by test"*, naming a file that is in a
+different package and structurally cannot reach the code it claimed to pin. The second was the
+canvas projection's family fallback: deleting it was also green, and would have shipped an empty
+family straight into the browser guard's refusal path, which terminates the engine worker and leaves
+the canvas permanently blank — the exact failure D-8.2.8 exists to prevent, shipping green.
+
+### 2026-08-31 — done
+
+Baseline `f51dd5e`; delivered at `af4efde`. **Not amended**, and the reason is on the record: the
+lead's ruling landed mid-close as `2fe1e59` and `051ee4f`, so `af4efde` is no longer the tip, and
+amending it would have rewritten two commits another agent had just written. This project closes
+stories with their own commit in any case, which is what carries this entry. Decisions applied by ID:
+D-R7.9, D-1.8.1 (as amended), D-1.4.9/12/13, D-7.8.1, D-8.1.1/2/3, D-8.2.8, D-7.9.5, and the lead's
+D-8.3.1–D-8.3.5, ruled and committed during close.
+
+**Gates measured at close, all re-run independently with `-count=1`.** Go unit sweep: exactly one
+distinct red, `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)` (got 7, need >=20), the
+mandated permanent red. `go vet -tags=matrix ./...` clean (exit 0, no output); `gofmt -l folio-go`
+empty. **The full `-tags=matrix` sweep ran and `TestShippedFacesReproduceFromUpstream` FAILED — it
+did not skip**, on `fontTools is not importable`; confirmed pre-existing by running the same test at
+`f51dd5e` in a detached worktree **with the upstream sources supplied**, where it fails at the same
+line with the same message, and `folio-go/fonts/` is untouched by the diff. `TestTargetRenderHash`
+four legs exported, all PASS, each printing a real per-target digest for the new fixture
+(`db400698…`, 55513 bytes) plus the unset control as a deliberate no-op pass — five reported, not
+four folded into one. `TestCrossTargetByteIdentity` PASS, all four targets byte-identical.
+`TestThaiStackedMarksSemanticSignOffIsRecorded` PASS, the human attestation untouched. `lint`
+module: four packages ok. Designer: typecheck exit 0, oxlint exactly **4** pre-existing
+`only-export-components` warnings, **323 tests / 35 files** (baseline 319 / 35), e2e compiles. **22
+golden digests, empty diff** against a baseline reconstructed from `f51dd5e` out of git rather than
+from a file the run wrote; `goldenDigestRecord` stays 22 because the new fixture ships no
+`expected.pdf`.
+
+**Both HIGH findings reproduced by mutation, and the caution about them verified rather than
+accepted.** Deleting the boundary filter reddens only the unit arms (five sub-cases) and leaves the
+end-to-end arms green — the implementer's own recorded caution, and it is correct: plain deletion
+appends an *empty* face name, which the face lookup skips exactly as it skipped the entry. Emitting
+the asset key instead of dropping the entry — the defect that actually matters — reddens **both**
+halves, including the located error's text. The projection's four mutations all redden: the family
+fallback (5 sub-cases), the empty-family guard (1), the style projection (5 plus a bound case), and
+the bound loop narrowed to the face alone (2). **The entry index was proved with a non-first failing
+entry**: forcing it to zero reddens every `[1]` and `[2]` case while `[0]` stays green, which is the
+only mutation that can tell a real index from no index at all. **The projection validator was proved
+both ways**: reverting to the pre-8.3 string-only rule reddens exactly **16** tests, and after
+restoring it the malformed shapes — missing `face`, an extra key, a null asset key, both discriminant
+fields empty, and each string over the bound — are all still rejected. The wire tripwire fires on a
+one-sided change: dropping one key from the browser guard's own list reddens the Go half alone.
+
+**Mechanically verified, not relayed.** `closedsets.go` is absent from the commit entirely and
+contains no font media type; the recognised font types live beside the image ones as a library
+capability set, with the population they were measured against named in the comment. Nothing was
+minted: no diagnostic file appears in the diff and the diff adds no code-shaped constant anywhere.
+The collection refusal runs **before** the single-face tag lookup, so a collection is diagnosed as a
+collection, and it carries the coupling note that the refusal must become conditional if
+`font/collection` ever joins the recognised set. Finding 6's near-miss is closed properly: the record
+keys are read off the **emitted JSON**, not by substring search — the document's own text `style` key
+is what the first draft collided with — and the key list is bound to the record by **reflection**, so
+a fifth key cannot arrive uncovered.
+
+**Added at close, discharging the lead's D-8.3.2 guardrail in the place a guardrail survives:** the
+refusal was pinned only in the shape `["Noto Sans", ""]`. The lead verified both shapes through the
+shipped CLI at HEAD (`051ee4f`); a CLI run proves the behaviour once and pins nothing, so both shapes
+are now table arms in the located-refusal test, with the record stating which one matters and why — the mixed chain used to load *and render*, silently dropping the empty entry,
+which is the substitution AD-8 forbids by name; `[""]` alone never rendered at all.
+
+**Deferrals filed into the standing register**, which the build had left holding none of them: DW-83
+(a chain entry naming a non-font asset errors nowhere, owner **Story 8.4**, and per D-8.3.5 it lands
+there as an acceptance criterion, not a note), DW-84 (the empty-face-name narrowing — **the lead has
+ruled**, D-8.3.1/D-8.3.2, keep it unconditionally and record it), DW-85 (a hand-maintained fixture
+count no code derives), DW-86 (`TestShippedFacesReproduceFromUpstream` registered as a named standing
+red with its reason, per D-8.3.4). DW-80 stays **OPEN**, owned by Story 8.6 — no orphan collector was
+added, so nothing acts on the wrong answer yet. DW-81 and DW-82 are closed by this story and were
+re-proved here rather than taken on report: removing the version probe reddens the third builder loop
+*and* the dedicated test, so the enumeration is live rather than vacuous.
+
+**One audit gap, stated rather than papered over.** The triage log records `reject: 6` and
+**enumerates none of them** — the six rejected findings have no summary, no location and no
+refutation anywhere in this spec, so they could not be spot-checked at close and were not. Nothing
+in the delivered code depends on a rejection being sound, but a rejection nobody can read is a
+rejection nobody can audit; the register carries it as DW-87 against the build loop's own record
+format.
+
+`followup_review_recommended` cleared to `false`: both HIGH patches were reproduced by mutation in
+both the sensitive and the insensitive direction, the entry index and the projection validator were
+each proved by the mutation that discriminates rather than the one that merely fails, and the two
+remaining unverified items — the `fontTools` environmental red and the unenumerated rejections — are
+now registered rather than silent.

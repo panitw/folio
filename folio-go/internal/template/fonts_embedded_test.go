@@ -578,7 +578,16 @@ func TestBadChainEntryShapeIsALocatedLoadError(t *testing.T) {
 		{"a non-string asset value", `["Noto Sans", {"asset": 7}]`, "fonts.body[1].asset"},
 		{"a null asset value", `["Noto Sans", {"asset": null}]`, "fonts.body[1].asset"},
 		{"an empty asset value", `["Noto Sans", {"asset": ""}]`, "fonts.body[1].asset"},
-		{"an empty face name", `["Noto Sans", ""]`, "fonts.body[1]"},
+		// BOTH shapes of the empty face name, per D-8.3.2's guardrail. They
+		// are not the same case. `["Noto Sans", ""]` is the one that
+		// matters: before Story 8.3 it LOADED AND RENDERED — resolveRuneFace
+		// silently skipped the empty entry and drew with Noto Sans, which is
+		// the silent substitution AD-8 forbids by name. `[""]` alone never
+		// rendered at all; it reached the existing no-usable-entry error. A
+		// test of the second alone would pass while proving nothing about
+		// the case whose observable behaviour actually changed.
+		{"an empty face name beside a usable one", `["Noto Sans", ""]`, "fonts.body[1]"},
+		{"an empty face name alone", `[""]`, "fonts.body[0]"},
 		{"a bad entry at index 2", `["Noto Sans", "Noto Sans Thai", 7]`, "fonts.body[2]"},
 		{"a bad entry at index 0", `[7, "Noto Sans"]`, "fonts.body[0]"},
 	} {

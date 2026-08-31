@@ -4166,3 +4166,148 @@ alone reddens the TypeScript half.
 NAMES. A field whose **type** changed on both sides in the same edit — `face: string` becoming
 `face: number` in Go and in the guard — would pass all three. Closing that needs a type-level record,
 which is a larger change than this story's, and DW-74 is where it belongs.
+
+---
+
+### DW-83 — a chain entry may name a NON-FONT asset: correct to accept at load, but it errors nowhere at render either, so D-1.8.1's shape is half-built
+
+- **Deferred by:** Story 8.3 (2026-08-31), recorded on closing it. Filed by the build in the spec's
+  frontmatter only; entered into this register at close.
+- **Owner:** **Story 8.4** — the story that resolves an embedded entry to bytes, and therefore the
+  first story in which a render surface exists for this to fail on. A named story with a position in
+  the sequence, per D-8.0.5, not a checklist item.
+- **Severity:** MEDIUM. Not reachable as data loss; reachable as a document that is accepted, drawn
+  wrongly and never explained.
+- **Status:** OPEN. **Per D-8.3.5 it lands in Story 8.4 as an ACCEPTANCE CRITERION, not as a
+  deferral note** — the half most likely to be dropped is the third one below, and a note is what
+  drops it.
+
+**The gap, as measured.** The entry decoder checks only that the `{"asset": "<key>"}` key is
+**present** in the assets map, never that the asset is a font. Refusing it at load would violate
+**D-1.8.1 as amended** — an unrecognised or wrong-kind media type is preserved at load and errors at
+render — **so the load behaviour is correct as shipped and must not be "fixed" by tightening the
+loader.** But `chainFaceNames` drops every embedded entry before face resolution, so the render half
+never fires either. The result is D-1.8.1's shape with one of three parts built.
+
+**What discharges it, all three parts, in Story 8.4.** Load continues to **accept**; `Render`
+**errors, located**, when something actually needs to draw from that entry; and **`Validate` predicts
+what `Render` would do** rather than answering from a second rule system. The third is the one that
+gets dropped, which is why it is an AC.
+
+---
+
+### DW-84 — Story 8.3 narrowed what already-shipped 1.x documents load: an empty face name is now refused, and the narrowing is not version-gated — **RULED: KEEP IT (D-8.3.1 / D-8.3.2)**
+
+- **Deferred by:** Story 8.3's build (2026-08-31), which flagged it rather than deciding it. Routed
+  to the **engineering lead** as a correctness question, not ratified by the orchestrator.
+- **Owner:** none, and none is invented. The ruling resolves it; what remains is the record.
+- **Severity:** MEDIUM as filed — a load narrowing applied to documents declaring an older version,
+  which **the 22-digest corpus cannot observe**, since that row measures rendered goldens only.
+- **Status:** **RULED — keep the refusal, unconditionally, and record it** (`2fe1e59`, with the
+  guardrail verification at `051ee4f`). The three dispositions put to the lead were: reverse it;
+  keep it and version-gate it; keep it unconditionally and record it. **The third was chosen**, on three grounds and explicitly **not** on the build's proposed
+  ground of precedent-by-habit.
+
+**The two shapes, and the honest half.** Before Story 8.3 the chain decoder accepted `""` as an
+entry, so a 1.0 document containing `{"fonts": {"body": [""]}}` loaded. There are **two** cases, not
+one, and only the second is interesting:
+
+- `{"body": [""]}` alone — no usable entry — reached the existing located error. **Never rendered.**
+- `{"body": ["", "Noto Sans"]}` — the empty entry was **silently skipped** by face resolution, Noto
+  Sans was used, and the document **rendered cleanly**.
+
+*"It was always a latent bug"* is true of the first and **false of the second**, and the record says
+so rather than letting the comfortable half stand for both.
+
+**Why the refusal is right (D-8.3.2).** (1) **AD-8**: the chain is part of the FontSet's identity, so
+the same template with a different chain is a different render, *not a silent substitution*. An
+author declaring a two-entry chain and getting a one-entry render with nothing saying so is the
+substitution AD-8 forbids by name — **the old behaviour was the defect.** (2) **D-1.8.1's
+reader-independence test puts this at load**: `"Helvetica"` is reader-*dependent* (another library
+may ship it) and is therefore skipped as a capability question, but `""` is not a face name under any
+reader — reader-*independent* malformedness, which is a load error. (3) **D-1.4.9 is not the rule in
+play**: it promises a higher-MINOR file loads in an older reader — forward compatibility of the
+*version field* — and does not promise a library may never tighten its rejection of malformed input.
+
+**Version-gating was rejected on coherence, and the reason is recorded because it will be proposed
+again: malformedness is not versioned.** *"This file is malformed only if it claims to be new"* gives
+two answers for the same bytes keyed on a number the author can edit — strictly worse than the
+reader-dependence D-1.8.1 already rejected, where the discriminator was at least outside the
+document.
+
+**Before-the-tag set: unchanged, and it stays at two.** By **D-8.2.2's** test this does **not** join
+it — the change has already shipped at `af4efde`, and every correction available from here is a
+**widening**, the same shape as DW-69.
+
+**Guardrails, and their state at close.** Both shapes are now asserted, with the mixed chain named as
+the one that matters (added at close). The refusal names the chain **and** the entry index, verified
+rather than assumed, and the index was red-proved with a non-first failing entry. The narrowing is
+recorded above naming the second shape explicitly, so no later reader is told it affected only files
+that never worked.
+
+---
+
+### DW-85 — an evidence test rests on a hand-maintained fixture count that no code derives
+
+- **Deferred by:** Story 8.3 (2026-08-31), frontmatter only; entered into this register at close.
+- **Owner:** the next story that adds or removes a fixture carrying a non-empty `assets` map, or any
+  story that chooses to derive the population instead.
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+**The gap.** `TestTheFontRecordCostsAnExistingDocumentNothing` asserts `withAssets != 7`, and its own
+failure message concedes the number must be edited by hand whenever any fixture gains or loses a
+non-empty assets map. A fixture added without touching that line **reduces the population silently
+rather than failing loudly** — the test still passes, over fewer documents than it claims to cover.
+
+**Why it is the same family as DW-81**, which this story closed elsewhere: a stated coverage claim
+that the code does not derive. It is filed rather than fixed because deriving the population is a
+change to how fixtures are enumerated, not to this story's subject.
+
+---
+
+### DW-86 — `TestShippedFacesReproduceFromUpstream` is a standing red that nothing registers, which is the DW-23 shape starting again
+
+- **Deferred by:** the engineering lead at Story 8.3's close (**D-8.3.4**, 2026-08-31).
+- **Owner:** the next story that touches the gate definition, or whoever provisions the gate
+  environment. **Not** Story 8.4 by default — it is not a font-rendering question.
+- **Severity:** MEDIUM. The defect is not the red; it is the **unregistered** red.
+- **Status:** OPEN.
+
+**Measured at close.** Under `-tags=matrix` the test **FAILS — it does not skip** — reporting
+`fontTools is not importable by this interpreter`. Run at baseline `f51dd5e` in a detached worktree
+**with the upstream sources supplied** (`FOLIO_FONT_SOURCES`), it fails at the same line with the
+same message, so it is pre-existing and environmental; `folio-go/fonts/` is untouched by Story 8.3's
+diff.
+
+**That it fails rather than skips is CORRECT and must stay.** *"The sources were not present"* must
+never read as *"the faces reproduce"* — the all-clear must differ from could-not-look.
+
+**The failure is that it has gone unmeasured for several stories.** An unregistered standing red is
+the **DW-23 shape**: a red nobody has decided about is the one that masks the next real failure. Two
+acceptable resolutions — make `fontTools` available to the gate so the test actually runs, **or**
+register it explicitly alongside the P6g floor as a known, named red with its reason. **This entry is
+the second, taken now so that neither-of-the-two stops being the state.**
+
+---
+
+### DW-87 — the review triage record counts rejections without enumerating them, so a rejection cannot be audited at close
+
+- **Deferred by:** Story 8.3's close (2026-08-31), found while auditing the build's own triage.
+- **Owner:** whoever next amends the build loop's triage record format — a process defect, not a code
+  one.
+- **Severity:** LOW per story, **MEDIUM as a pattern** — it removes the one check that stands between
+  an optimistic rejection and a shipped defect.
+- **Status:** OPEN.
+
+**The gap.** Story 8.3's `## Review Triage Log` records `reject: 6` and lists `addressed_findings`
+in full, but **records nothing at all about the six rejections** — no summary, no location, no
+refutation. Patched findings are legible and auditable; rejected ones are a number.
+
+**Why it matters here specifically.** A rejection is sound only when it refutes the *specific claim*
+at the *cited location*, and *"a true fact about nearby code"* is not a refutation. That test cannot
+be applied to a count. Story 8.3's rejections were therefore **not** spot-checked at close, and the
+Delivery Log says so rather than implying they were.
+
+**What discharges it.** Record each rejection the way `addressed_findings` records a patch: the
+claim, its location, and the ground on which it was refused.
