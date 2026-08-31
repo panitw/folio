@@ -2735,3 +2735,29 @@ looks at them. That is **D-1.8.1's shape half-built**: the amendment requires **
 **Render to Error when something actually needs to draw it**, and **`Validate` to predict what Render
 would do.** All three halves are Story 8.4's, and **the third is the one most likely to be dropped**
 — so it goes into 8.4 as an **acceptance criterion**, not a deferral note.
+
+### D-8.3.6 — D-8.3.2's two guardrails, verified at HEAD rather than assumed
+
+The lead's ruling carried two guardrails it explicitly said to **confirm rather than assume**, since
+the golden corpus cannot observe any of this. Both measured at `2fe1e59` through the shipped CLI, on
+documents built for the purpose:
+
+| chain | outcome |
+|---|---|
+| `[""]` | refused — `template: field fonts.body[0]: a font chain entry must name a face — an empty string names none (value: "")` |
+| **`["", "Noto Sans"]`** | **refused, identically** — the shape whose observable behaviour changed |
+| `["Noto Sans"]` | renders — the control |
+| `["Noto Sans", ""]` | refused at **`fonts.body[1]`** |
+
+**Guardrail 1 — `["", "Noto Sans"]` is covered.** This is the shape that *rendered cleanly before*,
+by silently dropping the empty entry. A test of `[""]` alone would have passed while proving nothing
+about the case that actually regressed.
+
+**Guardrail 2 — the refusal names the chain AND the entry index, and the index is real.**
+`["Noto Sans", ""]` reports **`fonts.body[1]`**, not `[0]`. That is the non-first-entry proof:
+**an index that is always 0 is indistinguishable from no index at all**, and this discriminates.
+It also independently confirms Story 8.3's entry-index plumbing — the AC that looked like a
+formatting detail and was actually a change to a decoder that collapsed a whole chain into one
+unindexed error.
+
+Measured by the orchestrator, not relayed from the build.
