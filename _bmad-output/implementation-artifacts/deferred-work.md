@@ -2626,8 +2626,12 @@ three times, the third time *inside the commit that closed it*.
 ### DW-32 — the property-command encoder splices the author's typed text into the command JSON unquoted, so a non-numeric entry produces malformed bytes instead of a located engine error
 - **Deferred by:** Story 7.4's review pass (2026-08-30); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
-- **Owner:** the next story that adds a NUMERIC property control, **or** Epic 8's plan gate (whichever
-  first) — a role and a gate, never an event, per D-000.73
+- **Owner:** **Story 8.2** — RE-OWNED 2026-08-31 at Story 8.1's close. The original owner was *"the next
+  story that adds a NUMERIC property control, or Epic 8's plan gate (whichever first)"*, and Epic 8's
+  plan gate has now passed without the fix. Story 8.2 is the right successor and the reason is sharper
+  than sequence: **8.2 carries author-typed chain NAMES through that same splice**, where a `"` or a `\`
+  is worse than the numeric case this entry describes — it does not merely malform the bytes, it lets
+  the author's text change the command's shape. Still a story, never an event, per D-000.73
 - **Severity:** MEDIUM — the author sees a generic refusal instead of the field-located message the
   panel is built around, but no bad value reaches the document
 - **Status:** OPEN
@@ -2701,8 +2705,13 @@ unvirtualised path by the page count. The two questions are the same question an
 ### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
-- **Owner:** **Epic 8's plan gate** — a gate, never an event, per D-000.73. This is exactly the class
-  D-7.4.4 belongs to: a limit to STATE, not to fix, until the product makes it reachable
+- **Owner:** **Story 8.2** — RE-OWNED 2026-08-31 at Story 8.1's close, per D-8.0.5 and Story 8.1's
+  Design Notes R7. The original owner was *"Epic 8's plan gate"*, which has now passed. Reachability is
+  the test: 8.1 is engine-side and the designer sends no chain command until 8.2's editor exists, so the
+  divergence is not reachable **through the product** until 8.2 — and DW-35's own fix needs the projected
+  per-component chain, which 8.2 needs anyway. A named story with a position in the sequence beats a
+  spent gate. This remains the class D-7.4.4 belongs to: a limit to STATE, not to fix, until the product
+  makes it reachable
 - **Severity:** MEDIUM once Epic 8 lands; **latent today**
 - **Status:** OPEN
 
@@ -3717,3 +3726,98 @@ right**, and it declined to dress it up as anything else.
 **What reopens it:** a real document losing content that way, as DW-50 came from a real case. One
 ruling would cover both halves of the question. **If anyone sees such a document, raise it now.**
 
+
+---
+
+### DW-69 — a pre-existing `.folio` with a chain over 64 entries, or a face name over 512 bytes, now fails to OPEN rather than merely to edit
+- **Deferred by:** Story 8.1's review pass (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Story 8.3** — the epic's format-change story under D-R7.9, so a rule for a chain the
+  format permits but the projection refuses belongs with it; **and the engineering lead** if the
+  before-the-tag question below is disputed. A story and a role, never an event, per D-000.73
+- **Severity:** MEDIUM — it narrows what the designer will open, on a bound this story invented
+- **Status:** OPEN
+
+**The gap.** `canvasFontChains`' two new refusals — entry count at `folio-go/page_setup.go:465`, face
+length at `:469` — run inside `Canvas`, which `CanvasWithTextPaint` wraps and `Engine.load`
+(`folio-go/wasm/engine.go:119`) calls. `decodeFonts` (`folio-go/internal/template/parse.go:313`) bounds
+neither entry count nor face length, and `render.go`'s chain resolution never counted entries, so such a
+document parsed and rendered before this story. `TestCanvasFontChainEntryCountIsBoundedOnALoadedDocument`
+measures exactly this: the loader accepts a 65-entry chain and the projection refuses it.
+
+**The bound itself is not the defect.** `maxCanvasFontChainEntries = 64` was directed by the spec's
+Task 6 and mirrors the pre-existing `canvasFontFamilies` shape. What is unrecorded is the
+**compatibility narrowing**, and it has no matrix row. Nothing in the repo declares more than three
+entries, so nothing existing is affected — but an embedding story may want the number revisited.
+
+**IT DOES NOT JOIN D-7.8.3's BEFORE-THE-TAG SET, and the measurement is the reason.** `Canvas` is
+reachable only from the projection surface (`page_setup.go`, `component_commands.go`) and the wasm
+`Engine`; **`cmd/folio` never calls it**, verified by grep at this closing revision. So the
+`folio-go/v0.1.0` renderer accepts exactly what it accepted before, and the tag freezes nothing this
+narrows — unlike Story 7.8's load refusal or Story 7.10's over-tall fatality, which both narrow the
+renderer itself. The set therefore still holds **one** open item (D-7.8.2's code audit). This is
+recorded rather than ruled: **membership of that set is the lead's call**, and this entry exists so the
+question is asked rather than assumed either way.
+
+---
+
+### DW-70 — Go sorts projected chain names by BYTES while the browser guard checks ascending UTF-16 code units, and the two disagree on astral-plane names
+- **Deferred by:** Story 8.1's review pass (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Story 8.2** — it is the story that first lets an author type a chain name, which is what
+  makes the divergence reachable through the product
+- **Severity:** MEDIUM once 8.2 lands; **latent today**
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/engine-protocol.ts`'s sorted/unique check compares names with `>=` on
+JavaScript strings — ascending **UTF-16 code units** — while Go's `slices.Sorted(maps.Keys(...))` sorts
+by **bytes**. The two orders disagree for names mixing astral-plane characters with U+E000–U+FFFF,
+because a surrogate pair sorts below U+E000 in UTF-16 and above it in UTF-8. A disagreement makes
+`isCanvas` false, which drops the whole snapshot and blanks the canvas with no attributable error.
+
+**Pre-existing, and widened by one field.** The check predates this story and already applied to
+`fontFamilies`; Story 8.1 makes it newly reachable through the Go command API, but the designer sends
+no chain command until 8.2, so it is not reachable through the product yet. This is the same shape as
+DW-44: a browser-side bound with no Go counterpart, where exceeding it discards everything.
+
+---
+
+### DW-71 — no host-boundary test dispatches a font-chain command, so the refusal messages are specified at the wasm wire and measured one layer below it
+- **Deferred by:** Story 8.1's review pass (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** **Epic 8 close** — due before that epic's key is marked `done`, since every remaining story
+  in it adds command surface behind the same untested boundary
+- **Severity:** MEDIUM — the layer that formats what the author reads is the one layer nothing executes
+- **Status:** OPEN
+
+**The gap.** `folio-go/wasm/cmd/engine` is `//go:build js && wasm`, so `go test ./...` never compiles it
+and no CI job executes its host-boundary assertions. The intent contract specifies the refusal path at
+that wire — `*ComponentCommandError` matched **before** `*RenderError` at
+`folio-go/wasm/cmd/engine/main.go:236`, emitted with `bounded(msg, 512)` and no `reportableMessage`
+filtering — and every assertion behind it is made one layer down, against `ApplyComponentCommand`.
+
+**The package's own sibling test states the hazard verbatim:** *"Every Go-side assertion would still
+have been green."* The package's dormancy is a standing condition, not introduced here. What this story
+added is the most a compiled test can currently reach: a source-reading tripwire
+(`TestComponentFailureBoundsMatchTheHostsOwnLiterals`) that ties the two hand-copied bound literals by
+reading the host file, because no compiled test can see a `js && wasm` package.
+
+---
+
+### DW-72 — integer-index refusals reach the author without the `folio:` prefix every sibling refusal carries
+- **Deferred by:** Story 8.1's review pass (2026-08-31); filed into this register at the story's close,
+  where it was found recorded only in the spec's frontmatter
+- **Owner:** the next story that adds an INTEGER-valued command field, **or** Epic 8 close (whichever
+  first) — a story and a gate, never an event, per D-000.73
+- **Severity:** LOW — cosmetic, but it is inconsistency in the one string the author actually reads
+- **Status:** OPEN
+
+**The gap.** `fontChainIndex` passes `commandInt`'s error through verbatim, and `commandInt`
+(`folio-go/component_commands.go:510`) — unlike its `commandString` sibling at `:1271` — does not prefix
+its messages. An author moving a chain entry sees `"index must be an integer"` beside
+`"folio: name must be a non-empty string"` for the very same command. The inconsistency lives in
+`commandInt` and predates this story; Story 8.1 is the first caller to put it in front of an author.
+
+**Anchors re-derived at this story's closing revision.** The build's note cited `:509`, which is the
+blank line above the declaration — the kind of one-line drift that comes of capturing anchors before a
+review patch lands.

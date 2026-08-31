@@ -2705,7 +2705,7 @@ the product is.
 ### Story 8.1: The document's font chains become editable
 
 As a template author,
-I want to create, rename, reorder and delete the font chains my components name,
+I want to create, rename and delete the font chains my components name, and reorder the faces inside one,
 So that `fontFamily` names a family I chose rather than whatever the starter file declared.
 
 **Covers:** FR52 · AD-9, AD-15, AD-16, AD-22 — and AD-8, AD-14 bind here too.
@@ -2751,17 +2751,25 @@ so one undo restores both the map and the elements
 **Then** it is refused, upholding the existing rule that a chain with no entries is not a chain
 `fontFamily` may name
 
-**FR52'S "REORDER" IS DELIVERED ONLY AT ENTRY LEVEL, AND THAT IS A GAP THIS EPIC DOES NOT CLOSE.**
-FR52 says an author may *"reorder the document's font chains"*. **The format cannot express that.**
-`Fonts` is a Go map with no stored order, and the serializer sorts its keys — twice. Four
-authorities forbid adding an authored key order here: AD-9's rule that object keys are sorted;
-`folio-format.md`'s verbatim *"`fonts` is a mapping with no authored key order"*, a **discharged
-debt** from D-4.1.1; SPEC-fonts' own `format-changes.md`, whose `fonts` Order row reads
-*"Unchanged"*; and D-R7.9, which puts the format change in Story 8.3. So this story delivers
-**entry-level** reordering — the order of faces **within** a chain, which the format does store.
-**Chain-level reordering is delivered by no story in Epic 8.** Recorded here rather than resolved,
-because closing it means either changing the format or narrowing the FR, and that is not this
-story's call.
+**FR52'S "REORDER" IS ENTRY-LEVEL, AND THAT IS FR52 IN FULL — NOT A GAP. RULED 2026-08-31
+(D-8.1.1); this paragraph recorded a gap and was corrected at Story 8.1's close.** FR52 reads
+*"create, rename, reorder and delete the document's font chains **and their entries**"*: the verbs
+distribute over both nouns, and **`reorder` has a referent only in entries**, because a chain is an
+ordered list and the map is not. The reading under which every verb means something is the one that
+wins, and under it **Story 8.1 delivers FR52 in full**.
+
+Chain-*key* order is **INAPPLICABLE, not deferred**. `Fonts` is a Go map with no stored order and the
+serializer sorts its keys — twice. Four authorities forbid adding an authored key order here: AD-9's
+rule that object keys are sorted; `folio-format.md`'s verbatim *"`fonts` is a mapping with no
+authored key order"*, a **discharged debt** from D-4.1.1; SPEC-fonts' own `format-changes.md`, whose
+`fonts` Order row reads *"Unchanged"*; and D-R7.9, which puts the format change in Story 8.3. And the
+absence is **load-bearing**: `folio-format.md` reasons *from* it to kill the font-default idea —
+*"`fonts` is a mapping with no authored key order, so 'the first key' was never well-defined"* — so
+adding an order would supply exactly the first key that sentence depends on not existing. Chain order
+is also semantically inert: it reaches no byte, no lookup and no render. The only thing it could mean
+is the order names appear in a panel, which the designer serves as **UI state needing no format
+change at all**. Recorded as delivered rather than as partial, because **an FR fully delivered under
+the correct reading and recorded as partial is a false record, and false records become precedent.**
 
 **Given** a document whose chains are edited and then edited back
 **When** it is saved
