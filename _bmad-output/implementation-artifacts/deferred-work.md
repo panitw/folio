@@ -3398,7 +3398,15 @@ the *fixes* coincide, the *symptoms* and severities do not.
   (rendering from an embedded face) — whichever first** — a gate, never an event, per D-000.73
 - **Severity:** MEDIUM — higher than DW-57 because this is **production source**, not a test comment,
   and because the proof is available with no blocker
-- **Status:** OPEN — **pre-existing.** Not touched by this story, which fenced `internal/text` out
+- **Status:** **CLOSED** 2026-08-31 by the orchestrator, both halves. The comment is corrected in
+  `internal/text/shape.go`, and the red-proof the entry called available is now written:
+  `internal/text/shape_shipped_face_test.go` shapes ทั้ through the shipped Noto Sans Thai and finds
+  a displaced glyph, with ที่ as a control that comes back at zero because the face resolves that
+  pair by a GSUB lowered-form substitution. The two **mutually discriminate**: swapping the strings
+  reddens both, so together they measure the substitution-versus-displacement distinction rather
+  than "Thai". It is an EXTERNAL test package, reading the face from its own file rather than
+  importing `fonts`, because AD-8 keeps font data outside `internal/` and `fonts` imports the root
+  package.
 
 **The gap.** `shape.go:18-21` states as measured fact that YOffset is *"zero for every glyph of every
 sample across all three shipped faces today"* and is a forward guard with no available red-proof.

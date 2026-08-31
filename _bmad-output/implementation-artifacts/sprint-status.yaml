@@ -174,7 +174,7 @@ development_status:
   # 7.6's AC2 is false at HEAD for a grouped document. 7.10 does NOT gate the epic, but it
   # must land before the folio-go/v0.1.0 tag: it narrows what renders, which is free only
   # while nothing is released (AD-22).
-  7-9-the-canvas-tells-the-truth-about-keep-together-groups: backlog
+  7-9-the-canvas-tells-the-truth-about-keep-together-groups: ready-for-dev
   7-10-an-over-tall-element-is-refused-whether-or-not-it-is-grouped: backlog
   epic-7-retrospective: optional
 

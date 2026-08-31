@@ -15,10 +15,11 @@ import (
 // them rather than the one that happened to burn us. GlyphID carries
 // GSUB's answer (Thai's lowered mark forms, Latin's ligatures);
 // XAdvance carries GPOS kerning; XOffset carries mark positioning;
-// YOffset carries vertical mark positioning (zero for every glyph of
-// every sample across all three shipped faces today — see the frozen
-// expectation table's comment, and note that its assertion is a FORWARD
-// GUARD WITH NO AVAILABLE RED-PROOF, never a red-proved one); Cluster
+// YOffset carries vertical mark positioning — RED-PROVED against the
+// shipped Noto Sans Thai by shape_shipped_face_test.go, which shapes
+// ทั้ and finds a displaced glyph, with ที่ as the control that comes
+// back at zero because the face resolves that pair by a GSUB
+// lowered-form substitution instead; Cluster
 // carries which source runes the glyph came from, which is what
 // /ToUnicode is rebuilt out of once shaping breaks the one-rune-one-
 // glyph assumption.
@@ -27,6 +28,25 @@ import (
 // int16 throughout and the shaper does no scaling, so the shaped output
 // is exact integer data in font units; scaling to the PDF's 1000-unit em
 // happens exactly once, in geom.ScaleRound, at the emission site.
+// WHAT THIS COMMENT USED TO SAY, AND WHY IT IS WORTH RECORDING. Until
+// 2026-08-31 the YOffset clause above read "zero for every glyph of
+// every sample across all three shipped faces today", and called the
+// guard over it "a FORWARD GUARD WITH NO AVAILABLE RED-PROOF, never a
+// red-proved one". Both halves were false. The claim traces to Story
+// 2.3, which measured ITS OWN SAMPLES and reported on THE SHIPPED SET —
+// two different populations — and it then propagated into four more
+// places, textdoc.go's fail-closed branch among them, where it stood as
+// the stated justification for there being no render-path test.
+//
+// A large class of ordinary Thai consequently did not render at all,
+// and it was the project's owner who found that in production rather
+// than any test, because a comment asserting a negative is what a
+// reader checks BEFORE they go looking — so a wrong one protects
+// itself (DW-28, D-8.0.1).
+//
+// A COMMENT THAT ASSERTS A NEGATIVE — unreachable, never, impossible —
+// CARRIES THE SAME EVIDENTIARY BURDEN AS A TEST, AND MUST NAME THE
+// POPULATION IT MEASURED RATHER THAN THE POPULATION IT CONCLUDED ABOUT.
 type ShapedGlyph struct {
 	// GlyphID is the glyph index in the SOURCE face's numbering — not a
 	// subset glyph id and not a PDF CID. internal/fontset maps it
