@@ -2708,7 +2708,11 @@ As a template author,
 I want to create, rename, reorder and delete the font chains my components name,
 So that `fontFamily` names a family I chose rather than whatever the starter file declared.
 
-**Covers:** FR52 · AD-9, AD-15, AD-22
+**Covers:** FR52 · AD-9, AD-15, AD-16, AD-22 — and AD-8, AD-14 bind here too.
+
+**`Covers:` CORRECTED 2026-08-31 at this story's plan gate.** It omitted **AD-16**, whose rule —
+commands are opaque, the engine owns the edit — is the **substance of AC1**, not a background
+concern. AD-8 and AD-14 also bind and were unnamed.
 
 **Acceptance Criteria:**
 
@@ -2718,10 +2722,24 @@ removed
 **Then** it travels as one opaque command with one history entry, the engine owns the edit, and the
 designer re-projects from the engine's answer rather than writing the `fonts` map itself
 
-**Given** a chain that a `style.fontFamily` still names
+**Given** a chain that a `style.fontFamily` **or a table's `headerStyle.fontFamily`** still names
 **When** its deletion is commanded
 **Then** it is refused with a located error naming the elements that would be left naming nothing —
 never accepted with the orphaned elements left to fail at render
+
+**Given** a rename or an add whose target name is already a declared chain
+**When** it is commanded
+**Then** it is refused — **a rename onto an existing key would silently destroy that chain**
+
+**TWO REFERENCE POINTS, NOT ONE — corrected 2026-08-31 at this story's plan gate.** `fontFamily` has
+**exactly two** attachment points in the model: `Element.Style` and `TableExt.HeaderStyle`. Both are
+live — a table header resolves its own chain and fails at render identically — so **a rename that
+walks only `style.fontFamily` dangles a table header**, and a delete that counts only `style`
+bearers under-reports the orphans it is refusing to create. Every AC in this story reads on both.
+
+**THE DUPLICATE-NAME REFUSAL BELONGS HERE, not to Story 8.2.** It was stated only in 8.2's AC4, but
+8.2's panel reports what **the engine** answers; a refusal the engine does not make is a refusal the
+panel cannot report. Moved to 8.1 at the same gate.
 
 **Given** a chain rename
 **When** it is committed
@@ -2732,6 +2750,18 @@ so one undo restores both the map and the elements
 **When** it is applied
 **Then** it is refused, upholding the existing rule that a chain with no entries is not a chain
 `fontFamily` may name
+
+**FR52'S "REORDER" IS DELIVERED ONLY AT ENTRY LEVEL, AND THAT IS A GAP THIS EPIC DOES NOT CLOSE.**
+FR52 says an author may *"reorder the document's font chains"*. **The format cannot express that.**
+`Fonts` is a Go map with no stored order, and the serializer sorts its keys — twice. Four
+authorities forbid adding an authored key order here: AD-9's rule that object keys are sorted;
+`folio-format.md`'s verbatim *"`fonts` is a mapping with no authored key order"*, a **discharged
+debt** from D-4.1.1; SPEC-fonts' own `format-changes.md`, whose `fonts` Order row reads
+*"Unchanged"*; and D-R7.9, which puts the format change in Story 8.3. So this story delivers
+**entry-level** reordering — the order of faces **within** a chain, which the format does store.
+**Chain-level reordering is delivered by no story in Epic 8.** Recorded here rather than resolved,
+because closing it means either changing the format or narrowing the FR, and that is not this
+story's call.
 
 **Given** a document whose chains are edited and then edited back
 **When** it is saved
