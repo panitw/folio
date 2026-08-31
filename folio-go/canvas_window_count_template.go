@@ -35,18 +35,22 @@ package folio
 // ELEVEN — nine of them blank pages that no document has — so this fixture
 // red-proves that exact spelling rather than merely exercising the count.
 //
-// The rect carries NO STYLE on purpose. The render path skips unstyled
-// element boxes, correctly, because an unstyled rect prints nothing; the
-// canvas paints every component's box, and this count is a claim about the
-// column as the canvas paints it. An unstyled element that still occupies a
-// window is that difference, asserted.
+// The rect is STYLED, and Story 7.9 is why. It used to carry no style, on the
+// since-corrected claim that the canvas counts a column "as the canvas paints
+// it" and therefore occupies a window for a box the printed document has
+// nothing on. The render path places an element box only where a background
+// or a border is declared (element_box.go), so an unstyled rect ten windows
+// down produced a canvas that drew a sheet the document does not print — and
+// the canvas's own createComponent gives a new rect a border for the same
+// reason, so an unstyled one was never the authored norm either. A background
+// keeps the gap real on BOTH sides, which is what this fixture is for.
 const canvasWindowCountGapTemplateJSON = `{
   "assets": {},
   "bands": {
     "content": {
       "elements": [
         {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
-        {"id": "e2", "type": "rect", "x": 0, "y": 7280, "width": 200, "height": 20}
+        {"id": "e2", "type": "rect", "x": 0, "y": 7280, "width": 200, "height": 20, "style": {"background": "#eeeeee"}}
       ]
     },
     "pageFooter": {
@@ -317,6 +321,132 @@ const canvasWindowCountGroupedUngroupedTemplateJSON = `{
         {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
         {"id": "e2", "type": "text", "x": 0, "y": 700, "width": 240, "height": 20, "value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 12}},
         {"id": "e3", "type": "rect", "x": 0, "y": 740, "width": 240, "height": 20, "style": {"background": "#000000"}},
+        {"id": "e4", "type": "text", "x": 0, "y": 1440, "width": 240, "height": 20, "value": "Continued overleaf", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`
+
+// canvasWindowCountGroupedUnstyledTemplateJSON and its untagged twin below are
+// the OTHER half of Story 7.9's four-row matrix: the same pair again with the
+// ruled line's `"style": {"background": "#000000"}` REMOVED and nothing else
+// changed.
+//
+// An unstyled rect prints nothing, and the render path knows it — element_box.
+// go builds a rect source only for an element declaring a background or a
+// border, so an unstyled one reaches no content-column item at all. The canvas
+// used to contribute one for every non-text component whatever its style,
+// which put a box in the column that the printed document has nothing in. That
+// was a wrong ORIGIN while the two sides were both ungrouped, and it became a
+// wrong COUNT the moment tagging made the canvas's partition matter: the group
+// slid for a member the render never places.
+//
+//	TAGGED + UNSTYLED:   the group's only placeable member is `e2` at y 700,
+//	                     which fits window one on its own, so the tail at
+//	                     1440000 starts window two. Count 2.
+//	UNTAGGED + UNSTYLED: the same three placeable items, the same answer.
+//
+// So this pair is the row that must NOT move when the tags go on — the
+// discrimination the styled pair cannot make, because there the tags legitimately
+// change the count.
+const canvasWindowCountGroupedUnstyledTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "text", "x": 0, "y": 700, "width": 240, "height": 20, "keepTogether": "signature", "value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e3", "type": "rect", "x": 0, "y": 740, "width": 240, "height": 20, "keepTogether": "signature"},
+        {"id": "e4", "type": "text", "x": 0, "y": 1440, "width": 240, "height": 20, "value": "Continued overleaf", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`
+
+// canvasWindowCountGroupedUngroupedUnstyledTemplateJSON is that document with
+// its two tags removed — the fourth cell of the matrix, and the control that
+// says the unstyled rows agree with each other as well as with the render.
+const canvasWindowCountGroupedUngroupedUnstyledTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "text", "x": 0, "y": 700, "width": 240, "height": 20, "value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e3", "type": "rect", "x": 0, "y": 740, "width": 240, "height": 20},
+        {"id": "e4", "type": "text", "x": 0, "y": 1440, "width": 240, "height": 20, "value": "Continued overleaf", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`
+
+// canvasWindowCountConditionalTemplateJSON is the register's cause (d), the
+// one the canvas GENUINELY CANNOT KNOW: `e3` carries `visibleIf`, so whether
+// it is placed is a property of the DATA, and the canvas has none.
+//
+// Measured, on the same geometry as the pair above: the canvas answers 3 with
+// no data at all, while the real render answers 3 with `{"showRule": true}`
+// and 2 with `{"showRule": false}` — AD-24 makes a hidden element absent with
+// NO GAP, so the group's slide simply does not happen. The canvas is therefore
+// a CEILING here, which is the direction the field this replaced could not
+// state, and the reason its name had to change.
+//
+// The tag is on the fixture because grouping is how the case was found and it
+// makes the divergence loud. It is not what causes it: an UNGROUPED visibleIf
+// element diverges the same way, and has since Story 7.5 shipped the count.
+const canvasWindowCountConditionalTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "text", "x": 0, "y": 700, "width": 240, "height": 20, "keepTogether": "signature", "value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e3", "type": "rect", "x": 0, "y": 740, "width": 240, "height": 20, "keepTogether": "signature", "visibleIf": "showRule", "style": {"background": "#000000"}},
         {"id": "e4", "type": "text", "x": 0, "y": 1440, "width": 240, "height": 20, "value": "Continued overleaf", "style": {"fontFamily": "body", "fontSize": 12}}
       ]
     },

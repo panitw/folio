@@ -283,16 +283,105 @@ func TestCanvasWindowsAgreeWithTheRenderPathForAGroupedDocument(t *testing.T) {
 	})
 }
 
-// TestGroupingIsNotAFourthCauseOfTheFloor is D-7.7.6's other half, asserted
-// rather than left to the enumeration in page_setup.go's doc comment.
+// renderPathPages is the SHIPPING render, not an oracle: buildPageModel, the
+// same function Render calls, on empty data. Where renderPathWindows rebuilds
+// the page-count pass out of its parts — and can therefore be wrong in the
+// same way as the thing it measures — this counts the pages the document
+// actually produces. Story 7.9's four-row matrix is asserted against THIS.
+func renderPathPages(t *testing.T, tpl *Template, fs FontSet, dataJSON string) int {
+	t.Helper()
+	pages, _, _, _, err := buildPageModel(tpl, mustDecodeData(t, dataJSON), mustDecodeParams(t), fs)
+	if err != nil {
+		t.Fatalf("buildPageModel: %v", err)
+	}
+	return len(pages)
+}
+
+// TestCanvasCountsOnlyWhatTheRenderActuallyPlaces is Story 7.9's SECOND
+// defect, and the one the story itself created: the canvas contributed a
+// column item for every non-text content component, styled or not, while the
+// render path places a rect or a line only where it declares a background or
+// a border (element_box.go). Ungrouped, that asymmetry moved an ORIGIN and no
+// count, so nothing caught it. Tagged, it moved the COUNT — the group slid for
+// a member the printed document has nothing on — and the projection reported
+// that count as exact.
+//
+// ALL FOUR ROWS ARE ASSERTED, not only the one that regressed. The two
+// untagged rows were correct before this story and changing WHAT THE CANVAS
+// PLACES can move them, so a fix verified only against its own row could trade
+// one wrong count for another a second time.
+//
+//	untagged + styled     canvas 2   render 2
+//	untagged + unstyled   canvas 2   render 2
+//	tagged   + styled     canvas 3   render 3   (Story 7.9's subject)
+//	tagged   + unstyled   canvas 2   render 2   (this test's subject)
+func TestCanvasCountsOnlyWhatTheRenderActuallyPlaces(t *testing.T) {
+	for _, row := range []struct {
+		name      string
+		source    string
+		wantCount int64
+	}{
+		{"untagged + styled", canvasWindowCountGroupedUngroupedTemplateJSON, 2},
+		{"untagged + unstyled", canvasWindowCountGroupedUngroupedUnstyledTemplateJSON, 2},
+		{"tagged + styled", canvasWindowCountGroupedTemplateJSON, 3},
+		{"tagged + unstyled", canvasWindowCountGroupedUnstyledTemplateJSON, 2},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			tpl := parseWindowCountTemplate(t, row.source)
+			projection := projectWithPaint(t, tpl)
+			assertWindowOriginsAreWellFormed(t, row.name, projection)
+			// Against the SHIPPING render, which is what the sheet count on
+			// screen is a claim about.
+			if pages := renderPathPages(t, tpl, testFontSet(), `{}`); projection.ContentWindowCount != int64(pages) {
+				t.Errorf("the canvas draws %d sheets and the document prints %d pages", projection.ContentWindowCount, pages)
+			}
+			// And the measured value, so a change that moved BOTH sides
+			// together still reddens.
+			if projection.ContentWindowCount != row.wantCount {
+				t.Errorf("canvas count %d, want %d", projection.ContentWindowCount, row.wantCount)
+			}
+			// The origins too, from the render path's own builders — the
+			// count agreeing while the sheet boundaries sit somewhere else is
+			// exactly the half Story 7.6 shipped with no oracle at all.
+			if _, origins := renderPathWindows(t, tpl, testFontSet()); !reflect.DeepEqual(projection.ContentWindowOrigins, origins) {
+				t.Errorf("the canvas begins its windows at %v and the render path at %v", projection.ContentWindowOrigins, origins)
+			}
+			// Every row here is a document with no registered cause, so the
+			// projection must also CLAIM the count — a right answer reported
+			// as untrustworthy is a different failure, not a pass.
+			if !projection.ContentWindowCountIsExact {
+				t.Errorf("contentWindowCountIsExact is false for a document carrying no registered cause")
+			}
+		})
+	}
+	// The discrimination, stated rather than left implicit: the tags change
+	// the count for the STYLED pair and must not for the unstyled one. A fix
+	// that simply stopped tagging the canvas would satisfy the unstyled rows
+	// and fail here.
+	styled := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountGroupedTemplateJSON))
+	unstyled := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountGroupedUnstyledTemplateJSON))
+	if styled.ContentWindowCount == unstyled.ContentWindowCount {
+		t.Fatalf("the styled and unstyled grouped documents both occupy %d windows; this matrix discriminates nothing", styled.ContentWindowCount)
+	}
+	// And the twin pair really does differ in exactly the style declaration.
+	if stripped := strings.Replace(canvasWindowCountGroupedTemplateJSON, `, "style": {"background": "#000000"}}`, "}", 1); stripped != canvasWindowCountGroupedUnstyledTemplateJSON {
+		t.Fatalf("the unstyled twin is not the grouped template minus its ruled line's style — the pair differs for some SECOND reason:\n%s", stripped)
+	}
+	if stripped := strings.Replace(canvasWindowCountGroupedUngroupedTemplateJSON, `, "style": {"background": "#000000"}}`, "}", 1); stripped != canvasWindowCountGroupedUngroupedUnstyledTemplateJSON {
+		t.Fatalf("the untagged unstyled twin is not its own template minus the style:\n%s", stripped)
+	}
+}
+
+// TestGroupingIsNotARegisteredCauseOfInexactness is D-7.7.6's other half,
+// asserted rather than left to the enumeration in page_setup.go's doc comment.
 //
 // keepTogetherTags takes the *Template and nothing else — no data, no params,
 // no FontSet — so grouping is a pure template property and the canvas holds
-// every input it needs to be RIGHT about it. The floor flag's three causes are
-// each things the canvas genuinely CANNOT know; registering a knowable case
-// among them would park a defect inside the mechanism that exists to be honest
-// about shortfalls.
-func TestGroupingIsNotAFourthCauseOfTheFloor(t *testing.T) {
+// every input it needs to be RIGHT about it. The registered causes are each
+// things the canvas genuinely CANNOT know; registering a knowable case among
+// them would park a defect inside the mechanism that exists to be honest about
+// shortfalls.
+func TestGroupingIsNotARegisteredCauseOfInexactness(t *testing.T) {
 	for _, grouped := range []struct{ name, source string }{
 		{"grouped count fixture", canvasWindowCountGroupedTemplateJSON},
 		{"grouped shipped fixture", keepTogetherTemplateJSON},
@@ -306,8 +395,8 @@ func TestGroupingIsNotAFourthCauseOfTheFloor(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", grouped.name, err)
 		}
-		if projection.ContentWindowCountIsFloor {
-			t.Errorf("%s: contentWindowCountIsFloor is true for a well-formed grouped document — grouping is knowable canvas-side and must never become a fourth cause", grouped.name)
+		if !projection.ContentWindowCountIsExact {
+			t.Errorf("%s: contentWindowCountIsExact is false for a well-formed grouped document — grouping is knowable canvas-side and must never become a registered cause", grouped.name)
 		}
 	}
 	// The tag cannot reach a TABLE, which is what stops a group inheriting a
@@ -464,11 +553,14 @@ func TestCanvasProjectsWhereEachWindowBegins(t *testing.T) {
 	}
 }
 
-// TestCanvasSaysWhenTheWindowCountIsAFloor pins the flag to its three
-// documented causes and, just as importantly, to its ABSENCE where none of
-// them holds. A flag that were always true would satisfy every positive case
-// here and say nothing.
-func TestCanvasSaysWhenTheWindowCountIsAFloor(t *testing.T) {
+// TestCanvasSaysWhenTheWindowCountIsExact pins the flag to its documented
+// causes and, just as importantly, to its ABSENCE where none of them holds. A
+// flag stuck at either value would satisfy half of this test and say nothing,
+// which is why both halves are here: a document that SHOULD be exact reddens
+// if the field is forced false, and a document carrying a cause reddens if it
+// is forced true. Inverting a boolean flips every call site at once and the
+// corpus cannot catch a backwards one, because most documents are exact.
+func TestCanvasSaysWhenTheWindowCountIsExact(t *testing.T) {
 	for _, exact := range []struct {
 		name   string
 		source string
@@ -488,23 +580,23 @@ func TestCanvasSaysWhenTheWindowCountIsAFloor(t *testing.T) {
 		{"unshaped header", canvasWindowCountUnshapedHeaderTemplateJSON},
 	} {
 		projection := projectWithPaint(t, parseWindowCountTemplate(t, exact.source))
-		if projection.ContentWindowCountIsFloor {
-			t.Fatalf("%s: contentWindowCountIsFloor is true for a column with no table, no degradation and no unshaped text", exact.name)
+		if !projection.ContentWindowCountIsExact {
+			t.Fatalf("%s: contentWindowCountIsExact is false for a column with no table, no degradation, no unshaped text and no conditional element", exact.name)
 		}
 	}
 
 	// (a) A bound table: the canvas has the header and none of the rows.
 	table := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountBoundTableTemplateJSON))
 	assertWindowOriginsAreWellFormed(t, "bound table", table)
-	if table.ContentWindowCount != 1 || len(table.ContentWindowOrigins) != 1 || !table.ContentWindowCountIsFloor {
-		t.Fatalf("bound table: count %d, origins %v, floor %v; want 1, [0] and true", table.ContentWindowCount, table.ContentWindowOrigins, table.ContentWindowCountIsFloor)
+	if table.ContentWindowCount != 1 || len(table.ContentWindowOrigins) != 1 || table.ContentWindowCountIsExact {
+		t.Fatalf("bound table: count %d, origins %v, exact %v; want 1, [0] and false", table.ContentWindowCount, table.ContentWindowOrigins, table.ContentWindowCountIsExact)
 	}
 
 	// (b) The Ruling C degradation: a component taller than one window.
 	oversized := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountOversizedTemplateJSON))
 	assertWindowOriginsAreWellFormed(t, "oversized", oversized)
-	if oversized.ContentWindowCount != 1 || len(oversized.ContentWindowOrigins) != 1 || !oversized.ContentWindowCountIsFloor {
-		t.Fatalf("oversized: count %d, origins %v, floor %v; want 1, [0] and true", oversized.ContentWindowCount, oversized.ContentWindowOrigins, oversized.ContentWindowCountIsFloor)
+	if oversized.ContentWindowCount != 1 || len(oversized.ContentWindowOrigins) != 1 || oversized.ContentWindowCountIsExact {
+		t.Fatalf("oversized: count %d, origins %v, exact %v; want 1, [0] and false", oversized.ContentWindowCount, oversized.ContentWindowOrigins, oversized.ContentWindowCountIsExact)
 	}
 
 	// (c) A content text element whose chain would not resolve contributes no
@@ -518,8 +610,63 @@ func TestCanvasSaysWhenTheWindowCountIsAFloor(t *testing.T) {
 	if paint := paintOf(t, unshaped, "e2"); paint == nil || len(paint.Lines) == 0 {
 		t.Fatalf("precondition: e2 must shape normally, so the column is counted and merely counted SHORT: %#v", paint)
 	}
-	if !unshaped.ContentWindowCountIsFloor {
-		t.Fatal("unshaped text: contentWindowCountIsFloor is false, but one content element's lines are missing from the column that was counted")
+	if unshaped.ContentWindowCountIsExact {
+		t.Fatal("unshaped text: contentWindowCountIsExact is true, but one content element's lines are missing from the column that was counted")
+	}
+
+	// (d) A content element whose VISIBILITY DEPENDS ON DATA. The canvas
+	// projects visibleIf as a string and evaluates nothing, so it places an
+	// element the render may omit.
+	conditional := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountConditionalTemplateJSON))
+	assertWindowOriginsAreWellFormed(t, "conditional", conditional)
+	if conditional.ContentWindowCountIsExact {
+		t.Fatal("conditional visibility: contentWindowCountIsExact is true, but whether one content element is placed at all is a property of data the canvas has never been given")
+	}
+}
+
+// TestConditionalVisibilityIsWhyTheCountIsNotAlwaysExact measures cause (d)
+// rather than asserting it, and measures it in the direction that forced the
+// field's rename.
+//
+// The canvas has NO data, so it places the conditional element and answers 3.
+// The real render answers 3 when the condition holds and 2 when it does not —
+// AD-24 makes a hidden element absent WITH NO GAP, so the group never slides.
+// That is canvas >= render: a CEILING. The field this replaced was called
+// ContentWindowCountIsFloor and would have been set true here, which is a
+// second confidently-wrong disclosure — the exact failure this story exists to
+// stop, one layer down.
+//
+// IT IS NOT ABOUT GROUPING. The tag is on the fixture because it makes the
+// divergence loud; an ungrouped element carrying visibleIf diverges the same
+// way, and has since Story 7.5 shipped the count. The untagged control below
+// says so.
+func TestConditionalVisibilityIsWhyTheCountIsNotAlwaysExact(t *testing.T) {
+	tpl := parseWindowCountTemplate(t, canvasWindowCountConditionalTemplateJSON)
+	projection := projectWithPaint(t, tpl)
+	shown := renderPathPages(t, tpl, testFontSet(), `{"showRule": true}`)
+	hidden := renderPathPages(t, tpl, testFontSet(), `{"showRule": false}`)
+	if shown == hidden {
+		t.Fatalf("both data cases print %d pages; this fixture measures nothing about conditional visibility", shown)
+	}
+	if projection.ContentWindowCount != int64(shown) {
+		t.Errorf("the canvas draws %d sheets; with the element visible the document prints %d pages", projection.ContentWindowCount, shown)
+	}
+	// The DIRECTION, stated as the measurement it is: the canvas is never
+	// short here, it is long. A floor claim on this document would be false.
+	if projection.ContentWindowCount < int64(hidden) {
+		t.Errorf("canvas %d is below the hidden render's %d; this cause is a CEILING and the assertion above assumed it", projection.ContentWindowCount, hidden)
+	}
+	if projection.ContentWindowCountIsExact {
+		t.Error("the canvas reports this count exact while the same document prints two different lengths")
+	}
+	// The control: the SAME visibleIf with no tag anywhere. The cause predates
+	// grouping and must be registered without it.
+	untagged := strings.ReplaceAll(canvasWindowCountConditionalTemplateJSON, `"keepTogether": "signature", `, "")
+	if strings.Contains(untagged, "keepTogether") {
+		t.Fatal("the untagged control still carries a tag")
+	}
+	if projectWithPaint(t, parseWindowCountTemplate(t, untagged)).ContentWindowCountIsExact {
+		t.Error("an UNGROUPED element carrying visibleIf reports an exact count; grouping is how this cause was found, not what causes it")
 	}
 }
 
@@ -529,8 +676,8 @@ func TestCanvasSaysWhenTheWindowCountIsAFloor(t *testing.T) {
 func TestCanvasOriginsForAnEmptyColumnAndForTheShapelessEntryPoint(t *testing.T) {
 	empty := projectWithPaint(t, parseWindowCountTemplate(t, `{"assets":{},"bands":{"content":{"elements":[]},"pageFooter":{"elements":[],"height":24},"pageHeader":{"elements":[],"height":18}},"fonts":{"body":["Roboto-Regular"]},"locale":"en","nextId":1,"page":{"margin":{"bottom":42,"left":36,"right":54,"top":30},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"1.0"}`))
 	assertWindowOriginsAreWellFormed(t, "empty column", empty)
-	if len(empty.ContentWindowOrigins) != 1 || empty.ContentWindowCountIsFloor {
-		t.Fatalf("empty column: origins %v, floor %v; want [0] and false — nothing about an empty column is a floor", empty.ContentWindowOrigins, empty.ContentWindowCountIsFloor)
+	if len(empty.ContentWindowOrigins) != 1 || !empty.ContentWindowCountIsExact {
+		t.Fatalf("empty column: origins %v, exact %v; want [0] and true — nothing about an empty column is unknowable", empty.ContentWindowOrigins, empty.ContentWindowCountIsExact)
 	}
 
 	// Canvas has no FontSet, cannot shape, and says so in both fields: one
@@ -541,8 +688,8 @@ func TestCanvasOriginsForAnEmptyColumnAndForTheShapelessEntryPoint(t *testing.T)
 		t.Fatal(err)
 	}
 	assertWindowOriginsAreWellFormed(t, "Canvas", bare)
-	if len(bare.ContentWindowOrigins) != 1 || !bare.ContentWindowCountIsFloor {
-		t.Fatalf("Canvas: origins %v, floor %v; want [0] and true", bare.ContentWindowOrigins, bare.ContentWindowCountIsFloor)
+	if len(bare.ContentWindowOrigins) != 1 || bare.ContentWindowCountIsExact {
+		t.Fatalf("Canvas: origins %v, exact %v; want [0] and false — the shapeless entry point cannot count and must not claim it can", bare.ContentWindowOrigins, bare.ContentWindowCountIsExact)
 	}
 }
 
@@ -597,8 +744,8 @@ func TestAComponentAuthoredWindowsDownTheColumnLandsOnItsOwnSheet(t *testing.T) 
 	}
 	projection := projectWithPaint(t, reloaded)
 	assertWindowOriginsAreWellFormed(t, "authored deep", projection)
-	if projection.ContentWindowCountIsFloor {
-		t.Fatalf("this document has no table, no degradation and no unshaped text; floor = %v", projection.ContentWindowCountIsFloor)
+	if !projection.ContentWindowCountIsExact {
+		t.Fatalf("this document has no table, no degradation, no unshaped text and no conditional element; exact = %v", projection.ContentWindowCountIsExact)
 	}
 	sheet := sheetOf(projection.ContentWindowOrigins, component.Y)
 	if sheet == 0 {

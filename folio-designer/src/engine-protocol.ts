@@ -141,11 +141,15 @@ export type CanvasProjection = Readonly<{
 	// closed form is the spelling internal/layout/paginate.go forbids by
 	// name, and it is wrong by 110 millipoints per window on a column of
 	// round 728pt spacing and by nine whole windows on a column with a
-	// declared gap. contentWindowCountIsFloor is Go saying the count is a
-	// FLOOR rather than a prediction — a bound table, a pagination that
-	// degraded, or text that could not be shaped. Both are engine facts, and
-	// neither is a rule this side gets to restate.
-	contentWindowOrigins: ReadonlyArray<number>; contentWindowCountIsFloor: boolean
+	// declared gap. contentWindowCountIsExact is Go saying the count can be
+	// TRUSTED — false wherever a registered cause applies: a bound table, a
+	// pagination that degraded, text that could not be shaped, or an element
+	// whose visibility depends on data. Its sense is deliberately this way
+	// round so that its zero value, false, is the SAFE claim; direction —
+	// whether the true number is higher or lower — is deliberately not
+	// carried, because neither side is safe to act on. Both are engine facts,
+	// and neither is a rule this side gets to restate.
+	contentWindowOrigins: ReadonlyArray<number>; contentWindowCountIsExact: boolean
 	// fontFamilies is the closed set style.fontFamily may name in THIS
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
@@ -204,7 +208,7 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsFloor', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
   if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
   // The declared font chain names, as Go sorted them: bounded in count and
@@ -219,7 +223,7 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   const origins = value.contentWindowOrigins
   if (!Array.isArray(origins) || origins.length === 0 || origins.length > MAX_ENGINE_CONTENT_WINDOWS || origins.length !== value.contentWindowCount) return false
   if (!origins.every((origin) => typeof origin === 'number' && Number.isSafeInteger(origin) && origin >= 0) || origins[0] !== 0 || origins.some((origin, index) => index > 0 && (origins[index - 1] as number) >= (origin as number))) return false
-  if (typeof value.contentWindowCountIsFloor !== 'boolean') return false
+  if (typeof value.contentWindowCountIsExact !== 'boolean') return false
   const bands = value.bands
   const components = value.components
   if (!Array.isArray(bands) || bands.length !== 3 || !Array.isArray(components)) return false

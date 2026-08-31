@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
-const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsFloor: false, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
+const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
 describe('canvas projection protocol guard', () => {
   it('accepts and deeply freezes the exact three bounded bands', () => {
@@ -94,11 +94,11 @@ describe('canvas projection protocol guard', () => {
     // be the forbidden closed form wearing a guard's clothes.
     expect(projection({ ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] })).toBeDefined()
     const { contentWindowOrigins: _origins, ...noOrigins } = canvas
-    const { contentWindowCountIsFloor: _floor, ...noFloor } = canvas
+    const { contentWindowCountIsExact: _exact, ...noExact } = canvas
     // Absent entirely. `hasOnly` is a subset check and says nothing about a
     // MISSING key; these two value predicates are the whole guard.
     expect(projection(noOrigins)).toBeUndefined()
-    expect(projection(noFloor)).toBeUndefined()
+    expect(projection(noExact)).toBeUndefined()
     // A nil Go slice marshals to null, not to [].
     expect(projection({ ...canvas, contentWindowOrigins: null })).toBeUndefined()
     expect(projection({ ...canvas, contentWindowOrigins: 1 })).toBeUndefined()
@@ -116,12 +116,15 @@ describe('canvas projection protocol guard', () => {
     for (const bad of [-1, 1.5, '1800', null, Number.MAX_SAFE_INTEGER + 1]) {
       expect(projection({ ...three, contentWindowOrigins: [0, 1800, bad] })).toBeUndefined()
     }
-    // The floor flag is a boolean and nothing else — never a truthy string a
-    // disclosure would then render.
-    for (const bad of [0, 1, 'true', null]) {
-      expect(projection({ ...canvas, contentWindowCountIsFloor: bad })).toBeUndefined()
+    // The honesty flag is a boolean and nothing else — never a truthy string
+    // a disclosure would then render. 0 and '' matter twice over here: the
+    // sense is inverted from the field this replaced, so a falsy non-boolean
+    // slipping through would read as "do not trust this count" on a document
+    // that is exact.
+    for (const bad of [0, 1, 'true', null, '']) {
+      expect(projection({ ...canvas, contentWindowCountIsExact: bad })).toBeUndefined()
     }
-    expect(projection({ ...canvas, contentWindowCountIsFloor: true })).toBeDefined()
+    expect(projection({ ...canvas, contentWindowCountIsExact: false })).toBeDefined()
     // The declared cap, at its edge on both sides.
     const long = (count: number) => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, (_value, index) => index * 1800) })
     expect(projection(long(MAX_ENGINE_CONTENT_WINDOWS))).toBeDefined()

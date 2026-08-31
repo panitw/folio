@@ -16,7 +16,7 @@ vi.mock('./preview/pdf-viewer', () => ({
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsFloor: false, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
@@ -1427,7 +1427,7 @@ describe('Story 5.13: image asset selection', () => {
 //
 // Every projection below is a fixture: the sheets, the seams and the
 // disclosures are read from `contentWindowOrigins` and
-// `contentWindowCountIsFloor`, so a test that changed the origins and saw the
+// `contentWindowCountIsExact`, so a test that changed the origins and saw the
 // same drawing would be a test of nothing.
 describe('canvas sheet stack', () => {
   const origins = [0, 700_000, 1_400_000]
@@ -1589,29 +1589,32 @@ describe('canvas sheet stack', () => {
     expect(repeated.style.getPropertyValue('--component-y')).toBe('8px')
   })
 
-  it('states what the sheets claim, in accessible text, whenever there is more than one or the count is a floor', () => {
+  it('states what the sheets claim, in accessible text, whenever there is more than one or the count is not exact', () => {
     const claim = "A component's page is a consequence of the content above it and can change when the data does — it is a column position, not a pin to page three."
-    const floor = 'A document whose length comes from data prints more pages than are shown here.'
+    const inexact = 'This count depends on data the canvas does not have, so the printed document can run to a different number of pages.'
     render(<App engine={engine()} initialSnapshot={snapshotOf(threeWindows)} />)
     const disclosure = screen.getByRole('status', { name: 'Canvas sheet disclosure' })
     expect(disclosure).toHaveTextContent('Showing 3 sheets.')
     expect(disclosure).toHaveTextContent('These are the pages this content column occupies as the canvas has laid it out, not a prediction of the printed document.')
     expect(disclosure).toHaveTextContent(claim)
-    // Not a floor, so it must NOT claim to be one: a disclosure that always
-    // said everything would say nothing.
-    expect(disclosure).not.toHaveTextContent(floor)
+    // Exact, so it must NOT disclaim: a disclosure that always said
+    // everything would say nothing.
+    expect(disclosure).not.toHaveTextContent(inexact)
   })
 
-  it('says a data-length document prints more pages than are drawn, even when it draws only one sheet', () => {
-    const floor = 'A document whose length comes from data prints more pages than are shown here.'
+  it('says a data-length document can print a different number of pages than are drawn, even when it draws only one sheet', () => {
+    // DIRECTION-FREE, deliberately. The old sentence here promised MORE
+    // pages, which is true of this bound table and false of an element the
+    // data hides — and one document can carry both.
+    const inexact = 'This count depends on data the canvas does not have, so the printed document can run to a different number of pages.'
     // The shipped statement shape: four byte-identical templates that print
     // one, five, twenty and fifty pages and project ONE window each, because
     // the canvas has never been given the data.
-    const bound = { ...canvas, contentWindowCountIsFloor: true, components: [{ id: 'e8', type: 'table' as const, band: 'content' as const, x: 0, y: 54_000, width: 400_000, height: 28_000, resizable: false, tableBind: 'transactions[]' }] }
+    const bound = { ...canvas, contentWindowCountIsExact: false, components: [{ id: 'e8', type: 'table' as const, band: 'content' as const, x: 0, y: 54_000, width: 400_000, height: 28_000, resizable: false, tableBind: 'transactions[]' }] }
     render(<App engine={engine()} initialSnapshot={snapshotOf(bound)} />)
     const disclosure = screen.getByRole('status', { name: 'Canvas sheet disclosure' })
     expect(disclosure).toHaveTextContent('Showing 1 sheet.')
-    expect(disclosure).toHaveTextContent(floor)
+    expect(disclosure).toHaveTextContent(inexact)
     // One window, so no seam and no page qualifier — the honesty is in the
     // words, not in a drawing that would be a second lie.
     expect(document.querySelectorAll('.page-seam')).toHaveLength(0)

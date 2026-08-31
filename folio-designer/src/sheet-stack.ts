@@ -66,7 +66,11 @@ export type SheetStack = Readonly<{
   // What the projection said, before the drawing budget was applied.
   windowCount: number
   truncated: boolean
-  isFloor: boolean
+  // Go's ContentWindowCountIsExact, carried through unchanged. Its sense is
+  // inverted from the `isFloor` this replaced: TRUE means the count can be
+  // trusted, so a projection that forgot to set it degrades to the honest
+  // claim rather than to a confident one.
+  isExact: boolean
 }>
 
 const contentComponents = (canvas: CanvasProjection): ReadonlyArray<CanvasComponentProjection> => canvas.components.filter((component) => component.band === 'content')
@@ -130,7 +134,7 @@ export function sheetStack(canvas: CanvasProjection): SheetStack {
     }
     sheets.push({ index, origin, ...(next !== undefined && next - origin <= windowHeight ? { seam: next - origin } : {}), content })
   }
-  return { sheets, windowCount: origins.length, truncated: origins.length > drawn, isFloor: canvas.contentWindowCountIsFloor }
+  return { sheets, windowCount: origins.length, truncated: origins.length > drawn, isExact: canvas.contentWindowCountIsExact }
 }
 
 // THE STACK'S DISPLAY-SPACE INVERSE, in document millipoints.

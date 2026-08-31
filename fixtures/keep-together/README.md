@@ -63,14 +63,27 @@ The canvas **previews grouping** (Story 7.9). It tags its own column items from 
 `keepTogetherTags` index the render path uses — grouping takes the template and nothing else, so the
 canvas holds every input it needs — and its projected window **count** and window **origins**
 therefore equal the render path's for this document. On the pair above that difference is visible:
-window two begins at the group's earliest top, **706.000**, and not at **734.000**, where the
-untagged twin's ruled line falls out of window one.
+window two begins at the group's earliest top, **706.000 pt** (706000 millipoints, which is what the
+projection carries and what the tests assert), and not at **734.000 pt**, where the untagged twin's
+ruled line falls out of window one.
 
 `folio-go/canvas_window_count_test.go`'s
 `TestCanvasWindowsAgreeWithTheRenderPathForAGroupedDocument` asserts that equality against a real
-pagination of this very document, rather than against a flag. Grouping is **not** among the causes
-that make the projected count a floor, and it never becomes one: those three causes are each things
-the canvas genuinely cannot know, and a declared group is not one of them.
+pagination of this very document, rather than against a flag.
+
+Grouping is **not** among the causes that make `contentWindowCountIsExact` false, and it never
+becomes one. Those causes — a content-band table with a non-empty binding, a pagination that
+degraded, a text element whose font chain would not resolve, and an element whose visibility depends
+on data — are each things the canvas **genuinely cannot know without the data**. A declared group is
+not one of them: `keepTogetherTags` takes the template and nothing else, so getting grouping wrong
+is a defect to fix rather than a shortfall to disclose. What keeps that true for *this* fixture is
+`parse_bands.go`'s refusal of `keepTogether` on a **table**, which stops a group inheriting a
+table's data dependency.
+
+One thing the canvas does **not** place, and neither does the printed document: a `rect` or a `line`
+declaring neither a background nor a border. `e3` here declares `"background": "#000000"`, so it is
+a real member of the group on both sides. An unstyled one prints nothing, contributes no column item
+on the render path, and — since Story 7.9 — contributes none on the canvas either.
 
 ## What it does not cover
 

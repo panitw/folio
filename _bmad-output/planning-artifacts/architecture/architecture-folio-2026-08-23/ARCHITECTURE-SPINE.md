@@ -310,18 +310,18 @@ that did not exist while omitting thirteen that did.
 
 ### AD-14 — Errors and diagnostics are one type on one channel
 
-- **Binds:** `internal/diag`, `folio`, `designer` · FR41, FR44, FR25
+- **Binds:** `internal/diag`, `folio`, `designer` · FR41, FR44, FR25, FR51
 - **Prevents:** each area inventing its own error type, so the designer cannot present them
   uniformly and CI cannot assert that every FR41 case is covered.
 - **Rule:** one `Diagnostic` value carries `Severity` (`Error` aborts the render, `Warning`
   accompanies a successful one), a **stable string code** from a closed registry, an optional
-  element id (AD-10), an optional data path, and a message. Every failure mode named in FR41
-  has a code and a test asserting it. Over-tall rows and author-declared keep-together groups
-  (FR25, FR51), and clipped content (FR44), are `Warning`s returned alongside PDF bytes, never
-  silent and never fatal. Codes are additive only; changing a code's meaning is a breaking change.
-  Three data cases that would otherwise each be decided twice: an **absent** path is an `Error`
-  carrying the path; an explicit JSON **`null`** renders as empty and is not an error; a value
-  of the **wrong kind** for its element is an `Error`, never a coercion.
+  element id (AD-10), an optional data path, and a message. Every failure mode named in FR41 has
+  a code and a test asserting it. Rows and author-declared keep-together groups too tall for one
+  content window (FR25, FR51), and clipped content (FR44), are `Warning`s returned alongside PDF
+  bytes, never silent and never fatal. Codes are additive only; changing a code's meaning is a
+  breaking change. Three data cases that would otherwise each be decided twice: an **absent**
+  path is an `Error` carrying the path; an explicit JSON **`null`** renders as empty and is not
+  an error; a value of the **wrong kind** for its element is an `Error`, never a coercion.
 
 ### AD-15 — In the designer, the engine owns the document
 

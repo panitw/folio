@@ -356,24 +356,66 @@ type CanvasProjection struct {
 	// snapshot — which blanks the canvas with nothing to attribute the blank
 	// to.
 	ContentWindowOrigins []int64 `json:"contentWindowOrigins"`
-	// ContentWindowCountIsFloor states, as a value rather than only in the
-	// comment above, that ContentWindowCount is a FLOOR and not a
-	// prediction. It is true when any of THREE things is so, and the ENGINE
-	// reports it because only the engine knows all three:
+	// ContentWindowCountIsExact states, as a value rather than only in the
+	// comment above, whether ContentWindowCount can be TRUSTED as the number
+	// of pages this content column occupies. The ENGINE reports it, because
+	// only the engine knows every cause; the designer states the consequence
+	// in words and never decides for itself that, say, a table means more
+	// pages — that would be a second authority on a question this flag
+	// answers exactly.
+	//
+	// ITS ZERO VALUE IS THE SAFE CLAIM, and that is why it is spelled this
+	// way round rather than as `…IsApproximate`. `false` reads "do not trust
+	// this count", so a projection path that forgets to set it degrades to
+	// the HONEST claim. The inverse field would have had a forgotten set
+	// CLAIM EXACTNESS — which is precisely the defect that produced this
+	// field's rename, rebuilt into its default. A hazard indicator must not
+	// fail toward the quiet variant.
+	//
+	// It is false when any of these is so:
 	//
 	//	(a) a content-band table carries a non-empty binding, so the column
 	//	    being counted holds that table's header and none of the rows its
 	//	    data will grow;
 	//	(b) Paginate could not place the column at all — a component taller
-	//	    than one window — and the count degraded to the documented one;
+	//	    than one window — and the count degraded to the documented one,
+	//	    or the pagination produced an origin sequence the browser
+	//	    protocol would refuse;
 	//	(c) a content-band text element contributed no extents because its
 	//	    font chain would not resolve, so its lines are absent from the
-	//	    column the count measures.
+	//	    column the count measures;
+	//	(d) a content-band element's VISIBILITY DEPENDS ON DATA — it carries
+	//	    a visibleIf, which this file only projects as a string and which
+	//	    nothing on the canvas path evaluates, because evaluating it needs
+	//	    the data the canvas has never been given. The canvas places the
+	//	    element and the render may omit it, and AD-24 makes a hidden
+	//	    element absent WITH NO GAP, so the column is simply shorter.
+	//	    UNDISCLOSED SINCE STORY 7.5 shipped the count: it applies to an
+	//	    UNGROUPED visibleIf element exactly as much as to a grouped one.
+	//	    Story 7.9's grouping work is how it was found, not what caused it.
 	//
-	// The designer states the consequence in words. What it must never do is
-	// decide for itself that, say, a table means more pages: that would be a
-	// second authority on a question this flag answers exactly.
-	ContentWindowCountIsFloor bool `json:"contentWindowCountIsFloor"`
+	// GROUPING IS NOT AMONG THEM, and never becomes one. keepTogetherTags
+	// takes the *Template and nothing else, so an author-declared
+	// keep-together group is a pure template property the canvas holds every
+	// input for: being wrong about it is a defect to fix, never a shortfall
+	// to disclose. parse_bands.go's refusal of keepTogether on a table is
+	// what keeps that true, by stopping a group inheriting (a)'s data
+	// dependency.
+	//
+	// DIRECTION WAS DELIBERATELY DROPPED, and this sentence is here because
+	// without it a future reader restores the floor claim mistaking a choice
+	// for lost fidelity. The causes do not agree on a direction — (a) and (c)
+	// make the canvas count too LOW (a floor), while (d) makes it too HIGH (a
+	// ceiling), and a document carrying both is wrong in either direction —
+	// so no single direction is honest for the general case, and the field
+	// this replaced was named `ContentWindowCountIsFloor` and set true on
+	// ceiling causes. Direction also informs no decision: a floor means there
+	// may be more sheets than drawn and a ceiling fewer, and neither is a
+	// safe side to act on. It belongs WITH THE CAUSES — a cause knows its own
+	// direction — so if this projection ever carries the cause set, direction
+	// can be derived there without this flag re-acquiring a claim. The
+	// projection carries only the boolean today.
+	ContentWindowCountIsExact bool `json:"contentWindowCountIsExact"`
 }
 
 // maxCanvasFontFamilies bounds the projected name list the way every other
@@ -442,12 +484,16 @@ func canvasPageGeometry(t *Template) (layout.PageGeometry, error) {
 // with fonts. A floor of one is what a column with nothing placeable in it
 // occupies anyway; a silent zero would be a page count no document has.
 //
-// ContentWindowOrigins and ContentWindowCountIsFloor are the SAME admission,
+// ContentWindowOrigins and ContentWindowCountIsExact are the SAME admission,
 // spelled in the two fields that carry it: one window beginning at column
-// offset zero, declared a floor. The struct is shared with the entry point
-// that can shape, so these values never reach the browser — but a shared
-// struct's values must be honest wherever they are set, and a `nil` origins
-// slice would marshal to a JSON null the protocol rejects.
+// offset zero, declared NOT EXACT. ⚠ THE SENSE OF THAT FIELD IS INVERTED
+// FROM THE ONE IT REPLACED, and this literal is the site where a mechanical
+// rename would have converted a documented shortfall into a claim of
+// exactness — the flag reads `false` here for the same reason it used to
+// read `true`. The struct is shared with the entry point that can shape, so
+// these values never reach the browser — but a shared struct's values must
+// be honest wherever they are set, and a `nil` origins slice would marshal to
+// a JSON null the protocol rejects.
 func Canvas(t *Template) (CanvasProjection, error) {
 	if t == nil {
 		return CanvasProjection{}, errNilTemplate
@@ -500,7 +546,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsFloor: true}, nil
+	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,
@@ -583,14 +629,70 @@ func canvasWindowOrigins(plan layout.Pagination) ([]int64, bool) {
 	return origins, true
 }
 
-// canvasContentBandHasBoundTable is the FIRST of the floor's three causes: a
-// table in the content band with a non-empty binding. projectedSize gives
+// canvasContentBandHasBoundTable is cause (a) of ContentWindowCountIsExact's
+// register, and the one that reads as a FLOOR: a table in the content band
+// with a non-empty binding. projectedSize gives
 // such a table its header height and not one row, because the canvas has
 // never been given the data — so the column being counted is one header tall
 // however many hundred rows the finished document runs to.
 func canvasContentBandHasBoundTable(t *Template) bool {
 	for _, element := range t.doc.Bands.Content.Elements {
 		if element.Type == template.ElementTable && element.Table.Set && !element.Table.Null && element.Table.Value.Bind != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// canvasElementIsPlaced answers, for a NON-TEXT content element, whether the
+// render path would contribute a content-column item for it — the question
+// addCanvasWindowCount's own arm must answer the same way, or the canvas
+// counts a column the document does not have.
+//
+// Three routes reach the render path's contentColumnItems, and the kinds
+// divide by which one they take (page_number.go):
+//
+//	table — its header rect, from collectBandTableRuns. Always placed, and
+//	        never through element_box.go, which excludes a table by name.
+//	image — its image run, from collectImageRuns. Always placed, whatever
+//	        the element's style says.
+//	rect,
+//	line  — element_box.go's rect source, and NOTHING ELSE. So these two are
+//	        placed exactly where they declare a box.
+//
+// The declaration test is element_box.go's own predicate, called rather than
+// restated: one authority, two callers, the same shape as keepTogetherTags.
+func canvasElementIsPlaced(element template.Element) bool {
+	switch element.Type {
+	case template.ElementTable, template.ElementImage:
+		return true
+	default:
+		return elementDeclaresBox(element)
+	}
+}
+
+// canvasContentBandHasConditionalVisibility is the cause named for what it
+// IS — an element whose visibility depends on DATA — rather than for the
+// story that found it.
+//
+// page_setup.go only PROJECTS VisibleIf, as a string; nothing on this path
+// evaluates it, because evaluating it needs the data the canvas has never
+// been given. So the canvas places the element and the render may omit it,
+// and AD-24 makes a hidden element ABSENT WITH NO GAP — no sibling moves up
+// into the space, the column is simply shorter, and the two counts differ.
+//
+// UNDISCLOSED SINCE STORY 7.5, which shipped the count, and 7.6, which
+// shipped the flag. It applies to an UNGROUPED element carrying visibleIf
+// exactly as much as to a grouped one: grouping did not create this cause, it
+// is only how it was found, because a conditional member makes a group's
+// whole slide conditional and that is loud enough to measure.
+//
+// Content band only, like every other cause here: this flag is a claim about
+// the content column, and a conditional element in a repeated band changes
+// what that band draws, never how many windows the column occupies.
+func canvasContentBandHasConditionalVisibility(t *Template) bool {
+	for _, element := range t.doc.Bands.Content.Elements {
+		if element.VisibleIf.Set && !element.VisibleIf.Null && element.VisibleIf.Value != "" {
 			return true
 		}
 	}
@@ -610,36 +712,53 @@ func canvasContentBandHasBoundTable(t *Template) bool {
 // PageGeometry and ColumnItems, no data, no bindings and no template, because
 // receiving caller-derived extents is exactly what it is for.
 //
-// EVERY CONTENT COMPONENT CONTRIBUTES, STYLED OR NOT. The render path skips
-// element boxes with no background or border, correctly, because an unstyled
-// rect draws nothing on paper. This count is a claim about the column as the
-// CANVAS paints it, and the canvas paints every component's box.
+// A COMPONENT CONTRIBUTES EXACTLY WHERE THE RENDER PATH PLACES ONE, and the
+// previous sentence here said the opposite ("every content component
+// contributes, styled or not"). It was wrong, and Story 7.9 is where it
+// started to matter: an unstyled rect reaches no column item on the render
+// path, because element_box.go builds a rect source only for an element that
+// declares a background or a border, so a canvas that counted it drew a
+// window the printed document does not have. That was invisible while the two
+// answers were both ungrouped and merely differed on origins; the moment a
+// declared group made the canvas's partition matter, it became a count that
+// was confidently wrong. The rule is not restated here — this arm calls
+// element_box.go's own elementDeclaresBox.
 //
-// WITH ONE STATED EXCEPTION, so the sentence above is not read wider than it
-// is meant. "Styled or not" is about a box's APPEARANCE, not about whether an
-// element resolves to anything. Text contributes one item per SHAPED LINE and
-// never its box, so a text element that shapes no lines at all — an unset,
-// null or empty value, or a font chain that cannot be resolved —
-// contributes nothing, exactly as the render path treats a value that binds
-// to empty. Its box is still projected, so such an element placed windows
-// down is one more reason this number is a FLOOR rather than a prediction,
-// alongside the bound table whose rows the canvas has never been given.
+// THE PREDICATE GOVERNS ONLY THE KINDS element_box.go GOVERNS, which is why
+// this is a switch and not one condition. A TABLE never reaches
+// collectElementBoxRects at all (it is excluded by name; its chrome is drawn
+// per cell) and always contributes its header rect on the render path. An
+// IMAGE reaches the render path's column items through the separate image-run
+// arm, styled or not. Only a rect or a line depends on the box declaration,
+// because a box is the only route those two kinds have.
+//
+// Text is different again, and stated so the sentence above is not read wider
+// than it is meant: text contributes one item per SHAPED LINE and never its
+// box, so a text element that shapes no lines at all — an unset, null or
+// empty value, or a font chain that cannot be resolved — contributes nothing,
+// exactly as the render path treats a value that binds to empty. Its box is
+// still projected as a component, so such an element placed windows down is
+// one of the reasons ContentWindowCountIsExact exists.
 func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canvasColumnExtents) error {
 	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return err
 	}
-	// TWO of the floor's three causes are known before Paginate runs; the
-	// third is the degradation branch below. They are OR-ed rather than
-	// ranked because the flag reports that the count is a floor, not which
-	// of the three made it one.
-	floor := column.FontChainDegraded || canvasContentBandHasBoundTable(t)
+	// THREE of the flag's causes are known before Paginate runs — a bound
+	// table, a degraded font chain, and an element whose visibility depends
+	// on data; the fourth is the degradation branch below. They are OR-ed
+	// rather than ranked because the flag reports that the count cannot be
+	// trusted, not which cause made it so. ⚠ The SENSE is inverted from the
+	// field this replaced: `exact` is true only when NONE of them applies.
+	exact := !(column.FontChainDegraded ||
+		canvasContentBandHasBoundTable(t) ||
+		canvasContentBandHasConditionalVisibility(t))
 	// Story 7.9 (FR51): the same index addCanvasTextPaint tagged its line
 	// items with, from the same one authority. Grouping is a pure property
 	// of the Template — keepTogetherTags takes nothing else — so the canvas
 	// already holds every input it needs to be RIGHT about it, and being
-	// wrong about it is a defect rather than a fourth cause for the floor
-	// flag below. The flag keeps exactly its three documented causes.
+	// wrong about it is a defect rather than a cause to register beside the
+	// four above.
 	keepTogether := keepTogetherTags(t)
 	items := make([]layout.ColumnItem, 0, len(column.Items)+len(t.doc.Bands.Content.Elements))
 	items = append(items, column.Items...)
@@ -648,6 +767,9 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 			// Text contributes one item PER SHAPED LINE, never its box: a
 			// paragraph splits between windows at a line, which is what
 			// makes the count a slide rather than a division.
+			continue
+		}
+		if !canvasElementIsPlaced(element) {
 			continue
 		}
 		_, height := projectedSize(element)
@@ -698,7 +820,7 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 		// emphatically not a prediction of the document's length.
 		projection.ContentWindowCount = 1
 		projection.ContentWindowOrigins = []int64{0}
-		projection.ContentWindowCountIsFloor = true
+		projection.ContentWindowCountIsExact = false
 		return nil
 	}
 	origins, ok := canvasWindowOrigins(plan)
@@ -708,12 +830,12 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 		// discarding the number is cheaper than discarding the snapshot.
 		projection.ContentWindowCount = 1
 		projection.ContentWindowOrigins = []int64{0}
-		projection.ContentWindowCountIsFloor = true
+		projection.ContentWindowCountIsExact = false
 		return nil
 	}
 	projection.ContentWindowCount = int64(len(plan.Pages))
 	projection.ContentWindowOrigins = origins
-	projection.ContentWindowCountIsFloor = floor
+	projection.ContentWindowCountIsExact = exact
 	return nil
 }
 

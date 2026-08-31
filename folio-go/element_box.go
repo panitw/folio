@@ -62,12 +62,7 @@ func collectElementBoxRects(bands []bandWithOrigin, visible visibilityVerdicts) 
 				// from the page model entirely, and no sibling moves.
 				continue
 			}
-			style, ok := elementStyle(el)
-			if !ok {
-				continue
-			}
-			hasBackground := style.Background.Set && !style.Background.Null
-			hasBorder := style.Border.Set && !style.Border.Null
+			style, hasBackground, hasBorder := elementBoxDeclaration(el)
 			if !hasBackground && !hasBorder {
 				// The corpus's own path: no declaration, no source, no
 				// change to the emitted bytes.
@@ -109,6 +104,40 @@ func collectElementBoxRects(bands []bandWithOrigin, visible visibilityVerdicts) 
 		}
 	}
 	return sources, nil
+}
+
+// elementBoxDeclaration is THE ONE READING of "this element declares a
+// box", and the only place in the module that spells it. A box exists
+// where a PRESENT, non-null `style.background` or `style.border` does —
+// nothing else, and in particular nothing about the element's kind, its
+// size or whether the canvas can see it.
+//
+// It returns the style beside the two flags because the builder needs
+// all three, and splitting them would put the same two Presence tests in
+// two places. Callers that only need the verdict use elementDeclaresBox.
+func elementBoxDeclaration(el template.Element) (style template.Style, hasBackground, hasBorder bool) {
+	s, ok := elementStyle(el)
+	if !ok {
+		return template.Style{}, false, false
+	}
+	return s, s.Background.Set && !s.Background.Null, s.Border.Set && !s.Border.Null
+}
+
+// elementDeclaresBox is that rule as a predicate, for the SECOND caller
+// Story 7.9 gives it: page_setup.go's window count, which must contribute
+// a column item exactly where this file contributes a rect source and
+// nowhere else.
+//
+// It exists so that "styled means background or border" is written down
+// once. The canvas used to place every non-text component whatever its
+// style, so an unstyled rect occupied a window the printed document does
+// not have — invisible while the two answers were both ungrouped, and a
+// confidently wrong count the moment a group made the canvas's partition
+// matter. A second copy of the rule in page_setup.go would have been the
+// same defect waiting on the next divergence.
+func elementDeclaresBox(el template.Element) bool {
+	_, hasBackground, hasBorder := elementBoxDeclaration(el)
+	return hasBackground || hasBorder
 }
 
 // elementStyle returns el's style block, and whether it has one at all.

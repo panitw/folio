@@ -1344,20 +1344,27 @@ const canvasColumnPositionNotice = (page: number, pages: number): string => `on 
 // AC4's CANVAS-WIDE half. The claim the sheets make is narrower than the
 // drawing looks: they show the pages this content column occupies AS THE
 // CANVAS HAS LAID IT OUT, never a forecast of the printed document. Where the
-// engine says the count is a floor — a bound table, a degraded pagination,
-// text that could not be shaped — the printed document is longer, and the
-// four shipped statement templates are the proof: byte-identical files that
-// print one, five, twenty and fifty pages and project ONE window each.
+// engine says the count is NOT EXACT — a bound table, a degraded pagination,
+// text that could not be shaped, an element whose visibility depends on data —
+// the printed document runs to some other number of pages, and the four
+// shipped statement templates are one proof: byte-identical files that print
+// one, five, twenty and fifty pages and project ONE window each.
 const canvasColumnClaim = "A component's page is a consequence of the content above it and can change when the data does — it is a column position, not a pin to page three."
-const canvasFloorClaim = 'A document whose length comes from data prints more pages than are shown here.'
+// ⚠ DIRECTION-FREE ON PURPOSE. The previous wording here said the document
+// "prints more pages than are shown", which is true of a bound table and FALSE
+// of an element the data hides — the engine places it and the render omits it,
+// so the printed document is SHORTER. The causes do not agree on a direction
+// and a document can carry two that disagree, so the only honest sentence is
+// that the number is not the printed one.
+const canvasInexactClaim = 'This count depends on data the canvas does not have, so the printed document can run to a different number of pages.'
 function sheetStackDisclosure(stack: SheetStack): string | undefined {
-  // Silent for the document that has nothing to disclose: one window, and
-  // nothing about it a floor. Saying it anyway would be noise on every
+  // Silent for the document that has nothing to disclose: one window, and an
+  // exact count. Saying it anyway would be noise on every
   // single-page template, and AC5 requires that template's accessible surface
   // to be what it was.
-  if (stack.sheets.length <= 1 && !stack.isFloor) return undefined
+  if (stack.sheets.length <= 1 && stack.isExact) return undefined
   const shown = stack.truncated ? `Showing the first ${stack.sheets.length} sheets of ${stack.windowCount}.` : `Showing ${stack.sheets.length} ${stack.sheets.length === 1 ? 'sheet' : 'sheets'}.`
-  return `${shown} These are the pages this content column occupies as the canvas has laid it out, not a prediction of the printed document. ${canvasColumnClaim}${stack.isFloor ? ` ${canvasFloorClaim}` : ''}`
+  return `${shown} These are the pages this content column occupies as the canvas has laid it out, not a prediction of the printed document. ${canvasColumnClaim}${stack.isExact ? '' : ` ${canvasInexactClaim}`}`
 }
 function componentAccessibleName(component: CanvasProjection['components'][number], note?: string): string {
   const page = note ? `; ${note}` : ''
