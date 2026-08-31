@@ -3323,7 +3323,17 @@ its scope did not reach here.
   `reader`, `date` or `examined`**, and the owner has already been asked to perform the visual pass
   out of band. This entry is discharged only by a sign-off record a person writes
 - **Severity:** **HIGH**
-- **Status:** OPEN — **caused by this change** (the fixture is new). **Not discharged.** The visual
+- **Status:** **CLOSED 2026-08-31.** The owner performed the visual pass and signed off:
+  *"The rendering at fixtures/thai-stacked-marks/expected.pdf looks ok."* Recorded verbatim in
+  `fixtures/thai-stacked-marks/signoff.json` with reader, date and the fixture's frozen digest, and
+  enforced going forward by `folio-go/thai_stacked_marks_signoff_matrix_test.go`, a `//go:build
+  matrix` red gate following both shipped precedents — red-proved by removing the record.
+  **The record carries the reader's own words and nothing else.** No agent wrote an observation on
+  their behalf; the schema asks for detail *"specific enough that a later reader can tell it apart
+  from 'looked fine'"*, and this record does not yet meet that bar. That is stated here rather than
+  repaired by invention, because inventing it is the one failure this whole mechanism exists to
+  prevent (D-000.22: this is the one claim no machine can make on someone else's behalf). A reader
+  may strengthen it at any time; the digest binds it either way.
   pass had not been performed when the story closed
 
 **The gap.** `fixtures/thai-stacked-marks/expected.pdf` is the first committed document whose Thai
