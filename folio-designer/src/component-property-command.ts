@@ -37,4 +37,15 @@ function propertyValue(value: PropertyIntent['value']): string {
   return `[${(value ?? []).map(quote).join(',')}]`
 }
 
-function quote(value: string): string { return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n').replaceAll('\r', '\\r').replaceAll('\t', '\\t')}"` }
+// JSON.stringify IS the escape table, and the hand-rolled one it replaces was
+// a strict subset of it: `\ " \n \r \t` and nothing else, while JSON requires
+// every code point in U+0000-U+001F to be escaped. A value carrying any other
+// C0 control — U+0001 from a paste, most plausibly — emitted a raw control
+// byte inside a JSON string, so the command was MALFORMED BEFORE Go could read
+// the field, and the engine answered with a generic parse failure instead of
+// the located refusal naming the field. Engine-side validation cannot
+// substitute for this: the bytes never reach the rule.
+// This is a MINIMAL fix, deliberately. `rawNumberLiteral` above and the four
+// other designer encoders are Story 15.2a's shared-command-JSON authority
+// (DW-32), which must re-read this file rather than assume its earlier shape.
+function quote(value: string): string { return JSON.stringify(value) }

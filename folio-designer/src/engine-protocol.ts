@@ -200,6 +200,25 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const isArrayBuffer = (value: unknown): value is ArrayBuffer => Object.prototype.toString.call(value) === '[object ArrayBuffer]'
 const isRenderPayload = (value: unknown): value is RenderPayload => isRecord(value) && hasExactKeys(value, ['template', 'data', 'params']) && ['template', 'data', 'params'].every((key) => isArrayBuffer(value[key]) && value[key].byteLength > 0 && value[key].byteLength <= MAX_ENGINE_PAYLOAD_BYTES)
 const isIdentityPayload = (value: unknown): value is IdentityPayload => isRecord(value) && hasExactKeys(value, ['data', 'params']) && ['data', 'params'].every((key) => isArrayBuffer(value[key]) && value[key].byteLength > 0 && value[key].byteLength <= MAX_ENGINE_PAYLOAD_BYTES)
+// DW-70. Go sorts the projected chain names with slices.Sorted over Go
+// strings, which compares them BY BYTE — and those keys are the canonical
+// `.folio`'s own `fonts` key order under AD-9, so Go's order IS the document's
+// order and is NORMATIVE. JavaScript's `<` compares UTF-16 CODE UNITS, and the
+// two disagree wherever a name mixes the astral planes with U+E000-U+FFFF: a
+// surrogate pair (0xD800-) sorts BELOW U+E000 in UTF-16 and ABOVE it in UTF-8.
+// The measured pair that motivated this is `'\uE000'` before `'\u{1F600}'` —
+// Go's order, and the order this guard used to REJECT, taking the whole
+// snapshot with it (isCanvas false -> parseInbound undefined -> PROTOCOL_INVALID
+// -> engine-client terminates the worker and the canvas is permanently blank).
+// Comparing by CODE POINT is the same sequence as comparing UTF-8 bytes, so the
+// browser adopts Go's order. Never the reverse: changing Go's comparator would
+// move golden bytes for any document whose chain names cross the boundary.
+const compareCodePoints = (left: string, right: string): number => {
+  const a = Array.from(left, (unit) => unit.codePointAt(0) as number)
+  const b = Array.from(right, (unit) => unit.codePointAt(0) as number)
+  for (let index = 0; index < Math.min(a.length, b.length); index++) if (a[index] !== b[index]) return (a[index] as number) < (b[index] as number) ? -1 : 1
+  return a.length === b.length ? 0 : a.length < b.length ? -1 : 1
+}
 const hasOnly = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).every((key) => keys.includes(key))
 const hasExactKeys = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
 export const isEngineRequestId = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= MAX_ENGINE_REQUEST_ID_LENGTH && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value)
@@ -222,8 +241,10 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
   // The declared font chain names, as Go sorted them: bounded in count and
   // length like every other list on this projection, unique, and in the order
-  // Go sent so the browser never re-sorts an engine-owned set.
-  if (!Array.isArray(value.fontFamilies) || value.fontFamilies.length > MAX_ENGINE_FONT_FAMILIES || !value.fontFamilies.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_CANVAS_PROPERTY_STRING) || value.fontFamilies.some((name, index, names) => index > 0 && (names[index - 1] as string) >= (name as string))) return false
+  // Go sent so the browser never re-sorts an engine-owned set. The ordering
+  // check is compareCodePoints, which is Go's byte order — see DW-70 above;
+  // `>=` on JavaScript strings is NOT, and dropped a legitimate snapshot.
+  if (!Array.isArray(value.fontFamilies) || value.fontFamilies.length > MAX_ENGINE_FONT_FAMILIES || !value.fontFamilies.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_CANVAS_PROPERTY_STRING) || value.fontFamilies.some((name, index, names) => index > 0 && compareCodePoints(names[index - 1] as string, name as string) >= 0)) return false
   // The chains those names stand for. Bounded in count and in per-chain entry
   // count, every entry a non-empty bounded string, no chain empty — an empty
   // chain is not one Go projects, because it is not one style.fontFamily may

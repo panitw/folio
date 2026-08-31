@@ -12,6 +12,8 @@ import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/
 import { pageSetupCommand } from './page-setup-command'
 import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
 import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
+import { FontChainEditor } from './FontChainEditor'
+import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
 import { columnEdgeAfterDrag, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
 import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
@@ -82,6 +84,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [commitError, setCommitError] = useState<string>()
   const [propertyError, setPropertyError] = useState<PropertyCommitError>()
+  const [fontChainError, setFontChainError] = useState<FontChainCommitError>()
+  const [fontChainBusy, setFontChainBusy] = useState(false)
   const [fileError, setFileError] = useState<string>()
   const [fileStatus, setFileStatus] = useState<string>()
   const [fileBusy, setFileBusy] = useState(false)
@@ -476,6 +480,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     if (!engine || fileBusy) return undefined
     setCommitError(undefined)
     setPropertyError(undefined)
+    // Symmetry with applyFontChain, which clears propertyError's sibling: a
+    // refusal is about the edit that caused it, and leaving a stale chain
+    // refusal standing in the TYPOGRAPHY section while the author goes on
+    // committing font size or bold shows them a sentence about an edit they
+    // have moved past.
+    setFontChainError(undefined)
     try {
       const priorRevision = snapshotRef.current?.revision
       const result = await engine.request('command', updateComponentPropertiesCommand(ids, intent))
@@ -491,6 +501,31 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         setPropertyError({ field: intent.field, selectionKey, ...diagnostic })
       }
       return undefined
+    }
+  }
+  // The chain editor's six commands travel the SAME path a property commit
+  // takes — one opaque command, one revision, one undo entry — and differ only
+  // in where a refusal is anchored: by the CONTROL the panel dispatched from,
+  // never by what the engine returned. That is what lets an unlocated
+  // ENGINE_REJECTED (componentFields arity, a projection bound) be shown in
+  // exactly the same place a located COMPONENT_INVALID is, with one rule.
+  // The message is the engine's own string and is stored unprefixed, because
+  // the control already says where it belongs.
+  const applyFontChain = async (payload: ArrayBuffer, control: FontChainControl, responseGeneration: number, selectionKey: string) => {
+    if (!engine || fileBusy || fontChainBusy) return
+    setCommitError(undefined)
+    setFontChainError(undefined)
+    setFontChainBusy(true)
+    try {
+      const priorRevision = snapshotRef.current?.revision
+      const result = await engine.request('command', payload)
+      if (result.snapshot.revision !== priorRevision) invalidatePreview()
+      setHistoryAvailability(result.snapshot)
+      if ((snapshotRef.current?.revision ?? -1) < result.snapshot.revision) setCurrentSnapshot(result.snapshot)
+    } catch (error) {
+      if (documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) setFontChainError({ control, selectionKey, message: componentDiagnosticDetail(error).message })
+    } finally {
+      if (documentGeneration.current === responseGeneration) setFontChainBusy(false)
     }
   }
 
@@ -531,7 +566,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setAssetError(undefined); setAssetBusy(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); setFontChainBusy(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
@@ -768,7 +803,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
@@ -977,12 +1012,18 @@ const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vert
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, fontFamilies, defaultFontSize, onCommit, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; defaultFontSize: number; onCommit: CommitProperties; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
   const single = components.length === 1 ? components[0]! : undefined
   const scopedError = propertyError?.selectionKey === ids.join(',') ? propertyError : undefined
+  const scopedChainError = fontChainError?.selectionKey === ids.join(',') ? fontChainError : undefined
+  // The chain editor is REVEALED, not opened: it renders inside this same
+  // TYPOGRAPHY section, from a third button on the family control. AC1 forbids
+  // a dialog, so there is no separate mode and no dialog stack — just a
+  // disclosure whose state is local to this panel.
+  const [chainsOpen, setChainsOpen] = useState(false)
   const table = single?.type === 'table' ? single : undefined
   const image = single?.type === 'image' ? single : undefined
   const typographic = all((type) => type === 'text' || type === 'table')
@@ -1004,7 +1045,7 @@ function ComponentProperties({ components, fontFamilies, defaultFontSize, onComm
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -1143,7 +1184,7 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
 // names (CanvasProjection.fontFamilies). So this is a search-and-select over the
 // engine's own list rather than a free-text field whose every typo is a round
 // trip to a rejection. The typed text filters; it is never committed as a value.
-function FontFamilyProperty({ families, components, ids, onCommit, documentGeneration, error }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+function FontFamilyProperty({ families, components, ids, onCommit, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
   const values = components.map((component) => committedValue(component, 'fontFamily'))
   const uniform = values.every((value) => value === values[0])
   const committed = uniform ? values[0] ?? '' : ''
@@ -1175,6 +1216,10 @@ function FontFamilyProperty({ families, components, ids, onCommit, documentGener
         if (event.key === 'Escape') { event.preventDefault(); close() }
       }} />
       <button type="button" className="property-inline-action property-disclosure" aria-label={open ? 'Hide fonts' : 'Show fonts'} title={open ? 'Hide fonts' : 'Show fonts'} disabled={pending} tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => (open ? close() : setOpen(true))}>{open ? '⌃' : '⌄'}</button>
+      {/* THE THIRD BUTTON. The set this combobox searches is the document's
+          own declared chains, so the place to edit that set is here, beside
+          it — revealed in the same panel section, never in a dialog (AC1). */}
+      <button type="button" className="property-inline-action" aria-label={chainsOpen ? 'Hide font chains' : 'Edit font chains'} title={chainsOpen ? 'Hide font chains' : 'Edit font chains'} aria-expanded={chainsOpen} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); onToggleChains() }}>≡</button>
       {(committed !== '' || !uniform) && <button type="button" className="property-inline-action" aria-label="Clear Font family" title="Clear Font family" disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); void commit({ field: 'fontFamily', operation: 'clear' }) }}>×</button>}
     </div>
     {open && <ul className="property-options" id={listId} role="listbox" aria-label="Declared fonts">

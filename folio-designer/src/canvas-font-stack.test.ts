@@ -64,6 +64,62 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(undeclared).toEqual([])
   })
 
+  // STORY 8.2 / DW-35 TRIPWIRE. This story is the first to let an author BUILD
+  // a chain, so it is the first at which a document can name a chain whose
+  // first covering entry is not `Noto Sans` — `["Noto Sans Thai"]`, say. From
+  // that moment the engine MEASURES with that face while the browser paints
+  // with the fixed Latin-first stack below, and the two disagree exactly as
+  // they did in the reported defect this file was written for. 8.2 does not
+  // fix it (that is Story 8.4, whose AC4 is DW-35 written as an acceptance
+  // criterion); it records it here, where a comment asserting a negative would
+  // otherwise be carrying a test's evidentiary burden.
+  //
+  // THE MEASURED OBSTACLE, unrecorded anywhere before this story. The two
+  // sides do not merely differ in stack ORDER — they use different NAMES for
+  // the same shipped files. The generator registers the three Noto faces under
+  // IBM Plex family names (the design system's vocabulary); a chain's entries
+  // are the ENGINE's face names. So a chain entry cannot be used as a CSS
+  // family name at all, and the fix needs a face-name -> CSS-family mapping
+  // that exists on NEITHER side, or a rename of the generated families that
+  // ripples into the design tokens and their contract test.
+  it('records that the fragment stack is a stylesheet constant with no document input', () => {
+    // NON-VACUITY FIRST. `find(...) ?? ''` yields an empty string the moment
+    // the rule is reformatted onto several lines, and `expect('').not.toMatch`
+    // passes while proving nothing at all. Both halves are asserted to have
+    // been FOUND before anything is asserted about them.
+    const rule = css.split('\n').find((line) => line.startsWith('.canvas-text-fragment {'))
+    expect(rule, 'the single-line .canvas-text-fragment rule must exist').toBeDefined()
+    const declaration = /font-family:([^;]+);/.exec(rule as string)?.[1]
+    expect(declaration, '.canvas-text-fragment must declare a font-family').toBeDefined()
+    // Every family is a literal. No custom property, no interpolation, and no
+    // way for a projected chain to reach this declaration.
+    expect(declaration as string).not.toMatch(/var\(/)
+    expect(requested.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('records that the engine\'s face names and the browser\'s family names do not intersect', () => {
+    // The faces this build's FontSet ships, as a chain's entries spell them.
+    const engineFaces = ['Noto Sans', 'Noto Sans Thai', 'Noto Sans SC']
+    expect(declared).toEqual(expect.arrayContaining(['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai']))
+    expect(engineFaces.filter((face) => declared.includes(face))).toEqual([])
+    expect(declared.filter((family) => engineFaces.includes(family))).toEqual([])
+  })
+
+  it('records that no designer source names a chain entry in a font-family declaration', () => {
+    // The negative half, scanned rather than asserted by inspection — but
+    // stated at exactly the strength it has. This is a SINGLE-LINE scan: it
+    // catches the direct spelling (`fontFamily: chain.entries[0]`) and not an
+    // indirection (`const face = chain.entries[0]` on one line, then
+    // `style.fontFamily = face` on another). It is a tripwire on the obvious
+    // route, not a proof that no route exists; the proof that the two
+    // vocabularies cannot meet at all is the non-intersection test above.
+    const sources = fs.readdirSync(here, { recursive: true })
+      .filter((entry): entry is string => typeof entry === 'string' && /\.(?:ts|tsx)$/.test(entry) && !/\.test\.(?:ts|tsx)$/.test(entry))
+      .map((entry) => fs.readFileSync(path.join(here, entry), 'utf8'))
+    expect(sources.length).toBeGreaterThan(10)
+    expect(sources.filter((source) => /font-?[fF]amily['"\]]?\s*:\s*[^,;}\n]*(?:fontChains|\bentries\b|chain\.)/.test(source))).toEqual([])
+  })
+
   // The generic keyword is a last resort and must stay last. If it moved
   // ahead of a declared family the browser would never reach the real
   // face, reproducing the same defect with the stack looking correct.

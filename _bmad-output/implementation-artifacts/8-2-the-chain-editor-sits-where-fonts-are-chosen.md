@@ -2,13 +2,64 @@
 title: 'Story 8.2: The chain editor sits where fonts are chosen'
 type: 'feature'
 created: '2026-08-31'
-status: 'ready-for-dev'
-baseline_revision: 'bc671da1e7f3abca93045f9281d8be62e8fe02ed'
+status: 'done'
+baseline_revision: '3f9205790598831d47a44e080daaa8d4d5a3245a'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized', 'multiple-goals']
-deferred: []
+deferred:
+  - summary: >-
+      The two hand-rolled JSON escapers in component-command.ts and component-asset-command.ts
+      corrupt non-BMP characters, dropping the low surrogate of an astral pair.
+    evidence: |-
+      Both iterate by code point but escape from charCodeAt(0), so quote('a\u{1F600}b') emits
+      "a\ud83db" and the low surrogate is lost. Demonstrated by executing the function during
+      review. Go's encoding/json then substitutes U+FFFD, so a bind segment or asset key holding
+      an astral character silently becomes a DIFFERENT path and the engine's refusal names a path
+      the author never picked. component-command.test.ts's "complete JSON escaping" case uses only
+      BMP inputs ('a.b', 'line\nbreak', '\u0000'), so the defect is invisible to it. This is
+      PRE-EXISTING and owned by DW-32 / Story 15.2a, but the register records those encoders as
+      merely unconverted rather than WRONG — 15.2a must know it is fixing a live bug.
+    location: >-
+      folio-designer/src/component-command.ts:52-68, folio-designer/src/component-asset-command.ts:18-34
+    severity: high
+  - summary: >-
+      Nothing ties font-chain-command.ts's six command kinds and field arities to the Go dispatch
+      table and componentFields counts they must match.
+    evidence: |-
+      Both sides assert against independently hand-written literals: font-chain-command.test.ts and
+      App.test.tsx on the TypeScript side, component_commands_test.go on the Go side. Renaming
+      "from"/"to" on moveFontChainEntry, or changing one componentFields(raw, N), in Go alone leaves
+      every test in both languages green while the designer dispatches payloads the engine refuses
+      with an arity error at every move. canvas_projection_wire_test.go closes exactly this seam for
+      the Go->browser projection direction; the browser->Go command direction has no counterpart.
+      Pre-existing for the five older encoders; this story adds six more kinds to the same gap.
+    location: >-
+      folio-designer/src/font-chain-command.ts:26-48 vs folio-go/component_commands.go:93-104
+    severity: medium
+  - summary: >-
+      The isolable half of invalidatePreview() on the chain path — the token bump that revokes an
+      in-flight render — remains unverified.
+    evidence: |-
+      A test asserting that an accepted chain command marks a rendered PDF stale was added and
+      passes, but deleting invalidatePreview() leaves all tests green: re-entering Preview
+      re-requests identity and renderPreview's own identity-mismatch branch sets the stale reason
+      independently, so the user-facing property holds either way. Isolating the token bump needs a
+      render held open ACROSS the chain command, which was not built. Reported by the implementer
+      rather than claimed as covered.
+    location: >-
+      folio-designer/src/App.tsx:516
+    severity: medium
+  - summary: >-
+      FontChainEditor reads its form values through document.getElementById on the global document.
+    evidence: |-
+      typed() resolves ids against the global document, so a second mount (two App instances in one
+      test file, a future portal or preview pane) collides on ids and reads the wrong field. A useRef
+      map would be local, typed, and immune. Works today because exactly one App mounts.
+    location: >-
+      folio-designer/src/FontChainEditor.tsx
+    severity: low
 ---
 
 <intent-contract>
@@ -294,6 +345,32 @@ verbatim, and holds no model, no validation and no copy of any refusal rule.
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-08-31 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 12: (high 0, medium 6, low 6)
+- defer: 4: (high 1, medium 2, low 1)
+- reject: 5
+- addressed_findings:
+  - `[medium]` `[patch]` `followFocus.current` was cleared only inside the `[chains]` effect, so a refused command left stale target ids that the next unrelated snapshot consumed — reproduced by refusing a move then committing `Align center`, which stole focus onto `Move entry 2 of font chain 2 earlier`. Replaced with a settle-driven `pending` ref consumed when the command settles rather than when the list next changes. The implementer found a second defect while writing the test: deciding "the list moved" by `chains` ARRAY IDENTITY is wrong, because Go may return an equal list and a fixture may reuse one array across snapshots, which also made the test unfalsifiable; it now compares a value signature over names and entries.
+  - `[medium]` `[patch]` A refusal left focus on `document.body`: pressing a control set `busy`, which set `disabled`, which blurred it, and only the success path restored focus — so the `role="alert"` was unreachable by keyboard and `aria-errormessage` hung off a control the author had left. Focus now returns to the originating control on refusal.
+  - `[medium]` `[patch]` `applyFontChain` early-returned on `fileBusy` while the editor received `busy={fontChainBusy}` only, so during a save/open every chain click was a silent no-op. Now `busy={fontChainBusy || fileBusy}`, with a test holding `fileAccess.open` open.
+  - `[medium]` `[patch]` Coverage gap proved by mutation: replacing `applyFontChain`'s body with a bare request plus `setCurrentSnapshot` — deleting `invalidatePreview()`, `setHistoryAvailability(...)` and the revision-monotonic install guard — left all 308 tests green. Tests added for stale-preview, Undo availability, and non-advancing-revision install. `invalidatePreview()` itself remains only partly isolable; see `deferred`.
+  - `[medium]` `[patch]` Coverage gap proved by mutation: deleting the `documentGeneration`/`selectionKey` refusal drop, the generation-guarded busy reset, and the `clearDocumentInteraction` reset left all 308 green — shipping a chain command in flight across a document open would strand `fontChainBusy` true and kill the editor for the session. Two tests added on the existing asset-path precedent; the stale-refusal one needed the replacing document to declare a same-named chain, or the message would drop for the wrong reason and prove nothing.
+  - `[medium]` `[patch]` The new refusal-vocabulary scan read RAW file text, so its patterns matched ordinary English in comments — a tax this diff had already paid, its only two unrelated hunks being prose rewrites in `App.tsx` and `sheet-stack.ts` made solely to escape it. Comments are now stripped by a character scanner (quotes tested before comment openers, so an apostrophe in a comment cannot open a string and `//` inside a URL cannot open a comment); both reworded comments were restored verbatim as the proof, and `sheet-stack.ts` consequently left the diff entirely. Five further refusal sentences Go actually emits were then added safely. Scan stays production-only; all twelve literals red-proved.
+  - `[low]` `[patch]` `canvas-font-stack.test.ts`'s stylesheet-constant test was vacuous under a CSS reformat (`.find(...) ?? ''` then `exec('')?.[1] ?? ''` makes `expect('').not.toMatch(/var\(/)` pass proving nothing); both halves now assert they were found. The implementer notes the file also throws at module scope in that case, so this is defence in depth rather than a live hole.
+  - `[low]` `[patch]` The DW-35 tripwire regex fires only when a chain reference sits on the same line as the font-family property, while its comment claimed any future wiring would go red; the comment was reworded to exactly what the scan proves, naming the non-intersection test as the stronger evidence.
+  - `[low]` `[patch]` `applyProperties` did not clear `fontChainError`, so a refused chain edit stayed rendered while the author went on committing font size or bold. Cleared symmetrically, with a test.
+  - `[low]` `[patch]` The add-chain and add-entry inputs were never cleared after an accepted add, so a second press re-dispatched — and since the engine has no duplicate-entry rule, silently appended a duplicate face. Fields are now emptied only when the add LANDED, asserted both ways (a refusal keeps the text so it can be corrected).
+  - `[low]` `[patch]` The rename-refusal test's "document unchanged" assertion read the uncontrolled name fields, which show the author's draft and would look identical had the rename succeeded. Both such assertions now read the entry lists and the declared-fonts listbox.
+  - `[low]` `[patch]` `.font-chain-name` and `.font-chain-face` were applied in JSX with zero rules in `App.css`; the ruleless class names were dropped.
+
+Rejected (dropped): a lone-surrogate case for `compareCodePoints` (Go cannot emit a lone surrogate — `encoding/json` substitutes U+FFFD — so the divergence is unreachable); a `Number.isSafeInteger` guard in `font-chain-command.ts`'s `index()` (every call site passes an array index); the editor being reachable only while a component is selected (AC1 mandates that placement); the compile-only e2e spec exercising no refusal path (it executes nowhere by design); and "Add font chain" with empty fields dispatching (that IS the required anti-pre-emption behaviour).
+
+**Two deviations recorded rather than repaired.**
+1. Task 9 says the prohibition covers `src/**`; it is implemented over PRODUCTION source only. This is forced by the spec itself: the AC requiring the rendered refusal to be `===` to the engine's `message` obliges a test to hold that sentence as a fixture, so a literal `src/**` scan would redden on its own evidence. Production is where a rule would have to live to reach an author, so the AC's substance is served; the narrower scope is documented in the test.
+2. Design Note N4 still narrates "the authority is created (Task 1)" and "Raise DW-32 to HIGH at close" — residue of the pre-amendment scope that amendment item 5's second half did not re-point at Story 15.2a. It is explanatory prose, not a task, AC, boundary or mutation proof, and nothing in the story is unsatisfiable without the consolidation, so the contract's halt trigger ("HALT if an AC seems to require any of it") was not met. Flagged for the orchestrator.
 
 ## Design Notes
 
@@ -597,3 +674,98 @@ read-only to this workflow.
 Nothing else in the spec is implicated. The chain editor (Tasks 5, 7, 8, 9, 11, 13, 14), DW-70 (Tasks 6,
 12), the 22-digest baseline, the anti-pre-emption assertions and the discriminating re-projection proof
 are all coherent with the settled scope and were not disturbed by this halt.
+
+---
+
+### Auto Run Result — dispatch 3 (implementation), 2026-08-31
+
+Status: done
+Blocking condition: none
+
+Dispatched at HEAD `3f9205790598831d47a44e080daaa8d4d5a3245a` on `main`, tree clean, spec at
+`ready-for-dev` after the orchestrator's repair, directive "do not halt after planning". The
+self-contradiction that stopped dispatch 2 is gone: Approach, the Always bullet, the AC, Tasks 1-4,
+Task 15 and both mutation proofs now agree that DW-32 is Story 15.2a's. Implementation proceeded.
+
+**Implemented change.** An inline font-chain editor in the typography panel that dispatches Story
+8.1's six existing commands and re-projects, holding no document model, no validation and no copy of
+any engine rule; the DW-70 projection-guard ordering fix; and a one-line `quote()` fix. **No file
+under `folio-go/` or `lint/` is in the diff**, so the byte-identity claim is structural as well as
+measured.
+
+**Files changed.**
+- `folio-designer/src/FontChainEditor.tsx` (new) — the inline editor: per chain a name control,
+  rename and delete actions, an ordered entry list with per-entry move-earlier/later/remove and an
+  add-entry control, plus add-chain. Reads `projection.fontChains` every render. Keyboard-operable
+  reordering with focus following the moved entry.
+- `folio-designer/src/font-chain-command.ts` (new) — six builders at the exact arities
+  `componentFields` counts (4/4/3/5/5/4), every value through `JSON.stringify`.
+- `folio-designer/src/font-chain-control.ts` (new) — anchor-by-originating-control types. A `.ts`,
+  keeping the oxlint baseline at 4.
+- `folio-designer/src/component-property-command.ts` — `quote()` routed through `JSON.stringify`.
+  One line. `rawNumberLiteral` and the other four encoders untouched.
+- `folio-designer/src/engine-protocol.ts` — DW-70: `compareCodePoints` (= Go's UTF-8 byte order)
+  replaces `>=` on UTF-16 code units. **On the TypeScript side only; Go's comparator is normative.**
+- `folio-designer/src/App.tsx` — `applyFontChain` on the same command path property commits use,
+  with stale-generation/selection drop; refusal state keyed by originating control; the third button
+  on `FontFamilyProperty`; the editor rendered inside the TYPOGRAPHY section.
+- `folio-designer/src/canvas-authority-contract.test.ts` — the refusal-vocabulary prohibition over
+  production source, comment-stripped, twelve literals, each red-proved.
+- `folio-designer/src/engine-ownership-contract.test.ts` — `documentJson` allowlist widened to admit
+  the two scalar encoders. A forced consequence of routing `quote()` through `JSON.stringify`.
+- `folio-designer/src/{App.test.tsx,engine-protocol.test.ts,canvas-font-stack.test.ts,component-property-command.test.ts,font-chain-command.test.ts}`, `App.css`, `e2e/component-properties.spec.ts`.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — DW-70 CLOSED; DW-32 amended (its
+  `quote()` half landed here, 15.2a must re-read the file); DW-35 amended; DW-73 and DW-74 filed.
+
+**Review findings breakdown.** 12 patches applied (0 high, 6 medium, 6 low), 4 items deferred
+(1 high, 2 medium, 1 low), 5 rejected, 0 intent_gap, 0 bad_spec. Two of the twelve were surfaced by
+a reviewer's own executed mutation, not by inspection.
+
+**Follow-up review recommendation: true.** Patched counts this pass: high 0, medium 6, low 6.
+Score = 3x6 + 1x6 = 24, which is >= 5. No patched finding was high severity.
+
+**Verification performed** (every command re-run by the parent after patching, not taken on report).
+- `cd folio-go && go test -count=1 ./...` — exactly ONE distinct red,
+  `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`, the mandated permanent red; 13 packages `ok`.
+- `go vet -tags=matrix ./...` clean (exit 0); `gofmt -l folio-go` from the repo root: no output.
+- `TestTargetRenderHash` five ways: `darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm` each
+  exported and asserting with byte-identical hashes across all four, plus an **unset control** that
+  emits no target lines and passes in 0.375s as the deliberate no-op.
+- `TestCrossTargetByteIdentity` PASS (21.93s); `TestThaiStackedMarksSemanticSignOffIsRecorded` PASS.
+- `cd lint && go test -count=1 ./...` — all four packages `ok`; `TestFloatTypedTestScopeInventory`'s
+  line-number pins did not move.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test && npm run test:e2e:compile` —
+  typecheck and e2e-compile clean; oxlint **exactly 4** pre-existing `only-export-components`
+  warnings and nothing else; **319 tests / 35 files**, all passing (baseline 285/34).
+- `shasum -a 256 fixtures/*/expected.pdf | diff - <pre-edit baseline>` — **22 lines, empty diff**.
+  Baseline captured before the first edit. `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`,
+  8470 bytes, unchanged; both signoff files byte-identical; no `goldenDigestRecord` line added.
+
+**Mutation proofs, run by the parent and each confirmed to have LANDED before any conclusion.**
+`quote()` five-char table restored -> the C0 assertion reddens (`SyntaxError: Bad control character`).
+DW-70 comparator reverted to UTF-16 -> the acceptance case reddens (`parseInbound` returns undefined,
+the blank-canvas path); the ordering check deleted entirely -> the same test reddens on its
+out-of-order half, so both directions are proved. A real refusal literal inserted into a real
+production file -> the prohibition reddens naming the file and pattern; after the comment-stripping
+patch, re-proved BOTH ways — the same literal is clean in a comment and red in a string. A local
+duplicate-name rule added to `addChain` -> the anti-pre-emption assertion reddens. A local
+rename pre-check added -> the rename anti-pre-emption assertion reddens (the first attempt produced
+a syntax error and "no tests", which was discarded as a broken mutant and redone as valid code).
+
+**Matrix Test Audit.** All 13 rows covered by tests that ran and passed. Two rows were uncovered on
+the implementer's first pass and were filled before review: "Rename onto an existing key" had only a
+dispatch test and no refusal test, and the "Reorder entries" out-of-range error cell was covered only
+by a differently-worded unlocated refusal.
+
+**Residual risks — what is NOT proven.**
+`npm run test:e2e:compile` is `tsc --noEmit`. Playwright appears in no workflow and browser e2e has
+never executed anywhere in this run (D-000.4). **This is a panel story, so the surface an author
+actually touches is the one nothing executes.** Specifically unproven: that the editor is
+keyboard-operable end to end in a real browser; that focus is visibly rendered per UX-DR25; that
+`role="alert"` is actually announced; that the six commands survive the real worker round trip; that
+the DW-70 fix keeps a real worker alive; and that the new affordance does not disturb
+`e2e/browser-native-roundtrip.spec.ts:84`, the repository's only cross-boundary authoring witness,
+which is compiled and never run. jsdom applies no stylesheet, so no unit test proves the editor's
+appearance or focus ring. None of this may be reported as verified.
+Also unproven: `invalidatePreview()`'s isolable half on the chain path (see `deferred`); and the
+refusal sentences are coupled to Go by transcription, since no test reads both languages.

@@ -63,7 +63,7 @@ describe('engine ownership structure', () => {
   it('does not mirror the .folio document schema in production TypeScript', () => {
     const scan = scanOwnership(sources())
     expect(scan.schemaMirrors).toEqual([])
-    expect(scan.documentJson.filter((name) => !['engine.worker.ts', 'offline-lifecycle.ts', 'release-payload.ts', 'sample-data.ts', 'App.tsx', 'table-column-command.ts'].includes(name))).toEqual([]) // protocol/release envelopes, bounded local sample discovery, and the transient parameter-document editor may parse JSON; the table command factory may JSON-quote scalar intent but never a template.
+    expect(scan.documentJson.filter((name) => !['engine.worker.ts', 'offline-lifecycle.ts', 'release-payload.ts', 'sample-data.ts', 'App.tsx', 'table-column-command.ts', 'component-property-command.ts', 'font-chain-command.ts'].includes(name))).toEqual([]) // protocol/release envelopes, bounded local sample discovery, and the transient parameter-document editor may parse JSON; the three command factories may JSON-quote SCALAR INTENT — one property value, one chain or face name — but never a template, and never a whole command object: the payload's shape is still written out literally so the field arity Go counts is visible at the call site.
     expect(fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')).toContain('Parameter input must be a JSON object')
   })
 

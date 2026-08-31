@@ -185,6 +185,43 @@ describe('canvas projection protocol guard', () => {
     expect(projection(families(MAX_ENGINE_FONT_FAMILIES + 1))).toBeUndefined()
   })
 
+  // DW-70. Go sorts these keys with slices.Sorted over Go strings — BY BYTE —
+  // and those keys are the canonical `.folio`'s own `fonts` key order under
+  // AD-9, so Go's order IS the document's and is NORMATIVE. The guard used
+  // `>=` on JavaScript strings, which compares UTF-16 CODE UNITS, and the two
+  // disagree wherever a name mixes the astral planes with U+E000-U+FFFF: a
+  // surrogate pair sorts BELOW U+E000 in UTF-16 and ABOVE it in UTF-8.
+  //
+  // The consequence was not a dropped frame. isCanvas false makes parseInbound
+  // return undefined, which engine-client raises as PROTOCOL_INVALID, which
+  // TERMINATES the worker and leaves the canvas permanently blank. Story 8.2
+  // is what lets an author type a chain name, so two keystrokes reached it.
+  it('accepts the projected chain names in Go\'s byte order, not the browser\'s UTF-16 order', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    const ordered = (...names: ReadonlyArray<string>) => ({ ...canvas, fontFamilies: names, fontChains: names.map((name) => ({ name, entries: ['Noto Sans'] })) })
+    // THE MEASURED PAIR. '\uE000' is EE 80 80 and '\u{1F600}' is F0 9F 98 80,
+    // so Go sends them in this order. In UTF-16 the emoji begins 0xD83D, which
+    // is BELOW 0xE000 — so `>=` called this pair out of order and dropped the
+    // whole snapshot.
+    expect(projection(ordered('\uE000', '\u{1F600}'))).toBeDefined()
+    // And the reverse pair is still rejected, so the fix widened the accepted
+    // set rather than removing the check: a genuinely out-of-order projection
+    // is a channel fault and is still not trusted.
+    expect(projection(ordered('\u{1F600}', '\uE000'))).toBeUndefined()
+    // The ordinary cases the check has always covered, both ways.
+    expect(projection(ordered('body', 'heading'))).toBeDefined()
+    expect(projection(ordered('heading', 'body'))).toBeUndefined()
+    // Equal names are neither ascending nor unique.
+    expect(projection(ordered('body', 'body'))).toBeUndefined()
+    // A prefix sorts before its extension in both orders, and does here.
+    expect(projection(ordered('body', 'bodyweight'))).toBeDefined()
+    expect(projection(ordered('bodyweight', 'body'))).toBeUndefined()
+    // A second astral pair, on the other side of the boundary: U+FFFD (EF BF
+    // BD) still precedes the emoji in byte order.
+    expect(projection(ordered('\uFFFD', '\u{1F600}'))).toBeDefined()
+    expect(projection(ordered('\u{1F600}', '\uFFFD'))).toBeUndefined()
+  })
+
   it('bounds opaque producer failure provenance at the main-thread boundary', () => {
     const response = (error: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: false, error })
     expect(response({ code: 'COMPONENT_INVALID', message: 'invalid', elementId: 'e'.repeat(MAX_ENGINE_ELEMENT_ID_LENGTH), dataPath: 'p'.repeat(MAX_ENGINE_DATA_PATH_LENGTH) })).toBeDefined()

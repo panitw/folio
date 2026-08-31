@@ -2643,7 +2643,15 @@ three times, the third time *inside the commit that closed it*.
   still counts four fields — so the command mutates **a different component's different property**.
   Escalation to another command `kind` is blocked only by an **arity coincidence**, not by a check.
   The register's previous claim that no bad value reaches the document is **false**.
-- **Status:** OPEN
+- **Status:** OPEN — **but `component-property-command.ts` has MOVED since this entry was written.**
+  Story 8.2 (2026-08-31) routed that file's `quote()` through `JSON.stringify`, minimally and by
+  itself, because a chain name is author-typed and travels through the quoter: `quote()` escaped
+  `\ " \n \r \t` and **nothing else**, while JSON requires all of U+0000–U+001F, so a pasted C0
+  control produced **invalid JSON** and Go answered with a generic parse failure instead of the located
+  refusal naming the field — engine-side name validation cannot substitute, because the bytes are
+  malformed before the rule can run. **`rawNumberLiteral` and the other four encoders were NOT
+  touched**, and neither was the shared authority: those remain wholly Story 15.2a's. **15.2a must
+  RE-READ this file rather than assume the shape recorded below.**
 
 **The gap.** `folio-designer/src/component-property-command.ts` routes `pointFields` and Story 7.4's new
 `ratioFields` through `rawNumberLiteral`, which returns the typed string **verbatim**. Typing `abc` into
@@ -2734,7 +2742,18 @@ unvirtualised path by the page count. The two questions are the same question an
   tokens and their contract test — **a design-system decision above a builder's authority**. Story
   8.4's AC4 — *"the preview measures with that same face through the same engine path, so the canvas
   and the PDF keep one measurement authority"* — **is this entry written as an acceptance criterion**
-- **Status:** OPEN
+- **Status:** OPEN — **and what Story 8.2 newly made reachable is now recorded by a TEST rather than
+  by a comment.** 8.2 is the story that lets an author BUILD a chain, so it is the first at which a
+  document can declare one whose first covering entry is not `Noto Sans` — `["Noto Sans Thai"]`, say —
+  after which the engine measures with that face while the browser paints the fixed Latin-first stack.
+  8.2 states this and does not fix it: the fix is a design-system decision (rename the generated
+  `@font-face` families, rippling into `tokens.css`'s `--font-page` and its three type tokens and into
+  `design-contract.test.ts`, or generate a face-name → CSS-family map) above a builder's authority.
+  `folio-designer/src/canvas-font-stack.test.ts` now carries three tripwires: that the fragment stack
+  is a stylesheet constant with no document input, that the engine's face names and the browser's
+  family names **do not intersect at all**, and that no designer source turns a projected chain entry
+  into a CSS family. A comment asserting a negative was carrying a test's evidentiary burden; it is a
+  test now.
 
 **The gap.** `folio-designer/src/App.css`'s `.canvas-text-fragment` rule names a **fixed** three-family
 stack — the three faces `scripts/build-wasm.mjs` ships and declares an `@font-face` for. The engine, by
@@ -3782,13 +3801,25 @@ question is asked rather than assumed either way.
 
 ---
 
-### DW-70 — Go sorts projected chain names by BYTES while the browser guard checks ascending UTF-16 code units, and the two disagree on astral-plane names
+### DW-70 — Go sorts projected chain names by BYTES while the browser guard checks ascending UTF-16 code units, and the two disagree on astral-plane names — **CLOSED by Story 8.2, 2026-08-31**
 - **Deferred by:** Story 8.1's review pass (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
 - **Owner:** **Story 8.2** — it is the story that first lets an author type a chain name, which is what
   makes the divergence reachable through the product
 - **Severity:** MEDIUM once 8.2 lands; **latent today**
-- **Status:** OPEN
+- **Status:** **CLOSED** by Story 8.2's implementation commit, 2026-08-31 — the story that made it
+  reachable is the story that closed it, which is the same rule Story 8.0 was decided under. The
+  browser adopted Go's order; **Go's comparator was not touched.**
+
+**How it was closed, and the guardrail that decided which side moved.** `engine-protocol.ts` now
+compares the projected names with a `compareCodePoints` helper — code-point order, which for UTF-8 is
+byte order — instead of `>=` on JavaScript strings. **Go's byte ordering is NORMATIVE and must stay
+that way:** the `fonts` keys are sorted into the canonical `.folio` under AD-9, so Go's sort *is* the
+byte order of the document, and changing the Go comparator would have moved golden bytes for any
+document whose chain names cross the boundary. The cheaper-looking side was the wrong side.
+`engine-protocol.test.ts` pins the measured pair `['\uE000', '\u{1F600}']` as ACCEPTED and its reverse
+as still REJECTED, so the fix widened the accepted set rather than removing the check — proved in both
+directions by restoring the UTF-16 comparator and by deleting the check outright.
 
 **The gap.** `folio-designer/src/engine-protocol.ts`'s sorted/unique check compares names with `>=` on
 JavaScript strings — ascending **UTF-16 code units** — while Go's `slices.Sorted(maps.Keys(...))` sorts
@@ -3842,3 +3873,57 @@ its messages. An author moving a chain entry sees `"index must be an integer"` b
 **Anchors re-derived at this story's closing revision.** The build's note cited `:509`, which is the
 blank line above the declaration — the kind of one-line drift that comes of capturing anchors before a
 review patch lands.
+
+---
+
+### DW-73 — `page-setup-command.ts` carries the SAME unquoted-number splice DW-32 names, and DW-32 does not name it, so closing DW-32 as written would leave the authority not sole
+- **Deferred by:** Story 8.2's plan gate (2026-08-31, Design Note N4), measured while establishing which
+  encoder an author-typed chain name actually travels through
+- **Owner:** **Story 15.2a** — *a component command means exactly what it names*, the same story that
+  owns DW-32. This is not a second story; it is a **second site DW-32's own acceptance must cover**,
+  filed separately so it cannot be lost when that entry is read as naming one file.
+- **Severity:** **HIGH**, for the same reason DW-32 is: it is the same mechanism at a second entry point
+- **Status:** OPEN
+
+**The gap.** DW-32 names `folio-designer/src/component-property-command.ts` and its `rawNumberLiteral`.
+`folio-designer/src/page-setup-command.ts:6-7` performs the **identical** splice — the author's typed
+width, height and margins are interpolated into the command JSON **unquoted** — and its inputs are the
+free-text page-setup fields at `App.tsx:887`. So the injection DW-32 describes has **two** reachable
+front doors, and a fix applied only to the file DW-32 names leaves the second one open while the entry
+reads as closed.
+
+**Measured, not inferred.** The designer has **five** command encoders giving **three** different
+answers: `table-column-command.ts` uses `JSON.stringify` (the correct model); `component-command.ts`
+and `component-asset-command.ts` carry byte-identical hand-rolled escapers; `component-property-command.ts`
+carried an incomplete one (its `quote()` half was fixed by Story 8.2 — see DW-32's status note); and
+**numbers are not encoded at all**, in two files. That is D-8.1.3's exact shape: no single authority,
+so no single place to be right.
+
+**What closing it requires.** Whatever Story 15.2a builds must be routed through by
+`page-setup-command.ts` as well, and its acceptance must exercise that file by name. Anything less
+produces an authority that is not sole, which is the only property worth having.
+
+---
+
+### DW-74 — the Go/TypeScript wire test records the projection's TOP-LEVEL and `CanvasFontChain` key lists but NOT `CanvasComponent`'s, so a per-component projection field would blank the canvas with every test on both sides green
+- **Deferred by:** Story 8.2's plan gate (2026-08-31, Design Note N5 v), measured while establishing
+  that this story adds no projection field
+- **Owner:** **Story 8.4** — the first story whose stated work (a per-component preview measured through
+  the engine's own path) is likely to add a `CanvasComponent` field, and therefore the first to walk
+  into this gap; **or Epic 8's close**, whichever comes first, per D-000.73
+- **Severity:** MEDIUM — the symptom is the silent blank canvas the wire test exists to prevent, and the
+  gap sits one level below where that test looks
+- **Status:** OPEN
+
+**The gap.** `folio-go/canvas_projection_wire_test.go` ties two key sets across the language boundary:
+the projection's top-level keys (`:47`, against `engine-protocol.ts`'s `isCanvas` `hasOnly` list) and
+the nested `CanvasFontChain`'s (`:76`, against `hasExactKeys(chain, ['name','entries'])`). It does
+**not** read `engine-protocol.ts`'s `CanvasComponent` key list. That list is a `hasOnly` **subset**
+check over roughly thirty keys, so a field Go adds to a projected component and the designer does not
+list makes `isCanvas` return false, `parseInbound` discard the whole snapshot, `engine-client` raise
+`PROTOCOL_INVALID` and **terminate the worker** — with the Go tests green (they read struct fields) and
+the designer tests green (their canvas fixtures are hand-authored object literals that never see Go).
+
+**Why it is reported and not fixed here.** Story 8.2 is designer-only and adds no projection field, so
+it cannot make this reachable and a Go-side test change would be outside its diff. It is the gap DW-35's
+eventual fix walks into, which is why the owner is pointed at the same story.
