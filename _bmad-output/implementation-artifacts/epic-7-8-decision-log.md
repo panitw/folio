@@ -2499,3 +2499,125 @@ trace that the record had once been wrong.
 mechanism that missed one band had no reason to have covered the others. Treating the found instance
 as the whole population is how these become the eighth occurrence rather than the last. Same move as
 re-deriving DW-24's site list by grep instead of trusting the hand-list.
+
+## Story 8.2's `multiple-goals` split, and a HIGH defect that was mis-filed (2026-08-31)
+
+Story 8.2's plan gate returned `multiple-goals` over three subjects: the chain editor, a shared
+command-JSON authority (DW-32), and the projection guard's sort order (DW-70). The split was ruled
+after DW-32 was re-measured and turned out to be something other than what the register said.
+
+### D-8.2.4 — DW-70 is a PRECONDITION of 8.2, and the guardrail matters more than the placement
+
+**Ruling:** in scope. Story 8.2 is what makes an author able to name a chain, so shipping the editor
+without it ships a feature whose **second keystroke terminates the worker**. Measured: Go sorts
+chain names by **bytes**, the TS guard compares **UTF-16 code units**; `` (UTF-8 `ee 80 80`) versus
+U+1F600 (`f0 9f 98 80`) disagree, `isCanvas` goes false, `parseInbound` returns `undefined`, the
+client raises `PROTOCOL_INVALID` and calls **`worker.terminate()`**. The canvas blanks and stays
+dead.
+
+> **A defect the story makes reachable is a precondition of the story, not a competitor to it.**
+
+Same category as Story 8.0 relative to Epic 8.
+
+**⚠ THE GUARDRAIL, which is the half that could be got backwards: Go's byte ordering is NORMATIVE.**
+`fonts` keys are sorted into the canonical `.folio` under AD-9, so **Go's sort IS the byte order of
+the document.** The mismatch is one line to fix on **either** side — and fixing the Go side **would
+move golden bytes** for any document whose chain names cross the boundary. **The TS guard adopts
+code-point ordering to match Go, never the reverse.** Stated in the story explicitly, because
+otherwise someone fixes the cheaper-looking side.
+
+### D-8.2.5 — `quote()` is an incomplete JSON escaper, and THAT is on 8.2's path
+
+The plan gate had already falsified my dispatch's premise once: chain names route through the
+quoter, not through the numeric splice. **The lead then falsified the cleared route as well.**
+`component-property-command.ts:41`'s `quote()` escapes `\`, `"`, `\n`, `\r`, `\t` — **and nothing
+else.** JSON requires escaping **all** of U+0000–U+001F. So a chain name carrying any other control
+character — pasted, most plausibly — produces **invalid JSON**, which Go rejects with a generic
+failure rather than *"that name is not allowed"*.
+
+**Ruling: 8.2 fixes it MINIMALLY — route `quote()` through `JSON.stringify`. One line.** In scope by
+the same test as DW-70: this story is the first to make chain names author-supplied on that path. It
+is **not** the shared-authority consolidation and **must not grow into it**.
+
+**Engine-side name validation does not substitute, and this is an ordering fact rather than a
+preference:** the JSON is **malformed before Go can see the name**, so the engine's rule cannot run.
+
+**Worth recording as a shape:** the dispatch asserted a route, the gate cleared it, and the route was
+*still* broken — one level further down. Clearing a path is not the same as measuring it.
+
+### D-8.2.6 — DW-32 splits out, but the Go hardening is NOT a third subject
+
+**Ruling:** the split is confirmed — DW-32 is browser-side, reachable today, HIGH, and has nothing
+to do with font chains. **But my proposal to treat the Go-side duplicate-key refusal as a third
+subject was rejected, and rightly.**
+
+> **It is the other half of the SAME invariant.** The property is *a component command means exactly
+> what it names*, and today **neither side enforces it**: the encoder can produce an ambiguous
+> command, and the decoder resolves the ambiguity silently by last-wins.
+
+Splitting the halves across stories is precisely the pattern that produced the five untied Go/TS
+invariants and DW-42, and the standing obligation already binds it: **an invariant duplicated across
+the Go/TS boundary moves in ONE commit, with a test that reads both sides.**
+
+**And the Go half is what makes the property assertable at all.** Without it the only available test
+is *"the encoder produces well-formed JSON"* — **a test of the fix, not of the property**, which
+goes green again the moment a future encoder regresses. With it, the engine can be handed
+duplicate-key bytes directly and asserted to refuse: a test **of the invariant**, surviving any
+encoder. The lead's words: *"This run has been burned seven times by properties asserted by nothing;
+I am not going to authorise an eighth by shipping the fix without its invariant."*
+
+### D-8.2.7 — it joins the before-the-tag set, which is now TWO items; placement Epic 15
+
+**Ruling:** the set becomes **two** — D-7.8.2's code audit, and **Story 15.2a**. Test (b) applies
+exactly: `ApplyComponentCommand` is **exported** (`component_commands.go:37`), a duplicate-key
+refusal **narrows** what it accepts, and it **has not shipped**.
+
+**The category is honoured rather than argued down.** *"Nobody legitimately sends duplicate JSON
+keys"* is a **likelihood** argument, and **likelihood is not the criterion** — that is the erosion
+the lead has refused twice in this run.
+
+**Placement: its own numbered story in Epic 15**, sequenced **before Story 15.3 cuts the tag**. Not
+Epic 8 — D-7.7.12 holds, and Epic 8 does not widen this defect the way it widened Story 8.0's. Epic
+15's stated purpose is *"the difference between a repository and a product"*, and tagging over a
+known command-integrity defect is squarely that; **the deadline is then satisfied by construction
+rather than by a promise.**
+
+**Urgency, measured rather than assumed.** `rawNumberLiteral` takes `PropertyIntent['value']`,
+reached from a properties-panel input on an explicit commit, and the projection carries numeric
+fields as JSON **numbers** — so a document value cannot arrive there as a brace-bearing string.
+Today's exposure is **keystroke-originated and self-inflicted in a local, serverless application**:
+**HIGH by mechanism, low by encounter.** That justifies *before the tag* rather than *next*.
+
+**The condition the story must MEASURE rather than assume:** if **any** path lets **document
+content** reach `rawNumberLiteral` — a value round-tripped as a string, a paste path, a future field
+— then a hostile `.folio` mutates arbitrary components on edit, and **it jumps the queue
+immediately**. The type signature and the projection's numeric typing were measured; **not every
+panel path was.**
+
+**My own correction, mid-question, recorded because the sequence matters.** I first told the lead
+the fix would narrow the Go API and belonged in the set on that basis. Then I measured:
+`ApplyComponentCommand` **is** exported, but it is the **victim, not the site** — the splice is
+browser-side and the fix touches no Go at all. So the encoder fix alone would **not** have joined the
+set. Asking *"is one encoder fix enough?"* is what surfaced the Go half, which **does** join it.
+**Parking the question would have been defensible; parking it without knowing it had a deadline
+would not.**
+
+### D-8.2.8 — two standing plan-gate checks, because both are now patterns
+
+**(a) Every AD whose text appears in an AC must be named in `Covers:`.** Twice in two stories:
+Story 8.1's line omitted AD-16, whose rule is AC1's substance, and Story 8.2's omitted **AD-15**,
+whose rule AC2 quotes nearly verbatim (*"the browser never holds its own model of the `fonts`
+map"*). The `Covers:` lines name FRs and UX rules reliably and **ADs unreliably**, which makes the
+omission **systematic** — so the check is mechanical: **read the ACs, list the invariants they
+paraphrase, diff against `Covers:`.**
+
+**(b) An AC that cannot be satisfied is AMENDED, not merely under-delivered.** Story 8.2's AC3
+promised an entry *"reads as the face's family and style from the projection"* and **there is no
+such projection**. Delivering the **negative** half — the entry is displayed unmodified — was ruled
+**better than a halt**, because the projection's entry-shape validator rejects unknown shapes in
+**both** directions, so **Story 8.3 cannot change the entry shape without moving that validator in
+the same commit**. That is *assert the absence so its arrival trips something*, applied correctly.
+**But the AC TEXT had to change too**, with the positive half named as a **forward obligation on
+8.3** — otherwise a reader at 8.3 sees an AC marked delivered that says something the story did not
+do, which is the **false-record** shape D-8.1.1 rejects and the same one that left two FR52
+spellings standing.

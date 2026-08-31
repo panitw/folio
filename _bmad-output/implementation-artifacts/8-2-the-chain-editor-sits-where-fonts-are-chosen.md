@@ -52,6 +52,37 @@ verbatim, and holds no model, no validation and no copy of any refusal rule.
   `aria-invalid` + `aria-errormessage` at the control, accessible names on every icon-only control,
   keyboard operability for reordering (UX-DR25).
 
+- **SCOPE SETTLED 2026-08-31 (D-8.2.4 … D-8.2.7). This story carries DW-70 and a MINIMAL `quote()`
+  fix. It does NOT carry DW-32.**
+
+- **DW-70 is IN SCOPE as a precondition** — this story is what makes an author able to name a chain,
+  so shipping the editor without it ships a feature whose **second keystroke terminates the worker**.
+  Same category as Story 8.0: a defect the story makes reachable is a precondition of the story, not
+  a competitor to it.
+  **⚠ THE GUARDRAIL IS THE IMPORTANT HALF: Go's byte ordering is NORMATIVE and must not change.**
+  `fonts` keys are sorted into the canonical `.folio` under AD-9, so **Go's sort IS the byte order of
+  the document.** The mismatch is one line to fix on either side, and **changing the Go comparator
+  would move golden bytes** for any document whose chain names cross the boundary. **The TS guard
+  adopts code-point ordering to match Go** — which for UTF-8 byte order is the same sequence —
+  **never the reverse.** Say this in the story, or someone fixes the cheaper-looking side.
+
+- **`quote()` IS INCOMPLETE, and that IS on this story's path.** `component-property-command.ts:41`
+  escapes `\`, `"`, `\n`, `\r`, `\t` — **and nothing else.** JSON requires escaping **all** of
+  U+0000–U+001F. A chain name carrying any other control character (pasted, most plausibly) produces
+  **invalid JSON**, which Go rejects with a generic failure rather than *"that name is not
+  allowed"*. This inverts the dispatch's premise a second way: chain names do route through the
+  quoter rather than the splice — **and the quoter is itself broken**, and this story is the first
+  to make chain names author-supplied on that path.
+  **Fix it MINIMALLY: route `quote()` through `JSON.stringify`. One line.** It is **not** the
+  shared-authority consolidation and **must not be allowed to grow into it** — that is Story 15.2a's.
+  **Engine-side name validation does not substitute:** the JSON is **malformed before Go can see the
+  name**, so the engine's rule cannot run. An ordering fact, not a preference.
+
+- **DW-32 IS OUT OF SCOPE — it is Story 15.2a**, filed in Epic 15 and sequenced before the tag. Do
+  **not** build the shared command-JSON authority, do **not** touch `rawNumberLiteral`, and do
+  **not** consolidate the five encoders. **HALT if an AC seems to require any of it.**
+  **Both stories touch `component-property-command.ts`.** This one changes `quote()` only.
+
 **Block If:**
 - Any change is required under `folio-go/` to satisfy an AC. This story is designer-only; a Go change
   means an AC was mis-scoped or a command kind is missing, and Story 8.1 owns that vocabulary. HALT with

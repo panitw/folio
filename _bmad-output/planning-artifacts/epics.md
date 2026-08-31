@@ -2811,10 +2811,23 @@ opens the chain editor on the same panel — no separate mode, no dialog stack
 **Then** the change is a command to the engine, and every value shown afterwards comes from the
 engine's answer — the browser never holds its own model of the `fonts` map
 
-**Given** a chain entry that names an embedded face
+**Given** a chain entry
 **When** it is displayed
-**Then** it reads as the face's family and style from the projection, never as an asset key or a
-file name
+**Then** it reads as **the projected entry, unmodified** — never as an asset key, a file name, or
+anything parsed out of one: no key detection, no extension stripping, no splitting
+**And** Story 8.3, which introduces the embedded-face entry shape, **must extend this to read as the
+face's family and style** and must move the projection's entry-shape validator in the same commit
+
+**AC3 AMENDED 2026-08-31 at this story's plan gate.** It promised the entry *"reads as the face's
+family and style from the projection"*, and **there is no such projection to read.** Measured: chain
+entries are plain JSON strings, `Fonts` is `map[string][]string`, **no font-record type exists
+anywhere in the repository**, and `"asset"` in the format refers exclusively to image elements —
+there is no family/style pair. So the positive half is Story 8.3's, named above as a **forward
+obligation** rather than left implied. The **negative** half is delivered here and is assertable
+today; and because the projection's entry-shape validator rejects unknown shapes in **both**
+directions, **8.3 cannot change the entry shape without moving that validator in the same commit** —
+the absence is asserted so that its arrival trips something. Leaving the AC promising the pair while
+marking the story delivered would be a **false record**, which is the shape D-8.1.1 rejects.
 
 **Given** a refused edit — an orphaning delete, an empty chain, a duplicate name
 **When** the engine answers
@@ -4407,6 +4420,89 @@ so in the terms DW-23 sets
 **When** it is done
 **Then** the known-red job's purpose is unchanged and still visible: it stays red, it still names
 DW-11's unmet floor, and its going green is still the surprising event
+
+### Story 15.2a: A component command means exactly what it names
+
+As an integrating developer,
+I want a command that names one component and one property to be incapable of changing another,
+So that the engine's guarantee about what a command does is enforced rather than assumed.
+
+**Covers:** AD-16, AD-22 · DW-32 (raised to HIGH 2026-08-31) — ruled into its own story at Story
+8.2's plan gate.
+
+**Sequenced before Story 15.3 cuts the tag, and that placement is the deadline.** Its Go half
+**narrows** what the exported `ApplyComponentCommand` accepts and has **not** shipped, so by
+D-8.2.2's test it joins **D-7.8.3's before-the-tag set — which this story makes two items, not
+one.** Putting it in Epic 15, whose stated purpose is *"the difference between a repository and a
+product"*, satisfies that deadline **by construction rather than by a promise**: tagging over a
+known command-integrity defect is squarely what that epic exists to prevent.
+
+**The defect, measured at `bc671da`.** `rawNumberLiteral` (`folio-designer/src/component-property-command.ts:28`)
+splices an author value into command JSON **unquoted**. A value carrying
+
+```
+0}},"ids":["other"],"changes":{"width":{"op":"set","value":10
+```
+
+produces **valid JSON with duplicate keys**. Go decodes into `map[string]json.RawMessage`, where
+**last key wins**, while `componentFields(raw, 4)` still counts four — so **the command mutates a
+different component's different property.** Escalation to another command `kind` is blocked only by
+an **arity coincidence**, not by any check. The register's earlier claim that no bad value reaches
+the document is false.
+
+**BOTH ENFORCEMENT POINTS ARE ONE SUBJECT, and the story must not ship half.** The property is *a
+component command means exactly what it names*, and today **neither side enforces it**: the encoder
+can produce an ambiguous command, and the decoder resolves the ambiguity silently. Splitting the
+halves across stories is the pattern that produced the five untied Go/TS invariants, and the
+standing obligation binds it: **an invariant duplicated across the Go/TS boundary moves in one
+commit, with a test that reads both sides.**
+
+**And the Go half is what makes the property ASSERTABLE AT ALL.** Without it the only available test
+is *"the encoder produces well-formed JSON"* — a test **of the fix**, not of the property, which
+goes green again the moment a future encoder regresses. With it, the engine can be handed
+duplicate-key bytes directly and asserted to refuse, which is a test **of the invariant** and
+survives any encoder.
+
+**Acceptance Criteria:**
+
+**Given** a command object carrying a duplicate key at any level
+**When** it reaches `ApplyComponentCommand`
+**Then** it is **refused**, rather than resolved silently by last-wins
+
+**Given** an author value containing `}`, `"`, `\` or a brace-bearing payload
+**When** the designer encodes a property command
+**Then** the command JSON is well-formed and names exactly the component and property the author
+edited
+
+**Given** the invariant
+**When** it is asserted
+**Then** the test hands the **engine** duplicate-key bytes directly — never only the encoder — so
+the property survives any future encoder
+
+**Given** both halves
+**When** they land
+**Then** they land in **one commit**, with a test that reads both sides
+
+**URGENCY, measured rather than assumed — and one condition that changes it.** `rawNumberLiteral`
+takes `PropertyIntent['value']`, reached from a properties-panel input on an explicit commit, and
+the projection carries numeric fields as JSON **numbers** — so a document value cannot arrive there
+as a brace-bearing string. Today's exposure is therefore **keystroke-originated and self-inflicted
+in a local, serverless application**: HIGH by mechanism, low by encounter. That is what justifies
+*before the tag* rather than *next*.
+
+**The condition this story must MEASURE rather than assume:** if **any** path lets **document
+content** reach `rawNumberLiteral` — a value round-tripped as a string, a paste path, a future field
+— then a hostile `.folio` mutates arbitrary components on edit, and **this jumps the queue
+immediately**. The type signature and the projection's numeric typing were measured; **not every
+panel path was.** Treat that as a strong indication to confirm, not a finding to rely on.
+
+**One file-level coordination note.** Story 8.2 makes a **minimal** fix to `quote()` in the same
+file — routing it through `JSON.stringify`, because it escapes only `\`, `"`, `\n`, `\r` and
+`\t` and JSON requires all of U+0000–U+001F. **This story must re-read that file rather than assume
+its earlier shape**, and it owns the shared-authority consolidation that 8.2 was explicitly
+forbidden from growing into.
+
+---
 
 ### Story 15.3: `folio-go/v0.1.0` is cut
 

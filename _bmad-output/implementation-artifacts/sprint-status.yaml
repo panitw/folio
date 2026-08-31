@@ -403,5 +403,11 @@ development_status:
   # measured gates and deferrals in the story's ## Delivery Log; DW-24 open, owner Story 7.3.
   15-1-the-golden-report-s-moved-hash-is-explained: done
   15-2-ci-s-red-means-something: backlog
+  # 15.2a added 2026-08-31: DW-32, raised to HIGH at Story 8.2's plan gate when the mechanism
+  # was re-measured as command-shape INJECTION rather than a bad value. Its Go half narrows the
+  # exported ApplyComponentCommand and has not shipped, so it JOINS D-7.8.3's before-the-tag set --
+  # which is now TWO items, not one. Sequenced before 15.3 so the deadline is satisfied by
+  # construction rather than by a promise.
+  15-2a-a-component-command-means-exactly-what-it-names: backlog
   15-3-folio-go-v0-1-0-is-cut: backlog
   epic-15-retrospective: optional

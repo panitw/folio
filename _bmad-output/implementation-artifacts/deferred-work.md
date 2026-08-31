@@ -2626,12 +2626,14 @@ three times, the third time *inside the commit that closed it*.
 ### DW-32 — the property-command encoder splices the author's typed text into the command JSON unquoted, so a non-numeric entry produces malformed bytes instead of a located engine error
 - **Deferred by:** Story 7.4's review pass (2026-08-30); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
-- **Owner:** **Story 8.2** — RE-OWNED 2026-08-31 at Story 8.1's close. The original owner was *"the next
-  story that adds a NUMERIC property control, or Epic 8's plan gate (whichever first)"*, and Epic 8's
-  plan gate has now passed without the fix. Story 8.2 is the right successor and the reason is sharper
-  than sequence: **8.2 carries author-typed chain NAMES through that same splice**, where a `"` or a `\`
-  is worse than the numeric case this entry describes — it does not merely malform the bytes, it lets
-  the author's text change the command's shape. Still a story, never an event, per D-000.73
+- **Owner:** **Story 15.2a** — *a component command means exactly what it names* — filed 2026-08-31
+  in Epic 15 and **sequenced before Story 15.3 cuts the tag**. Not Epic 8: D-7.7.12 holds and Epic 8
+  does not widen this defect, unlike Story 8.0's case. **Its Go half JOINS D-7.8.3's before-the-tag
+  set**, which is therefore **two** items, not one — a duplicate-key refusal narrows the exported
+  `ApplyComponentCommand` and has not shipped. **Both enforcement points are ONE subject and land in
+  ONE commit**: without the Go half the only available test is *"the encoder produces well-formed
+  JSON"*, which tests the fix rather than the property and goes green again the moment a future
+  encoder regresses.
 - **Severity:** **HIGH** — raised from medium 2026-08-31 at Story 8.2's plan gate, which measured the
   mechanism rather than the symptom. **This is not "a bad value reaches the document"; it is
   COMMAND-SHAPE INJECTION.** The designer's numeric encoder splices author text into command JSON
