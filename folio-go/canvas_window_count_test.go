@@ -2,6 +2,7 @@ package folio
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -28,26 +29,52 @@ func projectWithPaint(t *testing.T, tpl *Template) CanvasProjection {
 
 // renderPathWindows is the RENDER path's own answer, built the way
 // paginateDocument's page-count pass builds it: document bands, the band's
-// shaped text runs, contentColumnItems, layout.Paginate. It is a different
-// route to the same integer, and Story 7.5's projection must agree with it
-// rather than assume it does — the projection reads the CANVAS paint plan's
-// extents, which is a second consumer of one shaping, not a second shaping.
-func renderPathWindows(t *testing.T, tpl *Template) int {
+// shaped text runs, the element boxes those bands declare, contentColumnItems,
+// layout.Paginate. It is a different route to the same integer, and Story
+// 7.5's projection must agree with it rather than assume it does — the
+// projection reads the CANVAS paint plan's extents, which is a second consumer
+// of one shaping, not a second shaping.
+//
+// IT RETURNS THE ORIGINS TOO (Story 7.9). Story 7.6 shipped
+// ContentWindowOrigins with no render-path oracle anywhere to compare them
+// against, so "where each window begins" was asserted only against hardcoded
+// numbers on two ungrouped fixtures. PageAssignment.Shift is the render's own
+// answer to that question and it costs nothing to return.
+//
+// ⚠ THE FIFTH ARGUMENT IS WHY STORY 7.9 EXISTS. It used to be `nil`, so this
+// oracle disabled keep-together grouping on the RENDER side — and
+// TestCanvasWindowCountAgreesWithTheRenderPathOracle then compared an
+// ungrouped canvas against an ungrouped render and found them in perfect
+// agreement. Both sides were wrong in the same way. It now passes the
+// document's REAL keepTogetherTags, which is what makes a grouping divergence
+// visible at all. Do not put `nil` back.
+func renderPathWindows(t *testing.T, tpl *Template, fs FontSet) (int, []int64) {
 	t.Helper()
 	data := emptyBindValue(t)
 	bands, err := documentBands(tpl)
 	if err != nil {
 		t.Fatalf("documentBands: %v", err)
 	}
-	runs, _, _, err := collectBandTextRuns(tpl, bands, contentBandIndex, data, data, testFontSet(), newFontCache(), contentBandResolver, nil)
+	runs, _, _, err := collectBandTextRuns(tpl, bands, contentBandIndex, data, data, fs, newFontCache(), contentBandResolver, nil)
 	if err != nil {
 		t.Fatalf("collectBandTextRuns: %v", err)
 	}
-	plan, err := layout.Paginate(mustPageGeometry(t, tpl), contentColumnItems(runs, nil, nil, nil, nil))
+	// Story 9.1's element boxes are content-column items on the render path
+	// too, and a signature's ruled line IS one — an oracle that dropped them
+	// could not see a non-text group member move.
+	boxes, err := collectElementBoxRects(bands, nil)
+	if err != nil {
+		t.Fatalf("collectElementBoxRects: %v", err)
+	}
+	plan, err := layout.Paginate(mustPageGeometry(t, tpl), contentColumnItems(runs, nil, boxes, nil, keepTogetherTags(tpl)))
 	if err != nil {
 		t.Fatalf("layout.Paginate: %v", err)
 	}
-	return len(plan.Pages)
+	origins := make([]int64, 0, len(plan.Pages))
+	for _, page := range plan.Pages {
+		origins = append(origins, int64(page.Shift))
+	}
+	return len(plan.Pages), origins
 }
 
 // TestCanvasReportsTheWindowHeightAndTheWindowCount is AC4's discriminating
@@ -108,7 +135,7 @@ func TestCanvasWindowCountIsIndependentOfPaintTruncation(t *testing.T) {
 	if paint == nil || !paint.Truncated {
 		t.Fatalf("presence precondition: this fixture must TRUNCATE for the test to say anything: %#v", paint)
 	}
-	if want := renderPathWindows(t, tpl); projection.ContentWindowCount != int64(want) {
+	if want, _ := renderPathWindows(t, tpl, testFontSet()); projection.ContentWindowCount != int64(want) {
 		t.Fatalf("the canvas counts %d windows and the render path %d for the same document", projection.ContentWindowCount, want)
 	}
 	// What the paint alone would have implied.
@@ -145,9 +172,154 @@ func TestCanvasWindowCountAgreesWithTheRenderPathOracle(t *testing.T) {
 	} {
 		tpl := parseWindowCountTemplate(t, source)
 		projection := projectWithPaint(t, tpl)
-		if want := renderPathWindows(t, tpl); projection.ContentWindowCount != int64(want) {
-			t.Fatalf("%s: canvas counts %d, render path counts %d", name, projection.ContentWindowCount, want)
+		if want, wantOrigins := renderPathWindows(t, tpl, testFontSet()); projection.ContentWindowCount != int64(want) ||
+			!reflect.DeepEqual(projection.ContentWindowOrigins, wantOrigins) {
+			t.Fatalf("%s: canvas counts %d at %v, render path counts %d at %v", name, projection.ContentWindowCount, projection.ContentWindowOrigins, want, wantOrigins)
 		}
+	}
+}
+
+// TestCanvasGroupedTwinDiffersOnlyByTheTags is the precondition the two tests
+// below rest on, on fixtures/keep-together/'s own pattern: if the pair ever
+// drifted into differing for a second reason, "the counts differ" would stop
+// being evidence about grouping.
+func TestCanvasGroupedTwinDiffersOnlyByTheTags(t *testing.T) {
+	const tag = `"keepTogether": "signature", `
+	if n := strings.Count(canvasWindowCountGroupedTemplateJSON, tag); n != 2 {
+		t.Fatalf("the grouped template must carry exactly two tags, found %d — the fixture is a two-member group", n)
+	}
+	if strings.Contains(canvasWindowCountGroupedUngroupedTemplateJSON, "keepTogether") {
+		t.Fatal("the untagged twin must carry no keepTogether tag at all")
+	}
+	if stripped := strings.ReplaceAll(canvasWindowCountGroupedTemplateJSON, tag, ""); stripped != canvasWindowCountGroupedUngroupedTemplateJSON {
+		t.Fatalf("the twin is not the grouped template minus its tags — the pair differs for some SECOND reason, so it no longer discriminates:\n%s", stripped)
+	}
+	// The group has one TEXT member and one NON-TEXT member, which is what
+	// makes the equality below reach BOTH of the canvas's column-item arms.
+	// Tagging only one arm leaves the other member loose, and this fixture is
+	// authored so that being loose changes the answer.
+	if !strings.Contains(canvasWindowCountGroupedTemplateJSON, `"type": "text", "x": 0, "y": 700, "width": 240, "height": 20, "keepTogether": "signature"`) ||
+		!strings.Contains(canvasWindowCountGroupedTemplateJSON, `"type": "rect", "x": 0, "y": 740, "width": 240, "height": 20, "keepTogether": "signature"`) {
+		t.Fatal("the group must span a text member and a non-text member; without both, tagging one canvas arm would satisfy this file")
+	}
+}
+
+// assertCanvasAgreesWithTheRenderPath is Story 7.9's spine, and it is stated
+// as a helper because its ABSENCE is what let the defect ship: Story 7.7
+// taught the render path to keep a declared group whole and did not teach the
+// canvas the same thing, and no test anywhere compared the two on a grouped
+// document.
+//
+// It asserts the EQUALITY — count and origins, against a real pagination of
+// the same template through the render path's own builders — rather than
+// asserting the flag. A flag is a claim about a count; it says nothing about
+// whether the count is right.
+func assertCanvasAgreesWithTheRenderPath(t *testing.T, name, source string, fs FontSet, wantCount int64, wantOrigins []int64) CanvasProjection {
+	t.Helper()
+	tpl := parseWindowCountTemplate(t, source)
+	projection, err := CanvasWithTextPaint(tpl, fs)
+	if err != nil {
+		t.Fatalf("%s: CanvasWithTextPaint: %v", name, err)
+	}
+	assertWindowOriginsAreWellFormed(t, name, projection)
+	count, origins := renderPathWindows(t, tpl, fs)
+	if projection.ContentWindowCount != int64(count) {
+		t.Errorf("%s: the canvas counts %d windows and the render path %d for the same document", name, projection.ContentWindowCount, count)
+	}
+	if !reflect.DeepEqual(projection.ContentWindowOrigins, origins) {
+		t.Errorf("%s: the canvas begins its windows at %v and the render path at %v for the same document", name, projection.ContentWindowOrigins, origins)
+	}
+	// The measured values, so a future change that moved BOTH sides together
+	// — the one way an equality assertion can go quiet — still reddens here.
+	if projection.ContentWindowCount != wantCount || !reflect.DeepEqual(projection.ContentWindowOrigins, wantOrigins) {
+		t.Errorf("%s: canvas count %d origins %v, want %d and %v", name, projection.ContentWindowCount, projection.ContentWindowOrigins, wantCount, wantOrigins)
+	}
+	return projection
+}
+
+// TestCanvasWindowsAgreeWithTheRenderPathForAGroupedDocument is Story 7.9's
+// acceptance, and it restores Story 7.6's AC2 — the boundary is marked where
+// the engine will ACTUALLY break — for a document that declares a group.
+//
+// The COUNT arm is canvasWindowCountGroupedTemplateJSON, authored so the tags
+// change how many windows the column occupies (3 against the twin's 2). The
+// ORIGINS arm is the shipped fixtures/keep-together/ document, where the tags
+// change only WHERE window two begins — 706000, the group's earliest top,
+// rather than 734000, the top of its overflowing ruled line. Both arms are
+// checked against a real pagination and against their twins, because "the
+// canvas answers 3" is a fact an unrelated implementation could produce and
+// "3 here and 2 there, for two documents differing in two tags" is not.
+func TestCanvasWindowsAgreeWithTheRenderPathForAGroupedDocument(t *testing.T) {
+	// The two arms are SUBTESTS so neither can mask the other. A wrong count
+	// and a wrong origin are different failures — there is a floor flag on
+	// the count and none at all on the origins — and a fix that closed only
+	// one of them must be visibly red on the other rather than unreached.
+	t.Run("count", func(t *testing.T) {
+		grouped := assertCanvasAgreesWithTheRenderPath(t, "grouped", canvasWindowCountGroupedTemplateJSON, testFontSet(), 3, []int64{0, 700000, 1440000})
+		untagged := assertCanvasAgreesWithTheRenderPath(t, "untagged twin", canvasWindowCountGroupedUngroupedTemplateJSON, testFontSet(), 2, []int64{0, 740000})
+		if grouped.ContentWindowCount == untagged.ContentWindowCount {
+			t.Errorf("both twins occupy %d windows — the tags changed nothing here, so this arm proves nothing about grouping", grouped.ContentWindowCount)
+		}
+		// The exact shape of the pre-Story-7.9 defect, named so a regression
+		// is recognisable rather than merely red: the canvas used to answer
+		// the UNTAGGED numbers for the TAGGED document.
+		if reflect.DeepEqual(grouped.ContentWindowOrigins, untagged.ContentWindowOrigins) {
+			t.Errorf("the tagged document begins its windows at %v, exactly where the untagged twin does — this is the defect Story 7.9 exists to fix", grouped.ContentWindowOrigins)
+		}
+	})
+
+	// The origins arm, on the shipped fixture. Its count is 2 either way, so
+	// nothing but the origins can discriminate it — which is precisely why
+	// Story 7.6's origins needed an oracle of their own.
+	t.Run("origins", func(t *testing.T) {
+		fixture := assertCanvasAgreesWithTheRenderPath(t, "keep-together fixture", keepTogetherTemplateJSON, testShippedFontSet(), 2, []int64{0, 706000})
+		twin := assertCanvasAgreesWithTheRenderPath(t, "keep-together twin", keepTogetherUngroupedTemplateJSON, testShippedFontSet(), 2, []int64{0, 734000})
+		if fixture.ContentWindowCount != twin.ContentWindowCount {
+			t.Errorf("the shipped pair must agree on the COUNT (%d against %d); this arm is about the ORIGINS", fixture.ContentWindowCount, twin.ContentWindowCount)
+		}
+		if reflect.DeepEqual(fixture.ContentWindowOrigins, twin.ContentWindowOrigins) {
+			t.Errorf("the shipped pair begins its windows identically at %v — a count-only fix would pass this file while the sheet boundary stayed drawn in the wrong place", fixture.ContentWindowOrigins)
+		}
+	})
+}
+
+// TestGroupingIsNotAFourthCauseOfTheFloor is D-7.7.6's other half, asserted
+// rather than left to the enumeration in page_setup.go's doc comment.
+//
+// keepTogetherTags takes the *Template and nothing else — no data, no params,
+// no FontSet — so grouping is a pure template property and the canvas holds
+// every input it needs to be RIGHT about it. The floor flag's three causes are
+// each things the canvas genuinely CANNOT know; registering a knowable case
+// among them would park a defect inside the mechanism that exists to be honest
+// about shortfalls.
+func TestGroupingIsNotAFourthCauseOfTheFloor(t *testing.T) {
+	for _, grouped := range []struct{ name, source string }{
+		{"grouped count fixture", canvasWindowCountGroupedTemplateJSON},
+		{"grouped shipped fixture", keepTogetherTemplateJSON},
+	} {
+		fs := testFontSet()
+		if grouped.source == keepTogetherTemplateJSON {
+			fs = testShippedFontSet()
+		}
+		tpl := parseWindowCountTemplate(t, grouped.source)
+		projection, err := CanvasWithTextPaint(tpl, fs)
+		if err != nil {
+			t.Fatalf("%s: %v", grouped.name, err)
+		}
+		if projection.ContentWindowCountIsFloor {
+			t.Errorf("%s: contentWindowCountIsFloor is true for a well-formed grouped document — grouping is knowable canvas-side and must never become a fourth cause", grouped.name)
+		}
+	}
+	// The tag cannot reach a TABLE, which is what stops a group inheriting a
+	// table's data dependency — the one grouping case that would genuinely be
+	// unknowable canvas-side. internal/template's
+	// TestKeepTogetherIsNotValidOnATable owns the refusal; this states, at the
+	// seam that depends on it, WHY the sentence above is true.
+	if _, err := ParseTemplate([]byte(strings.Replace(
+		canvasWindowCountBoundTableTemplateJSON,
+		`"type": "table", "x": 0, "y": 0,`,
+		`"type": "table", "x": 0, "y": 0, "keepTogether": "signature",`, 1))); err == nil {
+		t.Fatal("a table carrying keepTogether was accepted; a group that could contain a bound table would be a grouping case the canvas cannot know")
 	}
 }
 
@@ -303,6 +475,11 @@ func TestCanvasSaysWhenTheWindowCountIsAFloor(t *testing.T) {
 	}{
 		{"gap", canvasWindowCountGapTemplateJSON},
 		{"control", canvasWindowCountControlTemplateJSON},
+		// Story 7.9: a document DECLARING a keep-together group. Its count
+		// moved when the canvas learned about grouping, and it is still
+		// EXACT — grouping is a pure template property, so it is a defect
+		// to get wrong and never a cause to disclose.
+		{"grouped", canvasWindowCountGroupedTemplateJSON},
 		// The SAME unshapeable text as case (c) below, in the page header
 		// instead of the content band. The flag is a statement about the
 		// content column, and this column is counted exactly — so the

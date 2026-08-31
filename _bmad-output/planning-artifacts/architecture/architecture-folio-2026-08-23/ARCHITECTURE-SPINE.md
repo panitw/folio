@@ -316,9 +316,9 @@ that did not exist while omitting thirteen that did.
 - **Rule:** one `Diagnostic` value carries `Severity` (`Error` aborts the render, `Warning`
   accompanies a successful one), a **stable string code** from a closed registry, an optional
   element id (AD-10), an optional data path, and a message. Every failure mode named in FR41
-  has a code and a test asserting it. Over-tall rows (FR25) and clipped content (FR44) are
-  `Warning`s returned alongside PDF bytes, never silent and never fatal. Codes are additive
-  only; changing a code's meaning is a breaking change.
+  has a code and a test asserting it. Over-tall rows and author-declared keep-together groups
+  (FR25, FR51), and clipped content (FR44), are `Warning`s returned alongside PDF bytes, never
+  silent and never fatal. Codes are additive only; changing a code's meaning is a breaking change.
   Three data cases that would otherwise each be decided twice: an **absent** path is an `Error`
   carrying the path; an explicit JSON **`null`** renders as empty and is not an error; a value
   of the **wrong kind** for its element is an `Error`, never a coercion.

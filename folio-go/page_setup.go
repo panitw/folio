@@ -634,6 +634,13 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 	// ranked because the flag reports that the count is a floor, not which
 	// of the three made it one.
 	floor := column.FontChainDegraded || canvasContentBandHasBoundTable(t)
+	// Story 7.9 (FR51): the same index addCanvasTextPaint tagged its line
+	// items with, from the same one authority. Grouping is a pure property
+	// of the Template — keepTogetherTags takes nothing else — so the canvas
+	// already holds every input it needs to be RIGHT about it, and being
+	// wrong about it is a defect rather than a fourth cause for the floor
+	// flag below. The flag keeps exactly its three documented causes.
+	keepTogether := keepTogetherTags(t)
 	items := make([]layout.ColumnItem, 0, len(column.Items)+len(t.doc.Bands.Content.Elements))
 	items = append(items, column.Items...)
 	for _, element := range t.doc.Bands.Content.Elements {
@@ -654,6 +661,13 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 			// discarded except for len(Pages), so the value is never read
 			// back.
 			Rects: []layout.RectRef{0},
+			// Story 7.9 (FR51): a rect, line, image or table box joins its
+			// author-declared group here, so a signature's ruled line rides
+			// with the name above it in the canvas's column exactly as it
+			// does in the render's. This arm carries every non-text content
+			// kind, so tagging only the text arm would group the column in
+			// halves and the count would still diverge.
+			Group: keepTogether.keepTogetherGroup(string(element.ID)),
 		})
 	}
 	// ONE translation, in one place. Every extent above is band-relative,
@@ -826,6 +840,15 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 		component := &projection.Components[i]
 		components[component.ID] = component
 	}
+	// Story 7.9: the document's OWN keep-together declarations, read
+	// through the render path's single authority (keepTogetherTags,
+	// render.go) rather than re-read here. It takes the *Template and
+	// nothing else — no data, no params, no FontSet — which is precisely
+	// why grouping is knowable canvas-side and is a DEFECT to omit rather
+	// than a shortfall to disclose. See addCanvasWindowCount's own use of
+	// it for the non-text arm; the two arms must tag from the same index
+	// or the column is grouped in halves.
+	keepTogether := keepTogetherTags(t)
 	cache := newFontCache()
 	for _, band := range []struct {
 		name     string
@@ -950,6 +973,18 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 						Top:       top,
 						Bottom:    top + vm.FirstBaseline + vm.LastDescent,
 						Runs:      []layout.TextRunRef{0},
+						// Story 7.9 (FR51): the SAME group the render
+						// path's own line items carry
+						// (contentColumnItems / paginateDocument). A
+						// canvas line has no prior group — only a
+						// table's row items do, and a table's cells are
+						// not text elements — so the group is taken
+						// directly rather than through orKeepTogether,
+						// exactly as the render path's image arm does.
+						// An untagged element gets the ZERO ItemGroup,
+						// which is what it carried before this story and
+						// is what keeps an ungrouped document identical.
+						Group: keepTogether.keepTogetherGroup(string(element.ID)),
 					})
 				}
 			}

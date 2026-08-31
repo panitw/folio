@@ -151,9 +151,12 @@ func overTallRowFixtureData() string {
 
 // TestOverTallRowRendersBytesRatherThanFailing is AC1, and it is the
 // assertion that brings the code to the spine. ARCHITECTURE-SPINE.md's
-// AD-14 says, verbatim, that "over-tall rows (FR25) and clipped content
-// (FR44) are Warnings returned alongside PDF bytes, never silent and never
-// fatal". Measured at 45cf812, both documents below returned Result.Bytes
+// AD-14 says, verbatim, that "Over-tall rows and author-declared
+// keep-together groups (FR25, FR51), and clipped content (FR44), are
+// `Warning`s returned alongside PDF bytes, never silent and never fatal"
+// — a sentence Story 7.9 widened from "Over-tall rows (FR25)" to describe
+// the keep-together clipping Story 7.7 had already shipped. Measured at
+// 45cf812, both documents below returned Result.Bytes
 // of length 0 and a *RenderError carrying CONTENT_UNLAYOUTABLE — HEAD was
 // in violation, and this test is the record that it no longer is.
 //

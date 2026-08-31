@@ -57,11 +57,27 @@ else. Every assertion in `keep_together_fixture_test.go` is about the *differenc
 because "the block is on page 2" is a fact many unrelated implementations produce and "on page 2
 here and split there" is not.
 
+## What the canvas does with it
+
+The canvas **previews grouping** (Story 7.9). It tags its own column items from the same
+`keepTogetherTags` index the render path uses — grouping takes the template and nothing else, so the
+canvas holds every input it needs — and its projected window **count** and window **origins**
+therefore equal the render path's for this document. On the pair above that difference is visible:
+window two begins at the group's earliest top, **706.000**, and not at **734.000**, where the
+untagged twin's ruled line falls out of window one.
+
+`folio-go/canvas_window_count_test.go`'s
+`TestCanvasWindowsAgreeWithTheRenderPathForAGroupedDocument` asserts that equality against a real
+pagination of this very document, rather than against a flag. Grouping is **not** among the causes
+that make the projected count a floor, and it never becomes one: those three causes are each things
+the canvas genuinely cannot know, and a declared group is not one of them.
+
 ## What it does not cover
 
-The canvas does **not** preview grouping: it builds its column items ungrouped, and grouping is not
-among the causes that make its window count a floor. A declared group can therefore move a break the
-canvas does not draw. That is a stated limit of this story, not something this fixture measures.
+Authoring a group **in the designer**. Epic 7 makes a group *declarable in the file*, which is all
+FR51 asks; no inspector control views, sets or clears a tag. That is a stated scope boundary. Its
+one consequence the engine does handle: duplicating a tagged component drops the tag, so a copy
+never joins a group the author has no way to see or remove.
 
 ## The recorded artifact
 

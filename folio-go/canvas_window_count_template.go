@@ -238,3 +238,102 @@ const canvasWindowCountUnshapedHeaderTemplateJSON = `{
   "version": "1.0"
 }
 `
+
+// canvasWindowCountGroupedTemplateJSON is Story 7.9's COUNT discriminator:
+// the case where a declared keep-together group changes how many windows the
+// content column occupies, not merely where one of them begins.
+//
+// THE ARITHMETIC, on this file's shared geometry (one window = 727890
+// millipoints). A body line sits at the top of the column. A two-member group
+// straddles the first window's ceiling — `e2`'s text at y 700 is inside it,
+// `e3`'s ruled line at y 740 … 760 is past it — and an UNTAGGED tail element
+// sits at y 1440.
+//
+//	TAGGED:   the group does not fit window one, so the window slides to the
+//	          group's EARLIEST top, 700000. Window two is then
+//	          [700000, 1427890), which the tail at 1440000 misses, so it
+//	          starts a THIRD window at 1440000. Count 3, origins
+//	          [0 700000 1440000].
+//	UNTAGGED: `e2` fits window one on its own and only `e3` falls out, so
+//	          window two begins at 740000 and spans [740000, 1467890) — which
+//	          the tail at 1440000 fits. Count 2, origins [0 740000].
+//
+// So the tags move the COUNT (3 against 2) and every origin after the first.
+// Before Story 7.9 the canvas built its column items ungrouped and answered
+// the untagged numbers for the tagged document, while reporting the count
+// EXACT — a confidently wrong claim, which is worse than the silence Story
+// 7.6 replaced.
+//
+// The ruled line is a `rect` and it is STYLED on purpose. A styled box is one
+// the render path also places (element_box.go), so the two sides are
+// comparable item for item — and because the group's members are one TEXT
+// element and one NON-TEXT element, the equality cannot pass unless BOTH of
+// the canvas's column-item arms carry their groups. Tagging only the text arm
+// leaves `e3` loose and the count falls back to 2.
+const canvasWindowCountGroupedTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "text", "x": 0, "y": 700, "width": 240, "height": 20, "keepTogether": "signature", "value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e3", "type": "rect", "x": 0, "y": 740, "width": 240, "height": 20, "keepTogether": "signature", "style": {"background": "#000000"}},
+        {"id": "e4", "type": "text", "x": 0, "y": 1440, "width": 240, "height": 20, "value": "Continued overleaf", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`
+
+// canvasWindowCountGroupedUngroupedTemplateJSON is the twin: the document
+// above with its two `"keepTogether": "signature", ` tags REMOVED and nothing
+// else changed, asserted mechanically by
+// TestCanvasGroupedTwinDiffersOnlyByTheTags.
+//
+// It is the control, on fixtures/keep-together/'s own pattern. "The canvas
+// counts three windows" is a fact many unrelated implementations produce;
+// "three HERE and two THERE, for a pair differing in exactly two tags" is
+// not. It declares 1.2 as well: a version is never LOWERED to make a twin
+// look tidier, and the pair must differ in exactly one respect.
+const canvasWindowCountGroupedUngroupedTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 20, "value": "Opening balance", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "text", "x": 0, "y": 700, "width": 240, "height": 20, "value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e3", "type": "rect", "x": 0, "y": 740, "width": 240, "height": 20, "style": {"background": "#000000"}},
+        {"id": "e4", "type": "text", "x": 0, "y": 1440, "width": 240, "height": 20, "value": "Continued overleaf", "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 24
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 18
+    }
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`

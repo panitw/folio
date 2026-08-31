@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/template"
 )
 
 func componentTemplate(t *testing.T) *Template {
@@ -1038,4 +1039,98 @@ func TestTheColumnLiftIsExercisedAtTheCommandSurface(t *testing.T) {
 	if headerEdgeY-movedInHeader.Y >= GridIncrement {
 		t.Fatalf("pageHeader pull-back moved y to %d, more than one grid step from the edge %d", movedInHeader.Y, headerEdgeY)
 	}
+}
+
+// TestDuplicateDoesNotCopyTheKeepTogetherTag is D-7.7.10 (DW-48), asserted
+// rather than left incidental.
+//
+// duplicateComponent's `clone := *element` is a WHOLE-STRUCT copy, so every
+// field of template.Element rides along by default and only the ones written
+// afterwards differ. Before Story 7.9 that included the keep-together tag —
+// and Epic 7 ships no designer control anywhere to view, set or clear one
+// (file-only authoring is the stated scope boundary), so a duplicated
+// signature block would silently enlarge a group the author cannot reach,
+// moving a page break for a reason nothing in the product explains.
+//
+// Nothing in this repository asserted ANY field-copy behaviour of duplicate
+// before this test: wasm/engine_test.go's TestEngineDuplicateIsACommittedGoCommand
+// claims only that the id changed. That absence is why the tag rode along
+// unnoticed.
+func TestDuplicateDoesNotCopyTheKeepTogetherTag(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(canvasWindowCountGroupedTemplateJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The tag is refused outside the content band and on a table, so the
+	// subject must be a content-band element of another kind.
+	const tagged = "e2"
+	original, ok := contentElementByID(tpl, tagged)
+	if !ok || !original.KeepTogether.Set || original.KeepTogether.Null || original.KeepTogether.Value != "signature" {
+		t.Fatalf("precondition: %s must carry a keepTogether tag for this test to say anything: %#v", tagged, original.KeepTogether)
+	}
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"duplicateComponent","version":1,"id":"`+tagged+`","snap":false}`))
+	if err != nil {
+		t.Fatalf("duplicateComponent: %v", err)
+	}
+	copyID := newProjectedComponent(t, before, projection).ID
+	if copyID == tagged {
+		t.Fatal("the duplicate must be a NEW element, not the original")
+	}
+
+	clone, ok := contentElementByID(tpl, copyID)
+	if !ok {
+		t.Fatalf("the duplicate %s is not in the content band", copyID)
+	}
+	// ABSENT, not an explicit null. `Set: true, Null: true` serializes back
+	// as `"keepTogether": null`, which is still the key appearing in the file
+	// and still raises the document's required format version — so a clear
+	// that produced one would not be "no tag" at all.
+	if clone.KeepTogether.Set || clone.KeepTogether.Null || clone.KeepTogether.Value != "" {
+		t.Fatalf("the duplicate carries keepTogether %#v; a copy must join NO group, and its absence must be the zero Presence rather than an explicit null", clone.KeepTogether)
+	}
+	// The rest of the copy is untouched, so the assertion above is about the
+	// TAG and not about a duplicate that silently lost its other fields.
+	if clone.Type != original.Type || clone.Value != original.Value || clone.Width != original.Width || clone.Height != original.Height {
+		t.Fatalf("the duplicate diverged from its original beyond the tag: %#v against %#v", clone, original)
+	}
+
+	// AND THE ORIGINAL IS UNCHANGED. A clear applied to the wrong struct — or
+	// through a pointer into the band's slice — would drop the author's own
+	// declaration while the copy looked correct.
+	after, ok := contentElementByID(tpl, tagged)
+	if !ok {
+		t.Fatalf("the original %s disappeared from the content band", tagged)
+	}
+	if after.KeepTogether != original.KeepTogether {
+		t.Fatalf("the original's keepTogether changed from %#v to %#v", original.KeepTogether, after.KeepTogether)
+	}
+	// At the bytes, which is where the author's file actually lives: exactly
+	// the two tags the document was authored with, and no `null` spelling.
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := bytes.Count(canonical, []byte(`"keepTogether": "signature"`)); n != 2 {
+		t.Fatalf("the serialized document carries %d keepTogether tags, want the two it was authored with", n)
+	}
+	if bytes.Contains(canonical, []byte(`"keepTogether": null`)) {
+		t.Fatal("the duplicate wrote an explicit null keepTogether; the field must be ABSENT")
+	}
+}
+
+// contentElementByID finds a content-band element by id, reading the
+// TEMPLATE's own element rather than the CanvasProjection — the projection
+// carries no keepTogether field at all, so a test that probed it could not see
+// the tag whether it was copied or not.
+func contentElementByID(tpl *Template, id string) (template.Element, bool) {
+	for _, el := range tpl.doc.Bands.Content.Elements {
+		if string(el.ID) == id {
+			return el, true
+		}
+	}
+	return template.Element{}, false
 }

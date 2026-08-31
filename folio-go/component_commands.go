@@ -1741,6 +1741,24 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	}
 	clone := *element
 	clone.ID = template.AllocateElementID(t.doc)
+	// Story 7.9 / D-7.7.10: a duplicate joins NO keep-together group.
+	//
+	// `clone := *element` above is a whole-struct copy, so without this line
+	// the copy silently inherits the original's tag — and Epic 7 ships no way
+	// anywhere in the designer to see a tag, set one or clear one (file-only
+	// authoring is the stated scope boundary; FR51 asks only that a group can
+	// be DECLARED). Duplicating a signature block would therefore enlarge a
+	// keep-together set the author cannot reach, moving a page break for a
+	// reason the product never shows them. The project refuses document state
+	// the author cannot undo, and this is that rule at the copy path.
+	//
+	// It is cleared to the ZERO Presence, never to an explicit null: `Set:
+	// true, Null: true` serializes back as `"keepTogether": null`, which is
+	// still the key appearing in the file and still raises the document's
+	// required format version. "No tag" is the field's absence. This is the
+	// same spelling every other optional field's clear site uses
+	// (`element.VisibleIf = template.Presence[string]{}`).
+	clone.KeepTogether = template.Presence[string]{}
 	width, height := projectedSize(clone)
 	x, y := clone.X+6000, clone.Y+6000
 	if snap {
