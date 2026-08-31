@@ -2,7 +2,8 @@
 title: 'Story 8.4a — The canvas paints with the face the engine measured'
 type: 'feature'
 created: '2026-09-01'
-status: 'ready-for-dev'
+status: 'in-progress'
+baseline_revision: 'dfe5129ae89fcc124d96ed4047e3a7fe6db3348f'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -419,6 +420,41 @@ MEASURED-FALSE as anchors; two of the three assertions exist and one is misdescr
   and the only reds are the **two** standing ones measured at `9e77c36`.
 
 ## Spec Change Log
+
+### 2026-09-01 — Code Map re-anchored from `9e77c36` to `dfe5129` (builder, step-03 preflight)
+
+The Code Map above was measured at `9e77c36`. This dispatch's baseline is **`dfe5129`**, three commits
+later (`e25381a`, `5d705b6`, `dfe5129`). Measured: the drift is **entirely Go-side** — `git diff --stat
+9e77c36..dfe5129` touches no `folio-designer/**` file at all, so **every TypeScript and CSS anchor in
+the Code Map is still exact**, including all nine `canvas-font-stack.test.ts` rows, the
+`canvas-authority-contract.test.ts` `:24`/`:145`/`:199-211` anchors, `App.tsx:1366-1369`, `App.css:118`
+and `engine-protocol.ts:173`/`:453`. No task changes. Corrections, per D-8.4.13 (cite by what a thing
+asserts, not by line):
+
+| Code Map claim (@`9e77c36`) | Measured at `dfe5129` |
+|---|---|
+| `page_setup.go:1381` — the fragment append / discard site | **`:1419`**. Text unchanged, still the ONE append site, still `{Text: fragment.text, X: int64(x)}`. |
+| `page_setup.go:116-121` `CanvasTextFragment`, two fields only | **Unchanged and still exactly two fields** (`Text`/`json:"text"`, `X`/`json:"x"`), struct at `:118`. |
+| `page_setup.go:1229-1231` — the DW-92 arm, `var unsupported *template.UnsupportedFontMediaTypeError` / `errors.As(err, &unsupported)` | **GONE. MEASURED-FALSE.** `grep "errors.As(err, &unsupported)"` returns nothing. `5d705b6`/`e25381a` rewrote the arm by *attributability*: it is now **`:1267-1268`**, `var carried *template.CarriedFaceError` / `if !errors.As(err, &carried)`, justified `:1236-1266`. `shapeSegments` is now called at **`:1218`** (not `:1208`). |
+| `canvas_embedded_face_test.go:307` `TestCanvasStillAbortsOnAnUnreadableCarriedFace` — the characterization test | **GONE. MEASURED-FALSE.** That name no longer exists. The file grew +319 lines; the unreadable-carried-face case is now `TestCanvasDegradesRatherThanAbortingOnAnUnreadableCarriedFace` (**`:360`**), and a genuine abort is pinned by `TestCanvasStillAbortsOnAHostFontSetFaceThatWillNotParse` (`:453`). |
+| `render.go:1204` — the second `embeddedFaceName` mint | **`:1205`**. |
+| `embedded_face.go:83-87` — the derivation and its one construction site | **Unchanged** (`:83` prefix const, `:85-86` doc, `:87` func). |
+
+**None of this changes a task, an AC, or the intent contract, and the contract is untouched.** The
+Design Notes' structural claim *"DW-92 is not a dependency"* **still holds and is strengthened**: every
+task remains strictly downstream of `shapeSegments` succeeding (the append at `:1419` is reached only
+then), and the arm's rewrite happened *without* this story. Two Verification manual checks re-anchor
+accordingly: the arm to keep absent from the diff is **`page_setup.go:1267-1268`**, and the
+characterization test to leave unmodified is **`canvas_embedded_face_test.go:360`**
+(`TestCanvasDegradesRatherThanAbortingOnAnUnreadableCarriedFace`); `canvas_embedded_face_test.go` stays
+unmodified in whole, as AC5 already requires.
+
+**Baseline re-measured at `dfe5129`, not assumed:** `go test -count=1 -tags=matrix ./...` → exactly
+**two** reds, `TestShippedFacesReproduceFromUpstream` (`folio-go`) and
+`TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` (`internal/text`), 12 packages `ok`. **No third
+red.** `shasum -a 256 fixtures/*/expected.pdf` → **23** lines. Root `README.md` md5
+`078d7d80d518d54af2fc04fb270d46b8`.
+
 
 ## Review Triage Log
 

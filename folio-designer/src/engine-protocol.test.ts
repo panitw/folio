@@ -312,6 +312,38 @@ describe('canvas projection protocol guard', () => {
     expect(response({ ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { ...textPaint, lines: [{ ...textPaint.lines[0], fragments: [{ text: 'engine line', x: 0, fontMetrics: 1 }] }] } }] })).toBeUndefined()
   })
 
+  // STORY 8.4a. A fragment may carry the ASSET KEY of the face the engine
+  // resolved it to, and the key is OPTIONAL: its absence is the projection's
+  // own statement that this fragment is a SHIPPED face, so both shapes have to
+  // be admitted and the optional one has to be proved optional.
+  //
+  // WHAT A WRONG ANSWER COSTS HERE, and it is why the shape is checked rather
+  // than merely typed. `hasOnly` rejects a key it does not list, isCanvas then
+  // fails, parseInbound returns undefined, and engine-client raises
+  // PROTOCOL_INVALID — which TERMINATES the worker and rejects every pending
+  // request. Not a blank canvas: a dead session.
+  it('admits a paint fragment attributed to a carried face, and one attributed to none', () => {
+    const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const response = (fragment: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 8, advance: 12, width: 10, fragments: [fragment] }] } }] } } })
+    expect(response({ text: 'engine line', x: 0, assetKey: key })).toBeDefined()
+    // THE SHIPPED-FACE PATH: no key at all, which is the common case and the
+    // one that must not have become mandatory.
+    expect(response({ text: 'engine line', x: 0 })).toBeDefined()
+    // An explicit `undefined` is the same statement, and is what a projection
+    // reconstructed in JavaScript will hand this guard.
+    expect(response({ text: 'engine line', x: 0, assetKey: undefined })).toBeDefined()
+    // AND THE KEY IS THE FORMAT'S OWN SHAPE — 64 lowercase hex characters, the
+    // same rule the image projection's key is held to. Anything else is a
+    // producer that has drifted, not an older one to tolerate: the browser
+    // hands this string straight back to the `asset` operation and derives a
+    // CSS family from it.
+    expect(response({ text: 'engine line', x: 0, assetKey: '' })).toBeUndefined()
+    expect(response({ text: 'engine line', x: 0, assetKey: key.toUpperCase() })).toBeUndefined()
+    expect(response({ text: 'engine line', x: 0, assetKey: key.slice(0, 63) })).toBeUndefined()
+    expect(response({ text: 'engine line', x: 0, assetKey: 'body' })).toBeUndefined()
+    expect(response({ text: 'engine line', x: 0, assetKey: 7 })).toBeUndefined()
+  })
+
   // Story 7.3 / FR47. The alignment vocabulary is TWO closed sets on this
   // boundary as well as in Go: a COMPONENT may be justified, a table
   // COLUMN may not. The validator gates the projection — an unrecognised

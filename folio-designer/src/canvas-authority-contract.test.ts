@@ -21,7 +21,25 @@ const prohibited = [
   /\b(?:offset(?:Width|Height|Left|Top|Parent)|client(?:Width|Height|Left|Top)|scroll(?:Width|Height|Left|Top))\b/,
   /\boffset[XY]\b/,
   /\bResizeObserver\b/,
+  // STORY 8.4a REPAIRED THIS RULE, WHICH HAD BEEN DEAD SINCE 7bfb076.
+  // `violations()` used to rewrite EVERY `document.fonts` prefix in every file
+  // to a throwaway token before applying any pattern, so this line could not
+  // match anything at all: `document.fonts.add(face)` read as
+  // `fontReadinessOnly.add(face)`. Three things confirmed it was dead rather
+  // than merely broad — the token appeared nowhere else in the repository, the
+  // mutation block below proved eleven other prohibitions and not this one, and
+  // the rewrite had been appended as a drive-by unblock in a story about sample
+  // data. The rewrite is now scoped to `document.fonts.ready` ALONE (readiness
+  // is not measurement, and e2e/engine-worker.spec.ts legitimately awaits it),
+  // so every other member — `add`, `delete`, `clear`, `load`, `check`, and
+  // iteration — is caught here, and the proof that it is caught is in this
+  // file rather than assumed.
   /\bdocument\.fonts\b/,
+  // The other half of the same door, which was never guarded at all: a face can
+  // be registered without touching `document.fonts` by name. Story 8.4a's seam
+  // is carved out below, by file name and only while it still spells the
+  // function that earns the exception.
+  /\bnew FontFace\b/,
   /\bdevicePixelRatio\b/,
   /\b(?:Range|document\.createRange|getSelection|Selection)\s*\(/,
   /\bgetComputedStyle\s*\(/,
@@ -140,9 +158,25 @@ function refusalViolations(files: readonly string[]): string[] {
   })
 }
 
+// scanned is what every prohibition is actually applied to: the file's own
+// text with the approved, individually justified exceptions removed and its
+// COMMENTS STRIPPED. Comment stripping arrived with Story 8.4a and for the
+// same reason it was already applied to the refusal vocabulary — these
+// patterns are describable in English, and a guard that reddens on the prose
+// explaining what not to write ends up editing the codebase instead of
+// answering to it. `does not catch ordinary English in a comment` proves both
+// directions.
+//
+// The pointer-input exception runs FIRST, on raw text, because its seam was
+// written against the file as it stands and it asserts that seam is still
+// there.
+function scanned(file: string, source: string): string {
+  return withoutApprovedRuntimeFaceRegistration(file, withoutComments(withoutApprovedLocalPointerInput(file, source)))
+}
+
 function violations(files: readonly string[]): string[] {
   return files.flatMap((file) => {
-    const source = withoutApprovedLocalPointerInput(file, fs.readFileSync(file, 'utf8')).replace(/document\.fonts\b/g, 'fontReadinessOnly')
+    const source = scanned(file, fs.readFileSync(file, 'utf8'))
     const name = path.relative(designerRoot, file)
     return prohibited.filter((pattern) => pattern.test(source)).map((pattern) => `${name}: ${pattern}`)
   })
@@ -209,10 +243,81 @@ describe('canvas projection authority contract', () => {
     expect(violationsForSource('const top = index * canvas.contentWindowHeight')).not.toEqual([])
     expect(violationsForSource('const top = sheet * windowHeight')).not.toEqual([])
   })
+
+  // STORY 8.4a. THE MUTATION PROOFS THE `document.fonts` RULE NEVER HAD —
+  // which is the defect being repaired, not a decoration on it. Before this,
+  // deleting that rule outright left every assertion in this file green, so
+  // the rule was indistinguishable from its own absence.
+  it('turns runtime font registration red, allows readiness, and allows it only in the one approved seam', () => {
+    expect(violationsForSource('document.fonts.add(face)')).not.toEqual([])
+    expect(violationsForSource('document.fonts.delete(face)')).not.toEqual([])
+    expect(violationsForSource('await document.fonts.load("12px x")')).not.toEqual([])
+    expect(violationsForSource('if (document.fonts.check("12px x")) paint()')).not.toEqual([])
+    expect(violationsForSource('const face = new FontFace(family, bytes)')).not.toEqual([])
+    // READINESS STAYS LEGAL, in the one place that actually uses it and
+    // anywhere else: it registers nothing and measures nothing.
+    expect(violationsForFile('e2e/engine-worker.spec.ts', 'await document.fonts.ready')).toEqual([])
+    // AND THE PROSE TAX IS GONE. A comment that names the mechanism is not the
+    // mechanism, in either file.
+    expect(violationsForSource('// the seam calls document.fonts.add once per carried face')).toEqual([])
+    expect(violationsForSource('/* never write new FontFace outside that module */')).toEqual([])
+  })
+
+  // The seam exception is scoped to a file AND to the function inside it. Both
+  // halves are proved: the same line is legal there and illegal everywhere
+  // else, and it stops being legal there the moment the function it is
+  // attached to is gone.
+  it('scopes the registration exception to the named seam and to the function that earns it', () => {
+    const seam = 'src/embedded-face-registry.ts'
+    const registration = 'export function registerCarriedFaces(keys) {\n  const face = new FontFace(family, bytes)\n  document.fonts.add(face)\n}\n'
+    expect(violationsForFile(seam, registration)).toEqual([])
+    expect(violationsForFile('src/some-canvas-component.tsx', registration)).not.toEqual([])
+    // OUTSIDE the approved function, inside the approved file.
+    expect(violationsForFile(seam, `const stray = new FontFace(family, bytes)\n${registration}`)).not.toEqual([])
+  })
 })
 
-function violationsForSource(source: string): RegExp[] { return prohibited.filter((pattern) => pattern.test(source)) }
+function violationsForSource(source: string): RegExp[] { return violationsForFile('src/an-ordinary-module.ts', source) }
+// The same scan a real file gets, addressed by NAME, so an exception that is
+// scoped to a file can be proved to hold there and to hold nowhere else.
+function violationsForFile(file: string, source: string): RegExp[] { return prohibited.filter((pattern) => pattern.test(scanned(path.join(designerRoot, file), source))) }
 function refusalForSource(source: string): RegExp[] { return refusalVocabulary.filter((pattern) => pattern.test(withoutComments(source))) }
+
+// THE TWO SCOPED EXCEPTIONS TO THE FONT RULES, each written the way
+// withoutApprovedLocalPointerInput is: narrow to a named owner, and asserted
+// to still have the thing that earns it, so the carve-out cannot outlive its
+// reason.
+function withoutApprovedRuntimeFaceRegistration(file: string, source: string): string {
+  // READINESS IS NOT REGISTRATION AND NOT MEASUREMENT, and it is legal
+  // everywhere. e2e/engine-worker.spec.ts awaits it so that in-flight requests
+  // for the BUILD-TIME faces are not counted as offline failures; nothing is
+  // measured, nothing is added, and no layout waits on it.
+  const readiness = source.replace(/document\.fonts\.ready\b/g, 'fontReadinessOnly')
+  // THE ONE SEAM THAT MAY REGISTER A FACE WHILE A DOCUMENT IS OPEN (Story
+  // 8.4a). A face the DOCUMENT carries exists only inside that document, so it
+  // cannot be declared at build time; it is fetched over the engine's own
+  // `asset` operation and added to the page's font set for as long as that
+  // document is open. The exception is the FUNCTION, not the file: everything
+  // outside it is scanned normally, and if that function is renamed or removed
+  // the exception dies with it. canvas-font-stack.test.ts separately asserts
+  // this is the only site in the whole designer.
+  if (path.basename(file) === 'embedded-face-registry.ts') {
+    const seam = /export function registerCarriedFaces\([\s\S]*?\n}\n/
+    expect(readiness).toMatch(seam)
+    return readiness.replace(seam, '')
+  }
+  // THE DETECTOR'S OWN FIXTURES. canvas-font-stack.test.ts is the test that
+  // proves runtime registration happens in exactly one place, and it cannot
+  // prove its scanner detects a mechanism without spelling that mechanism. The
+  // exception is narrowed to the two font spellings — every other prohibition
+  // still applies to that file — and it holds only while the detector is
+  // actually there.
+  if (path.basename(file) === 'canvas-font-stack.test.ts') {
+    expect(readiness).toMatch(/function registersAFaceAtRuntime\(source: string\): boolean/)
+    return readiness.replace(/new FontFace\b/g, 'faceDetectorFixture').replace(/document\.fonts\b/g, 'fontSetDetectorFixture')
+  }
+  return readiness
+}
 
 function withoutApprovedLocalPointerInput(file: string, source: string): string {
   if (file.includes(`${path.sep}preview${path.sep}`)) {

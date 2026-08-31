@@ -2,6 +2,7 @@ import { createEvent, fireEvent, render, screen, waitFor, within } from '@testin
 import { describe, expect, it, vi } from 'vitest'
 import App, { placementPoint } from './App'
 import { shortcutHintsFor } from './shortcuts'
+import { embeddedFaceFamily } from './embedded-face-family'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 import type { CanvasProjection } from './engine-protocol'
@@ -12,6 +13,35 @@ import { MAX_CANVAS_SHEETS } from './sheet-stack'
 // an entry is a discriminated object, not a string). A named face carries no
 // family and no style — its name is its identity.
 const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+
+// carried() is the projected shape of an EMBEDDED chain entry: no face name,
+// an asset key, and the family/style Go read out of the asset's own `font`
+// record for the panel to display. The key never becomes a family here — that
+// derivation is embedded-face-family.ts's alone (D-8.4.1).
+const carried = (assetKey: string) => ({ face: '', assetKey, family: 'Noto Sans Thai', style: 'Regular' })
+
+// installStubFontSet installs the page font set jsdom does not implement and
+// returns its own removal. `Object.defineProperty` because neither the face
+// constructor nor the set exists to be assigned over.
+function installStubFontSet(): () => void {
+  class StubFace {
+    readonly family: string
+    constructor(family: string) { this.family = family }
+    load(): Promise<StubFace> { return Promise.resolve(this) }
+  }
+  const set = { add: () => undefined, delete: () => undefined }
+  Object.defineProperty(globalThis, 'FontFace', { value: StubFace, configurable: true, writable: true })
+  Object.defineProperty(document, 'fonts', { value: set, configurable: true, writable: true })
+  return () => { Reflect.deleteProperty(globalThis, 'FontFace'); Reflect.deleteProperty(document, 'fonts') }
+}
+
+// TWO text components drawing through ONE carried entry, so a per-component
+// registration lifetime shows up as two asset requests instead of one.
+const carriedFaceCanvas = (key: string) => {
+  const paint = { overflow: false, truncated: false, lines: [{ top: 0, baseline: 12_000, advance: 16_000, width: 24_000, fragments: [{ text: 'สัญญา', x: 0, assetKey: key }] }] }
+  const component = (id: string, y: number) => ({ id, type: 'text' as const, band: 'content' as const, x: 0, y, width: 72_000, height: 24_000, resizable: true, value: 'ignored', textPaint: paint })
+  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans'), carried(key)] }], components: [component('e1', 0), component('e2', 30_000)] }
+}
 
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
@@ -765,6 +795,78 @@ describe('application shell', () => {
     expect(screen.getByLabelText('text component e1: engine line')).toBeInTheDocument()
     expect(document.querySelector('.canvas-text-line')).toHaveStyle({ '--text-line-baseline': '12px', '--text-line-advance': '16px' })
     expect(request).not.toHaveBeenCalled()
+  })
+
+  // STORY 8.4a. THE FACE THE DOCUMENT ITSELF CARRIES, PAINTED WITH.
+  //
+  // The engine measures and renders with a face out of the document's own
+  // `assets` map and attributes each painted fragment to the asset it resolved
+  // to. Without this the browser had no CSS family for such a face at all, so
+  // the canvas rasterized at the engine's x-positions with a fallback's
+  // metrics and the glyphs collided — the reported defect, rebuilt for a
+  // document that carries its own typeface.
+  //
+  // THE PAGE'S FONT SET IS STUBBED because jsdom implements none: it defines
+  // no `FontFace` and no font set on `document`, so both are installed with
+  // `Object.defineProperty` (neither exists to be assigned over). Nothing here
+  // measures anything, and the seam under test computes no metric either —
+  // every x, advance and line break in the fixture is the engine's.
+  it('registers a carried face once for the whole document and paints its fragments with the family derived from its key', async () => {
+    const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const restore = installStubFontSet()
+    try {
+      const requested: string[] = []
+      const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+        if (operation === 'asset') { requested.push(new TextDecoder().decode(payload)); return { snapshot: snapshot(1), bytes: new Uint8Array([0, 1, 2, 3]).buffer } }
+        return { snapshot: snapshot(1) }
+      })
+      const view = render(<App engine={engine(request) } initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: carriedFaceCanvas(key) }} />)
+      // ONE REQUEST FOR THE WHOLE DOCUMENT, not one per component. The nearest
+      // precedent, ImagePaint, is mounted once per component AND once per
+      // repeated sheet; copying that lifetime here would add one face many
+      // times under a single global family name and let an unmounting instance
+      // delete a face another is still painting with. The fixture has two text
+      // components drawing through the same carried entry precisely so a
+      // per-component lifetime would show up as two requests.
+      await waitFor(() => expect(requested).toEqual([key]))
+      const painted = () => Array.from(view.container.querySelectorAll('.canvas-text-fragment')) as HTMLElement[]
+      expect(painted().length).toBe(2)
+      await waitFor(() => expect(painted().map((node) => node.style.fontFamily)).toEqual([embeddedFaceFamily(key), embeddedFaceFamily(key)]))
+      // AND THE ENGINE'S OWN GEOMETRY IS UNTOUCHED BY IT (AD-17): the fragment
+      // still paints at the x the engine measured, and the family is the only
+      // thing this story added to it.
+      expect(painted()[0]).toHaveStyle({ '--text-fragment-x': '0px' })
+      expect(screen.getAllByLabelText(/text component e1/)[0]).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  // THE DEGRADE PATH, stated as a claim about the SESSION. An inline family
+  // REPLACES the stylesheet rule rather than extending it, so asking for a
+  // family whose bytes never arrived would take the fragment off the declared
+  // stack onto whatever the browser defaults to. A failed asset request must
+  // therefore leave the fragment exactly as a shipped-face fragment: painted,
+  // named, and on the declared stack — and it must never reach the engine's
+  // failure channel.
+  it('keeps painting on the declared stack when a carried face\'s bytes cannot be fetched', async () => {
+    const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const restore = installStubFontSet()
+    try {
+      const request = vi.fn(async (operation: string) => {
+        if (operation === 'asset') throw Object.assign(new Error('no such asset'), { code: 'ASSET_UNAVAILABLE' })
+        return { snapshot: snapshot(1) }
+      })
+      const view = render(<App engine={engine(request) } initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: carriedFaceCanvas(key) }} />)
+      await waitFor(() => expect(request).toHaveBeenCalledWith('asset', expect.anything()))
+      const painted = () => Array.from(view.container.querySelectorAll('.canvas-text-fragment')) as HTMLElement[]
+      expect(painted().length).toBe(2)
+      expect(painted().map((node) => node.style.fontFamily)).toEqual(['', ''])
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getAllByLabelText(/text component e1/)[0]).toBeInTheDocument()
+    } finally {
+      restore()
+    }
   })
 
   it('retains literal empty drafts, announces the precise engine diagnostic, and ignores a stale Apply draft reset', async () => {

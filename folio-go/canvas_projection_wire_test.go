@@ -94,6 +94,33 @@ var canvasFontChainWireKeys = []string{"entries", "name"}
 // sending.
 var canvasFontChainEntryWireKeys = []string{"assetKey", "face", "family", "style"}
 
+// canvasTextFragmentWireKeys is the recorded key set of the PAINT FRAGMENT —
+// three levels below the projection's top level, inside components ->
+// textPaint -> lines -> fragments — and the level at which Story 8.4a's
+// attribution travels.
+//
+// IT IS THE ACCEPTED SET, NOT THE EMITTED ONE, and that is the difference
+// from the three records above. `assetKey` is OPTIONAL by design: it is
+// present exactly when the engine resolved that fragment to a face the
+// document CARRIES, and absent — omitempty — for every fragment drawn with a
+// shipped face, which is the wire's own precise statement of "this fragment is
+// a shipped face". The browser's fragment guard is `hasOnly`, a SUBSET check,
+// so the accepted list is what this record pins on the TypeScript side, and
+// the Go side is pinned in both directions: a carried fragment emits the whole
+// set, a shipped one emits it minus exactly the optional key.
+//
+// WHY THIS LEVEL NEEDED A RECORD AT ALL, measured rather than supposed. The
+// three records above descend into `fontChains` and stop; NOTHING in this file
+// or anywhere else in Go descended into `components`, `textPaint`, `lines` or
+// `fragments`. So a fragment field added in Go and not in engine-protocol.ts
+// reddened NOTHING here — and on the browser it is the sharpest failure this
+// protocol has: `hasOnly` rejects the unlisted key, isCanvasTextPaint fails,
+// isCanvas fails, parseInbound returns undefined, and engine-client raises
+// PROTOCOL_INVALID, which TERMINATES THE WORKER, rejects the ready promise and
+// rejects every pending request. That is not a blank canvas — the session is
+// dead until reload, with no edit, save, undo or preview possible.
+var canvasTextFragmentWireKeys = []string{"assetKey", "text", "x"}
+
 // marshalledCanvasKeys is the Go side, taken from the bytes rather than from
 // the struct: whatever encoding/json puts on the wire for this value, sorted.
 func marshalledCanvasKeys(t *testing.T, projection CanvasProjection) []string {
@@ -149,6 +176,73 @@ func TestCanvasProjectionWireKeysAreTheRecordedSet(t *testing.T) {
 	if !reflect.DeepEqual(zeroEntry, entryKeys) {
 		t.Errorf("a zero CanvasFontChainEntry marshals\n\t%v\nand a projected one\n\t%v — an entry key that appears only for SOME entries (a named face carries no family; an embedded one does) is one the browser's exact-key guard rejects only for some documents", zeroEntry, entryKeys)
 	}
+	// And the PAINT FRAGMENT, three levels down inside components, which none
+	// of the three checks above can see. Both halves of the optional key are
+	// asserted, from two documents that differ in exactly one thing: whether
+	// the face the engine resolved is one the document carries.
+	carriedKeys := marshalledObjectKeys(t, fragmentFromProjectionBytes(t, carriedFaceProjection(t, embeddedFontTemplateJSON())))
+	if !reflect.DeepEqual(carriedKeys, canvasTextFragmentWireKeys) {
+		t.Errorf("a CARRIED-face CanvasTextFragment marshals the keys\n\t%v\nand the recorded protocol set is\n\t%v — a fragment field added on one side only terminates the designer's worker, which is a harder failure than the blank canvas the records above describe", carriedKeys, canvasTextFragmentWireKeys)
+	}
+	shippedKeys := marshalledObjectKeys(t, fragmentFromProjectionBytes(t, projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountControlTemplateJSON))))
+	var withoutOptional []string
+	for _, key := range canvasTextFragmentWireKeys {
+		if key != "assetKey" {
+			withoutOptional = append(withoutOptional, key)
+		}
+	}
+	if !reflect.DeepEqual(shippedKeys, withoutOptional) {
+		t.Errorf("a SHIPPED-face CanvasTextFragment marshals the keys\n\t%v\nand the recorded set minus its one optional key is\n\t%v — the optional key must be omitted for a shipped face (its absence IS the statement) and every other key must always be present", shippedKeys, withoutOptional)
+	}
+}
+
+// fragmentFromProjectionBytes digs the first painted fragment out of the
+// marshalled projection, by the same rule the two helpers above use: from the
+// bytes, never from the struct. The fixture must actually paint something, or
+// the check asserts nothing.
+func fragmentFromProjectionBytes(t *testing.T, projection CanvasProjection) []byte {
+	t.Helper()
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(mustMarshal(t, projection), &object); err != nil {
+		t.Fatalf("unmarshal CanvasProjection: %v", err)
+	}
+	var components []json.RawMessage
+	if err := json.Unmarshal(object["components"], &components); err != nil {
+		t.Fatalf("unmarshal components: %v", err)
+	}
+	for _, raw := range components {
+		var component map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &component); err != nil {
+			t.Fatalf("unmarshal a component: %v", err)
+		}
+		paint, ok := component["textPaint"]
+		if !ok {
+			continue
+		}
+		var textPaint map[string]json.RawMessage
+		if err := json.Unmarshal(paint, &textPaint); err != nil {
+			t.Fatalf("unmarshal a textPaint: %v", err)
+		}
+		var lines []json.RawMessage
+		if err := json.Unmarshal(textPaint["lines"], &lines); err != nil {
+			t.Fatalf("unmarshal a textPaint's lines: %v", err)
+		}
+		for _, rawLine := range lines {
+			var line map[string]json.RawMessage
+			if err := json.Unmarshal(rawLine, &line); err != nil {
+				t.Fatalf("unmarshal a paint line: %v", err)
+			}
+			var fragments []json.RawMessage
+			if err := json.Unmarshal(line["fragments"], &fragments); err != nil {
+				t.Fatalf("unmarshal a paint line's fragments: %v", err)
+			}
+			if len(fragments) > 0 {
+				return fragments[0]
+			}
+		}
+	}
+	t.Fatal("fixture precondition: the wire-key fixture projected no paint fragment, so the fragment-level key check asserts nothing")
+	return nil
 }
 
 // entryFromProjectionBytes digs the first projected chain's first ENTRY out of
@@ -236,6 +330,14 @@ var canvasGuardChainKeyList = regexp.MustCompile(`hasExactKeys\(chain, \[(.*?)\]
 // record, which is a green test asserting the wrong thing.
 var canvasGuardChainEntryKeyList = regexp.MustCompile(`(?s)const isFontChainEntry = .*?hasExactKeys\(value, \[(.*?)\]\)`)
 
+// canvasGuardFragmentKeyList extracts the PAINT FRAGMENT's key list from the
+// guard that checks it, by the same rule: the guard's OWN list, never a copy
+// of it kept here. Anchored on the `fragment` parameter name because
+// `hasOnly(value, [...])` is the file's idiom and an unanchored match would
+// read some other guard's list and compare it to this record — a green test
+// asserting the wrong thing.
+var canvasGuardFragmentKeyList = regexp.MustCompile(`hasOnly\(fragment, \[(.*?)\]\)`)
+
 // TestCanvasProjectionWireKeysAreTheOnesTheDesignerAccepts is the TypeScript
 // half, and the one that ties the two languages together. `hasOnly` rejects
 // any key not on this list, so a Go-side rename that stops here — or a
@@ -281,6 +383,19 @@ func TestCanvasProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T) {
 	entryKeys := extractedKeyList(string(entryMatch[1]))
 	if !reflect.DeepEqual(entryKeys, canvasFontChainEntryWireKeys) {
 		t.Errorf("the designer's font-chain ENTRY guard accepts the keys\n\t%v\nand the recorded protocol set is\n\t%v — a field added to CanvasFontChainEntry on one side only blanks the canvas exactly as a chain-level or a top-level one would, and neither of this file's other two records can see it", entryKeys, canvasFontChainEntryWireKeys)
+	}
+
+	// The PAINT FRAGMENT, three levels down inside components — Story 8.4a's
+	// addition, and the level every record above is blind to. Its guard is
+	// `hasOnly`, so what is pinned here is the ACCEPTED set: a key Go starts
+	// sending that this list does not name terminates the designer's worker.
+	fragmentMatch := canvasGuardFragmentKeyList.FindSubmatch(source)
+	if fragmentMatch == nil {
+		t.Fatal("engine-protocol.ts no longer checks the projected paint FRAGMENT's keys where this test can read it; if the guard was restructured, re-derive this extraction rather than deleting the check")
+	}
+	fragmentKeys := extractedKeyList(string(fragmentMatch[1]))
+	if !reflect.DeepEqual(fragmentKeys, canvasTextFragmentWireKeys) {
+		t.Errorf("the designer's paint-FRAGMENT guard accepts the keys\n\t%v\nand the recorded protocol set is\n\t%v — a fragment key added in Go and not here does not blank the canvas, it raises PROTOCOL_INVALID and terminates the worker, and the session is dead until reload", fragmentKeys, canvasTextFragmentWireKeys)
 	}
 }
 

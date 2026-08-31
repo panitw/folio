@@ -26,6 +26,8 @@ import { DataPanel } from './DataPanel'
 import { acceptSampleData, type SampleData, type SampleNode } from './sample-data'
 import type { SampleFileAccess } from './sample-file'
 import { assetBytesRequest, setComponentAssetCommand } from './component-asset-command'
+import { embeddedFaceFamily } from './embedded-face-family'
+import { registerCarriedFaces } from './embedded-face-registry'
 import type { ImageFileAccess } from './image-file'
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
@@ -77,6 +79,10 @@ function PaletteIcon({ kind }: { kind: PaletteKind }) {
 }
 
 type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampleFileAccess?: SampleFileAccess; imageFileAccess?: ImageFileAccess; initialSnapshot?: EngineSnapshot; initialSampleData?: SampleData; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
+// The document carries no readable face until one is registered, and this is
+// the value that says so. A stable reference, so resetting it between
+// documents is not itself a state change React has to re-render for.
+const NO_CARRIED_FACES: ReadonlySet<string> = new Set()
 type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number }>
 type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
@@ -145,6 +151,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const draftGeneration = useRef(0)
   const documentGeneration = useRef(0)
   const [documentGenerationValue, setDocumentGenerationValue] = useState(0)
+  // The asset keys whose faces have ACTUALLY reached the page's font set.
+  // Not the keys the document declares: a fragment may only ask for a derived
+  // family once there is a face registered under it, or a failed fetch would
+  // move it off the stylesheet's declared stack onto a family nothing
+  // declares. See the registration effect below.
+  const [carriedFaces, setCarriedFaces] = useState<ReadonlySet<string>>(NO_CARRIED_FACES)
   const selectedRef = useRef(selected)
   const previewToken = useRef(0)
   const previewAbort = useRef<AbortController | undefined>(undefined)
@@ -168,6 +180,44 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   useEffect(() => { modeRef.current = mode }, [mode])
   useEffect(() => { selectedRef.current = selected }, [selected])
   const canvas = snapshot?.canvas
+  // STORY 8.4a — THE FACES THIS DOCUMENT CARRIES, REGISTERED ONCE FOR THE
+  // WHOLE DOCUMENT.
+  //
+  // The engine measures and renders with a face the document carries in its
+  // `assets` map, and now attributes each painted fragment to the asset it
+  // resolved. The browser had no CSS family for such a face at all — no
+  // `@font-face`, no name, no bytes — so the canvas rasterized at the engine's
+  // x-positions with a fallback face's metrics and the glyphs collided. This
+  // fetches those bytes over the SAME `asset` operation images already use and
+  // registers each one under the family embedded-face-family.ts derives from
+  // its key.
+  //
+  // IT IS DOCUMENT-SCOPED, WHICH IS THE ONE STRUCTURAL DECISION HERE.
+  // ImagePaint is the nearest precedent and the wrong lifetime: it is mounted
+  // once per component AND once per repeated sheet, so it makes an independent
+  // request per mounted instance. `document.fonts` is a global, name-keyed
+  // registry, so that shape would add one face many times under one family and
+  // let an unmounting instance delete a face another is still painting with.
+  //
+  // THE LISTING IS PART OF THE KEY, AND `documentGenerationValue` ALONE IS NOT
+  // ENOUGH. The generation advances only when the document is REPLACED (open a
+  // file, new template, undo/redo); an ordinary font-chain command commits
+  // through setCurrentSnapshot without it and can add or remove a carried
+  // entry. The listing is over the carried keys only, sorted and de-duplicated
+  // — precisely the input this effect reads — so a chain rename or a shipped
+  // entry's edit does not needlessly re-register a face that is already good.
+  const carriedFaceKeys = [...new Set((canvas?.fontChains ?? []).flatMap((chain) => chain.entries).map((entry) => entry.assetKey).filter((key) => key.length > 0))].sort()
+  const carriedFaceListing = carriedFaceKeys.join('\u0000')
+  useEffect(() => {
+    setCarriedFaces(NO_CARRIED_FACES)
+    if (!engine || carriedFaceListing === '') return
+    // A rejected request or a response with no bytes is a document fact, not a
+    // session fault: registerCarriedFaces reports the key as unregistered, the
+    // fragment keeps the stylesheet's declared stack, and nothing reaches the
+    // engine's failure channel.
+    return registerCarriedFaces(carriedFaceListing.split('\u0000'), async (assetKey) => (await engine.request('asset', assetBytesRequest(assetKey))).bytes, setCarriedFaces)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, documentGenerationValue, carriedFaceListing])
   const installPreview = (next: PreviewRecord | undefined) => { previewRef.current = next; setPreview(next) }
   const cancelPreviewWork = () => {
     previewToken.current++
@@ -771,8 +821,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
-          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={carriedFaces} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={carriedFaces} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
         // A band holding a drag in progress stops clipping for the duration.
         // The dragged component's rendered position already tracks the
         // pointer down the whole stack, so clipping it to one window would
@@ -1277,7 +1327,7 @@ function componentDiagnosticDetail(error: unknown): Readonly<{ elementId?: strin
 function componentDiagnostic(error: unknown): string { const received = componentDiagnosticDetail(error); const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message}` : received.message }
 
 type DragState = Readonly<{ id: string; mode: DragAnchor; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
-function CanvasComponent({ component, origin, note, limit, zoom, selected, preview, engine, generation, trackColumn, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, selected, preview, engine, generation, trackColumn, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
   const selectedByPointer = useRef(false)
   const proposal = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
   // Component geometry is COLUMN geometry, in every band; this sheet shows one
@@ -1297,7 +1347,7 @@ function CanvasComponent({ component, origin, note, limit, zoom, selected, previ
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
 }
@@ -1363,9 +1413,33 @@ function ImagePlaceholder({ children }: { children: string }) {
 const expressionRun = /(\{\{[^{}]*\}\})/g
 function textRuns(text: string): ReadonlyArray<string> { return text.split(expressionRun).filter((part) => part !== '') }
 function isExpressionRun(part: string): boolean { return part.startsWith('{{') && part.endsWith('}}') }
-function TextPaint({ component, zoom }: { component: CanvasProjection['components'][number]; zoom: number }) {
+// STORY 8.4a — THE ONE FONT-FAMILY THE CANVAS EVER ASKS FOR BY NAME AT
+// RUNTIME, and it is set PER FRAGMENT because a fragment is exactly one face
+// by construction (the engine emits at most one run per face segment and never
+// merges adjacent runs) while a component is not: a mixed-script element draws
+// Latin through one chain entry and Thai through another.
+//
+// It is set only when the engine attributed this fragment to an asset the
+// document CARRIES *and* that asset's face has actually reached the page's
+// font set. Both halves matter. Without the first, a shipped face would be
+// asked for under a family nothing declares; without the second, a fetch that
+// failed would take the fragment OFF the stylesheet's declared stack — an
+// inline declaration replaces the rule rather than extending it — and the
+// canvas would paint with whatever the browser defaults to. Absent, the
+// fragment falls to `.canvas-text-fragment`'s declared stack in App.css, which
+// is exactly the shipped-face path and exactly the degrade path.
+//
+// The family is derived FROM THE ASSET KEY (D-8.4.1) by the one module that
+// makes that decision. Nothing here reads `family`, `style`, `face` or a chain
+// name, and the stylesheet still holds no document input at all.
+//
+// TextPaint is EXPORTED so the per-fragment face attribution can be asserted
+// on a real DOM node rather than by scanning this file's text: what the canvas
+// asks for is a rendered fact, and canvas-font-stack.test.ts reads it off the
+// element.
+export function TextPaint({ component, carriedFaces, zoom }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; zoom: number }) {
   const paint = component.textPaint!
-  return <span className="canvas-text-paint" aria-hidden="true" style={{ '--text-font-size': canvasDisplay.css(component.fontSize ?? 12000, zoom), '--text-font-weight': component.bold ? 700 : 400, '--text-font-style': component.italic ? 'italic' : 'normal', ...(component.color === undefined ? {} : { '--text-ink': component.color }) } as CSSProperties}>{paint.lines.map((line, lineIndex) => <span className="canvas-text-line" key={`${component.id}-${lineIndex}`} style={{ '--text-line-baseline': canvasDisplay.css(line.baseline - component.y, zoom), '--text-line-advance': canvasDisplay.css(line.advance, zoom) } as CSSProperties}>{line.fragments.map((fragment, fragmentIndex) => <span className="canvas-text-fragment" key={`${component.id}-${lineIndex}-${fragmentIndex}`} style={{ '--text-fragment-x': canvasDisplay.css(fragment.x - component.x, zoom) } as CSSProperties}>{textRuns(fragment.text).map((part, partIndex) => isExpressionRun(part) ? <span className="canvas-text-expression" key={`${component.id}-${lineIndex}-${fragmentIndex}-${partIndex}`}>{part}</span> : part)}</span>)}</span>)}</span>
+  return <span className="canvas-text-paint" aria-hidden="true" style={{ '--text-font-size': canvasDisplay.css(component.fontSize ?? 12000, zoom), '--text-font-weight': component.bold ? 700 : 400, '--text-font-style': component.italic ? 'italic' : 'normal', ...(component.color === undefined ? {} : { '--text-ink': component.color }) } as CSSProperties}>{paint.lines.map((line, lineIndex) => <span className="canvas-text-line" key={`${component.id}-${lineIndex}`} style={{ '--text-line-baseline': canvasDisplay.css(line.baseline - component.y, zoom), '--text-line-advance': canvasDisplay.css(line.advance, zoom) } as CSSProperties}>{line.fragments.map((fragment, fragmentIndex) => <span className="canvas-text-fragment" key={`${component.id}-${lineIndex}-${fragmentIndex}`} style={{ '--text-fragment-x': canvasDisplay.css(fragment.x - component.x, zoom), ...(fragment.assetKey !== undefined && carriedFaces.has(fragment.assetKey) ? { fontFamily: embeddedFaceFamily(fragment.assetKey) } : {}) } as CSSProperties}>{textRuns(fragment.text).map((part, partIndex) => isExpressionRun(part) ? <span className="canvas-text-expression" key={`${component.id}-${lineIndex}-${fragmentIndex}-${partIndex}`}>{part}</span> : part)}</span>)}</span>)}</span>
 }
 // The engine says this element's paint is a PREFIX. It is stated in words, at
 // the component, in the same sentence a screen reader gets — not by colour,
@@ -1425,9 +1499,9 @@ function componentAccessibleName(component: CanvasProjection['components'][numbe
 // the tab stop and the name; these echoes are decoration — aria-hidden, no
 // handlers, no handles — so one component never presents two identical
 // accessible names (Ruling G).
-function ComponentEcho({ component, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; y: number; zoom: number; engine?: EngineClient; generation: number }) {
+function ComponentEcho({ component, carriedFaces, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; y: number; zoom: number; engine?: EngineClient; generation: number }) {
   const paint = component.textPaint
-  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}`} aria-hidden="true" style={componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}</span>
+  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}`} aria-hidden="true" style={componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}</span>
 }
 // Story 9.2: the box the engine paints — style.background and
 // style.border — drawn on the canvas from the ENGINE's own projection, so

@@ -1325,6 +1325,30 @@ func (c *fontCache) isEmbedded(name string) bool {
 	return ok
 }
 
+// carriedAssetKey answers, for a face name this cache RESOLVED, which of
+// the document's own assets it came from — the inverse of the mint at
+// embedded_face.go, and the accessor Story 8.4a's canvas projection uses
+// to attribute a painted fragment to a carried face.
+//
+// THE INDEX IS ASKED FIRST, AND THAT ORDER IS THE POINT. A name's shape
+// is not evidence: a caller's FontSet may legally file an entry under any
+// string at all, and a shipped face that merely LOOKS minted must not be
+// reported as one the document carries. The index is the resolution
+// namespace (AD-8: the asset key decides), so membership in it is the
+// question, and the prefix is only read afterwards — in the one file that
+// writes it.
+//
+// The two agree by construction: newEmbeddedFaceIndex keys the index by
+// embeddedFaceName(entry.AssetKey) and records that same AssetKey, so the
+// key read back off the name is the key the entry named. Asserted rather
+// than assumed by TestACarriedFragmentIsAttributedToItsAssetKey.
+func (c *fontCache) carriedAssetKey(name string) (string, bool) {
+	if c == nil || !c.isEmbedded(name) {
+		return "", false
+	}
+	return embeddedFaceAssetKey(name)
+}
+
 // declares reports whether name COULD supply a face at all — the
 // tolerance predicate a chain walk applies before consulting an entry.
 // It replaced the open-coded `_, ok := fs[name]` at resolveRuneFace and

@@ -2723,7 +2723,7 @@ unvirtualised path by the page count. The two questions are the same question an
 
 ---
 
-### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families
+### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families — **CAUSE TWO CLOSED by Story 8.4a, 2026-09-01; CAUSE ONE STILL OPEN**
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
 - **Owner:** **Story 8.4a — RULED 2026-08-31 (D-8.4.1) to Story 8.4, then SPLIT to its named
@@ -2779,10 +2779,13 @@ unvirtualised path by the page count. The two questions are the same question an
   `Noto Sans Thai` / `Noto Sans SC`, so **a chain's entries cannot be used as CSS family names**.
   That is what D-8.4.1 now settles for the embedded case.
 
-- **Status:** OPEN, **now with TWO causes, and Story 8.4 (2026-09-01) added the second and worse
-  one.** It is owned by **Story 8.4a**, sequenced immediately after 8.4, and the design decision it
-  inherits is already made (D-8.4.1, quoted below): *an embedded face's CSS family name is derived
-  from its **asset key**, never from `font.family`.*
+- **Status:** **HALF CLOSED, AND THE HALVES MUST NOT BE CONFLATED.** This entry has TWO causes.
+  **CAUSE TWO is CLOSED** by Story 8.4a (2026-09-01) — see the closing note at the end of this entry.
+  **CAUSE ONE remains OPEN and UNRULED**, and it is the reason this entry stays open rather than being
+  marked closed: reading a half-closed entry as closed is exactly how the surviving cause disappears.
+  The design decision cause two inherited was already made (D-8.4.1, quoted below): *an embedded
+  face's CSS family name is derived from its **asset key**, never from `font.family`.* **No equivalent
+  decision has ever been made for cause one.**
 
   **CAUSE TWO — a face the DOCUMENT CARRIES has no family in the browser at all.** For cause one
   there is at least a shipped file behind the chain entry, registered under *some* family the browser
@@ -2852,6 +2855,74 @@ tie must be widened from "every family the rule asks for is declared" to "the fa
 are the ones the engine measured with". Note the ORDER constraint that fix already discovered: the stack
 must follow the engine's chain order rather than borrow `tokens.css`'s `--font-page`, which puts Thai
 first and would hand Latin text Noto Sans Thai's Latin glyphs.
+
+**MEASURED CORRECTION to the paragraph above (Story 8.4a, 2026-09-01).** The `--font-page` hazard it
+names **is not live on this path**. `tokens.css:11`'s `--font-page` feeds `--type-page-{title,body,fine}`,
+of which only `--type-page-body` is used, on `.file-message` — chrome, not canvas text.
+`.canvas-text-fragment` uses a hardcoded Latin-first **literal** and no `var()` at all, deliberately
+pinned by `canvas-font-stack.test.ts`. The ORDER constraint the paragraph states is still correct as a
+requirement; only its justifying example is stale.
+
+---
+
+**CLOSING NOTE — CAUSE TWO, closed by Story 8.4a (2026-09-01).**
+
+**What was closed.** A face the document CARRIES now has a family in the browser. `CanvasTextFragment`
+gained one optional field, `assetKey`, carrying the document asset the engine resolved **that fragment**
+to (`page_setup.go`, populated at the fragment append from the chain-scoped `fontCache` through the new
+`carriedAssetKey`/`embeddedFaceAssetKey` inverse of the mint in `embedded_face.go`). The browser derives
+its own CSS family from that key — `folio-designer/src/embedded-face-family.ts`, the one site that makes
+that decision — fetches the bytes over the **existing** media-type-agnostic `asset` operation, and
+registers a `FontFace` **once per document** in `folio-designer/src/embedded-face-registry.ts`. The
+fragment span asks for that family, and only once the face has actually registered; a fetch that fails
+degrades to the stylesheet's declared stack with the canvas still painting and the worker still running.
+
+**The derivation is from the ASSET KEY, per D-8.4.1, and the two sides derive independently.** The
+engine's reserved `asset:` prefix is still spelled in one Go file and in no TypeScript at all: the wire
+carries the KEY, so the browser's family is its own namespace rather than a second copy of an
+engine-internal one.
+
+**Guards, widened rather than weakened.** `canvas-font-stack.test.ts`'s declared-families tie now also
+ties, for the carried case, the family the fragment ACTUALLY asks for (read off a rendered DOM node) to
+the asset the engine attributed it to, and to the family the seam registers under. Its
+chain-entry tripwire was inverted into an allow-list — a font-family position may name **only** an
+asset-key-derived family — and it now strips comments, so it no longer taxes prose. Story 8.4's
+*disclosure of absence* ("no designer source registers a face at runtime") was deleted under its own
+written pre-authorisation and replaced by its positive twin: registration happens in **exactly one named
+seam** and nowhere else, with the detector unchanged and still proved against its own fixtures.
+
+**And the dead prohibition was repaired.** `canvas-authority-contract.test.ts`'s blanket
+`document.fonts` → `fontReadinessOnly` rewrite (appended as a drive-by unblock in `7bfb076`) made its own
+`/\bdocument\.fonts\b/` rule incapable of matching anything; deleting the rule left the suite green. The
+rewrite is now scoped to `document.fonts.ready` alone, `new FontFace` was added to the prohibitions, the
+whole scan is routed through the existing comment stripper, and the file now carries the mutation proofs
+it never had — `document.fonts.add` caught, `e2e/engine-worker.spec.ts`'s `await document.fonts.ready`
+not caught, and deleting either rule reddens a named test.
+
+**WHAT IS NOT CLOSED, AND WHY NOT — CAUSE ONE.** A chain of **shipped** faces still disagrees across the
+seam: the engine measures with `Noto Sans Thai` while the browser asks for `IBM Plex Sans` first,
+because `scripts/build-wasm.mjs` registers the three shipped Noto files under IBM Plex family names while
+a chain's entries are the ENGINE's face names. `canvas-font-stack.test.ts` records those two vocabularies
+as **deliberately disjoint**. Closing it means either **renaming the generated `@font-face` families**
+(rippling into `tokens.css`, its three type tokens and `design-contract.test.ts`) or **generating a
+face-name → CSS-family map** — a design-system decision above a builder's authority, and **no ruling has
+ever made it**. D-8.4.1 settled the *embedded* derivation only. Story 8.4a's scope is the enumeration in
+"What 8.4a owns" above, adopted by D-8.4.6, and **not one item on it mentions a shipped mapping**, so
+extending the tie to the shipped half would have been a red assertion inviting a builder to weaken it
+back rather than a stronger guard. Note the aliasing trap for whoever takes it: the generator's
+`'IBM Plex Mono'` is **Noto Sans SC** (`build-wasm.mjs`), not a mono face.
+
+**What would discharge cause one.** A ruling choosing between the two options above, then one story that
+(a) applies it, (b) widens `canvas-font-stack.test.ts`'s tie from the carried case to **every** case,
+deleting the deliberate-disjointness test as the disclosure it is, and (c) proves the widened tie by
+deletion. Until that ruling exists, this entry stays OPEN.
+
+**What this repository still cannot prove, stated plainly.** Nothing here can execute a real font load,
+a real `document.fonts.add`, or a rasterized glyph: jsdom applies no stylesheet and implements no font
+loading, and the Playwright suite is compile-only (`test:e2e:compile` is `tsc --noEmit`; browser e2e is
+deferred by D-000.4). Story 8.4a's gates prove the derivation, the registration call, the fragment's
+rendered family, the guards and the protocol shape. The claim that the canvas **visibly** paints with the
+carried face is unverified by anything in this repository.
 
 ---
 

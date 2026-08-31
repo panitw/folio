@@ -118,6 +118,34 @@ const maxCanvasBodyTextFragments = 65536
 type CanvasTextFragment struct {
 	Text string `json:"text"`
 	X    int64  `json:"x"`
+	// AssetKey names the document's OWN asset the engine resolved this
+	// fragment's face to, and is empty — and omitted from the wire — for
+	// every fragment drawn with a face the caller shipped.
+	//
+	// WHY THE ASSET KEY AND NOT THE FACE NAME (Story 8.4a). The engine's
+	// name for a carried face is embeddedFaceName(assetKey), and
+	// embedded_face.go states that a caller spelling that prefix is
+	// writing the derivation a second time. Putting the minted name on
+	// the wire would force the browser to either strip the prefix — the
+	// second spelling, in a second language, that no Go test can pin — or
+	// use an engine-internal namespace as a CSS family. The KEY is what
+	// the existing `asset` operation already takes as its payload and
+	// what canvasFontChainEntryWireKeys already carries, so the browser
+	// derives its own CSS family from it (D-8.4.1: from the ASSET KEY,
+	// never from font.family) and needs no other rule.
+	//
+	// WHY PER FRAGMENT AND NEVER PER COMPONENT. faceSegment.face is a
+	// scalar and positionSegments emits at most one run per segment
+	// without ever merging adjacent runs, so a fragment is exactly one
+	// face BY CONSTRUCTION. A component is not: a mixed-script element
+	// draws Latin through one chain entry and Thai through another, and
+	// attributing at the component would hand one of them the other's
+	// glyphs.
+	//
+	// AD-17 IS UNTOUCHED BY IT. This is attribution, not measurement: X
+	// is still the engine's own paint origin and the browser still
+	// computes no metric, no advance and no line break.
+	AssetKey string `json:"assetKey,omitempty"`
 }
 
 // CanvasTextLine is one pre-broken engine line. All coordinates are
@@ -1416,7 +1444,15 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 					if err != nil {
 						return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 					}
-					paintLine.Fragments = append(paintLine.Fragments, CanvasTextFragment{Text: fragment.text, X: int64(x)})
+					// The attribution the projection used to discard.
+					// cache is the CHAIN-SCOPED cache this element draws
+					// through, so the answer is the one the element's own
+					// chain resolved; carried is "" for every shipped face,
+					// which omitempty turns into the precise, self-describing
+					// absence the browser reads as "this fragment is a
+					// shipped face".
+					carried, _ := cache.carriedAssetKey(fragment.face)
+					paintLine.Fragments = append(paintLine.Fragments, CanvasTextFragment{Text: fragment.text, X: int64(x), AssetKey: carried})
 				}
 				// Painting stops at the last WHOLE line that fits. A half
 				// line would be a worse lie than a short one: the author

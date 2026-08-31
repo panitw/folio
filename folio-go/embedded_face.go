@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/template"
 )
@@ -85,6 +86,23 @@ const embeddedFaceNamePrefix = "asset:"
 // embeddedFaceName is the ONE construction site for that name. A caller
 // that spells the prefix itself is writing the derivation a second time.
 func embeddedFaceName(assetKey string) string { return embeddedFaceNamePrefix + assetKey }
+
+// embeddedFaceAssetKey is that derivation READ, and it lives here because
+// reading it and writing it are one decision: the prefix is spelled in
+// this file and nowhere else, in this language or any other (Story 8.4a
+// carries the ASSET KEY to the browser precisely so no TypeScript has to
+// spell it a second time). It reports false for a name that is not in
+// this namespace at all, which is every shipped FontSet face.
+//
+// IT IS NOT AN AUTHORITY ON ITS OWN. A name's SHAPE says only that it
+// could have come from this mint; whether a document actually carries the
+// face behind it is the embeddedFaceIndex's answer, and the precedence
+// rule above is stated in terms of that index. fontCache.carriedAssetKey
+// (render.go) is therefore the caller-facing accessor: it asks the index
+// first and only then reads the name.
+func embeddedFaceAssetKey(name string) (string, bool) {
+	return strings.CutPrefix(name, embeddedFaceNamePrefix)
+}
 
 // embeddedFaceSource is one carried face's resolution record: the asset
 // to decode, and the addresses to put in the error if it cannot be.
