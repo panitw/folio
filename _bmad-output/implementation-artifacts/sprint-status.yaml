@@ -156,7 +156,11 @@ development_status:
   # Epic 7 changes the AUTHORING SURFACE and TYPOGRAPHY only; pagination is a constraint
   # on it, not a target of it. Every field it adds is optional and absent-by-default, so
   # the existing corpus must hash identically.
-  epic-7: in-progress
+  # Boundary gate run 2026-08-31, PASSED -- see epic-7-8-decision-log.md, EPIC 7 BOUNDARY
+  # GATE. Story 7.6's AC2 was FALSE at HEAD from ed485eb until 7.9 landed, which is why this
+  # epic stayed open for two extra stories. 7.10 remains backlog: it does NOT gate the epic
+  # (D-7.7.13) but MUST precede the folio-go/v0.1.0 tag.
+  epic-7: done
   7-1-break-a-line-where-the-author-typed-a-break: done
   7-2-set-the-space-between-a-paragraph-s-lines: done
   7-3-justify-a-paragraph-s-edges: done

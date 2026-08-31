@@ -2088,3 +2088,114 @@ will **date and attribute state claims inside escalation blocks** from here (*"a
 X"*), so a stale one reads as stale instead of authoritative. A lead resumed from a transcript holds
 a **snapshot**, and a snapshot presented as current is how a correct ruling gets made about a world
 that has moved. The gap that let it happen was the orchestrator's — see D-7.9.4.
+
+## EPIC 7 BOUNDARY GATE — run 2026-08-31, PASSED
+
+`epic-7: done` written at the closing revision below. The gate had three conditions, all measured
+rather than asserted, and one of them was the reason the epic stayed open for two extra stories.
+
+### Condition 1 — Story 7.6's AC2 is TRUE at HEAD (D-7.7.8's whole condition)
+
+AC2: *"the boundary … is marked where the engine will actually break, taken from the projection
+rather than computed in the browser."* It was **false at HEAD** for a grouped document from
+`ed485eb` until Story 7.9 landed — the canvas reported a count too low, origins at wrong column
+positions, and reported the count as **exact**.
+
+Measured at the closing revision: for the grouped template the canvas projects **count 3, origins
+`[0 700000 1440000]`** against a real `buildPageModel` render of **3 pages with the identical origin
+sequence**; for the shipped `fixtures/keep-together/` document, canvas and render both begin window
+two at **`706000`**. The mutants prove this is asserted rather than coincidental — **crippling
+either tagging arm drives the canvas to `734000`**. Nothing is derived in the browser; origins come
+from `plan.Pages[i].Shift`.
+
+**The gate held the epic for two stories and that was right.** A boundary gate that passes while a
+shipped story's acceptance criterion is false is a formality, not a gate.
+
+### Condition 2 — no heavy-test arrears (D-R7.1)
+
+Every Epic 7 story ran the heavy suites in-story, read from each story's own Delivery Log:
+
+| Story | 4 legs exported | unset control | CrossTarget | lint | designer | digests |
+|---|---|---|---|---|---|---|
+| 7.1 | 4 PASS, none "asserts NOTHING" | not stated | PASS | 4 pkgs | 30f/213 | 5 + pre-story byte compare |
+| 7.2 | 4 PASS, same sha | not stated | ok 21.76s | 4 pkgs | 30f/214 | 5 quoted |
+| 7.3 | 4 PASS | **ran** | PASS 21.45s | 4 pkgs | 30f/215 | 9 by `shasum` |
+| 7.4 | 4 PASS w/ timings | grep=0 | ok 20.8s | 4 pkgs | 32f/239 | all 20 hold |
+| 7.5 | 4 PASS, grep=0/leg | not stated | PASS 20.15s | 4 pkgs | 32f/248 | all 20 hold |
+| 7.6 | 4 PASS w/ timings | not stated | PASS 19.87s | 4 pkgs | 33f/280 | 20 declared |
+| 7.7 | 4 PASS, grep=0/leg | **ran** | PASS 21.2s | 4 pkgs | 33f/280 | 20→21, insertions only |
+| 7.8 | 4 PASS, 0 "asserts NOTHING" | **printed** | PASS | 4 pkgs | 33f/280 | all 21 identical |
+| 7.9 | 4 PASS w/ timings | **ran, printed** | PASS 22.10s | 4 pkgs | 34f/284 | all 22, 0 moved |
+
+**Epic 7 owes nothing to a catch-up run.** Note the unset control was *not stated* for 7.1, 7.2,
+7.5 and 7.6 — those legs are credited on their own PASS lines rather than on a proof the legs were
+not no-ops. From 7.3 onward the control was run and printed. That is a real, if minor, gap in the
+early record, and it is recorded rather than smoothed over.
+
+### Condition 3 — nothing left that gates
+
+**Story 7.10 is open and does NOT gate** (D-7.7.13): both its behaviours are self-consistent renders
+with truthful diagnostics, so no shipped AC is false. It **must precede the `folio-go/v0.1.0` tag**,
+since it narrows what renders and that is free only while nothing is released (AD-22). It owns
+DW-47, DW-49(b), DW-50 and DW-64.
+
+**The before-the-tag set (D-7.8.3)** at this boundary: (1) Story 7.8's justified-table load
+refusal — **landed**; (2) Story 7.10's over-tall fatality — **open**; (3) D-7.8.2's audit retiring
+whichever of the two existing style codes no consumer branches on — **deliberately not done**, both
+verified unretired at 7.8's close.
+
+### THE FINDING THIS BOUNDARY RECORDS ABOUT THE SUITE, NOT ABOUT ANY STORY
+
+**Five checks in this epic passed while measuring nothing.** One is an anecdote; five is a rate, and
+the lead asked for what they have in common rather than a general exhortation to be careful.
+
+1. **DW-24's hand-list** — rotted three times, the third **inside its own closing commit**.
+2. **The `contentColumnItems` page-count pass** — removing all three grouping substitutions left the
+   **entire suite green**, so `{{pages}}` could have printed the ungrouped total on every grouped
+   document.
+3. **`TestWasmHostSanitizesTemplateDiagnostics`** — its payload was swapped to the one shape still
+   reaching the old guard, leaving it green while measuring the residue.
+4. **`renderPathWindows`' `nil` oracle** — it passed `nil` for the `keepTogether` parameter, so
+   grouping was disabled on the **render** side too. Both sides were wrong identically, and *"agrees
+   with the render path"* asserted nothing about groups **for two stories**.
+5. **`lint`'s cached green** — two tests red while `go test ./...` returned a cached `ok`. **Two
+   stories closed on it.** The mechanism, measured at the close: the `rules` package **walks a
+   directory**, and Go's build cache does not track `ReadDir`, so a **new file never invalidates
+   it**.
+
+**Items 1–4 are tests whose SUBJECT moved. Item 5 is a test whose RESULT was stale.** Same outcome
+by two different mechanisms, and the second is the more dangerous because nothing in the diff looks
+wrong.
+
+**The three obligations this leaves on every gate from here:**
+
+> **(a) Deletion is the cheapest screen, and the implementer must not be the only one choosing the
+> mutation.** Removing a call entirely and seeing whether anything reddens catches the class that
+> value-mutation cannot: a subject the tests never *reach*.
+>
+> **(b) When a change moves a population OUT of a guard's scope, re-point the guard at a member
+> still in scope AND assert the departed population under its new treatment.** Narrowing the fixture
+> to whatever still trips the old guard leaves a green test measuring the residue.
+>
+> **(c) `-count=1` on every Go gate, without exception. A cache is not an anchor.**
+
+**And a fourth, from D-8.0.1, which is the same disease in prose rather than in code:** a comment
+that asserts a negative — *unreachable*, *never*, *impossible* — carries the same evidentiary burden
+as a test, and must name the population it **measured** rather than the population it **concluded
+about**. That one cost the most, because it justified the absence of the test that would have caught
+it.
+
+### What this gate did NOT verify, stated rather than smoothed over
+
+**The browser end-to-end suite has never executed anywhere in this run.** `test:e2e:compile` is
+`tsc --noEmit` only, and D-000.4 defers the Playwright run. So Story 7.6's and Story 7.9's canvas
+work — the whole subject of two stories — **remains unproven at the surface an author actually
+touches.** Every canvas claim in this epic is asserted against the projection in Go, which is where
+the authority lives (AD-17), but "the projection is correct" and "the author sees it" are different
+claims and only the first is measured. Recorded as a limit of this gate, not as a defect of the
+stories.
+
+### Verdict
+
+**PASSED.** `epic-7: done`. Nine stories delivered, two of them repairs the epic wrote against
+itself, and the epic closed on a criterion it had falsified and then restored.
