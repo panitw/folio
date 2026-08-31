@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: '0da98ecf4438375a38a6e5970783b3c21241be2a'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/specs/spec-folio/folio-format.md'
@@ -90,6 +90,31 @@ deferred:
       folio-go/render_error.go
     severity: low
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative. The intent contract below governs the implementation; where the two differ, the
+contract wins.*
+
+Until now, an author could tell a table to justify its text. The setting did nothing — every cell
+still drew flush to the start edge — but accepting it stamped the whole document with a newer format
+number, so it could no longer be opened by any older reader. The author paid the entire cost of an
+incompatible file and got no change on the page and no warning.
+
+The document is now refused when it is opened, and the refusal says which element and which field
+are at fault and which settings are actually allowed. Justified text on an ordinary text block is
+untouched and still works exactly as before.
+
+Read this next part before you upgrade: **a file that already sets justify on a table will stop
+opening.** There is no automatic repair and no migration path — the fix is to change that one
+setting by hand. Only files written in a narrow window could be affected, and the gap has been
+written up and handed to the engineering lead, but the break is real and deliberate rather than an
+oversight.
+
+One thing found along the way is worth knowing. Making the refusal reach a person meant letting
+these messages through a channel that had previously been silencing them wholesale — which also
+meant a document could get large chunks of itself quoted back. Every message is now capped, cut
+cleanly, and marked where it was shortened.
 
 <intent-contract>
 
@@ -564,9 +589,14 @@ stay complete; only the sentence rendered for a person is bounded; `reportableMe
 
 **The criterion, stated once and derived four ways.** *The message must stay dominated by the
 engine's own words — the sentence frame, the field, the element and the reason — inside the wasm
-host's `bounded(message, 512)` window.* Every rune the format admits is BMP (AD-12's closed locale
-set is `en`, `th`, `zh-Hans`, `ja`), so a rune costs **at most 3 bytes** and a bound of *N* runes
-costs at most *3N*.
+host's `bounded(message, 512)` window.* The four bounds below were **derived** under the premise
+that a rune costs at most 3 bytes, AD-12's closed locale set (`en`, `th`, `zh-Hans`, `ja`) being
+entirely within the BMP. **That premise was itself corrected during the review pass and no longer
+holds** (`errors.go` records the correction in full): the locale set constrains the document's
+*language*, not the arbitrary JSON flowing through these fragments, where one non-BMP rune costs
+`utf8.UTFMax` = 4 bytes. The four rune bounds are therefore a **fair-allocation** device — every
+script gets the same number of runes — and not a byte guarantee. The byte guarantee is the
+message-level `loadErrorMessageBytes` bound added by the review pass.
 
 | Fragment | Bound | Derivation |
 |---|---|---|
@@ -601,8 +631,16 @@ code=TEMPLATE_FIELD_INVALID
  json: cannot unmarshal string into Go value of type map[string]json.RawMessage (value: \"กกก…83 runes…\")"
 ```
 
-347 of those 430 bytes are the engine's own words, and the whole message now fits inside the host's
-window rather than being cut by it. Baseline: **35 characters**, all of them the placeholder.
+**Corrected at close, 2026-08-31 (re-derived, not relayed).** An earlier version of this line read
+*"347 of those 430 bytes are the engine's own words"*. That subtracted the author's **rune** count
+(83) from a **byte** total (430). Re-measured: the 83 Thai runes occupy **249 bytes**, the elision
+marker 3, so the engine's own words are **178 of 430 bytes (41%)** — the author's fragment is the
+larger half of *this* message. What the design actually guarantees is the narrower claim the
+derivation supports: the value can never exceed **256 bytes, half the host's 512-byte window**, and
+no engine-authored word is ever truncated. The looser gloss — that the engine's words *dominate* any
+given message — does not follow, and is not relied on anywhere. The whole message now fits inside
+the host's window rather than being cut by it. Baseline: **35 characters**, all of them the
+placeholder.
 
 **`TestWasmHostSanitizesTemplateDiagnostics` carries both arms**, per the `Block If`. Arm one keeps
 the destruction rule on the population that still carries it (unparseable bytes → `TEMPLATE_MALFORMED`,
@@ -685,11 +723,17 @@ the planning dispatch; it is pre-existing, not caused here.
 - addressed_findings:
   - none
 
-Attempted implementation preserved at
-`7-8-attempted-implementation.patch` (1886 lines, verified byte-identical to the
-working tree before revert). Code changes reverted; the tree is back at
-`7c892f1`. Patch and defer findings are moot this pass under the cascading rule
-and were not applied.
+The first dispatch's implementation (1886 lines of diff) was **reverted in full** and the tree
+returned to `7c892f1`. It was reverted not because the code was wrong but because the ruling it was
+built on rested on a false premise: D-7.8.1 moved every `LoadError` off `TEMPLATE_MALFORMED` on the
+stated ground that *"its message never quotes the document"*, and nine `newLoadError` call sites
+pass an arbitrary JSON sub-object as `value`. Shipping it would have switched off the host's
+reflection guard for that whole population. The halt sent the premise back to the lead, which
+produced **D-7.8.5**, and the work was re-derived on top of the corrected ruling in the re-dispatch
+below. Patch and defer findings from this pass were moot under the cascading rule and were not
+applied. *(The reverted diff was briefly committed as a `.patch` artifact; it was removed at the
+story's close — a superseded, reverted attempt does not belong in history, and this paragraph is the
+record of it.)*
 
 ## Design Notes
 
@@ -912,8 +956,8 @@ the premise D-7.8.1 rested on is now true of the message rather than merely asse
 
 ### What was done
 
-The preserved patch (`7-8-attempted-implementation.patch`, 1886 lines) was reapplied as the
-`Resuming` section directs, and D-7.8.5 was implemented on top of it: `LoadError.Error()` bounds every
+The first dispatch's reverted implementation was re-derived as the `Resuming` section directs, and
+D-7.8.5 was implemented on top of it: `LoadError.Error()` bounds every
 author-supplied fragment in **runes**, never splitting one, with a visible `…`; the struct fields stay
 complete. Three author-supplied components beyond `Value` were found by measurement and given the same
 treatment (see the Spec Change Log entry above). `TestWasmHostSanitizesTemplateDiagnostics` was given
@@ -1027,3 +1071,108 @@ Every mutation was restored and confirmed byte-identical by `cmp`.
 `078d7d80d518d54af2fc04fb270d46b8`; every `justify` in `fixtures/` sits on a `"type": "text"` element
 or in README prose.
 
+
+## Delivery Log
+
+### 2026-08-31 — planned
+
+Dispatched from Epic 7 against baseline `7c892f1` to close DW-29. The plan gate re-verified every
+anchor the epic text carried and found three wrong (D-7.8.4) — the second time this run an epic's
+anchors had rotted, which is where *an anchor written at a plan gate is a claim with an expiry date*
+was recorded. The gate also found a **second door** the epic had not listed: the property-command
+path could stamp a table document `2.0` from the designer's own engine, so AC1 was not satisfiable
+without it. The reserved diagnostic-code question went to the lead and came back as **D-7.8.1**: one
+general code supplied by the constructor, not a per-field code.
+
+### 2026-08-31 — built
+
+**The first dispatch halted, and that was the right halt.** D-7.8.1's ruling rested on a stated
+ground — *a load error's message never quotes the document* — and the build measured it FALSE: nine
+constructor call sites pass an arbitrary JSON sub-object as the value. Implementing the ruling as
+written would have switched off the host's reflection guard for that entire population; a well-formed
+document with a 2048-character style value went from a 35-character refusal to 512 bytes of the
+author's own file, cut mid-rune. The build **reverted 1886 lines rather than working around its own
+ruling**, and sent the premise back. That is the behaviour the halt exists for: the cheap move was to
+special-case the nine sites and ship.
+
+**The lead's answer moved the seam.** D-7.8.5 made the premise true instead of routing around it, and
+located the bound at the **rendering** rather than at the **constructor**. The struct keeps the
+complete value for a Go integrator's CI log; only the sentence rendered for a person is bounded. One
+method, all call sites, no per-site judgement — where bounding in the constructor would have
+truncated a datum to fix a presentation problem, over-broad in the same way the original boundary
+rule was. The story then found **three more** author-supplied fragments beyond the one the ruling
+named, by measurement rather than by reading the format string.
+
+**The review layers converged on what the per-fragment bounds still missed.** Three of four layers
+independently raised it: four bounds sharing no budget do not discharge a criterion stated over the
+assembled message. Re-derived at close rather than accepted — a document whose element id is 2048
+Thai runes reflects that id three times in one sentence and produced **1139 bytes**, which the host's
+byte slice cut into **invalid UTF-8 with no elision marker**, both conditions the ruling blocks on, at
+the surface AC4 names. Now **511 bytes**, valid UTF-8, visibly elided.
+
+**D-7.8.7 is the entry with reach beyond this story.** The first dispatch had narrowed a guard's
+fixture to the one shape still tripping the old guard, leaving a green test measuring the residue —
+the third instance of that shape in one epic, which makes it a rate rather than an anecdote. The
+standing obligation: *when a change moves a population out of a guard's scope, the guard's test must
+be re-pointed to a member still in scope AND the departed population asserted under its new
+treatment.*
+
+### 2026-08-31 — done
+
+Baseline `0da98ec`; commits `93c9bdd` and `7ab6a09`, closed at `HEAD`. Decisions applied: **D-7.8.1**
+(one general code from the constructor), **D-7.8.4** (three anchor corrections plus the second door),
+**D-7.8.5** (bound at the rendering, in runes), **D-7.8.7** (both guard arms). **D-7.8.2**'s audit of
+the two existing style codes was deliberately NOT done — it is triggered by the `folio-go/v0.1.0`
+tag, and both codes were verified unretired and unchanged in meaning at close.
+
+Findings across two review passes, and the two passes do not simply add up: the first pass raised
+7 patch / 4 defer / 5 reject, but its patch and defer findings were **moot and never applied** — the
+intent gap it also raised reverted the code they described. The findings that actually landed are the
+re-dispatch's: **5 patched (1 high) / 2 deferred / 7 rejected**. Two
+rejections were spot-checked at close and both refute the specific claim at the cited location; the
+widened tripwire does still pin each set's exact length and order, and the suggested fixture reuse is
+mechanically impossible across the package boundary.
+
+**Gates measured at close, not relayed.** Full Go suite: 13 packages ok, **exactly one distinct red**
+— the mandated `P6g_(opaque_names)` floor, got 7 need >=20, untouched. `go vet -tags=matrix` exit 0,
+no output; `gofmt -l folio-go` from the repo root, no output (only the known DW-23 file reports).
+Matrix render hash on all four legs with the target exported — darwin/arm64, linux/amd64,
+linux/arm64, js/wasm — each PASS with **0 `asserts NOTHING`**, against an unset control that printed
+`asserts NOTHING` and asserted nothing, proving the legs are not no-ops. Cross-target byte identity
+PASS. Lint module **117 tests / 4 packages**. Designer **280 tests / 33 files**, typecheck exit 0,
+oxlint exactly 4 baseline warnings and 0 errors, e2e **compile only** — the browser suite is deferred
+by D-000.4 and **did not execute**. The wasm host tests were **executed** under `go_js_wasm_exec`, not
+merely compiled: **6 tests / 3 subtests pass**. **All 21 golden digests byte-identical by SHA-256
+against the shipped artifacts; none moved.**
+
+Four claims were re-derived by mutation rather than read from the report. Making the value bound count
+bytes reddens the host's second arm at 26 surviving runes — so the multi-byte assertion has real
+teeth. Removing the message-level bound reproduces the exact pathology: invalid UTF-8 ending in a
+partial rune with no marker. Stripping the general code from the constructor reddens 6 of 7
+enumerated cases plus the coverage witness, and both host arms with it. Five tests moved and **zero
+were deleted** — four renames verified 1:1 by diffing test-function names across the commits, and the
+fifth inverted in place with its table fixture repurposed rather than rewritten.
+
+**Two record corrections made at close.** The measured example claimed *347 of 430 bytes are the
+engine's own words*; that subtracted a rune count from a byte total, and the true figure is **178 of
+430 (41%)** — the author's fragment is the larger half of that particular message. The guarantee the
+derivation actually supports is narrower and still holds: the value can never exceed half the host's
+window, and no engine-authored word is ever truncated. Corrected in both this spec and the DW-29
+closure note. The spec also still asserted the BMP premise that the review pass had already recorded
+as false in the code; corrected to match. A comment in the diagnostic registry restated D-7.8.1's
+falsified premise flatly, so the next reader would have re-derived it — annotated to say the premise
+holds only because the rendering bound makes it hold.
+
+Deferred with owners: **DW-54** (a file already carrying a table justify is permanently unloadable,
+and the format doc has a rule for extending a closed set but none for narrowing one) — **the
+engineering lead**, live now rather than at the tag, because D-7.8.3's before-the-tag set already
+holds two more narrowings. **DW-55** (the element id reaches the host unbounded and is byte-cut at
+128) — the story that next changes diagnostic construction, or Story 15.3 before the tag. **DW-53**
+(the CLI prints the full error to a terminal) was filed and not fixed by instruction. All three were
+found recorded only in the spec's frontmatter and were filed into the standing register at close.
+
+Housekeeping: the first dispatch's reverted 1886-line attempt had been committed as a 109KB `.patch`
+artifact. It is removed in the closing commit — forward, not by rewriting history — and the spec's
+two references to it are now prose that carries the same record.
+
+**Epic 7 stays `in-progress`.** Stories 7.9 and 7.10 are open, and 7.9 gates the boundary (D-7.7.8).

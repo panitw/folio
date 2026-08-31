@@ -2469,8 +2469,13 @@ makes the premise **true** — `LoadError.Error()` bounds every author-supplied 
 it into the sentence, in **runes**, with a visible `…`, while the struct fields stay **complete** for
 a Go integrator's CI log. Four fragments were found and bounded, not one: the **value** (84 runes),
 the **element id** (24), the **field path** (96) and the **reason** (256), each derived in
-`errors.go`'s own comment. The same document now produces a 430-byte message of which 347 bytes are
-the engine's own words. `reportableMessage`'s treatment of `TEMPLATE_MALFORMED` is unchanged.
+`errors.go`'s own comment. The same document now produces a **430-byte** message: 83 author runes
+occupying 249 bytes, a 3-byte elision marker, and **178 bytes of the engine's own words**. (An
+earlier version of this line said 347, having subtracted a *rune* count from a *byte* total;
+corrected at the story's close.) The guarantee is that the value can never exceed **half the host's
+512-byte window** and that no engine-authored word is ever truncated — not that the engine's words
+outweigh the author's in every message. `reportableMessage`'s treatment of `TEMPLATE_MALFORMED` is
+unchanged.
 
 ---
 
@@ -3140,3 +3145,59 @@ not the format's.
 terminal, with no server and no third party anywhere in the product — the same position PRD §13
 records for MVP, which deliberately has no threat model. **FR45's REST service is what reopens it**,
 exactly as it reopens the reflection question D-7.8.5 ruled on.
+
+---
+
+### DW-54 — a `.folio` already carrying a table `justify` is permanently unloadable with no migration path, and `folio-format.md` states no rule for NARROWING a closed set
+- **Deferred by:** Story 7.8 (2026-08-31); found recorded only in the spec's frontmatter at the
+  story's close and filed into this register there
+- **Owner:** **the engineering lead**, before the next narrowing lands — a gate, never an event, per
+  D-000.73. It is **live now**, not at the tag: D-7.8.3's before-the-tag set already contains **two
+  more narrowings** (Story 7.10's over-tall element, and D-7.8.2's code audit), so the rule will be
+  re-litigated twice more unless it is written once
+- **Severity:** MEDIUM
+- **Status:** OPEN — **caused by this change** (the first half), **pre-existing** (the second half)
+
+**The gap, first half.** Between Story 7.3 (which admitted `justify`) and Story 7.8 (which refuses
+it), the designer's own engine could author a `.folio` whose table carried
+`style.align`/`headerStyle.align: "justify"` — through the `component_commands.go` align arm this
+story closes. Any file written in that window now fails `ParseDocument` **forever**. There is no
+migration path, no repair mode and no diagnostic that says "this used to be legal". The story's I/O
+matrix mandates the refusal and its Never list excludes new designer work, so a migration path was
+correctly out of scope *there* — but the population is real and nothing currently owns it.
+
+**The gap, second half, and it is the more general one.** D-1.4.12 states that **extending** a
+closed set is MAJOR. `folio-format.md` says **nothing** about **removing** a member from one, so the
+version a narrowing lands under is unstated. A format document that has a rule for extending a
+closed set and none for narrowing one will have the question re-opened at every narrowing, and the
+answer will be argued from the story's own convenience each time. The remedy is one stated rule in
+`folio-format.md`, not a per-story ruling.
+
+**Why the lead and not a story.** Both halves are format-policy calls above any single story's
+scope: whether the orphaned population is owed a migration, and what version a narrowing costs.
+Neither is answerable from a story's intent contract, which is exactly why this sat in a spec
+frontmatter rather than in a plan.
+
+---
+
+### DW-55 — `wrapTemplateError` passes `LoadError.ElementID` unbounded into the Diagnostic, where the wasm host byte-cuts it at 128 and splits a rune
+- **Deferred by:** Story 7.8 (2026-08-31); found recorded only in the spec's frontmatter at the
+  story's close and filed into this register there
+- **Owner:** **the story that next changes `folio-go/render_error.go`'s diagnostic construction, or
+  Story 15.3 before the `folio-go/v0.1.0` tag (whichever first)** — a gate, never an event, per
+  D-000.73
+- **Severity:** LOW
+- **Status:** OPEN — **pre-existing; the `elementId` field was populated this way before this story
+  and is unchanged by it**
+
+**The gap.** `folio-go/render_error.go` passes `le.ElementID` straight through into the Diagnostic,
+and `wasm/cmd/engine/main.go` applies `bounded(elementId, 128)` — a raw `value[:max]` byte slice. A
+multi-byte element id is therefore split mid-rune in the `elementId` **field**, producing invalid
+UTF-8 for the designer to render.
+
+**Why it is worth a number despite being LOW.** This is the same *"runes, never bytes"* property
+D-7.8.5 ruled on, one field over. Story 7.8 bounded the **message** — `LoadError.Error()` now cuts
+only on rune boundaries with a visible marker, and the assembled sentence fits the host's window so
+`bounded(message, 512)` can no longer fire. The `elementId` field never went through that seam, so
+the host's byte cut is still the only bound on it. The ruling's own reasoning applies unchanged; only
+its scope did not reach here.

@@ -291,8 +291,19 @@ const (
 	// every located load error in the format was destroyed before its
 	// author saw it. That destruction rule exists because a
 	// malformed-template message quotes the offending document back; a
-	// LoadError's message is "field F (element E): reason (value: V)",
-	// which does not. TEMPLATE_MALFORMED keeps destroying its own
+	// LoadError's message is "field F (element E): reason (value: V)".
+	//
+	// THAT LAST CLAUSE USED TO END "which does not", AND THAT WAS FALSE
+	// (D-7.8.5). A LoadError's message DOES quote the document back —
+	// `value` is author-supplied, and at nine call sites it is an
+	// arbitrary JSON sub-object. The premise is true only because
+	// internal/template's LoadError.Error() MAKES it true: it bounds
+	// every author-supplied fragment in runes as it renders one, and
+	// bounds the assembled sentence to this host's own 512-byte window,
+	// always cutting on a rune boundary and always leaving a visible
+	// elision marker. Read the two together — moving a population off
+	// TEMPLATE_MALFORMED is safe because, and only because, that bound
+	// exists. TEMPLATE_MALFORMED keeps destroying its own
 	// messages, for the reason it was written; what changed at Story 7.8
 	// is that LoadErrors stopped being bucketed there. It still names
 	// the genuinely malformed template — bytes that are not a JSON
