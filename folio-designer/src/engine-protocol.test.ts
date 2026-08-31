@@ -148,7 +148,14 @@ describe('canvas projection protocol guard', () => {
     // canvas_projection_wire_test.go, and here by the extra-key case below.
     const { fontChains: _chains, ...noChains } = canvas
     expect(projection(noChains)).toBeUndefined()
-    expect(projection({ ...canvas, fontChains: [], fontFamilies: [] , extraProjectionKey: 1 })).toBeUndefined()
+    expect(projection({ ...canvas, extraProjectionKey: 1 })).toBeUndefined()
+    // And the POSITIVE case the extra-key assertion used to be conflated
+    // with: a document declaring `"fonts": {}` — the component-asset-import
+    // and image-embed fixtures both do — projects no chains and no families,
+    // and that is VALID. Carrying the extra key made that assertion pass on
+    // the key alone, so it said nothing either way about a zero-chain
+    // projection, and a guard that rejected one would have gone unnoticed.
+    expect(projection({ ...canvas, fontChains: [], fontFamilies: [] })).toBeDefined()
     // Disagreement with fontFamilies, in each of its three shapes: a different
     // name, a different length, and the same names in a different order.
     expect(projection({ ...canvas, fontChains: [{ name: 'brand', entries: ['Noto Sans'] }] })).toBeUndefined()

@@ -278,24 +278,26 @@ func TestPaginationIsIndependentOfCanvasPaintTruncation(t *testing.T) {
 }
 
 // TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve records the
-// SPLIT, not just the raise: the seven identifier, colour and expression
+// SPLIT, not just the raise: the eight identifier, colour and expression
 // sites keep maxCanvasPropertyString and keep aborting. Epic 7 makes none of
 // them newly reachable, so that residue is recorded rather than fixed
 // (D-7.4.2 §6) — and this test is where "recorded" is executable.
 //
-// ALL SEVEN, and each by its OWN refusal message. Probing a subset would
+// ALL EIGHT, and each by its OWN refusal message. Probing a subset would
 // leave the unprobed sites free to move without anything going red, which is
 // the opposite of recording them; and asserting only that Canvas returned
 // SOME error would let any unrelated parse or projection failure keep this
-// test green while the bound it names had gone. The seven are the sites
+// test green while the bound it names had gone. The eight are the sites
 // `grep -n maxCanvasPropertyString folio-go/page_setup.go` reports, minus the
-// constant's own declaration and its doc comment.
+// constant's own declaration and its doc comment. The eighth is Story 8.1's
+// chain ENTRY: it was a site this list did not cover from the day it was
+// added, which is the drift a count in a comment exists to catch.
 func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 	long := strings.Repeat("x", maxCanvasPropertyString+1)
 	if len(long) >= maxCanvasBodyText {
 		t.Fatal("fixture precondition: the identifier fixture must be far below the body-text bound")
 	}
-	// Three of the seven are not reachable by parsing a document that names
+	// Three of the eight are not reachable by parsing a document that names
 	// them: `style.fontFamily` must name a declared chain, a `bind` belongs
 	// to a table extension, and an over-long chain NAME would be refused by
 	// the style site first if any element referenced it. They are reached by
@@ -360,7 +362,7 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 		{
 			// The chain NAME itself, in the document's `fonts` map — the one
 			// site that is not on a component at all. No element references
-			// it, so the component sites pass and canvasFontFamilies is
+			// it, so the component sites pass and canvasFontChains is
 			// genuinely the refusing site.
 			name: "fonts chain name",
 			document: func(t *testing.T) *Template {
@@ -369,6 +371,21 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 				return tpl
 			},
 			message: "folio: font family name exceeds the projection bound",
+		},
+		{
+			// The chain ENTRY — the site the projection acquired when Story
+			// 8.1 put the chains themselves on the wire, and one nothing else
+			// in this table reaches: a face name is not a component property,
+			// and the chain-NAME row above is refused before the entry walk is
+			// entered at all. Measured before this row existed: the guard
+			// could be deleted with every Go test still green.
+			name: "fonts chain entry",
+			document: func(t *testing.T) *Template {
+				tpl := bodyTextDocument(t, "short", `{"fontFamily":"body","fontSize":12}`)
+				tpl.doc.Fonts["body"] = []string{long}
+				return tpl
+			},
+			message: "folio: font chain entry exceeds the projection bound",
 		},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
@@ -518,4 +535,44 @@ func TestCanvasBodyTextAtTheLineBoundCarriesEveryLine(t *testing.T) {
 		t.Fatalf("the last painted line is not the value's own last line: %#v", last)
 	}
 	assertWithinBrowserFragmentBounds(t, paint, maxCanvasBodyTextLines)
+}
+
+// TestCanvasFontChainEntryCountIsBoundedOnALoadedDocument is the projection's
+// per-chain entry-count guard, measured where it actually bites: a document
+// LOADED FROM BYTES that already declares a chain deeper than the projection
+// will carry. decodeFonts validates nothing about a chain's length, so such a
+// .folio parses; only the projection refuses it.
+//
+// It is deliberately not the command path's test.
+// TestFontChainEntryCountIsBoundedAtTheCommand drives addFontChain, a
+// different function with its own literals, and it left this one unexercised —
+// measured, the two projection guards (the entry count here and the entry
+// LENGTH in the table above) could both be deleted with every Go test in the
+// module still green. What they prevent is not a visible error: an over-long
+// chain on the wire makes the browser's isCanvas return false, which discards
+// the WHOLE snapshot and blanks the canvas with nothing to attribute it to.
+func TestCanvasFontChainEntryCountIsBoundedOnALoadedDocument(t *testing.T) {
+	chain := func(count int) *Template {
+		t.Helper()
+		faces := make([]string, count)
+		for i := range faces {
+			faces[i] = fmt.Sprintf("%q", fmt.Sprintf("face-%d", i))
+		}
+		source := strings.Replace(fontChainDocJSON, `"body": ["Noto Sans", "Noto Sans Thai"]`, `"body": [`+strings.Join(faces, ",")+`]`, 1)
+		tpl, err := ParseTemplate([]byte(source))
+		if err != nil {
+			t.Fatalf("the loader refused a %d-entry chain; decodeFonts validates nothing about a chain's length and this test needs it not to start: %v", count, err)
+		}
+		return tpl
+	}
+	if _, err := Canvas(chain(maxCanvasFontChainEntries)); err != nil {
+		t.Fatalf("a chain at the bound was refused a projection: %v", err)
+	}
+	_, err := Canvas(chain(maxCanvasFontChainEntries + 1))
+	if err == nil {
+		t.Fatal("a chain past the bound reached the projection; the browser would drop the whole snapshot and blank the canvas with no attributable error")
+	}
+	if err.Error() != "folio: font chain declares more entries than the projection bound" {
+		t.Fatalf("the over-deep chain was refused for the wrong reason: %q", err.Error())
+	}
 }

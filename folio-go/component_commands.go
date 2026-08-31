@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -1916,12 +1917,25 @@ func containEdgeY(band CanvasBand, value, limit geom.Length) geom.Length {
 // reason, never silently cut, and the commands refuse to build one.
 const maxCanvasFontChainEntries = 64
 
-// maxComponentFailureMessageBytes is the width the wasm host cuts a
-// ComponentCommandError's Message to (wasm/cmd/engine/main.go's
-// bounded(componentErr.Message, 512)). fontChainOrphanMessage reads it so a
-// long id list is trimmed HERE, on a whole-id boundary, instead of arriving at
-// the author cut through the middle of an element id.
-const maxComponentFailureMessageBytes = 512
+// maxComponentFailureMessageBytes and maxComponentDataPathBytes are the widths
+// the wasm host cuts a ComponentCommandError's Message and DataPath to
+// (wasm/cmd/engine/main.go's bounded(componentErr.Message, 512) and
+// bounded(componentErr.DataPath, 256)). They are read here so a long id list
+// and a long chain name are trimmed HERE — on a whole-id and a whole-rune
+// boundary — instead of arriving at the author cut through the middle of an
+// element id or a multi-byte character.
+//
+// They are HAND-COPIED, which is the one-sided-constant defect in pure form:
+// wasm/cmd/engine is //go:build js && wasm, so `go test ./...` never compiles
+// it and nothing links these two numbers to the host's literals. So they are
+// tied by a source-reading tripwire instead —
+// TestComponentFailureBoundsMatchTheHostsOwnLiterals reads main.go the way
+// canvas_projection_wire_test.go reads engine-protocol.ts. Change one, change
+// the other, in the same commit.
+const (
+	maxComponentFailureMessageBytes = 512
+	maxComponentDataPathBytes       = 256
+)
 
 // fontChainPath is the DataPath every font-chain refusal carries. A chain
 // command is not addressed to an element, so ElementID stays empty and the
@@ -1929,11 +1943,31 @@ const maxComponentFailureMessageBytes = 512
 // the only one available: ComponentCommandError.ElementID is single-valued and
 // the orphaning-delete refusal names a LIST of ids, which is why that list
 // lives in Message.
+// It is bounded HERE at maxComponentDataPathBytes because the two bounds
+// disagree: a chain name is legal up to maxCanvasPropertyString (512), so
+// "fonts." + name overruns the host's 256-byte DataPath cut, and the host's
+// bounded() slices by BYTES — which on a multi-byte name splits a UTF-8 rune.
+// The over-long-name refusal is the one case where locating the name is the
+// entire point, so it is the one case that must not arrive mangled.
 func fontChainPath(name string) string {
 	if name == "" {
 		return "fonts"
 	}
-	return "fonts." + name
+	return truncateAtRuneBoundary("fonts."+name, maxComponentDataPathBytes)
+}
+
+// truncateAtRuneBoundary cuts value to at most limit BYTES without splitting a
+// UTF-8 rune. The host's own bounded() does not do this, so anything this
+// module hands it that could exceed a wire bound is cut here first.
+func truncateAtRuneBoundary(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut]
 }
 
 // applyFontChainCommand is the transaction wrapper, identical in shape to
@@ -1972,7 +2006,7 @@ func applyFontChainCommand(t *Template, raw map[string]json.RawMessage, apply fu
 // chain command shares: it is a non-empty string (commandString's own refusal,
 // reused rather than restated) and it fits the projection's identifier bound,
 // maxCanvasPropertyString. The length is refused HERE, located at fonts.<name>,
-// so the author sees which name is too long instead of canvasFontFamilies'
+// so the author sees which name is too long instead of canvasFontChains'
 // unlocated bare error firing later in the same transaction.
 func fontChainName(raw map[string]json.RawMessage, field string) (string, error) {
 	name, err := commandString(raw, field)
@@ -2241,13 +2275,34 @@ func fontChainReferences(t *Template, name string) []string {
 	return ids
 }
 
+// fontChainOrphanListReserve is the room fontChainOrphanMessage keeps, past
+// the chain name, for what the message still has to say. The shortest of those
+// endings is the "%d elements" fallback, and 32 bytes covers that for any id
+// count a document can hold — so reserving it makes the budget below positive
+// for EVERY name fontChainName accepts, which is the whole point.
+const fontChainOrphanListReserve = 32
+
 // fontChainOrphanMessage names the blocking elements in the refusal itself,
 // which is the only place a LIST of ids can go: ComponentCommandError carries
 // one ElementID. The host cuts the message at maxComponentFailureMessageBytes,
 // so a list that would not fit is trimmed here on a whole-id boundary and
 // closed with " and N more" rather than left to be cut mid-id.
 func fontChainOrphanMessage(name string, ids []string) string {
-	prefix := fmt.Sprintf("font chain %q is still named by ", name)
+	// THE NAME IS TRIMMED FIRST, and without this the guarantee above is not
+	// merely weakened but inverted: fontChainName admits a name up to
+	// maxCanvasPropertyString (512), which alone is the whole message width,
+	// so a long-named chain drives the budget below NEGATIVE, every branch
+	// overruns, and the host cuts the message wherever it lands — through the
+	// middle of the name, or of an id, or of a rune. The trim is measured
+	// against the FORMATTED prefix rather than against len(name) because %q
+	// escapes, so a name of quotes or backslashes widens by more than its own
+	// length; it cuts on a rune boundary and marks the cut.
+	label, elision := name, ""
+	prefix := fmt.Sprintf("font chain %q is still named by ", label)
+	for len(prefix) > maxComponentFailureMessageBytes-fontChainOrphanListReserve && label != "" {
+		label, elision = truncateAtRuneBoundary(label, len(label)-1), "…"
+		prefix = fmt.Sprintf("font chain %q is still named by ", label+elision)
+	}
 	budget := maxComponentFailureMessageBytes - len(prefix)
 	more := func(remaining int) string { return fmt.Sprintf(" and %d more", remaining) }
 	list := ""

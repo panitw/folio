@@ -157,7 +157,7 @@ type Fonts map[string][]string
 // across the module at b2fdaa1, and exists so a sixth is never written:
 //   - folio.knownFontFamily      (component_commands.go) — the fontFamily property command
 //   - folio.defaultFontFamily    (component_commands.go) — the chain a new text element adopts
-//   - folio.canvasFontFamilies   (page_setup.go)         — the projected name list
+//   - folio.canvasFontChains     (page_setup.go)         — the projected chain list
 //   - folio.fontChain            (render.go)             — a text element's chain at render
 //   - the table header-style resolver (table_render.go)  — headerStyle.fontFamily at render
 //

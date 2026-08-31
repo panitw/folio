@@ -772,3 +772,47 @@ func TestEngineProjectsTheChainsThemselvesNotOnlyTheirNames(t *testing.T) {
 		t.Fatalf("projected body chain = %#v, want the reordered entries", chains[0].Entries)
 	}
 }
+
+// TestEngineFontChainMoveIsFollowedByTheFolioBytes is the I/O matrix's "Move
+// an entry" row read literally: "`.folio` entry order follows verbatim". The
+// in-memory slice was already asserted, but the slice is not the claim — the
+// claim is about the SERIALIZED document, and the only byte-level chain
+// assertions in this file were the rename round trip (which restores the
+// original bytes, so it cannot see an entry order at all) and the no-op
+// (from:1,to:1, which by construction moves nothing). A real reorder had no
+// byte-level pin anywhere.
+//
+// The expected block is spelled out rather than derived, because deriving it
+// from the same slice the command wrote would assert only that the serializer
+// agrees with itself. writeStringArray preserves the slice order and
+// writeFonts sorts only the KEYS, so this is what canonical form looks like.
+func TestEngineFontChainMoveIsFollowedByTheFolioBytes(t *testing.T) {
+	engine := fontChainEngine(t)
+	before, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	authored := "\"body\": [\n      \"Noto Sans\",\n      \"Noto Sans Thai\"\n    ]"
+	if !bytes.Contains(before, []byte(authored)) {
+		t.Fatalf("fixture precondition: the authored chain order is not in the loaded bytes\n%s", before)
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"moveFontChainEntry","version":1,"name":"body","from":0,"to":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	after, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reordered := "\"body\": [\n      \"Noto Sans Thai\",\n      \"Noto Sans\"\n    ]"
+	if !bytes.Contains(after, []byte(reordered)) {
+		t.Fatalf("the moved entry order did not reach the .folio bytes\n%s", after)
+	}
+	if bytes.Contains(after, []byte(authored)) {
+		t.Fatal("the authored entry order survived the move in the .folio bytes")
+	}
+	// The OTHER chains are untouched, and the keys are still sorted: a move is
+	// an edit to one slice, not a re-emission of the map.
+	if !bytes.Equal(bytes.Replace(after, []byte(reordered), []byte(authored), 1), before) {
+		t.Fatal("a move changed more of the document than the one chain's entry order")
+	}
+}

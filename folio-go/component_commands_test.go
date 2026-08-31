@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/template"
@@ -1144,10 +1146,22 @@ func contentElementByID(tpl *Template, id string) (template.Element, bool) {
 // refusal's document order (pageHeader, content, pageFooter) and its
 // headerStyle arm are both reachable:
 //
-//	body    — named by e2 (pageHeader style), e7 (content style) and
-//	          e9 (content table headerStyle)
+//	body    — named by e2 (pageHeader style), e7 (content style),
+//	          e9 (content table headerStyle) and e11 (pageFooter style)
 //	heading — named by e12 (pageFooter style) only
 //	unused  — named by nothing
+//
+// (Ids are base-36 counters behind the "e", so e11 is 37 and e12 is 38: e11 is
+// the free id below the document's nextId of 39, and e13 — which is 39 — would
+// have collided with it.)
+//
+// e11 EXISTS FOR THE pageFooter ARM, and it is not decoration: measured by
+// deleting Bands.PageFooter.Elements from fontChainBands, the whole folio-go
+// suite stayed green without it — the footer band was walked by nothing any
+// test could see, because the only footer element named a chain nothing ever
+// deleted or renamed. The AC asks the orphaning-delete refusal to name "an
+// element in each of the three bands and a table's headerStyle", and this is
+// the element that makes the third band one of them.
 const fontChainDocJSON = `{
   "assets": {},
   "bands": {
@@ -1157,7 +1171,10 @@ const fontChainDocJSON = `{
         "columns": [{"id": "e10", "label": "Date", "width": 100, "bind": "{{row.a}}"}],
         "headerStyle": {"fontFamily": "body"}}
     ]},
-    "pageFooter": {"elements": [{"id": "e12", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "footer", "style": {"fontFamily": "heading"}}], "height": 20},
+    "pageFooter": {"elements": [
+      {"id": "e12", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "footer", "style": {"fontFamily": "heading"}},
+      {"id": "e11", "type": "text", "x": 120, "y": 0, "width": 100, "height": 20, "value": "page", "style": {"fontFamily": "body"}}
+    ], "height": 20},
     "pageHeader": {"elements": [{"id": "e2", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "header", "style": {"fontFamily": "body"}}], "height": 20}
   },
   "fonts": {"body": ["Noto Sans", "Noto Sans Thai"], "heading": ["Noto Sans"], "unused": ["Noto Sans SC"]},
@@ -1303,9 +1320,9 @@ func TestFontChainRenameCarriesEveryElementNamingIt(t *testing.T) {
 	if got := fontChainOf(t, tpl, "brand"); !reflect.DeepEqual(got, []string{"Noto Sans", "Noto Sans Thai"}) {
 		t.Fatalf("renamed chain = %#v, want the entries carried verbatim", got)
 	}
-	// All four references: three style.fontFamily bearers across the three
-	// bands, and the table's headerStyle.fontFamily.
-	for _, id := range []string{"e2", "e7", "e9"} {
+	// Every reference: a style.fontFamily bearer in each of the three bands,
+	// and the table's headerStyle.fontFamily.
+	for _, id := range []string{"e2", "e7", "e9", "e11"} {
 		if got := fontFamilyOf(t, tpl, id); got != "brand" {
 			t.Errorf("element %s names %q after the rename", id, got)
 		}
@@ -1337,7 +1354,7 @@ func TestFontChainDeleteRemovesAnUnreferencedChain(t *testing.T) {
 // arm of the orphaning-delete refusal, and asserts the document-order id list.
 func TestFontChainDeleteRefusesAChainAnElementStyleNames(t *testing.T) {
 	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"deleteFontChain","version":1,"name":"body"}`)
-	if failure.Message != `font chain "body" is still named by e2, e7, e9` || failure.DataPath != "fonts.body" {
+	if failure.Message != `font chain "body" is still named by e2, e7, e9, e11` || failure.DataPath != "fonts.body" {
 		t.Fatalf("orphaning-delete refusal = %q at %q", failure.Message, failure.DataPath)
 	}
 }
@@ -1348,9 +1365,10 @@ func TestFontChainDeleteRefusesAChainAnElementStyleNames(t *testing.T) {
 // population is exactly the one a style-only test never reaches.
 func TestFontChainDeleteRefusesAChainOnlyAHeaderStyleNames(t *testing.T) {
 	tpl := fontChainTemplate(t)
-	// Move every style.fontFamily off "body" first, leaving the table's
-	// headerStyle as the chain's only remaining reference.
-	fontChainAccepted(t, tpl, `{"kind":"updateComponentProperties","version":1,"ids":["e2","e7"],"changes":{"fontFamily":{"op":"set","value":"heading"}}}`)
+	// Move every style.fontFamily off "body" first — in all three bands,
+	// including the footer's — leaving the table's headerStyle as the chain's
+	// only remaining reference.
+	fontChainAccepted(t, tpl, `{"kind":"updateComponentProperties","version":1,"ids":["e2","e7","e11"],"changes":{"fontFamily":{"op":"set","value":"heading"}}}`)
 	if refs := fontChainReferences(tpl, "body"); !reflect.DeepEqual(refs, []string{"e9"}) {
 		t.Fatalf("references to body = %#v, want the table's headerStyle alone", refs)
 	}
@@ -1509,4 +1527,220 @@ func TestEmptyFontChainIsInvisibleToTheProjectionAndRefusedByTheProperty(t *test
 	// Still deletable: an empty chain a .folio in the wild carries must not
 	// become unreachable to every command at once.
 	fontChainAccepted(t, tpl, `{"kind":"deleteFontChain","version":1,"name":"unused"}`)
+}
+
+// TestFontChainAddRefusesEveryMalformedEntryList covers the addFontChain
+// refusals the matrix names but no test reached: entries absent, entries that
+// are not a string array, an entry that is the empty string, and an entry over
+// the projection's identifier bound. Each is proved by DELETING its guard —
+// the cheapest screen for a subject the suite never reaches at all, which is
+// what every one of these was before this test existed.
+func TestFontChainAddRefusesEveryMalformedEntryList(t *testing.T) {
+	long := strings.Repeat("f", maxCanvasPropertyString+1)
+	for _, probe := range []struct{ command, want string }{
+		// componentFields counts an exact arity, so "entries absent" must
+		// still be four fields: a MISSPELLED key, which is the shape the
+		// mistake actually takes.
+		{`{"kind":"addFontChain","version":1,"name":"caption","faces":["Noto Sans"]}`, "font chain entries are required"},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":"Noto Sans"}`, "font chain entries must be a string array"},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[7]}`, "font chain entries must be a string array"},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans",""]}`, "a font chain entry must be a non-empty string"},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans","` + long + `"]}`, "font chain entry exceeds the projection bound"},
+	} {
+		failure := fontChainRefusal(t, fontChainTemplate(t), probe.command)
+		if failure.Message != probe.want {
+			t.Errorf("refusal = %q, want %q\n  for %s", failure.Message, probe.want, probe.command)
+		}
+		if failure.DataPath != "fonts.caption" {
+			t.Errorf("refusal is located at %q, want fonts.caption\n  for %s", failure.DataPath, probe.command)
+		}
+	}
+}
+
+// TestFontChainRenameRefusesADestinationOverTheProjectionBound is the `to`
+// half of fontChainName's length guard. The `name` half has its own test; this
+// one is the argument a rename-shaped command reaches and an add-shaped one
+// never does.
+func TestFontChainRenameRefusesADestinationOverTheProjectionBound(t *testing.T) {
+	long := strings.Repeat("f", maxCanvasPropertyString+1)
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"renameFontChain","version":1,"name":"body","to":"`+long+`"}`)
+	if failure.Message != "font chain name exceeds the projection bound" {
+		t.Fatalf("over-long destination refusal = %q", failure.Message)
+	}
+	edge := strings.Repeat("f", maxCanvasPropertyString)
+	fontChainAccepted(t, fontChainTemplate(t), `{"kind":"renameFontChain","version":1,"name":"body","to":"`+edge+`"}`)
+}
+
+// TestFontChainRefusalDataPathSurvivesTheHostsCut is the located-ness half of
+// the over-long-name refusal, and the one case where locating the name is the
+// entire point. The host cuts DataPath at maxComponentDataPathBytes and its
+// bounded() slices by BYTES, so a name of multi-byte runes would arrive at the
+// author split through the middle of a character unless it is cut here first.
+func TestFontChainRefusalDataPathSurvivesTheHostsCut(t *testing.T) {
+	// 257 two-byte runes: over maxCanvasPropertyString, so the command refuses
+	// it, and far over the DataPath bound, so the path must be trimmed.
+	long := strings.Repeat("é", maxCanvasPropertyString/2+1)
+	if len(long) <= maxCanvasPropertyString {
+		t.Fatalf("fixture precondition: the name must exceed the identifier bound, got %d bytes", len(long))
+	}
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"`+long+`","entries":["Noto Sans"]}`)
+	if failure.Message != "font chain name exceeds the projection bound" {
+		t.Fatalf("over-long name refusal = %q", failure.Message)
+	}
+	if len(failure.DataPath) > maxComponentDataPathBytes {
+		t.Fatalf("DataPath is %d bytes; the host cuts at %d and would take this one apart itself", len(failure.DataPath), maxComponentDataPathBytes)
+	}
+	if !utf8.ValidString(failure.DataPath) {
+		t.Fatalf("DataPath is not valid UTF-8: %q", failure.DataPath)
+	}
+	if !strings.HasPrefix(failure.DataPath, "fonts.") {
+		t.Fatalf("DataPath = %q, want the fonts.<name> shape even trimmed", failure.DataPath)
+	}
+	// And a name that FITS is not trimmed: the guard must not cost every
+	// ordinary refusal its path.
+	if failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"deleteFontChain","version":1,"name":"missing"}`); failure.DataPath != "fonts.missing" {
+		t.Fatalf("an ordinary refusal lost its path: %q", failure.DataPath)
+	}
+}
+
+// TestFontChainOrphanMessageTrimsOnAWholeIdBoundary tests fontChainOrphanMessage
+// DIRECTLY, because the two delete refusals that reach it in the wild carry
+// lists of about fifty bytes against a five-hundred-byte budget and so take
+// only its fall-through. Its trimming branch, its " and N more" suffix, its
+// whole-id guarantee and its "%d elements" fallback are all reachable — an
+// author can declare hundreds of elements naming one chain — and all four were
+// unexecuted.
+func TestFontChainOrphanMessageTrimsOnAWholeIdBoundary(t *testing.T) {
+	ids := make([]string, 200)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("element-%03d", i)
+	}
+	message := fontChainOrphanMessage("body", ids)
+	if len(message) > maxComponentFailureMessageBytes {
+		t.Fatalf("the message is %d bytes; the host cuts at %d", len(message), maxComponentFailureMessageBytes)
+	}
+	prefix := `font chain "body" is still named by `
+	body, ok := strings.CutPrefix(message, prefix)
+	if !ok {
+		t.Fatalf("message = %q, want the %q shape", message, prefix)
+	}
+	listed, suffix, ok := strings.Cut(body, " and ")
+	if !ok || !strings.HasSuffix(suffix, " more") {
+		t.Fatalf("a trimmed list must close with \" and N more\": %q", message)
+	}
+	remaining, err := strconv.Atoi(strings.TrimSuffix(suffix, " more"))
+	if err != nil {
+		t.Fatalf("the suffix does not carry a count: %q", suffix)
+	}
+	// THE WHOLE-ID GUARANTEE, which is the point of trimming here rather than
+	// letting the host cut: every id named is named in full and in order, and
+	// the count accounts for exactly the ones that were left out.
+	named := strings.Split(listed, ", ")
+	if len(named)+remaining != len(ids) {
+		t.Fatalf("%d ids named plus %d more is not the %d that reference the chain", len(named), remaining, len(ids))
+	}
+	for i, id := range named {
+		if id != ids[i] {
+			t.Fatalf("id %d in the message is %q, want the whole id %q — the trim cut through an id", i, id, ids[i])
+		}
+	}
+	// One more id would have to fit for the trim to be honest about where it
+	// stopped: the message must be at the budget, not arbitrarily short.
+	if len(message)+len(", "+ids[len(named)]) <= maxComponentFailureMessageBytes-len(" and 0 more") {
+		t.Fatalf("the message stopped at %d bytes with room for another id", len(message))
+	}
+}
+
+// TestFontChainOrphanMessageFitsEveryNameTheCommandAccepts is the negative
+// budget. fontChainName admits a name up to maxCanvasPropertyString, which
+// alone exceeds the width the host cuts a message to, so without a trim on the
+// NAME every branch of fontChainOrphanMessage overruns and the host cuts
+// through the middle of it — defeating the whole-id guarantee the function's
+// own doc comment makes. Measured at both the edge and past it, and with
+// multi-byte runes, where the host's byte cut would split a character.
+func TestFontChainOrphanMessageFitsEveryNameTheCommandAccepts(t *testing.T) {
+	for _, probe := range []struct {
+		name  string
+		chain string
+		ids   []string
+	}{
+		{"the longest name the command accepts", strings.Repeat("f", maxCanvasPropertyString), []string{"e2", "e7"}},
+		{"a long name of multi-byte runes", strings.Repeat("é", maxCanvasPropertyString/2), []string{"e2", "e7"}},
+		{"a long name of characters %q escapes", strings.Repeat(`"`, maxCanvasPropertyString), []string{"e2", "e7"}},
+		{"a long name and a long id list", strings.Repeat("f", maxCanvasPropertyString), []string{strings.Repeat("i", 200), strings.Repeat("j", 200)}},
+		{"an ordinary name", "body", []string{"e2", "e7"}},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			message := fontChainOrphanMessage(probe.chain, probe.ids)
+			if len(message) > maxComponentFailureMessageBytes {
+				t.Fatalf("the message is %d bytes; the host cuts at %d and the cut lands inside the name", len(message), maxComponentFailureMessageBytes)
+			}
+			if !utf8.ValidString(message) {
+				t.Fatalf("the message is not valid UTF-8: %q", message)
+			}
+			// Whatever it had to give up, it never gives up the count: an
+			// author told "still named by" and nothing else has been told
+			// nothing.
+			if !strings.Contains(message, "is still named by ") {
+				t.Fatalf("message = %q", message)
+			}
+		})
+	}
+	// The fallback: not even one id fits beside a name this long, and the
+	// count is all that is left to say.
+	message := fontChainOrphanMessage(strings.Repeat("f", maxCanvasPropertyString), []string{strings.Repeat("i", 200), strings.Repeat("j", 200)})
+	if !strings.HasSuffix(message, " 2 elements") {
+		t.Fatalf("message = %q, want the \"%%d elements\" fallback", message)
+	}
+}
+
+// componentFailureHostBounds reads the widths the wasm host actually cuts a
+// ComponentCommandError to, out of the host's own source.
+var componentFailureHostBounds = regexp.MustCompile(`bounded\(componentErr\.(Message|DataPath), (\d+)\)`)
+
+// TestComponentFailureBoundsMatchTheHostsOwnLiterals ties
+// maxComponentFailureMessageBytes and maxComponentDataPathBytes to the numbers
+// they were hand-copied from. This is the one-sided-constant defect this story
+// fixed for maxCanvasFontFamilies on the designer's side of the seam, and it
+// applies here for a reason peculiar to Go: wasm/cmd/engine is
+// //go:build js && wasm, so `go test ./...` never compiles it and no ordinary
+// test can see those literals at all. Reading the source is the mechanism
+// canvas_projection_wire_test.go already uses for engine-protocol.ts, and it
+// is the mechanism available here.
+//
+// If it goes red: the host was retuned and these constants were not, which
+// means a message this module trimmed to fit is now cut again by the host —
+// through the middle of an element id, which is precisely the outcome
+// fontChainOrphanMessage exists to prevent.
+func TestComponentFailureBoundsMatchTheHostsOwnLiterals(t *testing.T) {
+	path := filepath.Join(repoRootFromTest(t), "folio-go", "wasm", "cmd", "engine", "main.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		// Not a skip. The other side of this seam is part of the contract,
+		// and a missing one is a finding, not an excuse.
+		t.Fatalf("read the wasm host: %v", err)
+	}
+	found := map[string]int{}
+	for _, match := range componentFailureHostBounds.FindAllStringSubmatch(string(source), -1) {
+		width, err := strconv.Atoi(match[2])
+		if err != nil {
+			t.Fatalf("host bound %q is not a number", match[2])
+		}
+		found[match[1]] = width
+	}
+	for _, pair := range []struct {
+		field string
+		here  int
+	}{
+		{"Message", maxComponentFailureMessageBytes},
+		{"DataPath", maxComponentDataPathBytes},
+	} {
+		width, ok := found[pair.field]
+		if !ok {
+			t.Fatalf("the host no longer bounds componentErr.%s where this test can read it; if engineFailure was restructured, re-derive this extraction rather than deleting the check", pair.field)
+		}
+		if width != pair.here {
+			t.Errorf("the host cuts componentErr.%s at %d and this module trims to %d — one side of the seam moved and the other did not", pair.field, width, pair.here)
+		}
+	}
 }

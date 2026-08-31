@@ -442,12 +442,14 @@ type CanvasFontChain struct {
 	Entries []string `json:"entries"`
 }
 
-// canvasFontFamilies is the projection of the document's declared chains:
-// exactly the names knownFontFamily accepts, in sorted order. It asks
-// template.Fonts.Chain the question rather than re-implementing it — the
-// comment here used to claim the list was "exactly the names knownFontFamily
-// accepts" while spelling the test out again three lines later, which is the
-// drift this single authority removes.
+// canvasFontChains is the projection of the document's declared chains, in
+// sorted key order: every chain template.Fonts.Chain accepts — declared AND
+// non-empty — and no other. It ASKS Fonts.Chain that question rather than
+// re-implementing it, which is what makes the sentence above a description of
+// the code instead of a second copy of it. The comment this replaced named a
+// different function as the authority ("exactly the names knownFontFamily
+// accepts") while spelling the test out again three lines later; naming a
+// caller rather than the rule is exactly how that drift started.
 func canvasFontChains(t *Template) ([]CanvasFontChain, error) {
 	chains := make([]CanvasFontChain, 0, len(t.doc.Fonts))
 	// slices.Sorted(maps.Keys(...)) is the module's one way to walk a map:

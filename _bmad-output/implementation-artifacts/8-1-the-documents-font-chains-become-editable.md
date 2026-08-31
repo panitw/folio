@@ -2,13 +2,73 @@
 title: "Story 8.1: The document's font chains become editable"
 type: 'feature'
 created: '2026-08-31'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'b119831059cce3ddfa362f4122d1e48bb18a6e79'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      A pre-existing .folio declaring a chain with more than 64 entries, or a face name over 512
+      bytes, now fails to open at all rather than merely being uneditable.
+    evidence: |-
+      canvasFontChains' two new refusals (page_setup.go:463 and :467) run inside
+      CanvasWithTextPaint, which Engine.load calls at wasm/engine.go:119, so the error surfaces
+      from Load. decodeFonts (internal/template/parse.go:313) bounds neither entry count nor face
+      length, and render.go's fontChain never counted entries, so such a document parsed and
+      rendered before this story. The bound itself was directed by the spec's Task 6 and mirrors
+      the pre-existing canvasFontFamilies shape, so it is not a defect; the compatibility
+      narrowing is simply unrecorded and has no matrix row.
+    location: >-
+      folio-go/page_setup.go:463
+    severity: medium
+  - summary: >-
+      Go sorts projected chain names by byte order while the browser guard checks strict ascending
+      order in UTF-16 code units; the two disagree on names mixing astral-plane and U+E000-U+FFFF
+      characters, which drops the whole snapshot and blanks the canvas.
+    evidence: |-
+      engine-protocol.ts's sorted/unique check predates this story and already applied to
+      fontFamilies, so the mismatch is pre-existing rather than caused here. This story does make
+      it newly reachable through the Go command API, but the designer sends no chain command until
+      Story 8.2, so it is not reachable through the product yet.
+    location: >-
+      folio-designer/src/engine-protocol.ts
+    severity: medium
+  - summary: >-
+      The wasm host boundary has no test that dispatches a font-chain command, so the refusal
+      messages are specified at the host wire and measured one layer below it.
+    evidence: |-
+      folio-go/wasm/cmd/engine is //go:build js && wasm, so go test ./... never compiles it and no
+      CI job executes its host-boundary assertions. Its own sibling test states the hazard
+      verbatim: "Every Go-side assertion would still have been green." The package's dormancy is a
+      standing deferred item, not introduced here; P11 added a source-reading tripwire tying the
+      two bound literals, which is the most a compiled test can currently reach.
+    location: >-
+      folio-go/wasm/cmd/engine/main.go:236
+    severity: medium
+  - summary: >-
+      FR52's chain-level (key) reorder is delivered by no story in Epic 8 and is not expressible in
+      the .folio format.
+    evidence: |-
+      Design Notes R1 rules this out against four independent authorities (AD-9's sorted-keys rule,
+      folio-format.md:390's "no authored key order" as D-4.1.1's discharged debt, format-changes.md's
+      Unchanged Order row, and D-R7.9 placing the epic's format change at 8.3). This story delivers
+      entry-level reordering, which the format does store. Recorded here because the epic text still
+      promises the chain-level form.
+    location: >-
+      _bmad-output/planning-artifacts/epics.md:113
+    severity: low
+  - summary: >-
+      Index refusals reach the author without the "folio:" prefix every sibling refusal carries.
+    evidence: |-
+      fontChainIndex passes commandInt's error through verbatim, and commandInt
+      (component_commands.go:509) - unlike commandString - does not prefix its messages. An author
+      sees "index must be an integer" beside "folio: name must be a non-empty string". The
+      inconsistency lives in commandInt and predates this story.
+    location: >-
+      folio-go/component_commands.go:509
+    severity: low
 ---
 
 <intent-contract>
@@ -132,6 +192,28 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-08-31 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 12: (high 1, medium 5, low 6)
+- defer: 5: (high 0, medium 3, low 2)
+- reject: 8: (high 0, medium 0, low 8)
+- addressed_findings:
+  - `[high]` `[patch]` The pageFooter arm of `fontChainReferences` was entirely unmeasured. Measured, not inferred: dropping `t.doc.Bands.PageFooter.Elements` from `fontChainBands` left the whole folio-go suite green but for the mandated permanent red, while the AC demands the delete refusal name an element in each of the three bands plus the `headerStyle` bearer. The fixture gained a pageFooter element naming the chain under test; the refusal now names `e2, e7, e9, e11` in document order, and the same mutation now reddens `TestFontChainRenameCarriesEveryElementNamingIt` and `TestFontChainDeleteRefusesAChainAnElementStyleNames`.
+  - `[medium]` `[patch]` `fontChainOrphanMessage` had zero tests: its trimming branch, its `" and N more"` suffix, its whole-id-boundary guarantee and its `"%d elements"` fallback were all unexecuted, both delete tests being ~55 bytes against a ~477-byte budget. Added `TestFontChainOrphanMessageTrimsOnAWholeIdBoundary` and `TestFontChainOrphanMessageFitsEveryNameTheCommandAccepts`.
+  - `[medium]` `[patch]` `fontChainOrphanMessage`'s budget could go negative and defeat its own doc comment: `fontChainName` admits a name up to 512 bytes while the prefix is roughly `len(name)+28`, so every branch overran the host's 512-byte cut and the message was cut mid-name. The name is now trimmed first, on a rune boundary, measured against the formatted prefix so `%q` escaping cannot defeat it.
+  - `[medium]` `[patch]` The projection's two new refusals (entry count, face length) were never exercised on a loaded document — both `if` blocks were deletable with every Go test still green, and without them an over-long chain reaches the wire, `isCanvas` returns false and the canvas blanks with nothing to attribute it to. Added `TestCanvasFontChainEntryCountIsBoundedOnALoadedDocument` on a document parsed from bytes, and a `fonts chain entry` row to the identifier-bounds table.
+  - `[medium]` `[patch]` Several reachable refusal branches had no test, against the AC that each new refusal be proved by deleting its guard: `entries` absent, `entries` not a string array, an empty-string entry, an entry over the bound, and a rename destination over the name bound. Added `TestFontChainAddRefusesEveryMalformedEntryList` and `TestFontChainRenameRefusesADestinationOverTheProjectionBound`.
+  - `[medium]` `[patch]` Nothing tied `CanvasFontChain`'s JSON tags to the browser's `hasExactKeys(chain, ['name', 'entries'])`. `fontChains` is the first nested object the projection has gained, so a new Go field would make `isCanvas` false and blank the canvas — verbatim the failure `canvas_projection_wire_test.go` exists to prevent. The recorded-key tripwire now covers the nested chain object on both sides.
+  - `[low]` `[patch]` Dangling doc references to `canvasFontFamilies`, a function this story renamed out of existence, at `internal/template/model.go:160` and `page_setup.go:445` (plus two further stale mentions the patch pass found). Corrected.
+  - `[low]` `[patch]` The matrix row for "Move an entry" expects `.folio` entry order to follow verbatim, but the test asserted the in-memory slice only; the sole byte-level assertions were the rename round trip and a no-op move. Added `TestEngineFontChainMoveIsFollowedByTheFolioBytes`.
+  - `[low]` `[patch]` A TypeScript assertion conflated two conditions — `fontChains: [], fontFamilies: [], extraProjectionKey: 1` is rejected by the extra key alone — and the positive zero-chain case was missing, though `component-asset-import` and `image-embed` both declare `"fonts": {}`. Split, and the positive case added.
+  - `[low]` `[patch]` The host bounds `DataPath` at 256 while `fontChainPath` built `"fonts." + name` for names up to 512, so the over-long-name refusal — the one case where locating the name is the whole point — arrived truncated, and `bounded` slices by bytes so it could split a rune. `fontChainPath` now cuts at `maxComponentDataPathBytes` on a rune boundary.
+  - `[low]` `[patch]` `maxComponentFailureMessageBytes = 512` hand-copied the host's literal with nothing tying the two — the same one-sided-constant defect this story fixed for `maxCanvasFontFamilies`. `TestComponentFailureBoundsMatchTheHostsOwnLiterals` now reads `wasm/cmd/engine/main.go`, which no compiled test can see.
+  - `[low]` `[patch]` `canvasFontChains`' comment still asserted the list was "exactly the names knownFontFamily accepts" — the drift the spec's Task 2 called out. It now states what the code does: it asks `Fonts.Chain`, declared and non-empty.
+
+**Rejected, with the authority each was tested against.** (1) No replace/set-entry command — a vocabulary expansion the intent does not ask for and Story 8.2's ground. (2) No TypeScript command builders — the intent's "Never" limits TS changes to the protocol contract. (3) Duplicate entries in a chain are accepted — consistent with the format's standing FontSet tolerance (`render.go:1163-1177`); the intent requires no dedup. (4) `addFontChain`'s nil-map guard is unreachable because `parse.go:128` always sets `Fonts{}` — harmless defensive code. (5) `addFontChain` counts raw keys rather than projectable chains — "declares" is a defensible reading of the matrix row, and refusing marginally early is the safe direction. (6) Two engine assertions are coupled to serializer text shape — brittle, but deliberately byte-level and passing. (7) `maxCanvasFontChainEntries` is declared in `component_commands.go` rather than beside `maxCanvasFontFamilies` — file placement only; the mirror pair locates it. (8) `engine-bounds-mirror.test.ts` was called out of TS scope — the spec's Task 8 directs that change explicitly.
+
 ## Design Notes
 
 **R1 — "Reorder" is entry-level, and the epic text overpromises. RULED; do not re-open.** FR52 (`epics.md:113`) says "Create, rename, reorder and delete the document's font chains **and their entries**", and AC1 (`:2716`) says "a chain added, renamed, reordered". Chain-*key* reordering is not expressible: `Fonts` is a Go map with no stored order, `writeFonts` sorts, and four independent authorities forbid adding one here — AD-9's Rule says `.folio` has one legal serialization with "object keys sorted"; `folio-format.md:390` states there is no authored key order, as D-4.1.1's discharged debt; `format-changes.md`'s `fonts` table lists the epic's format changes and its Order row reads "Unchanged"; and D-R7.9 places the epic's format change at 8.3. So "reorder" here is reordering a chain's **entries**, which the `[]string` already carries. **FR52's chain-level reorder is delivered by no story in Epic 8 and is not expressible in the format** — reported, not resolved.
@@ -177,16 +259,76 @@ deferred: []
 
 ## Auto Run Result
 
-Status: ready-for-dev
+Status: done
 Blocking condition: none
 
-Halted after planning, as the dispatch directed. The spec was written and no implementation code
-was produced. Baseline `b2fdaa16b14e1cfa5b6916bd66e017e1a52958ad` on `main`; working tree clean at
-dispatch. No commit was created — the workflow's plan halt has no commit step, so the spec is left
-untracked for the orchestrator's plan gate, alongside the workflow's own step-1 recompilation of
-`epic-8-context.md` (its cache was stale: `epics.md` and `ARCHITECTURE-SPINE.md` are both newer).
+**Implemented change.** The `.folio` document's `fonts` map became writable. Six new command kinds
+— `addFontChain`, `renameFontChain`, `deleteFontChain`, `addFontChainEntry`, `moveFontChainEntry`,
+`removeFontChainEntry` — join the versioned vocabulary `ApplyComponentCommand` dispatches, each
+reached through `wasm.Engine.Apply`, whose single `pushUndo` makes every edit one history entry by
+construction. A rename rewrites **both** attachment points — `Element.Style.FontFamily` and
+`TableExt.HeaderStyle.FontFamily` — across all three bands inside the one handler, so one undo
+restores the map and the elements together. The refusals are the substance: a duplicate name, an
+orphaning delete, an empty chain, an out-of-range index and the two projection bounds are each
+refused as a `componentFailure` with `ElementID: ""` and `DataPath: "fonts.<name>"`.
 
-No intent gap. Five forks surfaced during investigation and each was ruled by a principle stated in
-the intent or the architecture, with the selector cited in Design Notes R1–R7. No diagnostic
-registry code is minted. No golden digest is affected: all 22 stay byte-identical, and the story
-owes neither a new fixture nor a new matrix obligation.
+The story also created the single authority the dispatch assumed already existed. "Declared **and**
+non-empty" had been open-coded five times; `template.Fonts.Chain(name) ([]string, bool)` is now the
+one rule, and all five sites route through it. No `.folio` format change, no authored key order, no
+new fixture, no new matrix obligation, and **nothing minted in the diagnostic registry** — Design
+Notes R3 held on all three measurements.
+
+**Files changed.**
+- `folio-go/internal/template/model.go` — `Fonts.Chain`, the single authority, doc-commented with the five copies it replaces.
+- `folio-go/component_commands.go` — six command arms, `applyFontChainCommand`, `fontChainReferences` (both attachment points, three bands, document order), `fontChainOrphanMessage` (whole-id trimming under the host's 512-byte cut), `fontChainPath` (rune-safe under the host's 256-byte `DataPath` cut).
+- `folio-go/page_setup.go` — `CanvasFontChain`, `CanvasProjection.FontChains`, `canvasFontChains`; `FontFamilies` now derived from it, so `FontChains[i].Name == FontFamilies[i]` holds by construction.
+- `folio-go/render.go`, `folio-go/table_render.go` — routed through `Fonts.Chain`, own message text kept.
+- `folio-designer/src/engine-protocol.ts` — `fontChains` on the type, in `isCanvas`'s `hasOnly` list, and validated against `fontFamilies`; `MAX_ENGINE_FONT_CHAIN_ENTRIES`.
+- `folio-go/canvas_projection_wire_test.go` — the cross-language key tripwire, extended to the first nested projection object.
+- `folio-go/component_commands_test.go`, `folio-go/wasm/engine_test.go`, `folio-go/canvas_body_text_bounds_test.go`, `folio-designer/src/{engine-protocol,engine-bounds-mirror,App,DataPanel,sheet-stack}.test.*` — coverage and the fixtures the new required projection field breaks.
+- `folio-designer/src/App.tsx` is untouched; no chain-editor panel was built.
+
+**Review findings breakdown.** 12 patches applied (1 high, 5 medium, 6 low); 5 items deferred; 8
+rejected; 0 intent gaps and 0 bad-spec loopbacks, so `review_loop_iteration` stays 0. The high
+finding is the one worth carrying forward: the pageFooter arm of `fontChainReferences` was
+completely unmeasured, and the whole band could be deleted with the suite green — the AC's
+"an element in each of the three bands" was asserted by no test until this pass.
+
+**Follow-up review recommendation: true.** Patched counts by severity: high 1, medium 5, low 6. A
+high-severity patched finding alone sets it; the score is also 3x5 + 1x6 = 21, well past 5.
+
+**Verification performed** (measured, re-run independently of the implementing subagent):
+- `cd folio-go && go test -count=1 ./...` — 1675 pass, 5 skip, exactly ONE distinct red: `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest (got 7, need >=20), the mandated permanent red. 13 packages ok, 1 failed. Baseline before the story was 1661 pass with the same single red.
+- `go vet -tags=matrix ./...` — clean, exit 0. `gofmt -l folio-go` from the repo root — no output.
+- Matrix, four legs each with `FOLIO_MATRIX_TARGET` exported: `darwin/arm64` ok 1.10s, `linux/amd64` ok 6.56s, `linux/arm64` ok 5.04s, `js/wasm` ok 10.96s — every leg printing real per-fixture digests. **Unset control**: passes in 0.00s and logs "this test asserts NOTHING and is a deliberate no-op", proving the four legs are not no-ops.
+- `TestCrossTargetByteIdentity` ok 22.59s; `TestThaiStackedMarksSemanticSignOffIsRecorded` ok 0.39s.
+- `cd lint && go test -count=1 ./...` — 4 packages ok (`genmanifest`, `licence`, `manifest`, `rules`). `-count=1` used throughout, per D-7.9.5.
+- `cd folio-designer` — typecheck exit 0; lint exactly 4 pre-existing `only-export-components` warnings; `npm test` 34 files / 285 tests all passing (284 at baseline); `test:e2e:compile` exit 0.
+- `shasum -a 256 fixtures/*/expected.pdf` — 22 lines, `diff` against a baseline captured **before any edit** is empty. Both human attestations (`fixtures/statement-signoff.json`, `fixtures/thai-stacked-marks/signoff.json`) have zero diff; `byte_neutrality_test.go` has zero diff, so no line was added to `goldenDigestRecord` or `declaredEpic2GateObligations`.
+- `README.md` untouched: md5 `078d7d80d518d54af2fc04fb270d46b8`, 8470 bytes.
+- `TestShippedFacesReproduceFromUpstream` did not run — it is reached only by a full `-tags=matrix` suite run, which the Verification section does not call for. No environmental failure is folded into any count.
+
+**Mutation proofs.** Independently re-run rather than taken on report, and each mutation confirmed
+to land before its result was believed — one candidate mutation aborted on an occurrence-count
+assertion when a second, pre-existing `PageFooter.Elements` site (`assetKeyReferenced`) appeared,
+and was redone by line number. Both arms of `fontChainReferences` were proved in both directions:
+deleting the `style` arm reddens the style test while the headerStyle-only test stays green, and
+deleting the `headerStyle` arm reddens the headerStyle-only test with the population vanishing
+entirely. Deleting the whole pageFooter band was green before this review pass and now reddens two
+named tests. `isCanvas`'s new key was proved both ways — removing `fontChains` from the `hasOnly`
+list reddens 14 protocol tests, and tolerating a missing `fontChains` reddens the chain guard test.
+`Fonts.Chain`'s non-empty half, deleted, reddens `TestEmptyFontChainIsInvisibleToTheProjectionAndRefusedByTheProperty`
+with "Fonts.Chain accepted an empty chain". Each new refusal guard, deleted one at a time, reddens
+exactly one specifically named test.
+
+**Residual risks.** The five deferred items carry the real ones. The sharpest is that this story's
+new per-chain entry bound is enforced at projection time, and `Engine.Load` projects — so a
+pre-existing `.folio` with a chain over 64 entries, or a face name over 512 bytes, now fails to
+open rather than merely being uneditable. The bound was directed by Task 6 and mirrors the
+pre-existing `canvasFontFamilies` shape, so it is recorded rather than reversed. Second, the
+refusal messages are specified at the wasm host wire but measured one layer below it, because
+`folio-go/wasm/cmd/engine` is `//go:build js && wasm` and no compiled test can reach it; P11's
+source-reading tripwire ties the two bound literals, which is the most that surface currently
+allows. Third, `maxCanvasFontChainEntries = 64` is a number this story invented; nothing in the
+repo declares more than 3 entries, so nothing existing is affected, but an embedding story may want
+to revisit it.
