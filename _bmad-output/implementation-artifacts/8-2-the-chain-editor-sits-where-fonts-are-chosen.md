@@ -26,8 +26,9 @@ sorts by bytes — which, once an author can name a chain, terminates the engine
 canvas from two keystrokes.
 
 **Approach:** Add an inline chain-editor section to the typography panel that sends the six existing
-commands and re-projects; introduce one shared command-JSON authority and route every designer command
-encoder through it; and correct the projection guard's ordering to Go's. The engine remains the sole
+commands and re-projects; fix `quote()` in `component-property-command.ts` so it escapes the whole of
+U+0000-U+001F rather than five characters; and correct the projection guard's ordering to Go's. **The
+shared command-JSON authority and the numeric splice are Story 15.2a's, not this story's** (D-8.2.6). The engine remains the sole
 owner of the document and of every rule: the panel dispatches, displays the engine's own refusal text
 verbatim, and holds no model, no validation and no copy of any refusal rule.
 
@@ -47,7 +48,9 @@ verbatim, and holds no model, no validation and no copy of any refusal rule.
   says.
 - **AD-22/AD-21 — all 22 golden digests unmoved.** This story changes no Go file, so byte identity holds
   by construction; it is still measured, not assumed.
-- Every command payload is produced by one shared encoder that uses `JSON.stringify` for every value.
+- The six chain-editor commands encode every value with `JSON.stringify`, and `quote()` in
+  `component-property-command.ts` is routed through `JSON.stringify` so it escapes all of U+0000-U+001F.
+  **No other encoder is touched and no shared authority is built here** (D-8.2.5, D-8.2.6).
 - Existing property-panel conventions are followed rather than re-invented: `role="alert"` +
   `aria-invalid` + `aria-errormessage` at the control, accessible names on every icon-only control,
   keyboard operability for reordering (UX-DR25).
@@ -206,21 +209,13 @@ verbatim, and holds no model, no validation and no copy of any refusal rule.
 
 **Execution:**
 
-1. `folio-designer/src/command-json.ts` (new) — create the **single command-JSON authority**: a `quote`
-   built on `JSON.stringify`, and a numeric encoder that returns a discriminated refusal (not a spliced
-   string) when the author's text is not a finite number. Doc-comment it with the measured population it
-   replaces: five encoders, three different escaping answers, two unquoted-number splices. Per D-8.1.3 this
-   authority is **created**, not found.
-2. `folio-designer/src/component-property-command.ts` — route `quote` and the 11 numeric fields through
-   Task 1's module; `rawNumberLiteral`'s verbatim splice is replaced by the validating encoder, so an
-   unparseable entry is refused at the field before any bytes are built (this is what DW-32 asks for).
-   Preserve the deliberate property documented at `:8-16` — Go alone decides the unit — by re-emitting the
-   parsed number, not by reformatting it.
-3. `folio-designer/src/page-setup-command.ts` — same substitution at `:6-7`. Unnamed by DW-32 and carrying
-   the identical defect; leaving it makes Task 1's authority not sole.
-4. `folio-designer/src/component-command.ts`, `folio-designer/src/component-asset-command.ts`,
-   `folio-designer/src/table-column-command.ts` — route their three escapers through Task 1's module and
-   delete the two byte-identical hand-rolled copies.
+1. `folio-designer/src/component-property-command.ts` — route `quote()` (`:41`) through
+   `JSON.stringify`. **One line.** It escapes `\`, `"`, `\n`, `\r`, `\t` and nothing else, while JSON
+   requires all of U+0000-U+001F, so a chain name carrying any other control character produces invalid
+   JSON that Go rejects generically instead of naming the field. **Leave `rawNumberLiteral` untouched, and
+   leave the other four encoders untouched** — the consolidation and the numeric splice are Story 15.2a's
+   (D-8.2.6), which must re-read this file rather than assume its earlier shape.
+
 5. `folio-designer/src/font-chain-command.ts` (new) — six builders for the six kinds, using Task 1's
    encoder for every value: `addFontChain{name, entries[]}`, `renameFontChain{name, to}`,
    `deleteFontChain{name}`, `addFontChainEntry{name, index, face}`, `moveFontChainEntry{name, from, to}`,
@@ -270,8 +265,9 @@ verbatim, and holds no model, no validation and no copy of any refusal rule.
 14. `folio-designer/e2e/component-properties.spec.ts` — extend the compile-only witness to exercise the
     editor's controls, and confirm `browser-native-roundtrip.spec.ts:84`'s `'Font family'` accessible name
     is unchanged. State in the spec's own header that this is compiled, never executed.
-15. `_bmad-output/implementation-artifacts/deferred-work.md` — at the story's close: mark **DW-32** and
-    **DW-70** CLOSED with the closing revision; amend **DW-35** with the measured name-mapping obstacle and
+15. `_bmad-output/implementation-artifacts/deferred-work.md` — at the story's close: mark **DW-70**
+    CLOSED with the closing revision. **DW-32 is NOT closed by this story** — it is Story 15.2a's, and its
+    severity re-rating to HIGH and the injection mechanism behind it are recorded there; amend **DW-35** with the measured name-mapping obstacle and
     the corrected owner recommendation (Story 8.4, whose AC4 is DW-35 stated as an acceptance criterion);
     file the two new findings recorded in Design Notes N4 and N5.
 
@@ -287,8 +283,9 @@ verbatim, and holds no model, no validation and no copy of any refusal rule.
   control that dispatched it, with `role="alert"` and `aria-errormessage` wired.
 - Given Task 9's prohibition, when any of the seven refusal-vocabulary literals is added to `src/**`, then
   the contract test goes red — proved by adding one, not inferred.
-- Given the shared encoder, when each of the six chain builders and each existing encoder is fed a value
-  containing `"`, `\` and `\u0001`, then every produced payload is valid JSON — proved per builder.
+- Given the six chain builders and `quote()`, when each is fed a value containing `"`, `\` and a C0
+  control **other than the five `quote()` already handled**, then every produced payload is valid JSON —
+  proved per builder. **The other four encoders are out of scope and are not exercised here.**
 - Given `fontChains` containing `\uE000` before `\u{1F600}`, when `parseInbound` runs, then it returns a
   snapshot rather than `undefined`, and the worker is not terminated.
 - Given the whole change, when `shasum -a 256 fixtures/*/expected.pdf` is run, then it prints **22** lines
@@ -459,11 +456,10 @@ Capture `shasum -a 256 fixtures/*/expected.pdf > /tmp/digests-baseline.txt` **be
   literals to a source file.
 - Restore the UTF-16 comparator at `engine-protocol.ts:226` and confirm the DW-70 acceptance case goes red;
   then confirm a genuinely out-of-order pair is still rejected. Both directions, per D-7.9.6's rule.
-- Restore `rawNumberLiteral`'s verbatim splice and confirm the `a"b\c` and injection cases go red.
-- **The departed population, re-asserted.** Task 1 moves escaping out of four local encoders into one. For
-  each caller, re-point its existing test at a member still in scope **and** assert the departed population
-  under its new treatment: the two complete hand-rolled escapers must still escape lone surrogates and C0
-  controls after routing through `JSON.stringify`.
+- Restore `quote()`'s five-character escape table and confirm the C0-control case goes red. **The
+  departed population, re-asserted:** the five characters `quote()` already handled, plus lone surrogates,
+  must still escape correctly after routing through `JSON.stringify` — the fix widens what is escaped and
+  must not narrow it.
 - The panel's re-projection is proved by supplying a snapshot whose value differs from what the test typed
   and asserting the **snapshot's** value renders — a test that types and reads back the same string cannot
   distinguish re-projection from a local model.
@@ -497,13 +493,107 @@ own step 1 regenerated `_bmad-output/implementation-artifacts/epic-8-context.md`
 stale against `epics.md`); that modification is left uncommitted for the orchestrator.
 
 Warnings: `oversized` (the spec is ~5,300 words against the template's 900-1600 token target; the Code Map
-and Design Notes carry the measured investigation this gate was asked for) and `multiple-goals` (the chain
-editor, the shared command-JSON authority closing DW-32, and the projection-guard ordering closing DW-70
-are three independently shippable goals, all re-owned to this story by the deferred register; not split,
-per the workflow's own rule).
+and Design Notes carry the measured investigation this gate was asked for) and `multiple-goals`, which was
+**RESOLVED BY SPLITTING, 2026-08-31 (D-8.2.6)**. The gate identified three independently shippable goals:
+the chain editor, the shared command-JSON authority closing DW-32, and the projection-guard ordering
+closing DW-70. **DW-32 split out to Story 15.2a**, in Epic 15 before the tag, because its subject is
+command encoding rather than font chains and it is reachable today without any of this story. **DW-70
+stayed** as a precondition — this story is what makes it reachable, and shipping the editor without it
+ships a feature whose second keystroke terminates the worker. A **minimal** `quote()` fix stayed with it,
+on the same test, and **must not grow into the consolidation**.
 
 Dispositions ruled at this gate, with grounds recorded in Design Notes: AC3's positive half is
 unsatisfiable before Story 8.3 and is delivered as a forward-compatible display rule (N2); DW-35 does not
 close here and its stated placement ground is falsified (N3); DW-32 closes here, understated in the
 register and raised to HIGH (N4); DW-70 becomes fully reachable and closes here (N5 iv). No intent gap was
 found.
+
+---
+
+### Auto Run Result — dispatch 2 (implementation), 2026-08-31
+
+Status: blocked
+Blocking condition: `intent contract contradicts itself on DW-32 scope; an acceptance criterion requires the excluded work`
+
+Dispatched at HEAD `f4e88863071358a6f69f6e026b89cf1019fa3697` on `main`, tree clean, spec at
+`ready-for-dev`, directive "do not halt after planning". **No implementation subagent was launched. No
+file under `folio-designer/`, `folio-go/` or `lint/` was written, no code was produced, nothing was
+committed.** The only file modified by this dispatch is this spec: its `status` frontmatter and this
+block.
+
+**Why the run stopped before step-03's implementation handoff.**
+
+The `<intent-contract>` block both mandates and forbids the DW-32 consolidation, in three passages that
+cannot all be honoured:
+
+- **Line 29 (Intent -> Approach), mandates it:** "...introduce one shared command-JSON authority and
+  route every designer command encoder through it..."
+- **Line 50 (Boundaries & Constraints -> Always), mandates it:** "Every command payload is produced by
+  one shared encoder that uses `JSON.stringify` for every value."
+- **Lines 81-84 (Boundaries & Constraints -> SCOPE SETTLED 2026-08-31, D-8.2.4 ... D-8.2.7), forbids
+  it:** "**DW-32 IS OUT OF SCOPE — it is Story 15.2a** ... Do **not** build the shared command-JSON
+  authority, do **not** touch `rawNumberLiteral`, and do **not** consolidate the five encoders. **HALT if
+  an AC seems to require any of it.**"
+
+The halt is therefore the contract's own instruction rather than a builder's judgement call, and its
+stated trigger condition is met. **Line 290 is an acceptance criterion that requires the excluded work:**
+
+> "Given the shared encoder, when each of the six chain builders **and each existing encoder** is fed a
+> value containing `"`, `\` and `U+0001`, then every produced payload is valid JSON — proved per builder."
+
+Five further passages outside the contract are derived from the mandating half and are equally
+unsatisfiable under the settled scope:
+
+- **Task 1** (line 209) — create `folio-designer/src/command-json.ts`, "the **single command-JSON
+  authority**".
+- **Task 2** (lines 214-218) — "`rawNumberLiteral`'s verbatim splice is replaced by the validating
+  encoder". The settled scope forbids touching `rawNumberLiteral` and limits this file to `quote()`.
+- **Tasks 3-4** (lines 219-223) — route `page-setup-command.ts`, `component-command.ts`,
+  `component-asset-command.ts` and `table-column-command.ts` through Task 1's module and "delete the two
+  byte-identical hand-rolled copies". This is the consolidation of the five encoders, by name.
+- **Task 15** (line 273) — mark **DW-32** CLOSED with the closing revision.
+- **`## Verification` -> Mutation proofs** (lines 462, 464-467) — "Restore `rawNumberLiteral`'s verbatim
+  splice and confirm the `a\"b\\c` and injection cases go red", and "The departed population,
+  re-asserted. Task 1 moves escaping out of four local encoders into one." Neither mutation has a site to
+  act on if the consolidation is not built.
+
+**Why this could not be worked around inside the workflow.** Step-03 requires the implementation handoff
+to be passed **verbatim** — "the spec is the subagent's sole source of truth" — and explicitly forbids
+adding "parent-authored goal restatements, file lists, ownership boundaries, or acceptance criteria" to
+it. There is consequently no sanctioned lever by which a subagent reading this spec would build the
+minimal `quote()` fix instead of Task 1's authority: it would read Tasks 1-4 and build exactly the three
+things D-8.2.4 ... D-8.2.7 forbid. Narrowing the scope silently would also leave step-04 reviewing an
+implementation against an AC and two mutation proofs that implementation cannot satisfy, and would put a
+story into history whose recorded acceptance does not match its code.
+
+**What must change before re-dispatch.** All of it is the orchestrator's to amend; `<intent-contract>` is
+read-only to this workflow.
+
+> **AMENDED 2026-08-31 — all seven items below are DISCHARGED.** The contradiction was the
+> orchestrator's: a scope block settling D-8.2.4…D-8.2.7 was appended to a contract whose Approach,
+> Always bullet, one AC, Tasks 1–4, Task 15 and two mutation proofs had all been written under the
+> opposite assumption. **The halt was correct and is the reason nothing was built against a
+> self-contradicting contract.** This block is retained as the record of it rather than deleted.
+
+1. **Line 29** — strike the shared-authority clause from the Approach, so it reads as the chain editor,
+   DW-70, and the minimal `quote()` fix.
+2. **Line 50** — restate the Always bullet minimally: the values the **chain-editor** commands encode are
+   produced with `JSON.stringify`, and `quote()` in `component-property-command.ts` is routed through
+   `JSON.stringify`. Drop "one shared encoder" and "every command payload".
+3. **Line 290** — re-scope the AC to the six chain builders plus `quote()`, dropping "and each existing
+   encoder".
+4. **Tasks 1-4** — replace with one task: route `component-property-command.ts:41` `quote()` through
+   `JSON.stringify`, one line, leaving `rawNumberLiteral` and the other four encoders untouched.
+5. **Task 15** — DW-32 is **not** closed by this story; it is Story 15.2a. DW-70 still closes here. Design
+   Note N4's "Raise DW-32 to HIGH at close" and its framing ("the authority is created (Task 1) and that
+   is a real change in this story's size") should be re-pointed at 15.2a. The severity re-rating is
+   evidence worth keeping wherever it lands.
+6. **Mutation proofs** — drop the `rawNumberLiteral` restoration and the "departed population" proof.
+   Replace with the control-character assertion on `quote()` (a C0 control other than the five it already
+   handled) plus lone-surrogate and five-original-character re-assertions on `quote()` alone.
+7. Reset `status` to `ready-for-dev`, or step-01 of the next dispatch halts on `blocked spec supplied`
+   before implementation restarts.
+
+Nothing else in the spec is implicated. The chain editor (Tasks 5, 7, 8, 9, 11, 13, 14), DW-70 (Tasks 6,
+12), the 22-digest baseline, the anti-pre-emption assertions and the discriminating re-projection proof
+are all coherent with the settled scope and were not disturbed by this halt.
