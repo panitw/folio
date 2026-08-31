@@ -1892,3 +1892,135 @@ checklist-as-owner failure in this run.
 
 Recorded in DW-28 itself as evidence rather than deleted, so the next reader sees the failure mode
 and not just the correction.
+
+## Story 7.9 halted on its own block condition — three rulings, and an escalation withdrawn (2026-08-31)
+
+Story 7.9's build dispatch halted `blocked` / `grouping case the canvas cannot know`, which is the
+`Block If` D-7.7.6 asked for, firing exactly as designed. **No fourth cause was added**, the
+implementation was otherwise correct and mutation-proved, and commit `6a31a7f` was **retained**
+rather than reverted — the block condition prescribed a halt and a return to the lead, not a revert,
+and the commit contains real work a revert would throw away.
+
+### D-7.9.1 — the `visibleIf` case is a genuine cause, but it is not about grouping and it is not a floor
+
+**What was found.** A tagged group member carrying `visibleIf`: the canvas answers **3** with no
+data and reports it **exact**, while the real render is **3** with `{"showRule": true}` and **2**
+with `{"showRule": false}`.
+
+**The ruling, and the correction to D-7.7.6 it carries.** `page_setup.go` only **projects**
+`VisibleIf` as a string; nothing evaluates it. So the canvas cannot resolve it without data and this
+passes the knowability test honestly. D-7.7.6's deciding fact — that `keepTogetherTags` takes only
+the `*Template` — was **true**, and the conclusion drawn from it was **too wide**. The distinction
+that was missing:
+
+> **The tag INDEX is knowable. Whether a member is PLACED is a property of the data.**
+
+The lead accepted that correction in those terms, and it is the second time in this run that a
+ruling's ground was true as far as it went and the conclusion reached past it — D-7.8.5 being the
+first.
+
+**Correction A — register it for CONDITIONAL VISIBILITY, not for grouping, because it predates this
+story.** An **ungrouped** element carrying `visibleIf` has the identical problem: the canvas places
+it, the render omits it, and AD-24 makes a hidden element **absent with no gap**, so the counts
+differ. That has been true since **Story 7.5** shipped the count and **7.6** shipped the flag.
+**Grouping did not create this cause; it is how it was found.**
+
+**Correction B — it is a CEILING, and that is what changes a name.** The directions do not agree:
+
+| cause | mechanism | direction |
+|---|---|---|
+| bound table | canvas shows header height only, render adds rows | canvas ≤ render — **floor** |
+| conditional visibility | canvas places an element the render omits | canvas ≥ render — **ceiling** |
+| unstyled non-text element (D-7.9.2) | same | canvas ≥ render — **ceiling** |
+
+**A boolean named `IsFloor` set true on a ceiling case is a second confidently-wrong disclosure** —
+the exact failure D-7.7.8 gated the epic on, one layer down. And a document carrying **both** a
+bound table and a `visibleIf` element can be wrong in **either** direction, so no single direction is
+honest for the general case.
+
+**The fix is a RENAME, not a redesign:** `ContentWindowCountIsFloor` →
+**`ContentWindowCountIsApproximate`**. One Go field, its TypeScript mirror, one UI string. **No
+enum** — direction is information nobody reads, because Story 7.6's own AC already has the UI say
+only that the count *"can change when the data does"*, which is direction-free.
+
+### D-7.9.2 — the unstyled non-text element is a DEFECT, in scope, and must not be disclosed
+
+**What was found.** Measured at both revisions against the real `buildPageModel`:
+
+| document | canvas @`26bfd49` | canvas @`6a31a7f` | real render |
+|---|---|---|---|
+| untagged + styled | 2 `[0 740000]` | 2 `[0 740000]` | 2 |
+| untagged + unstyled | 2 `[0 740000]` | 2 `[0 740000]` | 2 |
+| tagged + styled | 2 `[0 740000]` | **3** `[0 700000 1440000]` | 3 — **fixed** |
+| tagged + unstyled | 2 `[0 740000]` | **3** `[0 700000 1440000]` | 2 — **REGRESSED** |
+
+**Ruling: fix it, do not add a cause for it.** `element_box.go:69-74`'s rule is
+`style.Background.Set || style.Border.Set` — **both pure template properties** — so the canvas can
+apply the identical rule with **no data**. It fails the knowability test in the other direction, and
+parking it in the disclosure is precisely what was refused when the fourth cause was refused.
+
+**I argued it was out of scope because it is pre-existing, and I was wrong** — on a point I had
+already made myself and then argued past. This story is what **propagates** the asymmetry into a
+number the flag calls exact. I had written *"the story as built trades one wrong count for another"*
+and then reasoned toward shipping it anyway. **A story whose gate is "the canvas is honest" cannot
+ship a fresh dishonest row.** Recorded because the failure was mine and it is a legible shape:
+having identified the disqualifying fact, I let scope-protection reason past it.
+
+**Guardrails:** reuse `element_box.go`'s predicate, never restate it — one authority, two callers,
+the same shape as `keepTogetherTags`, and a second copy of *"styled means background or border"* is
+the drift this project keeps paying for. **Verify all four rows**, not just the regressed one: the
+two untagged rows are correct today and changing what the canvas places can move them.
+
+### D-7.9.3 — the story's subject widens, and D-7.7.12's line still holds
+
+Story 7.9 becomes *the canvas tells the truth about **the window count***. It is still a **repair**
+of Epic 7 under D-7.7.12, not an extension: it adds no capability and covers no new FR.
+
+### D-7.9.4 — D-7.7.8's escalation TRIGGER fired, but its REASON had gone, so no question was put to the owner
+
+The lead judged 7.9 materially larger than D-7.7.6 implied and moved to escalate, framing four
+sequencing options for the owner. **I withdrew the escalation, because its premise was stale.**
+
+Every option priced *the owner's blocked Thai document* against *Epic 7 closing cleanly*. But
+**Story 8.0 had already shipped** — planned, built and closed at `26e3ba1` / `89df23b` while the
+lead was ruling — and the owner's clause renders at exit 0, 70,448 bytes. **The blocked document was
+already unblocked.** What remained on the other side was, in the lead's own word, bookkeeping: Epic 7
+sitting `in-progress` blocks no user and nothing ships from that state.
+
+**The distinction worth keeping, because it is about how these gates behave rather than about this
+story:** D-7.7.8 reserved a return to the owner because *holding the epic starts costing schedule
+against the still-open v0.1.0 sequencing.* The **trigger** fired; the **reason** did not survive.
+
+> **Putting a decision to the owner whose stated trade has evaporated is worse than not asking** —
+> it presents a fork that is not one, and spends the owner's attention on pricing a cost that is no
+> longer there.
+
+So the options collapsed rather than being chosen between: **7.9 whole → close Epic 7 → 7.10.** The
+orchestrator proceeded on that and told the owner plainly rather than presenting it as their call.
+
+**My own error in the same exchange, recorded:** the lead ruled on DW-28's sequencing, the owner then
+reported the defect a third time and chose to take it immediately, and **I did not tell the lead the
+sequencing had moved.** It then spent a full ruling pricing a trade that no longer existed. A
+decision authority reasoning from stale facts is the orchestrator's failure, not the authority's:
+**whoever changes a premise owes an update to everyone still reasoning from it.**
+
+### D-7.9.5 — a cached green is a gate that measured nothing
+
+`cd lint && go test ./...` was returning a **cached** four-`ok`. With `-count=1` it was **2 RED**,
+and both reds had been introduced by the two preceding commits — so **two stories closed reporting a
+gate green that was not.** One was Story 8.0's close drifting a hand-pinned line number in the
+float-typed inventory; **one was the orchestrator's own** stage-rank violation, a red-proof written
+under `internal/text` that imported `internal/fontset` — rank 5 importing rank 6, where D-000.16
+makes the pipeline strictly forward. `lint` caught exactly that, which is the rule working.
+
+Both fixed at `de7b126`. The test moved to `internal/fontset`, which already imports `text` and
+constructs the Shaper, and was re-proved to still discriminate after the move.
+
+**This is the fifth check this run that passed while measuring nothing, and it is a different
+mechanism from the other four.** Those were tests whose **subject** had moved — DW-24's rotted
+hand-list, the `contentColumnItems` page-count pass, `TestWasmHostSanitizesTemplateDiagnostics`'s
+swapped payload, `renderPathWindows`' nil oracle. This one is a test whose subject was fine and
+whose **result** was stale.
+
+> **`-count=1` is the anchor. A cache is not one.** Every gate procedure in this run carries it, and
+> a story must not close on a green that a cache produced.

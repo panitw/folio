@@ -1,8 +1,9 @@
 ---
-title: 'Story 7.9: The canvas tells the truth about keep-together groups'
+title: 'Story 7.9: The canvas tells the truth about the window count'
 type: 'bugfix'
 created: '2026-08-31'
 status: 'ready-for-dev'
+baseline_revision: '26bfd49ef68e212ef041c8449f3ad7e2bfc3cc35'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -56,6 +57,53 @@ by-product. Riding with it: a duplicated component must join no group (D-7.7.10)
   All 21 `goldenDigestRecord` entries stay byte-identical.
 - Commits go to `main` only. Never branch, never push. Never `git add -A` or `git add .` — explicit
   paths only. `README.md` at the repository root is the user's file and is never touched.
+
+- **THE HALT IS RESOLVED. Three rulings, 2026-08-31, after this story halted on its own `Block If`
+  with blocking condition `grouping case the canvas cannot know`. Implement them; do not re-derive
+  them.** The halt was correct and the retained commit `6a31a7f` is correct for its subject — build
+  forward on it, do not revert.
+
+- **RULING A — the `visibleIf` case IS a genuine cause, but it is NOT about grouping and it is NOT a
+  floor.** `page_setup.go` only **projects** `VisibleIf` as a string; nothing evaluates it, so the
+  canvas cannot resolve it without data and it passes the knowability test honestly. Two corrections
+  to how it gets registered:
+  - **Name it for CONDITIONAL VISIBILITY, not for grouping — it PREDATES this story.** An
+    **ungrouped** element carrying `visibleIf` has the identical problem: the canvas places it, the
+    render omits it, and AD-24 makes a hidden element **absent with no gap**, so the counts differ.
+    That has been true since Story 7.5 shipped the count and 7.6 shipped the flag. **Grouping did not
+    create this cause; it is how it was found.** Register it as *an element whose visibility depends
+    on data*, and say in the register that it has been **undisclosed since 7.5**.
+  - **It is a CEILING, not a floor**, and this is the part that changes a name. Check the
+    directions: a **bound table** shows header height only and the render adds rows, so canvas ≤
+    render — a **floor**. **Conditional visibility** has the canvas place an element the render
+    omits, so canvas ≥ render — a **ceiling**. The measured numbers agree: canvas 3 against a render
+    of 2-or-3. **A boolean named `IsFloor` set true on a ceiling case is a second confidently-wrong
+    disclosure** — the exact failure D-7.7.8 gated the epic on, one layer down. And a document
+    carrying **both** a bound table and a `visibleIf` element can be wrong in **either** direction,
+    so no single direction is honest for the general case.
+  - **The fix is a RENAME, not a redesign:** `ContentWindowCountIsFloor` →
+    `ContentWindowCountIsApproximate`. One Go field, its TypeScript mirror, one UI string.
+    **Do not build an enum.** Direction is not needed by the consumer — Story 7.6's own AC has the UI
+    say the page count *"can change when the data does"*, which is already direction-free.
+
+- **RULING B — the unstyled non-text element is a DEFECT, it is IN SCOPE for this story, and it must
+  NOT be disclosed.** `element_box.go:69-74`'s rule is `style.Background.Set || style.Border.Set` —
+  **both pure template properties** — so the canvas can apply the identical rule with **no data**. It
+  fails the knowability test in the other direction, and parking it in the disclosure is precisely
+  what was refused when the fourth cause was refused the first time.
+  **Why "pre-existing" does not make it out of scope:** this story **propagates** it into a number
+  the flag claims is exact. A story whose gate is *the canvas is honest* cannot ship a fresh
+  dishonest row. Measured, the four rows are:
+  `untagged+styled 2/2` · `untagged+unstyled 2/2` · `tagged+styled 3/3 (fixed here)` ·
+  `tagged+unstyled canvas 3 / render 2 (REGRESSED here)`.
+  - **REUSE `element_box.go`'s predicate; do not restate it.** One authority, two callers — the same
+    shape as `keepTogetherTags`. A second copy of *"styled means background or border"* is the drift
+    this project keeps paying for.
+  - **Verify against ALL FOUR rows, not just the regressed one.** The two untagged rows are correct
+    today and must stay correct; changing what the canvas places can move them.
+
+- **RULING C — this story's subject widens, and the title with it**, to *the canvas tells the truth
+  about the window count*. It is still a **repair** of Epic 7 under D-7.7.12, not an extension.
 
 **Block If:**
 - The implementation finds a grouping case the canvas **genuinely cannot know**. HALT with status
@@ -354,7 +402,111 @@ _Empty until the first `bad_spec` loopback._
 
 ## Review Triage Log
 
-_Empty until the first review pass._
+### 2026-08-31 — Review pass
+
+- intent_gap: 2: (high 2, medium 0, low 0)
+- bad_spec: 0
+- patch: 10: (high 0, medium 4, low 6)
+- defer: 4: (high 0, medium 1, low 3)
+- reject: 8: (high 0, medium 0, low 8)
+- addressed_findings:
+  - none
+
+The two intent_gap findings are the halt. Everything below them is moot for this
+pass by the cascade and was neither applied nor written to `deferred:`; it is
+recorded here so nothing is lost when the story is re-dispatched.
+
+**intent_gap 1 — `[high]` a group member carrying `visibleIf` is a grouping case the
+canvas genuinely cannot know.** This is the spec's own `Block If`, reached by
+measurement rather than by argument. A content-band element may carry both
+`keepTogether` and `visibleIf`; membership in the group is then a pure template
+property, but whether the member is *placed* is a property of the DATA. Measured at
+`6a31a7f` on a group whose rect member is `"visibleIf": "showRule"`:
+
+    CANVAS (no data at all): count=3 origins=[0 700000 1440000] floor=false
+    REAL RENDER data={"showRule": true}   pages=3
+    REAL RENDER data={"showRule": false}  pages=2
+
+The canvas answers 3 and reports it as EXACT, and it cannot do better, because it has
+no data. This falsifies the Approach's central premise as it is written — that
+`keepTogetherTags` taking only the `*Template` makes grouping knowable canvas-side.
+The tag INDEX is knowable; the grouping's EFFECT on pagination is not, once a member
+is conditional. `ContentWindowCountIsFloor`'s three causes do not cover it: (a) is a
+content-band table with a non-empty binding, (b) a Paginate failure, (c) a failed font
+chain. The honest disclosure would be a fourth cause — which this spec forbids
+absolutely, and whose addition the `Block If` reserves to the engineering lead. No
+fourth cause was added.
+
+**intent_gap 2 — `[high]` a non-text group member the render path does not place makes
+the canvas confidently wrong, and this change is what made the COUNT wrong.** The
+render path contributes a column item for a non-text element only when it declares a
+background or a border (`folio-go/element_box.go:70-73`); the canvas contributes one for
+every non-text content element, styled or not (`folio-go/page_setup.go:613-616`).
+Measured at both revisions against the real `buildPageModel`:
+
+    document                    canvas @26bfd49    canvas @6a31a7f    REAL RENDER
+    untagged + styled           2  [0 740000]      2  [0 740000]      2 pages
+    untagged + unstyled         2  [0 740000]      2  [0 740000]      2 pages
+    tagged   + styled           2  [0 740000]      3  [0 700000 1440000]  3 pages   <- fixed here
+    tagged   + unstyled         2  [0 740000]      3  [0 700000 1440000]  2 pages   <- regressed here
+
+`ContentWindowCountIsFloor` is `false` in every row. The story fixes its subject at the
+real render surface and, for the adjacent unstyled class, turns a correct count into an
+incorrect one. The underlying population asymmetry is pre-existing (the untagged rows are
+byte-identical at both revisions, and already diverge on origins); what is new is that
+grouping propagates it into the count. Three resolutions are defensible and the contract
+settles none: gate the tag on render-path placeability; disclose via a floor cause (the
+contract's `Never` forbids it); or fix the population asymmetry (the contract's own
+`Block If` for size). The AC is universally quantified — "Given a template declaring a
+keep-together group" — so the intent's own words include this document rather than
+excluding it, and the scope-authority rule forbids routing it out.
+
+**patch (10, moot this pass)** — 1 `[medium]` the widened AD-14 sentence now reads as
+"any author-declared keep-together group is a Warning", which is false; only an
+over-tall one warns, and the shipped fixture renders with zero diagnostics. 2 `[medium]`
+no coverage for a multi-line tagged text element (the canvas emits one item per shaped
+line), two independent groups, non-adjacent members, or a group as the column's first
+item. 3 `[medium]` `folio-format.md` records no rule that duplicating a tagged component
+drops the tag; that user-visible rule lives only in a Go comment and a test name.
+4 `[medium]` the table-refusal assertion checks only `err != nil`, not the located
+`*LoadError`'s field and element id nor the explicit-null form the matrix names.
+5 `[low]` `renderPathWindows`' doc comment does not disclose that it still passes `nil`
+image runs and `nil` visibility verdicts, collects no table runs, and skips the
+footer-orphan pass the shipping path applies. 6 `[low]` `fixtures/keep-together/README.md`
+says "those three causes" with no antecedent in that file, and writes the origins as
+"706.000"/"734.000" without a unit where the tests assert 706000/734000 millipoints.
+7 `[low]` the non-text arm's comment names `table` among the kinds that join a group
+there, which `parse_bands.go` makes unreachable. 8 `[low]` the Code Map states its anchors
+were verified at `c3df718` while `baseline_revision` is `26bfd49`; all anchors were
+re-verified at `26bfd49` in this dispatch and hold, with `keepTogetherKeyPrefix` and
+`keepTogetherIndex` drifted to `:1992` and `:2011`. 9 `[low]`
+`TestCanvasWindowCountIsIndependentOfPaintTruncation` discards the oracle's new origins
+return. 10 `[low]` the FontSet is selected by string-comparing whole template constants
+where the table already carries a name.
+
+**defer (4, moot this pass — NOT written to `deferred:`)** — 1 `[medium]` the canvas
+contributes a column item for every non-text content element while the render path places
+only styled ones; undisclosed and `IsFloor: false`. Pre-existing: the untagged rows above
+are identical at `26bfd49`. 2 `[low]` `folio-go/diagnostic.go:343-346` still restates AD-14
+as "over-tall rows (FR25, not yet built)"; Story 7.7 built them. 3 `[low]`
+`folio-go/internal/diag/diag.go:10` cites `ARCHITECTURE-SPINE.md:613`, which falls inside a
+mermaid ER diagram (already recorded in Design Notes; the rewrap held the file at 722 lines,
+so it is no worse). 4 `[low]` `lint/internal/rules` has two RED tests at baseline —
+`TestFloatTypedTestScopeInventory` and `TestStageRankProductionScan`
+(`text/shape_shipped_face_test.go:8` imports a higher stage rank). Both reproduce
+byte-identically at `26bfd49`; they arrived with Story 8.0 and are not caused here.
+
+**reject (8, all `[low]`)** — the claim that
+`element.VisibleIf = template.Presence[string]{}` does not exist (it is at
+`component_commands.go:1029`; verified); "the two arms share an authority, not an index"
+(both call the same deterministic pure function of the same `*Template`, so they cannot
+disagree — the invariant is structural); duplicated floor coverage across two tests
+(deliberate); `reflect.DeepEqual` versus `slices.Equal` (the nil/empty distinction is
+load-bearing here); the duplicate test's cross-file fixture coupling (style);
+the absence of a designer-side assertion (the intent's stated scope boundary);
+a speculative duplicate-`Shift` origin-protocol failure (not demonstrated — the protocol
+held on every document measured, and grouping never set the floor); and DW-46/DW-48 still
+reading `OPEN` in `deferred-work.md` (that register is not this workflow's file).
 
 ## Design Notes
 
@@ -473,3 +625,93 @@ story-key path directed by the orchestrator.
 **One finding surfaced for the deferred register, not fixed here:** `folio-go/internal/diag/diag.go:10`
 cites `ARCHITECTURE-SPINE.md:613` by line number, and at HEAD line 613 falls inside a mermaid ER
 diagram — the citation is already stale before this story touches anything. Unrelated to FR51.
+
+### Dispatch 2 — 2026-08-31, implement / review / triage
+
+Status: `blocked`
+Blocking condition: `grouping case the canvas cannot know`
+Baseline revision: `26bfd49ef68e212ef041c8449f3ad7e2bfc3cc35` (`main`)
+Commit created and RETAINED: `6a31a7fd1263177d806ccc95c75ed129bdb75df6` — "Tell the truth on
+the canvas about keep-together groups", 8 files, no path under `folio-go/internal/layout/`,
+root `README.md` untouched, trailer present.
+
+**Why this is a halt and not a `done`.** The spec's `Block If` names this exact outcome:
+"The implementation finds a grouping case the canvas **genuinely cannot know**. HALT ... and
+return to the engineering lead **before any fourth floor cause is added**. Do not add one."
+A tagged group member carrying `visibleIf` is such a case, and it was reached by measurement,
+not by argument — see Review Triage Log, intent_gap 1. **No fourth cause was added.** The
+`Block If` prescribes a halt and a return to the lead; it does not prescribe a revert, so the
+commit is retained as the artifact the ruling is about. `git reset --hard 26bfd49` reverses it
+exactly if the lead prefers a clean baseline (it is local and unpushed).
+
+**What the change does, and it is correct for its subject.** Both canvas column-item literals
+now carry the document's author-declared groups, taken from the shipped authority:
+`page_setup.go:670` (the non-text arm — rects, lines, images, table boxes) and
+`page_setup.go:987` (the per-shaped-line text arm inside `addCanvasTextPaint`). No
+`layout.ItemGroup` literal is constructed in `page_setup.go`, so the AST tripwire stays green.
+Validated at the SHIPPING surface, not only against the oracle: for the grouped fixture
+`buildPageModel` returns 3 pages and the canvas answers 3; for its untagged twin, 2 and 2.
+
+**Files changed**
+- `folio-go/page_setup.go` — tag both column-item arms from one `keepTogetherTags(t)` index.
+- `folio-go/canvas_window_count_test.go` — repair the vacuous oracle; add the equality,
+  twin and no-fourth-cause tests.
+- `folio-go/canvas_window_count_template.go` — the grouped count discriminator and its
+  untagged twin.
+- `folio-go/component_commands.go` — `duplicateComponent` clears `clone.KeepTogether` to the
+  zero `Presence` (DW-48 / D-7.7.10).
+- `folio-go/component_commands_test.go` — assert the drop, the untouched original, and the
+  serialized bytes.
+- `folio-go/table_row_clip_test.go` — refresh the verbatim AD-14 quote in a comment.
+- `fixtures/keep-together/README.md` — rewrite `## What it does not cover`; digest string
+  untouched.
+- `_bmad-output/planning-artifacts/.../ARCHITECTURE-SPINE.md` — widen AD-14's carve-out
+  (DW-49(a) / D-7.7.14 half (a)); no discriminator clause; file still 722 lines.
+
+**Review findings breakdown:** patches applied 0, items deferred 0, items rejected 8 — the
+intent_gap cascade makes the 10 `patch` and 4 `defer` findings moot for this pass, so none was
+applied and `deferred:` was left as it was. All of them are enumerated in the Review Triage Log
+so the re-dispatch loses nothing.
+
+**Follow-up review recommendation:** `false`. Only findings triaged `patch` count, and none was
+patched in this pass (patched high 0, medium 0, low 0; score 0).
+
+**Verification performed** — the full D-R7.1 set ran against `6a31a7f`:
+- `cd folio-go && go test -count=1 ./...` — 18 packages `ok`; exactly ONE red, the mandated
+  `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` (got 7, need >=20).
+- `go vet -tags=matrix ./...` — exit 0, no output. `gofmt -l folio-go` from the repo root — no output.
+- `TestTargetRenderHash` — four legs, each with `FOLIO_MATRIX_TARGET` exported and each PASS:
+  `darwin/arm64` 0.71s, `linux/amd64` 6.08s, `linux/arm64` 4.63s, `js/wasm` 10.48s; every leg
+  logged its witness line. UNSET control PASS in 0.00s and printed "this test asserts NOTHING
+  and is a deliberate no-op".
+- `TestCrossTargetByteIdentity` — PASS (21.98s).
+- `cd lint && go test -count=1 ./...` — 2 RED, both reproduced byte-identically at `26bfd49`:
+  `TestFloatTypedTestScopeInventory` and `TestStageRankProductionScan`. Pre-existing, verified
+  at the baseline, not caused here.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test && npm run test:e2e:compile`
+  — typecheck exit 0; lint exactly 4 pre-existing `only-export-components` warnings (the designer
+  is absent from this diff entirely); vitest 284 passed across 34 files; e2e compile exit 0.
+- **All 22 `goldenDigestRecord` digests byte-identical to baseline** (`diff` of the before/after
+  `shasum -a 256` lists is empty). The spec's "21" is stale: `thai-stacked-marks` was added by
+  Story 8.0 at `26bfd49`. All 22 also match the digests recorded in `byte_neutrality_test.go`.
+- `fixtures/statement-signoff.json` untouched. Root `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`,
+  unchanged, and last touched by commit `58ee9f7`.
+
+**Mutation proofs (run independently, not accepted from the implementer).** Each file was
+restored and `cmp`-verified byte-identical afterwards:
+- Non-text arm alone neutralised — RED: "canvas counts 2 windows and the render path 3",
+  origins `[0 740000]` against `[0 700000 1440000]`.
+- Text arm alone neutralised — RED on BOTH subtests, count and origins.
+- **Oracle reverted to its `nil` fifth argument with production left correct — RED**: canvas 3 /
+  `[0 700000 1440000]` against the crippled oracle's 2 / `[0 740000]`. The oracle repair is
+  load-bearing and non-vacuous.
+- `clone.KeepTogether` clear removed — RED: "the duplicate carries keepTogether
+  Presence[string]{Set:true, Null:false, Value:\"signature\"}".
+
+**Residual risks**
+- The two intent_gap classes above are live at `6a31a7f`: a `visibleIf` group member and an
+  unstyled non-text group member both produce a confidently-exact wrong canvas answer.
+- `ContentWindowCountIsFloor` still has exactly three write sites (`page_setup.go:701`, `:711`,
+  `:716`) and its three-cause doc comment is unmodified — but that comment is now *incomplete*
+  rather than wrong, which is the substance of the ruling being requested.
+

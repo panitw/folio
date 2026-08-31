@@ -2386,7 +2386,7 @@ to have been answered, not worked around
 
 ---
 
-### Story 7.9: The canvas tells the truth about keep-together groups
+### Story 7.9: The canvas tells the truth about the window count
 
 As a template author,
 I want the design canvas to show the same page boundaries the engine will actually take when my
@@ -2441,6 +2441,37 @@ silently join a group the designer offers no way to see or clear
 **Given** a template declaring no groups
 **When** it is rendered and its canvas is projected
 **Then** its bytes and its projected values are unchanged
+
+**SCOPE WIDENED 2026-08-31, after this story halted on its own block condition.** Building it
+surfaced two more problems at the same seam, and the engineering lead ruled both into it:
+
+- **An element whose visibility depends on data is a genuine shortfall, and it is a CEILING.** The
+  canvas places a `visibleIf` element; the render omits it, and AD-24 makes a hidden element absent
+  with **no gap**. So canvas ≥ render — the opposite direction from the three shipped causes, which
+  are all floors (a bound table's rows are added, not removed). **This predates the story**: an
+  ungrouped `visibleIf` element has the identical problem, undisclosed since Story 7.5 shipped the
+  count. Grouping is how it was found, not what caused it. Because a document can carry both a bound
+  table and a `visibleIf` element and be wrong in **either** direction, `ContentWindowCountIsFloor`
+  is renamed **`ContentWindowCountIsApproximate`** — a boolean named `IsFloor` set true on a ceiling
+  case is a second confidently-wrong disclosure, which is the exact failure this epic's gate exists
+  for. A rename, not a redesign: one Go field, its TypeScript mirror, one UI string, no enum.
+  Direction is not needed — Story 7.6's own AC already has the UI say only that the count *"can
+  change when the data does"*.
+- **An unstyled non-text element is a DEFECT, not a shortfall, and is fixed rather than disclosed.**
+  The render places a non-text element only if it declares a background or border; the canvas places
+  every one. Both are **pure template properties**, so the canvas can apply the identical rule with
+  no data. Fixing it here is not scope creep: this story is what would otherwise **propagate** the
+  asymmetry into a count the flag calls exact, trading one wrong answer for another.
+
+**Given** an element whose visibility depends on data
+**When** the canvas projects the window count
+**Then** the count is reported as **approximate**, not exact — and the flag's name says approximate
+rather than claiming a direction that is false for this case
+
+**Given** a non-text element declaring neither a background nor a border
+**When** the canvas projects the window count
+**Then** it is **not placed**, by the same predicate the render path uses, read from that one
+authority rather than restated
 
 **Limits to state.** Designer-side **authoring** of groups is deliberately out of Epic 7: FR51 asks
 only that a group can be declared, and file-only authoring is in scope. That is a stated scope
