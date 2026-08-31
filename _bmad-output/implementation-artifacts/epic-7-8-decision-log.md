@@ -2621,3 +2621,117 @@ the same commit**. That is *assert the absence so its arrival trips something*, 
 8.3** — otherwise a reader at 8.3 sees an AC marked delivered that says something the story did not
 do, which is the **false-record** shape D-8.1.1 rejects and the same one that left two FR52
 spellings standing.
+
+## Story 8.3's empty-face-name narrowing — KEEP IT, and the reason is AD-8 (2026-08-31)
+
+Story 8.3 narrowed what already-shipped **1.x** documents load: an empty face name in a chain —
+`{"fonts": {"body": [""]}}` — loaded before and is now refused, with **no version gate**. The build
+flagged it as the orchestrator's to ratify. I routed it to the lead instead, leaning toward
+**reversing** it, on the ground that a narrowing no version gate protects is the compatibility break
+the version system exists to prevent. **I was pointed at the wrong rule, and I had not measured the
+population.**
+
+### D-8.3.1 — the pre-8.3 behaviour was itself an AD-8 violation
+
+**What the lead measured, and it cuts against the comfortable reading.** `resolveRuneFace`
+(`render.go:1202-1206`) does `if _, present := fs[name]; !present { continue }` — an empty face name
+is **silently skipped**. So there are **two** shapes, not one:
+
+- `{"body": [""]}` alone → no usable entry → the existing located error. **Never rendered.**
+- `{"body": ["", "Noto Sans"]}` → the empty entry is **silently dropped**, Noto Sans is used, and the
+  document **renders cleanly.**
+
+**So a class of document DID render and now fails to load.** *"It was always a latent bug"* is true
+of the first shape and **false of the second**, and the record must say so rather than letting the
+comfortable half stand for both.
+
+**And that second shape is exactly why the refusal is RIGHT.** AD-8's Rule: *"A template names a
+family plus an ordered fallback chain; the chain is part of the `FontSet`'s identity, so the same
+template with a different chain is a different render, **not a silent substitution**."* An author
+declares a two-entry chain and the engine renders from a one-entry chain **with nothing anywhere
+saying so.** That is the silent substitution AD-8 forbids **by name**. **The old behaviour was the
+defect; Story 8.3 restored the invariant.**
+
+### D-8.3.2 — three grounds, and NOT the one the build offered
+
+**Ruling: keep the refusal, unconditionally.** Explicitly **not** on the ground the build proposed —
+*"this repo has recorded such narrowings before"* — which is **precedent-by-habit and not a reason.**
+
+1. **AD-8**, above. Decisive on its own.
+2. **D-1.8.1's reader-independence test puts this at load.** That amendment turned on *"the same
+   bytes are valid or invalid depending on which library reads them — and a contract whose validity
+   depends on the reader is not a contract."* `"Helvetica"` **is** reader-dependent (another library
+   might ship it) → skip, a capability question. **`""` is not a face name under any reader** →
+   reader-**independent** malformedness → load error. Exactly where D-1.8.1 puts *a recognised thing
+   whose content contradicts what it claims to be*.
+3. **D-1.4.9 is not the rule in play, and this is my correction.** It promises a **higher-MINOR file
+   loads in an older reader** — forward compatibility of the **version field**. It does **not**
+   promise a library may never tighten its rejection of **malformed** input. Tightening validation is
+   a breaking **library** change under AD-22, released as one — and **nothing is released.**
+
+> **My instinct was right and aimed at the wrong rule: version gates govern format EVOLUTION, not
+> MALFORMEDNESS.**
+
+**Version-gating it was rejected on coherence, and the reason is recorded because it will be proposed
+again: malformedness is not versioned.** *"This file is malformed only if it claims to be new"*
+produces **two answers for the same bytes keyed on a number the author can edit** — strictly worse
+than the reader-dependence D-1.8.1 rejected, because there the discriminator was at least **outside
+the document**.
+
+**Guardrails:**
+
+- **Test BOTH shapes, and `["", "Noto Sans"]` is the one that matters** — it is the shape whose
+  observable behaviour changed, and the one nobody is currently thinking about. **A test of `[""]`
+  alone would pass while proving nothing about the case that regressed.**
+- **The refusal must name the chain AND the entry index** — confirm it does rather than assume, since
+  **the corpus cannot observe any of this.**
+- **Record the narrowing naming the second shape explicitly**, so a future reader is not told it only
+  affected files that never worked.
+
+**Before-the-tag:** unchanged and needs nothing — already shipped at `af4efde`, every correction is a
+**widening**, same shape as DW-69. **The set stays at two.**
+
+### D-8.3.3 — a comment citing a test is a claim to verify in TWO steps
+
+Story 8.3's review found `chainFaceNames`' comment claiming its behaviour was *"pinned by test …
+(fonts_embedded_test.go)"*. **The cited tests did not exist** — and the file is **`package template`,
+which structurally cannot call `Render`.**
+
+**Why this is worse than the ordinary assert-a-negative shape:** **a citation reads as having been
+checked.** *"Pinned by test"* plus a filename is a claim **with evidence attached**, so a reviewer's
+natural move — trust it and move on — is the wrong one. An **uncited** *"this is safe"* at least
+invites scepticism.
+
+**And the sharp half is not that the tests were missing.** It is that the citation was **falsifiable
+without opening the file** — by asking whether that package can reach that code at all.
+
+> **A comment citing a test is a claim to verify in TWO steps: the test EXISTS, and its package can
+> REACH the code it claims to pin. Existence is the weaker half; REACHABILITY is where the false ones
+> die.**
+
+Ninth and tenth instances of a property asserted by nothing in this run. **That both were caught by
+deletion-mutation against a fully green suite is the encouraging half — the technique is now finding
+these faster than they are being written.**
+
+### D-8.3.4 — an unregistered standing red is the DW-23 shape, and it has already started
+
+`TestShippedFacesReproduceFromUpstream` **fails rather than skips** without `fontTools`, and that is
+**correct and must stay**: *"sources not present"* must never read as *"faces reproduce"* — the
+all-clear-must-differ-from-could-not-look rule, applied exactly right.
+
+**But it has gone unmeasured for several stories, and that is the failure already beginning.** An
+unregistered standing red is the **DW-23 shape**: a red nobody has decided about is the one that
+**masks the next real failure**.
+
+**Two acceptable resolutions, and a third state that is not:** make `fontTools` available in the gate
+so the test actually runs, **or** register it explicitly alongside the P6g floor as a **known, named
+red with its reason**. **Leaving it as neither is what must stop.**
+
+### D-8.3.5 — the Story 8.4 trap is an AC, not a note
+
+A chain entry naming a **non-font** asset is accepted at load — correct under D-1.8.1 as amended —
+but **errors nowhere at render**, because `chainFaceNames` drops embedded entries before anything
+looks at them. That is **D-1.8.1's shape half-built**: the amendment requires **load to accept**,
+**Render to Error when something actually needs to draw it**, and **`Validate` to predict what Render
+would do.** All three halves are Story 8.4's, and **the third is the one most likely to be dropped**
+— so it goes into 8.4 as an **acceptance criterion**, not a deferral note.

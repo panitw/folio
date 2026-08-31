@@ -2915,7 +2915,8 @@ As an integrating Go developer,
 I want a template with embedded faces to render on a machine that has never seen them,
 So that "the file is the contract" survives contact with a build box.
 
-**Covers:** FR54 · NFR1, NFR1.d, NFR1.e, AD-22
+**Covers:** FR54 · AD-8, AD-14, AD-22, D-1.8.1, NFR1, NFR1.d, NFR1.e — and **DW-35**, re-owned
+here at Story 8.2's close because AC4 below **is DW-35 stated as an acceptance criterion**.
 
 **Acceptance Criteria:**
 
@@ -2934,6 +2935,20 @@ path on disk (FR33)
 **When** the outputs are compared
 **Then** they are byte-identical, and the subset tag remains a deterministic hash of the glyph set —
 subsetting stays once per render inside the PDF producer, and no face is subset at save time
+
+**Given** a chain entry naming an asset that is **not a font** — an image, say
+**When** the document is loaded, rendered, and validated
+**Then** **load ACCEPTS it** (D-1.8.1 as amended: an unrecognised media type is preserved, never
+refused at load); **Render ERRORS when something actually needs to draw it**, naming the chain and
+the entry; **and `Validate` PREDICTS what Render would do**
+
+**THIS AC EXISTS BECAUSE THE SHAPE IS CURRENTLY HALF-BUILT, measured at Story 8.3's close
+(2026-08-31).** Load already accepts such an entry, correctly. But **nothing errors at render
+either**, because `chainFaceNames` drops embedded entries before anything looks at them — so a
+document naming an image as a font renders **silently wrong** rather than being refused. D-1.8.1 as
+amended requires **all three** halves, and **the `Validate` half is the one most likely to be
+dropped**: it is the only one with no user-visible symptom when it is missing. It is written here as
+an acceptance criterion rather than left as a deferral note for exactly that reason.
 
 **Given** the designer's canvas paint projection
 **When** a component uses an embedded face
