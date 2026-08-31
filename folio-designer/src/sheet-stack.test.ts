@@ -13,7 +13,7 @@ const canvas = (patch: Partial<CanvasProjection>): CanvasProjection => ({
   width: 595276, height: 841890, orientation: 'portrait', preset: 'A4',
   marginTop: 30_000, marginRight: 54_000, marginBottom: 42_000, marginLeft: 36_000,
   gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890,
-  fontFamilies: ['body'], defaultFontSize: 12_000,
+  fontFamilies: ['body'], fontChains: [{ name: 'body', entries: ['Noto Sans'] }], defaultFontSize: 12_000,
   contentWindowHeight: WINDOW, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true,
   bands: [
     { name: 'pageHeader', x: 36_000, y: 30_000, width: 505_276, height: 18_000 },

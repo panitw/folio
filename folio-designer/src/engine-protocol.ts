@@ -13,6 +13,10 @@ export const MAX_ENGINE_PARAMETER_REFERENCES = 128
 export const MAX_ENGINE_PARAMETER_NAME_LENGTH = 128
 // The same bound Go projects the document's declared font chains under.
 export const MAX_ENGINE_FONT_FAMILIES = 256
+// And the bound ONE chain's entry list is projected under. Story 8.1 put the
+// entries themselves on the wire, so the per-chain array needs the same
+// treatment the chain list already had.
+export const MAX_ENGINE_FONT_CHAIN_ENTRIES = 64
 // A CHANNEL BACKSTOP, NOT A MIRROR. Go declares no maximum number of content
 // windows — internal/layout bounds the count only by the column-item count —
 // so this number is deliberately NOT in the pair list below: there is nothing
@@ -154,6 +158,11 @@ export type CanvasProjection = Readonly<{
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
 	fontFamilies: ReadonlyArray<string>; defaultFontSize: number
+	// fontChains is the SAME set of chains, with the ordered faces behind each
+	// name: fontChains.map(c => c.name) is fontFamilies, entry for entry, and
+	// the validator asserts it rather than trusting it. Entry order is the
+	// document's own authored order and is never re-sorted here.
+	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<string> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
 	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
@@ -208,13 +217,22 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
   if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
   // The declared font chain names, as Go sorted them: bounded in count and
   // length like every other list on this projection, unique, and in the order
   // Go sent so the browser never re-sorts an engine-owned set.
-  if (!Array.isArray(value.fontFamilies) || value.fontFamilies.length > MAX_ENGINE_FONT_FAMILIES || !value.fontFamilies.every((name) => typeof name === 'string' && name.length > 0 && name.length <= 512) || value.fontFamilies.some((name, index, names) => index > 0 && (names[index - 1] as string) >= (name as string))) return false
+  if (!Array.isArray(value.fontFamilies) || value.fontFamilies.length > MAX_ENGINE_FONT_FAMILIES || !value.fontFamilies.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_CANVAS_PROPERTY_STRING) || value.fontFamilies.some((name, index, names) => index > 0 && (names[index - 1] as string) >= (name as string))) return false
+  // The chains those names stand for. Bounded in count and in per-chain entry
+  // count, every entry a non-empty bounded string, no chain empty — an empty
+  // chain is not one Go projects, because it is not one style.fontFamily may
+  // name. The last clause is the cross-check the two lists exist to give each
+  // other: Go builds fontFamilies FROM fontChains, so any disagreement here is
+  // a channel fault and the snapshot is not trusted.
+  const chains = value.fontChains
+  if (!Array.isArray(chains) || chains.length !== value.fontFamilies.length) return false
+  if (!chains.every((chain, index) => isRecord(chain) && hasExactKeys(chain, ['name', 'entries']) && chain.name === (value.fontFamilies as ReadonlyArray<unknown>)[index] && Array.isArray(chain.entries) && chain.entries.length > 0 && chain.entries.length <= MAX_ENGINE_FONT_CHAIN_ENTRIES && chain.entries.every((face) => typeof face === 'string' && face.length > 0 && face.length <= MAX_CANVAS_PROPERTY_STRING))) return false
   // The window origins, in the same shape: bounded in count, every entry a
   // safe non-negative integer, and in the order and at the length Go's own
   // pagination fixes. `hasOnly` is a SUBSET check, so an origins key Go

@@ -2,8 +2,8 @@
 title: "Story 8.1: The document's font chains become editable"
 type: 'feature'
 created: '2026-08-31'
-status: 'ready-for-dev'
-baseline_revision: 'b2fdaa16b14e1cfa5b6916bd66e017e1a52958ad'
+status: 'in-progress'
+baseline_revision: 'b119831059cce3ddfa362f4122d1e48bb18a6e79'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []

@@ -146,6 +146,30 @@ type Padding struct {
 // the map's keys are sorted at serialize time (AC18).
 type Fonts map[string][]string
 
+// Chain is THE authority for "is this a chain style.fontFamily may name":
+// it returns the chain only when the key is PRESENT and the chain is
+// NON-EMPTY, because a chain with no entries resolves to no face and so is
+// not a family anything may name. A caller that needs the weaker question —
+// "is this key declared at all", which a chain-editing command needs so an
+// empty chain stays deletable — must index the map itself, deliberately.
+//
+// It replaces the five open-coded copies of that same two-part test measured
+// across the module at b2fdaa1, and exists so a sixth is never written:
+//   - folio.knownFontFamily      (component_commands.go) — the fontFamily property command
+//   - folio.defaultFontFamily    (component_commands.go) — the chain a new text element adopts
+//   - folio.canvasFontFamilies   (page_setup.go)         — the projected name list
+//   - folio.fontChain            (render.go)             — a text element's chain at render
+//   - the table header-style resolver (table_render.go)  — headerStyle.fontFamily at render
+//
+// Each caller keeps its own message text; only the predicate is shared.
+func (f Fonts) Chain(name string) ([]string, bool) {
+	chain, ok := f[name]
+	if !ok || len(chain) == 0 {
+		return nil, false
+	}
+	return chain, true
+}
+
 // Bands holds exactly the three band keys (AC5). Unlike Page, Margin,
 // Padding, Border and Asset, Bands deliberately carries NO Extra field:
 // AC5 and folio-format.md (:101, "Exactly these three keys (FR6)") make

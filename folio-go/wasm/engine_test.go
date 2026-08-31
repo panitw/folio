@@ -522,3 +522,253 @@ func TestEngineDuplicateIsACommittedGoCommand(t *testing.T) {
 		t.Fatal("duplicate retained its source opaque id")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// STORY 8.1: THE FONT-CHAIN COMMANDS AS ENGINE TRANSACTIONS.
+//
+// fontChainEngineDocJSON declares THREE chains and names two of them from
+// elements in different bands, including a table's headerStyle. It is the
+// repo's first byte-level pin on multi-chain emission (Design Notes R2).
+const fontChainEngineDocJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e7", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "content", "style": {"fontFamily": "body"}},
+      {"id": "e9", "type": "table", "x": 0, "y": 30, "bind": "items[]", "headerHeight": 20,
+        "columns": [{"id": "e10", "label": "Date", "width": 100, "bind": "{{row.a}}"}],
+        "headerStyle": {"fontFamily": "body"}}
+    ]},
+    "pageFooter": {"elements": [{"id": "e12", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "footer", "style": {"fontFamily": "heading"}}], "height": 20},
+    "pageHeader": {"elements": [{"id": "e2", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "header", "style": {"fontFamily": "body"}}], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans", "Noto Sans Thai"], "heading": ["Noto Sans"], "unused": ["Noto Sans SC"]},
+  "locale": "en",
+  "nextId": 39,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}`
+
+func fontChainEngine(t *testing.T) *Engine {
+	t.Helper()
+	engine := NewEngine()
+	if _, err := engine.Load([]byte(fontChainEngineDocJSON)); err != nil {
+		t.Fatal(err)
+	}
+	return engine
+}
+
+func fontChainFamilies(t *testing.T, snapshot Snapshot) []string {
+	t.Helper()
+	if snapshot.Canvas == nil {
+		t.Fatal("snapshot carries no canvas")
+	}
+	return snapshot.Canvas.FontFamilies
+}
+
+// TestEngineFontChainCommandsAdvanceExactlyOneRevisionAndOneUndoStep is AC1:
+// every accepted chain command is ONE committed mutation, by construction —
+// Apply's single pushUndo — and a refused one commits nothing.
+func TestEngineFontChainCommandsAdvanceExactlyOneRevisionAndOneUndoStep(t *testing.T) {
+	for _, command := range []string{
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans"]}`,
+		`{"kind":"renameFontChain","version":1,"name":"body","to":"brand"}`,
+		`{"kind":"deleteFontChain","version":1,"name":"unused"}`,
+		`{"kind":"addFontChainEntry","version":1,"name":"body","index":0,"face":"Noto Sans SC"}`,
+		`{"kind":"moveFontChainEntry","version":1,"name":"body","from":0,"to":1}`,
+		`{"kind":"removeFontChainEntry","version":1,"name":"body","index":0}`,
+	} {
+		engine := fontChainEngine(t)
+		before := engine.Snapshot()
+		after, err := engine.Apply([]byte(command))
+		if err != nil {
+			t.Fatalf("%s: %v", command, err)
+		}
+		if after.Revision != before.Revision+1 || !after.CanUndo || after.CanRedo || after.Canvas == nil {
+			t.Fatalf("%s snapshot = %#v", command, after)
+		}
+		undone, err := engine.Undo()
+		if err != nil {
+			t.Fatalf("%s undo: %v", command, err)
+		}
+		if undone.CanUndo {
+			t.Fatalf("%s pushed more than one undo entry", command)
+		}
+		restored, _, err := engine.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fresh := fontChainEngine(t)
+		original, _, err := fresh.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(restored, original) {
+			t.Fatalf("%s: one undo did not restore the document", command)
+		}
+	}
+}
+
+// TestEngineFontChainRenameUndoesTheMapAndTheElementsTogether is AC2: the map
+// key and all four references move in one entry, so one undo restores every
+// one of them. A rename that pushed twice, or that carried the elements in a
+// second transaction, would fail here rather than at render.
+func TestEngineFontChainRenameUndoesTheMapAndTheElementsTogether(t *testing.T) {
+	engine := fontChainEngine(t)
+	before, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := engine.Apply([]byte(`{"kind":"renameFontChain","version":1,"name":"body","to":"brand"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fontChainFamilies(t, renamed); !reflect.DeepEqual(got, []string{"brand", "heading", "unused"}) {
+		t.Fatalf("families after rename = %#v", got)
+	}
+	after, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(after, []byte(`"body"`)) {
+		t.Fatal("the old chain name survives somewhere in the renamed document")
+	}
+	if bytes.Count(after, []byte(`"fontFamily": "brand"`)) != 3 {
+		t.Fatalf("renamed document carries %d brand references, want the three style/headerStyle bearers", bytes.Count(after, []byte(`"fontFamily": "brand"`)))
+	}
+	undone, err := engine.Undo()
+	if err != nil || undone.CanUndo {
+		t.Fatalf("undo = %#v, %v — a rename is ONE history entry", undone, err)
+	}
+	restored, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, restored) {
+		t.Fatal("one undo did not restore the fonts map AND the elements together")
+	}
+}
+
+func TestEngineRefusedFontChainCommandLeavesByteRevisionAndHistoryUntouched(t *testing.T) {
+	engine := fontChainEngine(t)
+	committed, err := engine.Apply([]byte(`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, refused := range []string{
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans"]}`,
+		`{"kind":"deleteFontChain","version":1,"name":"body"}`,
+		`{"kind":"removeFontChainEntry","version":1,"name":"heading","index":0}`,
+		`{"kind":"renameFontChain","version":1,"name":"body","to":"heading"}`,
+	} {
+		if _, err := engine.Apply([]byte(refused)); err == nil {
+			t.Fatalf("%s unexpectedly succeeded", refused)
+		}
+		after, snapshot, err := engine.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(before, after) || snapshot.Revision != committed.Revision || snapshot.CanUndo != committed.CanUndo || snapshot.CanRedo != committed.CanRedo {
+			t.Fatalf("%s changed engine state: %#v", refused, snapshot)
+		}
+	}
+}
+
+// TestEngineFontChainRenameOutAndBackIsByteIdentical is Design Notes R2's
+// claim, measured on a MULTI-CHAIN document: a chain's emitted position is a
+// total function of its key and its entries are the slice, so renaming out and
+// back must restore the canonical bytes exactly — fonts map AND bands, since a
+// rename that failed to restore a style.fontFamily would move the bands bytes
+// instead. Two commands, two revisions, two undo steps.
+func TestEngineFontChainRenameOutAndBackIsByteIdentical(t *testing.T) {
+	engine := fontChainEngine(t)
+	loaded := engine.Snapshot()
+	original, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := engine.Apply([]byte(`{"kind":"renameFontChain","version":1,"name":"body","to":"zbrand"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(original, moved) {
+		t.Fatal("the rename did not move the canonical bytes; the round trip would prove nothing")
+	}
+	back, err := engine.Apply([]byte(`{"kind":"renameFontChain","version":1,"name":"zbrand","to":"body"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	final, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(original, final) {
+		t.Fatal("rename out and back did not restore the canonical bytes exactly")
+	}
+	if out.Revision != loaded.Revision+1 || back.Revision != out.Revision+1 {
+		t.Fatalf("revisions = %d, %d, %d — two commands are two revisions", loaded.Revision, out.Revision, back.Revision)
+	}
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := engine.Undo()
+	if err != nil || second.CanUndo {
+		t.Fatalf("second undo = %#v, %v — two commands are two undo steps", second, err)
+	}
+}
+
+// TestEngineFontChainNoOpChangesNothing is the bytes.Equal short-circuit at
+// the chain path: a move that reorders nothing is valid and commits nothing.
+func TestEngineFontChainNoOpChangesNothing(t *testing.T) {
+	engine := fontChainEngine(t)
+	committed, err := engine.Apply([]byte(`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stable, err := engine.Apply([]byte(`{"kind":"moveFontChainEntry","version":1,"name":"body","from":1,"to":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) || stable.Revision != committed.Revision || stable.CanUndo != committed.CanUndo || stable.CanRedo != committed.CanRedo {
+		t.Fatalf("a no-op chain command changed engine state: %#v", stable)
+	}
+}
+
+// TestEngineProjectsTheChainsThemselvesNotOnlyTheirNames is AC5: the canvas
+// projection carries the entries, so a move or a remove is observable to the
+// designer at all. FontChains[i].Name == FontFamilies[i] is asserted, because
+// the browser's guard drops the whole snapshot if it stops holding.
+func TestEngineProjectsTheChainsThemselvesNotOnlyTheirNames(t *testing.T) {
+	engine := fontChainEngine(t)
+	snapshot, err := engine.Apply([]byte(`{"kind":"moveFontChainEntry","version":1,"name":"body","from":0,"to":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chains := snapshot.Canvas.FontChains
+	names := make([]string, 0, len(chains))
+	for _, chain := range chains {
+		names = append(names, chain.Name)
+	}
+	if !reflect.DeepEqual(names, fontChainFamilies(t, snapshot)) {
+		t.Fatalf("FontChains names = %#v, FontFamilies = %#v", names, snapshot.Canvas.FontFamilies)
+	}
+	if !reflect.DeepEqual(chains[0].Entries, []string{"Noto Sans Thai", "Noto Sans"}) {
+		t.Fatalf("projected body chain = %#v, want the reordered entries", chains[0].Entries)
+	}
+}

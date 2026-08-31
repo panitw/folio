@@ -1099,8 +1099,8 @@ func fontChain(doc *Template, el template.Element) ([]string, error) {
 		return nil, fmt.Errorf("has text but no style.fontFamily to resolve a font from")
 	}
 	chainName := el.Style.Value.FontFamily.Value
-	chain, ok := doc.doc.Fonts[chainName]
-	if !ok || len(chain) == 0 {
+	chain, ok := doc.doc.Fonts.Chain(chainName)
+	if !ok {
 		return nil, fmt.Errorf("style.fontFamily %q names a chain with no entries in the document's fonts map", chainName)
 	}
 	return chain, nil

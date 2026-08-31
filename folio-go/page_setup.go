@@ -279,12 +279,19 @@ type CanvasProjection struct {
 	Components    []CanvasComponent `json:"components"`
 	// FontFamilies is the closed set style.fontFamily may name in THIS
 	// document: the declared, non-empty font chains, by name, sorted so the
-	// projection is deterministic. It is names only — never the chains, the
-	// faces or the bytes behind them — so it cannot reconstruct the fonts
-	// map; it exists so the designer can offer the author exactly the
-	// families the engine will accept (knownFontFamily), instead of a free
-	// text field whose every rejection is a round trip.
+	// projection is deterministic. It exists so the designer can offer the
+	// author exactly the families the engine will accept (knownFontFamily),
+	// instead of a free text field whose every rejection is a round trip. It
+	// is still names only — the faces live in FontChains below, and the font
+	// BYTES are projected by nothing.
 	FontFamilies []string `json:"fontFamilies"`
+	// FontChains is the same set, WITH the ordered faces behind each name —
+	// entry for entry, in the document's own authored order. It is exactly the
+	// chains FontFamilies names, in the same positions, so the two can never
+	// disagree about which chains a document declares; it exists so a chain
+	// editor re-projects the engine's answer instead of modelling the fonts
+	// map a second time in the browser.
+	FontChains []CanvasFontChain `json:"fontChains"`
 	// DefaultFontSize is the size the producer draws a text element at when
 	// its style carries no fontSize, in millipoints. It is projected rather
 	// than restated in the browser for the ordinary reason: it is the
@@ -423,25 +430,62 @@ type CanvasProjection struct {
 // this is refused a projection with a stated reason, never silently cut.
 const maxCanvasFontFamilies = 256
 
+// CanvasFontChain is one declared font chain AS THE DESIGNER SEES IT: the name
+// style.fontFamily may carry, and the ordered face names behind it. Story 8.1
+// adds the second half. FontFamilies' own doc comment used to say the
+// projection was "names only — never the chains", and that was exactly the
+// limitation a chain editor could not be built on: a moved or removed entry
+// changes nothing the browser can observe, so the panel would have to model
+// the fonts map itself rather than re-project it.
+type CanvasFontChain struct {
+	Name    string   `json:"name"`
+	Entries []string `json:"entries"`
+}
+
 // canvasFontFamilies is the projection of the document's declared chains:
-// exactly the names knownFontFamily accepts, in sorted order.
-func canvasFontFamilies(t *Template) ([]string, error) {
-	names := make([]string, 0, len(t.doc.Fonts))
+// exactly the names knownFontFamily accepts, in sorted order. It asks
+// template.Fonts.Chain the question rather than re-implementing it — the
+// comment here used to claim the list was "exactly the names knownFontFamily
+// accepts" while spelling the test out again three lines later, which is the
+// drift this single authority removes.
+func canvasFontChains(t *Template) ([]CanvasFontChain, error) {
+	chains := make([]CanvasFontChain, 0, len(t.doc.Fonts))
 	// slices.Sorted(maps.Keys(...)) is the module's one way to walk a map:
 	// map order is not an order, and this list is projected output.
 	for _, name := range slices.Sorted(maps.Keys(t.doc.Fonts)) {
-		if len(t.doc.Fonts[name]) == 0 {
+		entries, ok := t.doc.Fonts.Chain(name)
+		if !ok {
 			continue
 		}
 		if len(name) > maxCanvasPropertyString {
 			return nil, fmt.Errorf("folio: font family name exceeds the projection bound")
 		}
-		names = append(names, name)
+		if len(entries) > maxCanvasFontChainEntries {
+			return nil, fmt.Errorf("folio: font chain declares more entries than the projection bound")
+		}
+		for _, face := range entries {
+			if len(face) > maxCanvasPropertyString {
+				return nil, fmt.Errorf("folio: font chain entry exceeds the projection bound")
+			}
+		}
+		chains = append(chains, CanvasFontChain{Name: name, Entries: slices.Clone(entries)})
 	}
-	if len(names) > maxCanvasFontFamilies {
+	if len(chains) > maxCanvasFontFamilies {
 		return nil, fmt.Errorf("folio: document declares more font families than the projection bound")
 	}
-	return names, nil
+	return chains, nil
+}
+
+// canvasFontFamilyNames is FontFamilies, derived from FontChains rather than
+// walked a second time: FontChains[i].Name == FontFamilies[i] then holds BY
+// CONSTRUCTION, which is what lets the browser cross-check the two lists
+// against each other and lets the single Fonts.Chain authority govern both.
+func canvasFontFamilyNames(chains []CanvasFontChain) []string {
+	names := make([]string, 0, len(chains))
+	for _, chain := range chains {
+		names = append(names, chain.Name)
+	}
+	return names
 }
 
 // canvasPageGeometry is THE one layout.PageGeometry the canvas builds, and
@@ -544,11 +588,11 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	families, err := canvasFontFamilies(t)
+	chains, err := canvasFontChains(t)
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: families, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
+	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,

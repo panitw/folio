@@ -72,6 +72,13 @@ const pairs: ReadonlyArray<Pair> = [
   { go: 'maxCanvasPropertyString', source: 'pageSetup', ts: 'MAX_CANVAS_PROPERTY_STRING', sites: [/boundedString\(key, MAX_CANVAS_PROPERTY_STRING\)/] },
   { go: 'MinLineSpacingThousandths', source: 'lineSpacing', ts: 'MIN_LINE_SPACING_THOUSANDTHS', sites: [/component\.lineSpacing < MIN_LINE_SPACING_THOUSANDTHS\b/] },
   { go: 'MaxLineSpacingThousandths', source: 'lineSpacing', ts: 'MAX_LINE_SPACING_THOUSANDTHS', sites: [/component\.lineSpacing > MAX_LINE_SPACING_THOUSANDTHS\b/] },
+  // Story 8.1. maxCanvasFontFamilies had a TypeScript mirror and no pair from
+  // the day it was written — the one-sided edit this list exists to catch,
+  // sitting inside the list itself. It is tied here alongside the per-chain
+  // entry bound the same story added, so the projection's font half is not
+  // half-tied.
+  { go: 'maxCanvasFontFamilies', source: 'pageSetup', ts: 'MAX_ENGINE_FONT_FAMILIES', sites: [/value\.fontFamilies\.length > MAX_ENGINE_FONT_FAMILIES\b/] },
+  { go: 'maxCanvasFontChainEntries', source: 'componentCommands', ts: 'MAX_ENGINE_FONT_CHAIN_ENTRIES', sites: [/chain\.entries\.length <= MAX_ENGINE_FONT_CHAIN_ENTRIES\b/] },
 ]
 
 // Both spellings a Go declaration can take: a file-scope `const NAME = N` and
@@ -99,10 +106,11 @@ describe('canvas projection bounds mirror', () => {
     // The count, and the fact that BOTH Go sources are actually read: a pair
     // list that quietly lost its only linespacing.go member would otherwise
     // leave this file reading one source and still calling itself the tie.
-    expect(pairs).toHaveLength(6)
-    // The NUMERAL pairs read two sources; componentCommands carries the
-    // predicate tie below and deliberately contributes no pair.
-    expect(new Set(pairs.map((pair) => pair.source))).toEqual(new Set(['pageSetup', 'lineSpacing']))
+    expect(pairs).toHaveLength(8)
+    // The NUMERAL pairs now read all three sources: componentCommands carries
+    // the band-containment predicate tie below AND, since Story 8.1, the
+    // per-chain entry bound the font-chain commands and the projection share.
+    expect(new Set(pairs.map((pair) => pair.source))).toEqual(new Set(['pageSetup', 'lineSpacing', 'componentCommands']))
   })
 
   it('holds every Go bound and its TypeScript mirror at the same number', () => {

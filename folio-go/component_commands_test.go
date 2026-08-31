@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -1133,4 +1134,379 @@ func contentElementByID(tpl *Template, id string) (template.Element, bool) {
 		}
 	}
 	return template.Element{}, false
+}
+
+// ---------------------------------------------------------------------------
+// STORY 8.1: THE FONT-CHAIN COMMAND VOCABULARY.
+//
+// fontChainDocJSON is a THREE-chain document with fontFamily attached at both
+// of its two attachment points, across all three bands, so the delete
+// refusal's document order (pageHeader, content, pageFooter) and its
+// headerStyle arm are both reachable:
+//
+//	body    — named by e2 (pageHeader style), e7 (content style) and
+//	          e9 (content table headerStyle)
+//	heading — named by e12 (pageFooter style) only
+//	unused  — named by nothing
+const fontChainDocJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e7", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "content", "style": {"fontFamily": "body"}},
+      {"id": "e9", "type": "table", "x": 0, "y": 30, "bind": "items[]", "headerHeight": 20,
+        "columns": [{"id": "e10", "label": "Date", "width": 100, "bind": "{{row.a}}"}],
+        "headerStyle": {"fontFamily": "body"}}
+    ]},
+    "pageFooter": {"elements": [{"id": "e12", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "footer", "style": {"fontFamily": "heading"}}], "height": 20},
+    "pageHeader": {"elements": [{"id": "e2", "type": "text", "x": 0, "y": 0, "width": 100, "height": 20, "value": "header", "style": {"fontFamily": "body"}}], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans", "Noto Sans Thai"], "heading": ["Noto Sans"], "unused": ["Noto Sans SC"]},
+  "locale": "en",
+  "nextId": 39,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}`
+
+func fontChainTemplate(t *testing.T) *Template {
+	t.Helper()
+	tpl, err := ParseTemplate([]byte(fontChainDocJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tpl
+}
+
+// fontChainRefusal applies command, requires it to be refused as a located
+// *ComponentCommandError, and requires the document to be byte-identical
+// afterwards — every matrix row's "document unmutated" clause, asserted rather
+// than assumed, because a partially applied rename is exactly the failure the
+// one-transaction shape exists to prevent.
+func fontChainRefusal(t *testing.T, tpl *Template, command string) *ComponentCommandError {
+	t.Helper()
+	before, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, applyErr := ApplyComponentCommand(tpl, []byte(command))
+	if applyErr == nil {
+		t.Fatalf("command unexpectedly succeeded: %s", command)
+	}
+	after, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("a refused font chain command mutated the document: %s", command)
+	}
+	var failure *ComponentCommandError
+	if !errors.As(applyErr, &failure) {
+		t.Fatalf("refusal for %s is %T (%v), want *ComponentCommandError", command, applyErr, applyErr)
+	}
+	if failure.ElementID != "" {
+		t.Errorf("font chain refusal carries elementId %q; a chain command is not addressed to an element", failure.ElementID)
+	}
+	return failure
+}
+
+func fontChainAccepted(t *testing.T, tpl *Template, command string) CanvasProjection {
+	t.Helper()
+	projection, err := ApplyComponentCommand(tpl, []byte(command))
+	if err != nil {
+		t.Fatalf("%s: %v", command, err)
+	}
+	return projection
+}
+
+func fontChainOf(t *testing.T, tpl *Template, name string) []string {
+	t.Helper()
+	chain, ok := tpl.doc.Fonts[name]
+	if !ok {
+		t.Fatalf("font chain %q is not declared", name)
+	}
+	return chain
+}
+
+func fontFamilyOf(t *testing.T, tpl *Template, id string) string {
+	t.Helper()
+	_, _, _, element, err := findComponent(tpl, id)
+	if err != nil {
+		t.Fatalf("element %s: %v", id, err)
+	}
+	if element.Type == template.ElementTable && element.Table.Set && !element.Table.Null && element.Table.Value.HeaderStyle.Set {
+		return element.Table.Value.HeaderStyle.Value.FontFamily.Value
+	}
+	if !element.Style.Set || element.Style.Null {
+		return ""
+	}
+	return element.Style.Value.FontFamily.Value
+}
+
+func TestFontChainAddDeclaresAChainAndProjectsIt(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	projection := fontChainAccepted(t, tpl, `{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans","Noto Sans Thai"]}`)
+	if got := fontChainOf(t, tpl, "caption"); !reflect.DeepEqual(got, []string{"Noto Sans", "Noto Sans Thai"}) {
+		t.Fatalf("caption chain = %#v", got)
+	}
+	if !reflect.DeepEqual(projection.FontFamilies, []string{"body", "caption", "heading", "unused"}) {
+		t.Fatalf("projection families = %#v, want the declared chains, sorted", projection.FontFamilies)
+	}
+	// FontChains[i].Name == FontFamilies[i] by construction: assert it, since
+	// the browser's guard rejects the whole snapshot if it ever stops holding.
+	names := make([]string, 0, len(projection.FontChains))
+	for _, chain := range projection.FontChains {
+		names = append(names, chain.Name)
+	}
+	if !reflect.DeepEqual(names, projection.FontFamilies) {
+		t.Fatalf("FontChains names = %#v, FontFamilies = %#v", names, projection.FontFamilies)
+	}
+	if !reflect.DeepEqual(projection.FontChains[1].Entries, []string{"Noto Sans", "Noto Sans Thai"}) {
+		t.Fatalf("projected caption entries = %#v", projection.FontChains[1].Entries)
+	}
+}
+
+func TestFontChainAddRefusesATakenName(t *testing.T) {
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"heading","entries":["Noto Sans"]}`)
+	if failure.Message != `a font chain named "heading" already exists` || failure.DataPath != "fonts.heading" {
+		t.Fatalf("duplicate refusal = %q at %q", failure.Message, failure.DataPath)
+	}
+}
+
+func TestFontChainAddRefusesAChainWithNoEntries(t *testing.T) {
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"caption","entries":[]}`)
+	if failure.Message != "a font chain must declare at least one entry" {
+		t.Fatalf("empty-entries refusal = %q", failure.Message)
+	}
+}
+
+func TestFontChainCommandsRefuseAnEmptyName(t *testing.T) {
+	// commandString already refuses an absent or empty author string; the
+	// chain commands reuse it rather than restating the rule.
+	for _, probe := range []struct{ command, want string }{
+		{`{"kind":"addFontChain","version":1,"name":"","entries":["Noto Sans"]}`, "folio: name must be a non-empty string"},
+		{`{"kind":"renameFontChain","version":1,"name":"body","to":""}`, "folio: to must be a non-empty string"},
+		{`{"kind":"deleteFontChain","version":1,"name":""}`, "folio: name must be a non-empty string"},
+		{`{"kind":"addFontChainEntry","version":1,"name":"body","index":0,"face":""}`, "folio: face must be a non-empty string"},
+	} {
+		if failure := fontChainRefusal(t, fontChainTemplate(t), probe.command); failure.Message != probe.want {
+			t.Errorf("%s refusal = %q, want %q", probe.command, failure.Message, probe.want)
+		}
+	}
+}
+
+func TestFontChainRenameCarriesEveryElementNamingIt(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	fontChainAccepted(t, tpl, `{"kind":"renameFontChain","version":1,"name":"body","to":"brand"}`)
+	if _, declared := tpl.doc.Fonts["body"]; declared {
+		t.Fatal("the old chain key survived the rename")
+	}
+	if got := fontChainOf(t, tpl, "brand"); !reflect.DeepEqual(got, []string{"Noto Sans", "Noto Sans Thai"}) {
+		t.Fatalf("renamed chain = %#v, want the entries carried verbatim", got)
+	}
+	// All four references: three style.fontFamily bearers across the three
+	// bands, and the table's headerStyle.fontFamily.
+	for _, id := range []string{"e2", "e7", "e9"} {
+		if got := fontFamilyOf(t, tpl, id); got != "brand" {
+			t.Errorf("element %s names %q after the rename", id, got)
+		}
+	}
+	if got := fontFamilyOf(t, tpl, "e12"); got != "heading" {
+		t.Errorf("element e12 named a chain the rename did not touch: %q", got)
+	}
+}
+
+func TestFontChainRenameRefusesATakenDestination(t *testing.T) {
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"renameFontChain","version":1,"name":"body","to":"heading"}`)
+	if failure.Message != `a font chain named "heading" already exists` {
+		t.Fatalf("rename-onto-taken refusal = %q", failure.Message)
+	}
+}
+
+func TestFontChainDeleteRemovesAnUnreferencedChain(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	projection := fontChainAccepted(t, tpl, `{"kind":"deleteFontChain","version":1,"name":"unused"}`)
+	if _, declared := tpl.doc.Fonts["unused"]; declared {
+		t.Fatal("the deleted chain is still declared")
+	}
+	if !reflect.DeepEqual(projection.FontFamilies, []string{"body", "heading"}) {
+		t.Fatalf("projection families after delete = %#v", projection.FontFamilies)
+	}
+}
+
+// TestFontChainDeleteRefusesAChainAnElementStyleNames is the style.fontFamily
+// arm of the orphaning-delete refusal, and asserts the document-order id list.
+func TestFontChainDeleteRefusesAChainAnElementStyleNames(t *testing.T) {
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"deleteFontChain","version":1,"name":"body"}`)
+	if failure.Message != `font chain "body" is still named by e2, e7, e9` || failure.DataPath != "fonts.body" {
+		t.Fatalf("orphaning-delete refusal = %q at %q", failure.Message, failure.DataPath)
+	}
+}
+
+// TestFontChainDeleteRefusesAChainOnlyAHeaderStyleNames proves the SECOND
+// attachment point on its own. The style-arm test above would stay green if
+// fontChainReferences never looked at a table's headerStyle at all — that
+// population is exactly the one a style-only test never reaches.
+func TestFontChainDeleteRefusesAChainOnlyAHeaderStyleNames(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	// Move every style.fontFamily off "body" first, leaving the table's
+	// headerStyle as the chain's only remaining reference.
+	fontChainAccepted(t, tpl, `{"kind":"updateComponentProperties","version":1,"ids":["e2","e7"],"changes":{"fontFamily":{"op":"set","value":"heading"}}}`)
+	if refs := fontChainReferences(tpl, "body"); !reflect.DeepEqual(refs, []string{"e9"}) {
+		t.Fatalf("references to body = %#v, want the table's headerStyle alone", refs)
+	}
+	failure := fontChainRefusal(t, tpl, `{"kind":"deleteFontChain","version":1,"name":"body"}`)
+	if failure.Message != `font chain "body" is still named by e9` {
+		t.Fatalf("headerStyle-only refusal = %q", failure.Message)
+	}
+}
+
+func TestFontChainRemoveEntryRefusesToEmptyAChain(t *testing.T) {
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"removeFontChainEntry","version":1,"name":"heading","index":0}`)
+	if failure.Message != `removing that entry would leave font chain "heading" with no entries` {
+		t.Fatalf("last-entry refusal = %q", failure.Message)
+	}
+}
+
+func TestFontChainEntryCommandsEditTheChainInPlace(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	// A face this build's FontSet does not ship is ACCEPTED: the format's
+	// standing tolerance (render.go's resolveRuneFace skips an absent member).
+	fontChainAccepted(t, tpl, `{"kind":"addFontChainEntry","version":1,"name":"body","index":1,"face":"Nonesuch Display"}`)
+	if got := fontChainOf(t, tpl, "body"); !reflect.DeepEqual(got, []string{"Noto Sans", "Nonesuch Display", "Noto Sans Thai"}) {
+		t.Fatalf("after insert = %#v", got)
+	}
+	fontChainAccepted(t, tpl, `{"kind":"moveFontChainEntry","version":1,"name":"body","from":0,"to":2}`)
+	if got := fontChainOf(t, tpl, "body"); !reflect.DeepEqual(got, []string{"Nonesuch Display", "Noto Sans Thai", "Noto Sans"}) {
+		t.Fatalf("after move = %#v", got)
+	}
+	fontChainAccepted(t, tpl, `{"kind":"removeFontChainEntry","version":1,"name":"body","index":1}`)
+	if got := fontChainOf(t, tpl, "body"); !reflect.DeepEqual(got, []string{"Nonesuch Display", "Noto Sans"}) {
+		t.Fatalf("after remove = %#v, want the order of the rest preserved", got)
+	}
+}
+
+func TestFontChainEntryCommandsRefuseAnIndexOutOfRange(t *testing.T) {
+	for _, command := range []string{
+		`{"kind":"addFontChainEntry","version":1,"name":"body","index":3,"face":"Noto Sans"}`,
+		`{"kind":"addFontChainEntry","version":1,"name":"body","index":-1,"face":"Noto Sans"}`,
+		`{"kind":"moveFontChainEntry","version":1,"name":"body","from":0,"to":2}`,
+		`{"kind":"moveFontChainEntry","version":1,"name":"body","from":2,"to":0}`,
+		`{"kind":"removeFontChainEntry","version":1,"name":"body","index":2}`,
+	} {
+		if failure := fontChainRefusal(t, fontChainTemplate(t), command); failure.Message != "entry index is out of range" {
+			t.Errorf("%s refusal = %q", command, failure.Message)
+		}
+	}
+}
+
+func TestFontChainCommandsRefuseAnUndeclaredChain(t *testing.T) {
+	for _, command := range []string{
+		`{"kind":"renameFontChain","version":1,"name":"missing","to":"brand"}`,
+		`{"kind":"deleteFontChain","version":1,"name":"missing"}`,
+		`{"kind":"addFontChainEntry","version":1,"name":"missing","index":0,"face":"Noto Sans"}`,
+		`{"kind":"moveFontChainEntry","version":1,"name":"missing","from":0,"to":0}`,
+		`{"kind":"removeFontChainEntry","version":1,"name":"missing","index":0}`,
+	} {
+		failure := fontChainRefusal(t, fontChainTemplate(t), command)
+		if failure.Message != `no font chain named "missing" is declared` || failure.DataPath != "fonts.missing" {
+			t.Errorf("%s refusal = %q at %q", command, failure.Message, failure.DataPath)
+		}
+	}
+}
+
+func TestFontChainAddRefusesANameOverTheProjectionBound(t *testing.T) {
+	// Refused AT THE COMMAND, located, rather than left to canvasFontChains'
+	// unlocated bare error later in the same transaction.
+	long := strings.Repeat("f", maxCanvasPropertyString+1)
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"`+long+`","entries":["Noto Sans"]}`)
+	if failure.Message != "font chain name exceeds the projection bound" {
+		t.Fatalf("over-long name refusal = %q", failure.Message)
+	}
+	edge := strings.Repeat("f", maxCanvasPropertyString)
+	tpl := fontChainTemplate(t)
+	fontChainAccepted(t, tpl, `{"kind":"addFontChain","version":1,"name":"`+edge+`","entries":["Noto Sans"]}`)
+}
+
+func TestFontChainAddRefusesMoreChainsThanTheProjectionBound(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	for len(tpl.doc.Fonts) < maxCanvasFontFamilies {
+		fontChainAccepted(t, tpl, fmt.Sprintf(`{"kind":"addFontChain","version":1,"name":"c%04d","entries":["Noto Sans"]}`, len(tpl.doc.Fonts)))
+	}
+	failure := fontChainRefusal(t, tpl, `{"kind":"addFontChain","version":1,"name":"onetoomany","entries":["Noto Sans"]}`)
+	if failure.Message != "document declares more font chains than the projection bound" {
+		t.Fatalf("over-count refusal = %q", failure.Message)
+	}
+}
+
+func TestFontChainEntryCountIsBoundedAtTheCommand(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	entries := make([]string, maxCanvasFontChainEntries+1)
+	for i := range entries {
+		entries[i] = fmt.Sprintf("%q", fmt.Sprintf("face-%d", i))
+	}
+	failure := fontChainRefusal(t, tpl, `{"kind":"addFontChain","version":1,"name":"deep","entries":[`+strings.Join(entries, ",")+`]}`)
+	if failure.Message != "a font chain declares more entries than the projection bound" {
+		t.Fatalf("over-deep chain refusal = %q", failure.Message)
+	}
+	fontChainAccepted(t, tpl, `{"kind":"addFontChain","version":1,"name":"deep","entries":[`+strings.Join(entries[:maxCanvasFontChainEntries], ",")+`]}`)
+	if failure := fontChainRefusal(t, tpl, `{"kind":"addFontChainEntry","version":1,"name":"deep","index":0,"face":"Noto Sans"}`); failure.Message != "a font chain declares more entries than the projection bound" {
+		t.Fatalf("over-deep insert refusal = %q", failure.Message)
+	}
+}
+
+// TestFontChainRenameMovesTheDefaultANewTextElementAdopts records
+// defaultFontFamily's coupling to the chain KEYS rather than leaving it
+// unmeasured: D-4.1.1 rejected an alphabetical default on exactly this hazard,
+// and a rename is now a way an author can move it.
+func TestFontChainRenameMovesTheDefaultANewTextElementAdopts(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	if got := defaultFontFamily(tpl); got != "body" {
+		t.Fatalf("default family = %q, want the sorted-first declared chain", got)
+	}
+	fontChainAccepted(t, tpl, `{"kind":"renameFontChain","version":1,"name":"body","to":"zbody"}`)
+	if got := defaultFontFamily(tpl); got != "heading" {
+		t.Fatalf("default family after the rename = %q, want the new sorted-first chain", got)
+	}
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection := fontChainAccepted(t, tpl, `{"kind":"createComponent","version":1,"type":"text","band":"content","x":12,"y":60,"width":72,"height":24,"snap":false}`)
+	created := newProjectedComponent(t, before, projection)
+	if created.FontFamily == nil || *created.FontFamily != "heading" {
+		t.Fatalf("a text element placed after the rename adopted %v", created.FontFamily)
+	}
+}
+
+// TestEmptyFontChainIsInvisibleToTheProjectionAndRefusedByTheProperty is the
+// departed population of the five open-coded guards Fonts.Chain replaced: a
+// declared-but-empty chain. decodeFonts accepts one at load (this story does
+// NOT narrow the loader), so it must still be invisible to the projection and
+// still refused by the fontFamily property command — and it must stay
+// deletable, because "declared" and "nameable" are deliberately different
+// questions.
+func TestEmptyFontChainIsInvisibleToTheProjectionAndRefusedByTheProperty(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(strings.Replace(fontChainDocJSON, `"unused": ["Noto Sans SC"]`, `"unused": []`, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chain, ok := tpl.doc.Fonts.Chain("unused"); ok || chain != nil {
+		t.Fatalf("Fonts.Chain accepted an empty chain: %#v", chain)
+	}
+	if _, declared := tpl.doc.Fonts["unused"]; !declared {
+		t.Fatal("the loader dropped the empty chain; this story does not narrow decodeFonts")
+	}
+	projection, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(projection.FontFamilies, []string{"body", "heading"}) {
+		t.Fatalf("an empty chain reached the projection: %#v", projection.FontFamilies)
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e2"],"changes":{"fontFamily":{"op":"set","value":"unused"}}}`)); err == nil {
+		t.Fatal("the property command accepted an empty chain")
+	}
+	// Still deletable: an empty chain a .folio in the wild carries must not
+	// become unreachable to every command at once.
+	fontChainAccepted(t, tpl, `{"kind":"deleteFontChain","version":1,"name":"unused"}`)
 }

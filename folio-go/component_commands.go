@@ -89,6 +89,18 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return applyTableColumnCommand(t, raw, updateTableColumnBinding)
 	case "updateTableColumnFooter":
 		return applyTableColumnCommand(t, raw, updateTableColumnFooter)
+	case "addFontChain":
+		return applyFontChainCommand(t, raw, addFontChain)
+	case "renameFontChain":
+		return applyFontChainCommand(t, raw, renameFontChain)
+	case "deleteFontChain":
+		return applyFontChainCommand(t, raw, deleteFontChain)
+	case "addFontChainEntry":
+		return applyFontChainCommand(t, raw, addFontChainEntry)
+	case "moveFontChainEntry":
+		return applyFontChainCommand(t, raw, moveFontChainEntry)
+	case "removeFontChainEntry":
+		return applyFontChainCommand(t, raw, removeFontChainEntry)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
@@ -1218,8 +1230,8 @@ func validPropertyColor(value string) bool {
 }
 
 func knownFontFamily(t *Template, value string) bool {
-	chain, ok := t.doc.Fonts[value]
-	return ok && len(chain) > 0
+	_, ok := t.doc.Fonts.Chain(value)
+	return ok
 }
 
 func cleanupEmptyStyle(element *template.Element) {
@@ -1508,7 +1520,7 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 // there is nothing to adopt; fontFamily stays absent exactly as before.
 func defaultFontFamily(t *Template) string {
 	for _, name := range slices.Sorted(maps.Keys(t.doc.Fonts)) {
-		if len(t.doc.Fonts[name]) > 0 {
+		if _, ok := t.doc.Fonts.Chain(name); ok {
 			return name
 		}
 	}
@@ -1883,4 +1895,384 @@ func containEdgeY(band CanvasBand, value, limit geom.Length) geom.Length {
 		return value
 	}
 	return containEdge(value, limit)
+}
+
+// ---------------------------------------------------------------------------
+// STORY 8.1: THE DOCUMENT'S FONT CHAINS, AS COMMANDS.
+//
+// Six kinds that write the one document-level map nothing could write before
+// (template.Document.Fonts). They are modelled on setComponentAsset, the
+// module's other command that writes a document-level map and repoints the
+// elements naming it (D-5.13.1), and they inherit its guarantee the same way:
+// applyFontChainCommand serializes, reparses and projects a CLONE, and the
+// caller's template is installed only if all three succeed. A rename that
+// rewrites a map key and four element references is therefore ONE mutation,
+// which is what lets wasm.Engine.Apply push exactly one undo entry for it.
+
+// maxCanvasFontChainEntries bounds ONE chain's entry list the way
+// maxCanvasFontFamilies bounds the chain list itself: the projection now
+// carries the entries, so an unbounded chain is an unbounded projected array.
+// A document declaring a longer chain is refused a projection with a stated
+// reason, never silently cut, and the commands refuse to build one.
+const maxCanvasFontChainEntries = 64
+
+// maxComponentFailureMessageBytes is the width the wasm host cuts a
+// ComponentCommandError's Message to (wasm/cmd/engine/main.go's
+// bounded(componentErr.Message, 512)). fontChainOrphanMessage reads it so a
+// long id list is trimmed HERE, on a whole-id boundary, instead of arriving at
+// the author cut through the middle of an element id.
+const maxComponentFailureMessageBytes = 512
+
+// fontChainPath is the DataPath every font-chain refusal carries. A chain
+// command is not addressed to an element, so ElementID stays empty and the
+// path names the map entry — the shape page-setup refusals already use, and
+// the only one available: ComponentCommandError.ElementID is single-valued and
+// the orphaning-delete refusal names a LIST of ids, which is why that list
+// lives in Message.
+func fontChainPath(name string) string {
+	if name == "" {
+		return "fonts"
+	}
+	return "fonts." + name
+}
+
+// applyFontChainCommand is the transaction wrapper, identical in shape to
+// applyTableColumnCommand: a handler may mutate its candidate freely, and the
+// caller's document is replaced only after that candidate serializes,
+// reparses and projects.
+func applyFontChainCommand(t *Template, raw map[string]json.RawMessage, apply func(*Template, map[string]json.RawMessage) error) (CanvasProjection, error) {
+	before, err := SerializeTemplate(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	working, err := ParseTemplate(before)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if err := apply(working, raw); err != nil {
+		return CanvasProjection{}, err
+	}
+	canonical, err := SerializeTemplate(working)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	installed, err := ParseTemplate(canonical)
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "fonts", "font chains did not pass format validation")
+	}
+	projection, err := Canvas(installed)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	t.doc, t.derivedFooters = installed.doc, installed.derivedFooters
+	return projection, nil
+}
+
+// fontChainName reads the author's chain name and applies the two rules every
+// chain command shares: it is a non-empty string (commandString's own refusal,
+// reused rather than restated) and it fits the projection's identifier bound,
+// maxCanvasPropertyString. The length is refused HERE, located at fonts.<name>,
+// so the author sees which name is too long instead of canvasFontFamilies'
+// unlocated bare error firing later in the same transaction.
+func fontChainName(raw map[string]json.RawMessage, field string) (string, error) {
+	name, err := commandString(raw, field)
+	if err != nil {
+		return "", componentFailure("", "fonts", err.Error())
+	}
+	if len(name) > maxCanvasPropertyString {
+		return "", componentFailure("", fontChainPath(name), "font chain name exceeds the projection bound")
+	}
+	return name, nil
+}
+
+// declaredFontChain resolves a chain a command is about to edit. It asks
+// whether the KEY is declared, deliberately NOT template.Fonts.Chain: a chain
+// with no entries is not one style.fontFamily may name, but decodeFonts
+// accepts one at load and it must stay deletable and fillable rather than
+// become unreachable to every command at once.
+func declaredFontChain(t *Template, raw map[string]json.RawMessage) (string, []string, error) {
+	name, err := fontChainName(raw, "name")
+	if err != nil {
+		return "", nil, err
+	}
+	chain, ok := t.doc.Fonts[name]
+	if !ok {
+		return "", nil, componentFailure("", fontChainPath(name), fmt.Sprintf("no font chain named %q is declared", name))
+	}
+	return name, chain, nil
+}
+
+// fontChainFace reads one face name: non-empty, and bounded by the same
+// identifier bound the chain name is, because the projection now carries the
+// entries too. A face this build's FontSet does not ship is ACCEPTED — the
+// format's standing tolerance (render.go's resolveRuneFace skips a chain
+// member absent from the set rather than failing), and a chain naming a face
+// an embedding story will supply later is a legal chain today.
+func fontChainFace(raw map[string]json.RawMessage, name, field string) (string, error) {
+	face, err := commandString(raw, field)
+	if err != nil {
+		return "", componentFailure("", fontChainPath(name), err.Error())
+	}
+	if len(face) > maxCanvasPropertyString {
+		return "", componentFailure("", fontChainPath(name), "font chain entry exceeds the projection bound")
+	}
+	return face, nil
+}
+
+func fontChainIndex(raw map[string]json.RawMessage, name, field string, limit int) (int, error) {
+	index, err := commandInt(raw, field)
+	if err != nil {
+		return 0, componentFailure("", fontChainPath(name), err.Error())
+	}
+	if index < 0 || index > limit {
+		return 0, componentFailure("", fontChainPath(name), "entry index is out of range")
+	}
+	return index, nil
+}
+
+// addFontChain declares a new chain. The duplicate-name refusal is this
+// story's, not Story 8.2's: 8.2's panel only reports what the engine answers.
+func addFontChain(t *Template, raw map[string]json.RawMessage) error {
+	if err := componentFields(raw, 4); err != nil {
+		return err
+	}
+	name, err := fontChainName(raw, "name")
+	if err != nil {
+		return err
+	}
+	if _, exists := t.doc.Fonts[name]; exists {
+		return componentFailure("", fontChainPath(name), fmt.Sprintf("a font chain named %q already exists", name))
+	}
+	entriesRaw, ok := raw["entries"]
+	if !ok {
+		return componentFailure("", fontChainPath(name), "font chain entries are required")
+	}
+	var entries []string
+	if json.Unmarshal(entriesRaw, &entries) != nil {
+		return componentFailure("", fontChainPath(name), "font chain entries must be a string array")
+	}
+	if len(entries) == 0 {
+		return componentFailure("", fontChainPath(name), "a font chain must declare at least one entry")
+	}
+	if len(entries) > maxCanvasFontChainEntries {
+		return componentFailure("", fontChainPath(name), "a font chain declares more entries than the projection bound")
+	}
+	for _, face := range entries {
+		if face == "" {
+			return componentFailure("", fontChainPath(name), "a font chain entry must be a non-empty string")
+		}
+		if len(face) > maxCanvasPropertyString {
+			return componentFailure("", fontChainPath(name), "font chain entry exceeds the projection bound")
+		}
+	}
+	if len(t.doc.Fonts)+1 > maxCanvasFontFamilies {
+		return componentFailure("", fontChainPath(name), "document declares more font chains than the projection bound")
+	}
+	if t.doc.Fonts == nil {
+		t.doc.Fonts = template.Fonts{}
+	}
+	t.doc.Fonts[name] = entries
+	return nil
+}
+
+// renameFontChain moves the key AND carries every element that names it, in
+// this one handler. fontFamily has exactly two attachment points in the model
+// (see fontChainReferences), and a rename that moved only the key would leave
+// them naming a chain that no longer exists — a document that loads and then
+// fails at render. Because both halves happen inside one applyFontChainCommand
+// transaction, wasm.Engine.Apply's single pushUndo covers the map and the
+// elements together, and one undo restores all of them.
+func renameFontChain(t *Template, raw map[string]json.RawMessage) error {
+	if err := componentFields(raw, 4); err != nil {
+		return err
+	}
+	name, chain, err := declaredFontChain(t, raw)
+	if err != nil {
+		return err
+	}
+	to, err := fontChainName(raw, "to")
+	if err != nil {
+		return err
+	}
+	if _, exists := t.doc.Fonts[to]; exists {
+		// The destination is never silently destroyed, and renaming a chain
+		// onto its own name is the same refusal: the key is taken.
+		return componentFailure("", fontChainPath(to), fmt.Sprintf("a font chain named %q already exists", to))
+	}
+	delete(t.doc.Fonts, name)
+	t.doc.Fonts[to] = chain
+	for _, elements := range fontChainBands(t) {
+		for i := range elements {
+			element := &elements[i]
+			if fontChainNamedBy(element.Style, name) {
+				element.Style.Value.FontFamily.Value = to
+			}
+			if element.Table.Set && !element.Table.Null && fontChainNamedBy(element.Table.Value.HeaderStyle, name) {
+				element.Table.Value.HeaderStyle.Value.FontFamily.Value = to
+			}
+		}
+	}
+	return nil
+}
+
+// deleteFontChain removes a chain nothing names. AC2's principle — a chain is
+// never deleted with the orphaned elements left to fail at render — reaches
+// headerStyle.fontFamily as squarely as style.fontFamily, so the refusal is
+// measured over both.
+func deleteFontChain(t *Template, raw map[string]json.RawMessage) error {
+	if err := componentFields(raw, 3); err != nil {
+		return err
+	}
+	name, _, err := declaredFontChain(t, raw)
+	if err != nil {
+		return err
+	}
+	if referees := fontChainReferences(t, name); len(referees) > 0 {
+		return componentFailure("", fontChainPath(name), fontChainOrphanMessage(name, referees))
+	}
+	delete(t.doc.Fonts, name)
+	return nil
+}
+
+func addFontChainEntry(t *Template, raw map[string]json.RawMessage) error {
+	if err := componentFields(raw, 5); err != nil {
+		return err
+	}
+	name, chain, err := declaredFontChain(t, raw)
+	if err != nil {
+		return err
+	}
+	index, err := fontChainIndex(raw, name, "index", len(chain))
+	if err != nil {
+		return err
+	}
+	face, err := fontChainFace(raw, name, "face")
+	if err != nil {
+		return err
+	}
+	if len(chain)+1 > maxCanvasFontChainEntries {
+		return componentFailure("", fontChainPath(name), "a font chain declares more entries than the projection bound")
+	}
+	t.doc.Fonts[name] = slices.Insert(slices.Clone(chain), index, face)
+	return nil
+}
+
+func moveFontChainEntry(t *Template, raw map[string]json.RawMessage) error {
+	if err := componentFields(raw, 5); err != nil {
+		return err
+	}
+	name, chain, err := declaredFontChain(t, raw)
+	if err != nil {
+		return err
+	}
+	from, err := fontChainIndex(raw, name, "from", len(chain)-1)
+	if err != nil {
+		return err
+	}
+	to, err := fontChainIndex(raw, name, "to", len(chain)-1)
+	if err != nil {
+		return err
+	}
+	moved := slices.Clone(chain)
+	face := moved[from]
+	moved = slices.Insert(slices.Delete(moved, from, from+1), to, face)
+	t.doc.Fonts[name] = moved
+	return nil
+}
+
+// removeFontChainEntry refuses to empty a chain. A chain with no entries is
+// not one style.fontFamily may name (template.Fonts.Chain), so emptying one
+// through this command would orphan every element naming it just as surely as
+// deleting it would — an ADDITIONAL guard at the command path, not a
+// relocation of the render-time rule, which stays where it is.
+func removeFontChainEntry(t *Template, raw map[string]json.RawMessage) error {
+	if err := componentFields(raw, 4); err != nil {
+		return err
+	}
+	name, chain, err := declaredFontChain(t, raw)
+	if err != nil {
+		return err
+	}
+	index, err := fontChainIndex(raw, name, "index", len(chain)-1)
+	if err != nil {
+		return err
+	}
+	if len(chain) == 1 {
+		return componentFailure("", fontChainPath(name), fmt.Sprintf("removing that entry would leave font chain %q with no entries", name))
+	}
+	t.doc.Fonts[name] = slices.Delete(slices.Clone(chain), index, index+1)
+	return nil
+}
+
+// fontChainBands is the three top-level band element lists in DOCUMENT ORDER
+// (pageHeader, content, pageFooter) — the order the orphaning-delete refusal
+// names its ids in.
+func fontChainBands(t *Template) [][]template.Element {
+	return [][]template.Element{t.doc.Bands.PageHeader.Elements, t.doc.Bands.Content.Elements, t.doc.Bands.PageFooter.Elements}
+}
+
+func fontChainNamedBy(style template.Presence[template.Style], name string) bool {
+	return style.Set && !style.Null && style.Value.FontFamily.Set && !style.Value.FontFamily.Null && style.Value.FontFamily.Value == name
+}
+
+// fontChainReferences reports the ids of every element naming name, in
+// document order. It is the SAFETY half of a delete, like assetKeyReferenced:
+// under-reporting a reference here deletes a chain something still names, with
+// no compile error to announce it.
+//
+// MEASURED, NOT ASSUMED: fontFamily has exactly TWO attachment points in
+// template's model — Element.Style.FontFamily and
+// Element.Table.HeaderStyle.FontFamily (model.go's Style is reached from
+// nowhere else), and both are live at render (render.go's fontChain resolves
+// the first, table_render.go's header-style resolver the second). Columns,
+// footers and assets carry no Style. If a later story attaches a Style
+// anywhere else, this walk needs that location added: like assetKeyReferenced,
+// findComponent and addCanvasImagePaint, it enumerates the three band lists by
+// hand because the module has no shared element enumerator.
+func fontChainReferences(t *Template, name string) []string {
+	var ids []string
+	for _, elements := range fontChainBands(t) {
+		for _, element := range elements {
+			if fontChainNamedBy(element.Style, name) || (element.Table.Set && !element.Table.Null && fontChainNamedBy(element.Table.Value.HeaderStyle, name)) {
+				ids = append(ids, string(element.ID))
+			}
+		}
+	}
+	return ids
+}
+
+// fontChainOrphanMessage names the blocking elements in the refusal itself,
+// which is the only place a LIST of ids can go: ComponentCommandError carries
+// one ElementID. The host cuts the message at maxComponentFailureMessageBytes,
+// so a list that would not fit is trimmed here on a whole-id boundary and
+// closed with " and N more" rather than left to be cut mid-id.
+func fontChainOrphanMessage(name string, ids []string) string {
+	prefix := fmt.Sprintf("font chain %q is still named by ", name)
+	budget := maxComponentFailureMessageBytes - len(prefix)
+	more := func(remaining int) string { return fmt.Sprintf(" and %d more", remaining) }
+	list := ""
+	for i, id := range ids {
+		candidate := id
+		if i > 0 {
+			candidate = list + ", " + id
+		}
+		// A trimmed list must fit WITH its suffix; a complete one needs none.
+		need := len(candidate)
+		if i+1 < len(ids) {
+			need += len(more(len(ids) - i - 1))
+		}
+		if need > budget {
+			if i == 0 {
+				break
+			}
+			return prefix + list + more(len(ids)-i)
+		}
+		list = candidate
+	}
+	if list == "" {
+		// Not even one id fits beside a name this long: the count is all that
+		// is left to say, and it is still true.
+		return prefix + fmt.Sprintf("%d elements", len(ids))
+	}
+	return prefix + list
 }

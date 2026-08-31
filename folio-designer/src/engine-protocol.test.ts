@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_ENGINE_FONT_CHAIN_ENTRIES, MAX_ENGINE_FONT_FAMILIES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
-const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
+const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: ['Noto Sans'] }], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
 describe('canvas projection protocol guard', () => {
   it('accepts and deeply freezes the exact three bounded bands', () => {
@@ -129,6 +129,53 @@ describe('canvas projection protocol guard', () => {
     const long = (count: number) => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, (_value, index) => index * 1800) })
     expect(projection(long(MAX_ENGINE_CONTENT_WINDOWS))).toBeDefined()
     expect(projection(long(MAX_ENGINE_CONTENT_WINDOWS + 1))).toBeUndefined()
+  })
+
+  // STORY 8.1. fontChains is the first projection field that carries the
+  // document's font MAP rather than a name list, and both of its failure modes
+  // are silent: hasOnly is a SUBSET check, so a key Go sends and this file does
+  // not list drops the whole snapshot and blanks the canvas with no
+  // attributable error; and a fontChains/fontFamilies disagreement would let
+  // the chain editor offer a name the engine does not hold. Both are measured
+  // here, not assumed.
+  it('accepts the projected font chains only when they agree with fontFamilies', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    const two = { ...canvas, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: ['Noto Sans'] }, { name: 'heading', entries: ['Noto Sans', 'Noto Sans Thai'] }] }
+    expect(projection(two)).toBeDefined()
+    // THE KEY, BOTH WAYS. Go omits it; and Go sends it while the guard's own
+    // hasOnly list does not name it — the second direction is asserted against
+    // the real list by reading engine-protocol.ts in
+    // canvas_projection_wire_test.go, and here by the extra-key case below.
+    const { fontChains: _chains, ...noChains } = canvas
+    expect(projection(noChains)).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [], fontFamilies: [] , extraProjectionKey: 1 })).toBeUndefined()
+    // Disagreement with fontFamilies, in each of its three shapes: a different
+    // name, a different length, and the same names in a different order.
+    expect(projection({ ...canvas, fontChains: [{ name: 'brand', entries: ['Noto Sans'] }] })).toBeUndefined()
+    expect(projection({ ...two, fontChains: [two.fontChains[0]] })).toBeUndefined()
+    expect(projection({ ...two, fontChains: [two.fontChains[1], two.fontChains[0]] })).toBeUndefined()
+    // A chain with no entries is not one Go projects, because it is not one
+    // style.fontFamily may name.
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [] }] })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [''] }] })).toBeUndefined()
+    // Shape and bounds.
+    expect(projection({ ...canvas, fontChains: null })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body' }] })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: ['Noto Sans'], extra: 1 }] })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [7] }] })).toBeUndefined()
+    const entries = (count: number) => ({ ...canvas, fontChains: [{ name: 'body', entries: Array.from({ length: count }, (_value, index) => `face-${index}`) }] })
+    expect(projection(entries(MAX_ENGINE_FONT_CHAIN_ENTRIES))).toBeDefined()
+    expect(projection(entries(MAX_ENGINE_FONT_CHAIN_ENTRIES + 1))).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: ['f'.repeat(MAX_CANVAS_PROPERTY_STRING) ] }] })).toBeDefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: ['f'.repeat(MAX_CANVAS_PROPERTY_STRING + 1)] }] })).toBeUndefined()
+    // The count bound the mirror test ties to Go's maxCanvasFontFamilies, at
+    // its edge — fontFamilies and fontChains cross the boundary together.
+    const families = (count: number) => {
+      const names = Array.from({ length: count }, (_value, index) => `f${String(index).padStart(6, '0')}`)
+      return { ...canvas, fontFamilies: names, fontChains: names.map((name) => ({ name, entries: ['Noto Sans'] })) }
+    }
+    expect(projection(families(MAX_ENGINE_FONT_FAMILIES))).toBeDefined()
+    expect(projection(families(MAX_ENGINE_FONT_FAMILIES + 1))).toBeUndefined()
   })
 
   it('bounds opaque producer failure provenance at the main-thread boundary', () => {

@@ -652,8 +652,8 @@ func collectBandTableRuns(
 		var chain []string
 		if hs.hasFontFamily {
 			var ok bool
-			chain, ok = doc.doc.Fonts[hs.fontFamily]
-			if !ok || len(chain) == 0 {
+			chain, ok = doc.doc.Fonts.Chain(hs.fontFamily)
+			if !ok {
 				// Mirrors fontChain's own error, verbatim in shape
 				// (render.go) — a text element with the same defect
 				// fails the same way, plain-wrapped, no *RenderError:
