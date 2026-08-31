@@ -3044,7 +3044,17 @@ filed at all because the drag is the one interaction where a per-frame cost is f
   canvas's `ColumnItem`s are tagged with the same groups the render path uses, and the true origins
   fall out of `Paginate` because 7.6 projected them from `Shift` rather than computing them
 - **Severity:** HIGH
-- **Status:** OPEN — **Epic 7's boundary is held on it**
+- **Status:** **CLOSED** 2026-08-31 by Story 7.9. Both canvas column-item arms carry the document's
+  author-declared groups, taken from the render path's own `keepTogetherTags` index, and no fourth
+  cause was registered. Verified at the close by independent measurement rather than from the build's
+  report: for the grouped document the canvas answers **3 windows, origins `[0 700000 1440000]`**
+  against a real `buildPageModel` render of **3 pages** with the identical origins; for its untagged
+  twin, 2 and 2. Each arm was red-proved ALONE — neutralising the non-text arm gives "the canvas
+  counts 2 windows and the render path 3", neutralising the text arm gives "the shipped pair begins
+  its windows identically at `[0 734000]`". The vacuous oracle that let this ship
+  (`renderPathWindows` passing `nil` for the keep-together index) was repaired and the repair
+  red-proved: reverting that one argument reddens with canvas 3 against the crippled oracle's 2.
+  Epic 7's boundary is released on this entry
 
 **Measured at the close, with a control.** A document with a body element, a two-member `signature`
 group at y 700 / y 740 and an untagged tail at y 1440 renders **3 pages**, while
@@ -3111,7 +3121,7 @@ line anyway.
   **authoring** stays deliberately out of Epic 7 — a stated scope boundary, not an accident — but
   creating state the author cannot reach or undo is refused, as it is everywhere else in this project
 - **Severity:** MEDIUM
-- **Status:** OPEN
+- **Status:** **CLOSED** 2026-08-31 by Story 7.9 — see the closing note below
 
 **The gap.** `duplicateComponent`'s `clone := *element` copies the whole `Element`, `KeepTogether`
 included. The designer has no grouping concept at all — `component-command.ts` has zero hits and
@@ -3123,6 +3133,13 @@ Story 7.7 records the canvas **preview** limit (DW-46); this **authoring/duplica
 recorded nowhere else. `unbreakableValues` is the shipped precedent for a format key with zero
 designer references, so the absence of a control is not itself the defect — the silent, unclearable
 join on duplicate is.
+
+**Closed** 2026-08-31 by Story 7.9. `duplicateComponent` clears the copy's tag to the **zero
+`Presence`**, never to an explicit null — `Set: true, Null: true` serializes back as
+`"keepTogether": null`, which is still the key in the file and still raises the required format
+version. Both halves are asserted directly: the copy carries no tag (`!Set && !Null && Value == ""`)
+**and** the original element is unchanged. Red-proved at the close by removing the clear, which gives
+"the duplicate carries keepTogether `Presence[string]{Set:true, Null:false, Value:\"signature\"}`".
 
 ---
 
@@ -3136,7 +3153,14 @@ join on duplicate is.
   is fatal regardless of tagging — describes behaviour that does not exist yet and rides **Story
   7.10**. A spine running ahead of the code is the same defect as one lagging it
 - **Severity:** LOW
-- **Status:** OPEN
+- **Status:** **HALF (a) CLOSED** 2026-08-31 by Story 7.9; **half (b) still OPEN**, owned by Story
+  7.10. Verified at the close: AD-14's Rule bullet now reads "Rows and author-declared keep-together
+  groups too tall for one content window (FR25, FR51), and clipped content (FR44), are `Warning`s
+  …", `FR51` was added to the `Binds:` line, the file is **still 722 lines** (so
+  `internal/diag/diag.go`'s line citation is no worse — DW-65), and the **discriminator clause is
+  confirmed ABSENT**: zero hits for "discriminator", "individually over-tall" or "regardless of
+  tagging" anywhere in the file. A spine running ahead of the code is the same defect as one lagging
+  it, so half (b) was deliberately not written
 
 **The gap.** `_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md:319`
 still reads "Over-tall **rows** (FR25) and clipped content (FR44) are …". D-4.6.2 was amended in
@@ -3437,3 +3461,117 @@ comment asserting a negative carries a test's evidentiary burden.
 red** — the failure mode this project has repeatedly recorded as the expensive one, because a stale
 count reads as a verified count. The remedy is one derivation, not six edits.
 
+---
+
+### DW-62 — an element whose visibility depends on data makes the canvas's window count wrong in EITHER direction, and it has been undisclosed since Story 7.5
+- **Deferred by:** Story 7.9 (2026-08-31), found by measurement while tagging the canvas's column
+  items; the halt it caused was correct, and the ruling that resolved it is D-7.9.1
+- **Owner:** **Owner** — the project owner's call. Every remedy changes what the design view *is*:
+  either the canvas is given data to evaluate against (which makes the preview a function of a data
+  set rather than of the template), or the divergence stays permanently disclosed. Neither is a
+  builder's decision, and the honesty half already shipped, so nothing is blocked on the answer
+- **Severity:** MEDIUM
+- **Status:** OPEN — **the DISCLOSURE is closed; the DIVERGENCE is not**
+
+**This entry is NOT about grouping.** It is about **an element whose visibility depends on data**,
+and it must not be filed under keep-together or a future reader will close it by fixing grouping.
+`page_setup.go` only *projects* `visibleIf`, as a string; nothing on the canvas path evaluates it,
+because evaluating it needs the data the canvas has never been given. The canvas therefore places
+the element and the render may omit it, and AD-24 makes a hidden element **absent with no gap** — no
+sibling moves up, the column is simply shorter, and the two counts differ.
+
+**An UNGROUPED element carrying `visibleIf` has the identical problem.** Grouping is how this was
+found, not what caused it: a conditional member makes a group's whole slide conditional, which is
+loud enough to measure, but the divergence needs no group at all. It has therefore been live and
+**UNDISCLOSED SINCE STORY 7.5** shipped the window count, and since 7.6 shipped the flag that was
+supposed to be honest about exactly this.
+
+**Measured** at `6a31a7f` on a group whose rect member carries `"visibleIf": "showRule"`: the canvas
+answers **3 windows with no data at all**, while the real render answers **3** pages for
+`{"showRule": true}` and **2** for `{"showRule": false}`. Canvas >= render — a **ceiling**, which is
+why a boolean named `IsFloor` could not survive contact with it (D-7.9.6).
+
+**What Story 7.9 did close.** It is now registered as cause (d) of `ContentWindowCountIsExact`, so a
+document carrying one no longer claims an exact count. The disclosure is deliberately conservative:
+ANY content-band `visibleIf` marks the count untrustworthy, including where the element could not
+move a window boundary. That over-disclosure is intended — the flag must fail toward the honest
+claim — and is not the defect this entry tracks.
+
+---
+
+### DW-63 — a content-band TEXT element declaring a background or border makes the canvas UNDER-count, and closing it ADDS a canvas item source rather than removing one
+- **Deferred by:** Story 7.9's review (2026-08-31), measured, and left deliberately unclosed
+- **Owner:** **the next story that changes what the canvas contributes as a content-column item** — a
+  gate, never an event, per D-000.73. That is the exact moment a second item source becomes cheap and
+  the four-row matrix has to be re-measured anyway
+- **Severity:** MEDIUM
+- **Status:** OPEN — **pre-existing in kind; Story 7.9 corrected the comment that overstated it**
+
+**The gap.** `collectElementBoxRects` is eligible for four kinds *including text*, and
+`buildPageModel` folds its output into the slice `contentColumnItems` turns into content-column
+items. So a **styled** text element contributes a full declared-box column item on the render path,
+while the canvas contributes only its shaped lines. **Measured:** a content band of a text at y 0
+plus a styled text element at y 700 with height 200 and a short value projects canvas count **1**,
+origins `[0]`, exact **TRUE**, against a real `buildPageModel` render of **2 pages**.
+
+**Why Story 7.9 did not close it, stated so the omission is not read as an oversight.** RULING B's
+subject is the unstyled NON-TEXT element — a **spurious** canvas item to remove. This is the mirror
+case: closing it means **adding a NEW canvas column-item source**, which is the kind of growth the
+spec's own `story materially larger than the ruling implies` Block If guards. Every text element in
+every canvas window-count fixture is unstyled, so nothing reddens today. What Story 7.9 *did* fix is
+the comment in `addCanvasWindowCount` that asserted the parity invariant unconditionally; the claim
+is now scoped to non-text components with this exception written out, so nothing in-tree overstates
+it.
+
+---
+
+### DW-64 — three sites still paraphrase or quote AD-14's SUPERSEDED over-tall wording, one of them as "not yet built"
+- **Deferred by:** Story 7.9 (2026-08-31); first surfaced in its Dispatch 2 review and carried
+  unfixed through Dispatch 3
+- **Owner:** **Story 7.10** — *an over-tall element is refused whether or not it is grouped*. It owns
+  DW-49's half (b) and rewrites this exact clause of AD-14 anyway, so repairing the paraphrase there
+  costs one line, and repairing it anywhere else risks two authorities disagreeing again
+- **Severity:** LOW
+- **Status:** OPEN
+
+**The gap.** `folio-go/diagnostic.go:344` paraphrases AD-14 as "over-tall rows (FR25, not yet
+built)". Story 7.7 **built** them at `ed485eb`, and Story 7.9 widened the spine clause this comment
+paraphrases to "Rows and author-declared keep-together groups too tall for one content window (FR25,
+FR51)". Both halves of the paraphrase are now wrong: the population is no longer only rows, and the
+"not yet built" half has been false for two stories. A comment that describes shipped behaviour as
+unbuilt reads as a verified statement about scope, which is the expensive failure mode this register
+keeps recording.
+
+**Two further sites, and why they are HERE rather than triaged away.** Story 7.9's review raised the
+superseded AD-14 wording surviving inside `folio-go/internal/layout/`, and the build **rejected** it
+— correctly, because that story's contract fenced **zero paths** under that directory, absolutely.
+A scope-correct rejection is not a finding that stopped being true, so it is recorded here rather
+than lost with the pass that refused it. Verified still present at Story 7.9's close:
+
+- `internal/layout/paginate.go:224` — quotes AD-14 as *"over-tall rows (FR25) and …"*, and `:37`
+  paraphrases the same clause;
+- `internal/layout/paginate_group_test.go:331` — quotes the identical superseded sentence.
+
+Both now describe a narrower population than the engine has, and both sit in a directory that the
+story which widened the spine was forbidden to touch. Whoever takes DW-49's half (b) will be editing
+that clause with the fence lifted, which is the only cheap moment to bring all three sites into
+line at once.
+
+---
+
+### DW-65 — `folio-go/internal/diag/diag.go` cites `ARCHITECTURE-SPINE.md` by LINE NUMBER, and that line falls inside a mermaid ER diagram
+- **Deferred by:** Story 7.9 (2026-08-31); noted at the plan gate as already stale **before** the
+  story touched anything, and carried by the spec's Design Notes rather than repaired
+- **Owner:** **the next story that edits `ARCHITECTURE-SPINE.md`** — a gate, never an event, per
+  D-000.73. A line citation into a file whose length nobody is holding constant will rot again the
+  moment anyone forgets, so the fix is to cite the **AD number**, not to re-count the lines
+- **Severity:** LOW
+- **Status:** OPEN — **pre-existing; Story 7.9 held the file's length so it is no worse**
+
+**The gap.** `folio-go/internal/diag/diag.go:10` cites `ARCHITECTURE-SPINE.md:613`, and at HEAD line
+613 falls inside a mermaid ER diagram — the citation was already pointing at the wrong thing before
+this story began. Story 7.9's AD-14 widening deliberately **rewrapped** rather than grew, holding the
+file at **722 lines** (verified at the close), so the citation is exactly as stale as it was and no
+staler. That was the right call for a story fenced to FR51, and it is also why this entry exists: the
+next edit to that file will not have the same reason to hold the line count, and a silent one-line
+drift is all it takes.

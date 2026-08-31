@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: 'ddd6a3ffdcb3f39bc4a91bc4210bd5f5b4e6b94c'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
@@ -54,6 +54,28 @@ deferred:
       folio-go/internal/diag/diag.go:10
     severity: low
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative. The intent contract below governs the implementation; where the two differ, the
+contract wins.*
+
+The design view draws the sheets a document will fill. When an author asked for a block to be kept
+whole across a page break, it ignored that request: it drew too few sheets, put the break in the
+wrong place, and told the author the number was certain. It now honours those groups, so the sheets
+it draws and where each one starts match what actually prints.
+
+Two more problems surfaced while fixing it, and both are fixed here. The design view was counting
+sheets for things the printed page has nothing on — a picture box with no file chosen yet, the state
+every newly placed picture starts in; a table with no columns; a shape with no height. And the
+certainty claim was built the wrong way round, so that forgetting to set it meant claiming
+certainty. It has been turned around: any path that forgets now says "do not trust this number".
+
+Two things a later reader should not mistake for oversights. Where a component's visibility depends
+on the data, the design view genuinely cannot know whether it prints, and it now says so — true and
+undisclosed since the sheet count first shipped. And a text block carrying a background or a border
+can still make the view draw one sheet too few; that is measured, written down, and deliberately
+left to a later story.
 
 <intent-contract>
 
@@ -1050,3 +1072,196 @@ unexpectedly-broken mutant is a reason to prove the mutation landed, not a concl
   the intended strictness for a cross-language seam, but it is a new coupling.
 - Cause (d) is a conservative over-disclosure: any content-band `visibleIf` marks the count
   untrustworthy, including where the element could not move a window boundary. Intended per D-7.9.6.
+
+## Delivery Log
+
+### 2026-08-31 — planned
+
+Dispatched at `c3df718` under the classic-intent lane (this repository has no `stories.yaml`), with
+`Halt after planning.` Story 7.9 was added to a scope-closed epic under D-7.7.12 as a **repair** of
+Epic 7, not an extension, and it was created holding `epic-7: done` hostage: D-7.7.8 ruled that
+Story 7.6's AC2 — *"marked where the engine will actually break, taken from the projection rather
+than computed in the browser"* — is **false at HEAD** for a grouped document, and that a boundary
+gate passing over a shipped story's false AC is a formality rather than a gate.
+
+The plan gate discharged two things the orchestrator was holding. D-7.7.8's flip-to-the-owner
+condition (*the canvas cannot reuse `keepTogetherTags`*) was tested against the baseline and did not
+trigger: `page_setup.go` and `render.go` are one package in one directory, the authority takes the
+`*Template` and nothing else, and both call sites already hold one. And `multiple-goals` was
+considered and **declined**, so DW-48 did not split out — recorded in the spec's Design Notes so the
+decision is auditable rather than silent. The gate also re-measured two dispatch premises and found
+both wrong: no in-tree guard asserts the designer's 284 tests / 34 files, and
+`fixtures/statement-signoff.json` has no `sha256` field.
+
+### 2026-08-31 — built
+
+Three dispatches, and the shape of the run is the record's most useful part.
+
+**Dispatch 2 halted, and the halt was correct.** It implemented the tagging, committed `6a31a7f`,
+then hit its own `Block If` — `grouping case the canvas cannot know` — by **measurement rather than
+argument**: a group member carrying `visibleIf` gives the canvas an answer it cannot check, because
+whether the member is *placed* is a property of the data. The spec forbade a fourth floor cause
+absolutely and reserved that decision to the engineering lead; **no fourth cause was added** and the
+loop stopped rather than guessing. The commit was **retained and built forward on, never reverted** —
+the `Block If` prescribes a halt and a return, not a revert, and the retained work was correct for
+its own subject.
+
+The lead returned three rulings (D-7.9.1 … D-7.9.7), and two of them changed the story's shape:
+
+- The `visibleIf` case is a **genuine cause, but it is not about grouping and it is not a floor**. A
+  bound table makes the canvas count too low; a conditional element makes it too high. A boolean
+  named `IsFloor` set true on a **ceiling** case is a second confidently-wrong disclosure — the exact
+  failure D-7.7.8 gated the epic on, one layer down.
+- **The unstyled non-text element is a defect, in scope, and must not be disclosed.** The story's own
+  tagging had turned a wrong *origin* into a wrong *count* for the tagged+unstyled document, and a
+  story whose gate is *the canvas is honest* cannot ship a fresh dishonest row.
+
+**Dispatch 3 landed all three.** The honesty flag was renamed and its **sense inverted** —
+`ContentWindowCountIsFloor` → `ContentWindowCountIsExact` — so that its zero value is the safe claim.
+That inversion is the run's most consequential single decision and it was nearly the opposite one:
+`…IsApproximate` would have had zero value `false` reading *"this count is exact"*, so any projection
+path that forgot to set it would have **claimed exactness** — the precise defect that started this
+whole thread, rebuilt into the field's default. One Go field, its TypeScript mirror and one UI
+string; no enum. The shapeless entry point that hardcoded `true` for *"this is a floor"* now hardcodes
+`false`, which is the single highest-risk site of a mechanical rename and is red-proved.
+
+**The review found the null-asset image defect three ways**, and that convergence is why it was
+`high` rather than `medium`. The first `canvasElementIsPlaced` exempted images and tables
+*unconditionally* while claiming parity with the render path; the review found (i) that
+`collectImageRuns` skips a null-asset image, (ii) that `createComponent` gives **every newly dropped
+image exactly that state**, so the defect was the designer's default rather than an edge case, and
+(iii) that the extracted "one authority" carried only the **style** clause of a two-clause rule, so a
+styled rect with zero height was placed too. Ten findings were patched, three deferred, six rejected.
+
+### 2026-08-31 — done
+
+Baseline `ddd6a3f`; retained from the halted dispatch, `6a31a7f`. Closed at `99abcbd`, amended to
+carry this record. Rulings applied by ID: D-7.7.6, D-7.7.7, D-7.7.10, D-7.7.14(a), and D-7.9.1
+through D-7.9.7. Findings across the run: **10 patched / 3 deferred + 4 filed here / 14 rejected**.
+
+**`followup_review_recommended` cleared to `false`, on ground rather than on the build's word.** The
+`high` finding was re-derived independently at the close, not relayed: `createComponent` was driven
+end to end and the image it produces carries `Asset{Set:true, Null:true}`; the shipped predicate
+answers **not placed** where the pre-fix shape answers **placed**; the zero-column table answers
+`false` where the pre-fix arm answered `true`; and the shared predicate was confirmed to carry
+**both** clauses — for a styled rect of zero height the style clause alone says `true` and the whole
+rule says `false`, so a style-clause-only copy would have been wrong.
+
+**Gates measured at the closing revision, independently. Nothing carried forward from the build's
+report.**
+
+- `cd folio-go && go test -count=1 ./...` — **13 packages `ok`, 4 `[no test files]`, exactly ONE
+  distinct red**: the mandated permanent `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`,
+  *"floor not met: got 7, need >=20"*, stats `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`.
+  Untouched.
+- `go vet -tags=matrix ./...` — exit 0, no output. `gofmt -l folio-go` **from the repository root** —
+  no output.
+- `TestTargetRenderHash` — **once per leg with `FOLIO_MATRIX_TARGET` exported**: `darwin/arm64` ok
+  1.18s, `linux/amd64` ok 6.67s, `linux/arm64` ok 5.18s, `js/wasm` ok 10.92s; every leg logged all
+  eight witness lines. **The UNSET control was run** and printed *"this test asserts NOTHING and is
+  a deliberate no-op"* — which is what proves the four legs were not no-ops.
+- `TestCrossTargetByteIdentity` — **PASS, 22.10s**.
+- `cd lint && go test -count=1 ./...` — **4 packages `ok`** (`genmanifest`, `licence`, `manifest`,
+  `rules`). `-count=1` is not decoration here: this gate returned a **cached green while two tests
+  were red**, and two stories closed on it (D-7.9.5). The reds were repaired at `de7b126` and do not
+  reproduce.
+- `cd folio-designer && npm run typecheck && npm run lint && npm test && npm run test:e2e:compile` —
+  typecheck exit 0; lint **exactly 4** pre-existing `only-export-components` warnings, no fifth;
+  vitest **284 passed across 34 files**; e2e **compile only** (`tsc --noEmit`) — the browser suite is
+  deferred by D-000.4 and **did not execute**.
+- **All 22 `goldenDigestRecord` digests re-hashed with `sha256` against the shipped artifacts and
+  compared to the record's own literals: 22 identical, 0 moved.** `byte_neutrality_test.go` is absent
+  from this story's diff, so those literals are baseline values rather than anything re-recorded.
+- Known-environmental, named rather than left silent: `TestShippedFacesReproduceFromUpstream` (no
+  `fontTools` in this environment) and `lint/…/licencegraph_test.go`'s gofmt finding (DW-23).
+
+**The four rows, measured canvas against a REAL `buildPageModel` render, at the closing revision:**
+
+| document | canvas | real render | render-path origins |
+|---|---|---|---|
+| untagged + styled | 2, `[0 740000]`, exact | 2 pages | `[0 740000]` |
+| untagged + unstyled | 2, `[0 1440000]`, exact | 2 pages | `[0 1440000]` |
+| tagged + styled | 3, `[0 700000 1440000]`, exact | 3 pages | `[0 700000 1440000]` |
+| tagged + unstyled | 2, `[0 1440000]`, exact | 2 pages | `[0 1440000]` |
+
+⚠ The orchestrator's dispatch gave `untagged + unstyled` origins as `[0 740000]`. That was the
+**pre-fix canvas** value — the wrong answer this story removes — transcribed from D-7.9.2's
+`canvas @6a31a7f` column rather than from the render. The measured value is `[0 1440000]` **on both
+sides**, confirmed here independently of the build. All four **counts** match the dispatch exactly,
+and **every row's origins equal the render's**.
+
+**The boolean flip, mutated in BOTH directions — the only real proof, because the corpus cannot catch
+a backwards boolean when most documents are exact.** Each mutation's landing was asserted by
+occurrence count before anything was concluded from it, and each file was restored and
+`cmp`-verified byte-identical afterwards.
+
+- **Forced `false`** — RED on all four matrix rows plus the three added ones, *"contentWindowCountIsExact
+  is false for a document carrying no registered cause"*; plus the gap fixture, the empty column
+  (*"origins [0], exact false; want [0] and true — nothing about an empty column is unknowable"*),
+  the windows-down document, and both grouped fixtures.
+- **Forced `true`** — RED on the bound table, *"bound table: count 1, origins [0], exact true; want 1,
+  [0] and false"*, and on conditional visibility in **both** arms, including *"an UNGROUPED element
+  carrying visibleIf reports an exact count; grouping is how this cause was found, not what causes
+  it"*.
+
+The first two mutants attempted were **invalid and were rejected rather than counted**: forcing the
+field at its assignment made `keepTogether` *declared and not used*, a **compile** error rather than
+a test failure. An unexpectedly-broken mutant is a reason to prove the mutation landed, not a
+conclusion about coverage.
+
+**The other red-proofs, all re-run here:**
+
+- **The oracle revert.** `renderPathWindows`' fifth argument back to `nil` with production left
+  correct — RED: *"the canvas counts 3 windows and the render path 2"*, `[0 700000 1440000]` against
+  `[0 740000]`, and on the shipped fixture `[0 706000]` against `[0 734000]`. That `nil` is why *"agrees
+  with the render path"* asserted nothing about groups for two stories.
+- **Each tagging arm ALONE.** Non-text arm neutralised — RED, *"the canvas draws 2 sheets and the
+  document prints 3 pages"* and *"the styled and unstyled grouped documents both occupy 2 windows;
+  this matrix discriminates nothing"*. Text arm neutralised — RED on both the count and the origins
+  subtests, *"the shipped pair begins its windows identically at [0 734000] — a count-only fix would
+  pass this file while the sheet boundary stayed drawn in the wrong place"*.
+
+**Record checks.** `…IsApproximate` survives nowhere as an identifier — its single occurrence in the
+tree is the field's own doc comment, explaining why it was **rejected**, which is D-7.9.6's rationale
+rather than a residue. No `ContentWindowCountIsFloor` identifier survives in Go or TypeScript; three
+comments name it historically. The **direction-dropped note is present at the field's declaration**,
+which is where D-7.9.6 requires it, because the projection carries only the boolean and not the cause
+set — without it a future reader restores the floor claim mistaking a choice for lost fidelity.
+DW-48's drop is the **zero `Presence`**, not an explicit null, with the copy's absence and the
+original's unchanged tag both asserted. DW-49(a)'s carve-out is widened to rows **and author-declared
+keep-together groups** with FR51 added to `Binds:`, the file held at **722 lines**, and the
+discriminator clause confirmed **absent** — it rides Story 7.10.
+
+**Scope fences, verified against the diff rather than the report.** **Zero** paths under
+`folio-go/internal/layout/`; `paginate.go`, `paginate_test.go` and `paginate_group_test.go` all
+**unmodified** since the baseline, with `TestPaginateNeverProducesAnEmptyPage` and the four-rule
+tests green. No `layout.ItemGroup` literal in `page_setup.go`, so the AST tripwire stays green and
+its vacuity floor only rises. `TestKeepTogetherIsNotValidOnATable` green and unmodified.
+`fixtures/statement-signoff.json` untouched. Root `README.md` md5
+`078d7d80d518d54af2fc04fb270d46b8`, unchanged, and never staged by any of the three commits.
+
+**Two record defects, both closed rather than left silent.** The `<intent-contract>` still says *"21
+golden digests"*; there are **22** since Story 8.0 added `thai-stacked-marks` at `26bfd49`. The
+contract is frozen, so this is recorded in the `## Spec Change Log` as a note rather than repaired by
+an edit. And `## Tasks & Acceptance` had been left describing only the pre-halt work, with one
+criterion naming the **renamed** field and therefore unsatisfiable by construction; both were
+re-derived from the amended contract, which was itself not edited.
+
+**Deferred, with owners.** Four entries filed into `deferred-work.md` with the register's four
+convention lines. **DW-62** — *an element whose visibility depends on data*, filed under conditional
+visibility and **explicitly not under grouping**, because an ungrouped `visibleIf` element has the
+identical problem (AD-24 makes a hidden element absent **with no gap**); recorded as **undisclosed
+since Story 7.5**, owner **Owner**, since every remedy changes what the design view *is*. **DW-63** —
+the styled-TEXT divergence the build measured (canvas 1 against a real render of 2); real, and
+outside RULING B's subject because closing it **adds** a canvas item source rather than removing a
+spurious one; owner is the next story that changes what the canvas contributes as a column item, a
+gate rather than an event. **DW-64** — the stale AD-14 paraphrase at `diagnostic.go:344`, widened at
+the close to carry the two `internal/layout/` sites the build **rejected on the zero-paths fence**: a
+scope-correct rejection is not a finding that stopped being true, so it is recorded rather than lost;
+owner Story 7.10, which edits that clause with the fence lifted. **DW-65** — `internal/diag/diag.go`'s
+line-number citation into the spine, pre-existing and held no worse by the deliberate rewrap.
+**DW-46 and DW-48 are CLOSED here, and DW-49's half (a); half (b) stays open on Story 7.10.**
+
+`epic-7` is deliberately left **`in-progress`**. Story 7.9 discharges the gate's condition, but the
+boundary record and the flip are the orchestrator's, and the evidence is handed over rather than
+acted on.
