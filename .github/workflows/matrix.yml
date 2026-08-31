@@ -73,6 +73,7 @@ jobs:
             folio-go/.matrix-build/hash.darwin-arm64.alignment-rounding.txt
             folio-go/.matrix-build/hash.darwin-arm64.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.darwin-arm64.keep-together.txt
+            folio-go/.matrix-build/hash.darwin-arm64.embedded-font.txt
           if-no-files-found: error
 
   render-linux-amd64:
@@ -116,6 +117,7 @@ jobs:
             folio-go/.matrix-build/hash.linux-amd64.alignment-rounding.txt
             folio-go/.matrix-build/hash.linux-amd64.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.linux-amd64.keep-together.txt
+            folio-go/.matrix-build/hash.linux-amd64.embedded-font.txt
           if-no-files-found: error
 
   render-linux-arm64:
@@ -159,6 +161,7 @@ jobs:
             folio-go/.matrix-build/hash.linux-arm64.alignment-rounding.txt
             folio-go/.matrix-build/hash.linux-arm64.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.linux-arm64.keep-together.txt
+            folio-go/.matrix-build/hash.linux-arm64.embedded-font.txt
           if-no-files-found: error
 
   render-js-wasm:
@@ -202,6 +205,7 @@ jobs:
             folio-go/.matrix-build/hash.js-wasm.alignment-rounding.txt
             folio-go/.matrix-build/hash.js-wasm.thai-stacked-marks.txt
             folio-go/.matrix-build/hash.js-wasm.keep-together.txt
+            folio-go/.matrix-build/hash.js-wasm.embedded-font.txt
           if-no-files-found: error
 
   compare-render-hashes:
@@ -260,7 +264,7 @@ jobs:
           # `go test ./...` and not only at the epic boundary gate. Running
           # every story is what makes it worth having; matrix_test.go would
           # have been the wrong home for exactly that reason.
-          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image statement-1 statement-5 statement-20 statement-50 alternating-rows component-asset-import mandatory-break line-spacing justified-text justified-thai alignment-rounding keep-together thai-stacked-marks"
+          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image statement-1 statement-5 statement-20 statement-50 alternating-rows component-asset-import mandatory-break line-spacing justified-text justified-thai alignment-rounding keep-together thai-stacked-marks embedded-font"
           targets="darwin-arm64 linux-amd64 linux-arm64 js-wasm"
 
           overall_fail=0

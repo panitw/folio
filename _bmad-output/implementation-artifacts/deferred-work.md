@@ -4115,14 +4115,19 @@ would never reach.
 
 ---
 
-### DW-81 — `linespacing_test.go`'s version-trigger list is hand-enumerated while its comment claims a derivation
+### DW-81 — `linespacing_test.go`'s version-trigger list is hand-enumerated while its comment claims a derivation — **CLOSED by Story 8.3, 2026-08-31**
 
 - **Deferred by:** Story 8.3's plan gate (2026-08-31).
 - **Owner:** **Story 8.3**, if it mints a font-shaped version trigger; otherwise the next story that
   adds one.
 - **Severity:** LOW as a defect, **MEDIUM as a trap** — a version trigger that is never checked is
   the failure mode the file exists to prevent.
-- **Status:** OPEN.
+- **Status:** **CLOSED.** Story 8.3 minted the font-shaped trigger, so the condition attached to the
+  owner fired. Both halves were discharged in the same commit: the **third** builder loop was added
+  (asserting an embedded-face entry requires `2.0` and a font asset alone does not), and the comment
+  was rewritten to say the enumeration is hand-maintained and to state the obligation on whoever adds
+  the fourth trigger. The correction was red-proved rather than asserted — removing the probe reddens
+  the new loop, and mutating the probe to raise on a font ASSET reddens it in the other direction.
 
 **The gap.** The comment claims the trigger set is **derived**; the code **hand-enumerates** builder
 loops. So a new trigger — a font-shaped one, for instance — is **silently never checked** unless
@@ -4131,3 +4136,33 @@ the same evidentiary burden as a test** (D-8.0.1), and this one is false.
 
 **What discharges it.** Either derive the list, or correct the comment to say it is hand-maintained
 and add the missing loop in the same commit as any new trigger.
+
+---
+
+### DW-82 — the Go/TypeScript wire test recorded the font chain's key names but nothing about an ENTRY, so changing an entry's TYPE blanked the canvas with every test on both sides green — **CLOSED by Story 8.3, 2026-08-31**
+
+- **Deferred by:** Story 8.3 (2026-08-31), recorded on closing it.
+- **Owner:** Story 8.3.
+- **Severity:** HIGH while open — the symptom is a permanently blank canvas with no element id and
+  nothing to attribute it to.
+- **Status:** **CLOSED.**
+
+**The gap, as measured.** `canvas_projection_wire_test.go` held two recorded key sets: the
+projection's top-level keys and `CanvasFontChain`'s (`{"entries", "name"}`). Both record key **NAMES
+only** — never a value's type, and never anything one level further down. So Story 8.3's change,
+`CanvasFontChain.Entries` going from `[]string` to a slice of structs, moved **no** recorded name and
+left both records green, while `engine-protocol.ts`'s entry clause (`typeof face === 'string'`)
+rejected every object entry: `isCanvas` false → `parseInbound` undefined → `engine-client`
+terminates the worker → the canvas is blank. This is DW-74's shape (which names `CanvasComponent`)
+recurring one level down on a different object, and DW-74 stays OPEN on its own terms.
+
+**What closed it.** A **third** recorded key set, `canvasFontChainEntryWireKeys`, plus a matching
+TypeScript-side extraction anchored on `isFontChainEntry`'s own name — the guard's own list, never a
+copy of it. Both halves were red-proved by making the one-sided change in each direction: a field
+added to `CanvasFontChainEntry` in Go alone reddens the Go half; a key added to the browser guard
+alone reddens the TypeScript half.
+
+**What is still not covered, and is DW-74's, not this entry's.** The records still compare key
+NAMES. A field whose **type** changed on both sides in the same edit — `face: string` becoming
+`face: number` in Go and in the guard — would pass all three. Closing that needs a type-level record,
+which is a larger change than this story's, and DW-74 is where it belongs.

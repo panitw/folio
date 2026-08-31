@@ -297,9 +297,18 @@ func TestVersionForSaveIsRaisedOnlyByContent(t *testing.T) {
 // reopen what it just wrote", which is the worst possible place to
 // discover it.
 //
-// The bound is asserted over every version the content rule can return,
-// derived from the constants themselves rather than from a list someone
-// remembered to extend.
+// THE ENUMERATION IS HAND-MAINTAINED, AND SAYING SO IS THE POINT (DW-81,
+// closed by Story 8.3). This comment used to claim the bound was "derived from
+// the constants themselves rather than from a list someone remembered to
+// extend". That was false in both halves: the constant list below is a literal
+// slice, and the document-shape loops under it are three hand-written
+// builders. A trigger added without a matching loop is SILENTLY NEVER CHECKED
+// — which is the exact failure this file exists to prevent, so a comment
+// claiming otherwise was worse than no comment at all.
+//
+// The obligation, stated plainly for whoever adds the fourth trigger: ADD ITS
+// BUILDER LOOP IN THE SAME COMMIT. Story 8.3's font trigger is the third, and
+// it is the one that found this.
 func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 	ceilingMajor, ceilingMinor, err := parseVersion(SupportedVersion)
 	if err != nil {
@@ -350,6 +359,87 @@ func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 			t.Errorf("versionRequiredByContent returned %q, above the ceiling %q", got, SupportedVersion)
 		}
 	}
+	// Story 8.3's shape lives on neither the style block nor the element:
+	// it is the document-level `fonts` map, which no element walk reaches
+	// at all. A THIRD builder, for the same reason keepTogether needed a
+	// second one — and the failure mode this loop guards against is not
+	// "the probe is wrong" but "the probe is never walked".
+	//
+	// It asserts BOTH DIRECTIONS, and the pair is the point (D-1.4.13):
+	// an embedded-face ENTRY requires 2.0, and a font ASSET that no chain
+	// references requires nothing — such a document loads and renders
+	// correctly on a 1.x reader, so raising it would orphan a document
+	// from readers that can in fact read it.
+	for _, tc := range []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{"no font asset, no embedded entry", embeddedFontVersionDoc(false, false), baseVersion},
+		{"a font ASSET the chain does not name", embeddedFontVersionDoc(true, false), baseVersion},
+		{"an embedded-face ENTRY", embeddedFontVersionDoc(true, true), majorFeatureVersion},
+	} {
+		d, perr := ParseDocument([]byte(tc.doc))
+		if perr != nil {
+			t.Fatalf("%s: parse: %v", tc.name, perr)
+		}
+		got := versionRequiredByContent(d)
+		if got != tc.want {
+			t.Errorf("%s: versionRequiredByContent = %q, want %q", tc.name, got, tc.want)
+		}
+		major, minor, _ := parseVersion(got)
+		if major > ceilingMajor || (major == ceilingMajor && minor > ceilingMinor) {
+			t.Errorf("%s: versionRequiredByContent returned %q, above the ceiling %q", tc.name, got, SupportedVersion)
+		}
+	}
+}
+
+// embeddedFontVersionDoc builds the three documents the loop above walks:
+// with or without a font ASSET, and with or without a chain ENTRY naming it.
+// The asset is the same 156-byte hand-built sfnt maximalFixture carries (see
+// fixtures_test.go) — a fixture, not a face; the load-time check on
+// `font/ttf` is structural, and nothing here renders.
+//
+// referenced == true with embedded == false is not a case: an entry can only
+// name an asset the document carries, and decodeFonts refuses one that does
+// not, so the combination is unrepresentable rather than untested.
+func embeddedFontVersionDoc(asset, referenced bool) string {
+	const key = "cbd7a24e64e08aba9da4edd9343b9eaa629e7c26e722eedf68fd5efe217dbedc"
+	assets := "{}"
+	if asset {
+		assets = `{
+    "` + key + `": {
+      "data": [
+        "AAEAAAADACAABAAQY21hcAAAAAAAAAA8AAAAIGdseWYAAAAAAAAAXAAAACBoZWFkAAAAAAAAAHwA",
+        "AAAgQ01BUERBVEFDTUFQREFUQUNNQVBEQVRBQ01BUERBVEFHTFlGREFUQUdMWUZEQVRBR0xZRkRB",
+        "VEFHTFlGREFUQUhFQUREQVRBSEVBRERBVEFIRUFEREFUQUhFQUREQVRB"
+      ],
+      "mediaType": "font/ttf"
+    }
+  }`
+	}
+	chain := `["Noto Sans"]`
+	if referenced {
+		chain = `["Noto Sans", {"asset": "` + key + `"}]`
+	}
+	return `{
+  "assets": ` + assets + `,
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "v", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ` + chain + `},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "2.0"
+}`
 }
 
 func lineSpacingRoundTripDoc(authored string) string {

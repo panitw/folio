@@ -80,6 +80,7 @@ func omitemptyCheckedTypes() []reflect.Type {
 		reflect.TypeOf(Band{}), reflect.TypeOf(Element{}), reflect.TypeOf(TableExt{}),
 		reflect.TypeOf(Column{}), reflect.TypeOf(Style{}), reflect.TypeOf(Border{}),
 		reflect.TypeOf(Asset{}), reflect.TypeOf(Field{}),
+		reflect.TypeOf(FontChainEntry{}), reflect.TypeOf(FontRecord{}),
 		reflect.TypeOf(RawValue{}), reflect.TypeOf(Presence[string]{}),
 	}
 }

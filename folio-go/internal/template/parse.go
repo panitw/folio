@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
 )
@@ -116,10 +117,33 @@ func ParseDocument(b []byte) (*Document, error) {
 		return nil, newLoadError("page", "", "", "missing required field")
 	}
 
-	// fonts
+	// assets — DECODED BEFORE fonts, and the order is load-bearing
+	// (Story 8.3). A chain entry may be `{"asset": "<key>"}`, and
+	// decodeFonts refuses a key that names no asset; it therefore needs
+	// the decoded map to consult. Decoding fonts first would leave that
+	// refusal with nothing to look in, and the natural "fix" — skipping
+	// the check — is exactly the load error the format promises.
+	//
+	// The visible consequence: a document that is wrong in BOTH places
+	// reports its assets error first. That is the right way round —
+	// fonts.<name>[i].asset naming an absent key is not diagnosable
+	// until the assets map is known to be well formed.
+	if raw, ok := top["assets"]; ok {
+		consumed["assets"] = true
+		assets, err := decodeAssets(raw)
+		if err != nil {
+			return nil, err
+		}
+		doc.Assets = assets
+	} else {
+		doc.Assets = map[string]Asset{}
+		consumed["assets"] = true
+	}
+
+	// fonts — see the assets block above for why it decodes second.
 	if raw, ok := top["fonts"]; ok {
 		consumed["fonts"] = true
-		f, err := decodeFonts(raw)
+		f, err := decodeFonts(raw, doc.Assets)
 		if err != nil {
 			return nil, err
 		}
@@ -139,19 +163,6 @@ func ParseDocument(b []byte) (*Document, error) {
 		doc.Bands = bands
 	} else {
 		return nil, newLoadError("bands", "", "", "missing required field")
-	}
-
-	// assets
-	if raw, ok := top["assets"]; ok {
-		consumed["assets"] = true
-		assets, err := decodeAssets(raw)
-		if err != nil {
-			return nil, err
-		}
-		doc.Assets = assets
-	} else {
-		doc.Assets = map[string]Asset{}
-		consumed["assets"] = true
 	}
 
 	// unbreakableValues (Story 2.4; D-2.1.6 OWNER, D-2.4.1) — optional,
@@ -310,7 +321,27 @@ func decodeMargin(raw json.RawMessage) (Margin, error) {
 	return m, nil
 }
 
-func decodeFonts(raw json.RawMessage) (Fonts, error) {
+// decodeFonts walks each chain array ITSELF rather than delegating to
+// decodeStringArrayRaw, and that is the whole reason it is written out
+// (Story 8.3). The delegating version collapsed every defect in a chain
+// into ONE error at field path `fonts.<name>`, with no entry index —
+// so an author with a nine-entry chain was told the chain was wrong and
+// left to find which entry. Every refusal below names
+// `fonts.<name>[<i>]`, and the asset refusal names
+// `fonts.<name>[<i>].asset`.
+//
+// Those field paths are load-bearing rather than cosmetic. No new
+// diagnostic code is minted here (D-7.8.1: a specific code is minted
+// only when a named consumer must BRANCH on it, and none does) — every
+// refusal is newLoadError's TEMPLATE_FIELD_INVALID, and what tells the
+// author WHICH entry is wrong is the Field, which is why the index has
+// to be in it.
+//
+// assets is the already-decoded asset map: ParseDocument decodes assets
+// BEFORE fonts precisely so this function can consult it. A nil map is
+// not a special case — an absent-key lookup in one is simply always
+// false, which is the correct answer for a document with no assets.
+func decodeFonts(raw json.RawMessage, assets map[string]Asset) (Fonts, error) {
 	obj, err := decodeObjectMap(raw)
 	if err != nil {
 		return nil, fmt.Errorf("template: fonts: %w", err)
@@ -318,13 +349,83 @@ func decodeFonts(raw json.RawMessage) (Fonts, error) {
 	out := Fonts{}
 	for _, k := range slices.Sorted(maps.Keys(obj)) {
 		v := obj[k]
-		chain, err := decodeStringArrayRaw(v)
-		if err != nil {
-			return nil, newLoadError("fonts."+k, "", string(v), "must be an array of strings: "+err.Error())
+		var raws []json.RawMessage
+		if err := json.Unmarshal(v, &raws); err != nil {
+			// NOT "an array of strings" — that wording predates Story
+			// 8.3 and became false the moment an entry could be an
+			// object. A refusal that names a legal shape the format no
+			// longer has sends the author to fix the one thing that was
+			// not wrong. The per-ENTRY refusals below name both shapes;
+			// this one is only reached when the chain is not an array at
+			// all, so there is no entry to locate and no index to give.
+			return nil, newLoadError("fonts."+k, "", string(v), "must be an array of font chain entries: "+err.Error())
+		}
+		chain := make([]FontChainEntry, 0, len(raws))
+		for i, entryRaw := range raws {
+			entry, err := decodeFontChainEntry(entryRaw, fmt.Sprintf("fonts.%s[%d]", k, i), assets)
+			if err != nil {
+				return nil, err
+			}
+			chain = append(chain, entry)
 		}
 		out[k] = chain
 	}
 	return out, nil
+}
+
+// decodeFontChainEntry decodes ONE chain entry at field, which already
+// carries the chain name and the index.
+//
+// The shape is decided from the raw JSON's first non-space byte rather
+// than by trying each decode in turn: `"` is a face name, `{` is an
+// embedded reference, and anything else is refused with BOTH legal
+// shapes named, so the message says what the author may write instead of
+// only what they may not.
+func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]Asset) (FontChainEntry, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	switch {
+	case strings.HasPrefix(trimmed, `"`):
+		face, err := decodeStringRaw(raw)
+		if err != nil {
+			return FontChainEntry{}, newLoadError(field, "", trimmed, "must be a string: "+err.Error())
+		}
+		if face == "" {
+			return FontChainEntry{}, newLoadError(field, "", trimmed, "a font chain entry must name a face — an empty string names none")
+		}
+		return FaceEntry(face), nil
+
+	case strings.HasPrefix(trimmed, "{"):
+		entryObj, err := decodeObjectMap(raw)
+		if err != nil {
+			return FontChainEntry{}, newLoadError(field, "", trimmed, "must be an object with exactly one key, \"asset\": "+err.Error())
+		}
+		// EXACTLY {asset}, both directions. A missing `asset` and an
+		// extra key are the same defect — the object IS the entry's
+		// discriminant, so an unrecognised key in it is an entry of an
+		// unknown kind, not a known entry with an unknown decoration,
+		// and D-1.4.9's passthrough does not reach here.
+		assetRaw, ok := entryObj["asset"]
+		if !ok || len(entryObj) != 1 {
+			return FontChainEntry{}, newLoadError(field, "", trimmed,
+				"an embedded font chain entry is the object {\"asset\": \"<assets key>\"} and carries no other key; a plain face name is written as a string")
+		}
+		key, err := decodeStringRaw(assetRaw)
+		if err != nil {
+			return FontChainEntry{}, newLoadError(field+".asset", "", string(assetRaw), "must be a string: "+err.Error())
+		}
+		if key == "" {
+			return FontChainEntry{}, newLoadError(field+".asset", "", string(assetRaw), "must name an assets key — an empty string names none")
+		}
+		if _, present := assets[key]; !present {
+			return FontChainEntry{}, newLoadError(field+".asset", "", key,
+				"names no entry in the document's assets map — an embedded face must be carried by the document that references it")
+		}
+		return AssetEntry(key), nil
+
+	default:
+		return FontChainEntry{}, newLoadError(field, "", trimmed,
+			"a font chain entry is either a face name (a string) or an embedded face (the object {\"asset\": \"<assets key>\"})")
+	}
 }
 
 func decodeAssets(raw json.RawMessage) (map[string]Asset, error) {
@@ -401,11 +502,27 @@ func decodeAssets(raw json.RawMessage) (map[string]Asset, error) {
 			return nil, newLoadError("assets."+k+".data", "", mt, ierr.Error())
 		}
 
+		// Story 8.3: the SAME rule, for fonts, through a second
+		// recognised-type predicate beside the image one rather than a
+		// widened single one. `recognised` is what gates the inspection
+		// in both — an unrecognised font container (font/woff2, say) is
+		// never inspected and never refused here, exactly as an
+		// unrecognised image type is not. The two predicates are
+		// disjoint by construction: no media type is in both switches.
+		if recognised, ferr := decodeRecognisedFont(mt, decoded); recognised && ferr != nil {
+			return nil, newLoadError("assets."+k+".data", "", mt, ferr.Error())
+		}
+
+		font, err := decodeAssetFont(aObj, consumed, "assets."+k+".font")
+		if err != nil {
+			return nil, err
+		}
+
 		extra, err := extraFields(aObj, consumed)
 		if err != nil {
 			return nil, fmt.Errorf("template: assets.%s: %w", k, err)
 		}
-		out[k] = Asset{Data: data, MediaType: mt, Extra: extra}
+		out[k] = Asset{Data: data, MediaType: mt, Font: font, Extra: extra}
 	}
 	return out, nil
 }
@@ -435,4 +552,67 @@ func decodePointsRaw(field, elementID string, raw json.RawMessage) (geom.Length,
 		return 0, newLoadError(field, elementID, string(n), err.Error())
 	}
 	return v, nil
+}
+
+// decodeAssetFont decodes the optional `font` record on one asset
+// (Story 8.3). It is optional in three separate senses, and each is
+// distinguishable from the others on the way back out:
+//
+//   - the key is ABSENT — Presence{} — and the asset serializes without
+//     it, which is what keeps every existing image asset byte-identical;
+//   - the key is present and NULL — a legal spelling that round-trips as
+//     `"font": null` rather than vanishing;
+//   - the key is present with an object, whose four keys are each
+//     optional in the same three-way manner.
+//
+// AN EXPLICIT NULL IS NOT ABSENCE. Every refusal below is written so it
+// fires on `null` as well as on a wrong type where a wrong type is what
+// is refused — decodeStringRaw is what refuses `"family": 3`, and the
+// Null branch is taken FIRST so a null never reaches it and is never
+// mistaken for a missing key.
+func decodeAssetFont(aObj map[string]json.RawMessage, consumed map[string]bool, field string) (Presence[FontRecord], error) {
+	raw, ok := aObj["font"]
+	if !ok {
+		return absent[FontRecord](), nil
+	}
+	consumed["font"] = true
+	if rawIsNull(raw) {
+		return presentNull[FontRecord](), nil
+	}
+	obj, err := decodeObjectMap(raw)
+	if err != nil {
+		return absent[FontRecord](), newLoadError(field, "", string(raw), "must be an object: "+err.Error())
+	}
+	var rec FontRecord
+	inner := map[string]bool{}
+	for _, kv := range []struct {
+		key string
+		dst *Presence[string]
+	}{
+		{"family", &rec.Family},
+		{"licence", &rec.Licence},
+		{"source", &rec.Source},
+		{"style", &rec.Style},
+	} {
+		v, declared := obj[kv.key]
+		if !declared {
+			continue
+		}
+		inner[kv.key] = true
+		if rawIsNull(v) {
+			*kv.dst = presentNull[string]()
+			continue
+		}
+		sv, serr := decodeStringRaw(v)
+		if serr != nil {
+			return absent[FontRecord](), newLoadError(field+"."+kv.key, "", string(v), "must be a string: "+serr.Error())
+		}
+		*kv.dst = present(sv)
+	}
+	extra, err := extraFields(obj, inner)
+	if err != nil {
+		return absent[FontRecord](), fmt.Errorf("template: %s: %w", field, err)
+	}
+	rec.Extra = extra
+	return present(rec), nil
 }

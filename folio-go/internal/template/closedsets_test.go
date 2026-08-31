@@ -93,8 +93,23 @@ func TestClosedSetsNeverIncludeMediaType(t *testing.T) {
 				"file's closed-set inventory (D-1.4.12: doing so is a permanent MAJOR version bump)", name)
 		}
 	}
+	// The prefix population, WIDENED BY STORY 8.3 to include "font/".
+	//
+	// THE POPULATION THIS MEASURED: every mediaType string appearing anywhere
+	// under fixtures/ at f51dd5e is image/png or image/jpeg, and the only
+	// media types this library recognises at all are those two (image.go's
+	// decodeRecognisedImage) plus font/ttf and font/otf (fontasset.go's
+	// decodeRecognisedFont) — four strings, over three prefixes: "image/",
+	// "font/" and the "application/" spelling older font wrappers use
+	// (application/font-sfnt, application/x-font-ttf), which was already
+	// listed. FONT MEDIA TYPES ARE NOT A CLOSED SET, and that sentence is
+	// this loop's job rather than a comment's: D-1.8.1 (as amended) forbids
+	// one, and its own note predicted this recurrence "later for font
+	// formats". Adding font/ttf to closedsets.go would make every future font
+	// container — WOFF2 and whatever follows it — a permanent MAJOR version
+	// bump on the format under D-1.4.12.
 	for _, key := range allKeys {
-		if strings.HasPrefix(key, "image/") || strings.HasPrefix(key, "application/") {
+		if strings.HasPrefix(key, "image/") || strings.HasPrefix(key, "font/") || strings.HasPrefix(key, "application/") {
 			t.Fatalf("AC11 violation: closedsets.go contains a media-type-shaped key %q inside one of "+
 				"its closed sets (D-1.4.12)", key)
 		}
@@ -144,6 +159,58 @@ func TestClosedSetsMediaTypeRedProof(t *testing.T) {
 	}
 	if !foundKey {
 		t.Fatalf("RP: expected the media-type-shaped key \"image/png\" to be extracted, got %v", allKeys)
+	}
+}
+
+// TestClosedSetsNeverIncludeFontMediaTypeRedProof is Story 8.3's red proof
+// for the "font/" prefix the guard above gained, and it is a SEPARATE test
+// rather than another arm of the image one on purpose: the image proof passes
+// on the "image/" branch of the same `||`, so extending it would have left the
+// new branch unexercised while the suite went green — the exact
+// "unexercised, not enforced" pattern this whole file exists to close.
+//
+// It builds a scratch closedsets.go declaring a font media-type set — the
+// shape a future agent implementing "the closed set of font formats" would
+// reach for — and asserts BOTH halves the real test checks: the set's NAME is
+// scanned, and its font-media-type-shaped KEY is extracted.
+func TestClosedSetsNeverIncludeFontMediaTypeRedProof(t *testing.T) {
+	real, err := os.ReadFile(closedSetsSource)
+	if err != nil {
+		t.Fatalf("read %s: %v", closedSetsSource, err)
+	}
+	mutated := string(real) + "\n" +
+		"var closedFontMediaTypes = map[string]bool{\n\t\"font/ttf\": true, \"font/otf\": true,\n}\n"
+
+	dir := t.TempDir()
+	scratch := filepath.Join(dir, "closedsets.go")
+	if err := os.WriteFile(scratch, []byte(mutated), 0o644); err != nil {
+		t.Fatalf("write scratch closedsets.go: %v", err)
+	}
+
+	setNames, allKeys, err := scanClosedSets(scratch)
+	if err != nil {
+		t.Fatalf("scan mutated closedsets.go: %v", err)
+	}
+	if len(setNames) == 0 {
+		t.Fatal("vacuity guard: mutated scratch file produced zero set names")
+	}
+	named := false
+	for _, name := range setNames {
+		if strings.Contains(strings.ToLower(name), "mediatype") {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("RP: expected closedFontMediaTypes to be named among %v", setNames)
+	}
+	found := false
+	for _, key := range allKeys {
+		if strings.HasPrefix(key, "font/") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("RP: expected a font-media-type-shaped key to be extracted, got %v", allKeys)
 	}
 }
 

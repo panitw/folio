@@ -438,8 +438,57 @@ const maxCanvasFontFamilies = 256
 // changes nothing the browser can observe, so the panel would have to model
 // the fonts map itself rather than re-project it.
 type CanvasFontChain struct {
-	Name    string   `json:"name"`
-	Entries []string `json:"entries"`
+	Name string `json:"name"`
+	// Entries carries the ordered entries, and since Story 8.3 each is
+	// an OBJECT rather than a string: an entry may name a face the
+	// renderer is given or a face the document itself carries, and the
+	// browser must be able to tell which without inspecting the value.
+	Entries []CanvasFontChainEntry `json:"entries"`
+}
+
+// CanvasFontChainEntry is one chain entry AS THE DESIGNER SEES IT.
+//
+// THE SHAPE IS DISCRIMINATED, AND THE DISCRIMINANT IS PROJECTED RATHER
+// THAN INFERRED. Exactly one of Face and AssetKey is non-empty. The
+// browser is forbidden from deriving which kind an entry is — no key
+// detection, no parsing, no length heuristic on a 64-character string —
+// so the engine states it, and the designer's guard asserts it.
+//
+// Family and Style are EMPTY for a named face (its name is the whole
+// identity the document gives it) and non-empty for an embedded one.
+// They come from the asset's own `font` record, read HERE — the browser
+// may display what this projection carries and derive nothing from it,
+// which is why the family falls back below rather than being left for
+// the panel to patch up.
+//
+// WHAT MECHANICALLY ENFORCES THAT, STATED NARROWLY. Nothing tests "the
+// panel holds no rule" as such, and claiming otherwise was this
+// comment's own defect (review finding 5).
+// canvas-authority-contract.test.ts walks every production source file
+// under folio-designer/src — FontChainEditor.tsx among them, by
+// directory walk rather than by name — and fails if any of them restates
+// the ENGINE'S REFUSAL VOCABULARY. That is one rule, not all of them.
+// The rest of this paragraph is an engineering rule the reviewer of a
+// browser change enforces, and the Go-side half of the contract — that
+// the engine really emits the shape the browser's guard requires — is
+// pinned by canvas_font_chain_entry_test.go.
+//
+// Family is NEVER EMPTY for an embedded entry. When the asset declares
+// no `font.family`, the ASSET KEY is projected as the family — the
+// engine chooses what the panel shows, so the browser never has to
+// decide what to do with an empty name. Showing a 64-character digest is
+// the honest answer for a document that named its own face nothing;
+// inventing a name here would be the engine guessing.
+//
+// All four keys are ALWAYS emitted (no omitempty, deliberately). The
+// browser checks this object with an exact-key guard, so a key that
+// appears only for some entries is a key that rejects the whole snapshot
+// for some documents — and the symptom is a blank canvas.
+type CanvasFontChainEntry struct {
+	Face     string `json:"face"`
+	AssetKey string `json:"assetKey"`
+	Family   string `json:"family"`
+	Style    string `json:"style"`
 }
 
 // canvasFontChains is the projection of the document's declared chains, in
@@ -465,17 +514,57 @@ func canvasFontChains(t *Template) ([]CanvasFontChain, error) {
 		if len(entries) > maxCanvasFontChainEntries {
 			return nil, fmt.Errorf("folio: font chain declares more entries than the projection bound")
 		}
-		for _, face := range entries {
-			if len(face) > maxCanvasPropertyString {
-				return nil, fmt.Errorf("folio: font chain entry exceeds the projection bound")
+		projected := make([]CanvasFontChainEntry, 0, len(entries))
+		for _, entry := range entries {
+			p, perr := projectFontChainEntry(t, entry)
+			if perr != nil {
+				return nil, perr
 			}
+			projected = append(projected, p)
 		}
-		chains = append(chains, CanvasFontChain{Name: name, Entries: slices.Clone(entries)})
+		chains = append(chains, CanvasFontChain{Name: name, Entries: projected})
 	}
 	if len(chains) > maxCanvasFontFamilies {
 		return nil, fmt.Errorf("folio: document declares more font families than the projection bound")
 	}
 	return chains, nil
+}
+
+// projectFontChainEntry projects ONE entry, and applies
+// maxCanvasPropertyString to EVERY string it puts on the wire — the face
+// name, the asset key, the family and the style alike. A bound applied
+// to three of four fields is a bound on nothing: the projection is
+// refused with a stated reason rather than silently cut, which is the
+// rule every other list in this projection already follows.
+//
+// The family and style are read from the asset's `font` record. An
+// explicit `null` there is treated as absence for DISPLAY purposes —
+// the file keeps the distinction (Presence round-trips it), but a panel
+// has nothing to draw for a null, and it is not the browser's job to
+// decide that.
+func projectFontChainEntry(t *Template, entry template.FontChainEntry) (CanvasFontChainEntry, error) {
+	var out CanvasFontChainEntry
+	if entry.Embedded() {
+		out.AssetKey = entry.AssetKey
+		out.Family = entry.AssetKey
+		if asset, ok := t.doc.Assets[entry.AssetKey]; ok && asset.Font.Set && !asset.Font.Null {
+			record := asset.Font.Value
+			if record.Family.Set && !record.Family.Null && record.Family.Value != "" {
+				out.Family = record.Family.Value
+			}
+			if record.Style.Set && !record.Style.Null {
+				out.Style = record.Style.Value
+			}
+		}
+	} else {
+		out.Face = entry.Face
+	}
+	for _, s := range []string{out.Face, out.AssetKey, out.Family, out.Style} {
+		if len(s) > maxCanvasPropertyString {
+			return CanvasFontChainEntry{}, fmt.Errorf("folio: font chain entry exceeds the projection bound")
+		}
+	}
+	return out, nil
 }
 
 // canvasFontFamilyNames is FontFamilies, derived from FontChains rather than

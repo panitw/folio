@@ -651,8 +651,7 @@ func collectBandTableRuns(
 
 		var chain []string
 		if hs.hasFontFamily {
-			var ok bool
-			chain, ok = doc.doc.Fonts.Chain(hs.fontFamily)
+			entries, ok := doc.doc.Fonts.Chain(hs.fontFamily)
 			if !ok {
 				// Mirrors fontChain's own error, verbatim in shape
 				// (render.go) — a text element with the same defect
@@ -660,6 +659,11 @@ func collectBandTableRuns(
 				// this story does not widen that existing behaviour.
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: style.fontFamily %q names a chain with no entries in the document's fonts map", el.ID, hs.fontFamily)
 			}
+			// AFTER the !ok check, deliberately: on the not-found path
+			// there is nothing to project, and calling it first would
+			// also turn `chain` from nil into a non-nil empty slice on
+			// the way to an error return.
+			chain = chainFaceNames(entries)
 		}
 
 		for i, col := range tbl.Columns {

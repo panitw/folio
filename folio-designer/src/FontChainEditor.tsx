@@ -10,12 +10,23 @@ import { sameFontChainControl, type FontChainCommitError, type FontChainControl 
 // opaque command (AD-16) and what the author sees afterwards is the engine's
 // answer, not what they typed.
 //
-// AND IT HOLDS NO RULE. It never checks for a duplicate name, never walks the
-// document for elements referencing a chain, never checks whether a remove
-// would empty a chain, and never checks whether this build ships a face. Every
-// one of those is refused by the engine, in the engine's own sentence, which
-// this component only places. canvas-authority-contract.test.ts keeps the
-// engine's refusal vocabulary out of this file by scanning for it.
+// AND IT HOLDS NO RULE ABOUT THE DOCUMENT. It never checks for a duplicate
+// name, never walks the document for elements referencing a chain, never
+// checks whether a remove would empty a chain, and never checks whether this
+// build ships a face. Every one of those is refused by the engine, in the
+// engine's own sentence, which this component only places.
+// canvas-authority-contract.test.ts keeps the engine's refusal vocabulary out
+// of this file by scanning for it — that is the one rule enforced
+// mechanically, and it is narrower than the paragraph above.
+//
+// "NO RULE" IS ABOUT AUTHORITY, NOT ABOUT CODE. `entryLabel` below does branch
+// on `assetKey` and does compose `family` and `style` into one string, and
+// saying otherwise would be a comment that reads its own code wrong (review
+// finding 5). What it never does is DECIDE anything: the discriminant it
+// branches on is projected, the strings it composes are projected, and the
+// engine has already resolved every case where a value could be missing —
+// which is why a family is never empty here and never needs a fallback
+// invented in the browser.
 //
 // It is INLINE, in the TYPOGRAPHY section it is revealed from: no dialog, no
 // separate mode, no focus trap (AC1). TableEditor is the ordered
@@ -25,10 +36,18 @@ import { sameFontChainControl, type FontChainCommitError, type FontChainControl 
 //
 // THE DISPLAYED TEXT OF AN ENTRY IS THE PROJECTED ENTRY, UNMODIFIED. No
 // parsing, no key detection, no extension stripping, no file-name handling.
-// At HEAD a chain entry is always a face name (folio-go's decodeFonts routes
-// every chain through decodeStringArrayRaw, and Fonts is map[string][]string),
-// and when Story 8.3 gives an entry a richer shape the author reads whatever
-// the projection then carries, with no browser-side rule to update.
+//
+// Story 8.3 gave an entry the richer shape this note was written for, and the
+// promise held: an entry is now an object carrying a `face`, an `assetKey`, a
+// `family` and a `style`, and this component still decides nothing about them.
+// Which KIND of entry it is comes from the projection (`assetKey` non-empty),
+// never from
+// inspecting a value — a 64-character face name is a legal face name, so
+// "looks like a digest" was never a test this side could have made. What an
+// embedded entry DISPLAYS is `family` and `style`, both read by Go from the
+// asset's own `font` record; when the document declares no family Go projects
+// the asset key as one, so the browser never has to decide what to draw for a
+// nameless face. `entryLabel` below is the whole of it.
 type Props = Readonly<{
   chains: CanvasProjection['fontChains']
   busy: boolean
@@ -71,7 +90,14 @@ export function FontChainEditor({ chains, busy, error, onCommand }: Props) {
   // the names and entries says what is actually being asked — did what the
   // author is looking at change? — and it is the same answer in a test, where
   // a fixture may legitimately reuse one array across two snapshots.
-  const listing = chains.map((chain) => `${chain.name}\u0000${chain.entries.join('\u0000')}`).join('\u0001')
+  //
+  // Story 8.3: the entries are OBJECTS, so `entries.join()` here would produce
+  // `[object Object]` for every one of them — a signature under which two
+  // chains that differ only in an entry's family, style or asset key compare
+  // EQUAL, so a landed edit would be read as "the list did not move" and focus
+  // would go to the wrong control. The signature is built field by field
+  // instead, over every value the panel can display or act on.
+  const listing = chains.map((chain) => [chain.name, ...chain.entries.map((entry) => [entry.face, entry.assetKey, entry.family, entry.style].join('\u0002'))].join('\u0000')).join('\u0001')
   type Request = Readonly<{ origin: string; targets: ReadonlyArray<string>; clear: ReadonlyArray<string>; listing: string }>
   const pending = useRef<Request | undefined>(undefined)
   useLayoutEffect(() => {
@@ -89,6 +115,13 @@ export function FontChainEditor({ chains, busy, error, onCommand }: Props) {
       if (node && !node.matches(':disabled')) { node.focus(); return }
     }
   }, [listing, busy])
+
+  // entryLabel is the ONE place an entry becomes text, and it holds no rule:
+  // it reads the discriminant the engine projected and the display strings the
+  // engine read from the document. A named face shows its name; an embedded
+  // face shows the family and, when the document declared one, the style.
+  const entryLabel = (entry: Props['chains'][number]['entries'][number]): string =>
+    entry.assetKey.length > 0 ? [entry.family, entry.style].filter((part) => part.length > 0).join(' ') : entry.face
 
   const errorId = `${uid}-refusal`
   const anchored = (control: FontChainControl) => error && sameFontChainControl(error.control, control) ? error : undefined
@@ -128,8 +161,8 @@ export function FontChainEditor({ chains, busy, error, onCommand }: Props) {
           {refusal({ chain: chain.name, action: 'rename' })}
           {refusal({ chain: chain.name, action: 'delete' })}
           <ol className="font-chain-entries" aria-label={`Entries of font chain ${position + 1}`}>
-            {chain.entries.map((face, entry) => <li key={`${entry}:${face}`} className="font-chain-entry">
-              <span className="font-chain-entry-face">{face}</span>
+            {chain.entries.map((face, entry) => <li key={`${entry}:${face.face}:${face.assetKey}`} className="font-chain-entry">
+              <span className="font-chain-entry-face">{entryLabel(face)}</span>
               <button type="button" id={`${uid}-earlier-${position}-${entry}`} className="property-inline-action" aria-label={`Move entry ${entry + 1} of font chain ${position + 1} earlier`} title="Move earlier" disabled={busy || entry === 0} onClick={() => dispatch(moveFontChainEntryCommand(chain.name, entry, entry - 1), { chain: chain.name, entry, action: 'moveEntryEarlier' }, `${uid}-earlier-${position}-${entry}`, [`${uid}-earlier-${position}-${entry - 1}`, `${uid}-later-${position}-${entry - 1}`])} {...flag({ chain: chain.name, entry, action: 'moveEntryEarlier' })}>↑</button>
               <button type="button" id={`${uid}-later-${position}-${entry}`} className="property-inline-action" aria-label={`Move entry ${entry + 1} of font chain ${position + 1} later`} title="Move later" disabled={busy || entry === chain.entries.length - 1} onClick={() => dispatch(moveFontChainEntryCommand(chain.name, entry, entry + 1), { chain: chain.name, entry, action: 'moveEntryLater' }, `${uid}-later-${position}-${entry}`, [`${uid}-later-${position}-${entry + 1}`, `${uid}-earlier-${position}-${entry + 1}`])} {...flag({ chain: chain.name, entry, action: 'moveEntryLater' })}>↓</button>
               <button type="button" id={`${uid}-remove-${position}-${entry}`} className="property-inline-action" aria-label={`Remove entry ${entry + 1} of font chain ${position + 1}`} title="Remove entry" disabled={busy} onClick={() => dispatch(removeFontChainEntryCommand(chain.name, entry), { chain: chain.name, entry, action: 'removeEntry' }, `${uid}-remove-${position}-${entry}`)} {...flag({ chain: chain.name, entry, action: 'removeEntry' })}>×</button>

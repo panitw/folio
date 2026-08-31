@@ -107,11 +107,26 @@ installed a font, and nobody had to be told which one to install.
 - The catalogue is restricted to OFL-licensed families, reading "fonts that can be used freely" as
   redistribution-permitting rather than merely free of charge.
 - The new fields are additive, so a MINOR `.folio` version bump; recorded as an open question
-  because the version rule is a load-time error path.
+  because the version rule is a load-time error path. **SETTLED at Story 8.3: MAJOR, and the
+  document declares `2.0`.** The `font` record and the font asset are indeed additive, but the
+  chain ENTRY is not: `{"asset": …}` changes the legal shape of an existing value, and a `1.x`
+  reader decodes a chain entry as a string and never coerces, so it refuses the file. See Open
+  Questions below.
 
 ## Open Questions
 
-- MINOR or MAJOR `.folio` version bump for the additive font-asset fields?
+- ~~MINOR or MAJOR `.folio` version bump for the additive font-asset fields?~~ **SETTLED (Story
+  8.3): MAJOR — a document with an embedded-face chain entry declares `2.0`, joining the `2.0`
+  Story 7.3 already opened rather than opening a `3.0`.** Derived from three shipped decisions:
+  **D-R7.9** (owner) names this story and this version literally — "Epic 8's format change joins the
+  same 2.0 at Story 8.3" — and dissolves the tag-deadline objection against it ("we haven't released
+  anything to production yet"); **D-7.3.1**'s pre-reader test asks whether a pre-`2.0` reader would
+  refuse the file or render it wrong, and a `1.x` reader refuses an object chain entry outright, so
+  anything below `2.0` would be a version that lies; and **D-1.4.13** makes `version` a property of
+  the DOCUMENT, which is why the trigger is the entry shape and not the presence of a font asset —
+  a font asset no chain references loads and renders correctly on a `1.x` reader and must not raise
+  the document. `SupportedMajor` does not move: `2.0` is already the library ceiling, and this is a
+  second reason a document declares it, not a new rank.
 - Which families make the shipped catalogue, how many, and who curates the list as it changes?
 - Do bold and italic get realized in this scope? They are stored and projected today but consumed
   by no producer, and no bold or italic face ships — this is the work that could give them

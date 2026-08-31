@@ -1241,7 +1241,20 @@ func fontChainOf(t *testing.T, tpl *Template, name string) []string {
 	if !ok {
 		t.Fatalf("font chain %q is not declared", name)
 	}
-	return chain
+	// The command path can express only face-name entries (Story 8.6
+	// owns the embedding command), so this helper keeps returning the
+	// []string every assertion in this file is written against. An
+	// EMBEDDED entry reaching here would be a defect, and it fails
+	// loudly rather than flattening to "" — a silent empty face name is
+	// exactly what a join-and-compare assertion cannot see.
+	names := make([]string, 0, len(chain))
+	for i, entry := range chain {
+		if entry.Embedded() {
+			t.Fatalf("font chain %q entry %d is an embedded-face entry; no command in this package can create one", name, i)
+		}
+		names = append(names, entry.Face)
+	}
+	return names
 }
 
 func fontFamilyOf(t *testing.T, tpl *Template, id string) string {
@@ -1277,7 +1290,12 @@ func TestFontChainAddDeclaresAChainAndProjectsIt(t *testing.T) {
 	if !reflect.DeepEqual(names, projection.FontFamilies) {
 		t.Fatalf("FontChains names = %#v, FontFamilies = %#v", names, projection.FontFamilies)
 	}
-	if !reflect.DeepEqual(projection.FontChains[1].Entries, []string{"Noto Sans", "Noto Sans Thai"}) {
+	// Story 8.3: an entry is a projected OBJECT, not a string. A named
+	// face carries its name in Face and nothing else — an empty AssetKey
+	// is the discriminant the designer reads, and asserting the whole
+	// struct (rather than only Face) is what keeps a family or style
+	// leaking onto a non-embedded entry visible here.
+	if !reflect.DeepEqual(projection.FontChains[1].Entries, []CanvasFontChainEntry{{Face: "Noto Sans"}, {Face: "Noto Sans Thai"}}) {
 		t.Fatalf("projected caption entries = %#v", projection.FontChains[1].Entries)
 	}
 }

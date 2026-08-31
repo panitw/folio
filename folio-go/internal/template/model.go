@@ -141,10 +141,60 @@ type Padding struct {
 	Extra []Field
 }
 
-// Fonts maps a fallback-chain name to its ordered list of face names.
+// FontChainEntry is ONE entry of a fallback chain, and it has exactly
+// two shapes (Story 8.3, FR53/FR56): a face NAME the renderer is handed
+// at render time, or a reference to a face carried INSIDE the document
+// as an `assets` entry, spelled `{"asset": "<key>"}` in the file.
+//
+// The two are discriminated by which field is non-empty, and exactly one
+// of them ever is — decodeFonts refuses an empty asset key and an empty
+// face alike, so `Face != ""` and `AssetKey != ""` partition the type
+// rather than merely overlapping it. Embedded() is THE predicate; a
+// caller that writes `e.AssetKey != ""` itself is writing the same test
+// a second time.
+//
+// It is a struct rather than an interface or a `any` because it crosses
+// the parse/serialize/project boundary three times and every crossing
+// wants the discriminant checkable at compile time. A one-key object is
+// the file's whole shape here, so the struct has no Extra: an entry
+// object carrying any key besides `asset` is a located load error, not
+// passthrough — the object IS the discriminant, and an unknown key in it
+// would be an entry of an unknown kind, not a known entry with an
+// unknown decoration.
+type FontChainEntry struct {
+	// Face is the name of a face the FontSet supplies. Non-empty exactly
+	// when this entry is a plain JSON string in the file.
+	Face string
+	// AssetKey is the `assets` key of a face the document carries.
+	// Non-empty exactly when this entry is a `{"asset": …}` object.
+	AssetKey string
+}
+
+// Embedded reports whether this entry names a face the document carries
+// rather than one the renderer is given. It is the ONE place the
+// discriminant is spelled.
+func (e FontChainEntry) Embedded() bool { return e.AssetKey != "" }
+
+// FaceEntry and AssetEntry build the two shapes. They exist so a caller
+// never writes a bare composite literal whose field choice IS the
+// discriminant — `FontChainEntry{Face: name}` and
+// `FontChainEntry{AssetKey: name}` differ by one word and mean opposite
+// things.
+func FaceEntry(face string) FontChainEntry { return FontChainEntry{Face: face} }
+
+// AssetEntry builds the embedded shape; see FaceEntry.
+func AssetEntry(key string) FontChainEntry { return FontChainEntry{AssetKey: key} }
+
+// Fonts maps a fallback-chain name to its ordered list of entries.
 // The chain's own array order is authored and preserved verbatim; only
 // the map's keys are sorted at serialize time (AC18).
-type Fonts map[string][]string
+//
+// The element type was []string until Story 8.3. It is []FontChainEntry
+// now because a chain may name a face the document itself carries, and
+// a string could only ever name a face the renderer already ships — a
+// document that wanted any other typeface was an install instruction,
+// not a contract.
+type Fonts map[string][]FontChainEntry
 
 // Chain is THE authority for "is this a chain style.fontFamily may name":
 // it returns the chain only when the key is PRESENT and the chain is
@@ -162,7 +212,12 @@ type Fonts map[string][]string
 //   - the table header-style resolver (table_render.go)  — headerStyle.fontFamily at render
 //
 // Each caller keeps its own message text; only the predicate is shared.
-func (f Fonts) Chain(name string) ([]string, bool) {
+// All five were typed on []string until Story 8.3 and are typed on
+// []FontChainEntry now; the list is re-verified rather than inherited,
+// and it is still exactly five (measured over the module at f51dd5e:
+// `grep -rn "Fonts.Chain" --include='*.go'` outside _test.go names these
+// five call sites and no sixth).
+func (f Fonts) Chain(name string) ([]FontChainEntry, bool) {
 	chain, ok := f[name]
 	if !ok || len(chain) == 0 {
 		return nil, false
@@ -335,10 +390,41 @@ type Border struct {
 	Extra []Field
 }
 
+// FontRecord is the optional `font` object a FONT asset may carry
+// (Story 8.3): a record ABOUT the face, for the people reading and
+// reusing the document, never something the engine derives from the
+// bytes and never something resolution consults — a chain entry names a
+// face by ASSET KEY, so nothing here can cause a substitution.
+//
+// Every field is a Presence because absence and an explicit JSON null
+// are different things in this format (presence.go), and a refusal
+// written only in the non-null branch would let `"family": null` past
+// every guard.
+type FontRecord struct {
+	Family  Presence[string]
+	Style   Presence[string]
+	Licence Presence[string]
+	Source  Presence[string]
+
+	// Extra carries unknown keys on assets[k].font opaquely (AC8,
+	// D-1.4.9 OWNER) — the same passthrough every other object level in
+	// this model has. NOT the same as FontChainEntry, which deliberately
+	// has none: there the object IS the discriminant.
+	Extra []Field
+}
+
 // Asset is one embedded binary asset.
 type Asset struct {
 	Data      []string
 	MediaType string
+
+	// Font is the optional `font` record a font asset carries (Story
+	// 8.3). Presence, not a bare pointer: `"font": null` is a legal,
+	// round-trippable spelling that is NOT the same as the key being
+	// absent, and an image asset must keep serializing without the key
+	// at all — the six shipped fixtures with a non-empty assets map are
+	// the population that proves absence costs no bytes.
+	Font Presence[FontRecord]
 
 	// Extra carries unknown keys on one assets[entry] object opaquely
 	// (AC8, D-1.4.9 OWNER; this story's finisher review, Finding 2).

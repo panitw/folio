@@ -768,7 +768,9 @@ func TestEngineProjectsTheChainsThemselvesNotOnlyTheirNames(t *testing.T) {
 	if !reflect.DeepEqual(names, fontChainFamilies(t, snapshot)) {
 		t.Fatalf("FontChains names = %#v, FontFamilies = %#v", names, snapshot.Canvas.FontFamilies)
 	}
-	if !reflect.DeepEqual(chains[0].Entries, []string{"Noto Sans Thai", "Noto Sans"}) {
+	// Story 8.3: an entry is a projected object. Both of these are named
+	// faces, so both carry an empty AssetKey.
+	if !reflect.DeepEqual(chains[0].Entries, []folio.CanvasFontChainEntry{{Face: "Noto Sans Thai"}, {Face: "Noto Sans"}}) {
 		t.Fatalf("projected body chain = %#v, want the reordered entries", chains[0].Entries)
 	}
 }

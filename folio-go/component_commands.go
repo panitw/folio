@@ -2024,7 +2024,7 @@ func fontChainName(raw map[string]json.RawMessage, field string) (string, error)
 // with no entries is not one style.fontFamily may name, but decodeFonts
 // accepts one at load and it must stay deletable and fillable rather than
 // become unreachable to every command at once.
-func declaredFontChain(t *Template, raw map[string]json.RawMessage) (string, []string, error) {
+func declaredFontChain(t *Template, raw map[string]json.RawMessage) (string, []template.FontChainEntry, error) {
 	name, err := fontChainName(raw, "name")
 	if err != nil {
 		return "", nil, err
@@ -2105,7 +2105,15 @@ func addFontChain(t *Template, raw map[string]json.RawMessage) error {
 	if t.doc.Fonts == nil {
 		t.doc.Fonts = template.Fonts{}
 	}
-	t.doc.Fonts[name] = entries
+	// Every entry this command can express is a FACE NAME. Story 8.6's
+	// pick-and-embed command is what will express an embedded entry;
+	// `entries` arrives here as a []string and there is deliberately no
+	// spelling in the command vocabulary that produces anything else.
+	chainEntries := make([]template.FontChainEntry, 0, len(entries))
+	for _, face := range entries {
+		chainEntries = append(chainEntries, template.FaceEntry(face))
+	}
+	t.doc.Fonts[name] = chainEntries
 	return nil
 }
 
@@ -2187,7 +2195,7 @@ func addFontChainEntry(t *Template, raw map[string]json.RawMessage) error {
 	if len(chain)+1 > maxCanvasFontChainEntries {
 		return componentFailure("", fontChainPath(name), "a font chain declares more entries than the projection bound")
 	}
-	t.doc.Fonts[name] = slices.Insert(slices.Clone(chain), index, face)
+	t.doc.Fonts[name] = slices.Insert(slices.Clone(chain), index, template.FaceEntry(face))
 	return nil
 }
 

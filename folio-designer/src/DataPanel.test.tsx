@@ -7,6 +7,11 @@ import type { EngineClient } from './engine-client'
 import { FileAccessCancelled } from './file/file-access'
 import type { SampleFileAccess } from './sample-file'
 
+// face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
+// an entry is a discriminated object, not a string). A named face carries no
+// family and no style — its name is its identity.
+const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
   samePDFPreviewViewState: () => true,
@@ -15,7 +20,7 @@ vi.mock('./preview/pdf-viewer', () => ({
 
 const sampleBytes = new TextEncoder().encode('{"customer":{"name":"Ada"},"items":[{"sku":"A-1"}]}').buffer
 const replacementBytes = new TextEncoder().encode('{"report":{"id":2}}').buffer
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: ['Noto Sans'] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas }
 
 const textCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Text' }] }

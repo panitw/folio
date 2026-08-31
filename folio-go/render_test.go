@@ -880,6 +880,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessEmbeddedFontEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(embeddedFontTemplateJSON()))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(`{}`), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessKeepTogetherEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(keepTogetherTemplateJSON))
 		if err != nil {
@@ -978,6 +991,21 @@ const subprocessKeepTogetherEnvVar = "FOLIO_SUBPROCESS_RENDER_KEEPTOGETHER"
 // appendLength, and both halves of that are what AD-21's four targets
 // exist to hold to one answer.
 const subprocessThaiStackedMarksEnvVar = "FOLIO_SUBPROCESS_RENDER_THAISTACKEDMARKS"
+
+// subprocessEmbeddedFontEnvVar is Story 8.3's selector, rendering
+// fixtures/embedded-font/ — THE FIRST DOCUMENT IN THIS REPOSITORY THAT CARRIES
+// A FONT FACE — in a FRESH process, for the same reason keep-together and
+// thai-stacked-marks needed one: a golden recorded from one process pins
+// whatever that process happened to do.
+//
+// It matters here specifically for a NEGATIVE reason, which is unusual and is
+// why it is written down. This story does not render from the embedded face
+// (that is Story 8.4), so what the four legs certify is that the ~47 KB the
+// document carries reaches the LOADER on every target and reaches the PAGE on
+// none of them: the fixture's extraGuard asserts exactly one embedded font
+// program, and a target that started drawing with the carried face would
+// diverge from the other three rather than pass quietly.
+const subprocessEmbeddedFontEnvVar = "FOLIO_SUBPROCESS_RENDER_EMBEDDEDFONT"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

@@ -1103,7 +1103,46 @@ func fontChain(doc *Template, el template.Element) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("style.fontFamily %q names a chain with no entries in the document's fonts map", chainName)
 	}
-	return chain, nil
+	return chainFaceNames(chain), nil
+}
+
+// chainFaceNames is THE one boundary between the document's chain and
+// the render path's face-name list, and it is where Story 8.3 stops.
+//
+// WHAT IT DOES: keeps the entries that name a face the FontSet could
+// supply, and drops the entries that name a face the DOCUMENT carries.
+// After Story 8.3 a chain may legally contain an embedded entry that
+// nothing can render — the format can express it and the renderer
+// cannot yet draw it — and this is the honest interim state, not an
+// oversight. Story 8.4 is the story that renders from an embedded face;
+// until it lands, an embedded entry contributes no face, exactly as a
+// named face absent from the FontSet contributes none (resolveRuneFace
+// skips one, chainLineMetrics skips one).
+//
+// THE CONSEQUENCES ARE THE EXISTING ONES, unchanged and deliberately not
+// widened: a chain whose OTHER entries cover the text renders exactly as
+// it did before, and a chain left with no usable entry produces the
+// located render error the empty-metrics path already produces. Neither
+// is new behaviour, and both are pinned by test rather than left to this
+// comment — chain_face_names_test.go, in THIS package, which is the only
+// package that can call Render. (An earlier version of this comment cited
+// internal/template's fonts_embedded_test.go, which is `package template`
+// and structurally cannot reach Render at all; the citation was wrong and
+// the tests it claimed did not exist.)
+//
+// It is filtered HERE, at one boundary, rather than by widening
+// resolveRuneFace/chainLineMetrics/shapeSegments/formatFontChain to the
+// richer type: those four would each have to answer the same question,
+// and four answers is how they come to differ.
+func chainFaceNames(chain []template.FontChainEntry) []string {
+	names := make([]string, 0, len(chain))
+	for _, entry := range chain {
+		if entry.Embedded() {
+			continue
+		}
+		names = append(names, entry.Face)
+	}
+	return names
 }
 
 // fontCache parses a face's bytes into a *fontset.Font at most once per

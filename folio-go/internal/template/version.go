@@ -2,6 +2,8 @@ package template
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -35,6 +37,17 @@ import (
 // of none — `style.lineSpacing` (Story 7.2) and, retrofitted, Epic 10's
 // `style.color`, which shipped without moving the version and left
 // colour-bearing documents declaring 1.0 while requiring 1.1.
+//
+// A SECOND REASON 2.0 EXISTS was added by Story 8.3 (FR53/FR56): a
+// `fonts` chain entry may be the object `{"asset": "<key>"}`, naming a
+// face the document itself carries. It is not a closed-set extension —
+// it changes the legal SHAPE of an existing value — but it fails
+// D-7.3.1's pre-reader test harder: a 1.x reader decodes a chain entry
+// with decodeStringRaw, which never coerces, so it REFUSES the file
+// rather than mis-drawing it. It JOINS 2.0 rather than opening a 3.0
+// (owner decision D-R7.9: "Story 8.3 joins the same 2.0"), so
+// SupportedMajor and SupportedVersion are unmoved by it as well, and no
+// new version constant and no new versionRank member exist for it.
 //
 // Raised to 2.0 by Story 7.3 (D-7.3.1, D-R7.9). `style.align` gained a
 // fourth member, `justify` (FR47), and EXTENDING A CLOSED SET IS A MAJOR
@@ -81,7 +94,10 @@ const (
 // additive key whose absence renders WRONG is still a MINOR (D-1.4.9).
 //
 // majorFeatureVersion is the version introduced by the 2.0 closed-set
-// extension, `style.align: "justify"` (Story 7.3).
+// extension, `style.align: "justify"` (Story 7.3), and — since Story
+// 8.3 — by a `fonts` chain's embedded-face entry as well. TWO reasons,
+// ONE version: the constant is not renamed for the second, because it
+// names the version, not the feature.
 //
 // They are named rather than spelled inline so versionRequiredByContent
 // reads as the rule rather than as string handling.
@@ -209,6 +225,11 @@ func versionForSave(loaded string, d *Document) string {
 //     later element's `justify`.
 //   - does any style block set `align: "justify"`? That is 2.0's closed-
 //     set extension, and no 1.x reader may draw it.
+//   - does any CHAIN in `fonts` declare an embedded-face entry? That is
+//     2.0's second reason (Story 8.3, FR53/FR56): a 1.x reader decodes a
+//     chain entry as a string and never coerces, so it refuses the file
+//     outright. Probed at DOCUMENT level, outside the element loop —
+//     see the probe itself for why.
 //
 // Presence.Set, not "has a non-empty value" — but that only bites for
 // `color`, and the asymmetry is stated rather than papered over.
@@ -223,6 +244,28 @@ func versionRequiredByContent(d *Document) string {
 		return baseVersion
 	}
 	highest := rankBase
+	// THE FIRST PROBE IN THIS FUNCTION THAT IS NOT PER-ELEMENT, and it
+	// is outside the band loop because the thing it asks about does not
+	// hang off an element at all: `fonts` is a document-level map, and
+	// no walk of the three bands' elements reaches it. Putting it inside
+	// the loop would make it depend on the document having at least one
+	// element — a fonts-only document would then report 1.0 for content
+	// a 1.x reader cannot load, which is the "version that lies" this
+	// whole function exists to prevent.
+	//
+	// THE TRIGGER IS THE ENTRY, NOT THE ASSET (D-1.4.13: version is a
+	// property of the document). A font asset that no chain references
+	// rides through a 1.x reader as ordinary passthrough and renders
+	// correctly, so a document carrying one and referencing none stays
+	// at whatever its other content requires. Both directions are
+	// asserted, in linespacing_test.go's third builder loop.
+	//
+	// It raises to the EXISTING rankMajorFeature (2.0, D-R7.9: "Story
+	// 8.3 joins the same 2.0"), so no rank is inserted and D-7.7.2's
+	// versionForRank renumbering guardrail is never engaged.
+	if fontsRequireMajor(d.Fonts) && rankMajorFeature > highest {
+		highest = rankMajorFeature
+	}
 	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
 		for _, el := range band.Elements {
 			// Story 7.7: Presence.Set, on `color`'s terms — an explicit
@@ -302,4 +345,23 @@ func styleVersionRank(st Style) versionRank {
 		rank = rankMajorFeature
 	}
 	return rank
+}
+
+// fontsRequireMajor reports whether any chain declares an embedded-face
+// entry. Written as its own function, and not inlined into
+// versionRequiredByContent, so the enumeration it walks (every chain,
+// every entry — never the first chain, never the first entry) is stated
+// once and is testable on its own.
+//
+// It deliberately does NOT look at d.Assets. A font asset is not the
+// trigger; a chain entry naming one is. See the probe's comment.
+func fontsRequireMajor(f Fonts) bool {
+	for _, name := range slices.Sorted(maps.Keys(f)) {
+		for _, entry := range f[name] {
+			if entry.Embedded() {
+				return true
+			}
+		}
+	}
+	return false
 }

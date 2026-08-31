@@ -75,6 +75,25 @@ var canvasProjectionWireKeys = []string{
 // describes, one level down where the top-level key list cannot see it.
 var canvasFontChainWireKeys = []string{"entries", "name"}
 
+// canvasFontChainEntryWireKeys is the recorded key set of the ENTRY object —
+// one level below the chain — and it closes a gap that was MEASURED rather
+// than supposed.
+//
+// The chain-level record above pins key NAMES only. It says nothing about an
+// entry's value TYPE or nesting depth, so Story 8.3's change — CanvasFontChain
+// .Entries going from []string to a slice of four-field structs — would have
+// left that record green while the browser's own entry guard rejected every
+// snapshot: isCanvas false, parseInbound undefined, engine-client terminates
+// the worker, and the canvas is permanently blank with no element id and
+// nothing to attribute it to. A key added to CanvasFontChainEntry in Go and
+// not to engine-protocol.ts's entry guard does exactly the same thing, two
+// levels down where neither existing record can see it.
+//
+// The browser's entry guard is hasExactKeys, so it rejects in BOTH
+// directions: a key Go stops sending fails it as surely as a key Go starts
+// sending.
+var canvasFontChainEntryWireKeys = []string{"assetKey", "face", "family", "style"}
+
 // marshalledCanvasKeys is the Go side, taken from the bytes rather than from
 // the struct: whatever encoding/json puts on the wire for this value, sorted.
 func marshalledCanvasKeys(t *testing.T, projection CanvasProjection) []string {
@@ -120,6 +139,36 @@ func TestCanvasProjectionWireKeysAreTheRecordedSet(t *testing.T) {
 	if !reflect.DeepEqual(zeroChain, chainKeys) {
 		t.Errorf("a zero CanvasFontChain marshals\n\t%v\nand a projected one\n\t%v — an omitempty here drops a key the browser's exact-key guard requires", zeroChain, chainKeys)
 	}
+	// And the ENTRY, one level below that. Same reason, same failure mode:
+	// invisible to both records above, and a blank canvas either way.
+	entryKeys := marshalledObjectKeys(t, entryFromProjectionBytes(t, projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountControlTemplateJSON))))
+	if !reflect.DeepEqual(entryKeys, canvasFontChainEntryWireKeys) {
+		t.Errorf("CanvasFontChainEntry marshals the keys\n\t%v\nand the recorded protocol set is\n\t%v", entryKeys, canvasFontChainEntryWireKeys)
+	}
+	zeroEntry := marshalledObjectKeys(t, mustMarshal(t, CanvasFontChainEntry{}))
+	if !reflect.DeepEqual(zeroEntry, entryKeys) {
+		t.Errorf("a zero CanvasFontChainEntry marshals\n\t%v\nand a projected one\n\t%v — an entry key that appears only for SOME entries (a named face carries no family; an embedded one does) is one the browser's exact-key guard rejects only for some documents", zeroEntry, entryKeys)
+	}
+}
+
+// entryFromProjectionBytes digs the first projected chain's first ENTRY out of
+// the marshalled projection, by the same rule chainFromProjectionBytes uses:
+// from the bytes, never from the struct. The fixture must declare a chain with
+// at least one entry, or the check asserts nothing.
+func entryFromProjectionBytes(t *testing.T, projection CanvasProjection) []byte {
+	t.Helper()
+	var chain map[string]json.RawMessage
+	if err := json.Unmarshal(chainFromProjectionBytes(t, projection), &chain); err != nil {
+		t.Fatalf("unmarshal the first font chain: %v", err)
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(chain["entries"], &entries); err != nil {
+		t.Fatalf("unmarshal the first font chain's entries: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("fixture precondition: the wire-key fixture's first font chain must declare at least one entry, or the entry-level key check asserts nothing")
+	}
+	return entries[0]
 }
 
 func mustMarshal(t *testing.T, value any) []byte {
@@ -179,6 +228,14 @@ var canvasGuardKeyList = regexp.MustCompile(`(?s)const isCanvas = .*?hasOnly\(va
 // a copy of it kept here.
 var canvasGuardChainKeyList = regexp.MustCompile(`hasExactKeys\(chain, \[(.*?)\]\)`)
 
+// canvasGuardChainEntryKeyList extracts the ENTRY object's key list from the
+// guard that checks it, for the same reason and by the same rule: the guard's
+// OWN list, never a copy of it kept here. Anchored on isFontChainEntry's own
+// name because `hasExactKeys(value, [...])` is the whole file's idiom and an
+// unanchored match would read some other guard's list and compare it to this
+// record, which is a green test asserting the wrong thing.
+var canvasGuardChainEntryKeyList = regexp.MustCompile(`(?s)const isFontChainEntry = .*?hasExactKeys\(value, \[(.*?)\]\)`)
+
 // TestCanvasProjectionWireKeysAreTheOnesTheDesignerAccepts is the TypeScript
 // half, and the one that ties the two languages together. `hasOnly` rejects
 // any key not on this list, so a Go-side rename that stops here — or a
@@ -211,6 +268,19 @@ func TestCanvasProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T) {
 	chainKeys := extractedKeyList(string(chainMatch[1]))
 	if !reflect.DeepEqual(chainKeys, canvasFontChainWireKeys) {
 		t.Errorf("the designer's font-chain guard accepts the keys\n\t%v\nand the recorded protocol set is\n\t%v — fontChains is the first NESTED object on this projection, and a field added to CanvasFontChain on one side only blanks the canvas exactly as a top-level one would", chainKeys, canvasFontChainWireKeys)
+	}
+
+	// The ENTRY object, one level below the chain — Story 8.3's addition, and
+	// the level the two records above are blind to. They pin key NAMES only,
+	// so an entry's shape could change from a string to an object with neither
+	// of them noticing, while the browser rejected every snapshot.
+	entryMatch := canvasGuardChainEntryKeyList.FindSubmatch(source)
+	if entryMatch == nil {
+		t.Fatal("engine-protocol.ts no longer checks the projected font chain ENTRY's keys where this test can read it; if the guard was restructured, re-derive this extraction rather than deleting the check")
+	}
+	entryKeys := extractedKeyList(string(entryMatch[1]))
+	if !reflect.DeepEqual(entryKeys, canvasFontChainEntryWireKeys) {
+		t.Errorf("the designer's font-chain ENTRY guard accepts the keys\n\t%v\nand the recorded protocol set is\n\t%v — a field added to CanvasFontChainEntry on one side only blanks the canvas exactly as a chain-level or a top-level one would, and neither of this file's other two records can see it", entryKeys, canvasFontChainEntryWireKeys)
 	}
 }
 

@@ -158,11 +158,17 @@ export type CanvasProjection = Readonly<{
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
 	fontFamilies: ReadonlyArray<string>; defaultFontSize: number
-	// fontChains is the SAME set of chains, with the ordered faces behind each
+	// fontChains is the SAME set of chains, with the ordered ENTRIES behind each
 	// name: fontChains.map(c => c.name) is fontFamilies, entry for entry, and
 	// the validator asserts it rather than trusting it. Entry order is the
 	// document's own authored order and is never re-sorted here.
-	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<string> }>>
+	//
+	// An entry is a discriminated OBJECT since Story 8.3: `face` names a face the
+	// renderer is given, `assetKey` names one the document carries, exactly one of
+	// them is non-empty, and `family`/`style` are what the panel DISPLAYS for an
+	// embedded entry — read by Go from the asset's own `font` record, never
+	// derived in the browser.
+	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
 	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
@@ -195,6 +201,30 @@ export type EngineLifecycle = Readonly<{
 }>
 
 export type EngineInbound = EngineSuccess | EngineFailure | EngineLifecycle
+
+// isFontChainEntry is the projected chain entry's own guard (Story 8.3).
+// Split out of the isCanvas one-liner rather than inlined there because it
+// carries a RULE — the discriminated shape — and a rule buried inside a chain
+// of `&&` is a rule nobody edits deliberately.
+//
+// THE DISCRIMINANT IS PROJECTED, NEVER DERIVED HERE. Exactly one of `face` and
+// `assetKey` is non-empty, and this ASSERTS that rather than guessing from a
+// value's shape: a 64-character face name is a legal face name, so "looks like
+// a digest" was never available as a test, and FontChainEditor is forbidden a
+// rule of its own.
+//
+// An embedded entry always carries a non-empty `family` — Go decides what the
+// panel shows and falls back to the asset key — and a named face carries no
+// family and no style at all, because its name IS its identity.
+const isFontChainEntry = (value: unknown): boolean => {
+  if (!isRecord(value) || !hasExactKeys(value, ['face', 'assetKey', 'family', 'style'])) return false
+  const { face, assetKey, family, style } = value
+  if (typeof face !== 'string' || typeof assetKey !== 'string' || typeof family !== 'string' || typeof style !== 'string') return false
+  if ([face, assetKey, family, style].some((text) => text.length > MAX_CANVAS_PROPERTY_STRING)) return false
+  if ((face.length > 0) === (assetKey.length > 0)) return false
+  if (assetKey.length > 0) return family.length > 0
+  return family.length === 0 && style.length === 0
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype
 const isArrayBuffer = (value: unknown): value is ArrayBuffer => Object.prototype.toString.call(value) === '[object ArrayBuffer]'
@@ -246,14 +276,22 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   // `>=` on JavaScript strings is NOT, and dropped a legitimate snapshot.
   if (!Array.isArray(value.fontFamilies) || value.fontFamilies.length > MAX_ENGINE_FONT_FAMILIES || !value.fontFamilies.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_CANVAS_PROPERTY_STRING) || value.fontFamilies.some((name, index, names) => index > 0 && compareCodePoints(names[index - 1] as string, name as string) >= 0)) return false
   // The chains those names stand for. Bounded in count and in per-chain entry
-  // count, every entry a non-empty bounded string, no chain empty — an empty
-  // chain is not one Go projects, because it is not one style.fontFamily may
-  // name. The last clause is the cross-check the two lists exist to give each
-  // other: Go builds fontFamilies FROM fontChains, so any disagreement here is
-  // a channel fault and the snapshot is not trusted.
+  // count, no chain empty — an empty chain is not one Go projects, because it
+  // is not one style.fontFamily may name. The `chain.name === fontFamilies[i]`
+  // clause is the cross-check the two lists exist to give each other: Go builds
+  // fontFamilies FROM fontChains, so any disagreement here is a channel fault
+  // and the snapshot is not trusted.
+  //
+  // AN ENTRY IS AN OBJECT, NOT A STRING (Story 8.3). It used to be
+  // `typeof face === 'string'`, and that clause rejected an object entry
+  // outright — isCanvas false, parseInbound undefined, the worker terminated
+  // and the canvas permanently blank with no element id and nothing to
+  // attribute it to. That is why the Go projection and this guard change in
+  // ONE commit; canvas_projection_wire_test.go reddens if only one of them
+  // moves, at the entry level as well as at the chain level.
   const chains = value.fontChains
   if (!Array.isArray(chains) || chains.length !== value.fontFamilies.length) return false
-  if (!chains.every((chain, index) => isRecord(chain) && hasExactKeys(chain, ['name', 'entries']) && chain.name === (value.fontFamilies as ReadonlyArray<unknown>)[index] && Array.isArray(chain.entries) && chain.entries.length > 0 && chain.entries.length <= MAX_ENGINE_FONT_CHAIN_ENTRIES && chain.entries.every((face) => typeof face === 'string' && face.length > 0 && face.length <= MAX_CANVAS_PROPERTY_STRING))) return false
+  if (!chains.every((chain, index) => isRecord(chain) && hasExactKeys(chain, ['name', 'entries']) && chain.name === (value.fontFamilies as ReadonlyArray<unknown>)[index] && Array.isArray(chain.entries) && chain.entries.length > 0 && chain.entries.length <= MAX_ENGINE_FONT_CHAIN_ENTRIES && chain.entries.every((entry) => isFontChainEntry(entry)))) return false
   // The window origins, in the same shape: bounded in count, every entry a
   // safe non-negative integer, and in the order and at the length Go's own
   // pagination fixes. `hasOnly` is a SUBSET check, so an origins key Go

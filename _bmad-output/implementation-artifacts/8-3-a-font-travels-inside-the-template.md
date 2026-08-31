@@ -2,12 +2,56 @@
 title: 'A font travels inside the template'
 type: 'feature'
 created: '2026-08-31'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'f51dd5e4c7f8a993eb0b735496bf44c8164191df'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      A font chain entry may name an asset that is not a font (e.g. an image/png
+      asset), and nothing refuses or reports it at any surface today.
+    evidence: |-
+      decodeFontChainEntry checks only that the {"asset": key} is PRESENT in the
+      assets map, never that the asset is a font. Refusing it at load would
+      violate D-1.8.1 (as amended) — an unrecognised font media type is preserved
+      at load and errors at render — so the load behaviour is correct as shipped.
+      But chainFaceNames drops every embedded entry before face resolution, so it
+      never errors at render either. The render-surface half becomes reachable
+      only when Story 8.4 resolves an embedded entry to bytes; that is the story
+      that must produce the located render error for a non-font asset.
+    location: >-
+      folio-go/internal/template/parse.go (decodeFontChainEntry)
+    severity: medium
+  - summary: >-
+      An empty face name in a chain is now a load error, narrowing what already-
+      shipped 1.x documents load, and the narrowing is not version-gated.
+    evidence: |-
+      Before this story decodeStringArrayRaw accepted "" as a chain entry, so a
+      1.0 document containing {"fonts": {"body": [""]}} loaded. decodeFonts now
+      refuses it at fonts.<name>[<i>]. The refusal is deliberate and tested (the
+      "an empty face name" case), and an empty name could never resolve to a
+      face — but it is a load narrowing applied to documents declaring an older
+      version, which the I/O matrix's "Existing corpus" row cannot observe: that
+      row measures only the 22 golden PDF digests. Precedent is DW-era
+      canvasFontFamilies, which was recorded as deferred rather than reversed.
+    location: >-
+      folio-go/internal/template/parse.go (decodeFonts)
+    severity: medium
+  - summary: >-
+      TestTheFontRecordCostsAnExistingDocumentNothing rests on a hand-maintained
+      fixture count that no code derives.
+    evidence: |-
+      The assertion is `withAssets != 7`, and its own failure message concedes the
+      number must be edited by hand whenever any fixture gains or loses a non-empty
+      assets map. A fixture added without touching this line reduces the population
+      silently rather than failing loudly. Same family of defect as DW-81 (a
+      comment claiming a derivation the code does not perform), which this story
+      closed elsewhere.
+    location: >-
+      folio-go/embedded_font_fixture_test.go
+    severity: low
 ---
 
 <intent-contract>
@@ -354,6 +398,69 @@ rendering **from** an embedded face is Story 8.4.
 
 ## Review Triage Log
 
+### 2026-08-31 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 2, medium 4, low 3)
+- defer: 3: (high 0, medium 2, low 1)
+- reject: 6
+- addressed_findings:
+  - `[high]` `[patch]` `chainFaceNames` (`folio-go/render.go`) is the story's ONE
+    behavioural boundary between 8.3 and 8.4, and nothing tested it: deleting
+    `if entry.Embedded() { continue }` left the whole Go suite green. Its comment also
+    claimed both consequences were "pinned by test … (fonts_embedded_test.go)", a file in
+    `package template` that structurally cannot call `Render`. Added
+    `folio-go/chain_face_names_test.go` in `package folio` pinning the drop, order
+    preservation, an embedded entry in FIRST position not shadowing the named face behind
+    it, and the located all-embedded-chain error at BOTH `Render` and `Validate` with the
+    two messages asserted equal. Comment corrected to cite the test that now exists.
+    Re-proved after the fix: the same deletion reddens
+    `TestChainFaceNamesDropsEmbeddedEntriesAndKeepsOrder`.
+  - `[high]` `[patch]` `projectFontChainEntry` (`folio-go/page_setup.go`) had no Go test:
+    deleting the `out.Family = entry.AssetKey` fallback left the suite green, while any
+    font asset carrying no `font.family` would then project `family: ""`, which
+    `isFontChainEntry` rejects → `parseInbound` undefined → `worker.terminate()` →
+    permanently blank canvas. Exactly the D-8.2.8 / DW-82 failure mode, shipping green.
+    Added `folio-go/canvas_font_chain_entry_test.go` driving the real `Canvas()` entry
+    point over 8 record shapes plus the `Family`/`Style` bound arms. Re-proved after the
+    fix: the same deletion reddens
+    `TestProjectedEmbeddedEntryCarriesTheDiscriminantAndTheRecord`.
+  - `[medium]` `[patch]` `checkSfnt` returned nil for a `ttcf` tag on the false ground that
+    "no recognised media type reaches here with it anyway" — `mediaType` is author-declared,
+    so `font/ttf` over TTC bytes was recognised, reached the check and loaded clean, against
+    the format text's promise that a file lying about itself is a load error. `ttcf` moved
+    out of the single-face tag set into its own named refusal, with the coupling note that
+    the refusal must become conditional if `font/collection` ever joins the recognised set.
+  - `[medium]` `[patch]` `_bmad-output/specs/spec-fonts/format-changes.md` still described
+    `font.licence` as "Required on every font asset", contradicting `folio-format.md`'s
+    "every key inside it is optional" and `TestPlainFontAssetNeedsNoRecord`. The story had
+    corrected the `mediaType` row two lines above and left this one. Corrected to optional.
+  - `[medium]` `[patch]` `page_setup.go` cited `canvas-authority-contract.test.ts` as
+    enforcing that `FontChainEditor` "holds no rule of its own"; that file never names
+    FontChainEditor and enforces one narrower rule (no engine refusal vocabulary, by
+    directory walk). Both comments rewritten to the enforcement that exists, and
+    `FontChainEditor.tsx` now concedes that `entryLabel` branches on `assetKey` and composes
+    family+style — the claim is authority, not absence of code.
+  - `[medium]` `[patch]` The `font` record's per-key presence handling was exercised only
+    for `family`, though the spec's own argument ("a refusal written only in the non-null
+    branch lets `"family": null` past every guard") is per-key. Table-driven over a
+    `fontRecordKeys` list bound to `FontRecord` by reflection, so a fifth key cannot arrive
+    uncovered; all four keys now get present / explicitly-null / empty-string / absent arms
+    plus wrong-type refusals.
+  - `[low]` `[patch]` `decodeFonts`' chain-level refusal still read "must be an array of
+    strings", untrue now an entry may be an object, and unpinned because the test asserted
+    only the Field. Message corrected and the reason pinned, with an explicit guard against
+    the old wording reappearing.
+  - `[low]` `[patch]` `maximalFixture`'s font asset declared `"source": "hand-built 32-byte
+    sfnt"` for bytes that decode to 156 — and `font.source` is defined as where the bytes
+    came from. Corrected.
+  - `[low]` `[patch]` `collectBandTableRuns` (`folio-go/table_render.go`) called
+    `chainFaceNames` before checking `if !ok`, doing needless work on the not-found path and
+    turning `chain` from nil into a non-nil empty slice before the error branch. Moved below
+    the check.
+
+
 ## Design Notes
 
 **N1 — The version rank: MAJOR, `2.0`, and the library ceiling does not move.**
@@ -485,28 +592,89 @@ than leave it to a comment. If pinning it appears to require implementing the re
 
 ## Auto Run Result
 
-Status: ready-for-dev
+Status: done
 Blocking condition: none
 
-Planning-only dispatch (`Halt after planning.`). Spec written; **no implementation code, no commit**.
-Baseline `83ab8c8` on `main`; working tree clean at dispatch. Verification was **not run** — this
-dispatch produced no code to verify.
+Implementation dispatch. Baseline `f51dd5e4c7f8a993eb0b735496bf44c8164191df` on `main`; one local
+commit, nothing pushed, no branch created.
 
-**Two candidate intent gaps were investigated and both were SETTLED from shipped decisions, so no
-halt was warranted:**
-1. **Version rank — MAJOR, `2.0`, `SupportedMajor` unchanged at 2.** From owner decision D-R7.9,
-   which names this story and this version literally ("Story 8.3 joins the same 2.0") and dissolves
-   the tag-deadline objection the lead had raised. Corroborated by D-7.3.1's pre-reader test and
-   D-1.4.13. See Design Notes N1.
-2. **`mediaType` stays an OPEN set — the epic's "closed set" wording is superseded.** Binding
-   D-1.8.1 (as amended) forbids a closed `mediaType` and its own note predicted this recurrence "later
-   for font formats"; the lead pre-ruled the collision at run setup
-   (`epic-7-8-decision-log.md:70-74`). `TestClosedSetsNeverIncludeMediaType` enforces the mechanical
-   half. **AC4's "or whose media type is outside the closed set → load error" is therefore AMENDED
-   in this contract** to the ruled position (unrecognised type loads clean, errors at render), per
-   D-8.2.8(b). `epics.md`'s AC4 text should be amended by the orchestrator so the record is not false.
+**Summary.** A `.folio` can now carry a font face. `Fonts` becomes `map[string][]FontChainEntry` — a
+discriminated entry that is either a shipped face name or the one-key object `{"asset": "<key>"}`
+resolved against the existing top-level `assets` map. `Asset` gains one optional `font` record
+(`family`, `style`, `licence`, `source`), each field `Presence[string]` so absence and explicit
+`null` stay distinguishable. `decodeFonts` walks each chain array itself so every refusal carries the
+ENTRY INDEX (`fonts.<name>[<i>]`, `fonts.<name>[<i>].asset`) — plumbing that did not exist before, not
+a formatting detail. `mediaType` remains an OPEN set: bytes that do not decode as their declared font
+media type are a located load error, while a media type this build does not recognise is preserved at
+load and errors only at render (D-1.8.1 as amended). The format version joins the existing `2.0` via
+the existing `rankMajorFeature`; `SupportedMajor` stays 2 and no constant or rank was added. The
+projection's entry-shape validator moved in the same commit on both sides, carrying family and style
+so the panel never shows the author a 64-character digest. Rendering FROM an embedded face remains
+Story 8.4; `chainFaceNames` is the single boundary where this story stops.
 
-**`Covers:` diff (D-8.2.8(a)) — the epic line is incomplete.** `Covers: FR53, FR56 · AD-9, AD-26,
-NFR1` omits **AD-8** (AC3's "never a substituted face" is AD-8's rule) and **AD-21** (AC6's "recorded
-digest still matches" is AD-21's rule; Story 8.4's own ACs tag it). **AD-14** is arguably paraphrased
-by AC3/AC4's "located load error". Third consecutive instance of this omission.
+**Files changed** (38 files, one commit):
+- `_bmad-output/specs/spec-folio/folio-format.md` — Part 0: the settled MAJOR rank, the two legal
+  entry shapes, the located refusals, and `mediaType` stated explicitly as an OPEN set for fonts.
+- `_bmad-output/specs/spec-fonts/SPEC.md`, `format-changes.md` — the MINOR-or-MAJOR open question
+  closed; the incorrect "Closed set" claim for `mediaType` and the "Required" claim for `font.licence`
+  both corrected.
+- `folio-go/internal/template/model.go` — `FontChainEntry`, `FontRecord`, `Fonts.Chain` retyped.
+- `folio-go/internal/template/parse.go` — `decodeAssets` before `decodeFonts`; per-entry walk with the
+  index in the field path; the font byte check at the existing call site.
+- `folio-go/internal/template/fontasset.go` (new) — the recognised-font-media-type capability set
+  (deliberately NOT in `closedsets.go`), the sfnt structural check, the render-surface error.
+- `folio-go/internal/template/serialize.go` — per-entry writer routing an embedded entry through the
+  existing `writeObject`; the `font` record emitted from `writeAssets`.
+- `folio-go/internal/template/version.go` — a document-level probe outside the band loop.
+- `folio-go/page_setup.go`, `render.go`, `table_render.go`, `component_commands.go` — the projected
+  entry struct, and the one filter where 8.3 stops.
+- `folio-designer/src/engine-protocol.ts`, `FontChainEditor.tsx` — the entry guard and family/style
+  display; the bounds-mirror literal preserved.
+- `folio-go/canvas_projection_wire_test.go` — the entry-level recorded key set (DW-82 closed).
+- `fixtures/embedded-font/` (new) — ships NO `expected.pdf` on the `hidden-image` precedent.
+- New tests: `fonts_embedded_test.go`, `embedded_font_fixture_test.go`, `chain_face_names_test.go`,
+  `canvas_font_chain_entry_test.go`.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — DW-81 and DW-82 closed; DW-80 left open.
+
+**Review findings breakdown.** 9 patched (2 high, 4 medium, 3 low), 3 deferred, 6 rejected, 0
+intent_gap, 0 bad_spec. Both high findings were verification gaps that a green suite was hiding:
+deleting the 8.3/8.4 boundary filter, and deleting the projection's family fallback, each left the
+entire Go suite green before the patch and each reddens a named test after it.
+
+**Follow-up review recommendation: true.** Patched counts: high 2, medium 4, low 3. Any high patched
+finding sets this true on its own; the score `3 x 4 + 1 x 3 = 15` is also >= 5.
+
+**Verification performed** (every Go gate with `-count=1`, D-7.9.5):
+- 22 golden digests captured BEFORE the first edit and diffed after: EMPTY DIFF, 22 lines. AC6 holds.
+- `go test -count=1 ./...` — exactly ONE distinct red, `TestCorpusMeetsP6ExerciseFloors` /
+  `P6g_(opaque_names)` (got 7, need >=20), the mandated permanent red.
+- `go vet -tags=matrix ./...` clean; `gofmt -l folio-go` from the repo root empty.
+- Full `go test -count=1 -tags=matrix ./...` sweep (overdue, now measured):
+  `TestShippedFacesReproduceFromUpstream` **FAILED — it did not skip** ("fontgen: fontTools is not
+  importable by this interpreter"). Confirmed pre-existing by running it in a detached worktree at
+  `f51dd5e`, where it fails identically; the test fails rather than skips by deliberate design, and
+  `folio-go/fonts/` is untouched by the diff.
+- `TestTargetRenderHash` four legs with `FOLIO_MATRIX_TARGET` exported — darwin/arm64 1.465s,
+  linux/amd64 8.069s, linux/arm64 5.252s, js/wasm 11.239s — plus the unset control at 0.377s, a
+  deliberate no-op. The timing contrast is the evidence the legs actually asserted.
+- `TestCrossTargetByteIdentity` ok 23.227s; `TestThaiStackedMarksSemanticSignOffIsRecorded` ok.
+- `cd lint && go test -count=1 ./...` — all four packages ok.
+- Designer: typecheck clean; oxlint exactly 4 pre-existing warnings; 323 tests / 35 files (baseline
+  319 / 35); e2e compiles.
+- `GOOS=js GOARCH=wasm` `wasm/cmd/engine` ok.
+- Mutation proofs re-run independently, each asserting its anchor occurrence count before editing:
+  the entry index proved with a failing entry NOT first (an always-0 index reddens the `[1]` and `[2]`
+  cases while `[0]` stays green); the projection validator proved BOTH ways (reverting to the pre-8.3
+  `typeof face === 'string'` rule reddens 16 tests, and malformed entries are still rejected after).
+- No closed set of font media types was created: `closedsets.go` is untouched by the commit and
+  contains no font media type; all three closed-set tests pass. Nothing was minted: no diag file
+  appears in the commit and no new code constant appears anywhere in the diff.
+
+**Residual risks.**
+- `TestShippedFacesReproduceFromUpstream` cannot pass in this environment (no `fontTools`), so the
+  shipped-face reproduction claim is unverified here — pre-existing, and now measured rather than
+  assumed.
+- Three deferred items are recorded in frontmatter; the first bears directly on Story 8.4, which is
+  where a non-font asset named by a chain entry must produce a located render error.
+- DW-80 (`assetKeyReferenced` blind to font assets) remains open and owned by Story 8.6. Nothing
+  collects orphans today, so it is not reachable; no collector was added.

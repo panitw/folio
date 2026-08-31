@@ -8,6 +8,11 @@ import type { CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
 
+// face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
+// an entry is a discriminated object, not a string). A named face carries no
+// family and no style — its name is its identity.
+const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
   samePDFPreviewViewState: () => false,
@@ -16,7 +21,7 @@ vi.mock('./preview/pdf-viewer', () => ({
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: ['Noto Sans'] }, { name: 'heading', entries: ['Noto Sans', 'Noto Sans Thai'] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
@@ -1706,6 +1711,55 @@ describe('the font chain editor, where fonts are chosen', () => {
     expect(screen.getByRole('combobox', { name: 'Font family' })).toBeInTheDocument()
   })
 
+  // Story 8.3. The panel holds NO rule about which kind an entry is: the
+  // engine projects the discriminant (`assetKey`) and the display strings
+  // (`family`, `style`), and the panel places them. A named face still shows
+  // its name and nothing else.
+  const embedded = (assetKey: string, family: string, style: string) => ({ face: '', assetKey, family, style })
+
+  it('draws an embedded entry as its projected family and style, and a named face as its name', () => {
+    const key = 'c'.repeat(64)
+    open(accepts(), [{ name: 'body', entries: [face('Noto Sans'), embedded(key, 'Inter', 'Regular')] }])
+    const items = within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)
+    expect(items).toEqual(['Noto Sans↑↓×', 'Inter Regular↑↓×'])
+    // The asset key is never shown when the document named the face: the
+    // author reads a typeface, not a digest.
+    expect(screen.queryByText(key)).not.toBeInTheDocument()
+  })
+
+  it('shows the family alone when the embedded face declares no style', () => {
+    // Go projects the asset key AS the family when the document declares no
+    // `font.family`, so the panel always has a name and never has to decide
+    // what to draw for an empty one — the browser derives nothing either way.
+    const key = 'd'.repeat(64)
+    open(accepts(), [{ name: 'body', entries: [embedded(key, 'Inter', ''), embedded(key, key, '')] }])
+    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Inter↑↓×', `${key}↑↓×`])
+  })
+
+  // THE CHANGE SIGNATURE IS VALUE-BASED, and this is the snapshot that proves
+  // it. The two entries differ ONLY in a field `entries.join(' ')` would have
+  // flattened — both are embedded, so both stringify to `[object Object]` —
+  // so under the old signature the accepted edit would have read as "the list
+  // did not move" and focus would have stayed on the pressed control instead
+  // of following the entry.
+  it('reads a moved entry as a move even when only a projected field differs', async () => {
+    const one = 'a'.repeat(64)
+    const two = 'b'.repeat(64)
+    const three = 'c'.repeat(64)
+    // THREE entries, so the moved one lands in the MIDDLE and "move later" is
+    // still enabled there — the end-of-list fallback would otherwise mask
+    // which control focus actually went to.
+    const before: Chains = [{ name: 'body', entries: [embedded(one, 'Inter', 'Regular'), embedded(two, 'Lora', 'Italic'), embedded(three, 'Cardo', 'Bold')] }]
+    const after: Chains = [{ name: 'body', entries: [embedded(two, 'Lora', 'Italic'), embedded(one, 'Inter', 'Regular'), embedded(three, 'Cardo', 'Bold')] }]
+    const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, after) } : { snapshot: chainSnapshot(1, before) })
+    open(request, before)
+    const later = screen.getByRole('button', { name: 'Move entry 1 of font chain 1 later' })
+    later.focus()
+    fireEvent.click(later)
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Lora Italic↑↓×', 'Inter Regular↑↓×', 'Cardo Bold↑↓×']))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move entry 2 of font chain 1 later' }))
+  })
+
   it('states an empty document rather than drawing a chain that is not there', () => {
     open(accepts([]), [])
     expect(screen.getByText('This document declares no font chains.')).toBeInTheDocument()
@@ -1745,7 +1799,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   // panel must show the engine's.
   it('renders the name the engine returned, not the name the author typed', async () => {
     const request = vi.fn(async (operation: string) => operation === 'command'
-      ? { snapshot: chainSnapshot(2, [{ name: 'engine-chose', entries: ['Noto Sans'] }, { name: 'heading', entries: ['Noto Sans', 'Noto Sans Thai'] }]) }
+      ? { snapshot: chainSnapshot(2, [{ name: 'engine-chose', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }]) }
       : { snapshot: chainSnapshot(1, declared) })
     open(request)
     fireEvent.change(screen.getByRole('textbox', { name: 'Font chain 1 name' }), { target: { value: 'typed-by-the-author' } })
@@ -1890,8 +1944,8 @@ describe('the font chain editor, where fonts are chosen', () => {
   })
 
   it('reorders by keyboard alone and keeps the moved entry under the hand', async () => {
-    const three: Chains = [{ name: 'body', entries: ['Noto Sans'] }, { name: 'heading', entries: ['A', 'B', 'C'] }]
-    const moved: Chains = [{ name: 'body', entries: ['Noto Sans'] }, { name: 'heading', entries: ['B', 'A', 'C'] }]
+    const three: Chains = [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('A'), face('B'), face('C')] }]
+    const moved: Chains = [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('B'), face('A'), face('C')] }]
     const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, moved) } : { snapshot: chainSnapshot(1, three) })
     open(request, three)
     const later = screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' })
@@ -1906,7 +1960,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   })
 
   it('falls back to the counterpart control when the moved entry lands at an end', async () => {
-    const moved: Chains = [{ name: 'body', entries: ['Noto Sans'] }, { name: 'heading', entries: ['Noto Sans Thai', 'Noto Sans'] }]
+    const moved: Chains = [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans Thai'), face('Noto Sans')] }]
     const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, moved) } : { snapshot: chainSnapshot(1, declared) })
     open(request)
     const later = screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' })
@@ -1965,7 +2019,7 @@ describe('the font chain editor, where fonts are chosen', () => {
       // keeps the panel mounted so the theft is observable at all. A listing
       // that did not change could not steal focus under any implementation,
       // so a fixture that reused the same chains would test nothing.
-      return { snapshot: chainSnapshot(2, [{ name: 'body', entries: ['Noto Sans'] }, { name: 'heading', entries: ['Noto Sans', 'Noto Sans SC'] }]) }
+      return { snapshot: chainSnapshot(2, [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans SC')] }]) }
     })
     open(request)
     fireEvent.click(screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' }))
@@ -2010,7 +2064,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   // simply append the same face twice.
   it('empties the add fields once the add has actually landed, and not before', async () => {
     let accept = false
-    const grown = [{ name: 'body', entries: ['Noto Sans', 'Noto Sans SC'] }, { name: 'heading', entries: ['Noto Sans', 'Noto Sans Thai'] }]
+    const grown = [{ name: 'body', entries: [face('Noto Sans'), face('Noto Sans SC')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }]
     const request = vi.fn(async (operation: string) => {
       if (operation !== 'command') return { snapshot: chainSnapshot(1, declared) }
       if (!accept) throw Object.assign(new Error('font chain entry exceeds the projection bound'), { dataPath: 'fonts.body' })
@@ -2032,7 +2086,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   })
 
   it('empties both add-chain fields once the chain has actually landed', async () => {
-    const grown = [...declared, { name: 'display', entries: ['Noto Sans'] }]
+    const grown = [...declared, { name: 'display', entries: [face('Noto Sans')] }]
     const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, grown) } : { snapshot: chainSnapshot(1, declared) })
     open(request)
     fireEvent.change(screen.getByRole('textbox', { name: 'New font chain name' }), { target: { value: 'display' } })
@@ -2093,7 +2147,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   // every accepted response; the snapshot install runs only when the revision
   // ADVANCES, so a stale or replayed response cannot overwrite what is shown.
   it('takes undo availability from the response but does not install a revision that has not advanced', async () => {
-    const other = [{ name: 'somewhere-else', entries: ['Noto Sans'] }]
+    const other = [{ name: 'somewhere-else', entries: [face('Noto Sans')] }]
     const request = vi.fn(async (operation: string) => operation === 'command'
       ? { snapshot: { ...chainSnapshot(1, other), canUndo: true, canRedo: false } }
       : { snapshot: chainSnapshot(1, declared) })
@@ -2115,7 +2169,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   // not be left stuck true — its reset is generation-guarded, so the document
   // replacement has to clear it or every chain control is dead for the session.
   it('does not install a chain result that resolves after a document replacement, and leaves no control stuck', async () => {
-    const replaced = [{ name: 'from-the-undo', entries: ['Noto Sans'] }]
+    const replaced = [{ name: 'from-the-undo', entries: [face('Noto Sans')] }]
     let settle!: () => void
     const held = new Promise((resolve) => { settle = () => resolve({ snapshot: chainSnapshot(2, declared) }) })
     const request = vi.fn((operation: string) => {
@@ -2155,7 +2209,7 @@ describe('the font chain editor, where fonts are chosen', () => {
     // refusal's control still EXISTS to be anchored to. A replacement that
     // renamed everything would drop the message for the wrong reason — no
     // matching control — and prove nothing about the generation guard.
-    const replaced = [{ name: 'body', entries: ['Noto Sans SC'] }]
+    const replaced = [{ name: 'body', entries: [face('Noto Sans SC')] }]
     let settle!: () => void
     const held = new Promise((_resolve, reject) => { settle = () => reject(Object.assign(new Error('font chain "body" is still named by e1'), { dataPath: 'fonts.body' })) })
     const request = vi.fn((operation: string) => {
@@ -2180,7 +2234,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   })
 
   it('accepts a chain entry naming a face this build does not ship, displayed as the projection spells it', () => {
-    open(accepts(), [{ name: 'body', entries: ['Helvetica', 'Noto Sans'] }])
+    open(accepts(), [{ name: 'body', entries: [face('Helvetica'), face('Noto Sans')] }])
     expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Helvetica↑↓×', 'Noto Sans↑↓×'])
   })
 })

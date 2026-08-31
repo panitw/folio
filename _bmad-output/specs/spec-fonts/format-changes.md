@@ -53,9 +53,9 @@ in `mediaType` and in carrying a licence record:
 
 | Field | Rule |
 |---|---|
-| `mediaType` | Closed set, to be fixed at implementation: `font/ttf` at minimum. A media type outside the set is a load error; bytes that do not decode as that type are a load error (CAP-4). |
+| `mediaType` | **OPEN set, corrected at Story 8.3.** The "closed set" wording here contradicted binding D-1.8.1 (as amended), whose own note predicted this exact recurrence "later for font formats": a closed `mediaType` could only ever be extended by a MAJOR bump, making every new font container a breaking format change. The ruled position: a RECOGNISED font media type (`font/ttf` at minimum) whose bytes are not that format is a load error (CAP-4 holds for those); an UNRECOGNISED one loads clean and is preserved verbatim, and errors only at render, and only when a render actually needs that face. |
 | `font.family` / `font.style` | Display identity, for the designer's panel and for a human reading the file. Never used to resolve or substitute a face — resolution is by asset key alone. |
-| `font.licence` | Licence identifier the redistribution rests on. Required on every font asset. |
+| `font.licence` | Licence identifier the redistribution rests on. **OPTIONAL, corrected at Story 8.3** — as is `font` itself and every key inside it (`folio-format.md`, *A font asset*). "Required on every font asset" was a load rule this format does not have and the loader does not enforce: `TestPlainFontAssetNeedsNoRecord` pins a font asset with no `font` record at all round-tripping without the key. It remains the field a redistributor should fill in, and that is an authoring convention for whatever writes the asset — not something a reader may refuse a document over. |
 | `font.source` | Where the face came from and which instance, so the embedding can be traced and replayed. |
 | Order | `assets` emission order is unchanged (by key), so adding a font does not move an image. |
 
@@ -64,10 +64,18 @@ An image asset carries no `font` object, and a font asset carries one; the two a
 
 ## Version
 
-The additions are additive — a document without font assets is unchanged, and a reader that
-understands them reads every older document. That points at a MINOR bump, but the version rule is
-a load-time error path (a higher MAJOR is a load error, never a best-effort render), so the choice
-is recorded as an open question in `SPEC.md` rather than settled here.
+**SETTLED at Story 8.3: MAJOR — a document carrying an embedded-face chain entry declares `2.0`.**
+
+The `assets` additions really are additive, and taken alone they would point at a MINOR. The chain
+ENTRY is not: `{"asset": …}` changes the legal shape of an existing value, and a pre-`2.0` reader
+decodes a chain entry as a string and never coerces, so it REFUSES the file rather than mis-drawing
+it — D-7.3.1's pre-reader test, failed harder than `align: "justify"` failed it. It joins the `2.0`
+Story 7.3 already opened (owner decision D-R7.9: "Story 8.3 joins the same 2.0") rather than opening
+a `3.0`, and `SupportedMajor` does not move.
+
+Per D-1.4.13 the trigger is the ENTRY, not the asset: a document carrying a font asset that no chain
+references stays at whatever its other content requires, because such a document loads and renders
+correctly on a `1.x` reader.
 
 ## What does not change
 

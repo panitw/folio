@@ -1928,6 +1928,81 @@ var matrixDocuments = []matrixDocument{
 		extraGuard:       requireKeepTogetherMovesTheWholeBlock,
 		wantPages:        2,
 	},
+	{
+		// Story 8.3's document (FR53/FR56) — THE FIRST `.folio` THIS MATRIX
+		// RENDERS THAT CARRIES A FONT FACE, and the first to declare version
+		// 2.0 for a reason other than `align: "justify"`.
+		//
+		// It is HERE for a reason that reads backwards and is the point: this
+		// story does NOT render from the embedded face (that is Story 8.4), so
+		// what the four legs certify is that ~47 KB of carried font reaches
+		// the LOADER on every target and reaches the PAGE on none of them. A
+		// target that quietly started drawing with the carried face would
+		// diverge from the other three rather than pass, and
+		// requireEmbeddedFaceStaysOffThePage below is what makes that a stated
+		// assertion rather than a hope.
+		//
+		// It ships NO expected.pdf, on the hidden-image precedent: an
+		// expected.pdf is a human-attested artifact (AD-21/D-4.7.1) and this
+		// story cannot produce the one that matters — a page drawn WITH the
+		// embedded face. goldenDigestRecord therefore stays at 22.
+		//
+		// Registered on the same terms as keep-together above — the slug lives
+		// in .github/workflows/matrix.yml's `docs="…"` list and in an
+		// upload-artifact path for every target under `if-no-files-found:
+		// error`, pinned by TestMatrixDocumentSlugsAreRegisteredInCI.
+		//
+		// ALL FOUR LEGS WERE RUN IN-STORY, not merely the native one D-000.54
+		// requires: darwin/arm64, linux/amd64, linux/arm64 and js/wasm all
+		// produce sha256 db400698…e513ad at 55,513 bytes, and
+		// TestCrossTargetByteIdentity agrees. Running them was cheap and the
+		// question they answer is this document's whole point — whether ~47 KB
+		// of carried asset survives four toolchains identically — so deferring
+		// them to the Epic 8 gate would have deferred the only thing worth
+		// measuring.
+		label:            "embedded-font (a face carried inside the document)",
+		slug:             "embedded-font",
+		capture:          captureEmbeddedFontRender,
+		fixtureRelPath:   []string{"fixtures", "embedded-font", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireEmbeddedFaceStaysOffThePage,
+		wantPages:        1,
+	},
+}
+
+// captureEmbeddedFontRender runs Story 8.3's selector, rendering
+// fixtures/embedded-font/ in a FRESH process.
+func captureEmbeddedFontRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessEmbeddedFontEnvVar: "1"})
+}
+
+// requireEmbeddedFaceStaysOffThePage is the embedded-font document's OWN
+// feature guard, and it is a NEGATIVE one — the only such guard in this list —
+// because Story 8.3's correctness is partly about what does NOT happen yet.
+//
+// "Contains a FontFile2" is satisfied by any embedding at all, and this
+// document's page is drawn entirely with the SHIPPED Noto Sans its chain names
+// first. So four legs of it would agree byte for byte whether or not the
+// carried face ever reached a page. This asserts, on EVERY leg before any byte
+// comparison, that exactly ONE font program is embedded: the shipped face the
+// chain resolved to. The carried Noto Sans Thai contributes nothing, which is
+// the honest interim state until Story 8.4 renders from it.
+//
+// WHEN STORY 8.4 LANDS THIS GUARD MUST CHANGE, and having to change it
+// deliberately — rather than watching a golden move and re-recording it — is
+// exactly why it is written down.
+func requireEmbeddedFaceStaysOffThePage(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	programs := extractAllFontFile2Programs(t, raw)
+	if len(programs) != 1 {
+		t.Fatalf(
+			"target %s: the embedded-font document embeds %d font programs, want exactly 1 — the face the "+
+				"document CARRIES must not reach the page until Story 8.4 renders from it (D-000.9: four legs "+
+				"agreeing about the wrong thing certify nothing)",
+			target.name, len(programs),
+		)
+	}
 }
 
 // TestCrossTargetByteIdentity is AC1's single local entry point and AC7's

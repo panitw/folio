@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is three closed sets* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is three closed sets* below) **or any chain in `fonts` declares an embedded-face entry** (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -77,6 +77,20 @@ Top-level keys appear sorted, as does every object in the file — that is the s
 > unknown key and drawn the paragraph ragged while believing it had rendered the document
 > correctly, which is precisely the silently-wrong render the closed-set rule exists to prevent. A
 > `2.0` document is *unreadable* to a `1.x` reader, and that is the honest outcome.
+
+> **A SECOND MAJOR-CLASS EXTENSION JOINS THE SAME `2.0` (Story 8.3, FR53/FR56): a `fonts` chain
+> entry may now be an object, `{"asset": "<key>"}`, and not only a string.** It is not a closed-set
+> extension — it changes the legal SHAPE of an existing value — but it fails the same pre-reader
+> test, and harder: a `1.x` reader decodes a chain entry as a string and never coerces, so it
+> REFUSES the file outright rather than mis-drawing it. Declaring anything below `2.0` would be a
+> version that lies: it would claim a reader sufficient for content that reader cannot load. It
+> joins `2.0` rather than opening a `3.0` because `2.0` is not yet a released ceiling any reader has
+> been shipped against, so nothing is orphaned twice.
+>
+> **The trigger is the ENTRY, not the asset.** A document that carries a font asset no chain
+> references still declares whatever its other content requires: an unreferenced asset rides through
+> a `1.x` reader as ordinary passthrough and renders correctly, so raising it would orphan a
+> document from readers that can in fact read it.
 
 ### Alignment is three closed sets, partitioned by consumer
 
@@ -133,6 +147,32 @@ Each key names an **ordered fallback chain**, tried left to right per glyph. `st
 references a key of this object, never a face name directly — so a chain is declared once and
 reused, and the chain is part of the render's identity (AD-8). A glyph covered by no face in the
 chain produces a diagnostic naming the element and the rune; it is never silently blank.
+
+**A chain entry has exactly two legal shapes**, and they may be mixed in one chain, in any order:
+
+```json
+"fonts": {
+  "body": [
+    "Noto Sans",
+    { "asset": "9ab1e6c2f0d34b7a5c8e1f20d4b6a839c7e5024f1b8d63a09e4c7512fb3d8a6e" }
+  ]
+}
+```
+
+1. **A string** — the name of a face the renderer is given at render time (the shipped set, or one
+   the integrator supplies). This is the only shape the format had before `2.0`.
+2. **A one-key object `{"asset": "<key>"}`** — a face carried *inside the document*, whose value is
+   a key of the top-level `assets` object. A document declaring one is a `2.0` document (above).
+
+Anything else — a number, an array, an object with no `asset` key, or an object carrying any key
+besides `asset` — is a **load error naming the chain and the entry's index**, e.g.
+`fonts.body[1]`. An `{"asset": …}` entry whose key is **not present in `assets`** is likewise a
+load error, and it names the chain, the index and the key: `fonts.body[1].asset`. A chain entry is
+never silently dropped and never coerced.
+
+The map's keys have **no authored order**: they are sorted on write, like every other object in the
+file (AD-9). Only the array *inside* a chain is ordered, and that order is the author's and is
+preserved verbatim.
 
 ## `bands`
 
@@ -430,6 +470,45 @@ Log for how it was derived.)*
 
 Images are only ever embedded. Folio never fetches by URL and never reads from disk at render
 time (FR33).
+
+### A font asset
+
+An asset is not only an image. A **font face** is stored by exactly the same mechanism — same key
+rule (the lowercase hex SHA-256 of the decoded bytes), same 76-column `data` wrapping, same
+deduplication, same emission order — and differs only in its `mediaType` and in one additive,
+optional record:
+
+```json
+"assets": {
+  "9ab1e6c2f0d34b7a5c8e1f20d4b6a839c7e5024f1b8d63a09e4c7512fb3d8a6e": {
+    "data": ["AAEAAAAP…"],
+    "font": {
+      "family": "Noto Sans Thai",
+      "licence": "SIL Open Font License 1.1",
+      "source": "https://github.com/notofonts/thai",
+      "style": "Regular"
+    },
+    "mediaType": "font/ttf"
+  }
+}
+```
+
+`font` is **optional**, and every key inside it is optional. It is a record *about* the face for
+the people reading and reusing the document — the `family` and `style` a designer shows in a chain
+editor, and the `licence` and `source` that say where the bytes came from and on what terms. The
+engine derives none of it from the bytes and none of it is required to render.
+
+**`mediaType` remains an OPEN set for fonts exactly as it is for images.** It is not one of the
+closed sets listed above and it never will be: under D-1.4.12 a closed set can only be extended by
+a MAJOR bump, which would make every new font container a breaking format change. So, per D-1.8.1
+(as amended):
+
+- A **recognised** font media type whose bytes are not actually that format is a **load error** —
+  the file lies about itself, and that is reader-independent.
+- An **unrecognised** font media type (`font/woff2`, say, on a library that cannot decode it)
+  **loads clean**. The document is valid and the asset is preserved verbatim. The failure, if any,
+  arrives at **render**, and only when something actually needs to draw that face — a library
+  capability limit, not a format error.
 
 ## Line breaking
 

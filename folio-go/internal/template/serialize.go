@@ -178,8 +178,76 @@ func writeFonts(dst []byte, depth int, f Fonts) []byte {
 	// idiom is used here too rather than relying on that downstream step.
 	for _, k := range slices.Sorted(maps.Keys(f)) {
 		chain := f[k]
-		fields = append(fields, kv{k, func(dst []byte, depth int) []byte { return writeStringArray(dst, depth, chain) }})
+		fields = append(fields, kv{k, func(dst []byte, depth int) []byte { return writeFontChain(dst, depth, chain) }})
 	}
+	return writeObject(dst, depth, fields)
+}
+
+// writeFontChain is writeStringArray with a per-ENTRY writer (Story
+// 8.3). It exists because writeStringArray can emit only JSON strings,
+// and a chain entry may now be an object.
+//
+// An embedded entry is routed through writeObject — the ONE generic
+// object emitter — rather than being spelled out as `{"asset": …}` here:
+// a hand-written second emitter would be a second answer to indentation,
+// escaping and key order, and the whole canonical-fixed-point property
+// (P3) rests on there being one. A one-key object has no key order to
+// get wrong today, which is exactly why it is the cheapest possible
+// place to introduce a second emitter by accident.
+//
+// A string entry is emitted EXACTLY as writeStringArray emitted it, so a
+// document with no embedded entry is byte-identical to what it was
+// before this function existed — the 22 recorded golden digests are the
+// population that proves it.
+func writeFontChain(dst []byte, depth int, chain []FontChainEntry) []byte {
+	if len(chain) == 0 {
+		return append(dst, "[]"...)
+	}
+	dst = append(dst, '[')
+	for i, entry := range chain {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = append(dst, '\n')
+		dst = appendIndent(dst, depth+1)
+		if entry.Embedded() {
+			dst = writeObject(dst, depth+1, []kv{{"asset", writeString(entry.AssetKey)}})
+			continue
+		}
+		dst = appendJSONString(dst, entry.Face)
+	}
+	dst = append(dst, '\n')
+	dst = appendIndent(dst, depth)
+	dst = append(dst, ']')
+	return dst
+}
+
+// writeFontRecord emits assets[k].font (Story 8.3). Every key is
+// optional in the three-way sense presence.go defines, and each is
+// emitted only when it was SET — so an absent key stays absent and an
+// explicit null round-trips as null, rather than the two collapsing into
+// one spelling on the way out.
+func writeFontRecord(dst []byte, depth int, r FontRecord) []byte {
+	fields := make([]kv, 0, 4+len(r.Extra))
+	for _, f := range []struct {
+		key string
+		val Presence[string]
+	}{
+		{"family", r.Family},
+		{"licence", r.Licence},
+		{"source", r.Source},
+		{"style", r.Style},
+	} {
+		if !f.val.Set {
+			continue
+		}
+		if f.val.Null {
+			fields = append(fields, kv{f.key, writeNull()})
+			continue
+		}
+		fields = append(fields, kv{f.key, writeString(f.val.Value)})
+	}
+	fields = append(fields, extraKVs(r.Extra)...)
 	return writeObject(dst, depth, fields)
 }
 
@@ -465,6 +533,19 @@ func writeAssets(dst []byte, depth int, assets map[string]Asset) []byte {
 			assetFields := []kv{
 				{"data", func(dst []byte, depth int) []byte { return writeStringArray(dst, depth, canonical) }},
 				{"mediaType", writeString(a.MediaType)},
+			}
+			// Story 8.3's one addition to an asset. Emitted only when
+			// SET, so an image asset's bytes are untouched; writeObject
+			// sorts, so "font" lands between "data" and "mediaType" and
+			// moves neither's content.
+			if a.Font.Set {
+				font := a.Font
+				assetFields = append(assetFields, kv{"font", func(dst []byte, depth int) []byte {
+					if font.Null {
+						return append(dst, "null"...)
+					}
+					return writeFontRecord(dst, depth, font.Value)
+				}})
 			}
 			assetFields = append(assetFields, extraKVs(a.Extra)...)
 			return writeObject(dst, depth, assetFields)

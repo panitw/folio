@@ -235,6 +235,27 @@ var minimalEscapeTrapFixture = []byte("{\n  \"assets\": {},\n  \"bands\": {\n   
 // with Python's hashlib/base64). AC26a: this changes only the key,
 // data and the element's "asset" reference below — every other field
 // this fixture exercises is unchanged.
+//
+// Story 8.3 added a SECOND asset: a font asset carrying the optional
+// `font` record, so `font`/`family`/`licence`/`source` are keys this
+// fixture actually EMITS rather than keys only the AST can see
+// (TestDriftASTMatchesRuntimeEmission compares those two sets both ways
+// and is the reason this fixture, not another, had to grow).
+//
+// Its bytes are a hand-built 156-byte sfnt — a version tag, a
+// three-entry table directory and three 32-byte tables — under its real
+// SHA-256 key,
+// which is all `mediaType: "font/ttf"` obliges the loader to find: the
+// load-time check is STRUCTURAL (checkSfnt), not a face parse. It is a
+// fixture and not a face, and its `font.source` says so in the file. A
+// real face would add ~47 KB to a test fixture to prove nothing this
+// one does not.
+//
+// It is NOT referenced by a chain entry, deliberately: this fixture
+// declares version 1.2, and an embedded-face ENTRY would require 2.0
+// (Story 8.3). That an unreferenced font asset does NOT raise the
+// version is itself the rule (D-1.4.13), and it is asserted directly in
+// linespacing_test.go rather than resting on this fixture.
 var maximalFixture = []byte(`{
   "assets": {
     "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078": {
@@ -243,6 +264,20 @@ var maximalFixture = []byte(`{
         "AAD//zwUBf/NjsW5AAAAAElFTkSuQmCC"
       ],
       "mediaType": "image/png"
+    },
+    "cbd7a24e64e08aba9da4edd9343b9eaa629e7c26e722eedf68fd5efe217dbedc": {
+      "data": [
+        "AAEAAAADACAABAAQY21hcAAAAAAAAAA8AAAAIGdseWYAAAAAAAAAXAAAACBoZWFkAAAAAAAAAHwA",
+        "AAAgQ01BUERBVEFDTUFQREFUQUNNQVBEQVRBQ01BUERBVEFHTFlGREFUQUdMWUZEQVRBR0xZRkRB",
+        "VEFHTFlGREFUQUhFQUREQVRBSEVBRERBVEFIRUFEREFUQUhFQUREQVRB"
+      ],
+      "font": {
+        "family": "Maximal Sans",
+        "licence": "SIL Open Font License 1.1",
+        "source": "hand-built 156-byte sfnt, tools/none — a fixture, not a face",
+        "style": "Regular"
+      },
+      "mediaType": "font/ttf"
     }
   },
   "bands": {

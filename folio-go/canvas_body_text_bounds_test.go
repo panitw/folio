@@ -367,7 +367,7 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 			name: "fonts chain name",
 			document: func(t *testing.T) *Template {
 				tpl := bodyTextDocument(t, "short", `{"fontFamily":"body","fontSize":12}`)
-				tpl.doc.Fonts[long] = []string{"Roboto-Regular"}
+				tpl.doc.Fonts[long] = []template.FontChainEntry{template.FaceEntry("Roboto-Regular")}
 				return tpl
 			},
 			message: "folio: font family name exceeds the projection bound",
@@ -382,7 +382,7 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 			name: "fonts chain entry",
 			document: func(t *testing.T) *Template {
 				tpl := bodyTextDocument(t, "short", `{"fontFamily":"body","fontSize":12}`)
-				tpl.doc.Fonts["body"] = []string{long}
+				tpl.doc.Fonts["body"] = []template.FontChainEntry{template.FaceEntry(long)}
 				return tpl
 			},
 			message: "folio: font chain entry exceeds the projection bound",

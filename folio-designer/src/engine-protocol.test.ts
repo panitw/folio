@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_ENGINE_FONT_CHAIN_ENTRIES, MAX_ENGINE_FONT_FAMILIES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
-const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: ['Noto Sans'] }], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
+// face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
+// an entry is a discriminated object, not a string). A named face carries no
+// family and no style — its name is its identity.
+const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+
+const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
 describe('canvas projection protocol guard', () => {
   it('accepts and deeply freezes the exact three bounded bands', () => {
@@ -140,7 +145,7 @@ describe('canvas projection protocol guard', () => {
   // here, not assumed.
   it('accepts the projected font chains only when they agree with fontFamilies', () => {
     const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
-    const two = { ...canvas, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: ['Noto Sans'] }, { name: 'heading', entries: ['Noto Sans', 'Noto Sans Thai'] }] }
+    const two = { ...canvas, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }] }
     expect(projection(two)).toBeDefined()
     // THE KEY, BOTH WAYS. Go omits it; and Go sends it while the guard's own
     // hasOnly list does not name it — the second direction is asserted against
@@ -158,31 +163,85 @@ describe('canvas projection protocol guard', () => {
     expect(projection({ ...canvas, fontChains: [], fontFamilies: [] })).toBeDefined()
     // Disagreement with fontFamilies, in each of its three shapes: a different
     // name, a different length, and the same names in a different order.
-    expect(projection({ ...canvas, fontChains: [{ name: 'brand', entries: ['Noto Sans'] }] })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'brand', entries: [face('Noto Sans')] }] })).toBeUndefined()
     expect(projection({ ...two, fontChains: [two.fontChains[0]] })).toBeUndefined()
     expect(projection({ ...two, fontChains: [two.fontChains[1], two.fontChains[0]] })).toBeUndefined()
     // A chain with no entries is not one Go projects, because it is not one
     // style.fontFamily may name.
     expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [] }] })).toBeUndefined()
-    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [''] }] })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [face('')] }] })).toBeUndefined()
     // Shape and bounds.
     expect(projection({ ...canvas, fontChains: null })).toBeUndefined()
     expect(projection({ ...canvas, fontChains: [{ name: 'body' }] })).toBeUndefined()
-    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: ['Noto Sans'], extra: 1 }] })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [face('Noto Sans')], extra: 1 }] })).toBeUndefined()
     expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [7] }] })).toBeUndefined()
-    const entries = (count: number) => ({ ...canvas, fontChains: [{ name: 'body', entries: Array.from({ length: count }, (_value, index) => `face-${index}`) }] })
+    const entries = (count: number) => ({ ...canvas, fontChains: [{ name: 'body', entries: Array.from({ length: count }, (_value, index) => face(`face-${index}`)) }] })
     expect(projection(entries(MAX_ENGINE_FONT_CHAIN_ENTRIES))).toBeDefined()
     expect(projection(entries(MAX_ENGINE_FONT_CHAIN_ENTRIES + 1))).toBeUndefined()
-    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: ['f'.repeat(MAX_CANVAS_PROPERTY_STRING) ] }] })).toBeDefined()
-    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: ['f'.repeat(MAX_CANVAS_PROPERTY_STRING + 1)] }] })).toBeUndefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [face('f'.repeat(MAX_CANVAS_PROPERTY_STRING))] }] })).toBeDefined()
+    expect(projection({ ...canvas, fontChains: [{ name: 'body', entries: [face('f'.repeat(MAX_CANVAS_PROPERTY_STRING + 1))] }] })).toBeUndefined()
     // The count bound the mirror test ties to Go's maxCanvasFontFamilies, at
     // its edge — fontFamilies and fontChains cross the boundary together.
     const families = (count: number) => {
       const names = Array.from({ length: count }, (_value, index) => `f${String(index).padStart(6, '0')}`)
-      return { ...canvas, fontFamilies: names, fontChains: names.map((name) => ({ name, entries: ['Noto Sans'] })) }
+      return { ...canvas, fontFamilies: names, fontChains: names.map((name) => ({ name, entries: [face('Noto Sans')] })) }
     }
     expect(projection(families(MAX_ENGINE_FONT_FAMILIES))).toBeDefined()
     expect(projection(families(MAX_ENGINE_FONT_FAMILIES + 1))).toBeUndefined()
+  })
+
+  // Story 8.3. A chain entry is a DISCRIMINATED OBJECT, not a string. The Go
+  // projection and this guard changed in one commit for the usual reason: the
+  // old `typeof face === 'string'` clause rejected an object entry outright,
+  // isCanvas returned false, parseInbound returned undefined, engine-client
+  // terminated the worker, and the canvas was permanently blank with nothing
+  // to attribute it to.
+  it('accepts the projected chain ENTRY only in its discriminated shape', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    const chain = (...entries: ReadonlyArray<unknown>) => ({ ...canvas, fontChains: [{ name: 'body', entries }] })
+    const key = 'c'.repeat(64)
+
+    // Both legal shapes, and a chain mixing them.
+    expect(projection(chain(face('Noto Sans')))).toBeDefined()
+    expect(projection(chain({ face: '', assetKey: key, family: 'Inter', style: 'Regular' }))).toBeDefined()
+    expect(projection(chain({ face: '', assetKey: key, family: 'Inter', style: '' }))).toBeDefined()
+    expect(projection(chain(face('Noto Sans'), { face: '', assetKey: key, family: 'Inter', style: 'Regular' }))).toBeDefined()
+
+    // Not an object at all: the shapes the pre-8.3 wire could carry, and the
+    // ones a hostile or stale sender might.
+    expect(projection(chain('Noto Sans'))).toBeUndefined()
+    expect(projection(chain(7))).toBeUndefined()
+    expect(projection(chain(null))).toBeUndefined()
+    expect(projection(chain([face('Noto Sans')]))).toBeUndefined()
+
+    // The key set is EXACT, both directions: a key Go stops sending fails as
+    // surely as a key Go starts sending.
+    expect(projection(chain({ assetKey: key, family: 'Inter', style: 'Regular' }))).toBeUndefined()
+    expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: '', style: '', weight: 700 }))).toBeUndefined()
+    expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: '' }))).toBeUndefined()
+
+    // Every value is a string.
+    expect(projection(chain({ face: 'Noto Sans', assetKey: null, family: '', style: '' }))).toBeUndefined()
+    expect(projection(chain({ face: '', assetKey: key, family: 7, style: '' }))).toBeUndefined()
+
+    // EXACTLY ONE of face and assetKey. Neither is an entry of no kind;
+    // both is an entry of two.
+    expect(projection(chain({ face: '', assetKey: '', family: '', style: '' }))).toBeUndefined()
+    expect(projection(chain({ face: 'Noto Sans', assetKey: key, family: 'Inter', style: '' }))).toBeUndefined()
+
+    // A named face carries no display strings — its name IS its identity —
+    // and an embedded one always carries a family, because Go falls back to
+    // the asset key rather than sending a name the panel cannot draw.
+    expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: 'Inter', style: '' }))).toBeUndefined()
+    expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: '', style: 'Regular' }))).toBeUndefined()
+    expect(projection(chain({ face: '', assetKey: key, family: '', style: 'Regular' }))).toBeUndefined()
+
+    // The per-string bound applies to EVERY projected string, not only the
+    // face name — a bound on three of four fields is a bound on nothing.
+    const long = 'f'.repeat(MAX_CANVAS_PROPERTY_STRING + 1)
+    expect(projection(chain({ face: '', assetKey: key, family: long, style: '' }))).toBeUndefined()
+    expect(projection(chain({ face: '', assetKey: key, family: 'Inter', style: long }))).toBeUndefined()
+    expect(projection(chain({ face: '', assetKey: long, family: 'Inter', style: '' }))).toBeUndefined()
   })
 
   // DW-70. Go sorts these keys with slices.Sorted over Go strings — BY BYTE —
@@ -198,7 +257,7 @@ describe('canvas projection protocol guard', () => {
   // is what lets an author type a chain name, so two keystrokes reached it.
   it('accepts the projected chain names in Go\'s byte order, not the browser\'s UTF-16 order', () => {
     const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
-    const ordered = (...names: ReadonlyArray<string>) => ({ ...canvas, fontFamilies: names, fontChains: names.map((name) => ({ name, entries: ['Noto Sans'] })) })
+    const ordered = (...names: ReadonlyArray<string>) => ({ ...canvas, fontFamilies: names, fontChains: names.map((name) => ({ name, entries: [face('Noto Sans')] })) })
     // THE MEASURED PAIR. '\uE000' is EE 80 80 and '\u{1F600}' is F0 9F 98 80,
     // so Go sends them in this order. In UTF-16 the emoji begins 0xD83D, which
     // is BELOW 0xE000 — so `>=` called this pair out of order and dropped the
