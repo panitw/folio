@@ -4521,6 +4521,27 @@ claim, its location, and the ground on which it was refused.
   the chain** (`resolveRuneFace` skips faces the runes do not need, so a pre-pass would degrade an
   element over an entry it never draws with). **The retained arm must gain an assertion — that, not
   the abort, is the finding.** Implementation is Story 8.4's follow-up.
+- **CLOSED 2026-09-01 — implemented as ruled.** The allowlist is deleted, not extended. The
+  discriminator is **one type stamped on EVERY error out of `fontCache.get`'s embedded arm**, the
+  single door that resolves a face the document carries, so a future face-resolution failure type
+  joins the degrade instead of silently rejoining the abort. The retained abort gained
+  `TestCanvasStillAbortsOnAHostFontSetFaceThatWillNotParse` — guardrail 6's caller-supplied face,
+  which is the case that **discriminates the two axes** and is deliberately **not absorbed**.
+  `TestCanvasStillAbortsOnAnUnreadableCarriedFace` was **inverted** to
+  `TestCanvasDegradesRatherThanAbortingOnAnUnreadableCarriedFace`, keeping its `ParseTemplate`
+  precondition `Fatal` verbatim. `ContentWindowCountIsExact` cause (c) is amended.
+- **ONE DEVIATION FROM THE RULED MECHANISM, and it moved the CARRIER, never the DOOR.** The stamp was
+  first written as a package-local error type beside `fontCache` — the site guardrail 1 names — and
+  that **reddened `TestFolioMethodNamesAreInjective`** (`render_arch_test.go`): a second root-file
+  receiver type declaring `Error` and `Unwrap` makes `buildFolioCallGraph`'s name-keyed method map
+  lossy. That guard's own two remedies are **rename the methods** (impossible for `error`) and **take
+  DW-20 now** (a separate story), so neither was available. The type therefore lives in
+  `internal/template` as **`CarriedFaceError`**, beside `UnsupportedFontMediaTypeError` — the
+  document-attribution error it generalises and now wraps — while still being **minted at exactly one
+  site**, in `get`'s embedded arm. The invariant guardrail 1 protects is intact; only the declaration
+  site changed, and package `folio`'s root files gain no method at all. **DW-20's pressure is real
+  and unrelieved**: the guard fired for the first time on a legitimate change, and the next
+  package-level error type in `folio` will fire it again.
 
 **The gap.** `internal/template/fontasset.go:checkSfnt` validates **the table directory only, never a
 table's contents** — its own comment says so. So a carried face that is a **structurally valid sfnt
@@ -4535,8 +4556,10 @@ neighbouring arm of the very branch 8.4 repaired.
 **What makes it more than a corner: mutating that arm to degrade unconditionally reddened NOTHING in
 the entire suite.** The half Story 8.4 changed was pinned by one test; the half it **retained** was
 pinned by **none**. The scoping has been resting on a premise nothing measured, on either side.
-`TestCanvasStillAbortsOnAnUnreadableCarriedFace` now pins it as a **characterization** test — it
-records the measured behaviour and **explicitly declines to ratify it**.
+`TestCanvasStillAbortsOnAnUnreadableCarriedFace` pinned it as a **characterization** test — it
+recorded the measured behaviour and **explicitly declined to ratify it**, which was the correct call
+and is what produced the ruling. It is now inverted, under the name
+`TestCanvasDegradesRatherThanAbortingOnAnUnreadableCarriedFace`.
 
 ---
 

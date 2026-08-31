@@ -389,9 +389,18 @@ type CanvasProjection struct {
 	//	    than one window — and the count degraded to the documented one,
 	//	    or the pagination produced an origin sequence the browser
 	//	    protocol would refuse;
-	//	(c) a content-band text element contributed no extents because its
-	//	    font chain would not resolve, so its lines are absent from the
-	//	    column the count measures;
+	//	(c) a content-band text element contributed no extents because it
+	//	    could not be shaped, so its lines are absent from the column
+	//	    the count measures. TWO conditions reach it, and this used to
+	//	    name only the first: the element's font chain would not
+	//	    RESOLVE at all (no chain chosen, or none this build can read),
+	//	    or the chain resolved and a face it names would not PARSE —
+	//	    which since D-8.4.12 degrades the element rather than aborting
+	//	    the projection, and so became a cause of an inexact count
+	//	    instead of a cause of no count at all. A stale enumeration
+	//	    reads as EXCLUDING the case it has not caught up with, which
+	//	    is why the second is spelled here rather than left implied by
+	//	    the first;
 	//	(d) a content-band element's VISIBILITY DEPENDS ON DATA — it carries
 	//	    a visibleIf, which this file only projects as a string and which
 	//	    nothing on the canvas path evaluates, because evaluating it needs
@@ -718,11 +727,12 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 // count cannot see for itself.
 //
 // Items is the same slice this function used to pass on its own. FontChain-
-// Degraded is the addition: a content-band text element whose font chain
-// would not resolve is skipped with an empty paint a few lines into
-// addCanvasTextPaint, and the extents it would have contributed are simply
-// absent from Items. The count that measures Items is therefore a FLOOR for
-// that document, and nothing downstream of Items could tell — the missing
+// Degraded is the addition: a content-band text element the canvas cannot
+// shape — its font chain would not RESOLVE, or (since D-8.4.12) a face that
+// chain names would not PARSE — is skipped with an empty paint a few lines
+// into addCanvasTextPaint, and the extents it would have contributed are
+// simply absent from Items. The count that measures Items is therefore a
+// FLOOR for that document, and nothing downstream of Items could tell — the missing
 // lines look exactly like an element that had nothing to say. Carrying the
 // fact beside the extents is what keeps the flag an ENGINE fact rather than
 // a browser rule about what an empty paint might mean.
@@ -1221,13 +1231,41 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 				// error opens no document at all, so the defect would lock
 				// the author out of its own repair.
 				//
-				// SCOPED TO THE CAPABILITY ERROR, deliberately. Only
-				// template.UnsupportedFontMediaTypeError is tolerated: a
-				// genuine internal shaping fault is not a document
-				// property, has no author repair, and still aborts the
-				// projection as it always did.
-				var unsupported *template.UnsupportedFontMediaTypeError
-				if !errors.As(err, &unsupported) {
+				// THE GATE IS POSITIONAL, NOT AN ENUMERATED ALLOWLIST
+				// (D-8.4.12). It used to test err against ONE type,
+				// *template.UnsupportedFontMediaTypeError, with an
+				// errors.As allowlist justified HERE, in this comment, by
+				// the claim that everything it excluded was "a genuine
+				// internal shaping fault … not a document property, has no
+				// author repair".
+				// That claim was true about internal faults and FALSE
+				// about the set an error-type gate actually excludes:
+				// checkSfnt validates the table directory and never a
+				// table's contents, so a carried face that is a
+				// structurally valid sfnt over unreadable contents LOADS
+				// and then aborted this whole projection at fontset.New —
+				// a document property, with an author repair, closing the
+				// surface the repair happens on. Same axis error as
+				// D-7.3.1: the mechanism named was narrower than the
+				// invariant meant.
+				//
+				// So the question asked is WHERE the fault arose, not what
+				// type carries it. template.CarriedFaceError is stamped on
+				// EVERY error out of fontCache.get's embedded arm — the
+				// single door that resolves a face THIS DOCUMENT carries —
+				// so a future face-resolution failure type joins this
+				// degrade automatically instead of silently rejoining the
+				// abort.
+				//
+				// AND THE ABORT BELOW IS REAL, not a leftover. A fault
+				// arising AFTER every face this element needs has resolved
+				// keeps aborting, and so does a face the CALLER's FontSet
+				// supplies that will not parse — the host application's
+				// face, which no edit on this canvas repairs (guardrail 6;
+				// TestCanvasStillAbortsOnAHostFontSetFaceThatWillNotParse
+				// is the assertion the retained half went without).
+				var carried *template.CarriedFaceError
+				if !errors.As(err, &carried) {
 					return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 				}
 				degrade(band.name, element, component)

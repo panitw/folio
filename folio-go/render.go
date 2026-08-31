@@ -1,6 +1,7 @@
 package folio
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -1343,6 +1344,22 @@ func (c *fontCache) declares(name string, fs FontSet) bool {
 	return ok
 }
 
+// THE D-8.4.12 STAMP LIVES IN internal/template, NOT HERE, and the reason
+// is worth recording because it moved during implementation.
+//
+// It was first written as a package-local error type declared beside this
+// cache — the obvious home, next to the door that mints it. That reddened
+// TestFolioMethodNamesAreInjective (render_arch_test.go): a second
+// root-file receiver type declaring Error and Unwrap makes
+// buildFolioCallGraph's name-keyed method map lossy, and that guard's own
+// remedies — rename the methods, or take DW-20 — are respectively
+// impossible for `error` and a separate story. So the CARRIER moved; the
+// DOOR did not. The attribution is still minted at exactly one site, in
+// get's embedded arm below, and package folio's root files gain no method
+// at all. Attribution is a format fact, so template.CarriedFaceError also
+// sits beside the document-attribution error it generalises, which is a
+// better home than this one on the merits and not only on the guard's.
+
 // get parses and caches the face on first use. A face NAMED in a chain
 // but ABSENT from fs is reported here, once, the first time that chain
 // entry is actually consulted — not a document-wide upfront validation
@@ -1369,8 +1386,15 @@ func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 		}
 		f, err := c.parseEmbedded(name, src, site)
 		if err != nil {
-			c.failedEmbedded[key] = err
-			return nil, err
+			// THE STAMP, applied to every error this arm produces
+			// (D-8.4.12). It goes on the MEMOIZED value and not only
+			// on the value returned here, or the second element to
+			// consult the same broken carried face would be handed an
+			// unstamped answer and abort the projection the first one
+			// was allowed to survive.
+			stamped := &template.CarriedFaceError{Err: err}
+			c.failedEmbedded[key] = stamped
+			return nil, stamped
 		}
 		c.byName[name] = f
 		return f, nil
@@ -1381,6 +1405,12 @@ func (c *fontCache) get(name string, fs FontSet) (*fontset.Font, error) {
 	}
 	f, err := fontset.New(name, data)
 	if err != nil {
+		// UNSTAMPED, DELIBERATELY (D-8.4.12 guardrail 6). This face is
+		// the CALLER's, and a caller's unreadable face is not a
+		// document property: there is no edit an author can make on the
+		// canvas that repairs it, so it keeps aborting the projection.
+		// The two arms of this one function are the whole attributability
+		// axis, which is why the stamp lives here and not at a consumer.
 		return nil, err
 	}
 	c.byName[name] = f
@@ -1431,14 +1461,49 @@ func (c *fontCache) parseEmbedded(name string, src embeddedFaceSource, site temp
 // could have constrained was drawn with it.
 //
 // A FontSet face that fails to PARSE is still a hard error here, unchanged.
-// Only the embedded arm is tolerated, and only for a decode failure.
+// Only the carried arm is tolerated, and only for a resolution failure.
+//
+// D-8.4.12 RECONCILIATION: ONE CONDITION USED TO HAVE THREE DISPOSITIONS.
+// "The document carries a face whose bytes will not parse" was answered
+// three different ways — silently tolerated here, aborted at the canvas's
+// shapeSegments arm, refused located on the render path. It now has two,
+// and the two are the two ANSWERS OF ONE QUESTION rather than two rulings:
+// does the element actually DRAW with that entry?
+//
+//	drawn with     -> resolveRuneFace fails, the canvas degrades that one
+//	                  element (page_setup.go) and Render refuses, located
+//	not drawn with -> this walk skips it and it constrains no metrics
+//
+// The two are reached on DISJOINT conditions — resolveRuneFace stops at the
+// first covering entry, so an entry this walk tolerates is one no rune
+// needed — which is the same reason D-8.4.12 forbids pre-resolving a whole
+// chain to obtain the attribution. The surviving asymmetry is between
+// SURFACES, not within one: the canvas degrades where the page refuses,
+// because a wrong page must not print and a document must still open.
+//
+// THE TOLERANCE IS SPELLED AS THE STAMP, not as a second name predicate.
+// It read `if c.isEmbedded(name)` — a consumer re-deciding attribution from
+// the face's NAME, which is exactly the shape D-8.4.12 ruled against at the
+// canvas gate. Exactly equivalent today (an embedded name takes get's
+// embedded arm and every error out of that arm is stamped), and equivalent
+// by construction rather than by coincidence afterwards: there is now ONE
+// spelling of "this fault is the document's" in this package.
+//
+// THE COUPLING THAT CREATES, STATED. Reading the stamp rather than the name
+// means this tolerance would widen if the stamp were ever applied to get's
+// FontSet arm as well — a caller's unreadable face would stop constraining
+// the vertical model. That cannot arrive quietly: stamping the FontSet arm
+// reddens TestCanvasStillAbortsOnAHostFontSetFaceThatWillNotParse, which is
+// D-8.4.12 guardrail 6's assertion and is red-proved against exactly that
+// mutation.
 func (c *fontCache) metricsFace(name string, fs FontSet) (*fontset.Font, bool, error) {
 	if !c.declares(name, fs) {
 		return nil, false, nil
 	}
 	f, err := c.get(name, fs)
 	if err != nil {
-		if c.isEmbedded(name) {
+		var carried *template.CarriedFaceError
+		if errors.As(err, &carried) {
 			return nil, false, nil
 		}
 		return nil, false, err

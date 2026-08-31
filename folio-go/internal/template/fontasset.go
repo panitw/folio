@@ -63,6 +63,61 @@ func (s FontChainSite) String() string {
 	return out
 }
 
+// CarriedFaceError marks a fault that arose while resolving a face THE
+// DOCUMENT ITSELF CARRIES. It is D-8.4.12's discriminator, and it is a
+// STAMP rather than a message: it adds no text of its own and delegates
+// Error() to what it wraps.
+//
+// WHAT IT DECIDES. The canvas projection must degrade the one element and
+// never abort (D-7.4.2) — but only for a fault the author can actually
+// REPAIR ON THE CANVAS. D-8.4.12 rules that the dividing line is
+// POSITIONAL, not a list of error types: a fault arising while resolving a
+// face the element's own chain names is attributable to document content
+// and degrades that element WHATEVER ERROR TYPE CARRIES IT; a fault
+// arising after every face the element needs has resolved still aborts.
+//
+// WHY A STAMP AND NOT AN ALLOWLIST. The gate it replaces tested the error
+// against ONE type — UnsupportedFontMediaTypeError, immediately below —
+// at the CONSUMER, and D-8.4.12 found the defect that shape guarantees:
+// the population an error-type gate excludes contains document
+// properties, and every FUTURE face-resolution failure type rejoins the
+// abort silently, with nothing observing it. checkSfnt in this file is
+// the standing proof — it bounds-checks the header and every
+// table-directory record and never reads a table's CONTENTS, so a
+// structurally valid sfnt over unreadable contents LOADS, and then
+// aborted the whole canvas projection at fontset.New. An enumeration
+// written at a consumer cannot be closed; a stamp applied at the single
+// DOOR can, because the door is the only way in.
+//
+// WHY IT LIVES HERE AND IS CONSTRUCTED ELSEWHERE. Attribution is a FORMAT
+// fact — "this face is something the document carries" — so it belongs
+// beside the format's other document-attribution error, which it
+// generalises and which is one of the things it now wraps. The fault it
+// marks, however, is only observable at a render surface: it is minted at
+// exactly one site, fontCache.get's embedded arm in package folio, which
+// is the one place a face resolves from the DOCUMENT's own assets rather
+// than from a caller's FontSet. Every error out of that arm is stamped —
+// not a chosen few — so the set is closed by construction.
+//
+// WHAT IT DELIBERATELY DOES NOT COVER (D-8.4.12 guardrail 6 — the case
+// that DISCRIMINATES the two axes). A face the CALLER's FontSet supplies
+// that will not parse fails in get's other arm and is NOT stamped: it is
+// the host application's face, not the document's, and no edit an author
+// makes on the canvas repairs it. An error-type gate sweeps that case in;
+// the attributability axis correctly leaves it out.
+//
+// IT ADDS NO TEXT, which is what keeps every located string the render
+// path already prints byte-identical, and Unwrap keeps every existing
+// errors.As/errors.Is target reachable through it — including the
+// media-type error the old allowlist named.
+type CarriedFaceError struct {
+	Err error
+}
+
+func (e *CarriedFaceError) Error() string { return e.Err.Error() }
+
+func (e *CarriedFaceError) Unwrap() error { return e.Err }
+
 // UnsupportedFontMediaTypeError is the font analogue of
 // UnsupportedMediaTypeError (image.go): the document is VALID — a font
 // asset's mediaType is an open set, D-1.4.12/D-1.8.1 as amended — but
