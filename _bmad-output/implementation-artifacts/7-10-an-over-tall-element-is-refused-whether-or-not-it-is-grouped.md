@@ -5,7 +5,7 @@ created: '2026-08-31'
 status: 'done'
 baseline_revision: 'b9e2bfe50afede9c97c700f5ac86ed6b0b5e5d69'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
@@ -54,11 +54,22 @@ deferred:
 
 *Non-normative. The intent contract below governs; where the two differ, the contract wins.*
 
-If you declare a box too tall for the page, Folio refuses your document and tells you which element
-is wrong. But if you also tag that element into a keep-together group, the refusal quietly becomes a
-warning: Folio prints the document, cuts the element off at the bottom of the page, and carries on.
-So a feature that has nothing to do with heights can switch off a hard error. This story makes the
-refusal follow **what** is over-tall rather than **whether** it happens to be grouped.
+If you declare a component taller than the page can hold, Folio now refuses the document and tells
+you which component is wrong — and tagging that component to travel together with others no longer
+changes the answer. Before this story the tag quietly switched the refusal off: the document
+printed, the component was cut short at the bottom of the page, and whatever ran past the cut was
+gone without a word. A feature about keeping things together was deciding a question about heights.
+
+Two things a later reader may expect here and will not find. A group whose components each fit the
+page, and which runs past the bottom only when you add them up, is still cut short with a warning
+exactly as it shipped. That boundary is left alone deliberately, and it is worth saying plainly that
+the reasoning which makes the new refusal right would arguably make that case a refusal too; it is
+recorded as open, for a real document that loses content to reopen.
+
+And a long paragraph tagged on its own is now refused, even though untagged it prints in full across
+several pages. That is intended rather than a regression: the tag is what declares the paragraph
+unbreakable, no page can hold it whole, and removing the tag is the fix. The refusal now says so in
+the message the author reads — which also stopped calling a plain box a table.
 
 <intent-contract>
 
@@ -883,3 +894,163 @@ arms".
 Halted on the one question the intent does not settle: whether D-7.7.9's per-member mechanism reaches
 a tagged multi-line text element, whose members are its individual lines. See Design Notes, "The
 population D-7.7.9 does not reach", for the measurement, the three dispositions and a recommendation.
+
+## Delivery Log
+
+### 2026-08-31 — planned
+
+Dispatched at `9844e6d` with `Halt after planning.` Story 7.10 is the last open item of Epic 7, added
+to a scope-closed epic as a **repair** under D-7.7.12, and it is one of the pre-tag narrowings: it
+takes documents that render today and makes them fail, which is free before `folio-go/v0.1.0` and
+ruinous after (D-7.7.13, D-7.8.3, AD-22).
+
+**The plan gate halted, and the gap was in the RULING rather than in the spec.** That distinction is
+the most useful thing this story records. D-7.7.9 had already settled the discriminator in the
+lead's own words — *every member fitting, the sum not* — and the spec derived from it faithfully.
+The builder then measured the ruling against the code and found that its mechanism does not reach the
+element kind the ruling names: **the ruling reasoned in elements while the paginator groups line
+items.** Both pagination passes emit one column item per shaped line, so every "member" of a tagged
+paragraph fits a window and only the union does not; applied literally, the ruling classified the
+very document it was written to fix as merely aggregate and left it exactly as it was. A halt on a
+correctly-derived spec is the loop working: the spec was not wrong, the authority it was derived from
+was under-specified, and no builder may quietly amend a ruling to make its own story implementable.
+
+Six rulings came back (D-7.10.1 … D-7.10.6). The load-bearing one is that **a group's members are
+the template elements carrying the tag, not the column items they decompose into** — otherwise an
+internal decomposition decides a product behaviour, which is precisely how DW-50 fell through
+D-7.7.9 in the first place.
+
+**"The same as untagged" was a PROXY, and this is the third proxy-versus-purpose failure this run.**
+The original AC1 required the tagged refusal to match the untagged one. That was never the rule; it
+was a stand-in for *the author declared this and can fix it*, true of the population in front of the
+ruling (a box, an image — fatal either way) and false for the one that was not (multi-line text,
+which untagged renders perfectly). D-7.10.3 replaced the criterion with the purpose and forbade the
+equality assertion for that population. Naming proxies as proxies is now a recurring yield of this
+run's plan gates rather than an accident.
+
+**D-7.10.4 left the aggregate-only boundary alone and said why, honestly.** A group whose members
+each fit and whose sum does not stays clipped. The fixability argument that makes this story's
+refusal right — the author typed the tag and can remove it — would, pushed all the way, make that
+case fatal too. Story 7.7 chose clip by importing Story 4.6's *treatment* without importing its
+*reason*, which is that a table row's height is data-driven and unfixable. It is left because it is
+shipped, deliberate and outside this story's subject, and it is recorded as reopening on the first
+real document that loses content that way. That is filed as **DW-68**, before the tag rather than
+after.
+
+### 2026-08-31 — built
+
+One implementing dispatch at baseline `b9e2bfe`, commit `f85da21`, 14 files.
+
+The disposition is now carried by a single new bit — `ItemGroup.AuthorDeclared` — set at exactly one
+derivation and read inside `Paginate`'s own clip branch. Because it lives inside `Paginate`, both
+pagination passes and the canvas reach it automatically, with no second run of the fit arithmetic
+(D-4.2.2) and no reopening of the canvas/render divergence Story 7.9 had just closed. Table rows are
+exempt from the new test entirely, and that scoping is not a nicety: a data row's chrome rect spans
+the row's whole extent, so *some member is individually over-tall* is **always** true of an over-tall
+row, and an unscoped rule would reverse Story 4.6 wholesale.
+
+Review ran four layers: 16 findings patched (3 high, 8 medium, 5 low), 3 deferred, 5 rejected, no
+intent gap and no bad spec. The three high findings are the ones worth carrying forward, and none of
+them was about the mechanism — all three were about the **claim**:
+
+- **A forbidden claim had survived into the one artifact an author actually reads.** The Go tests
+  avoided the untagged-equality assertion scrupulously, exactly as D-7.10.3 requires, while
+  `folio-format.md`'s `keepTogether` field row went on asserting that the refusal names the element
+  *"exactly as that element would be untagged"* — the very generalisation the ruling blocks, false
+  for the multi-line-text population, and contradicting the prose fifteen lines above it in its own
+  file. A ruling enforced in the code and violated in the specification is the specification's
+  version that reaches the author.
+- Two arms were **missing and demonstrably reintroducible with the whole suite green**: a mixed group
+  (an over-tall paragraph tagged with the name printed beneath it — the real signature-block shape)
+  and an over-tall tagged image. Each was shown to pass a weaker predicate that silently clips.
+
+### 2026-08-31 — done
+
+Closed at `6d94976`, one commit past the story's own. Every gate below was re-measured at HEAD by the
+closer; nothing here is relayed from the build's report.
+
+**Gates measured.**
+
+- `cd folio-go && go test -count=1 ./...` — **exactly ONE distinct red**:
+  `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`, the mandated floor. Every other package `ok`.
+  The build measured **three** reds at `b9e2bfe`; the other two were the orchestrator's own — a
+  sign-off record and its matrix gate added at `b4ff977` without being registered — and the builder
+  correctly refused to fix them, since one of the failure messages says in so many words that an
+  obligation may not be added without a ruling. The orchestrator closed them at `6d94976`. The red
+  set is back to one, verified rather than assumed.
+- `go vet -tags=matrix ./...` clean. `gofmt -l folio-go` empty from the repository root.
+  `gofmt -l lint` still reports `licencegraph_test.go` — DW-23, pre-existing and out of this path.
+- `TestTargetRenderHash` on all four legs with `FOLIO_MATRIX_TARGET` **exported** — `darwin/arm64`,
+  `linux/amd64`, `linux/arm64`, `js/wasm`, each exit 0 and each printing 22 real per-fixture hashes.
+  Plus the **unset control**, which printed its *"asserts NOTHING / deliberate no-op"* notice: that
+  control is what makes the four legs evidence rather than four green no-ops.
+- `TestCrossTargetByteIdentity` PASS (22.4s), all four targets byte-identical per fixture.
+- `cd lint && go test -count=1 ./...` — 4 packages `ok`, `-count=1` used. D-7.9.5's cached-green trap
+  is real: the `rules` package walks `folio-go` as a directory and the build cache does not track
+  `ReadDir`.
+- Designer: typecheck clean; lint **exactly 4** pre-existing `only-export-components` warnings;
+  vitest **284 tests / 34 files** passed; e2e compile clean. **Zero designer paths in the diff**,
+  verified mechanically against the commit's own file list.
+- **All 22 `goldenDigestRecord` digests recomputed and compared to baseline `9844e6d` one by one —
+  every one identical.** Nothing re-recorded. `fixtures/` untouched; both human attestations
+  untouched; `TestThaiStackedMarksSemanticSignOffIsRecorded` green, binding the owner's 2026-08-31
+  sign-off to that fixture's digest.
+
+**Mutation screens, each re-run by the closer with a landing proof before its result was believed.**
+The build warned that one of its own mutations had silently failed to apply and produced a
+meaningless `ok`, so every mutation here asserted the target substring's occurrence count before the
+edit and its absence after.
+
+- **Deleting the discriminator** reddens **5** distinct test functions across both packages, with the
+  aggregate arm staying green.
+- **Deleting the scoping clause** — reading the new test on any present group rather than only an
+  author-declared one — reddens **17** distinct table-row / group functions. The build reported 10;
+  the measured figure is higher and in the same direction. That clause is what holds Story 4.6.
+- **Regressing the member unit** from template element to column item reddens the **text** arms alone
+  — the tagged paragraph and the mixed group — while the **box arm and the tagged-image arm stay
+  green**. That is DW-50 reproduced exactly: a green suite over a document silently losing content,
+  and the reason both arms had to exist.
+- **Restoring the pre-7.10 `Kind` derivation** reddens both `box` assertions and the unit test.
+- **PHASE A in isolation** (removing the page-count pass's keep-together substitution) reddens 4
+  functions. The standing finding — that PHASE A mutations have left the whole suite green before,
+  because almost every fixture declares empty running bands — **does not apply here**; Story 7.9's
+  canvas work closed that hole.
+
+**The one judgment call, audited rather than accepted.** The build let the declared-box arm assert
+equality with the untagged refusal, on the ground that D-7.10.3's ban is scoped by its own stated
+reason to the population where the untagged document *renders*. That reasoning holds, and it was
+checked mechanically rather than read: there is **exactly one** such equality assertion in the entire
+repository, it sits on the box arm, the text arm asserts the opposite (that the untagged control
+renders cleanly and prints all sixty of its words), and the quarantining comment is present and
+names the ruling. It is also not decorative — forcing a tagged element box to be called a "table"
+reddens it precisely at the equality line. Had it leaked to the text arm it would have been a
+blocking falsehood; it did not.
+
+**Both arms reproduced independently**, from a throwaway module outside the repository calling only
+exported API, then deleted. The refusal reads verbatim *"folio: Render: element e1: **box** is taller
+than the content window (900000mp against a content height of 729890mp), so it fits on no page…"* —
+the element named, its true kind named, the word "table" gone, and the advice now telling the author
+the tag is removable. The clipped arm renders bytes plus **exactly one** `TABLE_ROW_CLIPPED_HEIGHT`
+Warning at the group's first member, naming the group. Byte counts of ad-hoc probe documents are not
+a contract and are not asserted anywhere in the tree; the dispatch's 614 and this probe's 624 are two
+different documents, and the spec already records that caveat.
+
+`folio-format.md` is now self-consistent: zero hits for any untagged-equality phrasing, and its only
+remaining mention of the untagged case says the difference is deliberate — which is what the field
+row twenty-five lines below now also says.
+
+**Deferred, with owners:** DW-66 (which element is named when several members are over-tall follows
+internal item order, not the author's) and DW-67 (the canvas/refusal pairing is correct but
+unasserted — read with DW-62, whose subject is adjacent and which Story 7.9 left open). **Closed:**
+DW-47, DW-50, DW-49 half (b), DW-64 and DW-65. DW-65 is genuinely closed rather than merely
+no-worse: the spine citation is now by AD number, so the file growing to 728 lines cannot stale it
+again.
+
+**Before the tag.** D-7.8.3's set now stands at: Story 7.8's justified-table load refusal (landed),
+Story 7.10's over-tall fatality (landed here), and D-7.8.2's audit retiring whichever of the two
+existing style codes no consumer branches on (**still open**). **Exactly one item remains before
+`folio-go/v0.1.0` can be cut.**
+
+`followup_review_recommended` cleared to `false` on the evidence above: all three high patches
+re-derived, the judgment call audited mechanically and red-proved, both arms reproduced, and every
+mutation screen re-run with its landing asserted.

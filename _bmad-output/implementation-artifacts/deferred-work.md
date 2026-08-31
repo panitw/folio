@@ -3082,7 +3082,7 @@ questions**; whoever rules on this should read all three together.
 
 ---
 
-### DW-47 — an over-tall SINGLE-member keep-together group is clipped and warned, where the same element untagged is a fatal error — the contract's own matrix rows 3 and 5 collide
+### DW-47 — an over-tall SINGLE-member keep-together group is clipped and warned, where the same element untagged is a fatal error — the contract's own matrix rows 3 and 5 collide — **CLOSED by Story 7.10, 2026-08-31**
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
 - **Owner:** **Story 7.10** — *an over-tall element is refused whether or not it is grouped*.
@@ -3092,7 +3092,19 @@ questions**; whoever rules on this should read all three together.
   author here, both renders are self-consistent with true diagnostics — but it **gates the
   `folio-go/v0.1.0` tag**, because it narrows what renders (AD-22)
 - **Severity:** MEDIUM
-- **Status:** OPEN
+- **Status:** **CLOSED** by Story 7.10's implementation commit `f85da21`, 2026-08-31, verified at the
+  story's close. A tagged, individually over-tall element is now a located fatal `OverflowError`
+  naming that element, identical to the untagged refusal for this declared-box population — measured
+  at the close from a throwaway module outside the repository, both arms reading *"element e1: box is
+  taller than the content window (900000mp against a content height of 729890mp)"*. Matrix row 5 was
+  tightened rather than left false: a group of one is a no-op only where the group adds nothing, and
+  the equality is asserted for the declared-box population **only**, quarantined by a comment
+  forbidding its generalisation (D-7.10.3). The **adjacent** finding recorded below — the refusal
+  calling a non-table a "table" — is closed too, at the derivation rather than by special-casing the
+  string (D-7.10.5): `overflowKind` gives an element box its own word, and a test asserts the wording
+  rather than trusting it. Red-proved at the close: restoring the pre-7.10 derivation reddens both
+  `box` assertions and the unit test; deleting the discriminator reddens 5 distinct test functions
+  with the aggregate arm green
 
 **The collision.** The story's I/O matrix says "Group taller than one window → clipped with a
 Warning" (row 3) and "Single-member group → placement identical to the same element untagged"
@@ -3143,7 +3155,7 @@ version. Both halves are asserted directly: the copy carries no tag (`!Set && !N
 
 ---
 
-### DW-49 — `ARCHITECTURE-SPINE.md` still scopes the over-tall clip carve-out to "rows" although a second population is now clipped
+### DW-49 — `ARCHITECTURE-SPINE.md` still scopes the over-tall clip carve-out to "rows" although a second population is now clipped — **FULLY CLOSED 2026-08-31** (half (a) Story 7.9, half (b) Story 7.10)
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
 - **Owner:** **SPLIT 2026-08-31 (D-7.7.13), two edits with two homes, neither held for the other.**
@@ -3161,6 +3173,17 @@ version. Both halves are asserted directly: the copy carries no tag (`!Set && !N
   confirmed ABSENT**: zero hits for "discriminator", "individually over-tall" or "regardless of
   tagging" anywhere in the file. A spine running ahead of the code is the same defect as one lagging
   it, so half (b) was deliberately not written
+- **Half (b) CLOSED** by Story 7.10's implementation commit `f85da21`, 2026-08-31, in the **same
+  commit as the behaviour** it describes (D-7.7.14). AD-14's Rule bullet now carries the
+  discriminator clause: the leniency *"is scoped by **what is over-tall**, never by whether an item
+  is grouped"*, a keep-together group being a `Warning` only **in aggregate** and a located `Error`
+  when it holds a template element taller than a window, while a row stays a `Warning` whatever its
+  shape. Appended inside the existing Rule bullet as this entry prescribed, so
+  `table_row_clip_test.go`'s verbatim quotation of AD-14 is not falsified. Verified at the close: the
+  `<!-- stage-rank-table:begin/end -->` markers are untouched at `:77`/`:91`, the spine still parses,
+  and `cd lint && go test -count=1 ./...` is 4 packages `ok`. **The file is now 728 lines, not 722**
+  — which no longer matters, because DW-65 closed the line citation in the same commit. **This entry
+  is now fully closed**
 
 **The gap.** `_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md:319`
 still reads "Over-tall **rows** (FR25) and clipped content (FR44) are …". D-4.6.2 was amended in
@@ -3172,13 +3195,23 @@ amendment was unauthorised.
 
 ---
 
-### DW-50 — a tagged MULTI-LINE text element becomes atomic, so the matrix's "a single-member group changes nothing" holds only for single-line elements
+### DW-50 — a tagged MULTI-LINE text element becomes atomic, so the matrix's "a single-member group changes nothing" holds only for single-line elements — **CLOSED by Story 7.10, 2026-08-31**
 - **Deferred by:** Story 7.7's build (2026-08-31); filed into this register at the story's close,
   where it was found recorded only in the spec's frontmatter
 - **Owner:** **Story 7.10**, with DW-47 — same contract row, second element kind, one two-arm
   fixture. Ruled 2026-08-31 (D-7.7.9)
 - **Severity:** LOW
-- **Status:** OPEN
+- **Status:** **CLOSED** by Story 7.10's implementation commit `f85da21`, 2026-08-31.
+  **D-7.7.9 as written did not reach this entry, and that is the substance of the close.** Its
+  mechanism — *every member fitting, the sum not* — reasons in ELEMENTS, while both pagination passes
+  emit one column item per shaped LINE; read in items, every member of a tagged paragraph fits and
+  only the union does not, so this document classified itself as merely aggregate and would have been
+  left exactly as it was. The plan gate halted on that rather than guessing, and **D-7.10.1 ruled the
+  member unit to be the TEMPLATE ELEMENT**, which is what reaches this case. A tagged multi-line text
+  element is now refused, naming the element, with its OWN union extent reported rather than one
+  line's. Red-proved at the close: regressing the member unit back to the column item reddens the
+  text arm and the mixed-group arm **alone**, while the declared-box and tagged-image arms stay green
+  — this entry reproduced exactly, under a suite that would otherwise have been green
 
 **The gap.** `contentColumnItems` emits one `ColumnItem` per shaped line and the substitution stamps
 the same key on all of them, so tagging one multi-line element makes its lines unbreakable and its
@@ -3535,14 +3568,21 @@ it.
 
 ---
 
-### DW-64 — three sites still paraphrase or quote AD-14's SUPERSEDED over-tall wording, one of them as "not yet built"
+### DW-64 — three sites still paraphrase or quote AD-14's SUPERSEDED over-tall wording, one of them as "not yet built" — **CLOSED by Story 7.10, 2026-08-31**
 - **Deferred by:** Story 7.9 (2026-08-31); first surfaced in its Dispatch 2 review and carried
   unfixed through Dispatch 3
 - **Owner:** **Story 7.10** — *an over-tall element is refused whether or not it is grouped*. It owns
   DW-49's half (b) and rewrites this exact clause of AD-14 anyway, so repairing the paraphrase there
   costs one line, and repairing it anywhere else risks two authorities disagreeing again
 - **Severity:** LOW
-- **Status:** OPEN
+- **Status:** **CLOSED** by Story 7.10's implementation commit `f85da21`, 2026-08-31 — the story that
+  lifted the `internal/layout` fence, exactly the cheap moment this entry was filed to wait for. All
+  three listed sites re-pointed, **plus a FOURTH the entry did not list**, found by the story's own
+  review at `paginate.go:851` — four lines above the very narrowing that superseded it. Verified
+  mechanically at the close: zero hits for `"over-tall rows (FR25)"` anywhere under
+  `folio-go/internal/layout/`, and zero hits for `"not yet built"` in `folio-go/diagnostic.go`. The
+  re-pointed sites now paraphrase AD-14 **by number rather than by quotation**, which is what stops a
+  fifth copy accruing the next time the spine is amended
 
 **The gap.** `folio-go/diagnostic.go:344` paraphrases AD-14 as "over-tall rows (FR25, not yet
 built)". Story 7.7 **built** them at `ed485eb`, and Story 7.9 widened the spine clause this comment
@@ -3569,14 +3609,21 @@ line at once.
 
 ---
 
-### DW-65 — `folio-go/internal/diag/diag.go` cites `ARCHITECTURE-SPINE.md` by LINE NUMBER, and that line falls inside a mermaid ER diagram
+### DW-65 — `folio-go/internal/diag/diag.go` cites `ARCHITECTURE-SPINE.md` by LINE NUMBER, and that line falls inside a mermaid ER diagram — **CLOSED by Story 7.10, 2026-08-31**
 - **Deferred by:** Story 7.9 (2026-08-31); noted at the plan gate as already stale **before** the
   story touched anything, and carried by the spec's Design Notes rather than repaired
 - **Owner:** **the next story that edits `ARCHITECTURE-SPINE.md`** — a gate, never an event, per
   D-000.73. A line citation into a file whose length nobody is holding constant will rot again the
   moment anyone forgets, so the fix is to cite the **AD number**, not to re-count the lines
 - **Severity:** LOW
-- **Status:** OPEN — **pre-existing; Story 7.9 held the file's length so it is no worse**
+- **Status:** **CLOSED** by Story 7.10's implementation commit `f85da21`, 2026-08-31. The gate fired
+  as specified — this is the next story that edited `ARCHITECTURE-SPINE.md`, for DW-49's half (b) —
+  and the fix is the prescribed one: cite the **AD number**, never re-count the lines. `diag.go:10`
+  now reads *"see `ARCHITECTURE-SPINE.md`'s AD-14, 'Errors and diagnostics are one type on one
+  channel', as amended by Story 2.8's AC11"*, with the reason for citing by number recorded inline.
+  Verified at the close: **zero** `ARCHITECTURE-SPINE.md:<line>` citations remain anywhere under
+  `folio-go/` or `lint/`. This story then grew the spine from 722 to **728** lines — which is exactly
+  the silent drift this entry predicted, and it is now harmless
 
 **The gap.** `folio-go/internal/diag/diag.go:10` cites `ARCHITECTURE-SPINE.md:613`, and at HEAD line
 613 falls inside a mermaid ER diagram — the citation was already pointing at the wrong thing before
@@ -3585,3 +3632,88 @@ file at **722 lines** (verified at the close), so the citation is exactly as sta
 staler. That was the right call for a story fenced to FR51, and it is also why this entry exists: the
 next edit to that file will not have the same reason to hold the line count, and a silent one-line
 drift is all it takes.
+
+---
+
+### DW-66 — which over-tall member the refusal NAMES is decided by internal item order, not by the author's declaration order
+- **Deferred by:** Story 7.10's build (2026-08-31); confirmed and re-measured at the story's close
+- **Owner:** **Story 7.11 or the first story that touches `overTallGroupMember`** — and it wants a
+  **ruling before a patch**, because naming a preferred subject is a product decision, not a
+  builder's choice. Does **not** gate the `folio-go/v0.1.0` tag: the refusal is located, truthful and
+  deterministic in every case, so nothing lies to the author. It narrows nothing and can land after
+- **Severity:** MEDIUM
+- **Status:** OPEN
+
+**The gap.** When two or more template elements of one author-declared group are each individually
+over-tall, `overTallGroupMember` (`folio-go/internal/layout/paginate.go`) returns the **first** such
+element in `items` order. Package `folio` builds that slice by appending rects, then text, then
+images, so an over-tall text element is named ahead of an over-tall rect **regardless of which the
+author declared first**. Measured during the story's review: the text is named in both declaration
+orders.
+
+**The determinism is real and is not the complaint.** Members are accumulated into a slice in
+first-appearance order and scanned in that order; no map is ranged, so the answer is a function of
+the caller's item order rather than of a hash seed (R5 / D-1.3.5), and the doc comment says so. The
+complaint is about the **subject** that determinism is anchored to: it is an implementation detail of
+how the paginator assembles its column, and it reaches a diagnostic message an author reads.
+
+**This is the same class of defect as DW-50**, which this very story exists to fix — a product
+behaviour decided by an internal decomposition. It is filed rather than patched because the fix
+requires deciding *which* member ought to be named (the author's first declaration? the tallest? all
+of them?), and that is a ruling.
+
+---
+
+### DW-67 — the canvas degrades to an inexact window count for a document the renderer now refuses, and nothing asserts that pairing
+- **Deferred by:** Story 7.10's build (2026-08-31); confirmed at the story's close
+- **Owner:** **Story 7.11, with DW-62** — read the two together. DW-62 is the canvas's *other*
+  undisclosed count divergence and its subject is adjacent; a single story that pins
+  *renderer refuses ⇒ canvas reports inexact* alongside DW-62's `visibleIf` case is one fixture's
+  worth of work, where two stories would build the same harness twice
+- **Severity:** MEDIUM
+- **Status:** OPEN — **the behaviour is CORRECT at HEAD; what is missing is the assertion**
+
+**The gap.** `folio-go/page_setup.go` calls `layout.Paginate` directly and degrades on any error,
+setting `ContentWindowCountIsExact` false. Because Story 7.10 put the discriminator **inside**
+`Paginate` rather than in a pre-pass, a tagged over-tall element reaches the canvas automatically —
+which is exactly the behaviour Story 7.9 closed the canvas/render divergence for, and it is right.
+But no test pins the pairing, so a future change that moves the discriminator out of `Paginate`, or
+that adds a second refusal path around it, could re-split the renderer from the canvas silently. The
+canvas would then confidently draw a clipped layout for a document the renderer refuses.
+
+Filed with DW-62 rather than folded into Story 7.10 because adding it means building a canvas
+fixture for a document that produces no bytes, which is a fixture shape neither this story nor Story
+7.9 needed.
+
+---
+
+### DW-68 — the AGGREGATE-ONLY over-tall group stays clipped on a REASON its own story disowned, and reopening it is cheap only before `folio-go/v0.1.0`
+- **Deferred by:** Story 7.10 (2026-08-31), on D-7.10.4's explicit instruction to record the
+  reopening condition **prominently rather than as a buried note**
+- **Owner:** **Owner / engineering lead — a RULING, before the `folio-go/v0.1.0` tag.** Not a builder's
+  call and not a defect report. It is filed here so that it is findable at the moment it becomes
+  expensive, which is the moment the tag is cut
+- **Severity:** MEDIUM — **low as a defect, HIGH as a deadline**
+- **Status:** OPEN — **deliberately, and this entry exists so that "deliberately" stays honest**
+
+**⚠ THE DEADLINE IS THE POINT OF THIS ENTRY.** Making this case fatal **narrows what renders**. Under
+D-7.7.13, D-7.8.3 and AD-22 that is free before the `folio-go/v0.1.0` tag and ruinous after, when
+every downstream suite pays for it. Whoever is about to cut that tag should read this entry first and
+decide, rather than discover it afterwards.
+
+**The gap.** A keep-together group whose template elements each fit a content window, but whose union
+does not, is still clipped to a page of its own with a `TABLE_ROW_CLIPPED_HEIGHT` Warning — Story
+4.6's treatment, shipped by Story 7.7 and untouched by Story 7.10.
+
+**Why it is on the register even though it is working as shipped.** Story 7.10's whole ratio is
+**fixability**: an author-created grouping is strict because the author typed the tag and can remove
+it, while an engine-created grouping (a table row) is lenient because a row's height comes from data
+the author cannot audit. Pushed all the way, that argument makes the aggregate-only case fatal too —
+the author can untag it just the same. **Story 7.7 chose clip by importing Story 4.6's TREATMENT
+without importing its REASON**, and the lead confirmed that at the time. D-7.10.4 left it as it
+stands because it is shipped, deliberate and outside 7.10's subject — **not because it is obviously
+right**, and it declined to dress it up as anything else.
+
+**What reopens it:** a real document losing content that way, as DW-50 came from a real case. One
+ruling would cover both halves of the question. **If anyone sees such a document, raise it now.**
+
