@@ -194,7 +194,14 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    The class was emitted by the prose row before this rule existed; a class
    with no rule is the shape DW-25's closing note asks not to be repeated. */
 .property-field-prose { align-items: start; padding: var(--space-2) var(--space-1) var(--space-2) var(--space-3); }
-.property-value-prose { min-height: 72px; resize: vertical; font: var(--type-body-em); }
+.property-value-prose { font: var(--type-body-em); }
+/* The 72px floor and the resize grip belong to the multi-line CONTENT field,
+   NOT to every control that wants body type. The font-family combobox is a
+   single-line input that reuses this class for its typeface alone, and it was
+   inheriting a height meant for four rows of prose -- rendering at roughly
+   twice its intended size. `resize` is inert on an input, which was the tell.
+   Scoped to the element that actually has the multi-line contract. */
+textarea.property-value-prose { min-height: 72px; resize: vertical; }
 /* The font family row: the engine's declared chains, searched in place. The
    list overlays the rows beneath it rather than pushing them down, so the
    section keeps the design's height while it is open. */

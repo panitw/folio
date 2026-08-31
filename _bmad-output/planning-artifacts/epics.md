@@ -2529,6 +2529,96 @@ byte for byte. The faces a document uses are declared in it, chosen in the desig
 the file — because the `.folio` is the whole contract between the two of them, and a font nobody
 can install is not a choice she can make.
 
+**Sequencing note (2026-08-31).** This epic opens with **Story 8.0**, which is a precondition
+of Story 8.4 rather than a preface to the epic (see its own text). **Story 7.10** — Epic 7's
+over-tall-element repair — is sequenced **immediately after 8.0 and before 8.1**, by the owner's
+call: it does not gate `epic-7: done`, but it must land before the `folio-go/v0.1.0` tag, and a
+position in a sequence is the only owner that has worked on this project. It is placed here, not
+promised.
+
+### Story 8.0: A stacked Thai mark reaches the page
+
+As a template author writing in Thai,
+I want a word whose base carries two stacked marks to render,
+So that ordinary Thai legal prose produces a document at all.
+
+**Covers:** FR-fonts · AD-3, AD-6, AD-21, AD-22 — DW-28, ruled HIGH by the engineering lead
+2026-08-31 after the owner hit it on a real contract clause.
+
+**Numbered 8.0 because it OPENS Epic 8** while Stories 8.1–8.6 keep the numbers they already carry
+in `sprint-status.yaml` and in cross-references. It is not a preface to the epic; it is a
+**precondition of it** (below).
+
+**What is wrong.** `internal/pdf`'s `appendShapedRun` refuses any glyph carrying a non-zero
+`YOffset`, because a TJ array cannot express a vertical offset. Thai puts two marks over one base
+constantly — `ทั้งสิ้น`, `ครั้ง`, `ทั้งนี้`, `ตั้งแต่` — and the shipped Noto Sans Thai gives those
+marks a real offset. So a large class of ordinary Thai **does not render at all**: not a diagnostic,
+not a degraded page, a hard `Render` error and zero bytes. The design canvas draws the same text
+correctly, because AD-5 makes the page model blind to the emission stage — the canvas is not lying,
+it cannot see this.
+
+**Severity HIGH, on a stated criterion:** *blocks a supported use case, with no workaround, for a
+real user.* The shipped Thai face is the only Thai face; the document is the owner's real work; and
+"avoid the character sequence" is mutilating the document, not a workaround. It is **not** grounded
+on *the product lies to the author* — that framing would make AD-5 look like a defect when it is a
+deliberate invariant.
+
+**Why it is a PRECONDITION of Epic 8 and not merely urgent.** Epic 8 lets an author embed
+**arbitrary faces**, whose mark positioning is arbitrary. Noto Sans Thai reaches this branch; a face
+picked from a catalogue can reach it far more often and on scripts nobody tested. **Story 8.4's own
+acceptance criterion** — *a template with embedded faces renders on a machine that has never seen
+them* — is at risk from the first embedded face whose glyphs carry a vertical offset. Shipping 8.4
+over an unfixed fail-closed branch ships a feature that can newly stop documents rendering.
+
+**This is a gap, not a format limit.** PDF's **text-rise operator `Ts`** expresses exactly this, and
+it is inside AD-6's pinned profile — AD-6's exclusion list (encryption, annotations, forms,
+transparency groups, shading, ICC, tagging) does not contain the text-state operators. The refusal's
+own comment concedes it: *"the alternative — splitting the run and emitting a fresh text matrix per
+glyph — is not built here."* `grep` for `Ts` across `internal/pdf` returns nothing.
+
+**The characterization already landed** (2026-08-31, `folio-go/thai_mark_stacking_test.go`), ahead of
+this story and separately, at the owner's direction. It pins the message an author receives, proves
+the branch reachable through `ParseTemplate` + `Render` on the shipped set, and carries a
+same-script control. It is mutation-proved: neutering the refusal makes the document render 3,187
+bytes with the marks silently misplaced. **So this story starts with a red-provable before-state
+rather than having to build one.**
+
+**Acceptance Criteria:**
+
+**Given** a text element whose value contains a Thai base carrying two stacked marks
+**When** the document renders
+**Then** it produces a PDF, with each mark placed at the vertical offset the shaper computed
+
+**Given** the 21 shipped golden fixtures, in none of which any glyph carries a non-zero vertical
+offset
+**When** they render
+**Then** all 21 digests are **byte-identical** across all four targets — the `Ts` path is entered
+**only** when `YOffset != 0`, and that is asserted rather than assumed. This is the whole of the
+byte-identity risk in this story.
+
+**Given** a glyph whose positioning still cannot be expressed
+**When** it is emitted
+**Then** it still refuses, with a message pinned as it is today — the fail-closed branch narrows, it
+does not disappear, and `thai_mark_stacking_test.go`'s arms become this story's before/after
+
+**Given** every number reaching an output byte
+**When** the rise is emitted
+**Then** it goes through `numbers.go`'s emitters (AD-3: no number reaches an output byte by any
+other route), in `geom.Length` millipoints with no `float64` under `internal/` (AD-23)
+
+**Given** the owner's own contract clause, which today fails
+**When** this story lands
+**Then** it renders, and a fixture built from it joins the corpus with a recorded digest
+
+**Sequencing.** This story does **not** join D-7.8.3's before-the-tag set, and the reasoning should
+not be lost: emitting `Ts` for glyphs that currently **refuse** changes no existing golden **by
+construction**, because those documents produce no bytes today and so no fixture can contain one.
+It **widens** what renders rather than narrowing it, so a downstream consumer upgrading past
+`folio-go/v0.1.0` gets more documents rendering, never fewer. The tag is not the constraint here —
+the product is.
+
+---
+
 ### Story 8.1: The document's font chains become editable
 
 As a template author,

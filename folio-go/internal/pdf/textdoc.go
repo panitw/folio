@@ -901,16 +901,35 @@ func appendShapedRun(dst []byte, run pagemodel.TextRun, face EmbeddedFace) ([]by
 			// alternative — splitting the run and emitting a fresh text
 			// matrix per glyph — is not built here.
 			//
-			// Measured at Story 2.3: YOffset is 0 for every glyph of
-			// every sample across all three shipped faces, so this
-			// branch is UNREACHABLE through the render path with the
-			// shipped set and cannot be red-proved through it. It is
-			// exercised directly, by handing this function a synthetic
-			// run (TestShapedRunFailsClosedOnYOffset). Silently
-			// dropping the offset is the alternative and is worse in
-			// exactly the way this project keeps getting burned by:
-			// the healthy output and the broken output would be the
-			// same bytes.
+			// THIS BRANCH IS REACHABLE, AND THE COMMENT THAT STOOD
+			// HERE SAID IT WAS NOT. It read: "Measured at Story 2.3:
+			// YOffset is 0 for every glyph of every sample across all
+			// three shipped faces, so this branch is UNREACHABLE
+			// through the render path with the shipped set and cannot
+			// be red-proved through it." Both halves are false. Story
+			// 2.3 measured ITS OWN SAMPLES and reported on THE SHIPPED
+			// SET — two different populations — and the samples
+			// happened to contain no Thai sequence stacking two marks
+			// over one base. Ordinary Thai does: ทั้งสิ้น, ครั้ง,
+			// ทั้งนี้, ตั้งแต่ all reach here through ParseTemplate +
+			// Render on the shipped Noto Sans Thai, so a large class of
+			// ordinary Thai legal prose does not render at all
+			// (DW-28). It was found in production, not by a test,
+			// because this comment is what a reader checked first.
+			//
+			// It is now red-proved through a real document by
+			// thai_mark_stacking_test.go, alongside the synthetic
+			// TestShapedRunFailsClosedOnYOffset that has always
+			// exercised it directly.
+			//
+			// The refusal itself stays. Silently dropping the offset is
+			// the alternative and is worse in exactly the way this
+			// project keeps getting burned by: the healthy output and
+			// the broken output would be the same bytes. The RIGHT fix
+			// is to express the offset rather than refuse it — PDF's
+			// text-rise operator (Ts) does exactly that and is inside
+			// AD-6's pinned profile — and that is Epic 8's opening
+			// story, not this comment's to make.
 			return nil, &verticalOffsetError{face: face.Name, cid: g.CID, offset: g.YOffset}
 		}
 		width, ok := face.WidthForGlyph[glyphForCID(face, g.CID)]

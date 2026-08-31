@@ -120,15 +120,23 @@ func TestSerializeTextDocumentUnknownCIDIsLocatedError(t *testing.T) {
 }
 
 // TestShapedRunFailsClosedOnYOffset is AC6's fail-closed branch, tested
-// DIRECTLY because it cannot be reached through the render path.
+// DIRECTLY — which is still worth doing, but no longer because the
+// branch is unreachable any other way.
 //
-// Measured across all three shipped faces at Story 2.3: YOffset is 0 for
-// every glyph of every sample, so no production input triggers this and
-// the branch has NO available red-proof through a rendered document.
-// Handing the emitter a synthetic run is the honest way to exercise it,
-// and saying so here is the point: a guard credited with a red-proof it
-// does not have is worse than one openly labelled unproven, because the
-// label tells the next reader where to look.
+// This comment used to say: "Measured across all three shipped faces at
+// Story 2.3: YOffset is 0 for every glyph of every sample, so no
+// production input triggers this and the branch has NO available
+// red-proof through a rendered document." That was false. Story 2.3
+// measured its own samples and reported on the shipped set, and
+// ordinary Thai stacking two marks over one base reaches this branch
+// through the public entry point on the shipped Noto Sans Thai — see
+// thai_mark_stacking_test.go, which pins the message an author actually
+// receives and holds the branch to a real document (DW-28).
+//
+// The synthetic run keeps its own value: it exercises the branch
+// without depending on a face, so it survives any change to the shipped
+// set. What it must no longer be credited with is being the only
+// possible proof.
 func TestShapedRunFailsClosedOnYOffset(t *testing.T) {
 	face := fakeFace("Body")
 	run := pagemodel.TextRun{Face: "Body", SourceText: "A", FontSize: 12000, Glyphs: []pagemodel.ShapedGlyph{

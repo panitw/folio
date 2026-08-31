@@ -1776,3 +1776,119 @@ named for.
 as evidence about **the suite** rather than about any one story, with the one thing all three have
 in common named so the Epic 8 gate has something specific to look for rather than a general
 exhortation to be careful.
+
+## DW-28 found in production — Epic 8 gets an opening story (2026-08-31)
+
+The owner pasted a contractor-liability clause from a real Thai contract into a text element. The
+design canvas rendered it; the PDF preview failed outright with
+`internal/pdf: face Noto Sans Thai: CID 27 carries a non-zero vertical offset (-2)…`, surfaced as
+`Render failure · ENGINE_REJECTED`. That is DW-28, filed at Story 7.3 as MEDIUM and never picked up.
+
+Reproduced by this orchestrator through the shipped CLI at `31d6cc6`, not relayed: the full clause
+fails at **CID 27, offset −2**; the single word `ทั้งสิ้น` fails at **CID 3, offset −57**; the
+same-script control `สัญญา` renders exit 0. A failed render writes **no** output file, so there is
+no partial-artifact defect beside it.
+
+### D-8.0.1 — a code comment asserted the branch was unreachable, and that is why nobody looked
+
+`textdoc.go` read, verbatim: *"Measured at Story 2.3: YOffset is 0 for every glyph of every sample
+across all three shipped faces, so this branch is UNREACHABLE through the render path with the
+shipped set and cannot be red-proved through it."*
+
+**Both halves are false.** The owner's clause reaches the branch on a shipped face through the
+render path. Story 2.3 measured **its own samples** and reported on **the shipped set** — two
+different populations.
+
+**That is the third instance of one error shape in this run**, and the third is the worst because it
+was written into a canonical comment rather than into a test: D-7.4.2's dead detector; D-7.8.5's
+*"its message never quotes the document"*, where the lead read a format string and concluded about
+the data flowing through it; and this. The lead named it against itself both times.
+
+**Why this one cost the most.** The comment was **load-bearing in two directions**: it justified the
+fail-closed choice *and* the absence of a render-path test, and it is what a reader hitting the
+refusal in production would have checked first. **It protected itself.** Corrected immediately and
+independently of the fix, in `textdoc.go` and in `textdoc_test.go`'s parallel claim, because a
+comment asserting unreachability is exactly what stops the next reader from looking.
+
+**The general rule, stated so it is not re-derived a fourth time:** *a comment that asserts a
+negative — unreachable, never, impossible — is a claim with the same evidentiary burden as a test,
+and it must name the population it measured, not the population it concluded about.*
+
+### D-8.0.2 — HIGH, and NOT on the "the product lies" ground
+
+Raised from MEDIUM on the criterion *blocks a supported use case, with no workaround, for a real
+user.* The shipped Thai face is the only Thai face; the document is the owner's real work; and
+"avoid the character sequence" is mutilating the document, not a workaround.
+
+The lead explicitly refused the ground I had offered — that the canvas rendering correctly while the
+PDF refuses is the same *product lies to the author* shape that gated Epic 7 at D-7.7.8 — and the
+distinction matters for future triage. **AD-5 makes the page model blind to the emission stage**, so
+the canvas cannot see a refusal that happens downstream of it: it is not lying, it is blind **by
+design**. D-7.7.8's canvas floor was different in kind — that one asserted a value it had no basis
+for. Grounding this on the lie framing would make a deliberate invariant look like a defect.
+
+**The severity comes from the outcome — no bytes at all — not from the canvas.**
+
+### D-8.0.3 — it opens Epic 8, and that is FORCED rather than traded
+
+Not Epic 7: by D-7.7.12's line, *Epic 7 may add a story that repairs Epic 7, not one that extends
+it* — the refusal is pre-existing, nothing Epic 7 shipped caused it, and emitting `Ts` is new
+capability. The lead confirmed my reading and added a caveat worth keeping: **that line was written
+to stop scope creep, not to triage blockers.** If a blocker ever genuinely needs to jump into a
+closed epic, that is a trade for the owner, not a rule the lead bends silently.
+
+**It is Epic 8's opening story because Epic 8 WIDENS the defect**, which turns "blocker versus epic"
+into "precondition of the epic":
+
+- Epic 8 lets an author embed **arbitrary faces**, whose mark positioning is arbitrary. Noto Sans
+  Thai reaches this branch; a face picked from a catalogue can reach it far more often, on scripts
+  nobody tested.
+- **Story 8.4's own AC** — *a template with embedded faces renders on a machine that has never seen
+  them* — is at risk from the first embedded face whose glyphs carry a vertical offset. Shipping 8.4
+  over an unfixed fail-closed branch ships a feature that can **newly stop documents rendering**.
+
+Numbered **8.0** so that 8.1–8.6 keep the keys they already carry in `sprint-status.yaml` and in
+cross-references.
+
+### D-8.0.4 — it does NOT join the before-the-tag set, and the reasoning runs opposite to 7.8 and 7.10
+
+Emitting `Ts` for glyphs that currently **refuse** can move no existing golden **by construction**:
+a document containing such a glyph produces no bytes today, so **no fixture can contain one**. And
+the change **widens** what renders rather than narrowing it, so a consumer upgrading past
+`folio-go/v0.1.0` gets more documents rendering, never fewer. Stories 7.8 and 7.10 are in
+D-7.8.3's set because they **narrow**; this one is outside it because it **widens**. **The tag is
+not the constraint here — the product is.**
+
+**The one byte-identity guardrail, and it is the whole of the risk:** the `Ts` path must be entered
+**only** when `YOffset != 0`. Every document whose glyphs all carry zero offset — which is the
+entire corpus — must emit byte-identically, and the 21 digests are the assertion.
+
+Also settled: this is a **gap, not a format limit**. `Ts` is inside AD-6's pinned profile — AD-6's
+exclusion list (encryption, annotations, forms, transparency groups, shading, ICC, tagging) does not
+contain the text-state operators — and the refusal's own comment concedes it: *"the alternative … is
+not built here."* Story 8.0 does not have to argue that point.
+
+### D-8.0.5 — the owner's sequencing call, and a checklist owner that failed for the third time
+
+**Put to the owner** because it traded their own blocked document against two stories that close
+Epic 7 cleanly, and only they can price their own work. The lead recommended splitting the
+difference; **the owner chose to unblock sooner**: **7.9 → 8.0 → 7.10 → 8.1–8.6.** Story 7.9 still
+closes Epic 7 on a clean gate; Story 7.10 moves behind 8.0 and is **placed in Epic 8's sequence
+explicitly, not promised** — it is already pinned to the v0.1.0 tag by D-7.7.13 and must not be
+forgotten across an epic boundary.
+
+**The owner also chose to land the characterization NOW and separately**, rather than as Story 8.0's
+first step as the lead had proposed. Done the same day: `folio-go/thai_mark_stacking_test.go`, three
+arms, mutation-proved. That was the better call — with the fix a story away, the branch would
+otherwise have been free to drift for exactly as long as it took to get to it.
+
+**And DW-28's owner clause had failed.** It read *"the next story that touches `internal/pdf`'s
+glyph-positioning refusal, plus the Epic 7 and Epic 8 plan-gate checklists as a second standing
+address"*, and **Epic 7 ran eight plan gates without one picking it up.** That is the **third**
+checklist-as-owner failure in this run.
+
+> **A checklist is not an owner. A named story with a position in the sequence is the only owner
+> that has worked on this project.**
+
+Recorded in DW-28 itself as evidence rather than deleted, so the next reader sees the failure mode
+and not just the correction.

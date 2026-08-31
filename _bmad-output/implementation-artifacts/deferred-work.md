@@ -2324,17 +2324,70 @@ gate as both precedents are. **Not** an agent-authored record.
 
 ---
 
-### DW-28 — a large class of ordinary Thai cannot be rendered at all: any sequence stacking two marks over a base fails closed, and the refusal itself has no test
+### DW-28 — a large class of ordinary Thai cannot be rendered at all: any sequence stacking two marks over a base fails closed, and a code comment said the branch was unreachable
 
 - **Deferred by:** Story 7.3 (2026-08-30). Pre-existing and **not justification's doing** — measured
   to fail identically under `align: left` — so it was out of 7.3's scope, but 7.3 is where it was
   found, and Epic 7 targets Thai legal documents.
-- **Owner:** **the next story that touches `internal/pdf`'s glyph-positioning refusal**, plus the
-  Epic 7 and Epic 8 plan-gate checklists as a second standing address (D-000.73: not "Epic 7 close",
-  which stops existing when the event passes).
-- **Severity:** MEDIUM for the limit; LOW for the untested refusal. Recorded as one entry because the
-  second is why the first could regress in either direction unnoticed.
-- **Status:** OPEN.
+- **Owner:** **Story 8.0** — *a stacked Thai mark reaches the page*, the opening story of Epic 8,
+  named 2026-08-31. **The previous owner clause failed and is recorded here as evidence, not
+  deleted:** it read *"the next story that touches `internal/pdf`'s glyph-positioning refusal, plus
+  the Epic 7 and Epic 8 plan-gate checklists as a second standing address"*, and **Epic 7 ran eight
+  plan gates without one of them picking it up.** That is the third checklist-as-owner failure in
+  this run. **Do not re-file this as a checklist item** — a named story with a position in the
+  sequence is the only owner that has worked on this project.
+- **Severity:** **HIGH** — raised from MEDIUM 2026-08-31 by the engineering lead, on the stated
+  criterion *blocks a supported use case, with no workaround, for a real user*. The shipped Thai
+  face is the only Thai face; the document is the owner's real work; and "avoid the character
+  sequence" is mutilating the document, not a workaround. **Explicitly NOT grounded on "the product
+  lies to the author"** — AD-5 makes the page model blind to the emission stage, so the canvas
+  drawing the text correctly is an invariant working as designed, not a defect. The severity comes
+  from the outcome: no bytes at all.
+- **Status:** **OPEN** — the fix is Story 8.0's. **The characterization half is CLOSED**
+  (`folio-go/thai_mark_stacking_test.go`, 2026-08-31), landed separately at the owner's direction so
+  the branch could not drift while the fix waited.
+
+**FOUND IN PRODUCTION, 2026-08-31.** The owner pasted a contractor-liability clause from a real Thai
+contract into a text element. The canvas rendered it; the PDF preview failed with
+`internal/pdf: face Noto Sans Thai: CID 27 carries a non-zero vertical offset (-2)…`, surfaced as
+`Render failure · ENGINE_REJECTED`. Their clause ends `...รับผิดเป็นการส่วนตัวทั้งสิ้น`. Reproduced
+through the shipped CLI at `31d6cc6`: the full clause fails with **CID 27, offset −2**; the single
+word `ทั้งสิ้น` fails with **CID 3, offset −57**; the control `สัญญา` renders exit 0.
+
+**TWO CORRECTIONS TO THIS ENTRY'S OWN TEXT (2026-08-31), because it overstated in one place and
+understated in another.**
+
+**(a) It is not untested in both directions.** This entry said the branch *"could start refusing
+more, or stop refusing and draw the marks wrongly, and no test would notice either direction."* Too
+strong: `internal/pdf/textdoc_test.go`'s `TestShapedRunFailsClosedOnYOffset` exercises it with a
+synthetic run **and carries a non-vacuity leg** — the same run with `YOffset` zeroed must emit
+cleanly — so the *stop refusing* direction has always reddened. What was genuinely unpinned was the
+**message** and **reachability through a real document**, and both are now pinned.
+
+**(b) A comment in the code asserted this branch was UNREACHABLE, and that is why nobody looked.**
+`textdoc.go` read, verbatim: *"Measured at Story 2.3: YOffset is 0 for every glyph of every sample
+across all three shipped faces, so this branch is UNREACHABLE through the render path with the
+shipped set and cannot be red-proved through it."* **Both halves are false.** Story 2.3 measured
+**its own samples** and reported on **the shipped set** — two different populations, the same
+measure-one-report-wider error this run has now recorded three times. The comment was load-bearing:
+it justified both the fail-closed choice and the absence of a render-path test, and it is what a
+reader hitting the refusal would have checked first. **It protected itself.** Corrected in
+`textdoc.go` and in `textdoc_test.go`'s parallel claim, 2026-08-31.
+
+**THE FIX IS AVAILABLE AND THE FORMAT ALLOWS IT.** PDF's text-rise operator `Ts` expresses a
+vertical offset directly, and it is **inside AD-6's pinned profile** — AD-6's exclusion list
+(encryption, annotations, forms, transparency groups, shading, ICC, tagging) does not contain the
+text-state operators. The refusal's own comment concedes the gap: *"the alternative … is not built
+here."* `grep` for `Ts` across `internal/pdf` returns nothing. So this is an unbuilt capability, not
+a limit of the format.
+
+**IT DOES NOT JOIN D-7.8.3's BEFORE-THE-TAG SET**, and the reasoning is worth keeping because it
+runs opposite to Stories 7.8 and 7.10. Emitting `Ts` for glyphs that currently **refuse** can move
+no existing golden **by construction**: a document containing such a glyph produces no bytes today,
+so no fixture can contain one. The change **widens** what renders rather than narrowing it, so a
+consumer upgrading past `folio-go/v0.1.0` gets more documents rendering, never fewer. The tag is not
+the constraint — the product is. **The one byte-identity guardrail:** the `Ts` path must be entered
+**only** when `YOffset != 0`, with the 21 digests asserting the zero-offset corpus is unmoved.
 
 **The limit.** Every Thai codepoint renders in isolation — measured **91/91** over U+0E01..U+0E5B.
 But **any sequence stacking two marks over a base** fails closed with
@@ -2365,9 +2418,25 @@ repository has to be chosen around it (which is exactly what Story 7.3 had to do
 message.** So the branch that refuses a large class of ordinary Thai could start refusing more, or
 stop refusing and draw the marks wrongly, and no test would notice either direction.
 
-**What discharges it.** At minimum, a test that reaches `verticalOffsetError` and pins its message.
-Beyond that, an owner call on whether a hard render error is the right outcome for ordinary Thai
-words, or whether this should degrade with a located diagnostic.
+**What discharges it — both halves, and one is already done.**
+
+**The characterization: CLOSED 2026-08-31**, at the owner's direction, deliberately ahead of and
+separate from the fix so the branch could not drift while the fix waited.
+`folio-go/thai_mark_stacking_test.go` reaches `verticalOffsetError` through `ParseTemplate` +
+`Render` on the shipped font set, pins the message **verbatim** (a reworded refusal is a changed
+product and should have to be edited deliberately), asserts a refused render emits **zero** bytes,
+and carries a same-script control — `สัญญา`, same face, size and box, no stacked marks — so the
+refusal arm is evidence about **stacking** rather than about Thai. A third arm uses the owner's own
+clause and deliberately does **not** pin the CID, because a longer document subsets more glyphs and
+which CID reports first is an artefact of the subset. **Mutation-proved:** neutering the
+`YOffset != 0` branch makes the refusal arms red and the document render **3,187 bytes with the
+marks silently misplaced** — the "healthy output and broken output are the same bytes" outcome the
+branch exists to prevent, now demonstrated rather than asserted.
+
+**The fix: Story 8.0's.** The owner call this entry asked for has been made — it does **not** degrade
+with a diagnostic. Marks are placed at the offset the shaper computed, using `Ts`; whatever remains
+genuinely unexpressible still refuses, with its message pinned as it is today. The fail-closed
+branch **narrows**, it does not disappear.
 
 ---
 
