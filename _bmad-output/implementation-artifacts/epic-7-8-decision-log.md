@@ -2328,3 +2328,103 @@ to: *"IT IS A DISCRIMINATOR, NOT A DEMONSTRATION."*
 
 **DW-64 and DW-65 ride here**, since the implementation touches `internal/layout` and **Epic 7's
 fence is closed** — the epic is `done` as of `9844e6d`.
+
+## FR52's "reorder" — ruled inapplicable, not deferred (2026-08-31)
+
+Story 8.1's plan gate found that FR52 promises *"reorder the document's font chains"* and the format
+cannot express it: `Fonts` is a Go map with no stored order, and the serializer sorts its keys
+**twice**. I routed it as a scope gap with three ways out. **The lead took none of them as framed:
+under the correct reading nothing is being cut, and Story 8.1 delivers FR52 in full.**
+
+### D-8.1.1 — chain order is INAPPLICABLE, and the wording is what needed fixing
+
+**Ruling.** `fonts` stays a mapping with no authored key order. FR52's *"reorder"* is satisfied by
+**entry-level** reordering — the order of faces *within* a chain — which is the only ordering the
+format has ever expressed and which 8.1 delivers. **Amend the loose spellings; add nothing to the
+format; record no gap.**
+
+**Ground 1 — the absence of chain order is LOAD-BEARING for a different decision, and neither of us
+had this.** `folio-format.md:390`, verbatim:
+
+> *"There is no font default. An element with text and no `style.fontFamily` is a located error
+> naming the element. A default was documented here from the format's first draft and never
+> implemented; **`fonts` is a mapping with no authored key order, so "the first key" was never
+> well-defined.** If a default is added later it will name its rule explicitly."*
+
+So the format doc **reasons from** the no-order property to kill the font-default idea. Adding an
+authored order would not merely reverse D-4.1.1's discharged debt — **it would supply the "first
+key" that sentence depends on not existing, reopening the font-default question.** A far larger
+blast radius than the option looked like, and the fact that settles it.
+
+**Ground 2 — FR52's grammar gives "reorder" a referent, and it is entries.** Verbatim at
+`epics.md:113`: *"Create, rename, reorder and delete the document's font chains **and their
+entries**."* The verbs distribute over both nouns. Create/rename/delete have referents in both;
+**`reorder` has a referent only in entries**, because a chain is an ordered list and the map is not.
+**The reading under which every verb means something is the reading that wins** — the same rule
+applied when a Given/When/Then AC beat a loose one-liner at Story 4.4.
+
+**Ground 3 — chain order is semantically INERT.** `fontChain` (`render.go:1097`) resolves by name,
+there is no default-chain rule, and an element without `style.fontFamily` is a located error. Chain
+order reaches **no byte, no lookup and no render.** The only thing it could mean is the order names
+appear in a panel — **presentation, not document**.
+
+**And that presentation need is still fully servable**, which is why nothing is lost: the designer
+may order the family control however it likes — alphabetical, recently-used, pinned — as **UI
+state**. AD-15 keeps the *document* in the engine; it does not require a document field for every
+list order a panel shows. **If persistent pinned ordering is ever wanted it is a small designer
+feature needing no format change at all.** Recorded so the option stays visible rather than being
+forgotten as "the thing we decided against".
+
+**Why not add the order** — argued explicitly because I asked for it argued. Beyond reopening the
+font-default reasoning, both mechanisms are bad: **abandoning sorted keys for `fonts`** breaks
+AD-9's one-canonical-form directly, for one object, creating exactly the *two ways to serialize a
+document* the invariant exists to prevent; **a parallel `fontOrder` array** is a second structure
+that must stay in sync with the map through every add, rename and delete, with a new failure class
+on each — an order naming a chain that does not exist, or omitting one that does. **That is a mirror
+inside a single document**, and this run has spent a great deal of time on mirrors. Either way it is
+a versioned format change carrying a rank under D-1.4.9/12 **for a benefit that is zero at render
+time.**
+
+**And recording it as a partially-delivered FR was rejected too:** an FR that is **fully delivered
+under the correct reading** recorded as partial is a **false record**, and a false record is exactly
+the kind of thing that becomes precedent.
+
+**Three loose spellings amended, all in Story 8.1 because it is the story whose scope the reading
+defines** — leaving any one makes a future reader re-derive this: FR52's own wording
+(`epics.md:113`); **SPEC-fonts' CAP-1**, which promised chain reordering and **contradicted its own
+companion**, whose `fonts` Order row reads *"Unchanged"* — the field-level companion is the precise
+statement and governs, CAP-1's prose was the loose one; and Story 8.1's AC1 enumeration.
+
+### D-8.1.2 — `headerStyle` is a standing check, not a catch
+
+`headerStyle.fontFamily` being missed by Story 8.1's ACs is the **second** instance: the lead hit
+the same shape at Story 7.3, where `headerStyle.align` fed `alignFallback` and its own closed-set
+split failed to reach it. **`headerStyle` is a shadow copy of `style` that acceptance criteria keep
+forgetting because it is not spelled `style`.**
+
+> **Any story that walks a `style.X` must state whether it also walks `headerStyle.X`, and say why
+> if not.**
+
+A catch is what stopped the second instance. **A standing check is what stops the third.**
+
+### D-8.1.3 — "route through the single authority X" is a CLAIM, never a premise
+
+Story 8.1's dispatch instructed the plan gate to *"identify the single place that already decides
+what a valid chain name is, and route through it."* **There was no such place.** The loader
+validates nothing about a chain-map key — empty, whitespace, case variants and duplicate JSON keys
+all load, last-wins — and the nearest rule is open-coded **five** times, **one of them under a
+comment claiming it projects exactly what another accepts, three lines before re-implementing the
+test.**
+
+That is the **seventh** time in this run that a stated single authority turned out to be several,
+and the rate has stopped looking like a series of accidents. So, for this orchestrator's own
+dispatches:
+
+> **"Route through the single authority X" is a CLAIM the plan gate VERIFIES, never a premise it
+> accepts.** If X does not exist or is not sole, the story's **first task is to create it** — and
+> that changes the story's size, so it must be reflected **before** dispatch rather than discovered
+> mid-build.
+
+**The encouraging half**, and it is the same shape as `paginate.go`'s falsified negative one story
+earlier: **both were found by looking rather than by being burned. The search is now cheaper than
+the incident.**

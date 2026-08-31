@@ -110,7 +110,7 @@ FR51: Declare a group of content-band elements that paginate together, so a sign
 
 **Fonts an Author Can Choose and a File Can Carry** *(post-MVP, Epic 8)*
 
-FR52: Create, rename, reorder and delete the document's font chains and their entries from the designer, so `fontFamily` names a family the author chose.
+FR52: Create, rename and delete the document's font chains, and reorder the entries within a chain, from the designer, so `fontFamily` names a family the author chose. *(Wording made explicit 2026-08-31: "reorder" always had its referent in ENTRIES, because a chain is an ordered list and `fonts` is a mapping with no authored key order. See Story 8.1.)*
 FR53: Embed a font face in the template, keyed by content hash like every other asset, and reference it from a chain entry.
 FR54: Render a template from its embedded faces alone — no network, no host-installed font, no install step on the rendering machine.
 FR55: Choose a family from a curated, freely-licensed catalogue that ships with the designer and works with the browser offline.
@@ -2717,8 +2717,8 @@ concern. AD-8 and AD-14 also bind and were unnamed.
 **Acceptance Criteria:**
 
 **Given** a loaded template
-**When** a font-chain change is commanded — a chain added, renamed, reordered, or an entry moved or
-removed
+**When** a font-chain change is commanded — a chain added, renamed or deleted, or an entry added,
+moved or removed
 **Then** it travels as one opaque command with one history entry, the engine owns the edit, and the
 designer re-projects from the engine's answer rather than writing the `fonts` map itself
 

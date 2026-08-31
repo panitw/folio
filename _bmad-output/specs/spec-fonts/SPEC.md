@@ -30,7 +30,7 @@ the faces a document uses are declared in it, chosen in the designer, and carrie
 ## Capabilities
 
 - **CAP-1 — Authorable font chains**
-  - **intent:** The author creates, renames, reorders and deletes the document's font chains and
+  - **intent:** The author creates, renames and deletes the document's font chains, and reorders
     the entries inside them, so `fontFamily` names something the author chose rather than
     whatever the starter file happened to declare.
   - **success:** A document created from blank in the designer ends up with more than one chain,
