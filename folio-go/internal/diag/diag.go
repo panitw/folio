@@ -7,9 +7,13 @@
 //
 // It holds ONLY the registry. `folio.Diagnostic`, `folio.Severity` and
 // `folio.Result` stay at the module root (D-2.8.3, an owner decision;
-// see ARCHITECTURE-SPINE.md:613 as amended by this story's AC11). The
-// caveat-kind -> code MAPPING (diagnosticFromCaveat) also stays out of
-// this package and in folio-go/render.go — it switches on
+// see ARCHITECTURE-SPINE.md's AD-14, "Errors and diagnostics are one
+// type on one channel", as amended by Story 2.8's AC11 — cited by AD
+// NUMBER rather than by line, because a line number in a living
+// document goes stale on the next edit to any line above it, DW-65).
+//
+// The caveat-kind -> code MAPPING (diagnosticFromCaveat) also stays out
+// of this package and in folio-go/render.go — it switches on
 // internal/expr.CaveatKind and constructs a folio.Diagnostic, and this
 // package may import neither (see below).
 //

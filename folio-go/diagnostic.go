@@ -341,14 +341,29 @@ const DiagCodeTableFooterOrphanSuppressed = string(diag.CodeTableFooterOrphanSup
 const DiagCodeTableRowClippedHeight = string(diag.CodeTableRowClippedHeight)
 
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
-// AD-14 names — over-tall rows (FR25, not yet built) and clipped
-// content (FR44, this story) — is expressed as a value of this type,
-// never a bespoke per-area type: the whole point of AD-14 is that a
-// caller (a CLI, a designer, this library's own tests) checks one shape
-// for every kind of thing that can go wrong with one element.
+// AD-14 names — an over-tall row and an over-tall keep-together group
+// (FR25, FR51; both built, Stories 4.6 and 7.7) and clipped content
+// (FR44) — is expressed as a value of this type, never a bespoke
+// per-area type: the whole point of AD-14 is that a caller (a CLI, a
+// designer, this library's own tests) checks one shape for every kind of
+// thing that can go wrong with one element.
+//
+// AD-14's leniency for a keep-together group is scoped to the AGGREGATE
+// case since Story 7.10: a group holding a template element that is by
+// itself taller than a content window is an Error, not a Warning
+// (D-7.10.1, D-7.10.2). That is a fact about which severity a condition
+// gets, not about this type, which carries both.
 type Diagnostic struct {
-	// Severity is Warning for every Diagnostic this story constructs
-	// (see Severity's doc comment).
+	// Severity says which of AD-14's two dispositions this Diagnostic
+	// carries, and BOTH are constructed today — which is what the
+	// paragraph above means by "not about this type, which carries
+	// both". Where a Diagnostic is READ decides which it will be: one
+	// reached through Result.Diagnostics accompanies a successful
+	// render and is always a Warning, while an Error aborts the render
+	// and reaches the caller as *RenderError's own Diagnostic instead
+	// (SeverityError, minted since Story 3.6; an over-tall
+	// author-declared group is one such, Story 7.10). See Severity's
+	// own doc comment.
 	Severity Severity
 
 	// Code is a stable string from the closed registry above. Never

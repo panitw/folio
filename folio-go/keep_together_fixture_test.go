@@ -1,6 +1,7 @@
 package folio
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -241,11 +242,17 @@ func TestKeepTogetherMembersNeedNotBeContiguous(t *testing.T) {
 // extent is its own extent. Placement must be identical to the same
 // element untagged — a group of one constrains nothing.
 //
-// The element is deliberately SINGLE-LINE. A multi-line text element
-// tagged alone would be a real change (every line of it becomes one
-// atomic unit), and that is the feature working, not a violation of this
-// row; the row is about an item whose group adds no member it did not
-// already have.
+// The element is deliberately SINGLE-LINE, and this row is about an item
+// whose group adds no member it did not already have.
+//
+// A MULTI-LINE text element tagged alone is a DIFFERENT ROW, and since
+// Story 7.10 it has a different answer. Its lines really are something to
+// keep together, so the "group of one is a no-op" reading was false for it
+// (D-7.10.1): if their union exceeds a content window the document is
+// REFUSED, because the author declared an atomic block that fits nowhere.
+// See TestKeepTogetherOverTallTaggedElementIsRefused. What survives here
+// unchanged is the case this const actually is — a tagged element that
+// FITS a window places exactly where the same element untagged places.
 const keepTogetherSingleMemberTemplate = `{
   "assets": {},
   "bands": {
@@ -432,6 +439,581 @@ func TestKeepTogetherOverTallGroupIsClippedWithAWarning(t *testing.T) {
 	}
 	if strings.Contains(c.Message, "cell padding") {
 		t.Errorf("the remedy for an over-tall group is not a table row's remedy:\n%s", c.Message)
+	}
+}
+
+// --- Story 7.10's discriminator: WHAT is over-tall, not WHETHER it is
+// --- grouped (D-7.10.1, D-7.10.2) ----------------------------------------
+//
+// ONE FIXTURE SUBJECT, THREE DOCUMENTS. One geometry, one element set,
+// differing in exactly which element carries the tag — because either arm
+// alone is ALSO consistent with the rule being replaced. An isolated fatal
+// case is consistent with "untagged elements are fatal"; an isolated clip
+// case is consistent with "grouped things are clipped". Only the pair, held
+// against a common base, measures the discriminator itself.
+//
+// IT IS A DISCRIMINATOR, NOT A DEMONSTRATION — the standard this file's own
+// keepTogetherTemplateJSON/keepTogetherUngroupedTemplateJSON pair sets, and
+// the one this pair is held to.
+//
+// WHY THREE DOCUMENTS AND NOT ONE. AD-14 makes an Error ABORT the render and
+// a Warning ACCOMPANY a successful one, so no single rendered document can
+// yield both arms: a document that is refused produces no bytes and cannot
+// also carry a clip Warning. That is arithmetic on AD-14's own definitions,
+// not a gap in the fixture (D-7.10.6).
+//
+//	e1  text, y 0, width 40 — sixty short words, one per line, so its own
+//	    extent is ~899pt against a 729.890pt content window. INDIVIDUALLY
+//	    over-tall, and it renders perfectly well untagged.
+//	e2  text, y 900   — one line, 14.982pt. Fits any window.
+//	e3  text, y 1700  — one line, 14.982pt. Fits any window; the union
+//	    e2..e3 is 814.982pt, which fits none.
+//
+// The three documents:
+//
+//	NONE tagged      → renders cleanly, no diagnostic. The control.
+//	e1 tagged alone  → REFUSED, a located fatal OverflowError naming e1.
+//	e2+e3 tagged     → Story 4.6's clip-and-warn, unchanged (D-7.10.4).
+const keepTogetherDiscriminatorTemplate = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 40, "height": 16, %TAG_e1%"value": "` + keepTogetherSixtyWords + `", "style": {"fontFamily": "body", "fontSize": 11}},
+        {"id": "e2", "type": "text", "x": 300, "y": 900, "width": 240, "height": 16, %TAG_e2%"value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 11}},
+        {"id": "e3", "type": "text", "x": 300, "y": 1700, "width": 240, "height": 16, %TAG_e3%"value": "Date: 31 August 2026", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`
+
+// keepTogetherTagSlot names the slot belonging to ONE element. Every
+// document in the triple is built from the SAME base by filling these three
+// slots, so "the pair differs for some second reason" is unrepresentable
+// rather than merely unasserted.
+//
+// THE SLOTS ARE NAMED, NOT POSITIONAL, and that is this helper's whole
+// point. They were three identical `%TAG%` markers filled by
+// `strings.Replace(..., 1)` in a loop over {e1, e2, e3} — correct only while
+// the base lists its elements in exactly that order, an assumption nothing
+// checked. Reordering the elements is a legitimate edit to hand-maintained
+// JSON, and it would silently move every tag to a different element with the
+// arms AND the precondition test below still green while measuring something
+// else entirely. A slot carrying its own element's id cannot be
+// mis-assigned, so the property is enforced by construction rather than
+// asserted.
+func keepTogetherTagSlot(id string) string { return "%TAG_" + id + "%" }
+
+// keepTogetherTagFill is what a filled slot becomes — the one spelling, so
+// the arms, the doc builder and the precondition test cannot disagree about
+// it.
+const keepTogetherTagFill = `"keepTogether": "block", `
+
+// keepTogetherDiscriminatorIDs are the base template's three elements, in
+// the order the fixture's doc comment above describes them.
+var keepTogetherDiscriminatorIDs = []string{"e1", "e2", "e3"}
+
+// keepTogetherSixtyWords shapes to sixty lines at 11pt inside a 40pt box —
+// each word is far too wide to share a line with the next and far too narrow
+// to be clipped at the box edge, so neither the line count nor a width
+// diagnostic is at the mercy of the shaper.
+const keepTogetherSixtyWords = "word word word word word word word word word word " +
+	"word word word word word word word word word word " +
+	"word word word word word word word word word word " +
+	"word word word word word word word word word word " +
+	"word word word word word word word word word word " +
+	"word word word word word word word word word word"
+
+// keepTogetherDiscriminatorDoc fills the three tag slots BY NAME: an element
+// named in `tagged` gets the tag, every other slot is emptied. Naming an
+// element the base does not declare is a bug in the caller, not a document
+// with one fewer tag, so it panics rather than returning quietly.
+func keepTogetherDiscriminatorDoc(tagged ...string) string {
+	want := map[string]bool{}
+	for _, id := range tagged {
+		if !strings.Contains(keepTogetherDiscriminatorTemplate, keepTogetherTagSlot(id)) {
+			panic("keepTogetherDiscriminatorDoc: the base declares no tag slot for element " + id)
+		}
+		want[id] = true
+	}
+	out := keepTogetherDiscriminatorTemplate
+	for _, id := range keepTogetherDiscriminatorIDs {
+		fill := ""
+		if want[id] {
+			fill = keepTogetherTagFill
+		}
+		out = strings.ReplaceAll(out, keepTogetherTagSlot(id), fill)
+	}
+	return out
+}
+
+// TestKeepTogetherDiscriminatorTripleDiffersOnlyByTheTags is the precondition
+// every arm rests on, in this file's own established shape: strip the tags
+// from any of the documents and you get the same document back.
+//
+// It also asserts WHICH element each tag landed on, which the positional fill
+// this helper used to do could never assert about itself.
+func TestKeepTogetherDiscriminatorTripleDiffersOnlyByTheTags(t *testing.T) {
+	for _, id := range keepTogetherDiscriminatorIDs {
+		if n := strings.Count(keepTogetherDiscriminatorTemplate, keepTogetherTagSlot(id)); n != 1 {
+			t.Fatalf("element %s must own exactly one named tag slot in the base, found %d", id, n)
+		}
+	}
+	if strings.Contains(keepTogetherDiscriminatorTemplate, "%TAG%") {
+		t.Fatal("the base still carries an unnamed positional slot — nothing fills it, so it would reach the JSON parser verbatim")
+	}
+	control := keepTogetherDiscriminatorDoc()
+	if strings.Contains(control, "keepTogether") {
+		t.Fatal("the untagged control must carry no keepTogether tag at all")
+	}
+	if strings.Contains(control, "%TAG_") {
+		t.Fatal("an unfilled tag slot survived into the control document")
+	}
+	for _, tagged := range [][]string{{"e1"}, {"e2", "e3"}, {"e1", "e2"}} {
+		doc := keepTogetherDiscriminatorDoc(tagged...)
+		if n := strings.Count(doc, keepTogetherTagFill); n != len(tagged) {
+			t.Fatalf("%v: want %d tag(s), found %d", tagged, len(tagged), n)
+		}
+		if stripped := strings.ReplaceAll(doc, keepTogetherTagFill, ""); stripped != control {
+			t.Fatalf("%v is not the control plus its tags — the arms differ for some SECOND reason, so they no longer discriminate:\n%s", tagged, stripped)
+		}
+
+		// AND ON THE RIGHT ELEMENTS. Each element occupies one line of
+		// the base, so "which element carries the tag" is readable
+		// directly — this is the assertion a positional fill cannot
+		// make, and the reason the slots are named.
+		var carrying []string
+		for _, line := range strings.Split(doc, "\n") {
+			if !strings.Contains(line, keepTogetherTagFill) {
+				continue
+			}
+			for _, id := range keepTogetherDiscriminatorIDs {
+				if strings.Contains(line, `"id": "`+id+`"`) {
+					carrying = append(carrying, id)
+				}
+			}
+		}
+		if strings.Join(carrying, ",") != strings.Join(tagged, ",") {
+			t.Fatalf("the tags landed on %v; %v was asked for. A tag on the wrong element leaves every arm green while measuring a different document.", carrying, tagged)
+		}
+	}
+}
+
+// TestKeepTogetherOverTallTaggedElementIsRefused is Story 7.10's AC1 and the
+// FATAL arm of the discriminator. Its twin is
+// TestKeepTogetherAggregateOnlyGroupIsStillClipped, immediately below, which
+// is the same subject with the tag moved to two elements that each fit; the
+// two are only evidence together.
+//
+// WHAT IS ASSERTED, AND WHY IT IS NOT MESSAGE-EQUALITY WITH THE UNTAGGED
+// CASE (D-7.10.3). "The same error the untagged element receives" was a
+// PROXY for "the author declared this and can fix it". It held for the
+// population the ruling had in front of it — a rect, an image, fatal either
+// way — and is FALSE for this one: untagged, e1's sixty lines split across
+// windows and the document renders perfectly. There is no untagged error to
+// be equal to, and asserting one would be asserting a falsehood.
+//
+// THE TAG IS WHAT MAKES IT UNSATISFIABLE, and that is the whole ruling: the
+// author declared an atomic block that fits on no page, which is
+// UNSATISFIABLE rather than merely degraded, and the fix is in their own
+// hands — remove the tag. AD-25's "declared atomic, so clip it" precedent is
+// WIDTH-only and does not transfer (D-2.6.1 excluded page-edge overflow from
+// FR44), and Story 4.6's clip is an exception justified by a row's height
+// being data-driven and UNFIXABLE — which a tag never is.
+//
+// Deleting the discriminator (ItemGroup.AuthorDeclared's arm in the clip
+// branch) reddens this test and nothing else in this file.
+func TestKeepTogetherOverTallTaggedElementIsRefused(t *testing.T) {
+	// THE CONTROL FIRST, so the refusal below is known to be the TAG's
+	// doing and not the element's. Untagged, this very element renders.
+	control, controlDiags := keepTogetherPagesWithDiagnostics(t, keepTogetherDiscriminatorDoc())
+	if len(control) < 2 {
+		t.Fatalf("presence precondition: e1 must be tall enough to span more than one window, so that 'it renders untagged' is a fact about splitting rather than about fitting; got %d page(s)", len(control))
+	}
+	if len(controlDiags) != 0 {
+		t.Fatalf("the untagged control must render CLEANLY — no clip, no warning, no error; got %+v", controlDiags)
+	}
+	var controlWords int
+	for _, p := range control {
+		controlWords += strings.Count(p.text, "word")
+	}
+	if controlWords != 60 {
+		t.Fatalf("presence precondition: the control must print all sixty of e1's words across its pages, got %d — if the untagged document already loses content, 'it renders cleanly' is not what is being contrasted", controlWords)
+	}
+
+	// THE ARM. The same element, now tagged, and tagged ALONE.
+	tpl, err := ParseTemplate([]byte(keepTogetherDiscriminatorDoc("e1")))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	res, err := Render(tpl, Data(keepTogetherDataJSON), nil, testShippedFontSet())
+	if err == nil {
+		t.Fatalf("a keep-together group whose single tagged element is taller than the content window must be REFUSED, not clipped. Got %d byte(s) and %+v.\n\nA group of one is a no-op ONLY where the group adds nothing: here the author declared this element's own sixty lines inseparable, and no window holds them. Clipping it destroys content the author never agreed to lose (DW-50).", len(res.Bytes), res.Diagnostics)
+	}
+	if len(res.Bytes) != 0 {
+		t.Errorf("a refused document must carry NO bytes; got %d — AD-14 makes an Error abort the render", len(res.Bytes))
+	}
+	for _, d := range res.Diagnostics {
+		if d.Code == DiagCodeTableRowClippedHeight {
+			t.Errorf("the refusal must not also carry a clip Warning: %+v", d)
+		}
+	}
+
+	var overflow *layout.OverflowError
+	if !errors.As(err, &overflow) {
+		t.Fatalf("Render returned %v (%T); the refusal must be a *layout.OverflowError so a caller can tell it from an I/O failure", err, err)
+	}
+	if overflow.ElementID != "e1" {
+		t.Errorf("the refusal names element %q; the over-tall element is e1 — an UNLOCATED refusal is what D-1.8.1 exists to prevent, and it is the whole reason this is an error rather than a silent clip", overflow.ElementID)
+	}
+	if overflow.Kind != "line" {
+		t.Errorf("the refusal calls e1 a %q; its extent is the union of its own shaped LINES", overflow.Kind)
+	}
+	if !strings.Contains(err.Error(), "e1") {
+		t.Errorf("the message a human reads must name the element:\n%s", err.Error())
+	}
+
+	// AND THE PUBLIC CONTRACT, not only the internal type. *layout.OverflowError
+	// lives in an internal package no caller outside this module can name;
+	// what a CLI or the designer actually dispatches on is the RenderError's
+	// coded Diagnostic. Asserting only the internal type would let the
+	// refusal reach the boundary uncoded — flattened to "The template could
+	// not be processed" at the WASM edge — with this test still green.
+	keepTogetherRefusalPublicContract(t, err, "e1")
+
+	// THE MEASUREMENT THAT MAKES THE MEMBER UNIT THE TEMPLATE ELEMENT
+	// (D-7.10.1). Every one of e1's sixty items is a single ~15pt line and
+	// fits a window on its own; only their union does not. Read in ITEMS,
+	// this group is "aggregate-only" and would be clipped forever — which
+	// is exactly how DW-50 fell through D-7.7.9. Stated as a number so a
+	// future reader can see the trap rather than take it on trust.
+	if overflow.ItemHeight <= overflow.ContentHeight {
+		t.Errorf("the refusal reports an item height of %d mp against a content height of %d — it must report e1's OWN UNION extent, not one line's", overflow.ItemHeight, overflow.ContentHeight)
+	}
+}
+
+// TestKeepTogetherAggregateOnlyGroupIsStillClipped is the SECOND arm, and it
+// is required rather than decorative (D-7.10.6). Without it the change reads
+// as "tagging makes things fatal", and the next story generalises it in
+// exactly the wrong direction.
+//
+// Same geometry, same three elements, same base document — the tag has
+// simply moved from e1 (individually over-tall) to e2 and e3 (each fitting a
+// window, their union not). That is the ONLY difference between this test
+// and TestKeepTogetherOverTallTaggedElementIsRefused above, and it is the
+// difference the discriminator reads.
+//
+// Story 7.7 shipped this case as a clip and Story 7.10 does not touch it
+// (D-7.10.4) — named honestly: the fixability argument that makes the arm
+// above fatal, pushed all the way, would make this one fatal too, since the
+// author can untag it just the same. It is left because it is shipped,
+// deliberate and outside this story's subject, NOT because it is obviously
+// right. What would reopen it is a real document losing content this way.
+//
+// THE TWO MUTATION DIRECTIONS, BOTH WAYS ROUND, because the obvious reading
+// of them is the wrong one and this comment had it backwards.
+//
+// NARROWING the discriminator — testing "some ITEM is over-tall" instead of
+// "some ELEMENT is" — leaves THIS arm GREEN (e2 and e3 are one ~15pt line
+// each, so no item of theirs is over-tall either way, and the group is still
+// clipped) and REDDENS THE FATAL ARM ABOVE, whose e1 is sixty ~15pt lines
+// that each fit a window while their union does not. That is DW-50's exact
+// shape, which is why the member unit is the template element.
+//
+// OVER-BROADENING it — deciding on the group's UNION alone and dropping the
+// per-element test — is what reddens THIS one: every aggregate-only group
+// becomes fatal, and "tagging makes things fatal" is what shipped.
+func TestKeepTogetherAggregateOnlyGroupIsStillClipped(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(keepTogetherDiscriminatorDoc("e2", "e3")))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	res, err := Render(tpl, Data(keepTogetherDataJSON), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("a group that is over-tall only IN AGGREGATE keeps Story 4.6's clip-and-warn: %v.\n\nEvery member of this group fits a window on its own; only their union does not. If this reddened, the discriminator is reading ITEMS or is not reading the group's membership at all, and 'tagging makes things fatal' is what shipped.", err)
+	}
+	if len(res.Bytes) == 0 {
+		t.Fatal("an aggregate-only over-tall group must still return a document — AD-14 makes it a Warning ALONGSIDE the bytes")
+	}
+	var clips []Diagnostic
+	for _, d := range res.Diagnostics {
+		if d.Code == DiagCodeTableRowClippedHeight {
+			clips = append(clips, d)
+		}
+	}
+	if len(clips) != 1 {
+		t.Fatalf("want exactly one TABLE_ROW_CLIPPED_HEIGHT Warning, got %d: %+v", len(clips), res.Diagnostics)
+	}
+	if clips[0].Severity != SeverityWarning {
+		t.Errorf("severity = %v, want Warning", clips[0].Severity)
+	}
+	if clips[0].ElementID != "e2" {
+		t.Errorf("ElementID = %q, want the group's FIRST member e2", clips[0].ElementID)
+	}
+	if !strings.Contains(clips[0].Message, `keep-together group "block"`) {
+		t.Errorf("the Warning must name the group the author declared:\n%s", clips[0].Message)
+	}
+
+	// AND e1 IS UNTOUCHED. It is the very element the arm above refuses,
+	// sitting untagged in this same document, printing all sixty of its
+	// words across the pages. So the fatal arm is about the TAG, and this
+	// arm is about the group's SHAPE — neither is about the element kind.
+	pages, _ := keepTogetherPagesWithDiagnostics(t, keepTogetherDiscriminatorDoc("e2", "e3"))
+	var words int
+	for _, p := range pages {
+		words += strings.Count(p.text, "word")
+	}
+	if words != 60 {
+		t.Errorf("e1 is untagged here and must print in full: got %d of its 60 words", words)
+	}
+}
+
+// keepTogetherRefusalPublicContract asserts the PUBLIC half of an over-tall
+// refusal: the coded Diagnostic a caller outside this module can actually
+// see.
+//
+// *layout.OverflowError lives in an INTERNAL package. No CLI, no designer
+// build and no third-party caller can name that type, so a test that asserts
+// only it is asserting a private detail: the refusal could reach the module
+// boundary with the wrong code, or with none — an uncoded error is flattened
+// to "The template could not be processed" at the WASM edge and never
+// reaches the author at all — and every internal assertion would still pass.
+// Same idiom as render_error_test.go's own unlayoutable-content row.
+func keepTogetherRefusalPublicContract(t *testing.T, err error, wantElementID string) {
+	t.Helper()
+	var renderErr *RenderError
+	if !errors.As(err, &renderErr) {
+		t.Fatalf("the refusal must reach the caller as a *RenderError: %T %v", err, err)
+	}
+	if renderErr.Diagnostic.Code != DiagCodeContentUnlayoutable {
+		t.Errorf("Diagnostic.Code = %q, want %q — a caller dispatches on the CODE, never on the message", renderErr.Diagnostic.Code, DiagCodeContentUnlayoutable)
+	}
+	if renderErr.Diagnostic.Severity != SeverityError {
+		t.Errorf("Diagnostic.Severity = %v, want Error — AD-14 makes an Error abort the render, and the severity is how a caller knows there are no bytes", renderErr.Diagnostic.Severity)
+	}
+	if renderErr.Diagnostic.ElementID != wantElementID {
+		t.Errorf("the public Diagnostic names element %q, want %q — AD-10 requires every diagnostic that concerns an element to carry its id", renderErr.Diagnostic.ElementID, wantElementID)
+	}
+}
+
+// TestKeepTogetherMixedGroupIsRefusedNamingTheOverTallElement is the arm that
+// separates the SHIPPED predicate from the weaker one that passes every other
+// test in this file.
+//
+// The group spans TWO distinct ElementIDs — e1, whose own sixty lines union
+// to ~899pt against a 729.890pt window, and e2, one line that fits any window
+// — so it is neither "a group of one" nor "aggregate-only". Under the shipped
+// rule it is REFUSED, naming e1: the member unit is the template element, and
+// one member is by itself taller than any window.
+//
+// WHY IT IS REQUIRED. Read the discriminator as "fatal iff the group spans
+// exactly ONE ElementID" — the reading Task 1 of the story spec invited, and
+// the one a distinct-count on ColumnItem makes natural — and every other arm
+// here stays green: the fatal arm's group spans one id, the aggregate arm's
+// spans two and is clipped. This document is the only one that tells them
+// apart, and it is not a contrivance: it is the real-world signature block,
+// an over-tall paragraph tagged together with the name printed beneath it.
+// Under the weaker predicate that document is silently CLIPPED — DW-50
+// reintroduced, with a green suite over it.
+func TestKeepTogetherMixedGroupIsRefusedNamingTheOverTallElement(t *testing.T) {
+	// PRESENCE PRECONDITION on the group's shape, so a future edit to the
+	// base cannot turn this into a group-of-one arm without saying so.
+	doc := keepTogetherDiscriminatorDoc("e1", "e2")
+	if n := strings.Count(doc, keepTogetherTagFill); n != 2 {
+		t.Fatalf("presence precondition: this arm's group must span two tagged elements, found %d tag(s)", n)
+	}
+
+	tpl, err := ParseTemplate([]byte(doc))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	res, err := Render(tpl, Data(keepTogetherDataJSON), nil, testShippedFontSet())
+	if err == nil {
+		t.Fatalf("a keep-together group holding an individually over-tall element must be REFUSED even when its OTHER members fit. Got %d byte(s) and %+v.\n\nThis group spans two elements, so a discriminator that asks 'does the group span exactly one ElementID' calls it aggregate-only and clips it — and e1's sixty lines are destroyed with a Warning where the author declared them inseparable (DW-50).", len(res.Bytes), res.Diagnostics)
+	}
+	if len(res.Bytes) != 0 {
+		t.Errorf("a refused document must carry NO bytes; got %d", len(res.Bytes))
+	}
+	for _, d := range res.Diagnostics {
+		if d.Code == DiagCodeTableRowClippedHeight {
+			t.Errorf("the refusal must not also carry a clip Warning: %+v", d)
+		}
+	}
+
+	var overflow *layout.OverflowError
+	if !errors.As(err, &overflow) {
+		t.Fatalf("Render returned %v (%T); want *layout.OverflowError", err, err)
+	}
+	if overflow.ElementID != "e1" {
+		t.Errorf("the refusal names %q; the individually over-tall member is e1, and e2 fits any window — naming the wrong member sends the author to an element there is nothing wrong with", overflow.ElementID)
+	}
+	if overflow.Kind != "line" {
+		t.Errorf("the refusal calls e1 a %q; its extent is the union of its own shaped LINES", overflow.Kind)
+	}
+	if overflow.ItemHeight <= overflow.ContentHeight {
+		t.Errorf("the refusal reports %d mp against a content height of %d — it must report e1's OWN union extent, not the whole group's and not one line's", overflow.ItemHeight, overflow.ContentHeight)
+	}
+	// e1's own extent, NOT the group's union: the group runs to e2's
+	// bottom at ~914.982pt, and reporting that number would name e1 while
+	// measuring something e1 is not responsible for.
+	if overflow.ItemHeight >= 914_000 {
+		t.Errorf("the refusal reports an item height of %d mp, which is the GROUP's union rather than e1's own extent (~899pt) — the message names one element, so the quantity beside it must be that element's", overflow.ItemHeight)
+	}
+	keepTogetherRefusalPublicContract(t, err, "e1")
+}
+
+// keepTogetherOverTallTaggedImageTemplate is the IMAGE arm's document: an
+// image element whose DECLARED BOX is 900pt tall against a 729.890pt content
+// window, tagged into a group with a one-line text element that fits.
+//
+// The asset is the 3x2 PNG fixtures/image-embed/ uses. Its pixel dimensions
+// are irrelevant — AD-24 scales the image to fit its box, so "does it fit on
+// a page" is a question about what the TEMPLATE declared, which is exactly
+// the property this arm needs.
+const keepTogetherOverTallTaggedImageTemplate = `{
+  "assets": {
+    "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078": {"data": ["iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAGElEQVR42mL6z8DAAMZMEOo/AwMg", "AAD//zwUBf/NjsW5AAAAAElFTkSuQmCC"], "mediaType": "image/png"}
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "image", "asset": "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078", "x": 0, "y": 0, "width": 100, "height": 900, "keepTogether": "block"},
+        {"id": "e2", "type": "text", "x": 0, "y": 950, "width": 240, "height": 16, "keepTogether": "block", "value": "Signed for the Company", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`
+
+// TestKeepTogetherOverTallTaggedImageIsRefused is the arm that keeps
+// overTallGroupMember's Kind derivation honest across ALL THREE item slices,
+// not just the two a text document happens to produce.
+//
+// WHY IT IS REQUIRED. Narrow overTallGroupMember to items carrying Runs or
+// Rects — an entirely natural "the group is text and chrome" simplification,
+// since every other arm in this file is built from text elements — and this
+// document silently reverts to Story 4.6's clip: the image is cut off at the
+// page's content bottom and, because a clip drops whole members rather than
+// halves, VANISHES FROM THE PDF ENTIRELY while the render reports success.
+// The whole suite stays green. An untagged over-tall image has been refused
+// since Story 2.6 (D-2.6.1); the tag must not be able to switch that off,
+// which is D-7.10.1's rule stated on the one population where it is most
+// obviously destructive.
+func TestKeepTogetherOverTallTaggedImageIsRefused(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(keepTogetherOverTallTaggedImageTemplate))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	res, err := Render(tpl, Data(keepTogetherDataJSON), nil, testShippedFontSet())
+	if err == nil {
+		t.Fatalf("a keep-together group holding an image whose DECLARED BOX exceeds the content window must be REFUSED. Got %d byte(s) and %+v.\n\nClipping it does not shrink the image — a clip drops whole members, so the image disappears from the document while the render reports success.", len(res.Bytes), res.Diagnostics)
+	}
+	if len(res.Bytes) != 0 {
+		t.Errorf("a refused document must carry NO bytes; got %d", len(res.Bytes))
+	}
+	for _, d := range res.Diagnostics {
+		if d.Code == DiagCodeTableRowClippedHeight {
+			t.Errorf("the refusal must not also carry a clip Warning: %+v", d)
+		}
+	}
+
+	var overflow *layout.OverflowError
+	if !errors.As(err, &overflow) {
+		t.Fatalf("Render returned %v (%T); want *layout.OverflowError", err, err)
+	}
+	if overflow.ElementID != "e1" {
+		t.Errorf("the refusal names %q, want e1 — the over-tall member is the image, and e2's single line fits any window", overflow.ElementID)
+	}
+	if overflow.Kind != "image" {
+		t.Errorf("the refusal calls e1 a %q; it is an IMAGE, and the word is what tells its author which declaration to shrink (D-7.10.5)", overflow.Kind)
+	}
+	if !strings.Contains(err.Error(), "element e1: image is taller than the content window") {
+		t.Errorf("the message a human reads must name the element AND call it an image:\n%s", err.Error())
+	}
+	keepTogetherRefusalPublicContract(t, err, "e1")
+}
+
+// TestKeepTogetherOverTallElementBoxIsRefusedTaggedOrNot is the I/O matrix's
+// first two rows on the DECLARED-BOX population, where — unlike the
+// multi-line text above — the untagged case IS fatal, so the two really are
+// the same error and the tag really is a no-op.
+//
+// THIS EQUALITY IS A FACT ABOUT THIS POPULATION AND MUST NEVER BE
+// GENERALISED (D-7.10.3). Asserting it for a multi-line text element would
+// be asserting a falsehood: untagged, that element renders. What generalises
+// is the rule the equality is evidence for — an over-tall element is refused
+// whether or not it is grouped, because WHAT is over-tall decides, never
+// whether it happens to be tagged.
+//
+// The element declares style.background because that is what makes an
+// element box exist at all (elementDeclaresBox, element_box.go): a rect with
+// neither background nor border builds no source and is as tall as it likes
+// with nothing to say about it.
+func TestKeepTogetherOverTallElementBoxIsRefusedTaggedOrNot(t *testing.T) {
+	const base = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "rect", "x": 0, "y": 0, "width": 200, "height": 900, %TAG%"style": {"background": "#1b2a4a"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.2"
+}
+`
+	refusalFor := func(t *testing.T, doc string) *layout.OverflowError {
+		t.Helper()
+		tpl, err := ParseTemplate([]byte(doc))
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		res, err := Render(tpl, Data(keepTogetherDataJSON), nil, testShippedFontSet())
+		if err == nil {
+			t.Fatalf("an element box taller than the content window must be REFUSED; got %d byte(s) and %+v", len(res.Bytes), res.Diagnostics)
+		}
+		var overflow *layout.OverflowError
+		if !errors.As(err, &overflow) {
+			t.Fatalf("Render returned %v (%T); want *layout.OverflowError", err, err)
+		}
+		return overflow
+	}
+
+	untagged := refusalFor(t, strings.Replace(base, "%TAG%", "", 1))
+	tagged := refusalFor(t, strings.Replace(base, "%TAG%", `"keepTogether": "block", `, 1))
+
+	if *untagged != *tagged {
+		t.Fatalf("the tag laundered the authorship: untagged %+v, tagged %+v.\n\nA group of one adds nothing the element did not already have, and an author must not be able to switch off a hard error by declaring an unrelated feature (D-7.10.1).", *untagged, *tagged)
+	}
+	if tagged.ElementID != "e1" {
+		t.Errorf("the refusal names %q, want e1", tagged.ElementID)
+	}
+	if tagged.Kind != "box" {
+		t.Errorf("the refusal calls the element a %q; it is a declared element BOX and the document contains no table (D-7.10.5)", tagged.Kind)
 	}
 }
 

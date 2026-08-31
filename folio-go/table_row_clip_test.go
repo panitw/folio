@@ -157,7 +157,13 @@ func overTallRowFixtureData() string {
 // silent and never fatal" — a sentence Story 7.9 widened from "Over-tall
 // rows (FR25)" to describe the keep-together clipping Story 7.7 had
 // already shipped. It says TOO TALL of both, because an ordinary group
-// that merely slides warns about nothing. Measured at
+// that merely slides warns about nothing. Story 7.10 then APPENDED a
+// discriminator clause to that same bullet rather than rewording the
+// sentence quoted above, so the quote stays verbatim: a keep-together
+// group is lenient only IN AGGREGATE, and one whose own template element
+// is by itself too tall is refused with a located Error (D-7.10.1). Every
+// subject of THIS test is a table ROW, which the clause leaves exactly
+// where Story 4.6 put it. Measured at
 // 45cf812, both documents below returned Result.Bytes
 // of length 0 and a *RenderError carrying CONTENT_UNLAYOUTABLE — HEAD was
 // in violation, and this test is the record that it no longer is.
@@ -1075,9 +1081,30 @@ func TestOverTallGroupPaginationTerminatesWithinABound(t *testing.T) {
 // textRunSource.lineRowGroup, whose every arm is a table row (a header row,
 // a data row, or the footer row), and keepTogetherIndex.keepTogetherGroup,
 // whose single arm is an element carrying the author's own `keepTogether`
-// tag (FR51). Both populations are ones D-4.6.2 has ruled clippable, and
-// for the same stated reason: leniency follows authorship. The build says
-// so the day a FOURTH one appears.
+// tag (FR51). The build says so the day a FOURTH one appears.
+//
+// THE TWO POPULATIONS ARE NO LONGER CLIPPABLE ON THE SAME TERMS, and
+// saying they were is what let a real defect through (Story 7.10, D-7.10.1
+// / D-7.10.2). Leniency follows AUTHORSHIP, and pushed to its own
+// conclusion that separates them rather than joining them: a table row's
+// height is derived from DATA the author may never have seen and cannot
+// fix, so it is clipped whatever its shape; a keep-together group exists
+// because someone TYPED a tag, and a tag is never data-driven, so a group
+// holding a template element that is by itself too tall for any window is
+// REFUSED — the author declared an atomic block that fits nowhere and can
+// dissolve it. Only the genuinely aggregate keep-together group — two or
+// more elements, each fitting, the union not — is still clipped. The
+// discriminator is carried as layout.ItemGroup.AuthorDeclared, which is
+// set in exactly one of the three derivations below.
+//
+// SO THE SCAN GUARDS THAT FIELD TOO, on an allowlist of its own with ONE
+// member. Guarding Present alone left the reversal this story fixed
+// reachable from either side: a fourth derivation that sets Present WITHOUT
+// setting AuthorDeclared gets a grouping clipped whatever its shape — Story
+// 4.6's leniency, which is justified only by a row's height coming from data
+// nobody can audit, handed to something the author typed — and one that sets
+// AuthorDeclared makes its elements individually refusable. Neither shows up
+// in a diff as anything more than a struct field, and both reverse a ruling.
 func TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup(t *testing.T) {
 	root, err := filepath.Abs(".")
 	if err != nil {
@@ -1099,8 +1126,24 @@ func TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup(t *testing.T) {
 		"keepTogetherGroup": true,
 	}
 
+	// AND THE NARROWER SET FOR THE DISCRIMINATOR ITSELF (Story 7.10).
+	// AuthorDeclared is not a second spelling of Present: it is the field
+	// that decides whether an over-tall group is CLIPPED or REFUSED, so it
+	// has an allowlist of its own with exactly ONE member. The asymmetry
+	// is the property. A future derivation that sets Present alone gets a
+	// group that is clipped whatever its shape — Story 4.6's answer, given
+	// to something that may be nothing like a table row — and one that
+	// sets AuthorDeclared makes its elements individually refusable. Both
+	// directions reverse a ruling (D-7.10.1 / D-7.10.2) and neither is
+	// visible in a diff that only adds a struct literal, which is why the
+	// build says so rather than a comment.
+	authorDeclaredDerivations := map[string]bool{
+		"keepTogetherGroup": true,
+	}
+
 	fset := token.NewFileSet()
 	constructions := 0
+	authorDeclarations := 0
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
@@ -1136,21 +1179,49 @@ func TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup(t *testing.T) {
 				if as, ok := n.(*ast.AssignStmt); ok {
 					for _, lhs := range as.Lhs {
 						sel, ok := lhs.(*ast.SelectorExpr)
-						if !ok || sel.Sel.Name != "Present" {
+						if !ok {
 							continue
 						}
-						constructions++
-						if !rowGroupDerivations[fd.Name.Name] {
-							t.Errorf("%s: %s ASSIGNS to a .Present field.\n\n"+
-								"This is the second spelling of the property D-4.6.2's tripwire guards, and it evades a composite-literal scan entirely — as does `layout.ItemGroup{Present: ok}` with a non-literal value. See this test's own doc comment for why 'grouped' meaning 'table row' is load-bearing.\n\n"+
-								"If this is a legitimate new grouping, give it its own placement rule or widen the clip deliberately and update D-4.6.2. If it is a .Present on an unrelated type, this guard is deliberately over-approximating — say so here and add the function to %v only if it really is a row-group derivation.",
-								fset.Position(sel.Pos()), fd.Name.Name, sortedNames(rowGroupDerivations))
+						switch sel.Sel.Name {
+						case "Present":
+							constructions++
+							if !rowGroupDerivations[fd.Name.Name] {
+								t.Errorf("%s: %s ASSIGNS to a .Present field.\n\n"+
+									"This is the second spelling of the property D-4.6.2's tripwire guards, and it evades a composite-literal scan entirely — as does `layout.ItemGroup{Present: ok}` with a non-literal value. See this test's own doc comment for why 'grouped' meaning 'table row' is load-bearing.\n\n"+
+									"If this is a legitimate new grouping, give it its own placement rule or widen the clip deliberately and update D-4.6.2. If it is a .Present on an unrelated type, this guard is deliberately over-approximating — say so here and add the function to %v only if it really is a row-group derivation.",
+									fset.Position(sel.Pos()), fd.Name.Name, sortedNames(rowGroupDerivations))
+							}
+						case "AuthorDeclared":
+							authorDeclarations++
+							if !authorDeclaredDerivations[fd.Name.Name] {
+								t.Errorf("%s: %s ASSIGNS to an .AuthorDeclared field.\n\n"+
+									"AuthorDeclared decides whether an over-tall group is CLIPPED or REFUSED (Story 7.10, D-7.10.1/D-7.10.2). Setting it makes the group's own template elements individually refusable; leaving it unset on a NEW grouping makes that grouping clippable like a table row, which is Story 4.6's leniency handed to something whose height the author CAN fix.\n\n"+
+									"Only %v may set it. If this really is a new author-declared grouping, say so in D-7.10.2 and add the function here; if it is an .AuthorDeclared on an unrelated type, this guard is deliberately over-approximating — say so at the site.",
+									fset.Position(sel.Pos()), fd.Name.Name, sortedNames(authorDeclaredDerivations))
+							}
 						}
 					}
 				}
 
 				lit, ok := n.(*ast.CompositeLit)
-				if !ok || !isLayoutItemGroupType(lit.Type) || !setsPresentTrue(lit) {
+				if !ok || !isLayoutItemGroupType(lit.Type) {
+					return true
+				}
+				// The two fields are checked INDEPENDENTLY, because a
+				// literal can set either without the other and each one
+				// carries its own ruling. In particular a literal that
+				// sets AuthorDeclared but leaves Present alone would
+				// have slipped past a scan gated on Present.
+				if setsFieldNotFalse(lit, "AuthorDeclared") {
+					authorDeclarations++
+					if !authorDeclaredDerivations[fd.Name.Name] {
+						t.Errorf("%s: %s constructs a layout.ItemGroup with AuthorDeclared set to something other than the literal false.\n\n"+
+							"That field is Story 7.10's discriminator: it says the grouping is the AUTHOR's own declaration, so a template element of it that is by itself taller than a content window is REFUSED rather than clipped (D-7.10.1). Only %v may set it — a fourth derivation that does is claiming the author typed something, and a fourth that omits it is claiming the height came from data nobody can audit.\n\n"+
+							"Whichever is intended, it is a decision to record in D-7.10.2, not a field to copy.",
+							fset.Position(lit.Pos()), fd.Name.Name, sortedNames(authorDeclaredDerivations))
+					}
+				}
+				if !setsFieldNotFalse(lit, "Present") {
 					return true
 				}
 				constructions++
@@ -1190,6 +1261,18 @@ func TestAPresentItemGroupIsATableRowOrAKeepTogetherGroup(t *testing.T) {
 		t.Fatalf("vacuity guard: the scan found only %d present-ItemGroup construction(s) in package folio's non-test sources; at least %d must exist while all three grouping derivations do (seven were measured at Story 7.7: three arms in each row-group derivation and one in keepTogetherGroup). A truncated walk is trivially clean",
 			constructions, derivationFloor)
 	}
+
+	// THE SAME FLOOR FOR THE DISCRIMINATOR, on the same methodology: the
+	// least that can be there while the one derivation that sets
+	// AuthorDeclared still exists. Without it, DELETING the discriminator
+	// — the exact regression D-7.10.1 is about, and one that would clip
+	// every author-declared group again — leaves this scan reporting the
+	// same all-clear a healthy one does.
+	const authorDeclaredFloor = 1
+	if authorDeclarations < authorDeclaredFloor {
+		t.Fatalf("vacuity guard: the scan found %d AuthorDeclared construction(s) in package folio's non-test sources; at least %d must exist while keepTogetherGroup does. Zero means either a truncated walk or a deleted discriminator, and the second silently returns every author-declared group to Story 4.6's clip (D-7.10.1)",
+			authorDeclarations, authorDeclaredFloor)
+	}
 }
 
 // isLayoutItemGroupType reports whether a composite literal's type is
@@ -1203,28 +1286,31 @@ func isLayoutItemGroupType(e ast.Expr) bool {
 	return ok && pkg.Name == "layout"
 }
 
-// setsPresentTrue reports whether the literal sets Present to anything
-// that is not the literal `false`.
+// setsFieldNotFalse reports whether the literal sets `field` to anything
+// that is not the literal `false`. Story 7.10 generalised it from a
+// Present-only check to a named field, because AuthorDeclared needs exactly
+// the same reading and for exactly the same reasons.
 //
-// A literal that leaves Present unset is the zero value — "not grouped" —
-// and is not a construction of a group at all, so it is skipped. So is an
-// explicit `Present: false`, which says the same thing louder.
+// A literal that leaves the field unset is the zero value — "not grouped",
+// or "not the author's declaration" — and is not a construction of one at
+// all, so it is skipped. So is an explicit `false`, which says the same
+// thing louder.
 //
-// EVERYTHING ELSE COUNTS, and that is deliberate (this story's reviewer,
+// EVERYTHING ELSE COUNTS, and that is deliberate (Story 4.6's reviewer,
 // Finding 7). The original required the value to be the identifier `true`
 // exactly, so `layout.ItemGroup{Present: ok}` with a bool variable — or a
 // call, or a field read — passed silently: an AST whitelist of one
 // spelling rather than the property. A value the scan cannot evaluate is
 // a value that MIGHT be true, and a maybe-grouped item is exactly the
 // thing D-4.6.2 needs a human to look at.
-func setsPresentTrue(lit *ast.CompositeLit) bool {
+func setsFieldNotFalse(lit *ast.CompositeLit, field string) bool {
 	for _, el := range lit.Elts {
 		kv, ok := el.(*ast.KeyValueExpr)
 		if !ok {
 			continue
 		}
 		key, ok := kv.Key.(*ast.Ident)
-		if !ok || key.Name != "Present" {
+		if !ok || key.Name != field {
 			continue
 		}
 		if val, ok := kv.Value.(*ast.Ident); ok && val.Name == "false" {

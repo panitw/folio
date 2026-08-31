@@ -318,7 +318,13 @@ that did not exist while omitting thirteen that did.
   element id (AD-10), an optional data path, and a message. Every failure mode named in FR41 has
   a code and a test asserting it. Rows and author-declared keep-together groups too tall for one
   content window (FR25, FR51), and clipped content (FR44), are `Warning`s returned alongside PDF
-  bytes, never silent and never fatal. Codes are additive only; changing a code's meaning is a
+  bytes, never silent and never fatal. That leniency is scoped by **what is over-tall**, never by
+  whether an item is grouped: a keep-together group is a `Warning` when it exceeds a window **in
+  aggregate** — every one of its template elements fitting, their union not — while a group holding
+  a template element that is by itself taller than a window is a located `Error` naming that
+  element, because the grouping is the author's own declaration and removing the tag is the author's
+  fix. A row stays a `Warning` whatever its shape: its height comes from data the author cannot
+  audit. Codes are additive only; changing a code's meaning is a
   breaking change. Three data cases that would otherwise each be decided twice: an **absent**
   path is an `Error` carrying the path; an explicit JSON **`null`** renders as empty and is not
   an error; a value of the **wrong kind** for its element is an `Error`, never a coercion.

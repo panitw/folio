@@ -14,6 +14,7 @@ package layout
 // here is evidence of the Group mechanism, not of D2's accident.
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -328,10 +329,22 @@ func TestPaginateGroupSurvivesAnInterveningPageAdvance(t *testing.T) {
 // Story 4.3 placed this test asserting a located *OverflowError with Kind
 // "table" for a group taller than the window, and said in its own comment
 // that "Story 4.6 owns clipping this case to a fresh page". This is that
-// story. AD-14 rules the case never fatal — "over-tall rows (FR25) and
-// clipped content (FR44) are Warnings returned alongside PDF bytes" — so
-// the group is now placed alone on a fresh page and cut off at that
-// page's content bottom, and Paginate returns no error at all.
+// story. AD-14 rules the case never fatal — "Rows and author-declared
+// keep-together groups too tall for one content window (FR25, FR51), and
+// clipped content (FR44), are Warnings returned alongside PDF bytes, never
+// silent and never fatal" — so the group is now placed alone on a fresh
+// page and cut off at that page's content bottom, and Paginate returns no
+// error at all.
+//
+// THE GROUP HERE IS ENGINE-CREATED (ItemGroup.AuthorDeclared is false, the
+// zero value, which is what a table row carries), and that is what keeps
+// this test on Story 4.6's answer after Story 7.10 narrowed the exception.
+// The narrowing is scoped by WHO CREATED THE GROUPING: an AUTHOR-declared
+// group holding a template element taller than any window is refused
+// instead (D-7.10.1, D-7.10.2). Were the narrowing unscoped it would fire
+// here — this group's chrome rect spans the whole 150,000 extent, so "some
+// member is individually over-tall" is true of it, exactly as it is true
+// of every over-tall table row.
 //
 // The inversion is planned, not a regression. What did NOT invert is the
 // quantity: ItemHeight is still the GROUP's UNION height, not any one
@@ -611,5 +624,199 @@ func TestPaginateOverTallHeaderGroupClipsAndIsRecordedAsTheHeader(t *testing.T) 
 	}
 	if s := plan.Suppressed[0]; s.ElementID != "e9" || s.HeaderHeight != 150000 {
 		t.Errorf("the suppression record is %+v; want element e9 with HeaderHeight 150,000", s)
+	}
+}
+
+// --- Story 7.10's discriminator, measured IN THIS PACKAGE ----------------
+//
+// ItemGroup.AuthorDeclared, overTallGroupMember and overflowKind are all
+// internal/layout's own, and until this table every one of them was exercised
+// ONLY end-to-end from package folio — through ParseTemplate, the shaper, the
+// binder and the whole render path. That is a real measurement of the shipped
+// behaviour and it is not a substitute for one here: an end-to-end arm cannot
+// state the geometry it depends on, so it cannot say which quantity the
+// discriminator actually compared, and any change to shaping or to element
+// ordering moves it for reasons that have nothing to do with the rule.
+//
+// These rows are this package's declarative-table discipline (D-000.45):
+// every extent is a HAND-DERIVED INTEGER against the 100,000 window
+// testGeometry() defines, so what is being compared is written down.
+
+// TestPaginateAuthorDeclaredGroupIsRefusedOnlyForAnOverTallElement is
+// D-7.10.1 and D-7.10.2 stated at the deciding site: WHO created the
+// grouping, and WHAT inside it is over-tall.
+func TestPaginateAuthorDeclaredGroupIsRefusedOnlyForAnOverTallElement(t *testing.T) {
+	g := testGeometry()
+	key := ItemGroupKey{ElementID: "group", Index: 0}
+	author := ItemGroup{Present: true, AuthorDeclared: true, Key: key}
+	engine := ItemGroup{Present: true, Key: key}
+
+	// line builds one ColumnItem spanning [top, top+h) carrying one run —
+	// the shape a shaped text line reaches Paginate as.
+	line := func(id string, top, h geom.Length, ref int, grp ItemGroup) ColumnItem {
+		return ColumnItem{ElementID: id, Top: top, Bottom: top + h, Runs: []TextRunRef{TextRunRef(ref)}, Group: grp}
+	}
+	// stack builds n items of h each, packed with no gaps, ALL BELONGING TO
+	// ONE ELEMENT — the decomposition package folio performs on a multi-line
+	// text element, and the reason the member unit cannot be the ColumnItem.
+	stack := func(id string, top, h geom.Length, n int, grp ItemGroup) []ColumnItem {
+		var out []ColumnItem
+		for i := range n {
+			out = append(out, line(id, top+geom.Length(int64(i))*h, h, i, grp))
+		}
+		return out
+	}
+
+	for _, row := range []struct {
+		name  string
+		items []ColumnItem
+
+		wantFatal     bool
+		wantElementID string // when fatal
+		wantKind      string // when fatal
+		wantExtent    geom.Length
+	}{
+		{
+			// e1 alone is 120,000 against the 100,000 window; e2 is
+			// 15,000 and fits. The group's union is 145,000, so the
+			// clip branch is entered either way — what differs is what
+			// happens inside it.
+			name: "author-declared, one member individually over-tall",
+			items: []ColumnItem{
+				line("e1", testContentTop, 120000, 0, author),
+				line("e2", testContentTop+130000, 15000, 1, author),
+			},
+			wantFatal:     true,
+			wantElementID: "e1",
+			wantKind:      "line",
+			wantExtent:    120000,
+		},
+		{
+			// Both members are 15,000 and each fits; only their union,
+			// 125,000, does not. Story 4.6's answer, untouched
+			// (D-7.10.4).
+			name: "author-declared, over-tall only in aggregate",
+			items: []ColumnItem{
+				line("e1", testContentTop, 15000, 0, author),
+				line("e2", testContentTop+110000, 15000, 1, author),
+			},
+			wantExtent: 125000,
+		},
+		{
+			// THE ELEMENT-UNIT MEASUREMENT. Eight items of 15,000, every
+			// one of them fitting the window on its own, all belonging
+			// to ONE element whose union is 120,000. Read the
+			// discriminator in ITEMS and this group is "aggregate-only"
+			// and is clipped forever, silently destroying a tagged
+			// paragraph (DW-50). Read in ELEMENTS it is refused, and the
+			// extent reported is the element's own union.
+			name:          "author-declared, one element whose ITEMS each fit but whose union does not",
+			items:         stack("e1", testContentTop, 15000, 8, author),
+			wantFatal:     true,
+			wantElementID: "e1",
+			wantKind:      "line",
+			wantExtent:    120000,
+		},
+		{
+			// THE SCOPE, as a control. Identical geometry to the first
+			// row, with the grouping ENGINE-created — a table row. It
+			// must still be clipped, and it must be clipped for the
+			// reason the narrowing was scoped: a data row's chrome rect
+			// spans the row's whole extent, so "some member is
+			// individually over-tall" is ALWAYS true of an over-tall
+			// row. An unscoped test reverses Story 4.6 wholesale.
+			name: "engine-created, one member individually over-tall",
+			items: []ColumnItem{
+				line("e1", testContentTop, 120000, 0, engine),
+				line("e2", testContentTop+130000, 15000, 1, engine),
+			},
+			wantExtent: 145000,
+		},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			plan, err := Paginate(g, row.items)
+
+			if !row.wantFatal {
+				if err != nil {
+					t.Fatalf("Paginate returned %T: %v — this group must keep Story 4.6's clip-and-warn", err, err)
+				}
+				if len(plan.Clipped) != 1 {
+					t.Fatalf("plan.Clipped = %+v; want exactly one record", plan.Clipped)
+				}
+				if got := plan.Clipped[0].ItemHeight; got != row.wantExtent {
+					t.Errorf("clip.ItemHeight = %d, want the GROUP's union %d", got, row.wantExtent)
+				}
+				if got := plan.Clipped[0].ContentHeight; got != testContentHeight {
+					t.Errorf("clip.ContentHeight = %d, want the window's own %d", got, testContentHeight)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Fatalf("Paginate accepted a group holding an individually over-tall element; it must be REFUSED, naming that element. plan = %+v", plan)
+			}
+			var overflow *OverflowError
+			if !errors.As(err, &overflow) {
+				t.Fatalf("Paginate returned %v (%T); the refusal must be an *OverflowError so a caller can tell it from a programming error", err, err)
+			}
+			if overflow.ElementID != row.wantElementID {
+				t.Errorf("the refusal names %q, want %q — an UNLOCATED refusal is what D-1.8.1 exists to prevent", overflow.ElementID, row.wantElementID)
+			}
+			if overflow.Kind != row.wantKind {
+				t.Errorf("Kind = %q, want %q", overflow.Kind, row.wantKind)
+			}
+			if overflow.ItemHeight != row.wantExtent {
+				t.Errorf("ItemHeight = %d, want the ELEMENT's own union extent %d — not the group's, and not one item's", overflow.ItemHeight, row.wantExtent)
+			}
+			if overflow.ContentHeight != testContentHeight {
+				t.Errorf("ContentHeight = %d, want the window's own %d", overflow.ContentHeight, testContentHeight)
+			}
+		})
+	}
+}
+
+// TestOverflowKindNamesWhatTheItemIs is D-7.10.5's derivation, asserted
+// directly rather than only through a rendered document.
+//
+// The rect arm is the one that needed it: a rectangle in this column is one
+// of two entirely different things and only its GROUPING tells them apart —
+// a table row's cell chrome, which the ENGINE groups, or an element BOX,
+// which nothing groups and which an author-declared tag does not turn into a
+// table. Before Story 7.10 both were called a "table", so an author who had
+// declared a too-tall rect was told their document contained an over-tall
+// table it does not contain (DW-47).
+func TestOverflowKindNamesWhatTheItemIs(t *testing.T) {
+	key := ItemGroupKey{ElementID: "group", Index: 0}
+	for _, row := range []struct {
+		name string
+		item ColumnItem
+		want string
+	}{
+		{"an image", ColumnItem{ElementID: "e1", Images: []ImageRef{0}}, "image"},
+		{"a shaped line", ColumnItem{ElementID: "e1", Runs: []TextRunRef{0}}, "line"},
+		{
+			"a rect the ENGINE grouped — a table row's cell chrome",
+			ColumnItem{ElementID: "e1", Rects: []RectRef{0}, Group: ItemGroup{Present: true, Key: key}},
+			"table",
+		},
+		{
+			"an UNGROUPED rect — an element box",
+			ColumnItem{ElementID: "e1", Rects: []RectRef{0}},
+			"box",
+		},
+		{
+			// The arm that must read AuthorDeclared and not Present
+			// alone: a tagged element box is still a box, and the
+			// document it comes from may contain no table at all.
+			"a rect in an AUTHOR-DECLARED group — still an element box",
+			ColumnItem{ElementID: "e1", Rects: []RectRef{0}, Group: ItemGroup{Present: true, AuthorDeclared: true, Key: key}},
+			"box",
+		},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if got := overflowKind(row.item); got != row.want {
+				t.Errorf("overflowKind = %q, want %q — the word reaches a template author verbatim in OverflowError.Error, so a wrong one sends them looking for a declaration they never wrote", got, row.want)
+			}
+		})
 	}
 }

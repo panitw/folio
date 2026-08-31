@@ -387,10 +387,12 @@ func TestPaginateEmitsContentInAuthoredOrder(t *testing.T) {
 // TestPaginateRejectsAnItemThatIsNeitherOneLineNorOneImage is D-2.6.5's
 // guardrail on the Kind classifier.
 //
-// OverflowError.Kind is derived from which slice is populated. That derivation
-// is only sound if an item never carries both — a claim about the CALLER, and
-// a claim about a caller is the kind that stops being true quietly. This
-// asserts the check rather than the claim.
+// OverflowError.Kind is derived from which slice is populated and — since
+// Story 7.10's rect arm — from Group.AuthorDeclared, which tells a table
+// row's cell chrome ("table") from an element BOX ("box"). Either way the
+// derivation is only sound if an item never carries MORE THAN ONE slice — a
+// claim about the CALLER, and a claim about a caller is the kind that stops
+// being true quietly. This asserts the check rather than the claim.
 func TestPaginateRejectsAnItemThatIsNeitherOneLineNorOneImage(t *testing.T) {
 	g := testGeometry()
 

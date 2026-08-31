@@ -18,6 +18,20 @@ package folio
 // (reachable with a font size larger than the content band) and a row for an
 // IMAGE whose DECLARED BOX is taller than it.
 //
+// AND A THIRD SUBJECT ARRIVED WITH STORY 9.1 WITHOUT A ROW OF ITS OWN: an
+// element BOX (style.background / style.border on a text, image, rect or
+// line element) whose declared height exceeds the window. Story 7.10 adds
+// it, and the row exists for the WORD as much as for the disposition.
+// Measured at that story's baseline, an over-tall rect was announced to its
+// author verbatim as "element e1: table is taller than the content window"
+// — because collectElementBoxRects is a FOURTH, UNGROUPED tableRectSource
+// that paginate.go's own comment enumerated away, and the Kind derivation
+// therefore called every ungrouped Rects item a table (DW-47, D-7.10.5).
+// The document contains no table. A located diagnostic that names the
+// element and MISNAMES the thing sends its reader looking for a table they
+// never declared, so this row asserts the word rather than only observing
+// it.
+//
 // WHY THE ASSERTION IS ON THE FIELDS, NEVER ON "an error occurred". An
 // unlocated overflow message is what D-1.8.1 exists to prevent: a template
 // author is expected to act on this, so the diagnostic must name WHICH
@@ -113,15 +127,44 @@ const overflowImageTemplate = `{
 }
 `
 
+// overflowElementBoxTemplate declares ONE rect element whose declared box
+// is 800pt tall — 800,000 mp against the 727,890 mp window.
+//
+// style.background is what makes it reach pagination at all: without a
+// background and without a border, elementDeclaresBox (element_box.go) is
+// false, no tableRectSource is built, and the element is as tall as it
+// likes with nothing to say about it. So the declaration below is
+// load-bearing, not decoration.
+const overflowElementBoxTemplate = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e3", "type": "rect", "x": 0, "y": 0, "width": 100, "height": 800, "style": {"background": "#1b2a4a"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 24},
+    "pageHeader": {"elements": [], "height": 18}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
 // TestRenderReportsAnItemThatFitsOnNoPage is FR44's located diagnostic,
-// asserted through the public API on both subjects.
+// asserted through the public API on every subject.
 func TestRenderReportsAnItemThatFitsOnNoPage(t *testing.T) {
 	for _, row := range []struct {
 		name          string
 		template      string
 		wantElementID string
 		wantKind      string
-		wantHeightMin int64 // the item must genuinely exceed the window
+		wantHeightMin int64  // the item must genuinely exceed the window
+		forbiddenWord string // a word the message must NOT contain
 	}{
 		{
 			name:          "a LINE taller than the content window",
@@ -136,6 +179,16 @@ func TestRenderReportsAnItemThatFitsOnNoPage(t *testing.T) {
 			wantElementID: "e2",
 			wantKind:      "image",
 			wantHeightMin: overflowContentWindowMP,
+		},
+		{
+			// Story 7.10 / D-7.10.5. The disposition was already
+			// right at baseline; the WORD was not.
+			name:          "an ELEMENT BOX whose DECLARED HEIGHT is taller than the content window",
+			template:      overflowElementBoxTemplate,
+			wantElementID: "e3",
+			wantKind:      "box",
+			wantHeightMin: overflowContentWindowMP,
+			forbiddenWord: "table",
 		},
 	} {
 		t.Run(row.name, func(t *testing.T) {
@@ -185,6 +238,24 @@ func TestRenderReportsAnItemThatFitsOnNoPage(t *testing.T) {
 			// actually gets.
 			if !strings.Contains(err.Error(), row.wantElementID) {
 				t.Errorf("the rendered error message %q does not contain the element id %q", err.Error(), row.wantElementID)
+			}
+			// THE KIND AT ITS REAL POSITION, never merely somewhere in
+			// the string. `strings.Contains(err.Error(), row.wantKind)`
+			// CANNOT FAIL here and never could: the constant advice
+			// sentence every OverflowError carries contains "line" ("a
+			// line is never split across a page boundary") and "box"
+			// ("its declared box height"), so the check passed for every
+			// row whatever Kind actually held — a vacuous assertion, not
+			// a weak one, and one that would have watched D-7.10.5's own
+			// misnaming go by. The message OPENS "element <id>: <kind>
+			// is taller than the content window", and that opening is
+			// the one place the kind is the message's SUBJECT.
+			wantOpening := "element " + row.wantElementID + ": " + row.wantKind + " is taller than the content window"
+			if !strings.Contains(err.Error(), wantOpening) {
+				t.Errorf("the rendered error message does not open %q:\n%s\n\nThe kind must reach the reader as the message's own subject; finding it somewhere inside the advice sentence is not the same claim.", wantOpening, err.Error())
+			}
+			if row.forbiddenWord != "" && strings.Contains(err.Error(), row.forbiddenWord) {
+				t.Errorf("the rendered error message calls this element a %q:\n%s\n\nThe document declares no %s. Kind is DERIVED (overflowKind, internal/layout/paginate.go) — fix the derivation, never the string.", row.forbiddenWord, err.Error(), row.forbiddenWord)
 			}
 		})
 	}

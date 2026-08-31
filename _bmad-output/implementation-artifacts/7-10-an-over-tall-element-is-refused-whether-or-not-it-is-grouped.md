@@ -2,15 +2,52 @@
 title: 'Story 7.10: An over-tall element is refused whether or not it is grouped'
 type: 'bugfix'
 created: '2026-08-31'
-status: 'ready-for-dev'
-baseline_revision: '9844e6dc84672302513b3d4460ca86071bb786bd'
+status: 'done'
+baseline_revision: 'b9e2bfe50afede9c97c700f5ac86ed6b0b5e5d69'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      When two or more template elements of one author-declared group are each individually
+      over-tall, which one the refusal names is decided by internal ColumnItem order, not by the
+      author's declaration order or page position.
+    evidence: |-
+      overTallGroupMember returns the FIRST over-tall element in `items` order. package folio builds
+      that slice by appending rects, then text, then images (render.go's paginateDocument), so an
+      over-tall text element is named ahead of an over-tall rect regardless of which the author
+      declared first. Measured during review: the text is named in both declaration orders. The
+      determinism the doc comment promises is real (no map iteration), but its subject is an
+      implementation detail — the same class of defect as DW-50, which this story exists to fix.
+      Naming a preferred subject needs a ruling, not a builder's choice.
+    location: >-
+      folio-go/internal/layout/paginate.go (overTallGroupMember)
+    severity: medium
+  - summary: >-
+      The canvas now degrades to ContentWindowCountIsExact=false for a document the renderer
+      refuses outright, and nothing asserts that pairing.
+    evidence: |-
+      page_setup.go:842 calls layout.Paginate directly and degrades on any error. Because the
+      discriminator lives inside Paginate, a tagged over-tall element reaches the canvas
+      automatically — which is the behaviour Story 7.9 closed the divergence for, and is correct.
+      But no test pins "renderer refuses => canvas reports inexact" for this new refusal, so a
+      future change could silently re-split them.
+    location: >-
+      folio-go/page_setup.go:842-859
+    severity: medium
+  - summary: >-
+      deferred-work.md still lists DW-47, DW-50, DW-49(b), DW-64 and DW-65 as open, and
+      sprint-status.yaml is untouched, although this story discharged all five.
+    evidence: |-
+      The register and the sprint tracker are the story-closer's artifacts; bmad-build-auto never
+      writes them. Recorded here so the closer does not have to re-derive which register entries
+      this commit closed.
+    location: >-
+      _bmad-output/implementation-artifacts/deferred-work.md
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -366,15 +403,27 @@ re-pointing the **prose** listed below — there is no green assertion to invert
 
 ## Tasks & Acceptance
 
-⚠ **This story is HALTED at its plan gate on the `multi-line text reach` Block If.** Task 1 below is
-undetermined until the lead rules. Tasks 2-9 are settled and unaffected by that ruling.
+✅ **The plan-gate halt is RESOLVED by D-7.10.1 … D-7.10.6, recorded in the intent contract above.**
+The `multi-line text reach` Block If is discharged by **RULING 1**: the member unit is the **template
+element**, not the column item. That is Design Notes disposition **(B)**, now ruled rather than
+recommended. Tasks 2-9 were already settled and are unchanged.
 
 **Execution:**
 
-1. **BLOCKED** — `folio-go/internal/layout/paginate.go` -- narrow the clip branch at `:790-791` so a
-   keep-together group containing an individually over-tall member is refused rather than clipped,
-   while a table row and an aggregate-only group are untouched. -- The exact predicate depends on the
-   `multi-line text reach` ruling; see Design Notes.
+1. `folio-go/internal/layout/paginate.go` -- narrow the clip branch at `:790-791` so a keep-together
+   group **holding a template element whose OWN extent exceeds one content window** is refused
+   rather than clipped, while a table row and a genuinely aggregate-only group (every one of its
+   elements fitting, their union not) are untouched. -- **RULING 1**: the members are template
+   elements, so the test is PER ELEMENT: union each element's own `ColumnItem`s and compare that
+   extent against the window. That is what reaches DW-50's multi-line text, which a per-column-item
+   reading does not.
+   ⚠ **The predicate is NOT a distinct-`ElementID` count.** A count is cheap to reach for at the
+   deciding site and it is wrong: "fatal iff the group spans exactly one `ElementID`" agrees with
+   the per-element test on a group of one and on a purely aggregate group, and DISAGREES on the
+   mixed group — an individually over-tall paragraph tagged together with the name printed beneath
+   it, which is the real signature-block shape — where it silently clips. `overTallGroupMember`
+   unions per element instead, and `TestKeepTogetherMixedGroupIsRefusedNamingTheOverTallElement` is
+   the arm that separates the two.
 2. `folio-go/internal/layout/paginate.go` -- add a non-`Key` field to `ItemGroup` (`:157-168`)
    distinguishing a clip-eligible group from a keep-together group, set by the three existing
    derivations. -- ⚠ It must go on `ItemGroup`, **not** `ItemGroupKey`, which is a map key at `:735`,
@@ -411,9 +460,15 @@ undetermined until the lead rules. Tasks 2-9 are settled and unaffected by that 
    the spine — this one). -- DW-49(b); half (a) already landed with Story 7.9 and must not be redone.
 
 **Acceptance Criteria:**
-- Given a content-band element with a declared box taller than one content window, tagged into a
-  keep-together group, when the document is rendered, then it is refused with the same located fatal
-  `OverflowError` the untagged element receives — no bytes, no `TABLE_ROW_CLIPPED_HEIGHT`.
+- **(AC1, REPLACED by RULING 3 — do NOT assert message-equality with the untagged case.)** Given a
+  keep-together group whose single tagged element's own extent exceeds the content window, when the
+  document paginates, then it is refused with a located fatal `OverflowError` **naming that element**
+  — no bytes, no `TABLE_ROW_CLIPPED_HEIGHT` — because the author declared an atomic block that cannot
+  fit, which is unsatisfiable rather than merely degraded, and removing the tag is the author's fix;
+  **and** this differs **deliberately** from the untagged case, where the same element's lines split
+  across windows and render cleanly. **The tag is what makes it unsatisfiable.** An assertion that the
+  tagged message equals the untagged one is FALSE for the multi-line-text population (untagged, it
+  renders) and must never be written.
 - Given a two-member keep-together group whose members each fit one window but whose union does not,
   when the document is rendered, then Story 4.6's clip-and-warn applies unchanged — bytes plus one
   `TABLE_ROW_CLIPPED_HEIGHT` Warning located at the group's first member.
@@ -429,6 +484,21 @@ undetermined until the lead rules. Tasks 2-9 are settled and unaffected by that 
 
 ## Spec Change Log
 
+### 2026-08-31 — dispatch 2, implement at `b9e2bfe`; halt resolved by D-7.10.1 … D-7.10.6
+
+The six rulings were appended to the intent contract and resolve the `multi-line text reach` halt.
+Two consequences are recorded here rather than left to be re-derived:
+
+- **Matrix row 6 ("Single-member group of a multi-line text element") is no longer OPEN.** Its cell
+  still reads `OPEN — see Block If` because the contract is read-only; **RULING 1 determines it:
+  FATAL**, on the same predicate as row 1. It is covered by a test like every other row.
+- **The `Block If` named `multi-line text reach` is discharged, not overridden.** The contract's own
+  rulings block opens by declaring the gap resolved and explains why the mechanism failed to reach
+  multi-line text. Rulings 4 and 5 of the `Block If` list remain live tripwires.
+- **AC1 in Tasks & Acceptance was replaced** with RULING 3's wording. The old text mandated exactly
+  the message-equality assertion RULING 3 forbids, and would have been read as authority by an
+  implementer whose sole source of truth is this file.
+
 ### 2026-08-31 — planned at `9844e6d`; halted at the plan gate on `intent gap`
 
 The four behavioural claims the dispatch supplied were re-verified at `9844e6d` rather than taken on
@@ -436,6 +506,86 @@ trust (see Design Notes). Three of the dispatch's watch-items were settled and a
 the fourth — the reach of the ruling's mechanism over multi-line text — is the halt.
 
 ## Review Triage Log
+
+### 2026-08-31 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 16: (high 3, medium 8, low 5)
+- defer: 3: (high 0, medium 2, low 1)
+- reject: 5: (high 0, medium 1, low 4)
+- addressed_findings:
+  - `[high]` `[patch]` `folio-format.md`'s `keepTogether` field row asserted the refusal names the
+    element *"exactly as that element would be untagged"* — **precisely the message-equality claim
+    D-7.10.3 blocks**, false for the multi-line-text population, and contradicting line 236 of the
+    same file. The forbidden generalisation had survived in the one artifact an author actually
+    reads while the Go tests scrupulously avoided it. Equality clause removed; the row now names the
+    element and states that removing the tag is the fix.
+  - `[high]` `[patch]` No test covered a **mixed** author-declared group — one individually
+    over-tall element plus a fitting one. Demonstrated at review: the weaker predicate "fatal iff
+    the group spans exactly one ElementID" (which this spec's own Task 1 prose described) passes
+    every pre-existing test while silently clipping the mixed group — DW-50 reintroduced for exactly
+    the real signature-block shape. Added `TestKeepTogetherMixedGroupIsRefusedNamingTheOverTallElement`,
+    which also asserts the reported height is e1's own extent, not the group union.
+  - `[high]` `[patch]` No test covered an individually over-tall **tagged image**. Narrowing
+    `overTallGroupMember` to Runs/Rects items reverted that document to Story 4.6's clip — the image
+    silently dropped from the PDF — with the whole suite green. Added
+    `TestKeepTogetherOverTallTaggedImageIsRefused`.
+  - `[medium]` `[patch]` `OverflowError.Error()` was never updated: the advice never mentioned
+    removing the tag — the entire ratio of D-7.10.2 — and still scoped "declared box height" to
+    images though `box` is now a Kind for rect, text and line. Advice rewritten.
+  - `[medium]` `[patch]` `render_overflow_test.go`'s message-level kind assertion was **vacuous**:
+    the constant advice sentence itself contains "line", "image" and "box", so
+    `strings.Contains(err.Error(), wantKind)` passed for any Kind. Replaced with a positional check
+    on the message opening.
+  - `[medium]` `[patch]` The mutation-direction comment on the aggregate arm was **inverted**.
+    Measured here: an item-level reading is narrower — it reddens the FATAL arm and leaves the
+    aggregate arm green. Corrected to state both directions.
+  - `[medium]` `[patch]` A fourth superseded AD-14 paraphrase survived at `paginate.go:851`, four
+    lines above the new narrowing — DW-64's unlisted site. Re-pointed.
+  - `[medium]` `[patch]` The discriminator fixture filled its three `%TAG%` slots positionally, so
+    reordering elements would silently re-point the arms with every test still green. Replaced with
+    per-element named slots and an assertion that each tag landed on the right element's line.
+  - `[medium]` `[patch]` The fatal arm asserted only the internal `*layout.OverflowError`, never the
+    public `RenderError` / `CONTENT_UNLAYOUTABLE` a CLI or the designer dispatches on. Added.
+  - `[medium]` `[patch]` `internal/layout` — where the discriminator actually lives — had zero
+    direct coverage; `paginate_group_test.go` got comment-only changes. Added package-level
+    table-driven tests for `AuthorDeclared` dispositions, the element-unit unioning, and
+    `overflowKind`'s `box` arm.
+  - `[medium]` `[patch]` The AST tripwire guarded `ItemGroup.Present` but knew nothing of
+    `AuthorDeclared`, so a future fourth derivation setting `Present` alone would silently clip and
+    reverse D-7.10.1 unnoticed. Tripwire extended, with its own vacuity floor.
+  - `[low]` `[patch]` `paginate_test.go:390`'s doc comment said Kind derives from the populated
+    slice; it now also depends on `Group.AuthorDeclared`.
+  - `[low]` `[patch]` `internal/diag/diag.go` reflow damage — stranded `// The`, and "that story's
+    AC11" left without an antecedent. Prose repaired; DW-65's cite-by-AD-number fix kept.
+  - `[low]` `[patch]` `diagnostic.go`'s new paragraph ("this type, which carries both") contradicted
+    the `Severity` field comment immediately below it. Reconciled.
+  - `[low]` `[patch]` This spec's Task 1 described the predicate as a distinct-`ElementID` count
+    rather than per-element extent unioning, and "Which currently-rendering documents stop
+    rendering" still framed DW-50 as open and scoped the population to declared boxes only. Both
+    corrected (outside the intent-contract).
+  - `[low]` `[patch]` `epics.md`'s Story 7.7 parenthetical read "whether or not it is tagged",
+    incoherent for a clause about a group. Reworded.
+
+**Rejected, with the authority each was tested against:**
+
+- `[medium]` No CHANGELOG or release-facing record of the breaking change. No CHANGELOG exists in
+  this repo; the intent requires the five named document amendments and no more, and the
+  v0.1.0/AD-22 gating is tracked in planning artifacts. Out of scope on the intent's own authority.
+- `[low]` The ruling's rationale is duplicated near-verbatim across ~10 comment sites. This is the
+  repo's established heavily-documented style; the one place the duplication actually caused a
+  defect — the un-updated `Error()` string — was patched as a finding in its own right.
+- `[low]` I/O matrix row 6 still reads `OPEN — see Block If`. The `<intent-contract>` is read-only
+  by workflow rule and was verified byte-identical. RULING 1 determines the row (FATAL); that
+  resolution is recorded in the Spec Change Log and the row is covered by a passing test.
+- `[low]` AD-14's leading sentence still states the unqualified pre-7.10 rule. Appending the
+  discriminator clause inside the same Rule bullet was DW-49(b)'s prescribed remedy, and the clause
+  qualifies the sentence in the same breath; a rewrite would also falsify
+  `table_row_clip_test.go`'s verbatim quotation.
+- `[low]` `go test ./...` is red. Measured at baseline `b9e2bfe`: the same three tests are red there,
+  byte-identically. Not caused by this change.
+
 
 ## Design Notes
 
@@ -556,15 +706,27 @@ fence and edits the spine. Declined, recorded rather than silent.
 
 ### Which currently-rendering documents stop rendering
 
-Documents containing a content-band element that **declares a box** (`style.background` or
-`style.border`) taller than one content window **and** carries a `keepTogether` tag. Enumerated
-against the repo at `9844e6d`: **none.** No shipped fixture, no fixture-backed Go const and no
-existing test contains that construction — the only `keepTogether` tags in `fixtures/` are
+Documents containing a content-band element that carries a `keepTogether` tag **and whose own
+extent exceeds one content window**. D-7.10.1 settled the question this section used to leave open
+— DW-50's long-text document DOES join the list — and in doing so it enlarged the population well
+past the declared-box-only reading planning started from. It is now:
+
+- a **multi-line text** element whose shaped lines each fit a window while their union does not
+  (DW-50's own shape; untagged it renders in full across pages, and the tag is what makes it
+  unsatisfiable);
+- an **image** whose declared box height exceeds a window;
+- any element **declaring a box** (`style.background` or `style.border`) taller than a window.
+
+An element of any of those kinds is refused as soon as it is tagged, whether it is tagged alone or
+alongside members that fit.
+
+Enumerated against the repo at `9844e6d`: **none**, and the enlargement does not change that. No
+shipped fixture, no fixture-backed Go const and no existing test contains any of the three
+constructions under a tag — the only `keepTogether` tags in `fixtures/` are
 `fixtures/keep-together/`'s three elements at heights 16, 1 and 16 pt against a 729.890 pt window,
 and the two over-tall Go consts are aggregate-only and produce no digest. The affected population is
 real but **entirely unrepresented in the repository**, which is why all 22 goldens survive and why
-this change costs nothing today and would cost every downstream suite after the tag. Whether DW-50's
-long-text document joins this list is the open question above.
+this change costs nothing today and would cost every downstream suite after the tag.
 
 ## Verification
 
@@ -626,6 +788,83 @@ long-text document joins this list is the open question above.
   and `cd lint && go test -count=1 ./...` green.
 
 ## Auto Run Result
+
+### Dispatch 2 — 2026-08-31, implement + review + commit (baseline `b9e2bfe`)
+
+Status: **done**
+Blocking condition: **none**
+
+**What shipped.** The over-tall disposition is now decided by **who created the grouping**, carried
+as a new `ItemGroup.AuthorDeclared` field set by exactly one derivation (`keepTogetherGroup` in
+`render.go`) and read inside `Paginate`'s clip branch. An engine-created group (a table row) is
+exempt from the new test entirely — that scoping is what leaves Story 4.6 intact, since a data row's
+chrome rect spans the row's whole extent. For an author-declared group, `overTallGroupMember` unions
+each **template element's** own ColumnItems before comparing, so a tagged multi-line text element is
+refused rather than silently clipped (DW-50). `overflowKind` replaces the inline `Kind` derivation
+and gives an element box its own word, so a `rect` is no longer announced as a "table" (DW-47).
+Because the decision lives inside `Paginate`, both pagination passes and the canvas reach it
+automatically (D-4.2.2; no pre-pass, no re-run of the fit arithmetic).
+
+**Files changed (14).**
+
+- `folio-go/internal/layout/paginate.go` — `AuthorDeclared`; the narrowed clip branch;
+  `overTallGroupMember`; `overflowKind`; corrected `Error()` advice; the false REACHABILITY-OF-Kind
+  comment replaced with a measured one; four stale AD-14 paraphrases re-pointed (DW-64).
+- `folio-go/render.go` — `keepTogetherGroup` sets `AuthorDeclared: true`; the only such site.
+- `folio-go/keep_together_fixture_test.go` — the two-arm discriminator plus the mixed-group and
+  tagged-image arms, built from one base document with per-element tag slots.
+- `folio-go/internal/layout/paginate_group_test.go` — package-level tests for the discriminator and
+  `overflowKind`.
+- `folio-go/render_overflow_test.go` — an element-box row; the vacuous kind assertion made able to fail.
+- `folio-go/table_row_clip_test.go` — AST tripwire extended to `AuthorDeclared`; stale prose re-pointed.
+- `folio-go/internal/layout/paginate_test.go`, `folio-go/diagnostic.go`,
+  `folio-go/internal/diag/diag.go` — comment corrections; DW-65's cite-by-AD-number fix.
+- `ARCHITECTURE-SPINE.md` (AD-14 discriminator clause, DW-49(b) half b), `epics.md` (Story 7.7 AC3),
+  `7-7-…md` (matrix rows 3 and 5), `folio-format.md` (three sites) — all in this same commit (D-7.7.14).
+- this spec.
+
+**Review.** 4 layers. 16 patched (3 high, 8 medium, 5 low), 3 deferred, 5 rejected. No intent gap and
+no bad_spec. The three high patches were all coverage or correctness of the *claim*, not of the
+mechanism: a message-equality clause that D-7.10.3 forbids surviving in `folio-format.md`, and two
+missing arms (mixed group; tagged image) each demonstrated to be reintroducible with a green suite.
+`followup_review_recommended: true` — any high patched finding forces it; the score is 3×8 + 1×5 = 29.
+
+**Verification (measured, not asserted).**
+
+- `go test -count=1 ./...` — **1635 pass / 4 fail / 5 skip**. Baseline `b9e2bfe` measured in a
+  detached worktree: **1617 / 4 / 5**. Same three distinct reds at both revisions:
+  `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` (the mandated red) and
+  `TestGoldenDigestAgreesAtEveryDeclaredSite` + `TestEpic2GateObligationsMatchTheDeclaredSet`, which
+  commit `b4ff977` created deliberately ("red until a person writes the record") and which require a
+  ruling to close. **Not this story's, and not closed here.**
+- `go vet -tags=matrix ./...` clean; `gofmt -l folio-go` empty.
+- `TestTargetRenderHash` once per target with `FOLIO_MATRIX_TARGET` exported — `darwin/arm64`,
+  `linux/amd64`, `linux/arm64`, `js/wasm` all ok — **plus the unset control**, which printed its
+  "asserts NOTHING / deliberate no-op" notice, proving the four legs were not no-ops.
+  `TestCrossTargetByteIdentity` ok.
+- `cd lint && go test -count=1 ./...` — 4 packages ok, `-count=1` used (D-7.9.5).
+- Designer: typecheck clean, lint exactly 4 pre-existing `only-export-components` warnings,
+  vitest **284 tests / 34 files**, e2e compile clean. **Zero designer paths in the diff.**
+- **All 22 `goldenDigestRecord` digests byte-identical to baseline**, captured before implementation
+  and re-compared after. `fixtures/` untouched; both sign-off files untouched;
+  `TestThaiStackedMarksSemanticSignOffIsRecorded` green.
+
+**Mutation screens (run independently of the implementer, each asserted to have landed).** Deleting
+the discriminator reddens 5 distinct test functions across both packages and leaves the aggregate arm
+green. Deleting the **scoping** clause reddens 10 table-row/group tests — it is what holds Story 4.6.
+Regressing the member unit from template element to ColumnItem reddens the text arm **alone** while
+the box arm stays green: that is DW-50 reproduced exactly, and it is why both arms were required.
+Restoring the pre-7.10 `Kind` derivation reddens both `"box"` assertions. One mutation attempt failed
+to apply and produced a meaningless `ok` until the landing check caught it.
+
+**Residual risks.** Three items deferred (see frontmatter): the element named when several members
+are over-tall follows internal item order rather than the author's; the canvas/refusal pairing is
+correct but unasserted; and the register/tracker updates belong to the closer. The declared-box arm
+does assert equality with the untagged refusal — that is I/O matrix row 1's own words ("identical to
+the untagged element's") and is quarantined by a comment forbidding its generalisation; D-7.10.3's
+ban is scoped by its stated reason to the population where the untagged document *renders*, which is
+not this one. **This is the single judgment call in the dispatch and the cheapest thing to reverse.**
+
 
 ### Dispatch 1 — 2026-08-31, plan only (`Halt after planning.`)
 

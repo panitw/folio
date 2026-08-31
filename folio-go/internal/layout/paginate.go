@@ -33,15 +33,26 @@ package layout
 //     never a silent clip and never a straddle.
 //
 // ONE EXCEPTION, AND IT IS RULED RATHER THAN CHOSEN (Story 4.6, AD-14,
-// D-4.6.2). A GROUP (Story 4.3's ItemGroup — a table row) taller than the
-// window is not a template error: AD-14 says over-tall rows are Warnings
-// returned alongside PDF bytes, never fatal. Such a group is given a page
-// of its own and CLIPPED at that page's content bottom, recorded in
+// D-4.6.2), THEN NARROWED (Story 7.10, D-7.10.1/D-7.10.2). A GROUP
+// (Story 4.3's ItemGroup) whose UNION extent exceeds the window while
+// every one of its TEMPLATE ELEMENTS fits inside one is not a template
+// error: AD-14 says such an over-tall group is a Warning returned
+// alongside PDF bytes, never fatal. It is given a page of its own and
+// CLIPPED at that page's content bottom, recorded in
 // Pagination.Clipped. Rules 1-4 are untouched by it: the column is not
-// mutated, no line is split (whole lines are dropped, never halves), no
-// sibling moves, and the exception is scoped to grouped items because a
-// row's height comes from DATA while a font size and an image box come
-// from the author's own keyboard.
+// mutated, no line is split (whole lines are dropped, never halves) and
+// no sibling moves.
+//
+// THE EXCEPTION IS SCOPED BY WHO CREATED THE GROUPING, NOT BY WHETHER AN
+// ITEM IS GROUPED (D-7.10.2). An ENGINE-created group — a table row,
+// atomic by construction — is lenient whatever its shape, because a
+// row's height comes from DATA the author may never have seen. An
+// AUTHOR-created group (ItemGroup.AuthorDeclared: FR51's keep-together
+// tag) is lenient only in AGGREGATE: a single template element of it
+// whose OWN extent exceeds the window is a located *OverflowError,
+// because the author declared an atomic block that cannot fit and holds
+// the fix — removing the tag. A font size and an image box come from the
+// author's own keyboard, and so does the tag.
 //
 // WHY THE WINDOW SLIDES RATHER THAN SITTING ON A FIXED GRID, recorded
 // because the rejected alternatives are the ones a reader will re-propose:
@@ -165,6 +176,36 @@ type ItemGroup struct {
 	// whose ITERATION would reach output order (R5); Paginate looks keys
 	// up, it never ranges over a map of them to decide emission order.
 	Key ItemGroupKey
+
+	// AuthorDeclared says WHO CREATED THIS GROUPING (Story 7.10,
+	// D-7.10.2), and it is the whole of the over-tall discriminator.
+	//
+	// false — the ENGINE created it: a table row, atomic by
+	// construction, whose height is derived from DATA the author may
+	// never have seen. D-4.6.2's leniency is for exactly this: an
+	// over-tall row is CLIPPED with a Warning, never fatal, however it
+	// got that tall.
+	//
+	// true — the AUTHOR created it, by typing a declaration (FR51's
+	// keepTogether tag is the only such declaration today). The
+	// grouping exists because they asked for it, so they can dissolve
+	// it, and 4.6's exception — which rests on the author being unable
+	// to fix the height — does not reach it. A single TEMPLATE ELEMENT
+	// of such a group whose OWN extent exceeds the window is a located
+	// *OverflowError. Only the genuinely AGGREGATE case (two or more
+	// elements, each fitting, the union not) still clips, which is
+	// Story 7.7's shipped behaviour, left untouched (D-7.10.4).
+	//
+	// It lives HERE and not on ItemGroupKey because the Key is a MAP
+	// KEY (groups, groupPage, mergeKey in package folio's footer-orphan
+	// fix): two items of one group must compare equal on Key alone.
+	//
+	// This package stays ignorant of what the author's declaration is
+	// SPELLED as — "keepTogether" is package folio's word, and
+	// keepTogetherKeyPrefix's own doc comment argues at length that
+	// internal/layout must never learn it. It learns only the
+	// provenance, from the caller that already knows.
+	AuthorDeclared bool
 }
 
 // ItemGroupKey is one group's identity: a table element scopes it to one
@@ -220,16 +261,28 @@ type BandContent struct {
 // loop or panic. Both of those subjects are UNGROUPED items, and both keep
 // this error verbatim.
 //
-// What is NO LONGER a subject of this error is a GROUPED item — a table row
-// (Story 4.3's ItemGroup). AD-14 rules that "over-tall rows (FR25) and
-// clipped content (FR44) are Warnings returned alongside PDF bytes, never
-// silent and never fatal", and Story 4.6 brought the code to that spine: an
-// over-tall GROUP is clipped to a fresh page and recorded in
-// Pagination.Clipped, from which package folio builds a Warning
-// (TABLE_ROW_CLIPPED_HEIGHT). The distinction is AD-13's own line and D-4.6.2's
-// ruling: a row's height is DERIVED FROM DATA the author may never have seen,
-// while an image's declared box and a font size are things the author TYPED.
-// A failure derived from unauditable data must not be fatal; a typo should be.
+// What is NO LONGER a subject of this error is a group that is over-tall
+// only IN AGGREGATE — a table row, and an author-declared keep-together
+// group every one of whose template elements fits a window on its own.
+// AD-14 rules that "rows and author-declared keep-together groups too tall
+// for one content window (FR25, FR51), and clipped content (FR44), are
+// Warnings returned alongside PDF bytes, never silent and never fatal",
+// and Story 4.6 brought the code to that spine: such a group is clipped to
+// a fresh page and recorded in Pagination.Clipped, from which package folio
+// builds a Warning (TABLE_ROW_CLIPPED_HEIGHT).
+//
+// AND A THIRD SUBJECT RETURNED WITH STORY 7.10 (D-7.10.1, D-7.10.2): a
+// single TEMPLATE ELEMENT of an AUTHOR-DECLARED group whose own extent
+// exceeds the window. The discriminator is WHO CREATED THE GROUPING, never
+// whether the item is grouped. An engine-created group (a table row) is
+// atomic by construction and its height is DERIVED FROM DATA the author may
+// never have seen, so failing it fatally would be unjust — that, and only
+// that, is D-4.6.2's ratio. An author-created group exists because someone
+// typed a tag, and the tag is never data-driven, so 4.6's exception does not
+// reach it: the author declared an atomic block that fits nowhere, which is
+// unsatisfiable rather than merely degraded, and removing the tag is the fix
+// in their own hands. AD-25's clip precedent does not transfer here — it is
+// WIDTH-only, and D-2.6.1 explicitly excluded page-edge overflow from FR44.
 //
 // NEVER A STRADDLE AND NEVER A SILENT CLIP: both are what this error exists
 // to prevent, and Story 4.6's clip weakens neither. It is not a straddle (it
@@ -238,20 +291,38 @@ type BandContent struct {
 // located Warning on Result.Diagnostics). "Never a silent clip" was always
 // the operative word; the clip that arrived is loud.
 //
-// REACHABILITY OF Kind, recorded so a future reader does not treat a dead
-// branch as live (Story 4.6, AC8). Kind == "table" is produced only for an
-// item carrying Rects, and every tableRectSource in package folio is built at
-// exactly one of three sites (table_render.go's header, data-row and footer
-// constructors), all three of which carry a PRESENT ItemGroup — so every item
-// that could set Kind "table" now takes the clip branch instead. Kind ==
-// "table" is therefore NO LONGER PRODUCED FROM PACKAGE FOLIO. It remains
-// constructible by a direct caller of this package that builds an ungrouped
-// Rects item, which is why the derivation is kept rather than deleted.
+// REACHABILITY OF Kind, RE-MEASURED AT STORY 7.10 AND CORRECTED. The
+// enumeration this comment used to carry — "every tableRectSource in package
+// folio is built at exactly one of three sites (table_render.go's header,
+// data-row and footer constructors), all three of which carry a PRESENT
+// ItemGroup" — was FALSE at that story's baseline. collectElementBoxRects
+// (folio-go/element_box.go, Story 9.1) is a FOURTH tableRectSource, and it
+// deliberately leaves the group ZERO, so an over-tall element BOX reached
+// this error and was announced to its author, verbatim, as
+// "element e1: table is taller than the content window" (D-7.10.5, DW-47).
+// A comment asserting a negative carries a test's evidentiary burden: the
+// population is named here, and TestRenderReportsAnItemThatFitsOnNoPage
+// (folio-go/render_overflow_test.go) asserts the wording rather than
+// trusting it.
+//
+// WHAT overflowKind ACTUALLY PRODUCES, as measured at Story 7.10:
+//
+//	"image"  an item carrying Images — an image element's declared box.
+//	"box"    an item carrying Rects that the ENGINE did not group: package
+//	         folio's element boxes (style.background/style.border on a
+//	         text, image, rect or line element).
+//	"table"  an item carrying Rects that the engine DID group — a table
+//	         row's cell chrome. Unreachable THROUGH THIS ERROR since Story
+//	         4.6, because an engine-created group takes the clip branch and
+//	         never reaches the residual case; kept because the derivation
+//	         names what the ITEM IS, and a caller of this package that
+//	         builds a table row is entitled to the true word for it.
+//	"line"   everything else — an item carrying Runs.
 type OverflowError struct {
 	ElementID     string
 	ItemHeight    geom.Length
 	ContentHeight geom.Length
-	Kind          string // "line", "image" or "table" (Story 4.1)
+	Kind          string // "line", "image", "box" or "table" — see overflowKind
 }
 
 // millipoints spells a geom.Length for a HUMAN-READABLE diagnostic. It is
@@ -263,14 +334,29 @@ func millipoints(v geom.Length) string {
 	return strconv.FormatInt(int64(v), 10) + "mp"
 }
 
+// Error is the ONE sentence a template author actually reads for this
+// condition, so its advice must name a fix for every Kind the derivation
+// above produces — not just for the one the sentence was first written for.
+//
+// TWO THINGS STORY 7.10 CHANGED IN IT. The remedy used to read "its declared
+// box height FOR AN IMAGE", from a time when an image was the only Kind
+// whose declared height was honoured; "box" is now a first-class Kind of its
+// own (an element's style.background/style.border), so the qualifier named
+// the wrong population. And the story's whole ratio is that a keep-together
+// tag is the author's OWN doing and is therefore removable: an element only
+// reaches this error inside a group because someone TYPED `keepTogether`,
+// and untagging it lets that element's lines split across pages again
+// (D-7.10.1). A remedy sentence that never mentions the tag withholds the
+// one fix the author is most likely to want.
 func (e *OverflowError) Error() string {
 	return "element " + e.ElementID + ": " + e.Kind +
 		" is taller than the content window (" + millipoints(e.ItemHeight) +
 		" against a content height of " + millipoints(e.ContentHeight) +
 		"), so it fits on no page. Under AD-24 the content band does not grow to fit, and a line is " +
-		"never split across a page boundary — reduce the element's font size, or its declared box " +
-		"height for an image, or increase the page's content height by reducing its margins or its " +
-		"page-header/page-footer heights."
+		"never split across a page boundary — reduce the element's font size or its declared box " +
+		"height, remove the element's keepTogether tag if it carries one (a tagged element must fit " +
+		"a single window whole), or increase the page's content height by reducing its margins or " +
+		"its page-header/page-footer heights."
 }
 
 // MixedItemError reports a ColumnItem that is neither exactly one line nor
@@ -341,6 +427,13 @@ type Pagination struct {
 	// per clipped group, appended in the sweep's own deterministic order
 	// (a slice, never a map ranged for emission — R5).
 	//
+	// Since Story 7.10 an AUTHOR-DECLARED group (ItemGroup.AuthorDeclared)
+	// is here only when it is over-tall IN AGGREGATE — every one of its
+	// template elements fitting a window, their union not. One whose own
+	// element is taller than any window returns *OverflowError instead
+	// (D-7.10.1). An ENGINE-created group — a table row — is here
+	// whatever its shape, unchanged.
+	//
 	// This is DATA for a caller to build a located Warning from, exactly
 	// as Suppressed is: the group's identity, its own height and the
 	// height it was measured against are carried here straight from the
@@ -351,6 +444,8 @@ type Pagination struct {
 	//
 	// An UNGROUPED over-tall item is not here: it still returns
 	// *OverflowError, per D-4.6.2 and OverflowError's own doc comment.
+	// Nor is an author-declared group holding an individually over-tall
+	// element — same error, same reason, D-7.10.2.
 	Clipped []TableRowClipped
 }
 
@@ -768,10 +863,20 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 
 		// STORY 4.6 (FR25, AD-14): the group is taller than the window
 		// itself, so no window of any position contains it. AD-14 rules
-		// this NEVER FATAL — "over-tall rows (FR25) and clipped content
-		// (FR44) are Warnings returned alongside PDF bytes" — so the
-		// group is given a page of its own and cut off at that page's
-		// content bottom, and the render carries on.
+		// this LENIENT — a Warning returned alongside PDF bytes rather
+		// than a refusal — so the group is given a page of its own and
+		// cut off at that page's content bottom, and the render carries
+		// on.
+		//
+		// AD-14 IS PARAPHRASED HERE RATHER THAN QUOTED, and by NUMBER
+		// rather than by line (DW-64/DW-65: this was the fourth surviving
+		// copy of a superseded quotation, and it sat four lines above the
+		// very narrowing that superseded it). The leniency AD-14 states
+		// is SCOPED — by WHAT is over-tall, never by whether an item is
+		// grouped: a row whatever its shape, an author-declared group
+		// only in AGGREGATE. Read the decision, not this comment, for the
+		// authoritative wording; the narrowing paragraph below is what
+		// this code implements.
 		//
 		// This is tested BEFORE the fit test and the FR26 reservation
 		// below, and it does its own page advance, because both of those
@@ -787,8 +892,43 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		// shipped path appends text before rects and the row's first
 		// LINE ties the chrome on Top. A branch keyed on Kind == "table"
 		// would clip nothing (D-4.6.2).
+		//
+		// STORY 7.10 NARROWS IT, and the narrowing is keyed on
+		// Group.AuthorDeclared — never on the kind either. WHAT is
+		// over-tall decides, not WHETHER it is grouped (D-7.10.1): if
+		// the author declared this group and one of its own TEMPLATE
+		// ELEMENTS is taller than any window, the document is refused
+		// rather than clipped, because the author declared an atomic
+		// block that fits nowhere and can dissolve it by removing the
+		// tag. An ENGINE-created group is exempt from that test
+		// entirely, which is what leaves every table row on Story 4.6's
+		// answer — and it must be, because a data row's chrome rect
+		// spans the row's WHOLE extent (render.go's own construction
+		// invariant, recorded at the equality check above), so "some
+		// member is individually over-tall" is ALWAYS true of an
+		// over-tall row. An unscoped any-member test reverses 4.6
+		// wholesale.
+		//
+		// The member unit is the TEMPLATE ELEMENT, not the ColumnItem.
+		// Both of package folio's pagination passes emit ONE item per
+		// SHAPED LINE, so reading the discriminator in items would let
+		// an implementation detail decide a product behaviour: every
+		// line of a tagged multi-line text element fits, only the union
+		// does not, and the element would be silently clipped forever
+		// (DW-50). overTallGroupMember therefore unions each element's
+		// own items before comparing.
 		if it.Group.Present {
 			if itemHeight := effectiveBottom - effectiveTop; itemHeight > height {
+				if it.Group.AuthorDeclared {
+					if id, extent, kind, over := overTallGroupMember(items, it.Group.Key, height); over {
+						return Pagination{}, &OverflowError{
+							ElementID:     id,
+							ItemHeight:    extent,
+							ContentHeight: height,
+							Kind:          kind,
+						}
+					}
+				}
 				// (1) A FRESH PAGE FOR THE GROUP. The same
 				// no-empty-page condition the slide uses: a page that
 				// carries nothing yet IS the fresh page.
@@ -1067,24 +1207,21 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		//
 		// Story 4.6 narrowed this to UNGROUPED items only — a grouped
 		// item took the clip branch above and never reaches here. What
-		// remains is D-2.6.1's own two subjects: a line whose font size
-		// exceeds the content band, and an image whose DECLARED BOX
-		// does. Both are things the author TYPED, and both stay a
-		// located template error rather than a silent truncation of a
-		// picture (D-4.6.2, AD-13).
+		// remains is D-2.6.1's own subjects: a line whose font size
+		// exceeds the content band, an image whose DECLARED BOX does,
+		// and (since Story 9.1) an element BOX whose declared height
+		// does. All three are things the author TYPED, and all three
+		// stay a located template error rather than a silent truncation
+		// of a picture (D-4.6.2, AD-13). An author-declared group's own
+		// over-tall element is refused too, but ABOVE — inside the clip
+		// branch, which is the only place that knows the group's
+		// membership.
 		if itemHeight := effectiveBottom - effectiveTop; itemHeight > height {
-			kind := "line"
-			if len(it.Images) > 0 {
-				kind = "image"
-			}
-			if len(it.Rects) > 0 {
-				kind = "table"
-			}
 			return Pagination{}, &OverflowError{
 				ElementID:     it.ElementID,
 				ItemHeight:    itemHeight,
 				ContentHeight: height,
-				Kind:          kind,
+				Kind:          overflowKind(it),
 			}
 		}
 
@@ -1144,6 +1281,112 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 	}
 
 	return Pagination{Pages: pages, Suppressed: suppressed, Clipped: clipped}, nil
+}
+
+// overflowKind is THE ONE derivation of OverflowError.Kind — the word a
+// template author reads for the thing that fits on no page. It is derived
+// from what the item CARRIES and from who grouped it, never special-cased
+// on a string (D-7.10.5's guardrail).
+//
+// The rect arm is the one Story 7.10 fixed. A rectangle in this column is
+// one of two entirely different things, and only its GROUPING tells them
+// apart: a table row's cell chrome, which the engine groups, or an element
+// BOX (style.background / style.border, Story 9.1), which nothing groups
+// and which package folio's collectElementBoxRects builds ungrouped on
+// purpose. Before this story both were called a "table", so an author who
+// had declared a too-tall rect was told their document contained an
+// over-tall table it does not contain (DW-47).
+//
+// An author-declared group is NOT the engine's grouping: a tagged element
+// box is still a box. That is why the arm reads AuthorDeclared and not
+// Present alone.
+func overflowKind(it ColumnItem) string {
+	switch {
+	case len(it.Images) > 0:
+		return "image"
+	case len(it.Rects) > 0:
+		if it.Group.Present && !it.Group.AuthorDeclared {
+			return "table"
+		}
+		return "box"
+	default:
+		return "line"
+	}
+}
+
+// overTallGroupMember reports the first TEMPLATE ELEMENT of the group `key`
+// whose OWN extent — the union of every ColumnItem that element contributed
+// to the group — exceeds `height`, together with the word overflowKind gives
+// the item that made it that tall.
+//
+// THE MEMBER UNIT IS THE TEMPLATE ELEMENT, NOT THE ColumnItem, and that is
+// the whole substance of D-7.10.1. A group's members are the elements
+// carrying the author's tag; splitting one of them into one item per shaped
+// line is how this package IMPLEMENTS keeping things together, an internal
+// decomposition rather than a statement about what the author grouped.
+// Reading the discriminator in items would let that detail decide a product
+// behaviour: every line of a tagged multi-line text element fits a window on
+// its own, so the group would look "aggregate-only" and be clipped forever,
+// silently losing content (DW-50).
+//
+// DETERMINISM. Elements are accumulated into a SLICE in first-appearance
+// order and scanned in that order; the map is a lookup only and is never
+// ranged (R5 / D-1.3.5). So the element named is a function of the caller's
+// own item order, not of a hash seed — which matters, because it reaches a
+// diagnostic message.
+//
+// One pass over `items` per over-tall group, entered only once a group's
+// UNION has already been found too tall — the rare case, never the sweep's
+// hot path.
+func overTallGroupMember(items []ColumnItem, key ItemGroupKey, height geom.Length) (elementID string, extent geom.Length, kind string, found bool) {
+	type member struct {
+		elementID   string
+		top, bottom geom.Length
+		kind        string
+		tallestItem geom.Length
+	}
+	var members []member
+	at := make(map[string]int)
+	for i := range items {
+		g := items[i].Group
+		if !g.Present || g.Key != key {
+			continue
+		}
+		own := items[i].Bottom - items[i].Top
+		pos, seen := at[items[i].ElementID]
+		if !seen {
+			at[items[i].ElementID] = len(members)
+			members = append(members, member{
+				elementID:   items[i].ElementID,
+				top:         items[i].Top,
+				bottom:      items[i].Bottom,
+				kind:        overflowKind(items[i]),
+				tallestItem: own,
+			})
+			continue
+		}
+		m := &members[pos]
+		if items[i].Top < m.top {
+			m.top = items[i].Top
+		}
+		if items[i].Bottom > m.bottom {
+			m.bottom = items[i].Bottom
+		}
+		// The word follows the TALLEST contributing item — the thing
+		// that actually made the element too tall. For a text element
+		// declaring a background that is its box rect; for a bare
+		// multi-line text element it is one of its lines.
+		if own > m.tallestItem {
+			m.tallestItem = own
+			m.kind = overflowKind(items[i])
+		}
+	}
+	for _, m := range members {
+		if m.bottom-m.top > height {
+			return m.elementID, m.bottom - m.top, m.kind, true
+		}
+	}
+	return "", 0, "", false
 }
 
 // headerContentOf returns table's header ColumnItem(s)' own Rects and Runs,

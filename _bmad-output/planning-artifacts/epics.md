@@ -2299,10 +2299,16 @@ So that a signature block is never severed by a page boundary.
 **When** this group is paginated
 **Then** it reuses that machinery rather than adding a second grouping model to `internal/layout`
 
-**Given** a group taller than one window
+**Given** a group taller than one window in aggregate — every one of its elements fitting a window,
+their union not
 **When** it is paginated
 **Then** the Story 4.6 exception applies unchanged — a page of its own, clipped, and recorded in
 `Pagination.Clipped` as a Warning beside the PDF bytes, never a fatal error
+
+*(Amended by Story 7.10, D-7.10.1: a group holding an element that is by itself taller than a window
+is refused with a located fatal `OverflowError` naming that element. WHAT is over-tall decides the
+disposition, never the fact that the element was grouped — a tag can only make an element atomic, so
+it can never turn a refusal into a warning.)*
 
 **Given** a template declaring no groups
 **When** it is rendered

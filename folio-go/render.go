@@ -1992,11 +1992,15 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 //	                  unnarrowed and the whole FR26 reservation block is
 //	                  unreachable.
 //
-// And paginate.go:783's comment — "Keyed on Group.Present, and NOT on
-// the item's kind" — is the decision this story puts under load: it is
-// now true of a second population, deliberately (D-4.6.2 as amended
+// And paginate.go's clip-branch comment — "Keyed on Group.Present, and
+// NOT on the item's kind" — is the decision Story 7.7 put under load: it
+// became true of a second population, deliberately (D-4.6.2 as amended
 // 2026-08-31), and table_row_clip_test.go's tripwire is what holds the
-// line at those two.
+// line at those two. Story 7.10 then split that key: the clip is keyed on
+// Group.AuthorDeclared as well, so a keep-together group over-tall in ONE
+// OF ITS OWN ELEMENTS is refused rather than clipped (D-7.10.1). The one
+// bit internal/layout learns is the group's PROVENANCE; it still learns
+// nothing about this prefix, which is what the paragraphs above are for.
 //
 // TestKeepTogetherGroupKeyIsNotAValidElementID asserts the grammar
 // rejects it, rather than asserting the convention in prose — the day
@@ -2060,12 +2064,21 @@ func keepTogetherTags(t *Template) keepTogetherIndex {
 // An untagged element gets the ZERO ItemGroup, which is "not grouped" and
 // is exactly what every item carried before this story. That is what
 // makes a document declaring no tag byte-identical.
+//
+// AuthorDeclared IS THE ONE THING THAT SEPARATES THIS DERIVATION FROM THE
+// OTHER TWO (Story 7.10, D-7.10.2). It is set here, and only here, because
+// this is the only grouping in package folio that exists because a person
+// typed something: a table row's grouping is the engine's own, built from
+// data the author may never have seen. internal/layout reads that one bit
+// and refuses an over-tall element of an author-declared group instead of
+// clipping it — never the tag itself, which stays this package's word
+// (see keepTogetherKeyPrefix's doc comment).
 func (idx keepTogetherIndex) keepTogetherGroup(elementID string) layout.ItemGroup {
 	tag, ok := idx[elementID]
 	if !ok {
 		return layout.ItemGroup{}
 	}
-	return layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{
+	return layout.ItemGroup{Present: true, AuthorDeclared: true, Key: layout.ItemGroupKey{
 		ElementID: keepTogetherKeyPrefix + tag,
 		IsHeader:  false,
 		Index:     keepTogetherGroupIndex,
