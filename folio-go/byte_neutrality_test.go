@@ -509,6 +509,15 @@ var goldenDigestRecord = []struct {
 		sha256: "d5077f3346e10abb17ec69d2d6e2a975d02524d6e2eebcbec3b85ff30ca48eb1",
 		sites: []goldenDigestSite{
 			{kind: "expected.json", relPath: "fixtures/thai-stacked-marks/expected.json"},
+			// The owner's reading sign-off, recorded 2026-08-31 and
+			// declared here the same way fixtures/shaped-text/thai-signoff.json
+			// is: a sign-off carries the digest of the bytes that were
+			// READ, so it is a recording site, and an undeclared site is
+			// one a future re-record would silently miss (D-000.47).
+			// That binding is the point — a re-record moves this digest
+			// and so invalidates the attestation BY CONSTRUCTION, which
+			// is D-2.3.5's second condition.
+			{kind: "signoff", relPath: "fixtures/thai-stacked-marks/signoff.json"},
 			{kind: "second-literal"},
 		},
 	},
@@ -843,11 +852,12 @@ const goldenDigestRemedy = "" +
 // one without a ruling is exactly what this guard exists to stop.
 var declaredEpic2GateObligations = []string{
 	// The gate-run test files.
-	"matrix-file: fontgen_matrix_test.go",                 // Story 2.2 — shipped-face instancing
-	"matrix-file: matrix_test.go",                         // Story 1.2 — the four-target legs themselves
-	"matrix-file: shaped_signoff_matrix_test.go",          // Story 2.3 — Thai READING sign-off (D-2.3.5)
-	"matrix-file: expected_breaks_signoff_matrix_test.go", // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
-	"matrix-file: statement_signoff_matrix_test.go",       // Story 4.7 — the Customer Account Statement READING sign-off, ONE record over FOUR digests (engineering lead's ruling, this story; D-2.3.5 mechanism, D-000.41 dilution)
+	"matrix-file: fontgen_matrix_test.go",                    // Story 2.2 — shipped-face instancing
+	"matrix-file: matrix_test.go",                            // Story 1.2 — the four-target legs themselves
+	"matrix-file: shaped_signoff_matrix_test.go",             // Story 2.3 — Thai READING sign-off (D-2.3.5)
+	"matrix-file: expected_breaks_signoff_matrix_test.go",    // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
+	"matrix-file: statement_signoff_matrix_test.go",          // Story 4.7 — the Customer Account Statement READING sign-off, ONE record over FOUR digests (engineering lead's ruling, this story; D-2.3.5 mechanism, D-000.41 dilution)
+	"matrix-file: thai_stacked_marks_signoff_matrix_test.go", // Story 8.0 — the READING sign-off for the first artifact whose marks are placed by a GPOS vertical displacement and emitted through the text-rise operator (DW-28 HIGH; D-2.3.5 mechanism). It is a SEPARATE obligation from shaped_signoff_matrix_test.go rather than an extension of it, because that record attests marks placed by a GSUB lowered-form substitution at ZERO offset — a different mechanism, which can be correct in the shaper while this one is wrong on the page. Authorised by Story 8.0's close, which filed the missing sign-off as a HIGH deferral owned by the human reader (DW-56) and forbade any agent from writing it; discharged 2026-08-31 when the owner read the page
 
 	// The documents whose four legs the gate runs and compares.
 	"matrix-document: minimal-rect",           // Story 1.1
@@ -945,6 +955,14 @@ func TestEpic2GateObligationsMatchTheDeclaredSet(t *testing.T) {
 	assertSignOffIsRealAndStillBinding(t, root,
 		filepath.Join("fixtures", "expected-breaks", "break-signoff.json"),
 		liveExpectedBreaksDigest(t, root),
+	)
+	// Story 8.0's record, checked here for the same reason and in the
+	// same way. The comment above records that this guard once
+	// overclaimed its reach while a sign-off sat outside it; adding a
+	// third record without adding it here would repeat exactly that.
+	assertSignOffIsRealAndStillBinding(t, root,
+		filepath.Join("fixtures", "thai-stacked-marks", "signoff.json"),
+		liveThaiStackedMarksDigest(t, root),
 	)
 
 	// (b) The OBSERVED obligation set, gathered from the tree itself.
@@ -1111,6 +1129,32 @@ func assertSignOffIsRealAndStillBinding(t *testing.T, root, relPath, wantDigest 
 func liveShapedTextSignOffDigest(t *testing.T, root string) string {
 	t.Helper()
 	path := filepath.Join(root, "fixtures", "shaped-text", "expected.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var doc struct {
+		SHA256 string `json:"sha256"`
+	}
+	if uerr := json.Unmarshal(body, &doc); uerr != nil {
+		t.Fatalf("%s is not valid JSON: %v", path, uerr)
+	}
+	if strings.TrimSpace(doc.SHA256) == "" {
+		t.Fatalf("%s carries no sha256 to bind the sign-off to", path)
+	}
+	return doc.SHA256
+}
+
+// liveThaiStackedMarksDigest returns the digest
+// fixtures/thai-stacked-marks's READING sign-off must currently name —
+// read fresh from that fixture's own expected.json rather than from any
+// literal, on the same reasoning as liveShapedTextSignOffDigest: the
+// sign-off attests the bytes a person actually looked at, so a
+// re-record must invalidate it BY CONSTRUCTION rather than by anybody
+// remembering to.
+func liveThaiStackedMarksDigest(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "fixtures", "thai-stacked-marks", "expected.json")
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
