@@ -4512,7 +4512,15 @@ claim, its location, and the ground on which it was refused.
   a deliberate ruling, and **a ruling with a false factual premise is an intent gap, not a bug to
   patch.**
 - **Severity:** MEDIUM — a document the designer cannot open, with an author repair available.
-- **Status:** OPEN.
+- **Status:** **RULED 2026-09-01 (D-8.4.12) — widen, on the ATTRIBUTABILITY axis rather than by
+  extending an error-type allowlist.** A fault resolving a face the element's own chain names degrades
+  that element whatever error type carries it; a fault after every needed face resolved keeps
+  aborting. **The lead's own premise was the false one**, and it named the error as the same axis
+  mistake as D-7.3.1. Six guardrails, two of which forbid the obvious implementations: **do not extend
+  the allowlist** (mint one type at the single `fontCache` resolution door), and **do not pre-resolve
+  the chain** (`resolveRuneFace` skips faces the runes do not need, so a pre-pass would degrade an
+  element over an entry it never draws with). **The retained arm must gain an assertion — that, not
+  the abort, is the finding.** Implementation is Story 8.4's follow-up.
 
 **The gap.** `internal/template/fontasset.go:checkSfnt` validates **the table directory only, never a
 table's contents** — its own comment says so. So a carried face that is a **structurally valid sfnt
@@ -4613,3 +4621,27 @@ fire.
 
 **What discharges it.** This repo's own idiom elsewhere: an unreachability tripwire that reddens when
 the branch becomes reachable, rather than a test that contrives the impossible state.
+
+### DW-93 — the canvas cannot say WHY an element is blank, and D-8.4.12 added a second member to that silence
+
+- **Deferred by:** the engineering lead with D-8.4.12 (2026-09-01), registered rather than left
+  implicit, per its standing rule that **a silence ruled owes an escape hatch**.
+- **Owner:** the first story that must distinguish *"no chain chosen"* from *"the chosen face will not
+  load"* **on the canvas**. That is the **trigger**, and it is a new one — not a renewal of an
+  existing deferral.
+- **Severity:** LOW while the class has a reachable explanation elsewhere; re-price if it does not.
+- **Status:** OPEN.
+
+**The gap.** `CanvasProjection` carries **no diagnostics channel** — the struct was read, not assumed.
+`FontChainDegraded` is internal, consumed only to compute `ContentWindowCountIsExact`, and never
+projected. So a degraded element is **blank with no reason**, and D-8.4.12 put a **second** member
+into that silence.
+
+**Why it was ruled acceptable rather than escalated, on two narrow grounds.** D-7.4.2 already
+established silent per-element degrade as the canvas's disposition for an unresolvable chain, so
+D-8.4.12 **adds a member to an existing ruled class** rather than opening a new one; and the reason is
+**not unreachable** — the same face still errors with a message on the **Render** path, so an author
+who exports is told. The codebase's own metrics path already treats this condition as non-fatal, which
+is **precedent**, not an argument against.
+
+---

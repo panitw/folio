@@ -3048,8 +3048,14 @@ sentence in full, while this half serves a different user on a different surface
 a mechanism with **no precedent anywhere in the designer** — no `new FontFace`, no
 `document.fonts.add`, no dynamic style injection, all three shipped faces being build-time; and it
 requires **re-authoring two guards that were written to forbid exactly this shape**
-(`canvas-font-stack.test.ts:100-106` asserts the fragment stack contains no `var(`; `:123-132`
-forbids naming a chain entry in a font-family position), with a third becoming false in spirit.
+(the `no var(` assertion in `canvas-font-stack.test.ts`, and the one forbidding a chain entry in a
+font-family position), with a third becoming false in spirit.
+
+**LINE ANCHORS DELIBERATELY REMOVED 2026-09-01 (D-8.4.13).** This note originally cited
+`:100-106` and `:123-132`. **Both were already stale when written** — that file grew 189→237 lines
+during Story 8.4, putting the assertions at `:137` and `:224`. Every line anchor this run has carried
+across a story boundary has rotted; they are named by **what they assert** from here on, because a
+stale anchor sends a reader to a real line that says something else, which is worse than no anchor.
 **Splitting on size was legal; dropping it silently was not** — Story 8.4 therefore discloses the
 canvas limitation as a **test** (its Task 14), not a comment, so the gap is asserted rather than
 described.
@@ -3071,16 +3077,39 @@ one layer down
 
 **Given** the canvas fragment rule
 **When** a component's chain is projected
-**Then** the family list follows the **engine's chain order**, not `tokens.css`'s `--font-page` —
-which puts Thai first and would hand Latin text Noto Sans Thai's Latin glyphs (the order constraint
-the `c6e4d03` fix already discovered)
+**Then** the family list follows the **engine's chain order**
+
+**THE REQUIREMENT STANDS; ITS ORIGINAL JUSTIFICATION WAS FALSE AND IS REMOVED (D-8.4.13).** This
+criterion previously justified itself with *"not `tokens.css`'s `--font-page` — which puts Thai first
+and would hand Latin text Noto Sans Thai's Latin glyphs."* Measured at 8.4a's plan gate:
+**`--font-page` never reaches canvas text at all.** It feeds three type tokens, only one of which is
+used, and only on chrome; `.canvas-text-fragment` uses a **hardcoded Latin-first literal with no
+`var()`**. So the named hazard is not the hazard. The **order requirement is unaffected** and is
+over-satisfied by per-fragment attribution — this is the **D-8.4.2 shape**: a criterion whose demand
+is right and whose stated reason is not, corrected in the epic because the epic is what later stories
+re-derive from.
 
 **Given** the two guards that currently forbid this shape
 **When** they are re-authored
 **Then** each is **widened, never weakened**: `canvas-font-stack.test.ts`'s tie moves from "every
-family the rule asks for is declared" to "the families the rule asks for are the ones the engine
-measured with", and the prohibition on naming a chain entry in a font-family position is replaced by
-a rule that permits **only** an asset-key-derived name
+family the rule asks for is declared" to "**for a carried face**, the family the rule asks for is the
+one the engine measured with", and the prohibition on naming a chain entry in a font-family position
+is replaced by a rule that permits **only** an asset-key-derived name
+
+**THE TIE IS SCOPED TO THE CARRIED CASE, AND THE SCOPE IS LOAD-BEARING (D-8.4.13).** The universal
+form — *"the families the rule asks for are the ones the engine measured with"* — is **false**, and
+deliberately so: for a **shipped** face the rule asks `'IBM Plex Sans'` while the engine measured
+`'Noto Sans'`, which `canvas-font-stack.test.ts` records as **intentionally disjoint**. **A builder
+handed the universal form would find it red and weaken it — which is precisely the failure this
+criterion exists to prevent.** So the scope is what makes AC4 writable at all.
+
+**This is because DW-35 has TWO causes and this story closes ONE.** *Cause two* — a carried face has
+no browser family at all — is this story. *Cause one* — shipped chains, where the engine measures
+`Noto Sans Thai` while the browser asks `IBM Plex Sans` — needs the generated `@font-face` families
+renamed, rippling into `tokens.css` and its contract test: **the design-system decision the register
+calls above a builder's authority, and which no ruling has yet made.** D-8.4.1 settled the *embedded*
+family name; it did not settle this one. **Cause one therefore survives this story and needs an owner
+by RULING, not by recommendation** — routed to the engineering lead 2026-09-01.
 
 **THIS AC EXISTS BECAUSE A GUARD RE-AUTHORED TO LET A FEATURE THROUGH IS THE CHEAPEST WAY TO LOSE
 ONE.** Both guards were written deliberately, and a story whose job is to make them false is exactly

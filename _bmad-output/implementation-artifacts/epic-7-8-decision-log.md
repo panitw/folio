@@ -3153,3 +3153,121 @@ reported as silence:
 ever constructed a document to reach it. That is the same fact that made the defect invisible in the
 diff — and it is why "no test asserted the old behaviour" was, here, a **finding** rather than a
 relief. See **DW-92**: the arm's *retained* half is pinned by nothing either.
+
+---
+
+### D-8.4.12 — DW-92 ruled: the canvas abort widens on the ATTRIBUTABILITY axis, and the lead's own premise was the false one
+
+**The false premise is the lead's, in `folio-go/page_setup.go`:** *"SCOPED TO THE CAPABILITY ERROR,
+deliberately. Only `template.UnsupportedFontMediaTypeError` is tolerated: a genuine internal shaping
+fault is not a document property, has no author repair, and still aborts the projection as it always
+did."* That sentence is **true about internal shaping faults and false about the set the gate actually
+excludes.** `errors.As` is keyed on **error type**; the population it excludes contains document
+properties. Verified rather than taken: `checkSfnt` bounds-checks the header and every table-directory
+record and **never reads a table's contents**, so truncation, bad version tags, zero tables and `ttcf`
+collections **are** caught — and a valid directory over unreadable contents is not. That face reaches
+`fontset.New` via `parseEmbedded` ← `fontCache.get` ← `shapeSegments`, fails `errors.As`, and
+`wasm/engine.go:119,255,294` turn it into `Snapshot{}, err`.
+
+**It is the same axis error as D-7.3.1**, and the lead named it as such: there a set was split by JSON
+key **location** when the property that mattered was **which consumer reads it**; here by **which Go
+type carries the error** when the property that matters is **whether the fault is attributable to
+document content the author can edit on this surface**. **Both times the mechanism named was narrower
+than the invariant meant, and both times the implementation was faithful to the words.**
+
+**Verdict.** On the canvas projection, a fault arising from resolving a face **the element's own chain
+names** degrades that element and never aborts the projection, **whatever error type carries it**. A
+fault arising **after** every face that element needs has resolved keeps aborting. **The gate is
+positional, not an enumerated allowlist.**
+
+**Six guardrails, and two of them forbid the obvious implementations:**
+
+1. **Delete the allowlist; do not extend it.** Adding `*fontset.ParseError` beside the existing type
+   re-creates the defect one story out: every future face-parse failure type silently rejoins the
+   abort and nothing observes it. The discriminator must be **one type minted at the single door that
+   owns the attribution** — the `fontCache` face-resolution path, which knows it is resolving a chain
+   entry of *this* document. **One site, closed by construction, cannot omit a member.**
+2. **Do not pre-resolve the whole chain to get the separation** — checked, and it introduces a *new*
+   defect: `resolveRuneFace` skips face names the runes do not need, so a pre-pass would degrade an
+   element because of an entry **it never draws with**. **Attribute at the point of failure; do not
+   relocate it.** And `chainVerticalModel` is not the seam — `metricsFace` already returns
+   `nil, false, nil` for an unparseable embedded face, so **one condition currently has three
+   dispositions**.
+3. **The retained abort must gain a test — and THAT is the finding, not the abort.** *Mutating that
+   arm to degrade reddened nothing in the entire suite.* The half Story 8.4 changed was pinned by one
+   test; the half **retained** was pinned by **none** — which is exactly why an unmeasured premise
+   survived a gate, a closer and the lead. **General lesson recorded: when a ruling splits a
+   population, the retained half is the one nothing tests.**
+4. **Invert `TestCanvasStillAbortsOnAnUnreadableCarriedFace`; do not delete it**, keeping its
+   `ParseTemplate` precondition `Fatal` **verbatim** — that Fatal is the tripwire for a future story
+   moving the check into the loader, and it is **independent of which way the arm points**. The
+   builder's **declining to ratify its own measurement was the correct call**, and guarding the
+   *precondition* rather than only the behaviour is the part to repeat.
+5. **Amend `ContentWindowCountIsExact` cause (c)** — it reads *"its font chain would not resolve"*,
+   which does not cover a chain that **resolves to a face that will not parse**. A stale enumeration
+   reads as excluding the case this ruling adds.
+6. **A host-supplied `FontSet` face that will not parse is OUT of this population**, and it is named
+   because it is the case that **discriminates the two axes**: an error-type gate sweeps it in, the
+   attributability axis correctly leaves it out — a `FontSet` face is the **host application's**, not
+   the document's, and no edit on the canvas repairs it.
+
+**The remaining silence, ruled acceptable and registered rather than left implicit.** `CanvasProjection`
+carries **no diagnostics channel**; `FontChainDegraded` is internal and never projected, so a degraded
+element is blank with no reason. Accepted **here** on two narrow grounds: D-7.4.2 already established
+silent per-element degrade as the canvas's disposition for an unresolvable chain, so this **adds a
+member to an existing ruled class** rather than opening a new one; and the reason is **not
+unreachable** — the same face still errors with a message on the Render path. Per the standing rule
+that *a silence ruled owes an escape hatch*, the obligation is registered (**DW-93**) with a **new**
+trigger: *a story that must distinguish "no chain chosen" from "the chosen face will not load" on the
+canvas.*
+
+**Confidence, stated by the lead:** **high** on the widening and on (3) being the real finding;
+**medium** on the mechanism in (1) — the assumption that would flip it is that the `fontCache` door can
+carry the attribution without a caller passing it in. **If it cannot, keep the invariant and find
+another single site — do not fall back to an allowlist.**
+
+**The symmetry worth keeping.** `checkSfnt`'s own comment already records that a *previous* unmeasured
+negative in that same file was found and proved false. A new unmeasured negative was then written one
+story later, about the same file's blind spot. **The file had already said where it does not look, in
+a comment, and nobody read that as a population question.**
+
+---
+
+### D-8.4.13 — every line anchor carried across a story boundary in this run has rotted; they are removed
+
+Story 8.4a's plan gate found **all four** anchors handed to it stale — including ones quoted in
+**D-8.4.6** and in **DW-35**. `canvas-font-stack.test.ts` grew **189→237 lines** during Story 8.4, so
+the `no var(` assertion moved `:100-106`→**`:137`** and the chain-entry prohibition
+`:123-132`→**`:224`**; `page_setup.go:1344` is now a `positionSegments` error return, with the discard
+site at **`:1381`**; and `table_render.go` calls `chainFaceNames` at **`:676`**, not the `:665`
+**D-8.4.4(a) records**.
+
+**Ruling: assertions are named by WHAT THEY ASSERT, not by line, in every artifact that outlives a
+story.** A stale anchor is worse than none — it sends a reader to a **real line that says something
+else**, which reads as authoritative. The epic text is amended accordingly; **the decision log's
+history is NOT rewritten**, on the same principle that kept Story 8.4's frozen contract byte-identical:
+a record edited after the fact to look correct is worth less than one that shows what was believed
+when.
+
+**Two more corrections from the same gate.**
+
+**(a) AC3's justification was false; its requirement stands (the D-8.4.2 shape, third occurrence).**
+AC3 justified itself by `tokens.css`'s `--font-page` being Thai-first. Measured: **`--font-page` never
+reaches canvas text at all** — it feeds three type tokens, one used, on chrome, while
+`.canvas-text-fragment` uses a **hardcoded Latin-first literal with no `var()`**. The named hazard is
+not the hazard; the order requirement is unaffected.
+
+**(b) One premise the orchestrator supplied was not stale but BACKWARDS, and the truth is worse.** It
+told the gate that an unlisted fragment key *"blanks the canvas with no diagnostic."* It raises
+`PROTOCOL_INVALID` at `engine-client.ts:87`, which **terminates the worker** and rejects every pending
+request — **the session is dead until reload.** That makes the Go/TS fragment edit a **hard ordering
+constraint**, not a cosmetic one.
+
+**And the limit this story must be built and closed under, recorded before any code exists.** **No
+gate in this repository can confirm the canvas visibly paints with the carried face.**
+`test:e2e:compile` is `tsc --noEmit`; `npm run test:e2e` (Playwright) appears in **no workflow**, and
+browser e2e is deferred by D-000.4; jsdom applies no stylesheet and implements no font loading. Vitest
+can prove the derivation, the registration **call**, the fragment attribute, the guards and the
+protocol shape — **nothing here can execute a real font load, a real `document.fonts.add`, or a
+rasterized glyph.** Written into the spec's Design Notes so the closer inherits it, because **a
+compile pass must never be reported as a run.**
