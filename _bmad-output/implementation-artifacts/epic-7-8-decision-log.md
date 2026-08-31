@@ -2024,3 +2024,67 @@ whose **result** was stale.
 
 > **`-count=1` is the anchor. A cache is not one.** Every gate procedure in this run carries it, and
 > a story must not close on a green that a cache produced.
+
+### D-7.9.6 — the flag is `ContentWindowCountIsExact`, and the SENSE inverts on purpose
+
+The lead corrected its own D-7.9.1 rename before it shipped, on the field's **zero value**, and the
+reasoning generalises past this field.
+
+- **`ContentWindowCountIsApproximate`** has zero value `false`, which reads **"this count is
+  exact"**. A projection path that forgets to set it therefore **claims exactness** — which is
+  *precisely the bug that started this entire thread*, rebuilt into the field's default. **A hazard
+  indicator that fails toward the quiet variant is not an indicator.**
+- **`ContentWindowCountIsExact`** has zero value `false`, which reads **"do not trust this count"**.
+  A forgotten set degrades to the **honest** claim.
+
+Same one field, same TypeScript mirror, same single UI string, still no enum — the only change is
+which way the boolean points. **Free to decide now and expensive once 7.6's UI is built against it.**
+
+> **A boolean disclosing a hazard must be named so that its ZERO VALUE is the safe claim.**
+
+**Guardrail: mutation-prove the flip in BOTH directions.** Inverting a boolean flips every call site
+and every assertion, it is the easiest thing in the world to get backwards, and **the corpus will
+not catch it, because most documents are exact.** Required: a document that *should* be exact
+reddens when the field is forced `false`, **and** a document carrying any registered cause reddens
+when it is forced `true`.
+
+**Direction is dropped deliberately, and that must be written where the field is declared.**
+Direction informs no decision the canvas makes — a floor means there may be more sheets than drawn,
+a ceiling fewer, and neither is a safe side to act on. If the projection carries the cause set,
+direction belongs **there**, since a cause knows its own direction and a future consumer can derive
+it without the flag re-acquiring a claim. If the projection carries only the boolean, the field's
+comment says so explicitly: *direction was deliberately dropped; it lives with the causes if anyone
+ever needs it.* **Without that line a future reader restores the floor claim, mistaking a deliberate
+choice for lost fidelity** — which is how this project keeps re-acquiring claims it decided to give
+up.
+
+### D-7.9.7 — discharging a trigger without escalating, and the word that keeps it honest
+
+D-7.7.8's escalation was **discharged, not un-fired**, and the distinction is recorded so a later
+reader sees it was assessed rather than missed. The clause read: *"flips to the owner only if 7.9
+proves materially larger than the reuse implies, **since then** it costs schedule against the open
+v0.1.0 fork."* The chain is **size → schedule cost → owner**, and with Story 8.0 shipped at
+`89df23b` the **second link** is gone.
+
+**The rule, stated because it is about how these gates behave rather than about this story:**
+
+> **A trigger may be discharged without escalating when its stated reason is MEASURABLY absent.
+> "Measurably" is the load-bearing word.**
+
+Both halves matter. A trigger is a **proxy** for the condition it was written to detect, so when
+proxy and purpose diverge the purpose governs — the same re-anchoring that moved Story 7.7's fence
+from a filename to an invariant. But **the failure in the other direction quietly destroys gates**:
+*"the reason went away"* is easy to assert and hard to falsify, and a trigger any orchestrator can
+retire by declaring its reason gone **binds nothing**. Here the reason's absence is a **fact** — the
+owner's clause renders at exit 0, 70,448 bytes, and nothing is queued behind 7.9 that anyone waits
+on — not a judgement. That is why this discharge is sound and why the rule does **not** generalise
+to *reasons can be argued away*.
+
+**The trigger is LIVE AGAIN if anything later queues behind 7.9.** That is why this is filed as
+discharged rather than as never-fired.
+
+**And the mitigation for the stale premise is the lead's own, filed here so it is not lost:** it
+will **date and attribute state claims inside escalation blocks** from here (*"as of your message of
+X"*), so a stale one reads as stale instead of authoritative. A lead resumed from a transcript holds
+a **snapshot**, and a snapshot presented as current is how a correct ruling gets made about a world
+that has moved. The gap that let it happen was the orchestrator's — see D-7.9.4.

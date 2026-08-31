@@ -2452,11 +2452,16 @@ surfaced two more problems at the same seam, and the engineering lead ruled both
   ungrouped `visibleIf` element has the identical problem, undisclosed since Story 7.5 shipped the
   count. Grouping is how it was found, not what caused it. Because a document can carry both a bound
   table and a `visibleIf` element and be wrong in **either** direction, `ContentWindowCountIsFloor`
-  is renamed **`ContentWindowCountIsApproximate`** — a boolean named `IsFloor` set true on a ceiling
-  case is a second confidently-wrong disclosure, which is the exact failure this epic's gate exists
-  for. A rename, not a redesign: one Go field, its TypeScript mirror, one UI string, no enum.
-  Direction is not needed — Story 7.6's own AC already has the UI say only that the count *"can
-  change when the data does"*.
+  is renamed **`ContentWindowCountIsExact`** — a boolean named `IsFloor` set true on a ceiling case is
+  a second confidently-wrong disclosure, which is the exact failure this epic's gate exists for.
+  **The sense inverts on purpose.** `…IsApproximate` would have zero value `false`, reading *"this
+  count is exact"*, so a path that forgot to set it would **claim exactness** — the original bug
+  rebuilt into the field's default. `…IsExact`'s `false` reads *"do not trust this count"*, so a
+  forgotten set degrades to the honest claim. A rename, not a redesign: one Go field, its TypeScript
+  mirror, one UI string, no enum. Direction is dropped deliberately — it informs no decision, since
+  neither a floor nor a ceiling is a safe side to act on — and that deliberateness is recorded where
+  the field is declared, so a later reader does not restore a floor claim mistaking it for lost
+  fidelity.
 - **An unstyled non-text element is a DEFECT, not a shortfall, and is fixed rather than disclosed.**
   The render places a non-text element only if it declares a background or border; the canvas places
   every one. Both are **pure template properties**, so the canvas can apply the identical rule with
@@ -2465,8 +2470,8 @@ surfaced two more problems at the same seam, and the engineering lead ruled both
 
 **Given** an element whose visibility depends on data
 **When** the canvas projects the window count
-**Then** the count is reported as **approximate**, not exact — and the flag's name says approximate
-rather than claiming a direction that is false for this case
+**Then** the count is **not reported as exact** — and the flag's name claims no direction, because
+the direction that is true for a bound table is false for this case
 
 **Given** a non-text element declaring neither a background nor a border
 **When** the canvas projects the window count

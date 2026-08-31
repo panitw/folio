@@ -81,10 +81,28 @@ by-product. Riding with it: a duplicated component must join no group (D-7.7.10)
     disclosure** — the exact failure D-7.7.8 gated the epic on, one layer down. And a document
     carrying **both** a bound table and a `visibleIf` element can be wrong in **either** direction,
     so no single direction is honest for the general case.
-  - **The fix is a RENAME, not a redesign:** `ContentWindowCountIsFloor` →
-    `ContentWindowCountIsApproximate`. One Go field, its TypeScript mirror, one UI string.
-    **Do not build an enum.** Direction is not needed by the consumer — Story 7.6's own AC has the UI
-    say the page count *"can change when the data does"*, which is already direction-free.
+  - **The fix is a RENAME, not a redesign: `ContentWindowCountIsFloor` →
+    `ContentWindowCountIsExact`.** One Go field, its TypeScript mirror, one UI string. **Do not
+    build an enum.**
+    **THE SENSE INVERTS, AND THAT IS THE POINT — do not ship `…IsApproximate`.** Its zero value is
+    `false`, which reads *"this count is exact"*, so a projection path that forgets to set it
+    **claims exactness** — the precise bug that started this whole thread, rebuilt into the field's
+    default. A hazard indicator must not fail toward the quiet variant. `…IsExact`'s zero value
+    `false` reads *"do not trust this count"*, so a forgotten set degrades to the **honest** claim.
+    Free to decide now, expensive once 7.6's UI is built against it.
+    **MUTATION-PROVE THE FLIP IN BOTH DIRECTIONS.** Inverting a boolean flips every call site and
+    every assertion, it is the easiest thing in the world to get backwards, and **the corpus will
+    not catch it because most documents are exact**. Required: a document that *should* be exact
+    **reddens when the field is forced false**, and a document carrying any registered cause
+    **reddens when it is forced true**.
+  - **Direction is dropped DELIBERATELY, and that must be written down or it will be restored.**
+    Direction would not change what the canvas should *do*: a floor means there may be more sheets
+    than drawn, a ceiling fewer, and neither is a safe side to act on — so there is no decision it
+    informs. **If the projection carries the cause set, direction belongs there** (a cause knows its
+    own direction, so a future consumer derives it without the flag re-acquiring a claim). **If the
+    projection carries only the boolean, the field's comment must say so:** *direction was
+    deliberately dropped; it lives with the causes if anyone ever needs it.* Without that line a
+    future reader restores a floor claim because it looks like lost fidelity.
 
 - **RULING B — the unstyled non-text element is a DEFECT, it is IN SCOPE for this story, and it must
   NOT be disclosed.** `element_box.go:69-74`'s rule is `style.Background.Set || style.Border.Set` —
