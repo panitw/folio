@@ -25,32 +25,36 @@ signature block is never severed by a page boundary.
 - Story 7.6: The canvas draws every page the document will produce
 - Story 7.7: Keep a signature block together across a page break
 - Story 7.8: Refuse a justified table at load, in the author's own terms
-- Story 7.9: The canvas tells the truth about keep-together groups
+- Story 7.9: The canvas tells the truth about the window count
 - Story 7.10: An over-tall element is refused whether or not it is grouped
 
 ## Requirements & Constraints
 
 - A line break the author typed survives into the PDF, so one component holds more than one
-  paragraph. `\r\n` is one break; two consecutive breaks give an empty line of one full advance. A
-  typed break is *mandatory* — the packer may never decline it — and, unlike an inferred
-  opportunity, it survives inside a declared unbreakable value.
-- Justified alignment flushes a text element's edges to its declared width. Three conditions leave
-  a line ragged at its own start edge: it is the paragraph's last line, it was ended by a mandatory
-  break, or it has no interior break opportunity. Justify is a **text-element** capability only — a
-  table must refuse it at load, naming element and field.
+  paragraph. `\r\n` is one break; two consecutive breaks give an empty line of one full advance;
+  the break character itself is drawn on neither line. A typed break is *mandatory* — the packer
+  may never decline it, whatever width remains on the line.
+- Justified alignment flushes a text element's edges to its declared width by distributing slack
+  across a line's break opportunities. A paragraph's last line, and any line ended by a mandatory
+  break, is set ragged at the element's natural start edge. Justify is a **text-element**
+  capability only — a table must refuse it at load, naming element and field.
 - Line spacing scales the baseline-to-baseline advance and nothing else; the first baseline does
-  not move, so no sibling appears to shift. Absent means today's ruled value; an out-of-range or
-  non-integral value is a located load error, never a silent clamp.
+  not move, so no sibling appears to shift. Wider lines feed pagination unchanged, so breaks follow
+  the spacing. Absent means today's ruled value; an out-of-range or non-integral value is a located
+  load error, never a silent clamp.
 - The designer must let an author write, paste and edit multi-paragraph body text and set its line
   spacing and alignment; pasted word-processor text keeps paragraph breaks and drops the rest
   without error.
 - Content-band coordinates beyond one page become legal; `pageHeader` and `pageFooter` stay one
   page tall and keep refusing them, as do negative and out-of-safe-range coordinates.
 - A group of content-band elements can be **declared** to paginate as one indivisible unit: the
-  whole set stays in the window it started in or moves to the next, each member at its own declared
-  position, no sibling moved, no gap invented. Members need not be adjacent; a tag is
-  document-scoped, invalid on a table and outside the content band. Designer-side *authoring* of
-  groups is deliberately out of scope — file-only declaration satisfies the requirement.
+  whole set stays in the window it started in or moves to the next. A tag is invalid on a table —
+  that refusal is what stops a group inheriting a table's data dependency. Designer-side
+  *authoring* of groups is deliberately out of scope; file-only declaration satisfies the
+  requirement. A duplicated element must not carry its original's tag.
+- The canvas's projected window count and window origins must equal the render path's for any
+  template whose page count the template alone determines — asserted against a real render, not
+  against a disclosure flag.
 - **Every field this epic adds is optional and absent-by-default: the existing golden corpus must
   hash identically afterwards.** A per-story acceptance criterion, not an aspiration. Every new
   feature ships its own golden fixture, and a hash change is a defect until proven an intended,
@@ -66,11 +70,12 @@ signature block is never severed by a page boundary.
   content that never reflows and silently clipped clause text.
 - **No binary floats.** Geometry is integer millipoints; line spacing is an integer ratio in
   thousandths. Floats would break the byte-identity the four CI targets are compared on. Where
-  slack does not divide evenly, one stated ordered rule places the remainder: every gap takes the
-  quotient, the first *remainder* gaps in reading order take one more, so the sum is exact.
+  slack does not divide evenly, one stated ordered rule places the remainder in integer
+  millipoints, so all four targets produce identical bytes.
 - **The browser never measures text.** The canvas paints pre-broken lines and takes every metric,
   break, justification result and window origin from the engine's projection — origins are
-  projected from the pagination result, never recomputed in the browser.
+  projected from the pagination result, never recomputed in the browser. The canvas must consume
+  the same advance the renderer does.
 - **The engine owns the document.** No TypeScript model of the file: every committed edit travels
   as an opaque command and the canvas re-projects from the engine's answer.
 - **Errors and diagnostics are one type on one channel.** `Error` aborts a render; `Warning`
@@ -79,19 +84,32 @@ signature block is never severed by a page boundary.
   mint a further per-field style code is an open lead decision a story must not settle unattended.
 - **Over-tall discriminator:** an individually over-tall element is a located fatal overflow error,
   tagged or not; only a group over-tall *in aggregate* takes clip-and-warn. A tag does not launder
-  authorship, and a group of one must be indistinguishable from no group.
+  authorship, and a group of one must be indistinguishable from no group. Leniency follows
+  authorship: a table row's height comes from data the author cannot fix, a loose element's from
+  the template they can.
 - **Reuse the existing grouping machinery** (the one serving table rows) rather than adding a
   second grouping model to layout.
 - **Grouping is a pure template property** — no data, params or fonts — so the canvas has every
   input it needs to be exactly right. A canvas discrepancy caused by grouping is a defect to fix,
-  never a new "floor" cause on the window-count estimate.
+  never a new cause registered on the window-count disclosure flag.
+- **The window-count disclosure flag states exactness, not direction.** A data-dependent
+  visibility condition makes the canvas over-count (a hidden element is absent and leaves no gap),
+  while a bound table makes it under-count, so no directional name is honest. The flag is named for
+  exactness so that a path which forgets to set it degrades to *"do not trust this count"* rather
+  than to a claim of exactness. Direction is dropped deliberately — neither side is safe to act on
+  — and that deliberateness is recorded where the field is declared.
+- **Read placement predicates from one authority.** The render places a non-text element only if it
+  declares a background or border; the canvas must apply the identical rule, read from that same
+  predicate rather than restated.
 - **Partition a closed set by the code that consumes the value, not by where it sits in the
   document.** Splitting the align set by JSON key path let a justified table in through the other
-  door.
+  door: a table's `style`/`headerStyle` alignment is consumed at the same site as its columns'.
+  Tests that pinned the old, correctly-specified behaviour are inverted or renamed-and-widened,
+  never deleted.
 - **Version bumps are real costs.** Justify raises a document to a MAJOR version earlier readers
-  cannot open; a keep-together group raises a MINOR one. A setting that raises the version and then
-  renders as if absent charges the author for nothing, and narrowing what the loader accepts is
-  free exactly once — before the first release tag.
+  cannot open. A setting that raises the version and then renders as if absent charges the author
+  for nothing, and narrowing what the loader accepts is free exactly once — before the first
+  release tag.
 
 ## UX & Interaction Patterns
 
@@ -99,6 +117,8 @@ signature block is never severed by a page boundary.
   let the canvas read as authoritative.
 - A component on a later page is a **column position**, not a pin to a page number — say plainly
   that its page follows from the content above it and changes when the data does.
+- Every sheet the canvas draws repeats the page-header and page-footer chrome, because the engine
+  repeats it, and marks each window boundary where the engine will actually break.
 - Voice is terse and technical: state the fact, name the element and path, never apologise, and
   keep errors (render stopped) visually distinct from diagnostics (render proceeded with a
   caveat).
@@ -111,14 +131,16 @@ signature block is never severed by a page boundary.
 - 7.1 → 7.3: justification treats a mandatory break as a paragraph end, so breaks land first.
 - 7.1–7.3 → 7.4: the designer can only offer what the engine and format accept.
 - 7.4 → 7.8: 7.4 discharged the product half (the inspector stops offering justify for tables);
-  7.8 owns the format half, inverting or widening the shipped tests that pinned today's acceptance
-  rather than deleting them.
+  7.8 owns the format half. 7.8 belongs to the body-text pillar and can ship independently of
+  everything after 7.4.
 - 7.5 → 7.6: the engine must accept beyond-page-one coordinates and report the window height and
   count before the canvas can draw a run of sheets.
+- 7.6 → 7.9: because 7.6 *projects* origins from the pagination result rather than computing them,
+  teaching the canvas about groups fixes count and origins in one change; there is no second fix.
 - 7.7 → 7.9: 7.7 taught the render path to keep groups whole; 7.9 teaches the canvas projection the
-  same, so its window count and origins match a real render. **7.9 gates epic completion.**
+  same. **7.9 gates epic completion.**
 - 7.7 → 7.10: 7.10 resolves a contradiction inside 7.7's contract matrix and amends 7.7's over-tall
-  clause to "taller than one window in aggregate". It does not gate the epic but **does gate the
-  v0.1.0 tag**, because it narrows what is accepted.
+  clause to "taller than one window in aggregate", plus the architecture spine's over-tall
+  carve-out. It does not gate the epic but **does gate the v0.1.0 tag**, because it narrows what is
+  accepted.
 - 7.7 is the story to cut first if the epic needs trimming (7.9 and 7.10 fall with it).
-- 7.8 belongs to the body-text pillar and can ship independently of everything after 7.4.

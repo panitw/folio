@@ -2199,3 +2199,132 @@ stories.
 
 **PASSED.** `epic-7: done`. Nine stories delivered, two of them repairs the epic wrote against
 itself, and the epic closed on a criterion it had falsified and then restored.
+
+## Story 7.10 halted on an intent gap in the ruling itself — six rulings (2026-08-31)
+
+Story 7.10's plan gate halted `blocked` / `intent gap`, and the gap was in **D-7.7.9's own
+mechanism** rather than in the spec derived from it. The lead opened with the error attributed to
+itself: *"I was reasoning in **elements** while the mechanism groups **line items**."*
+
+**What the gate measured**, in both pagination passes (`render.go:2196-2250`,
+`page_number.go:89-110`): column items are built **one per shaped line**, with the tag stamped on
+**every** line item. So for a tagged **multi-line text element every member fits** and only the
+union exceeds. Read literally, D-7.7.9 classifies DW-50's document as **aggregate-only** and leaves
+it exactly as it is today — **still silently losing content**. The ruling written to fix a pair
+reached only half of it.
+
+**And its stated premise was false for that kind.** *"A group of one is a no-op — there is nothing
+to keep it together with"* is untrue for multi-line text: **there is something — its own lines.**
+
+### D-7.10.1 — the member unit is the TEMPLATE ELEMENT
+
+A group's members are the **template elements carrying the tag**, not the column items they
+decompose into. The tag is declared on an element; the split into one item per shaped line is how
+the paginator **implements** keeping things together — an internal decomposition, not a statement
+about what the author grouped.
+
+> **Reading the discriminator in items lets an implementation detail decide a product behaviour.**
+
+That is precisely how a one-element group came to be classified "aggregate-only" and DW-50 fell
+through. Consequences: **a tagged element whose own extent exceeds the window → FATAL** (DW-50
+reached and fixed); **a tagged multi-element group, each fitting, the sum not → clip-and-warn**
+(Story 7.7's AC preserved unchanged). The literal item-reading was rejected as *the literal reading
+of a ruling whose units were wrong*, and exempting multi-line text was rejected outright: it
+**widens** what renders, contradicting the whole before-the-tag premise, and it silently ignores an
+author declaration, which this project refuses everywhere else.
+
+### D-7.10.2 — why fatal is right, and why the obvious counter-argument does not apply
+
+The chain matters, because the reflex is to reach for AD-25's clip precedent:
+
+1. **D-2.6.1 governs height overflow** — an item that fits in *no* window is a located template
+   error, **fatal**. That is the default for anything too tall.
+2. **AD-25's clip precedent is WIDTH-only.** FR44 / Story 2.8 clip against the declared *width*, and
+   D-2.6.1 **explicitly excluded page-edge overflow from FR44**. So *"the author declared this
+   atomic and it does not fit, therefore clip"* **does not transfer** from a value overflowing its
+   box to an element overflowing a page.
+3. **Story 4.6's clip is the exception to D-2.6.1**, and its justification is specific: a table
+   row's height is **data-driven and the author cannot fix it**, so failing them fatally is unjust.
+4. **A tagged element always has a fix in the author's hands: remove the tag.** The grouping exists
+   only because they asked for it. So 4.6's exception does not reach it — **regardless of whether
+   the element's height is data-driven, because the TAG never is.**
+
+> **The real discriminator, sharper than D-7.7.9's: WHO CREATED THE GROUPING.** Engine-created
+> (table rows, atomic by construction) → lenient. Author-created (a keep-together tag) → strict,
+> because the author can dissolve it.
+
+### D-7.10.3 — AC1 is replaced, because "the same as untagged" was a PROXY
+
+*"The same located fatal `OverflowError` the untagged element receives"* was never the rule. It was
+a **proxy** for *the author declared this and can fix it*, and it was **true for the population the
+ruling had in front of it** — rects and images, fatal untagged — and **false for the one it did
+not**: a multi-line text element, which untagged renders perfectly well across pages.
+
+**This is the third proxy-versus-purpose instance in this run**, after Story 7.7's fence
+re-anchoring from a filename to an invariant (D-7.7.1) and D-7.7.8's trigger discharged when its
+reason went absent (D-7.9.7). All three fail the same way: **the proxy holds for the population that
+was in view and breaks on the one that was not.**
+
+The replacement states the difference from untagged rather than hiding it: the element is refused
+**because the author declared an atomic block that cannot fit**, which is **unsatisfiable** rather
+than merely degraded — and the tag is what makes it so.
+
+**The story must NOT assert message-equality with the untagged case.** Under this ruling the
+untagged document **renders**, so there is no untagged error to be equal to. Such an assertion would
+be **false**, and writing one is the most likely way an implementer "reconciles" the old AC.
+
+### D-7.10.4 — the aggregate-only case stays as 7.7 shipped it, and the boundary is named honestly
+
+A tagged multi-element group over-tall only in aggregate **keeps clipping**. Story 7.10 does not
+touch it. The lead said the uncomfortable part plainly rather than dressing it up:
+
+> D-7.10.2's fixability argument, **pushed all the way, would make that case fatal too** — the author
+> can untag it just the same. **Story 7.7 chose clip by importing Story 4.6's TREATMENT without
+> importing its REASON**, and the lead confirmed it at the time. It is left because it is shipped,
+> deliberate and outside this story's subject — **not because it is obviously right.**
+
+**What would reopen it:** a real document losing content that way, as DW-50 came from a real case.
+**Raise it now if anyone sees one** — one ruling would cover both cases, and it is cheaper before
+the `folio-go/v0.1.0` tag than after.
+
+### D-7.10.5 — the `Kind` defect is in scope, and it is load-bearing rather than adjacent
+
+`paginate.go:241-249` enumerates *"exactly one of three sites"* and asserts `Kind == "table"` is
+*"NO LONGER PRODUCED FROM PACKAGE FOLIO"*. `collectElementBoxRects`, added by Epic 9, is a
+**fourth, ungrouped source**, so the claim is **false at HEAD** — which is exactly why an over-tall
+rectangle is told, verbatim, *"element e1: **table** is taller than the content window (900000mp
+against a content height of 729890mp)"*.
+
+**In scope because it is load-bearing for this story:** AC1 requires the message to **name the
+element**, and **7.10 is the story that asserts that message for the first time.** Asserting a wrong
+message **pins** the defect.
+
+**Guardrail: `Kind` is derived — fix the DERIVATION, never special-case the string** — and correct
+the comment to state what is actually produced.
+
+**Sixth instance of a comment asserting a negative that measurement falsifies, and the FIRST found
+by looking rather than by being burned.** That is worth recording on its own: **the search is now
+cheaper than the incident.** The rule from D-8.0.1 is doing work prospectively rather than
+retrospectively for the first time.
+
+### D-7.10.6 — the obligation discharges by ADDING, and both arms are required
+
+There is nothing to re-point: **today's clip-and-warn for a tagged over-tall element is asserted by
+nothing.** DW-47 was reproduced ad hoc at Story 7.7's close and never captured. **Seventh instance
+this run of a behaviour asserted by nothing** — and, unlike the five in Epic 7's boundary record,
+this one was found *before* it could hide a regression rather than after.
+
+Both arms are required, and they **are the discriminator, not a demonstration**: the **tagged single
+element** → fatal, message naming the element and its **true kind**; the **tagged multi-element
+aggregate group** → still clipped and warned, unchanged. **Without the second arm the change reads
+as "tagging makes things fatal", and the next story generalises it in exactly the wrong direction.**
+
+**The two-document fixture shape is confirmed.** AD-14 makes an `Error` abort the render and a
+`Warning` accompany a successful one, so **no single rendered document can yield both arms** — that
+is a property of the contract, not a gap in the fixture. Two documents differing in exactly which
+element is tagged, following the shipped `keepTogetherTemplateJSON` /
+`keepTogetherUngroupedTemplateJSON` pair, whose own comment sets the standard the new pair is held
+to: *"IT IS A DISCRIMINATOR, NOT A DEMONSTRATION."*
+
+**DW-64 and DW-65 ride here**, since the implementation touches `internal/layout` and **Epic 7's
+fence is closed** — the epic is `done` as of `9844e6d`.

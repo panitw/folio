@@ -2526,9 +2526,27 @@ switched off by an unrelated declaration does not survive contact with a deadlin
 
 **Acceptance Criteria:**
 
-**Given** a single element taller than one content window, tagged into a keep-together group
-**When** the document is rendered
-**Then** it is refused with the same located fatal `OverflowError` the untagged element receives
+**Given** a keep-together group whose single tagged element's own extent exceeds the content window
+**When** the document paginates
+**Then** it is refused with a located fatal `OverflowError` **naming that element** — because the
+author declared an atomic block that cannot fit, which is **unsatisfiable** rather than merely
+degraded, and removing the tag is the author's fix
+**And** this differs **deliberately** from the untagged case, where the same element's lines split
+across windows and render cleanly. **The tag is what makes it unsatisfiable.**
+
+**AC1 REPLACED 2026-08-31, at this story's plan gate.** It read *"refused with the same located
+fatal `OverflowError` **the untagged element receives**"*, and that was a **proxy** — for *the
+author declared this and can fix it* — not the rule. The proxy was true for the population the
+ruling had in front of it (rects, images, which are fatal untagged) and **false** for the one it did
+not (a multi-line text element, which untagged renders perfectly well across pages). A story must
+**not** assert message-equality with the untagged case: under this rule the untagged document
+renders, so there is no untagged error to be equal to.
+
+**And the member unit is the TEMPLATE ELEMENT, not the column item.** The paginator splits a text
+element into one item per shaped line and stamps the tag on every one, so read in items *every
+member fits* and a one-element group is misclassified "aggregate-only" — which is how DW-50 fell
+through the ruling written to fix it. **Reading the discriminator in items lets an implementation
+detail decide a product behaviour.**
 
 **Given** a two-member group whose members each fit a window but whose aggregate does not
 **When** the document is rendered
