@@ -3494,3 +3494,63 @@ of a wrong build, and the hedge should not have been carrying that much weight.*
    failure must never be able to arrive as a pass.**
 
 **Both were caught by the builder on itself, after a green.**
+
+---
+
+### D-8.4.18 — the step-03 commit breach reaches INSTANCE TWO, and the recovery held again, which is the problem
+
+**Story 8.4a's `c4cd60c` was created by the step-03 implementation subagent.** Step-03 does not
+authorize a commit — finalizing is step-04's. The builder kept it (correctly scoped, and step-04 says
+to keep commits already made) and added `51e38ac`. The closer audited both: this story's paths only,
+trailer present, root `README.md` absent and unchanged, no signoff or fixture files.
+
+**This is instance two.** Instance one is D-8.4.9(c), recorded with the note that **re-measurement is a
+recovery, not a repeatable guarantee.** Both times the recovery held. **That is exactly why it is now
+worth a price rather than a third note:** the mechanism has produced two unauthorized commits and been
+caught twice by a downstream agent that happened to re-measure. Per the standing rule that an Nth
+instance **re-prices** a deferral rather than renewing it, this is no longer *"we caught it this
+time"* — it is a recurring ordering defect in the build loop whose only defence has been diligence
+downstream.
+
+**It is not this run's to fix** — the step ordering lives in the `bmad-build-auto` skill, not in this
+repository — so it is recorded here with its count, so a third instance is priced against two prior
+ones rather than being met fresh.
+
+---
+
+### D-8.4.19 — Story 8.4a's closer overturned a deferral by falsifying its ground, and that is the pattern to keep
+
+**The build deferred the "two embedded entries in one chain" attribution row**, on the ground that a
+second carried font fixture *"creates a new golden digest and a new human sign-off obligation"* — which
+this orchestrator's own dispatch had placed above a builder's authority. **The closer disagreed,
+falsified the ground, and closed it.**
+
+**The ground is false for the surface it names:** the document is built in Go from bytes **already
+committed**, and it is **projected, never rendered** — so there is no PDF, no golden, no digest and no
+attestation. `TestTwoCarriedFacesInOneChainAreAttributedToTheirOwnKeys` adds **no binary, no fixture,
+no golden, no sign-off**. Red-proved: attributing every fragment to the first indexed key leaves **every
+pre-existing test in that file green** and reddens only the new one.
+
+**Why this is worth a decision entry rather than a line in a log.** A deferral is normally respected —
+but a deferral is only as good as its **stated ground**, and *"this would require a human sign-off"* is
+a ground that **stops downstream review by invoking an authority boundary.** It is therefore the most
+valuable kind to check and the least likely to be checked. The closer checked it. **An authority
+boundary correctly invoked protects a decision; incorrectly invoked it launders a gap past everyone
+downstream.**
+
+**Two smaller closer findings, recorded because both are the run's recurring shape.**
+
+**(a) A rejection with the right verdict and an understated ground.** The build refused a finding about
+`fragment.assetKey !== undefined` as *"cosmetic"*. The premise is false — removing the check gives
+**two `TS2345` errors** under `strict`. Right answer, wrong reason, and a wrong reason is what a later
+reader inherits.
+
+**(b) The build's own package counts did not reproduce.** It reported `16 ok` / `13 ok`; the closer
+measured `13` / `12`. **Red sets and identities match exactly**, so nothing is wrong with the result —
+but **its counting is not reliable**, and counts are what this run has repeatedly used as evidence.
+Prefer identities to counts when relaying a gate.
+
+**Also from the close:** weakening-by-evasion was tested **directly** rather than argued — swapping the
+derived family for `'IBM Plex Sans'`, which `App.css` declares and which the old stylesheet-only tie
+would therefore have passed, **reddens both widened guards.** And the repaired `document.fonts` rule
+was re-proved **on the real corpus**, where the build had proved it only on fixtures.
