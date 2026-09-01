@@ -69,6 +69,8 @@ const assets = {
   sansCjk: fingerprint(join(designerRoot, 'public', 'fonts', 'notosanssc', 'NotoSansSC-Regular.ttf'), 'noto-sans-cjk.ttf'),
   sansThai: fingerprint(join(designerRoot, 'public', 'fonts', 'notosansthai', 'NotoSansThai-Regular.ttf'), 'noto-sans-thai.ttf'),
   mono: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexmono', 'IBMPlexMono-Regular.ttf'), 'ibm-plex-mono.ttf'),
+  plexSans: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexsans', 'IBMPlexSans-Regular.ttf'), 'ibm-plex-sans.ttf'),
+  plexSansThai: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexsansthai', 'IBMPlexSansThai-Regular.ttf'), 'ibm-plex-sans-thai.ttf'),
 }
 
 rmSync(wasmPath, { force: true })
@@ -86,15 +88,23 @@ writeFileSync(join(generatedDir, 'pdfjs-assets.ts'), `// Keep PDF.js CMaps and s
 // face while it has no way to name it).
 //
 // Story 8.4b registered both halves over THE SAME THREE FILES, a deliberate
-// interval: the IBM Plex names were IBM Plex in name only. Story 8.4c ends it by
-// putting real IBM Plex bytes behind the IBM Plex names, one family per commit.
-// `IBM Plex Mono` has diverged — it names its own `mono` slot, a genuinely
-// monospaced face, where it previously named `sansCjk`, a 10.6 MB CJK sans.
-// `IBM Plex Sans` and `IBM Plex Sans Thai` still share the engine's files and are
-// converted next. The Noto slots STAY whatever the chrome points at: the engine
-// half declares them, generate-offline-release.mjs requires each by name, and the
-// release verifier requires the CJK face to remain the dominant font payload.
-// Which file is behind which family name is pinned, family by family, by
-// src/font-binary-identity.test.ts — the divergence is recorded there rather than
-// discovered by a designer squinting at glyphs.
-writeFileSync(join(generatedDir, 'runtime-fonts.css'), `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`)
+// interval in which the IBM Plex names were IBM Plex in name only — `IBM Plex
+// Mono` was Noto Sans SC, a CJK sans with no monospacing. Story 8.4c ended it:
+// SIX RULES OVER SIX FILES, each family declared from bytes that call themselves
+// by that family's name.
+//
+// The three Noto slots STAY whatever the chrome points at. The engine half
+// declares them, generate-offline-release.mjs requires `/noto-sans.`,
+// `/noto-sans-thai.` and `/noto-sans-cjk.` each by name, NFR7 requires CJK
+// coverage in the shipped set, and the release verifier requires the CJK face to
+// remain the dominant font payload. `sansCjk` in particular now backs ONE rule
+// rather than two; deleting it would throw at release-build time.
+//
+// ONE STATIC REGULAR PER FAMILY, and no `font-weight`/`font-style` descriptor on
+// any rule, so every weight and italic the design system asks for is
+// browser-synthesised from one face — exactly as it already was from the Noto
+// files. Which file is behind which family name is pinned, family by family, by
+// src/font-binary-identity.test.ts, which opens each file and reads its own
+// `name` table: a family name is an assertion about bytes, and that is where it
+// is checked rather than discovered by a designer squinting at glyphs.
+writeFileSync(join(generatedDir, 'runtime-fonts.css'), `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.plexSans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.plexSansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`)

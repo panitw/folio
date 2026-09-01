@@ -8,24 +8,23 @@ import { describe, expect, it } from 'vitest'
 //
 // `scripts/build-wasm.mjs` holds the two halves of the browser's font identity
 // in two places that never meet. Its `assets` object maps OPAQUE SLOT NAMES
-// (`sans`, `sansCjk`, `sansThai`) to source file paths and carries no family
-// name at all; its `runtime-fonts.css` template maps FAMILY NAMES to those
-// slots by hand, with no loop. Nothing composes the two, so nothing has ever
-// been able to say WHICH FILE IS BEHIND A FAMILY NAME — and after Story 8.4b
-// that question has a load-bearing answer: three files are each declared
-// TWICE, once under the design system's family name and once under the
-// engine's own face name, and the canvas asks for the engine's.
+// (`sans`, `sansCjk`, `sansThai`, `mono`, `plexSans`, `plexSansThai`) to source
+// file paths and carries no family name at all; its `runtime-fonts.css`
+// template maps FAMILY NAMES to those slots by hand, with no loop. Nothing
+// composes the two, so nothing had ever been able to say WHICH FILE IS BEHIND
+// A FAMILY NAME — and the browser declares two vocabularies over that join:
+// the design system's three IBM Plex families, which every `--type-*` token
+// resolves through, and the engine's three face names, which the canvas asks
+// for because AD-17 makes the browser a rasterizer only.
 //
 // This file performs the join and pins its result. Three claims:
 //
-//   1. THE DIVERGENCE, AND HOW FAR IT HAS GOT. Story 8.4b declared both
-//      vocabularies over the SAME three files — a deliberate INTERVAL, in
-//      which the IBM Plex names were IBM Plex in name only. Story 8.4c ends
-//      it, one family at a time, and this file is where each split is
-//      RECORDED rather than discovered by a designer squinting at glyphs. The
-//      assertion below names the chrome families that still share a file with
-//      an engine face name, so converting one is a one-line, deliberate edit
-//      and forgetting one is a red test.
+//   1. THE TWO VOCABULARIES ARE SEPARATE BY DESIGN. Story 8.4b declared both
+//      over the SAME three files — a deliberate INTERVAL, in which the IBM
+//      Plex names were IBM Plex in name only. Story 8.4c ended it: six rules,
+//      six distinct files, no family sharing bytes with another. A file
+//      reached by two family names is now a defect rather than the expected
+//      state, and the assertion below is where that is caught.
 //
 //   2. THE FACE THE ENGINE MEASURED. Every family named after a shipped face
 //      is declared from bytes IDENTICAL to the bytes `folio-go/fonts/fonts.go`
@@ -37,8 +36,11 @@ import { describe, expect, it } from 'vitest'
 //      is an assertion about bytes, and until Story 8.4c nothing in this
 //      repository could check it: `IBM Plex Mono` was Noto Sans SC, a CJK sans
 //      with no monospacing, and every gate stayed green. The guard below opens
-//      the declared file and reads its own `name` table, so the name over the
-//      rule and the name inside the file have to agree.
+//      each declared file and reads its own `name` table, so the name over the
+//      rule and the name inside the file have to agree — plus, for the two
+//      families whose job is more than a typeface, that the mono face is
+//      fixed-pitch and the Thai face covers the strings from the recorded
+//      Thai rendering defect.
 //
 // WHY THE GENERATOR SOURCE AND NOT ITS OUTPUT. `src/generated/runtime-fonts.css`
 // and `src/generated/runtime/` are gitignored and only exist after `build:wasm`,
@@ -168,10 +170,10 @@ function familiesPerSourceFile(generator: string): Readonly<Record<string, Reado
 const isChrome = (family: string) => (chromeFamilies as ReadonlyArray<string>).includes(family)
 
 /**
- * Source files reached by MORE THAN ONE family name — the RESIDUE of the
- * two-names-one-file interval Story 8.4b pinned and Story 8.4c ends. Once every
- * design-system family has its own IBM Plex bytes this is empty, and every
- * entry in it before then is a family still waiting to be converted.
+ * Source files reached by MORE THAN ONE family name. Empty is the invariant:
+ * the two-names-one-file interval Story 8.4b pinned ended with Story 8.4c, so
+ * every family — three design-system, three engine — now has bytes of its own,
+ * and a shared file means a rule has drifted onto another family's face.
  *
  * A NAMED HELPER RATHER THAN AN INLINE LOOP, deliberately: the real assertion
  * and the red-proof fixture below drive this one function, so the code path
@@ -305,6 +307,67 @@ function licenceDescriptionOfFile(file: string): string {
 }
 
 /**
+ * The glyph id a file maps a code point to, or 0 for "not covered". Every
+ * `cmap` subtable is tried and the first non-zero answer wins, so the lookup
+ * does not depend on which platform/encoding a given foundry happened to
+ * publish. Formats 4 (BMP) and 12 (full range) are the two these files use.
+ */
+function glyphForCodePoint(view: DataView, tables: Readonly<Record<string, SfntTable>>, codePoint: number): number {
+  const cmap = tables['cmap']
+  if (cmap === undefined) throw new Error('font has no cmap table')
+  const subtables = view.getUint16(cmap.offset + 2)
+  for (let index = 0; index < subtables; index++) {
+    const start = cmap.offset + view.getUint32(cmap.offset + 4 + index * 8 + 4)
+    const format = view.getUint16(start)
+    if (format === 4) {
+      if (codePoint > 0xffff) continue
+      const segmentsX2 = view.getUint16(start + 6)
+      const endCodes = start + 14
+      const startCodes = endCodes + segmentsX2 + 2
+      const deltas = startCodes + segmentsX2
+      const rangeOffsets = deltas + segmentsX2
+      for (let segment = 0; segment < segmentsX2 / 2; segment++) {
+        if (view.getUint16(endCodes + segment * 2) < codePoint) continue
+        if (view.getUint16(startCodes + segment * 2) > codePoint) break
+        const rangeOffset = view.getUint16(rangeOffsets + segment * 2)
+        const delta = view.getInt16(deltas + segment * 2)
+        if (rangeOffset === 0) {
+          const glyph = (codePoint + delta) & 0xffff
+          if (glyph !== 0) return glyph
+          break
+        }
+        const at = rangeOffsets + segment * 2 + rangeOffset + (codePoint - view.getUint16(startCodes + segment * 2)) * 2
+        if (at + 1 >= view.byteLength) break
+        const glyph = view.getUint16(at)
+        if (glyph !== 0) return (glyph + delta) & 0xffff
+        break
+      }
+    } else if (format === 12) {
+      const groups = view.getUint32(start + 12)
+      for (let group = 0; group < groups; group++) {
+        const at = start + 16 + group * 12
+        if (view.getUint32(at) > codePoint || view.getUint32(at + 4) < codePoint) continue
+        const glyph = view.getUint32(at + 8) + (codePoint - view.getUint32(at))
+        if (glyph !== 0) return glyph
+      }
+    }
+  }
+  return 0
+}
+
+/** The code points of `text` the file does NOT map to a glyph, as `U+XXXX` labels. */
+function codePointsNotCovered(file: string, text: string): ReadonlyArray<string> {
+  const view = fontView(file)
+  const tables = sfntTables(view)
+  const missing = new Set<string>()
+  for (const character of text) {
+    const codePoint = character.codePointAt(0) as number
+    if (glyphForCodePoint(view, tables, codePoint) === 0) missing.add(`U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`)
+  }
+  return [...missing]
+}
+
+/**
  * THE CHECKER THE WHOLE STORY IS ABOUT: the families whose declared source file
  * does not, in its own `name` table, call itself by the name the stylesheet
  * declares it under. Empty means every checked family name is an assertion the
@@ -372,24 +435,24 @@ describe('the family names the browser is given are the files the engine measure
   // family and the file rather than a number.
   it('binds every declared family to the source file it is declared from', () => {
     expect(familySourcePaths(generator)).toEqual({
-      'IBM Plex Sans': 'public/fonts/notosans/NotoSans-Regular.ttf',
+      'IBM Plex Sans': 'public/fonts/ibmplexsans/IBMPlexSans-Regular.ttf',
       'IBM Plex Mono': 'public/fonts/ibmplexmono/IBMPlexMono-Regular.ttf',
-      'IBM Plex Sans Thai': 'public/fonts/notosansthai/NotoSansThai-Regular.ttf',
+      'IBM Plex Sans Thai': 'public/fonts/ibmplexsansthai/IBMPlexSansThai-Regular.ttf',
       'Noto Sans': 'public/fonts/notosans/NotoSans-Regular.ttf',
       'Noto Sans Thai': 'public/fonts/notosansthai/NotoSansThai-Regular.ttf',
       'Noto Sans SC': 'public/fonts/notosanssc/NotoSansSC-Regular.ttf',
     })
   })
 
-  // THE INTERVAL, AS FAR AS 8.4c HAS ENDED IT. Story 8.4b pinned three files
-  // reached by two names each. Story 8.4c splits each pair by giving the
-  // design system's family its own IBM Plex bytes, and this list is the
-  // RESIDUE: the files still shared, named with the families that share them.
-  // Converting a family is a one-line generator edit and a one-line edit here;
-  // forgetting one, or repointing a family at bytes it does not name, is red.
-  it('names exactly the chrome families that have not yet been given their own IBM Plex bytes', () => {
+  // THE INTERVAL, ENDED. Story 8.4b pinned three files reached by two names
+  // each — the design system's and the engine's — and said in as many words
+  // that Story 8.4c is what splits them. It has: six rules now reach six
+  // distinct files, and no family shares bytes with any other. What replaced
+  // the interval is stronger than it was, because a shared file is now a
+  // defect rather than the expected state.
+  it('gives every declared family a source file of its own, the interval Story 8.4b pinned now ended', () => {
     const perFile = familiesPerSourceFile(generator)
-    expect(Object.keys(perFile).length, 'the six @font-face rules must reach four source files at this point in Story 8.4c').toBe(4)
+    expect(Object.keys(perFile).length, 'the six @font-face rules must reach six distinct source files').toBe(6)
 
     // EVERY GROUPING KEY IS A REAL FILE. `familySourcePaths` falls back to a
     // sentinel string when a rule names an `assets` slot that does not
@@ -402,14 +465,11 @@ describe('the family names the browser is given are the files the engine measure
 
     expect(
       filesReachedByMoreThanOneFamily(generator),
-      'These files are still reached by BOTH a design-system family name and an engine face name — the interval Story '
-      + '8.4b pinned and Story 8.4c ends, family by family. `IBM Plex Mono` has already been split off onto real IBM '
-      + 'Plex bytes; the two listed here are what 8.4c\'s second commit converts. If you are that commit, this list '
-      + 'becomes empty. If you are not, a family name has silently changed which bytes the browser rasterizes with.',
-    ).toEqual([
-      'public/fonts/notosans/NotoSans-Regular.ttf (reached by: IBM Plex Sans, Noto Sans)',
-      'public/fonts/notosansthai/NotoSansThai-Regular.ttf (reached by: IBM Plex Sans Thai, Noto Sans Thai)',
-    ])
+      'A file listed here is reached by more than one family name. Two names over one file was the deliberate INTERVAL '
+      + 'between Story 8.4b and 8.4c, and it is over: the design system asks for real IBM Plex bytes and the canvas asks '
+      + 'for the engine\'s Noto bytes, and the two vocabularies are separate BY DESIGN rather than by accident. A family '
+      + 'that has drifted back onto another family\'s file rasterizes with someone else\'s face and fails silently.',
+    ).toEqual([])
   })
 
   // THE RED-PROOF FOR THE SHARING CHECKER. The real generator has, and will
@@ -423,14 +483,14 @@ describe('the family names the browser is given are the files the engine measure
     const fixture = (...rules: ReadonlyArray<string>) => `${assetsBlock}${rules.join('\\n')}`
 
     // THE FULLY DIVERGED SHAPE, so the checker is shown to pass something: one
-    // family per file, no sharing anywhere. This is what the real generator
-    // looks like once 8.4c's second commit lands.
+    // family per file, no sharing anywhere. This is the shape the real
+    // generator now has.
     const diverged = fixture(rule('Noto Sans', 'sans'), rule('Noto Sans Thai', 'sansThai'))
     expect(filesReachedByMoreThanOneFamily(diverged)).toEqual([])
     expect(familySourcePaths(diverged)['Noto Sans']).toBe('public/fonts/notosans/NotoSans-Regular.ttf')
 
-    // A FILE STILL SHARED — the state this story is in the middle of ending,
-    // and the state a forgotten conversion leaves behind.
+    // A FILE SHARED BY TWO FAMILIES — the state Story 8.4b pinned and 8.4c
+    // ended, and the state a drifted or reverted rule would restore.
     const shared = fixture(rule('IBM Plex Sans', 'sans'), rule('Noto Sans', 'sans'), rule('Noto Sans Thai', 'sansThai'))
     expect(filesReachedByMoreThanOneFamily(shared)).toEqual(['public/fonts/notosans/NotoSans-Regular.ttf (reached by: IBM Plex Sans, Noto Sans)'])
 
@@ -459,13 +519,14 @@ describe('the family names the browser is given are the files the engine measure
   // `Noto Sans` is only useful because the bytes behind it are the bytes the
   // ENGINE measured `Noto Sans` with. Names are cheap; this compares files.
   //
-  // SCOPED TO THE ENGINE-NAMED HALF ON PURPOSE. The IBM Plex families are the
-  // DESIGN SYSTEM's vocabulary, and it is a deliberate temporary fact — not a
-  // requirement — that they currently sit over the same Noto files. Story 8.4c
-  // puts real IBM Plex bytes behind those names, at which point asserting
-  // engine identity for them would be false. Asserting it for the engine-named
-  // half is true now AND stays true across 8.4c, which is exactly why the tie
-  // is drawn here.
+  // SCOPED TO THE ENGINE-NAMED HALF ON PURPOSE, and permanently so. The IBM
+  // Plex families are the DESIGN SYSTEM's vocabulary and are declared from IBM
+  // Plex bytes, which are not and must not be any face the engine embeds —
+  // asserting engine identity for them would now be false. They are checked
+  // the other way instead, against their own `name` tables, in the suite
+  // below. This half is the stronger tie, because for the canvas a family
+  // called `Noto Sans` is only useful if its bytes are the bytes the engine
+  // MEASURED `Noto Sans` with. Names are cheap; this compares files.
   it('declares each engine face from bytes identical to the ones fonts.Shipped() embeds', () => {
     const declaredPaths = familySourcePaths(generator)
     const engineNamed = Object.keys(declaredPaths).filter((family) => !isChrome(family))
@@ -509,17 +570,14 @@ describe('the family names the browser is given are the files the engine measure
 describe('the bytes behind a chrome family name are the face that name claims', () => {
   const generator = withoutComments(fs.readFileSync(generatorPath, 'utf8'))
 
-  // SCOPED TO `IBM Plex Mono` FOR NOW. It is the family Story 8.4c converts
-  // first, on its own, because it was the worst of the three and because one
-  // binary is the cheapest end-to-end proof the IBM Plex pipeline works.
-  // `IBM Plex Sans` and `IBM Plex Sans Thai` still sit over the engine's Noto
-  // files, and asserting self-identity for them would be false until the
-  // second commit lands — at which point this list becomes `chromeFamilies`.
-  const convertedChromeFamilies = ['IBM Plex Mono'] as const
-
-  it('declares each converted chrome family from a file whose own name table carries that family', () => {
+  // ALL THREE DESIGN-SYSTEM FAMILIES. Story 8.4c's first commit scoped this to
+  // `IBM Plex Mono`, the worst of the three and the cheapest end-to-end proof
+  // the pipeline worked; every chrome family now has its own IBM Plex bytes,
+  // so every one of them is checked. The engine-named half is checked a
+  // stronger way below — against the exact bytes `fonts.Shipped()` embeds.
+  it('declares each chrome family from a file whose own name table carries that family', () => {
     expect(
-      familiesDeclaredFromForeignBytes(generator, convertedChromeFamilies),
+      familiesDeclaredFromForeignBytes(generator, chromeFamilies),
       'A design-system family name is an assertion about bytes. Each family listed here is declared over a file that '
       + 'calls itself something else — which is exactly the shipped defect this guard exists to make observable, and '
       + 'which no gate in this repository could see before it.',
@@ -541,25 +599,71 @@ describe('the bytes behind a chrome family name are the face that name claims', 
     expect(licenceDescriptionOfFile(file)).toContain('SIL Open Font License, Version 1.1')
   })
 
+  // THE THAI FACE, AGAINST THE FAILURE THAT ACTUALLY HAPPENED. These two
+  // strings are the ones from the rendering defect this repository recorded —
+  // Thai fell through to the generic `sans-serif` and, in the report's own
+  // words, "letters rendered on top of each other". Replacing the Thai chrome
+  // face is the one substitution in this story that could regress something
+  // visible, so the guard is written against the reported strings rather than
+  // against a range a reviewer would have to trust.
+  //
+  // MEASURED, and why this is a floor and not the whole story: this face and
+  // the shipped Noto Sans Thai map the SAME 87 of the 128 code points in
+  // U+0E00–U+0E7F, with an empty set difference in both directions (the other
+  // 41 are Unicode-unassigned). Coverage is what a cmap read can prove.
+  // Whether marks ATTACH correctly is a GPOS/shaping question no gate here can
+  // execute; the face's mark lookups are compared in its NOTICE.md.
+  it('gives the page family a Thai face that covers the strings from the recorded defect', () => {
+    const file = path.join(designerRoot, familySourcePaths(generator)['IBM Plex Sans Thai'])
+    for (const reported of ['พระราชบัญญัติ', 'การทวงถามหนี้']) {
+      expect(
+        codePointsNotCovered(file, reported),
+        `${file} is declared as 'IBM Plex Sans Thai' but does not map every code point of '${reported}' — one of the two `
+        + 'strings from the shipped Thai rendering defect. An uncovered code point falls through to the generic '
+        + 'sans-serif, which is exactly how that defect looked.',
+      ).toEqual([])
+    }
+
+    // AND THE READER IS SHOWN TO FIND AN ABSENCE, so an empty list above means
+    // "covered" rather than "the cmap walk stopped working". The Latin sans
+    // face carries no Thai at all, which is what makes the fallback order in
+    // App.css's stack load-bearing rather than decorative.
+    expect(codePointsNotCovered(path.join(designerRoot, 'public/fonts/ibmplexsans/IBMPlexSans-Regular.ttf'), 'พ')).toEqual(['U+0E1E'])
+    expect(codePointsNotCovered(file, 'Folio')).toEqual([])
+  })
+
   // THE RED-PROOF. The corpus cannot exercise the failing direction — the
   // whole point of the story is that it no longer holds — so the checker is
   // driven with a fixture generator that reinstates the exact defect: the
   // family `IBM Plex Mono` bound back at the Noto CJK file.
-  it('reports a mismatch when IBM Plex Mono is bound back at the Noto CJK file', () => {
+  it('reports a mismatch when any chrome family is bound back at the Noto file it used to share', () => {
     const rule = (family: string, slot: string) => `@font-face { font-family: '${family}'; src: url('./runtime/\${assets.${slot}}') format('truetype'); font-display: swap; }`
-    const assetsBlock = "  sansCjk: fingerprint(join(designerRoot, 'public', 'fonts', 'notosanssc', 'NotoSansSC-Regular.ttf'), 'noto-sans-cjk.ttf'),\n"
-      + "  mono: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexmono', 'IBMPlexMono-Regular.ttf'), 'ibm-plex-mono.ttf'),\n"
+    const slot = (name: string, ...segments: ReadonlyArray<string>) => `  ${name}: fingerprint(join(designerRoot, ${segments.map((segment) => `'${segment}'`).join(', ')}), 'label.ttf'),\n`
+    const assetsBlock = slot('sans', 'public', 'fonts', 'notosans', 'NotoSans-Regular.ttf')
+      + slot('sansCjk', 'public', 'fonts', 'notosanssc', 'NotoSansSC-Regular.ttf')
+      + slot('sansThai', 'public', 'fonts', 'notosansthai', 'NotoSansThai-Regular.ttf')
+      + slot('mono', 'public', 'fonts', 'ibmplexmono', 'IBMPlexMono-Regular.ttf')
+      + slot('plexSans', 'public', 'fonts', 'ibmplexsans', 'IBMPlexSans-Regular.ttf')
+      + slot('plexSansThai', 'public', 'fonts', 'ibmplexsansthai', 'IBMPlexSansThai-Regular.ttf')
 
-    // The healthy direction first, through the same function, so the checker
-    // is shown to pass something as well as to fail something.
-    expect(familiesDeclaredFromForeignBytes(`${assetsBlock}${rule('IBM Plex Mono', 'mono')}`, ['IBM Plex Mono'])).toEqual([])
+    // The healthy direction first, through the same function and over all
+    // three families, so the checker is shown to pass something as well as to
+    // fail something.
+    const healthy = `${assetsBlock}${rule('IBM Plex Sans', 'plexSans')}${rule('IBM Plex Mono', 'mono')}${rule('IBM Plex Sans Thai', 'plexSansThai')}`
+    expect(familiesDeclaredFromForeignBytes(healthy, chromeFamilies)).toEqual([])
 
-    // AND THE DEFECT, VERBATIM: the state this repository shipped in.
-    expect(familiesDeclaredFromForeignBytes(`${assetsBlock}${rule('IBM Plex Mono', 'sansCjk')}`, ['IBM Plex Mono'])).toEqual([
+    // AND THE DEFECT, VERBATIM: the state this repository shipped in, family
+    // by family — each chrome name bound back at the engine file it shared
+    // before Story 8.4c. All three at once, so a checker that discriminated
+    // for only one of them would still be caught.
+    const reverted = `${assetsBlock}${rule('IBM Plex Sans', 'sans')}${rule('IBM Plex Mono', 'sansCjk')}${rule('IBM Plex Sans Thai', 'sansThai')}`
+    expect(familiesDeclaredFromForeignBytes(reverted, chromeFamilies)).toEqual([
+      "IBM Plex Sans: declared from public/fonts/notosans/NotoSans-Regular.ttf, whose name table says 'Noto Sans'",
       "IBM Plex Mono: declared from public/fonts/notosanssc/NotoSansSC-Regular.ttf, whose name table says 'Noto Sans SC'",
+      "IBM Plex Sans Thai: declared from public/fonts/notosansthai/NotoSansThai-Regular.ttf, whose name table says 'Noto Sans Thai'",
     ])
-    // The same file, checked the second way the mono slot is checked: the CJK
-    // sans is not monospaced, so the fixed-pitch assertion discriminates too.
+    // The mono slot is checked a second way, and that way discriminates too:
+    // the CJK sans it used to resolve to is not monospaced.
     expect(isFixedPitch(path.join(designerRoot, 'public/fonts/notosanssc/NotoSansSC-Regular.ttf'))).toBe(0)
 
     // A rule over bytes that do not exist, and a family with no rule at all,
@@ -568,14 +672,20 @@ describe('the bytes behind a chrome family name are the face that name claims', 
     expect(familiesDeclaredFromForeignBytes(`${assetsBlock}${rule('IBM Plex Mono', 'nope')}`, ['IBM Plex Mono'])).toEqual([
       'IBM Plex Mono: declared from <no assets slot named nope>, so no bytes resolve at all',
     ])
-    expect(familiesDeclaredFromForeignBytes(assetsBlock, ['IBM Plex Mono'])).toEqual(['IBM Plex Mono: no @font-face rule declares it'])
+    expect(familiesDeclaredFromForeignBytes(assetsBlock, chromeFamilies)).toEqual([
+      'IBM Plex Sans: no @font-face rule declares it',
+      'IBM Plex Mono: no @font-face rule declares it',
+      'IBM Plex Sans Thai: no @font-face rule declares it',
+    ])
   })
 
   // AND THE READER ITSELF, SHOWN TO READ. Every assertion above is only worth
   // what the `name`-table walk is worth, and a reader that returned the same
   // string for everything would satisfy them all.
   it('reads a family name out of every committed face, and tells them apart', () => {
+    expect(declaredFamilyOfFile(path.join(designerRoot, 'public/fonts/ibmplexsans/IBMPlexSans-Regular.ttf'))).toBe('IBM Plex Sans')
     expect(declaredFamilyOfFile(path.join(designerRoot, 'public/fonts/ibmplexmono/IBMPlexMono-Regular.ttf'))).toBe('IBM Plex Mono')
+    expect(declaredFamilyOfFile(path.join(designerRoot, 'public/fonts/ibmplexsansthai/IBMPlexSansThai-Regular.ttf'))).toBe('IBM Plex Sans Thai')
     expect(declaredFamilyOfFile(path.join(designerRoot, 'public/fonts/notosans/NotoSans-Regular.ttf'))).toBe('Noto Sans')
     expect(declaredFamilyOfFile(path.join(designerRoot, 'public/fonts/notosanssc/NotoSansSC-Regular.ttf'))).toBe('Noto Sans SC')
     expect(declaredFamilyOfFile(path.join(designerRoot, 'public/fonts/notosansthai/NotoSansThai-Regular.ttf'))).toBe('Noto Sans Thai')
