@@ -237,6 +237,30 @@ not by its line, if the two disagree (D-8.4.13).
   is the drift D-8.4.35a records as still unexplained. **`s1VisibleBytes` is a four-needle sum and is
   not a metric (D-8.4.29) — quote it with its command, never reason from it.** The figure this story
   actually depends on, **23 assets against a bound of 64**, was identical in both reads.
+
+> **⚠ CORRECTED 2026-09-01 (D-8.5.7 / Story 8.4g's close). THE 2,203-BYTE FIGURE IS NOT WHAT THIS
+> PASSAGE SAYS IT IS, ON TWO COUNTS — and the second is worse than the first.**
+>
+> **(1) The "clean tree" premise is FALSE.** `go build` defaults to `-buildvcs`, stamping
+> `vcs.modified` into the wasm, and Go derives that flag from `git status` where **an untracked file
+> is enough**. This pipeline writes untracked files into the tree — halt files, result files, specs —
+> so **the instrument was perturbing the specimen.**
+>
+> **(2) It was never two builds at one commit.** It compared a **pre-existing `dist/` of unknown
+> provenance** against **one fresh build.** That stale `dist`'s engine row was stamped with a
+> **different commit and a different dirty flag**, which changed its compressed size. **So the figure
+> is UNATTRIBUTED, not merely mis-premised** — a distinction worth keeping, because "measured under a
+> wrong assumption" and "not a comparison at all" are different defects.
+>
+> **Settled by discriminator at `92cd590` and re-measured with a control at `c985b9c`:** two builds
+> with provably identical tree state give a **byte-identical** wasm; one stray untracked file changes
+> it. **The build is deterministic.** Story 8.4g fixed it with `-buildvcs=false`; after the fix, clean
+> and stray-file builds produce **the same digest and a byte-identical manifest in whole**.
+>
+> **THIS STORY IS NOT INVALIDATED.** The figure it actually depends on — **23 assets against a bound
+> of 64** — was **identical in both reads** and is unaffected. Re-measure at the current HEAD rather
+> than carrying any figure forward from this passage.
+
 - `_bmad-output/implementation-artifacts/epic-7-8-decision-log.md` `### D-8.5.1` — the binding
   ruling; part (a) is this story, part (b) is Story 8.5's. Do not amend it.
 - `_bmad-output/implementation-artifacts/bmad-build-auto-result-8-5-…​.md` finding 6 — where this
@@ -246,6 +270,27 @@ not by its line, if the two disagree (D-8.4.13).
   and it is not modified.
 
 ## Tasks & Acceptance
+
+> **TWO TASKS ADDED 2026-09-01 BY THE ORCHESTRATOR, ROUTED FROM STORY 8.4g'S CLOSE (DW-106, DW-107).**
+> They are here in **Tasks** and not only in prose, because **a ruling recorded in every artifact
+> except the one a builder executes is a ruling that did not happen** (D-8.4.31). Both land in
+> `verify-offline-release.mjs` — **the file this story already owns** — which is why routing them now
+> is cheap and routing them later is not.
+>
+> **T-A (DW-107): make Story 8.4g's two AC2 red-proofs RE-RUNNABLE.** They are currently **prose in a
+> Delivery Log and cannot be executed.** The `redProof` harness in this file is their natural home.
+> A red-proof that exists only as a sentence has been performed once and can never fail again.
+>
+> **T-B (DW-106): the new bound guard watches a CAUSE, not the PROPERTY.** Story 8.4g's guard asserts
+> the `vcs.` stamp is absent; the property that matters is **two builds of one commit agree**. That is
+> the **proxy-versus-purpose defect the engineering lead recorded against its own ruling at
+> D-8.4.30**. Add the property-level check.
+>
+> **State its known limit rather than overclaiming it:** a two-builds-agree check **would NOT have
+> caught DW-105**, because it holds the checkout path fixed while DW-105 is path dependence — the same
+> commit built from three different paths gives three different binaries, each embedding **87
+> occurrences of its own absolute root**. **Its value is the NEXT input, not the last one.** Say that
+> in the assertion's own comment, so a later reader does not read it as covering more than it does.
 
 **Execution:**
 
@@ -608,6 +653,11 @@ regress; these establish the floor the implementer measures against.
 - `s1VisibleBytes` read twice at this one commit and the readings **disagree**: 12,428,555 from the
   pre-existing `dist/`, 12,426,352 after this dispatch's own build — a 2,203-byte variance,
   D-8.4.35a's still-unexplained drift. Quoted, never reasoned from (D-8.4.29).
+
+  **⚠ SUPERSEDED (D-8.5.7). Not a variance between two builds at one commit** — a **stale `dist/` of
+  unknown provenance** against one fresh build, with the stale side stamped from a **different commit
+  and dirty flag**. The drift is **explained and FIXED** by Story 8.4g's `-buildvcs=false`; it is no
+  longer "unexplained", and this figure should not be carried forward.
 
 **Exactly the two standing red identities, no third.** 23 golden digests, 24 AD-21 documents per
 leg, and the manifest's 23 assets are three different populations and are not conflated here.
