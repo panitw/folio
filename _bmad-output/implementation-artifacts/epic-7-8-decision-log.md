@@ -3554,3 +3554,70 @@ Prefer identities to counts when relaying a gate.
 derived family for `'IBM Plex Sans'`, which `App.css` declares and which the old stylesheet-only tie
 would therefore have passed, **reddens both widened guards.** And the repaired `document.fonts` rule
 was re-proved **on the real corpus**, where the build had proved it only on fixtures.
+
+---
+
+### D-8.4.20 — Story 8.4c's plan gate: the licence check's blind spot is an extension list, and nothing in the repo can observe a font file swap
+
+Recorded at the gate, before any code exists. **Three findings; the second is the one that would have shipped.**
+
+**(a) The Thai-coverage acceptance risk is DISCHARGED BY MEASUREMENT.** It was written into the epic as
+the risk of the owner's chosen option specifically so it would not be discovered later. The gate
+measured rather than assumed: **IBM Plex Sans Thai 1.1.0 has exact cmap parity with the shipped Noto
+Sans Thai** — 87/128 in U+0E00–U+0E7F, **empty set difference in both directions** — covers both
+strings from the recorded rendering defect, and reaches **strictly more** Thai-script GPOS mark
+positioning (MarkBasePos ×3 / MarkMarkPos ×2 against ×1 / ×2). **One recorded difference: Noto declares
+a `thai` `dist` feature Plex does not.** Recorded rather than waved past.
+
+**(b) THE OBVIOUS PROCUREMENT ROUTE BYPASSES AD-26 SILENTLY.** `manifest.ResolveAssets` walks the whole
+repo and **hard-fails** without a same-directory `LICENSE*` + `NOTICE*` — **but it recognises only
+`.ttf` / `.otf` / `.ttc`.** The npm `@ibm/plex-*` packages declare `OFL-1.1` and ship **zero `.ttf`**.
+So installing IBM Plex the obvious way would have left the **licence gate green over binaries it never
+looked at** — bypassing the very check this story exists to satisfy. Now an Always constraint in the
+spec.
+
+**This is the `checkSfnt` shape again, and that is the third occurrence of it this run: a checker whose
+blind spot is a list nobody re-read as a population question.** `checkSfnt` bounds-checks the table
+directory and never reads a table's contents; the injectivity guard walks root non-test files only;
+this one enumerates three extensions. **Each is correct about what it examines and silent about what it
+does not** — and in every case the silence was found by someone measuring the population rather than
+reading the check.
+
+**(c) NOTHING IN THE REPOSITORY CAN OBSERVE A FONT FILE SWAP.** Across 443 lines of
+`canvas-font-stack.test.ts` **not one assertion opens an `@font-face` `src`, a filename, or a byte** —
+every assertion is about family **names**. So a story whose entire subject is **changing which file
+sits behind a name** has **no existing net at all** and must build its own; AC1 is phrased as an
+observation rather than an edit for exactly that reason. **It also explains how the mislabel survived:
+the guards would have stayed green over IBM Plex names on Noto bytes indefinitely.**
+
+**Two premises checked and confirmed rather than assumed.** The chrome family **names** do not change
+under the owner's option — `tokens.css` and `App.css` need no edit, `declared` is parsed from family
+names only and the `src:` is never read, so the engine/browser disjointness assertion **stays true
+throughout** and the sequencing rationale holds. And the bundle gains **+490,280 bytes**
+(200,500 + 173,052 + 116,728), new total **11,780,160, +4.34%** — the cost the owner accepted, measured.
+
+**And a standing red re-described in the only words that are honest.**
+`TestShippedFacesReproduceFromUpstream` is a **could-not-execute, not a byte divergence**:
+`fontgen: fontTools is not importable by this interpreter`. **It never compared bytes.** Per DW-86 that
+distinction is the whole reason it must fail rather than skip — **an all-clear must differ from a
+couldn't-look**, and so must a red.
+
+---
+
+### D-8.4.21 — NFR7's size budget is prose, and it was already exceeded by 37% before this story
+
+`epics.md` accepts *"~9 MB first load"*. The committed release manifest measures **12,372,693** Brotli
+bytes. **Nothing enforces the figure** — no test reads it, no gate compares against it. Story 8.4c adds
+**+4.34%** to a number that is **already 37% over a limit nothing checks**.
+
+**Filed rather than acted on at the gate, correctly** — it is a **separate defect** from 8.4c, and a
+story must not silently absorb a budget breach it did not cause. But it is recorded **here** rather
+than only in the register because it is the same family as (b) and (c) above: **a stated constraint
+that no mechanism enforces reads as enforced.** "Measure and record the added weight" is one of 8.4c's
+own acceptance criteria, which is what surfaced it — the measurement had a place to land, so the
+discrepancy could not stay invisible.
+
+**Routed to the engineering lead** with three dispositions: make the budget enforceable here, file it
+with an owner, or correct the epic to a figure that is true. **Not resolved by the orchestrator**,
+because all three are direction calls and the third — amending a stated product constraint to match
+reality — is the one most likely to be chosen for being cheapest.
