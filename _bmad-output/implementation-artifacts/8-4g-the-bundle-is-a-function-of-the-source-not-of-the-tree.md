@@ -5,7 +5,7 @@ created: '2026-09-01'
 status: 'done'
 baseline_revision: '873757f038f66491aa431dc2b1f015ed42132e42'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized']
 deferred:
@@ -68,6 +68,30 @@ deferred:
       folio-designer/scripts/build-wasm.mjs:44
     severity: low
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — a plain-language summary of what shipped. The intent contract below governs
+implementation.*
+
+The designer ships a compiled engine. Until now the compiler stamped into it which revision it came
+from and whether the checkout happened to be tidy at the moment of building — and "tidy" counted a
+single stray scratch file. So the shipped engine changed when nothing about the product had changed,
+and this pipeline writes scratch files into the checkout between its own measurements. Every size
+figure this epic had recorded was partly measuring its own housekeeping.
+
+The build now tells the compiler not to stamp, and refuses to go on if a stamp ever comes back, so the
+setting cannot be dropped in silence. This was re-measured rather than argued: with a stray file
+present and without it, the engine now comes out byte for byte the same, where beforehand it came out
+different. The whole shipped release, identity hash included, is now identical across those two
+states.
+
+Two things will look wrong to a later reader and are deliberate. The engine no longer records which
+revision built it — a trade taken knowingly, because the release already identifies itself by its
+contents and the compiler version is pinned. And this does not make the build reproducible in
+general: the engine still differs between two copies of the same revision kept in different folders.
+That is measured, recorded and owned elsewhere. What is closed is the tree's state; what is left open
+is the folder's location.
 
 <intent-contract>
 
@@ -407,3 +431,190 @@ disclosure, not claimed as automated coverage.
    restored, its md5 re-verified `078d7d80d518d54af2fc04fb270d46b8`, and it is absent from the commit — so
    the end state honours the invariant, but the act breached it. The independent re-measurement of that
    same matrix row (probe H) used a different tracked file.
+
+## Delivery Log
+
+### 2026-09-01 — done
+
+Baseline `873757f`. Story commit **`c985b9c`**, amended twice in dispatch (`4f8516a` → `77cd80e` →
+`c985b9c`). **Provenance audited, not taken:** the reflog shows three sequential `commit (amend)`
+entries against the builder's own commit, all timestamped after the baseline, with no other agent's
+commit interleaved — the builder amending its own then-unpushed work, **not** a step-03 out-of-order
+commit (that breach stands at two, D-8.4.9c and D-8.4.18, and this is not a third). **`c985b9c` is
+pushed and level with `origin/main`, so this close is a separate follow-up commit, never an amend.**
+I pushed nothing and created no branch.
+
+**What shipped, judged against the diff rather than the report.** The engine wasm is built with
+`-buildvcs=false`; a detector reads Go's build-info VCS records out of the raw bytes and the build
+throws on any it finds, at the point of use and before the raw wasm is deleted. Six files, all this
+story's; no `.go` path, no `fixtures/` path, no `README.md`, no signoff file.
+
+**AC2 — re-measured independently at `c985b9c`, with a POSITIVE CONTROL, because a fix not shown to
+close its defect is the category error this story exists to correct.** The build reported its arms at
+`873757f`/`77cd80e`; I re-ran both at the closing revision. Invocation both arms, main checkout
+`/Users/panitw/Projects/folio`: `cd folio-go && GOOS=js GOARCH=wasm go build [-buildvcs=false] -o
+<tmp> ./wasm/cmd/engine`.
+
+| arm | tree state | `-buildvcs` | wasm sha256 | `vcs.` settings |
+|---|---|---|---|---|
+| control | `git status --porcelain` **empty** | default | `32bdc2e6…e351f4` | 4 — `vcs.modified=false` |
+| control | one **stray untracked** file | default | `06a0a6cd…d4a2de` — **DIFFERS** | 4 — **`vcs.modified=true`** |
+| fix | **empty** | **`false`** | `ff324971…d90f732` | **0** |
+| fix | one **stray untracked** file | **`false`** | `ff324971…d90f732` — **IDENTICAL** | **0** |
+
+**Both digests, as AC2 requires: clean `ff324971091afd641151d1658020852ad0120687c225e5760b05888d4d90f732`,
+stray-untracked-file the same value.** The control arm is the part the build did not run at this
+revision and is what makes the result a measurement: it proves my probe file is *capable* of moving
+the binary, so the identical fix-arm digests are a closed defect rather than a probe that did nothing.
+Both control binaries embed `vcs.revision=c985b9ce8ca2ce11776cf8839c0bceaa8206ce15` — the stamp is the
+closing commit's own, which is also why my control digests differ from the build's `68ee2569…`/
+`1de602ca…` measured at `873757f`. **The probe was removed and a bare `git status --porcelain` from
+the repo root verified empty after every arm.**
+
+**And at the surface that consumes it — a stronger result than was reported.** Two full
+`cd folio-designer && npm run build` runs at `c985b9c`, the first on a verified-empty tree and the
+second with one stray untracked file verified present in `git status` during the build: the emitted
+`dist/offline-release-manifest.json` is **byte-identical in whole**, not merely in the three figures
+quoted. Top-level `s1VisibleBytes` **12,425,468**, `s1.assetCount` **23**, `s1.cachedBytes`
+**38,460,370**, and the release identity `id`/`pageId`/`s1.releaseId` all
+`0e58d1af15429da1a9c8c85ac9167e3e0b3011370ea241436ebae038ea8b4b83` on both sides. **`s1VisibleBytes`
+is a TOP-LEVEL key — `s1.s1VisibleBytes` returns `undefined` and reads like absence.** It is a
+four-needle sum and **not a metric** (D-8.4.29): quoted with its command, never reasoned from, and no
+threshold set (Story 8.4d's). This retires the recording gap that rejection 13 declined on scope.
+
+**Test teeth, proved by mutation rather than asserted.** Three screens, each run by me on a quiet
+tree, each restored from an absolute-path backup and confirmed by md5 plus a bare `git status`:
+- *The guard.* Flag removed → `npm run build:wasm` exits **1**, naming all four settings verbatim
+  (`vcs.revision=…, vcs.time=…, vcs.modified=true, vcs=git. Build it with -buildvcs=false.`).
+- *The detector.* Forced to always report clean → the two synthetic stamped cases redden and the
+  clean case stays green, which is what the stamped pair exists for.
+- *The load-bearing assertion.* Flag **and** in-script guard removed → the build **succeeds** and
+  emits a stamped `folio-engine.06a0a6cd12fded513656.wasm`, and **exactly** the real-population test
+  reddens (1 failed / 3 passed). The emitted digest equals my control arm's stray-file digest
+  `06a0a6cd…`, so the two independent measurements cross-check.
+
+**A red I caused and must not be misread as a defect at HEAD.** Running `vitest` directly straight
+after the guard's red-proof showed 1 failed / 3 passed *before any mutation*: the thrown build had
+wiped the generated runtime tree and left only the raw stamped `folio-engine.wasm`, so the
+real-population test found zero fingerprinted assets and `toHaveLength(1)` failed. Re-running
+`build:wasm` fully repopulated it (all six faces, pdfjs support files and the starter) and the suite
+returned 4 passed. **This measures rejection 7's premise as true and its refutation as sound** — the
+generated tree really is left broken, and every gate's `build:wasm` really does repopulate it — and it
+sharpens rejection 19: a direct `vitest` run after a failed build yields a **false RED**, not a false
+green, which is the safe direction.
+
+**Standing reds verified BY IDENTITY, per D-8.4.34 — a count is a lossy set.**
+- `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)`, `corpus_test.go:196`, verbatim
+  `P6g (opaque names) floor not met: got 7, need >=20`. Drift twin
+  `TestCorpusP6StatsMatchDeclaredBaseline` **passed**, so the floor is the only thing red.
+- `TestShippedFacesReproduceFromUpstream` is **not a standing red** — verbatim `fontgen: fontTools is
+  not importable by this interpreter.` naming `/opt/homebrew/opt/python@3.12/bin/python3.12`, a
+  **could-not-execute** that never compared bytes. **Swept both ways:** with
+  `FOLIO_FONTGEN_PYTHON=…/.fontgen-venv/bin/python` it **PASSES in 8.27s non-vacuously** —
+  `fontgen: derived and compared 3 of 3 faces`. No HALT. The variable was set on a command line only;
+  it is in no committed file and the test was not edited.
+- **No third identity in either mode.**
+
+**Gates re-measured at close, `-count=1`, by me — not relayed.** The dispatch's expected Go baseline
+of 1811 was **stale and the build was right to correct it**: confirmed 1815/2/5, because Story 8.4e
+added four Go tests at `d055f62`, and `git diff --name-only 873757f..c985b9c` contains **zero** `.go`
+and zero `fixtures/` paths, so baseline and post-change figures are necessarily one number.
+- `cd folio-go && go test -count=1 ./...` → **1815 pass / 2 fail / 5 skip** (tallied from `-json`).
+- `cd folio-go && go test -count=1 -tags=matrix ./...` → **1826 pass / 3 fail / 5 skip**.
+- `go vet -tags=matrix ./...` empty · `cd lint && go test -count=1 ./...` four `ok`, no FAIL.
+- `gofmt -l folio-go` **from the repo root** empty. **My first run of this was void** — my script had
+  `cd folio-go` earlier in it, so it printed `lstat folio-go: no such file or directory`, the exact
+  failure the spec warns reads like success. Re-run from the root: empty, exit 0.
+- Four AD-21 legs PASS, each **24 documents** counted off `matrix_test.go:2266`, not assumed:
+  `darwin/arm64` 0.74s · `linux/amd64` 6.43s · `linux/arm64` 4.97s · `js/wasm` 10.95s. The **unset
+  control** passes in **0.00s asserting nothing**, saying so at `matrix_test.go:2199` — a control,
+  never a fifth leg. `TestCrossTargetByteIdentity` **PASS (23.16s)**.
+- **23 golden PDF digests, baseline reconstructed OUT OF GIT** (`git cat-file -p 873757f:<path>` piped
+  to `shasum -a 256` for each of the 23 tracked `fixtures/*/expected.pdf`) and diffed against the
+  working tree: **identical, no golden moved.** `git diff 873757f..c985b9c -- fixtures/` empty. The
+  stamp never reached rendered output, so D-8.5.7's confinement to the designer bundle stands and
+  there is no HALT. **My first attempt at this was also void** — the `shasum` ran from `folio-go`,
+  where `fixtures/` does not exist, and returned one line instead of 23.
+- Designer, node **v24.16.0**: `typecheck` exit 0 · oxlint **exactly 4** `only-export-components`
+  (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1324,1331`) · `npm test` **40 files / 387 tests** all
+  passing · `npm run test:e2e:compile` exit 0, which is `tsc -p tsconfig.e2e.json --noEmit` — **a
+  compile, not a run.**
+- Offline release: `npm run build`, `verify:offline`, `verify:offline:red`, `verify:offline:wasm` all
+  exit 0.
+- `md5 -q README.md` → `078d7d80d518d54af2fc04fb270d46b8` at HEAD, **and the blob in `c985b9c`'s own
+  tree hashes the same**, with zero commits touching it in `873757f..c985b9c`.
+- The `<intent-contract>` is byte-identical to the build's declaration. Noting the boundary convention
+  so nobody re-chases it: the block alone is **3674** bytes; the build's **3675** / md5
+  `961a82c22f68b8299401f07db0ea8c9d` includes the trailing newline. I re-verified that figure after
+  writing this opener and log — unchanged.
+
+**`followup_review_recommended: true` — my own adversarial pass, and the disposition.** 1 medium and
+4 low were patched. I re-derived the medium (DW-105's confound) from the register rather than the
+report and confirmed the self-catch survives in the record; I mutation-tested the three low patches
+that carry behaviour. **The flag is cleared on my own measurement**, not on the build's assurance:
+every AC is measured at the closing revision, the load-bearing assertion has proved teeth, and the
+one substantive gap I found (below) is a record defect, not a code defect.
+
+**Triage audit — DW-87.** The declared population is every finding from four layers (blind-hunter 21,
+edge-case 18, verification-gap 3 plus an explicit *no gaps found*, intent-alignment 8), deduplicated
+to **29**. **The routes reconcile: 0 + 0 + 5 patch + 5 defer + 19 reject = 29**, with all 19
+rejections *enumerated* rather than counted — so they were auditable, which is not always true.
+Spot-checked at their cited locations:
+- **1 (unanchored needles) — sound, and sound on direction**, which is the part that matters: a
+  loosened needle can only produce a loud false red that fails every designer gate, never a silent
+  pass, and anchoring would narrow a safety guard.
+- **2 (no `vcs.modified=false` case) — sound, and now measured**: my clean-tree control binary carries
+  four settings with `vcs.modified=false`, and the guard fires on presence, so it would throw there
+  too.
+- **6, 7, 19 — sound**, 7 and 19 confirmed empirically above.
+- **10 (other Go builds lack the flag) — sound.** Checked the population myself: `GOARCH.*wasm`
+  across the repo's scripts, workflows and configs returns exactly one build site, `build-wasm.mjs`.
+  CI's other `go build` invocations compile host and probe binaries and compare rendered output; none
+  emits a shipped wasm.
+- **14 (epic-8-context rewritten wholesale) — conclusion CONFIRMED, citation WRONG, and the citation
+  is the load-bearing half.** The rejection and its deferral both assert the dropped constraints
+  "retain an authority in `epics.md`, the PRD or the architecture spine". Measured: for
+  **variable-font axes**, **live font services / arbitrary URLs** and **enumerating host-installed
+  fonts**, they do **not** — those three files carry no such scope constraint, and a reader checking
+  the three named sources would correctly conclude the constraints were lost. They are in fact
+  **fully preserved**, all six of them, in a **fourth source neither document names**:
+  `_bmad-output/specs/spec-fonts/SPEC.md` `## Non-goals`. The disposition stands and is actually
+  safer than argued — the constraints live in a spec kernel, not only in a regenerable cache — but the
+  record pointed at the wrong shelf. **Corrected in the register.**
+
+**A standing constraint was BREACHED mid-dispatch. Recorded as a breach, with its count.** The
+implementation subagent used the repo-root `README.md` as its modified-tracked-file probe — the one
+file the dispatch names as never to be modified. It was restored, its md5 re-verified, and it is
+absent from the commit; I confirmed that independently at HEAD and against the blob in `c985b9c`'s own
+tree. **The end state honours the invariant. The act still breached it, and "we restored it" is a
+recovery, not a guarantee** — the same disposition the run gave the step-03 commit breaches. This is
+**instance one** of the *forbidden-file-as-probe* class, and it is priced so a second is met as a
+repeat rather than fresh. Note the register itself names `README.md` in DW-100's probe table, which is
+honest and should stay. An equivalent, unforbidden tracked file was available and the independent
+re-measurement (probe H) used one.
+
+**Corrections I made to the record.** Four of the five deferrals reached only the spec's YAML
+frontmatter and never the register; nothing sweeps frontmatter, so they would have rotted. Filed as
+**DW-106** (the guard watches one cause, not the property), **DW-107** (both red-proofs are prose and
+cannot be re-run), **DW-108** (the regenerated epic context, with the corrected authority) and
+**DW-109** (the ambient environment as an unrecorded build input). Additionally: **DW-100** now
+carries this story's commit SHA, which rejection 17 correctly declined as unknowable at write time and
+which is a closer's write, not a builder's; and **DW-105**'s measurement anchor `4f8516a` was an
+amended-away commit, unreachable from `origin/main` and unresolvable in any other clone — re-anchored
+to `c985b9c` and reinforced with my own re-measurement of its MAIN digest.
+
+**Deferrals the orchestrator routed to me, assessed.**
+1. **Proxy versus purpose (D-8.4.30) — yes, it matters here, and the gap is realised rather than
+   hypothetical.** The guard tests the absence of one cause; AC2's property is that two builds of one
+   commit agree. DW-105 already records a live second input the guard cannot see. But the usual
+   framing overstates the remedy: a two-builds-agree check *within one checkout* would pass today and
+   still miss DW-105, so its real value is catching the *next* tree-dependent input, not this one. Its
+   cost is why it does not belong where the guard is — `build:wasm` is a dependency of `typecheck`,
+   `test` and `build`, so doubling the engine build there would tax every designer gate.
+2. **The natural home is the same file as (2), and that is the routing recommendation.** DW-106 and
+   DW-107 share one surface, `verify-offline-release.mjs`'s `redProof` harness, which **Story 8.4f
+   owns next**. Cheap if routed now, expensive later; both entries say so and name 8.4f.
+3. **Story 8.4f's stale figure — flagged precisely, not touched.** See the closing note below.
+
+**Epic 8 is NOT closed by this.** `epic-8: backlog` is left as it stands; remaining 8.4f → 8.5 → 8.6 →
+8.4d.

@@ -5186,8 +5186,9 @@ its silence is not evidence of absence, and a check built on it would have been 
 use by `assertNoVCSStamp` from the new `folio-designer/scripts/wasm-vcs-stamp.mjs` (red-proved: with the
 flag removed, `npm run build:wasm` exits 1 naming all four settings and never publishes the fingerprinted
 wasm) and covered by `folio-designer/scripts/wasm-vcs-stamp.test.mjs`. **THE REPRODUCIBILITY HALF OF
-DW-100 — and only that half — is discharged by Story 8.4g's commit** (see that commit's message for the
-SHA; a commit cannot self-reference its own hash in its diff). **DW-100 ITSELF IS NOT CLOSED** — see the
+DW-100 — and only that half — is discharged by Story 8.4g's commit **`c985b9c`**. (The SHA is written
+here at that story's CLOSE: the build could not record it, because a commit cannot self-reference its
+own hash in its diff and this one was amended twice mid-dispatch besides.) **DW-100 ITSELF IS NOT CLOSED** — see the
 final paragraph of this entry for what remains and who owns it.
 
 **The provenance loss is a DELIBERATE TRADE, not a free win, and it is stated rather than assumed.**
@@ -5414,7 +5415,12 @@ a story already reviewed and committed, and a new guard needs its own mutation p
   invalidate a **comparison**, which is the only thing byte figures are for.
 - **Status:** OPEN.
 
-**Measured against an ISOLATED POSITIVE CONTROL at `4f8516a`.** The first attempt at this measurement
+**Measured against an ISOLATED POSITIVE CONTROL. Re-anchored at Story 8.4g's close to `c985b9c`,
+the story's final commit:** the original measurement was taken at `4f8516a`, which was amended away
+twice during the dispatch (`4f8516a` -> `77cd80e` -> `c985b9c`) and is therefore **unreachable from
+`origin/main` and unresolvable in any other clone** — an anchor nobody else could check. The MAIN
+digest below was **independently re-measured at `c985b9c` at that close and is unchanged**, which is
+itself consistent with the finding: no `.go` path differs between those commits. The first attempt at this measurement
 compared the main checkout to a **linked worktree**, and that comparison was CONFOUNDED: a linked
 worktree differs in **two** ways at once — its absolute path **and** its `.git` being a file rather than
 a directory. So it could not attribute the difference to the path, and a conclusion drawn from it would
@@ -5461,5 +5467,139 @@ main checkout, with a positive control to prove the probe can move at all.
 Story 8.4g: DW-100 lists it as optional, that story's AC named exactly one flag, and a second variable in
 the same measurement would have made the re-measurement unattributable. Landing it needs its own
 measure → change → **re-measure** unit, including a check that no golden PDF digest moves.
+
+---
+
+### DW-106 — the determinism guard watches ONE CAUSE (the VCS stamp), not THE PROPERTY (two builds of one commit agree)
+
+- **Deferred by:** Story 8.4g's build, **filed into this register at that story's close** — the build
+  recorded it in its spec frontmatter only, where nothing sweeps it.
+- **Owner:** **Story 8.4f** — it owns `folio-designer/scripts/verify-offline-release.mjs` next, which
+  is where this belongs and where it is cheap. See **DW-107**, which shares that surface exactly.
+- **Severity:** MEDIUM — no shipped behaviour is wrong. What is missing is the ability to *notice* the
+  next input of this kind.
+- **Status:** OPEN.
+
+**The claim.** AC2's property is `sha256(build_clean) == sha256(build_stray)`. Every automated artifact
+Story 8.4g added instead tests for the **absence of four ASCII needles** in the raw wasm. Nothing in the
+repo compares two builds' digests, so a second tree-dependent input would leave every gate green while
+the story's headline claim is false. Raised independently by the blind-hunter and intent-alignment
+layers.
+
+**This is the shape the lead recorded against its own ruling at D-8.4.30** — *"a guard keyed on a proxy
+rather than its purpose is a defect; I wrote one into my own ruling."*
+
+**Assessed at Story 8.4g's close, and the assessment cuts both ways.** It **matters**, and it is not
+hypothetical: **DW-105**, filed by that same story, records a measured input of exactly this kind (the
+checkout path) that the needle guard cannot see. **But the obvious remedy would not have caught DW-105
+either** — two builds compared *within one checkout* agree today, because the path is held fixed by
+construction. So the property check's real value is catching the **next** tree-dependent input, not the
+one already known; it should be filed as that, not oversold as closing DW-105.
+
+**Why it is not simply added where the guard is.** `build:wasm` is a dependency of `typecheck`, `test`
+**and** `build`, so a second engine wasm build there would tax every designer gate. The property check
+wants a home that runs once — the release verifier or a CI job — which is the same home DW-107 needs.
+
+**What discharges it.** A check that builds the engine wasm twice at one commit, with the tree state
+deliberately differing between the two runs, and requires the digests to agree — with the digests
+reported, so a failure names what moved.
+
+---
+
+### DW-107 — both of Story 8.4g's red-proofs exist only as PROSE and cannot be re-run
+
+- **Deferred by:** Story 8.4g's build, **filed into this register at that story's close** — spec
+  frontmatter only, where nothing sweeps it.
+- **Owner:** **Story 8.4f** — it lands its own assertions in `verify-offline-release.mjs` next and owns
+  that surface. **Cheap if routed now, expensive once that story has closed.** Shares its home with
+  **DW-106**; the two should be taken together.
+- **Severity:** MEDIUM — the guard works today. The evidence that it works is the perishable part.
+- **Status:** OPEN.
+
+**The claim.** `folio-designer/scripts/verify-offline-release.mjs:126` `redProof(name, mutate, expected)`
+already backs `stale-wasm-byte`, `s1-total-mismatch`, `s1-delivery-fiction` and
+`dictionary-witness-mismatch`, run by `npm run verify:offline:red`. It is the repo's established shape
+for exactly this and gained nothing from Story 8.4g. That story's guard was red-proved **by hand**, and
+recorded in prose, so it will rot silently.
+
+**Measured at Story 8.4g's close: the proofs are real, which is precisely why they are worth keeping.**
+Re-run by hand a third time at `c985b9c` — flag removed, `npm run build:wasm` exits 1 naming all four
+settings; detector neutered, the synthetic stamped pair reddens; flag **and** in-script guard removed,
+the build succeeds, emits a stamped wasm and **exactly** the real-population test reddens. Each of those
+required a source mutation, a manual restore and an md5 check to undo. **A proof that costs that much to
+re-run is one nobody will re-run.**
+
+**What discharges it.** The flag-removed guard proof expressed as a `redProof` leg, so
+`npm run verify:offline:red` carries it.
+
+---
+
+### DW-108 — Story 8.4g's dispatch regenerated `epic-8-context.md` and dropped scope constraints that the UNBUILT Stories 8.5 and 8.6 were to be built against
+
+- **Deferred by:** Story 8.4g's build, **filed into this register at that story's close** — spec
+  frontmatter only.
+- **Owner:** **the orchestrator**, before dispatching Story 8.5 — that is the next story the loss could
+  reach, and it has not been built.
+- **Severity:** LOW — **downgraded at the close from the build's framing, because the authority was
+  found.** See the correction below.
+- **Status:** OPEN.
+
+**What happened.** The workflow's step-1 regeneration rewrote `epic-8-context.md` wholesale inside a
+build-flag commit. Dropped: the out-of-scope-by-decision list (bold/italic meaning, synthetic
+emboldening/obliquing, variable-font axes, live font services, enumerating host-installed fonts, CJK
+families in the embeddable catalogue), the catalogue procurement rules (static, single-instance,
+prepared ahead of the build) and the chain-entry shape contract.
+
+**CORRECTION MADE AT THE CLOSE — the conclusion held, the citation did not, and the citation was the
+load-bearing half.** Story 8.4g's rejection of this finding, and its own deferral text, both assert that
+every dropped constraint *"retains an authority in `epics.md`, the PRD or the architecture spine"*.
+**Measured, and that is false for three of them:** variable-font axes, live font services / arbitrary
+URLs, and enumerating host-installed fonts have **no** scope authority in those three files. (`epics.md`
+does carry FR54's *"no host-installed font"*, but that is a **rendering** requirement, not the
+constraint against **enumerating** host fonts in a picker — a different claim.) A reader checking the
+three named sources would have concluded the constraints were lost.
+
+**They are not lost. All six survive, verbatim, in a FOURTH source neither document names:**
+`_bmad-output/specs/spec-fonts/SPEC.md` `## Non-goals` — *"No live font service. No Google Fonts API, no
+arbitrary URL, no 'download on first use'."*, *"No host fonts. Faces installed on the authoring or
+rendering machine are never enumerated or read."*, *"No synthetic bold or oblique, and no variable-font
+axes."*, plus the container-format, save-time-subsetting and CJK-catalogue non-goals. The procurement
+rule survives at `epics.md:3456` (*"static, single-instance"*) and the chain-entry shape contract at
+`epics.md:2866` (`{"asset": "<key>"}`). **So the constraints sit in a spec kernel, which is a stronger
+place than the regenerable cache they were dropped from.**
+
+**Why it stays open anyway.** `epic-8-context.md` declares itself a regenerable cache and its compile
+prompt instructs aggressive scoping, so this is designed lossiness over intact sources — but 8.5 and 8.6
+have not been built, the next regeneration may or may not restore these lines, and the agent that builds
+them reads the cache, not the kernel.
+
+**What discharges it.** Confirm before dispatching Story 8.5 that its spec carries the catalogue
+procurement rules and the out-of-scope list, **sourced from `spec-fonts/SPEC.md`** rather than from
+`epic-8-context.md`.
+
+---
+
+### DW-109 — the ambient environment is an unrecorded input to the engine wasm build
+
+- **Deferred by:** Story 8.4g's build, **filed into this register at that story's close** — spec
+  frontmatter only.
+- **Owner:** **Story 8.4d**, with **DW-105** — same question (what, besides the source, decides these
+  bytes), and 8.4d inherits every input that can move the figure it must gate.
+- **Severity:** LOW — no observed drift is attributed to it. It is a gap in the *documentation* of
+  inputs, recorded so the set is not believed complete.
+- **Status:** OPEN.
+
+**The claim.** `folio-designer/scripts/build-wasm.mjs:44` passes `env: { ...process.env, GOOS, GOARCH }`,
+forwarding `GOFLAGS`, `GOEXPERIMENT`, `CGO_ENABLED` and toolchain selection into the build. Story 8.4g
+closed the tree-state input and **DW-105** records the checkout path, so the set of inputs that are *not
+the source* is documented **incompletely** rather than wrongly.
+
+**Mitigation already on record.** **AD-22** pins an exact `toolchain` directive and makes bumping it a
+release event, which covers the compiler itself but not `GOFLAGS` or `GOEXPERIMENT` set in an operator's
+shell.
+
+**What discharges it.** Either record the environment alongside every byte figure, or pass an explicit
+allow-list rather than `...process.env`. Best taken with `-trimpath` (**DW-105**) as one
+measure -> change -> re-measure unit, since both change the same line for the same reason.
 
 ---
