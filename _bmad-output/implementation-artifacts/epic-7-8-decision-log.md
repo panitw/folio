@@ -4098,3 +4098,50 @@ a couldn't-look, and a couldn't-look must differ from a LOOKED-IN-THE-WRONG-PLAC
 state this run keeps finding — **the 428 KB Chromium stub, the bare `python3`, and
 `s1VisibleBytes`' four-needle total. All three are instruments pointed somewhere other than where
 their reader believed.**
+
+---
+
+### D-8.4.35 — three findings from Story 8.4e's close, and one unresolved environment fact recorded rather than hidden
+
+**(a) `s1VisibleBytes` moved 656 bytes between two builds the closer reports as being AT THE SAME
+COMMIT** — 12,427,899 (build dispatch) against 12,428,555 (close), with `cachedBytes` 1 byte apart.
+**D-8.4.29 concluded the determinism question closed benign** on the ground that the wasm carries
+`vcs.revision` / `vcs.time` / `vcs.modified` and therefore moves **every commit and on tree
+cleanliness** — which explains movement across *different* HEADs. **It does not obviously explain
+movement at one commit with a clean tree.** Either the two builds were not in fact at the same commit
+and cleanliness, or D-8.4.29's disposition is incomplete.
+
+**This is Story 8.4d's task 0 and it is NOT closed.** Recorded here so that ruling is not read as
+settled: *"build twice at one commit and `sha256` the wasm"* must be done **with the tree state
+recorded alongside each build**, because tree cleanliness is now known to be an input. **A figure
+quoted with its command is not enough if the command's environment is also an input** — the
+invocation must include the commit and the tree state.
+
+**(b) The rejection audit does not reconcile: 23 routes against a declared population of 25.** Story
+8.4e's build reported 16 rejections over a deduplicated population of 25 claims from four review
+layers; the closer spot-checked four as sound at their citations, and found the routes sum to **23**.
+**Two claims have no recorded route, and the closer says plainly it could not check them** rather than
+implying it had. **This is DW-87's shape one level deeper:** DW-87 was that rejections were counted
+and not enumerated; this is that the enumeration itself **does not account for its own population**.
+**A census is only as good as the population it enumerates** — and here the census and the population
+disagree by two.
+
+**(c) A guard's own stated count had gone false, and the closer found it by re-running the count.**
+`TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve` declares **"ALL EIGHT"** sites while its
+own grep now reports **nine** — this story added the ninth. Corrected in place (the ninth is
+unprobeable, so no probe can exist) and filed as **DW-104**. **The `maxCanvasPropertyString` probe
+list is hardcoded with its count only in prose, and has now missed a new site TWICE.** Same family as
+the `declared` floor-without-ceiling and the `withAssets != 7` fixture count: **a number in prose that
+no code derives.**
+
+**(d) The Playwright browser install did not complete, and that is recorded rather than quietly
+dropped.** The 162 MB Chrome for Testing archive downloads to 100% and extraction never finishes —
+the cache entry stays at **428 KB** with only `chrome-mac-arm64/ABOUT` present, across repeated
+attempts, some of which were interrupted by this orchestrator's own kills and a stale `__dirlock`.
+**So the 12 Playwright specs still have not executed**, and the executed-browser assertion Epic 8 owes
+(**D-8.4.25d**) remains **owed, not attempted-and-passed**.
+
+**What IS established and does not depend on the install:** the specs exist, the config is real, the
+harness runs (it built, started the preview server and executed the spec bodies), and **CI runs only
+`tsc --noEmit`** — which is DW-101, unchanged. **What is NOT established is anything the browser would
+have told us.** Recorded in these words so no later reader takes "we tried" for "we looked."
