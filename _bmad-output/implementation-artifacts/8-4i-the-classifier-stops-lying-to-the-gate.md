@@ -2,8 +2,8 @@
 title: 'Story 8.4i: The classifier stops lying to the gate'
 type: 'bugfix'
 created: '2026-09-02'
-status: 'ready-for-dev'
-baseline_revision: '7e4b2c42e12b8ecfdf7ec648b69767f948118871'
+status: 'done'
+baseline_revision: '582a01aea6bf22aef945a02a4e5d46966be1fe26'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -15,7 +15,7 @@ deferred: []
 
 **Epic:** 8 — A template author can choose a font, and the file carries it
 **Story key:** `8-4i-the-classifier-stops-lying-to-the-gate`
-**Status:** `ready-for-dev`
+**Status:** `done` — delivered 2026-09-02 on `main`; see the Delivery Log.
 **Covers:** no FR/NFR. **This story does not come from `epics.md`.** **It was created at Story 8.4h's
 close on 2026-09-02 by the engineering lead's rulings D-8.4i.1 … D-8.4i.6, on the `8.4x` insertion
 precedent (2.3a / 2.5a / 2.6a / 3.1a / 8.4f / 8.4h).** **`epics.md` is NOT amended by this story and
@@ -516,3 +516,169 @@ Baselines re-measured at `7e4b2c4`: `lint` four `ok` with `-count=1`; `go vet ./
 `gofmt -l folio-go lint` from the repo root prints exactly `lint/internal/rules/licencegraph_test.go`
 (DW-116); 23 golden digests; `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`;
 `maximumCacheAssets = 64`.
+
+## Delivery Log
+
+**Story 8.4i — delivered 2026-09-02 on `main`, five commits, baseline `582a01a`.**
+
+| commit | subject |
+|---|---|
+| `2e9365e` | Measure every licence file in the repo before making any refusal fatal (task 1) |
+| `0c6e3b4` | Make the classifier collect every signal, and correct the comments that said it was safe (tasks 2–5) |
+| `7cb8148` | Pin the owner's four-id font allowlist to a literal the code cannot move (task 6) |
+| `90f0820` | Trip if a real font ever hides under the path the asset gate skips (task 7) |
+| *(this commit)* | Close DW-117/120/124/125, amend DW-123, register DW-126/127, and record the census (tasks 8–9) |
+
+### AC1 — the report-only census, task 1, committed at `2e9365e` before any refusal became fatal
+
+`TestLicenceSignalCensus` (`lint/internal/licence/licencecensus_test.go`) runs BOTH classifiers side by
+side. Population: **26 committed `LICENSE*`/`COPYING` files** — a deliberate superset of the 12 asset
+files and the 8 lint fixtures, since a census that enumerated only what it expected to find would not
+be a census — plus the **9 dependency licences** the three Go module graphs resolve to. **35 texts, 0
+changed verdict.**
+
+```
+   LICENSE                                                                  shipped=(permissive,"MIT") collect-all=(permissive,"MIT")
+   folio-designer/public/fonts/ibmplexmono/LICENSE-OFL.txt                  shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-designer/public/fonts/ibmplexsans/LICENSE-OFL.txt                  shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-designer/public/fonts/ibmplexsansthai/LICENSE-OFL.txt              shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-designer/public/fonts/notosans/LICENSE-OFL.txt                     shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-designer/public/fonts/notosanssc/LICENSE-OFL.txt                   shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-designer/public/fonts/notosansthai/LICENSE-OFL.txt                 shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-designer/third-party-notices/pdfjs-dist/LICENSE-APACHE-2.0         shipped=(permissive,"Apache-2.0") collect-all=(permissive,"Apache-2.0")
+   folio-designer/third-party-notices/pdfjs-dist/LICENSE-CMAPS              shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   folio-designer/third-party-notices/pdfjs-dist/LICENSE-LIBERATION         shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-go/fonts/notosans/LICENSE-OFL.txt                                  shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-go/fonts/notosanssc/LICENSE-OFL.txt                                shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-go/fonts/notosansthai/LICENSE-OFL.txt                              shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-go/internal/text/wordlist/LICENSE-CC0-1.0.txt                      shipped=(permissive,"CC0-1.0") collect-all=(permissive,"CC0-1.0")
+   folio-go/testdata/fonts/LICENSE-Roboto.txt                               shipped=(permissive,"Apache-2.0") collect-all=(permissive,"Apache-2.0")
+   folio-go/testdata/fonts/notosansthai-variable-testonly/LICENSE-OFL.txt   shipped=(permissive,"OFL-1.1") collect-all=(permissive,"OFL-1.1")
+   folio-go/testdata/lint/wordlist-assets/compliant/folio-go/internal/text/wordlist/LICENSE-CC0-1.0.txt shipped=(unknown,"") collect-all=(unknown,"")
+   folio-go/testdata/lint/wordlist-assets/violating/folio-go/internal/text/wordlist/LICENSE-CC0-1.0.txt shipped=(unknown,"") collect-all=(unknown,"")
+   lint/testdata/licence/copyleft/example.test/agpl-lib/LICENSE             shipped=(copyleft,"AGPL-3.0-only") collect-all=(copyleft,"AGPL-3.0-only")
+   lint/testdata/licence/copyleft/example.test/gpl-lib/LICENSE              shipped=(copyleft,"GPL-3.0-only") collect-all=(copyleft,"GPL-3.0-only")
+   lint/testdata/licence/copyleft/example.test/lgpl-lib/LICENSE             shipped=(copyleft,"LGPL-3.0-only") collect-all=(copyleft,"LGPL-3.0-only")
+   lint/testdata/licence/copyleft/example.test/sspl-lib/LICENSE             shipped=(copyleft,"SSPL-1.0") collect-all=(copyleft,"SSPL-1.0")
+   lint/testdata/licence/permissive/example.test/apache-lib/LICENSE         shipped=(permissive,"Apache-2.0") collect-all=(permissive,"Apache-2.0")
+   lint/testdata/licence/permissive/example.test/bsd-lib/LICENSE            shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   lint/testdata/licence/permissive/example.test/mit-lib/LICENSE            shipped=(permissive,"MIT") collect-all=(permissive,"MIT")
+   lint/testdata/licence/permissive/example.test/ufl-lib/LICENSE            shipped=(permissive,"Ubuntu-font-1.0") collect-all=(permissive,"Ubuntu-font-1.0")
+   dep folio-go -> github.com/boxesandglue/textshape                        shipped=(permissive,"MIT") collect-all=(permissive,"MIT")
+   dep lint -> github.com/google/go-cmp                                     shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   dep lint -> github.com/yuin/goldmark                                     shipped=(permissive,"MIT") collect-all=(permissive,"MIT")
+   dep lint -> golang.org/x/mod                                             shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   dep lint -> golang.org/x/net                                             shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   dep lint -> golang.org/x/sync                                            shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   dep lint -> golang.org/x/sys                                             shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   dep lint -> golang.org/x/telemetry                                       shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+   dep lint -> golang.org/x/tools                                           shipped=(permissive,"BSD-3-Clause") collect-all=(permissive,"BSD-3-Clause")
+CENSUS: 35 licence texts measured (26 committed files + 9 dependency licences); 0 change verdict
+```
+
+Notes on the record: `hashmatrix` resolves **zero** non-main modules, so its scan is vacuous — recorded
+rather than assumed. The two `folio-go/testdata/lint/wordlist-assets/…/LICENSE-CC0-1.0.txt` fixtures
+read `(unknown, "")` under **both** classifiers; they are deliberately truncated fixtures under the
+gate's excluded path, and are unchanged by this story.
+
+**`2e9365e` makes no refusal fatal.** `git show --stat 2e9365e` lists two files, both new; it touches
+no `switch` arm and no returned `Family` in `classify.go`. That is why the rule landed in its own file.
+
+### AC2–AC5 — the classifier, tasks 2–5
+
+Every I/O Matrix row is a named subtest of `TestClassifyCollectsEverySignal`. The MIT and BSD fallbacks
+**survive** (AC5): a bare grant clause with no name is still `MIT`, and a Go-style BSD text is still
+`BSD-3-Clause` — the constraint Design Note 1 flagged, since 7 of the 9 dependency licences reach BSD
+through the `"REDISTRIBUTION AND USE IN SOURCE"` **clause**, which the implementation keeps as a clause
+and not a name.
+
+**Red-proof by DELETION, four mutations applied alone, red sets MEASURED and DISJOINT:**
+
+| mutation | what reds |
+|---|---|
+| delete the copyleft arm | 7 copyleft rows of `TestClassifyLicenceText`; 4 copyleft rows here; all 3 of `TestCopyleftTieBreakIsDeterministic`; manifest's `TestResolveAssetsRefusesACopyleftFontLicence` and the wordlist copyleft arm |
+| delete the unresolved arm | the two REVERSED bundled-notice cases; the unrecognised-SPDX-id row; the wordlist non-permissive arm |
+| weaken `len(permissiveIDs) != 1` to `== 0` | exactly the three two-identifier rows — **nothing else in any package**, which proves conflict detection is a NEW refusal |
+| delete the `!namedAny` guard on the clause table | `TestCommittedOFLTextClassifiesAsOFL11` (the real artifact), both grant-clause cases, and five manifest/rules tests including `TestCommittedAssetPopulationClassifiesCleanly` — the blast radius that IS the reason a clause is weaker than a name |
+
+**A regression caught by an existing guard, and fixed rather than accommodated.** The first
+implementation returned `(FamilyUnknown, "")` for an SPDX identifier on neither list. That reddened
+`TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist`'s "not a permissive licence" arm, which
+collapsed onto the neighbouring "could not be classified" one. An unrecognised SPDX id now still NAMES
+the identifier it could not place (AD-14); an unresolved licence **name** still returns `""`, because
+there is no identifier to give. `TestClassifyCollectsEverySignal`'s corresponding row was updated to
+the better diagnostic, with the reason recorded in the case.
+
+### AC6 — the corrected comments
+
+Both live in `classify.go`, where the branches were, each carrying its **original wording verbatim** in
+an indented block followed by the correction, the measurement, its date, and the note that the claim it
+replaces is why 8.4h's review rejected DW-124. Three claims of the banned class were present, not two —
+the OFL version-conjunct claim, the UFL version-conjunct claim, and the UFL British-spelling
+loud-miss claim — and all three are corrected. **No comment in the file now asserts that a near-miss on
+a licence name reaches `FamilyUnknown` by virtue of a required version conjunct.** The rest of the file
+was audited: the CC0 narrow-marker comment, `permissiveSPDX`'s D-2.1.3 fail-safe note, the
+`Ubuntu-font-1.0` entry note and the `Family` commercial-EULA note are all still true, and the last two
+are more true after this change than before.
+
+### AC7 — the allowlist pin, task 6
+
+`TestFontAssetLicenceAllowlistIsTheOwnersFourIds`. With `"GPL-3.0"` appended, **exactly one test reds,
+in one package**, on its own message naming D-8.5.3; `genmanifest`, `licence` and `rules` stay green.
+
+### AC8 — the excluded-path tripwire, task 7
+
+`TestNoRealFontHidesUnderAnExcludedPath`. **64 files scanned across 1 excluded directory, zero font
+magics.** Non-vacuous: the same detector over `folio-go/fonts/notosans/NotoSans-Regular.ttf` returns
+true. Red-proved by copying a real sfnt program under the excluded path — the tripwire reds naming the
+file; probe removed. **No second sfnt reader**: the test declares `package rules` and calls the
+existing `looksLikeSfnt` as-is, so D-8.4i.4's escape hatch was not needed. The excluded paths are
+**derived from `manifest.go`'s own source**, not restated (DW-119's lesson).
+
+*(Design Note 4 recorded 66 tracked files under that path at `7e4b2c4`; the tree carries 64 at
+`582a01a`, and `git ls-files` and the on-disk walk agree exactly. The figure moved with the baseline,
+not with this story.)*
+
+### AC9 — byte identity
+
+`shasum -a 256 fixtures/*/expected.pdf` from the repo root: **23** digests. `git diff --stat
+582a01a..HEAD` lists **six files, all under `lint/internal/`** — no fixture, no golden, no `.folio`, no
+engine file, nothing under `folio-go/fonts/`. `lint/MANIFEST.md` regenerated **twice** via
+`cd lint && go run ./cmd/genmanifest`, `git diff --exit-code lint/MANIFEST.md` exit 0 both times.
+`README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`. `maximumCacheAssets = 64`.
+
+### Task 9 — the register
+
+Closed **DW-117**, **DW-120**, **DW-124**, **DW-125**, each with a closing note recording that the fix
+delivered was the RULED one and not the one the entry proposed. **DW-123** amended with the Go-side
+tripwire's outcome, kept OPEN for its own unrelated `readSync` half. Two new entries:
+
+- **DW-126** — D-8.4i.5's finding: four of 8.4h's seven rejections were never written down, and of the
+  three that were, one has been measured false. Recorded as a **priced finding**, with the four
+  recorded as "could not look" rather than omitted (D-8.4.33).
+- **DW-127** — found while rebuilding the name table: a text naming the **2-clause** BSD licence is
+  labelled `BSD-3-Clause`, and has been since Story 1.3. LOW, attribution only, not live in the
+  population. **Behaviour preserved exactly** and routed to Epic 15's release gate per **D-8.4i.6's
+  bound** — it is not a live bypass of a fail-closed gate, so it does not buy an `8.4j`.
+
+### Verification, measured at delivery
+
+| command | result |
+|---|---|
+| `cd lint && go test -count=1 ./...` | **four `ok`, zero FAIL** |
+| `cd lint && go vet ./...` | no output |
+| `cd lint && go run ./cmd/genmanifest && git diff --exit-code lint/MANIFEST.md` | exit 0, twice |
+| `cd folio-go && go test -count=1 ./...` | standing red **#1** by identity: `TestCorpusMeetsP6ExerciseFloors` in `internal/text`; every other package `ok` |
+| `cd folio-go && go vet ./...` | no output |
+| `gofmt -l folio-go lint` **from the repo root** | **exactly one line**, `lint/internal/rules/licencegraph_test.go` — standing red **#2** (DW-116), untouched |
+| `cd folio-designer && npm test` | **40 files / 411 tests**, all pass |
+| `npm run typecheck` / `npm run build` / `npm run test:e2e:compile` | exit 0 |
+| `npm run lint` | **exactly 4** `only-export-components` warnings — standing red **#3** |
+| `shasum -a 256 fixtures/*/expected.pdf` | **23** digests |
+| `md5 -q README.md` | `078d7d80d518d54af2fc04fb270d46b8` |
+| `awk '/maximumCacheAssets/' folio-designer/src/release-payload.ts` | `= 64` |
+
+**Block Ifs: none tripped.** The census reddened nothing; no golden moved; `lint/MANIFEST.md`
+regenerates with no diff; no asset directory holds more than one `LICENSE*` (DW-118 still not live); no
+demonstrated live bypass was found beyond the two already chartered, so **D-8.4i.6's bound holds and
+nothing here buys an `8.4j`**.

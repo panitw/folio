@@ -101,8 +101,13 @@ var licenceNames = []licenceName{
 	// disjunct). It is a mislabel of exactly the class this story
 	// exists to stop, but it is NOT one of the four findings this story
 	// was chartered for, and D-8.4i.6 bounds Epic 8's licence-gate
-	// insertions at 8.4i. Registered in deferred-work.md and routed to
-	// Epic 15's release gate rather than fixed here.
+	// insertions at 8.4i. Registered as DW-127 and routed to Epic 15's
+	// release gate rather than fixed here. Not live: measured over all
+	// 35 committed and dependency licence texts, no file in the
+	// population reaches the BSD branch by NAME — the seven Go-style
+	// BSD dependency licences reach it through the clause below, and
+	// are genuinely 3-clause. permissiveSPDX carries "BSD-2-Clause" as
+	// its own key, so the SPDX-line path is already correct.
 	{canonical: "BSD 2-CLAUSE", id: "BSD-3-Clause"},
 	{canonical: "CC0 1.0 UNIVERSAL", id: "CC0-1.0"},
 }

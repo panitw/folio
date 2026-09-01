@@ -5928,7 +5928,8 @@ what stops that.
 - **Owner:** **ENGINEERING LEAD, to schedule as ITS OWN STORY** — an `8.4x`-series insertion on the
   D-8.5.1(a) / D-8.5.13 precedent. It is explicitly *not* assignable to Story 8.5.
 - **Severity:** MEDIUM.
-- **Status:** OPEN.
+- **Status:** **CLOSED by Story 8.4i, 2026-09-02** (commit "Make the classifier collect every signal,
+  and correct the comments that said it was safe"). See the closing note at the end of this entry.
 
 `strings.Contains(upper, "UBUNTU FONT LICENCE") && strings.Contains(upper, "VERSION 1.0")` in
 `lint/internal/licence/classify.go` matches both conjuncts **anywhere in the text**, in either order,
@@ -5955,6 +5956,33 @@ exploit surface is a crafted or bundled `LICENSE*` file, not a `NOTICE`.
 
 **What discharges it.** A story that anchors both branches' conjuncts to the licence's own title line,
 with a red-proof per branch and a re-run of the committed-population witness.
+
+**CLOSING NOTE (Story 8.4i, 2026-09-02).** Discharged, but not by the fix this entry proposed. The
+entry asked for *"anchoring both branches' conjuncts to one title line"*. **D-8.4i.2 ruled the wider
+repair instead**, because the unanchored conjunction was an instance and not the axis: the MIT case
+was a **greedy catch-all** keyed on a grant clause MIT, OFL and UFL share verbatim, so a near-miss on
+a licence NAME never reached `FamilyUnknown` at all — it landed in MIT.
+
+`ClassifyLicenceText` now collects every signal and resolves them as one. A text carrying a licence
+**name** that resolves to no known `(name, version)` pair is `FamilyUnknown` outright, and the grant
+clauses are consulted **only when the text names no licence at all**. So the shapes this entry
+describes are refused rather than mislabelled:
+
+| input | before | after |
+|---|---|---|
+| MIT text mentioning the Ubuntu Font Licence and "version 1.0" | `(permissive, "Ubuntu-font-1.0")` | `(unknown, "")` |
+| MIT text bundling an OFL notice | `(permissive, "MIT")` | `(unknown, "")` |
+| OFL 1.1 committed text (10 of the 11 font directories) | `(permissive, "OFL-1.1")` | **unchanged** |
+
+The blast radius this entry feared was **measured before the change, not after**: the report-only
+census (`TestLicenceSignalCensus`) ran both classifiers over 35 licence texts — 26 committed
+`LICENSE*` files plus the 9 dependency licences the three Go module graphs resolve to — and **0 of 35
+changed verdict**.
+
+Two shipped test cases DID reverse, deliberately and loudly, each recording its old expectation and
+naming D-8.4i.1: `TestClassifyOFL`'s and `TestClassifyUbuntuFontLicence`'s bundled-notice cases now
+expect `FamilyUnknown`. That is a guard **replaced by a stricter one** — the set of texts that pass
+shrinks — which the epic permits; a weakening would not be.
 
 ---
 
@@ -6007,7 +6035,10 @@ derived, or an explicit assertion that the two agree.
 - **Owner:** **Story 8.5**, the story that first exercises the allowlist against a real face.
 - **Severity:** MEDIUM. **Of the seven deferrals this is the one most worth promoting** — it is the
   only one that leaves an owner decision unguarded rather than an attribution imprecise.
-- **Status:** OPEN.
+- **Status:** **CLOSED by Story 8.4i, 2026-09-02** (commit "Pin the owner's four-id font allowlist to a
+  literal the code cannot move"), per **D-8.4i.3** — the guard landed in the repair story, NOT in Story
+  8.5, because a guard owned by its consumer is a guard the consumer can move (D-8.5.8c). See the
+  closing note at the end of this entry.
 
 Every test in `lint/internal/manifest` reads **into** `fontAssetLicenceAllowed[...]`; none asserts the
 list's exact contents. **Measured at close, not argued:** appending `"GPL-3.0"` to
@@ -6022,6 +6053,19 @@ exactly the surface it forbids.
 
 **What discharges it.** An exact `[]string` equality over `fontAssetLicenceAllowlist` naming D-8.5.3,
 so that changing the owner's list requires changing a test that says whose decision it is.
+
+**CLOSING NOTE (Story 8.4i, 2026-09-02).** `TestFontAssetLicenceAllowlistIsTheOwnersFourIds` in
+`lint/internal/manifest/manifest_test.go` pins `fontAssetLicenceAllowlist` against an **exact,
+test-owned `[]string` literal naming D-8.5.3** as the authority — `{"OFL-1.1", "Apache-2.0", "MIT",
+"Ubuntu-font-1.0"}`, order included, since the refusal message joins the slice. Not a derivation from
+the constant: a derivation passes any edit. It also pins `fontAssetLicenceAllowed`'s cardinality, so a
+membership added straight to the derived map cannot slip past the literal.
+
+**RED-PROOF, MEASURED, and it answers this entry's own test for a bad guard.** With `"GPL-3.0"`
+appended to `fontAssetLicenceAllowlist`, `cd lint && go test -count=1 ./...` reds **exactly one test in
+exactly one package** — the named one, on its own message naming D-8.5.3. The other three packages stay
+green. *(This entry's standing warning: "if four packages red, the guard is not the thing catching it."
+They do not.)*
 
 ---
 
@@ -6066,7 +6110,9 @@ state the difference and why it is acceptable.
 - **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 7 of 7.
 - **Owner:** **whichever story next touches `folio-designer/src/font-binary-identity.test.ts`.**
 - **Severity:** LOW — latent false positive, not a false negative.
-- **Status:** OPEN.
+- **Status:** OPEN as recorded (the designer-side `readSync` count is unfixed). **AMENDED by Story
+  8.4i, 2026-09-02** with the outcome of D-8.4i.4's Go-side tripwire, which is a DIFFERENT hole that
+  shares this entry's number in the story's charter. See the amendment at the end of this entry.
 
 The helper compares a four-byte buffer without checking how many bytes `readSync` actually returned, so
 a tracked file **shorter than four bytes** matches the zero-filled `00 01 00 00` sfnt magic and is
@@ -6078,6 +6124,43 @@ It fails **safe** (a false report, not a missed font), which is why it is deferr
 
 **What discharges it.** Checking the `readSync` return before comparing.
 
+**AMENDMENT (Story 8.4i, 2026-09-02) — the Go-side excluded-path tripwire, D-8.4i.4.**
+
+Story 8.4i's charter routes D-8.4i.4's tripwire through this entry's number. It is a **different hole**
+from the `readSync` one above and is recorded separately here rather than folded into it.
+
+**The hole.** `manifest.ResolveAssets` SkipDirs any directory named `lint` whose immediate parent is
+named `testdata`. The exclusion is deliberate and correct — those are lint's own evading-shape
+fixtures. But `folio-go/testdata/` **ships inside the module zip**, so a real font binary placed there
+would be redistributed under AD-26 with **no manifest row and nothing said**. Today's occupant is a
+text stub, and *"today's occupant is a stub"* is exactly the kind of fact that stops being true
+silently.
+
+**The tripwire, and its outcome.** `TestNoRealFontHidesUnderAnExcludedPath`
+(`lint/internal/rules/excludedpathfonts_test.go`) asserts that no file under an excluded path is a real
+font program, **keyed on sfnt magic bytes, never on the extension**.
+
+- **MEASURED: 64 files scanned across 1 excluded directory, zero font magics.** The three
+  `.ttf`-extensioned fixtures there begin `6e 6f 74 20` — ASCII `"not a real font; …"` — which is the
+  entry's own point about extensions being claims.
+- **Non-vacuous:** the same detector over the committed `folio-go/fonts/notosans/NotoSans-Regular.ttf`
+  returns true, so the clean result is a measurement rather than a dead arm.
+- **Red-proved:** a real sfnt program copied under the excluded path reds the tripwire, naming the file.
+- *(Design Note 4 recorded 66 tracked files under that path at `7e4b2c4`; the tree now carries 64, and
+  `git ls-files` and the on-disk walk agree exactly.)*
+
+**D-8.4i.4's escape hatch was NOT taken, and its premise was half wrong in a way that helped.**
+`checkSfnt` is genuinely unreachable from `lint` — unexported, and in the `folio-go` module with no
+`go.work` and no root `go.mod`. But the `lint` module **already owns** an sfnt reader, `looksLikeSfnt`
+in `package rules`, and a test file in that same directory calls it as-is. **No second sfnt reader was
+written**, which satisfies the prohibition rather than evading it. Its coverage is stated rather than
+implied: **four** magics (`00 01 00 00`, `true`, `ttcf`, `OTTO`) and **not** `wOFF`/`wOF2` — a web font
+under an excluded path would slip past.
+
+**The excluded paths are DERIVED from `manifest.go`'s own source, not restated** — DW-119's defect is
+hand-copying these same SkipDir rules with nothing tying them back. If the gate's walk changes shape,
+the extraction reds and the tripwire is re-derived deliberately.
+
 ---
 
 ### DW-124 — CLOSER FINDING: the American spelling of the Ubuntu Font Licence is accepted SILENTLY as MIT, and the review rejection that said otherwise is FALSE
@@ -6088,7 +6171,8 @@ It fails **safe** (a false report, not a missed font), which is why it is deferr
 - **Owner:** **ENGINEERING LEAD**, to rule on scope. Naturally folds into **DW-117's** story, which
   already owns the same marker branch.
 - **Severity:** MEDIUM.
-- **Status:** OPEN.
+- **Status:** **CLOSED by Story 8.4i, 2026-09-02**, under **D-8.4i.2** — and NOT by the fix this entry
+  proposed. See the closing note at the end of this entry.
 
 Story 8.4h's review rejected the absence of a test for the American spelling `"UBUNTU FONT LICENSE"`
 on the grounds that **"the miss is loud — `FamilyUnknown` fails the build — and D-2.1.3 makes a loud
@@ -6122,6 +6206,35 @@ reopens a question the review already ruled on. That is a lead's call, not a clo
 the American-spelled full text does **not** classify as `MIT` — the same shape as the existing
 MIT-collision proof, which today covers only the British spelling.
 
+**CLOSING NOTE (Story 8.4i, 2026-09-02).** Closed under D-8.4i.2, and **not** by either fix this entry
+offered. This entry framed the choice as *"accept both spellings, or anchor the branch"*. **D-8.4i.2
+rejected "accept both spellings" outright** — it would fix one instance of a defect that has now
+produced three — and ruled the anchor **general** rather than per-branch.
+
+`"UBUNTU FONT LICENCE"` remains the **only** spelling that RESOLVES; it is the licence's own spelling
+of its own name. What changed is that `"UBUNTU FONT LICENSE"` is now a **name signal**: the text names
+a licence the classifier cannot pin to a known `(name, version)` pair, so it returns `FamilyUnknown`
+and the asset gate refuses it, naming the directory. The grant clause can no longer catch it, because
+clauses are consulted only when the text names no licence at all.
+
+**THE PREDICTED FOURTH INSTANCE HOLDS, MEASURED TWICE.** D-8.4i.2 predicted that the OFL branch's
+comment carried the same false claim, and required the story to measure rather than assume. The
+SPDX-published OFL 1.0 text carries the shared grant clause under the title *"SIL OPEN FONT LICENSE
+Version 1.0 - 22 November 2005"* and contains `"Version 1.1"` nowhere, so it classified
+`(permissive, "MIT")` — a silent pass under the wrong label, exactly as American-spelled UFL did. **So
+the "a required version conjunct makes a near-miss loud" justification was false for BOTH branches, and
+had been since Story 2.2.**
+
+**THE COMMENTS ARE CORRECTED IN PLACE WITH THEIR ORIGINAL WORDING PRESERVED VERBATIM** (`classify.go`).
+This entry records that Story 8.4h's review rejected the finding **by quoting the code comment**, which
+is D-8.0.1's shape at its third occurrence. Deleting the wording would have left the next reviewer the
+same trap with no record of it, so each correction now sits beside the original, states the
+measurement and its date, and says that the claim it replaces is why the review rejected this finding.
+
+Covered by `TestClassifyCollectsEverySignal`: American-spelled UFL 1.0 with the grant clause, OFL 1.0
+with the grant clause, and a future UFL 1.1 with the grant clause all classify `(unknown, "")`; British
+UFL 1.0 and OFL 1.1 still resolve.
+
 ---
 
 ### DW-125 — CLOSER FINDING: the first `SPDX-License-Identifier:` line anywhere in a LICENSE file wins outright, and that is now a GATE BYPASS
@@ -6131,7 +6244,8 @@ MIT-collision proof, which today covers only the British spelling.
   cleanup.
 - **Severity:** MEDIUM–HIGH on the compliance boundary; the mechanism is pre-existing, the
   **consequence is new with Story 8.4h**.
-- **Status:** OPEN.
+- **Status:** **CLOSED by Story 8.4i, 2026-09-02**, under **D-8.4i.1**. See the closing note at the end
+  of this entry.
 
 `ClassifyLicenceText` runs `spdxLineRE.FindStringSubmatch(text)` **first** and returns immediately on
 the **first** match anywhere in the text, before any marker branch is consulted. So a licence file
@@ -6158,5 +6272,109 @@ agent's scope fence.
 **What discharges it.** A ruling on precedence — most likely that a copyleft **marker** in the body
 outranks a permissive SPDX line, or that a text carrying more than one distinct SPDX identifier is
 refused as unclassifiable — with a red-proof per arm.
+
+**CLOSING NOTE (Story 8.4i, 2026-09-02).** Closed under D-8.4i.1, and by the **second** of the two
+precedence rulings this entry offered, not the first. *"A copyleft marker in the body outranks a
+permissive SPDX line"* was **rejected as an exception list**: it fixes GPL-text-plus-MIT-line while
+leaving MIT+BSD, OFL+Apache and every future pair mislabelled.
+
+`ClassifyLicenceText` now collects **every** signal — every SPDX line, every licence name, and the
+grant clauses only when no name is present — and resolves them in one fixed order: **(1)** any copyleft
+signal refuses **as copyleft, naming the identifier**; **(2)** any unresolvable signal is
+`FamilyUnknown`; **(3)** two or more distinct permissive identifiers is `FamilyUnknown`; **(4)** exactly
+one identifier is that identifier. Order 1-before-2 is not stylistic: a maintainer who reads
+*"conflicting identifiers"* adds an SPDX line, one who reads *"GPL detected"* removes the dependency.
+Hazard indicators fail toward the loudest, never the most precise.
+
+**A FINDING THAT WAS IN NO REGISTER, recovered at 8.4i's plan gate and now fixed with the rest:** the
+bypass worked with a copyleft **SPDX line** as well as with copyleft **marker text** — `MIT` line then
+`GPL-3.0-only` line classified `(permissive, "MIT")`. **The rejected alternative would not have caught
+that row**, which is a second, independent reason it was the wrong fix. It is pinned by
+`TestClassifyCollectsEverySignal`, in both orderings.
+
+Multi-signal resolution is **deterministic and documented**: copyleft candidates are ordered SPDX lines
+first (document order), then licence names in the most-specific-first table order that preserves the
+old switch's precedence — so an AGPL text whose body also names the GNU GPL still reports `AGPL-3.0`.
+`TestCopyleftTieBreakIsDeterministic` runs each case 32 times; an answer that came from map iteration
+order would not survive it.
+
+**RED-PROVED BY DELETION, not only by substitution** (D-8.4h.4's lesson). Four mutations to
+`licencesignals.go`, four **disjoint** red sets, recorded in `TestClassifyCollectsEverySignal`'s header.
+Deleting the conflict half of the arity arm reds exactly three subtests and nothing else in any
+package — the proof that conflict detection is a NEW refusal rather than a restatement of an existing
+one.
+
+---
+
+### DW-126 — FOUR OF STORY 8.4h's SEVEN REJECTIONS WERE NEVER WRITTEN DOWN, and of the three that were, one has been measured FALSE
+
+- **Recorded by:** **Story 8.4i (2026-09-02)**, per **D-8.4i.5** — which rules that the audit gap is
+  **itself a finding**, not another renewal of DW-87's *"we count them"* disposition.
+- **Owner:** **ENGINEERING LEAD / process.** Not assignable to a story: nothing in the code discharges
+  it.
+- **Severity:** **MEDIUM–HIGH on process**, on the evidence below. It is not an abstract audit gap.
+- **Status:** OPEN — **as a priced finding, not as work queued.**
+
+Story 8.4h's record states `reject: 7` in three places and **describes only three**. D-8.4i.5 ruled
+that the four be **recovered from the existing record as named claims with a disposition each** — that
+is reading, not reviewing — and that any which cannot be recovered be recorded as **"could not look"**,
+never omitted (D-8.4.33).
+
+**The recovery, as far as the record allows:**
+
+| # | Claim | Disposition |
+|---|---|---|
+| 1 | The duplicated case in `TestClassifyUbuntuFontLicence` | **Rejected as churn** — "redundant but correct". **Stands.** |
+| 2 | The absence of a test for the American spelling `"UBUNTU FONT LICENSE"`, rejected because *"its miss is loud — `FamilyUnknown` is a build failure at the gate"* | **OVERTURNED — the rejection is FALSE.** Measured: `(permissive, "MIT")`, a silent pass under the wrong label. This is DW-124, closed by Story 8.4i. **The rejection was made by quoting the code comment**, which is D-8.0.1's shape. |
+| 3 | The reading that AC7 belongs in the Go lint suite rather than the designer's | **Rejected; stands** — the spec's Code Map named the designer artifact, settling it. |
+| 4–7 | — | **COULD NOT LOOK, ×4.** The record does not say. |
+
+**Why it is not recoverable.** 8.4h's Review Triage Log has **no `rejected_findings` block**, no
+per-finding rejection list elsewhere, and **no reviewer-layer attribution for any finding in that story
+at all** — patched, deferred or rejected. `deferred-work.md` was searched too: DW-117…DW-125 account
+for the seven deferrals plus the two closer findings and describe none of the four. The only thing
+recoverable *about* the four is a negative: **none of them is one of the three named above.**
+
+**THE PRICE, ON THE RECORD RATHER THAN ARGUED.** Of the three rejections that WERE written down, **one
+has been measured false** — on the story whose subject is *"does the licence gate hold"*, on a
+compliance boundary. Four unexamined rejections at an observed 1-in-3 falsification rate is the cost of
+recording a bare count instead of a list.
+
+**What discharges it.** A review record format in which every rejection is named with its ground, so a
+later reader can re-check it — the same standard the deferrals in this file already meet. Until then a
+bare `reject: N` should be read as N unexamined claims, not as N settled ones.
+
+---
+
+### DW-127 — a text naming the 2-clause BSD licence is labelled `BSD-3-Clause`
+
+- **Recorded by:** **Story 8.4i (2026-09-02)**, found while rebuilding the name table.
+- **Owner:** **EPIC 15's release gate**, per **D-8.4i.6's bound** — AD-26's manifest is already a named
+  obligation of Story 15.3. **Explicitly NOT an `8.4j`.**
+- **Severity:** LOW — attribution only. Both identifiers are permissive, and neither is on the font
+  asset allowlist, so it cannot admit a forbidden licence at either asset site.
+- **Status:** OPEN.
+
+`ClassifyLicenceText`'s BSD branch has put `"BSD 3-CLAUSE"` and `"BSD 2-CLAUSE"` in one disjunct
+returning `"BSD-3-Clause"` since Story 1.3, so a text naming the 2-clause licence is published under
+the 3-clause identifier. `permissiveSPDX` carries `"BSD-2-Clause"` as its own key, so the SPDX-line
+path is correct; only the **name** path mislabels.
+
+**Deliberately not fixed in Story 8.4i**, and the reasoning is the bound rather than the effort.
+D-8.4i.6 makes 8.4i **the last licence-gate insertion Epic 8 gets**, with one exception — a
+demonstrated live bypass of a gate the epic has declared fail-closed. **This is not that**: it is a
+permissive→permissive mislabel with no committed instance. Fixing it inside 8.4i would have widened a
+story whose charter is four named findings, which is how the *"the epic never ends"* cost accrues.
+Behaviour is therefore **preserved exactly**, with the reason recorded at the table entry itself so the
+next reader does not take it for an oversight.
+
+**Not live today:** measured by `TestLicenceSignalCensus` over all 35 committed and dependency licence
+texts — no file in the population reaches the BSD branch by NAME. The seven Go-style BSD dependency
+licences reach `BSD-3-Clause` through the `"REDISTRIBUTION AND USE IN SOURCE"` **clause**, correctly,
+and are genuinely 3-clause.
+
+**What discharges it.** Giving the 2-clause name its own table entry returning `"BSD-2-Clause"`, with a
+red-proof — or a ruling that the coarse label is acceptable in `lint/MANIFEST.md`, recorded where the
+table can be read.
 
 ---
