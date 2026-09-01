@@ -4973,6 +4973,38 @@ a named command, and the figure read from that build alone — and state in the 
 number sums, so a later reader cannot mistake `cachedBytes` for `s1VisibleBytes`. A regression fixture
 proving two consecutive clean builds agree would close it outright.
 
+**UPDATE, Story 8.4c's close (2026-09-01) — the discharge condition is MET, and the mechanism on
+record was WRONG.** DW-100 asks for "a regression fixture proving two consecutive clean builds agree".
+**Two consecutive clean `npm run build` runs at `4f5925a` agree byte-for-byte**: identical engine wasm
+sha256 `f1f195be93b0…`, identical raw 23,061,666, identical bytes on all five S1 rows, identical
+`s1VisibleBytes` = **12,423,631**. **The figure is NOT irreproducible, and the variance is not Brotli
+nondeterminism** — which is what Story 8.4c's build report attributed it to.
+
+**The actual mechanism, shown rather than assumed.** `strings` on the built wasm:
+`vcs.revision=4f5925af86abdebd7dc70b6cbadc51f2a9cadbff`, `vcs.time=…`, `vcs.modified=false`.
+`build-wasm.mjs` runs `go build` with `-buildvcs` at its **default**, so the engine binary **embeds the
+commit SHA, the commit timestamp and the working tree's dirty flag**. Proved at ONE commit with the Go
+source held fixed: clean tree → `f1f195be93b0…` with `vcs.modified=false`; one tracked file touched →
+**`570a1579faf1…` with `vcs.modified=true`**.
+
+**Why this outranks the flakiness framing.** The engine row is **7,224,421 of 12,423,631 — 58%** of
+`s1VisibleBytes`. So the figure moves **on every commit, deterministically, and again on whether the tree
+was clean** — regardless of whether one byte of payload changed. Every reading on record is consistent
+with this: all of them differ **only** in the engine row, the three Noto rows being constant at
+226,026 / 24,872 / 4,948,312.
+
+**What now discharges it, and it is concrete.** Build the wasm with **`-buildvcs=false`** (optionally
+with `-trimpath`), or exclude the stamped bytes from the measure. Until then no threshold on
+`s1VisibleBytes` can survive a single commit, and 8.4d must not pin one.
+
+**A second, independent defect in the same figure, found at the same close.** `s1VisibleBytes` sums only
+the four `delivery: "cached-asset"` S1 rows and **there is no IBM Plex row**, so it is *structurally
+incapable* of seeing the 490,280 bytes of fonts Story 8.4c added. **A budget gate on it would have gone
+green through that story.** Confirmed by exact arithmetic, not asserted. 8.4d must gate on a total that
+includes every cached asset (`cachedBytes` does) or add rows for what it is meant to bound.
+
+---
+
 ### DW-101 — twelve executable Playwright specs exist, run, and are never run by CI: a whole capability believed absent by everyone
 
 - **Deferred by:** the run orchestrator (2026-09-01), on discovering it had told the engineering lead
@@ -5006,5 +5038,48 @@ same unit as, adding the executed browser assertion Epic 8 owes.** An executed a
 suite CI does not run **would execute once, locally, and never again** — **reproducing the exact
 category error being corrected, one layer up.** Do not add the observer before arranging for anyone to
 watch it.
+
+---
+### DW-102 — the chrome's monospace slot lost its CJK coverage, and the finding that said so was rejected on a location that was not where it was true
+
+- **Deferred by:** Story 8.4c's close (2026-09-01), re-opening a review finding the build rejected.
+- **Owner:** **the design system's font stack — Story 8.4e or the owner.** NOT Story 8.4d: this is a
+  coverage question, not a size-budget one, and 8.4d's remit under D-8.4.24 is the budget.
+- **Severity:** **MEDIUM.** It degrades to a system face rather than to tofu, so nothing is unreadable;
+  but it is a coverage regression this story caused, in the interface's most-used type token.
+- **Status:** OPEN.
+
+**Measured at close with a cmap read over both faces.** `IBM Plex Mono` maps **0** of the 20,992 code
+points in U+4E00–U+9FFF. `Noto Sans SC` — the file the family name `IBM Plex Mono` resolved to before
+Story 8.4c — maps **20,976**. Seven `--type-*` tokens resolve through `--font-mono`, and after 8.4c the
+face behind them has no CJK at all.
+
+**The rejection was sound where it looked, and that is the transferable part.** The review raised this
+and rejected it, refuting it at `--type-page-mono`'s three consumers — correctly: verified at close, the
+component box renders the text/image paints, the literal `Table`, or nothing; the image placeholder's
+children are four hardcoded English strings; the dimension readout is `points(w) × points(h)`. **No
+document-derived text reaches a `--type-page-mono` element.** But the finding's *headline* was about
+`--font-mono`, and `--type-page-mono` is one of seven tokens that resolve through it. The claim is true
+at consumers the rejection never examined: `.document-name` renders the open document's title
+(`App.tsx:850`), and `.property-value` is the prose input an author types a text component's content
+into (`App.tsx:1230-1231`), as are bare `input`/`select`/`textarea` (`App.css:293-294`) — all
+`--type-mono`.
+
+**The shape to remember, because it is a rejection pattern rather than a one-off.** *A refutation that
+is airtight at the cited location can leave the finding's actual claim standing*, when the citation
+names a narrower thing than the claim does. The reviewer cited one token; the claim was about the
+variable seven tokens share. **Audit a rejection against the claim's own scope, not only against the
+line it points at.**
+
+**Why it is recorded and not fixed.** The remedy is adding a CJK fallback to the design system's mono
+stack — an edit to the token file whose *untouched-ness* is the premise Story 8.4c's sequencing rested
+on (the family names do not change, so no CSS surface moves). Folding it in would have made the story's
+own premise false. It is also genuinely degraded-not-broken: the browser's own fallback finds a system
+CJK face on any real OS, and this is the same class as the `--font-sans` narrowing in 8.4c's frontmatter
+`deferred` (Greek, Cyrillic, Latin Extended-B).
+
+**What discharges it.** Either extend `--font-mono` with a CJK fallback that is *shipped* rather than
+assumed present on the reader's machine, or record a deliberate decision that chrome CJK falls to the
+system face — with the reasoning written down, so the next reader does not re-derive it as a bug.
 
 ---
