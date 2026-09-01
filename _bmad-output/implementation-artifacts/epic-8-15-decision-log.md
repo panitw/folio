@@ -752,3 +752,121 @@ written. `sprint-status.yaml` gains an `8-4h` key.
 **How we'd know it was wrong.** 8.4h lands green and 8.5 then finds the gate does not see its faces —
 that would mean AC7's widening was scoped by directory where it needed to be scoped by the tracked-file
 population, and the fix belongs in 8.4h's population definition, not in 8.5.
+
+## Story 8.4h's plan gate — a charter premise corrected, and the owner's fourth licence given its real name (2026-09-02)
+
+### D-8.4h.1 — CORRECTION to D-8.5.13: the live hole is bigger than the ruling described, and the story is unchanged by it
+
+**Orchestrator decision** (accepting the plan gate's measured correction). D-8.5.13 stands; this
+entry corrects its mechanism description. Nothing is rewritten in place.
+
+**Verdict.** D-8.5.13 — and the commit message and the owner report that repeated it — described the
+licence hole as the `"SEE NOTICE"` fall-through: a font whose licence text *cannot* be classified
+passes. **Measured at `7aa283b`, that is only half of it.** Both asset paths call the classifier, keep
+only its SPDX string, and **discard its family verdict**. So a GPL-3.0 licence text classifies
+*correctly* — as `(copyleft, "GPL-3.0")` — and still produces a clean manifest row and a clean build.
+It never reaches the fall-through at all. **Two distinct holes at the same two lines.**
+
+**Situation.** The ruling's acceptance text already says *"outside the list **or** unclassifiable"*, so
+the story's scope, its ACs and its red-proof requirement are all unaffected — the second hole was
+already inside what 8.4h must close. What was wrong was the *explanation* of how the failure happens,
+which had propagated into three documents.
+
+**In simple terms.** We reported the lock as "fails to catch anything it doesn't recognise". The truth
+is worse: it also fails to catch things it recognises perfectly well and knows it must refuse. It
+reads the label, correctly says "this is one we cannot accept", writes that on the form, and opens the
+door anyway. The story already had to fix both; only our account of it was wrong.
+
+**Why this is a correction and not a defect in the plan.** D-8.5.10 draws the line this run keeps
+needing: moving a threshold or an AC to match a measurement is the defect; **correcting a false
+premise about how the bar is reached is legitimate**, and the two look identical in a diff. Here
+nothing moved — the bar is where it was, and the measurement made the reason for it sharper. The plan
+gate corrected it in Design Notes and continued rather than halting, which is the right call for a
+premise that does not change the work.
+
+**A second premise corrected in the same pass.** D-8.5.13 said the current population is *"nine
+directories, all OFL-1.1"*. Measured, it is **eleven** font directories plus the wordlist, and **not
+all OFL-1.1** — `folio-go/testdata/fonts/Roboto-Regular.ttf` is **Apache-2.0**. Apache-2.0 is on the
+owner's allowlist, so the gate still lands green in the same commit that makes classification fatal,
+which is the hard condition that mattered. AC6 is written over eleven, not nine. This is D-8.5.4's
+count-written-beside-the-thing-it-counts lesson at its fourth instance this epic.
+
+**Consequences.** The user-facing account of this defect is corrected: an unacceptable font passes
+today **whether or not the classifier can read its licence**. AC6's population is eleven directories
+plus the wordlist. `manifest_test.go:183` writes a tracked fixture licence of literally `"a licence"`,
+which goes red the moment classification becomes fatal — repaired by its own numbered task rather than
+discovered by the build.
+
+**How we'd know it was wrong.** The build closing only the fall-through and leaving the discarded
+family verdict in place — the GPL red-proof would then stay green, which is exactly the arm D-8.5.13
+required be population-independent.
+
+### D-8.4h.2 — The owner's fourth licence is `Ubuntu-font-1.0`; `"UFL"` is shorthand, not an identifier
+
+**Orchestrator decision** (routine — a canonicalization inside an owner decision, ruled rather than
+escalated because it changes which string is typed, not which licence is permitted).
+
+**Verdict.** The allowlist's fourth member is implemented as the SPDX identifier
+**`Ubuntu-font-1.0`**. The bare alias `"UFL"` is deliberately **not** accepted as an identifier.
+
+**Situation.** D-8.5.3 records the owner's permissive allowlist as *"OFL-1.1, Apache-2.0, MIT, UFL"*.
+The first three are canonical SPDX ids; the fourth is not an SPDX identifier at all. The plan gate
+verified this by fetch rather than by memory: `Ubuntu-font-1.0` → HTTP 200 ("Ubuntu Font Licence
+v1.0"); `Ufont-1.0` and `UFL-1.0` → 404.
+
+**In simple terms.** The owner named four licences and wrote the fourth the way people say it out
+loud. The registry the code looks it up in only answers to its formal name. Typing the nickname into
+an exact-match lookup produces a key nothing will ever match — an entry that looks live and is dead.
+
+**Why it is safe to rule.** The owner's decision was about *which licences are acceptable*, and that
+is untouched: the Ubuntu Font Licence is permitted either way. Only the spelling changes, and it
+changes to the one the mechanism can actually use. The project's own convention decides it — every
+existing entry in the classifier is canonical, and the lookup is an exact match — so accepting the
+alias would be the anomaly.
+
+**Options considered.** (a) *Accept `"UFL"` literally* — faithful to the owner's text, rejected
+because `classifyBySPDX` is an exact lookup, so the key would be dead code that reads as live
+coverage; the allowlist would appear to have four members and enforce three. (b) *Accept both the
+canonical id and the alias* — rejected: a silent alias list is D-2.1.3's rotting-list shape, and it
+buys nothing since no upstream licence file declares itself as "UFL". (c) *Escalate the wording to the
+owner* — rejected as disproportionate under D-000.8; nothing about which fonts may ship changes.
+(d) *Canonical id only* — chosen.
+
+**Why this wins.** It is the only reading under which the owner's four-member allowlist actually has
+four working members. The accepted cost is that the decision log and the code now spell the same
+licence two ways, which this entry exists to reconcile.
+
+**Consequences.** `classify.go` gains `Ubuntu-font-1.0` as a map entry, a marker branch and a
+`Family` mapping, with a fixture and a lookalike-negative test — added loudly, never by widening a
+list to make a population pass. Anyone reading D-8.5.3 later should read `UFL` as naming the Ubuntu
+Font Licence, whose identifier is `Ubuntu-font-1.0`.
+
+**How we'd know it was wrong.** A real upstream font shipping a licence file that declares `UFL` and
+nothing else — then the alias is load-bearing after all and joins the map as an explicit, tested alias
+rather than as a silent one.
+
+### D-8.4h.3 — `oversized` and `multiple-goals` are both accepted on this story, with reasons
+
+**Orchestrator decision** (routine).
+
+**Verdict.** Story 8.4h ships at 652 lines carrying both warnings. Neither is resolved by trimming.
+
+**`multiple-goals`** is an honest signal and is **accepted**: AC7 (the extension-class guard's widened
+directory reach) is separably shippable from the licence repair. It stays here because D-8.5.13
+assigned it here, and because it is the guard that reports a font the gate cannot *see* — the same
+blind spot, one layer out. Splitting a two-line widening into its own story would cost more record
+than it saves, and the plan gate measured the widening **inert today**: over 1434 tracked files, zero
+non-`.ttf/.otf/.ttc` font-plausible extensions and zero font-magic hits. That measurement is the
+discharge of D-8.5.13's "do not assume the widening is inert" condition — it is now known inert rather
+than presumed so.
+
+**`oversized`** is **accepted** rather than trimmed. The bulk is Code Map and Design Notes — measured
+evidence about two fall-through sites, the classifier's real behaviour, and which existing tests move
+or red. That is exactly the material that stops the implementation subagent re-deriving a wrong
+premise, which this story has already had corrected once (D-8.4h.1). Per D-8.5.13's own guardrail,
+acceptance criteria are never thinned to clear this warning — that is moving the bar to fit the
+instrument. Re-checked at Story 8.5's re-plan, where the lever is AC1's procurement table rather than
+anything here.
+
+**How we'd know it was wrong.** The implementation subagent losing a constraint stated only late in
+the spec — the signal is a review finding that contradicts something the spec says plainly.
