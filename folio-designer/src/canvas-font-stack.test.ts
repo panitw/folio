@@ -16,14 +16,21 @@ import type { CanvasProjection } from './engine-protocol'
 // disagrees with the x of the fragment after it and the two collide.
 //
 // THE DEFECT THIS PINS, because it shipped and a person reported it.
-// `scripts/build-wasm.mjs` registers the three shipped Noto faces under
-// IBM PLEX family names (the design system's vocabulary). `App.css` asked
-// for them under NOTO names, which no @font-face declares, so the browser
-// fell through to generic `sans-serif` — a system Thai face with different
-// metrics. Latin looked fine (the fallback's Latin is close enough to pass
-// a glance); Thai overlapped at exactly the fragment boundaries, which sit
-// at spaces. Reported as "letters rendered on top of each other" around
-// "พระราชบัญญัติ การทวงถามหนี้".
+// `scripts/build-wasm.mjs` registered the three shipped Noto faces under
+// IBM PLEX family names only (the design system's vocabulary). `App.css`
+// asked for them under NOTO names, which nothing declared a face for, so the
+// browser fell through to generic `sans-serif` — a system Thai face with
+// different metrics. Latin looked fine (the fallback's Latin is close enough
+// to pass a glance); Thai overlapped at exactly the fragment boundaries,
+// which sit at spaces. Reported as "letters rendered on top of each other"
+// around "พระราชบัญญัติ การทวงถามหนี้".
+//
+// AND WHAT STORY 8.4b CHANGED. Asking under the Noto names is now CORRECT:
+// the generator declares the same three files a second time under the
+// engine's own face names, so the stack below names exactly what the engine
+// measures with. The historical defect is preserved here because the guards
+// in this file are shaped by it — the failure was silent, cosmetic-looking,
+// and script-dependent, which is why every claim here is a checked one.
 //
 // WHY THIS TEST READS THE GENERATOR AND NOT ITS OUTPUT.
 // `src/generated/runtime-fonts.css` is gitignored and only exists after
@@ -33,15 +40,54 @@ import type { CanvasProjection } from './engine-protocol'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const generatorPath = path.join(here, '..', 'scripts', 'build-wasm.mjs')
 const cssPath = path.join(here, 'App.css')
+// THE ENGINE'S OWN AUTHORITY FOR A FACE NAME, read rather than restated.
+// `fonts.Shipped()` is the single machine-readable enumeration of the faces
+// this build measures with; there is no exported constant, JSON registry or
+// generated artifact carrying the same three names. An earlier form of the
+// test below hardcoded them, which meant it would have gone on passing —
+// while having become false — the moment folio-go shipped a different set.
+const enginePath = path.join(here, '..', '..', 'folio-go', 'fonts', 'fonts.go')
+// The design system's own vocabulary, read rather than restated: the three
+// IBM Plex families must remain named by a `--font-*` token here, or the two
+// vocabularies this story deliberately keeps apart have been collapsed.
+const tokensPath = path.join(here, 'tokens.css')
+
+/** The face names `fonts.Shipped()` keys its FontSet by, in the order it writes them. */
+function shippedFaceNames(fontsGo: string): ReadonlyArray<string> {
+  const body = /func Shipped\(\) folio\.FontSet \{[\s\S]*?\n\}/.exec(fontsGo)?.[0]
+  if (body === undefined) throw new Error(`no Shipped() function in ${enginePath}`)
+  return [...body.matchAll(/"([^"]+)":\s*\w+,/g)].map((m) => m[1])
+}
 
 // THE ONE MODULE ALLOWED TO REGISTER A FACE WHILE A DOCUMENT IS OPEN
 // (Story 8.4a). Named here rather than described, because the claim these
 // tests make is not "registration is rare" but "registration is HERE".
 const runtimeRegistrationSeam = 'embedded-face-registry.ts'
 
-/** Family names the generator actually declares an @font-face for. */
+/**
+ * Family names the generator actually declares an @font-face for.
+ *
+ * HAND IT `withoutComments(...)` OUTPUT, ALWAYS. It reads TEXT, so a rule that
+ * has been commented out reads exactly like a live one — measured, not feared:
+ * commenting out the three engine-named rules and leaving them as comment text
+ * left every test in this file and in font-binary-identity.test.ts green while
+ * the emitted stylesheet dropped to three rules, reproducing the very
+ * Thai-overlap defect these guards exist to prevent. The red-proof for that is
+ * its own test below.
+ */
 function declaredFamilies(generator: string): ReadonlyArray<string> {
   return [...generator.matchAll(/@font-face \{ font-family: '([^']+)'/g)].map((m) => m[1])
+}
+
+/**
+ * Every `--font-*` custom property in tokens.css, with the value it is given.
+ *
+ * `var(--font-sans)` inside a `--type-*` token is deliberately not matched: the
+ * pattern requires the `:` of a DECLARATION, so this answers to where a family
+ * is NAMED rather than to where one is referenced.
+ */
+function fontTokenValues(tokens: string): ReadonlyArray<readonly [string, string]> {
+  return [...tokens.matchAll(/(--font-[\w-]+)\s*:\s*([^;}]+)/g)].map((m) => [m[1], m[2].trim()] as const)
 }
 
 /** Quoted families the canvas fragment rule asks for, in order. */
@@ -169,18 +215,94 @@ function paintedFragmentFamilies(assetKey: string | undefined, registered: Reado
 describe('the canvas paints with the faces the engine measured', () => {
   const generator = fs.readFileSync(generatorPath, 'utf8')
   const css = fs.readFileSync(cssPath, 'utf8')
-  const declared = declaredFamilies(generator)
+  // COMMENTS STRIPPED BEFORE THE GENERATOR IS PARSED, for the same measured
+  // reason the designer-source scans below strip them: the parse must answer to
+  // the CODE that emits the stylesheet, not to prose that merely spells a rule.
+  const declared = declaredFamilies(withoutComments(generator))
   const requested = requestedFamilies(css)
+  const engineFaces = shippedFaceNames(fs.readFileSync(enginePath, 'utf8'))
 
   // Vacuity guard: neither side may be empty, or the assertion below
   // passes by having nothing to compare. A regex that stops matching
   // because a file's shape changed is the failure mode this catches.
+  //
+  // THE FLOOR IS SIX, RAISED FROM THREE BY STORY 8.4b, because six is the
+  // true count: three files, each declared twice — once under the design
+  // system's family name and once under the engine's own face name. A floor
+  // that sits below the real number has stopped discriminating; at three it
+  // would have survived the deletion of the entire engine-named half.
   it('reads a non-empty declaration set from the generator', () => {
-    expect(declared.length).toBeGreaterThanOrEqual(3)
+    expect(declared.length).toBeGreaterThanOrEqual(6)
   })
 
   it('reads a non-empty request list from the canvas rule', () => {
     expect(requested.length).toBeGreaterThanOrEqual(3)
+  })
+
+  // THE GENERATOR PARSE ANSWERS TO THE CODE, NOT TO THE PROSE.
+  //
+  // MEASURED, NOT FEARED. Commenting out the three engine-named `@font-face`
+  // rules in `scripts/build-wasm.mjs` — leaving the text in place as a comment
+  // — left every test in this file and in `font-binary-identity.test.ts` green
+  // while the emitted stylesheet dropped from six rules to three, which is
+  // exactly the state that shipped the reported Thai overlap. The floor of six
+  // above cannot catch it on its own: a commented-out rule still counts as a
+  // declaration to a raw text scan. This is the direction that proves it does
+  // not any more.
+  it('does not count a commented-out @font-face rule as a declared family', () => {
+    const emitted = "@font-face { font-family: 'Noto Sans'; src: url('./runtime/x.ttf') format('truetype'); font-display: swap; }"
+    // The live direction, so the parse is shown to find a rule at all.
+    expect(declaredFamilies(withoutComments(emitted))).toEqual(['Noto Sans'])
+    // Both comment forms a generator can hide a rule in.
+    expect(declaredFamilies(withoutComments(`// ${emitted}`))).toEqual([])
+    expect(declaredFamilies(withoutComments(`/* ${emitted} */`))).toEqual([])
+    // AND THE DEFECT ITSELF: without the strip, commented-out text counted.
+    expect(declaredFamilies(`// ${emitted}`)).toEqual(['Noto Sans'])
+  })
+
+  // NO CHROME TOKEN IS EDITED — CHECKED, NOT ASSERTED IN PROSE.
+  //
+  // Story 8.4b's whole claim is that the engine's vocabulary became nameable in
+  // the browser with NO chrome token touched. Nothing checked the second half:
+  // `design-contract.test.ts` pins the token NAMES and the `@import` line, not
+  // their values, so repointing `--font-sans` at `'Noto Sans'` — collapsing the
+  // two vocabularies this story deliberately keeps separate — would have passed
+  // every existing test. tokens.css is READ here and never edited.
+  it('keeps each design-system family named by a --font-* token in tokens.css', () => {
+    const fontTokens = fontTokenValues(fs.readFileSync(tokensPath, 'utf8'))
+    // NON-VACUITY FLOOR. A reformat that stops the parse matching yields an
+    // empty list over which every `not.toEqual([])` below would fail — which is
+    // the point: this must redden rather than pass over an empty parse.
+    expect(fontTokens.length, `read no --font-* tokens out of ${tokensPath}`).toBeGreaterThanOrEqual(3)
+    for (const family of ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai']) {
+      expect(
+        fontTokens.filter(([, value]) => value.includes(`'${family}'`)).map(([name]) => name),
+        `no --font-* token in tokens.css names '${family}' any more. Story 8.4b declares the ENGINE's face names alongside `
+        + 'the design system\'s; it does not replace them. A chrome token pointed at an engine face name collapses the two '
+        + 'vocabularies, and every --type-* token resolves through these three.',
+      ).not.toEqual([])
+    }
+    // AND THE OTHER DIRECTION, which is what the hazard actually looks like:
+    // no chrome token may name an ENGINE face at all. Measured — the
+    // containment check above alone is not enough, because repointing
+    // `--font-sans` at 'Noto Sans' leaves `--font-page` still naming
+    // 'IBM Plex Sans', so the three families stay present while a chrome token
+    // has been collapsed onto the engine's vocabulary. The face names come from
+    // `fonts.Shipped()`, not from a literal restated here.
+    expect(engineFaces.length, 'the engine face names must have been read').toBe(3)
+    for (const face of engineFaces) {
+      expect(
+        fontTokens.filter(([, value]) => value.includes(`'${face}'`)).map(([name]) => name),
+        `a --font-* token in tokens.css names the ENGINE face '${face}'. The chrome and the engine keep separate `
+        + 'vocabularies: Story 8.4b declares the engine\'s names for the CANVAS, and a chrome token pointed at one puts '
+        + 'the design system\'s type on whichever bytes the engine happens to ship.',
+      ).toEqual([])
+    }
+
+    // THE RED DIRECTION, through the same helper: a token repointed at the
+    // engine's vocabulary no longer names the chrome family.
+    expect(fontTokenValues("--font-sans: 'Noto Sans', system-ui, sans-serif;").filter(([, value]) => value.includes("'IBM Plex Sans'"))).toEqual([])
+    expect(fontTokenValues("--font-sans: 'IBM Plex Sans', system-ui, sans-serif;").filter(([, value]) => value.includes("'IBM Plex Sans'")).length).toBe(1)
   })
 
   // GUARD 1, WIDENED BY STORY 8.4a. It used to say only that every family the
@@ -191,20 +313,29 @@ describe('the canvas paints with the faces the engine measured', () => {
   // registered. It now ties, for a CARRIED face, the family the fragment
   // actually asks for to the ASSET THE ENGINE RESOLVED IT TO.
   //
-  // THE TIE IS SCOPED TO THE CARRIED CASE, AND THAT IS DELIBERATE. Stated
-  // universally — "the families the rule asks for are the ones the engine
-  // measured with" — it is FALSE, before this story and after it: for a
-  // shipped face the rule asks for 'IBM Plex Sans' while the engine measured
-  // 'Noto Sans', and the test below this one records that those two
-  // vocabularies are disjoint ON PURPOSE. That mismatch is DW-35 CAUSE ONE,
-  // which is still open: closing it means either renaming the generated
-  // families (rippling into tokens.css, its three type tokens and
-  // design-contract.test.ts) or generating a face-name -> CSS-family map, and
-  // that is a design-system decision no ruling has made. Widening this
-  // assertion to cover the shipped half would therefore not be a stronger
-  // guard, it would be a red one — and the temptation would then be to weaken
-  // it back. The carried half is where the claim is both TRUE and newly
-  // checkable, and it is checked here at full strength.
+  // THE TIE IS SCOPED TO THE CARRIED CASE, AND THAT IS STILL DELIBERATE —
+  // BUT NOT FOR THE REASON IT USED TO BE. Until Story 8.4b this comment said
+  // the universal form was FALSE, because for a shipped face the rule asked
+  // for 'IBM Plex Sans' while the engine measured 'Noto Sans', two disjoint
+  // vocabularies. THAT IS NO LONGER TRUE. 8.4b registers the same three
+  // shipped files a SECOND time under the engine's own face names and points
+  // the fragment rule at those names, so the shipped half now asks for
+  // exactly the names the engine measures with — checked by the test below,
+  // and tied to the engine's bytes by src/font-binary-identity.test.ts.
+  //
+  // WHAT KEEPS THE TIE SCOPED IS NOW THE OTHER RESIDUAL. The fragment stack
+  // is a FIXED constant naming all three faces in one order, while a document
+  // may declare a chain like ["Noto Sans Thai"] whose covering face is not
+  // the stack's first; the three faces' cmaps genuinely overlap (339 / 529 /
+  // 230 codepoints pairwise, measured), so the engine can measure a Latin run
+  // with 'Noto Sans Thai' while the browser's Latin-first stack rasterizes it
+  // with 'Noto Sans'. A shipped fragment carries no face identity on the wire
+  // — only carried faces carry an `assetKey` — so nothing here can state the
+  // per-fragment claim yet. Closing that needs shipped-face attribution on
+  // the projection, the shape 8.4a built for carried faces; it is DW-35 cause
+  // one's REMAINING half, and is not what this assertion claims. The carried
+  // half is where the per-fragment claim is checkable today, and it is
+  // checked here at full strength.
   it('asks only for families the browser has a face for, and ties every runtime one to the engine\'s own attribution', () => {
     // (a) THE STYLESHEET HALF, unchanged: every family the fragment rule names
     // is one the generator declares an @font-face for.
@@ -239,20 +370,35 @@ describe('the canvas paints with the faces the engine measured', () => {
     for (const family of declared) expect(embeddedFaceFamily(carriedKey)).not.toBe(family)
   })
 
-  // DW-35 TRIPWIRE, RE-RECORDED AT STORY 8.4a. It had two causes; ONE IS NOW
-  // CLOSED AND THE OTHER IS NOT, and conflating them is how the open one
-  // disappears.
+  // DW-35 TRIPWIRE, RE-RECORDED AT STORY 8.4b. It had two causes; cause two is
+  // closed, and cause one is now HALF closed. Conflating the closed half with
+  // the open one is how the open one disappears.
   //
-  // CAUSE ONE (Story 8.2, STILL OPEN). 8.2 was the first story to let an author
-  // BUILD a chain, so it was the first at which a document could name a chain
-  // whose first covering entry is not `Noto Sans` — `["Noto Sans Thai"]`, say.
-  // From that moment the engine MEASURES with that face while the browser
-  // paints with the fixed Latin-first stack below, and the two disagree exactly
-  // as they did in the reported defect this file was written for. Its fix is a
-  // design-system decision above a builder's authority — rename the generated
-  // families, or generate a face-name -> CSS-family map — and no ruling has
-  // made it. Story 8.4a did not close it and did not pretend to; see
-  // deferred-work.md, DW-35.
+  // CAUSE ONE, VOCABULARY LAYER (CLOSED BY STORY 8.4b). Until 8.4b the two
+  // sides did not merely differ in stack ORDER — they used different NAMES for
+  // the same three shipped files: the generator registered them under IBM Plex
+  // family names while a chain's entries are the ENGINE's face names, so a
+  // chain entry could not be used as a CSS family name AT ALL. The earlier
+  // form of this comment called the fix a design-system decision above a
+  // builder's authority, needing either a rename of the generated families
+  // (rippling into tokens.css and design-contract.test.ts) or a face-name ->
+  // CSS-family map. MEASURED FALSE, per D-8.4.14: it needed neither. 8.4b adds
+  // a SECOND @font-face over each of the SAME three files under the engine's
+  // own face names, so the engine's vocabulary is nameable in the browser with
+  // no chrome token edited, no binary added and no mapping table built — a
+  // mapping table being a second authority on which browser family is which
+  // engine face, rejected by name. The browser family now IS the engine's
+  // name, so there is nothing to map.
+  //
+  // CAUSE ONE, ATTRIBUTION LAYER (STILL OPEN). The fragment stack below is a
+  // fixed constant, not the document's chain, and a shipped-face fragment
+  // carries no face identity on the wire. So for a document whose chain is
+  // `["Noto Sans Thai"]` the engine still measures with a face the browser's
+  // fixed Latin-first order may not reach first, and the faces' coverage
+  // overlaps enough for that to bite. Closing it needs per-fragment
+  // shipped-face attribution on the projection — 8.4a's carried-face shape,
+  // extended to shipped faces — which is a different story. DW-35 cause one
+  // should be NARROWED to this residual, not closed; see deferred-work.md.
   //
   // CAUSE TWO (Story 8.4, CLOSED BY STORY 8.4a). The engine renders — and
   // measures — with a face the DOCUMENT ITSELF CARRIES, decoded out of its
@@ -270,16 +416,22 @@ describe('the canvas paints with the faces the engine measured', () => {
   // `font.family` would let a document's "Inter" collide with a shipped
   // "Inter" in the browser's own font registry — AD-8's hazard, one layer down.
   //
-  // THE MEASURED OBSTACLE for cause one, unrecorded anywhere before Story 8.2.
-  // The two sides do not merely differ in stack ORDER — they use different
-  // NAMES for the same shipped files. The generator registers the three Noto
-  // faces under IBM Plex family names (the design system's vocabulary); a
-  // chain's entries are the ENGINE's face names. So a chain entry cannot be
-  // used as a CSS family name at all, and the fix needs a face-name ->
-  // CSS-family mapping that exists on NEITHER side, or a rename of the
-  // generated families that ripples into the design tokens and their contract
-  // test. Note also the aliasing trap for anyone building it opportunistically:
-  // the generator's `'IBM Plex Mono'` is Noto Sans SC, not a mono face.
+  // THE OBSTACLE THAT WAS MEASURED AND IS NOW GONE, kept because the shape of
+  // its removal is what a reader needs. It said the two sides did not merely
+  // differ in stack ORDER but used different NAMES for the same shipped files,
+  // so a chain entry could not be used as a CSS family name at all — and that
+  // the fix therefore needed a face-name -> CSS-family mapping existing on
+  // NEITHER side, or a rename of the generated families rippling into the
+  // design tokens and their contract test. Story 8.4b did a THIRD thing: it
+  // added a second `font-face` rule per file under the engine's own name,
+  // leaving the IBM Plex rules and every token untouched. A chain entry is now
+  // a usable CSS family name.
+  //
+  // THE ALIASING TRAP IS STILL LIVE, and is now the only reason the two halves
+  // must never be collapsed: the generator's `'IBM Plex Mono'` is Noto Sans SC,
+  // not a mono face. That defect belongs to Story 8.4c, which puts real IBM
+  // Plex bytes behind the IBM Plex names; until then the pairing is pinned,
+  // file by file, in src/font-binary-identity.test.ts.
   it('records that the fragment stack is a stylesheet constant with no document input', () => {
     // NON-VACUITY FIRST. `find(...) ?? ''` yields an empty string the moment
     // the rule is reformatted onto several lines, and `expect('').not.toMatch`
@@ -298,13 +450,55 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(requested.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('records that the engine\'s face names and the browser\'s family names do not intersect', () => {
-    // The faces this build's FontSet ships, as a chain's entries spell them.
-    // This is DW-35 cause one, stated as the deliberate disjointness it is.
-    const engineFaces = ['Noto Sans', 'Noto Sans Thai', 'Noto Sans SC']
+  // THE SUCCESSOR OF THE DISJOINTNESS RECORD (Story 8.4b). What stood here
+  // asserted, in both directions, that the engine's face names and the
+  // browser's declared families do NOT intersect — the deliberate disjointness
+  // that was DW-35 cause one. 8.4b reverses exactly that, so those two
+  // assertions could not be edited: they had to go red and be replaced by
+  // their opposite. THE CHROME HALF DID NOT GO WITH THEM. The IBM Plex
+  // families are still declared and are still what every `--type-*` token in
+  // tokens.css resolves through; nothing in this story renames, removes or
+  // repoints them, and the arrayContaining floor below is what would notice.
+  //
+  // THE ENGINE'S NAMES ARE READ, NOT RESTATED. The form this replaces compared
+  // a dynamically-read `declared` against a hardcoded three-element literal —
+  // which would have kept passing, while having become false, if folio-go ever
+  // shipped a different FontSet. Both halves of the claim below come from
+  // `fonts.Shipped()` itself.
+  it('declares the engine\'s own face names and asks the canvas for exactly them', () => {
+    // NON-VACUITY BEFORE ANYTHING ELSE. A parse that yields nothing makes every
+    // `filter(...).toEqual([])` below pass over an empty set, which is the
+    // classic way this shape of guard goes quiet.
+    expect(engineFaces.length, `read no face names out of Shipped() in ${enginePath}`).toBe(3)
+
+    // THE CHROME HALF, UNWEAKENED. The design system's vocabulary must remain
+    // declared; the canvas no longer asks for it, but every type token does.
     expect(declared).toEqual(expect.arrayContaining(['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai']))
-    expect(engineFaces.filter((face) => declared.includes(face))).toEqual([])
-    expect(declared.filter((family) => engineFaces.includes(family))).toEqual([])
+
+    // THE BROWSER CAN NAME THE FACE THE ENGINE MEASURED WITH. Every face in
+    // the shipped FontSet has an @font-face of its own. That those faces are
+    // declared from the ENGINE'S OWN BYTES is the separate, stronger claim
+    // made in src/font-binary-identity.test.ts.
+    expect(engineFaces.filter((face) => !declared.includes(face))).toEqual([])
+
+    // AND THE CANVAS ASKS FOR THEM. Containment, not equality: the stack ends
+    // in the generic `sans-serif` keyword, which is guarded separately below.
+    expect(engineFaces.filter((face) => !requested.includes(face))).toEqual([])
+
+    // AND IN THE ENGINE'S OWN ORDER, which containment alone does not say.
+    // The acceptance criterion and the I/O matrix both require the ORDER, and
+    // for good reason: a CSS stack is a first-match-wins search per codepoint,
+    // the three faces' cmaps overlap (339 / 529 / 230 codepoints pairwise,
+    // measured) and all three cover `A` and `5`. Reordering the stack CJK-first
+    // changes which face rasterizes every overlapping codepoint — a metric
+    // change the containment assertion above waves straight through. The
+    // expected order is `fonts.Shipped()`'s own source order, parsed above, so
+    // this ties the browser's search order to the engine's declaration order
+    // rather than to a literal restated here.
+    expect(
+      requested.slice(0, engineFaces.length),
+      'the .canvas-text-fragment stack must name the engine\'s faces first and in the order fonts.Shipped() writes them',
+    ).toEqual([...engineFaces])
   })
 
   // STORY 8.4a'S POSITIVE TWIN OF STORY 8.4'S DISCLOSURE OF ABSENCE.

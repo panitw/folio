@@ -2,12 +2,32 @@
 title: 'Story 8.4b: The canvas can name the face the engine measured'
 type: 'feature'
 created: '2026-09-01'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: '2ded2e3cd3d77ae94ec364731f7e150b881f7bd9'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      DW-35 cause one is narrowed by this story, not closed: the canvas fragment stack is a
+      fixed stylesheet constant rather than the document's chain, and a shipped-face fragment
+      carries no face identity on the wire.
+    evidence: |-
+      Story 8.4b closes the VOCABULARY layer (the browser can now name the engine's faces at
+      all). The ATTRIBUTION layer stays open: only carried faces carry an `assetKey`, so a
+      shipped fragment paints with no inline family and falls to the fixed Latin-first stack.
+      The three shipped faces' coverage genuinely overlaps -- pairwise cmap overlaps of
+      339 / 529 / 230 codepoints, and all three cover `A` and `5` -- so a document whose chain
+      is ["Noto Sans Thai"] can have the engine measure a Latin run with one face while the
+      browser rasterizes it with another. Closing it needs per-fragment shipped-face
+      attribution on the projection (the shape 8.4a built for carried faces), which is a
+      different story. `deferred-work.md` still frames cause one as wholly open and owned by
+      8.4b, and still describes the fix as needing a family rename or a mapping table -- both
+      measured false by D-8.4.14. The register should be narrowed to this residual at close.
+    location: >-
+      folio-designer/src/App.css:118 (fixed stack); _bmad-output/implementation-artifacts/deferred-work.md (DW-35)
+    severity: medium
 ---
 
 <intent-contract>
@@ -163,6 +183,82 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-09-01 - Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 1, medium 2, low 2)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 9: (high 0, medium 3, low 6)
+- addressed_findings:
+  - `[high]` `[patch]` **The generator guards read commented-out text as live rules.** Three
+    review layers found it independently and one executed a probe; I reproduced it myself before
+    triaging: commenting out the three engine-named `@font-face` rules and leaving them as comment
+    text left all 16 guard tests GREEN while `build:wasm` emitted only 3 rules -- the canvas asking
+    for families the browser has no face for, which is exactly the reported Thai-overlap defect these
+    guards exist to prevent. `canvas-font-stack.test.ts` already owned a `withoutComments()` helper
+    and applied it to every other scan, but not to the generator parse; the new
+    `font-binary-identity.test.ts` had the same hole. Fixed by stripping comments before parsing the
+    generator in both files, plus two new red-proof tests. Re-proved: the same probe now fails 7
+    named tests.
+  - `[medium]` `[patch]` **The fragment stack's ORDER was unasserted.** The AC and I/O matrix row 2
+    both require the engine faces "in the engine's own order"; only containment was checked, so a
+    CJK-first reorder stayed green while changing which face wins on the measured cmap overlaps.
+    Fixed by asserting `requested.slice(0, engineFaces.length)` equals `engineFaces`, keyed off
+    `fonts.Shipped()`'s source order. Re-proved by reordering the stack.
+  - `[medium]` `[patch]` **"No chrome token is edited" was checked by nothing.** `tokens.css:11`'s
+    `--font-*` values were pinned by no test (`design-contract.test.ts` asserts only token names and
+    the `@import` line), so now that the engine names are declared, repointing a `--font-*` token at
+    `'Noto Sans'` would have passed every test -- collapsing the two vocabularies this story
+    deliberately keeps separate. Fixed by reading `tokens.css` and asserting both directions: each
+    IBM Plex family is still named by a `--font-*` token, AND no `--font-*` token names any
+    `fonts.Shipped()` face. The second half was added by the patch subagent after it probed the
+    first half alone and found it insufficient (`--font-page` independently names `'IBM Plex Sans'`).
+  - `[low]` `[patch]` **Sentinel slot strings grouped as if they were real files.**
+    `familySourcePaths`' `<no assets slot named X>` fallback participated in grouping, so two rules
+    over one unresolvable slot formed a well-formed "pair" satisfying the interval guard. Fixed by
+    rejecting sentinels explicitly, with an `unresolvable` red-proof fixture.
+  - `[low]` `[patch]` **The strongest half of the interval guard had no red-proof through its own
+    code path.** The "exactly one chrome family and one engine name per file" check was inline while
+    the `bothChrome` fixture re-derived it differently. Extracted `pairsOutsideTheInterval()` so the
+    real assertion and the red-proof drive identical code.
+
+**Rejected findings, each with the ground that refutes the specific claim at its cited location (DW-87):**
+
+1. *"No upper bound on `declared`; a seventh stray `@font-face` family passes every assertion"*
+   (`canvas-font-stack.test.ts`). REFUTED: the bound exists one file over --
+   `font-binary-identity.test.ts` asserts `familySlots(generator).length` `toBe(6)` and pins the
+   whole six-entry family->file map with an exact `toEqual`. A seventh rule reddens both. The claim
+   is true only of the file it was scoped to, which is not a defect.
+2. *"`font-display: swap` should be `block` or `optional` for the canvas faces."* REFUTED by the
+   intent's Always clause, which fixes the exact literal rule spelling including `font-display:
+   swap`; changing it violates the contract and breaks the regexes that parse that spelling. It is
+   also pre-existing on all three chrome rules, not introduced here.
+3. *"Fingerprint the fonts straight out of `folio-go/fonts/` and delete the committed designer
+   duplicates."* REFUTED as out of scope on the intent's own Approach -- "the same files, a second
+   `@font-face` each ... no new binary, no new slot, no copied byte" prescribes no change to asset
+   source layout. Self-defeating as well: it would make this story's new byte-identity tie a
+   tautology.
+4. *"Add a Playwright `document.fonts.check()` end-to-end test."* REFUTED: browser e2e is deferred by
+   D-000.4, `test:e2e:compile` is `tsc --noEmit`, and Playwright is in no workflow. The intent
+   requires every AC be stated "at a layer the suite actually executes".
+5. *"`requestedFamilies` takes the FIRST `.canvas-text-fragment {` line but CSS cascade uses the
+   last."* Pre-existing, not caused by this change, and its premise is currently false -- `App.css`
+   has exactly one such top-level rule. The reviewer concedes "nothing is currently wrong".
+6. *"`shippedFaceNames` is duplicated across the two test files."* REFUTED as a defect: the two
+   guards are deliberately independent readers of the same authority, each carrying its own
+   `toBe(3)` non-vacuity floor, so a parse drift reddens in both. Sharing it would create the single
+   point of failure the duplication avoids.
+7. *"`describe`-scope `readFileSync` throws a raw ENOENT without a `folio-go` sibling."* Real but the
+   failure is LOUD, not silent -- a collection error is maximally visible -- and `folio-go` is a
+   sibling in the same repository that the designer's own `build:wasm` already shells into.
+8. *"The non-vacuity loop `expect(generator).toContain(...)` is a tautology."* Pre-existing, and the
+   P1 comment-stripping fix changes its input regardless.
+9. *"Collapse the chrome and engine names into one rule; NotoSansSC (10.6 MB) is instantiated
+   twice."* REFUTED: the proposed fix requires pointing `--font-mono` at an engine name in
+   `tokens.css`, which the intent forbids by name ("never make chrome ask for a Noto family"). The
+   browser also fetches the shared fingerprinted URL once.
+
 ## Design Notes
 
 **Why the family is spelled in the generator and the tie is machine-checked.** The generator is a build script that writes CSS text; it cannot call Go. So the three engine names are literals there, exactly as the three IBM Plex names already are. What makes that safe is not the literal but the **tie**: Task 6 reads `fonts.Shipped()`'s own map and requires the generator's engine-named set to equal it, byte-for-byte on the files. That is one authority (`fonts.go`) with a checked mirror — **not** a mapping table, which would be a second authority asserting *which browser family corresponds to which engine face* and would have to be maintained in lockstep with the `FontSet`. The distinction is the whole verdict: here the browser family **is** the engine's name, so there is nothing to map.
@@ -229,3 +325,91 @@ and records why it is a designer test rather than a `lint` rule.
 (`TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)`; and, under `-tags=matrix`,
 `TestShippedFacesReproduceFromUpstream` as a could-not-execute). 23 golden digests. Vitest 37/350.
 Full figures in the Code Map.
+
+### 2026-09-01 — Implement/review/commit dispatch (terminal)
+
+Status: done
+Blocking condition: none
+
+Dispatched against this spec at `ready-for-dev`; step-01 routed straight to implement, nothing was
+re-derived. `baseline_revision` `2ded2e3`, tree clean. **Code Map drift: none** — the only files
+changed between the Code Map's anchor commit `475cb50` and this dispatch's HEAD `2ded2e3` are this
+spec and `epic-8-context.md`, so every anchor held (`canvas-font-stack.test.ts` still 443 lines, the
+two intersection assertions still where recorded).
+
+**Summary.** The generator now emits six `@font-face` rules over three files: the three IBM Plex
+chrome rules byte-identical, plus three declaring the *same* files under the engine's own face names
+from `fonts.Shipped()`'s spellings. `.canvas-text-fragment` asks for those engine names. No chrome
+token, no binary, no `assets` slot, no mapping table. The disjointness record was replaced by its
+opposite (containment, with the engine's names *parsed* from `fonts.go` rather than hardcoded), and a
+new guard performs the family→file join the codebase never performed, tying each engine-named family
+to the bytes `fonts.go` embeds.
+
+**Premises re-verified at `2ded2e3` before anything was rewritten** — the accidental resolution still
+holds (`IBM Plex Sans`→`NotoSans-Regular`, `IBM Plex Sans Thai`→`NotoSansThai-Regular`, `IBM Plex
+Mono`→`NotoSansSC-Regular`, the engine's three faces in the engine's own order), and the
+designer/engine mirror is byte-identical on all three faces (`a4c81131…`, `c94562c1…`, `5ef5755b…`).
+The Block If did not fire.
+
+**Files changed:**
+- `folio-designer/scripts/build-wasm.mjs` — three additional `@font-face` rules reusing the same three
+  `assets` slots; existing rules untouched.
+- `folio-designer/src/App.css` — `.canvas-text-fragment` stack rewritten to the engine's three face
+  names; one line, order- and file-preserving, so no rasterization changes today.
+- `folio-designer/src/canvas-font-stack.test.ts` — disjointness replaced by containment; engine names
+  parsed from `Shipped()`; declaration floor 3→6; stack order pinned; chrome tokens pinned both
+  directions; generator parse now comment-stripped; four now-false prose blocks rewritten.
+- `folio-designer/src/font-binary-identity.test.ts` (new) — the family→file join, the six-entry exact
+  map, the two-names-one-file interval naming Story 8.4c in its failure message, and the byte-identity
+  tie to `fonts.Shipped()`, scoped to the engine-named half.
+
+**Review:** 5 patches applied (1 high, 2 medium, 2 low), 1 deferred, 9 rejected. See the Review
+Triage Log. `followup_review_recommended: true` — a `high` was patched (score also 3×2+1×2 = 8).
+
+**Verification — measured, at the final tree:**
+- `go test -count=1 ./...` → **1811 pass / 2 fail / 5 skip**; the two are
+  `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest. Identical to the baseline I
+  measured myself at `2ded2e3` in a detached worktree. **No third red.**
+- `go test -count=1 -tags=matrix ./...` → **1822 / 3 / 5**; the third is
+  `TestShippedFacesReproduceFromUpstream`, a **could-not-execute, not a byte divergence**:
+  `fontgen: fontTools is not importable by this interpreter`. It never compared bytes (DW-86).
+- `go vet -tags=matrix ./...` empty; `gofmt -l folio-go` empty (run from the repo root).
+- Four AD-21 legs (`darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm`) all pass; the unset run
+  passes in 0.00s asserting nothing and is reported **as a control, not a fifth leg**.
+  `TestCrossTargetByteIdentity` passes.
+- `cd lint && go test -count=1 ./...` → four `ok`, no FAIL.
+- Designer: typecheck clean; oxlint **exactly 4** `only-export-components` warnings
+  (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1323,1330`), no errors; Vitest **38 files / 358 tests**,
+  all passing (baseline 37/350). `test:e2e:compile` clean — **this compiles, it does not run.**
+- `shasum -a 256 fixtures/*/expected.pdf` → **23** lines, unchanged. No Go file was touched, so this
+  story emits no PDF byte. Root `README.md` md5 still `078d7d80d518d54af2fc04fb270d46b8`; no
+  attestation record touched.
+- Offline release (node `v24.16.0`): `npm run build`, `verify:offline:red`, `verify:offline:wasm` all
+  pass. The emitted `.ttf` set is the **same three files** and the generated stylesheet carries
+  **6 rules over 3 files**.
+
+**Mutation proofs I ran myself, not merely relayed** (each restored afterwards; HEAD never moved):
+reverting `App.css` to the IBM Plex stack reddens the named replacement test; deleting one
+engine-named rule reddens 7 assertions across both files; repointing `'Noto Sans'` at the Thai file
+reddens the byte tie with a diagnostic message naming both digests; renaming a face in `Shipped()`
+reddens the guard — which is the proof the hardcoded `engineFaces` array was genuinely replaced by a
+read of the engine's authority rather than renamed.
+
+**Matrix audit:** all 8 I/O matrix rows are covered by tests that ran and passed in the 38/358 Vitest
+run.
+
+**Residual risks.**
+1. **The limit no gate here passes.** Nothing in this repository executes a real font load, a
+   `document.fonts.add`, or a rasterized glyph. What is proved is that the browser is *asked* for the
+   engine's face names and that a face under each is declared from the engine's own bytes. That the
+   glyphs are actually rasterized with those faces becomes checkable **when browser e2e arrives
+   (D-000.4)**. Do not read the e2e compile as a run.
+2. **DW-35 cause one is narrowed, not closed** — see the `deferred` frontmatter entry. The register
+   still frames it as wholly open and owned by 8.4b, with a fix description D-8.4.14 measured false.
+3. **The spec's `s1VisibleBytes` baseline (12,423,974) did not reproduce**: measured 12,426,422 at
+   HEAD both before and after this change, so this story moves it by zero, but the recorded figure is
+   stale. No size gate exists yet (Story 8.4d).
+4. **For Story 8.4c:** `font-binary-identity.test.ts` now exists, so 8.4c's Task 4 is an edit, not a
+   creation; its "never add a Noto engine face name to `declared`" instruction and its planned
+   disclosure that `assets.sansCjk` has no `@font-face` naming it are both now stale. The
+   `IBM Plex Mono`→CJK aliasing defect is untouched and remains 8.4c's.
