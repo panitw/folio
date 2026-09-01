@@ -10,6 +10,244 @@ closure of Epics 9 and 10, then Epics 11–15 to the `folio-go/v0.1.0` tag.
 
 ---
 
+## Lead Grounding
+
+Filed verbatim 2026-09-02 from the run-scoped engineering lead, grounded once at baseline `1f8e52b`.
+This is a **continuation** — the lead re-grounded from the existing record (`epic-7-8-decision-log.md`'s
+own `## Lead Grounding`, the standing decisions and the 166 ruling headings) rather than re-deriving
+the program from the architecture. Everything the report marks MEASURED was verified at HEAD by the
+lead itself rather than read from a document. The lead does not re-read the spine, the ADRs, the epics
+or either decision log on later resumes; per decision it reads only what that decision hinges on.
+
+### Sources read
+
+- `epic-7-8-decision-log.md` — `## Lead Grounding` and `## Standing decisions` in full; the 166 ruling
+  headings enumerated; D-7.3.1, D-7.8.1–.4, D-8.1.1–.3, D-8.2.1–.8, D-8.3.1–.6, D-8.4.3, D-8.4.21–.35,
+  D-8.5.1–.11 read in full.
+- `epic-8-15-decision-log.md` — all of D-000.1…D-000.8, binding and not to be re-litigated.
+- `sprint-status.yaml` — all 420 lines including every inline comment.
+- `planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md` — the
+  stage-rank table and AD-1…AD-26 in full, plus Consistency Conventions and Stack.
+- `planning-artifacts/epics.md` — Epic 8's header and Stories 8.5 / 8.6 / 8.4d; Epics 9–15 in full.
+- `specs/spec-fonts/SPEC.md` `## Open Questions`; `specs/spec-folio/folio-format.md` version rules,
+  `align`, `keepTogether`.
+- `deferred-work.md` — by heading (113 entries), plus DW-24, DW-68, DW-73, DW-75, DW-80, DW-100,
+  DW-101, DW-103, DW-108, DW-109 in full.
+- Code at HEAD: `folio-go/component_commands.go`, `folio-go/internal/template/serialize.go`,
+  `folio-go/version.go`, `folio-designer/src/release-payload.ts`,
+  `folio-designer/scripts/verify-offline-release.mjs`, `.github/workflows/`, `folio-go/fonts/`,
+  `folio-designer/public/fonts/`.
+
+**Confirmed, carrying the prior lead's correction forward: there are no separate ADR files.**
+`ARCHITECTURE-SPINE.md` is the only architecture document and its `AD-N` invariants *are* the ADRs.
+Rulings cite `AD-N` plus a SPEC clause, a format clause or a story AC — never an ADR path.
+
+### The invariants the lead rules from
+
+**Byte identity is the product, not a quality bar.** AD-1 (determinism is a *directory* boundary —
+every package under `internal/` is render path), AD-2 (`geom.Length`, int64 millipoints, one owner,
+round-half-to-even), AD-3 (numbers reach the PDF through one file in exactly two representations),
+AD-23 (no `float64` under `internal/`, geometry or data), AD-21 (four-target matrix; a moved hash is a
+defect until proven intended — counter-metric C6), AD-22 (any change to layout, subsetting, emission,
+the locale table or the toolchain is breaking and ships as such).
+
+**One authority per fact**, recurring at every layer: one number→text emitter (AD-3), one coordinate
+flip (AD-24), one canonical serializer (AD-9), one scalar→text converter, no TypeScript model of a
+document (AD-15), the browser never measures (AD-17), fonts arrive as an explicit value and are never
+queried from the host (AD-8).
+
+**Command / projection** (AD-15, AD-16): the UI paints from an immutable snapshot and sends every
+committed mutation as one opaque versioned command. This binds essentially all of Epics 12, 13, 14 and
+the designer half of 11.
+
+**The stage-rank law is executable and lives in code**, not in the spine:
+`lint/internal/rules/stagerank.go`'s `stageRankTable`, enforced by `TestStageRankProductionScan`. The
+spine's ladder is held in agreement by a test. **If they disagree, the table is right.**
+
+**The window model** (D-2.6.1): pages are sliding windows onto one unbounded content column, never
+rearranged. Epic 12's band-height work (12.1, 12.5) is a constraint *on* that model, not a change *to*
+it.
+
+**The overflow scope line.** Content exceeding its declared *box* is FR44 / Story 2.8 — clip, diagnose,
+still return bytes. An item taller than the *window* is a located template error. Every new overflow
+question routes through that distinction first. AD-14's refinement (post-7.10): leniency is scoped by
+**what** is over-tall, never by whether it is grouped.
+
+**AD-9's P1** (`Parse(Serialize(d)) == d`) is *forced*, not chosen. `serialize.go:510-514` preserves
+orphaned assets unconditionally and its comment states there is "no policy latitude to drop one".
+MEASURED still true at HEAD. This matters enormously for Story 8.6.
+
+**AD-14's diagnostic contract:** one closed, additive `SCREAMING_SNAKE` registry; callers match on the
+code, never on message text; clipped content and over-tall rows are Warnings returned *alongside* PDF
+bytes.
+
+**AD-26's Rule has two clauses, and its heading is not its Rule** (D-8.5.3). The family ban is scoped
+to *"No dependency"*; redistributed **assets** owe only their licence text and copyright lines.
+Extending the ban to assets was an **owner decision**, now made: a named permissive allowlist
+(**OFL-1.1, Apache-2.0, MIT, UFL**), enforced like the dependency ban — fail the build, never warn —
+with unclassifiable treated as failure.
+
+### The run's own standing law, as the lead will apply it
+
+- **D-000.8's bar, verbatim.** Escalate only: a scope cut/expansion that changes what `v0.1.0` is; a
+  change to the byte-identity regime, the `.folio` format, or the public API surface; the Epic 11
+  realize-vs-retire fork; a security boundary; a decision that forecloses a direction the epics assume
+  open. Everything else is ruled.
+- **D-8.2.2 is the standing tagged-surface test, not re-derived per case.** (a) *Is it in the tagged
+  surface?* — is it reachable through the module's **exported** API (`folio.Canvas`,
+  `folio.CanvasWithTextPaint`, `Render`, `LoadTemplate`)? "Which binary calls it" is **not** the test.
+  (b) *Must it land before the tag?* — only if it is a **narrowing or removal that has not shipped
+  yet**. Widenings are always safe.
+- **D-7.8.3's before-the-tag set, current state.** Item 1 (Story 7.8's justified-table load narrowing)
+  **landed**. Item 3 (Story 8.4's non-font-asset render refusal) **landed**. Standing open:
+  **D-7.8.2's audit** — retire whichever of the two existing style codes no consumer branches on (a
+  removal) — and **DW-32/DW-73/DW-75 via Story 15.2a** (a narrowing of the exported
+  `ApplyComponentCommand`). Plus an unnamed fourth: **DW-68**.
+- **Practice rules this run earned and keeps applying:** an anchor written at a plan gate is a claim
+  with an expiry date, re-verified at the gate that consumes it (D-7.8.4). A count written next to the
+  thing it counts is a literal that stops being true the moment the thing grows (D-8.5.4 — three
+  instances this epic). Moving a threshold or an AC to match a measurement is the defect, not the fix
+  — but correcting a **false premise about how the bar is reached** is legitimate; they look identical
+  in a diff and are opposite in kind (D-8.5.10). A recommendation that names its own defeater costs
+  one round trip instead of a wrong build (D-8.4.24). A ruling recorded everywhere except the document
+  that gets read is a ruling that did not happen (D-8.4.31).
+
+### Constraints Epics 8–15 must not break
+
+1. **The corpus is the witness.** Epics 9, 10, 11, 12 and 14 all carry an explicit "a document
+   declaring none of this hashes identically" clause. Every one is checkable and must be checked, not
+   asserted. Under D-000.4's per-epic cadence, any story whose own correctness is byte-shaped gets its
+   integration commands in its **own** `## Verification` regardless, with the override logged.
+2. **Epic 11 is the only remaining epic that can move a golden hash** — which is exactly why D-000.3
+   sequences it late. Nothing in 12/13/14 emits a byte the engine did not already emit.
+3. **The format ceiling is `2.0` and does not move for anything currently planned.** MEASURED at
+   `folio-format.md:47`: a document declares the lowest version its own content requires — `2.0` for a
+   non-table `align: "justify"` or an embedded-face chain entry, `1.2` for `keepTogether`, `1.1` for
+   `lineSpacing` or `color`, else `1.0`. `SupportedMajor` stays at 2. If any Epic 12 story proposes a
+   new format field, its version trigger must be **derived, not asserted** (DW-81's shape).
+4. **Epic 13's scope fence — the sharpest in the run.** Story 13.4 makes an absent path render
+   **empty**, and `BINDING_PATH_ABSENT` must stay a located **Error** in `Render`. The empty-value
+   behaviour is **preview-with-no-data only**, never `Render`'s semantics; the engine's error contract,
+   its diagnostic codes and the golden corpus are untouched. A drift here silently prints a blank where
+   a customer's name belongs, on 50,000 statements. Any proposal to move this into the engine is a
+   direction change and is escalated.
+5. **Epic 13's second fence:** AD-17 forbids the browser measuring text. Story 13.2 needs a container
+   pixel width and takes it under the **narrow, explicitly named** exception `src/preview/` already
+   holds for `scroll*` — the exception names the new property and is never widened by wildcard.
+6. **Epic 14 changes no rendered byte, no document model and no command surface** by its own header.
+   14.9 is the single exception and it is a **projection** field, not a format field. Note carefully:
+   `folio.Canvas` is **exported**, so a new `CanvasProjection` field *is* on the tagged surface
+   (additive, therefore safe — but "nothing about the document changes" must not be read as "nothing
+   about the tagged surface changes").
+7. **DW-74 is live and 14.9 walks straight into it:** the Go/TypeScript wire test records the
+   projection's top-level and `CanvasFontChain` key lists but **not** `CanvasComponent`'s — so a
+   per-component projection field can blank the canvas with every test on both sides green. 14.9 adds
+   exactly a per-component projection field.
+8. **Story 8.6 must not build an orphan collector on `assetKeyReferenced`.** MEASURED at
+   `folio-go/component_commands.go:790-799`: it matches `ElementImage` with a set, non-null `Asset`
+   **only**. A font asset is referenced from the `fonts` chain map, never from an element, so it
+   returns **false for every font asset**. Reusing it for AC5 deletes live faces with no compile error
+   to announce it. That is DW-80, and Story 8.6's `Covers:` line already names it.
+9. **The 64-asset ceiling is now guarded** (Story 8.4f, MEASURED at `verify-offline-release.mjs:51`
+   against `maximumCacheAssets = 64` in `release-payload.ts:33`). Per D-8.5.1, raising it for a bundled
+   catalogue is legitimate — with **stated headroom** rather than tuning to fit — and only now that the
+   silent-failure half has landed.
+10. **Fixed-point discipline in the new UI work.** 12.5's drag and 13.2's zoom both compute positions.
+    The stored value stays millipoints (AD-2); a browser-side float is fine for a *transient proposal*
+    under AD-15, and is never what gets committed.
+
+### Open questions the lead can already see
+
+**(a) Story 8.5 re-blocks unless `spec-fonts/SPEC.md` is amended first.** A stale halt file blocked on
+`SPEC.md:130` — *"Which families make the shipped catalogue, how many, and who curates the list?"* —
+recorded as open in a list where every settled question is struck through in place. **D-8.5.3 answered
+it but the SPEC still said open.** By D-8.4.31's own rule this ruling had not happened where it gets
+read. *(Discharged by D-000.10.)*
+
+**(b) DW-108: `epic-8-context.md` lost the constraints Stories 8.5 and 8.6 were to be built against** —
+the out-of-scope list (bold/italic meaning, synthetic emboldening/obliquing, variable-font axes, live
+font services, enumerating host-installed fonts, CJK families), the procurement rules and the
+chain-entry shape contract. All six survive verbatim in `spec-fonts/SPEC.md` `## Non-goals`, a stronger
+source than the regenerable cache — **but the agent that builds 8.5 reads the cache, not the kernel.**
+Discharge: confirm 8.5's spec carries them, **sourced from `spec-fonts/SPEC.md`**. A plan-gate check.
+
+**(c) Three spec-fonts questions remain genuinely open; two are reachable this run.** *Does the licence
+record live inline on each font asset, or in one document-level notice block?* — Story 8.6 embeds a
+catalogue face into a `.folio`, so this becomes answerable-or-forced at 8.6. *May an author embed a
+font file from their own disk?* — a Non-goal-adjacent scope question 8.6 must decline **explicitly
+rather than by silence**. The third is bold/italic, deferred by D-000.7 to Epic 11's gate.
+
+**(d) DW-68 is a fourth before-the-tag obligation that D-7.8.3's set does not name.** An aggregate-only
+over-tall keep-together group is still clipped with a `TABLE_ROW_CLIPPED_HEIGHT` Warning, on a reason
+Story 7.7 imported from Story 4.6 without importing its argument. Its register entry names the owner as
+**"Owner / engineering lead — a RULING, before the `folio-go/v0.1.0` tag"** and says the deadline is the
+whole point of the entry. Making it fatal narrows what renders: free before the tag, ruinous after.
+**To the owner at Story 15.3's gate at the latest**, flagged now so it is not discovered at the tag.
+
+**(e) Decisions already expected to escalate** — all written into the epics as owner rulings, not the
+lead's additions:
+- **12.4** — padding insets a non-table element, or the format documents it table-only. Both branches
+  are direction-shaped: table-only **narrows the exported command layer** (joins the before-the-tag
+  set) and amends `folio-format.md`; insets adds rendering behaviour to four element kinds. **Escalate.**
+- **14.7's unit ruling** — mm vs pt, **product-wide**, not the dialog's. **Escalate.** (The stored value
+  is millipoints either way; that half is not in question.)
+- **11's realize-vs-retire** — D-000.7, at Epic 11's gate. **Escalate by construction.**
+- **15.3's "which epics are inside v0.1.0"** — the owner's recorded decision to cut after Epic 6 is
+  overtaken by Epics 7–14, and the AC says explicitly that such a decision is **re-made, not assumed**.
+  **Escalate.**
+- **14.7's Cancel/Apply transaction model** — expected to be **ruled**, not escalated: AD-15 forbids a
+  second document model, so a modal Cancel needs a local uncommitted buffer the architecture already
+  prohibits. Unless the owner wants the buffer ruled in deliberately, the direction determines it.
+- **14.6's pick-binds-immediately vs explicit commit**, and **13.3's "Matches native render" wording** —
+  both **ruled**. 13.3's answer is already written in the epic: the tab cannot compare itself to a
+  native render; what is true is a property of the build proven by CI's matrix, and the wording must
+  say the true thing.
+
+**(f) The browser has never executed in this repository, and Epics 13 and 14 are 15 stories of designer
+UI.** MEASURED: `.github/workflows/` contains **zero** occurrences of `playwright`; CI runs
+`tsc --noEmit` only (DW-101, DW-103). Twelve real spec files exist, run locally, and are believed absent
+by everyone. D-8.4.25(d)'s executed-browser assertion for Epic 8 remains **owed, not
+attempted-and-passed** — the 162 MB Chrome for Testing archive stalls at a 428 KB cache entry
+(D-8.4.35d). This is not a story-level problem; it is that the run is about to build fifteen
+browser-shaped stories whose only real proof does not run. **Story 15.2 is the natural home and is
+sequenced early (S3), before Epics 12/13/14.** If the browser cannot be made to run, every Epic 13/14
+acceptance criterion about what a *user sees* is proved by unit tests over components, and the run
+should know that going in rather than discover it at Epic 13's gate.
+
+### Record found contradictory or stale (each measured)
+
+1. **DW-24 is CLOSED**, and three live documents said otherwise — including this run's own D-000.5.
+   Corrected by **D-000.9**; the Epic 9/10 reconstruction must **not** be scoped to close it.
+2. **`sprint-status.yaml` recorded `epic-8: backlog`** while eleven of its stories are `done`.
+   Corrected by **D-000.10**.
+3. **Story 8.6's AC5 orphan-drop contradicts a forced invariant** and is still unresolved at HEAD. AC5
+   says an unreferenced font asset *"is dropped"* on save; `serialize.go` preserves orphans
+   unconditionally because AD-9's P1 forces it, and its own comment says collecting orphans is a
+   designer **command**, never a serializer side effect. D-5.13.3's image-asset precedent gives the
+   correct shape. **The story must route the drop through a command**, and `spec-fonts/font-catalogue.md`
+   is amended in the same story. To be ruled at 8.6's plan gate rather than discovered by the build.
+4. **`epics.md`'s Epic 8 prose dangled** on "a face-inventory decision SPEC-fonts leaves open"; Epic 11
+   owns it (FR57). Corrected by **D-000.10**. Cosmetic, but it is exactly how a settled question reads
+   as open to the next dispatch.
+5. **The `~9 MB` first-load figure in `epics.md` is superseded but deliberately not yet replaced.**
+   Story 8.4d is sequenced **last** in Epic 8 (D-8.4.27d) precisely so the threshold is set once against
+   the epic's finished weight. **Until 8.4d lands, no story may fix the budget** — 8.5's obligation is
+   to *record* per-asset Brotli weight, and 8.4d consumes that same figure rather than building it
+   twice (D-8.5.6). `epics.md` must **not** be rewritten to 12.4 MB (D-8.4.24).
+6. **The determinism scare is settled and must not be reopened casually.** D-8.5.7: two builds at one
+   commit with provably identical tree state produce a byte-identical wasm; **one untracked file changes
+   it**, because `go build` stamps `vcs.modified` and Go derives it from `git status`. **This pipeline
+   writes untracked files into the tree** — halt files, result files, spec files — so the instrument
+   perturbs the specimen. Story 8.4g fixed it with `-buildvcs=false`. **Any byte figure recorded this
+   run must carry its exact invocation, commit and tree state.**
+7. **One process defect is at instance three and is out of this repository to fix** (D-8.5.9): a step-03
+   subagent committing on its own. Three unauthorized commits, three catches by a downstream agent that
+   happened to audit provenance. At instance three the commit landed while `origin/main` was live, so an
+   unaudited step-03 commit is one push away from being public. Recorded with its count so a fourth
+   instance is priced against three priors rather than met fresh.
+
+---
+
 ## Standing decisions (settled at setup, 2026-09-02)
 
 These shape the whole run and were answered by the owner at the terminal before any story was
