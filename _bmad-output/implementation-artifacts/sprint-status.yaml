@@ -221,7 +221,7 @@ development_status:
   # fall-through sites are TWO POPULATIONS UNDER TWO POLICIES -- :298 is fonts (owner's four-id
   # allowlist), :384 is the Thai wordlist (PyThaiNLP, CC0-1.0, NOT one of the four). Both close,
   # against DIFFERENT lists; CC0-1.0 must NOT be added to the owner's four.
-  8-4h-the-licence-gate-closes: backlog
+  8-4h-the-licence-gate-closes: done
   # 8.5's spec exists at ready-for-dev but is SUPERSEDED pending re-plan after 8.4h (D-8.5.13):
   # AC2 and AC7 moved out. AC4 stays HERE deliberately -- the forbidden-host scan asserts that
   # D-8.5.12's decline was honoured, so it belongs with the thing it constrains.

@@ -870,3 +870,135 @@ anything here.
 
 **How we'd know it was wrong.** The implementation subagent losing a constraint stated only late in
 the spec — the signal is a review finding that contradicts something the spec says plainly.
+
+## Story 8.4h's close — a follow-up review judged unnecessary, and a process rule proved unenforceable (2026-09-02)
+
+### D-8.4h.4 — `followup_review_recommended: true` is discharged WITHOUT a second review pass, and the reason is on the record
+
+**Orchestrator decision.** BMAD raised the flag mechanically: patched findings scored `3×1 + 1×5 = 8`,
+over its threshold of 5. The flag is a gate, and this entry is the gate being answered rather than
+ignored.
+
+**Verdict.** No second review dispatch. Story 8.4h closes on the review it had, and the **closer runs
+the hard adversarial pass** instead — which this story earns on its own merits, not as a substitute.
+
+**Situation.** Triage was **patch 6** (1 medium, 5 low), **deferred 7** (3 medium, 4 low), **rejected
+7**, with **zero** `intent_gap` and **zero** `bad_spec`. No `high` at any point. The flag's arithmetic
+counts *how much was patched*, not *how well* — six patches on a story with no high findings and no
+spec disagreement is a review that worked, not one that needs repeating.
+
+**Why a second pass would buy nothing here, stated as evidence rather than as confidence.** The
+review's one material finding was verified by **deletion mutation**, which is the strictly stronger
+instrument: the wordlist site's third refusal arm shipped **unexercised**, and deleting
+`case !licence.IsPermissiveSPDX(wordlistSPDX)` outright left all four lint packages **green**. It was
+missed originally because substitution mutations *did* redden — falsifying a condition proves arm
+**order**, deleting it proves the arm is **reached**. That distinction is the actual lesson of this
+story and it is now covered by a named `CC-BY-SA-4.0` subtest, re-proved by deleting the arm again.
+
+Every other guard was mutation-proved the same way, with **disjoint** red sets: unclassifiable,
+copyleft and off-allowlist each redden their own named test **and nothing else**; the classifier's two
+mutations redden two non-overlapping test sets. And the **forbidden collapse was mutated
+deliberately** — pointing the wordlist site at the font allowlist reds the named
+`CC0-1.0_passes_—_it_is_NOT_one_of_the_four_font_ids` subtest, which is D-8.5.13's trap caught by a
+test rather than by the whole build going red on a shipped asset.
+
+**In simple terms.** The flag says "a lot got fixed, look again." What actually happened is that the
+review found one real hole, and the hole was found by the one technique that could find it. Running
+the same layers a second time would re-ask a question already answered with a better instrument.
+
+**Options considered.** (a) *Set the spec to `in-review` and re-dispatch* — rejected: it re-runs the
+same four layers over a change set they have already read, and the run's budget is better spent on the
+adversarial pass the licence boundary actually warrants. (b) *Ignore the flag* — rejected outright;
+it is the one signal BMAD gives for free, and silently dropping it is how a `high` gets lost in a
+later story. (c) *Discharge it in writing and route the scrutiny to the closer* — chosen.
+
+**Why this wins.** It spends the scrutiny where the risk is. The accepted cost is that the judgement
+is mine: if a later story finds a defect in this change set that a second review layer would plausibly
+have caught, this entry is the record of who decided otherwise.
+
+**Consequences.** The closer runs the **hard adversarial pass** for this story — least-privilege,
+TOCTOU/double-execution on the gate, and specifically whether any refusal can be reached with a
+*message* that leaks a path or licence text it should not. **Seven deferrals are live and must be
+registered with owners**, not left in the spec; deferral 1 (the unanchored marker branch, medium) is
+explicitly its own story because correcting it touches the pre-existing OFL branch too.
+
+**How we'd know it was wrong.** A later story finding a defect in the licence gate that one of the four
+review layers would plausibly have caught on a second pass.
+
+### D-8.4h.5 — Verified independently: the `gofmt` red is pre-existing, and the spec's Verification line is MY error to fix
+
+**Orchestrator decision** (a verification of a sub-agent's claim, per this run's standing gate).
+
+**Verdict.** `gofmt -l folio-go lint` printing `lint/internal/rules/licencegraph_test.go` is
+**pre-existing** and is **not** a regression from Story 8.4h. The spec's `## Verification` line
+recording *"expected: no output"* is a **mis-measurement made at the plan gate** — which I approved —
+and is corrected in the spec rather than "fixed" by reformatting a file outside this story's scope.
+
+**Situation.** The build reported the red as pre-existing. This run's standing gate is that
+*"pre-existing / unrelated failure"* claims are confirmed at the baseline rather than accepted, because
+agents sometimes mislabel their own regressions. Confirmed two ways: the file's content extracted from
+`7aa283b` is unformatted there too, and `git diff --name-only 80f46a0..HEAD` does not list it — the
+story never touched it.
+
+**In simple terms.** The checklist said the floor would be clean; the floor had a mark on it before we
+walked in. The right fix is to correct the checklist, not to mop a patch of floor that was never this
+story's to mop — mopping it would put an unrelated file in this story's diff and make the commit lie
+about what it changed.
+
+**Why the spec is corrected and the file is not.** Reformatting it here would breach the story's own
+scope fence and add a file to a commit whose whole claim is that it touches only the licence gate.
+The formatting defect is real but it belongs to whoever owns that file's story.
+
+**Consequences.** The spec's `## Verification` gofmt line is amended to record the file as a **named
+standing red**, in the same style as `TestCorpusMeetsP6ExerciseFloors` — so the next story that runs
+this command does not re-discover it, and does not mistake it for its own. Registered as deferred work
+with no owner assigned; it is a one-line fix for whichever story next touches `lint/internal/rules/`.
+
+**How we'd know it was wrong.** `gofmt -l` printing a *second* file after some later story — that
+would mean the standing-red note is being used to wave through new breakage, which is exactly what
+naming it by identity is meant to prevent.
+
+### D-8.4h.6 — The no-commit rule for step-03 subagents is UNENFORCEABLE by prompt, at instance four
+
+**Orchestrator decision** (recording a process defect at its fourth instance, with a mechanism the
+first three did not have).
+
+**Verdict.** Commit `ad6258b` was created by the **implementation subagent**, not by the dispatch's
+finalization. That is instance **four** of D-8.5.9's pattern. The commit is **kept** — it was audited,
+not trusted — and the rule is reclassified: **it cannot be enforced by prompt and must not be
+attempted that way again.**
+
+**The mechanism, which is new information.** D-8.5.9 recorded three instances and priced a fourth
+against them. This dispatch's prompt restated the prohibition explicitly and in the imperative, and it
+happened anyway. The builder identified why, and it is structural, not a lapse: **`bmad-build-auto`'s
+step-03 mandates that the implementation handoff be passed to the subagent *verbatim*, and forbids
+adding parent-authored guardrails to it.** So a no-commit instruction written in the orchestrator's
+dispatch prompt **cannot travel to the agent that would have to obey it**. Every previous instance was
+read as an agent ignoring an instruction; it was in fact an instruction that never arrived.
+
+**In simple terms.** We have been leaving notes on a door the courier is required not to read. Four
+times we concluded the courier was careless. The fourth time we checked the door, and the note had
+never been on the far side of it.
+
+**Why the commit is kept rather than reverted.** It is correct: content matches the task list, no
+forbidden paths, `<intent-contract>` untouched, trailers present, on `main`, unpushed. Reverting a
+correct commit to make a process point would rewrite history for no safety gain and lose the audit
+trail. Finalize's own rule is to keep and audit; that was followed. The patch round produced **no**
+further subagent commit.
+
+**Why this is worth recording rather than shrugging at.** The risk D-8.5.9 named is real and
+unchanged: at instance three the commit landed while `origin/main` was live. It is live now —
+`origin/main` sits at `c985b9c`, well behind. An unaudited step-03 commit is one push away from being
+public, and nothing in the pipeline prevents one; the only control that has ever worked is a
+downstream agent auditing provenance, which is a control that depends on somebody choosing to look.
+
+**Consequences.** **Stop restating the no-commit rule in build dispatch prompts** — it is inert there
+and its presence creates false assurance that a control exists. Replace it with what actually works,
+which this run will now do every story: the orchestrator **audits every commit's provenance and
+contents at close** (`git show --stat`, author, trailers, scope against the story's file list) and
+**verifies nothing was pushed**. The fix proper is out of this repository — it is a change to
+`bmad-build-auto`'s step-03 contract — and is recorded here so a fifth instance is met with a known
+mechanism rather than a fresh diagnosis.
+
+**How we'd know it was wrong.** A step-03 commit appearing that the audit does not catch — meaning the
+audit is being performed as a formality rather than as a check.

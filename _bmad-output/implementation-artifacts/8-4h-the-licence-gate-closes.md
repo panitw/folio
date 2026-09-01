@@ -123,25 +123,25 @@ rotting list) · **D-1.3.8** (a silent pass on an unidentifiable licence is the 
 *Non-normative. This section is a plain-language orientation for a human reader; the intent contract
 below is what governs the build.*
 
-Folio ships a check that is supposed to make sure every typeface the project redistributes carries an
-acceptable licence. It does not actually do that. It confirms the paperwork is present — a licence
-file, a notice, a copyright line — then writes down whatever it believes the licence to be and passes.
-If it cannot work the licence out, it writes down "see the notice" and passes anyway. If it *can* work
-it out and the answer is one the project must refuse, it writes that down and still passes. So an
-unacceptable typeface would ship today on a clean build, with nothing said.
+Folio's check that every typeface it redistributes carries an acceptable licence did not do that. It
+confirmed the paperwork was there, recorded whatever it thought the licence was, and passed either
+way. The defect had two halves. If the check could not work a licence out, it wrote "see the notice"
+and passed. Worse, and far less obvious: if it *could* work it out and the answer was one the project
+must refuse, it recorded that and passed anyway. A forbidden typeface would have shipped on a
+clean build, correctly identified, with nothing said.
 
-This story makes not knowing count as failing, and knowing an unacceptable answer count as failing
-too. A typeface must carry one of the four licences the owner named; anything else stops the build
-with a message naming the folder and the reason. The proof that it stops is written against invented
-examples in a new empty folder rather than against the typefaces already here, so it keeps holding
-when new ones arrive.
+Both halves are closed: not knowing now fails, and so does knowing an unacceptable answer. A typeface
+must carry one of the four licences the owner named; anything else stops the build with a message
+naming the folder and the reason. The proof uses invented examples in new empty folders, so it
+keeps holding as real typefaces arrive. Nothing already here had to change to pass.
 
 The Thai dictionary the software also ships is a separate matter. It is legitimately under a different
-kind of licence than a typeface, and it is checked against its own list rather than the typefaces'.
-Closing it against the typefaces' rules would reject something perfectly good on day one. Same phrase,
-two different rooms.
+kind of licence than a typeface, and is checked against its own list. Closing it against the typefaces'
+rules would reject something perfectly good on day one. Same phrase, two different rooms.
 
-No new typeface ships here. The catalogue is the next story.
+No new typeface ships here; the catalogue is next. Two gaps found at close are recorded, not fixed: one
+licence spelled the American way is still quietly accepted under the wrong name, and the owner's
+four-name list can still be widened with no test noticing.
 
 <intent-contract>
 
@@ -720,8 +720,15 @@ tree carrying only the workflow's own `M _bmad-output/implementation-artifacts/e
   identity — any second is a real failure.** No `folio-go` file is touched by this story, so the
   post-change figure must be identical.
 - `cd folio-go && go vet ./...` — expected: no output.
-- `gofmt -l folio-go lint` — **run from the REPO ROOT**, expected: no output. After a `cd` into a
-  module it prints an `lstat` error that reads like success.
+- `gofmt -l folio-go lint` — **run from the REPO ROOT**. After a `cd` into a module it prints an
+  `lstat` error that reads like success. **Expected: exactly ONE line,
+  `lint/internal/rules/licencegraph_test.go` — a STANDING RED BY IDENTITY, not this story's.**
+  The plan-gate line here originally read *"expected: no output"*; that was a mis-measurement,
+  corrected by **D-8.4h.5** rather than by reformatting a file outside this story's scope.
+  Verified independently at close: the file's content extracted from `7aa283b` is unformatted there
+  too, and `git diff --name-only 80f46a0..HEAD` does not list it — the story never touched it.
+  **Never "fix" it here; a SECOND file appearing in this output is a real failure.** Registered as
+  **DW-116**, owned by whichever story next touches `lint/internal/rules/`.
 - `cd folio-designer && npm test` — **baseline measured: 40 files / 409 tests, all passing.**
   This is the suite that runs the AC7 guard. `npm test` runs `build:wasm` first, so the generated
   assets exist when the guard runs.
@@ -908,3 +915,73 @@ kept, per the Finalize rule that commits already created during the run are reta
 matches the spec's task list, it touches no forbidden path, it does not modify `<intent-contract>`,
 and it carries the required trailers. The review patches were then applied **without** a further
 subagent commit, and finalization committed them itself.
+
+## Delivery Log
+
+### 2026-09-02 — done
+
+Baseline `80f46a0`. Two commits: **`ad6258b`** (implementation) and **`1dee3f5`** (review patches),
+both on `main`, both audited, **nothing pushed** — `origin/main` still sits at `c985b9c`.
+
+**What actually shipped.** The asset licence gate stopped recording and started refusing, at both
+fall-through sites, **against two different lists** — which is the story's shape and the thing most at
+risk of being tidied away later. The half of the defect that mattered more was not the one D-8.5.13
+described: a `GPL-3.0` font never reached the `"SEE NOTICE"` fall-through at all — it classified
+perfectly well and passed because both sites discarded the classifier's family verdict. **D-8.4h.1**
+corrected the ruling's account of its own defect without changing the story; **D-8.4h.2** settled that
+the owner's `"UFL"` denotes `Ubuntu-font-1.0` and that the bare alias must not become a live map key;
+**D-8.4h.3** accepted the `oversized` and `multiple-goals` warnings with reasons rather than splitting
+again. The story exists at all because of **D-8.5.13** (the charter, which lifted the licence gate out
+of Story 8.5), sitting alongside **D-8.5.12** in the same plan-gate session.
+
+**Triage: patch 6 / defer 7 / reject 7, with 0 `intent_gap` and 0 `bad_spec`.** No `high` at any point.
+`followup_review_recommended: true` was raised mechanically (score 8 ≥ 5) and was **discharged without
+a second review dispatch, per D-8.4h.4** — the reasoning being that the review's one material finding
+was caught by *deletion* mutation after *substitution* mutation had wrongly reported the arm covered,
+which is the stronger instrument, so a second pass would re-ask an answered question. The scrutiny was
+routed to this close instead, as that decision requires.
+
+**Gates, measured at close on the committed tree — none carried forward.** `lint`: four `ok`, zero
+FAIL, `go vet` clean. `genmanifest` run **twice** for idempotency, `git diff lint/MANIFEST.md` empty
+both times, and `SEE NOTICE` appears **zero** times in the manifest. `folio-go`: **1815 pass / 2 fail /
+5 skip**, the two being `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest — the
+one standing red by identity (D-000.17 / D-2.1.14), with no second distinct red; `go vet` clean.
+Designer: **40 files / 411 tests** all passing, `typecheck` clean, `lint` at **exactly 4**
+`only-export-components` warnings, `build` succeeded through `build:offline` and `verify:offline`,
+`test:e2e:compile` (`tsc --noEmit`) clean. The **23** golden PDF digests were **diffed** against a
+worktree checked out at `80f46a0` and are identical; `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`
+unchanged; `maximumCacheAssets` still **64**.
+
+**`gofmt -l folio-go lint` prints `lint/internal/rules/licencegraph_test.go`.** Verified pre-existing
+independently at close and recorded as a **named standing red** — the spec's `## Verification` line
+that claimed "no output" was amended here per **D-8.4h.5**, and the file was deliberately **not**
+reformatted, because that would have put an unrelated file in this story's diff. Registered as DW-116.
+
+**Heavy tests: per-epic cadence (D-000.4).** The four `FOLIO_MATRIX_TARGET` legs,
+`TestCrossTargetByteIdentity` and the Playwright suite are **written and compiling but NOT RUN here** —
+confirmed compiling by `go vet ./...` and `go test` over `folio-go` (which builds `matrix_test.go`,
+`fixture_test.go` and `byte_neutrality_test.go`) and by `test:e2e:compile` passing. They come due at
+**Epic 8's boundary gate**. This story adds no integration or e2e surface of its own.
+
+**Provenance.** `ad6258b` was created by the **step-03 implementation subagent**, not by the dispatch's
+finalization — **instance four of D-8.5.9**. It is **kept and audited** per **D-8.4h.6**, which
+reclassified the no-commit rule as unenforceable by prompt and replaced it with this per-story audit.
+Both commits were checked at close: contents limited to this story's files, required
+`Co-Authored-By:` and `Claude-Session:` trailers present, author and committer consistent with the
+rest of the branch, branch `main`, nothing pushed.
+
+**Deferred work — all seven registered with owners, plus two the close found.** DW-117 through DW-123
+carry the review's seven deferrals out of the spec frontmatter and into the standing register.
+**DW-117** (the unanchored marker branch) is explicitly **its own story**, owned by the engineering
+lead, because correcting it touches the pre-existing OFL branch that classifies ten of the eleven
+committed font directories. **DW-120** is the one most worth promoting: measured at close, appending a
+fifth identifier to the owner's four-id allowlist reddens **nothing**.
+
+**Two findings the close raises, reported rather than patched.** **DW-124** overturns one of the
+review's seven rejections: an American-spelled Ubuntu Font Licence does **not** fail loudly as the
+rejection claimed — it falls through to the MIT branch and passes under the wrong label, because any
+real UFL text carries MIT's grant clause. **DW-125** was named by no review layer: the classifier
+returns on the **first** `SPDX-License-Identifier:` line anywhere in the text, before any marker branch
+runs, so a full GPL text carrying a stray permissive SPDX line passes the now-fail-closed gate. Both
+are pre-existing mechanisms whose **consequence** this story created, both are owned by the engineering
+lead, and neither is live in the committed tree.

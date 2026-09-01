@@ -5896,3 +5896,267 @@ the allowlist member and its marker branch should be re-examined rather than lef
 nothing to detect.
 
 ---
+
+### DW-116 — `gofmt -l` has a standing red that Story 8.4h's plan gate recorded as "no output"
+
+- **Recorded by:** **Story 8.4h's close (2026-09-02)**, per **D-8.4h.5**.
+- **Owner:** **unassigned — whichever story next touches `lint/internal/rules/`.** A one-line fix that
+  must not be smuggled into an unrelated story's diff.
+- **Severity:** LOW — cosmetic formatting; no behaviour, no gate.
+- **Status:** OPEN.
+
+`gofmt -l folio-go lint`, run from the repo root, prints exactly one line:
+`lint/internal/rules/licencegraph_test.go`. Story 8.4h's `## Verification` recorded *"expected: no
+output"*, which was a mis-measurement taken at its plan gate.
+
+**Proven pre-existing, twice, at Story 8.4h's close:** the file's content extracted from `7aa283b`
+is unformatted there too, and `git diff --name-only 80f46a0..HEAD` does not list it — Story 8.4h never
+touched the file. It was NOT reformatted by 8.4h, deliberately: doing so would have put an unrelated
+file in a commit whose whole claim is that it touches only the licence gate.
+
+**What discharges it.** A story that legitimately edits `lint/internal/rules/licencegraph_test.go`
+running `gofmt -w` on it as part of its own change. **Until then, `gofmt -l` printing a SECOND file is
+a real failure and must not be waved through on this entry** — naming the red by identity is precisely
+what stops that.
+
+---
+
+### DW-117 — the new Ubuntu-font marker branch is an unanchored substring conjunction, and correcting it corrects the OFL branch too
+
+- **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 1 of 7. Re-checked and confirmed at
+  8.4h's close by direct probe.
+- **Owner:** **ENGINEERING LEAD, to schedule as ITS OWN STORY** — an `8.4x`-series insertion on the
+  D-8.5.1(a) / D-8.5.13 precedent. It is explicitly *not* assignable to Story 8.5.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+`strings.Contains(upper, "UBUNTU FONT LICENCE") && strings.Contains(upper, "VERSION 1.0")` in
+`lint/internal/licence/classify.go` matches both conjuncts **anywhere in the text**, in either order,
+with any distance between them. So an MIT licence text that merely *mentions* the Ubuntu Font Licence
+and "version 1.0" in its body classifies as `(permissive, "Ubuntu-font-1.0")` rather than `MIT`.
+**Measured at close, not inferred** — probed directly against the shipped classifier.
+
+**Why it is its own story and not a patch here.** The pre-existing OFL-1.1 branch has the identical
+unanchored shape (`Contains("SIL OPEN FONT LICENSE") && Contains("VERSION 1.1")`), and Story 8.4h's
+own spec named that branch as *"the exact template the new branch must follow"*. Anchoring both
+conjuncts to one title line changes the OFL branch, which classifies **ten of the eleven** committed
+font directories — a change with real blast radius that 8.4h had no mandate for.
+
+**Scope re-checked at close, and the deferral holds as scoped.** The misclassification is
+permissive→permissive, and **both** ids are on the owner's four-id allowlist, so it is an
+**attribution** defect, not a gate bypass: it cannot admit a forbidden licence. Confirmed by probe
+that the copyleft branches sit **above** this one, so a GPL text that also mentions the Ubuntu Font
+Licence and "version 1.0" still classifies `(copyleft, "GPL-3.0")` and is still refused. The
+attribution still matters — the label is what lands in `lint/MANIFEST.md` and credits the asset.
+
+**A crafted NOTICE cannot reach this branch.** `ResolveAssets` classifies only files whose basename
+begins with `LICENSE`; `NOTICE*` content is read for the copyright line and never classified. The
+exploit surface is a crafted or bundled `LICENSE*` file, not a `NOTICE`.
+
+**What discharges it.** A story that anchors both branches' conjuncts to the licence's own title line,
+with a red-proof per branch and a re-run of the committed-population witness.
+
+---
+
+### DW-118 — a second `LICENSE*` file in an asset directory silently decides the enforced verdict
+
+- **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 2 of 7.
+- **Owner:** **Story 8.5**, the next story to add font asset directories.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+`ResolveAssets`'s `os.ReadDir` loop overwrites `licenceText` on every basename matching `LICENSE*`, so
+the **last** entry in directory order wins. The loop pre-dates Story 8.4h; **what 8.4h changed is the
+consequence.** Until 8.4h the arbitrarily chosen file only decided a manifest *label*; it now decides
+whether the build **passes or fails**. A directory holding `LICENSE` (GPL-3.0) beside `LICENSE-MIT`
+resolves to the MIT text and passes the fail-closed gate with a forbidden font.
+
+**Not live today:** verified via `git ls-files` that every committed asset directory carries exactly
+one `LICENSE*`, and no test covers the two-file case.
+
+**What discharges it.** Refusing a directory that holds more than one `LICENSE*` file, with its own
+located error and its own red-proof — the fail-closed reading, matching the story's own posture.
+
+---
+
+### DW-119 — the designer guard hand-copies the licence gate's walk exclusions instead of reading them
+
+- **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 3 of 7.
+- **Owner:** **whichever story next touches `folio-designer/src/font-binary-identity.test.ts`.**
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+`insideTheLicenceGateWalk` restates the gate's two `SkipDir` rules — skip `.git`, skip any `lint`
+directory whose parent is `testdata` — as TypeScript literals, with nothing tying them back to
+`manifest.go`. This sits directly beside `licenceGateFontExtensions`, which parses `var fontExtensions`
+**out of `manifest.go` source** precisely so the guard agrees with the gate rather than with a copy of
+the gate, and whose header states that doctrine explicitly.
+
+The silently harmful drift direction is narrow — the Go side narrowing its `*/testdata/lint` skip while
+the TypeScript copy keeps skipping — but nothing compares the two.
+
+**What discharges it.** Deriving the exclusions from `manifest.go` source the way the extension list is
+derived, or an explicit assertion that the two agree.
+
+---
+
+### DW-120 — the owner's four-id font allowlist can be widened with NO test reddening (measured)
+
+- **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 4 of 7. **Measured by mutation at
+  8.4h's close**, where it was previously an argument.
+- **Owner:** **Story 8.5**, the story that first exercises the allowlist against a real face.
+- **Severity:** MEDIUM. **Of the seven deferrals this is the one most worth promoting** — it is the
+  only one that leaves an owner decision unguarded rather than an attribution imprecise.
+- **Status:** OPEN.
+
+Every test in `lint/internal/manifest` reads **into** `fontAssetLicenceAllowed[...]`; none asserts the
+list's exact contents. **Measured at close, not argued:** appending `"GPL-3.0"` to
+`fontAssetLicenceAllowlist` and running `cd lint && go test -count=1 ./...` leaves **all four packages
+green** — the copyleft arm sits above the allowlist arm, so a copyleft id added to the owner's list is
+not even caught by the copyleft refusal for the SPDX-line path that reaches it.
+
+`fontAssetLicenceAllowlist` encodes a fixed **owner** decision (D-8.5.3), not a population that grows
+by design, so **D-8.5.4's "no cardinality assertion" argument does not cover it** — the objection there
+is to counting a set that legitimately grows. **D-8.5.13 forbids silent list-widening**, and this is
+exactly the surface it forbids.
+
+**What discharges it.** An exact `[]string` equality over `fontAssetLicenceAllowlist` naming D-8.5.3,
+so that changing the owner's list requires changing a test that says whose decision it is.
+
+---
+
+### DW-121 — AC7's throws-proof depends on the temp directory not sitting inside a git repository
+
+- **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 5 of 7.
+- **Owner:** **whichever story next touches `folio-designer/src/font-binary-identity.test.ts`.**
+- **Severity:** LOW — machine-dependent vacuousness, not a wrong result.
+- **Status:** OPEN.
+
+The assertion is `expect(() => licenceGateTrackedFiles(notARepository)).toThrow(...)`. `git` searches
+**upward** for a repository, so on a machine whose `TMPDIR` sits under a checkout the call succeeds and
+the arm goes vacuous or asserts the wrong thing. It passes on this machine; it is not proved to pass on
+every machine, which is what a throws-proof is for.
+
+**What discharges it.** Passing `GIT_CEILING_DIRECTORIES`, or clearing `GIT_DIR`/`GIT_WORK_TREE`, so
+the proof is machine-independent.
+
+---
+
+### DW-122 — the guard's tracked filter is per-FILE where the gate's is per-DIRECTORY, and a comment claims they are identical
+
+- **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 6 of 7.
+- **Owner:** **whichever story next touches `folio-designer/src/font-binary-identity.test.ts`.**
+- **Severity:** LOW — the stated equivalence is inaccurate; the divergence loses nothing today.
+- **Status:** OPEN.
+
+`manifest.go` skips a directory only when `gitTrackedFileCount` is **zero**, so an *untracked* font in
+a directory holding any tracked file **is** assessed by the gate. The designer guard intersects
+**file by file** with `git ls-files`, so it does not see that font. The guard's comment claims the two
+exclude untracked files *"exactly"* the same way. All 18 files under `folio-designer/public/fonts` are
+tracked, so the divergence is latent — but the comment is wrong, and a wrong comment about a
+compliance boundary is what the next reader will trust.
+
+**What discharges it.** Either matching the gate's per-directory rule, or correcting the comment to
+state the difference and why it is acceptable.
+
+---
+
+### DW-123 — `looksLikeAFontBinary` ignores the `readSync` return count, newly reachable now that the guard is repo-wide
+
+- **Recorded by:** **Story 8.4h's review (2026-09-02)**, deferral 7 of 7.
+- **Owner:** **whichever story next touches `folio-designer/src/font-binary-identity.test.ts`.**
+- **Severity:** LOW — latent false positive, not a false negative.
+- **Status:** OPEN.
+
+The helper compares a four-byte buffer without checking how many bytes `readSync` actually returned, so
+a tracked file **shorter than four bytes** matches the zero-filled `00 01 00 00` sfnt magic and is
+reported as a font. **Newly reachable because Story 8.4h took the population repo-wide** — under
+`public/fonts` no such file could exist. Verified that no tracked file in the repository is currently
+smaller than four bytes, so it is latent.
+
+It fails **safe** (a false report, not a missed font), which is why it is deferred rather than fixed.
+
+**What discharges it.** Checking the `readSync` return before comparing.
+
+---
+
+### DW-124 — CLOSER FINDING: the American spelling of the Ubuntu Font Licence is accepted SILENTLY as MIT, and the review rejection that said otherwise is FALSE
+
+- **Recorded by:** **Story 8.4h's CLOSE (2026-09-02)** — a re-check of one of the review's seven
+  rejections, measured by probe. **This is not a deferral the build recorded; it is a rejection the
+  closer overturned.**
+- **Owner:** **ENGINEERING LEAD**, to rule on scope. Naturally folds into **DW-117's** story, which
+  already owns the same marker branch.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+Story 8.4h's review rejected the absence of a test for the American spelling `"UBUNTU FONT LICENSE"`
+on the grounds that **"the miss is loud — `FamilyUnknown` fails the build — and D-2.1.3 makes a loud
+miss fail-safe by design."** The classifier's own in-code comment makes the same claim.
+
+**That is false after this change, measured by probe at close:**
+
+| input | family | id | outcome at the font gate |
+|---|---|---|---|
+| UFL 1.0 text, British `LICENCE` + grant clause | permissive | `Ubuntu-font-1.0` | passes, correctly labelled |
+| **UFL 1.0 text, American `LICENSE` + grant clause** | **permissive** | **`MIT`** | **passes, labelled `MIT`** |
+| `"UBUNTU FONT LICENSE\nVersion 1.0\n"` (bare, no grant clause) | unknown | `""` | refused |
+
+The rejection is true only of the **bare two-line synthetic** the story's own version-lookalike test
+uses. Any **real** Ubuntu Font Licence text carries
+`"Permission is hereby granted, free of charge, to any person obtaining a"` — Design Note 4 measured
+this itself, from the SPDX-published text — so an American-spelled UFL file misses the new marker
+branch, falls through to the MIT case immediately below it, and classifies `(permissive, "MIT")`.
+`MIT` is on the owner's four-id allowlist, so the build **passes** with the asset **mis-attributed**.
+
+**The miss is therefore SILENT, not loud** — which is character-for-character the defect Design Note 4
+says the branch's placement above MIT exists to prevent. The placement fixes it for the British
+spelling only. D-2.1.3's fail-safe argument does not apply to a miss that lands in a *neighbouring
+permissive branch* rather than in `FamilyUnknown`.
+
+**Not patched at close, deliberately:** the correct fix is a decision (accept both spellings, or anchor
+the branch so a near-miss reaches `FamilyUnknown`), it touches the same branch as DW-117, and it
+reopens a question the review already ruled on. That is a lead's call, not a closer's.
+
+**What discharges it.** A ruling on whether the marker accepts both spellings, plus a test asserting
+the American-spelled full text does **not** classify as `MIT` — the same shape as the existing
+MIT-collision proof, which today covers only the British spelling.
+
+---
+
+### DW-125 — CLOSER FINDING: the first `SPDX-License-Identifier:` line anywhere in a LICENSE file wins outright, and that is now a GATE BYPASS
+
+- **Recorded by:** **Story 8.4h's CLOSE (2026-09-02)**, measured by probe. **Named by no review layer.**
+- **Owner:** **ENGINEERING LEAD**, to rule on scope — this is a compliance-boundary decision, not a
+  cleanup.
+- **Severity:** MEDIUM–HIGH on the compliance boundary; the mechanism is pre-existing, the
+  **consequence is new with Story 8.4h**.
+- **Status:** OPEN.
+
+`ClassifyLicenceText` runs `spdxLineRE.FindStringSubmatch(text)` **first** and returns immediately on
+the **first** match anywhere in the text, before any marker branch is consulted. So a licence file
+carrying the **full GNU GPL v3 legal code** plus, anywhere below it, a line reading
+`SPDX-License-Identifier: MIT` classifies as **`(permissive, "MIT")`**. Measured by probe at close.
+
+Before Story 8.4h this produced a wrong *label* on a passing build. **After Story 8.4h it produces a
+passing build for a forbidden licence** — the copyleft branches never run, because the SPDX path
+returned before reaching them. This is the same "pre-existing shape, newly load-bearing" class as
+DW-118, and it is the one shape that defeats the story's central claim that a copyleft text is
+*"refused by name."*
+
+**Realism.** Bundled/aggregated `LICENSE` files that list several licences with SPDX lines are common
+in redistributed font packages, so this needs no adversary — only a real-world multi-licence file whose
+first SPDX line is not the governing one.
+
+**Not live today:** every committed asset `LICENSE*` was re-verified at close to resolve to an
+allowlisted id, and `lint/MANIFEST.md` regenerates byte-identically.
+
+**Not patched at close, deliberately:** changing the classifier's precedence order affects **every**
+consumer of `ClassifyLicenceText`, including the dependency graph scan, and is well outside a closing
+agent's scope fence.
+
+**What discharges it.** A ruling on precedence — most likely that a copyleft **marker** in the body
+outranks a permissive SPDX line, or that a text carrying more than one distinct SPDX identifier is
+refused as unclassifiable — with a red-proof per arm.
+
+---
