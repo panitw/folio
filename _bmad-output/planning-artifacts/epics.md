@@ -520,8 +520,10 @@ format ends both and puts entry order, timestamps and compression inside the byt
 SPEC-fonts records it as a non-goal with the CJK weight case named as the only trigger to revisit.
 
 Bold and italic are **not** in this epic. They are stored and projected today and consumed by no
-producer, and no weighted face ships; giving them meaning is a face-inventory decision SPEC-fonts
-leaves open, not a consequence of embedding.
+producer, and no weighted face ships; giving them meaning is not a consequence of embedding. That
+work is **Epic 11 (FR57)**, which owns the realize-or-retire decision in full — realize them as
+shipped weighted and sloped faces, or retire the toggles. SPEC-fonts records the same question as
+open; Epic 11 is where it is answered.
 
 Every field this epic adds is optional and absent-by-default, so the existing golden corpus must
 hash identically after it. That is an acceptance criterion, not an aspiration. 8.5 is the story to

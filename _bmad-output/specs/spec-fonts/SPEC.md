@@ -127,7 +127,23 @@ installed a font, and nobody had to be told which one to install.
   a font asset no chain references loads and renders correctly on a `1.x` reader and must not raise
   the document. `SupportedMajor` does not move: `2.0` is already the library ceiling, and this is a
   second reason a document declares it, not a new rank.
-- Which families make the shipped catalogue, how many, and who curates the list as it changes?
+- ~~Which families make the shipped catalogue, how many, and who curates the list as it changes?~~
+  **SETTLED (Story 8.5, D-8.5.3 — OWNER DECISION): 20+ families, admitted by a named permissive
+  allowlist — OFL-1.1, Apache-2.0, MIT, UFL — enforced the way AD-26's dependency ban is: fail the
+  build, never warn, with an unclassifiable licence treated as failure (D-8.5.2).** Three things
+  this settles that the bare question does not. **Who curates:** the allowlist does, mechanically —
+  admission is a build-time check against the four identifiers, not a standing editorial judgement,
+  so the list changes by a licence classification changing and not by anyone's taste. **Why it was
+  the owner's call and not engineering's:** AD-26's Rule has two clauses and its heading is not its
+  Rule — the family ban is scoped to *"No dependency"*, while redistributed **assets** owe only their
+  licence text and copyright lines. Extending the ban to assets was therefore a decision, not a bug
+  fix. It is a product and legal call because **fonts do not link**: Folio embeds and subsets a font
+  program into the **user's PDF**, so an asset's licence attaches to the documents users produce, not
+  to Folio's binary, which is what AD-26's stated Prevents is about. **How many:** 20+ was chosen
+  **against** the engineering recommendation of a 5–10 family MVP set, with the 64-asset ceiling and
+  the resulting overage stated in the question rather than discovered afterwards — the brief is that
+  the catalogue should be big and the engineering should find a shape where size is not paid for at
+  first load.
 - Do bold and italic get realized in this scope? They are stored and projected today but consumed
   by no producer, and no bold or italic face ships — this is the work that could give them
   meaning, or they stay explicitly out and the panel says so.

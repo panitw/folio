@@ -191,7 +191,7 @@ development_status:
   # content-addressed assets map. Bold/italic are NOT in scope — they need a face
   # inventory decision SPEC-fonts leaves open. Every field is optional and
   # absent-by-default, so the existing corpus must hash identically.
-  epic-8: backlog
+  epic-8: in-progress
   # 8.0 added 2026-08-31: DW-28, ruled HIGH after the owner hit it on a real Thai contract
   # clause. It OPENS the epic and is a PRECONDITION of 8.4 -- embedding arbitrary faces widens
   # the fail-closed branch it removes. Numbered 8.0 so 8.1..8.6 keep the keys they already have.
@@ -407,7 +407,8 @@ development_status:
   epic-15: in-progress
   # 15.1 CLOSED 2026-08-30 at 36bb3f5: attribution D-15.1.1, four goldens re-recorded on the
   # owner's ruling (D-R7.6), and the human sign-off written by the owner themselves. Full record,
-  # measured gates and deferrals in the story's ## Delivery Log; DW-24 open, owner Story 7.3.
+  # measured gates and deferrals in the story's ## Delivery Log; DW-24 was open here, owner Story 7.3; it CLOSED 2026-08-30 in that story (see
+  # deferred-work.md). This line is kept as written and corrected rather than edited.
   15-1-the-golden-report-s-moved-hash-is-explained: done
   15-2-ci-s-red-means-something: backlog
   # 15.2a added 2026-08-31: DW-32, raised to HIGH at Story 8.2's plan gate when the mechanism
