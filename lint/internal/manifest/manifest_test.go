@@ -557,17 +557,142 @@ func TestResolveAssetsRefusesAPermissiveButOffAllowlistFontLicence(t *testing.T)
 	if err == nil {
 		t.Fatalf("expected ResolveAssets to refuse an off-allowlist font licence, got nil and %d row(s): %v", len(rows), rows)
 	}
-	if !strings.Contains(err.Error(), "not one of the licences permitted") {
-		t.Errorf("expected the OFF-ALLOWLIST refusal, got: %v", err)
-	}
 	if strings.Contains(err.Error(), "could not be classified") || strings.Contains(err.Error(), "a copyleft licence") {
 		t.Errorf("ISC classifies as permissive; it must be refused on its own message, not a neighbouring arm's: %v", err)
 	}
-	if !strings.Contains(err.Error(), `"ISC"`) {
-		t.Errorf("expected the error to NAME the classified identifier, got: %v", err)
+	// THE WHOLE MESSAGE, BYTE FOR BYTE, NOT A SUBSTRING OF IT.
+	//
+	// A single identifier is its own only term, so failingTermPhrase
+	// must collapse to "which" and this refusal must read EXACTLY as it
+	// read before Story 8.4j made admission per-term. Asserted as one
+	// literal because substring checks do not have that property:
+	// measured, forcing failingTermPhrase to always return the
+	// `whose term %q` form — which stutters here, "classifies as
+	// \"ISC\", whose term \"ISC\" is not one of…" — left this test GREEN
+	// and reddened only the wordlist site's subtest. A message this
+	// story deliberately kept unchanged needs a guard that can see it
+	// change.
+	want := `synthetic-fonts: licence text classifies as "ISC", which is not one of the licences permitted for a redistributed font: OFL-1.1, Apache-2.0, MIT, Ubuntu-font-1.0 (AC25, AD-26, D-8.5.3)`
+	if err.Error() != want {
+		t.Errorf("off-allowlist refusal message\n got: %s\nwant: %s", err.Error(), want)
 	}
 	if rows != nil {
 		t.Errorf("a refused directory must produce NO row, got: %v", rows)
+	}
+}
+
+// TestRenderAssetsPutsTheLicenceColumnNoteWithTheTableItExplains guards
+// a rendering detail that only an EMPTY corpus can expose, and the real
+// corpus is never empty — so nothing else in this suite can see it.
+//
+// The "A Licence cell may read as a whole SPDX expression…" paragraph
+// explains a COLUMN. Written above the empty-corpus early return it was
+// emitted over "_No redistributed non-code assets are committed at this
+// commit._", describing a cell of a table that is not there: a reader
+// arriving at that section is told how to interpret a Licence value in a
+// document containing none.
+func TestRenderAssetsPutsTheLicenceColumnNoteWithTheTableItExplains(t *testing.T) {
+	const note = "A Licence cell may read as a whole SPDX expression"
+
+	empty := RenderAssets(nil)
+	if !strings.Contains(empty, "_No redistributed non-code assets are committed at this commit._") {
+		t.Fatalf("expected the empty-corpus sentence, got:\n%s", empty)
+	}
+	if strings.Contains(empty, note) {
+		t.Errorf("the Licence-column note must not be rendered when there is no table to explain:\n%s", empty)
+	}
+
+	populated := RenderAssets([]AssetRow{{Path: "p", Licence: "OFL-1.1 OR Apache-2.0", Copyright: "c", Serves: "s"}})
+	if !strings.Contains(populated, note) {
+		t.Errorf("the Licence-column note must accompany an actual table:\n%s", populated)
+	}
+	// It explains the header it sits under, so it must precede the table
+	// rather than merely appear somewhere in the section.
+	if strings.Index(populated, note) > strings.Index(populated, "| Path | Licence |") {
+		t.Error("the note must be rendered ABOVE the table it explains")
+	}
+}
+
+// TestFirstTermNotOnFailsClosedOnAnIncompleteEnumeration pins the
+// SECOND conjunct of the shared per-term primitive's precondition:
+// admission requires every term to be on the list AND the enumeration to
+// have COMPLETED.
+//
+// licence.ClassifySPDXExpressionTerms returns the terms it found BEFORE
+// a failure together with a non-nil error, so "MIT XOR Apache-2.0"
+// enumerates as ([MIT], unsupported operator). A helper that consulted
+// only the slice would answer "every term is allowed" from a PARTIAL
+// READ of the label — reading part of a licence line and admitting on
+// the acceptable half is verbatim the defect Story 8.4j exists to close,
+// relocated one function along.
+//
+// TESTED DIRECTLY RATHER THAN THROUGH EITHER GATE ON PURPOSE. No such
+// label reaches a gate today: an expression that fails to enumerate
+// names nothing, so arm 1 fires on spdx == "" before this helper's
+// answer is consulted. But this is a general primitive taking its list
+// as a parameter, and a primitive whose safety rests on facts about its
+// current two callers is not a primitive — the next caller inherits a
+// guarantee nothing states and nothing checks.
+func TestFirstTermNotOnFailsClosedOnAnIncompleteEnumeration(t *testing.T) {
+	for _, label := range []string{
+		"MIT XOR Apache-2.0", // enumerates [MIT], then fails on the operator
+		"MIT OR",             // even field count: malformed, no terms
+		"(MIT)",              // parenthesised: no terms
+	} {
+		t.Run(label, func(t *testing.T) {
+			// The most permissive possible list: EVERYTHING is on it.
+			// Only the completeness conjunct can refuse here, so this
+			// cannot pass by accident of the membership test.
+			failingTerm, everyTermOn := firstTermNotOn(label, func(string) bool { return true })
+			if everyTermOn {
+				t.Errorf("firstTermNotOn(%q) admitted a label it could not fully enumerate — "+
+					"admission on a PARTIAL read of a licence line is the defect this story closes", label)
+			}
+			if failingTerm != label {
+				t.Errorf("an incompletely enumerated label must be named WHOLE, not by the prefix that "+
+					"happened to parse: got %q, want %q", failingTerm, label)
+			}
+		})
+	}
+}
+
+// TestResolveAssetsRefusesAnUnenumerableSPDXExpressionAsUNCLASSIFIABLE is
+// the GATE-SURFACE half of the composition rule's load-bearing detail:
+// an SPDX expression that cannot be enumerated AT ALL names nothing, so
+// it arrives at SITE A with spdx == "" and is refused through the FIRST
+// arm — "could not be classified" — and not through the third.
+//
+// WHY IT MATTERS AT THE GATE RATHER THAN ONLY AT THE CLASSIFIER. The
+// third arm's message asserts that the text "classifies as" the label it
+// prints. For "(MIT)" there is no such classification: the enumerator
+// returns ZERO terms. Deciding "single term" by counting whitespace
+// FIELDS named it anyway, and the build then refused a real directory on
+// a statement that is false — the wrong-ground refusal, which is worse
+// than the right refusal because it sends the maintainer to fix a
+// licence the tool never actually read.
+func TestResolveAssetsRefusesAnUnenumerableSPDXExpressionAsUnclassifiable(t *testing.T) {
+	for _, declaration := range []string{"(MIT)", "MIT()", "MIT XOR Apache-2.0"} {
+		t.Run(declaration, func(t *testing.T) {
+			root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: "+declaration+"\n")
+
+			rows, err := ResolveAssets(root)
+			if err == nil {
+				t.Fatalf("expected ResolveAssets to refuse %q, got nil and %d row(s): %v", declaration, len(rows), rows)
+			}
+			if !strings.Contains(err.Error(), "could not be classified") {
+				t.Errorf("an expression that enumerates to no terms must be refused on the UNCLASSIFIABLE arm, got: %v", err)
+			}
+			if strings.Contains(err.Error(), "not one of the licences permitted") {
+				t.Errorf("this must NOT reach the off-allowlist arm, whose message would assert the text "+
+					"classifies as %q — it demonstrably does not: %v", declaration, err)
+			}
+			if !strings.Contains(err.Error(), "synthetic-fonts") {
+				t.Errorf("expected the error to LOCATE the directory (AD-14), got: %v", err)
+			}
+			if rows != nil {
+				t.Errorf("a refused directory must produce NO row, got: %v", rows)
+			}
+		})
 	}
 }
 
@@ -696,6 +821,37 @@ func TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), `"CC-BY-SA-4.0"`) {
 			t.Errorf("expected the error to NAME the classified identifier, got: %v", err)
+		}
+	})
+
+	// The SAME arm-disjointness at SITE B for an expression that cannot
+	// be enumerated at all. It names nothing, so it must arrive with
+	// wordlistSPDX == "" and be refused as UNCLASSIFIABLE — never on the
+	// non-permissive arm, whose message would assert the text
+	// "classifies as \"(MIT)\"" while the classifier returned no
+	// classification whatever. This is the disjointness this test's own
+	// name is about, exercised from the side a field COUNT of the
+	// expression got wrong.
+	t.Run("an unenumerable SPDX expression is refused as unclassifiable, not as non-permissive", func(t *testing.T) {
+		for _, declaration := range []string{"(MIT)", "MIT()", "MIT XOR Apache-2.0"} {
+			t.Run(declaration, func(t *testing.T) {
+				root := scratchWordlist(t, "SPDX-License-Identifier: "+declaration+"\n")
+
+				row, ok, err := resolveWordlistAssetRow(root)
+				if err == nil {
+					t.Fatalf("expected %q to be refused, got nil (ok=%v, row=%v)", declaration, ok, row)
+				}
+				if !strings.Contains(err.Error(), "wordlist licence text could not be classified") {
+					t.Errorf("expected Site B's UNCLASSIFIABLE refusal, got: %v", err)
+				}
+				if strings.Contains(err.Error(), "does not recognise as a permissive licence") {
+					t.Errorf("this must NOT reach the non-permissive arm, whose message would assert the "+
+						"text classifies as %q — it demonstrably does not: %v", declaration, err)
+				}
+				if ok {
+					t.Error("a refused wordlist must produce NO row")
+				}
+			})
 		}
 	})
 

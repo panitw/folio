@@ -845,6 +845,35 @@ func TestCompoundSPDXLineComposesWithTheOtherSignals(t *testing.T) {
 			FamilyUnknown, "",
 		},
 		{
+			// A SINGLE-FIELD expression that enumerates to ZERO terms.
+			// It is not one term; it is none. Deciding "single term" by
+			// counting whitespace FIELDS named it, which made spdx
+			// non-empty and pushed both asset gates off their "could not
+			// be classified" arm onto an arm asserting the text
+			// CLASSIFIES AS "(MIT)" — a statement that is false, and
+			// exactly the wrong-ground refusal the composition rule
+			// calls load-bearing to avoid.
+			"a parenthesised SINGLE term is unnamed too",
+			"SPDX-License-Identifier: (MIT)\n",
+			FamilyUnknown, "",
+		},
+		{
+			"a single field carrying parentheses is unnamed",
+			"SPDX-License-Identifier: MIT()\n",
+			FamilyUnknown, "",
+		},
+		{
+			// The other side of the same rule. This expression
+			// enumerates exactly ONE term — "MIT", found before the
+			// operator failed — while plainly not being a single-term
+			// expression, so a bare term COUNT would name it. An
+			// expression is a single term iff its one enumerated term IS
+			// the whole expression.
+			"a partially enumerated expression is unnamed",
+			"SPDX-License-Identifier: MIT XOR Apache-2.0\n",
+			FamilyUnknown, "",
+		},
+		{
 			// The deferred cost of reading the line whole, PINNED so it
 			// is watched rather than rediscovered as a build red.
 			"trailing content after the identifier fails closed",
@@ -858,6 +887,41 @@ func TestCompoundSPDXLineComposesWithTheOtherSignals(t *testing.T) {
 			"an identifier on the FOLLOWING line is not a declaration",
 			"SPDX-License-Identifier:\nMIT\n",
 			FamilyUnknown, "",
+		},
+		{
+			// THE OTHER HALF OF THAT NARROWING. The row above proves
+			// [ \t]* EXCLUDES a newline; on its own it leaves the
+			// separator proved to exclude and never proved to still
+			// INCLUDE. \s* admitted a TAB, so [ \t]* naming \t
+			// explicitly is a promise the comment on spdxLineRE makes
+			// and nothing checked. A narrowing to `[ ]*` would pass
+			// every other row in this table.
+			"a TAB separator is still a declaration",
+			"SPDX-License-Identifier:\tMIT OR Apache-2.0\n",
+			FamilyPermissive, "MIT OR Apache-2.0",
+		},
+		{
+			// The capture is [^\n\r]* rather than .* so that it stops at
+			// the line end AND drops the \r of a CRLF ending, which
+			// would otherwise ride into the LABEL — "MIT OR
+			// Apache-2.0\r" is what lands in lint/MANIFEST.md and what
+			// the gate tests term by term.
+			//
+			// MEASURED, AND HONEST ABOUT WHAT IT PINS: this property is
+			// DOUBLY defended, so no single mutation reds this row. Go's
+			// `.` already excludes \n, and collectLicenceSignals
+			// normalizes the capture through strings.Fields, which drops
+			// a stray \r on its own. Removing EITHER defence alone
+			// leaves this row green; removing BOTH (capture `.*` plus
+			// the raw m[1] as the expression) reds it, on
+			// (permissive, "MIT OR Apache-2.0\r"). It is kept as a pin on
+			// the OBSERVABLE promise — a CRLF LICENSE classifies and
+			// labels exactly as an LF one — rather than on either
+			// mechanism, because the promise is what the comment on
+			// spdxLineRE makes and what a reader depends on.
+			"a CRLF line ending does not poison the expression",
+			"SPDX-License-Identifier: MIT OR Apache-2.0\r\n",
+			FamilyPermissive, "MIT OR Apache-2.0",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -874,7 +938,11 @@ func TestCompoundSPDXLineComposesWithTheOtherSignals(t *testing.T) {
 // gained a sibling that returns the terms it always walked. The family
 // and error it reports must be unchanged, and the wrapper must agree
 // with the sibling — otherwise the "one parser, one term enumeration,
-// two consumers" rule has quietly become two parsers.
+// THREE consumers" rule has quietly become two parsers. Three, not two:
+// collectLicenceSignals, manifest's SITE A (the font gate) and
+// manifest's SITE B (the wordlist gate), which D-8.4j.9 pulled inside
+// this story. classify.go states the same count on
+// ClassifySPDXExpressionTerms itself.
 func TestClassifySPDXExpressionTermsEnumeratesWithoutChangingItsVerdict(t *testing.T) {
 	for _, c := range []struct {
 		expression string

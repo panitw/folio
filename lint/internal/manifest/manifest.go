@@ -190,6 +190,22 @@ var fontAssetLicenceAllowed = func() map[string]bool {
 // the only enumeration either gate performs. A strings.Split(spdx,
 // " OR ") in this function would be a second SPDX expression parser.
 //
+// ITS PRECONDITION FOR ADMISSION IS "EVERY TERM ON THE LIST **AND** THE
+// ENUMERATION COMPLETE", AND THE SECOND CONJUNCT IS PART OF THE
+// CONTRACT, NOT AN INCIDENTAL. licence.ClassifySPDXExpressionTerms
+// returns the terms it found BEFORE a failure TOGETHER WITH a non-nil
+// error — "MIT XOR Apache-2.0" enumerates as ([MIT], unsupported SPDX
+// operator "XOR") — so a caller consulting only the term slice would
+// admit a label on a PARTIAL READ whenever every term it managed to
+// enumerate happened to be on the list. That is verbatim the failure
+// class Story 8.4j exists to close, one function along. No such label
+// reaches either gate today (an expression that fails to enumerate names
+// nothing, so arm 1 catches it on spdx == ""), but this helper is
+// written and documented as a GENERAL per-term admission primitive, and
+// a primitive whose safety depends on facts about its present callers is
+// not a primitive. A non-nil error, exactly like an empty term slice,
+// means "not admissible".
+//
 // The known and accepted cost: "OFL-1.1 OR <proprietary>" is refused
 // even though the OFL term is takeable on its own. The refusal is LOUD,
 // naming the directory and the failing term, so a real case surfaces at
@@ -197,10 +213,12 @@ var fontAssetLicenceAllowed = func() map[string]bool {
 // is an OWNER question about D-8.5.3's four ids; it is not resolved in
 // the build and not resolved by widening the allowlist.
 func firstTermNotOn(spdx string, onList func(string) bool) (string, bool) {
-	_, terms, _ := licence.ClassifySPDXExpressionTerms(spdx)
-	if len(terms) == 0 {
-		// Too malformed to enumerate at all. "No terms" is "not
-		// admissible" — fail closed, and name what we were given.
+	_, terms, err := licence.ClassifySPDXExpressionTerms(spdx)
+	if err != nil || len(terms) == 0 {
+		// Either too malformed to enumerate at all, or enumerated only
+		// as far as the failure. "No terms" and "not all the terms" are
+		// both "not admissible" — fail closed, and name what we were
+		// given rather than the prefix we happened to read.
 		return spdx, false
 	}
 	for _, term := range terms {
@@ -613,6 +631,14 @@ func RenderAssets(rows []AssetRow) string {
 	b.WriteString("below with the licence and copyright line its accompanying LICENSE*/NOTICE*\n")
 	b.WriteString("files carry (AC25, D-1.5.6). A font binary committed without both files is a\n")
 	b.WriteString("build failure (`ResolveAssets`), not a silent gap.\n\n")
+	if len(rows) == 0 {
+		b.WriteString("_No redistributed non-code assets are committed at this commit._\n")
+		return b.String()
+	}
+	// The Licence-column note goes BELOW the empty-corpus return, not
+	// above it: it explains a column of a table, so it must not be
+	// rendered over "no assets are committed", where it would describe a
+	// cell no reader can see.
 	b.WriteString("A Licence cell may read as a whole SPDX expression (`OFL-1.1 OR Apache-2.0`)\n")
 	b.WriteString("rather than a single identifier, because the label states **what the file\n")
 	b.WriteString("says** — a dual-licensed file is not attributable to one of its two\n")
@@ -621,10 +647,6 @@ func RenderAssets(rows []AssetRow) string {
 	b.WriteString("(D-8.5.3). So a compound label beside a four-identifier allowlist is\n")
 	b.WriteString("correct and is not a bug to be \"fixed\" by shortening the label or widening\n")
 	b.WriteString("the list (Story 8.4j).\n\n")
-	if len(rows) == 0 {
-		b.WriteString("_No redistributed non-code assets are committed at this commit._\n")
-		return b.String()
-	}
 	b.WriteString("| Path | Licence | Copyright | Serves |\n")
 	b.WriteString("|---|---|---|---|\n")
 	for _, r := range rows {

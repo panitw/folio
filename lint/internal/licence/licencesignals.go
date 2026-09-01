@@ -336,7 +336,23 @@ func collectLicenceSignals(text string) licenceSignals {
 			// pins, and move DW-131's requested pin for the
 			// parenthesised form "(MIT OR Apache-2.0)" away from
 			// (unknown, "").
-			if len(fields) == 1 && sig.unresolvedID == "" {
+			//
+			// "SINGLE TERM" IS READ OFF THE SOLE ENUMERATOR, NOT OFF A
+			// RE-SPLIT OF THE STRING. A field count is not a term count,
+			// and the two disagree exactly where it matters:
+			// ClassifySPDXExpressionTerms("(MIT)") returns NO terms — it
+			// is not one term, it is zero — so a field count of 1 named a
+			// malformed expression and pushed both asset gates off their
+			// "could not be classified" arm onto an arm asserting the
+			// text CLASSIFIES AS "(MIT)", which is false. The terms[0]
+			// conjunct is the other half: a partially-enumerated
+			// expression such as "MIT XOR Apache-2.0" yields exactly ONE
+			// term ("MIT", found before the operator failed) while being
+			// plainly not a single-term expression, and naming it would
+			// reintroduce the same false assertion from the other side.
+			// An expression is a single term iff its one enumerated term
+			// IS the whole expression.
+			if len(terms) == 1 && terms[0] == expression && sig.unresolvedID == "" {
 				sig.unresolvedID = expression
 			}
 		case family == FamilyCopyleft:
