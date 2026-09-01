@@ -143,3 +143,143 @@ func TestCommittedOFLTextClassifiesAsOFL11(t *testing.T) {
 		)
 	}
 }
+
+// uflHeader is the SPDX-published Ubuntu Font Licence 1.0 text in
+// shape: its own title line, then the grant clause that opens with
+// MIT's detection phrase verbatim. The grant clause is not decoration
+// here — it is the whole reason the branch exists (Design Note 4,
+// Story 8.4h).
+const uflHeader = "-------------------------------\n" +
+	"UBUNTU FONT LICENCE Version 1.0\n" +
+	"-------------------------------\n\n" +
+	"PREAMBLE\n" +
+	"This licence allows the licensed fonts to be used, studied, modified and\n" +
+	"redistributed freely.\n"
+
+const uflGrantClause = "\nPermission is hereby granted, free of charge, to any person obtaining a\n" +
+	"copy of the Font Software, to use, study, copy, merge, embed, modify,\n" +
+	"redistribute, and sell modified and unmodified copies of the Font\n" +
+	"Software, subject to the following conditions:\n"
+
+// TestClassifyUbuntuFontLicence covers the MARKER BRANCH added at Story
+// 8.4h (D-8.5.3) for the fourth member of the owner's asset allowlist.
+// It is the named test that reds if that branch is removed — the map
+// entry alone cannot satisfy any case here, because full licence text
+// never reaches classifyBySPDX. TestUbuntuFontLicenceSPDXLineIsPermissive
+// below is the named test for the OTHER half: two independent
+// mutations, two distinct reds (AC5).
+//
+// Shape follows TestClassifyOFL: {name, text, wantFamily, wantID}, the
+// id asserted explicitly because the id is what lands in
+// lint/MANIFEST.md and attributes the asset.
+//
+// NO CARDINALITY ASSERTION over permissiveSPDX, deliberately (D-8.5.4):
+// a count written next to the thing it counts stops being true the
+// moment the thing grows. The loudness comes from the set's fail-safe
+// miss semantics, not from counting it.
+func TestClassifyUbuntuFontLicence(t *testing.T) {
+	cases := []struct {
+		name       string
+		text       string
+		wantFamily Family
+		wantID     string
+	}{
+		{
+			"UFL 1.0 full text classifies as Ubuntu-font-1.0",
+			uflHeader + uflGrantClause,
+			FamilyPermissive, "Ubuntu-font-1.0",
+		},
+		{
+			// THE MIT-COLLISION PROOF. The UFL 1.0 grant clause opens
+			// with MIT's detection phrase verbatim, so placed below the
+			// MIT case every UFL-licensed face classifies as
+			// (permissive, "MIT") — right family, wrong label. This
+			// case is the whole reason the branch exists and where it
+			// is placed.
+			"UFL text carrying MIT's trigger phrase must NOT classify as MIT",
+			uflHeader + uflGrantClause,
+			FamilyPermissive, "Ubuntu-font-1.0",
+		},
+		{
+			// Version-lookalike negative, on the OFL 1.0 precedent: the
+			// required "VERSION 1.0" conjunct means a future UFL 1.1
+			// classifies as FamilyUnknown — a LOUD build failure at the
+			// asset gate — rather than being silently labelled 1.0.
+			"UFL 1.1 must NOT be labelled Ubuntu-font-1.0",
+			"UBUNTU FONT LICENCE\nVersion 1.1\n",
+			FamilyUnknown, "",
+		},
+		{
+			// Bundled-notice negative: a dependency LICENSE that merely
+			// MENTIONS the Ubuntu Font Licence must still classify as
+			// its own licence, not outrank it purely by branch ordering.
+			"a bundled UFL notice does not win over the file's own licence",
+			"MIT License\n\nPermission is hereby granted, free of charge\n\n" +
+				"Bundled fonts are under the Ubuntu Font Licence.\n",
+			FamilyPermissive, "MIT",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotFamily, gotID := ClassifyLicenceText(c.text)
+			if gotFamily != c.wantFamily {
+				t.Errorf("family = %v, want %v", gotFamily, c.wantFamily)
+			}
+			if gotID != c.wantID {
+				t.Errorf("SPDX id = %q, want %q", gotID, c.wantID)
+			}
+		})
+	}
+}
+
+// TestUbuntuFontLicenceSPDXLineIsPermissive covers the MAP-ENTRY half
+// of Story 8.4h's addition, and is the named test that reds if the
+// permissiveSPDX entry is removed — the marker branch cannot satisfy
+// it, because an SPDX line short-circuits ClassifyLicenceText before
+// the marker switch is reached. Together with
+// TestClassifyUbuntuFontLicence this is AC5's two mutations, two
+// distinct reds.
+//
+// The bare community alias "UFL" is asserted to classify as UNKNOWN,
+// deliberately: accepting it would be the silent list-widening D-8.5.13
+// forbids, and it would admit a string no licence authority issues
+// (Design Note 3).
+func TestUbuntuFontLicenceSPDXLineIsPermissive(t *testing.T) {
+	family, id := ClassifyLicenceText("SPDX-License-Identifier: Ubuntu-font-1.0\n")
+	if family != FamilyPermissive || id != "Ubuntu-font-1.0" {
+		t.Fatalf(
+			"SPDX line classifies as (%v, %q), want (FamilyPermissive, %q) — "+
+				"the permissiveSPDX entry is the only thing that can make this pass",
+			family, id, "Ubuntu-font-1.0",
+		)
+	}
+	if !IsPermissiveSPDX("Ubuntu-font-1.0") {
+		t.Error("IsPermissiveSPDX(\"Ubuntu-font-1.0\") = false, want true")
+	}
+
+	for _, alias := range []string{"UFL", "UFL-1.0", "Ufont-1.0"} {
+		if IsPermissiveSPDX(alias) {
+			t.Errorf("IsPermissiveSPDX(%q) = true; the non-SPDX alias must NOT be a live map key (Design Note 3)", alias)
+		}
+	}
+}
+
+// TestIsPermissiveSPDXReadsTheSameList is task 2's guard: the exported
+// predicate must be a view onto permissiveSPDX, not a second copy of
+// it. Asserted by sampling both ends of the map plus a known
+// non-member, and by the copyleft prefix list staying outside it.
+func TestIsPermissiveSPDXReadsTheSameList(t *testing.T) {
+	for id, want := range map[string]bool{
+		"MIT":             true,
+		"CC0-1.0":         true,
+		"OFL-1.1":         true,
+		"Ubuntu-font-1.0": true,
+		"GPL-3.0":         false,
+		"":                false,
+		"Proprietary":     false,
+	} {
+		if got := IsPermissiveSPDX(id); got != want {
+			t.Errorf("IsPermissiveSPDX(%q) = %v, want %v", id, got, want)
+		}
+	}
+}

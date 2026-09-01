@@ -5807,3 +5807,87 @@ close re-proved that the visibility assertion fires when the probe is hidden. **
 out — with the `.gitignore` prohibition kept in the comment.
 
 ---
+
+### DW-114 — the extension-class guard now sweeps the whole tracked repository, and today it reports nothing
+
+- **Recorded by:** **Story 8.4h's build (2026-09-02)**, discharging **AC8** — the story's own obligation
+  to state the widening's new coverage **by measurement** rather than to assume it inert.
+- **Owner:** informational. Nothing to do; this is the baseline a later reader compares against.
+- **Severity:** N/A — this is a MEASUREMENT RECORD, not an open gap.
+- **Status:** RECORDED.
+
+**What changed.** `folio-designer/src/font-binary-identity.test.ts`'s magic-byte sweep — the guard that
+catches a file which IS a font by its own first four bytes but carries an extension
+`manifest.go`'s `fontExtensions` does not recognise — ran over `folio-designer/public/fonts` only. It now
+runs over the **git-tracked repository the licence gate itself walks** (repo root, minus `.git`, minus any
+`lint` directory whose parent is `testdata`), per **D-8.5.2**.
+
+**The measurement, taken at Story 8.4h's implementation.** So a later reader can tell an **inert** widening
+from an **unmeasured** one:
+
+| figure | value |
+|---|---|
+| files listed by `git ls-files` | 1435 |
+| excluded by the gate's `*/testdata/lint` skip | 64 |
+| population the widened guard asserts over | **1371** |
+| population before the widening (`public/fonts`) | 18 |
+| **newly covered** | **1353 files** |
+| tracked files with a font-plausible extension | **11, all `.ttf`** — no `.woff`, `.woff2`, `.eot`, `.otc`, `.pfb`, `.pfa` or `.dfont` is tracked anywhere |
+| tracked extensionless files | 18 |
+| **newly REPORTED** | **none** |
+
+Top-level subtrees newly in reach: `.agents`, `.claude`, `.github`, `_bmad`, `_bmad-output`, `docs`,
+`fixtures`, `folio-go`, `hashmatrix`, `lint`, `test-data`, `tools`, plus the rest of `folio-designer`.
+
+**Two things that are NOT inert, recorded so the widening is not mistaken for cosmetic.** First, the
+`git ls-files` intersection is **load-bearing**: a plain disk walk of the repo root would read the three
+real variable TTFs in the gitignored `.font-sources/` (~20 MB) and everything under `node_modules/`,
+`dist/` and `src/generated/`, none of which this repository redistributes. Second, **AC7 widened the
+GUARD, not the licence gate** — `ResolveAssets`' own walk has been repo-wide since Story 3.6 and already
+filters by extension, so **no non-font asset is newly subjected to the font allowlist by this story**. The
+widening closes the composition D-8.5.2 names: a file invisible to the gate *because of its extension*, in
+a directory invisible to the guard *because of its path*.
+
+A latent defect was fixed on the way: `extensionOf` was `file.slice(file.lastIndexOf('.'))`, which for an
+**extensionless** file returned the file's **last character**. Under `public/fonts` no such file existed;
+repo-wide there are 18. It could never produce a false positive — the magic-byte check still gates every
+report — but it would have printed nonsense in a failure message.
+
+---
+
+### DW-115 — `Ubuntu-font-1.0` is on the asset allowlist with no asset in the tree under it
+
+- **Recorded by:** **Story 8.4h's build (2026-09-02)**, discharging the honesty obligation in that story's
+  **Design Note 8** — *"the story must not claim a real-population witness it does not have."*
+- **Owner:** **Story 8.5**, which is the story scoped to ship a catalogue face.
+- **Severity:** LOW — the identifier is proved live; what it lacks is a real-artifact witness.
+- **Status:** OPEN until Story 8.5 lands a face under it, or until it is established that none will.
+
+**The claim.** Story 8.4h added the fourth member of the owner's four-id asset allowlist (D-8.5.3) —
+`Ubuntu-font-1.0`, the Ubuntu Font Licence 1.0 — to `lint/internal/licence/classify.go` as both a
+`permissiveSPDX` entry and a marker branch placed above the MIT case, and to `manifest.go`'s
+`fontAssetLicenceAllowlist`. **Nothing in this repository is Ubuntu-licensed.** So the identifier is proved
+by a classifier table, by an SPDX-line fixture module
+(`lint/testdata/licence/permissive/example.test/ufl-lib/`) that the graph scan really reads, and by
+synthetic scratch-repo fixtures in `manifest_test.go` — and by nothing else. There is no analogue of
+`TestCommittedOFLTextClassifiesAsOFL11` to write, because there is no committed artifact to read.
+
+That gap is **expected and deliberate**: D-8.5.13 scoped the member into 8.4h precisely so it exists before
+8.5 needs it. It is recorded here so **the first real-population witness is attributable to Story 8.5**
+rather than being assumed to have arrived with 8.4h.
+
+**One decision inside it, flagged.** The owner's allowlist, as written in `epics.md`, `SPEC.md` and D-8.5.3,
+names its fourth member **"UFL"** — the community abbreviation — while naming the other three as exact SPDX
+identifiers. `UFL` and `UFL-1.0` are **not** SPDX identifiers (both 404 on spdx.org); `Ubuntu-font-1.0` is
+(HTTP 200, *"Ubuntu Font Licence v1.0"*). 8.4h ruled, on the project's own convention, that "UFL" **denotes**
+the licence and the code's obligation is to use its canonical id, and deliberately did **not** accept the
+bare alias as a live map key — an exact-lookup entry no valid SPDX line can ever produce would be dead code
+that looks live. **If the owner reads that as their call rather than the convention's, it is cheap to
+reverse now and expensive after a face ships.**
+
+**What discharges it.** Story 8.5 shipping a face under the Ubuntu Font Licence, with a committed-artifact
+classification test on the real licence text — or a decision that no such face will ship, at which point
+the allowlist member and its marker branch should be re-examined rather than left as detection with
+nothing to detect.
+
+---

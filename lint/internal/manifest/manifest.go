@@ -109,6 +109,44 @@ func Generate(repoRoot string) ([]Row, error) {
 // fontExtensions are the binary font formats this scan recognises.
 var fontExtensions = []string{".ttf", ".otf", ".ttc"}
 
+// fontAssetLicenceAllowlist is THE OWNER'S DECISION (D-8.5.3, Story
+// 8.4h): the complete set of licences under which this repository will
+// redistribute a font asset. It is enforced fail-closed at SITE A in
+// ResolveAssets below — a font whose licence text classifies outside
+// this set, or does not classify at all, FAILS THE BUILD naming its
+// directory. AD-26's enforcement posture is "fail the build, never
+// warn", and D-8.5.3 extends that posture to redistributed font assets.
+//
+// THIS IS NOT licence.permissiveSPDX, AND MUST NEVER BE POINTED AT IT.
+// That list is the dependency-side permissive set, and it deliberately
+// carries CC0-1.0 (Story 2.1, D-2.1.3) because the Thai wordlist is
+// legitimately CC0. CC0 is not an acceptable FONT licence and CC0-1.0
+// is not one of the owner's four ids. The wordlist path
+// (resolveWordlistAssetRow) enforces the OTHER list, on purpose. One
+// string literal can appear in both without the two being one policy:
+// VALIDATE BY CONSUMER, NOT BY KEY LOCATION. Collapsing these into a
+// shared constant because the strings overlap would either reject the
+// shipped wordlist on day one or admit CC0 fonts — a scoping error
+// wearing the costume of a tidy-up (Design Note 6, Design Note 7).
+//
+// "UFL" as the owner spelled it is the Ubuntu Font Licence; its
+// canonical SPDX identifier is "Ubuntu-font-1.0" (verified by fetch —
+// see licence.permissiveSPDX's own note and Design Note 3). Nothing in
+// this repository ships under it yet; it exists here before Story 8.5
+// needs it.
+//
+// Ordered, not a bare map, so the refusal message below names the
+// permitted set in a stable order.
+var fontAssetLicenceAllowlist = []string{"OFL-1.1", "Apache-2.0", "MIT", "Ubuntu-font-1.0"}
+
+var fontAssetLicenceAllowed = func() map[string]bool {
+	allowed := make(map[string]bool, len(fontAssetLicenceAllowlist))
+	for _, id := range fontAssetLicenceAllowlist {
+		allowed[id] = true
+	}
+	return allowed
+}()
+
 // assetServesLabel derives AC25's manifest "Serves" label from an
 // asset's directory, relative to repoRoot (forward-slash form). Finding
 // 9 (QA review): the previous implementation scanned only a fixed,
@@ -295,10 +333,37 @@ func ResolveAssets(repoRoot string) ([]AssetRow, error) {
 			return nil, fmt.Errorf("%s: NOTICE file does not contain a line starting with \"Copyright\" (AC25, AD-26)", dir)
 		}
 
-		licenceLabel := "SEE NOTICE"
-		if _, spdx := licence.ClassifyLicenceText(licenceText); spdx != "" {
-			licenceLabel = spdx
+		// Story 8.4h (AC1, D-8.5.3): SITE A, the FONT path, FAIL-CLOSED.
+		//
+		// What was here until this story RECORDED a licence instead of
+		// ENFORCING one: `licenceLabel := "SEE NOTICE"` followed by
+		// `if _, spdx := ...; spdx != "" { licenceLabel = spdx }`, then
+		// a row either way and no error either way. That is TWO holes at
+		// two lines, and the smaller one is the more obvious (Design
+		// Note 1, measured):
+		//
+		//   - an UNCLASSIFIABLE licence text fell through to the literal
+		//     "SEE NOTICE" and produced a clean row and a clean build;
+		//   - a GPL-3.0 licence text never reached that fall-through at
+		//     all. It classifies perfectly well, and passed because the
+		//     Family return was DISCARDED (`_, spdx :=`) and nothing
+		//     compared the id to any list. A GPL font shipped on a green
+		//     build with nothing said.
+		//
+		// Both are closed here. The family verdict is now CONSULTED, so
+		// a copyleft text is refused BY NAME rather than merely by
+		// absence from a list, and an unclassifiable text is refused
+		// rather than labelled.
+		family, spdx := licence.ClassifyLicenceText(licenceText)
+		switch {
+		case spdx == "":
+			return nil, fmt.Errorf("%s: licence text could not be classified, so this redistributed font cannot be shown to carry a permitted licence (AC25, AD-26, D-8.5.3)", dir)
+		case family == licence.FamilyCopyleft:
+			return nil, fmt.Errorf("%s: licence text classifies as %q, a copyleft licence AD-26 forbids for a redistributed font (AC25, AD-26, D-8.5.3)", dir, spdx)
+		case !fontAssetLicenceAllowed[spdx]:
+			return nil, fmt.Errorf("%s: licence text classifies as %q, which is not one of the licences permitted for a redistributed font: %s (AC25, AD-26, D-8.5.3)", dir, spdx, strings.Join(fontAssetLicenceAllowlist, ", "))
 		}
+		licenceLabel := spdx
 
 		serves := assetServesLabel(dir)
 		for _, ff := range fontFiles {
@@ -381,10 +446,38 @@ func resolveWordlistAssetRow(repoRoot string) (AssetRow, bool, error) {
 		return AssetRow{}, false, fmt.Errorf("%s: NOTICE file does not contain a line starting with \"Copyright\" (AC25-equivalent for AC9, AD-26)", wordlistAssetDir)
 	}
 
-	licenceLabel := "SEE NOTICE"
-	if _, spdx := licence.ClassifyLicenceText(string(licenceText)); spdx != "" {
-		licenceLabel = spdx
+	// Story 8.4h (AC3, D-8.5.3): SITE B, the WORDLIST path, FAIL-CLOSED
+	// — AND DELIBERATELY AGAINST A DIFFERENT LIST FROM THE FONT PATH.
+	//
+	// THIS SITE'S POLICY IS NOT THE FONT SITE'S, ON PURPOSE: the owner
+	// ruled about FONTS (D-8.5.3's four ids are OFL-1.1, Apache-2.0,
+	// MIT and the Ubuntu Font Licence), and this asset is a Thai
+	// dictionary, not a typeface — legitimately under CC0-1.0, which is
+	// not one of those four. So this site consults the EXISTING
+	// permissive SPDX set, which has carried CC0-1.0 deliberately since
+	// Story 2.1 (D-2.1.3) precisely because of this asset. Pointing
+	// this line at manifest.go's fontAssetLicenceAllowlist would reject
+	// a shipped, legitimate, owner-unobjected asset on day one. Same
+	// phrase, two rooms: DO NOT TIDY THE TWO SITES INTO ONE CONSTANT
+	// (Design Note 6).
+	//
+	// The predicate reads licence.permissiveSPDX itself rather than a
+	// second copy of the list, because a duplicated list is a list the
+	// code can move (D-8.5.8c).
+	//
+	// Closed for the same two reasons the font site was: the literal
+	// "SEE NOTICE" fall-through passed an unclassifiable licence with a
+	// clean row, and the discarded Family return passed a GPL one.
+	wordlistFamily, wordlistSPDX := licence.ClassifyLicenceText(string(licenceText))
+	switch {
+	case wordlistSPDX == "":
+		return AssetRow{}, false, fmt.Errorf("%s: wordlist licence text could not be classified, so this redistributed asset cannot be shown to carry a permitted licence (AC9, AD-26)", wordlistAssetDir)
+	case wordlistFamily == licence.FamilyCopyleft:
+		return AssetRow{}, false, fmt.Errorf("%s: wordlist licence text classifies as %q, a copyleft licence AD-26 forbids for a redistributed asset (AC9, AD-26)", wordlistAssetDir, wordlistSPDX)
+	case !licence.IsPermissiveSPDX(wordlistSPDX):
+		return AssetRow{}, false, fmt.Errorf("%s: wordlist licence text classifies as %q, which this project does not recognise as a permissive licence (AC9, AD-26)", wordlistAssetDir, wordlistSPDX)
 	}
+	licenceLabel := wordlistSPDX
 
 	return AssetRow{
 		Path:      wordlistAssetDir + "/words_th.txt",

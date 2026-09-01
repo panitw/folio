@@ -103,7 +103,51 @@ var permissiveSPDX = map[string]bool{
 	// before this, and its full legal code was misclassified as "MIT"
 	// (see ClassifyLicenceText) until this story's fix.
 	"OFL-1.1": true,
+	// Ubuntu-font-1.0 joined this list at Story 8.4h (2026-09-02,
+	// D-8.5.3), the story that made the asset licence gate fail closed
+	// against the owner's four-id allowlist {OFL-1.1, Apache-2.0, MIT,
+	// UFL}. Measured, "Ubuntu" appeared nowhere in the lint module
+	// before this, so the fourth member of that allowlist had no
+	// implementation at all: a face under it would have been refused by
+	// the very gate the owner's decision permits it through.
+	//
+	// THE IDENTIFIER IS "Ubuntu-font-1.0", VERIFIED, NOT REMEMBERED.
+	// https://spdx.org/licenses/Ubuntu-font-1.0.html returns HTTP 200
+	// ("Ubuntu Font Licence v1.0"); "UFL-1.0" and "Ufont-1.0" both
+	// return 404. The owner's list spells its fourth member "UFL", the
+	// community abbreviation, while spelling the other three as exact
+	// SPDX identifiers — so "UFL" denotes the licence and this is its
+	// canonical id. The bare alias is deliberately NOT a key here:
+	// classifyBySPDX is an exact map lookup, so "UFL" could only ever be
+	// produced by a LICENSE writing `SPDX-License-Identifier: UFL`,
+	// which is not a valid SPDX line and which no real font ships. It
+	// would be dead code that looks live — precisely the "advertises
+	// detection that does not exist" failure this package's Family doc
+	// comment was written to prevent (Design Note 3, Story 8.4h).
+	//
+	// NOTHING IN THIS REPOSITORY IS UBUNTU-LICENSED TODAY. The entry is
+	// proved by the classifier table, by the SPDX-line fixture module
+	// under testdata/licence/permissive/, and by nothing else; there is
+	// no analogue of TestCommittedOFLTextClassifiesAsOFL11 to write
+	// until Story 8.5 lands a face under it (Design Note 8).
+	"Ubuntu-font-1.0": true,
 }
+
+// IsPermissiveSPDX reports whether id is one of the SPDX identifiers
+// this classifier recognises as permissive. It exists so a consumer in
+// another package (manifest.resolveWordlistAssetRow, Story 8.4h) can
+// consult THIS map rather than keep a second copy of the list: a
+// duplicated list is a list the code can move, and the two copies drift
+// apart silently the first time either moves (D-8.5.8c).
+//
+// NOTE FOR THE NEXT READER: this predicate is NOT the asset allowlist.
+// manifest.go's font path enforces the owner's four-id decision
+// (D-8.5.3) against its own, deliberately smaller, font-path-local
+// constant. The two lists are independent in SCOPE, not merely in
+// mechanism — CC0-1.0 is permissive and is legitimately the Thai
+// wordlist's licence, and is emphatically not an acceptable font
+// licence. Do not route the font path through here.
+func IsPermissiveSPDX(id string) bool { return permissiveSPDX[id] }
 
 var copyleftSPDXPrefixes = []string{"GPL-", "LGPL-", "AGPL-", "SSPL-"}
 
@@ -160,6 +204,50 @@ func ClassifyLicenceText(text string) (Family, string) {
 		// deliberately makes a LOUD build failure rather than a quiet
 		// mislabel. The CC0 marker below pins its version the same way.
 		return FamilyPermissive, "OFL-1.1"
+	case strings.Contains(upper, "UBUNTU FONT LICENCE") && strings.Contains(upper, "VERSION 1.0"):
+		// Story 8.4h (2026-09-02, D-8.5.3): the fourth member of the
+		// owner's asset allowlist, added LOUDLY — a map entry above and
+		// this marker branch — rather than by widening any list
+		// silently. Both halves are required and neither substitutes for
+		// the other: this branch returns its id directly and never
+		// consults permissiveSPDX, so a map entry alone leaves full UFL
+		// text misclassifying as MIT; and a branch alone leaves
+		// "SPDX-License-Identifier: Ubuntu-font-1.0" classifying as
+		// FamilyUnknown.
+		//
+		// PLACED ABOVE THE MIT CASE, character-for-character the OFL
+		// defect above. Measured against the SPDX-published UFL 1.0
+		// text: it opens "UBUNTU FONT LICENCE Version 1.0" and carries
+		// "Permission is hereby granted, free of charge, to any person
+		// obtaining a" — the EXACT substring the MIT case below matches
+		// on. Below MIT, every UFL-licensed face classifies as
+		// (permissive, "MIT"): right family, WRONG LABEL, and the label
+		// is what lands in lint/MANIFEST.md and attributes the asset.
+		// Audited against every other branch: the UFL text contains
+		// neither "SIL OPEN FONT LICENSE" nor "VERSION 1.1", and
+		// collides with none of the four copyleft cases, nor Apache,
+		// BSD or CC0.
+		//
+		// "VERSION 1.0" IS A REQUIRED CONJUNCT, on the OFL precedent's
+		// stated reasoning: without it this branch returns the id
+		// "Ubuntu-font-1.0" for any text merely containing the
+		// licence's name — a future UFL 1.1, or a dependency LICENSE
+		// that bundles a UFL notice beside its own licence. The
+		// licence's own title line carries the version, so the conjunct
+		// costs nothing to satisfy, and a version this classifier does
+		// not know becomes FamilyUnknown — a LOUD build failure rather
+		// than a quiet mislabel (D-1.3.4).
+		//
+		// THE BRITISH SPELLING "LICENCE" IS DELIBERATE, recorded here so
+		// it is not "corrected" later. It is the licence's own spelling
+		// of its own name. A file writing "UBUNTU FONT LICENSE" misses
+		// this marker and classifies FamilyUnknown, which the asset gate
+		// makes a build failure naming the directory — a LOUD miss, and
+		// therefore fail-safe (D-2.1.3). Loosening the marker to accept
+		// both spellings would trade that loud miss for a wider match
+		// surface for no measured need: no such variant exists in this
+		// repository, and none will until a face ships under it.
+		return FamilyPermissive, "Ubuntu-font-1.0"
 	case strings.Contains(upper, "MIT LICENSE") || strings.Contains(upper, "PERMISSION IS HEREBY GRANTED, FREE OF CHARGE"):
 		return FamilyPermissive, "MIT"
 	case strings.Contains(upper, "APACHE LICENSE"):

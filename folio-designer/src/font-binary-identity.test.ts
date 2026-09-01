@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -61,10 +62,24 @@ const enginePath = path.join(engineFontsDir, 'fonts.go')
 // side would make the guard agree with a copy of the gate rather than with the
 // gate, and the two would drift apart silently the first time either moved.
 const licenceGatePath = path.join(designerRoot, '..', 'lint', 'internal', 'manifest', 'manifest.go')
-// The committed font tree the designer ships out of. Swept whole, rather than
-// only where the generator happens to point today, because the invariant is a
-// population claim: THE LICENCE GATE SEES EVERY FONT THAT SHIPS.
-const designerFontsDir = path.join(designerRoot, 'public', 'fonts')
+// THE POPULATION THE MAGIC-BYTE SWEEP RUNS OVER — widened at Story 8.4h (AC7,
+// D-8.5.2) from `folio-designer/public/fonts` to THE WHOLE TRACKED REPOSITORY.
+//
+// The narrow version could only ever have caught a mis-suffixed font dropped
+// into the designer's own font tree, while the licence gate it mirrors
+// (`manifest.ResolveAssets`) has walked the ENTIRE repository since Story 3.6.
+// So the guard was blind in exactly the direction the gate was not: a `.woff2`
+// committed under `folio-go/`, under `lint/testdata/`, or anywhere else was
+// invisible to the gate BECAUSE OF ITS EXTENSION and invisible to this guard
+// BECAUSE OF ITS PATH — the two blind spots composing into a font that ships
+// with no LICENSE required, no NOTICE required and no `lint/MANIFEST.md` row.
+// D-8.5.2 sends the extension-class guard repo-wide for that reason.
+//
+// THIS WIDENS THE GUARD'S DIRECTORY REACH, NOT ITS ASSET-CLASS REACH. The
+// licence gate's own walk was already repo-wide and already filters by
+// extension, so no non-font asset is newly subjected to the font allowlist by
+// this change (Design Note 5).
+const repoRoot = path.join(designerRoot, '..')
 
 // The DESIGN SYSTEM's own three families — tokens.css's `--font-sans`,
 // `--font-mono` and `--font-page`, through which every `--type-*` token
@@ -164,10 +179,11 @@ function slotSourcePaths(generator: string): Readonly<Record<string, string>> {
 //
 //   1. every font asset SLOT the generator fingerprints into the runtime
 //      bundle, and
-//   2. every committed file under `public/fonts/` WHOSE OWN FIRST FOUR BYTES
-//      ARE A FONT MAGIC — so a `.woff2` renamed, mis-suffixed or simply
-//      dropped in beside a face is caught by what it IS rather than by what it
-//      is called.
+//   2. every GIT-TRACKED file in the repository the licence gate walks, WHOSE
+//      OWN FIRST FOUR BYTES ARE A FONT MAGIC — so a `.woff2` renamed,
+//      mis-suffixed or simply dropped in anywhere is caught by what it IS
+//      rather than by what it is called or where it was put. Widened from
+//      `public/fonts/` to the tracked repository at Story 8.4h (AC7, D-8.5.2).
 //
 // The recognised set is read out of `manifest.go` itself. If someone widens
 // `fontExtensions` to admit `.woff2`, this guard widens with it — which is
@@ -181,7 +197,26 @@ function licenceGateFontExtensions(manifestGo: string): ReadonlyArray<string> {
   return [...declaration[1].matchAll(/"([^"]+)"/g)].map((match) => match[1].toLowerCase())
 }
 
-const extensionOf = (file: string) => file.slice(file.lastIndexOf('.')).toLowerCase()
+/**
+ * A file's extension, lowercased, or `''` where it has none.
+ *
+ * THE `''` CASE IS NEW AT STORY 8.4h AND IS NOT COSMETIC. The previous
+ * one-liner was `file.slice(file.lastIndexOf('.'))`: for an EXTENSIONLESS file
+ * `lastIndexOf` returns -1, so it yielded the file's LAST CHARACTER as its
+ * "extension". Under `public/fonts` no extensionless file existed and the
+ * defect was latent; over the tracked repository (AC7) there are many —
+ * `LICENSE`, `NOTICE`, `Makefile`, `go.sum`. It could never produce a false
+ * positive, because the magic-byte check still gates every report, but a
+ * failure message reading `(extension 'e')` is a message that sends the reader
+ * the wrong way. Anchoring on the BASENAME also stops a dotted DIRECTORY name
+ * (`example.test/ufl-lib/LICENSE`) from being read as the file's extension.
+ */
+const extensionOf = (file: string) => {
+  const base = path.basename(file)
+  const dot = base.lastIndexOf('.')
+  // `dot === 0` is a dotfile (`.gitignore`), which has a name and no extension.
+  return dot <= 0 ? '' : base.slice(dot).toLowerCase()
+}
 
 /**
  * Font asset slots whose SOURCE FILE carries an extension the licence gate does
@@ -222,14 +257,75 @@ function filesUnder(directory: string): ReadonlyArray<string> {
 }
 
 /**
- * Committed files under `directory` that ARE fonts by their own bytes but carry
- * an extension the licence gate does not recognise — so they would ship with no
- * LICENSE required, no NOTICE required and no `lint/MANIFEST.md` row.
+ * Files that ARE fonts by their own bytes but carry an extension the licence
+ * gate does not recognise — so they would ship with no LICENSE required, no
+ * NOTICE required and no `lint/MANIFEST.md` row.
+ *
+ * TAKES A FILE LIST, NOT A DIRECTORY, since Story 8.4h (AC7). The population is
+ * no longer "everything under one path" but "everything git tracks inside the
+ * gate's own walk", and those are not the same shape: a disk walk of the repo
+ * root would read the three real variable TTFs in the gitignored
+ * `.font-sources/` (~20 MB) plus everything under `node_modules/`, `dist/` and
+ * `src/generated/` — none of which this repository redistributes. The
+ * `git ls-files` intersection is therefore load-bearing, not cosmetic
+ * (Design Note 5). `filesUnder` still exists and still feeds a directory into
+ * this function, which is how the discrimination proof below stays honest.
+ *
+ * Paths are rendered relative to `root` — repo-root-relative for the real
+ * population, so a report names a file the way the licence gate would.
  */
-function committedFontsTheLicenceGateCannotSee(directory: string, recognised: ReadonlyArray<string>): ReadonlyArray<string> {
-  return filesUnder(directory)
+function committedFontsTheLicenceGateCannotSee(files: ReadonlyArray<string>, recognised: ReadonlyArray<string>, root: string): ReadonlyArray<string> {
+  return files
     .filter((file) => !recognised.includes(extensionOf(file)) && looksLikeAFontBinary(file))
-    .map((file) => `${path.relative(designerRoot, file)} (extension '${extensionOf(file)}')`)
+    .map((file) => `${path.relative(root, file)} (extension '${extensionOf(file)}')`)
+}
+
+/**
+ * Every file the LICENCE GATE'S OWN WALK would consider, in `root`: git-tracked
+ * (so untracked scratch and gitignored caches are out, exactly as
+ * `manifest.ResolveAssets` excludes them via `gitTrackedFileCount`), minus the
+ * two directories that walk skips — `.git`, and any `lint` directory whose
+ * parent is `testdata`.
+ *
+ * THROWS RATHER THAN YIELDING AN EMPTY SET, in three places: if git itself
+ * fails, if it lists nothing, and if nothing survives the filter. A guard that
+ * cannot look must not read as all-clear — that is D-3.6.5's own ground, and
+ * the whole reason the licence gate grew its scan-error floor. An enumeration
+ * that quietly returned `[]` would make the assertion below pass over a
+ * repository it never read.
+ *
+ * Vitest runs under jsdom with cwd `folio-designer/`, so `-C <root>` is
+ * mandatory, not stylistic (precedent: `scripts/verify-offline-release.mjs`).
+ */
+function licenceGateTrackedFiles(root: string): ReadonlyArray<string> {
+  let listing: string
+  try {
+    // stderr is CAPTURED, not inherited: the throws-proof below deliberately
+    // runs this against a non-repository, and a bare `fatal:` line printed
+    // into a green suite's output trains the reader to ignore them.
+    listing = execFileSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    throw new Error(`git ls-files failed in ${root}: ${String(error)} — the tracked population could not be obtained, and an unobtainable population must never read as all-clear`)
+  }
+  const tracked = listing.split('\0').filter((entry) => entry !== '')
+  if (tracked.length === 0) throw new Error(`git tracks no files at all in ${root} — refusing to report a clean population over an empty one`)
+
+  const files = tracked
+    .filter(insideTheLicenceGateWalk)
+    .map((relative) => path.join(root, relative))
+    // A gitlink (submodule) is listed as a path that is not a regular file, and
+    // an index entry can outlive its file on disk mid-rebase. Neither is
+    // something to read four bytes out of.
+    .filter((file) => fs.existsSync(file) && fs.statSync(file).isFile())
+  if (files.length === 0) throw new Error(`no tracked regular file in ${root} survived the licence gate's walk filter — refusing to report a clean population over an empty one`)
+  return files
+}
+
+/** The two exclusions `manifest.ResolveAssets`' own `filepath.WalkDir` applies. */
+function insideTheLicenceGateWalk(relative: string): boolean {
+  const segments = relative.split('/')
+  if (segments.includes('.git')) return false
+  return !segments.some((segment, index) => segment === 'lint' && segments[index - 1] === 'testdata')
 }
 
 /**
@@ -609,10 +705,22 @@ describe('the family names the browser is given are the files the engine measure
   // reading that spec. This is the behavioural form.
   //
   // TWO POPULATIONS, BOTH DERIVED. Every font asset slot the generator
-  // fingerprints into the runtime bundle, and — independently — every committed
-  // file under `public/fonts/` whose OWN FIRST FOUR BYTES are a font magic, so
-  // a webfont dropped in beside a face is caught by what it is rather than by
-  // what it is called or by whether anything points at it yet.
+  // fingerprints into the runtime bundle, and — independently — every
+  // GIT-TRACKED FILE IN THE REPOSITORY THE LICENCE GATE WALKS whose OWN FIRST
+  // FOUR BYTES are a font magic, so a webfont dropped in anywhere is caught by
+  // what it is rather than by what it is called, where it was put, or by
+  // whether anything points at it yet.
+  //
+  // The second population was `folio-designer/public/fonts` until Story 8.4h
+  // (AC7, D-8.5.2). MEASURED at that widening, not assumed: the population
+  // grew from 18 files under `public/fonts` to 1371 tracked files (1435 listed
+  // by `git ls-files`, 64 of them under `*/testdata/lint`, which the gate's own
+  // walk skips), and it newly reported NOTHING. Of those 1371, exactly 11 carry
+  // a font-plausible extension and all 11 are `.ttf` — no `.woff`, `.woff2`,
+  // `.eot`, `.otc`, `.pfb` or `.dfont` is tracked anywhere — and reading the
+  // first four bytes of every one of the rest yields zero font magics. That
+  // the widening is inert TODAY is a measurement; assuming it would have been
+  // the very mistake D-8.5.13 names.
   it('lets the asset licence gate see every font that reaches the runtime bundle', () => {
     const recognised = licenceGateFontExtensions(fs.readFileSync(licenceGatePath, 'utf8'))
 
@@ -631,8 +739,28 @@ describe('the family names the browser is given are the files the engine measure
       + 'Ship the `.ttf` from the upstream release archive, not the `.woff2` from the npm package.',
     ).toEqual([])
 
+    // THE POPULATION IS NON-VACUOUS FIRST, for the same reason the mirror is:
+    // `licenceGateTrackedFiles` throws rather than returning [], but stating
+    // the floor here means a future change that softened the throw into a
+    // fallback still reds. The figure is a FLOOR, deliberately not an equality
+    // — a count written next to the thing it counts stops being true the moment
+    // the thing grows (D-8.5.4).
+    const tracked = licenceGateTrackedFiles(repoRoot)
+    expect(tracked.length, `read only ${tracked.length} tracked files out of ${repoRoot}`).toBeGreaterThan(500)
+
+    // AND IT REACHES OUTSIDE THE DESIGNER'S OWN FONT TREE — the whole point of
+    // AC7. Stated as directories rather than as a count, so it says what the
+    // widening bought.
+    const reachedDirectories = new Set(tracked.map((file) => path.relative(repoRoot, file).split('/')[0]))
+    expect([...reachedDirectories].sort(), 'the widened population must span the repository the licence gate walks, not one subtree')
+      .toEqual(expect.arrayContaining(['folio-designer', 'folio-go', 'lint']))
+    // And it excludes what the gate excludes: gitignored caches and build
+    // output are not tracked, and `*/testdata/lint` is skipped by the walk.
+    expect(tracked.filter((file) => /(^|\/)(node_modules|dist)\//.test(path.relative(repoRoot, file))), 'untracked build output must not enter the population').toEqual([])
+    expect(tracked.filter((file) => /(^|\/)testdata\/lint\//.test(path.relative(repoRoot, file))), 'the licence gate skips */testdata/lint, so this guard must too').toEqual([])
+
     expect(
-      committedFontsTheLicenceGateCannotSee(designerFontsDir, recognised),
+      committedFontsTheLicenceGateCannotSee(tracked, recognised, repoRoot),
       'A file listed here IS a font by its own first four bytes and carries an extension the asset licence gate does not '
       + 'recognise, so it is invisible to `manifest.ResolveAssets` however it came to be committed. The generator does '
       + 'not have to point at it yet for that to be true.',
@@ -658,6 +786,12 @@ describe('the family names the browser is given are the files the engine measure
     // THE BYTE READER. `wOF2` is a WOFF2 wrapper's own signature; `\0\0\0`
     // is a static TrueType's. A reader that answered `false` to everything
     // would make the tree sweep above pass over any tree at all.
+    //
+    // STILL DRIVEN THROUGH A DIRECTORY, deliberately. Story 8.4h changed the
+    // sweep to take a FILE LIST rather than a directory, and a proof that
+    // quietly stopped exercising a directory would go vacuous — so `filesUnder`
+    // feeds this scratch directory straight in. Rewritten, never narrowed
+    // (D-8.5.8b).
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-font-magic-'))
     try {
       const webfont = path.join(scratch, 'IBMPlexSans-Regular.woff2')
@@ -665,12 +799,18 @@ describe('the family names the browser is given are the files the engine measure
       fs.writeFileSync(path.join(scratch, 'NOTICE.md'), 'not a font\n')
       expect(looksLikeAFontBinary(webfont)).toBe(true)
       expect(looksLikeAFontBinary(path.join(scratch, 'NOTICE.md'))).toBe(false)
-      expect(committedFontsTheLicenceGateCannotSee(scratch, recognised).map((entry) => entry.replace(/^.*IBMPlex/, 'IBMPlex'))).toEqual([
+      expect(committedFontsTheLicenceGateCannotSee(filesUnder(scratch), recognised, scratch)).toEqual([
         "IBMPlexSans-Regular.woff2 (extension '.woff2')",
       ])
       // And a recognised extension is not reported even though it is a font.
       fs.renameSync(webfont, path.join(scratch, 'IBMPlexSans-Regular.ttf'))
-      expect(committedFontsTheLicenceGateCannotSee(scratch, recognised)).toEqual([])
+      expect(committedFontsTheLicenceGateCannotSee(filesUnder(scratch), recognised, scratch)).toEqual([])
+      // AN EXTENSIONLESS FILE is neither reported nor mis-described. Before
+      // Story 8.4h `extensionOf` returned such a file's LAST CHARACTER, which
+      // under `public/fonts` never arose and repo-wide arises constantly.
+      fs.writeFileSync(path.join(scratch, 'LICENSE'), 'not a font\n')
+      expect(extensionOf(path.join(scratch, 'LICENSE'))).toBe('')
+      expect(committedFontsTheLicenceGateCannotSee(filesUnder(scratch), recognised, scratch)).toEqual([])
     } finally {
       fs.rmSync(scratch, { recursive: true, force: true })
     }
@@ -679,6 +819,100 @@ describe('the family names the browser is given are the files the engine measure
     // file that carries none rather than defaulting to a permissive set.
     expect(licenceGateFontExtensions('var fontExtensions = []string{".ttf", ".otf", ".ttc"}')).toEqual(['.ttf', '.otf', '.ttc'])
     expect(() => licenceGateFontExtensions('package manifest')).toThrow(/no 'var fontExtensions/)
+  })
+
+  // AC7's OWN PROOF: THE NEW DIRECTORY REACH IS REAL, not merely declared.
+  //
+  // The claim the widening makes is that a font-magic file with an
+  // unrecognised extension is now reported FROM ANYWHERE THE LICENCE GATE
+  // WALKS, where before it was reported only from `folio-designer/public/fonts`.
+  // Proved in a SCRATCH GIT REPOSITORY rather than by mutating this one: the
+  // enumeration reads `git ls-files`, so a synthetic subject needs a real
+  // index (the same recipe `lint/internal/manifest/manifest_test.go` uses), and
+  // a proof that writes into the live tree is a proof that can leave debris.
+  //
+  // Population-independent by construction: nothing here depends on which
+  // faces this repository happens to commit today.
+  it('reports a font the licence gate cannot see from anywhere it walks, not just public/fonts', () => {
+    const recognised = ['.ttf', '.otf', '.ttc']
+    const scratchRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-tracked-reach-'))
+    const write = (relative: string, bytes: Buffer | string) => {
+      const full = path.join(scratchRepo, relative)
+      fs.mkdirSync(path.dirname(full), { recursive: true })
+      fs.writeFileSync(full, bytes)
+      return full
+    }
+    const woff2 = Buffer.concat([Buffer.from('wOF2', 'latin1'), Buffer.alloc(16)])
+    try {
+      execFileSync('git', ['-C', scratchRepo, 'init', '-q'])
+
+      // OUTSIDE the designer's font tree, in three different subtrees the
+      // licence gate walks — each one invisible to the pre-8.4h population.
+      write('folio-go/testdata/fonts/Sneaked.woff2', woff2)
+      write('lint/testdata/licence/Sneaked.woff2', woff2)
+      write('folio-designer/src/assets/Sneaked.woff2', woff2)
+      // And the controls: a font with a RECOGNISED extension (the gate sees it,
+      // so this guard must not report it), a non-font, and an extensionless file.
+      write('folio-go/fonts/Legitimate.ttf', woff2)
+      write('folio-go/NOTICE.md', 'not a font\n')
+      write('folio-go/LICENSE', 'not a font\n')
+      // And one inside `*/testdata/lint`, which the licence gate's own walk
+      // SKIPS — so this guard must skip it too, or the two disagree.
+      write('folio-go/testdata/lint/embed-font/Skipped.woff2', woff2)
+      // An UNTRACKED font-magic file: the gate excludes what git does not
+      // track, and so must this. Written but never added.
+      write('folio-go/untracked-scratch/Ignored.woff2', woff2)
+
+      execFileSync('git', ['-C', scratchRepo, 'add',
+        'folio-go/testdata/fonts/Sneaked.woff2',
+        'lint/testdata/licence/Sneaked.woff2',
+        'folio-designer/src/assets/Sneaked.woff2',
+        'folio-go/fonts/Legitimate.ttf',
+        'folio-go/NOTICE.md',
+        'folio-go/LICENSE',
+        'folio-go/testdata/lint/embed-font/Skipped.woff2',
+      ])
+
+      const tracked = licenceGateTrackedFiles(scratchRepo)
+      expect([...committedFontsTheLicenceGateCannotSee(tracked, recognised, scratchRepo)].sort(), 'the widened guard must report a font-magic file with an unrecognised extension from ANY tracked directory the licence gate walks').toEqual([
+        "folio-designer/src/assets/Sneaked.woff2 (extension '.woff2')",
+        "folio-go/testdata/fonts/Sneaked.woff2 (extension '.woff2')",
+        "lint/testdata/licence/Sneaked.woff2 (extension '.woff2')",
+      ])
+
+      // AND THIS IS WHAT THE WIDENING BOUGHT. The pre-8.4h population was
+      // `folio-designer/public/fonts`, which does not exist in this repository
+      // at all — so every one of the three above was invisible before, and the
+      // narrow sweep reports nothing here however many fonts are sneaked in.
+      const narrowPopulation = path.join(scratchRepo, 'folio-designer', 'public', 'fonts')
+      expect(fs.existsSync(narrowPopulation), 'the pre-widening population is empty in this fixture — that is the point').toBe(false)
+    } finally {
+      fs.rmSync(scratchRepo, { recursive: true, force: true })
+    }
+  })
+
+  // A GUARD THAT CANNOT LOOK MUST NOT READ AS ALL-CLEAR (D-3.6.5's own ground).
+  // The enumeration's failure modes are throws, never empty sets — an empty
+  // set would flow straight into `.toEqual([])` above and pass.
+  it('throws rather than reporting a clean population when the tracked enumeration cannot be obtained', () => {
+    const notARepository = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-not-a-repo-'))
+    const emptyRepository = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-empty-repo-'))
+    try {
+      // git itself fails.
+      expect(() => licenceGateTrackedFiles(notARepository)).toThrow(/git ls-files failed/)
+      // git succeeds and tracks nothing.
+      execFileSync('git', ['-C', emptyRepository, 'init', '-q'])
+      expect(() => licenceGateTrackedFiles(emptyRepository)).toThrow(/tracks no files at all/)
+      // git tracks files, but none survives the licence gate's walk filter.
+      const skipped = path.join(emptyRepository, 'testdata', 'lint', 'stub.txt')
+      fs.mkdirSync(path.dirname(skipped), { recursive: true })
+      fs.writeFileSync(skipped, 'x\n')
+      execFileSync('git', ['-C', emptyRepository, 'add', 'testdata/lint/stub.txt'])
+      expect(() => licenceGateTrackedFiles(emptyRepository)).toThrow(/survived the licence gate's walk filter/)
+    } finally {
+      fs.rmSync(notARepository, { recursive: true, force: true })
+      fs.rmSync(emptyRepository, { recursive: true, force: true })
+    }
   })
 
   // THE WHOLE MAP, EXACTLY. Not a containment and not a count: an exact
