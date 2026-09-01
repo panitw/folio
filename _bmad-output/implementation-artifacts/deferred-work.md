@@ -5147,6 +5147,61 @@ incapable* of seeing the 490,280 bytes of fonts Story 8.4c added. **A budget gat
 green through that story.** Confirmed by exact arithmetic, not asserted. 8.4d must gate on a total that
 includes every cached asset (`cachedBytes` does) or add rows for what it is meant to bound.
 
+**UPDATE, Story 8.4g's close (2026-09-01) — the `-buildvcs=false` discharge condition above is MET, the
+mechanism above is CORRECTED IN ONE HALF, and DW-100 STAYS OPEN on its second defect.**
+
+**The mechanism, corrected.** The Story 8.4c UPDATE states the stamp as "the commit SHA, **the commit
+timestamp** and the working tree's dirty flag". **The timestamp half is refuted on its premise** (D-8.5.7):
+`vcs.time` is the timestamp of the **revision**, not of the build — Go stamps the commit's own time — so
+two builds at one commit carry the **identical** value however far apart they run, and it can move
+nothing. **The operative input is `vcs.modified`**, which Go derives from `git status`, where **a single
+UNTRACKED file is enough**. That is the sharp part, because **this pipeline writes untracked files into
+the tree** — halt files, result files, spec files — so a run that wrote an artifact between two
+measurements **changed the stamp it was measuring**.
+
+**The discharge condition is satisfied verbatim, and re-measured rather than assumed.** All six probes at
+`873757f`, **in the main checkout** (`/Users/panitw/Projects/folio`), `cd folio-go && GOOS=js GOARCH=wasm
+go build [-buildvcs=false] -o <tmp> ./wasm/cmd/engine`, with the tree state recorded against every figure:
+
+| probe | tree state | `-buildvcs` | wasm sha256 | `vcs.` settings in the bytes |
+|---|---|---|---|---|
+| A | `git status --porcelain` **empty** | default | `68ee2569…c03117` | 3 — `vcs.modified=false` |
+| B | **empty**, repeat of A | default | `68ee2569…c03117` — **identical** | 3 — `vcs.modified=false` |
+| C | one **stray untracked** file | default | `1de602ca…3cc470` — **DIFFERS** | 3 — **`vcs.modified=true`** |
+| D | **empty** | **`false`** | `ff324971…d90f732` | **0** |
+| E | one **stray untracked** file | **`false`** | `ff324971…d90f732` — **IDENTICAL** | **0** |
+| F | one **modified tracked** file (`README.md`) | **`false`** | `ff324971…d90f732` — **IDENTICAL** | **0** |
+
+Full digests: A/B `68ee2569ded91b9856593beb6474a5a8a0e6d601906b1fbc028df36c39c03117`, C
+`1de602ca69341c0767680417cbdccac9d398995d4f54396f38117eaf2e3cc470`, D/E/F
+`ff324971091afd641151d1658020852ad0120687c225e5760b05888d4d90f732`. The probe file was removed and
+`git status --porcelain` verified empty afterwards; `README.md` was restored (`md5` unchanged at
+`078d7d80d518d54af2fc04fb270d46b8`).
+
+**Read the stamp from the raw bytes, never from `go version -m`.** On a wasm binary that tool answers
+`unrecognized file format`, so grepping its output for `vcs` prints nothing **because the tool failed** —
+its silence is not evidence of absence, and a check built on it would have been vacuously green.
+
+**Landed as** `folio-designer/scripts/build-wasm.mjs` passing `-buildvcs=false`, guarded at its point of
+use by `assertNoVCSStamp` from the new `folio-designer/scripts/wasm-vcs-stamp.mjs` (red-proved: with the
+flag removed, `npm run build:wasm` exits 1 naming all four settings and never publishes the fingerprinted
+wasm) and covered by `folio-designer/scripts/wasm-vcs-stamp.test.mjs`. **THE REPRODUCIBILITY HALF OF
+DW-100 — and only that half — is discharged by Story 8.4g's commit** (see that commit's message for the
+SHA; a commit cannot self-reference its own hash in its diff). **DW-100 ITSELF IS NOT CLOSED** — see the
+final paragraph of this entry for what remains and who owns it.
+
+**The provenance loss is a DELIBERATE TRADE, not a free win, and it is stated rather than assumed.**
+`-buildvcs=false` removes `vcs.revision`, so the engine binary no longer self-identifies its commit. Two
+things already cover that: the offline release manifest carries `releaseId` and `pageId` derived from
+asset hashes, which identify the **bundle** more precisely than a commit does, and **AD-22** pins an exact
+`toolchain` directive so the compiler behind these bytes is a release event rather than an ambient fact.
+
+**DW-100 STAYS OPEN, and this is the half that is left.** Only the reproducibility defect is discharged.
+The **second, independent defect recorded above is untouched**: `s1VisibleBytes` sums only the four
+`delivery: "cached-asset"` S1 rows, **there is no IBM Plex row**, and the figure is therefore structurally
+blind to the 490,280 bytes of fonts Story 8.4c added. That remains **Story 8.4d's**, and 8.4d must still
+not pin a threshold on a figure that cannot see what it is meant to bound.
+
 ---
 
 ### DW-101 — twelve executable Playwright specs exist, run, and are never run by CI: a whole capability believed absent by everyone
@@ -5345,5 +5400,66 @@ a stated reason per exception** — replaces a prose count with a derivation, wh
 started reading them. **A count is lossy; a set difference is not** (Design Note 7 of Story 8.4e, and
 D-8.4.34 one level up in the process). Deferred rather than done here because it is a **new guard** in
 a story already reviewed and committed, and a new guard needs its own mutation proof.
+
+---
+
+### DW-105 — the engine wasm is still a function of the CHECKOUT PATH: same commit, same flags, both unstamped, different bytes
+
+- **Deferred by:** Story 8.4g's close (2026-09-01), found while re-measuring the fix it landed — a
+  **newly measured residual**, not a restatement of DW-100.
+- **Owner:** **Story 8.4d — *the size budget is a number something checks*** (it inherits every input
+  that can move the figure it is asked to gate), or whoever first needs two checkouts of one commit to
+  agree.
+- **Severity:** LOW-MEDIUM — it moves no shipped behaviour and no golden. It is exactly high enough to
+  invalidate a **comparison**, which is the only thing byte figures are for.
+- **Status:** OPEN.
+
+**Measured against an ISOLATED POSITIVE CONTROL at `4f8516a`.** The first attempt at this measurement
+compared the main checkout to a **linked worktree**, and that comparison was CONFOUNDED: a linked
+worktree differs in **two** ways at once — its absolute path **and** its `.git` being a file rather than
+a directory. So it could not attribute the difference to the path, and a conclusion drawn from it would
+have been inference dressed as measurement. Replaced by a control that varies **only the path**: a full
+`rsync -a` copy of the checkout (excluding `node_modules`, `dist` and build caches) to a different
+absolute path, with **`.git` a real DIRECTORY in both arms**, so `-buildvcs` behaves identically on each
+side. Invocation, both arms: `cd <root>/folio-go && GOOS=js GOARCH=wasm go build -buildvcs=false -o <tmp>
+./wasm/cmd/engine`. Tree state, **identical in both arms by construction** (the copy is an `rsync` of the
+original): four modified tracked files — the story spec and this story's three designer scripts, none of
+them Go source. Both binaries carry **ZERO** `vcs.` settings.
+
+| arm | checkout root | wasm sha256 |
+|---|---|---|
+| MAIN | `/Users/panitw/Projects/folio` | `ff324971091afd641151d1658020852ad0120687c225e5760b05888d4d90f732` |
+| COPY | a scratch path outside the repo | `8f8fe16b9786a7d77670716813f39fe9e38502bc5016924c885a653ffa5fe7ba` |
+
+**Same commit, same flags, same tree state, `.git` a directory on both sides, both unstamped — DIFFERENT
+BYTES.** The path is the only remaining difference, and it is therefore the cause.
+
+**The mechanism was confirmed directly, not inferred from the digests.** Each binary embeds **87
+occurrences** of **its own** checkout's absolute source-path prefix — e.g. `<root>/folio-go/internal/geom/scale.go`
+— 87 in the MAIN binary naming the main root, 87 in the COPY binary naming the copy's root. Go embeds
+absolute source paths, so the checkout's location is a genuine compile input.
+
+**The digest of any non-main arm is itself path-dependent, which is the finding rather than an
+inconsistency.** A review pass ran this same control at a **third** path and measured a **third** COPY
+digest (`fbfe2bd3b06742e9ed0356f95ff468c841e590e061fe1558bdc8fa00abd0f02b`) against the same unchanged
+MAIN digest. Three paths, three digests, one commit: **only the MAIN figure above is reproducible by
+anyone else, and only by someone whose checkout is at that same path.**
+
+**The consequence is about COMPARISON, not correctness.** No shipped behaviour moves and no golden moves.
+But **a baseline measured in one checkout is not comparable to one measured in another**, so any process
+that measures the two arms of a change in different directories is measuring the directory.
+
+**A SEPARATE finding from the same investigation, recorded on its own terms because it is NOT the
+evidence for the above.** In a **linked worktree `.git` is a FILE, not a directory**, and Go's default
+`-buildvcs=auto` therefore **silently omits the VCS stamp entirely**. Measured: in a linked worktree the
+**default** build and the `-buildvcs=false` build produce the **same** digest and **zero** `vcs.`
+settings. A stray untracked file changes nothing there, so the tree-state discriminator run in a worktree
+looks like a refutation **when it is a non-measurement.** Any future determinism probe must run in the
+main checkout, with a positive control to prove the probe can move at all.
+
+**What discharges it.** `-trimpath` is the candidate remedy. It was **deliberately out of scope** for
+Story 8.4g: DW-100 lists it as optional, that story's AC named exactly one flag, and a second variable in
+the same measurement would have made the re-measurement unattributable. Landing it needs its own
+measure → change → **re-measure** unit, including a check that no golden PDF digest moves.
 
 ---

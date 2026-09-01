@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { assertNoVCSStamp } from './wasm-vcs-stamp.mjs'
 
 const designerRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = join(designerRoot, '..')
@@ -15,11 +16,36 @@ if (!wasmExec) throw new Error(`wasm_exec.js not found below ${goRoot}`)
 rmSync(outputDir, { recursive: true, force: true })
 mkdirSync(outputDir, { recursive: true })
 const wasmPath = join(outputDir, 'folio-engine.wasm')
-execFileSync('go', ['build', '-o', wasmPath, './wasm/cmd/engine'], {
+// `-buildvcs=false` CLOSES ONE INPUT: THE TREE'S STATE. Go's default stamps
+// `vcs.revision`, `vcs.time` and `vcs.modified` into the binary, and it derives
+// `vcs.modified` from `git status`, where a single UNTRACKED file is enough — so
+// without this flag the engine wasm, and every byte figure measured over the
+// bundle it dominates, is a fact about whoever last wrote a scratch file into the
+// checkout (D-8.5.7). With it, a clean tree, a stray untracked file and a modified
+// tracked file all produce the same bytes — measured, not assumed.
+//
+// IT DOES NOT MAKE THE BUNDLE A FUNCTION OF THE SOURCE ALONE. The checkout's
+// absolute PATH is still an input: two copies of one commit at two paths, both
+// unstamped, build to different bytes, because Go embeds absolute source paths.
+// That residual is measured and recorded as DW-105; `-trimpath` is its candidate
+// remedy and is deliberately not applied here.
+//
+// Dropping `vcs.revision` is a DELIBERATE TRADE, NOT A FREE WIN: the artifact no
+// longer self-identifies its commit. It is an acceptable one because the release
+// manifest already carries `releaseId` and `pageId` derived from asset hashes,
+// which identify the BUNDLE more precisely than a commit does, and because AD-22
+// pins an exact `toolchain` directive, making the compiler behind these bytes a
+// release event rather than an ambient fact.
+execFileSync('go', ['build', '-buildvcs=false', '-o', wasmPath, './wasm/cmd/engine'], {
   cwd: join(repoRoot, 'folio-go'),
   env: { ...process.env, GOOS: 'js', GOARCH: 'wasm' },
   stdio: 'inherit',
 })
+// Enforce the flag at its point of use, not only in a test: `build:wasm` is a
+// dependency of `typecheck`, `test` and `build`, so dropping the flag reddens
+// every designer gate and fails fast — and this must run here, while the raw wasm
+// still exists, because it is deleted after fingerprinting below.
+assertNoVCSStamp(readFileSync(wasmPath), 'src/generated/runtime/folio-engine.wasm')
 const gluePath = join(outputDir, 'wasm-exec.js')
 copyFileSync(wasmExec, gluePath)
 // PDF.js support files are copied into the same generated, immutable runtime
