@@ -146,6 +146,50 @@ type CanvasTextFragment struct {
 	// is still the engine's own paint origin and the browser still
 	// computes no metric, no advance and no line break.
 	AssetKey string `json:"assetKey,omitempty"`
+	// Face names the SHIPPED face the engine resolved this fragment to —
+	// the caller's own FontSet key, verbatim — and is empty, and omitted
+	// from the wire, for every fragment drawn with a face the document
+	// carries. It is AssetKey's mutually exclusive twin: exactly one of
+	// the two is set on every emitted fragment, which is the same
+	// discriminated pair CanvasFontChainEntry already puts on the wire
+	// (Face xor AssetKey) one level up.
+	//
+	// WHY THE FontSet NAME AND NOT SOMETHING DERIVED (Story 8.4e,
+	// D-8.4.14). "A carried face's browser family derives from the
+	// engine's identity for it (the asset key); a shipped face's from the
+	// engine's identity for it (the FontSet name). One rule for one
+	// question." The browser declares an @font-face under each of those
+	// three names already (Story 8.4b), so the name IS the CSS family and
+	// there is nothing to map. The two alternatives were rejected BY NAME
+	// there: renaming the generated families (the design system's own
+	// typeface is not the engine's to rename) and a face-name -> family
+	// mapping table (a second authority maintained in lockstep with
+	// fonts.Shipped()). Nothing derived, mapped or re-spelled goes here,
+	// and never a chain entry's `family` or `style` — those are DISPLAY
+	// identity (AD-8, D-8.4.1), not how a face is found.
+	//
+	// IT CANNOT CARRY DOCUMENT TEXT. resolveRuneFace returns an element of
+	// chainFaceNames(chain) and a chain entry whose face is absent from the
+	// supplied FontSet is skipped, so a face can only be attributed here
+	// once the engine actually loaded and measured with it: the value comes
+	// from the caller's FontSet keys, not from arbitrary document input.
+	// The browser still bounds and shape-checks it, because a guard's job
+	// is to hold when this side is wrong.
+	//
+	// WHY PER FRAGMENT AND NEVER PER COMPONENT. The same construction that
+	// settles it for AssetKey: faceSegment.face is a scalar and
+	// positionSegments emits at most one run per segment without ever
+	// merging adjacent runs, so a fragment is exactly one face. A component
+	// is not — a document whose chain is ["Noto Sans Thai"] draws its Latin
+	// through that same Thai face, and the three shipped faces' cmaps
+	// overlap (339 / 529 / 230 code points pairwise, all three covering `A`
+	// and `5`), so a component-level answer would hand a run the wrong
+	// face's advances while painting the right glyphs.
+	//
+	// AD-17 IS UNTOUCHED BY IT, exactly as for AssetKey: this is
+	// attribution, not measurement. X is still the engine's paint origin
+	// and the browser computes no metric, no advance and no line break.
+	Face string `json:"face,omitempty"`
 }
 
 // CanvasTextLine is one pre-broken engine line. All coordinates are
@@ -1460,7 +1504,33 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 					// as 64 lowercase hex characters, failing the whole
 					// projection otherwise.
 					carried, _ := cache.carriedAssetKey(fragment.face)
-					paintLine.Fragments = append(paintLine.Fragments, CanvasTextFragment{Text: fragment.text, X: int64(x), AssetKey: carried})
+					// AND THE OTHER HALF OF THE SAME ANSWER (Story
+					// 8.4e). A face this chain resolved that the
+					// document does NOT carry is a shipped one, and
+					// fragment.face is then the caller's FontSet key
+					// verbatim — chainFaceNames mints a name only for
+					// an embedded entry and copies entry.Face for every
+					// other, and fontCache.get can resolve nothing that
+					// is not in one of those two namespaces. So the
+					// engine's identity for this face travels beside the
+					// engine's identity for a carried one, and exactly
+					// one of the two is ever set.
+					//
+					// THE BOUND IS THE ONE projectFontChainEntry ALREADY
+					// APPLIES to a chain entry's face, and it is applied
+					// the same way: refused with a stated reason, never
+					// silently emptied. Emptying would put a fragment on
+					// the wire carrying NEITHER identity, which the
+					// browser reads as "shipped, unattributed" — a
+					// quieter lie than a refusal.
+					shipped := ""
+					if carried == "" {
+						if len(fragment.face) > maxCanvasPropertyString {
+							return fmt.Errorf("folio: canvas text element %s: font face name exceeds the projection bound", element.ID)
+						}
+						shipped = fragment.face
+					}
+					paintLine.Fragments = append(paintLine.Fragments, CanvasTextFragment{Text: fragment.text, X: int64(x), AssetKey: carried, Face: shipped})
 				}
 				// Painting stops at the last WHOLE line that fits. A half
 				// line would be a worse lie than a short one: the author

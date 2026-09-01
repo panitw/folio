@@ -3,6 +3,9 @@ package folio
 import (
 	"crypto/sha256"
 	"fmt"
+	"maps"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -290,5 +293,204 @@ func TestTwoCarriedFacesInOneChainAreAttributedToTheirOwnKeys(t *testing.T) {
 	}
 	if len(seen) != 2 {
 		t.Fatalf("the two carried entries produced %d distinct asset keys (%v); each fragment must name its OWN, or the browser paints one script with the other's face", len(seen), seen)
+	}
+}
+
+// STORY 8.4e — THE OTHER HALF OF THE SAME ATTRIBUTION.
+//
+// 8.4a reported which of the document's OWN assets a fragment was drawn with
+// and said nothing at all about a fragment drawn with a face the caller
+// SHIPPED. The browser therefore fell through to one fixed stylesheet stack
+// naming all three shipped faces in one order, whatever order the document
+// declared — and the three faces' cmaps overlap (339 / 529 / 230 code points
+// pairwise, all three covering `A` and `5`), so a document whose chain is
+// ["Noto Sans Thai"] had its Latin MEASURED with Noto Sans Thai and
+// RASTERIZED with Noto Sans: right glyphs, wrong advances, creeping out of
+// position. The fragment now carries the engine's FontSet name for that face.
+//
+// WHAT MUTATION THIS IS RED-PROVED AGAINST: drop `Face: shipped` at the
+// fragment append in page_setup.go and TestAShippedFragmentIsAttributedToIts-
+// FontSetFace fails on its first fragment; emit the face for a carried
+// fragment too and TestEveryProjectedFragmentCarriesExactlyOneFaceIdentity
+// fails, as does the wire test's carried key set.
+
+// shippedFaceNamesInProjection collects the distinct face names a projection's
+// fragments were attributed to, in first-appearance order.
+func shippedFaceNamesInProjection(fragments []CanvasTextFragment) []string {
+	var out []string
+	for _, fragment := range fragments {
+		if fragment.Face == "" {
+			continue
+		}
+		seen := false
+		for _, name := range out {
+			if name == fragment.Face {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			out = append(out, fragment.Face)
+		}
+	}
+	return out
+}
+
+// TestAShippedFragmentIsAttributedToItsFontSetFace is AC1's shipped arm at the
+// struct: every fragment of a document that carries no font names the face the
+// caller's FontSet is keyed by, VERBATIM. Not a derived name, not a mapped
+// one, not the chain's display spelling — the key itself, because that is the
+// engine's identity for a shipped face exactly as the asset key is its
+// identity for a carried one (D-8.4.14).
+func TestAShippedFragmentIsAttributedToItsFontSetFace(t *testing.T) {
+	fs := testFontSet()
+	projection := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountControlTemplateJSON))
+	fragments := projectedFragments(projection)
+	if len(fragments) == 0 {
+		t.Fatal("presence precondition: the shipped-face control document projected no paint fragments, so nothing below is asserted")
+	}
+	for _, fragment := range fragments {
+		if _, ok := fs[fragment.Face]; !ok {
+			t.Fatalf("fragment %q is attributed to face %q, which is not a key of the FontSet this projection was given (%v) — the wire carries the engine's own FontSet name and never a derived, mapped or re-spelled one", fragment.Text, fragment.Face, slices.Sorted(maps.Keys(fs)))
+		}
+	}
+	// AND IT IS THE FONTSET NAME RATHER THAN THE MINT'S. A shipped face has no
+	// asset behind it, so a face name in the reserved embedded namespace here
+	// would mean the two identities had been crossed.
+	for _, fragment := range fragments {
+		if strings.HasPrefix(fragment.Face, embeddedFaceNamePrefix) {
+			t.Fatalf("fragment %q names the face %q, which is in the mint's reserved namespace — a SHIPPED face's identity is its FontSet key", fragment.Text, fragment.Face)
+		}
+	}
+}
+
+// thaiFirstLatinTemplateJSON is the I/O matrix's "Latin through a Thai-first
+// chain" row: a chain naming ONLY "Noto Sans Thai", drawing the Latin text
+// "A5". Built from the control fixture rather than shipped as a new one — no
+// `fixtures/` directory, no expected.pdf, nothing to attest, and the document
+// is never rendered.
+func thaiFirstLatinTemplateJSON(t *testing.T) string {
+	t.Helper()
+	source := canvasWindowCountControlTemplateJSON
+	const chain = `"fonts": {"body": ["Roboto-Regular"]},`
+	if strings.Count(source, chain) != 1 {
+		t.Fatalf("fixture precondition: the control document no longer spells %s, so a Thai-first chain cannot be built from it", chain)
+	}
+	source = strings.Replace(source, chain, `"fonts": {"body": ["Noto Sans Thai"]},`, 1)
+	for _, value := range []string{`"value": "Window one"`, `"value": "Window two"`, `"value": "Window three"`} {
+		if strings.Count(source, value) != 1 {
+			t.Fatalf("fixture precondition: the control document no longer spells %s", value)
+		}
+		source = strings.Replace(source, value, `"value": "A5"`, 1)
+	}
+	return source
+}
+
+// TestLatinThroughAThaiFirstChainIsAttributedToTheThaiFace is the reported
+// defect, stated at the engine surface. The document's chain names one face;
+// the engine measures the Latin with it; the browser must be told so, because
+// its fallback stack would otherwise reach a DIFFERENT shipped face that also
+// has these glyphs and does not have their advances.
+func TestLatinThroughAThaiFirstChainIsAttributedToTheThaiFace(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(thaiFirstLatinTemplateJSON(t)))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	fs := testShippedFontSet()
+	projection, err := CanvasWithTextPaint(tpl, fs)
+	if err != nil {
+		t.Fatalf("CanvasWithTextPaint: %v", err)
+	}
+	if !projection.ContentWindowCountIsExact {
+		t.Fatal("the engine reports an inexact window count for a document with no table and no conditional visibility — its font chain degraded, so no fragment below is attributed to anything")
+	}
+	fragments := projectedFragments(projection)
+	if len(fragments) == 0 {
+		t.Fatal("presence precondition: the Thai-first document projected no paint fragments")
+	}
+	for _, fragment := range fragments {
+		if fragment.Face != "Noto Sans Thai" {
+			t.Fatalf("fragment %q is attributed to %q; this document's chain names only \"Noto Sans Thai\", so that is the face the engine measured its Latin with and the face the browser must rasterize it with", fragment.Text, fragment.Face)
+		}
+		if fragment.AssetKey != "" {
+			t.Fatalf("fragment %q carries the asset key %q for a face the document does not carry", fragment.Text, fragment.AssetKey)
+		}
+	}
+	// THE PREMISE, ASSERTED RATHER THAN ASSUMED: the face the browser's fixed
+	// Latin-first stack would have reached instead really does have these
+	// glyphs, so the old behaviour was silent — right letters, wrong widths —
+	// rather than a visibly blank run.
+	cache := newDocumentFontCache(tpl)
+	first, ferr := cache.get("Noto Sans", fs)
+	if ferr != nil {
+		t.Fatalf("get Noto Sans: %v", ferr)
+	}
+	for _, r := range "A5" {
+		if !first.HasGlyph(r) {
+			t.Fatalf("Noto Sans has no glyph for %q, so the stack's first entry could not have silently drawn this text and the defect this test pins is not the one described", r)
+		}
+	}
+}
+
+// TestAMixedScriptElementNamesTheShippedFaceItWasDrawnWith is the shipped twin
+// of TestAMixedScriptElementIsAttributedFragmentByFragment. One element, one
+// chain, two faces: the Latin runs through the SHIPPED entry and carries that
+// entry's FontSet name, the Thai falls through to the face the document
+// carries and carries its asset key. Attributing at the component would hand
+// one of the two the other's identity.
+func TestAMixedScriptElementNamesTheShippedFaceItWasDrawnWith(t *testing.T) {
+	const thai = `"value": "สัญญา"`
+	source := embeddedFontTemplateJSON()
+	if !strings.Contains(source, thai) {
+		t.Fatalf("fixture precondition: the carried-face document no longer spells %s, so this test cannot build the mixed-script variant from it", thai)
+	}
+	mixed := strings.Replace(source, thai, `"value": "Deed สัญญา"`, 1)
+	fragments := projectedFragments(carriedFaceProjection(t, mixed))
+	if len(fragments) < 2 {
+		t.Fatalf("presence precondition: the mixed-script element projected %d fragments, and the whole point is that it produces more than one", len(fragments))
+	}
+	if got := shippedFaceNamesInProjection(fragments); !reflect.DeepEqual(got, []string{"Noto Sans"}) {
+		t.Fatalf("the mixed-script element named the shipped faces %v; this document's chain opens with \"Noto Sans\" and its Latin can only have been drawn with that", got)
+	}
+	for _, fragment := range fragments {
+		if fragment.Face != "" && fragment.AssetKey != "" {
+			t.Fatalf("fragment %q carries BOTH a shipped face name (%q) and an asset key (%q)", fragment.Text, fragment.Face, fragment.AssetKey)
+		}
+		if fragment.Face == "" && fragment.AssetKey != embeddedFontAssetKey() {
+			t.Fatalf("fragment %q carries neither this document's asset key nor a shipped face name", fragment.Text)
+		}
+	}
+}
+
+// TestEveryProjectedFragmentCarriesExactlyOneFaceIdentity is the contract's
+// mutual-exclusivity probe, and it is a PROBE rather than an assumption: the
+// wire shape's whole premise is that `face` and `assetKey` discriminate, so a
+// counterexample invalidates it. Three populations, because each could break
+// differently — a chain naming only shipped faces, a chain naming only carried
+// ones, and a mixed-script element that resolves both inside one component.
+//
+// NEITHER is a violation too, not only BOTH: a fragment carrying neither
+// identity is one the browser reads as "shipped, unattributed" and paints on
+// the stylesheet's stack — the very fallback this story exists to stop relying
+// on. It can only arise from a face name the engine resolved and then lost.
+func TestEveryProjectedFragmentCarriesExactlyOneFaceIdentity(t *testing.T) {
+	twoCarried, _, _ := twoCarriedFacesTemplateJSON(t)
+	mixed := strings.Replace(embeddedFontTemplateJSON(), `"value": "สัญญา"`, `"value": "Deed สัญญา"`, 1)
+	for _, population := range []struct {
+		name      string
+		fragments []CanvasTextFragment
+	}{
+		{"a chain of shipped faces only", projectedFragments(projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountControlTemplateJSON)))},
+		{"a chain of carried faces only", projectedFragments(carriedFaceProjection(t, twoCarried))},
+		{"a mixed-script element drawing through both", projectedFragments(carriedFaceProjection(t, mixed))},
+	} {
+		if len(population.fragments) == 0 {
+			t.Fatalf("presence precondition: %s projected no paint fragments, so the exclusivity below is asserted over nothing", population.name)
+		}
+		for _, fragment := range population.fragments {
+			if (fragment.Face != "") == (fragment.AssetKey != "") {
+				t.Fatalf("%s: fragment %q carries face %q and asset key %q — exactly one of the two is the wire shape's premise, and this is the counterexample that would invalidate it", population.name, fragment.Text, fragment.Face, fragment.AssetKey)
+			}
+		}
 	}
 }

@@ -170,7 +170,7 @@ export type CanvasProjection = Readonly<{
 	// derived in the browser.
 	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -448,9 +448,19 @@ const isTextPaint = (value: unknown, component: Record<string, number>): boolean
     if (paint.top < component.y || paint.baseline < paint.top || paint.advance <= 0 || paint.width < 0 || (priorTop >= 0 && paint.top < priorTop + priorAdvance) || (!value.overflow && paint.width > component.width) || !Array.isArray(line.fragments)) return false
     priorTop = paint.top
     priorAdvance = paint.advance
+    // A FRAGMENT'S TWO ATTRIBUTION KEYS ARE A DISCRIMINATED PAIR, on the model
+    // isFontChainEntry already applies one level up: `assetKey` names a face
+    // the DOCUMENT carries, `face` (Story 8.4e) names one the ENGINE ships,
+    // and no fragment may carry both. NEITHER is legal and deliberately so —
+    // that is the wire's own statement of "unattributed", and such a fragment
+    // paints on the stylesheet's declared stack rather than terminating the
+    // worker. `face` is bounded by MAX_CANVAS_PROPERTY_STRING, the same bound
+    // a chain entry's `face` already uses, and is checked HERE rather than
+    // trusted: Go can only put a FontSet key on this field today, but a
+    // guard's job is to hold when the other side is wrong.
     return line.fragments.every((fragment) => {
       fragments++
-      return fragments <= MAX_CANVAS_BODY_TEXT_FRAGMENTS && isRecord(fragment) && hasOnly(fragment, ['text', 'x', 'assetKey']) && typeof fragment.text === 'string' && fragment.text.length > 0 && fragment.text.length <= MAX_CANVAS_BODY_TEXT && typeof fragment.x === 'number' && Number.isSafeInteger(fragment.x) && fragment.x >= component.x && fragment.x <= component.x + Math.max(paint.width, component.width) && (fragment.assetKey === undefined || (typeof fragment.assetKey === 'string' && /^[a-f0-9]{64}$/.test(fragment.assetKey)))
+      return fragments <= MAX_CANVAS_BODY_TEXT_FRAGMENTS && isRecord(fragment) && hasOnly(fragment, ['text', 'x', 'face', 'assetKey']) && typeof fragment.text === 'string' && fragment.text.length > 0 && fragment.text.length <= MAX_CANVAS_BODY_TEXT && typeof fragment.x === 'number' && Number.isSafeInteger(fragment.x) && fragment.x >= component.x && fragment.x <= component.x + Math.max(paint.width, component.width) && (fragment.assetKey === undefined || (typeof fragment.assetKey === 'string' && /^[a-f0-9]{64}$/.test(fragment.assetKey))) && (fragment.face === undefined || (typeof fragment.face === 'string' && fragment.face.length > 0 && fragment.face.length <= MAX_CANVAS_PROPERTY_STRING)) && !(fragment.face !== undefined && fragment.assetKey !== undefined)
     })
   })
 }

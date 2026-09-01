@@ -2723,7 +2723,7 @@ unvirtualised path by the page count. The two questions are the same question an
 
 ---
 
-### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families — **CAUSE TWO CLOSED by Story 8.4a; CAUSE ONE'S VOCABULARY LAYER CLOSED by Story 8.4b, 2026-09-01. ONLY THE ATTRIBUTION RESIDUAL REMAINS OPEN, AND IT HAS NO NAMED OWNER**
+### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families — **CLOSED by Story 8.4e, 2026-09-01. Cause two by Story 8.4a; cause one's vocabulary layer by Story 8.4b; cause one's attribution residual by Story 8.4e. All four things this entry named are now closed.**
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
 - **Owner — ONE PER CAUSE, because the causes were split and only one of them is delivered.**
@@ -2740,20 +2740,24 @@ unvirtualised path by the page count. The two questions are the same question an
       all: the three shipped files are declared a second time under `fonts.Shipped()`'s own spellings
       and the canvas fragment rule asks for those, with no chrome token edited, no binary added and
       no mapping table built. 8.4b owns nothing further here.
-    - **ATTRIBUTION LAYER — OPEN, AND OWNERLESS. This is the whole of what survives.** The fragment
-      stack is a **fixed stylesheet constant**, not the document's chain, and a shipped-face fragment
-      carries **no face identity on the wire** — only carried faces carry an `assetKey`, so a shipped
-      fragment paints with no inline family and falls to the fixed Latin-first stack. Measured at
+    - **ATTRIBUTION LAYER — Story 8.4e. DELIVERED AND CLOSED 2026-09-01.** The fragment
+      stack was a **fixed stylesheet constant**, not the document's chain, and a shipped-face fragment
+      carried **no face identity on the wire** — only carried faces carried an `assetKey`, so a shipped
+      fragment painted with no inline family and fell to the fixed Latin-first stack. Measured at
       8.4b's close: the three faces' pairwise cmap overlaps are **339 / 529 / 230** codepoints and all
-      three cover `A` and `5`, so a document whose chain is `["Noto Sans Thai"]` can have the engine
-      measure a Latin run with one face while the browser rasterizes it with another. Closing it needs
+      three cover `A` and `5`, so a document whose chain is `["Noto Sans Thai"]` had the engine
+      measure a Latin run with one face while the browser rasterized it with another. Closing it needed
       **per-fragment shipped-face attribution on the projection** — the shape 8.4a built for carried
-      faces, extended to shipped ones. **No story owns this.** None of 8.4c, 8.4d, 8.5 or 8.6 covers
-      it, and 8.4b's closer did not assign it, because assigning it is a ruling a closer cannot make.
-      **It is escalated to the orchestrator for routing**, and per D-8.4.1's standing rule this is
-      exactly the state that rule exists to surface rather than to hide. **This bullet used to read `Owner: Story 8.4a` alone**, and 8.4a's close left it that
-    way — a finished story standing as the sole owner of a cause it explicitly did not close, which
-    is how a surviving cause loses its owner without anyone deciding it should.
+      faces, extended to shipped ones — and that is what 8.4e delivered; see the closing note at the
+      end of this entry.
+      **OWNERSHIP CORRECTION, RECORDED RATHER THAN OVERWRITTEN.** This bullet stood for one story as
+      *"OPEN, AND OWNERLESS … escalated to the orchestrator for routing"*, and that was already
+      superseded when this entry was last read: **D-8.4.26 assigned the residual to Story 8.4e**, and
+      both `epics.md` and `sprint-status.yaml` carried the story. The stale passage is corrected here
+      rather than left standing beside the truth. Before that it read **`Owner: Story 8.4a` alone**,
+      and 8.4a's close left it that way — a finished story standing as the sole owner of a cause it
+      explicitly did not close, which is how a surviving cause loses its owner without anyone deciding
+      it should. **Twice now** on this one bullet, which is why the correction is written down.
 
   **The successor is sequenced IMMEDIATELY after 8.4, not "later in Epic 8"**, and Story 8.4
   discloses the canvas limitation as a **test** rather than a comment, so the gap between the two
@@ -2803,13 +2807,14 @@ unvirtualised path by the page count. The two questions are the same question an
   `Noto Sans Thai` / `Noto Sans SC`, so **a chain's entries cannot be used as CSS family names**.
   That is what D-8.4.1 now settles for the embedded case.
 
-- **Status:** **NARROWED TO ONE RESIDUAL, AND THE LAYERS MUST NOT BE CONFLATED.** This entry has TWO
-  causes and cause one has TWO layers; three of those four things are now closed.
+- **Status:** **CLOSED.** This entry has TWO causes and cause one has TWO layers; **all four** things
+  are now closed, and the layers are still listed separately because conflating them is how a
+  residual disappears.
   **CAUSE TWO is CLOSED** by Story 8.4a (2026-09-01) — see the closing note at the end of this entry.
   **CAUSE ONE's VOCABULARY LAYER is CLOSED** by Story 8.4b (2026-09-01, `90cdf8e`) — see 8.4b's
-  closing note at the end of this entry. **CAUSE ONE's ATTRIBUTION LAYER remains OPEN and has no
-  named owner**, and it is the only reason this entry stays open rather than being marked closed:
-  reading a narrowed entry as closed is exactly how the surviving residual disappears.
+  closing note at the end of this entry. **CAUSE ONE's ATTRIBUTION LAYER is CLOSED** by Story 8.4e
+  (2026-09-01) — see 8.4e's closing note, which is the last one in this entry and states both what
+  is proved and what is not.
   The design decision cause two inherited was made by D-8.4.1 (quoted below): *an embedded face's CSS
   family name is derived from its **asset key**, never from `font.family`.* **Cause one's equivalent
   is D-8.4.14 (2026-09-01)**, which ruled the register's stated blocker FALSE and gave cause one a
@@ -2969,7 +2974,8 @@ shipped path — not because the decision is still missing.
 **What this repository still cannot prove, stated plainly.** Nothing here can execute a real font load,
 a real `document.fonts.add`, or a rasterized glyph: jsdom applies no stylesheet and implements no font
 loading, and the Playwright suite is compile-only (`test:e2e:compile` is `tsc --noEmit`; browser e2e is
-deferred by D-000.4). Story 8.4a's gates prove the derivation, the registration call, the fragment's
+deferred by D-000.4 — *a citation D-8.4.25(b) later declared void, the suite having already arrived;
+what is deferred is CI EXECUTING it, DW-101*). Story 8.4a's gates prove the derivation, the registration call, the fragment's
 rendered family, the guards and the protocol shape. The claim that the canvas **visibly** paints with the
 carried face is unverified by anything in this repository.
 
@@ -3006,8 +3012,79 @@ projection**. **No story owns it**, and 8.4b's closer deliberately did not assig
 
 **And the limit is unchanged by 8.4b.** What is now proved is that the browser is **asked** for the
 engine's face names and that a face under each is **declared from the engine's own bytes**. That any
-glyph **rasterizes** with those faces remains unverifiable here, and becomes checkable **when browser
-e2e arrives (D-000.4)**.
+glyph **rasterizes** with those faces remains unverifiable here, and becomes checkable **when CI
+executes the Playwright suite (D-8.4.25(b))**. *(Trigger corrected 2026-09-01 at Story 8.4e's close.
+This sentence used to say "when browser e2e arrives (D-000.4)". **D-8.4.25(b) declared that trigger
+void**: browser e2e had already arrived — `folio-designer/e2e/` carries 12 executable Playwright specs
+and a real `webServer` — so the named event could never fire again. What is missing is not the suite
+but its EXECUTION: `.github/workflows/ci.yml` runs only `test:e2e:compile`, which is `tsc --noEmit`.
+Wiring that is DW-101.)*
+
+**CLOSING NOTE — STORY 8.4e, 2026-09-01: THE ATTRIBUTION RESIDUAL IS CLOSED, AND WITH IT THE WHOLE
+ENTRY.**
+
+**What was closed, and it is the last of the four things this entry named.** A shipped-face fragment
+now carries the engine's identity for the face it was measured with, exactly as a carried one has
+carried its asset key since 8.4a. `CanvasTextFragment` gained one optional field, `Face`
+(`json:"face,omitempty"`), populated at the fragment append in `folio-go/page_setup.go` from the value
+that site already had in hand and **discarded** — `fragment.face`, which for a shipped face IS the
+caller's `FontSet` key verbatim, because `chainFaceNames` mints a name only for an embedded entry and
+copies `entry.Face` for every other. `folio-designer/src/shipped-face-family.ts` — one small module, one
+exported derivation, its own test file, on `embedded-face-family.ts`'s model — turns that name into the
+CSS `font-family` value the fragment asks for: the attributed face **quoted and first**, then the
+declared stack as its tail. `TextPaint` sets it inline, at both of its call sites, so the repeated
+sheets' `ComponentEcho` paints with the same face as the home occurrence.
+
+**BOTH CAUSES, RESTATED AS ONE MECHANISM, because that is what the entry was always about.** The canvas
+paints at the engine's own x-positions (AD-17), so it must rasterize with the face the engine MEASURED
+with or every fragment's drawn width disagrees with the x of the fragment after it. Cause two was a face
+the DOCUMENT carries, for which the browser had nothing at all — closed by 8.4a, which put the asset key
+on the wire and registers a `FontFace` under a family derived from it. Cause one was a face the BUILD
+ships, and it had two layers: the browser could not NAME the engine's faces (closed by 8.4b, which
+declares the same three files a second time under `fonts.Shipped()`'s own spellings), and then it could
+not say WHICH face belonged to WHICH fragment (closed here). The residual mattered because the three
+shipped faces' cmaps genuinely overlap — **339** (Sans×Thai) / **529** (Sans×SC) / **230** (Thai×SC)
+code points, and **all three cover `A` and `5`** — so a document whose chain is `["Noto Sans Thai"]` had
+its Latin measured with Noto Sans Thai and rasterized with Noto Sans: right glyphs, wrong advances,
+creeping out of position. That document is now the I/O matrix row a test asserts.
+
+**NO MAPPING TABLE, NO RENAME, NO NEW BINARY, NO CHROME TOKEN.** The wire value is the `FontSet` name
+**verbatim** — D-8.4.14's *"one rule for one question"* — and 8.4b had already made that name a family
+the browser can resolve, so there was nothing left to map. The two alternatives this entry used to frame
+the fix by, both measured FALSE by D-8.4.14, stayed rejected. `tokens.css` was not edited, and the guard
+that would redden if it had been (`canvas-font-stack.test.ts`'s "no `--font-*` token names an engine
+face") is untouched and green.
+
+**THE OLD RECORD WAS REPLACED, NOT WEAKENED.** `canvas-font-stack.test.ts`'s *"the fragment stack is a
+stylesheet constant with no document input"* was a **disclosure of absence** whose own prose header said
+closing it *"is a different story"* — a written pre-authorisation of its own retirement, and the same
+move 8.4a made on Story 8.4's registration disclosure. It is **gone**, replaced by its positive twin:
+a shipped fragment's family DOES come from the projection, through exactly one named seam and nowhere
+else. Both bounds the retired record also carried are kept in the replacement (no `var(` in the
+declaration; the `requested.length >= 3` floor). The census guard was widened to a **closed set of
+exactly two** approved expressions — never an `arrayContaining` — because the fragment's family has now
+moved out of the stylesheet and into an inline style for BOTH populations, and an inline family string
+would otherwise escape an `App.css`-only scan without anyone editing a guard. `requested.slice(0,3)`'s
+order tie, D-8.4.14's delivered guard, is untouched: `.canvas-text-fragment` survives as the fallback
+for an unattributed fragment, and three separate guards still read it.
+
+**The tail has one authority.** The seam's inline value carries the declared stack behind the attributed
+face — an inline declaration REPLACES the rule rather than extending it, so without a tail a codepoint
+the attributed face does not cover would fall to the browser's default instead of to the other shipped
+faces. That list is therefore spelled twice, and a guard reads **both sources** and asserts they are the
+same sequence, entry for entry.
+
+**WHAT IS PROVED, AND WHAT IS STILL NOT — stated so a compile pass is not read as a run.** Proved: the
+engine's attribution (Go, over a shipped-only chain, a carried-only chain and a mixed-script element);
+the wire shape in both directions as **exact key sets**, with `face` and `assetKey` mutually exclusive
+on every emitted fragment; the browser's validation of the new key, bounded by the same 512 a chain
+entry's `face` already uses; the derivation; and the family the rendered `.canvas-text-fragment` node
+actually asks for, at the home fragment **and** at the `ComponentEcho`. **Not proved: that a glyph was
+rasterized with that face.** jsdom applies no stylesheet and loads no font, and `test:e2e:compile` is
+`tsc --noEmit`. Per **D-8.4.25(b)** that becomes checkable **when CI executes the Playwright suite**;
+per D-8.4.25(d)+(e) the executed browser assertion is owed at the **epic gate**, behind CI wiring
+(DW-101), and must not be added to a suite CI does not run. This entry closes on the mechanism, not on
+a rasterization anyone watched.
 
 ---
 
@@ -5043,8 +5120,24 @@ watch it.
 ### DW-102 — the chrome's monospace slot lost its CJK coverage, and the finding that said so was rejected on a location that was not where it was true
 
 - **Deferred by:** Story 8.4c's close (2026-09-01), re-opening a review finding the build rejected.
-- **Owner:** **the design system's font stack — Story 8.4e or the owner.** NOT Story 8.4d: this is a
-  coverage question, not a size-budget one, and 8.4d's remit under D-8.4.24 is the budget.
+- **Owner:** **the design system's font stack — THE OWNER'S.** NOT Story 8.4d: this is a coverage
+  question, not a size-budget one, and 8.4d's remit under D-8.4.24 is the budget. **And NOT Story
+  8.4e**, decided at 8.4e's close (2026-09-01) rather than left standing as a candidate on a story
+  that has ruled itself out — the ownerless-drift failure this epic already had once, to DW-35's own
+  residual. Five selectors, all one way: **(a) Scope** — D-8.4.26 scopes 8.4e to *per-fragment
+  shipped-face attribution on the wire*, while this entry is about which face `--font-mono` resolves
+  to; different subject, different surface. **(b) A standing ruling forbids the remedy on that path**
+  — the fix is a chrome token edit, and D-8.4.14 ruled the canvas fix must *"edit no chrome token at
+  all"*; `canvas-font-stack.test.ts`'s assertion that no `--font-*` token names an engine face
+  **reddens** if one does, so folding this in would require breaking a guard 8.4e is otherwise obliged
+  to keep. **(c) Measured separation** — this entry's live consumers are `.document-name` and
+  `.property-value`, chrome elements; 8.4e touches `.canvas-text-fragment` only, and the two share no
+  selector, no token and no code path. **(d) Reachability (the D-000.65 test)** — 8.4e does not make
+  this condition newly reachable; **Story 8.4c did**, when the mono binary changed, and by the rule
+  this run uses to place a defect it belongs where it became reachable. **(e) It carries a decision
+  above a builder's authority** — the discharge is *either* ship a CJK fallback face, a bundle-weight
+  commitment that collides with Story 8.4d's budget, *or* record a deliberate decision that chrome CJK
+  falls to the system face. Both are the owner's call, which is what this bullet already half-said.
 - **Severity:** **MEDIUM.** It degrades to a system face rather than to tofu, so nothing is unreadable;
   but it is a coverage regression this story caused, in the interface's most-used type token.
 - **Status:** OPEN.

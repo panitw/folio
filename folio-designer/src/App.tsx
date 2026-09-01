@@ -27,6 +27,7 @@ import { acceptSampleData, type SampleData, type SampleNode } from './sample-dat
 import type { SampleFileAccess } from './sample-file'
 import { assetBytesRequest, setComponentAssetCommand } from './component-asset-command'
 import { embeddedFaceFamily, isCarriedFaceAssetKey } from './embedded-face-family'
+import { isShippedFaceName, shippedFaceFamily } from './shipped-face-family'
 import { registerCarriedFaces } from './embedded-face-registry'
 import type { ImageFileAccess } from './image-file'
 
@@ -1429,19 +1430,39 @@ function isExpressionRun(part: string): boolean { return part.startsWith('{{') &
 // merges adjacent runs) while a component is not: a mixed-script element draws
 // Latin through one chain entry and Thai through another.
 //
-// It is set only when the engine attributed this fragment to an asset the
-// document CARRIES *and* that asset's face has actually reached the page's
-// font set. Both halves matter. Without the first, a shipped face would be
+// TWO POPULATIONS, TWO SEAMS, ONE EXPRESSION (Story 8.4e). A fragment carries
+// exactly one of the engine's two identities for the face it was measured
+// with, and each has its own derivation module and nothing else derives it:
+//
+//	assetKey -> embedded-face-family.ts  (the face the DOCUMENT carries)
+//	face     -> shipped-face-family.ts   (the face the BUILD ships)
+//
+// THE CARRIED BRANCH is set only when the engine attributed this fragment to
+// an asset the document carries *and* that asset's face has actually reached
+// the page's font set. Both halves matter. Without the first, a face would be
 // asked for under a family nothing declares; without the second, a fetch that
 // failed would take the fragment OFF the stylesheet's declared stack — an
 // inline declaration replaces the rule rather than extending it — and the
-// canvas would paint with whatever the browser defaults to. Absent, the
-// fragment falls to `.canvas-text-fragment`'s declared stack in App.css, which
-// is exactly the shipped-face path and exactly the degrade path.
+// canvas would paint with whatever the browser defaults to.
 //
-// The family is derived FROM THE ASSET KEY (D-8.4.1) by the one module that
-// makes that decision. Nothing here reads `family`, `style`, `face` or a chain
-// name, and the stylesheet still holds no document input at all.
+// THE SHIPPED BRANCH needs no such registration check: Story 8.4b declares an
+// `@font-face` for each of the engine's own face names at build time, over the
+// engine's own bytes, so the name the engine measured with is already
+// resolvable. It carries the declared stack as its own tail, so a codepoint
+// the attributed face does not cover still reaches the other shipped faces
+// rather than the browser's default. Until this story it was set to NOTHING,
+// and the fragment fell to one fixed stylesheet stack whatever order the
+// document declared — which for a chain like ["Noto Sans Thai"] rasterized
+// Latin with Noto Sans while the engine had measured it with Noto Sans Thai.
+//
+// WITH NEITHER identity the fragment falls to `.canvas-text-fragment`'s
+// declared stack in App.css, which is the degrade path and the only path left
+// for an unattributed fragment.
+//
+// Each family is derived FROM THE ENGINE'S OWN IDENTITY (D-8.4.1, D-8.4.14) by
+// the one module that makes that decision. Nothing here reads a chain entry's
+// `family`, `style` or a chain name, and the stylesheet still holds no
+// document input at all.
 //
 // TextPaint is EXPORTED so the per-fragment face attribution can be asserted
 // on a real DOM node rather than by scanning this file's text: what the canvas
@@ -1449,7 +1470,7 @@ function isExpressionRun(part: string): boolean { return part.startsWith('{{') &
 // element.
 export function TextPaint({ component, carriedFaces, zoom }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; zoom: number }) {
   const paint = component.textPaint!
-  return <span className="canvas-text-paint" aria-hidden="true" style={{ '--text-font-size': canvasDisplay.css(component.fontSize ?? 12000, zoom), '--text-font-weight': component.bold ? 700 : 400, '--text-font-style': component.italic ? 'italic' : 'normal', ...(component.color === undefined ? {} : { '--text-ink': component.color }) } as CSSProperties}>{paint.lines.map((line, lineIndex) => <span className="canvas-text-line" key={`${component.id}-${lineIndex}`} style={{ '--text-line-baseline': canvasDisplay.css(line.baseline - component.y, zoom), '--text-line-advance': canvasDisplay.css(line.advance, zoom) } as CSSProperties}>{line.fragments.map((fragment, fragmentIndex) => <span className="canvas-text-fragment" key={`${component.id}-${lineIndex}-${fragmentIndex}`} style={{ '--text-fragment-x': canvasDisplay.css(fragment.x - component.x, zoom), ...(fragment.assetKey !== undefined && carriedFaces.has(fragment.assetKey) ? { fontFamily: embeddedFaceFamily(fragment.assetKey) } : {}) } as CSSProperties}>{textRuns(fragment.text).map((part, partIndex) => isExpressionRun(part) ? <span className="canvas-text-expression" key={`${component.id}-${lineIndex}-${fragmentIndex}-${partIndex}`}>{part}</span> : part)}</span>)}</span>)}</span>
+  return <span className="canvas-text-paint" aria-hidden="true" style={{ '--text-font-size': canvasDisplay.css(component.fontSize ?? 12000, zoom), '--text-font-weight': component.bold ? 700 : 400, '--text-font-style': component.italic ? 'italic' : 'normal', ...(component.color === undefined ? {} : { '--text-ink': component.color }) } as CSSProperties}>{paint.lines.map((line, lineIndex) => <span className="canvas-text-line" key={`${component.id}-${lineIndex}`} style={{ '--text-line-baseline': canvasDisplay.css(line.baseline - component.y, zoom), '--text-line-advance': canvasDisplay.css(line.advance, zoom) } as CSSProperties}>{line.fragments.map((fragment, fragmentIndex) => <span className="canvas-text-fragment" key={`${component.id}-${lineIndex}-${fragmentIndex}`} style={{ '--text-fragment-x': canvasDisplay.css(fragment.x - component.x, zoom), ...(fragment.assetKey !== undefined && carriedFaces.has(fragment.assetKey) ? { fontFamily: embeddedFaceFamily(fragment.assetKey) } : isShippedFaceName(fragment.face) ? { fontFamily: shippedFaceFamily(fragment.face) } : {}) } as CSSProperties}>{textRuns(fragment.text).map((part, partIndex) => isExpressionRun(part) ? <span className="canvas-text-expression" key={`${component.id}-${lineIndex}-${fragmentIndex}-${partIndex}`}>{part}</span> : part)}</span>)}</span>)}</span>
 }
 // The engine says this element's paint is a PREFIX. It is stated in words, at
 // the component, in the same sentence a screen reader gets — not by colour,

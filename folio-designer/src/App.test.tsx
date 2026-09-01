@@ -69,6 +69,22 @@ const carriedFaceEchoCanvas = (key: string) => {
   return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans'), carried(key)] }], contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], components: [spanning] }
 }
 
+// ONE SHIPPED-FACE component that CROSSES A WINDOW SEAM, drawing LATIN text
+// through a chain that names only "Noto Sans Thai" — the I/O matrix's
+// "Latin through a Thai-first chain" row, projected. The engine attributes the
+// fragment to the face it measured with; nothing here carries a font, so the
+// only identity on the wire is the shipped one.
+const shippedFaceEchoCanvas = (name: string) => {
+  const paint = { overflow: false, truncated: false, lines: [{ top: 650_000, baseline: 662_000, advance: 16_000, width: 24_000, fragments: [{ text: 'A5', x: 0, face: name }] }] }
+  const spanning = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 650_000, width: 72_000, height: 100_000, resizable: true, value: 'ignored', textPaint: paint }
+  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face(name)] }], contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], components: [spanning] }
+}
+
+// The family sequence a rendered fragment asks for, quotes removed: jsdom
+// re-spells single quotes as double ones when a declaration is read back, and
+// the claim is about WHICH families are asked for and in what ORDER.
+const familiesAskedFor = (node: HTMLElement) => node.style.fontFamily === '' ? [] : node.style.fontFamily.split(',').map((entry) => entry.trim().replace(/^['"]|['"]$/g, ''))
+
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
   samePDFPreviewViewState: () => false,
@@ -901,6 +917,75 @@ describe('application shell', () => {
     } finally {
       fontSet.restore()
     }
+  })
+
+  // STORY 8.4e. THE FACE THE BUILD SHIPS, ASKED FOR BY THE NAME THE ENGINE
+  // MEASURED WITH — AT THE HOME FRAGMENT AND AT THE ECHO.
+  //
+  // Until this story a shipped fragment set no family at all and fell to
+  // `.canvas-text-fragment`'s fixed stack, which names all three shipped faces
+  // in one Latin-first order whatever order the document declared. All three
+  // faces cover `A` and `5` (their cmaps overlap 339 / 529 / 230 codepoints
+  // pairwise, measured), so a document whose chain is ["Noto Sans Thai"] had
+  // its Latin MEASURED with Noto Sans Thai and RASTERIZED with Noto Sans:
+  // right glyphs, wrong advances, creeping out of position at the engine's own
+  // x. The fragment now names the attributed face FIRST.
+  //
+  // WHAT THIS LAYER CAN AND CANNOT PROVE, said out loud rather than implied.
+  // jsdom applies no stylesheet and loads no font, so "rasterized with" is not
+  // observable here; what is observable — and is what the fix consists of — is
+  // that the engine's name reaches the element and the element asks for it
+  // first. The executed browser assertion is owed at the epic gate, once CI
+  // runs the Playwright suite (D-8.4.25(b), (d), (e)).
+  //
+  // MUTATION PROOF, RUN AND RECORDED: dropping the shipped branch from
+  // TextPaint's inline style reddens this test at BOTH nodes; replacing
+  // `carriedFaces={carriedFaces}` with `NO_CARRIED_FACES` in ComponentEcho
+  // does NOT redden it, which is why the echo is asserted directly.
+  it('paints a shipped-face fragment with the face the engine attributed it to, at the home occurrence and at the echo', async () => {
+    const operations: string[] = []
+    const request = vi.fn(async (operation: string) => { operations.push(operation); return { snapshot: snapshot(1) } })
+    const view = render(<App engine={engine(request) } initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: shippedFaceEchoCanvas('Noto Sans Thai') }} />)
+    const home = () => Array.from(view.container.querySelectorAll('.canvas-component:not(.canvas-component-echo) .canvas-text-fragment')) as HTMLElement[]
+    const echoed = () => Array.from(view.container.querySelectorAll('.canvas-component-echo .canvas-text-fragment')) as HTMLElement[]
+    // The fixture really does produce both, or the claim below is vacuous.
+    expect(home()).toHaveLength(1)
+    expect(echoed()).toHaveLength(1)
+    for (const node of [home()[0]!, echoed()[0]!]) {
+      expect(familiesAskedFor(node)[0]).toBe('Noto Sans Thai')
+      // AND THE DECLARED STACK IS STILL BEHIND IT. An inline declaration
+      // replaces the rule rather than extending it, so a codepoint the
+      // attributed face does not cover must still reach the other shipped
+      // faces rather than the browser's default.
+      expect(familiesAskedFor(node)).toEqual(['Noto Sans Thai', 'Noto Sans', 'Noto Sans SC', 'sans-serif'])
+      // AD-17 on both: the engine's own x is what it paints at, and the family
+      // is the only thing this story put on it.
+      expect(node).toHaveStyle({ '--text-fragment-x': '0px' })
+    }
+    // NOTHING WAS FETCHED AND NOTHING WAS REGISTERED. A shipped face is
+    // declared at build time; it needs no `asset` request and no runtime seam,
+    // and asking for one would be a per-document cost this story does not add.
+    expect(operations).not.toContain('asset')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText(/text component e1/)[0]).toBeInTheDocument()
+  })
+
+  // THE UNATTRIBUTED FRAGMENT, which is what the stylesheet's stack is FOR
+  // now. A fragment carrying neither identity is legal on the wire — the
+  // browser's guard admits it deliberately — and it must paint, on the
+  // declared stack, with no inline family of its own. This is the direction
+  // that keeps the assertion above from passing for the wrong reason.
+  it('leaves a fragment the engine attributed to nothing on the stylesheet\'s declared stack', async () => {
+    const bare = shippedFaceEchoCanvas('Noto Sans Thai')
+    const unattributed = { ...bare, components: bare.components.map((component) => ({ ...component, textPaint: { ...component.textPaint, lines: component.textPaint.lines.map((line) => ({ ...line, fragments: line.fragments.map(({ text, x }) => ({ text, x })) })) } })) }
+    const view = render(<App engine={engine(vi.fn(async () => ({ snapshot: snapshot(1) })))} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: unattributed }} />)
+    const painted = Array.from(view.container.querySelectorAll('.canvas-text-fragment')) as HTMLElement[]
+    expect(painted).toHaveLength(2)
+    for (const node of painted) {
+      expect(node.style.fontFamily).toBe('')
+      expect(node).toHaveStyle({ '--text-fragment-x': '0px' })
+    }
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   // THE DEGRADE PATH, stated as a claim about the SESSION. An inline family

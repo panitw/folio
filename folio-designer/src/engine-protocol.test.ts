@@ -344,6 +344,43 @@ describe('canvas projection protocol guard', () => {
     expect(response({ text: 'engine line', x: 0, assetKey: 7 })).toBeUndefined()
   })
 
+  // STORY 8.4e. A fragment may instead carry the ENGINE'S OWN FontSet NAME for
+  // the SHIPPED face it was measured with — the other half of the same
+  // attribution, and `assetKey`'s mutually exclusive twin. The pair
+  // discriminates exactly as a chain ENTRY's `face`/`assetKey` pair does one
+  // level up, with one deliberate difference: NEITHER is legal here, because
+  // the absence of both is the wire's statement that the projection did not
+  // attribute this fragment, and such a fragment must still paint on the
+  // stylesheet's declared stack rather than kill the session.
+  //
+  // THE BOUND IS CHECKED HERE EVEN THOUGH GO CANNOT BREACH IT TODAY. The
+  // engine can only put a key of the FontSet it was given on this field; that
+  // is the ENGINE's guarantee, and a guard's job is to hold when the other
+  // side is wrong. The value is written into an inline `font-family`
+  // declaration on the browser, so an unbounded string here is an unbounded
+  // string in a stylesheet.
+  it('admits a paint fragment attributed to a shipped face, and refuses one carrying both identities', () => {
+    const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const response = (fragment: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 8, advance: 12, width: 10, fragments: [fragment] }] } }] } } })
+    expect(response({ text: 'engine line', x: 0, face: 'Noto Sans Thai' })).toBeDefined()
+    expect(response({ text: 'engine line', x: 0, face: undefined })).toBeDefined()
+    // THE SAME BOUND A CHAIN ENTRY'S `face` ALREADY USES — no new numeral, and
+    // both of its directions.
+    expect(response({ text: 'engine line', x: 0, face: 'f'.repeat(MAX_CANVAS_PROPERTY_STRING) })).toBeDefined()
+    expect(response({ text: 'engine line', x: 0, face: 'f'.repeat(MAX_CANVAS_PROPERTY_STRING + 1) })).toBeUndefined()
+    // An empty string is not an absence: absence is spelled by omission, and a
+    // producer sending '' has drifted rather than said anything.
+    expect(response({ text: 'engine line', x: 0, face: '' })).toBeUndefined()
+    expect(response({ text: 'engine line', x: 0, face: 7 })).toBeUndefined()
+    expect(response({ text: 'engine line', x: 0, face: null })).toBeUndefined()
+    // EXACTLY ONE OF THE TWO. Both is a producer contradicting itself about
+    // which face drew this fragment, and the browser would have to pick.
+    expect(response({ text: 'engine line', x: 0, face: 'Noto Sans', assetKey: key })).toBeUndefined()
+    // NEITHER IS LEGAL, deliberately — see above. Re-asserted here so the
+    // exclusivity is never tightened into a requirement by accident.
+    expect(response({ text: 'engine line', x: 0 })).toBeDefined()
+  })
+
   // Story 7.3 / FR47. The alignment vocabulary is TWO closed sets on this
   // boundary as well as in Go: a COMPONENT may be justified, a table
   // COLUMN may not. The validator gates the projection — an unrecognised

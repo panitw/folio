@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import { TextPaint } from './App'
 import { embeddedFaceFamily } from './embedded-face-family'
+import { canvasFragmentFallbackStack, shippedFaceFamily } from './shipped-face-family'
 import type { CanvasProjection } from './engine-protocol'
 
 // The canvas paints each engine-supplied fragment as an absolutely
@@ -63,6 +64,12 @@ function shippedFaceNames(fontsGo: string): ReadonlyArray<string> {
 // (Story 8.4a). Named here rather than described, because the claim these
 // tests make is not "registration is rare" but "registration is HERE".
 const runtimeRegistrationSeam = 'embedded-face-registry.ts'
+
+// THE ONE MODULE ALLOWED TO TURN A SHIPPED FACE'S ENGINE NAME INTO A CSS
+// FAMILY (Story 8.4e). Named for the same reason: the claim is not "the
+// derivation is simple" but "the derivation is HERE". Its carried-face twin is
+// `embedded-face-family.ts`, named by the census guard below.
+const shippedDerivationSeam = 'shipped-face-family.ts'
 
 /**
  * Family names the generator actually declares an @font-face for.
@@ -202,8 +209,19 @@ function fontFamilyDeclarations(source: string): ReadonlyArray<string> {
 // family derived from the asset key the ENGINE attributed this fragment to.
 const assetKeyDerivedFamily = /^embeddedFaceFamily\([A-Za-z][A-Za-z0-9_]*\.assetKey\)$/
 
+// AND THE SECOND, ADDED BY STORY 8.4e — a CLOSED SET OF EXACTLY TWO, never a
+// containment. The fragment's family moves from the stylesheet INTO an inline
+// style for the shipped population too, and an inline family string escapes an
+// App.css-only scan without anyone editing a guard. This census is what
+// notices, so it admits exactly the two derivations the engine's two
+// identities have and nothing else: the shipped face's name, taken from the
+// fragment's own `face` field, through the one module that decides it.
+const shippedFaceDerivedFamily = /^shippedFaceFamily\([A-Za-z][A-Za-z0-9_]*\.face\)$/
+
+const approvedFontFamilyDerivations = [assetKeyDerivedFamily, shippedFaceDerivedFamily] as const
+
 function unapprovedFontFamilyDeclarations(source: string): ReadonlyArray<string> {
-  return fontFamilyDeclarations(source).filter((value) => !assetKeyDerivedFamily.test(value))
+  return fontFamilyDeclarations(source).filter((value) => !approvedFontFamilyDerivations.some((approved) => approved.test(value)))
 }
 
 // A 64-character asset key, the shape the engine projects and the format's own
@@ -214,13 +232,30 @@ const carriedKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab
 // reads the family off the DOM. It is the one assertion in this file that is
 // not a text scan: what the browser is ASKED for is a rendered fact, and a
 // scan of App.tsx could only ever say that a plausible line is present.
-function paintedFragmentFamilies(assetKey: string | undefined, registered: ReadonlySet<string>): ReadonlyArray<string> {
+function paintedFamilies(attribution: Readonly<{ assetKey?: string; face?: string }>, registered: ReadonlySet<string>): ReadonlyArray<string> {
   const component = {
     id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 72_000, height: 24_000, resizable: true,
-    textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 10_000, advance: 12_000, width: 30_000, fragments: [{ text: 'สัญญา', x: 0, ...(assetKey === undefined ? {} : { assetKey }) }] }] },
+    textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 10_000, advance: 12_000, width: 30_000, fragments: [{ text: 'สัญญา', x: 0, ...attribution }] }] },
   } as unknown as CanvasProjection['components'][number]
   const { container } = render(createElement(TextPaint, { component, carriedFaces: registered, zoom: 1 }))
   return Array.from(container.querySelectorAll('.canvas-text-fragment')).map((node) => (node as HTMLElement).style.fontFamily)
+}
+
+function paintedFragmentFamilies(assetKey: string | undefined, registered: ReadonlySet<string>): ReadonlyArray<string> {
+  return paintedFamilies(assetKey === undefined ? {} : { assetKey }, registered)
+}
+
+/** The families a painted SHIPPED-face fragment asks for, in order. */
+function paintedShippedFragmentFamilies(face: string | undefined): ReadonlyArray<ReadonlyArray<string>> {
+  return paintedFamilies(face === undefined ? {} : { face }, new Set()).map(familiesIn)
+}
+
+// THE FAMILY SEQUENCE A CSS font-family VALUE NAMES, quotes removed. jsdom
+// re-spells single quotes as double ones when it reads a declaration back, so
+// comparing the raw string would pin a CSSOM formatting detail rather than the
+// claim — which is about WHICH families are asked for, and in what order.
+function familiesIn(value: string): ReadonlyArray<string> {
+  return value === '' ? [] : value.split(',').map((entry) => entry.trim().replace(/^['"]|['"]$/g, ''))
 }
 
 describe('the canvas paints with the faces the engine measured', () => {
@@ -395,19 +430,17 @@ describe('the canvas paints with the faces the engine measured', () => {
   // exactly the names the engine measures with — checked by the test below,
   // and tied to the engine's bytes by src/font-binary-identity.test.ts.
   //
-  // WHAT KEEPS THE TIE SCOPED IS NOW THE OTHER RESIDUAL. The fragment stack
-  // is a FIXED constant naming all three faces in one order, while a document
-  // may declare a chain like ["Noto Sans Thai"] whose covering face is not
-  // the stack's first; the three faces' cmaps genuinely overlap (339 / 529 /
-  // 230 codepoints pairwise, measured), so the engine can measure a Latin run
-  // with 'Noto Sans Thai' while the browser's Latin-first stack rasterizes it
-  // with 'Noto Sans'. A shipped fragment carries no face identity on the wire
-  // — only carried faces carry an `assetKey` — so nothing here can state the
-  // per-fragment claim yet. Closing that needs shipped-face attribution on
-  // the projection, the shape 8.4a built for carried faces; it is DW-35 cause
-  // one's REMAINING half, and is not what this assertion claims. The carried
-  // half is where the per-fragment claim is checkable today, and it is
-  // checked here at full strength.
+  // AND STORY 8.4e UNSCOPED IT. What kept the tie to the carried half was the
+  // last residual: the fragment stack was a FIXED constant naming all three
+  // faces in one order, while a document may declare a chain like
+  // ["Noto Sans Thai"] whose covering face is not the stack's first, and the
+  // three faces' cmaps genuinely overlap (339 / 529 / 230 codepoints pairwise,
+  // measured, all three covering `A` and `5`) — so the engine measured a Latin
+  // run with 'Noto Sans Thai' while the browser's Latin-first stack rasterized
+  // it with 'Noto Sans'. A shipped fragment now carries the engine's own
+  // FontSet name for the face it was measured with, exactly as a carried one
+  // carries its asset key, so the per-fragment claim is checkable for BOTH
+  // populations and both are checked here.
   it('asks only for families the browser has a face for, and ties every runtime one to the engine\'s own attribution', () => {
     // (a) THE STYLESHEET HALF, unchanged: every family the fragment rule names
     // is one the generator declares an @font-face for.
@@ -426,6 +459,18 @@ describe('the canvas paints with the faces the engine measured', () => {
     // would take the fragment off the declared stack onto the browser's
     // default. The family is asked for only once the face is registered.
     expect(paintedFragmentFamilies(carriedKey, new Set())).toEqual([''])
+
+    // (b2) THE SHIPPED HALF OF THE SAME TIE (Story 8.4e). A fragment the
+    // engine attributed to a face the BUILD ships asks for that face by the
+    // engine's own name, and every family it names is one the generator
+    // declares an @font-face for — which is (a)'s claim, now made about the
+    // value the browser is actually handed rather than only about the
+    // stylesheet. It needs no registration seam: those faces are declared at
+    // build time over the engine's own bytes.
+    const shipped = paintedShippedFragmentFamilies('Noto Sans Thai')
+    expect(shipped).toHaveLength(1)
+    expect(shipped[0]![0], 'the attributed face must be asked for FIRST, or a CSS stack\'s first-match-wins search reaches a different one for every overlapping codepoint').toBe('Noto Sans Thai')
+    expect(shipped[0]!.filter((family) => family !== 'sans-serif' && !declared.includes(family))).toEqual([])
 
     // (c) THE OTHER END OF THE TIE: the seam registers under the SAME
     // derivation of the SAME key, through the SAME module. Two derivations
@@ -462,15 +507,19 @@ describe('the canvas paints with the faces the engine measured', () => {
   // engine face, rejected by name. The browser family now IS the engine's
   // name, so there is nothing to map.
   //
-  // CAUSE ONE, ATTRIBUTION LAYER (STILL OPEN). The fragment stack below is a
-  // fixed constant, not the document's chain, and a shipped-face fragment
-  // carries no face identity on the wire. So for a document whose chain is
-  // `["Noto Sans Thai"]` the engine still measures with a face the browser's
-  // fixed Latin-first order may not reach first, and the faces' coverage
-  // overlaps enough for that to bite. Closing it needs per-fragment
-  // shipped-face attribution on the projection — 8.4a's carried-face shape,
-  // extended to shipped faces — which is a different story. DW-35 cause one
-  // should be NARROWED to this residual, not closed; see deferred-work.md.
+  // CAUSE ONE, ATTRIBUTION LAYER (CLOSED BY STORY 8.4e). What stood here was a
+  // disclosure of absence — it recorded that the fragment stack was a fixed
+  // stylesheet constant with no document input, and said in its own words that
+  // closing that "is a different story". It was, and this is it. A shipped
+  // fragment now carries the engine's `FontSet` name for the face it was
+  // measured with, the browser asks for that face FIRST and keeps the declared
+  // stack as its tail, and the test below is the disclosure's positive twin:
+  // the family DOES come from the projection, through exactly one named seam.
+  // The record was retired under its own pre-authorisation rather than
+  // softened, and both of the bounds it also carried — no `var(` in the
+  // declaration, and the `requested.length >= 3` floor — are kept in the
+  // replacement. That is the same move Story 8.4a made on Story 8.4's
+  // registration disclosure, one guard down.
   //
   // CAUSE TWO (Story 8.4, CLOSED BY STORY 8.4a). The engine renders — and
   // measures — with a face the DOCUMENT ITSELF CARRIES, decoded out of its
@@ -504,22 +553,76 @@ describe('the canvas paints with the faces the engine measured', () => {
   // not a mono face. That defect belongs to Story 8.4c, which puts real IBM
   // Plex bytes behind the IBM Plex names; until then the pairing is pinned,
   // file by file, in src/font-binary-identity.test.ts.
-  it('records that the fragment stack is a stylesheet constant with no document input', () => {
-    // NON-VACUITY FIRST. `find(...) ?? ''` yields an empty string the moment
-    // the rule is reformatted onto several lines, and `expect('').not.toMatch`
-    // passes while proving nothing at all. Both halves are asserted to have
-    // been FOUND before anything is asserted about them.
+  it('derives a shipped fragment\'s family from the engine\'s attribution, through exactly one named seam', () => {
+    // (a) THE TWO BOUNDS THE RETIRED RECORD CARRIED, KEPT RATHER THAN DROPPED.
+    // Retiring a disclosure of absence is not licence to lose what it also
+    // happened to check. NON-VACUITY FIRST: `find(...)` yields undefined the
+    // moment the rule is reformatted onto several lines, and an assertion
+    // about undefined proves nothing at all.
     const rule = css.split('\n').find((line) => line.startsWith('.canvas-text-fragment {'))
     expect(rule, 'the single-line .canvas-text-fragment rule must exist').toBeDefined()
     const declaration = /font-family:([^;]+);/.exec(rule as string)?.[1]
     expect(declaration, '.canvas-text-fragment must declare a font-family').toBeDefined()
-    // Every family is a literal. No custom property, no interpolation, and no
-    // way for a projected chain to reach this declaration. Story 8.4a's derived
-    // family is set INLINE on the one fragment it belongs to and never here:
-    // one stylesheet rule cannot vary per fragment, and a mixed-script element
-    // needs it to.
+    // Every family in the FALLBACK is still a literal: no custom property, no
+    // interpolation, and no way for a projected chain to reach this
+    // declaration. It is now the degrade path rather than the authority, and a
+    // `var(` here would empty `requestedFamilies` and quietly vacate the three
+    // guards that parse this rule.
     expect(declaration as string).not.toMatch(/var\(/)
     expect(requested.length).toBeGreaterThanOrEqual(3)
+
+    // (b) AND THE POSITIVE CLAIM THAT REPLACES IT. The stack above is no
+    // longer where a shipped fragment's family comes from: the family DOES
+    // come from the projection now, per fragment, derived from the face name
+    // the ENGINE attributed. A stylesheet rule cannot vary per fragment and a
+    // document whose chain is ["Noto Sans Thai"] needs it to.
+    const attributed = paintedShippedFragmentFamilies('Noto Sans Thai')
+    expect(attributed).toEqual([familiesIn(shippedFaceFamily('Noto Sans Thai') as string)])
+    expect(attributed[0]![0]).toBe('Noto Sans Thai')
+    // A DIFFERENT ATTRIBUTION ASKS FOR A DIFFERENT FACE FIRST — which is the
+    // whole difference from a constant, stated as a difference rather than as
+    // a single positive reading.
+    expect(paintedShippedFragmentFamilies('Noto Sans SC')[0]![0]).toBe('Noto Sans SC')
+
+    // (c) AND THE FALLBACK IS STILL REACHED WHERE IT SHOULD BE. A fragment the
+    // engine attributed to NOTHING asks for nothing of its own and falls to
+    // the rule above; a face name that is not usable as a CSS family is
+    // DECLINED rather than interpolated into an inline declaration.
+    expect(paintedShippedFragmentFamilies(undefined)).toEqual([[]])
+    expect(shippedFaceFamily('Evil\', sans-serif; background: url(x)')).toBeUndefined()
+    expect(paintedShippedFragmentFamilies('Evil\', sans-serif; background: url(x)')).toEqual([[]])
+
+    // (d) THROUGH EXACTLY ONE NAMED SEAM, AND NOWHERE ELSE. This is the
+    // scanning power of the record it replaces, re-pointed from "nothing
+    // derives a fragment family from the projection" to "exactly this module
+    // does". A second derivation site is the mutation it exists to catch.
+    const sources = designerSources()
+    expect(sources.length).toBeGreaterThan(10)
+    expect(sources.map(([name]) => name)).toContain(shippedDerivationSeam)
+    const callers = sources.filter(([name, source]) => name !== shippedDerivationSeam && /shippedFaceFamily\(/.test(withoutComments(source))).map(([name]) => name)
+    expect(callers, `${shippedDerivationSeam} is the one module that decides a shipped face's CSS family, and App.tsx is the one place that asks it`).toEqual(['App.tsx'])
+    const app = fs.readFileSync(path.join(here, 'App.tsx'), 'utf8')
+    expect(app).toContain('from \'./shipped-face-family\'')
+  })
+
+  // THE FALLBACK TAIL HAS EXACTLY ONE AUTHORITY, ASSERTED ACROSS BOTH SOURCES.
+  // The seam's inline value carries the declared stack as its tail so an
+  // inline declaration — which REPLACES the rule rather than extending it —
+  // still reaches the other shipped faces. That list is therefore spelled
+  // twice: once in `.canvas-text-fragment` and once in the seam. Two spellings
+  // of one list is two lists, so both are read here and asserted to be the
+  // same sequence, entry for entry, in the exact CSS spelling.
+  it('spells the fragment fallback stack once: the seam and the stylesheet name the same list, in the same order', () => {
+    const rule = css.split('\n').find((line) => line.startsWith('.canvas-text-fragment {'))
+    expect(rule, 'the single-line .canvas-text-fragment rule must exist').toBeDefined()
+    const declaration = /font-family:([^;]+);/.exec(rule as string)?.[1]
+    expect(declaration, '.canvas-text-fragment must declare a font-family').toBeDefined()
+    const cssEntries = (declaration as string).split(',').map((entry) => entry.trim())
+    expect(cssEntries.length, 'read no entries out of the .canvas-text-fragment declaration').toBeGreaterThanOrEqual(4)
+    expect(
+      [...canvasFragmentFallbackStack],
+      'shipped-face-family.ts and App.css spell the fragment fallback stack differently. A shipped fragment would then fall through a different list from an unattributed one, and the engine-face order guarded above would hold for only one of the two.',
+    ).toEqual(cssEntries)
   })
 
   // THE SUCCESSOR OF THE DISJOINTNESS RECORD (Story 8.4b). What stood here
@@ -667,12 +770,20 @@ describe('the canvas paints with the faces the engine measured', () => {
     const sources = designerSources()
     expect(sources.length).toBeGreaterThan(10)
     const positions = sources.flatMap(([name, source]) => fontFamilyDeclarations(source).map((value) => `${name}: ${value}`))
-    // NON-VACUITY AND THE WHOLE CLAIM IN ONE LINE: there is exactly one CSS
-    // font-family position in the designer's TypeScript, it is the canvas
-    // fragment's, and it names the derived family. `App.css`'s own literal
-    // stack is a stylesheet constant and is guarded separately, above and
-    // below.
-    expect(positions).toEqual(['App.tsx: embeddedFaceFamily(fragment.assetKey)'])
+    // NON-VACUITY AND THE WHOLE CLAIM IN ONE LIST: there are exactly TWO CSS
+    // font-family positions in the designer's TypeScript, both are the canvas
+    // fragment's, and each names the family derived from one of the engine's
+    // two identities for the face it measured with — the carried face's asset
+    // key and the shipped face's `FontSet` name. A CLOSED SET, never a
+    // containment: the fragment's family moved out of the stylesheet and into
+    // an inline style for the shipped population too, and an inline family
+    // string escapes an `App.css`-only scan without anyone editing a guard.
+    // This list is what notices. `App.css`'s own literal stack is a stylesheet
+    // constant and is guarded separately, above and below.
+    expect(positions).toEqual([
+      'App.tsx: embeddedFaceFamily(fragment.assetKey)',
+      'App.tsx: shippedFaceFamily(fragment.face)',
+    ])
   })
 
   it('turns a document-supplied family in a font-family position red, and leaves the prose describing one alone', () => {
@@ -683,13 +794,25 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: component.fontFamily }}')).not.toEqual([])
     expect(unapprovedFontFamilyDeclarations('node.style.fontFamily = ""; const rule = `font-family: ${chain.name}`')).not.toEqual([])
     expect(unapprovedFontFamilyDeclarations('const css = ".x { font-family: \'IBM Plex Sans\' }"')).not.toEqual([])
-    // THE APPROVED ONE, and only in its derived form.
+    // AND THE ROUTES STORY 8.4e's SECOND APPROVED FORM OPENS, each rejected.
+    // A shipped face's identity is the ENGINE's; a chain entry's `face`,
+    // `family` or display spelling is the DOCUMENT's, and the near-misses are
+    // where the two get confused.
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: fragment.face }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(chain.entries[0].face) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(entry.family) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(component.fontFamily) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations("style={{ fontFamily: `'${fragment.face}'` }}")).not.toEqual([])
+
+    // THE APPROVED ONES, and only in their derived forms — two, and no more.
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: embeddedFaceFamily(fragment.assetKey) }}')).toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(fragment.face) }}')).toEqual([])
     // THE NEGATIVE CASES. A scan that only ever reddens has not been shown to
     // discriminate. Prose describing the forbidden route is not the route, and
     // the projection's `fontFamily` FIELD — a document's chain name — is read
     // all over this codebase without ever reaching a CSS declaration.
     expect(unapprovedFontFamilyDeclarations('// never write fontFamily: chain.entries[0] here')).toEqual([])
+    expect(unapprovedFontFamilyDeclarations('// never write fontFamily: fragment.face here — it goes through the seam')).toEqual([])
     expect(unapprovedFontFamilyDeclarations('/* fontFamily: entry.family would collide with a shipped face */')).toEqual([])
     expect(unapprovedFontFamilyDeclarations('const values = components.map((c) => committedValue(c, \'fontFamily\'))')).toEqual([])
     expect(unapprovedFontFamilyDeclarations('type Component = Readonly<{ fontFamily?: string; fontSize?: number }>')).toEqual([])

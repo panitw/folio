@@ -100,14 +100,14 @@ var canvasFontChainEntryWireKeys = []string{"assetKey", "face", "family", "style
 // attribution travels.
 //
 // IT IS THE ACCEPTED SET, NOT THE EMITTED ONE, and that is the difference
-// from the three records above. `assetKey` is OPTIONAL by design: it is
+// from the three records above. TWO of its keys are optional: `assetKey` is
 // present exactly when the engine resolved that fragment to a face the
-// document CARRIES, and absent — omitempty — for every fragment drawn with a
-// shipped face, which is the wire's own precise statement of "this fragment is
-// a shipped face". The browser's fragment guard is `hasOnly`, a SUBSET check,
-// so the accepted list is what this record pins on the TypeScript side, and
-// the Go side is pinned in both directions: a carried fragment emits the whole
-// set, a shipped one emits it minus exactly the optional key.
+// document CARRIES, and `face` — Story 8.4e — exactly when it resolved one the
+// caller SHIPPED. Neither is ever emitted for the other's population, so no
+// fragment ever marshals the whole recorded set. The browser's fragment guard
+// is `hasOnly`, a SUBSET check, so the accepted list is what this record pins
+// on the TypeScript side, and the Go side is pinned in both directions against
+// the two exact emission sets derived below.
 //
 // WHY THIS LEVEL NEEDED A RECORD AT ALL, measured rather than supposed. The
 // three records above descend into `fontChains` and stop; NOTHING in this file
@@ -119,7 +119,32 @@ var canvasFontChainEntryWireKeys = []string{"assetKey", "face", "family", "style
 // PROTOCOL_INVALID, which TERMINATES THE WORKER, rejects the ready promise and
 // rejects every pending request. That is not a blank canvas — the session is
 // dead until reload, with no edit, save, undo or preview possible.
-var canvasTextFragmentWireKeys = []string{"assetKey", "text", "x"}
+// TWO OPTIONAL KEYS SINCE STORY 8.4e, AND THEY ARE MUTUALLY EXCLUSIVE.
+// `face` carries the SHIPPED face's FontSet name, `assetKey` the carried
+// face's key, and exactly one of the two is non-empty on every emitted
+// fragment — the same discriminated pair canvasFontChainEntryWireKeys already
+// carries one level up. The Go side is therefore pinned in both directions
+// against TWO exact sets rather than one set and a subtraction: a carried
+// fragment marshals {assetKey,text,x} and a shipped one {face,text,x}, and
+// neither list is the other minus a key.
+var canvasTextFragmentWireKeys = []string{"assetKey", "face", "text", "x"}
+
+// canvasTextFragmentAttributionKeys are the two optional, mutually exclusive
+// members of the set above. Named rather than open-coded so the two exact
+// emission sets below are each derived from the record, never restated.
+var canvasTextFragmentAttributionKeys = []string{"assetKey", "face"}
+
+// canvasTextFragmentWireKeysWithout is the record minus one of its optional
+// attribution keys — the exact set a fragment of the OTHER population emits.
+func canvasTextFragmentWireKeysWithout(key string) []string {
+	var out []string
+	for _, k := range canvasTextFragmentWireKeys {
+		if k != key {
+			out = append(out, k)
+		}
+	}
+	return out
+}
 
 // marshalledCanvasKeys is the Go side, taken from the bytes rather than from
 // the struct: whatever encoding/json puts on the wire for this value, sorted.
@@ -181,18 +206,20 @@ func TestCanvasProjectionWireKeysAreTheRecordedSet(t *testing.T) {
 	// asserted, from two documents that differ in exactly one thing: whether
 	// the face the engine resolved is one the document carries.
 	carriedKeys := marshalledObjectKeys(t, fragmentFromProjectionBytes(t, carriedFaceProjection(t, embeddedFontTemplateJSON())))
-	if !reflect.DeepEqual(carriedKeys, canvasTextFragmentWireKeys) {
-		t.Errorf("a CARRIED-face CanvasTextFragment marshals the keys\n\t%v\nand the recorded protocol set is\n\t%v — a fragment field added on one side only terminates the designer's worker, which is a harder failure than the blank canvas the records above describe", carriedKeys, canvasTextFragmentWireKeys)
+	if want := canvasTextFragmentWireKeysWithout("face"); !reflect.DeepEqual(carriedKeys, want) {
+		t.Errorf("a CARRIED-face CanvasTextFragment marshals the keys\n\t%v\nand the recorded set minus the SHIPPED attribution key is\n\t%v — the two attribution keys are mutually exclusive, and a carried fragment that also named a face would ask the browser to rasterize with a face the document does not draw with", carriedKeys, want)
 	}
 	shippedKeys := marshalledObjectKeys(t, fragmentFromProjectionBytes(t, projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountControlTemplateJSON))))
-	var withoutOptional []string
-	for _, key := range canvasTextFragmentWireKeys {
-		if key != "assetKey" {
-			withoutOptional = append(withoutOptional, key)
-		}
+	if want := canvasTextFragmentWireKeysWithout("assetKey"); !reflect.DeepEqual(shippedKeys, want) {
+		t.Errorf("a SHIPPED-face CanvasTextFragment marshals the keys\n\t%v\nand the recorded set minus the CARRIED attribution key is\n\t%v — a shipped fragment names the engine's own FontSet face (Story 8.4e) and never an asset key, and every non-optional key must always be present", shippedKeys, want)
 	}
-	if !reflect.DeepEqual(shippedKeys, withoutOptional) {
-		t.Errorf("a SHIPPED-face CanvasTextFragment marshals the keys\n\t%v\nand the recorded set minus its one optional key is\n\t%v — the optional key must be omitted for a shipped face (its absence IS the statement) and every other key must always be present", shippedKeys, withoutOptional)
+	// AND THE TWO ATTRIBUTION KEYS ARE THE ONLY OPTIONAL ONES, checked from
+	// the two emission sets rather than asserted in prose: their union is the
+	// record and their intersection is empty.
+	for _, key := range canvasTextFragmentAttributionKeys {
+		if slices.Contains(carriedKeys, key) == slices.Contains(shippedKeys, key) {
+			t.Errorf("both populations agree about the optional key %q (carried %v, shipped %v) — exactly one of assetKey and face is emitted per fragment, and that exclusivity is the wire shape's premise", key, carriedKeys, shippedKeys)
+		}
 	}
 }
 
