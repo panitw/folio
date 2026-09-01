@@ -1605,3 +1605,125 @@ measure-before-fatal ordering that was made a `Block If` was **verified rather t
 clean run does not discharge a three-instance pattern** — D-8.5.9 stands, and a recovery holding is
 still not a defence — but it is the first datum on the other side and it belongs in the record with its
 count.
+
+## Story 8.4j's plan gate — admission is per-term, and the bound gets a criterion instead of a count (2026-09-02)
+
+### D-8.4j.6 — Per-term admission is INSIDE Story 8.4j, because the fix is wrong without it
+
+**Engineering lead ruling**, taken. Measured at `45985ef` before ruling: `manifest.go:140` is
+`[]string{"OFL-1.1", "Apache-2.0", "MIT", "Ubuntu-font-1.0"}`; `:363` is
+`case !fontAssetLicenceAllowed[spdx]` — an **exact map lookup on the label**. `ClassifySPDXExpression`
+enumerates terms via `strings.Fields` but returns `(Family, error)` and **exposes none of them**.
+
+**Verdict.** Story 8.4j makes font-asset admission **per-term**: a compound is admitted iff **every**
+term is on the owner's four-id list; otherwise refused **naming the term that failed**, not merely the
+expression.
+
+**The fact that settles it, and it is stronger than "same defect".** Run the case both ways:
+
+| declaration | today | after the label fix alone |
+|---|---|---|
+| `OFL-1.1 OR GPL-3.0-only` | `(permissive,"OFL-1.1")` → **admitted** (the bypass) | copyleft → **refused** ✔ |
+| `OFL-1.1 OR Apache-2.0` | `(permissive,"OFL-1.1")` → **admitted, correctly** | `(permissive,"OFL-1.1 OR Apache-2.0")` → **REFUSED** ✘ |
+
+**So the label fix alone is not an incomplete fix. It is a fix that introduces a false refusal which
+does not exist in the tree today** — it trades a bypass for a regression on a legitimate asset. A story
+cannot knowingly ship that and be called correct. **Admission is therefore inside 8.4j because the fix
+is wrong without it**, not because "reading whole" can be stretched to include it.
+
+**In simple terms.** We taught the gate to read the whole label instead of its first word. But the
+guest list is a list of single names, and the whole label is now a phrase — so a visitor whose pass
+reads *"invited by Alice or Bob"*, both of whom are on the list, gets turned away. Fixing the reading
+without fixing the list swaps one wrong answer for a different wrong answer.
+
+**Why the rule is existing direction rather than a new call.** `ClassifySPDXExpression` has resolved
+conservatively across terms **since Story 1.3** — `FamilyCopyleft` if **any** term is copyleft,
+`FamilyUnknown` if **any** term is unrecognised. **It already declines to elect the favourable term.**
+Admission must not be **more permissive than the classification it consumes**, or the gate re-opens
+what the classifier just closed.
+
+**Option (c) — admit by the first permissive term — REJECTED on a sharper ground than the one I gave.**
+I argued it answers an owner decision silently. The lead's ground is better: **DW-131 *is*
+first-term-wins in the classifier; admitting by first term is first-term-wins in the gate.** Fixing one
+while implementing the other in the next function along is the worst available outcome, because the
+story's own record would then say the defect was closed.
+
+**Option (b) — leave admission to Story 8.5 — REJECTED** for the reason I identified: it lands twenty
+faces **and** an admission change in one commit, which is the ordering the lead refused one ruling ago
+when declining to fold 8.4j into 8.5; and it red-proves the gate against a population that **cannot
+contain the shape the rule is about**.
+
+**Design guardrail the naive implementation will trip.** **Never `strings.Split(spdx, " OR ")` inside
+the allowlist check** — that is a second SPDX expression parser, a shape this run has now found **four
+times**. The resolved signal carries its **term set** alongside its label; `ClassifySPDXExpression` (or
+a sibling that returns terms instead of discarding them) stays the sole enumerator; admission tests the
+set. **One parser, one term enumeration, two consumers.**
+
+**The label/gate divergence is correct and must be documented in TWO places.** The label states **what
+the file says**; the gate states **whether every option the file offers is acceptable**. A later reader
+seeing `OFL-1.1 OR Apache-2.0` in `MANIFEST.md` beside a four-id allowlist will file it as a bug — so
+it is stated at the admission site **and** in `MANIFEST.md`'s header. **A divergence that is correct
+and undocumented gets "fixed" by the next person.**
+
+**The known cost, named now with its escape hatch.** The conservative rule **refuses
+`OFL-1.1 OR <proprietary>`** — a real font-business shape — even though the OFL term is takeable. The
+refusal is **loud**, naming the directory and the failing term, so a real case surfaces at build time.
+**If Story 8.5 hits a face whose only availability is permissive-OR-proprietary, that returns to the
+lead as an OWNER question about electing a term. It is not resolved in the build, and not by widening
+the allowlist.**
+
+**Red-proofs 8.4j now owes — four, not three.** (1) `OFL-1.1 OR GPL-3.0-only` reds as copyleft;
+(2) the reversed order reds identically (the order-dependence *is* the defect); (3) `OFL-1.1 OR
+Apache-2.0` **resolves and is admitted** — proves the fix is a **classifier, not a ban**; (4) `OFL-1.1
+OR CC0-1.0` — permissive, classifiable, **not** on the four-id list — reds **naming `CC0-1.0`
+specifically** — proves admission is **per-term rather than all-or-nothing**.
+
+**How we'd know it was wrong.** A legitimate face refused at Story 8.5 whose every term is allowlisted —
+that would mean admission is still keying on the label somewhere.
+
+### D-8.4j.7 — The bound is NOT widened: it gets a criterion that cannot be interpreted, demonstrated on the next candidate
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** D-8.4j.1's *"one defect, one fix"* — countable but ambiguous — is replaced by a test:
+
+> **Work is inside a repair story iff excluding it leaves THAT STORY'S OWN FIX INCORRECT. Everything
+> else is outside, however adjacent, however cheap.**
+
+**Why this is a restatement and not a relaxation.** *"One fix"* invites arguing about what counts as
+one. The new test is answerable by measurement: exclude the work, run the case, see whether the fix is
+still correct. Per-term admission is **inside** — excluded, the fix ships a false refusal.
+
+**And it was immediately shown to have teeth on the very next candidate.** **DW-128's wOFF/wOF2 gap is
+OUTSIDE and stays outside**: 8.4j is correct without it, the sfnt tripwire is a different property in a
+different file, and it remains deferred with its corrected scope (D-8.4j.4). **A bound that admits the
+next thing it is asked about is a preference; one that refuses it is a bound.**
+
+**Why I brought this rather than deciding it.** I judged per-term admission to be inside the bound and
+said so — but a bound erodes by exactly that move, one reasonable interpretation at a time, and this
+one had been restated four hours earlier precisely to stop that. Having the authority that set it apply
+it costs one round trip and keeps the bound worth having. **The lead widened nothing and sharpened the
+test; that is the outcome asking for buys and deciding does not.**
+
+### D-8.4j.8 — The measurement form gains a fourth slot: the working directory
+
+**Engineering lead ruling**, taken — an **extension of an existing rule**, deliberately not filed as a
+third instance.
+
+**Verdict.** The standing form is now: **an invocation is recorded with its command, its commit, its
+tree state AND its working directory. Anything less is a claim, not a measurement.**
+
+**Provenance.** D-8.4.27(b): *a number without its command is not a measurement.* D-8.5.7 added **tree
+state** (`go build` stamps `vcs.modified` from `git status`, and this pipeline writes untracked files).
+This adds **working directory**, earned by two near-misses in two stories: Story 8.4i's close caught
+`gofmt -l folio-go lint` run from inside `lint/` printing `lstat` errors **that read as clean**; and my
+own 8.4j dispatch specified `genmanifest` from the repo root when it runs from inside `lint/` — the
+root form **would not have executed at all**.
+
+**In simple terms.** Both commands failed by producing output that looked like success. Neither would
+have been caught by reading the output; only by knowing where the command was standing when it ran.
+
+**Why it extends rather than files.** It is the same family as the quantifier slot (D-8.5.4) and the
+subject slot (D-8.4j.3): **the observation is true and something silently attached to it is not.** A
+third register entry for one mechanism is what the Nth-instance rule exists to prevent — instances
+re-price a practice, they do not accumulate as entries.
