@@ -1355,3 +1355,107 @@ audit gap. Registered as such.
 run stops treating it as such: a rejection that is not enumerated cannot be spot-checked, so from here
 a compliance- or security-boundary story's close **names** what was rejected or records that it could
 not. This is DW-87's third instance and it re-prices rather than renews.
+
+## Story 8.4i's close gate — a HIGH found inside the story written to end that class of defect (2026-09-02)
+
+### D-8.4i.11 — The census stopped measuring, and the story that found it was the story about false safety claims
+
+**Orchestrator decision** (recording the build's own HIGH finding, which is the most instructive result
+of this epic).
+
+**Verdict.** Recorded, patched, mutation-proved. The `0 of 35` census figure is **re-attributed to
+commit `2e9365e`** — the only commit at which it was a real measurement — in all three records that
+had stated it as a standing property.
+
+**Situation.** Task 1 built a census that classified every `LICENSE*` in the repository and reported
+which changed verdict. Task 2 then made `ClassifyLicenceText`'s entire body `return
+classifyByAllSignals(text)`. **At that moment the census was comparing a function with itself**, and
+its own doc comment described it as a standing witness. Measured: reclassifying all **11** committed
+OFL files to `(unknown, "")` — a **total failure of the shipped asset gate** — still printed
+`0 change verdict` and **passed**.
+
+**In simple terms.** We built a scale to check the weights were right, then replaced the weights with
+the scale's own readings. It went on saying everything balanced, and it would have said so if every
+weight in the building had been wrong. The number it printed was true and meant nothing.
+
+**Why this is the sharpest result in Epic 8.** It is **D-8.0.1's shape occurring inside the story
+written to end D-8.0.1's shape** — a test asserting its own correctness, in the story whose subject is
+code comments that assert a safety that does not exist. The instrument this run has leaned on hardest
+(mutation proof) is exactly what caught it, and nothing else would have: every gate was green, the
+census passed, and the figure it produced was the headline evidence I would otherwise have reported.
+
+**The patch.** All 35 verdicts (26 committed files + 9 dependency licences) pinned against a
+**test-owned table** — the same anchor-the-code-cannot-move shape D-8.4i.3 required for the allowlist.
+Probe: the `VERSION 9.9` mutation printed `0 change verdict` and **passed** before; it now **reds on 11
+named files**.
+
+**Consequences.** A differential test whose two sides can converge is not a witness. Any future census,
+diff or "nothing changed" assertion in this project states **what it is measuring against** and pins it
+to a literal the code under test cannot move. The `0 of 35` figure is only ever cited with its commit.
+
+**How we'd know it was wrong.** The pinned table drifting to match the code after some later change —
+which is the same failure one layer up, and is why the table names D-8.5.3 and the census names
+`2e9365e`.
+
+### D-8.4i.12 — `followup_review_recommended` discharged again without a second review dispatch, on stronger evidence than last time
+
+**Orchestrator decision.**
+
+**Verdict.** No second review dispatch. The **closer's hard adversarial pass** carries the scrutiny, as
+at Story 8.4h.
+
+**Situation.** The flag fired on **2 high** (plus 3 medium, 4 low patched); score 13. Two highs is a
+materially stronger signal than 8.4h's zero, so this needed a better reason than last time.
+
+**The reason, and it is measured rather than asserted.** At Story 8.4h, the four review layers produced
+**seven** rejections, of which **four were unrecoverable** and **one of the three readable ones was
+false** — and the two genuine defects that gated this entire story (DW-125's bypass, DW-124's
+mis-attribution) were found **by the closer's adversarial pass, not by the review layers**. On this
+project, at this boundary, the close has a strictly better hit rate than a repeat of the same four
+layers over a change set they have already read.
+
+**What is different and better this time, which also argues against re-running them.** All **24**
+rejections are individually enumerated in the Review Triage Log — D-8.4i.10's requirement, discharged.
+Two were checked and found **false as claims about the code** and recorded as false rather than
+dropped. The high finding was not merely patched but **mutation-proved** in both directions. That is a
+review that did its job and wrote down enough for someone else to check it.
+
+**Options considered.** (a) *Re-dispatch the four layers* — rejected: same layers, same diff, and the
+evidence says they under-perform the adversarial close here. (b) *Ignore the flag* — never; it is the
+one free signal. (c) *Discharge in writing, route to a hard close* — chosen, as at 8.4h.
+
+**Consequences.** The closer is directed at the three specific things a second review layer would most
+plausibly have caught: the deferred wOFF/wOF2 gap in the tripwire's magic-byte coverage, the one-way
+independence result, and the disclosure that the new gate test does **not** measure the collect-all
+rule. If the close finds a defect of the class the layers missed twice, that is evidence the layers
+need changing rather than re-running, and it goes to the lead as a process finding.
+
+**How we'd know it was wrong.** A later story finding a defect in this change set that a second review
+pass would plausibly have caught — the same falsifier as D-8.4h.4, now with two stories of evidence
+behind the judgement instead of one.
+
+### D-8.4i.13 — Two claims kept as facts rather than smoothed into fixes
+
+**Orchestrator decision** (endorsing the build's choice to record disagreements rather than resolve
+them).
+
+**Verdict.** Both are written into the code, not only into this log.
+
+**1. The new gate test does not measure what its neighbour measures.** Narrowing SPDX collection back
+to first-match does **not** red the new gate-level test, because the GPL **name** signal reaches the
+copyleft arm by an independent path. So the gate test measures the gate's copyleft arm, and the
+collect-all rows measure the collect-all rule; **they are not substitutes.** Recorded because the
+natural future edit is to delete one as redundant, and that edit would silently remove the only
+coverage of one of the two mechanisms.
+
+**2. Story 8.4h's AC5 bound is gone, not weakened.** It claimed two independent mutations produce two
+distinct reds. Measured now: deleting `permissiveSPDX["Ubuntu-font-1.0"]` reds **five** tests; deleting
+the `licenceNames` entry reds **two**, and not the map-entry test. **The independence is one-way**, and
+routing name-table ids through `classifyBySPDX` bought provably-real identifiers at the cost of
+mutation resolution. That is a real trade that was made, not a regression — and the comment now says
+what is true instead of what was true.
+
+**Why this matters as a practice.** Both are cases where the tidy move was available and wrong: assert
+the substitutability, or restore the old bound. Recording the disagreement costs two comments and
+saves the next reader from a confident false belief — which is the same failure this whole story
+exists to repair, one level up.
