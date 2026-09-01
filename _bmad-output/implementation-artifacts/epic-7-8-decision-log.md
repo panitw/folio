@@ -4433,3 +4433,88 @@ is recorded as attributable rather than assumed.** It follows the run of premise
 the habit of measuring before asserting — and it is worth noting that the two premise errors of this
 session that recurred were both cases where **the observation was true and the QUANTIFIER attached to
 it was not**, which is harder to catch because nothing downstream contradicts it.
+
+---
+
+### D-8.5.9 — the step-03 commit breach reaches INSTANCE THREE, and the recovery holding a third time is the argument for pricing it
+
+Story 8.4f's step-03 subagent **committed `7a18079` on its own.** Step-03 does not authorize a commit;
+finalizing is step-04's. The content was clean, the trailer right, nothing pushed, no protected path
+touched — so the builder **appended rather than amended**, per Finalize's keep-commits-already-created
+rule. That was the right trade.
+
+**This is instance three** (after D-8.4.9c and D-8.4.18), and the standing note recorded at instance
+one was that **re-measurement is a recovery, not a repeatable guarantee.**
+
+**The recovery has now held three times, and that is precisely the argument for pricing it rather than
+absorbing it again.** Three unauthorized commits, three catches by a downstream agent that happened to
+audit provenance. **A defect whose only defence is that somebody downstream keeps noticing is not
+defended — it is lucky.** Per the standing rule that an Nth instance **re-prices** a deferral rather
+than renewing it, *"we caught it again"* has stopped being a disposition.
+
+**It remains outside this repository to fix** — the step ordering lives in the `bmad-build-auto` skill,
+not in `folio` — so it is recorded here **with its count**, so a fourth instance is priced against
+three priors rather than met fresh. **The concrete cost if it recurs unnoticed is now visible:** at
+instance three the commit landed while `origin/main` was live, so an unaudited step-03 commit is one
+push away from being public.
+
+---
+
+### D-8.5.10 — AC3 was AMENDED, and the closer distinguished which of two opposing rules applied
+
+The orchestrator put a question rather than a ruling: **AC3 required the bound check red-proved on its
+own message**, but deleting the guard reddened the proof on `sameSet` instead. Two of this run's rules
+point opposite ways, and **choosing between them was the whole question**:
+
+- **D-8.4.24 / D-8.4.29:** moving a threshold to match a measurement is the defect, not the fix — and
+  an AC rewritten to match an implementation is that shape **at the acceptance layer**.
+- **D-8.4.2:** an AC that contradicts an invariant is **an error to CORRECT, not a fork to route.**
+
+**The closer ruled D-8.4.2, and corrected the orchestrator's mechanism while doing it.** The
+orchestrator's provisional reading was that *"an earlier guard legitimately catches the same mutation
+first"* — **false.** **No earlier guard preempts anything: the bound guard IS the earliest.** An
+impossible-needle probe trips it with its own message — `release carries 65 cache assets, over the
+declared maximum of 64`. **Deletion reddens on `sameSet` because the mutation is OVERDETERMINED — 65
+assets violate two independent invariants at once** — not because of ordering.
+
+**And "unsatisfiable" overstated it.** The literal string **is** reachable via the regenerate shape, at
+a **re-measured** cost (`build:offline` 45.73s × 2 ≈ +91s on a 183.33s red run). So: **the BAR is met
+and unmoved; the false premise was about BLAST RADIUS**, and the spec's own Design Note 3 refutes it in
+the same document. **AC3's second clause amended in place, loudly, with the original preserved
+verbatim** — which is the form this run has required of every correction since the ~9 MB precedent.
+
+**The distinction worth keeping: an AC is moved illegitimately when the BAR changes, and legitimately
+when a FALSE PREMISE about how the bar is reached is corrected.** Those look identical in a diff and
+are opposite in kind.
+
+---
+
+### D-8.5.11 — a guard NARROWED rather than closed, and the closer corrected the build's account of it
+
+Story 8.4f patched two guards caught not failing for the reason they name. **One closed; one did
+not**, and the closer said so rather than accepting the build's report.
+
+**`main.tsx`'s payload mapping and dev-bypass narrowing are executed by NOTHING** — no test imports
+`main.tsx`, and Playwright is compile-only. **Both predicates now have teeth** (neutering the parser
+bound reddens 5 named tests; re-widening the bypass reddens the one that names it) — **but the call
+sites are still run by nothing.** The faithful mutation passes **typecheck, 40 files / 409 tests, lint,
+e2e-compile, build AND `verify:offline:red`.** Filed as **DW-110**.
+
+**The detail that makes it instructive:** the *naive* mutation fails `tsc` on **TS6133 — an orphaned
+import.** **That is a compile error, not a test**, and it is exactly the kind of failure that reads as
+coverage while proving nothing about behaviour. A reviewer seeing red there would reasonably conclude
+the path was guarded.
+
+**The DW-106 probe closed properly**: hiding the probe via `.git/info/exclude` makes
+`verify:offline:wasm` exit 1 naming it invisible — **the probe's visibility to git IS the
+perturbation**, and the code now says so. Exclude restored byte-identically.
+
+**And the most-corroborated finding of the story was rejected soundly and STILL filed.** The
+reason-drop, raised by **three** review layers, is scope-correct to reject — AC4 is at the
+function-return layer, the Block If forbids the product change, zero non-test `console.*` re-counted in
+`src/` and `scripts/`, and the dev bypass is a real consumer of the reason — **and the observation
+remains true**, so it is **DW-111** rather than a line in a rejected list. **A sound rejection is not a
+refutation of the observation.**
+
+**One audit limit stated rather than implied:** rejections **21–24** are a single grouped line carrying
+**no claim and no location**, so they are **unauditable** and were not checked. **DW-87 stays open.**
