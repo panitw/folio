@@ -4631,6 +4631,44 @@ change to how fixtures are enumerated, not to this story's subject.
 - **Severity:** MEDIUM. The defect is not the red; it is the **unregistered** red.
 - **Status:** OPEN.
 
+**⚠ THIS ENTRY WAS WRONG, AND THE ENTRY — NOT THE TEST — IS WHERE THE DEFECT LIVED.
+CORRECTED 2026-09-01 (D-8.4.34). The original text is kept below.**
+
+**It is NOT a standing red. It is a misconfigured interpreter suppressing a working check.** The
+pinned toolchain is **present**: `.fontgen-venv/bin/python` is **Python 3.12.13 with fontTools
+4.63.0** — the exact pair the NOTICEs name — and `.font-sources/` holds all three upstream variable
+fonts. `go test` invokes a bare `python3` that lacks fontTools. **With `FOLIO_FONTGEN_PYTHON` pointed
+at the venv the test PASSES, non-vacuously** — `fontgen: derived and compared 3 of 3 faces`, with
+real produced sizes (646160 / 47788 / 10595932 B) and digests; the Thai digest `c94562c1…73caf`
+independently matches the value hashed for D-8.4.8's attestation transfer.
+
+**THE TEST IS LARGELY INNOCENT, and this is the durable lesson.** It says in its own words *"IT DOES
+NOT SKIP WHEN ITS INPUTS ARE ABSENT"* and carries **five distinct `t.Fatalf` sites**. It already
+refuses to be quiet and **already distinguishes its causes in its messages**. The three states were
+conflated **by this register entry**, which recorded *"pre-existing and environmental"* — **a GUESS AT
+THE CAUSE** — instead of the assertion that actually fired. **Had the entry quoted the message
+verbatim, the wrong interpreter would have been visible on the day it was written**, because the
+message that fired was **not** the sources-absent one.
+
+> **STANDING RULE (D-8.4.34): a standing red is registered by its failing assertion's message,
+> VERBATIM — never by a category.** The verbatim text for this one is:
+> `fontgen: fontTools is not importable by this interpreter`.
+
+**And the three-state distinction this run keeps rediscovering:** an **all-clear** must differ from a
+**couldn't-look**, and a couldn't-look must differ from a **looked-in-the-wrong-place**. The third is
+the state that keeps appearing — this bare `python3`, the 428 KB Chromium stub, and
+`s1VisibleBytes`' four-needle total. **All three are instruments pointed somewhere other than where
+their reader believed.**
+
+**RESIDUAL, recorded so nobody later reads this as covering more than it does: the check covers 3 of
+the 6 shipped faces.** The three IBM Plex faces added by Story 8.4c are **vendored static files from
+a pinned npm package** — their guarantee is a package version plus a NOTICE, which is a **provenance**
+claim, not a **reproduction** one. **Two different kinds of assurance under one heading.**
+
+---
+
+**The original, wrong text follows.**
+
 **Measured at close.** Under `-tags=matrix` the test **FAILS — it does not skip** — reporting
 `fontTools is not importable by this interpreter`. Run at baseline `f51dd5e` in a detached worktree
 **with the upstream sources supplied** (`FOLIO_FONT_SOURCES`), it fails at the same line with the
@@ -5182,5 +5220,37 @@ CJK face on any real OS, and this is the same class as the `--font-sans` narrowi
 **What discharges it.** Either extend `--font-mono` with a CJK fallback that is *shipped* rather than
 assumed present on the reader's machine, or record a deliberate decision that chrome CJK falls to the
 system face — with the reasoning written down, so the next reader does not re-derive it as a bug.
+
+---
+
+### DW-103 — a real check exists, it works, and CI does not run it: ONE policy pass, not two
+
+- **Deferred by:** the engineering lead (2026-09-01, **D-8.4.34**), merging this with **DW-101**.
+- **Owner:** whoever wires CI. **DW-101 and this are the SAME defect wearing different clothes** —
+  *"a real check exists, it works, and CI does not run it."* **Fixing them separately will produce two
+  different answers to one question.**
+- **Severity:** MEDIUM-HIGH.
+- **Status:** OPEN.
+
+**The invariant, stated rather than the mechanism: a change to `folio-go/fonts/` must not be able to
+merge without `TestShippedFacesReproduceFromUpstream` having run.**
+
+**Two facts bound it.** The check's inputs are **gitignored and large**, so provisioning them on
+**every** CI run is disproportionate for an artifact that has changed **twice in the project's life**
+(`3373dac`, `4b797d4`). And **leaving it entirely unrun is how it went dark.** A **path-filtered**
+job — provision sources and venv, run the check, **only** when a change touches `folio-go/fonts/` or
+the generator — is proportionate.
+
+**The other half is DW-101:** 12 executable Playwright specs that CI runs only `tsc --noEmit` over.
+
+**Also owed here (D-8.4.34):** the interpreter-selection fix — preference order
+`FOLIO_FONTGEN_PYTHON` → `.fontgen-venv/bin/python` (if it exists **and** imports fontTools) →
+`python3`, so an explicit override still wins. **Auto-preference is safe for THIS test specifically
+because it cannot go green by finding less:** green requires sources **and** a working interpreter
+**and** three matching hashes **and** the `3 of 3` witness, and every other state is a loud, distinct
+red. It cannot manufacture a pass — only stop suppressing a real run. **And the interpreter failure
+must name its own remedy** — `.fontgen-venv/bin/python` and `FOLIO_FONTGEN_PYTHON` in the message
+text. *The whole cost of this incident was that the next reader could not tell a wrong interpreter
+from absent sources at a glance; the message is where that is fixed, not the register.*
 
 ---

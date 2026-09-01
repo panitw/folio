@@ -4015,3 +4015,86 @@ itself named the file.
 
 **Expectation set for the first execution: a suite that has never run is expected to surface
 pre-existing breakage, and that breakage is a FINDING, not a blocker on this epic.**
+
+---
+
+### D-8.4.34 — DW-86 was never a standing red; the defect was in the REGISTRATION, and the interval is covered by an invariant proven with git
+
+**The orchestrator registered DW-86 at Story 8.3's close on the stated ground that the pinned
+toolchain and `.font-sources/` were "gitignored and absent, so registration is the practical path."
+Both are present** — `.fontgen-venv/bin/python` is **Python 3.12.13 with fontTools 4.63.0**, and all
+three upstream variable fonts are in `.font-sources/`. `go test` invokes a bare `python3`. **With
+`FOLIO_FONTGEN_PYTHON` pointed at the venv the test PASSES, non-vacuously** — *"derived and compared
+3 of 3 faces"*, real digests, and the Thai value **independently matching** D-8.4.8's hash.
+
+D-8.3.4 offered two dispositions — *make fontTools available to the gate, or register the red* — and
+**the second was taken because the first was believed impossible.**
+
+**(a) THE TEST IS LARGELY INNOCENT, and the lead's correction of the diagnosis is the more useful
+finding.** `fontgen_matrix_test.go` says in its own words *"IT DOES NOT SKIP WHEN ITS INPUTS ARE
+ABSENT"* and carries **five distinct `t.Fatalf` sites**. **It already refuses to be quiet and already
+distinguishes its causes in its messages.** The three states were conflated **by the register entry**,
+which recorded *"pre-existing and environmental"* — **a guess at the cause** — rather than the
+assertion that fired. **Quoting the message would have exposed the wrong interpreter on the day the
+entry was written**, because the message that fired was not the sources-absent one.
+
+> **STANDING RULE: a standing red is registered by its failing assertion's message, VERBATIM — never
+> by a category.**
+
+**(b) Auto-prefer the venv. Ruled yes, on a property specific to this test: IT CANNOT GO GREEN BY
+FINDING LESS.** Green requires sources **and** a working interpreter **and** three matching hashes
+**and** the `3 of 3` witness; every other state is a loud, distinct red. **Auto-preference cannot
+manufacture a pass — only stop suppressing a real run.** The orchestrator's worry — *"green because
+something untracked happened to be on this machine"* — was the right worry and does not apply here.
+**The alternative has a measured failure record: explicit invocation is what was in place, and the
+check was dark for the entire run. An obligation discharged only when someone remembers is not an
+obligation.**
+
+Two conditions: preference order `FOLIO_FONTGEN_PYTHON` → `.fontgen-venv/bin/python` (existing **and**
+importing fontTools) → `python3`, so an explicit override still wins; and **the interpreter failure
+must name its own remedy in its message text.** *"The whole cost of this incident was that the next
+person could not tell a wrong interpreter from absent sources at a glance; the message is where that
+is fixed, not the register."*
+**Carried into: the spec Tasks of whichever story takes DW-103 — not the epic, not this log.**
+
+**(c) CI: state the invariant, not the mechanism — a change to `folio-go/fonts/` must not be able to
+merge without this check having run.** Its inputs are gitignored and large, and the artifact has
+changed **twice in the project's life**, so provisioning on every run is disproportionate; leaving it
+unrun is how it went dark. A **path-filtered** job is proportionate. **Filed WITH DW-101 as ONE policy
+pass (DW-103): they are the same defect wearing different clothes, and fixing them separately produces
+two answers to one question.**
+
+**(d) The interval IS covered — and NOT by the reasoning that was right to distrust.** *"It passes
+now, therefore the interval was fine"* is invalid and this run keeps rejecting it. The sound argument
+was **measured, not asserted**:
+
+```
+git log --oneline -- folio-go/fonts/
+4b797d4  Correct the Noto Sans SC provenance; record D-000.56
+3373dac  Story 2.2: The shipped font set and its fallback chain (finisher)
+```
+
+**Two commits, ever**, both long before DW-86 was registered. So the argument is **"the artifact under
+test never changed, and it is correct now, therefore it was correct at every commit back to
+`4b797d4`"** — an argument from an invariant **proven by git rather than assumed**. **Had git shown a
+single change in that window the answer would have been NO** — and that discriminator is what makes it
+a measurement rather than a rationalisation. It also **reaches further than asked: today's pass is the
+first known-good execution and retroactively verifies every commit from `4b797d4` to HEAD.**
+
+**Story 8.4c did not touch this population** — its binaries went to `folio-designer/public/fonts/`,
+while this check derives three **Noto** faces from `.font-sources/*-VF.ttf`. **Residual recorded: the
+check covers 3 of the 6 shipped faces.** The IBM Plex three are pinned npm static files, so their
+guarantee is **provenance, not reproduction** — **two kinds of assurance under one heading**, and
+nobody should later read *"byte-identity of the shipped fonts is gated"* as meaning all six.
+
+**(e) The dispatch formula changes: "exactly two standing reds" is a COUNT, and a count is a lossy
+set.** It cannot see **one of the two changing its cause** — which is precisely what happened.
+**Dispatch with the reds' IDENTITIES: the test name AND the failing assertion.** This is the same
+defect as `declared` having a floor and no ceiling, **one level up, in the process rather than the
+code.**
+
+**(f) The three-state formulation, adopted by the lead as the run's:** **an all-clear must differ from
+a couldn't-look, and a couldn't-look must differ from a LOOKED-IN-THE-WRONG-PLACE.** The third is the
+state this run keeps finding — **the 428 KB Chromium stub, the bare `python3`, and
+`s1VisibleBytes`' four-needle total. All three are instruments pointed somewhere other than where
+their reader believed.**
