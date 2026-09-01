@@ -85,30 +85,37 @@ deferred:
       lint/internal/licence/classify.go (ClassifySPDXExpressionTerms' operator check, reached via
       spdxLineRE's rest-of-line capture)
     severity: medium
+    status: >-
+      REGISTERED 2026-09-02 at the close as DW-132 in deferred-work.md, owner OWNER. Re-verified there
+      by driving both asset gates end to end: refused through the "could not be classified" arm at each
+      site, left UNNAMED. Two further residues of the same mechanism that reached no register — an
+      unsupported operator SPELLING ("MIT or Apache-2.0", ADMITTED at b4dabd9 and refused now) and the
+      dependency gate's exposure to deferred[1]/[2]/[3]'s shapes via rules.ScanLicenceGraph — are
+      registered as DW-133, owner ENGINEERING LEAD.
 ---
 
 ## In plain terms (read this first if you just want the gist)
 
 *Non-normative. The contract below governs.*
 
-The previous story taught our licence check to read every label on a file rather than stopping at the
-first one it found. That closed a real hole. But it left a smaller one open, and the smaller one has
-the same shape. When a single label lists two licences at once — a file offered under either of two
-terms, which is an entirely ordinary way for a typeface to be published — the check still reads only
-the first word of that label and throws the rest away. So a file offered under an acceptable licence
-*or* an unacceptable one is waved through on the strength of the acceptable half, and is then recorded
-in our published list as though the unacceptable half were never written down.
+Our licence check reads the label a file puts on itself. When that label named two licences at once —
+a file offered under either of two sets of terms, an ordinary way to publish a typeface — the check
+read only the first name and threw the rest away. So a file offering itself under an acceptable licence
+*or* an unacceptable one was waved through on the strength of the acceptable half, then recorded in our
+published list as though the other half had never been written down. Reversing the order changed the
+answer: put the unacceptable name first and the same file was correctly refused. That asymmetry was
+never a policy, only an artefact of where the reading stopped.
 
-The tell that this is reading rather than judging: swap the two licences around and the answer
-changes. Put the unacceptable one first and the file is correctly refused. That asymmetry is not a
-policy; it is an artefact of where the reading stops.
+The tool that reads such a declaration properly already existed and was simply never asked. Now it
+is. Both of the places that judge a redistributed file weigh every option the file offers, each against
+its own separate list of what it will accept: the list for typefaces is not the list for the dictionary,
+deliberately.
 
-The tool that reads such a label correctly already exists in this project, has existed for a long
-time, and is simply never asked. This story asks it.
-
-Done looks like this: the order stops mattering, in both directions. And a file offering itself under
-two *acceptable* licences is still accepted — because the fix has to remain a classifier, not a
-blanket refusal of anything that lists more than one name.
+This story was stopped once, partway through. The first fix closed the hole but would have started
+refusing files that are perfectly acceptable — the mirror-image mistake — and that was caught, ruled on
+and repaired before it shipped rather than after. A few unusual ways of writing a licence label are now
+refused rather than half-read; each is written down, each refuses loudly, and none appears anywhere in
+what we ship today.
 
 <intent-contract>
 
@@ -936,3 +943,163 @@ independent deletion probes.
 - The implementation subagent created commit `66d445b` itself — **instance six** of D-8.5.9. Audited
   under D-8.4j.12's standing close step: `main`, both trailers exact and present, author and committer
   consistent, only this story's files, nothing pushed (`origin/main` is still `c985b9c`).
+
+## Delivery Log
+
+### 2026-09-02 — done
+
+**Story 8.4j — delivered on `main`, baseline `b4dabd9`. Two code commits, one halt, one revert.**
+
+| commit | subject |
+|---|---|
+| `1af9854` | Read a compound licence line whole, and admit a font term by term — **HALTED, then reverted** |
+| `d21684a` | Revert 8.4j's implementation: the same false refusal, one gate over |
+| `66d445b` | Read a compound licence line whole, and admit a term at a time at both gates |
+| `24048c6` | Name a malformed SPDX expression nothing, and fail closed on a partial read |
+| `ea1f4f9` | Close 8.4j's gates, and record that my own patch instruction was wrong (decision log only) |
+| *(this commit)* | Close Story 8.4j: the record, the register, and the proof that RP1/RP2 do separate |
+
+**The halt is part of the delivery, not a detour.** The first dispatch shipped half 1 (read the line
+whole) plus per-term admission at the FONT site only, and stopped `blocked` / `intent gap`: half 1 makes
+the label the whole expression, so at the WORDLIST site — left on a bare exact-id lookup — a
+wholly-permissive `CC0-1.0 OR MIT` was newly **refused**, with a message asserting the project does not
+recognise it as permissive while the same call held `FamilyPermissive` in scope. A fix that trades a
+bypass for a false refusal one gate over is not an incomplete fix; it is a wrong one. The build did not
+guess. It halted, the lead ruled (D-8.4j.9: policy and mechanism are different things — the two sites
+keep their DIFFERENT lists and share ONE way of testing a label against a list), and the work was
+**reverted to zero net code change** by `git revert`, not by rewriting history, with the attempted
+implementation preserved as `8-4j-attempted-implementation.patch`. The re-dispatch re-applied that patch
+with the rulings folded in rather than re-deriving it. **All four pre-existing mutation proofs were
+re-run afterwards** — a proof over the old patch is not a proof over the new one — and again after the
+review patches, because those patches touched the mutation targets.
+
+**What shipped.** The SPDX-line capture widens from one token to the rest of the line and routes through
+`ClassifySPDXExpressionTerms`, the sole term enumerator, whose resolution semantics are unchanged since
+Story 1.3. One line is one signal whatever its arity; composition across lines stays
+`resolveLicenceSignals`' job. Both asset gates admit **per term**, each against its own list — the
+owner's four ids at the font site, `permissiveSPDX` at the wordlist site — through one shared helper
+that takes the list as a parameter. **Two lists, one mechanism, one enumerator.** Grepped at the close:
+no `strings.Split` or re-split of an expression anywhere in admission, seen-marking or either gate.
+
+**Decisions applied by ID:** D-8.4j.1 (the story exists and is bounded at one defect), .2 (no
+compound-expression ban, no 8.5 census guard here), .3 (every rejection names the path it verified), .4
+(DW-128 stays out), .5, .6 (font admission inside), .7 (the bound's criterion), .8 (every measurement
+carries its working directory), .9 (SITE B inside; policy ≠ mechanism), .10 (Approach and Block If
+amended; seen-marking scoped to the name/body space), .11 (the masking falsifier re-measured, not
+carried), .12 (the provenance audit is a listed step), .13, .14 (an orchestrator's implementation sketch
+is a hypothesis — `len(terms) == 1` alone was insufficient), .15 (instance six), .16 (follow-up review
+discharged into this close), .17 (two volunteered disclosures). Also D-8.4i.9 (the BSD clause path is
+untouched), D-8.4i.11 (what the census can witness), D-8.5.13 (two populations, two policies),
+D-000.4 (per-epic cadence).
+
+**Triage: 5 patched / 1 deferred / 14 rejected**, over the re-dispatch's pass (the halted pass's own
+1 intent_gap / 2 bad_spec / 2 patch / 4 defer / 12 reject are recorded above and were superseded by the
+ruling). Patched: the `unresolvedID` field-count-not-term-count defect that NAMED `(MIT)` and pushed both
+gates off their "could not be classified" arm onto one asserting a false classification (medium,
+corroborated three independent ways); `firstTermNotOn` discarding the enumerator's error, which would
+have admitted on a partially-enumerated prefix — this story's own failure class one function along; the
+consumer count disagreeing with itself (THREE, not two, since SITE B came inside); the label/gate
+divergence paragraph rendering above an empty-corpus manifest; and two unpinned `spdxLineRE` details
+(TAB separator, CRLF). Deferred: `deferred[3]`, `WITH` exception expressions. Rejected: 14, each naming
+the caller, path or population it verified.
+
+**What the review caught that the build would not have.** The naming defect is the one that matters: the
+layers found it and triage KEPT it. Across three stories the weak link has been triage, not generation
+(D-8.4j.16) — at 8.4i the same layers found the compound-line defect and triage discarded it on a
+wrong-caller premise, which is why this story exists at all.
+
+**`followup_review_recommended: true` is DISCHARGED without a second review dispatch, per D-8.4j.16.**
+The profile — zero high, zero `intent_gap`, zero `bad_spec`, all 14 rejections enumerated, the one
+medium corroborated three ways before it was patched — is not a review that needs repeating. The
+scrutiny was spent on the close instead, as a directed adversarial pass.
+
+**Gates, measured at the close, each with its working directory (D-8.4j.8).**
+
+| working directory | command | measured |
+|---|---|---|
+| `lint` | `go test -count=1 ./...` | exit 0 — `cmd/genmanifest`, `internal/licence`, `internal/manifest`, `internal/rules` all `ok` |
+| `lint` | `go vet ./...` | exit 0 |
+| `lint` | `go test -count=1 -run TestLicenceSignalCensus -v ./internal/licence/` | PASS — *35 licence texts measured (26 committed files + 9 dependency licences), all matching their pinned verdicts* |
+| `folio-go` | `go test -count=1 ./...` | **1815 pass / 2 fail / 5 skip**, counted from `-json`. The two are `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)` — the standing red, by identity |
+| `folio-go` | `go vet ./...` | exit 0 |
+| `folio-go` | `TestGoldenDigestAgreesAtEveryDeclaredSite` (rides the run above) | PASS |
+| `lint` | `go run ./cmd/genmanifest` ×2 | exit 0, exit 0 |
+| **repo root** | `git diff --exit-code -- lint/MANIFEST.md`, then `git diff --exit-code` | exit 0 after each run — idempotent, whole tree clean |
+| **repo root** | `gofmt -l folio-go lint` | exactly `lint/internal/rules/licencegraph_test.go` (DW-116, pre-existing, NOT reformatted) |
+| **repo root** | `md5 -q README.md` | `078d7d80d518d54af2fc04fb270d46b8` |
+| **repo root**, vs a worktree at `b4dabd9` | `shasum -a 256 fixtures/*/expected.pdf` | 23 digests, `diff` exit 0 |
+| `folio-designer` | `npm run test` | **40 files / 411 tests** passed; `maximumCacheAssets = 64` confirmed inside the run by `scripts/offline-release-contract.test.mjs` |
+| `folio-designer` | `npm run typecheck` / `build` / `test:e2e:compile` | exit 0 / 0 / 0 |
+| `folio-designer` | `npm run lint` | exactly **4** `only-export-components` warnings (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1324,1331`) |
+
+**"No licence's admission status changed" — re-derived independently at the close, and not from the
+build's three measurements.** A throwaway in-package probe drove the REAL `ResolveAssets` and
+`resolveWordlistAssetRow` — a scratch git repo per input, not a replication of their arm logic — over all
+**26 committed population licence texts at BOTH gates**, in this tree and in a detached worktree at
+`b4dabd9`. **78 output lines each, byte-identical, `diff` exit 0.** Non-vacuity control, run in the same
+harness: the red-proof inputs DO diverge across the two revisions — `OFL-1.1 OR GPL-3.0-only` is
+`ADMITTED label="OFL-1.1"` at `b4dabd9` and refused as copyleft here, which is the bypass itself — so the
+harness demonstrably discriminates and the zero is a measurement, not a no-op. The 9 dependency licences
+do not reach either asset gate (`licencegraph.go` switches on FAMILY only) and are pinned by the census.
+
+**The census is reported as breaks-nothing, NOT as does-something (D-8.4i.11).** No population text
+carries a compound line, so corrupting the new expression branch leaves the census green. The witnesses
+that the fix WORKS are the red-proofs and their mutation screen.
+
+**Mutation screen, re-run at the close over the whole `lint` module — these are the closer's own
+integers, not the build's.** `go test -count=1 -json ./...` from `lint/` after each mutation, reverted
+between runs, `git status --porcelain` empty at the end.
+
+| mutation | top-level tests red | pre-existing red |
+|---|---|---|
+| restore the single-token capture (half 1) | **11**, 33 leaf failures | **0** |
+| condition the copyleft arm on `len(terms) == 1` | **5** — RP1, RP2, order-independence, composition, and the gate's `copyleft_term_first`/`copyleft_term_second` | **0** |
+| restore SITE A's exact-map lookup | **1** — RP3's gate test, on the predicted FALSE REFUSAL (3 subtests) | 0 |
+| restore SITE B's bare `IsPermissiveSPDX` lookup | **1** — RP5 (2 subtests) | 0 |
+| make `failingTermPhrase` always say "which" | **1** — RP4 | 0 |
+| write `markDeclaredTerms` into the SHARED `seen` map | **1** — the second-SPDX-line test (D-8.4j.10's own defect) | 0 |
+| drop `markDeclaredTerms`' permissive call site | **1** — the compound-over-its-own-body case | 0 |
+| drop the `terms[0] == expression` conjunct | **3** — the D-8.4j.14 patch has teeth | 0 |
+| let `firstTermNotOn` ignore the enumerator's error | **1** — `TestFirstTermNotOnFailsClosedOnAnIncompleteEnumeration` | 0 |
+
+**D-8.4j.17's first disclosure is over-modest, and the proof CAN be tightened.** The build reported that
+RP1 and RP2 have no guard separable from half 1, because deleting the copyleft arm they share also reds
+pre-existing single-identifier copyleft tests. That is true **of a deletion**, because step (1) now
+handles single and compound SPDX lines through the same arm. It is not a structural limit: conditioning
+that arm on `len(terms) == 1` — compound copyleft treated as permissive, single-id copyleft untouched —
+isolates RP1/RP2 exactly. Measured: five tests red, all five introduced by this story (none exists at
+`b4dabd9`), **zero pre-existing**. The honest disclosure was worth more than an overstated claim, and it
+is now replaced by a measurement rather than by an argument.
+
+**Deferrals, with owners.** DW-131 is CLOSED by this story. `deferred[3]` — `Apache-2.0 WITH
+LLVM-exception` — is registered as **DW-132, owner OWNER**: the `WITH` operator refusal is untouched by
+this story and only newly reachable, and teaching the parser SPDX exceptions is a grammar-coverage
+question D-8.4j.2 forbids answering in a build. The closer additionally registered **DW-133, owner
+ENGINEERING LEAD**: two residues of reading the line whole that the review saw and named but that reached
+no register — an unsupported operator SPELLING (`MIT or Apache-2.0` was ADMITTED at `b4dabd9`, measured,
+and is refused now) and the fact that `deferred[1]`/`[2]`/`[3]`'s shapes also reach the **dependency**
+gate, where they become a build-failing "licence unresolvable" for a future dependency whose LICENSE is
+ordinary. Both are fail-closed and loud, both are zero-of-35 today, and neither is this story's to fix.
+`deferred[0]` is confirmed DISCHARGED: it registered the TWO-SITE shape, and both sites are fixed against
+different lists — verified at the close by driving both gates, not by reading the entry.
+
+**One deferral the build registered is in fact CLOSED, and the record should say so.** The halted pass
+deferred a medium: an id on the font allowlist that the classifier cannot place would clear arms 1 and 2
+and be ADMITTED. The re-dispatch's `firstTermNotOn` error patch closed it. Probed at the close by adding
+a synthetic unrecognised id to the allowlist: the declaration is REFUSED at both gates. That fail-open no
+longer exists and needs no register entry.
+
+**Heavy tests: WRITTEN AND COMPILING, NOT RUN.** Cadence PER-EPIC (D-000.4). The four
+`FOLIO_MATRIX_TARGET` legs, `TestCrossTargetByteIdentity` and Playwright are **due at Epic 8's boundary
+gate**. `npm run test:e2e:compile` passes, so the Playwright suite compiles; the matrix legs sit behind
+their env-var/build-tag gates and were not exercised. This story changes only `lint/`, touches no
+`.folio`, no engine and nothing under `folio-go/fonts/`, and the 23 golden digests are byte-identical to
+`b4dabd9`, so the deferral is low-risk — but it is a deferral, not a pass.
+
+**Provenance audit — the standing close step (D-8.4j.12), reported by SHA.** `1af9854`, `d21684a`,
+`66d445b`, `24048c6` and `ea1f4f9`: every one on `main`, only this story's files, author and committer
+both `Panit Wechasil <panitw@hotmail.com>` and consistent with the surrounding history, both required
+trailers present and exact. **Nothing is pushed — `origin/main` is still `c985b9c`, 33 commits behind
+`HEAD`.** **`66d445b` was created by the step-03 implementation subagent: that is instance SIX of
+D-8.5.9** (D-8.4j.15 corrected the count from five — the count is of occurrences, not of survivors, and
+`1af9854` was instance five even though it was reverted). Six instances, six catches by the audit.

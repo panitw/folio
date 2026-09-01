@@ -247,7 +247,7 @@ development_status:
   # fail-closed, demonstrated BY PROBE, and reachable by the population the next story adds.
   # ONE defect, ONE fix, ONE red-proof -- nothing else rides it. Red-proof must include a
   # permissive-OR-permissive case that RESOLVES, proving the fix is a classifier and not a ban.
-  8-4j-a-compound-licence-line-is-read-whole: backlog
+  8-4j-a-compound-licence-line-is-read-whole: done
   # 8.5's spec exists at ready-for-dev but is SUPERSEDED pending re-plan after 8.4h (D-8.5.13):
   # AC2 and AC7 moved out. AC4 stays HERE deliberately -- the forbidden-host scan asserts that
   # D-8.5.12's decline was honoured, so it belongs with the thing it constrains.

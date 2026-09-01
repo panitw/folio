@@ -6465,7 +6465,7 @@ to its **spelling**.
 
 ---
 
-### DW-131 — CLOSER FINDING: a compound `SPDX-License-Identifier:` line in a licence text still drops its copyleft half, and review rejection R4 is FALSE
+### DW-131 — CLOSER FINDING: a compound `SPDX-License-Identifier:` line in a licence text still drops its copyleft half, and review rejection R4 is FALSE — **CLOSED**
 
 - **Recorded by:** **Story 8.4i's CLOSE (2026-09-02)**, by probe. **This is not a deferral the build
   recorded; it is a rejection the closer overturned and then demonstrated.**
@@ -6475,7 +6475,16 @@ to its **spelling**.
   ruled AGAINST the bound rather than around it."* This is that class, and the closer does not get to
   decide whether the exception applies.
 - **Severity:** HIGH as a mechanism; **latent** in today's population.
-- **Status:** OPEN — **awaiting the lead's ruling. Not fixed at the close, on purpose.**
+- **Status:** **CLOSED by Story 8.4j, 2026-09-02** — the lead ruled it built (D-8.4j.1), and it was.
+  Commits `66d445b` (implementation) and `24048c6` (review patches), baseline `b4dabd9`; the first
+  attempt `1af9854` halted on an intent gap and was reverted at `d21684a`. `spdxLineRE` captures the
+  rest of the line and routes it through `ClassifySPDXExpressionTerms`; asset admission is **per term at
+  BOTH gates**, against each gate's own list. Verified at the close by driving `ResolveAssets` and
+  `resolveWordlistAssetRow` over a scratch repo per input: `OFL-1.1 OR GPL-3.0-only` is refused **as
+  copyleft naming the declaration**, its reverse gives the same verdict through the same arm,
+  `OFL-1.1 OR Apache-2.0` is **admitted** with the whole expression as its label, `OFL-1.1 OR CC0-1.0`
+  is refused **naming `CC0-1.0`**, `CC0-1.0 OR MIT` is **admitted at the wordlist site**, and the
+  parenthesised form still returns `(unknown, "")`. Residues registered as **DW-132** and **DW-133**.
 
 `spdxLineRE` (`classify.go:157`) captures a **single token**: `([A-Za-z0-9.\-+]+)`. A compound SPDX
 expression on a licence line therefore contributes only its **first** term, and the remainder —
@@ -6521,5 +6530,81 @@ thing for a font to ship.
 `ClassifySPDXExpression` — every term contributing its own signal, so a copyleft term refuses as
 copyleft naming it — with a red-proof on both orderings and on a font-gate surface. Plus a pinned case
 for the parenthesised form, which today returns `(unknown, "")` and is correctly fail-closed.
+
+---
+
+### DW-132 — an SPDX `WITH` exception expression stops being a licence signal, and whether to teach the parser exceptions is the owner's call
+
+- **Deferred by:** **Story 8.4j** (`deferred[3]`, registered at the build gate 2026-09-02, re-verified
+  at the close by driving both asset gates end to end).
+- **Owner:** **OWNER.** `ClassifySPDXExpressionTerms`' operator check refuses `WITH` and is **UNMODIFIED
+  by Story 8.4j** — what changed is that the rest-of-line capture now routes such a declaration to it.
+  Teaching the parser SPDX exception grammar is a coverage decision about which SPDX constructs this
+  project understands, not a build decision; D-8.4j.2 forbids a build answering it and forbids a second
+  authority for the property the classifier owns.
+- **Severity:** MEDIUM. **Fail-closed and loud**, and zero of the 35 population texts carry a `WITH`
+  expression today. Becomes reachable at Story 8.5, which lands ~20 font `LICENSE` files, and
+  `WITH`-exception licensing is common where OFL/Apache faces are redistributed.
+- **Status:** OPEN.
+
+**Measured.** `SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception` classified
+`(permissive, "Apache-2.0")` at `dbd1699` — the single-token capture took the first term and never saw
+the rest — and classifies `(unknown, "")` from `66d445b` onward. Re-measured at the close through the
+real gates: the declaration is refused at **both** asset sites through the *"could not be classified"*
+arm, and is left **UNNAMED**, so no message asserts a classification the text does not carry.
+
+**Why it is registered rather than fixed.** This is the priced, intended cost of reading the label whole
+(the same family as `deferred[1]` trailing content and `deferred[2]` a split declaration), and its
+direction is the safe one. But `Apache-2.0 WITH LLVM-exception` is an ordinary way to publish a font or
+a library, so a face arriving under it at Story 8.5 fails the build with *"licence text could not be
+classified"* rather than shipping mislabelled. That is the correct failure, and it is still a failure
+someone must decide about.
+
+**What discharges it.** An owner ruling on whether this project's classifier understands SPDX exception
+expressions at all: either the parser learns `<id> WITH <exception>` (resolving on the base identifier,
+with the exception recorded in the label), or the refusal is confirmed as intended and Story 8.5's
+arriving faces are checked for it before they land.
+
+---
+
+### DW-133 — two residues of reading the SPDX line whole that the review named and no register received
+
+- **Recorded by:** **Story 8.4j's CLOSE (2026-09-02)**, by probe. The halted pass's reviewer named both
+  as `defer` findings; that pass's defer list was superseded by the ruling and **only** the `WITH` shape
+  (DW-132) was written to `deferred:` on the re-dispatch. These two were not.
+- **Owner:** **ENGINEERING LEAD** — both are consequences of a mechanism D-8.4j.1 bounded to one defect
+  and one fix, and neither is inside Story 8.4j's scope to change.
+- **Severity:** MEDIUM as a pair; **latent** in today's population (0 of 35 texts, measured).
+- **Status:** OPEN.
+
+**(a) An unsupported operator SPELLING is now refused where it was previously admitted on its first
+term.** Measured at the close by driving the real font and wordlist gates in this tree and in a worktree
+at `b4dabd9`: a `LICENSE` declaring `SPDX-License-Identifier: MIT or Apache-2.0` — lowercase operator,
+not valid SPDX, but a shape people write — was **`ADMITTED label="MIT"`** at `b4dabd9` and is **refused
+as unclassifiable** now. Same family as `deferred[1]`/`[2]`/DW-132, same fail-closed direction, and
+covered by none of their entries. It is the same class as the finding the halted pass filed as *"no pin
+for arity ≥ 3 expressions, lowercase operators, unknown operators, or `WITH`"*, of which only the last
+reached the register.
+
+**(b) The rest-of-line capture reaches the DEPENDENCY gate, and none of the entries pricing it says
+so.** `deferred[1]` prices trailing content *"against the classifier and the font gate"*.
+`rules.ScanLicenceGraph` consumes the same `ClassifyLicenceText`, and its `FamilyUnknown` arm is a
+build-failing *"licence unresolvable — could not classify licence text"*. So a future Go dependency
+whose `LICENSE` carries an otherwise-ordinary SPDX line with trailing content, a split declaration, a
+lowercase operator or a `WITH` exception now fails the build — a population Story 8.4j never measured
+against, because the 9 current dependency licences are pinned and unmoved (census 35/35 at the close).
+The asset population is 26 files this repository controls; the dependency population is whatever a
+future `go get` brings.
+
+**Why this is a register entry and not a defect.** Both directions are fail-closed and loud, both are
+zero-of-35 today, and both are the accepted price of the fix. What is missing is the record: a residue
+that is priced in one entry's prose and reachable through a *different* gate is a residue nobody is
+watching. Story 8.5 is warned about the asset gates; nothing warns anyone about the dependency gate.
+
+**What discharges it.** A lead ruling folded into whichever story next touches the classifier: either
+the SPDX-line step distinguishes *"this line is not a valid SPDX expression"* from *"this text carries
+no licence signal"* — so a non-conforming line does not poison a text whose body is unambiguous — or the
+refusal is confirmed as intended at all three gates and the dependency gate's exposure is written into
+the entries that price it.
 
 ---
