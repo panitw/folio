@@ -1204,3 +1204,154 @@ it.**
 **Hard constraint on 8.4i.** It **must not** turn the gate fatal in the same commit that first measures
 the population. **Measure, record, then close** — and if the measurement reds something legitimate,
 that is a finding to route, not a rule to soften.
+
+## Story 8.4i's plan gate — the predicted fourth instance holds, and the census found a fifth constraint (2026-09-02)
+
+### D-8.4i.7 — CONFIRMED by measurement: OFL-1.0 classifies as MIT, and the bypass also works through a copyleft SPDX line
+
+**Orchestrator decision** (accepting two measured findings; the second is new and in no register).
+
+**Verdict.** D-8.4i.2's predicted fourth instance **holds**. The SPDX-published **OFL-1.0** text
+classifies as **`(permissive, "MIT")`**, not `FamilyUnknown`. So the comment at `classify.go:201-205`
+is **false**, `:241-249` is false for American-spelled UFL (also `(permissive, "MIT")`), and the
+*"required conjunct makes a near-miss loud"* justification is **false for both branches and has been
+since Story 2.2**.
+
+**How it was measured, and why the method matters.** Two ways, not one: the published OFL-1.0 text
+carries *"Permission is hereby granted, free of charge, to any person obtaining a copy of the Font
+Software…"* under the title *"SIL OPEN FONT LICENSE Version 1.0 - 22 November 2005"* and contains
+`"Version 1.1"` **nowhere** — so it misses the OFL branch's required conjunct and falls into the MIT
+catch-all immediately below. Then it was **probed** at `7e4b2c4` rather than reasoned about. The
+prediction came from the lead; the story was told to measure it rather than take it on authority, and
+it did.
+
+**In simple terms.** The code carried a note saying "if the version does not match, this fails loudly."
+It does not. It falls into the bin below, which is labelled MIT, and passes. The note has been wrong
+for as long as the branch has existed, and it is the note that stopped anyone checking.
+
+**THE NEW FINDING, in no register before this gate.** DW-125's bypass works with a **copyleft SPDX
+line**, not only with copyleft *marker text*: a file carrying an `MIT` line followed by a
+`GPL-3.0-only` line yields `(permissive, "MIT")`. **This is a second, independent reason the rejected
+alternative was wrong** — *"a copyleft marker in the body outranks a permissive SPDX line"* would not
+have caught this at all, because there is no marker text to outrank; both signals are SPDX lines. The
+ruled fix — collect every signal, resolve as one — covers it.
+
+**Consequences.** Both false comments are corrected in place with the originals preserved verbatim.
+The story's acceptance must cover **three** shapes of the bypass, not one: copyleft marker text plus a
+permissive SPDX line; two distinct permissive SPDX lines; and a permissive SPDX line plus a **copyleft
+SPDX line**.
+
+**How we'd know it was wrong.** A real OFL-1.0 file in the population that classifies correctly — which
+would mean the probe used a text that differs from what ships, and the measurement needs redoing
+against the real file.
+
+### D-8.4i.8 — The sfnt tripwire is BUILT, not deferred: the prohibition binds on the capability, not the identifier
+
+**Orchestrator decision** (ruling a judgement call the plan gate flagged, rather than routing it — it
+turns on what a prohibition meant, and the answer is in the prohibition's own stated purpose).
+
+**Verdict.** Story 8.4i **builds** DW-123's tripwire. D-8.4i.4's escape hatch — *"if `checkSfnt` is not
+reachable across the `lint` module boundary, leave it deferred"* — is **not** taken, even though its
+literal condition is true.
+
+**Situation.** `checkSfnt` is genuinely unreachable: it is unexported and lives in the `folio-go`
+module, and the repository has three separate Go modules with no `go.work`. But the `lint` module
+**owns its own sfnt reader** — `looksLikeSfnt` at `lint/internal/rules/fontsassets.go:144` — callable
+as-is from a test in that package. So the tripwire is buildable **writing no second reader**.
+
+**In simple terms.** The instruction was "do not build a second one of these." We found there is
+already a second one, built long ago, sitting in the room where the work is happening. Using it is not
+building a third.
+
+**Why the hatch does not apply.** D-8.4i.4's stated reason for the hatch was explicit: *"Do not
+reimplement a second sfnt reader to satisfy this."* The prohibition is on **duplicating the
+capability**, and the module-boundary condition was the lead's guess at the circumstance that would
+force duplication. That guess was wrong in a way that makes the hazard vanish rather than bite — the
+condition is true and the thing it protects against cannot arise. Taking the hatch here would defer a
+cheap, real guard on a technicality.
+
+**Options considered.** (a) *Defer per the hatch's literal text* — rejected: it would honour the
+wording while defeating the purpose, and leave a fail-open path guarded by nothing but a register entry
+keyed on nobody adding a real font. (b) *Route it back to the lead* — rejected as disproportionate
+under D-000.8; the prohibition's own sentence states its purpose and the purpose is satisfied.
+(c) *Build it using the reader the module already has* — chosen.
+
+**The accepted risk, stated.** If the lead reads `checkSfnt` as binding on the **identifier** rather
+than the capability, this is wrong and is cheap to reverse now — one test, deleted. Flagged in the
+story so it is visible at the build's review rather than buried here.
+
+**How we'd know it was wrong.** `looksLikeSfnt` turning out to disagree with `checkSfnt` on a real font
+— then there genuinely are two readers with two answers, which is the duplication the prohibition
+existed to prevent, and the tripwire becomes the thing that proved it.
+
+### D-8.4i.9 — Two premise corrections from the census, one of which constrains the fix
+
+**Orchestrator decision** (accepting two measured corrections; per D-8.5.10 neither is an intent gap,
+because the verdict, scope and acceptance all survive).
+
+**Verdict.** Both corrections are recorded as Design Notes and one becomes an explicit task
+constraint. D-8.4i.1's ruling stands unchanged.
+
+**Correction 1 — a false premise inside D-8.4i.1's own guardrail.** The guardrail justified the
+report-only census partly on the risk that *"a bundled multi-licence `LICENSE` is common in npm."*
+Measured: **`ScanNPMGraph` never calls `ClassifyLicenceText`.** It classifies the lockfile's declared
+`license` string through `ClassifySPDXExpression`, and reads no npm `LICENSE` file at all. **So no
+bundled npm licence file can reach this change.** The census still runs — the Go module graph is a real
+population and the ruling's *shape* was right — but its stated risk was overstated by one of its two
+halves.
+
+**Correction 2 — a constraint the rulings did not mention, and it directly shapes the fix.** The BSD
+branch's third disjunct matches `"REDISTRIBUTION AND USE IN SOURCE"`, which is a **clause, not a
+name** — and it is how **7 of the 9** dependency licences classify. They carry **no name signal and no
+SPDX line at all**. So a name-anchoring rule that treats that disjunct as a name signal would return
+`FamilyUnknown` for them and **red the Go standard library's own licence**.
+
+**In simple terms.** The new rule is "if you see a licence's *name* and cannot place it, say you do not
+know." Most of the dependency licences here are recognised not by a name but by a stock sentence every
+BSD-style licence opens with. Treating that sentence as a name would make the build reject the Go
+standard library — which is the exact shape of self-inflicted standing red this run has twice
+registered and once ruled against.
+
+**Consequences.** The name-anchoring rule in task 3 must distinguish **name signals** from **clause
+signals**, and the BSD clause disjunct is explicitly a clause. Written into the spec as a task-3
+constraint rather than left for the build to rediscover.
+
+**Why the census earned its place.** D-8.4i.1 required a report-only population pass before anything
+turns fatal, on the reasoning that the dependency population is not visible. The census came back
+**clean** — 9 dependency + 12 asset + 8 fixture `LICENSE*` files, **zero** carrying two distinct
+identifiers, an unresolved name signal, or a copyleft/permissive mix, and nothing changing verdict —
+but it produced this constraint, which nobody had predicted and which would otherwise have been found
+by the build going red on the Go standard library. **The census is still run as task 1 at build time,
+and a disagreement between the two runs is itself the halt.**
+
+### D-8.4i.10 — Story 8.4h's rejection record is unrecoverable for 4 of 7, recorded as "could not look"
+
+**Orchestrator decision** (discharging D-8.4i.5).
+
+**Verdict.** Three of Story 8.4h's seven rejections were recovered and carried into 8.4i's spec as
+named claims with dispositions. **Four are recorded as "could not look"** — never as absent, never as
+fine.
+
+**Recovered, with disposition:** the duplicated `TestClassifyUbuntuFontLicence` case (rejected as
+churn — **stands**); the missing American-spelling test (rejected as a *"loud miss"* — **OVERTURNED,
+the rejection is false**; this is DW-124); AC7's suite placement (rejected on the spec's own Code Map —
+**stands**).
+
+**Why the other four cannot be recovered.** The record has **no `rejected_findings` block, no
+per-finding rejection list, and no reviewer-layer attribution for any finding in that story.**
+Rejections 4–7 have no summary, no location, no severity and no reason anywhere in the artifact. There
+is nothing to read.
+
+**In simple terms.** The review reported that it threw seven things away and described three of them.
+The other four were not written down at all — so we cannot check them, and the honest record of that is
+"we looked and there was nothing to look at", not silence.
+
+**Why this is a finding and not a shrug (D-8.4i.5).** One of the three recoverable rejections was
+**false**. Four unexamined claims at a measured 1-in-3 falsification rate, on the story whose subject
+is *"does the licence gate hold"*, on a compliance boundary, is a measured risk rather than an abstract
+audit gap. Registered as such.
+
+**Consequences.** The triage log's `reject: N` count is not evidence of anything on its own, and this
+run stops treating it as such: a rejection that is not enumerated cannot be spot-checked, so from here
+a compliance- or security-boundary story's close **names** what was rejected or records that it could
+not. This is DW-87's third instance and it re-prices rather than renews.
