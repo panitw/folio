@@ -2061,3 +2061,49 @@ gap between two true sentences.
 **A pass-1 medium is CLOSED, not open:** the allowlist-containment fail-open was closed by the
 re-dispatch's `firstTermNotOn` error patch — probed with a synthetic unrecognised allowlist id, refused
 at both gates.
+
+### D-8.5.14 — OWNER DECISION: the classifier learns `<id> WITH <exception>`, and the exception must be allowlisted too
+
+**Owner decision**, taken at the terminal 2026-09-02, ahead of Story 8.5's procurement. Routed to the
+owner rather than ruled, on **D-8.5.3's precedent**: *which licences are acceptable for a font this
+project redistributes* is a product and legal call, not an engineering one — and D-8.4j.2 forbids
+answering it in a build.
+
+**Verdict.** The classifier learns the SPDX `WITH` form. A declaration `<licence> WITH <exception>` is
+accepted **iff the base licence is one of the owner's four ids AND the exception is on a named,
+owner-approved exception list.** Neither half alone admits.
+
+**Situation.** `Apache-2.0 WITH LLVM-exception` is a standard SPDX shape meaning *"this licence, plus a
+named carve-out"*. The classifier's operator check refuses it. That check is **untouched by Story 8.4j
+and only newly reachable** — before 8.4j the line never got read whole enough to reach it. Story 8.5
+procures 20+ typefaces next, so this decides what can be admitted, and a face turned away on this
+technicality would produce a refusal message saying nothing about the licence itself being fine.
+
+**In simple terms.** A licence saying *"Apache, with this specific carve-out"* is a real and common
+thing to write. Today the checker sees the word "with", decides it cannot read the sentence, and
+refuses — even when both halves are things the project accepts. The decision is to teach it the
+sentence, and to require that the carve-out itself be one somebody has read and approved.
+
+**Options considered.** (a) *Keep refusing `WITH` entirely* — safest and already the behaviour, rejected
+because it turns away genuinely permissive faces on a parsing technicality and produces a misleading
+refusal. (b) *Accept if the base licence is one of the four, ignoring the exception* — simplest and
+admits the most faces, **rejected because an exception can REMOVE permissions as well as grant them**,
+so it would admit carve-outs nobody has evaluated — the same silent-affirmative shape D-2.1.3's
+loud-vs-silent doctrine exists to stop. (c) *Base allowlisted AND exception allowlisted* — chosen.
+
+**Why this wins.** It is the only option under which nothing is admitted on the strength of text nobody
+has read, which is the property the whole licence gate exists to hold. It is also **structurally
+identical to the rule already in force**: an expression is admitted iff every part of it is on a list
+somebody approved. The accepted cost is a second list to maintain, and a face whose exception is not yet
+on it fails **loudly**, naming the exception — so a real case surfaces at build time rather than
+shipping mislabelled.
+
+**Consequences.** The exception allowlist starts empty or near-empty and grows by owner decision, the
+same way the four-id list does. The `WITH` form must be enumerated by the **single existing enumerator**
+— **never a second parser**, which is the guardrail this area has now tripped five times. Admission
+tests **both** parts. A `WITH` case must be **pinned in Story 8.5's census** on D-8.4j.2's reasoning: a
+census keyed only on today's population is a snapshot, not a guard.
+
+**How we'd know it was wrong.** A legitimate catalogue face refused because its exception is
+unapproved, arriving faster than the owner wants to rule on exceptions — which would mean the exception
+list needs seeding from the real population rather than growing case by case.
