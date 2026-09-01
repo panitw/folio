@@ -3886,3 +3886,132 @@ same corrections after implementation are neither.
    was never written.** **An assertion of a negative is exactly the kind that survives as a false green
    when the negative stops holding** — struck rather than adapted, for that reason. Its I/O matrix row
    went with it.
+
+---
+
+### D-8.4.29 — the budget's metric does not exist in this repository; `s1.cachedBytes` is NOT the replacement
+
+**Branch three of D-8.4.27(c) is confirmed, and it is worse than "the metric is wrong."** Measured at
+`generate-offline-release.mjs`: `s1VisibleBytes` is the Brotli size of **four assets found by
+HARDCODED FILENAME NEEDLES** — `.wasm`, `/noto-sans.`, `/noto-sans-thai.`, `/noto-sans-cjk.`. It is
+structurally blind to IBM Plex, to JS, to CSS, to images, and to every asset that is not one of those
+four.
+
+**So the honest disposition of all four historical figures — which D-8.4.27(b) demanded — is that they
+measured a thing nobody meant them to measure**, and the drift between them is engine-wasm noise. Not
+a procedure that varies, and not a build that varies: a **fourth** branch the original ruling did not
+have to hand.
+
+**But DO NOT adopt `s1.cachedBytes`.** Measured: `cacheAssets[].bytes` is
+`statSync(outputDir/url).size` — **uncompressed**, over all assets.
+
+| figure | unit | population |
+|---|---|---|
+| `s1VisibleBytes` | **Brotli ✓** | 4 hardcoded needles **✗** |
+| `s1.cachedBytes` | uncompressed **✗** | **all cached assets ✓** |
+
+**Neither is the budget's metric, and the budget's metric exists NOWHERE in this repository.** NFR7
+accepts *"~9 MB first load"* — **bytes over the wire, compressed**. Adopting `cachedBytes` would set a
+budget in **uncompressed** bytes against a limit written in **transfer** terms, producing a 37.9 MB
+figure against a ~9 MB line that is **not a 4× overage but a UNIT MISMATCH** — the failure where **an
+uncounted unit lets an implementation detail decide the answer.**
+
+**Verdict: the metric Story 8.4d must build is Brotli bytes over the FULL first-load cache set** —
+`visibleBytes`' unit with `cachedBytes`' population. Cheap, since a `.br` is already written per asset.
+**Watch the exception: that loop filters on `asset.immutable`, so non-immutable assets have no `.br` on
+disk, and the new metric must define their treatment EXPLICITLY rather than skipping them silently.**
+
+**Story 8.4d's task order: (0) the determinism check; (1) define and compute the metric; (2) dispose of
+the four historical figures against it; (3) only then set the threshold.** 8.4d still lands **last**.
+
+**Task 0 discharged during Story 8.4c's close, ahead of the ruling, and it closes BENIGN — by
+measurement.** Two clean builds at `4f5925a` are **byte-identical**, so it is **not** Brotli
+nondeterminism. The wasm carries `vcs.revision`, `vcs.time` and `vcs.modified`: `go build` runs with
+`-buildvcs` at default. Proved at one commit with source fixed — a clean tree gives one digest;
+touching one tracked file gives another with `vcs.modified=true`. **The engine row is 58% of
+`s1VisibleBytes`, so the figure moves EVERY COMMIT AND ON TREE CLEANLINESS, by construction.** Fix:
+`-buildvcs=false`.
+
+---
+
+### D-8.4.30 — the guard's commit-placement clause is DISCHARGED, and the lead recorded the clause as its own proxy defect
+
+D-8.4.23 required the licence guard in the **first** commit *"because a guard added after the thing it
+guards has already shipped is one that was never able to fail."* It landed in the **third**.
+
+**Discharged.** That reason is a claim about **demonstrated fallibility**, and **commit ordering is
+only a PROXY for it**: ordering creates an *opportunity* for the guard to fail; a red-proof **shows**
+it failing on the real condition. **The red-proof is the stronger evidence, so it does not merely
+substitute — it is what should have been asked for.** The lead's own words: *"I have ruled repeatedly
+that a guard keyed on a proxy rather than its purpose is a defect; I wrote one into my own ruling."*
+The exposure window is **zero** — nothing pushed, no release between commits — and the closer measured
+it empty of the hazard besides (all three binaries `.ttf` by magic bytes).
+
+**Correction of record:** the build routed the omission as `patch`; the closer judged **`bad_spec` was
+accurate**, since the omission was in the spec's Tasks. The `patch` routing was still the right
+**trade** — reverting correct work for a purely additive guard is worse — but the classification was
+wrong, and those are different questions.
+
+**One residual recorded rather than reopened: the guard is PLACE-KEYED to `public/fonts/`.** As built
+it is **broader** than the ruling's wording (*"reaching the runtime bundle"*) — correctly, since
+`ResolveAssets` walks the whole repo and an unseeable font **anywhere** is the defect. **But a font
+vendored elsewhere — into `src/`, or a package's assets copied to another path — is still invisible.
+The blind spot has MOVED rather than closed. A place-keyed guard's anchor is one the code can move.**
+
+---
+
+### D-8.4.31 — "a ruling recorded in every document except the one that gets read is a ruling that did not happen"
+
+D-8.4.23 was amended into the **epic** and the **decision log** and **not into Story 8.4c's spec
+Tasks** — the only artifact a builder executes. Neither implementation commit carried the guard.
+
+**The asymmetry is the point.** The epic and this log are **records**; a builder does not execute a
+record. **A ruling amended into both and not into Tasks is STRICTLY WORSE than one amended into
+neither, because the log now testifies that the direction was given.**
+
+**Third artifact-drift failure of this run, and the first with the ruling in hand** — which is what
+makes it **structural rather than a lapse**, and it is recorded that way.
+
+**The lead has adopted a process change from it, unprompted:** every ruling of its carrying an
+**implementable clause** will end with a **`Carried into:` line naming the artifact that must carry
+it** — the spec's Tasks. *"The routing obligation belongs in the ruling, not in your memory of it,
+since I am the one who created the clause."* **The orchestrator is to hold it to that and say so if it
+is omitted.**
+
+---
+
+### D-8.4.32 — a claim in prose is a claim, whoever wrote it: third instance, third artifact
+
+The orchestrator's patch instruction *"assert IBM Plex Sans covers U+0020–U+017F with no gaps"* was
+**copied from the face's NOTICE** and is **false on its face**: U+007F–U+009F are **33 C0/C1 control
+points no text face maps**. **The patch agent said so rather than complying** — the loop working in the
+direction it is supposed to.
+
+**Third instance of one class, in three different artifacts:** a number read out of a **doc comment**
+and carried forward as measured (D-8.4.7); an asset's prose **`source` field**, which the lead insisted
+on **hashing rather than reading** (D-8.4.8); and now a **vendor's NOTICE**. **A coverage claim in a
+NOTICE is a vendor's description, not a measurement.**
+
+**The method that refuted the largest rejected finding is the one to keep:** the claim that
+`--font-mono` losing CJK regresses rendering was refuted by reading **every** `--type-page-mono`
+consumer — **an inverse census beats a plausible story.** But the closer then **re-opened it one level
+up (DW-102)**: the rejection is airtight at `--type-page-mono`, while the claim was about
+`--font-mono`, which **seven** tokens share — and **IBM Plex Mono maps 0 of 20,992 CJK code points
+where the file it replaced mapped 20,976**, reaching the document title and the author's prose field.
+**A census is only as good as the population it enumerates.**
+
+---
+
+### D-8.4.33 — the 428 KB stub is the physical form of a couldn't-look
+
+The Playwright browser cache held an entry named `chromium-1208` that **looked present and was not a
+working install** — 428 KB against 192 MB for a complete one, its Framework bundle absent. **Every
+inference from "the cache has Chromium" was therefore wrong, and running the thing was the only way to
+find out.**
+
+Its reinstallation then hung repeatedly on a **stale `__dirlock`** left by killed processes — a lock
+held by nobody, which no amount of retrying could pass and which reported nothing until Playwright
+itself named the file.
+
+**Expectation set for the first execution: a suite that has never run is expected to surface
+pre-existing breakage, and that breakage is a FINDING, not a blocker on this epic.**
