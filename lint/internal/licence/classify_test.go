@@ -293,6 +293,30 @@ func TestClassifyUbuntuFontLicence(t *testing.T) {
 //     UbuntuFontLicence and TestClassifyCollectsEverySignal — and NOT
 //     this test.
 //
+// ⚠ CORRECTED AT STORY 8.4i's CLOSE (2026-09-02), and the correction is
+// left in this form rather than by editing the two figures above,
+// because the shape of the mistake is this story's own subject. THE TWO
+// COUNTS ABOVE ARE TRUE OF THIS PACKAGE ONLY. They were measured with
+// `go test ./internal/licence/`, and they are written as though they
+// were the suite's whole mutation resolution, which is the property
+// they are cited for. RE-MEASURED WITH `go test ./...` OVER THE WHOLE
+// lint MODULE:
+//
+//   - deleting permissiveSPDX["Ubuntu-font-1.0"] reds SEVEN top-level
+//     tests, not five: the five above, plus manifest's
+//     TestResolveAssetsAcceptsEveryAllowlistedFontLicence
+//     (subtest "Ubuntu-font-1.0 by marker") and rules'
+//     TestLicenceGraphFixtureScan (subtest "permissive").
+//   - deleting the licenceNames UFL entry reds THREE, not two: the two
+//     above, plus TestResolveAssetsAcceptsEveryAllowlistedFontLicence.
+//
+// THE CONCLUSION IS UNCHANGED AND WAS RE-VERIFIED: the second mutation
+// still does NOT red this test while the first does, so the
+// independence really is one-way. Only the resolution figures were
+// understated, and a figure quoted without the scope it was measured at
+// is the same defect class as the comments this story corrected — a
+// measurement that reads wider than it was taken.
+//
 // So the independence is now ONE-WAY: the name table can be removed
 // without this test noticing, but not the reverse. This test remains the
 // only named guard on the map entry; it is no longer the ONLY guard.

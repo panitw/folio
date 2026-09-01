@@ -6386,3 +6386,140 @@ red-proof — or a ruling that the coarse label is acceptable in `lint/MANIFEST.
 table can be read.
 
 ---
+
+### DW-128 — the excluded-path font tripwire is blind to the two WOFF wrappers, and a web font there is still invisible
+
+- **Recorded by:** **Story 8.4i (2026-09-02)**, deferral 1 of 3, and **re-measured at that story's
+  close** rather than carried from the build's report.
+- **Owner:** **EPIC 15's release gate**, per **D-8.4i.6's bound** — AD-26's manifest is a named
+  obligation of Story 15.3. **Explicitly NOT an `8.4j`**: it is a coverage gap in a guard that did not
+  exist before this story, not a demonstrated bypass of a shipped gate.
+- **Severity:** MEDIUM — a false negative, which is the direction that fails open.
+- **Status:** OPEN.
+
+`TestNoRealFontHidesUnderAnExcludedPath` keys on `looksLikeSfnt`
+(`lint/internal/rules/fontsassets.go:144`), which recognises **four** magics — `00 01 00 00`, `true`,
+`ttcf`, `OTTO` — and **neither `wOFF` nor `wOF2`**. The designer's own list
+(`folio-designer/src/font-binary-identity.test.ts:241`) carries **six**, including both web wrappers,
+so the two sides of the same question already disagree.
+
+**MEASURED AT THE CLOSE, not inferred.** Files beginning `wOF2` and `wOFF` were planted under
+`folio-go/testdata/lint/embed-font/allembed/fonts/` and the tripwire returned **`ok`** — it saw them
+and said nothing. The same directory reds immediately on a real `.ttf`-magic font, and reds on that
+font even when renamed to `.README`, so the detector is live and correctly keyed on content; it simply
+does not know these two magics. No `.woff` or `.woff2` file is tracked anywhere in the repository
+today, so the gap is **latent, not live**.
+
+**Why it is registered rather than left in a test comment.** The gap was accurately stated in the
+test's own header and in DW-123's amendment, but a coverage limitation recorded only beside the code
+that has it is the pattern **D-8.0.1** exists to stop — and this story is that pattern's third and
+fourth instance. It gets a number so it can be closed against one.
+
+**What discharges it.** Adding `wOFF` and `wOF2` to `looksLikeSfnt`, with a red-proof planting each
+magic under the excluded path — or a ruling that the four-magic scope is deliberate, recorded at the
+function rather than only here. Note that `looksLikeSfnt` is also the asset gate's own detector, so
+widening it widens the gate, which is the reason this is a ruling and not a typo fix.
+
+---
+
+### DW-129 — DW-127 is routed to Epic 15 with nothing pinning today's behaviour, so Epic 15 has no red to work against
+
+- **Recorded by:** **Story 8.4i (2026-09-02)**, deferral 2 of 3.
+- **Owner:** **EPIC 15's release gate**, alongside **DW-127** itself — the two are one piece of work.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+Story 8.4i preserved the 2-clause-BSD mislabel exactly and registered it as **DW-127**, correctly
+declining to fix it under D-8.4i.6's bound. But with clauses now demoted behind names, the
+`BSD 2-CLAUSE` name entry is the **only** thing that fires for such a text, where before the mislabel
+was masked by branch order. Nothing asserts the current verdict, so a later accidental change to that
+entry would be invisible in both directions — and Epic 15 inherits a defect with no failing test to
+drive the fix.
+
+**What discharges it.** A pinned case asserting today's `(permissive, "BSD-3-Clause")` for a
+2-clause-named text, carrying DW-127's number and stating that the expectation is a **record of a known
+mislabel**, not an endorsement — so that closing DW-127 flips a test that says why.
+
+---
+
+### DW-130 — the tripwire derives the gate's walk exclusion by regexping its source, so a formatting-neutral refactor reds it with a misleading message
+
+- **Recorded by:** **Story 8.4i (2026-09-02)**, deferral 3 of 3.
+- **Owner:** **whichever story next changes `manifest.go`'s asset walk** — it is that change that pays
+  the cost, and it will be holding the context needed to fix it.
+- **Severity:** LOW — a false positive with a confusing message, never a missed font.
+- **Status:** OPEN.
+
+`assetWalkStructuralExclusion` (`lint/internal/rules/excludedpathfonts_test.go`) matches the literal
+text of `manifest.go`'s `SkipDir` condition with a regexp. Swapping the conjunction order, extracting a
+helper predicate, or splitting the condition across lines makes it `Fatalf` with *"the gate's walk has
+changed shape"* when the rule has not changed at all — and that message actively misdirects the reader
+toward a rule change that did not happen.
+
+**Deriving rather than hand-copying was the right call** (that is DW-119's lesson, and DW-119 is the
+defect this avoided). It is the derivation **mechanism** that is fragile, not the decision to derive.
+
+**What discharges it.** Deriving the exclusion via `go/ast` rather than a regexp over source text, or
+exporting a test-only accessor from `manifest`, so the tripwire is coupled to the **rule** rather than
+to its **spelling**.
+
+---
+
+### DW-131 — CLOSER FINDING: a compound `SPDX-License-Identifier:` line in a licence text still drops its copyleft half, and review rejection R4 is FALSE
+
+- **Recorded by:** **Story 8.4i's CLOSE (2026-09-02)**, by probe. **This is not a deferral the build
+  recorded; it is a rejection the closer overturned and then demonstrated.**
+- **Owner:** **ENGINEERING LEAD**, and it is routed there rather than to Epic 15 **deliberately**.
+  D-8.4i.6 bounds Epic 8's licence-gate insertions at 8.4i with exactly one exception — *"a
+  demonstrated live bypass of a gate the epic has declared fail-closed, which returns to the lead to be
+  ruled AGAINST the bound rather than around it."* This is that class, and the closer does not get to
+  decide whether the exception applies.
+- **Severity:** HIGH as a mechanism; **latent** in today's population.
+- **Status:** OPEN — **awaiting the lead's ruling. Not fixed at the close, on purpose.**
+
+`spdxLineRE` (`classify.go:157`) captures a **single token**: `([A-Za-z0-9.\-+]+)`. A compound SPDX
+expression on a licence line therefore contributes only its **first** term, and the remainder —
+including a copyleft term — is never collected as a signal. `ClassifyLicenceText` never routes to
+`ClassifySPDXExpression`; that function's only non-test callers are `licencegraph.go:78` and
+`npm.go:64`, both on the **npm lockfile** path, which reads a declared `license` string and no licence
+file at all.
+
+**MEASURED at the close, at `98e98f1`:**
+
+| licence text | measured verdict |
+|---|---|
+| `SPDX-License-Identifier: MIT OR GPL-3.0-only` | **`(permissive, "MIT")`** |
+| `SPDX-License-Identifier: MIT AND GPL-3.0-only` | **`(permissive, "MIT")`** |
+| `SPDX-License-Identifier: GPL-3.0-only OR MIT` | `(copyleft, "GPL-3.0-only")` |
+| a font `LICENSE` body carrying `SPDX-License-Identifier: OFL-1.1 OR GPL-3.0-only` | **`(permissive, "OFL-1.1")`** |
+| *control:* `SPDX-License-Identifier: GPL-3.0-only` | `(copyleft, "GPL-3.0-only")` |
+| *control:* `ClassifySPDXExpression("MIT OR GPL-3.0-only")` | **`copyleft`** — it gets this right |
+
+**Why this is a gate bypass and not a parsing nicety.** `OFL-1.1` is on the owner's four-id font
+allowlist (D-8.5.3). So the fourth row above is a font directory whose licence text declares a copyleft
+term, passing the fail-closed asset gate and landing in `lint/MANIFEST.md` **labelled `OFL-1.1`** — a
+release artifact under AD-26. It is also **order-dependent**: putting the copyleft term first refuses
+correctly. That order-dependence is DW-125's defect shape exactly, surviving in the case the collect-all
+rule does not reach.
+
+**It also means D-8.4i.1's stated goal is not fully met.** That ruling's reasoning was *"making
+`ClassifyLicenceText` agree with the function it sits beside"* — and the last two rows above are the two
+functions still disagreeing on the same string.
+
+**Rejection R4 is FALSE as a claim about the code.** It was dropped as *"Speculative. A compound
+expression is routed to `ClassifySPDXExpression`, which returns copyleft if any term is copyleft. Not
+demonstrated."* The premise is true of the npm path and false of the path under test. The finding was
+correct; the triage was not. **This is DW-126's pattern one turn later** — the enumeration that DW-126
+bought is what made it checkable at all, and checking it overturned one.
+
+**Not live today.** `TestLicenceSignalCensus` pins all 35 committed and dependency licence texts; **none
+carries a compound SPDX expression**, and the pinned table would red if one appeared. The exposure is a
+new dependency or a redistributed font arriving with a dual-licence declaration, which is an ordinary
+thing for a font to ship.
+
+**What discharges it.** Collecting the whole expression from the line and resolving it through
+`ClassifySPDXExpression` — every term contributing its own signal, so a copyleft term refuses as
+copyleft naming it — with a red-proof on both orderings and on a font-gate surface. Plus a pinned case
+for the parenthesised form, which today returns `(unknown, "")` and is correctly fail-closed.
+
+---

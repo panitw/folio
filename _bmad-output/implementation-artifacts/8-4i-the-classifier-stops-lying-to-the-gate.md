@@ -78,27 +78,24 @@ to the lead to be ruled *against* the bound rather than around it.
 *Non-normative. This section is a plain-language orientation for a human reader; the intent contract
 below is what governs the build.*
 
-The previous story made this check refuse things. It did not make it *see* straight. The part that
-works out which licence a document is under reads the first label it finds, then stops looking.
-Hand it a document carrying two labels — common in redistributed typeface bundles — and it judges
-the whole thing by whichever label comes first, even when the body says something the project must
-refuse.
+The check that decides which licence a document is under could be fooled two ways, both now closed. A
+file carrying two labels was judged by whichever came first, so a document the project must refuse
+could be waved through by one stray line saying otherwise. And a licence whose name was spelled
+slightly differently was not merely unrecognised — it was quietly credited to a different licence, and
+that wrong name reached published paperwork. Both now count as not knowing, and not knowing fails.
 
-It can be fooled a second way. Licences are recognised by name, and a name spelled even slightly
-differently is not. Rather than admit it does not know, the check drops it into a catch-all and
-credits it to a different licence — and that wrong name reaches paperwork the project publishes.
+The notes in the code claiming these paths were safe were false from the start. One is why an earlier
+review dismissed the problem. They are corrected in place, original wording kept beside the
+correction, because the note is what stopped anyone looking.
 
-This story makes "this file says two different things" count as not knowing, and not knowing now
-fails. A half-recognised name counts as not knowing too.
+The most useful lesson is the part that went wrong. Before anything was made to refuse, a tool was
+built to run the new rule over every licence the project relies on and prove nothing changed. Once the
+new rule shipped, that tool was comparing the rule against itself. It kept reporting agreement, and
+would have done so if every licence here had been misread. It was caught only by deliberately breaking
+the classifier to see if the tool noticed — and it did not.
 
-The uncomfortable part: the safety these paths were *believed* to have was written down in the code,
-as notes explaining why each was fine. Those notes were wrong. They are corrected alongside
-the behaviour, original wording kept, because a wrong note is what stopped anyone looking, three
-times running.
-
-The risky step is the first. Before anything becomes fatal, the new rule runs over every licence
-document the project already relies on, purely to report what it would say. If that turns up
-something legitimate, the answer is to stop and ask — never to soften the rule until it goes quiet.
+Two gaps are left deliberately, both registered with owners: a web-font format the new tripwire cannot
+yet see, and a known mislabel kept on purpose. A third, found while closing, is sent back for a ruling.
 
 <intent-contract>
 
@@ -945,3 +942,165 @@ unformatted and still untouched; exactly **4** `only-export-components` warnings
 regenerates with no diff; no asset directory holds more than one `LICENSE*` (DW-118 still not live); no
 demonstrated live bypass was found beyond the two already chartered, so **D-8.4i.6's bound holds and
 nothing here buys an `8.4j`**.
+
+### 2026-09-02 — done (close)
+
+Baseline `582a01a` on `main`. **Eight story commits plus one record commit**, all local, **nothing
+pushed** — `origin/main` is still `c985b9c`, twenty-five commits behind. Closed by this entry's own
+commit, the tip of `main` at close (a commit cannot carry its own hash in its diff).
+
+| commit | what it did |
+|---|---|
+| `2e9365e` | Task 1's report-only population census. **Additive only — two new files, 458 insertions, zero deletions, `classify.go` untouched**, so the new rule was dead code called by the census test alone. This is D-8.4i.6's hard constraint discharged: nothing became fatal in the commit that first measured the population. |
+| `0c6e3b4` | Tasks 2–5. `ClassifyLicenceText`'s body becomes the collect-all rule; the two false comments corrected in place with originals verbatim; the classifier's test cases, including the two shipped expectations reversed to `FamilyUnknown`. |
+| `7cb8148` | Task 6, DW-120: the owner's four-id allowlist pinned to a test-owned literal naming D-8.5.3. |
+| `90f0820` | Task 7, DW-123: the excluded-path sfnt tripwire, keyed on magic bytes via the `lint` module's own reader. |
+| `fb92156` | Task 9: DW-117/120/124/125 closed, DW-123 amended, DW-126 and DW-127 registered. |
+| `7c6e56a` | Review triage, code half: the census re-pinned against a test-owned table, the gate-surface bypass test added, `readFirstBytes` given `io.ReadFull` semantics, two docs corrected. |
+| `66e2db7` | Review triage, record half: the `0 of 35` figure re-attributed to `2e9365e` in the three places that had stated it as a standing property. |
+| `ec40fc2` | The Review Triage Log, with all 24 rejections enumerated. |
+| `98e98f1` | D-8.4i.11 / D-8.4i.12 / D-8.4i.13 written into the decision log. |
+
+**Provenance, the standing gate (D-8.4h.6).** All nine `git show --stat` clean: only this story's files
+in every one, no unrelated churn, no generated artifact. `lint/MANIFEST.md` appears in no commit —
+correct, since the labels did not move. Author and committer are `Panit Wechasil <panitw@hotmail.com>`
+throughout; **both required trailers exact on all nine**. Branch `main`, no branch created. **No commit
+in this story was created by a step-03 subagent** — there is no instance five.
+
+**Decisions applied.** D-8.4i.1 (collect every signal, fixed resolution order) · D-8.4i.2 (anchor the
+name, not the spelling) · D-8.4i.3 (pin the allowlist to a literal the code cannot move) · D-8.4i.4 /
+D-8.4i.8 (the tripwire is built, using the reader the module already had) · D-8.4i.5 / D-8.4i.10 (the
+rejection record) · D-8.4i.6 (the bound) · D-8.4i.7 (OFL-1.0's fourth instance; the copyleft-SPDX-line
+bypass) · D-8.4i.9 (the BSD clause is a clause) · D-8.4i.11 (the census that stopped measuring) ·
+D-8.4i.12 (the follow-up flag) · D-8.4i.13 (two claims kept as facts). Also D-8.5.3, D-8.5.10,
+D-8.5.13, D-8.4h.5, D-8.0.1, D-2.1.3, D-1.3.4.
+
+**Triage: patch 9 (2 high / 3 medium / 4 low) · defer 3 (2 medium / 1 low) · reject 24 (5 medium / 19
+low).** All 24 rejections are individually enumerated with a reason in the Review Triage Log — that is
+**D-8.4i.10's requirement discharged**, and it was bought by Story 8.4h's record being **unrecoverable
+for 4 of its 7 rejections**, with 1 of the 3 readable ones measured false. The enumeration earned its
+cost immediately: it is what made **R4 checkable**, and R4 turned out to be false (below).
+
+**`followup_review_recommended: true` was discharged WITHOUT a second review pass, per D-8.4i.12** —
+the flag fired on 2 highs, score 13. The reason is measured, not asserted: at Story 8.4h the same four
+layers produced seven rejections, four unwritten and one false, and **both** genuine defects were found
+by the adversarial close rather than by the layers. This close carried the scrutiny instead, directed at
+three named targets. **It found one HIGH the layers had seen and the triage had wrongly dropped.**
+
+**Gates measured at the close, not relayed.**
+
+| gate | measured |
+|---|---|
+| `lint` `go test -count=1 ./...` | four `ok`, zero FAIL |
+| `lint` / `folio-go` `go vet ./...` | no output, both |
+| `genmanifest` twice, then `git diff --exit-code -- lint/MANIFEST.md` **from the repo root** | exit 0 both runs |
+| `folio-go` `go test -count=1 ./...` | **1815 pass / 2 fail / 5 skip**, counted from `-json` test events |
+| `gofmt -l folio-go lint` from the repo root | exactly one line, `lint/internal/rules/licencegraph_test.go` |
+| designer `npm test` | **40 files / 411 tests**, all pass |
+| designer `typecheck` / `build` / `test:e2e:compile` | exit 0 |
+| designer `npm run lint` | exactly **4** `only-export-components` |
+| `shasum -a 256 fixtures/*/expected.pdf`, **diffed against a worktree at `582a01a`** | **23** digests, `diff` exit 0 — byte-identical |
+| `md5 -q README.md` | `078d7d80d518d54af2fc04fb270d46b8` |
+| `maximumCacheAssets` | `= 64` |
+
+All three standing reds reproduce **by identity**: `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)`
+in `folio-go/internal/text` (#1); the one `gofmt` line, left unformatted and untouched (#2, DW-116); the
+four designer lint warnings (#3). None is this story's.
+
+**Heavy tests: NOT RUN, and not waived.** Cadence is **per-epic** (D-000.4). The four
+`FOLIO_MATRIX_TARGET` legs, `TestCrossTargetByteIdentity` and the Playwright suite are **written and
+compiling but unrun**, and come due at **Epic 8's boundary gate**. Compilation was verified rather than
+assumed: `go vet -tags matrix ./...` exits 0 and every `folio-go` package links its `matrix`-tagged test
+binary, so the eventual catch-up run will not open on a compile error banked from this story; the
+Playwright specs compile via `test:e2e:compile`.
+
+**The census's `0 of 35`.** Cited only as *a measurement taken at commit `2e9365e`*, where the two
+classifiers were genuinely different code. It is **not** a standing property and is not repeatable: from
+`0c6e3b4` the differential compared a function with itself. What stands today is the **pinned table** of
+35 verdicts, which is a different and stronger claim.
+
+**Adversarial pass — six directed checks, all performed.**
+
+1. **The census pin is genuine.** `pinnedCensus` is a hand-written 35-entry literal; nothing in it is
+   derived from the classifier, the name table, the clause table or `permissiveSPDX`, and the only
+   derived part is the *population* (`git ls-files`), which is the right thing to derive. Mutation-proved
+   twice, not once: the `VERSION 9.9` mutation reds it on **11 named files**, and a second, independent
+   mutation — promoting the BSD clause to a non-resolving **name** signal, D-8.4i.9's exact named hazard —
+   reds it on **8 named files**, naming all seven Go-style BSD dependencies plus `LICENSE-CMAPS`. A first
+   attempt at that mutation (promoting the clause to a *resolving* name) left the suite green and is
+   recorded as degenerate: it changed the mechanism without reinstating the defect.
+2. **No fail-open path in the new classifier.** Every early return, empty collection and default was
+   probed with 27 synthetic texts. The only outcome that passes a gate is `FamilyPermissive` with exactly
+   one identifier `classifyBySPDX` recognises; everything else — empty text, whitespace, an unrecognised
+   SPDX id, a copyleft name under any ordering, an unresolved name beside a valid declaration, MPL-2.0
+   prose, EULA prose, a lower-cased identifier — lands on `FamilyUnknown` or `FamilyCopyleft`, both
+   refusals. One latent coupling worth naming: the gate's arms would admit a `(FamilyUnknown, id)` pair if
+   `id` were ever on the font allowlist, and that cannot happen only because `unresolvedID` is by
+   construction an identifier `classifyBySPDX` rejects while the allowlist is a subset of what it accepts.
+   That invariant is unstated in the code but is now guarded by `7cb8148`'s allowlist pin.
+3. **The three bypass shapes are refused, both orders each.** GPL text + stray `MIT` line → `(copyleft,
+   "GPL-3.0")` either order. Two permissive ids → `(unknown, "")`, identical both orders. `MIT` +
+   `GPL-3.0-only` → `(copyleft, "GPL-3.0-only")` either order. Shapes (a) and (c) name the copyleft
+   identifier, as D-8.4i.1 requires.
+4. **The BSD clause disjunct still behaves as a clause.** A Go-style BSD text with no name signal and no
+   SPDX line returns `(permissive, "BSD-3-Clause")`, and the census shows all seven dependencies reaching
+   it that way. Check 1's second mutation is the proof that the guard against it becoming a name is live
+   and names the seven.
+5. **All three re-checked items held, one with a correction.** *(a)* The **wOFF/wOF2 gap is real and the
+   deferral is honestly scoped** — files beginning `wOF2` and `wOFF` planted under an excluded path left
+   the tripwire at `ok`. Registered as **DW-128**; it had been recorded only in prose. *(b)* The **gate
+   test genuinely does not measure the collect-all rule** — narrowing SPDX collection to first-match
+   leaves `TestResolveAssetsRefusesTheDW125BypassAtTheGate` green and the whole `manifest` package `ok`,
+   while four subtests of `TestClassifyCollectsEverySignal` red. D-8.4i.13's first claim is true as
+   written. *(c)* The **one-way independence conclusion holds but its figures were understated** — see
+   the correction below.
+6. **Both teeth-proofs pass.** Appending `"GPL-3.0"` to the allowlist reds **exactly one** test,
+   `TestFontAssetLicenceAllowlistIsTheOwnersFourIds`, in one package; the other three packages stayed
+   `ok`. A real sfnt planted under `folio-go/testdata/lint/…/fonts/` reds the tripwire naming the file —
+   **and reds it again when the same font is renamed `.README`**, while the `.ttf`-named text stub beside
+   it still passes. Keyed on magic bytes, not on the extension, proved in both directions. All mutations
+   reverted; `git status` clean after each.
+
+**ONE HIGH FOUND AT THE CLOSE, registered as DW-131 and NOT patched.** `spdxLineRE` captures a **single
+token**, and `ClassifyLicenceText` never routes to `ClassifySPDXExpression` — that function's only
+non-test callers are on the npm lockfile path. So a **compound** SPDX expression in a licence text
+contributes only its first term. Measured: `SPDX-License-Identifier: MIT OR GPL-3.0-only` →
+`(permissive, "MIT")`; a font `LICENSE` declaring `OFL-1.1 OR GPL-3.0-only` → `(permissive, "OFL-1.1")`,
+which is on the owner's four-id allowlist and therefore **passes the fail-closed asset gate and lands in
+`lint/MANIFEST.md` under a permissive label**. Reversing the terms refuses correctly, so it is
+**order-dependent — DW-125's exact defect shape, surviving in the case collect-all does not reach**. The
+controls are decisive: `ClassifySPDXExpression("MIT OR GPL-3.0-only")` returns **copyleft**, so the two
+functions D-8.4i.1 ruled must agree still disagree on the same string.
+
+**This overturns rejection R4**, which was dropped as *"Speculative… routed to `ClassifySPDXExpression`…
+Not demonstrated"* — a premise true of the npm path and false of the path under test. The reviewer was
+right; the triage was not. It is **not live**: no file in the pinned 35 carries a compound expression,
+and the table would red if one appeared. Per **D-8.4i.6** a demonstrated bypass of a gate the epic has
+declared fail-closed is the **one class that returns to the engineering lead** to be ruled *against* the
+bound — so it is registered and escalated, deliberately **not** fixed here and deliberately **not**
+routed to Epic 15 on the closer's own authority. **This supersedes the Auto Run Result's line that "no
+demonstrated live bypass was found beyond the two already chartered."**
+
+**One correction applied at the close.** D-8.4i.13's second claim and its code comment state that
+deleting `permissiveSPDX["Ubuntu-font-1.0"]` reds **five** tests and deleting the `licenceNames` UFL
+entry reds **two**. Re-measured over the whole `lint` module: **seven** and **three** — the extra reds
+are `manifest.TestResolveAssetsAcceptsEveryAllowlistedFontLicence` in both cases and
+`rules.TestLicenceGraphFixtureScan` in the first. The figures were taken with `go test
+./internal/licence/` and written as though they were the suite's whole mutation resolution, which is the
+property they are cited for. **The conclusion is unchanged and was re-verified** — the second mutation
+still does not red the map-entry test while the first does, so the independence is genuinely one-way.
+Only the figures were understated. Corrected in place in `classify_test.go`, in the same
+correction-beside-original form the story requires, because *a measurement quoted without the scope it
+was taken at* is the defect class this story exists to close.
+
+**Deferrals registered with owners.** **DW-128** — the tripwire is blind to `wOFF`/`wOF2`; owner **Epic
+15's release gate**; medium, and it is the one that fails open. **DW-129** — DW-127 is routed to Epic 15
+with nothing pinning today's behaviour, so Epic 15 inherits a defect with no red to work against; owner
+**Epic 15's release gate**, alongside DW-127. **DW-130** — the tripwire derives the gate's walk exclusion
+by regexping source text, so a formatting-neutral refactor reds it with a misleading message; owner
+**whichever story next changes the asset walk**; low, and a false positive only. Plus **DW-131** above,
+owner **engineering lead**.
+
+**For the orchestrator.** DW-131 needs a ruling before Epic 8 closes: it is D-8.4i.6's stated exception
+class, and only the lead can say whether it buys an `8.4j` or is routed to Epic 15 with the rest. Nothing
+else blocks. `epic-8` stays `in-progress` — 8.5, 8.6 and 8.4d remain.

@@ -235,7 +235,7 @@ development_status:
   # BOUND (D-8.4i.6): 8.4i is the LAST licence-gate insertion this epic gets. Anything further
   # found here routes to Epic 15's release gate (Story 15.3 already owns AD-26's manifest), NOT to
   # an 8.4j -- unless it is a demonstrated live bypass of a gate declared fail-closed.
-  8-4i-the-classifier-stops-lying-to-the-gate: backlog
+  8-4i-the-classifier-stops-lying-to-the-gate: done
   # 8.5's spec exists at ready-for-dev but is SUPERSEDED pending re-plan after 8.4h (D-8.5.13):
   # AC2 and AC7 moved out. AC4 stays HERE deliberately -- the forbidden-host scan asserts that
   # D-8.5.12's decline was honoured, so it belongs with the thing it constrains.
