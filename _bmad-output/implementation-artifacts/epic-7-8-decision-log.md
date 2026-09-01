@@ -3747,3 +3747,142 @@ the budget** — and a story must not silently absorb a budget breach it did not
 **The AC that makes this more than a number in a file:** raising the figure later must be a **visible,
 deliberate edit** that reds the gate first. **The failure here was never the 12.4 MB — it was that
 nothing compared two numbers that were both written down.**
+
+---
+
+### D-8.4.25 — the orchestrator's e2e claim was FALSE and of the wrong category; corrected in place, trigger replaced, stories not re-opened, and the real defect is upstream
+
+**The claim, repeated to the lead and to two plan gates, and written into the Design Notes of both
+Story 8.4a and Story 8.4b:** *"Nothing in this repository can execute a real font load, a real
+`document.fonts.add`, or a rasterized glyph — Playwright appears in no workflow."*
+
+**It is false.** Verified independently by the lead: **12** spec files in `folio-designer/e2e/`;
+`"test:e2e": "playwright test"`; a real `webServer` in `playwright.config.ts` running
+`npm run build && npm run preview`; `@playwright/test` installed. **What is true is narrower:
+`.github/workflows/ci.yml` runs only `test:e2e:compile`. A CI WIRING FACT WAS GENERALISED INTO A
+CAPABILITY CLAIM.**
+
+**And the second time it was RUN rather than inferred.** The suite **built, started the preview server
+and executed all four specs** in the file tried, failing only on
+`browserType.launch: Executable doesn't exist … chromium_headless_shell-1208`. **One
+`npx playwright install` away.**
+
+**So it was a COULDN'T-LOOK, not a CANNOT-LOOK** — the distinction enforced on every other check in
+this run, applied to everyone's claims except the orchestrator's own.
+
+**(a) Corrected IN PLACE, with history**, in both stories, on the ~9 MB precedent: the record keeps
+what it claimed, marked corrected, with the measurement that overturned it. **A disclosure that
+quietly changes category is worse than one that was wrong loudly.**
+
+**(b) The trigger is VOID and REPLACED, not renewed.** *"When browser e2e arrives (D-000.4)"* named an
+event that **had already happened before the disclosure was written.** By the standing rule, **a
+trigger that could never fire is deleted, not renewed.** The replacement is keyed on the real
+condition: **"when CI EXECUTES the Playwright suite."**
+
+**(c) Stories 8.4a and 8.4b are NOT re-opened.** Their acceptance criteria are **true as written**; the
+false claim lived in a **Design Note**, not an AC. **Adding executed coverage is an EXTENSION, and
+extensions do not join closed stories — repairs do.**
+
+**(d) But EPIC 8 DOES NOT CLOSE without one executed browser assertion covering carried-face
+rasterization**, owed at the **epic gate**, not by a re-opened story. The ground: **a `vi.fn()` has no
+brand**, jsdom applies no stylesheet and implements no font loading, so **a real-browser run is the
+only observer that can distinguish "we called `document.fonts.add`" from "the glyphs on the page came
+from the carried face."** That is the entire subject of Story 8.4a and the one thing nothing has
+checked. **One assertion, not a suite.**
+
+**(e) THE REAL DEFECT IS BIGGER THAN THE DISCLOSURE AND IS NOT A FONT QUESTION.** Twelve executable
+specs exist, run, and are **never run by CI** — **a guard that does not run**, the same class as an
+unreferenced Makefile target. **Filed as DW-101 and ranked ABOVE the font residual.**
+
+**The ordering constraint is the part that matters: wire CI to execute the suite BEFORE, or in the
+same unit as, adding (d)'s assertion.** An executed assertion added to a suite CI does not run **would
+execute once, locally, and never again — reproducing the exact category error being corrected, one
+layer up. Do not add the observer before arranging for anyone to watch it.**
+
+**(f) On the self-correction, and the family it belongs to.** The lead's note: the sequence — apply the
+couldn't-look test to one's own claim, find it, **measure rather than infer the second time**, and
+**run the thing instead of reading about it** — is the correct one, and this correction is worth more
+than a clean record. It also flagged that the build's rejected finding resting on *"there is no
+`test:e2e`"* is **the same family, and worth recording precisely because ITS VERDICT WAS STILL
+RIGHT**: **a correct conclusion resting on a false premise is the hardest defect to find, because
+nothing downstream misbehaves.**
+
+---
+
+### D-8.4.26 — DW-35's attribution residual is owned by a new Story 8.4e, sequenced after 8.4c
+
+The closer was right to **narrow rather than close**, and right **not to assign an owner** — that is a
+ruling. Assigned: **Story 8.4e — per-fragment shipped-face attribution on the wire. DW-35 does not
+close until 8.4e does.**
+
+**The defect is not exotic, and the measurement is what establishes it.** With an authored chain like
+`["Noto Sans Thai"]` the engine measures Latin `A` with Noto Sans Thai while a **fixed Latin-first**
+stack rasterizes it with Noto Sans — and **all three faces cover `A` and `5`**, with pairwise cmap
+overlaps of **339 / 529 / 230**. It is the AD-17 violation 8.4b narrowed, **surviving on the
+shipped-face arm.**
+
+**Why it is small and belongs here:** Story 8.4a already built per-fragment face attribution for
+**carried** faces — which is why its AC3 is over-satisfied. The residual **extends an existing
+mechanism to a second population rather than inventing one**, the same shape that made 8.4b small.
+
+**Explicitly NOT 8.5 or 8.6.** Both are **authoring** stories — which faces an author may pick, and
+picking one writing the chain. **This is rasterization fidelity, and folding a fidelity fix into a
+feature story is how it becomes the first thing cut.**
+
+---
+
+### D-8.4.27 — DW-100 gates Story 8.4d's THRESHOLD, not its start; "explained" is the bar, not "reproducible"; and 8.4d moves LAST
+
+Three reads of `s1VisibleBytes` gave **three different figures** — 12,423,974 in a spec, 12,426,422 by
+a build, **12,423,049 measured twice** by a closer at baseline *and* HEAD. The closer confirmed Story
+8.4b moves it by **exactly zero, structurally**, so the conclusion was right and **both recorded
+numbers were wrong.**
+
+**(a) It is 8.4d's FIRST and GATING TASK, not a blocker outside it.** The story opens with the
+reproducibility work; the threshold is written only after. **Making it a prerequisite outside the story
+leaves it homeless in exactly the way DW-35's residual just was.**
+
+**(b) REPRODUCIBLE IS NOT THE BAR — EXPLAINED IS.** The temptation is to adopt the number that
+repeated twice and move on. **Do not.** The two other recorded figures came from somewhere, and
+adopting today's repeating number without knowing why the others differed **produces a gate whose
+all-clear is indistinguishable from a couldn't-look.** Require the **disposition of each prior
+figure**, and **record the exact invocation alongside every figure from now on — a number without its
+command is not a measurement.**
+
+**(c) Establish FIRST which thing varies, because one answer is far worse.** Either **the measurement
+procedure varies** (benign) or **the build output varies at one commit** — **a determinism defect, and
+this product's entire premise is byte-identity.** The 12,423,167 read is attributed to an unclean
+`dist`, supporting the benign reading, **but it must be SHOWN, not assumed. If the build is
+nondeterministic, that finding outranks the budget gate entirely and returns to the lead.**
+
+**(d) Story 8.4d moves to LAST in Epic 8 — the lead correcting its own sequencing a second time.** An
+enforceable threshold set **before** the byte-adding stories land either **flaps** or gets **padded
+with an arbitrary allowance — and padding it is the same move as rewriting "~9 MB" to "~12.4 MB",
+which D-8.4.24 forbade.** **Story 8.5 ships a curated font catalogue and may add binaries.** The
+threshold is set **once, against the epic's finished weight.**
+
+**Order: `8.4c → 8.4e → 8.5 → 8.6 → 8.4d`.**
+
+---
+
+### D-8.4.28 — Story 8.4c's spec repaired at the gate, where it is cheap
+
+The reversal at `6f0c095` left three passages assuming the old order. **Corrected in place at the plan
+gate, kept verbatim with the correction attached** — corrections at the gate are legal and cheap; the
+same corrections after implementation are neither.
+
+1. **The `declared` constraint is INVERTED.** It said *"never add a Noto engine face name to
+   `declared`"*. Story 8.4b **already added all three** — that was its subject. `declared` now holds
+   **six** families and the offline release emits **6 rules over the same 3 `.ttf` files**. The live
+   constraint is **do not REMOVE the engine-named half**.
+2. **Task 4's file already EXISTS.** `font-binary-identity.test.ts` was created by 8.4b, so the task is
+   an **edit, not a creation** — and specifically it must **update** 8.4b's assertion that
+   `IBM Plex Sans` and `Noto Sans` deliberately resolve to one file, which **names this story in its
+   own failure message** and was designed for exactly this edit.
+3. **Task 5 is DELETED, not adapted, because its premise is false.** It planned a
+   **disclosure-of-absence** — that `assets.sansCjk` is present while no `@font-face` names it. **8.4b's
+   engine-named rules NAME IT.** The task even anticipated 8.4b and said *"8.4b should delete this
+   assertion rather than edit it"*; under the reversed order **there is nothing to delete, because it
+   was never written.** **An assertion of a negative is exactly the kind that survives as a false green
+   when the negative stops holding** — struck rather than adapted, for that reason. Its I/O matrix row
+   went with it.

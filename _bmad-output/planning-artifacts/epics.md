@@ -3272,59 +3272,56 @@ choosing this option, made visible rather than absorbed
 and the two vocabularies are separate **by design rather than by accident** — which is what 8.4b was
 ruled on AD-17 grounds before this decision was known
 
-### Story 8.4d: The size budget is a number something checks
+### Story 8.4e: A shipped face carries its identity to the fragment
 
-As the product owner,
-I want the first-load budget enforced rather than described,
-So that the bundle cannot drift past it again without anyone noticing.
+As a template author,
+I want a chain I authored to preview with the faces I chose,
+So that the canvas does not quietly rasterize with a face the engine never measured.
 
-**Covers:** NFR7
+**Covers:** FR34 · AD-8, AD-17 — and **DW-35's attribution residual**, which is what remains of cause
+one after Story 8.4b.
 
-**OWNER DECISION 2026-09-01 (D-8.4.24).** `epics.md` accepts *"~9 MB first load"* — itemised as engine
-and font stack ~1.5 MB, CJK face ~7.4 MB, Thai dictionary ~0.1 MB. The committed release manifest
-measures **12,372,693 Brotli bytes: 37% over, since before Epic 8, enforced by nothing.** No test reads
-the figure; no gate compares against it. Story 8.4c adds **+490,280 bytes (+4.34%)**.
+**RULED INTO EXISTENCE 2026-09-01 (D-8.4.26).** Story 8.4b closed the **vocabulary** layer — the
+canvas can now *name* the engine's faces. It **narrowed** cause one rather than closing it, and the
+closer deliberately did **not** assign an owner to the residual, because that is a ruling.
 
-Three options were put to the owner: hold ~9 MB and get under it; **pick a figure and make that
-enforceable**; or record the overage with a trigger and no gate. **The owner chose the second**, which
-was also the engineering lead's recommendation — *"it stops the drift immediately, which is the failure
-that actually occurred here, and it does not pretend a 7.4 MB CJK face fits in 9 MB."*
+**The residual, measured rather than assumed.** The fragment stack is a **fixed constant, not the
+document's chain**, and a shipped-face fragment carries **no face identity on the wire**. Pairwise
+cmap overlaps between the three shipped faces are **339 / 529 / 230** codepoints, and **all three
+cover `A` and `5`** — so with an authored chain like `["Noto Sans Thai"]` the engine measures Latin
+with Noto Sans Thai while the fixed Latin-first stack rasterizes it with **Noto Sans**. **This is not
+an edge case reachable only by exotic documents.** It is the AD-17 violation 8.4b narrowed, surviving
+on the shipped-face arm.
 
-**THE EPIC MUST NOT BE REWRITTEN TO 12.4 MB, and that is a ruling, not a preference (D-8.4.24).**
-Rewriting *"~9 MB"* to *"~12.4 MB"* is **moving the threshold to match the measurement** — the twin of
-manufacturing sample data to meet a floor — and it **enshrines the overage as the target while looking
-like a documentation fix**. **A budget rewritten to whatever the build currently weighs is not a
-budget.** The new figure is set **deliberately**, and the epic records that it was chosen rather than
-observed.
+**Why this is a SMALL story.** Story 8.4a already built per-fragment face attribution for **carried**
+faces — that is what makes its AC3 over-satisfied. This is **extending an existing mechanism to a
+second population, not inventing one**, which is the same shape that made 8.4b small.
 
-**WHY THIS IS A SUCCESSOR TO 8.4C RATHER THAN PART OF IT.** The enforceable figure is *today's
-measurement plus 8.4c's addition and nothing more* — so it **cannot be written until 8.4c has landed**.
-8.4c's own obligation stays what the lead ruled: **record the added weight, do not fix the budget.**
+**Why it is NOT folded into 8.5 or 8.6.** Both are **authoring** stories — which faces an author may
+pick, and picking one writing the chain. **This is rasterization fidelity.** Folding a fidelity fix
+into a feature story makes it an incidental task, **which is how it becomes the first thing cut**.
 
 **Acceptance Criteria:**
 
-**Given** the release manifest
-**When** the build runs
-**Then** a gate compares the measured first-load bytes against a **declared** figure and **fails** when
-it is exceeded — the number lives in one place, and that place is read by the check rather than by a
-human
+**Given** a component whose chain resolves a shipped face
+**When** the canvas paints it
+**Then** the fragment carries **that face's identity on the wire**, and the fragment rule asks for
+**that** face — not a fixed stack that happens to start with the right one
 
-**Given** the declared figure
-**When** it is set
-**Then** it is **today's measurement plus Story 8.4c's addition and nothing more**, and the artifact
-that declares it records that it was **chosen deliberately after a 37% overage went unnoticed** — not
-derived from whatever the build happened to weigh
+**Given** an authored chain whose first covering entry is not the Latin-first default — `["Noto Sans
+Thai"]`, say
+**When** Latin text is drawn through it
+**Then** the canvas rasterizes with **Noto Sans Thai**, the face the engine measured with, **not**
+Noto Sans
 
-**Given** a future change that grows the bundle past the figure
-**When** it is proposed
-**Then** the gate reds, and raising the figure is a **visible, deliberate edit** rather than a silent
-drift — which is the entire failure this story exists to prevent
+**Given** the fixed stylesheet constant the fragment rule uses today
+**When** it is replaced by per-fragment attribution
+**Then** the guard asserting *"the fragment stack is a stylesheet constant with no document input"* is
+**replaced, not weakened** — it records the old state and *should* go red
 
-**Given** the ~9 MB itemisation in the epic
-**When** the new figure is declared
-**Then** the old one is **superseded in place with its history**, so a later reader sees that ~9 MB was
-the original commitment and what replaced it — **not a document that has always said the current
-number**
+**Given** DW-35
+**When** this story is complete
+**Then** it **closes** — both causes and the residual — and the register says so
 
 ### Story 8.5: A curated catalogue ships with the designer
 
@@ -3412,6 +3409,87 @@ first
 **Given** a font asset no chain names any longer
 **When** the document is saved
 **Then** it is dropped, so a file cannot accumulate megabytes of faces nothing draws with
+
+### Story 8.4d: The size budget is a number something checks
+
+As the product owner,
+I want the first-load budget enforced rather than described,
+So that the bundle cannot drift past it again without anyone noticing.
+
+**Covers:** NFR7
+
+**OWNER DECISION 2026-09-01 (D-8.4.24).** `epics.md` accepts *"~9 MB first load"* — itemised as engine
+and font stack ~1.5 MB, CJK face ~7.4 MB, Thai dictionary ~0.1 MB. The committed release manifest
+measures **12,372,693 Brotli bytes: 37% over, since before Epic 8, enforced by nothing.** No test reads
+the figure; no gate compares against it. Story 8.4c adds **+490,280 bytes (+4.34%)**.
+
+Three options were put to the owner: hold ~9 MB and get under it; **pick a figure and make that
+enforceable**; or record the overage with a trigger and no gate. **The owner chose the second**, which
+was also the engineering lead's recommendation — *"it stops the drift immediately, which is the failure
+that actually occurred here, and it does not pretend a 7.4 MB CJK face fits in 9 MB."*
+
+**THE EPIC MUST NOT BE REWRITTEN TO 12.4 MB, and that is a ruling, not a preference (D-8.4.24).**
+Rewriting *"~9 MB"* to *"~12.4 MB"* is **moving the threshold to match the measurement** — the twin of
+manufacturing sample data to meet a floor — and it **enshrines the overage as the target while looking
+like a documentation fix**. **A budget rewritten to whatever the build currently weighs is not a
+budget.** The new figure is set **deliberately**, and the epic records that it was chosen rather than
+observed.
+
+**WHY THIS IS A SUCCESSOR TO 8.4C RATHER THAN PART OF IT.** The enforceable figure is *today's
+measurement plus 8.4c's addition and nothing more* — so it **cannot be written until 8.4c has landed**.
+8.4c's own obligation stays what the lead ruled: **record the added weight, do not fix the budget.**
+
+**Acceptance Criteria:**
+
+**Given** the release manifest
+**When** the build runs
+**Then** a gate compares the measured first-load bytes against a **declared** figure and **fails** when
+it is exceeded — the number lives in one place, and that place is read by the check rather than by a
+human
+
+**Given** the declared figure
+**When** it is set
+**Then** it is **today's measurement plus Story 8.4c's addition and nothing more**, and the artifact
+that declares it records that it was **chosen deliberately after a 37% overage went unnoticed** — not
+derived from whatever the build happened to weigh
+
+**Given** a future change that grows the bundle past the figure
+**When** it is proposed
+**Then** the gate reds, and raising the figure is a **visible, deliberate edit** rather than a silent
+drift — which is the entire failure this story exists to prevent
+
+**Given** the ~9 MB itemisation in the epic
+**When** the new figure is declared
+**Then** the old one is **superseded in place with its history**, so a later reader sees that ~9 MB was
+the original commitment and what replaced it — **not a document that has always said the current
+number**
+
+**RESEQUENCED TO LAST IN EPIC 8, 2026-09-01 (D-8.4.27d) — a correction to the sequencing that created
+this story.** An enforceable threshold set **before** the stories that add to the bundle have landed
+either **flaps** or gets **padded with an arbitrary allowance** — and padding it is the same move as
+rewriting *"~9 MB"* to *"~12.4 MB"*, which D-8.4.24 forbade. **Story 8.5 in particular ships a curated
+font catalogue and may add binaries.** The threshold is set **once, against the epic's finished
+weight**. The DW-100 investigation may begin earlier; **the threshold is written last.**
+
+**DW-100 IS THIS STORY'S FIRST AND GATING TASK, NOT A PREREQUISITE OUTSIDE IT (D-8.4.27a).** Three
+reads of `s1VisibleBytes` gave **three different figures** — 12,423,974 recorded in a spec, 12,426,422
+by a build, and 12,423,049 measured twice by a closer at baseline *and* HEAD. **No threshold may be
+written until the number is trustworthy**, but making that a prerequisite *outside* the story leaves it
+homeless in exactly the way DW-35's residual just was.
+
+**"REPRODUCIBLE" IS NOT THE BAR — "EXPLAINED" IS (D-8.4.27b).** The temptation is to adopt the figure
+that repeated twice and move on. **Do not.** The two other recorded figures came from somewhere, and
+picking today's repeating number without knowing why the others differed produces **a gate whose
+all-clear is indistinguishable from a couldn't-look.** Require the disposition of **each** prior
+figure. And **record the exact invocation alongside every figure from now on — a number without its
+command is not a measurement.**
+
+**ESTABLISH WHICH THING VARIES FIRST, BECAUSE ONE ANSWER IS FAR WORSE (D-8.4.27c).** Either **the
+measurement procedure varies** (benign — fix the procedure) or **the build output varies at one
+commit**, which is a **determinism defect, and this product's entire premise is byte-identity**. The
+12,423,167 read is attributed to an unclean `dist`, which supports the benign reading — **but it must
+be SHOWN, not assumed. If the build turns out to be nondeterministic, that finding outranks the budget
+gate entirely and goes straight back to the engineering lead.**
 
 ## Epic 9: A component's box prints
 

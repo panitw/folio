@@ -99,6 +99,19 @@ them by name.
   `"derived and compared 3 of 3 faces"` stays 3.
 - **Never add a Noto engine face name to `declared`.** That is Story 8.4b's territory, ruled on AD-17
   grounds by D-8.4.14. Do not register any shipped face under the engine's name here.
+
+> **⚠ STALE AFTER STORY 8.4b — CORRECTED AT THE GATE, 2026-09-01 (D-8.4.22).** This spec was planned
+> while 8.4c was sequenced **before** 8.4b. The lead **reversed** that at `6f0c095`: the order is now
+> `8.4c` **after** `8.4b`. Three passages assumed the old order and are corrected in place, kept
+> verbatim with their correction attached rather than rewritten. **Corrections at the plan gate are
+> legal and cheap; the same corrections after implementation are neither.**
+
+> **THIS CONSTRAINT IS INVERTED.** Story 8.4b has **already landed** (`90cdf8e`, closed at `5ae02d7`)
+> and **added the three Noto engine face names to `declared`** — that was its whole subject. So
+> `declared` now holds **six** families, not three, and the offline release emits **6 rules over the
+> same 3 `.ttf` files**. **The live constraint is: do not REMOVE the engine-named half, and do not
+> repoint it.** This story changes only the files behind the **three IBM Plex** names.
+
 - **Never modify any `.folio` document, fixture, golden, or attestation record.** The corpus is 23
   documents and none may move. A moved PDF digest is a defect, not a re-record. No agent writes
   `reader`, `date` or `examined` into any `signoff.json`.
@@ -121,7 +134,7 @@ them by name.
 | Thai family resolved | rule for `IBM Plex Sans Thai` | `src` names `IBMPlexSansThai-Regular.ttf`; name-table family is `IBM Plex Sans Thai`; its cmap maps every codepoint of `พระราชบัญญัติ` and `การทวงถามหนี้` | No error expected |
 | A family is repointed back at a Noto file | generator edited so `IBM Plex Sans` names `noto-sans.ttf` | The new identity guard fails, naming the declared family and the family the file actually carries | Test failure, red |
 | Declaration set changes size or names | a fourth `@font-face`, or a renamed family | `declared` no longer equals the three IBM Plex names; the identity guard has no source file for the new family and fails | Test failure, red |
-| CJK binary still shipped, no longer declared | `assets.sansCjk` present, absent from `runtime-fonts.css` | The asset is still fingerprinted, copied and emitted; `generate-offline-release.mjs`'s `/noto-sans-cjk.` lookup still resolves; the `cjk-font` S1 row is still the dominant font payload | No error expected |
+| ~~CJK binary still shipped, no longer declared~~ **ROW CORRECTED AT THE GATE (D-8.4.22): `assets.sansCjk` IS declared after 8.4b, under the engine name `Noto Sans SC`.** The row's premise — absent from `runtime-fonts.css` — is false. | `assets.sansCjk` present **and declared** under `Noto Sans SC` | Still fingerprinted, copied and emitted; the `/noto-sans-cjk.` lookup still resolves; the `cjk-font` S1 row is still the dominant font payload — **and it now also backs a declared `@font-face`, so removing its declaration is a regression rather than a tidy-up** | No error expected |
 | CJK binary deleted or replaced | `assets.sansCjk` removed | `generate-offline-release.mjs` throws `production build has no /noto-sans-cjk. runtime asset`; or the verifier fails `S1 CJK row is not the dominant font payload` | Build failure, halt |
 | Font binary committed without licence artifacts | a `.ttf` in a directory with no `LICENSE*`/`NOTICE*` | `manifest.ResolveAssets` returns `<dir>: contains a committed font binary but no LICENSE* file (AC25, AD-26)` | Build failure, red |
 | `lint/MANIFEST.md` not regenerated | binary added, manifest stale | `TestManifestUpToDate` fails with `lint/MANIFEST.md is out of date — run cd lint && go run ./cmd/genmanifest` | Test failure, red |
@@ -361,7 +374,13 @@ here rather than discovered"*. It was measured with fontTools 4.63.0 against the
    and change **only** the `${assets.sansCjk}` interpolation inside the `'IBM Plex Mono'` rule on the
    single-line `runtime-fonts.css` literal to `${assets.mono}` -- **keep `sansCjk` in `assets`**, keep
    the literal on one line with its exact spacing, keep `url(…) format('truetype')`.
-4. `folio-designer/src/font-binary-identity.test.ts` (new) -- add the identity guard: parse
+4. `folio-designer/src/font-binary-identity.test.ts` -- **THIS FILE ALREADY EXISTS. THIS TASK IS AN
+   EDIT, NOT A CREATION (corrected at the gate, D-8.4.22).** Story 8.4b created it, because the
+   reversal made 8.4b the story that first needed the net. **Extend the existing guard; do not
+   recreate it, and do not rewrite what 8.4b pinned there** — its assertion that `IBM Plex Sans` and
+   `Noto Sans` deliberately resolve to one file, naming *this story* in its own failure message, is
+   the assertion **this story is expected to update when the two diverge.** That update is the
+   small, obvious edit it was designed to be. Add the identity guard: parse
    `build-wasm.mjs` for both halves (the `assets` slot→path map and the `@font-face` family→slot
    binding on the emitted line), open each source `.ttf` with a small dependency-free TrueType
    `name`-table reader, and assert the file's family (nameID 16 falling back to nameID 1) **equals**
@@ -369,9 +388,16 @@ here rather than discovered"*. It was measured with fontTools 4.63.0 against the
    additionally assert `post.isFixedPitch != 0` for it. Include a **red-proof**: a fixture generator
    text binding `IBM Plex Mono` to the Noto CJK path must make the same checker report a mismatch --
    an identity guard that only ever passes has not been shown to discriminate.
-5. `folio-designer/src/font-binary-identity.test.ts` -- in the same file, add the
-   **disclosure-of-absence** assertion that `assets.sansCjk` is present in the generator while no
-   `@font-face` rule names its interpolation, with a comment recording that this state is deliberate,
+5. **DELETED AT THE GATE — DO NOT WRITE THIS ASSERTION (corrected 2026-09-01, D-8.4.22). ITS PREMISE
+   IS FALSE.** It planned a *disclosure-of-absence*: that `assets.sansCjk` is present while **no
+   `@font-face` rule names its interpolation**. **Story 8.4b's new engine-named rules NAME IT**, so
+   the absence it would disclose no longer exists. Note the shape: the task even anticipated 8.4b and
+   instructed that *"8.4b should delete this assertion rather than edit it"* — under the reversed
+   order there is nothing to delete, because it was never written. **An assertion of a negative is
+   exactly the kind that survives as a false green when the negative stops holding**, which is why it
+   is struck rather than adapted. The superseded text follows, kept for the record only:
+   ~~in the same file, add the disclosure-of-absence assertion that `assets.sansCjk` is present in the
+   generator while no `@font-face` rule names its interpolation,~~ with a comment recording that this state is deliberate,
    that the binary ships for the engine-name registration **Story 8.4b** adds, and that **8.4b should
    delete this assertion rather than edit it** -- without it a later reader "simplifies" away an
    `assets` entry nothing appears to use, and the release build then throws

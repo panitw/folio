@@ -4972,3 +4972,39 @@ on how `dist` got into its current state cannot be hard-gated as it stands.
 a named command, and the figure read from that build alone — and state in the gate which rows the
 number sums, so a later reader cannot mistake `cachedBytes` for `s1VisibleBytes`. A regression fixture
 proving two consecutive clean builds agree would close it outright.
+
+### DW-101 — twelve executable Playwright specs exist, run, and are never run by CI: a whole capability believed absent by everyone
+
+- **Deferred by:** the run orchestrator (2026-09-01), on discovering it had told the engineering lead
+  and two plan gates the opposite. **Ruled by the lead the same day (D-8.4.25e)** and **ranked ABOVE
+  the font residual (DW-35)**.
+- **Owner:** whoever wires CI. **It must land BEFORE, or in the same unit as, the executed browser
+  assertion Epic 8 now owes** — see the ordering constraint below.
+- **Severity:** **MEDIUM-HIGH.** The defect is not the missing coverage; it is that **the coverage
+  exists and nobody runs it.**
+- **Status:** OPEN.
+
+**The gap, measured.** `folio-designer/e2e/` holds **12 Playwright spec files** — the application
+shell, the engine worker, component binding and manipulation, component properties, image assets,
+local file actions, offline update, preview parameters, sample data, the table editor and a
+browser-native round trip. `package.json` has `"test:e2e": "playwright test"`. `playwright.config.ts`
+has a real `webServer` running `npm run build && npm run preview`. `@playwright/test` is installed.
+**`.github/workflows/ci.yml` runs only `test:e2e:compile`** — `tsc --noEmit`.
+
+**It was RUN, not inferred.** The suite **built, started the preview server and executed all four
+specs** in the file tried, failing only on
+`browserType.launch: Executable doesn't exist … chromium_headless_shell-1208` — the browser cache
+holding 1217/1223/1228 but not that build.
+
+**This is a GUARD THAT DOES NOT RUN** — the same class as an unreferenced Makefile target or a
+job-level default that excludes a module. **It is why an entire capability could be believed absent by
+the orchestrator, by the engineering lead and by two plan gates**, and why a false statement of it
+reached the Design Notes of two shipped stories.
+
+**THE ORDERING CONSTRAINT IS THE POINT (D-8.4.25e).** **Wire CI to execute the suite BEFORE, or in the
+same unit as, adding the executed browser assertion Epic 8 owes.** An executed assertion added to a
+suite CI does not run **would execute once, locally, and never again** — **reproducing the exact
+category error being corrected, one layer up.** Do not add the observer before arranging for anyone to
+watch it.
+
+---

@@ -814,6 +814,36 @@ edit reddens in Go rather than killing the worker in a browser nobody runs.
 
 **Residual risks.**
 - **Nothing in this repository can execute a real font load, a real `document.fonts.add`, or a rasterized glyph.** `test:e2e:compile` is `tsc --noEmit`, Playwright appears in no workflow, browser e2e is deferred by **D-000.4**, and jsdom applies no stylesheet and implements no font loading. The gates prove the derivation, the registration call, the fragment's rendered inline family, the guards and the protocol shape — **they do not prove the canvas visibly paints with the carried face.** The successor for this gap is named: when browser e2e arrives (D-000.4).
+
+> **⚠ CORRECTED IN PLACE 2026-09-01 (D-8.4.25). THE CLAIM ABOVE IS FALSE, AND IT IS THE WRONG
+> CATEGORY, NOT MERELY IMPRECISE.** It is kept verbatim rather than rewritten, per the standing rule
+> that a disclosure which quietly changes category is worse than one that was wrong loudly.
+>
+> **Measured:** `folio-designer/e2e/` holds **12 Playwright spec files**; `package.json` has
+> `"test:e2e": "playwright test"`; `playwright.config.ts` has a real `webServer` that runs
+> `npm run build && npm run preview`; `@playwright/test` is installed. **What is true is narrower:
+> `.github/workflows/ci.yml` runs only `test:e2e:compile`.** A CI fact was generalised into a
+> capability claim.
+>
+> **And it was RUN rather than inferred a second time.** The suite **built, started the preview server
+> and executed all four specs** in the file tried — failing only on
+> `browserType.launch: Executable doesn't exist … chromium_headless_shell-1208`, the cache holding
+> 1217/1223/1228 but not that build. **One `npx playwright install` away.**
+>
+> **So this was a COULDN'T-LOOK, not a CANNOT-LOOK** — the distinction enforced on every other check
+> in this run, applied to everyone's claims except the orchestrator's own.
+>
+> **The trigger is VOID and REPLACED, not renewed.** *"When browser e2e arrives (D-000.4)"* named an
+> event that **had already happened before this disclosure was written**; a trigger that could never
+> fire is deleted, not renewed. **The replacement is keyed on the real condition: "when CI EXECUTES
+> the Playwright suite"** — a different event, which has not happened.
+>
+> **This story is NOT re-opened (D-8.4.25c).** Its acceptance criteria are true as written; the false
+> claim was in a Design Note, not in an AC. Adding executed coverage is an **extension**, and
+> extensions do not join closed stories — repairs do. **Epic 8 does not close without one executed
+> browser assertion covering carried-face rasterization, owed at the EPIC GATE.**
+
+
 - Registration is proved against a hand-written `FontFace`/`document.fonts` stub, and the shipped-face fallback is proved as the *absence of an inline declaration* rather than as `.canvas-text-fragment`'s rule winning a cascade jsdom never runs.
 - Seven deferred items are recorded in frontmatter, four of them medium: missing weight/style descriptors, no appended fallback list, no fan-out cap, and the Go half of the two-carried-faces matrix row (not patched deliberately — a second carried font fixture would create a new golden digest and a new human sign-off obligation).
 - **The spec's own Design Notes claim that DW-35 cause one is "a design-system decision no ruling has ever made" was already stale when the spec was committed** — D-8.4.14 at `dfe5129` rules cause one to Story 8.4b and rules the register's stated blocker false. The frozen contract was left untouched; the correction lives in `deferred-work.md`. Cause one remains OPEN, as this story requires.
