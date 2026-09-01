@@ -635,6 +635,82 @@ func TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist(t *testing.T) {
 	})
 }
 
+// TestFontAssetLicenceAllowlistIsTheOwnersFourIds is DW-120's guard and
+// D-8.4i.3's ruling: the owner's font-asset allowlist is pinned against
+// an EXACT, TEST-OWNED []string literal, so widening it requires
+// changing a test that says WHOSE DECISION it is.
+//
+// WHY A LITERAL AND NOT A DERIVATION. A guard computed from
+// fontAssetLicenceAllowlist — a length check, a set membership loop, a
+// round-trip through fontAssetLicenceAllowed — passes ANY edit to the
+// constant, which is no guard at all. An anchor the code cannot move is
+// the only kind that holds. The four ids below are written out here, in
+// this test's own source, as the authority's own list.
+//
+// WHY THIS TEST AND NOT ITS CONSUMER (D-8.4i.3, D-8.5.8c). It lands in
+// the story that repairs the classifier, not in Story 8.5 which is the
+// allowlist's first real consumer: a guard owned by its consumer is a
+// guard the consumer can move.
+//
+// MEASURED BEFORE THIS TEST EXISTED (Story 8.4h's close, re-measured at
+// 8.4i): appending "GPL-3.0" to fontAssetLicenceAllowlist and running
+// `cd lint && go test -count=1 ./...` left ALL FOUR lint packages GREEN.
+// The copyleft refusal arm sits ABOVE the allowlist arm in ResolveAssets,
+// so a copyleft id smuggled onto the owner's list is not even caught by
+// the copyleft refusal on the path that reaches it. D-8.5.13 forbids
+// silent list-widening; a list anyone can widen in one line with nothing
+// reddening makes that prohibition unenforceable (D-8.4.31).
+//
+// RED-PROOF, measured at 8.4i's implementation: appending "GPL-3.0" to
+// fontAssetLicenceAllowlist reds THIS TEST AND NOTHING ELSE, in any
+// package. If four packages red, the guard is not the thing catching it.
+//
+// This is deliberately NOT the "no cardinality assertion" case D-8.5.4
+// ruled on. That objection is to counting a set that legitimately GROWS.
+// fontAssetLicenceAllowlist encodes a FIXED owner decision (D-8.5.3) and
+// does not grow by design; if the owner changes it, this test is where
+// that change is recorded.
+func TestFontAssetLicenceAllowlistIsTheOwnersFourIds(t *testing.T) {
+	// THE OWNER'S DECISION, D-8.5.3, WRITTEN OUT IN FULL. The owner
+	// named four licences for a redistributed font: OFL-1.1,
+	// Apache-2.0, MIT and "UFL" — the Ubuntu Font Licence, whose
+	// canonical SPDX identifier is Ubuntu-font-1.0. Order included: the
+	// refusal message joins this slice, so the permitted set is named
+	// in a stable order.
+	//
+	// CHANGING THIS LITERAL AMENDS AN OWNER DECISION. It is not a
+	// maintenance edit. In particular CC0-1.0 must NEVER be added to
+	// fix a wordlist scoping error (D-8.5.13) — the two asset sites are
+	// independent in SCOPE, not merely in mechanism.
+	ownersFourIDs := []string{"OFL-1.1", "Apache-2.0", "MIT", "Ubuntu-font-1.0"}
+
+	if len(fontAssetLicenceAllowlist) != len(ownersFourIDs) {
+		t.Fatalf("fontAssetLicenceAllowlist = %v (%d ids), but the owner's decision (D-8.5.3) names exactly %d: %v — "+
+			"changing this list amends an owner decision and must be ruled on, not edited",
+			fontAssetLicenceAllowlist, len(fontAssetLicenceAllowlist), len(ownersFourIDs), ownersFourIDs)
+	}
+	for i, want := range ownersFourIDs {
+		if fontAssetLicenceAllowlist[i] != want {
+			t.Errorf("fontAssetLicenceAllowlist[%d] = %q, want %q — the owner's four ids (D-8.5.3), in order: %v",
+				i, fontAssetLicenceAllowlist[i], want, ownersFourIDs)
+		}
+	}
+
+	// The derived map is a VIEW onto the list, not a second list: a
+	// membership added directly to fontAssetLicenceAllowed would slip
+	// past the literal above.
+	if len(fontAssetLicenceAllowed) != len(ownersFourIDs) {
+		t.Errorf("fontAssetLicenceAllowed has %d entries, want %d — the map must be a view onto the "+
+			"owner's list (D-8.5.3), never a second list that can drift from it (D-8.5.8c)",
+			len(fontAssetLicenceAllowed), len(ownersFourIDs))
+	}
+	for _, id := range ownersFourIDs {
+		if !fontAssetLicenceAllowed[id] {
+			t.Errorf("fontAssetLicenceAllowed[%q] = false; it is one of the owner's four ids (D-8.5.3)", id)
+		}
+	}
+}
+
 // TestTheTwoAssetSitesDoNotShareAPolicy states the two-populations invariant
 // directly, as a property of the two lists rather than of one input: there is
 // an id each site accepts and the other refuses, in BOTH directions. A shared
