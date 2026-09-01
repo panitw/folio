@@ -264,12 +264,44 @@ func TestClassifyUbuntuFontLicence(t *testing.T) {
 }
 
 // TestUbuntuFontLicenceSPDXLineIsPermissive covers the MAP-ENTRY half
-// of Story 8.4h's addition, and is the named test that reds if the
-// permissiveSPDX entry is removed — the marker branch cannot satisfy
-// it, because an SPDX line short-circuits ClassifyLicenceText before
-// the marker switch is reached. Together with
-// TestClassifyUbuntuFontLicence this is AC5's two mutations, two
-// distinct reds.
+// of Story 8.4h's addition: it is the named test that reds if
+// permissiveSPDX's "Ubuntu-font-1.0" entry is removed.
+//
+// ⚠ CORRECTED AT STORY 8.4i (2026-09-02). This comment used to say the
+// marker branch could not satisfy it "because an SPDX line
+// short-circuits ClassifyLicenceText before the marker switch is
+// reached". THERE IS NO SHORT-CIRCUIT AND NO MARKER SWITCH ANY MORE.
+// ClassifyLicenceText collects every signal and resolves them as one
+// (licencesignals.go); the marker branches are now entries in the
+// licenceNames table.
+//
+// ⚠ AND STORY 8.4h's AC5 PROPERTY — "two independent mutations, two
+// DISTINCT reds" — NO LONGER HOLDS IN BOTH DIRECTIONS. Story 8.4i
+// removed that bound, and it is recorded here rather than left to be
+// discovered, because a bound a change removes must not disappear
+// silently.
+//
+// The cause: addID routes EVERY identifier through classifyBySPDX,
+// including the ones the name table produces, so permissiveSPDX is now
+// on the name path too. MEASURED at 8.4i's implementation:
+//
+//   - deleting permissiveSPDX["Ubuntu-font-1.0"] reds THIS test AND
+//     TestClassifyUbuntuFontLicence (2 subtests), TestClassifyCollects-
+//     EverySignal (1 subtest), TestIsPermissiveSPDXReadsTheSameList and
+//     TestLicenceSignalCensus. Five tests, not one.
+//   - deleting the licenceNames UFL entry reds TestClassify-
+//     UbuntuFontLicence and TestClassifyCollectsEverySignal — and NOT
+//     this test.
+//
+// So the independence is now ONE-WAY: the name table can be removed
+// without this test noticing, but not the reverse. This test remains the
+// only named guard on the map entry; it is no longer the ONLY guard.
+//
+// The coupling is not accidental — it is what makes every id in the name
+// table provably a recognised identifier rather than a free-text label —
+// but it is a real reduction in mutation resolution, and D-8.5.4's
+// standing preference for guards that red on their own message is why it
+// is written down.
 //
 // The bare community alias "UFL" is asserted to classify as UNKNOWN,
 // deliberately: accepting it would be the silent list-widening D-8.5.13
@@ -490,6 +522,21 @@ func TestClassifyCollectsEverySignal(t *testing.T) {
 			"an unrecognised SPDX id makes the whole text unclassifiable, and is named",
 			"MIT License\n\nSPDX-License-Identifier: Proprietary-2.0\n",
 			FamilyUnknown, "Proprietary-2.0",
+		},
+
+		{
+			// AN UNRESOLVED NAME OUTRANKS THE TEXT'S OWN EXPLICIT
+			// DECLARATION, and that direction is deliberate. The file
+			// declares MIT and also names a licence this classifier
+			// cannot place; its governing licence is therefore not
+			// established. This is DW-125's shape with the roles
+			// swapped — letting the declaration win IS what the bypass
+			// did — so the fail-safe answer is to refuse. Refusing
+			// costs a maintainer one SPDX line; believing the
+			// declaration costs a wrong label on a release artifact.
+			"an unresolved name outranks an explicit SPDX declaration",
+			"SPDX-License-Identifier: MIT\n\nBundled fonts are under the UBUNTU FONT LICENSE.\n",
+			FamilyUnknown, "",
 		},
 
 		// --- D-8.4i.2: the name anchor ---

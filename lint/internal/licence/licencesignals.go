@@ -64,8 +64,30 @@ type licenceName struct {
 	id string
 }
 
-// licenceNames is the ordered name table. ORDER IS LOAD-BEARING and is
-// documented rather than incidental: it is the tie-break when several
+// licenceNames is the ordered name table.
+//
+// ⚠ WHERE THE OLD BRANCHES' COMMENTS WENT. Two of these entries — OFL
+// and the Ubuntu Font Licence — replace switch branches whose comments
+// asserted a safety that did not exist. Those comments were NOT deleted:
+// they are preserved VERBATIM, with their corrections, as CORRECTION 1
+// and CORRECTION 2 in classify.go, immediately below ClassifyLicenceText.
+// Read them before changing either entry's requiredVersion or spelling —
+// the reasoning that looks obvious here is the reasoning that was
+// measured false there.
+//
+// ⚠ EVERY id FIELD IN THIS TABLE AND IN licenceClauses MUST ALSO BE
+// RECOGNISED BY classifyBySPDX — i.e. be a key of permissiveSPDX or
+// carry a copyleftSPDXPrefixes prefix. This is a COUPLING STORY 8.4i
+// INTRODUCED: addID routes every identifier, however it was signalled,
+// through classifyBySPDX, so an id here that no list recognises does not
+// classify as itself — it silently marks the whole text UNRESOLVED. The
+// upside is that a name-table id is provably a real identifier rather
+// than a free-text label; the cost is that the two structures can no
+// longer be mutated independently (see
+// TestUbuntuFontLicenceSPDXLineIsPermissive's note on the resolution
+// this lost).
+//
+// ORDER IS LOAD-BEARING and is documented rather than incidental: it is the tie-break when several
 // copyleft names appear in one text, and it preserves, exactly, the
 // precedence the switch in ClassifyLicenceText had before Story 8.4i.
 //
@@ -130,15 +152,24 @@ type licenceClause struct {
 	id     string
 }
 
-// licenceClauses is ordered for the same reason licenceNames is.
+// licenceClauses is ordered for the same reason licenceNames is, and its
+// id fields carry the same obligation: each must be recognised by
+// classifyBySPDX, or the clause marks the text unresolved instead of
+// classifying it.
 var licenceClauses = []licenceClause{
 	{clause: "PERMISSION IS HEREBY GRANTED, FREE OF CHARGE", id: "MIT"},
 	// A CLAUSE, NOT A NAME (Design Note 1, and this story's task 3
-	// verifies it stays one): the Go standard library's own licence and
-	// six of the eight other dependency licences reach BSD-3-Clause
-	// through this sentence and through nothing else. Treating it as a
-	// name would turn seven of the nine dependency licences into
-	// FamilyUnknown and red the dependency scan on Go's own licence.
+	// verifies it stays one). MEASURED by TestLicenceSignalCensus over
+	// the nine dependency licences the three Go module graphs resolve
+	// to: SEVEN of the nine — go-cmp, x/mod, x/net, x/sync, x/sys,
+	// x/telemetry and x/tools, the same seven enumerated above — reach
+	// BSD-3-Clause through this sentence and through nothing else,
+	// carrying no SPDX line and no licence name at all. (The remaining
+	// two, textshape and goldmark, classify MIT by name. The Go
+	// standard library is NOT in this population — it is not a module
+	// in any of the three graphs.) Treating this sentence as a name
+	// would turn those seven into FamilyUnknown and red the dependency
+	// scan.
 	{clause: "REDISTRIBUTION AND USE IN SOURCE", id: "BSD-3-Clause"},
 }
 
@@ -172,9 +203,8 @@ type licenceSignals struct {
 	unresolvedID string
 }
 
-// collectLicenceSignals gathers every licence signal in text.
-//
-// Three kinds, in decreasing strength:
+// collectLicenceSignals gathers every licence signal in text. Three
+// kinds:
 //
 //  1. SPDX-License-Identifier lines — the text's own explicit
 //     declaration. EVERY line is collected, not just the first. The
@@ -186,6 +216,30 @@ type licenceSignals struct {
 //     marks the whole text unresolved.
 //  3. Grant CLAUSES — see licenceClause. Consulted only when the text
 //     carries no name signal at all.
+//
+// THIS IS A COLLECTION ORDER, NOT A PRECEDENCE ORDER, and an earlier
+// draft of this comment called the three "decreasing strength" with SPDX
+// first — which resolveLicenceSignals contradicts. Only ONE of the three
+// is ranked against the others here: a clause is weaker than a name, and
+// is consulted only in a name's absence. SPDX lines and names are peers;
+// their identifiers go into the same two slices and are deduplicated
+// together.
+//
+// Everything else is decided by resolveLicenceSignals, where the
+// UNRESOLVED tier sits ABOVE the single-identifier arm. So an unresolved
+// NAME outranks the text's own explicit declaration:
+//
+//	"SPDX-License-Identifier: MIT" + prose naming "UBUNTU FONT LICENSE"
+//	→ (unknown, "")
+//
+// THAT DIRECTION IS DELIBERATE AND IS THE FAIL-SAFE ONE. A file that
+// declares MIT while also naming a licence this classifier cannot place
+// is a file whose governing licence is not established — which is
+// exactly DW-125's shape with the roles swapped, and letting the
+// declaration win is what the bypass did. Refusing costs a maintainer
+// one SPDX line; believing the declaration costs a wrong label on a
+// release artifact, or a forbidden font on a green build. Pinned by
+// TestClassifyCollectsEverySignal.
 func collectLicenceSignals(text string) licenceSignals {
 	upper := strings.ToUpper(text)
 	var sig licenceSignals

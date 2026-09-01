@@ -469,6 +469,81 @@ func TestResolveAssetsRefusesACopyleftFontLicence(t *testing.T) {
 	}
 }
 
+// TestResolveAssetsRefusesTheDW125BypassAtTheGate asserts DW-125 AT THE
+// SURFACE IT WAS REPORTED AT.
+//
+// Story 8.4i's classifier tests pin ClassifyLicenceText's return value
+// for this input. That is not the same claim. DW-125's finding was that
+// a licence file of this shape PASSES THE FAIL-CLOSED ASSET GATE — a
+// green build shipping a GPL-licensed font — and the I/O matrix states
+// the gate outcome ("Gate fails naming the directory and the copyleft
+// id") as a separate expectation from the tuple. A tuple assertion
+// cannot show that ResolveAssets consults the family, reaches the
+// copyleft arm, or names anything.
+//
+// THE INPUT IS THE REPORTED ONE: the full GNU GPL v3 title block with a
+// stray "SPDX-License-Identifier: MIT" line below it — the bundled
+// multi-licence shape that is ordinary in redistributed font packages
+// and needs no adversary. Before Story 8.4i this classified
+// (permissive, "MIT"), which is on the owner's four-id allowlist, so
+// ResolveAssets produced a clean row on a clean build.
+//
+// IT MUST RED ON THE COPYLEFT ARM'S OWN MESSAGE, not the unclassifiable
+// one: D-8.4i.1 fixes the resolution ORDER at copyleft-before-conflict
+// precisely so a maintainer reads "GPL detected" and removes the
+// dependency, rather than reading "conflicting identifiers" and adding
+// an SPDX line. Hazard indicators fail toward the loudest, never the
+// most precise — and this test is what proves that ordering survives at
+// the gate rather than only in the resolver.
+//
+// RED-PROVED BY DELETION, and the two probes disagree in a way worth
+// recording. Deleting the copyleft arm from resolveLicenceSignals
+// reproduces DW-125's reported symptom EXACTLY: this test reds on a
+// clean, passing row reading
+// {synthetic-fonts/Synthetic.ttf MIT …} — a GPL-licensed font shipped
+// on a green build under MIT's label. But narrowing the SPDX collection
+// back to the FIRST match (FindAllStringSubmatch(text, 1)) does NOT red
+// it, because the GPL NAME signal reaches the copyleft arm on its own
+// path. So this test measures the COPYLEFT ARM AT THE GATE, not the
+// all-lines collection; TestClassifyCollectsEverySignal's
+// "MIT line then GPL-3.0-only line" row is what covers the latter, and
+// the two are not substitutes.
+func TestResolveAssetsRefusesTheDW125BypassAtTheGate(t *testing.T) {
+	const gplTextWithStrayMITLine = "GNU GENERAL PUBLIC LICENSE\n" +
+		"Version 3, 29 June 2007\n\n" +
+		"Everyone is permitted to copy and distribute verbatim copies of this\n" +
+		"license document, but changing it is not allowed.\n\n" +
+		"SPDX-License-Identifier: MIT\n"
+
+	root := scratchRepoWithFontDirectory(t, gplTextWithStrayMITLine)
+
+	rows, err := ResolveAssets(root)
+	if err == nil {
+		t.Fatalf("DW-125: a GPL text carrying a stray permissive SPDX line must not pass the fail-closed "+
+			"asset gate; got nil and %d row(s): %v", len(rows), rows)
+	}
+	if !strings.Contains(err.Error(), "a copyleft licence") {
+		t.Errorf("expected the COPYLEFT refusal — the loudest arm, D-8.4i.1's fixed order — got: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"GPL-3.0"`) {
+		t.Errorf("expected the error to NAME the copyleft identifier, not the stray permissive one: %v", err)
+	}
+	if strings.Contains(err.Error(), `"MIT"`) {
+		t.Errorf("the stray SPDX line must not reach the message at all; it is the thing that used to "+
+			"decide the verdict: %v", err)
+	}
+	if strings.Contains(err.Error(), "could not be classified") {
+		t.Errorf("this text classifies perfectly well as copyleft; refusing it as unclassifiable would "+
+			"send a maintainer to add an SPDX line rather than remove the font (D-8.4i.1): %v", err)
+	}
+	if !strings.Contains(err.Error(), "synthetic-fonts") {
+		t.Errorf("expected the error to LOCATE the directory (AD-14), got: %v", err)
+	}
+	if rows != nil {
+		t.Errorf("a refused directory must produce NO row, got: %v", rows)
+	}
+}
+
 // TestResolveAssetsRefusesAPermissiveButOffAllowlistFontLicence is the arm
 // that proves the font site enforces THE OWNER'S FOUR IDS and not merely
 // "permissive". ISC is in licence.permissiveSPDX and would pass any

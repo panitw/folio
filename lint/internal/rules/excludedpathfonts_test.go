@@ -122,6 +122,13 @@ func TestNoRealFontHidesUnderAnExcludedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read control font %s: %v", realFont, err)
 	}
+	// The control also proves readFirstBytes did not come back SHORT on
+	// a file that has the bytes — the fail-open direction P3 closed.
+	if len(control) != 12 {
+		t.Fatalf("readFirstBytes(%s, 12) returned %d bytes; a short read on a file this size means the "+
+			"tripwire's detector is being fed truncated input and every clean result above is worthless",
+			realFont, len(control))
+	}
 	if !looksLikeSfnt(control) {
 		t.Fatalf("%s does not read as an sfnt program — the detector this tripwire keys on is not "+
 			"working, so the clean result above is not a measurement", realFont)
@@ -165,10 +172,25 @@ func assetWalkStructuralExclusion(t *testing.T, root string) (childName, parentN
 	return m[0][1], m[0][2]
 }
 
-// readFirstBytes reads at most n bytes from path. Short files come back
-// short rather than zero-padded, which matters: a zero-padded buffer
-// would match the TrueType magic 00 01 00 00 and report a false font
-// (the shape DW-123's designer-side sibling records).
+// readFirstBytes reads up to n bytes from path, retrying until the file
+// is exhausted or n bytes are in hand.
+//
+// THE SINGLE-Read VERSION OF THIS FUNCTION FAILED OPEN, and it did so in
+// DW-123's own recorded shape. A single (*os.File).Read may legally
+// return fewer bytes than the buffer holds even for a regular file that
+// has more to give; the first draft used buf[:read] regardless, so a
+// REAL font could come back as three bytes, looksLikeSfnt would say no,
+// and the tripwire would report the tree clean. The entry this test
+// discharges records exactly that defect on the designer side — "compares
+// a four-byte buffer without checking how many bytes readSync actually
+// returned" — so reintroducing it in the discharging test would have been
+// the finding committed a second time.
+//
+// io.ReadFull's short-read errors are NOT failures here: a file genuinely
+// shorter than n bytes is a legitimate answer, and it is returned SHORT
+// rather than zero-padded. That distinction matters in the other
+// direction — a zero-padded buffer would match the TrueType magic
+// 00 01 00 00 and report a FALSE font.
 func readFirstBytes(path string, n int) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -176,11 +198,8 @@ func readFirstBytes(path string, n int) ([]byte, error) {
 	}
 	defer f.Close()
 	buf := make([]byte, n)
-	read, err := f.Read(buf)
-	if err != nil && read == 0 {
-		if errors.Is(err, io.EOF) {
-			return nil, nil
-		}
+	read, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return nil, err
 	}
 	return buf[:read], nil

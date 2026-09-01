@@ -10,50 +10,137 @@ import (
 	"testing"
 )
 
-// TestLicenceSignalCensus is Story 8.4i's task 1: D-8.4i.1's REPORT-ONLY
+// censusVerdict is one pinned population verdict: a licence text this
+// repository relies on, and the (family, id) the classifier MUST give
+// it.
+type censusVerdict struct {
+	where  string
+	family Family
+	id     string
+}
+
+// pinnedCensus is the WHOLE licence population of this repository with
+// its verdict written down — 26 committed LICENSE*/COPYING files plus
+// the 9 dependency licences the three Go module graphs resolve to.
+//
+// THIS TABLE IS THE OBSERVATION. It replaces a differential that stopped
+// observing anything the moment ClassifyLicenceText's body became a call
+// to classifyByAllSignals: from that commit the census compared a
+// function to ITSELF, so its "0 of 35 changed verdict" line was true by
+// construction and could not have reported otherwise. MEASURED: with the
+// SIL OPEN FONT LICENSE entry's requiredVersion set to "VERSION 9.9" —
+// which reclassifies all eleven committed OFL files to (unknown, "") and
+// fails the shipped asset gate outright — the differential census still
+// printed "0 change verdict" and PASSED. A guard whose comment claims a
+// safety it does not have is this story's own subject (D-8.0.1), and it
+// reached instance four here, in the test written to catch instance
+// three.
+//
+// The table is TEST-OWNED and written out longhand, on D-8.4i.3's
+// reasoning about the allowlist: an expectation DERIVED from the thing
+// it checks passes any edit to that thing. Adding a dependency or a
+// committed licence file therefore requires recording its verdict here.
+// That is not friction to be engineered away — under AD-26 a new
+// redistributed licence is exactly the event that must not land
+// unrecorded.
+var pinnedCensus = []censusVerdict{
+	{"LICENSE", FamilyPermissive, "MIT"},
+	{"folio-designer/public/fonts/ibmplexmono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/ibmplexsans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/ibmplexsansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosanssc/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-APACHE-2.0", FamilyPermissive, "Apache-2.0"},
+	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-CMAPS", FamilyPermissive, "BSD-3-Clause"},
+	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-LIBERATION", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/notosans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/notosanssc/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/notosansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/internal/text/wordlist/LICENSE-CC0-1.0.txt", FamilyPermissive, "CC0-1.0"},
+	{"folio-go/testdata/fonts/LICENSE-Roboto.txt", FamilyPermissive, "Apache-2.0"},
+	{"folio-go/testdata/fonts/notosansthai-variable-testonly/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/testdata/lint/wordlist-assets/compliant/folio-go/internal/text/wordlist/LICENSE-CC0-1.0.txt", FamilyUnknown, ""},
+	{"folio-go/testdata/lint/wordlist-assets/violating/folio-go/internal/text/wordlist/LICENSE-CC0-1.0.txt", FamilyUnknown, ""},
+	{"lint/testdata/licence/copyleft/example.test/agpl-lib/LICENSE", FamilyCopyleft, "AGPL-3.0-only"},
+	{"lint/testdata/licence/copyleft/example.test/gpl-lib/LICENSE", FamilyCopyleft, "GPL-3.0-only"},
+	{"lint/testdata/licence/copyleft/example.test/lgpl-lib/LICENSE", FamilyCopyleft, "LGPL-3.0-only"},
+	{"lint/testdata/licence/copyleft/example.test/sspl-lib/LICENSE", FamilyCopyleft, "SSPL-1.0"},
+	{"lint/testdata/licence/permissive/example.test/apache-lib/LICENSE", FamilyPermissive, "Apache-2.0"},
+	{"lint/testdata/licence/permissive/example.test/bsd-lib/LICENSE", FamilyPermissive, "BSD-3-Clause"},
+	{"lint/testdata/licence/permissive/example.test/mit-lib/LICENSE", FamilyPermissive, "MIT"},
+	{"lint/testdata/licence/permissive/example.test/ufl-lib/LICENSE", FamilyPermissive, "Ubuntu-font-1.0"},
+	{"dep folio-go -> github.com/boxesandglue/textshape", FamilyPermissive, "MIT"},
+	{"dep lint -> github.com/google/go-cmp", FamilyPermissive, "BSD-3-Clause"},
+	{"dep lint -> github.com/yuin/goldmark", FamilyPermissive, "MIT"},
+	{"dep lint -> golang.org/x/mod", FamilyPermissive, "BSD-3-Clause"},
+	{"dep lint -> golang.org/x/net", FamilyPermissive, "BSD-3-Clause"},
+	{"dep lint -> golang.org/x/sync", FamilyPermissive, "BSD-3-Clause"},
+	{"dep lint -> golang.org/x/sys", FamilyPermissive, "BSD-3-Clause"},
+	{"dep lint -> golang.org/x/telemetry", FamilyPermissive, "BSD-3-Clause"},
+	{"dep lint -> golang.org/x/tools", FamilyPermissive, "BSD-3-Clause"},
+}
+
+// TestLicenceSignalCensus is Story 8.4i's task 1 — D-8.4i.1's
 // population census, and D-8.4i.6's hard constraint that the gate must
 // not become fatal in the same commit that first measures the
 // population.
 //
-// It runs the collect-all-signals rule (licencesignals.go) over the
-// WHOLE existing licence population — every committed LICENSE* file in
-// the repository, plus every dependency LICENSE file the three Go module
-// graphs resolve to — and RECORDS what it would say beside what the
-// shipped classifier says today. It asserts nothing about the
-// difference: in the commit that introduces it, no verdict changes and
-// no refusal becomes fatal.
+// AS COMMITTED AT 2e9365e it was report-only and DIFFERENTIAL: the
+// collect-all-signals rule ran beside the then-shipped first-match
+// switch over the whole population, and 0 of 35 texts changed verdict.
+// That measurement is a fact about THAT COMMIT, where the two
+// classifiers were genuinely different code, and it is what licensed
+// the next commit to make refusals fatal. It is recorded in the story's
+// Delivery Log and in DW-117's closing note, attributed there.
 //
-// It is kept after task 2 flips ClassifyLicenceText onto the new rule,
-// where it becomes a standing witness that the two agree on the
-// committed population — and, more usefully, a located record of what
-// every licence file in the repository classifies as.
+// AS IT STANDS NOW the differential is meaningless — both columns would
+// be the same function — so the test PINS the population's verdicts
+// against the table above instead. What it asserts today: every licence
+// text this repository redistributes or depends on classifies exactly as
+// recorded, no population member is missing from the table, and no table
+// entry has silently lost its file.
 //
-// WHY THE CENSUS IS THE FIRST TASK AND NOT A NOTE. ClassifyLicenceText
-// is shared between the ASSET path (manifest.go, 12 files, visible) and
-// the DEPENDENCY path (licencegraph.go, 9 files, not visible in this
-// repository at all). If the new rule reds something legitimate, the
-// answer is to HALT and route it to the engineering lead — never to
-// weaken the rule, narrow its population or exempt a file. Moving the
-// bar to fit the instrument (D-8.5.10) is the failure this whole thread
-// exists to stop.
+// WHY THE CENSUS EXISTS AT ALL. ClassifyLicenceText is shared between
+// the ASSET path (manifest.go, 12 files, visible) and the DEPENDENCY
+// path (licencegraph.go, 9 files, not visible in this repository at
+// all). If a change reds something legitimate here, the answer is to
+// HALT and route it to the engineering lead — never to weaken the rule,
+// narrow the population or exempt a file. Moving the bar to fit the
+// instrument (D-8.5.10) is the failure this whole thread exists to stop.
 func TestLicenceSignalCensus(t *testing.T) {
 	root := repoRootForCensus(t)
 
-	type verdict struct {
-		where             string
-		oldFamily, newFam Family
-		oldID, newID      string
-		differs           bool
+	want := make(map[string]censusVerdict, len(pinnedCensus))
+	for _, v := range pinnedCensus {
+		if _, dup := want[v.where]; dup {
+			t.Fatalf("pinnedCensus lists %q twice", v.where)
+		}
+		want[v.where] = v
 	}
-	var verdicts []verdict
+	seen := map[string]bool{}
+	measured := 0
+
 	record := func(where, text string) {
-		oldFamily, oldID := ClassifyLicenceText(text)
-		newFam, newID := classifyByAllSignals(text)
-		verdicts = append(verdicts, verdict{
-			where: where, oldFamily: oldFamily, newFam: newFam,
-			oldID: oldID, newID: newID,
-			differs: oldFamily != newFam || oldID != newID,
-		})
+		measured++
+		family, id := ClassifyLicenceText(text)
+		seen[where] = true
+		pin, ok := want[where]
+		if !ok {
+			t.Errorf("%s: classifies as (%v, %q) but is NOT in pinnedCensus. A licence text this "+
+				"repository redistributes or depends on must have its verdict RECORDED (AD-26): add it "+
+				"to the table — do not delete it from the population.", where, family, id)
+			return
+		}
+		if family != pin.family || id != pin.id {
+			t.Errorf("%s: classifies as (%v, %q), pinned as (%v, %q). If the new verdict is CORRECT, the "+
+				"table is the place that records the change and says who decided it. If it is not, this is "+
+				"a HALT and a finding for the engineering lead — never a reason to weaken the rule, narrow "+
+				"the population or exempt a file (D-8.5.10).",
+				where, family, id, pin.family, pin.id)
+			return
+		}
+		t.Logf("    %-72s (%v, %q)", where, family, id)
 	}
 
 	// --- population A: every committed LICENSE*/COPYING* file ---
@@ -106,25 +193,15 @@ func TestLicenceSignalCensus(t *testing.T) {
 	}
 
 	// --- the record ---
-	changed := 0
-	for _, v := range verdicts {
-		marker := "   "
-		if v.differs {
-			marker = ">> "
-			changed++
+	for _, v := range pinnedCensus {
+		if !seen[v.where] {
+			t.Errorf("%s is pinned in pinnedCensus but was NOT found in the population. A licence file "+
+				"disappearing silently is how a census stops being a census — if it was removed "+
+				"deliberately, remove its pin in the same change.", v.where)
 		}
-		t.Logf("%s%-72s shipped=(%v,%q) collect-all=(%v,%q)", marker, v.where, v.oldFamily, v.oldID, v.newFam, v.newID)
 	}
-	t.Logf("CENSUS: %d licence texts measured (%d committed files + %d dependency licences); %d change verdict",
-		len(verdicts), len(committed), deps, changed)
-
-	// REPORT-ONLY. Nothing here fails on `changed`. If a verdict does
-	// change on a LEGITIMATE file, that is a HALT and a finding for the
-	// engineering lead — not a reason to soften the rule.
-	if changed != 0 {
-		t.Logf("NOTE: %d verdict(s) differ. Per D-8.4i.1 this is a finding to route, never a reason to "+
-			"weaken the rule, narrow the population, or exempt a file.", changed)
-	}
+	t.Logf("CENSUS: %d licence texts measured (%d committed files + %d dependency licences), all matching "+
+		"their pinned verdicts", measured, len(committed), deps)
 }
 
 // committedLicenceFiles lists every tracked file whose basename names a
