@@ -575,3 +575,180 @@ block, and whether an author may embed a font from their own disk. Neither may b
 **How we'd know it was wrong.** Another dispatch halting on a question one of the two decision logs has
 already answered — that would mean the propagation check belongs at every plan gate, not just at the
 ones where a halt already taught us to look.
+
+## Story 8.5's plan gate — two rulings, one of which splits the story (2026-09-02)
+
+### D-8.5.12 — The owner brief's "no first-load cost" clause is DECLINED on the contract, and the record says decline, not impossibility
+
+**Engineering lead ruling**, taken by the orchestrator, at Story 8.5's plan gate. Measured at `b0fae96`.
+
+**Verdict.** Story 8.5 ships the catalogue **bundled and precached**, as specced. The clause of
+D-8.5.3's brief reading *"the engineering should find a shape where size is not paid for at first
+load"* is **declined**. No document is amended, the story proceeds, and this entry is the record of
+the decline together with its price and its reversal.
+
+**Situation.** D-8.5.1(b) steered toward faces fetched at pick time. The plan resolved against that
+steer on three pieces of contract text — `spec-fonts/SPEC.md` `## Non-goals` (*"No live font service.
+No Google Fonts API, no arbitrary URL, no 'download on first use'"*), `font-catalogue.md` §"Why
+bundled rather than fetched" (*"Nothing is fetched. The bytes come from the bundle already on the
+machine"*), and the story's own AC3 (*"inside the bundle behind the same verified asset URLs … and
+the offline verification job covers them"*) — plus the measured fact that there is nowhere to fetch
+**from**: AC4 bans the Google hosts, the product ships no server, and NFR7 promises the designer works
+offline. That resolution is correct and is not revisited.
+
+**The correction that is the load-bearing half of this ruling.** The spec's Design Note 1 states that
+no shape exists which avoids first-load cost. **That overstates it, and the lead corrected it:** no
+such shape exists *that the Non-goals clause permits*. The mechanism is available and was checked — a
+release can carry an asset the service worker does not precache, since `immutable` and the S1 row set
+are separate mechanisms, and 8.4f's own measurement (23 of 64 slots used, 41 free) confirms the
+ceiling is not what forbids it. **A same-origin, verified-URL, cached-on-first-pick tier is buildable
+today.** It is foreclosed by *"no 'download on first use'"*, which names it literally. **This is
+policy, not physics** — and the record must say so, because an owner cannot sensibly reverse a
+decision they have been told is impossible.
+
+**In simple terms.** The shop *can* deliver later instead of handing you everything at the door; the
+house rules just say it does not. Telling the owner "that is impossible" would be false and would
+quietly remove a choice that is actually theirs. Telling them "we chose not to, here is what it costs
+and here is what changing it costs" leaves the choice where it belongs.
+
+**The price of the decline, stated plainly because it is not what the owner priced.** The release
+emits **13,490,909** Brotli bytes today across 22 sidecars. Roughly 20 Latin faces at 45–226 KB Brotli
+each adds about **1.5–4.5 MB**, landing at **~15–18 MB** against a **`~9 MB`** stated commitment.
+**That is not the 37% overage the owner was shown when they chose 20+ families. It is roughly
+double.** The owner priced 37%; they have not yet priced 2×.
+
+**Why ruling rather than escalating is correct here and not merely convenient.** Proceeding requires
+**no amendment to anything** — every governing document already says bundled. Only the *reversal*
+would need the owner, and nobody is proposing one. And the reversal stays cheap after the tag:
+`folio-go/v0.1.0` versions the **Go module**, while the precache set is a **designer** artifact, so
+moving catalogue faces to a deferred tier later breaks no downstream integrator; and Story 8.6 puts
+the picked face **inside the `.folio`**, so no already-written document regresses. By D-8.2.2(b) this
+is not on the exported surface and is not a narrowing, so it **does not join the before-the-tag set**.
+
+**Options considered.** (a) *Build a middle tier now* — rejected: forbidden by a clause that names it
+literally, and inventing it in the build would be a design change smuggled through an implementation.
+(b) *Escalate to the owner now* — rejected as premature: the decision that actually needs them is the
+**threshold**, and D-8.4.24 already placed that at Story 8.4d, deliberately, so it is chosen once
+against finished weight rather than tuned along the way. (c) *Proceed as specced and record the
+decline with its price and reversal* — chosen.
+
+**Why this wins.** It keeps the owner's one real decision at the one gate designed to hold it, while
+refusing to let the declined clause pass unrecorded. The accepted cost is that the owner learns a
+clause of their own brief was declined **after** the story is planned rather than before.
+
+**The reversal, named and priced so it is decidable.** Amend `SPEC.md` `## Non-goals` **and**
+`font-catalogue.md` together to permit a same-origin deferred tier, accepting that a family not yet
+fetched cannot be picked while offline. **The mitigant must be stated with it, or the trade reads
+worse than it is:** the catalogue is a **palette, not coverage** — the three shipped Noto faces are
+the coverage (D-8.5.1) — so an unfetched family degrades to *"you cannot pick that family right
+now"*, never to a document that will not render.
+
+**Guardrails.** The story invents **no** middle tier and does not reverse this in the build; a build
+proposing one is a halt, not a design choice. AC5's per-asset Brotli figure must be a real
+measurement, never a false zero — `s1VisibleBytes` sums four hardcoded needles and already misses
+174,949 bytes of IBM Plex, so it is not the instrument (D-8.5.6). **Story 8.5's Delivery Log states
+the catalogue's total added Brotli bytes as ONE number**, with its invocation, commit and tree state
+(D-8.5.7), so 8.4d does not inherit twenty rows nobody added up.
+
+**The scheduled escalation, held deliberately.** The ~2× figure belongs at **Story 8.4d**, which is
+where D-8.4.24 put it. **If 8.4d's plan gate proposes a threshold near 18 MB, it is escalated to the
+owner there** — doubling a stated NFR7 commitment is a different animal from 37%, and the owner priced
+the latter. Recorded now so that arrives as a scheduled question rather than a surprise.
+
+**How we'd know it was wrong.** The owner reads the decline and reverses it. Under D-000.8 one
+reversal is the system working; a pattern of them means the escalation bar is set too high.
+
+### D-8.5.13 — Story 8.5 SPLITS: the licence gate leaves as Story 8.4h, and it is a different story than the spec thought
+
+**Engineering lead ruling**, taken by the orchestrator. Measured at HEAD, not inferred.
+
+**Verdict.** Split. **Story 8.4h — "The licence gate closes"** is written and sequenced **immediately
+before 8.5**. `8.4d` stays last in the epic (D-8.4.27d), unaffected.
+
+- **8.4h takes:** AC2 (both fall-through sites), the `UFL` addition to `classify.go` (SPDX entry +
+  marker branch + fixture — confirmed absent at HEAD), and AC7 (the widened extension-class guard
+  population).
+- **8.5 keeps:** AC1, AC3, AC4, AC5, AC6, AC8. **AC4 stays in 8.5 deliberately** — the forbidden-host
+  scan is the assertion that D-8.5.12's decline was honoured, so it belongs with the thing it
+  constrains, not with the licence gate.
+
+**Why the `8.4x` key.** The series is this epic's insertion mechanism and **D-8.5.1(a) is the exact
+precedent** — *"the SILENT-FAILURE half lands ahead of 8.5 (Story 8.4f)."* Same move, same story, same
+scheme. Letters a–g are used; `8.4h` is next.
+
+**The criterion, so this is not "a split too many."** This epic splits on **independent failure mode**,
+never on story budget. 8.4f split because its failure was silent and reachable by any future asset
+addition. This splits because **its failure is live at HEAD right now, with zero catalogue faces in
+the tree.** Measured at `lint/internal/manifest/manifest.go:298-301`: a font whose licence text does
+not classify gets `licenceLabel = "SEE NOTICE"` and `ResolveAssets` returns **nil**. **A GPL font
+ships with a clean build today.** That is a **repair**, and a repair does not depend on the extension
+that surfaced it — which is also why it may land ahead of the story that found it.
+
+**In simple terms.** The lock on the door is broken right now, and it is broken whether or not we are
+about to move twenty new things into the room. Fix the lock first, prove it holds against a key it
+should refuse, and *then* move the things in. Fixing it afterwards means the twenty things were
+carried past a door nobody had tested.
+
+**The red-proof is ruled as a hard condition, not a preference.** A gate red-proved over today's six
+OFL-1.1 faces in nine known directories says nothing about twenty faces in a new directory — D-8.5.4's
+quantifier lesson, hit three times this run. So **8.4h's red-proof must be population-independent**: a
+synthetic testdata font in a **new, otherwise-empty directory** carrying an **unclassifiable** licence,
+*and* a second carrying a **classifiable-but-not-allowlisted** one (GPL-3.0). Each must red **on its
+own message**, not on a neighbouring guard — D-8.5.8(b): when a proof will not fail for the right
+reason, move the proof, never weaken the claim. Proved that way, any real face in any directory is
+covered by construction, and **8.5's twenty faces are admitted by a gate that was proved rather than
+one that was merely green when they arrived.** That is the entire value of the split and it is lost if
+the red-proof is written against the existing population.
+
+**THE TRAP THAT DECIDES 8.4h's SHAPE — measured, and absent from the spec.** The two sites the spec
+names are **two populations under two policies, and they must not share one list.**
+
+- **`manifest.go:~298` is the FONT path.** `ResolveAssets` (`:165`) walks the whole repo but filters to
+  `fontExtensions`, keyed by directory. The owner's four-id allowlist governs here — D-8.5.3's own
+  words are *"a **font** asset."* The current population classifies cleanly: nine directories, all
+  OFL-1.1.
+- **`manifest.go:~384` is the THAI WORDLIST path** — `wordlistAssetDir/words_th.txt`, PyThaiNLP,
+  **CC0-1.0**, with its own dedicated marker branch in `classify.go` whose comment at `:81-83` records
+  CC0 joining at Story 2.1 / D-2.1.3 as the first CC0 asset. **`CC0-1.0` is not one of the owner's four
+  ids.** Making that site fail-closed against the *font* allowlist **reds the build on a shipped,
+  legitimate, owner-unobjected asset on day one** — the DW-23 / DW-86 standing-red shape, manufactured
+  by the very story that exists to stop silent passes.
+
+> **Ruled: both sites close, against DIFFERENT lists.** The font site closes against the four-id
+> **asset allowlist** (OFL-1.1, Apache-2.0, MIT, UFL). The wordlist site closes against the existing
+> `permissiveSPDX` set, which already carries `CC0-1.0` deliberately. **Neither site keeps
+> `"SEE NOTICE"` as a pass.** **Do not add CC0-1.0 to the four-id list** — that would amend an owner
+> decision to fix a scoping error. This touches D-8.5.3 not at all: the owner ruled about **fonts**,
+> and honouring that scope is exactly what keeps the dictionary out of it.
+
+**In simple terms.** One phrase — `"SEE NOTICE"` — appears in two places that look identical and mean
+different things: one guards typefaces, the other guards a Thai dictionary. Closing both against the
+typeface rules would reject the dictionary for having a perfectly good licence that simply is not a
+*font* licence. Same words, different rooms. **The build must not collapse them into one shared
+constant because the strings match** — validate by consumer, not by key location.
+
+**Two further guardrails on 8.4h.**
+- **It must demonstrate the current committed population classifies cleanly in the same commit that
+  makes classification fatal** — nine font directories (three under `folio-go/fonts/`, six under
+  `folio-designer/public/fonts/`) plus the wordlist. **A gate that lands red is not a gate**; it is
+  DW-23 starting again, a pattern this run has registered twice.
+- **AC7 widens the guard's DIRECTORY reach, not its ASSET-CLASS reach.** `ResolveAssets` already walks
+  the whole repo and filters by extension; the extension-class guard exists for the file whose
+  extension is *not* in `fontExtensions` and is therefore invisible to both (D-8.5.2). 8.4h must
+  **enumerate what the widened walk newly picks up** and confirm no non-font asset is newly subjected
+  to the font allowlist. **Do not assume the widening is inert** — that assumption is precisely what
+  produced the wordlist trap above.
+
+**`oversized`, resolved by the split.** Do not additionally tighten now; re-check at 8.5's re-plan. If
+8.5 is still over at six ACs, the lever is **AC1's per-face procurement table** — twenty provenance
+rows belong in a companion artifact the spec cites, on `font-catalogue.md`'s own shape, not inlined in
+the file the implementation subagent reads. **Do not resolve `oversized` by thinning acceptance
+criteria**; that is moving the bar to fit the instrument.
+
+**Consequences.** Epic 8's remaining sequence becomes **8.4h → 8.5 → 8.6 → 8.4d**. Story 8.5's current
+spec at `ready-for-dev` is **superseded pending re-plan** and must not be dispatched to build as
+written. `sprint-status.yaml` gains an `8-4h` key.
+
+**How we'd know it was wrong.** 8.4h lands green and 8.5 then finds the gate does not see its faces —
+that would mean AC7's widening was scoped by directory where it needed to be scoped by the tracked-file
+population, and the fix belongs in 8.4h's population definition, not in 8.5.
