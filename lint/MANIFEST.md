@@ -285,15 +285,6 @@ below with the licence and copyright line its accompanying LICENSE*/NOTICE*
 files carry (AC25, D-1.5.6). A font binary committed without both files is a
 build failure (`ResolveAssets`), not a silent gap.
 
-A Licence cell may read as a whole SPDX expression (`OFL-1.1 OR Apache-2.0`)
-rather than a single identifier, because the label states **what the file
-says** — a dual-licensed file is not attributable to one of its two
-licences. The gate keys on something else: **whether every option the file
-offers is acceptable**, term by term, against the owner's font allowlist
-(D-8.5.3). So a compound label beside a four-identifier allowlist is
-correct and is not a bug to be "fixed" by shortening the label or widening
-the list (Story 8.4j).
-
 | Path | Licence | Copyright | Serves |
 |---|---|---|---|
 | folio-designer/public/fonts/ibmplexmono/IBMPlexMono-Regular.ttf | OFL-1.1 | Copyright © 2017 IBM Corp. with Reserved Font Name "Plex" | committed asset (folio-designer/public/fonts/ibmplexmono) |

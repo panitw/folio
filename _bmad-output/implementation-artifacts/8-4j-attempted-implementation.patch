@@ -1,0 +1,775 @@
+diff --git a/lint/MANIFEST.md b/lint/MANIFEST.md
+index f6f2bf2..104d9c4 100644
+--- a/lint/MANIFEST.md
++++ b/lint/MANIFEST.md
+@@ -285,6 +285,15 @@ below with the licence and copyright line its accompanying LICENSE*/NOTICE*
+ files carry (AC25, D-1.5.6). A font binary committed without both files is a
+ build failure (`ResolveAssets`), not a silent gap.
+ 
++A Licence cell may read as a whole SPDX expression (`OFL-1.1 OR Apache-2.0`)
++rather than a single identifier, because the label states **what the file
++says** — a dual-licensed file is not attributable to one of its two
++licences. The gate keys on something else: **whether every option the file
++offers is acceptable**, term by term, against the owner's font allowlist
++(D-8.5.3). So a compound label beside a four-identifier allowlist is
++correct and is not a bug to be "fixed" by shortening the label or widening
++the list (Story 8.4j).
++
+ | Path | Licence | Copyright | Serves |
+ |---|---|---|---|
+ | folio-designer/public/fonts/ibmplexmono/IBMPlexMono-Regular.ttf | OFL-1.1 | Copyright © 2017 IBM Corp. with Reserved Font Name "Plex" | committed asset (folio-designer/public/fonts/ibmplexmono) |
+diff --git a/lint/internal/licence/classify.go b/lint/internal/licence/classify.go
+index 95b04ff..62b8d09 100644
+--- a/lint/internal/licence/classify.go
++++ b/lint/internal/licence/classify.go
+@@ -11,32 +11,66 @@ import (
+ 
+ // ClassifySPDXExpression accepts a known SPDX identifier or a simple known
+ // conjunction/disjunction. Unknown syntax or terms fail closed.
++//
++// It is a thin wrapper over ClassifySPDXExpressionTerms, which is the
++// SOLE term enumerator for an SPDX expression in this repository
++// (Story 8.4j). This wrapper exists because two of its three callers
++// (rules.ScanLicenceGraph, npm.go) want only the family verdict.
+ func ClassifySPDXExpression(expression string) (Family, error) {
++	family, _, err := ClassifySPDXExpressionTerms(expression)
++	return family, err
++}
++
++// ClassifySPDXExpressionTerms is ClassifySPDXExpression with its term
++// enumeration RETURNED rather than discarded. Story 8.4j (D-8.4j.1)
++// added it for one reason: the font asset gate must admit a compound
++// expression only when EVERY term is on the owner's four-id list, and
++// the alternative — splitting the expression string at the gate — is a
++// second SPDX expression parser, a shape this run has now found four
++// times. ONE parser, ONE term enumeration, TWO consumers
++// (collectLicenceSignals and manifest's SITE A).
++//
++// ITS RESOLUTION SEMANTICS ARE UNCHANGED from Story 1.3 and must stay
++// so: trim, refuse parentheses and even field counts, require AND/OR at
++// odd indices, start FamilyPermissive, ANY copyleft term makes the whole
++// expression copyleft, ANY unrecognised term makes it unknown. The
++// returned family and error are byte-for-byte what this function has
++// always returned; only the terms are new.
++//
++// The terms slice carries the even-index fields discovered BEFORE the
++// failure, so an unrecognised term is itself named in the slice — that
++// is what lets the gate refuse naming the term that failed rather than
++// naming only the expression. It is empty when the expression was too
++// malformed to enumerate at all (parens, even field count), and a
++// caller must treat "no terms" as "not admissible".
++func ClassifySPDXExpressionTerms(expression string) (Family, []string, error) {
+ 	expression = strings.TrimSpace(expression)
+ 	if expression == "" || strings.ContainsAny(expression, "()") {
+-		return FamilyUnknown, fmt.Errorf("unsupported SPDX expression")
++		return FamilyUnknown, nil, fmt.Errorf("unsupported SPDX expression")
+ 	}
+ 	parts := strings.Fields(expression)
+ 	if len(parts)%2 == 0 {
+-		return FamilyUnknown, fmt.Errorf("malformed SPDX expression")
++		return FamilyUnknown, nil, fmt.Errorf("malformed SPDX expression")
+ 	}
++	terms := make([]string, 0, (len(parts)+1)/2)
+ 	family := FamilyPermissive
+ 	for i, part := range parts {
+ 		if i%2 == 1 {
+ 			if part != "AND" && part != "OR" {
+-				return FamilyUnknown, fmt.Errorf("unsupported SPDX operator %q", part)
++				return FamilyUnknown, terms, fmt.Errorf("unsupported SPDX operator %q", part)
+ 			}
+ 			continue
+ 		}
++		terms = append(terms, part)
+ 		term := classifyBySPDX(part)
+ 		if term == FamilyUnknown {
+-			return FamilyUnknown, fmt.Errorf("unknown SPDX identifier %q", part)
++			return FamilyUnknown, terms, fmt.Errorf("unknown SPDX identifier %q", part)
+ 		}
+ 		if term == FamilyCopyleft {
+ 			family = FamilyCopyleft
+ 		}
+ 	}
+-	return family, nil
++	return family, terms, nil
+ }
+ 
+ // Family is a coarse licence classification.
+@@ -151,10 +185,49 @@ func IsPermissiveSPDX(id string) bool { return permissiveSPDX[id] }
+ 
+ var copyleftSPDXPrefixes = []string{"GPL-", "LGPL-", "AGPL-", "SSPL-"}
+ 
+-// spdxLineRE matches an "SPDX-License-Identifier: <id>" marker, the
+-// preferred classification signal (AC30: "an SPDX identifier line or
++// spdxLineRE matches an "SPDX-License-Identifier: <expression>" marker,
++// the preferred classification signal (AC30: "an SPDX identifier line or
+ // short marker" is all any fixture carries — never full licence text).
+-var spdxLineRE = regexp.MustCompile(`(?i)SPDX-License-Identifier:\s*([A-Za-z0-9.\-+]+)`)
++//
++// STORY 8.4j (D-8.4j.1). The capture used to be `([A-Za-z0-9.\-+]+)`,
++// ONE TOKEN, so a declaration of two licences at once —
++// "SPDX-License-Identifier: OFL-1.1 OR GPL-3.0-only", an entirely
++// ordinary way for a typeface to be published — was read as its FIRST
++// TERM ALONE and classified (permissive, "OFL-1.1"). That id sits on the
++// owner's four-id font allowlist, so the file passed the fail-closed
++// asset gate and published under a permissive label in lint/MANIFEST.md.
++// Reversing the two identifiers refused correctly: DW-125's
++// order-dependence surviving in the one place Story 8.4i's collect-all
++// rule did not reach, because collect-all worked ACROSS lines and this
++// defect is WITHIN one. The capture is now the REST OF THE LINE, routed
++// through ClassifySPDXExpression — the function that has resolved
++// compound expressions correctly since Story 1.3 and which
++// ClassifyLicenceText simply never asked.
++//
++// THREE DELIBERATE DETAILS, each with a reason:
++//
++//   - `[ \t]*` REPLACES `\s*` as the separator. `\s` matches newlines,
++//     so the old pattern let a capture cross a line break. Harmless
++//     against a one-token capture; against a rest-of-line capture it
++//     would swallow an ARBITRARY FOLLOWING LINE — a copyright line, say
++//     — as if it were an SPDX expression. The measured cost is that
++//     "SPDX-License-Identifier:" with its identifier on the NEXT line
++//     stops being a signal: it is not a valid SPDX declaration, no
++//     population text uses it, and the direction is fail-closed.
++//   - `\S` FIRST keeps a bare "SPDX-License-Identifier:" with nothing
++//     after it a NON-SIGNAL, exactly as today, rather than a signal
++//     carrying the empty expression.
++//   - `[^\n\r]*` stops at the line end and tolerates CRLF.
++//
++// The known cost of reading the whole line is that trailing content
++// after the identifier — "SPDX-License-Identifier: MIT */", a comment
++// terminator or a parenthetical — now classifies (unknown, "") where it
++// classified (permissive, "MIT"). That is the direct, intended price of
++// reading the label whole, its direction is fail-closed and loud
++// (D-1.3.4), and zero of the 35 population texts carry such a line. It
++// is registered as a deferred finding on this story rather than
++// papered over here.
++var spdxLineRE = regexp.MustCompile(`(?i)SPDX-License-Identifier:[ \t]*(\S[^\n\r]*)`)
+ 
+ // ClassifyLicenceText inspects the content of a module's LICENSE file
+ // (or a short marker standing in for one) and returns its Family and,
+diff --git a/lint/internal/licence/classify_test.go b/lint/internal/licence/classify_test.go
+index 09f9a93..0406ec5 100644
+--- a/lint/internal/licence/classify_test.go
++++ b/lint/internal/licence/classify_test.go
+@@ -668,3 +668,249 @@ func TestCopyleftTieBreakIsDeterministic(t *testing.T) {
+ 		})
+ 	}
+ }
++
++// ────────────────────────────────────────────────────────────────────
++// STORY 8.4j — A COMPOUND LICENCE LINE IS READ WHOLE (D-8.4j.1).
++//
++// Story 8.4i taught this classifier to collect every signal ACROSS the
++// lines of a licence text. It did not teach it to read a single line
++// whole: spdxLineRE captured ONE TOKEN, so
++// "SPDX-License-Identifier: OFL-1.1 OR GPL-3.0-only" classified
++// (permissive, "OFL-1.1") — an id on the owner's four-id font
++// allowlist — and passed the fail-closed asset gate under a permissive
++// label in lint/MANIFEST.md, a release artifact.
++//
++// THE TELL THAT THIS WAS READING AND NOT JUDGING: swapping the two
++// identifiers changed the answer. That asymmetry is not a policy; it is
++// an artefact of where the reading stopped. TestCompoundSPDXLineIsOrderIndependent
++// below is the pin for exactly that.
++//
++// ClassifySPDXExpression has resolved such expressions correctly since
++// Story 1.3 and ClassifyLicenceText simply never asked it. These tests
++// pin that it now does.
++
++// TestCompoundSPDXLineWithACopyleftTermResolvesAsCopyleft is RP1: the
++// reported defect, at the classifier.
++func TestCompoundSPDXLineWithACopyleftTermResolvesAsCopyleft(t *testing.T) {
++	const text = "SPDX-License-Identifier: OFL-1.1 OR GPL-3.0-only\n"
++
++	family, id := ClassifyLicenceText(text)
++	if family != FamilyCopyleft {
++		t.Errorf("RP1: a declaration offering a copyleft term must resolve COPYLEFT — reading only "+
++			"its first token published a GPL-offered font under %q on a green build; got family %v", "OFL-1.1", family)
++	}
++	if id != "OFL-1.1 OR GPL-3.0-only" {
++		t.Errorf("RP1: the label must be the WHOLE declaration, not the term the reader stopped at; got %q", id)
++	}
++}
++
++// TestCompoundSPDXLineIsOrderIndependent is RP2, and it is the test that
++// distinguishes reading from judging. The verdict for a disjunction must
++// not depend on which of its two identifiers was written first: under
++// the single-token capture, "GPL-3.0-only OR OFL-1.1" refused correctly
++// while "OFL-1.1 OR GPL-3.0-only" was waved through, and the difference
++// between them was nothing but word order.
++func TestCompoundSPDXLineIsOrderIndependent(t *testing.T) {
++	forward, forwardID := ClassifyLicenceText("SPDX-License-Identifier: OFL-1.1 OR GPL-3.0-only\n")
++	reversed, reversedID := ClassifyLicenceText("SPDX-License-Identifier: GPL-3.0-only OR OFL-1.1\n")
++
++	if forward != reversed {
++		t.Fatalf("RP2: swapping the two identifiers changed the FAMILY (%v vs %v). Order-dependence is "+
++			"the defect itself, not a policy", forward, reversed)
++	}
++	if forward != FamilyCopyleft {
++		t.Errorf("RP2: both orders must resolve copyleft, got %v", forward)
++	}
++	if forwardID != "OFL-1.1 OR GPL-3.0-only" || reversedID != "GPL-3.0-only OR OFL-1.1" {
++		t.Errorf("RP2: each order must be labelled with its OWN whole declaration, got %q and %q", forwardID, reversedID)
++	}
++}
++
++// TestWhollyPermissiveCompoundSPDXLineResolves is RP3, and it is what
++// proves this fix is a CLASSIFIER and not a blanket refusal of anything
++// listing more than one name. A file offered under either of two
++// acceptable licences says one thing, clearly; refusing it would trade
++// the bypass for a regression on a legitimate asset.
++//
++// Both orders, because RP2's point cuts this way too.
++func TestWhollyPermissiveCompoundSPDXLineResolves(t *testing.T) {
++	for _, c := range []struct{ text, wantID string }{
++		{"SPDX-License-Identifier: MIT OR Apache-2.0\n", "MIT OR Apache-2.0"},
++		{"SPDX-License-Identifier: Apache-2.0 OR MIT\n", "Apache-2.0 OR MIT"},
++	} {
++		family, id := ClassifyLicenceText(c.text)
++		if family != FamilyPermissive {
++			t.Errorf("RP3: %q must RESOLVE permissive — a fix that refused every compound expression "+
++				"would be a ban, not a classifier; got %v", c.wantID, family)
++		}
++		if id != c.wantID {
++			t.Errorf("RP3: label = %q, want the whole expression %q", id, c.wantID)
++		}
++	}
++}
++
++// TestCompoundSPDXLineComposesWithTheOtherSignals pins the composition
++// rule's edges — one line is ONE signal whatever its arity; composition
++// ACROSS lines stays resolveLicenceSignals' job; and a resolved
++// expression's own terms do not count twice against it.
++func TestCompoundSPDXLineComposesWithTheOtherSignals(t *testing.T) {
++	const oflBody = "SIL OPEN FONT LICENSE\nVersion 1.1 - 26 February 2007\n"
++	const gplBody = "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n"
++
++	for _, c := range []struct {
++		name       string
++		text       string
++		wantFamily Family
++		wantID     string
++	}{
++		{
++			// A conjunction is not special-cased: ANY copyleft term
++			// makes the whole expression copyleft, which is
++			// ClassifySPDXExpression's rule, read not restated.
++			"a conjunction with a copyleft term is copyleft",
++			"SPDX-License-Identifier: MIT AND GPL-3.0-only\n",
++			FamilyCopyleft, "MIT AND GPL-3.0-only",
++		},
++		{
++			// THE MARKING RULE. A real dual-licensed font ships the
++			// full text of one of its licences. Without marking the
++			// expression's own fields as seen, the body's OFL-1.1 name
++			// signal would be a SECOND permissive identifier and arm 3
++			// would refuse a file that says one thing.
++			"a compound line over the body of one of its own terms is not a conflict",
++			"SPDX-License-Identifier: OFL-1.1 OR Apache-2.0\n\n" + oflBody,
++			FamilyPermissive, "OFL-1.1 OR Apache-2.0",
++		},
++		{
++			// The marking cannot mask a DIFFERENT licence's signal:
++			// only the terms the expression itself declared are marked.
++			"a compound line over an unrelated permissive body is still a conflict",
++			"SPDX-License-Identifier: MIT OR Apache-2.0\n\n" + oflBody,
++			FamilyUnknown, "",
++		},
++		{
++			// DW-125 with the roles swapped, still caught.
++			"a compound permissive line over a GPL body is still copyleft",
++			"SPDX-License-Identifier: MIT OR Apache-2.0\n\n" + gplBody,
++			FamilyCopyleft, "GPL-3.0",
++		},
++		{
++			"two DISTINCT compound lines conflict, as two distinct ids do",
++			"SPDX-License-Identifier: MIT OR Apache-2.0\nSPDX-License-Identifier: BSD-3-Clause OR ISC\n",
++			FamilyUnknown, "",
++		},
++		{
++			// One line is one signal, and the same line twice is the
++			// same signal — spacing normalized, so the dedup key is the
++			// expression and not its typography.
++			"the same compound line twice, differently spaced, is ONE signal",
++			"SPDX-License-Identifier: MIT OR Apache-2.0\nSPDX-License-Identifier: MIT  OR   Apache-2.0\n",
++			FamilyPermissive, "MIT OR Apache-2.0",
++		},
++		{
++			// Single-term controls: byte-identical to pre-8.4j
++			// behaviour, because ClassifySPDXExpression on one term IS
++			// classifyBySPDX on that term.
++			"a single identifier is unchanged",
++			"SPDX-License-Identifier: MIT\n",
++			FamilyPermissive, "MIT",
++		},
++		{
++			// A single UNRECOGNISED id still NAMES itself, so the asset
++			// gate reaches its off-allowlist arm rather than its
++			// "could not be classified" neighbour.
++			"a single unrecognised identifier still names itself",
++			"SPDX-License-Identifier: CC-BY-SA-4.0\n",
++			FamilyUnknown, "CC-BY-SA-4.0",
++		},
++		{
++			// A COMPOUND expression that fails to resolve names
++			// NOTHING — load-bearing, see the composition rule in
++			// licencesignals.go: naming it would make the gate's
++			// off-allowlist message assert that the text classifies as
++			// something it demonstrably does not.
++			"a compound expression with an unrecognised term names nothing",
++			"SPDX-License-Identifier: MIT OR CC-BY-SA-4.0\n",
++			FamilyUnknown, "",
++		},
++		{
++			// DW-131's own requested pin. The parenthesised form is
++			// byte-identical to pre-8.4j behaviour: fail-closed, and
++			// unnamed.
++			"the parenthesised form stays unclassifiable and unnamed",
++			"SPDX-License-Identifier: (MIT OR Apache-2.0)\n",
++			FamilyUnknown, "",
++		},
++		{
++			// The deferred cost of reading the line whole, PINNED so it
++			// is watched rather than rediscovered as a build red.
++			"trailing content after the identifier fails closed",
++			"SPDX-License-Identifier: MIT */\n",
++			FamilyUnknown, "",
++		},
++		{
++			// The separator narrowed from \s* to [ \t]*: a capture that
++			// could cross a newline plus a rest-of-line capture would
++			// swallow an arbitrary following line as an expression.
++			"an identifier on the FOLLOWING line is not a declaration",
++			"SPDX-License-Identifier:\nMIT\n",
++			FamilyUnknown, "",
++		},
++	} {
++		t.Run(c.name, func(t *testing.T) {
++			family, id := ClassifyLicenceText(c.text)
++			if family != c.wantFamily || id != c.wantID {
++				t.Errorf("got (%v, %q), want (%v, %q)", family, id, c.wantFamily, c.wantID)
++			}
++		})
++	}
++}
++
++// TestClassifySPDXExpressionTermsEnumeratesWithoutChangingItsVerdict
++// pins the ONE sanctioned modification to ClassifySPDXExpression: it
++// gained a sibling that returns the terms it always walked. The family
++// and error it reports must be unchanged, and the wrapper must agree
++// with the sibling — otherwise the "one parser, one term enumeration,
++// two consumers" rule has quietly become two parsers.
++func TestClassifySPDXExpressionTermsEnumeratesWithoutChangingItsVerdict(t *testing.T) {
++	for _, c := range []struct {
++		expression string
++		wantFamily Family
++		wantTerms  []string
++		wantErr    bool
++	}{
++		{"MIT", FamilyPermissive, []string{"MIT"}, false},
++		{"MIT OR Apache-2.0", FamilyPermissive, []string{"MIT", "Apache-2.0"}, false},
++		{"OFL-1.1 OR GPL-3.0-only", FamilyCopyleft, []string{"OFL-1.1", "GPL-3.0-only"}, false},
++		{"GPL-3.0-only OR OFL-1.1", FamilyCopyleft, []string{"GPL-3.0-only", "OFL-1.1"}, false},
++		{"MIT AND GPL-3.0-only", FamilyCopyleft, []string{"MIT", "GPL-3.0-only"}, false},
++		// The unrecognised term is itself named in the slice — that is
++		// what lets the gate refuse naming the term that failed.
++		{"MIT OR CC-BY-SA-4.0", FamilyUnknown, []string{"MIT", "CC-BY-SA-4.0"}, true},
++		// Too malformed to enumerate at all: no terms, and a caller
++		// must read "no terms" as "not admissible".
++		{"(MIT OR Apache-2.0)", FamilyUnknown, nil, true},
++		{"MIT */", FamilyUnknown, nil, true},
++		{"", FamilyUnknown, nil, true},
++	} {
++		t.Run(c.expression, func(t *testing.T) {
++			family, terms, err := ClassifySPDXExpressionTerms(c.expression)
++			if family != c.wantFamily || (err != nil) != c.wantErr {
++				t.Errorf("got (%v, err=%v), want (%v, err=%v)", family, err, c.wantFamily, c.wantErr)
++			}
++			if len(terms) != len(c.wantTerms) {
++				t.Fatalf("terms = %v, want %v", terms, c.wantTerms)
++			}
++			for i := range terms {
++				if terms[i] != c.wantTerms[i] {
++					t.Errorf("terms[%d] = %q, want %q", i, terms[i], c.wantTerms[i])
++				}
++			}
++			wrapperFamily, wrapperErr := ClassifySPDXExpression(c.expression)
++			if wrapperFamily != family || (wrapperErr != nil) != (err != nil) {
++				t.Errorf("the wrapper disagrees with the sibling: (%v, %v) vs (%v, %v) — that would be "+
++					"two parsers, not one", wrapperFamily, wrapperErr, family, err)
++			}
++		})
++	}
++}
+diff --git a/lint/internal/licence/licencesignals.go b/lint/internal/licence/licencesignals.go
+index 581cdbf..cdc6a7e 100644
+--- a/lint/internal/licence/licencesignals.go
++++ b/lint/internal/licence/licencesignals.go
+@@ -245,7 +245,14 @@ func collectLicenceSignals(text string) licenceSignals {
+ 	var sig licenceSignals
+ 
+ 	seen := map[string]bool{}
+-	fromSPDXLine := true
++	// addID is the NAME and CLAUSE path only (steps 2 and 3). Step 1
++	// stopped calling it at Story 8.4j, because an SPDX line no longer
++	// carries a single identifier — see below. It therefore never sets
++	// unresolvedID: an unresolved licence NAME names nothing, because
++	// there is none to give (resolveLicenceSignals arm 2), and that was
++	// already this closure's behaviour under the `fromSPDXLine` flag it
++	// used to consult, which was false for every call it ever received
++	// from steps 2 and 3.
+ 	addID := func(id string) {
+ 		if seen[id] {
+ 			return
+@@ -261,21 +268,72 @@ func collectLicenceSignals(text string) licenceSignals {
+ 			// nothing — it is a licence the build cannot show to be
+ 			// permitted (D-1.3.4, D-1.3.8).
+ 			sig.unresolved = true
+-			if fromSPDXLine && sig.unresolvedID == "" {
+-				sig.unresolvedID = id
+-			}
+ 		}
+ 	}
+ 
+ 	// (1) Every SPDX line, in document order. Collected first so that a
+ 	// file's own explicit declaration is the identifier named in a
+ 	// copyleft refusal when the text also carries a copyleft NAME.
++	//
++	// STORY 8.4j — THE COMPOSITION RULE. One SPDX line contributes
++	// exactly ONE signal, WHATEVER ITS ARITY. Resolution WITHIN a line
++	// is ClassifySPDXExpression's job; composition ACROSS lines and
++	// against name signals is resolveLicenceSignals' job. Neither
++	// reaches into the other, and this loop is the whole of the seam.
++	//
++	// Why one line is one signal: a declaration of "MIT OR Apache-2.0"
++	// is a file saying ONE thing — "either of these" — not a file saying
++	// two conflicting things. Treating its terms as two permissive
++	// identifiers would hit resolveLicenceSignals' arm 3 (two or more
++	// distinct permissive ids → unknown) and refuse a file that is
++	// perfectly clear about its own terms.
++	//
++	// The capture is normalized to single-spaced fields first, so
++	// "MIT  OR   Apache-2.0" and "MIT OR Apache-2.0" are ONE signal and
++	// dedup through the same `seen` map every other signal uses.
++	//
++	// A whole expression must NOT be routed through classifyBySPDX: that
++	// is an exact map lookup, which would call every compound expression
++	// unrecognised.
+ 	for _, m := range spdxLineRE.FindAllStringSubmatch(text, -1) {
+-		addID(m[1])
++		fields := strings.Fields(m[1])
++		expression := strings.Join(fields, " ")
++		if seen[expression] {
++			continue
++		}
++		seen[expression] = true
++
++		family, _, err := ClassifySPDXExpressionTerms(expression)
++		switch {
++		case err != nil || family == FamilyUnknown:
++			sig.unresolved = true
++			// unresolvedID is set ONLY for a SINGLE-TERM expression —
++			// today's behaviour, unchanged. A COMPOUND expression that
++			// fails to resolve names nothing, exactly as an unresolved
++			// licence NAME names nothing. THIS DETAIL IS LOAD-BEARING:
++			// naming a malformed expression would move a font from the
++			// asset gate's "could not be classified" arm to its "not one
++			// of the permitted licences" arm, whose message would then
++			// assert that the text CLASSIFIES AS something it
++			// demonstrably does not. It would also break the
++			// arm-disjointness
++			// TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist
++			// pins, and move DW-131's requested pin for the
++			// parenthesised form "(MIT OR Apache-2.0)" away from
++			// (unknown, "").
++			if len(fields) == 1 && sig.unresolvedID == "" {
++				sig.unresolvedID = expression
++			}
++		case family == FamilyCopyleft:
++			sig.copyleftIDs = append(sig.copyleftIDs, expression)
++			markExpressionFieldsSeen(seen, fields)
++		default:
++			sig.permissiveIDs = append(sig.permissiveIDs, expression)
++			markExpressionFieldsSeen(seen, fields)
++		}
+ 	}
+ 
+ 	// (2) Every licence name, in table order.
+-	fromSPDXLine = false
+ 	namedAny := false
+ 	for _, n := range licenceNames {
+ 		spelled := strings.Contains(upper, n.canonical)
+@@ -311,6 +369,33 @@ func collectLicenceSignals(text string) licenceSignals {
+ 	return sig
+ }
+ 
++// markExpressionFieldsSeen marks EVERY whitespace-separated field of a
++// RESOLVED SPDX expression as already-seen, so a later NAME or CLAUSE
++// signal for one of the expression's own terms does not count a second
++// time (Story 8.4j).
++//
++// WHY IT IS REQUIRED: a real dual-licensed font ships the full text of
++// one of its licences. Without this, "SPDX-License-Identifier: OFL-1.1
++// OR Apache-2.0" above the committed OFL 1.1 body yields the expression
++// AND the body's own OFL-1.1 name signal — two distinct permissive
++// identifiers — and resolveLicenceSignals' arm 3 refuses a file that
++// says exactly one thing. Measured: (unknown, "") without this marking,
++// (permissive, "OFL-1.1 OR Apache-2.0") with it.
++//
++// NO GRAMMAR KNOWLEDGE IS NEEDED OR WANTED. Operators are marked too and
++// are inert, because no entry of licenceNames or licenceClauses has the
++// id "OR" or "AND". Marking the fields rather than the parsed terms
++// keeps this function free of any second opinion about SPDX syntax.
++//
++// IT CANNOT MASK A DIFFERENT LICENCE'S SIGNAL, because only the terms
++// the expression ITSELF declared are marked: a "MIT OR Apache-2.0"
++// header over a GPL body still refuses as copyleft (measured).
++func markExpressionFieldsSeen(seen map[string]bool, fields []string) {
++	for _, f := range fields {
++		seen[f] = true
++	}
++}
++
+ // resolveLicenceSignals turns the collected signals into one verdict,
+ // in D-8.4i.1's FIXED order. The order is not stylistic:
+ //
+diff --git a/lint/internal/manifest/manifest.go b/lint/internal/manifest/manifest.go
+index d434d9d..44342a2 100644
+--- a/lint/internal/manifest/manifest.go
++++ b/lint/internal/manifest/manifest.go
+@@ -147,6 +147,57 @@ var fontAssetLicenceAllowed = func() map[string]bool {
+ 	return allowed
+ }()
+ 
++// firstDisallowedFontLicenceTerm reports whether EVERY term of a
++// resolved licence label is on the owner's four-id list, and names the
++// first term that is not. Story 8.4j (D-8.4j.1).
++//
++// THE LABEL AND THIS GATE KEY ON DIFFERENT THINGS, AND THAT IS CORRECT.
++// The label states WHAT THE FILE SAYS: since Story 8.4j a compound
++// declaration is labelled with its whole expression, because attributing
++// a dual-licensed file to one of its two licences is a partial label
++// produced by reading part of the line, and lint/MANIFEST.md is a
++// release artifact (AD-26). This gate states something else entirely:
++// WHETHER EVERY OPTION THE FILE OFFERS IS ACCEPTABLE. So a manifest row
++// reading "OFL-1.1 OR Apache-2.0" beside a four-id allowlist is NOT a
++// bug, and must not be "fixed" by either widening the list or shortening
++// the label. The same note is stated in MANIFEST.md's own assets header,
++// for the reader who has the artifact but not this file.
++//
++// ADMISSION IS NO MORE PERMISSIVE THAN THE CLASSIFICATION IT CONSUMES.
++// licence.ClassifySPDXExpressionTerms has resolved conservatively across
++// terms since Story 1.3 — copyleft if ANY term is copyleft, unknown if
++// ANY term is unrecognised — so it already declines to elect the
++// favourable term. If admission elected one (admit on the first
++// allowlisted term), the gate would re-open exactly what the classifier
++// just closed: DW-131 is first-term-wins in the classifier, and admitting
++// by first term is first-term-wins in the gate, one function along.
++//
++// NO STRING SPLITTING HAPPENS HERE. The term set comes from the single
++// existing enumerator — ONE parser, ONE term enumeration, TWO consumers.
++// A strings.Split(spdx, " OR ") in this function would be a second SPDX
++// expression parser.
++//
++// The known and accepted cost: "OFL-1.1 OR <proprietary>" is refused
++// even though the OFL term is takeable on its own. The refusal is LOUD,
++// naming the directory and the failing term, so a real case surfaces at
++// build time rather than shipping mislabelled. Whether to elect a term
++// is an OWNER question about D-8.5.3's four ids; it is not resolved in
++// the build and not resolved by widening the allowlist.
++func firstDisallowedFontLicenceTerm(spdx string) (string, bool) {
++	_, terms, _ := licence.ClassifySPDXExpressionTerms(spdx)
++	if len(terms) == 0 {
++		// Too malformed to enumerate at all. "No terms" is "not
++		// admissible" — fail closed, and name what we were given.
++		return spdx, false
++	}
++	for _, term := range terms {
++		if !fontAssetLicenceAllowed[term] {
++			return term, false
++		}
++	}
++	return "", true
++}
++
+ // assetServesLabel derives AC25's manifest "Serves" label from an
+ // asset's directory, relative to repoRoot (forward-slash form). Finding
+ // 9 (QA review): the previous implementation scanned only a fixed,
+@@ -354,14 +405,22 @@ func ResolveAssets(repoRoot string) ([]AssetRow, error) {
+ 		// a copyleft text is refused BY NAME rather than merely by
+ 		// absence from a list, and an unclassifiable text is refused
+ 		// rather than labelled.
++		// Story 8.4j (D-8.4j.1): ADMISSION IS PER-TERM. The label is now
++		// the WHOLE SPDX expression a licence text declares, so a
++		// compound declaration is admitted iff EVERY term it offers is
++		// on the owner's four-id list. Computed before the switch
++		// because a Go switch case cannot bind; arm order still decides,
++		// and the first two arms are reached first for the inputs they
++		// own (firstDisallowedFontLicenceTerm on "" is harmless).
+ 		family, spdx := licence.ClassifyLicenceText(licenceText)
++		failingTerm, everyTermAllowed := firstDisallowedFontLicenceTerm(spdx)
+ 		switch {
+ 		case spdx == "":
+ 			return nil, fmt.Errorf("%s: licence text could not be classified, so this redistributed font cannot be shown to carry a permitted licence (AC25, AD-26, D-8.5.3)", dir)
+ 		case family == licence.FamilyCopyleft:
+ 			return nil, fmt.Errorf("%s: licence text classifies as %q, a copyleft licence AD-26 forbids for a redistributed font (AC25, AD-26, D-8.5.3)", dir, spdx)
+-		case !fontAssetLicenceAllowed[spdx]:
+-			return nil, fmt.Errorf("%s: licence text classifies as %q, which is not one of the licences permitted for a redistributed font: %s (AC25, AD-26, D-8.5.3)", dir, spdx, strings.Join(fontAssetLicenceAllowlist, ", "))
++		case !everyTermAllowed:
++			return nil, fmt.Errorf("%s: licence text classifies as %q, whose term %q is not one of the licences permitted for a redistributed font: %s (AC25, AD-26, D-8.5.3)", dir, spdx, failingTerm, strings.Join(fontAssetLicenceAllowlist, ", "))
+ 		}
+ 		licenceLabel := spdx
+ 
+@@ -508,6 +567,14 @@ func RenderAssets(rows []AssetRow) string {
+ 	b.WriteString("below with the licence and copyright line its accompanying LICENSE*/NOTICE*\n")
+ 	b.WriteString("files carry (AC25, D-1.5.6). A font binary committed without both files is a\n")
+ 	b.WriteString("build failure (`ResolveAssets`), not a silent gap.\n\n")
++	b.WriteString("A Licence cell may read as a whole SPDX expression (`OFL-1.1 OR Apache-2.0`)\n")
++	b.WriteString("rather than a single identifier, because the label states **what the file\n")
++	b.WriteString("says** — a dual-licensed file is not attributable to one of its two\n")
++	b.WriteString("licences. The gate keys on something else: **whether every option the file\n")
++	b.WriteString("offers is acceptable**, term by term, against the owner's font allowlist\n")
++	b.WriteString("(D-8.5.3). So a compound label beside a four-identifier allowlist is\n")
++	b.WriteString("correct and is not a bug to be \"fixed\" by shortening the label or widening\n")
++	b.WriteString("the list (Story 8.4j).\n\n")
+ 	if len(rows) == 0 {
+ 		b.WriteString("_No redistributed non-code assets are committed at this commit._\n")
+ 		return b.String()
+diff --git a/lint/internal/manifest/manifest_test.go b/lint/internal/manifest/manifest_test.go
+index 324e11f..cf3bae8 100644
+--- a/lint/internal/manifest/manifest_test.go
++++ b/lint/internal/manifest/manifest_test.go
+@@ -860,3 +860,133 @@ func TestCommittedAssetPopulationClassifiesCleanly(t *testing.T) {
+ 		t.Errorf("expected a row for %s — its absence would make the two-policy assertion above vacuous", wordlistPath)
+ 	}
+ }
++
++// ────────────────────────────────────────────────────────────────────
++// STORY 8.4j — THE COMPOUND DECLARATION, AT THE GATE (D-8.4j.1).
++//
++// These are the SURFACE proofs. The classifier tests in
++// internal/licence pin ClassifyLicenceText's return value for these
++// inputs; that is not the same claim. DW-131's finding was that a
++// licence file of this shape PASSES THE FAIL-CLOSED ASSET GATE — a
++// green build shipping a GPL-offered font under a permissive label in
++// lint/MANIFEST.md — and a tuple assertion cannot show that
++// ResolveAssets consults the family, reaches the copyleft arm, or names
++// anything.
++
++// TestResolveAssetsRefusesACompoundFontLicenceOfferingCopyleft is RP1
++// and RP2 at the gate, and the second subtest is the whole point: under
++// the single-token capture the two subtests DISAGREED, and the only
++// difference between their inputs is which identifier was written
++// first.
++//
++// IT MUST RED ON THE COPYLEFT ARM'S OWN MESSAGE, not the
++// off-allowlist one: D-8.4i.1 fixes the resolution order at
++// copyleft-before-conflict precisely so a maintainer reads "GPL
++// detected" and removes the font, rather than reading "not permitted"
++// and asking for the list to be widened.
++func TestResolveAssetsRefusesACompoundFontLicenceOfferingCopyleft(t *testing.T) {
++	for _, c := range []struct{ name, declaration string }{
++		{"copyleft term second", "OFL-1.1 OR GPL-3.0-only"},
++		{"copyleft term first", "GPL-3.0-only OR OFL-1.1"},
++	} {
++		t.Run(c.name, func(t *testing.T) {
++			root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: "+c.declaration+"\n")
++
++			rows, err := ResolveAssets(root)
++			if err == nil {
++				t.Fatalf("DW-131: a font LICENSE offering a copyleft term must not pass the fail-closed "+
++					"asset gate; got nil and %d row(s): %v", len(rows), rows)
++			}
++			if !strings.Contains(err.Error(), "a copyleft licence") {
++				t.Errorf("expected the COPYLEFT refusal — the loudest arm, D-8.4i.1's fixed order — got: %v", err)
++			}
++			if !strings.Contains(err.Error(), `"`+c.declaration+`"`) {
++				t.Errorf("expected the error to name the WHOLE declaration %q, not the term the reader "+
++					"stopped at: %v", c.declaration, err)
++			}
++			if strings.Contains(err.Error(), "could not be classified") {
++				t.Errorf("this declaration classifies perfectly well as copyleft; refusing it as "+
++					"unclassifiable would send a maintainer to edit the SPDX line rather than remove "+
++					"the font (D-8.4i.1): %v", err)
++			}
++			if !strings.Contains(err.Error(), "synthetic-fonts") {
++				t.Errorf("expected the error to LOCATE the directory (AD-14), got: %v", err)
++			}
++			if rows != nil {
++				t.Errorf("a refused directory must produce NO row, got: %v", rows)
++			}
++		})
++	}
++}
++
++// TestResolveAssetsAdmitsACompoundFontLicenceWhoseTermsAreAllAllowlisted
++// IS THE REGRESSION GUARD, and it is the reason admission lives inside
++// this story rather than after it.
++//
++// fontAssetLicenceAllowed is an EXACT-ID map of four ids, so once the
++// label becomes the whole expression, NO COMPOUND CAN EVER BE A MEMBER.
++// The label fix alone would therefore refuse a legitimately
++// dual-licensed permissive face — trading a bypass for a false refusal
++// that does not exist in the tree today. Admission is per-term for
++// exactly that reason, and this test is what reds if it stops being.
++//
++// The row must carry the WHOLE expression as its label: the manifest
++// states what the file says, and a dual-licensed file is not
++// attributable to one of its two licences.
++func TestResolveAssetsAdmitsACompoundFontLicenceWhoseTermsAreAllAllowlisted(t *testing.T) {
++	for _, declaration := range []string{"OFL-1.1 OR Apache-2.0", "Apache-2.0 OR OFL-1.1", "MIT AND Apache-2.0"} {
++		t.Run(declaration, func(t *testing.T) {
++			root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: "+declaration+"\n")
++
++			rows, err := ResolveAssets(root)
++			if err != nil {
++				t.Fatalf("a compound declaration whose every term is on the owner's four-id list must be "+
++					"ADMITTED — the fix is a classifier, not a ban on listing two names; got: %v", err)
++			}
++			if len(rows) != 1 {
++				t.Fatalf("expected exactly one row, got %d: %v", len(rows), rows)
++			}
++			if rows[0].Licence != declaration {
++				t.Errorf("row licence = %q, want the WHOLE expression %q — labelling a dual-licensed file "+
++					"with one of its two licences is the partial label this story exists to fix", rows[0].Licence, declaration)
++			}
++		})
++	}
++}
++
++// TestResolveAssetsRefusesACompoundFontLicenceNamingTheFailingTerm is
++// what proves admission is PER-TERM rather than all-or-nothing.
++//
++// CC0-1.0 is permissive and classifiable — it is in
++// licence.permissiveSPDX, and is legitimately the Thai wordlist's
++// licence — but it is emphatically NOT one of the owner's four font
++// ids (D-8.5.3). So "OFL-1.1 OR CC0-1.0" resolves permissive, survives
++// both earlier arms, and must still be refused: an admission rule that
++// elected the first allowlisted term would be first-term-wins IN THE
++// GATE, which is DW-131's own defect one function along.
++//
++// AND IT MUST NAME CC0-1.0 SPECIFICALLY. Naming only the expression
++// would leave a maintainer to work out which half of their declaration
++// the build objected to.
++func TestResolveAssetsRefusesACompoundFontLicenceNamingTheFailingTerm(t *testing.T) {
++	root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: OFL-1.1 OR CC0-1.0\n")
++
++	rows, err := ResolveAssets(root)
++	if err == nil {
++		t.Fatalf("admission must be PER-TERM: a compound with an off-allowlist term must be refused even "+
++			"though its first term is allowlisted; got nil and %d row(s): %v", len(rows), rows)
++	}
++	if !strings.Contains(err.Error(), "not one of the licences permitted") {
++		t.Errorf("expected the OFF-ALLOWLIST refusal, got: %v", err)
++	}
++	if !strings.Contains(err.Error(), `"CC0-1.0"`) {
++		t.Errorf("expected the error to name the FAILING TERM, not merely the expression: %v", err)
++	}
++	if strings.Contains(err.Error(), "could not be classified") || strings.Contains(err.Error(), "a copyleft licence") {
++		t.Errorf("this declaration classifies as permissive; it must be refused on its own arm's message, "+
++			"not a neighbouring arm's: %v", err)
++	}
++	if rows != nil {
++		t.Errorf("a refused directory must produce NO row, got: %v", rows)
++	}
++}

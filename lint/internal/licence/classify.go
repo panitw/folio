@@ -11,66 +11,32 @@ import (
 
 // ClassifySPDXExpression accepts a known SPDX identifier or a simple known
 // conjunction/disjunction. Unknown syntax or terms fail closed.
-//
-// It is a thin wrapper over ClassifySPDXExpressionTerms, which is the
-// SOLE term enumerator for an SPDX expression in this repository
-// (Story 8.4j). This wrapper exists because two of its three callers
-// (rules.ScanLicenceGraph, npm.go) want only the family verdict.
 func ClassifySPDXExpression(expression string) (Family, error) {
-	family, _, err := ClassifySPDXExpressionTerms(expression)
-	return family, err
-}
-
-// ClassifySPDXExpressionTerms is ClassifySPDXExpression with its term
-// enumeration RETURNED rather than discarded. Story 8.4j (D-8.4j.1)
-// added it for one reason: the font asset gate must admit a compound
-// expression only when EVERY term is on the owner's four-id list, and
-// the alternative — splitting the expression string at the gate — is a
-// second SPDX expression parser, a shape this run has now found four
-// times. ONE parser, ONE term enumeration, TWO consumers
-// (collectLicenceSignals and manifest's SITE A).
-//
-// ITS RESOLUTION SEMANTICS ARE UNCHANGED from Story 1.3 and must stay
-// so: trim, refuse parentheses and even field counts, require AND/OR at
-// odd indices, start FamilyPermissive, ANY copyleft term makes the whole
-// expression copyleft, ANY unrecognised term makes it unknown. The
-// returned family and error are byte-for-byte what this function has
-// always returned; only the terms are new.
-//
-// The terms slice carries the even-index fields discovered BEFORE the
-// failure, so an unrecognised term is itself named in the slice — that
-// is what lets the gate refuse naming the term that failed rather than
-// naming only the expression. It is empty when the expression was too
-// malformed to enumerate at all (parens, even field count), and a
-// caller must treat "no terms" as "not admissible".
-func ClassifySPDXExpressionTerms(expression string) (Family, []string, error) {
 	expression = strings.TrimSpace(expression)
 	if expression == "" || strings.ContainsAny(expression, "()") {
-		return FamilyUnknown, nil, fmt.Errorf("unsupported SPDX expression")
+		return FamilyUnknown, fmt.Errorf("unsupported SPDX expression")
 	}
 	parts := strings.Fields(expression)
 	if len(parts)%2 == 0 {
-		return FamilyUnknown, nil, fmt.Errorf("malformed SPDX expression")
+		return FamilyUnknown, fmt.Errorf("malformed SPDX expression")
 	}
-	terms := make([]string, 0, (len(parts)+1)/2)
 	family := FamilyPermissive
 	for i, part := range parts {
 		if i%2 == 1 {
 			if part != "AND" && part != "OR" {
-				return FamilyUnknown, terms, fmt.Errorf("unsupported SPDX operator %q", part)
+				return FamilyUnknown, fmt.Errorf("unsupported SPDX operator %q", part)
 			}
 			continue
 		}
-		terms = append(terms, part)
 		term := classifyBySPDX(part)
 		if term == FamilyUnknown {
-			return FamilyUnknown, terms, fmt.Errorf("unknown SPDX identifier %q", part)
+			return FamilyUnknown, fmt.Errorf("unknown SPDX identifier %q", part)
 		}
 		if term == FamilyCopyleft {
 			family = FamilyCopyleft
 		}
 	}
-	return family, terms, nil
+	return family, nil
 }
 
 // Family is a coarse licence classification.
@@ -185,49 +151,10 @@ func IsPermissiveSPDX(id string) bool { return permissiveSPDX[id] }
 
 var copyleftSPDXPrefixes = []string{"GPL-", "LGPL-", "AGPL-", "SSPL-"}
 
-// spdxLineRE matches an "SPDX-License-Identifier: <expression>" marker,
-// the preferred classification signal (AC30: "an SPDX identifier line or
+// spdxLineRE matches an "SPDX-License-Identifier: <id>" marker, the
+// preferred classification signal (AC30: "an SPDX identifier line or
 // short marker" is all any fixture carries — never full licence text).
-//
-// STORY 8.4j (D-8.4j.1). The capture used to be `([A-Za-z0-9.\-+]+)`,
-// ONE TOKEN, so a declaration of two licences at once —
-// "SPDX-License-Identifier: OFL-1.1 OR GPL-3.0-only", an entirely
-// ordinary way for a typeface to be published — was read as its FIRST
-// TERM ALONE and classified (permissive, "OFL-1.1"). That id sits on the
-// owner's four-id font allowlist, so the file passed the fail-closed
-// asset gate and published under a permissive label in lint/MANIFEST.md.
-// Reversing the two identifiers refused correctly: DW-125's
-// order-dependence surviving in the one place Story 8.4i's collect-all
-// rule did not reach, because collect-all worked ACROSS lines and this
-// defect is WITHIN one. The capture is now the REST OF THE LINE, routed
-// through ClassifySPDXExpression — the function that has resolved
-// compound expressions correctly since Story 1.3 and which
-// ClassifyLicenceText simply never asked.
-//
-// THREE DELIBERATE DETAILS, each with a reason:
-//
-//   - `[ \t]*` REPLACES `\s*` as the separator. `\s` matches newlines,
-//     so the old pattern let a capture cross a line break. Harmless
-//     against a one-token capture; against a rest-of-line capture it
-//     would swallow an ARBITRARY FOLLOWING LINE — a copyright line, say
-//     — as if it were an SPDX expression. The measured cost is that
-//     "SPDX-License-Identifier:" with its identifier on the NEXT line
-//     stops being a signal: it is not a valid SPDX declaration, no
-//     population text uses it, and the direction is fail-closed.
-//   - `\S` FIRST keeps a bare "SPDX-License-Identifier:" with nothing
-//     after it a NON-SIGNAL, exactly as today, rather than a signal
-//     carrying the empty expression.
-//   - `[^\n\r]*` stops at the line end and tolerates CRLF.
-//
-// The known cost of reading the whole line is that trailing content
-// after the identifier — "SPDX-License-Identifier: MIT */", a comment
-// terminator or a parenthetical — now classifies (unknown, "") where it
-// classified (permissive, "MIT"). That is the direct, intended price of
-// reading the label whole, its direction is fail-closed and loud
-// (D-1.3.4), and zero of the 35 population texts carry such a line. It
-// is registered as a deferred finding on this story rather than
-// papered over here.
-var spdxLineRE = regexp.MustCompile(`(?i)SPDX-License-Identifier:[ \t]*(\S[^\n\r]*)`)
+var spdxLineRE = regexp.MustCompile(`(?i)SPDX-License-Identifier:\s*([A-Za-z0-9.\-+]+)`)
 
 // ClassifyLicenceText inspects the content of a module's LICENSE file
 // (or a short marker standing in for one) and returns its Family and,

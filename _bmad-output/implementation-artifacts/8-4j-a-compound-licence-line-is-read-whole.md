@@ -2,7 +2,7 @@
 title: 'Story 8.4j: A compound licence line is read whole'
 type: 'bugfix'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'blocked'
 baseline_revision: 'dbd16991148d658e4bcbd65c035eb031715bc173'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -453,7 +453,7 @@ Cadence **PER-EPIC** (D-000.4). **Exclude** the four `FOLIO_MATRIX_TARGET` legs,
   in turn and re-run `cd lint && go test -count=1 ./...` — expected each time: **exactly one named
   test reds, on its own message**, and no other.
 
-## Auto Run Result
+## Auto Run Result — plan gate (2026-09-02)
 
 Status: ready-for-dev
 Blocking condition: none — the dispatch directed `Halt after planning.`
@@ -462,3 +462,200 @@ Planning only. **No production or test code was written**, and no commit was cre
 tree carries this spec and nothing else. The plan-gate probe used to take the measurements recorded
 above was a throwaway in-package `_test.go`, deleted before the spec was written;
 `git status --porcelain` was verified empty afterwards.
+
+## Review Triage Log
+
+### 2026-09-02 — Review pass
+
+- intent_gap: 1: (high 1, medium 0, low 0)
+- bad_spec: 2: (high 0, medium 1, low 1)
+- patch: 2: (high 0, medium 0, low 2)
+- defer: 4: (high 0, medium 2, low 2)
+- reject: 12
+- addressed_findings:
+  - none
+
+**Attempted implementation saved at** `8-4j-attempted-implementation.patch` (this directory). Code
+changes reverted; the implementation commit `1af9854` was reversed by `git revert`, not rewritten.
+
+#### intent_gap (1) — the halt
+
+**[high] SITE B (the wordlist gate) is left on exact-id admission, and this story's own half-1 change
+makes it refuse a wholly-permissive compound with a message asserting the opposite of the
+classifier's verdict.** `resolveWordlistAssetRow`'s third arm is
+`case !licence.IsPermissiveSPDX(wordlistSPDX):` — a bare map lookup, so once the label may be a whole
+expression **no compound can ever be a member**, which is verbatim the argument D-8.4j.6 used to rule
+per-term admission *inside* this story at SITE A.
+
+Measured at `1af9854`, in-package probe (deleted; tree verified clean afterwards):
+
+- `ClassifyLicenceText("SPDX-License-Identifier: CC0-1.0 OR MIT\n")` → `(permissive, "CC0-1.0 OR MIT")`
+- `licence.IsPermissiveSPDX("CC0-1.0 OR MIT")` → `false`
+- so SITE B refuses with `wordlist licence text classifies as "CC0-1.0 OR MIT", which this project
+  does not recognise as a permissive licence` — a refusal whose message contradicts the
+  classification it just consumed.
+- At `dbd1699` the same text labelled `(permissive, "CC0-1.0")` and was **admitted**. The false
+  refusal is **new**, and is created by this story.
+
+**Why this cannot be resolved from the spec.** The contract points both ways and never settles SITE B:
+
+- *Inside:* the Boundaries rule **"Admission is per-term, and no more permissive than the
+  classification it consumes… If admission were more permissive than classification, the gate would
+  re-open what the classifier just closed"**; and D-8.4j.7's criterion — half 1 is consumed by SITE B,
+  and at SITE B half 1 alone is exactly the "fix that introduces a false refusal which does not exist
+  in the tree today" that D-8.4j.6 declared *not an incomplete fix but a wrong one*.
+- *Outside:* the Approach scopes the second half to **"font-asset admission"**; the Code Map says
+  SITE B is **"Different policy on purpose — do not collapse"**; `deferred[0]` already registers the
+  same shape at `:477`; and the Block If names **"either asset gate's policy"** as *"a lead question,
+  not a build decision"*.
+
+D-8.4j.6 pulled one half of a **two-site** registered finding inside the story and was silent on the
+other half. That silence is the gap. **Question for the lead:** does SITE B become per-term against
+its own permissive set in this story, or does 8.4j ship the new SITE B false refusal with the residue
+re-registered and routed? The answer changes what code exists, so it is asked before the code is
+re-derived rather than after.
+
+#### bad_spec (2) — moot under the cascade, recorded so the amendment is not lost
+
+- **[medium] `markExpressionFieldsSeen` writes term ids into the SHARED `seen` map, so a resolved
+  expression silently swallows a LATER SPDX LINE, not merely a body name signal — and the verdict
+  becomes ORDER-DEPENDENT ACROSS LINES.** Measured at `1af9854`:
+  `"SPDX-License-Identifier: MIT\nSPDX-License-Identifier: MIT OR Apache-2.0\n"` → `(unknown, "")`,
+  while the same two lines **reversed** → `(permissive, "MIT OR Apache-2.0")`. At `dbd1699` both
+  orders gave `(permissive, "MIT")` — order-**in**dependent. The copyleft pair is unaffected (both
+  orders `(copyleft, "MIT OR GPL-3.0-only")`, measured), so the direction is fail-closed and loud, not
+  a bypass. Root cause is the **Design Notes** composition rule ("mark **every whitespace-separated
+  field** of it as seen"), which is outside `<intent-contract>` and can be amended: the marking needs
+  its own set, consulted by steps (2) and (3) only, not the map that dedups SPDX lines. Order
+  dependence is the very defect this story exists to remove; introducing a new one across lines while
+  closing one within a line is the outcome D-8.4j.6 called *the worst available*.
+- **[low] `deferred[0]` is stale against the ruled reading.** It states the compound-font-admission
+  problem at `manifest.go:363 (SITE A)` is *"registered rather than fixed here"* — which D-8.4j.6
+  reversed. Its SITE B half is still live and is now the intent_gap above. The entry should be split.
+
+#### patch (2) — moot under the cascade, recorded for re-derivation
+
+- **[low]** SITE A's arm-3 message duplicates itself for a **single-term** expression:
+  `classifies as "CC-BY-SA-4.0", whose term "CC-BY-SA-4.0" is not one of…`. Name the term only when it
+  differs from the expression.
+- **[low]** `ClassifySPDXExpressionTerms`' doc comment says it has *"three callers"*, two of which are
+  `rules.ScanLicenceGraph` and `npm.go` — those two call the **wrapper**, not the sibling. In a file
+  whose whole style is precision about counts, the count is wrong.
+
+#### defer (4) — moot under the cascade; NOT written to `deferred:` this pass
+
+- **[medium]** Fail-open if `fontAssetLicenceAllowlist ⊄ permissiveSPDX`: an allowlisted-but-
+  unrecognised id would yield `(unknown, id)`, clear arms 1 and 2, and be **admitted**. Containment
+  holds today (measured: all four of OFL-1.1, Apache-2.0, MIT, Ubuntu-font-1.0 are permissive), and
+  the arm shape is **unchanged from `dbd1699`**, so this is pre-existing — but nothing pins it, and
+  `classify.go`'s own `Ubuntu-font-1.0` comment records that the containment was absent once before.
+- **[medium]** Trailing content after an identifier poisons the **whole text** through arm 2 even when
+  the body is unambiguous, and that reaches `rules.ScanLicenceGraph` — a build-failing
+  "licence unresolvable" for a future dependency whose LICENSE is ordinary. `deferred[1]` registers
+  the cost against the classifier and the font gate, not against the **dependency** gate.
+- **[low]** `manifest.Generate` writes the same possibly-compound label into the **module-dependency**
+  table, but the label/gate divergence note sits under the **assets** heading only.
+- **[low]** No pin for arity ≥ 3 expressions, lowercase operators (`MIT or Apache-2.0`), unknown
+  operators, or `WITH` exception expressions — all of which the rest-of-line capture feeds to the
+  parser for the first time.
+
+#### reject (12) — enumerated individually, each naming the path actually verified (D-8.4j.3)
+
+1. *"Partially enumerated expression admits when its enumerated prefix is all allowlisted."* Verified
+   at the path the finding is about — `ResolveAssets`' SITE A, not the classifier in isolation. A
+   non-resolving **compound** sets `unresolvedID = ""`, so `spdx == ""` and **arm 1 fires before arm
+   3**; a non-resolving **single** term yields `terms = [that id]`, which is not allowlisted
+   (containment measured above). No input reaching SITE A carries a non-empty label with a
+   partially-enumerated allowlisted prefix.
+2. *"`WITH` exception operator misclassified."* Verified at `ClassifySPDXExpressionTerms`' operator
+   check, which is **unmodified** by this diff — `WITH` was already refused. The only change is that
+   the rest-of-line capture now reaches it, which is the same class as `deferred[1]`; recorded in the
+   defer list above rather than as a distinct defect.
+3. *"Two lines declaring the same disjunction in opposite term order should not conflict."* Verified
+   against the matrix row that rules it: *"Two distinct compound lines → `(unknown, "")` — arm 3
+   across lines, unchanged."* `MIT OR Apache-2.0` and `Apache-2.0 OR MIT` are distinct expressions;
+   sorting terms to equate them is a second opinion about SPDX grammar the contract forbids.
+4. *"Mark only even-index terms, not every whitespace field."* Verified at `markExpressionFieldsSeen`
+   against `licenceNames` and `licenceClauses`: neither table has an entry with id `OR` or `AND`, so
+   the operators are inert. (The **shared-map over-reach onto later SPDX lines** is a different claim
+   and is NOT rejected — it is the bad_spec finding above.)
+5. *"A family that is neither copyleft nor permissive falls through the switch."* Verified at
+   `ResolveAssets`' switch: the only third family is `FamilyUnknown`, which arrives with `spdx == ""`
+   except for the single-unrecognised-id case, caught by arm 3 through containment. Same ground as
+   reject 1; the residual is the deferred containment pin.
+6. *"Callers relying on `addID` to name an unresolved SPDX identifier."* Verified at
+   `collectLicenceSignals`: after the change step (1) is the **only** writer of `unresolvedID`, and
+   `addID` has no SPDX caller. The concern is about a hypothetical future path, not a present one.
+7. *"Comment-to-code ratio is too high."* Verified against the **Tasks & Acceptance** section, which
+   mandates each of these comments by name (the three regex details, the composition rule, the
+   label/gate divergence in two places). Style objection against an explicit instruction.
+8. *"`ScanLicenceGraph` now prints a whole expression where it printed one id."* Verified at
+   `rules/licencegraph.go:44` and against the census: that honest label **is** the story's subject,
+   and all 9 dependency verdicts are pinned unchanged (35/35 hold).
+9. *"`firstDisallowedFontLicenceTerm`'s signature fights its name."* Style. Its one real consequence —
+   the whole input landing in the term slot — is the patch finding above, not a separate defect.
+10. *"The zero-terms branch is untested / may be unreachable."* Verified at `ResolveAssets`: it **is**
+    unreachable, because arm 1 catches `spdx == ""` first, and the code's own comment says so.
+11. *"The term set does not travel with the signal; the expression is enumerated twice."* Verified
+    against the contract's wording, which requires one **enumerator** and explicitly offers *"a
+    sibling that returns terms"*. Calling the sole enumerator twice is not a second parser.
+12. *"`MANIFEST.md` was hand-edited, breaking the Block If."* Verified by running `genmanifest` twice
+    from **inside `lint/`** and `git diff --exit-code` from the **repo root**: clean. The Block If is
+    about `genmanifest` producing a diff, which it does not; the header note is required by Tasks.
+
+## Auto Run Result
+
+Status: blocked
+Blocking condition: intent gap
+
+Implementation was written, verified green and committed at `1af9854`, then **reverted** when review
+found that the story's half-1 change creates a new false refusal at SITE B (the wordlist gate) that
+the intent does not settle. The attempted change is preserved at
+`8-4j-attempted-implementation.patch` and should be re-applied, with the lead's ruling folded in,
+rather than re-written from scratch — it is verified green and its four red-proofs are
+mutation-proved.
+
+**Verification performed at `1af9854` before the revert** (each command with its working directory):
+
+- `lint` (`/Users/panitw/Projects/folio/lint`): `go test -count=1 ./...` → 4 packages `ok`, exit 0;
+  `go vet ./...` → clean, exit 0.
+- census (`/Users/panitw/Projects/folio/lint`): `go test -count=1 -run TestLicenceSignalCensus -v
+  ./internal/licence/` → `CENSUS: 35 licence texts measured (26 committed files + 9 dependency
+  licences), all matching their pinned verdicts`, PASS. Seven of the nine dependency licences still
+  classify `(permissive, "BSD-3-Clause")` through the clause path (D-8.4i.9 intact).
+- `folio-go` (`/Users/panitw/Projects/folio/folio-go`): `go vet ./...` clean;
+  `go test ./...` → **1815 pass / 2 fail / 5 skip**, the two fails being exactly
+  `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest.
+- goldens (`/Users/panitw/Projects/folio/folio-go`): `TestGoldenDigestAgreesAtEveryDeclaredSite` →
+  *23 artifacts re-hashed; 70 declared recording sites agree*, PASS.
+- `genmanifest` (`/Users/panitw/Projects/folio/lint`, run twice), then
+  `git diff --exit-code -- lint/MANIFEST.md` and `git diff --exit-code` from
+  **`/Users/panitw/Projects/folio`** → both exit 0.
+- `gofmt -l folio-go lint` from **`/Users/panitw/Projects/folio`** → exactly
+  `lint/internal/rules/licencegraph_test.go` (DW-116, pre-existing).
+- `md5 -q README.md` from `/Users/panitw/Projects/folio` → `078d7d80d518d54af2fc04fb270d46b8`.
+- designer (`/Users/panitw/Projects/folio/folio-designer`): `npm run test` → **40 files / 411 tests**
+  passed; `npm run typecheck`, `npm run build`, `npm run test:e2e:compile` all exit 0; `npm run lint`
+  → exactly **4** `only-export-components` warnings. `maximumCacheAssets = 64`
+  (`src/release-payload.ts:33`) confirmed by `scripts/offline-release-contract.test.mjs` (12 tests)
+  inside that run.
+- Matrix test audit: all **15** I/O matrix rows covered by a test that **ran and passed**.
+
+**Mutation proofs (each by DELETION, run from `/Users/panitw/Projects/folio/lint`):**
+
+- Restore the single-token capture → RP1, RP2, RP3 and all seven 8.4j tests red on their own
+  messages; **no pre-existing test reds**.
+- Reinstate first-term-wins inside the enumerator → RP1 (`…got family permissive`) and RP2
+  (*"swapping the two identifiers changed the FAMILY"*) red, plus the gate's `copyleft_term_second`
+  subtest; **no pre-existing test reds** — the classifier's first-term-wins was caught by nothing
+  before this story.
+- Delete `markExpressionFieldsSeen`'s call sites → **exactly one** subtest reds
+  (`…a compound line over the body of one of its own terms is not a conflict`).
+- Delete the whole per-term admission arm → RP4 reds on its own message, plus the pre-existing
+  single-id off-allowlist test that shares the arm.
+- Restore the exact-map lookup (**half 1 alone**) → RP3's gate test reds with the predicted false
+  refusal on `OFL-1.1 OR Apache-2.0` and RP4 loses its failing term; **no pre-existing test reds**.
+- Delete only the failing-term naming from the message → **exactly one** named test reds.
+
+**Residual risks:** the two measured defects above (SITE B, and the cross-line order dependence) are
+unfixed in the tree, because the tree is back at `dbd1699` behaviour. Nothing shipped.
