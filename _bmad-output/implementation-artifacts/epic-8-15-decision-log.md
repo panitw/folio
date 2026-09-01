@@ -1727,3 +1727,155 @@ have been caught by reading the output; only by knowing where the command was st
 subject slot (D-8.4j.3): **the observation is true and something silently attached to it is not.** A
 third register entry for one mechanism is what the Nth-instance rule exists to prevent — instances
 re-price a practice, they do not accumulate as entries.
+
+## Story 8.4j's build gate — SITE B pulled inside, and the provenance audit becomes a step (2026-09-02)
+
+### D-8.4j.9 — SITE B is INSIDE Story 8.4j; policy and mechanism are different things
+
+**Engineering lead ruling**, taken. Measured at `d21684a`.
+
+**Verdict.** Story 8.4j fixes **both** asset gates. It does not narrow to the font site.
+
+**The ground, sharper than the halt reported.** `manifest.go:471` binds **both** `wordlistFamily` and
+`wordlistSPDX` from **one** `ClassifyLicenceText` call. Arm 3 at `:477-478` then refuses with *"…
+classifies as %q, which this project does not recognise as a permissive licence"* — while
+`wordlistFamily`, **in scope from the same call**, holds `FamilyPermissive`. **The refusal contradicts
+its own function's other return value inside a single switch.** That is not merely a false refusal; it
+is a message this story would turn into a false statement — and *"a true refusal on the wrong ground is
+still a defect"* was already ruled at this story's own gate.
+
+**D-8.4j.7 applied literally settles it.** At `dbd1699`, `CC0-1.0 OR MIT` was **admitted**; after half
+1 it is **refused**. The story creates the false refusal, so excluding SITE B leaves this story's own
+fix incorrect. Inside.
+
+**THE DISTINCTION, recorded because it will recur.** The *"different policy on purpose"* objection —
+which the spec's own Code Map raises — dissolves on inspection. **D-8.5.13 separated the two sites'
+POLICIES — which list governs which population — not their MECHANISM — how a label is tested against a
+list.** The defect here is mechanism: a **bare exact-match lookup on a label that may now be
+compound**, identical at `:363` and `:477`. **Fixing a shared mechanism at both sites does not merge
+two policies. It keeps them, and stops both from being wrong in the same way.**
+
+**In simple terms.** Two doors with two different guest lists, and both doormen have the same habit of
+reading only the first name on a pass. Teaching both to read the whole pass does not merge the lists.
+
+**The fix's shape, preserving D-8.5.13 exactly.** Consume the term set; admit iff **every** term is
+permissive — against `permissiveSPDX` at SITE B, against the four-id `fontAssetLicenceAllowlist` at
+SITE A. **Two lists, one mechanism, one enumerator.**
+
+**Why the Block If amendment is defensible, stated as a measurable claim.** Relative to `dbd1699`, the
+SITE B fix changes admission **only for expressions containing a non-permissive term** — the bypass
+class, which is this story's subject. **Every all-permissive expression is admitted exactly as before.
+No licence's admission status changes. It is not a policy change**, and if a build finds otherwise
+that is the halt.
+
+**Reachability was considered and DELIBERATELY not applied.** SITE B's population is one file carrying
+a plain CC0 text, so the false refusal is latent. But *"not reachable today"* was rejected as a
+defeater for DW-131 two rulings ago, and **applying it here, in the direction of doing less, is
+precisely how a bound erodes.** The criterion is correctness, not exposure.
+
+### D-8.4j.10 — The Approach and Block If are amended, in the opposite direction from the one I anticipated
+
+**Engineering lead ruling**, taken. Both corrections land **in place with the original wording preserved
+verbatim**.
+
+**Verdict.** The spec's Approach said *"**font-asset** admission"* and its Block If halted on *"either
+asset gate's **policy**"*. As written **they forbid what the fix requires.** That is a spec defect this
+gate found, and **the repair is not to narrow the story to match them.**
+
+- **Approach** → *asset admission at **both** gates*. It said "font-asset" because D-8.4j.6 was
+  answering a question reported about the font gate; **the criterion given with it (D-8.4j.7) was
+  never site-scoped.**
+- **Block If** → rebound to **policy, not mechanism**: halt if either gate's **LIST** changes, or if
+  the **SET OF LICENCES** either gate admits changes. This keeps every tooth the guard was given — it
+  still stops a silent widening of D-8.5.3 — while permitting a mechanism repair that provably changes
+  no admission decision.
+- **`deferred[0]` discharges** rather than carrying forward: it registered the **two-site** shape, and
+  both sites are now fixed. Kept verbatim rather than deleted, because the entry is the record that
+  the second site was **seen and registered before it was ruled on** — which is what makes this a good
+  halt rather than a rediscovery.
+
+**Why I anticipated the wrong direction.** I asked whether the story should narrow to SITE A, treating
+the spec's wording as the constraint and the fix as the thing to bend. The wording was the younger
+artifact and the less considered one; the criterion was older and site-neutral. **When spec text and a
+ruling's criterion disagree, the text is the thing that moved.**
+
+### D-8.4j.11 — The seen-marking scopes to the name signal space, with three corrections
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** Confirmed inside the story by D-8.4j.7 — the order dependence is **created by this
+story**, and a new order dependence introduced by the order-dependence story must not ship, reachable
+or not. The rule lives in Design Notes, **outside** `<intent-contract>`, so this gate may change it.
+
+**Why scoping is right.** The sub-rule's justification does not extend to a second SPDX line. A
+dual-licensed font ships **one** licence's body, so suppressing a duplicate **body name signal** is
+correct. **Two SPDX lines are two explicit declarations**, and a file declaring `MIT` on one line and
+`MIT OR Apache-2.0` on another **genuinely says two things** — D-8.4i.1's conflict arm should fire.
+Scoped this way it fires **in both orders**, which is the property this story exists to establish.
+Stricter, consistent, fail-closed.
+
+**Correction 1 — mark TERMS, not whitespace-separated FIELDS.** As written the rule marks the
+**operators** `OR` and `AND` as seen ids. Harmless today **only because no licence is named "OR"**.
+Take the term list from the single enumerator, never by re-splitting — **the fifth place in this area
+where a second splitter would have been the easy thing to write.**
+
+**Correction 2 — the masking falsifier is RE-RUN, not carried.** `MIT OR Apache-2.0` over a GPL body
+must still refuse **as copyleft**. It survives on inspection (GPL is a name signal, not a term of the
+expression), **and inspection is not the standard this run holds**: the property was established by
+measurement and must be re-established after the mechanism moves.
+
+**Correction 3 — six red-proofs, and the four existing ones are RE-RUN after folding.** They are proofs
+over the **old** patch and are **not** proofs over the new one. RP5: restoring the bare
+`IsPermissiveSPDX` lookup reds on `CC0-1.0 OR MIT`, on its own message. RP6: restoring shared-map
+marking reds on the `MIT` / `MIT OR Apache-2.0` pair, **with both orders asserted** — order-independence
+is the property, and **a single-order proof passes by luck.**
+
+### D-8.4j.12 — The provenance audit becomes a LISTED STEP, because it is currently only a habit of mine
+
+**Orchestrator decision**, answering the lead's direct question honestly.
+
+**The question.** At instance five of D-8.5.9, the lead asked whether the commit-provenance audit is a
+**listed step** in the close procedure, or only *"something a closer reliably does"* — noting that at
+five instances **the difference between a practice and a step is the whole control**.
+
+**The honest answer: it is neither. It is a habit of MINE.** It exists because I write it into each
+closer dispatch by hand. It is not in `bmad-story-closer`'s own procedure, and it is not in this log as
+a step. **A control that lives in whether the orchestrator remembers to type it is not a control**, and
+it would have failed silently the first time a close was dispatched in a hurry or by anyone else.
+
+**Verdict — it is now a numbered standing step**, recorded here because this log is what every closer
+on this run is pointed at:
+
+> **STANDING CLOSE STEP — COMMIT PROVENANCE AUDIT.** Before a story is marked `done`, **every** commit
+> in its range is audited: `git show --stat` contains only that story's files; both required trailers
+> are present and exact; author and committer are consistent with the branch; the branch is `main`;
+> **nothing is pushed**; and **any commit created by a step-03 implementation subagent is reported by
+> SHA with its instance number** against D-8.5.9. A close that does not report this has not completed.
+
+**Why prevention is not on the table, restated so it is not re-attempted.** D-8.4h.6 established the
+mechanism: `bmad-build-auto`'s step-03 mandates the implementation handoff be passed **verbatim** and
+forbids parent-authored guardrails, **so a no-commit instruction cannot reach the agent that would have
+to obey it.** Five instances, five catches by a downstream audit. **Since prevention is impossible at
+that boundary, detection must be a step rather than a habit.**
+
+**The exposure is real and time-bounded, and that is why this is worth doing now rather than at 15.3.**
+All five instances have cost nothing **only because nothing has been pushed** — `origin/main` is still
+`c985b9c`, and instance five was reverted, so it is history rather than state. **That containment ends
+the moment origin is pushed, which is inside this run's horizon at Story 15.3.** An unaudited step-03
+commit is one push away from being public.
+
+**How we'd know it was wrong.** A close reporting the audit as done without naming the commits it
+checked — which would mean the step has become the same habit wearing a number.
+
+### D-8.4j.13 — Two records worth keeping from this gate
+
+**1. A scope argument that leaves an executable artifact beats one that leaves a paragraph.**
+`OFL-1.1 OR Apache-2.0` was constructed to **argue** that admission belonged inside the story. It is
+now the case that **catches its absence**: restoring half 1 alone reds RP3 on the predicted false
+refusal. The lead asked for that case as a **red-proof** rather than only as reasoning, and that is why
+the argument survives as a test instead of as a decision-log entry nobody re-reads.
+
+**2. "First-term-wins reds zero pre-existing tests" retroactively validates treating DW-131 as a
+bypass rather than a latent.** Seven 8.4j tests red, **zero** pre-existing, for both the enumerator and
+the single-token capture. **A defect that no existing test can even express was unobserved, not
+absent.** That is the answer to anyone who reads *"0 of 35 texts carry a compound line"* as reassurance.

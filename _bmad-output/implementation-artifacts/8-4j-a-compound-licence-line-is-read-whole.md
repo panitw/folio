@@ -28,6 +28,14 @@ deferred:
       lint/internal/manifest/manifest.go:363 (SITE A) and :477 (SITE B, same shape against
       IsPermissiveSPDX)
     severity: high
+    status: >-
+      DISCHARGED 2026-09-02 at the build gate. This entry registered the TWO-SITE shape; D-8.4j.6
+      pulled SITE A inside the story and was silent on SITE B, and D-8.4j.9 pulled SITE B inside on
+      the same criterion. Both sites are fixed in this story, against DIFFERENT lists (the owner's
+      four ids at SITE A, permissiveSPDX at SITE B), so D-8.5.13's two-populations-two-policies
+      ruling is preserved exactly. Kept verbatim rather than deleted: the entry is the record that
+      the second site was seen and registered before it was ruled on, which is why the halt was a
+      good halt rather than a rediscovery.
   - summary: >-
       An SPDX line carrying trailing content after the identifier — a comment terminator, a
       parenthetical note — classifies FamilyUnknown where it previously classified on the first
@@ -99,8 +107,22 @@ collect-all does not reach. `ClassifySPDXExpression` already resolves such expre
 `ClassifyLicenceText` agree with the function it sits beside", is half-applied until this lands.**
 
 **Approach:** Widen the SPDX-line capture to the rest of the line and route the captured expression
-through the **existing** `ClassifySPDXExpression`; and make font-asset **admission per-term**, so a
-compound is admitted iff **every** term is on the owner's four-id list. **Reuse, do not rebuild:** no
+through the **existing** `ClassifySPDXExpression`; and make asset **admission per-term at BOTH gates**, so a
+compound is admitted iff **every** term is on the governing list — the owner's four ids at the font
+site, `permissiveSPDX` at the wordlist site.
+
+**AMENDED 2026-09-02 at the build gate (D-8.4j.9); the original read "make font-asset admission
+per-term, so a compound is admitted iff every term is on the owner's four-id list."** It said
+*font-asset* because D-8.4j.6 was answering a question reported about the font gate; **the criterion
+given with it (D-8.4j.7) was never site-scoped.** `manifest.go:477`'s arm is the identical mechanism —
+a bare exact-match lookup on a label that may now be compound — and after half 1 it refuses
+`CC0-1.0 OR MIT`, which `dbd1699` **admitted**. Worse, `:471` binds `wordlistFamily` and
+`wordlistSPDX` from **one** `ClassifyLicenceText` call, so arm 3 would refuse with *"…does not
+recognise as a permissive licence"* while `wordlistFamily` holds `FamilyPermissive` **in scope from
+the same call** — the refusal contradicting its own function's other return value inside a single
+switch. **D-8.5.13 separated the two sites' POLICIES (which list governs which population), not their
+MECHANISM (how a label is tested against a list). Fixing a shared mechanism at both sites does not
+merge two policies; it keeps them and stops both from being wrong in the same way.** **Reuse, do not rebuild:** no
 second expression parser, no re-implementation of resolution inside `ClassifyLicenceText`, and no
 string-splitting inside the allowlist check.
 
@@ -167,9 +189,18 @@ is correct without it (D-8.4j.4).
   the rule, narrow the population or exempt a file (D-8.5.10).
 - A golden digest moves, or `genmanifest` produces any diff. A legitimately changed label is a
   **finding to route, not a re-record**.
-- Making the three red-proofs pass requires changing `ClassifySPDXExpression`, `licenceNames`,
-  `licenceClauses`, `resolveLicenceSignals`'s arm order, or either asset gate's policy. Any of those
-  means the composition rule below is wrong, and that is a lead question, not a build decision.
+- Making the red-proofs pass requires changing `ClassifySPDXExpression`'s **resolution semantics**,
+  `licenceNames`, `licenceClauses`, or `resolveLicenceSignals`'s arm order. Any of those means the
+  composition rule below is wrong, and that is a lead question, not a build decision.
+- **Either gate's LIST changes, or the SET OF LICENCES either gate admits changes.**
+  **AMENDED 2026-09-02 at the build gate (D-8.4j.9); the original said "or either asset gate's
+  policy", which is too broad and halts on the fix itself.** Rebound to **policy, not mechanism**:
+  this keeps every tooth the guard was given — it still stops a silent widening of D-8.5.3 — while
+  permitting a mechanism repair that provably changes no admission decision. **Relative to
+  `dbd1699`, the SITE B fix changes admission only for expressions containing a non-permissive term
+  — the bypass class, which is this story's subject. Every all-permissive expression is admitted
+  exactly as before. No licence's admission status changes.** If a build finds otherwise, that is
+  the halt.
 
 **Never:**
 - **No compound-expression BAN anywhere (D-8.4j.2).** A guard asserting "no `LICENSE*` carries a
@@ -309,9 +340,22 @@ All rows measured at `45985ef` by throwaway in-package probe, deleted before thi
 - Given the admission check, when it is inspected, then it consumes a **term set produced by the
   single existing enumerator** and performs **no string splitting of its own** — one parser, one term
   enumeration, two consumers.
-- Given each of the three red-proofs in turn, when the guard it exercises is **deleted** (not
+- Given a wordlist `LICENSE` declaring `CC0-1.0 OR MIT` — **both permissive**, and `CC0-1.0` is
+  `permissiveSPDX`'s deliberate member since Story 2.1 — when `resolveWordlistAssetRow` runs, then it
+  is **admitted**. **`dbd1699` admitted it; half 1 alone refuses it, with a message contradicting
+  `wordlistFamily` in scope from the same call.** (RP5)
+- Given the seen-marking, when a text declares `MIT` on one line and `MIT OR Apache-2.0` on another,
+  then it resolves to **the same verdict in both orders** — the conflict arm fires either way.
+  **Both orders must be asserted in the test: order-independence is the property, and a single-order
+  proof passes by luck.** (RP6)
+- Given a `MIT OR Apache-2.0` header over a **GPL body**, when it is classified, then it still refuses
+  **as copyleft** — the masking falsifier, **re-measured after the seen-marking moved**, never carried
+  forward on inspection.
+- Given each of the **six** red-proofs in turn, when the guard it exercises is **deleted** (not
   falsified) and the suite re-run, then **exactly that one named test reds, on its own message**, and
-  no other test reds — proved for each of the three independently.
+  no other test reds — proved for each of the six independently. **All four pre-existing proofs are
+  RE-RUN after the rulings are folded in: they are proofs over the old patch and are not proofs over
+  the new one.**
 - Given the whole committed-plus-dependency licence population, when the census runs, then **35 texts
   classify exactly as pinned and no verdict moves**, and `genmanifest` run twice leaves
   `git diff --exit-code` clean from the repo root.
@@ -341,6 +385,36 @@ first term is first-term-wins **in the gate**. Fixing one while implementing the
 function along is the worst available outcome — because the story's own record would then say the
 defect was closed.
 
+
+### The seen-marking scopes to the NAME SIGNAL space — CORRECTED at the build gate (D-8.4j.10)
+
+**The original rule read: "mark every whitespace-separated field of a resolved expression as seen."
+That is preserved here verbatim, and it is wrong in two ways the build measured.**
+
+**Defect.** It writes term ids into the **shared** `seen` map, so it swallows a later SPDX **line**,
+not just a body name signal. Measured at `1af9854`: `"MIT"` then `"MIT OR Apache-2.0"` →
+`(unknown, "")`; **reversed** → `(permissive, "MIT OR Apache-2.0")`; at `dbd1699` **both** orders gave
+`(permissive, "MIT")`. **A new cross-line order dependence, introduced by the story whose subject is
+order dependence.** Fail-closed rather than a bypass, and the copyleft pair is order-independent
+(measured both ways) — but a new order dependence from this story must not ship, reachable or not.
+
+**Correction 1 — scope the marking to the NAME/BODY signal space, not the shared map.** The sub-rule's
+justification does not extend to a second SPDX line. A dual-licensed font ships **one** licence's
+body, so suppressing a duplicate **body name signal** is correct. **Two SPDX lines are two explicit
+declarations**, and a file declaring `MIT` on one line and `MIT OR Apache-2.0` on another **genuinely
+says two things** — D-8.4i.1's conflict arm should fire, and scoped this way it fires **in both
+orders**, which is the property this story exists to establish. Stricter, consistent, fail-closed.
+
+**Correction 2 — mark TERMS, not whitespace-separated FIELDS.** As written the rule marks the
+**operators** `OR` and `AND` as seen ids. Harmless today only because no licence is named "OR". Take
+the term list from the **single enumerator**, never by re-splitting — the same one-parser guardrail as
+the admission fix, and **the fifth place in this area where a second splitter would have been the easy
+thing to write.**
+
+**Correction 3 — the masking falsifier is RE-RUN, not carried.** `MIT OR Apache-2.0` header over a
+GPL body must still refuse **as copyleft**. It survives on inspection (GPL is a name signal, not a term
+of the expression), **and inspection is not the standard this run holds**: the property was established
+by measurement and must be re-established after the mechanism moves.
 
 ### THE COMPOSITION RULE (state it, do not infer it)
 
