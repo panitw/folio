@@ -3176,6 +3176,18 @@ successor asserts the canvas fragment stack's families **contain** the engine's 
 **not** assert global disjointness, which will now be false, and it must **not** be softened to an
 `arrayContaining` on the chrome half to keep it passing.
 
+**Given** the interval between this story and Story 8.4c
+**When** `IBM Plex Sans` and `Noto Sans` both resolve to the **same file**
+**Then** that state is **ASSERTED, not defended by a comment** — a test pins that the two names
+deliberately point at one file and **names Story 8.4c as the successor that makes them diverge**, so a
+future reader who "simplifies" the apparent redundancy goes **red**
+
+**THIS AC IS THE ANSWER TO THE OBJECTION THAT ORIGINALLY DELAYED THIS STORY (D-8.4.22).** The
+sequencing ruling put 8.4c first precisely to avoid *"a state whose only defence is a comment."* That
+objection was real and **cheaply answerable** — the correct response was always to **assert the
+intermediate state**, not to reorder around it. Converting the objection into a guard with an anchor is
+what should have been proposed in the first place.
+
 **THE DISJOINTNESS THIS REMOVES IS THE CANVAS'S, NOT CHROME'S.** A future reader taking "the
 vocabularies now meet" as licence to make chrome ask for Noto is reading it wrong — that is Story
 8.4c's question, settled there, and settled the other way.
@@ -3213,6 +3225,30 @@ INTERPRETATION.** With "ship IBM Plex for real" chosen, the honest fix for the m
 adding a real IBM Plex Mono binary — so "fix it separately" and "ship IBM Plex" became the same work,
 differing only in scope and order. This is read as *its own commit, landing first*, rather than a
 different story. **That reading is the orchestrator's, not the owner's words.**
+
+**Given** any font file that reaches the runtime bundle
+**When** the licence gate runs
+**Then** it **fails** if that file carries an extension `fontExtensions` does not recognise — and this
+guard lands in **the SAME FIRST COMMIT as the mono binary**, before any binary arrives by any route
+
+**AN ALWAYS CONSTRAINT IN A SPEC IS NOT ENOUGH, AND THAT IS THE RULING (D-8.4.23).** `ResolveAssets`
+walks the whole repo and hard-fails without a same-directory `LICENSE*` + `NOTICE*`, but
+`fontExtensions` is `[".ttf", ".otf", ".ttc"]` — and the `@ibm/plex-*` npm packages ship `.woff2`/
+`.woff` and **no `.ttf`**. The obvious procurement route would have put font binaries into the bundle
+**the licence gate cannot see**, leaving it green over files it considers unlicensed. **A spec
+constraint is prose: it binds one story, and the next person adding a font by a different route is not
+reading this spec.** The guard closes the **class** by construction rather than this instance. **A
+guard added after the thing it guards has already shipped is one that was never able to fail.**
+
+**Given** the family-name → file binding
+**When** any story changes which file sits behind a name
+**Then** an assertion observes it — because **nothing in this repository can today.** Across 443 lines
+of `canvas-font-stack.test.ts` **not one assertion opens an `@font-face` `src`, a filename or a byte**;
+every assertion is about family **names**. **A guard that checks only names cannot observe a change of
+the thing behind the name**, which is exactly how IBM Plex names over Noto bytes survived indefinitely.
+This is **the same net** as the licence guard above, and it compounds: with 8.4b landing first, its
+first job is to pin the deliberate two-names-one-file state, and this story's job is to **update it when
+they diverge** — same guard, two stories, each story's change visible in it.
 
 **Given** the chrome families `IBM Plex Sans` and `IBM Plex Sans Thai`
 **When** the stylesheet is generated

@@ -3621,3 +3621,92 @@ discrepancy could not stay invisible.
 with an owner, or correct the epic to a figure that is true. **Not resolved by the orchestrator**,
 because all three are direction calls and the third — amending a stated product constraint to match
 reality — is the one most likely to be chosen for being cheapest.
+
+---
+
+### D-8.4.22 — **D-8.4.17(c) IS REVERSED.** The order is `8.4a → 8.4b → 8.4c → 8.5 → 8.6`
+
+**Recorded as REVERSED, not amended, so the log shows the ground that changed.**
+
+**The gate found one third of the accident.** It reported that CJK canvas text rasterizes by accident,
+scoping it to the mono slot. Measured, **the whole fragment stack is an accident**:
+
+```
+.canvas-text-fragment:  'IBM Plex Sans'      'IBM Plex Sans Thai'      'IBM Plex Mono'
+build-wasm.mjs      →   NotoSans-Regular     NotoSansThai-Regular      NotoSansSC-Regular
+engine FontSet      →   Noto Sans            Noto Sans Thai            Noto Sans SC
+```
+
+**The canvas is accidentally correct for EVERY script, not just CJK.** Those three IBM Plex names
+resolve today to **precisely the engine's three faces, in the engine's own fallback order.** That is
+why nothing has ever looked wrong.
+
+**So the interval was never "CJK is broken for one story."** After 8.4c all three names carry **real
+IBM Plex bytes**, and **every** fragment — Latin, Thai and CJK — rasterizes with a face the engine
+never measured with, at positions the engine computed from **Noto** metrics. **The canvas loses
+fidelity wholesale for one story, on the surface whose entire purpose is showing the author what the
+engine will print.** A direct **AD-17** regression.
+
+**And the Thai measurement does not rescue it: CMAP PARITY IS NOT METRIC PARITY.** Identical coverage
+with different advance widths draws **the right glyphs in the wrong places**. **The CJK case is the
+most visible because it degrades to system fallback; the Latin and Thai cases are worse because they
+look plausible.** This is the correction that matters most — D-8.4.20(a) discharged a *coverage* risk
+and was read, including by this orchestrator, as discharging more than it did.
+
+**Why the original ground lost.** D-8.4.17(c)'s objection was real: 8.4b-first registers
+`noto-sans.ttf` under both `IBM Plex Sans` and `Noto Sans`, *"a state whose only defence is a
+comment."* **But it was weighed against nothing** — the lead reasoned about the mono slot as an
+isolated mislabel and **never followed the other two names to their files.** A maintenance hazard
+lasting one story loses to a wholesale rasterization regression lasting one story.
+
+**The objection was cheaply answerable, which is the second reason to flip — and the better lesson.**
+The intermediate state does **not** have to be defended by a comment: **assert it.** 8.4b now carries
+an AC pinning that the two names deliberately resolve to one file and **naming 8.4c as the successor
+that makes them diverge**, so a future "simplification" goes **red**. **Converting an objection into a
+guard with an anchor is what should have been proposed instead of using it as an ordering ground** —
+this run has repeatedly found that a comment carrying a test's evidentiary burden is the defect, and
+here it was very nearly used to justify a sequence.
+
+**8.4c's `ready-for-dev` spec is not wasted** — nothing in it changes; it moves one slot later. 8.4b is
+the smaller spec. **Do not merge them:** 8.4c is already `oversized` + `multiple-goals`, and the two
+have genuinely different subjects.
+
+---
+
+### D-8.4.23 — a spec constraint is prose; the licence blind spot and the file-swap blind spot are ONE guard, and it lands in the first commit
+
+**Confirmed at `lint/internal/manifest/manifest.go`:** `fontExtensions` is `[".ttf", ".otf", ".ttc"]`.
+The `@ibm/plex-*` npm packages ship `.woff2`/`.woff` and **no `.ttf`**, so the obvious procurement
+route would have put font binaries into the bundle **the licence gate cannot see** — green over files
+it considers unlicensed.
+
+**Making it an "Always" constraint in 8.4c's spec is NOT ENOUGH, and that is the ruling.** A spec
+constraint **binds one story**, and **the next person adding a font by a different route is not reading
+this spec.** 8.4c owes a **behavioural guard**: a test that fails when any font file reaching the
+runtime bundle carries an extension `fontExtensions` does not recognise. **That closes the CLASS by
+construction rather than this INSTANCE.** Cheap, because the bundle's asset list is already enumerated
+by the generator. The invariant is *the licence gate sees every font that ships*; the mechanism is the
+story's to choose.
+
+**It is the SAME guard as the file-swap gap, which is why both are ruled together.** Nothing in the
+repository can observe a font file swap — **zero assertions across 443 lines touch an `@font-face`
+`src`, a filename or a byte.** **A guard that checks only names cannot observe a change of the thing
+behind the name**, which is exactly how IBM-Plex-names-over-Noto-bytes survived indefinitely, and how
+the accident in D-8.4.22 went unnoticed by the lead, the gate and every guard in the repo.
+
+**It compounds across the two stories, which is the elegant part:** with 8.4b first, the guard's **first
+job** is to pin the deliberate two-names-one-file state; **8.4c's job is to update it when they
+diverge.** Same guard, two stories, **each story's change visible in it.**
+
+**It lands in 8.4c's FIRST commit — the same one as the mono binary — before any binary arrives by any
+route. A guard added after the thing it guards has already shipped is one that was never able to
+fail.**
+
+**Third instance of one shape this run**, after `checkSfnt` and the golden-digest site kinds: **a
+checker whose blind spot is a list nobody re-read as a population question.**
+
+**Warnings: both accepted, no split.** `oversized` and `multiple-goals` are true and both answered by
+**structure rather than division** — the mono binary is its own commit within the story, and the
+licence-manifest edit must stay in the same unit as the binaries it describes, since splitting it is
+what would create a commit where **the manifest describes files that are not there**. **A story that is
+large because its parts are genuinely inseparable is not the failure those warnings exist to catch.**
