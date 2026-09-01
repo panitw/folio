@@ -5478,7 +5478,40 @@ measure → change → **re-measure** unit, including a check that no golden PDF
   is where this belongs and where it is cheap. See **DW-107**, which shares that surface exactly.
 - **Severity:** MEDIUM — no shipped behaviour is wrong. What is missing is the ability to *notice* the
   next input of this kind.
-- **Status:** OPEN.
+- **Status:** **CLOSED by Story 8.4f (2026-09-02)**, commits `7a18079` and `68c548e`.
+
+  **What discharged it.** `assertEngineWasmIsTreeIndependent()` in
+  `folio-designer/scripts/verify-offline-release.mjs`, run inside the existing `wasmWitness` block —
+  reached by `npm run verify:offline:wasm`, and deliberately **not** by `npm run build`, because
+  `build:wasm` is a dependency of `typecheck`, `test` **and** `build` and a second engine build there
+  would tax every designer gate. It builds the engine twice, writes one stray untracked file between the
+  runs, and requires the two digests to agree, reporting both so a failure names what moved.
+
+  **The first cut of it could not tell tree-independence from a probe that perturbed nothing**, because
+  both arms build with `-buildvcs=false` — which closes the only measured tree→binary channel, so the
+  stray file had no route into the output. That is this run's signature defect (an all-clear
+  indistinguishable from a couldn't-look) reproduced inside the fix for it. Caught in review and patched
+  in `68c548e`: the check now asserts the probe is **visible to `git status --porcelain`** before relying
+  on the second build, and fails in the file's own voice if git cannot be run at all.
+
+  **⚠ THE PROBE FILENAME MUST NEVER BE ADDED TO `.gitignore`.** Its visibility to git **IS** the
+  perturbation — Go derives `vcs.modified` from `git status` — so ignoring it would make both builds see
+  an identical tree and turn the whole check vacuous. The code carries this warning in place. See
+  **DW-113**, whose obvious remedy is exactly that wrong one.
+
+  **Verified independently at Story 8.4f's close, not taken on report.** With
+  `.folio-tree-state-probe-*` appended to `.git/info/exclude` (never `.gitignore`),
+  `npm run verify:offline:wasm` exits **1** with `the tree-state probe … is invisible to git, so both
+  builds below see the same tree and their agreement would assert nothing`. The exclude file was restored
+  byte-identically afterwards.
+
+  **ITS LIMIT, RECORDED RATHER THAN OVERCLAIMED — and this is the half a later reader is most likely to
+  get wrong.** This check **would NOT have caught DW-105.** It holds the checkout **path** fixed by
+  construction, and DW-105 is **path dependence**: the same commit built from three different paths gives
+  three different binaries, each embedding **87 occurrences of its own absolute root**. Both arms also
+  still build with `-buildvcs=false`, so the one channel ever measured here is already closed and this
+  check is *expected to be quiet*. **Its value is the NEXT tree-dependent input, not the last one.**
+  **DW-105 remains OPEN.**
 
 **The claim.** AC2's property is `sha256(build_clean) == sha256(build_stray)`. Every automated artifact
 Story 8.4g added instead tests for the **absence of four ASCII needles** in the raw wasm. Nothing in the
@@ -5514,7 +5547,25 @@ reported, so a failure names what moved.
   that surface. **Cheap if routed now, expensive once that story has closed.** Shares its home with
   **DW-106**; the two should be taken together.
 - **Severity:** MEDIUM — the guard works today. The evidence that it works is the perishable part.
-- **Status:** OPEN.
+- **Status:** **CLOSED by Story 8.4f (2026-09-02)**, commit `7a18079`.
+
+  **What discharged it.** `proveVCSStampGuardDiscriminates()` in
+  `folio-designer/scripts/verify-offline-release.mjs`, called from `runRedProofs` and therefore carried by
+  `npm run verify:offline:red`. It builds the engine with `-buildvcs=false` **dropped**, and requires the
+  detector to report **every** setting Go then stamps in (`vcs.revision=`, `vcs.time=`, `vcs.modified=`
+  and the bare `build\tvcs=` record) — mutate, observe a failure, hold it to the guard's **own** message,
+  restore. It deliberately does **not** go through `redProof`, because that harness mutates `dist/` and
+  re-runs `verifyOfflineRelease` while the guard under proof lives in `build-wasm.mjs`; the probe builds
+  to a temp file, so `src/generated/` is never touched and there is nothing to restore by hand. It fails
+  **loudly** rather than passing vacuously when the checkout has no `.git`.
+
+  **The engine's compile argv moved to a single authority** (`ENGINE_BUILD_FLAGS` / `buildEngineWasm` in
+  `folio-designer/scripts/wasm-vcs-stamp.mjs`, called by `build-wasm.mjs`), so neither this proof nor
+  DW-106's re-types the argv it is proving something about — the same no-second-copy doctrine Story 8.4f
+  imposes on the cache-asset bound.
+
+  **Re-run at Story 8.4f's close:** `cd folio-designer && npm run verify:offline:red` → **exit 0** in
+  183.33s, carrying this leg. The proof is no longer prose, and it can fail again.
 
 **The claim.** `folio-designer/scripts/verify-offline-release.mjs:126` `redProof(name, mutate, expected)`
 already backs `stale-wasm-byte`, `s1-total-mismatch`, `s1-delivery-fiction` and
@@ -5601,5 +5652,158 @@ shell.
 **What discharges it.** Either record the environment alongside every byte figure, or pass an explicit
 allow-list rather than `...process.env`. Best taken with `-trimpath` (**DW-105**) as one
 measure -> change -> re-measure unit, since both change the same line for the same reason.
+
+---
+
+### DW-110 — `main.tsx`'s two startup decisions are still executed by no test AT THEIR CALL SITES: the gap was narrowed, not closed
+
+- **Deferred by:** **Story 8.4f's close (2026-09-02)** — raised by the build's own review as a `medium`,
+  patched, and **re-measured at close, where the patch was found to have narrowed the gap rather than
+  closed it.** Filed here because the story's frontmatter is not the register.
+- **Owner:** whoever lands the **executed browser assertion Epic 8 owes (D-8.4.25d)**, or the first story
+  that gives this repo a harness able to import a module whose top level calls `void startObservation()`.
+  **Not a local repair** — see below.
+- **Severity:** MEDIUM. Nothing shipped is wrong. What is missing is the ability to notice when it stops
+  being right.
+- **Status:** OPEN.
+
+**The gap, measured rather than argued.** Nothing in this repo imports `folio-designer/src/main.tsx`;
+Vitest collects only `src/**/*.test.{ts,tsx}` and `scripts/**/*.test.mjs`; the 12 Playwright specs are
+compiled and never run. So the two decisions that module makes about a parsed release payload — mapping a
+rejected result to the `undefined` the lifecycle expects, and gating the dev-server bypass on the
+absent-bootstrap reason alone — are executed by **no gate**.
+
+**What Story 8.4f's review patch genuinely bought, and it is real.** Both decisions were extracted into
+pure exported functions (`payloadForLifecycle`, `isDevBypassReason`) that Vitest now drives over the whole
+rejection table, with the reason union held to a `Readonly<Record<S1PayloadRejection, true>>` so a future
+unnamed reason is a typecheck failure. **Both have teeth, proved at close:** neutering the parser's
+over-maximum check reddens **five** named tests, and re-widening the bypass predicate to `!result.ok`
+reddens exactly the test that names the narrowing.
+
+**What it did not buy, measured at Story 8.4f's close at `68c548e`.** The **call sites** in `main.tsx` are
+still executed by nothing, and **the exact mutation the review demonstrated still ships green today**:
+
+- Replacing the mapping with a bare `undefined` **and dropping the now-orphaned import** (which is what a
+  real refactor would do) gives `typecheck` **exit 0**, `npm test` **exit 0 at 40 files / 409 tests**,
+  `lint` **exit 0**, `test:e2e:compile` **exit 0**, `npm run build` **exit 0**, `verify:offline:red`
+  **exit 0** — while shipping an app permanently reporting *"Offline cache unavailable"*.
+- Reverting the bypass condition to the pre-story `import.meta.env.DEV && !payload` gives `typecheck`,
+  `npm test` (40 / 409) and `npm run build` all **exit 0**.
+
+**A trap worth recording for the next agent who tries this.** The *naive* mutation — neuter the
+expression, leave the import — fails `tsc -b` with **TS6133 `'payloadForLifecycle' is declared but its
+value is never read`**. That is an **incidental compile error, not a test detecting the defect**. A mutant
+that will not compile proves nothing; the import must be dropped for the mutation to be faithful.
+
+**Why it is a deferral and not a repair.** Closing it needs either a jsdom harness that can import a
+module whose top level runs `void startObservation()` — a real design question, not a test file — or the
+executed browser assertion Epic 8 already owes. Both are outside a story about a build-time bound.
+
+**This is the THIRD consecutive story whose I/O-matrix row for this surface could not be tied to an
+executed test.** The patch moved the untested surface from an expression to a call site. That is progress
+and it is not closure.
+
+**What discharges it.** An executed assertion — browser or harness — that the app hands the lifecycle the
+parsed payload when the bootstrap is good, and that the dev bypass fires on an absent bootstrap and on
+nothing else.
+
+---
+
+### DW-111 — the named rejection reason has no production consumer, so two causes still look identical to a user
+
+- **Deferred by:** **Story 8.4f's close (2026-09-02)**. Raised **independently by THREE review layers** —
+  the most-corroborated finding of that story — and **rejected on Design Note 5**, a note that rules it
+  explicitly and **invites the disagreement in writing**. Filed here because a rejection can be
+  scope-correct and still true, and the build has no way to carry that forward.
+- **Owner:** the first story that gives the designer a diagnostic channel, or that is asked to
+  distinguish these causes for a user or an operator. **Related to DW-93**, which is the same silence on
+  the canvas rather than on the load screen.
+- **Severity:** LOW as it stands, because Story 8.4f made the over-the-bound cause **unreachable in a
+  shipped release** — the build now refuses one. Re-price if that gate is ever bypassed.
+- **Status:** OPEN.
+
+**The claim.** Story 8.4f gave every payload rejection its own name, and `asset-count-over-maximum` is
+producible by that cause and no other. But **every rejection is then mapped to `undefined`** for the
+lifecycle, and nothing logs, reports or renders the reason. In a production build a malformed bootstrap
+and an over-bound bootstrap remain **observably identical** — same screen, same words, same retry button.
+The named reason is currently observable only to tests and to the dev-server bypass predicate.
+
+**Why the rejection was SCOPE-CORRECT, checked at close rather than accepted.** AC4 is phrased at the
+**function-return** layer and is met there. The intent's **Block If** forbids changing what a user sees on
+any path other than the over-the-bound path, and changing the load screen's copy is UI work in a story
+about a build gate. And the "there is no diagnostic channel to write to" ground is **measured**: re-counted
+at Story 8.4f's close, `folio-designer/src/` and `folio-designer/scripts/` contain **zero** non-test
+`console.*` calls. The reason is also **not wholly discarded** — the dev-server bypass reads it and
+changes behaviour on it, so it is load-bearing rather than decorative.
+
+**Why it is still true, and therefore registered.** Design Note 5 states plainly that the two causes still
+produce the same *screen*, and says the disagreement belongs with that paragraph. A finding three layers
+raised, ruled on in a design note that invites contradiction, should live somewhere that is swept — not in
+a rejected-findings list that nothing reads again.
+
+**What discharges it.** A ruling on whether the designer gets a diagnostic channel at all, then either a
+distinct message on the load screen or a recorded decision that the silence is intended, with the reason
+named where an operator can reach it.
+
+---
+
+### DW-112 — the cache-asset bound is resolved from the WORKING TREE at verify time, not from the artifact
+
+- **Deferred by:** **Story 8.4f's build**, recorded in that spec's `deferred:` frontmatter; **placed into
+  this register at that story's close (2026-09-02)**, per the spec's own instruction that the reviewer
+  places what the build files.
+- **Owner:** the first story that verifies a release **detached from its source tree** — an extracted
+  release, or a deploy-stage-only CI job. **Not reachable in this repo's current cadence**, where
+  `verify:offline` always runs beside its own source tree.
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+**The claim.** `declaredCacheAssetBounds()` in `folio-designer/scripts/offline-release-contract.mjs` reads
+`src/release-payload.ts` **from disk at the moment of verification**. Two consequences follow. Verifying a
+`dist/` with no source tree beside it throws an **unframed Node `ENOENT`** rather than a stated
+verification failure in the file's own `fail(…)` voice. And an **old `dist/` verified against a newer
+`src/`** is silently checked against the **new** bounds, because the manifest carries no record of the
+bound the release was actually built under.
+
+**Why it was not fixed in Story 8.4f.** Reading the declaration rather than re-typing it is the whole point
+of that story's AC5 — `npm run build` never runs Vitest, so a duplicated constant plus a tie test would
+leave a drifted build green. The fix is not to stop deriving; it is to **stamp the resolved bound into the
+manifest** so the artifact carries the number it was built under. That is a manifest-shape change, which
+Story 8.4f was explicitly not scoped to make.
+
+**What discharges it.** Record the resolved bound in the emitted manifest and have the verifier prefer the
+stamped value, falling back to the source read with a stated message; and frame the missing-source case as
+a `fail(…)` rather than letting `ENOENT` escape.
+
+---
+
+### DW-113 — the tree-state probe file survives a signal, and its obvious remedy is specifically WRONG
+
+- **Deferred by:** **Story 8.4f's build**, recorded in that spec's `deferred:` frontmatter; **placed into
+  this register at that story's close (2026-09-02)**.
+- **Owner:** whoever next touches `folio-designer/scripts/verify-offline-release.mjs`, or the first run
+  that actually trips it. **Cheap only there.**
+- **Severity:** LOW — it costs a manual `rm`, but it trips this pipeline's own clean-tree gates, and a
+  dirty tree **halts the next story's dispatch**.
+- **Status:** OPEN.
+
+**The claim.** DW-106's tree-independence check writes an untracked probe file into `folio-go/` between two
+~40s engine builds and removes it in a `finally` block. **A signal does not run a `finally`.** A SIGINT or
+SIGKILL landing in that ~40s window — an orchestrator kill, a Ctrl-C — leaves
+`folio-go/.folio-tree-state-probe-<pid>` behind, and the next clean-tree gate fails on it.
+
+**⚠ THE OBVIOUS REMEDY IS THE WRONG ONE, AND THIS IS THE WHOLE REASON THE ENTRY EXISTS.** Adding the
+filename to `.gitignore` would silence the symptom and **make the check vacuous**: the probe's visibility to
+git **IS** the perturbation being measured, because Go derives `vcs.modified` from `git status`. An ignored
+probe means both builds see an identical tree and their agreement asserts nothing — which is exactly the
+defect DW-106's review patch was raised to remove. The code now warns against it in place, and Story 8.4f's
+close re-proved that the visibility assertion fires when the probe is hidden. **See DW-106.**
+
+**The correct remedy** is a signal handler that removes the probe, which was out of proportion to Story
+8.4f. Until then, a stray `.folio-tree-state-probe-*` in `folio-go/` after an interrupted
+`verify:offline:wasm` is **safe to delete by hand** and must **never** be ignored.
+
+**What discharges it.** A `SIGINT`/`SIGTERM` handler around the probe's lifetime, removing it on the way
+out — with the `.gitignore` prohibition kept in the comment.
 
 ---
