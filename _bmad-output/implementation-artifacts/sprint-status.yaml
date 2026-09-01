@@ -222,6 +222,20 @@ development_status:
   # allowlist), :384 is the Thai wordlist (PyThaiNLP, CC0-1.0, NOT one of the four). Both close,
   # against DIFFERENT lists; CC0-1.0 must NOT be added to the owner's four.
   8-4h-the-licence-gate-closes: done
+  # 8.4i added 2026-09-02 by Story 8.4h's CLOSE (D-8.4i.1..D-8.4i.6). 8.4h made the gate fail
+  # closed; 8.4i makes the classifier stop lying to it. Three measured defects the four review
+  # layers missed: (1) DW-125, a LIVE BYPASS -- ClassifyLicenceText returns on the FIRST SPDX line
+  # anywhere in a file, so GPL text carrying a stray "SPDX-License-Identifier: MIT" passes the
+  # now-fail-closed gate; (2) DW-124, the MIT branch is a greedy catch-all on a grant clause shared
+  # by MIT/OFL/UFL, so a near-miss on any name marker lands in MIT rather than FamilyUnknown --
+  # and THREE code comments assert a safety that does not exist, one of which the review quoted to
+  # REJECT the finding; (3) DW-120, appending "GPL-3.0" to the owner's four-id allowlist reddens
+  # nothing, making D-8.5.13's prohibition unenforceable. First task runs the conflict detector
+  # REPORT-ONLY over the whole population and records it; only then does it turn fatal.
+  # BOUND (D-8.4i.6): 8.4i is the LAST licence-gate insertion this epic gets. Anything further
+  # found here routes to Epic 15's release gate (Story 15.3 already owns AD-26's manifest), NOT to
+  # an 8.4j -- unless it is a demonstrated live bypass of a gate declared fail-closed.
+  8-4i-the-classifier-stops-lying-to-the-gate: backlog
   # 8.5's spec exists at ready-for-dev but is SUPERSEDED pending re-plan after 8.4h (D-8.5.13):
   # AC2 and AC7 moved out. AC4 stays HERE deliberately -- the forbidden-host scan asserts that
   # D-8.5.12's decline was honoured, so it belongs with the thing it constrains.

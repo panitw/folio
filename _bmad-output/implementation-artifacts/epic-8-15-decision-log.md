@@ -1002,3 +1002,205 @@ mechanism rather than a fresh diagnosis.
 
 **How we'd know it was wrong.** A step-03 commit appearing that the audit does not catch — meaning the
 audit is being performed as a formality rather than as a check.
+
+## Story 8.4h's findings ruled — Story 8.4i is inserted, and Epic 8's insertions are bounded (2026-09-02)
+
+### D-8.4i.1 — A licence file that says two things is UNCLASSIFIABLE, and the rule already exists twenty lines above
+
+**Engineering lead ruling**, taken. Measured, not inferred.
+
+**Verdict.** `ClassifyLicenceText` stops returning on the **first** signal and instead **collects every
+signal in the text**, resolving them as one: (1) **any copyleft signal → refused AS COPYLEFT**, naming
+the identifier; (2) no copyleft signal but **two or more distinct permissive identifiers →
+`FamilyUnknown`**, refused as unclassifiable; (3) exactly one identifier → that identifier, as today.
+
+**Situation.** DW-125: the classifier runs `spdxLineRE.FindStringSubmatch` first and returns on the
+**first match anywhere in the file**, so a full GNU GPL v3 text carrying a stray
+`SPDX-License-Identifier: MIT` line classifies `(permissive, MIT)` and **passes the gate Story 8.4h
+had just made fail-closed**. The mechanism is pre-existing; the consequence is new, and it defeats
+8.4h's central claim that copyleft is refused by name. It needs no adversary — bundled multi-licence
+files are ordinary in font distributions, where one file often covers several components.
+
+**In simple terms.** The gate reads the first label it finds and stops looking. Hand it a folder whose
+first label says MIT and whose actual contents are GPL, and it waves the folder through — not because
+the check is weak, but because it stopped reading before it reached the part that mattered.
+
+**Why this is a ruling and not a preference — it is agreement with this file's own sibling.**
+`ClassifySPDXExpression`, twenty lines above at `classify.go:23-38`, **already implements exactly these
+semantics** for a compound declaration: it starts `FamilyPermissive`, sets `FamilyCopyleft` if **any**
+term is copyleft, and returns `FamilyUnknown` if **any** term is unrecognised. The repair is not new
+policy — it is making `ClassifyLicenceText` agree with the function it sits beside. One authority per
+fact, applied to a rule this module already stated once.
+
+**Options considered.** (a) *A copyleft marker in the body outranks a permissive SPDX line* — rejected
+as an **exception list**: it fixes GPL-text-plus-MIT-line while leaving MIT-plus-BSD, OFL-plus-Apache
+and every future pair mislabelled. (b) *Two identifiers means we do not know* — chosen, because it is
+the **axis** rather than an instance, and D-8.5.2's ground (not knowing must not read as fine) covers
+two permissive ids exactly as it covers one unclassifiable one.
+
+**Why the label is not cosmetic.** Under D-8.5.3 an asset's licence attaches to the documents users
+produce, and the label is what lands in `lint/MANIFEST.md` — which AD-26 names as a **release
+artifact**.
+
+**Order 1-before-2 matters and is not stylistic.** A maintainer who reads *"conflicting identifiers"*
+goes and adds an SPDX line. One who reads *"GPL detected"* removes the dependency. **Hazard indicators
+fail toward the loudest, never the most precise.**
+
+**GUARDRAIL — a Block If, not a note.** `ClassifyLicenceText` is shared between the **asset** path and
+the **dependency** path (`licencegraph.go`): two populations, two risk profiles. The nine font
+directories and the wordlist are visible; the Go module graph and the npm lockfile are not, and a
+bundled multi-licence `LICENSE` is common in npm. **Story 8.4i's FIRST task runs the conflict detector
+over the ENTIRE existing population — every dependency `LICENSE*` and every asset `LICENSE*` — in
+REPORT-ONLY mode, and records the output. Only then does it turn fatal.** If it reds something
+legitimate, that returns to the lead as a finding. **It must not be resolved by weakening the rule** —
+that is moving the bar to fit the instrument (D-8.5.10), and it is the failure this entire thread
+exists to stop.
+
+**How we'd know it was wrong.** The report-only pass reddening a broad class of legitimate dependency
+files — which would mean the conflict rule belongs on the asset path alone and the dependency path
+needs its own, measured answer.
+
+### D-8.4i.2 — The spelling defect is STRUCTURAL: a greedy catch-all, three false comments, and a fourth instance nobody named
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** Not "accept both spellings". **Anchor the name signal**, generally: **a text carrying a
+licence NAME signal that does not resolve to a known (name, version) pair returns `FamilyUnknown`. The
+bare grant clause classifies as MIT ONLY when no name signal is present at all.**
+
+**Situation.** DW-124 measured that a UFL text spelled `LICENSE` rather than `LICENCE` classifies
+`(permissive, MIT)` and passes, mis-attributed — while the bare synthetic the story's own test uses
+correctly reaches `(unknown, "")`. The review had **rejected** this finding by quoting a code comment
+claiming the miss is loud.
+
+**Why the narrow fix is wrong — the MIT case is a greedy catch-all and is the root defect.**
+`classify.go:251` matches on `"PERMISSION IS HEREBY GRANTED, FREE OF CHARGE"`, a clause shared by MIT,
+OFL **and** UFL. The file's own comments record the collision twice: `:184-187` records that every OFL
+face classified as MIT until the OFL branch was added above it, and `:220-224` records the identical
+collision for UFL. **So a near-miss on a specific marker does not fall to `FamilyUnknown` — it falls
+into MIT.** Accepting both UFL spellings would fix one instance of a defect that has now produced
+three.
+
+**In simple terms.** There is a catch-all bin at the end of the sorting line labelled "MIT", and
+anything the earlier bins do not recognise lands in it. We have twice noticed something landing there
+wrongly and each time added one more bin upstream. The bin is the problem.
+
+**THE FOURTH INSTANCE — predicted, not measured, and the story must measure it rather than take it on
+authority.** The OFL branch at `:181` requires the name **AND** `"VERSION 1.1"`, and its comment at
+`:201-205` claims this *"makes a 1.0 file classify as FamilyUnknown — which D-1.3.4 deliberately makes
+a LOUD build failure rather than a quiet mislabel."* **That reasoning cannot hold if OFL 1.0's text
+carries the same grant clause OFL 1.1's does** — it would fall straight into MIT, exactly as
+American-spelled UFL does. If it holds, the "required conjunct makes a near-miss loud" justification is
+**false for both branches and has been since Story 2.2**.
+
+**Three code comments assert a safety that does not exist, and they are corrected in place with the
+original preserved verbatim.** `:241-249` asserts that a file writing `"UBUNTU FONT LICENSE"`
+*"classifies FamilyUnknown … a LOUD miss, and therefore fail-safe (D-2.1.3)"* and that loosening it
+would be *"for no measured need."* The measurement now exists and says `(permissive, MIT)`. Same for
+the OFL comment if the prediction holds.
+
+**This is D-8.0.1's shape at its third occurrence: a code comment asserted a branch was safe, and that
+is why nobody looked.** The review rejected the finding **by quoting the comment**. So the defect is
+two things — the behaviour **and** the false claim — and fixing only the first leaves the next reviewer
+the same trap.
+
+**Why it must precede Story 8.5 — correcting my own sequencing, which had it following.** Three
+reasons, any one sufficient: (a) **8.5 is the first story to introduce non-OFL font licences** — the
+allowlist has four members precisely because the catalogue needs them, so a UFL face is not
+hypothetical, it is the point; (b) `MANIFEST.md` is a **release artifact under AD-26**, so twenty faces
+of which some are mis-attributed is a defect in the compliance record `v0.1.0` ships; (c) mechanically,
+D-8.4i.1 and this ruling rewrite **the same function**, and landing the second after the population it
+must be correct for means touching it twice in the wrong order.
+
+### D-8.4i.3 — The allowlist guard lands in the repair story, not in its consumer
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** DW-120's guard goes in Story 8.4i. **Not Story 8.5** — 8.5 is the *consumer* of the
+allowlist, and a guard owned by its consumer is a guard the consumer can move (D-8.5.8c). **Not its own
+item** — it is one test and one red-proof.
+
+**Situation.** Appending `"GPL-3.0"` to `fontAssetLicenceAllowlist` reddens **nothing**; all four lint
+packages stay green. D-8.5.3 is an **owner decision**, and D-8.5.13 forbade adding CC0-1.0 to those
+four on the ground that it would amend an owner decision to fix a scoping error. **A list anyone can
+widen in one line makes that prohibition unenforceable** — a ruling recorded everywhere except where it
+binds (D-8.4.31).
+
+**Shape.** Pin the allowlist's contents against a **test-owned literal** naming D-8.5.3 as the
+authority, so appending a copyleft id reddens on its own message. **An anchor the code cannot move is
+the only kind that holds** — a derivation from the constant itself would pass any edit. Red-proof by
+appending a copyleft id and confirming the named test reds **and that no other test reds**; if four
+packages red, the guard is not the thing catching it.
+
+### D-8.4i.4 — The excluded-path fail-open is deferred, but not as a bare note
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** The `*/testdata/lint` `SkipDir` is a deliberate, correct exclusion and is **not** repaired.
+It is filed as deferred work **with a tripwire as its stated discharge**, not as a note.
+
+**Situation.** `folio-go/testdata/` ships inside the module zip, so a real font binary there would be
+redistributed under AD-26 with **no manifest row**. Today's occupant is a text stub, which is why this
+is LOW — **and "today's occupant is a stub" is exactly the kind of fact that stops being true
+silently.** A register entry keyed on nobody adding a real font is not a defence.
+
+**The discharge.** A test asserting that **no file under an excluded path is a real font program**,
+keyed on the **sfnt magic bytes** (`checkSfnt` already exists, D-8.4.12) and **never on the
+extension** — extension-keyed is the blind spot D-8.5.2 already found in this area. It lands in 8.4i,
+beside code already being edited. **If `checkSfnt` is not reachable from the `lint` module** — a real
+possibility, `lint` is its own module — it stays deferred with that tripwire as its stated discharge
+and the module boundary recorded as the reason. **Do not reimplement a second sfnt reader to satisfy
+this.**
+
+### D-8.4i.5 — The four unenumerated rejections are a FINDING, and DW-87 is re-priced rather than renewed
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** Do not re-run the review. **Do** recover the four unenumerated rejections from the existing
+review record into Story 8.4i's spec as named claims with a disposition each — that is **reading, not
+reviewing**, and it is cheap. Any that cannot be recovered is recorded as **"could not look"**, never
+omitted (D-8.4.33). And the audit gap itself is **recorded as a finding**.
+
+**Situation.** Story 8.4h's Review Triage Log records a bare `reject: 7` and describes only three. This
+is instance three of DW-87's pattern (DW-87 as filed; D-8.4.35(b)'s deeper form where a census
+disagreed with its own population by two; now this).
+
+**Why it is a finding this time and not another renewal.** Under the standing rule that an Nth instance
+**re-prices** a deferral rather than renewing it, *"we count them"* has stopped being a disposition —
+**because on this story the sample was measured. Two of the three enumerated rejections were
+re-checked and ONE WAS FALSE.** Four unexamined claims at a 1-in-2 observed falsification rate, on the
+story whose subject is *"does the licence gate hold"*, on a compliance boundary, is not an abstract
+audit gap.
+
+### D-8.4i.6 — Story 8.4i is inserted before 8.5, and Epic 8's licence-gate insertions are BOUNDED at it
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** Findings 1, 2, 3 and 4's tripwire land as **one story, `8.4i`, sequenced immediately before
+Story 8.5.** Epic 8's order becomes **`8.4h → 8.4i → 8.5 → 8.6 → 8.4d`**.
+
+**A new story, not a reopen of 8.4h.** 8.4h's commits and record are landed, and this run has
+consistently preferred append-with-history over rewriting a closed record (D-8.4.24, D-8.5.10). The
+subjects differ cleanly: **8.4h made the gate fail closed; 8.4i makes the classifier stop lying to
+it.** A named story also gets its own red-proofs, which is what these findings most need. Precedent:
+D-7.7.7, where DW-46 became Story 7.9 — *"not a bare fix and not a passenger."*
+
+**Why all of it precedes 8.5, in one sentence.** D-8.5.13 made 8.5's faces admissible only through a
+gate that had been **red-proved rather than merely green when they arrived** — and a gate with a live
+bypass, a mislabelling catch-all and an unguarded allowlist has not been red-proved, it has been
+*observed passing*. Admitting twenty faces through it would satisfy the letter of that condition and
+defeat its purpose.
+
+**THE BOUND — because this is Epic 8's fourth insertion and "the epic never ends" is a real cost.**
+After 8.4f, 8.4g and 8.4h, one more is defensible; **a fifth is a pattern, not a plan.** So: **`8.4i`
+is the last insertion this epic gets in the licence-gate area.** Anything further found here after it
+is **registered and routed to Epic 15's release gate**, where AD-26's manifest is already a named
+obligation of Story 15.3, and is **not** built as `8.4j`. **One exception — the criterion every
+insertion so far has actually met: a demonstrated live bypass of a gate the epic has declared
+fail-closed.** That class buys a story; nothing below it does. If 8.4i's report-only population pass
+turns up such a bypass, it returns to the lead to be ruled **against this bound rather than around
+it.**
+
+**Hard constraint on 8.4i.** It **must not** turn the gate fatal in the same commit that first measures
+the population. **Measure, record, then close** — and if the measurement reds something legitimate,
+that is a finding to route, not a rule to soften.
