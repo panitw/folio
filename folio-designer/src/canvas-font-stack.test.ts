@@ -798,7 +798,7 @@ describe('the canvas paints with the faces the engine measured', () => {
   // AND IT NO LONGER TAXES PROSE. The old form scanned raw file text, so a
   // COMMENT explaining what not to write reddened it; the two directions are
   // both proved in the test below this one.
-  it('permits only an asset-key-derived family in a font-family position, in every designer source', () => {
+  it('permits only a family derived from one of the engine\'s two attribution identities in a font-family position, in every designer source', () => {
     const sources = designerSources()
     expect(sources.length).toBeGreaterThan(10)
     const positions = sources.flatMap(([name, source]) => fontFamilyDeclarations(source).map((value) => `${name}: ${value}`))

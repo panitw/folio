@@ -60,27 +60,26 @@ them.
 
 ## In plain terms (read this first if you just want the gist)
 
-*Non-normative — a plain-language summary of the intent. The intent contract below governs
+*Non-normative — a plain-language summary of what shipped. The intent contract below governs
 implementation.*
 
-The canvas draws the page the way the engine will print it. To do that honestly it has to draw each
-piece of text with the same typeface the engine measured that piece with. Since Story 8.4a it does
-that for a face the document carries inside itself. For the three typefaces that ship with the
-product it still does not: the engine says nothing about which one it used, and the browser is given
-one fixed list of all three and takes whichever comes first that has the letter.
+The canvas draws the page the way the engine will print it, so each piece of text must be drawn in the
+typeface the engine measured it with. That already worked for a typeface a document carries inside
+itself. It now works for the three that ship with the product: the engine sends the typeface's own
+name with each piece, and the browser asks for that one first. Before, every piece fell back to one
+fixed list in a fixed order, so a document asking only for Thai had its English measured in one face
+and drawn in another — right letters, wrong widths, creeping out of position.
 
-That is wrong whenever the document asks for them in a different order. All three of these typefaces
-contain `A` and `5`, and they share hundreds of characters, so a document whose font list is just
-Thai will have its English words measured in the Thai face by the engine and drawn in the Latin face
-by the browser — right letters, wrong widths, so they creep out of position.
+The review caught the fix quietly rebuilding its own fault. The rule deciding whether a name may be
+asked for was checked against nothing the engine ships, so a future typeface with an unusual name
+would have been refused in silence and dropped back to the old list, with nothing complaining. It is
+now checked against the engine's own list, both ways.
 
-This story sends the typeface's name along with each piece of text and has the browser ask for that
-one. The mechanism already exists; it gains a second kind of input.
-
-One thing that will look like a gap and is not: nothing here can prove a letter was actually painted
-in a given typeface. Nothing in this repository runs a browser as part of its checks. What is proved
-is that the right name reaches the element and that the element asks for it. The rest waits on
-continuous integration running the browser suite the project already has.
+Two things look wrong and are deliberate. A new safety check on the engine side can never fire — an
+earlier one always refuses first — and its comment says so rather than posing as proved. And nothing
+here shows a letter was painted in the right typeface; nothing here runs a browser. What is proved is
+that the right name reaches the element and the element asks for it. That gap is now recorded as owed
+work, which it previously was not.
 
 <intent-contract>
 
@@ -641,3 +640,200 @@ Blocking condition: none
 1. **Nothing here proves a glyph was rasterized with the attributed face.** jsdom applies no stylesheet and loads no font; `test:e2e:compile` is `tsc --noEmit`. What is proved is that the right name reaches the element and the element asks for it. The repository does contain 12 executable Playwright specs and a working config, but CI runs only the compile step (DW-101). Per D-8.4.25(b) the trigger is *"when CI executes the Playwright suite"* — the old *"when browser e2e arrives"* trigger is void. **A compile pass is not a run.**
 2. The three deferred items in frontmatter, chiefly that closing DW-35 leaves the owed executed-browser assertion recorded only in a closed entry's prose.
 3. `TestShippedFacesReproduceFromUpstream`'s disposition remains with the engineering lead. It was neither edited nor accommodated here.
+
+## Delivery Log
+
+### 2026-09-01 — done
+
+Baseline `d0f183b`. Implementation `21f93b4`, review patches `24ca8f6`, closed by a separate closing
+commit rather than an amend — `6addcbf` (the lead's DW-86 correction and **D-8.4.34**) had already
+landed **above** both story commits, so amending would have re-SHA'd another agent's work, and this
+project closes stories with their own `Close Story …` commit anyway (`22beeb3`, `5ae02d7`, `a101e99`,
+`b2efdb4`, `d52b1b0`, `83ab8c8`).
+
+**What shipped.** The engine's own `FontSet` name now travels with every canvas text fragment drawn
+with a shipped face, and the browser asks for that face first. The mechanism 8.4a built for carried
+faces gained its second population across one Go/TS seam in one commit. Nothing was mapped, renamed or
+registered; the stylesheet rule survives as the fallback for an unattributed fragment. **DW-35 is
+CLOSED — all four things it named.**
+
+**Standing reds verified by IDENTITY, not by count, per D-8.4.34.** The formula changed for exactly
+the reason it changed, and a count would have hidden it.
+- `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)` — `corpus_test.go:196`,
+  `P6g (opaque names) floor not met: got 7, need >=20`. The one genuine standing red. Its drift twin
+  `TestCorpusP6StatsMatchDeclaredBaseline` **passed**, so the floor is the only thing red.
+- `TestShippedFacesReproduceFromUpstream` — **not a standing red, and the matrix sweep was run BOTH
+  ways.** Plain, it fails verbatim on `fontgen: fontTools is not importable by this interpreter.`
+  naming `/opt/homebrew/opt/python@3.12/bin/python3.12` — a misconfigured interpreter, and **it never
+  compared bytes**. With `FOLIO_FONTGEN_PYTHON=…/.fontgen-venv/bin/python` exported on the command line
+  it **PASSES in 8.36s, non-vacuously**: `fontgen: Python 3.12.13 / fontTools 4.63.0`, three source and
+  three produced sha256s each *"matches the recorded derivation"*, and the witness
+  **`fontgen: derived and compared 3 of 3 faces`**. **There is no divergence in the shipped faces.**
+  The variable was set only on a command line; it is in no committed file and the test was not edited.
+  Its fix is **DW-103**, owned elsewhere.
+- No third identity appeared in either mode.
+
+**Gates re-measured at close, `-count=1`, after my own edits — not relayed.**
+- `cd folio-go && go test -count=1 -v ./...` → **1815 pass / 2 fail / 5 skip** (baseline 1811/2/5).
+- `cd folio-go && go test -count=1 -v -tags=matrix ./...` → **1826 pass / 3 fail / 5 skip**
+  (baseline 1822/3/5).
+- `go vet -tags=matrix ./...` empty · `gofmt -l folio-go` **from the repo root** empty ·
+  `cd lint && go test -count=1 ./...` four `ok`, no FAIL.
+- Four AD-21 legs, each **24 documents hashed** — counted off `matrix_test.go:2266`, not assumed:
+  `darwin/arm64` 0.74s · `linux/amd64` 6.52s · `linux/arm64` 4.81s · `js/wasm` 11.07s. The **unset
+  control** passes in **0.00s asserting nothing**, saying so itself at `matrix_test.go:2199` — a
+  control, never a fifth leg. `TestCrossTargetByteIdentity` **PASS (23.13s)**, all four targets on one
+  digest.
+- Designer, node **v24.16.0**: `typecheck` exit 0 · oxlint **exactly 4** `only-export-components`
+  (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1324,1331` — the count and the rule are the invariant, the
+  lines are not) · `npm test` **39 files / 383 tests** (baseline 38/372) · `test:e2e:compile` exit 0,
+  and **it is `tsc --noEmit`, not a run**.
+- Offline release: `npm run build`, `verify:offline`, `verify:offline:red`, `verify:offline:wasm` all
+  exit 0.
+
+**The corpus, reconstructed out of git rather than from a file this run wrote.**
+`git ls-tree -r d0f183b -- fixtures/` and `git ls-tree -r HEAD -- fixtures/` are **identical, whole
+tree** — not merely the 23 `expected.pdf` blobs but every file under `fixtures/`, which also settles
+that no `signoff.json` moved and no `reader`/`date`/`examined` was written anywhere. Worktree matches
+HEAD. `shasum -a 256 fixtures/*/expected.pdf` → **23** lines. `md5 -q README.md` →
+`078d7d80d518d54af2fc04fb270d46b8`, and README appears in neither story commit.
+**23 golden digests and 24 AD-21 documents are DIFFERENT POPULATIONS and are not conflated here** —
+and neither is the offline manifest's own `assetCount` of 23, which is a third population that merely
+shares an integer.
+
+**The `s1VisibleBytes` figure, quoted with its command and NOT as a metric (DW-100, D-8.4.27b).**
+`cd folio-designer && npm run build`, then
+`node -e 'const m=require("./dist/offline-release-manifest.json"); console.log(m.s1VisibleBytes, m.s1.cachedBytes, m.s1.assetCount)'`
+→ **12428555 · 38460398 · 23**. The build's own dispatch measured **12,427,899** and **38,460,399** at
+the *same commit*: **656 bytes and 1 byte apart from mine, from two builds of a bundle whose source did
+not change.** That reproduces D-8.4.29's ruling from the other side — it is a figure, not a
+measurement, and it is a four-needle hardcoded sum blind to most of the bundle besides. No threshold
+was set; Story 8.4d stayed out of scope.
+
+**Follow-up review: `followup_review_recommended` was `true` and I did the pass rather than clear it
+on anyone's judgement. Cleared on my own measurement.** All three reported findings re-verified.
+
+1. **The new authority tied to nothing — CONFIRMED FIXED, and the fix has teeth.** The tie reads
+   `fonts.Shipped()` dynamically (`shippedFaceNames` parses `fonts.go`; no literal) and asserts **two
+   set differences**, not a count: every shipped name satisfies `isShippedFaceName`, and the seam names
+   each shipped face **first** in the value it derives for it. **Mutation-proved by reinstating the
+   finding's own named defect** rather than a degenerate one — I narrowed the predicate's shape rule to
+   forbid the space in a face name, which is exactly "a genuinely shipped face the predicate declines".
+   Result: **3 tests red**, including `declares the engine's own face names and asks the canvas for
+   exactly them` with its own diagnostic —
+   *"shipped-face-family.ts declines a face name fonts.Shipped() actually ships… expected
+   [ 'Noto Sans', 'Noto Sans Thai', …(1) ] to deeply equal []"*. Restored; `git status` clean after.
+2. **The census evasion — CONFIRMED FIXED.** Pre-patch the detector was
+   `/^shippedFaceFamily\([A-Za-z][A-Za-z0-9_]*\.face\)$/`: `^…$`-anchored, so the edge-case reviewer's
+   *"already anchored"* is true as far as it goes, but the **identifier** was a wildcard and
+   `shippedFaceFamily(entry.face)` — a per-component, chain-derived family — matched it. **I checked
+   the cited line myself at `21f93b4:folio-designer/src/canvas-font-stack.test.ts:219` and it settles
+   the way the build says.** Now anchored to `fragment\.face`. **Probed with the finding's own
+   mutation**: reverting the anchor to the pre-patch wildcard reddens the named red-proof
+   `turns a document-supplied family in a font-family position red, and leaves the prose describing one
+   alone`. The census is a genuine closed set of exactly two under `toEqual`, with 12 red fixtures and
+   8 green ones.
+3. **The Go bound guard is UNREACHABLE — CONFIRMED, and the comment does say so.** Verified by reading
+   `page_setup.go:1528`'s comment: it states the unreachability in as many words, names
+   `projectFontChainEntry` as the site that refuses first, and records that deleting it reddens nothing
+   and that it therefore carries **no** mutation proof. Verified by reproducing the measurement myself:
+   deleting the three-line check leaves the Go suite at **1815 / 2 / 5 with the same two identities —
+   byte-identical to unmutated**. And verified structurally, which "nothing reddens" alone cannot do:
+   `CanvasWithTextPaint` calls `Canvas(t)` (`page_setup.go:775`) and returns its error before reaching
+   `addCanvasTextPaint` (`:785`); `Canvas` runs `canvasFontChains` → `projectFontChainEntry`, whose
+   `:645` loop bounds `out.Face` — and for a shipped face `fragment.face` **is** that entry's `Face`.
+   So it is unreachable, not merely untested.
+
+**Where I disagree with the build's own report: its redden count.** It reports the core mutation
+reddening *"four named tests"*. Measured twice, both ways: **removing the shipped arm's expression
+entirely reddens 4**; **neutering it at runtime while leaving the text in place reddens 3.** The
+fourth is the census, which is a **text scan** and by design cannot see a branch that is present but
+dead. That is not a defect in the census — it is what a text guard is — but "four" is only true of one
+of the two mutations, and a later reader re-running the cheaper one would find a number that does not
+match the record. Both figures are recorded here rather than one.
+
+**Triage audit (DW-87), and the population I actually checked.** Unlike the shape DW-87 was filed for,
+this triage log **enumerates** all 16 rejections with a claim and an authority each, so they are
+auditable and I audited a sample at their cited locations. Sound at their citations: **#2** (I/O matrix
+row 8 does require an undeclared attributed name to fall through its own tail — verbatim); **#4** (the
+Block If and I/O matrix row 5 reconcile cleanly once you see they address different sides — Go must
+never *emit* neither identity, and `TestEveryProjectedFragmentCarriesExactlyOneFaceIdentity` enforces
+that as a true XOR over three real populations with a presence precondition, while TS must not *kill
+the session* on seeing neither); **#7** (`expect(callers).toEqual(['App.tsx'])` really is a
+single-element list, so order is moot); **#11** (Task 6 does forbid touching the carried branch — and
+the claim it raises is **already filed as DW-95**, so nothing is owed). **The population does not
+reconcile, and I am saying so rather than implying a full census:** the preamble declares 25
+deduplicated claims from four layers (18 + 3 + 3 + 4 = 28 → 25), but the routes sum to **23**
+(4 patch + 3 defer + 16 reject, with 0 intent-gap and 0 bad-spec). **Two of the 25 have no recorded
+route.** I cannot spot-check a claim that is not written down; that gap is the DW-87 shape surviving at
+the population level rather than the rejection level.
+
+**The three deferrals, assessed rather than accepted.**
+1. **The owed executed-browser assertion — VALID, and it now lands somewhere live.** Confirmed by grep:
+   after DW-35 closed, the obligation's *content* existed only in the decision log
+   (`epic-7-8-decision-log.md:3786`, D-8.4.25(d)) and in DW-35's own closed prose; **DW-101 referred to
+   *"the executed browser assertion Epic 8 now owes"* twice without ever saying what it is.** A dangling
+   reference in an open entry is exactly the ownerless-drift shape this epic already suffered once.
+   **Fixed here, in the register, which is the closer's file:** DW-101 now carries the obligation
+   written out — D-8.4.25(d) quoted, scope stated for **both** the carried and (since this story) the
+   shipped arm, owner and due-gate named, and its one-policy-pass relationship to **DW-103** recorded.
+2. **The 512 bytes-vs-UTF-16 asymmetry — VALID BUT ALREADY RULED, no new obligation.** It is recorded
+   in the register at **DW-25**: *"The unit mismatch is recorded, not 'fixed'. Go counts BYTES
+   (`len()`); TypeScript counts UTF-16 CODE UNITS (`.length`). For non-ASCII the browser is the more
+   permissive of the pair, so Go refuses first and nothing unrepresentable crosses."* This story
+   reproduced a settled pattern, it did not introduce one. The residual is prose-only, and weak: each
+   comment's *"the same bound"* is true **within its own language** (Go's cites
+   `projectFontChainEntry`, TS's cites `isFontChainEntry`); neither asserts cross-language parity.
+   Downgraded, not filed again.
+3. **DW-35's missing `## DW-NN IS CLOSED` marker — DONE, because the boundary is not a guess.** The
+   build declined it as a mis-delimitation risk over a ~400-line entry. Measured, the boundary is
+   exact: in **all four** sibling closures (DW-24, DW-25, DW-29, DW-36) the marker sits on the line
+   before the **first** closing note. DW-35's first closing note is 8.4a's, so the marker is now placed
+   there, with a short note saying what is above it and what is below.
+
+**Two things I fixed myself, both surgical, both in this story's own surface.**
+- **DW-35's closure contradicted itself a THIRD time.** `24ca8f6` repaired two internal headers that
+  still declared a partial delivery. It missed a third, in the `**Status:**` bullet — a bullet whose
+  own first word is **CLOSED** — reading *"so cause one is open because the code is not written."*
+  Corrected in place, with the superseded wording preserved, per this file's convention.
+- **A guard's own stated invariant had become false, and the guard is the one that exists to catch
+  exactly that.** `TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve` declares **"ALL
+  EIGHT"** and defines them as *"the sites `grep -n maxCanvasPropertyString folio-go/page_setup.go`
+  reports, minus the constant's own declaration and its doc comment."* That grep now reports **NINE**:
+  this story added `:1547`. The probe table lists eight. I corrected the comment in place — recording
+  the ninth, why it is legitimately unprobed (no document can reach it), and the measurement — rather
+  than adding a ninth probe, because **no document-driven probe for an unreachable site can exist**.
+  Filed the underlying defect as **DW-104**: the list is hand-maintained with its count in prose and
+  has now been wrong three times; the remedy is to derive the site list by grep and assert coverage
+  minus a **named** exception list. Deferred rather than done because a new guard needs its own
+  mutation proof, which is not this close's to write.
+- Also corrected: the census test's title still read *"permits only an asset-key-derived family"* over
+  an assertion that now approves **two** derivations. Its body was already right; the title was the
+  stale half. No other file quotes it.
+
+**Commit hygiene.** Both story commits carry only this story's files — no `fixtures/`, no
+`signoff.json`, no `README.md`, no chrome token — and both end with the required
+`Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>` trailer. **Commit provenance
+audited: no step-03 out-of-order commit.** `21f93b4` 13:59:50 → `24ca8f6` 14:48:32 → `6addcbf` 14:51:34,
+strictly ordered, single author, so **this is not instance three** after D-8.4.9c and D-8.4.18.
+The `<intent-contract>` is byte-identical at close: **8410 bytes, md5
+`17a5bd706ba1010eefaca282283f54b6`** — re-derived here, not relayed.
+
+**THE LIMIT, STATED PLAINLY BECAUSE A COMPILE PASS IS NOT A RUN.** Nothing in this story, and nothing
+in this repository, proves that a glyph was **rasterized** with the attributed face. jsdom applies no
+stylesheet and loads no font; `test:e2e:compile` is `tsc --noEmit`; the 12 executable Playwright specs
+exist and CI does not run them. **What is proved is that the right name reaches the element and that
+the element asks for it** — the attribution, the wire shape in both directions as exact key sets, the
+mutual exclusivity, the browser's validation, the derivation, and the family the rendered node requests
+at the home fragment and at the `ComponentEcho`. The rest is owed at the Epic 8 boundary gate and is
+now recorded in an OPEN entry (DW-101) instead of a closed one.
+
+**Deferred out of this close, with owners.** DW-101 (+ the executed browser assertion it now carries)
+and DW-103 — *whoever wires CI*, **one policy pass**, due at the Epic 8 boundary gate. DW-104 — the
+next story that adds a `maxCanvasPropertyString` site, else the Epic 8 boundary gate. DW-102 — the
+owner's, unchanged. **For the orchestrator:** the two unrouted claims in the review population are a
+record defect in the build loop's triage format, not a code defect, and the fix is a process change.
+
+**Tracker.** `sprint-status.yaml`: `8-4e-a-shipped-face-carries-its-identity-to-the-fragment: done`.
+`epic-8: backlog`, untouched — the epic is the orchestrator's to close, after the heavy-test catch-up.
+Remaining: **8.5 → 8.6 → 8.4d**.

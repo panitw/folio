@@ -2826,10 +2826,15 @@ unvirtualised path by the page count. The two questions are the same question an
   The design decision cause two inherited was made by D-8.4.1 (quoted below): *an embedded face's CSS
   family name is derived from its **asset key**, never from `font.family`.* **Cause one's equivalent
   is D-8.4.14 (2026-09-01)**, which ruled the register's stated blocker FALSE and gave cause one a
-  named owner, **Story 8.4b** — so cause one is open because the code is not written, **not** because
-  the decision is missing. (This bullet previously read *"OPEN and UNRULED … no equivalent decision
-  has ever been made"*; that was already untrue when it was written. See the correction in the closing
-  note.)
+  named owner, **Story 8.4b**. *(This clause continued **"so cause one is open because the code is not
+  written, not because the decision is missing"** until Story 8.4e's close, where it was found still
+  asserting an OPEN cause inside a bullet whose own first word is **CLOSED**. The code is now written —
+  the vocabulary layer at `90cdf8e`, the attribution layer at `21f93b4` — so the clause is corrected
+  here rather than left standing. **This is the third self-contradiction found in this entry's closure**;
+  the other two were two internal headers repaired at `24ca8f6`, and this one survived that sweep because
+  it reads as prose about a decision rather than as a status claim.)* (This bullet previously read
+  *"OPEN and UNRULED … no equivalent decision has ever been made"*; that was already untrue when it was
+  written. See the correction in the closing note.)
 
   **CAUSE TWO — a face the DOCUMENT CARRIES has no family in the browser at all.** For cause one
   there is at least a shipped file behind the chain entry, registered under *some* family the browser
@@ -2906,6 +2911,22 @@ of which only `--type-page-body` is used, on `.file-message` — chrome, not can
 `.canvas-text-fragment` uses a hardcoded Latin-first **literal** and no `var()` at all, deliberately
 pinned by `canvas-font-stack.test.ts`. The ORDER constraint the paragraph states is still correct as a
 requirement; only its justifying example is stale.
+
+---
+
+## DW-35 IS CLOSED — Story 8.4e, 2026-09-01
+
+Everything ABOVE this line is the entry as it stood while it was open, kept verbatim with its
+corrections marked in place. Everything BELOW is closure: three closing notes, one per layer, in the
+order they landed — cause two (Story 8.4a), cause one's vocabulary layer (Story 8.4b), cause one's
+attribution residual (Story 8.4e, which is the last of the four and closes the entry).
+
+*(Added at Story 8.4e's close. The closure itself deferred this marker as a mis-delimitation risk — the
+entry runs some four hundred lines and the build declined to guess where it ended unattended. The
+boundary is not a guess: it is the line before the FIRST closing note, which is exactly the split
+DW-24, DW-25, DW-29 and DW-36 each make. The four siblings carry this marker and DW-35 did not, so a
+reader arriving at the middle of this entry had no way to tell a live claim from a historical one —
+which is the same failure the three self-contradictions above came from.)*
 
 ---
 
@@ -5156,6 +5177,33 @@ job-level default that excludes a module. **It is why an entire capability could
 the orchestrator, by the engineering lead and by two plan gates**, and why a false statement of it
 reached the Design Notes of two shipped stories.
 
+**THE OBLIGATION THIS ENTRY NOW CARRIES, WRITTEN OUT RATHER THAN REFERRED TO (added at Story 8.4e's
+close, 2026-09-01).** Until today this entry named *"the executed browser assertion Epic 8 now owes"*
+twice and **nowhere said what it is**. Its content lived in **DW-35's prose** — and DW-35 closed today.
+Once closed, nothing in an OPEN entry defined the obligation, only referred to one; a reader sweeping
+open work would have found a dangling reference and no owed thing. **That is the ownerless-drift shape
+this epic already suffered once, to DW-35's own residual, and it is recorded here so it does not
+happen a second time by the same mechanism.** Stated in full, from **D-8.4.25(d)**:
+
+> **Epic 8 does not close without ONE executed browser assertion covering carried-face rasterization.**
+
+**Scope, as Epic 8 leaves it.** The assertion is owed for the **carried** population (D-8.4.25(d), the
+face a document carries, Story 8.4a) and — since Story 8.4e put the engine's `FontSet` name on the wire
+for the **shipped** population too — the same gap now exists on both arms of one mechanism. Neither is
+observable today for the same single reason: **jsdom applies no stylesheet and loads no font, and
+`test:e2e:compile` is `tsc --noEmit`.** What every gate in Epic 8 proves is that the right face name
+reaches the element and the element asks for it. **That a glyph was rasterized with that face is
+proved nowhere in this repository.**
+
+**Owner:** this entry, and it is not dischargeable separately from the CI wiring above — an assertion
+added to a suite CI does not run executes once, locally, and never again. **Due:** the Epic 8 boundary
+gate, which is a gate and not an event (D-000.73).
+
+**And it is ONE policy pass with DW-103 (D-8.4.34)**, which owes the same shape for
+`TestShippedFacesReproduceFromUpstream`: *a real check exists, it works, and CI does not run it.*
+Three obligations, one wiring change — do not fix them separately or they will produce three different
+answers to one question.
+
 **THE ORDERING CONSTRAINT IS THE POINT (D-8.4.25e).** **Wire CI to execute the suite BEFORE, or in the
 same unit as, adding the executed browser assertion Epic 8 owes.** An executed assertion added to a
 suite CI does not run **would execute once, locally, and never again** — **reproducing the exact
@@ -5252,5 +5300,50 @@ red. It cannot manufacture a pass — only stop suppressing a real run. **And th
 must name its own remedy** — `.fontgen-venv/bin/python` and `FOLIO_FONTGEN_PYTHON` in the message
 text. *The whole cost of this incident was that the next reader could not tell a wrong interpreter
 from absent sources at a glance; the message is where that is fixed, not the register.*
+
+---
+### DW-104 — the `maxCanvasPropertyString` probe list is a hand-list whose count lives only in prose, and it has now missed a new site for the THIRD time
+
+- **Deferred by:** Story 8.4e's close (2026-09-01), on measuring the guard rather than reading it.
+- **Owner:** **the next story that adds a `maxCanvasPropertyString` site in `page_setup.go`** — a
+  forcing function rather than a date, because that is the only moment the drift is cheap to see.
+  Failing that, the Epic 8 boundary gate.
+- **Severity:** LOW — no wire breach follows; every site still enforces the bound. What has failed is
+  the guard's ability to say so.
+- **Status:** OPEN.
+
+**Measured at Story 8.4e's close, at `24ca8f6`.** `TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve`
+in `folio-go/canvas_body_text_bounds_test.go` opens by declaring **"ALL EIGHT"** and defines the eight
+as *"the sites `grep -n maxCanvasPropertyString folio-go/page_setup.go` reports, minus the constant's
+own declaration and its doc comment."* Run that grep today and it reports **NINE** enforcement sites:
+
+`:593` chain name · `:645` chain entry · **`:1547` a text fragment's shipped face name (Story 8.4e)** ·
+`:1656` visibleIf · `:1662` table.bind · `:1707` style.fontFamily · `:1739` color · `:1745` background ·
+`:1760` border.color
+
+The probe table lists **eight**, and `:1547` is not among them. **The guard's own stated invariant is
+therefore false in the file that states it** — which is precisely the drift its comment says a count
+exists to catch. The comment already records this happening once before (*"the eighth is Story 8.1's
+chain ENTRY: it was a site this list did not cover from the day it was added"*). Counting that, the
+count in this comment, and this omission, the hand-list has now been wrong **three times**.
+
+**Why `:1547` was not simply added as a ninth probe, and why that is the interesting half.** It is
+**unreachable by construction** — `Canvas(t)` runs `canvasFontChains` → `projectFontChainEntry`, which
+refuses the same string over the same bound at `:645`, and returns before `CanvasWithTextPaint` ever
+calls `addCanvasTextPaint`. For a shipped face `fragment.face` **is** that entry's `Face`. **Measured
+at Story 8.4e's close, independently of the build's own measurement: deleting `:1547` outright leaves
+the Go suite at exactly 1815 pass / 2 fail / 5 skip with the same two failing identities — byte for
+byte what it is unmutated.** So the site cannot be probed by a document, and this list's every entry is
+a document-driven probe. That is a legitimate exception; **what is not legitimate is an exception
+nothing records**, which is the state the story left it in and the state corrected in the comment at
+this story's close.
+
+**The remedy is to stop hand-counting.** A `grep`-derived assertion — enumerate the enforcement sites
+out of `page_setup.go`, assert the probe table covers all of them **minus a NAMED exception list with
+a stated reason per exception** — replaces a prose count with a derivation, which is the same move
+`canvas-font-stack.test.ts` already made when it stopped restating `fonts.Shipped()`'s three names and
+started reading them. **A count is lossy; a set difference is not** (Design Note 7 of Story 8.4e, and
+D-8.4.34 one level up in the process). Deferred rather than done here because it is a **new guard** in
+a story already reviewed and committed, and a new guard needs its own mutation proof.
 
 ---

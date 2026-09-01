@@ -292,6 +292,32 @@ func TestPaginationIsIndependentOfCanvasPaintTruncation(t *testing.T) {
 // constant's own declaration and its doc comment. The eighth is Story 8.1's
 // chain ENTRY: it was a site this list did not cover from the day it was
 // added, which is the drift a count in a comment exists to catch.
+//
+// ⚠ CORRECTED IN PLACE AT STORY 8.4e's CLOSE, 2026-09-01. THE SENTENCE ABOVE
+// IS NOW FALSE AND IS KEPT SO THE DRIFT IS READABLE. That grep reports NINE
+// enforcement sites, not eight: Story 8.4e added `page_setup.go:1547`, the
+// bound on a text fragment's shipped FACE NAME, and did not add a probe here.
+// The list below is still eight, and eight is still the right number — but by
+// EXCEPTION now, not by exhaustion, and an exception nothing writes down is
+// how this comment was wrong twice before.
+//
+// THE NINTH IS UNREACHABLE BY A DOCUMENT, WHICH IS WHY IT IS NOT PROBED HERE.
+// `Canvas` runs `canvasFontChains` -> `projectFontChainEntry`, which refuses
+// the same string over the same bound at `:645`, and it returns before
+// `CanvasWithTextPaint` ever calls `addCanvasTextPaint`. For a shipped face
+// `fragment.face` IS that chain entry's `Face`, so an over-long name has
+// already failed the projection by the time `:1547` runs. Every probe in the
+// table below drives a real document through `Canvas`; there is no document
+// that reaches the ninth site, so there is no probe to write. MEASURED, twice
+// and independently: deleting `:1547` outright leaves this suite at exactly
+// 1815 pass / 2 fail / 5 skip, byte for byte what it is unmutated.
+//
+// AND THE HAND-LIST ITSELF IS THE STANDING DEFECT — DW-104. The count lives
+// only in this prose, so nothing goes red when a site is added; the remedy is
+// to derive the site list from `page_setup.go` by grep and assert this table
+// covers it minus a NAMED exception list. A count is lossy; a set difference
+// is not. Deferred rather than done at 8.4e's close because a new guard needs
+// its own mutation proof.
 func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 	long := strings.Repeat("x", maxCanvasPropertyString+1)
 	if len(long) >= maxCanvasBodyText {
