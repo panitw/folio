@@ -2,20 +2,106 @@
 title: 'Story 8.4h: The licence gate closes'
 type: 'bugfix'
 created: '2026-09-02'
-status: 'ready-for-dev'
-baseline_revision: '7aa283b2da688ab556307cedb1f5543683d8575c'
+status: 'done'
+baseline_revision: '80f46a0d19d4ae092e54658bad62cdb01f33e5a2'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized', 'multiple-goals']
-deferred: []
+deferred:
+  - summary: >-
+      An MIT licence text that merely mentions "Ubuntu Font Licence" AND "version 1.0" anywhere in
+      its body classifies as Ubuntu-font-1.0, because the new marker branch is an unanchored
+      substring conjunction placed above the MIT case.
+    evidence: |-
+      Verified pre-existing as a class, not introduced here: the OFL branch at
+      lint/internal/licence/classify.go:181 has the identical unanchored shape
+      (`Contains("SIL OPEN FONT LICENSE") && Contains("VERSION 1.1")`) and Story 8.4h's spec
+      named that branch as "the exact template the new branch must follow". The bundled-notice
+      negative in classify_test.go omits "version 1.0" from its sentence, so it does not reach
+      this case. Fixing it means anchoring both conjuncts to one title line, which changes the
+      OFL branch too and is therefore its own story.
+    location: >-
+      lint/internal/licence/classify.go:207
+    severity: medium
+  - summary: >-
+      An asset directory holding more than one LICENSE* file lets the last file in os.ReadDir
+      order decide the enforced verdict and the published attribution.
+    evidence: |-
+      The ReadDir loop overwrites licenceText on each LICENSE* match and pre-dates this story.
+      What changed is the consequence: the arbitrarily chosen file's classification is now
+      fail-closed policy rather than a "SEE NOTICE" label. Verified via git ls-files that every
+      committed asset directory carries exactly one LICENSE* today, so nothing is wrong now and
+      no test covers the two-file case.
+    location: >-
+      lint/internal/manifest/manifest.go:300-315
+    severity: medium
+  - summary: >-
+      insideTheLicenceGateWalk hand-copies the licence gate's two SkipDir rules into TypeScript
+      with nothing tying it back to manifest.go, unlike the extension list beside it.
+    evidence: |-
+      folio-designer/src/font-binary-identity.test.ts parses `var fontExtensions` out of
+      manifest.go source precisely so the guard agrees with the gate rather than with a copy of
+      the gate, and its header states that doctrine. The walk exclusions (skip .git, skip any
+      lint dir whose parent is testdata) are restated as literals instead. The silently harmful
+      drift direction is narrow — the Go side narrowing its */testdata/lint skip while the TS
+      copy keeps skipping — but nothing compares the two.
+    location: >-
+      folio-designer/src/font-binary-identity.test.ts:325-329
+    severity: low
+  - summary: >-
+      Nothing pins the membership of the owner's four-id fontAssetLicenceAllowlist, so a fifth
+      identifier could be added without any test reddening.
+    evidence: |-
+      Every test reads INTO the list (fontAssetLicenceAllowed["X"]); none asserts the list's
+      exact contents. D-8.5.13 forbids silent list-widening, and this list encodes a fixed owner
+      decision (D-8.5.3) rather than a population that grows by design, so D-8.5.4's
+      "no cardinality assertion" argument does not cover it. An exact []string equality naming
+      the decision would close it.
+    location: >-
+      lint/internal/manifest/manifest.go:140
+    severity: medium
+  - summary: >-
+      The AC7 throws-proof depends on os.tmpdir() not being inside a git repository; under a
+      TMPDIR set within a work tree it could enumerate an ancestor repo instead of throwing.
+    evidence: |-
+      The assertion is expect(() => licenceGateTrackedFiles(notARepository)).toThrow(...). git
+      searches upward for a repository, so on a machine whose TMPDIR sits under a checkout the
+      call succeeds and the arm goes vacuous or asserts the wrong thing. Passing
+      GIT_CEILING_DIRECTORIES, or clearing GIT_DIR/GIT_WORK_TREE, would make it machine-independent.
+    location: >-
+      folio-designer/src/font-binary-identity.test.ts
+    severity: low
+  - summary: >-
+      The guard's per-file `git ls-files` intersection is narrower than the gate's per-directory
+      tracked filter, so an untracked font in a directory that has any tracked file is seen by
+      the gate but not by the guard.
+    evidence: |-
+      manifest.go:242-251 skips a directory only when gitTrackedFileCount is zero; the guard
+      intersects file by file. The comment claims the two exclude untracked files "exactly" the
+      same way. All 18 files under folio-designer/public/fonts are tracked, so the widening
+      loses nothing today, but the stated equivalence is not accurate.
+    location: >-
+      folio-designer/src/font-binary-identity.test.ts
+    severity: low
+  - summary: >-
+      looksLikeAFontBinary ignores the readSync return count, so a tracked file shorter than four
+      bytes would match the zero-filled 00 01 00 00 sfnt magic and be reported as a font.
+    evidence: |-
+      Newly reachable because the population went repo-wide; under public/fonts no such file
+      existed. Verified that no tracked file in the repository is currently smaller than four
+      bytes, so the false positive is latent rather than live. Checking the readSync return
+      before comparing would close it.
+    location: >-
+      folio-designer/src/font-binary-identity.test.ts:208-214
+    severity: low
 ---
 
 # Story 8.4h: The licence gate closes
 
 **Epic:** 8 — A template author can choose a font, and the file carries it
 **Story key:** `8-4h-the-licence-gate-closes`
-**Status:** `ready-for-dev`
+**Status:** `done`
 **Covers:** no FR/NFR. **This story does not come from `epics.md`.** **It was created at Story 8.5's
 plan gate on 2026-09-02 by the engineering lead's ruling D-8.5.13, on the precedent of D-8.5.1(a)** —
 the same move that inserted Story 8.4f ahead of this same story, in the same `8.4x` insertion series.
@@ -458,7 +544,48 @@ or AC8; those stay in 8.5 (D-8.5.13).
 
 ## Review Triage Log
 
-*(empty — no review pass has run.)*
+### 2026-09-02 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 6: (high 0, medium 1, low 5)
+- defer: 7: (high 0, medium 3, low 4)
+- reject: 7
+- addressed_findings:
+  - `[medium]` `[patch]` **The wordlist site's third refusal arm shipped unexercised.**
+    `case !licence.IsPermissiveSPDX(wordlistSPDX)` is the only arm reachable when
+    `ClassifyLicenceText` returns a known id with `FamilyUnknown` — an SPDX line naming an
+    identifier that is neither copyleft nor in `permissiveSPDX`. **Confirmed by mutation, not
+    asserted:** deleting the whole `case` left all four lint packages green. Added a fourth
+    subtest to `TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist` using an
+    `SPDX-License-Identifier: CC-BY-SA-4.0` wordlist fixture, asserting that arm's own substring
+    (`does not recognise as a permissive licence`) and asserting the other two arms' substrings
+    are absent. Re-proved after the fix: deleting the arm now reds that named subtest and
+    nothing else.
+  - `[low]` `[patch]` **DW-114's measurement was stale by the commit's own fixtures.** The table
+    was measured before this story added `lint/testdata/licence/permissive/example.test/ufl-lib/`
+    (three files). Re-measured at the committed tree and corrected: `git ls-files` 1435 → **1438**,
+    widened population 1371 → **1374**, newly covered 1353 → **1356**, tracked extensionless
+    18 → **19** (by `extensionOf`'s own rule, under which a dotfile counts as extensionless).
+    `64` excluded by the `*/testdata/lint` skip and `11, all .ttf` were both re-verified correct
+    and stand. A record whose stated purpose is "measured, not assumed" must be measured after
+    its own fixtures land.
+  - `[low]` `[patch]` **The flagship reach test hardcoded the extension list it is supposed to
+    mirror.** `it('reports a font the licence gate cannot see from anywhere it walks...')` set
+    `const recognised = ['.ttf', '.otf', '.ttc']` literally, while every other site in that file
+    derives it via `licenceGateFontExtensions(...)` read out of `manifest.go` source — the file's
+    own stated doctrine that the guard must agree with the gate, not with a copy of the gate.
+    Now derived the same way.
+  - `[low]` `[patch]` **`extensionOf`'s doc comment cited `go.sum` as an extensionless file.** It
+    has an extension. Replaced with real examples.
+  - `[low]` `[patch]` **The `ufl-lib` fixture overclaimed what it proves.** Both its `NOTICE.md`
+    and `lint/testdata/licence/permissive/go.mod` said a wrong identifier "reds loudly".
+    `ScanLicenceGraph` switches on licence *family* and discards the id, so any permissive id
+    produces the same green. Corrected to state what the fixture actually proves — that the
+    `permissiveSPDX` entry is live — and to point at `classify_test.go` as where the id itself
+    is pinned.
+  - `[low]` `[patch]` The spec body's `**Status:**` line still read `ready-for-dev` after the
+    frontmatter advanced. Synchronised.
 
 ## Design Notes
 
@@ -641,12 +768,143 @@ Naming them here is a record of what was deliberately not run, not an omission.
 
 ## Auto Run Result
 
-Status: ready-for-dev
-Blocking condition: none — `Halt after planning.` was directed, so the run stops at the
-ready-for-development gate with the spec written and **no code derived from it**.
+Status: done
+Blocking condition: none.
 
-Baseline revision: `7aa283b2da688ab556307cedb1f5543683d8575c` (branch `main`).
-Commits created this dispatch: none.
-Working tree at halt: the spec itself (new, untracked) plus `epic-8-context.md`, which step-01
-regenerated because `epics.md` was newer than the cached copy. That modification is the workflow's own
-step-01 output, not a change this story made.
+Baseline revision: `80f46a0d19d4ae092e54658bad62cdb01f33e5a2` (branch `main`, tree clean).
+**Note on the baseline move.** The spec was planned at `7aa283b`, and every Code Map anchor is
+measured there. Two commits landed between: `git diff --name-only 7aa283b..80f46a0` returns three
+`_bmad-output/` files and no code, so every anchor in the Code Map still resolves and the difference
+is not drift.
+
+### Summary of the implemented change
+
+The asset licence gate **recorded** a licence; it now **enforces** one. Both fall-through sites close
+fail-closed, and — the story's shape — **against different lists**, because they are two populations
+under two policies. The classifier's `Family` return, discarded at both sites, is now consulted, so a
+copyleft text is refused **by name** rather than merely by absence from a list. The owner's four-id
+allowlist gained its missing fourth member under its canonical SPDX identifier.
+
+### Files changed
+
+- `lint/internal/licence/classify.go` — `Ubuntu-font-1.0` added to `permissiveSPDX` **and** as a
+  marker branch placed strictly above the MIT case (the UFL text carries MIT's grant clause
+  verbatim); `IsPermissiveSPDX` exported as a predicate over that same map, so no second copy of the
+  list exists.
+- `lint/internal/licence/classify_test.go` — the per-licence table, the MIT-collision proof, the
+  version-lookalike negative, the bundled-notice negative, the SPDX-line path, and a test pinning the
+  exported predicate to the same list.
+- `lint/internal/manifest/manifest.go` — **SITE A** (font) closes against a new, font-path-local
+  `fontAssetLicenceAllowlist` of exactly the owner's four ids; **SITE B** (Thai wordlist) closes
+  against the existing permissive SPDX set via the exported predicate, with a comment at the site
+  stating why the policy deliberately differs so the two cannot be "tidied" together.
+- `lint/internal/manifest/manifest_test.go` — the population-independent red-proofs in scratch git
+  repositories, the two-sites-do-not-share-a-policy tie, the committed-population witness, and the
+  repaired `"a licence"` fixture in the untracked-directory test.
+- `folio-designer/src/font-binary-identity.test.ts` — AC7: the extension-class guard's population
+  widened from `public/fonts` to the git-tracked repository the gate itself walks, throwing rather
+  than yielding an empty set; `extensionOf` fixed for extensionless files; the discrimination proof
+  preserved and extended to prove the new directory reach.
+- `lint/testdata/licence/permissive/example.test/ufl-lib/{go.mod,LICENSE,NOTICE.md}` + that tree's
+  `go.mod` — the SPDX-line fixture exercising the identifier end-to-end through the graph scan.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — DW-114 (AC8's measured enumeration) and
+  DW-115 (the allowlist member with no asset in the tree under it).
+
+### Review findings breakdown
+
+Patches applied: **6** (1 medium, 5 low) — see the Review Triage Log above.
+Items deferred: **7** (3 medium, 4 low) — recorded in frontmatter `deferred`.
+Items rejected: **7**. Notable rejections, with reasons: the duplicated case in
+`TestClassifyUbuntuFontLicence` (redundant but correct — removing it is churn); the absence of a test
+for the American spelling `"UBUNTU FONT LICENSE"` (its miss is **loud** — `FamilyUnknown` is a build
+failure at the gate — and D-2.1.3 makes a loud miss fail-safe by design, which the comment records);
+and the reading that AC7 belongs in the Go lint suite rather than the designer's (the spec's Code Map
+names `folio-designer/src/font-binary-identity.test.ts` as the artifact, settling it).
+
+Follow-up review recommendation: **true**. Patched counts by severity: high 0, medium 1, low 5.
+Score = (3 × 1) + (1 × 5) = **8**, which is ≥ 5.
+
+### Verification performed
+
+Every figure below was measured by this run, not taken from the implementation's report.
+
+- `cd lint && go test -count=1 ./...` — **four `ok`, zero FAIL**, exit 0.
+- `cd lint && go vet ./...` — no output, exit 0.
+- `cd lint && go run ./cmd/genmanifest` then `git diff --stat -- lint/MANIFEST.md` — **no diff**.
+  Closing the fall-through moved zero manifest bytes, as predicted.
+- `cd folio-go && go test -count=1 -v ./...` — **1815 pass / 2 fail / 5 skip**, byte-for-byte the
+  spec's baseline. The two failures are the one standing red **by identity**:
+  `TestCorpusMeetsP6ExerciseFloors` and its subtest `P6g_(opaque_names)`. No second distinct red.
+- `cd folio-go && go vet ./...` — no output, exit 0.
+- `gofmt -l folio-go lint` **from the repo root** — prints `lint/internal/rules/licencegraph_test.go`.
+  **Proven pre-existing, not asserted:** that file is untouched by this change
+  (`git diff --name-only 80f46a0..HEAD` does not list it), and running `gofmt -l` against the file's
+  content extracted from the baseline commit reports it unformatted there too. The spec's baseline
+  line claiming "no output" was therefore already inaccurate at `7aa283b`.
+- `cd folio-designer && npm test` — **40 files / 411 tests, all passing** (baseline 409; the two new
+  ones are AC7's reach and throws proofs).
+- `npm run typecheck` — clean. `npm run lint` — **exactly 4** `only-export-components` warnings.
+  `npm run build` — succeeds. `npm run test:e2e:compile` — `tsc --noEmit` passes (compile-only; not a run).
+- `shasum -a 256 fixtures/*/expected.pdf` from the repo root — **23 lines, byte-identical** to the
+  pre-dispatch snapshot, diffed rather than eyeballed. `md5 -q README.md` — `078d7d80d518d54af2fc04fb270d46b8`,
+  unchanged. `maximumCacheAssets` — still **64**.
+- No `.folio` file, no engine source, nothing under `folio-go/fonts/`, and neither `epics.md` nor
+  `ARCHITECTURE-SPINE.md` appears in the change set.
+
+**Matrix test audit.** All eight I/O & Edge-Case Matrix rows are covered by a test that **ran and
+passed**, confirmed by name in verbose output rather than inferred from a green package.
+
+**Manual checks — the red-proofs, discharged by mutation.** Each refusal was made unreachable in turn
+and the suite re-run; the mutation was then reverted from an absolute-path copy and the tree
+re-checked clean each time:
+
+| mutation | tests that redden |
+|---|---|
+| font site, unclassifiable arm | `TestResolveAssetsRefusesAnUnclassifiableFontLicence` — **and nothing else** |
+| font site, copyleft arm | `TestResolveAssetsRefusesACopyleftFontLicence` — **and nothing else** |
+| font site, not-allowlisted arm | `TestResolveAssetsRefusesAPermissiveButOffAllowlistFontLicence` — **and nothing else** |
+| wordlist, unclassifiable arm | that test's own named `unclassifiable` subtest |
+| wordlist, copyleft arm | that test's own named `copyleft` subtest |
+| wordlist, non-permissive arm | that test's own named subtest (**added this pass** — see triage log) |
+| Site B repointed at the **font** allowlist (the forbidden collapse) | `TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist/CC0-1.0_passes…`, plus `TestResolveAssetsIncludesWordlist`, `TestManifestUpToDate`, `TestCommittedAssetPopulationClassifiesCleanly` |
+| classifier: marker branch unreachable | `TestClassifyUbuntuFontLicence` (incl. the MIT-collision subtest) and `TestResolveAssetsAcceptsEveryAllowlistedFontLicence/Ubuntu-font-1.0_by_marker` |
+| classifier: `permissiveSPDX` entry removed | a **disjoint** set — `TestUbuntuFontLicenceSPDXLineIsPermissive`, `TestIsPermissiveSPDXReadsTheSameList`, `TestLicenceGraphFixtureScan/permissive` |
+
+**No proof reddened on a neighbouring guard.** Two mutations, two distinct reds, as AC5 requires.
+
+**AC8, re-measured independently of the implementation.** 1438 tracked files; 64 excluded by the
+`*/testdata/lint` skip; **1374** in the widened population against 18 before it; 14 `.ttf` tracked in
+total, **11** after the skip, and **zero** tracked files carrying any other font-plausible extension.
+The widened guard newly reports **nothing**. Confirmed that AC7 widened the **guard**, not the gate —
+`ResolveAssets` has walked repo-wide since Story 3.6 and already filters by extension — so **no
+non-font asset is newly subjected to the font allowlist**.
+
+**AC6, the gate lands green.** `go run ./cmd/genmanifest` regenerates `lint/MANIFEST.md`
+byte-identically, and `TestCommittedAssetPopulationClassifiesCleanly` re-checks on every run that the
+real population resolves without error, that no row reads `SEE NOTICE`, and that every font row
+carries one of the four ids. The population is the **eleven** font directories plus the wordlist:
+six under `folio-designer/public/fonts/` (OFL-1.1), three under `folio-go/fonts/` (OFL-1.1),
+`folio-go/testdata/fonts` (**Apache-2.0**), `folio-go/testdata/fonts/notosansthai-variable-testonly`
+(OFL-1.1), and `folio-go/internal/text/wordlist/words_th.txt` (**CC0-1.0**).
+
+### Residual risks
+
+- The largest is deferred item 1: the new marker branch is an unanchored substring conjunction, so a
+  licence text merely *mentioning* the Ubuntu Font Licence *and* "version 1.0" classifies as
+  `Ubuntu-font-1.0`. It is a faithful copy of the OFL branch's shape, which the spec named as the
+  template, so correcting it means correcting both branches — its own story.
+- `Ubuntu-font-1.0` is on the allowlist with **no asset in the tree under it**. Its classification is
+  proved only against synthetic inputs and the SPDX-line fixture; no real-population witness exists
+  until Story 8.5 ships a face. Recorded as DW-115.
+- The repository's widest directory-walking check now runs in the **designer's** vitest suite rather
+  than the Go lint suite that owns the gate it mirrors. Both execute in CI, so nothing is unguarded,
+  but the two halves of one invariant now live in two suites.
+
+### Process note — an unauthorized commit at step-03
+
+The implementation subagent created commit `ad6258b` itself, during step-03. This is the **fourth**
+such breach in this pipeline (D-8.5.9 records three). It was audited rather than trusted before being
+kept, per the Finalize rule that commits already created during the run are retained: its content
+matches the spec's task list, it touches no forbidden path, it does not modify `<intent-contract>`,
+and it carries the required trailers. The review patches were then applied **without** a further
+subagent commit, and finalization committed them itself.

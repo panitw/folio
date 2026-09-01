@@ -5827,14 +5827,19 @@ from an **unmeasured** one:
 
 | figure | value |
 |---|---|
-| files listed by `git ls-files` | 1435 |
+| files listed by `git ls-files` | 1438 |
 | excluded by the gate's `*/testdata/lint` skip | 64 |
-| population the widened guard asserts over | **1371** |
+| population the widened guard asserts over | **1374** |
 | population before the widening (`public/fonts`) | 18 |
-| **newly covered** | **1353 files** |
+| **newly covered** | **1356 files** |
 | tracked files with a font-plausible extension | **11, all `.ttf`** — no `.woff`, `.woff2`, `.eot`, `.otc`, `.pfb`, `.pfa` or `.dfont` is tracked anywhere |
-| tracked extensionless files | 18 |
+| tracked extensionless files | 19 (by `extensionOf`'s own rule, under which a dotfile counts as extensionless) |
 | **newly REPORTED** | **none** |
+
+**Measured AFTER this story's own fixtures landed**, not before. The first pass read 1435 / 1371 / 1353 / 18,
+which was the tree without the three files this same commit adds
+(`lint/testdata/licence/permissive/example.test/ufl-lib/{LICENSE,NOTICE.md,go.mod}`). A record whose whole
+purpose is "measured, not assumed" has to be taken against the tree it ships in.
 
 Top-level subtrees newly in reach: `.agents`, `.claude`, `.github`, `_bmad`, `_bmad-output`, `docs`,
 `fixtures`, `folio-go`, `hashmatrix`, `lint`, `test-data`, `tools`, plus the rest of `folio-designer`.
@@ -5850,7 +5855,7 @@ a directory invisible to the guard *because of its path*.
 
 A latent defect was fixed on the way: `extensionOf` was `file.slice(file.lastIndexOf('.'))`, which for an
 **extensionless** file returned the file's **last character**. Under `public/fonts` no such file existed;
-repo-wide there are 18. It could never produce a false positive — the magic-byte check still gates every
+repo-wide there are 19. It could never produce a false positive — the magic-byte check still gates every
 report — but it would have printed nonsense in a failure message.
 
 ---

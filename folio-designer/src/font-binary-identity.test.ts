@@ -205,7 +205,7 @@ function licenceGateFontExtensions(manifestGo: string): ReadonlyArray<string> {
  * `lastIndexOf` returns -1, so it yielded the file's LAST CHARACTER as its
  * "extension". Under `public/fonts` no extensionless file existed and the
  * defect was latent; over the tracked repository (AC7) there are many —
- * `LICENSE`, `NOTICE`, `Makefile`, `go.sum`. It could never produce a false
+ * `LICENSE`, `NOTICE`, `Makefile`, `Dockerfile`. It could never produce a false
  * positive, because the magic-byte check still gates every report, but a
  * failure message reading `(extension 'e')` is a message that sends the reader
  * the wrong way. Anchoring on the BASENAME also stops a dotted DIRECTORY name
@@ -712,10 +712,12 @@ describe('the family names the browser is given are the files the engine measure
   // whether anything points at it yet.
   //
   // The second population was `folio-designer/public/fonts` until Story 8.4h
-  // (AC7, D-8.5.2). MEASURED at that widening, not assumed: the population
-  // grew from 18 files under `public/fonts` to 1371 tracked files (1435 listed
-  // by `git ls-files`, 64 of them under `*/testdata/lint`, which the gate's own
-  // walk skips), and it newly reported NOTHING. Of those 1371, exactly 11 carry
+  // (AC7, D-8.5.2). MEASURED at that widening, not assumed, and measured
+  // against the tree this story ships in rather than the one it started from:
+  // the population grew from 18 files under `public/fonts` to 1374 tracked
+  // files (1438 listed by `git ls-files`, 64 of them under `*/testdata/lint`,
+  // which the gate's own walk skips), and it newly reported NOTHING. Of those
+  // 1374, exactly 11 carry
   // a font-plausible extension and all 11 are `.ttf` — no `.woff`, `.woff2`,
   // `.eot`, `.otc`, `.pfb` or `.dfont` is tracked anywhere — and reading the
   // first four bytes of every one of the rest yields zero font magics. That
@@ -834,7 +836,9 @@ describe('the family names the browser is given are the files the engine measure
   // Population-independent by construction: nothing here depends on which
   // faces this repository happens to commit today.
   it('reports a font the licence gate cannot see from anywhere it walks, not just public/fonts', () => {
-    const recognised = ['.ttf', '.otf', '.ttc']
+    // READ OUT OF `manifest.go`, never restated: the guard must agree with the
+    // gate, not with a copy of the gate (this file's own header doctrine).
+    const recognised = licenceGateFontExtensions(fs.readFileSync(licenceGatePath, 'utf8'))
     const scratchRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-tracked-reach-'))
     const write = (relative: string, bytes: Buffer | string) => {
       const full = path.join(scratchRepo, relative)

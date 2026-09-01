@@ -6,8 +6,11 @@
 //
 // ufl-lib joined at Story 8.4h (D-8.5.3): the fourth member of the
 // owner's asset allowlist, exercised end to end through the graph scan
-// rather than only through a classifier table. This subtest asserts
-// ZERO findings, so a wrong identifier reds loudly.
+// rather than only through a classifier table. The scan switches on
+// licence FAMILY and discards the id, so what this proves is that the
+// permissiveSPDX entry is LIVE — remove it and the id classifies as
+// unknown and this subtest reds. The id itself is pinned in
+// lint/internal/licence/classify_test.go, not here.
 module example.test/permissive-root
 
 go 1.25.0

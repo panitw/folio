@@ -597,6 +597,33 @@ func TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist(t *testing.T) {
 		}
 	})
 
+	// The THIRD arm, which the two above cannot reach: an id that
+	// classifies to something KNOWN and is neither copyleft nor in
+	// permissiveSPDX. CC-BY-SA-4.0 is exactly that shape — a real SPDX
+	// identifier, a real licence, and one this project does not accept
+	// — so it exercises the !IsPermissiveSPDX branch on its own.
+	// Without this subtest that branch could be deleted outright and
+	// the whole lint suite stayed green.
+	t.Run("a known but non-permissive wordlist licence is refused on its own message", func(t *testing.T) {
+		root := scratchWordlist(t, "SPDX-License-Identifier: CC-BY-SA-4.0\n")
+
+		_, _, err := resolveWordlistAssetRow(root)
+		if err == nil {
+			t.Fatal("expected a CC-BY-SA-4.0 wordlist licence to be refused, got nil")
+		}
+		if !strings.Contains(err.Error(), "does not recognise as a permissive licence") {
+			t.Errorf("expected Site B's NON-PERMISSIVE refusal, got: %v", err)
+		}
+		// Not a neighbouring arm's message: CC-BY-SA-4.0 classifies
+		// fine and is not copyleft, so neither of the other two may fire.
+		if strings.Contains(err.Error(), "could not be classified") || strings.Contains(err.Error(), "a copyleft licence") {
+			t.Errorf("this arm must red on its OWN message, not a neighbour's: %v", err)
+		}
+		if !strings.Contains(err.Error(), `"CC-BY-SA-4.0"`) {
+			t.Errorf("expected the error to NAME the classified identifier, got: %v", err)
+		}
+	})
+
 	t.Run("a copyleft wordlist licence is refused", func(t *testing.T) {
 		root := scratchWordlist(t, "GNU GENERAL PUBLIC LICENSE\nVersion 3\n")
 
