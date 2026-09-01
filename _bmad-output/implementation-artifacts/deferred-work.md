@@ -2726,21 +2726,28 @@ unvirtualised path by the page count. The two questions are the same question an
 ### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families — **CLOSED by Story 8.4e, 2026-09-01. Cause two by Story 8.4a; cause one's vocabulary layer by Story 8.4b; cause one's attribution residual by Story 8.4e. All four things this entry named are now closed.**
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
-- **Owner — ONE PER CAUSE, because the causes were split and only one of them is delivered.**
-  **Severity:** MEDIUM. Both assignments below are *rulings*, not recommendations — see the standing
-  rule below.
+- **Owner — ONE PER CAUSE, because the causes were split. ALL OF THEM ARE NOW DELIVERED.**
+  *(This heading read "…and only one of them is delivered" for as long as the attribution layer was
+  open. It is corrected here at Story 8.4e's close rather than left standing beside the bullets below,
+  which now record every cause closed; the historical reading is preserved in this note rather than
+  erased.)* **Severity:** MEDIUM. Both assignments below are *rulings*, not recommendations — see the
+  standing rule below.
   - **CAUSE TWO — Story 8.4a. DELIVERED AND CLOSED 2026-09-01 (`c4cd60c`); the story is finished and
     owns nothing further here.** RULED 2026-08-31 (D-8.4.1) to Story 8.4, then SPLIT to its named
     successor 2026-09-01 (D-8.4.6) when 8.4's plan gate returned `multiple-goals`. The ruling
     anticipated this: *"8.4, or the named successor story if the gate splits it."*
-  - **CAUSE ONE — SPLIT INTO TWO LAYERS, AND ONLY ONE OF THEM IS DELIVERED (narrowed 2026-09-01 at
-    Story 8.4b's close).**
+  - **CAUSE ONE — SPLIT INTO TWO LAYERS (narrowed 2026-09-01 at Story 8.4b's close), AND BOTH LAYERS
+    ARE NOW DELIVERED.** *(The narrowing that split this cause recorded "ONLY ONE OF THEM IS
+    DELIVERED", which was true of the state it was written in: the vocabulary layer had just landed
+    and the attribution layer had not. Story 8.4e closed the second layer on 2026-09-01 (`21f93b4`),
+    so the assertion of incompleteness is corrected here; the split itself, and the fact that it was
+    made mid-flight, stand as recorded.)*
     - **VOCABULARY LAYER — Story 8.4b. DELIVERED AND CLOSED 2026-09-01 (`90cdf8e`).** Ruled into
       existence by D-8.4.14 and sequenced after 8.4a. The browser can now name the engine's faces at
       all: the three shipped files are declared a second time under `fonts.Shipped()`'s own spellings
       and the canvas fragment rule asks for those, with no chrome token edited, no binary added and
       no mapping table built. 8.4b owns nothing further here.
-    - **ATTRIBUTION LAYER — Story 8.4e. DELIVERED AND CLOSED 2026-09-01.** The fragment
+    - **ATTRIBUTION LAYER — Story 8.4e. DELIVERED AND CLOSED 2026-09-01 (`21f93b4`).** The fragment
       stack was a **fixed stylesheet constant**, not the document's chain, and a shipped-face fragment
       carried **no face identity on the wire** — only carried faces carried an `assetKey`, so a shipped
       fragment painted with no inline family and fell to the fixed Latin-first stack. Measured at
@@ -2807,13 +2814,14 @@ unvirtualised path by the page count. The two questions are the same question an
   `Noto Sans Thai` / `Noto Sans SC`, so **a chain's entries cannot be used as CSS family names**.
   That is what D-8.4.1 now settles for the embedded case.
 
-- **Status:** **CLOSED.** This entry has TWO causes and cause one has TWO layers; **all four** things
+- **Status:** **CLOSED** by Story 8.4e's implementation commit `21f93b4`, 2026-09-01. This entry has
+  TWO causes and cause one has TWO layers; **all four** things
   are now closed, and the layers are still listed separately because conflating them is how a
   residual disappears.
   **CAUSE TWO is CLOSED** by Story 8.4a (2026-09-01) — see the closing note at the end of this entry.
   **CAUSE ONE's VOCABULARY LAYER is CLOSED** by Story 8.4b (2026-09-01, `90cdf8e`) — see 8.4b's
   closing note at the end of this entry. **CAUSE ONE's ATTRIBUTION LAYER is CLOSED** by Story 8.4e
-  (2026-09-01) — see 8.4e's closing note, which is the last one in this entry and states both what
+  (2026-09-01, `21f93b4`) — see 8.4e's closing note, which is the last one in this entry and states both what
   is proved and what is not.
   The design decision cause two inherited was made by D-8.4.1 (quoted below): *an embedded face's CSS
   family name is derived from its **asset key**, never from `font.family`.* **Cause one's equivalent
@@ -3020,8 +3028,8 @@ and a real `webServer` — so the named event could never fire again. What is mi
 but its EXECUTION: `.github/workflows/ci.yml` runs only `test:e2e:compile`, which is `tsc --noEmit`.
 Wiring that is DW-101.)*
 
-**CLOSING NOTE — STORY 8.4e, 2026-09-01: THE ATTRIBUTION RESIDUAL IS CLOSED, AND WITH IT THE WHOLE
-ENTRY.**
+**CLOSING NOTE — STORY 8.4e, 2026-09-01 (`21f93b4`): THE ATTRIBUTION RESIDUAL IS CLOSED, AND WITH IT
+THE WHOLE ENTRY.**
 
 **What was closed, and it is the last of the four things this entry named.** A shipped-face fragment
 now carries the engine's identity for the face it was measured with, exactly as a carried one has

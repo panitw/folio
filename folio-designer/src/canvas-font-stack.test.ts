@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import { TextPaint } from './App'
 import { embeddedFaceFamily } from './embedded-face-family'
-import { canvasFragmentFallbackStack, shippedFaceFamily } from './shipped-face-family'
+import { canvasFragmentFallbackStack, isShippedFaceName, shippedFaceFamily } from './shipped-face-family'
 import type { CanvasProjection } from './engine-protocol'
 
 // The canvas paints each engine-supplied fragment as an absolutely
@@ -216,7 +216,14 @@ const assetKeyDerivedFamily = /^embeddedFaceFamily\([A-Za-z][A-Za-z0-9_]*\.asset
 // notices, so it admits exactly the two derivations the engine's two
 // identities have and nothing else: the shipped face's name, taken from the
 // fragment's own `face` field, through the one module that decides it.
-const shippedFaceDerivedFamily = /^shippedFaceFamily\([A-Za-z][A-Za-z0-9_]*\.face\)$/
+//
+// ANCHORED TO `fragment` BY NAME, AND NOT TO ANY IDENTIFIER THAT ENDS IN
+// `.face`. A chain ENTRY has a `face` too, so `shippedFaceFamily(entry.face)`
+// is a per-COMPONENT, chain-entry-derived family — the exact evasion this
+// census exists to catch, and the one the intent forbids twice over (never
+// from a chain entry, never per component). A pattern admitting any bare
+// identifier waved it straight through while reading as a closed set.
+const shippedFaceDerivedFamily = /^shippedFaceFamily\(fragment\.face\)$/
 
 const approvedFontFamilyDerivations = [assetKeyDerivedFamily, shippedFaceDerivedFamily] as const
 
@@ -674,6 +681,31 @@ describe('the canvas paints with the faces the engine measured', () => {
       requested.slice(0, engineFaces.length),
       'the .canvas-text-fragment stack must name the engine\'s faces first and in the order fonts.Shipped() writes them',
     ).toEqual([...engineFaces])
+
+    // AND TIED TO THE THIRD AUTHORITY TOO — THE BROWSER-SIDE PREDICATE THAT
+    // DECIDES WHETHER A FACE NAME CAN BE ASKED FOR AT ALL (Story 8.4e).
+    // `shipped-face-family.ts` admits a name by SHAPE, and a name it declines
+    // sets NO inline family: that fragment falls silently back to the fixed
+    // Latin-first stylesheet stack, which is the whole defect this epic
+    // closed. The three ties above cannot notice — a face named
+    // `IBM_Plex_Sans`, `Noto Sans 2.0`, or one spelled in its own script, can
+    // be declared, requested and first in order while the predicate refuses
+    // it, and every assertion in this file stays green. So the engine's own
+    // names are read against the predicate as well, and as a SET DIFFERENCE
+    // rather than a count: a count is lossy (Design Note 7).
+    expect(
+      engineFaces.filter((face) => !isShippedFaceName(face)),
+      'shipped-face-family.ts declines a face name fonts.Shipped() actually ships. A fragment attributed to it would set no inline family and fall back to the fixed stack, silently, with nothing else in this file red.',
+    ).toEqual([])
+
+    // AND IN THE OTHER DIRECTION, because "the predicate says yes" is not
+    // "the browser asks for that face". For every shipped face, the value the
+    // one seam derives must name THAT face, and name it FIRST — the same
+    // first-match-wins reason the order tie above exists.
+    expect(
+      engineFaces.filter((face) => familiesIn(shippedFaceFamily(face) ?? '')[0] !== face),
+      'shipped-face-family.ts does not name every shipped face FIRST in the family value it derives for that face',
+    ).toEqual([])
   })
 
   // STORY 8.4a'S POSITIVE TWIN OF STORY 8.4'S DISCLOSURE OF ABSENCE.
@@ -803,6 +835,14 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(entry.family) }}')).not.toEqual([])
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(component.fontFamily) }}')).not.toEqual([])
     expect(unapprovedFontFamilyDeclarations("style={{ fontFamily: `'${fragment.face}'` }}")).not.toEqual([])
+    // AND THE CROSS-WIRINGS, which are the near-misses a two-form census is
+    // most likely to wave through: each seam asked with the OTHER identity,
+    // and the shipped seam asked with a chain ENTRY's face rather than the
+    // FRAGMENT's — a per-component, chain-derived family wearing the approved
+    // call's spelling.
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(fragment.assetKey) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: embeddedFaceFamily(fragment.face) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(entry.face) }}')).not.toEqual([])
 
     // THE APPROVED ONES, and only in their derived forms — two, and no more.
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: embeddedFaceFamily(fragment.assetKey) }}')).toEqual([])

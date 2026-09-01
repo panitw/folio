@@ -1523,6 +1523,25 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 					// the wire carrying NEITHER identity, which the
 					// browser reads as "shipped, unattributed" — a
 					// quieter lie than a refusal.
+					//
+					// AND IT IS UNREACHABLE TODAY. SAID PLAINLY, SO A
+					// LATER READER DOES NOT TAKE IT FOR A PROVED GUARD.
+					// projectFontChainEntry refuses first: Canvas builds
+					// the font chains BEFORE CanvasWithTextPaint calls
+					// addCanvasTextPaint, and it refuses any chain entry
+					// whose Face exceeds this same bound. For a shipped
+					// face fragment.face IS that entry's Face — that is
+					// the whole claim above — so an over-long name has
+					// already failed the projection by the time this line
+					// runs. MEASURED, not assumed: deleting this check
+					// leaves the whole Go suite exactly as it stands —
+					// 1815 pass / 2 fail / 5 skip, the two standing reds
+					// and no third — so NO test reddens on its deletion
+					// and this check carries no mutation proof. Kept as
+					// defence in depth at a WIRE boundary — the value
+					// reaches a browser that must bound it too — and it
+					// is what would hold if the ordering above ever
+					// changed or a face reached here by another route.
 					shipped := ""
 					if carried == "" {
 						if len(fragment.face) > maxCanvasPropertyString {

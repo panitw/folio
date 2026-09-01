@@ -2,12 +2,49 @@
 title: 'Story 8.4e: A shipped face carries its identity to the fragment'
 type: 'bugfix'
 created: '2026-09-01'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'd0f183b73940b1556b058ab3cbf5caf6428407e4'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      Closing DW-35 leaves the owed executed-browser font assertion recorded only in a closed
+      entry's prose; DW-101 does not carry it.
+    evidence: |-
+      DW-35's Story 8.4e closing note defers the rasterization assertion to "the epic gate, behind
+      CI wiring (DW-101)", but DW-101's own entry is about wiring CI and does not record the owed
+      Epic 8 font assertion. Once DW-35 is closed, nothing in an OPEN entry names that obligation --
+      the same ownerless-drift shape this epic already suffered once, to DW-35's own residual.
+      Remedy touches DW-101, which this dispatch scopes to whoever wires CI.
+    location: >-
+      _bmad-output/implementation-artifacts/deferred-work.md (DW-35 closing note; DW-101 entry)
+    severity: medium
+  - summary: >-
+      The shared 512 bound is measured in bytes on the Go side and UTF-16 code units on the
+      TypeScript side, while comments on both sides call it "the same bound".
+    evidence: |-
+      folio-go/page_setup.go checks len(fragment.face) > maxCanvasPropertyString (bytes);
+      engine-protocol.ts checks fragment.face.length <= MAX_CANVAS_PROPERTY_STRING (UTF-16 units).
+      Go is the stricter of the two for any multi-byte name, so no wire breach follows and no
+      current shipped face is near the bound -- but the claimed parity is false, and this is a
+      pre-existing pattern shared with the chain entry's face rather than something 8.4e introduced.
+    location: >-
+      folio-go/page_setup.go:1528 and folio-designer/src/engine-protocol.ts
+    severity: low
+  - summary: >-
+      DW-35's closure omits the "## DW-NN IS CLOSED" section marker that the register's four prior
+      closed entries each carry.
+    evidence: |-
+      DW-24, DW-25, DW-29 and DW-36 each end with a "## DW-NN IS CLOSED -- Story X, date" marker
+      delimiting the entry as it stood while open. DW-35's closure amended the heading, the Status
+      bullet and appended a closing note (all of which AC4 required and which are present), but
+      added no such marker. Adding one means deciding where a ~400-line entry ends, which is a
+      mis-delimitation risk not worth taking unattended.
+    location: >-
+      _bmad-output/implementation-artifacts/deferred-work.md:2726
+    severity: low
 ---
 
 ## Frontmatter warnings — what they mean here
@@ -372,7 +409,48 @@ old state and is expected to go red.)*
 
 ## Spec Change Log
 
+**Build dispatch, HEAD `d0f183b73940b1556b058ab3cbf5caf6428407e4`. Code Map drift from the spec's
+measurement commit `f078b04`: NONE affecting any anchor.** `git log --oneline f078b04..d0f183b` is a
+single commit, `d0f183b` *"Plan Story 8.4e, and find that a standing red was never a red"*, and
+`git diff --stat f078b04..d0f183b` touches exactly two files, both under
+`_bmad-output/implementation-artifacts/`: this spec (created, 553 lines) and `epic-8-context.md`.
+**No `folio-go`, `folio-designer` or `lint` source file changed**, so every line anchor in the Code
+Map, every guard row in the fifteen-assertion fate table, and every `## Verification` expectation is
+exact as written. Recorded per the Code Map's own instruction. The intent contract is untouched:
+8410 bytes, md5 `17a5bd706ba1010eefaca282283f54b6`, re-verified unchanged after implementation, after review patching, and at finalize.
+
 ## Review Triage Log
+
+### 2026-09-01 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 4: (high 0, medium 2, low 2)
+- defer: 3: (high 0, medium 1, low 2)
+- reject: 16
+- addressed_findings:
+  - `[medium]` `[patch]` **The new browser-side face-name predicate was tied to nothing the engine actually ships.** `shipped-face-family.ts:65` gates attribution on a regex admitting only ASCII words; `canvas-font-stack.test.ts` reads the real `fonts.Shipped()` keys into `engineFaces` and already tied them to `declared` (@font-face) and `requested` (App.css) plus the order tie, but never to this new third authority. A future shipped face named e.g. `IBM_Plex_Sans`, `Noto Sans 2.0` or a CJK name would pass all three existing ties, be declined by the predicate, set no inline family, and silently fall back to the fixed Latin-first stack — reintroducing this story's own defect with nothing red. Found independently by three of the four review layers. Fixed by asserting, as SET DIFFERENCES read from `fonts.go` (never literals), that every shipped name satisfies `isShippedFaceName` and that the seam names each one FIRST. Mutation-proved by defeating the predicate: the `fonts.go`-derived test reddens.
+  - `[medium]` `[patch]` **The closed-set census admitted the exact evasion it exists to catch.** `shippedFaceDerivedFamily` was `/^shippedFaceFamily\([A-Za-z][A-Za-z0-9_]*\.face\)$/` — any bare identifier `.face`, so a per-component `shippedFaceFamily(entry.face)` sailed through the guard Design Note 7 designates against weakening by evasion. Anchored to `/^shippedFaceFamily\(fragment\.face\)$/`; the pre-existing `assetKeyDerivedFamily` left alone. Assertion 14 gained the three cross-wiring near-misses its own comment claimed but omitted: `shippedFaceFamily(fragment.assetKey)`, `embeddedFaceFamily(fragment.face)`, `shippedFaceFamily(entry.face)`.
+  - `[low]` `[patch]` **The new Go bound check is unreachable and therefore carries no mutation proof.** Measured: deleting `page_setup.go:1528` entirely leaves the Go suite at 1815 pass / 2 fail / 5 skip — byte-identical to unmutated. `canvasFontChains` (`:764`) runs before `addCanvasTextPaint` (`:785`), and `projectFontChainEntry` already refuses the same string over the same bound, so the earlier refusal always fires first. The check was KEPT as defence in depth at a wire boundary, and its comment now records the unreachability and names the site that refuses first, so no later reader mistakes it for a proved guard. The contract requires added guards to be mutation-proved by deletion; this one cannot be, and says so rather than pretending otherwise.
+  - `[low]` `[patch]` **DW-35's closure contradicted itself and omitted the implementing commit.** Two internal headers still asserted partial delivery (`Owner — ONE PER CAUSE, because the causes were split and only one of them is delivered`; `CAUSE ONE — SPLIT INTO TWO LAYERS, AND ONLY ONE OF THEM IS DELIVERED`) directly above bullets saying all four things are closed. Both re-worded to record delivery while preserving the historical narrowing. Commit `21f93b4` added to the Status bullet and the 8.4e closing-note header, matching the file's own convention (cf. DW-36's `c834158`, DW-35's own 8.4b note `90cdf8e`).
+
+**Rejected findings, each with the authority it was tested against** (DW-87 — the population enumerated is *every* finding returned by all four review layers: blind-hunter 18, edge-case-hunter 3, verification-gap 3, intent-alignment 4 divergences, deduplicated to 25 distinct claims):
+
+1. *Silent declension path — no warning or diagnostic when a name is declined.* Refuted: DW-93 (no canvas diagnostics channel) is ruled acceptable and is named out of scope by this dispatch.
+2. *`shipped-face-family.test.ts` admits the undeclared `'Noto Serif'` and puts it first, contradicting "asks only for families the browser has a face for".* Refuted at the cited location by I/O matrix row 8, which REQUIRES exactly that: an attributed name not among the declared families "falls through its own tail to the declared stack and then `sans-serif`; nothing blank".
+3. *The family-parsing test helper is spelled three times and the copies disagree on the empty string.* Test-only; no assertion in any of the three files depends on the empty-string case. Consequence for the artifact's consumer: none.
+4. *Rejecting a both-identities fragment terminates the worker, an unargued asymmetry against the tolerated neither-case.* Refuted by the contract's own Block If, which states a fragment carrying both "invalidates the wire shape". The TS refusal is contract-aligned; the asymmetry is the contract's deliberate choice.
+5. *`shippedFaceFamily` is evaluated twice per fragment per render.* At most three distinct inputs, trivial string work, and the duplication is forced by the census guard's anchored regex. Cosmetic.
+6. *`reflect.DeepEqual` where `slices.Equal` would do; O(n²) dedup.* Style only, in test code, over a three-element list.
+7. *`expect(callers).toEqual(['App.tsx'])` is order-sensitive on `readdirSync`.* Single-element list, so order is moot; and a second caller SHOULD redden — that is the closed-set census working as designed, not a false positive.
+8. *DW-35 is marked CLOSED while the story is `in-review` and `sprint-status.yaml` still says `backlog`.* The register is amended in the same commit that delivers the story, which is the file's established practice; `sprint-status.yaml` is explicitly the closer's file and `bmad-build-auto` never touches it.
+9. *DW-102's new owner is "the owner's" with no decision id, sprint row or escalation.* Adding routing machinery for DW-102 would be absorbing it, which this dispatch forbids by name. Task 9's requirement — remove Story 8.4e from its `Owner:` bullet and record the ground — is satisfied.
+10. *The Spec Change Log claimed a close-time check before any close happened.* Correct as to timing; the wording was mine and is now amended to state exactly when each check ran. Not a code finding.
+11. *The carried branch sets an inline family with no fallback tail, so a missing codepoint hits the browser default.* Refuted by Task 6, which requires "leaving the carried branch exactly as it is"; this is pre-existing Story 8.4a behaviour, unchanged here.
+12. *The browser-level half of the fix has no executing home.* Disclosed, not defective: Design Note 6 and D-8.4.25(b)/(d)/(e) place the executed browser assertion at the epic gate behind DW-101, and the contract's Block If forbids adding an observer to a suite CI does not run.
+13. *"Wrong advances" — the defect the intent names — is never asserted anywhere.* Same authority as 12: AC2 is deliberately phrased at the rendered-DOM layer because jsdom applies no stylesheet and loads no font. Asserting advances requires the executed browser the contract defers.
+14. *The predicate's decline path is a fourth browser behaviour the matrix does not enumerate.* Its outcome is identical to matrix row 5's (falls back to the stylesheet's declared stack, canvas still paints), and it is unreachable from `fonts.Shipped()`'s three keys. No new consumer-visible behaviour.
+15. *Record-surface edits beyond the intent's ask (DW-102 reassignment, the D-000.4 citation rewrite).* Both are required by Task 9 by name, with the ground recorded in Design Note 5.
+16. *The mutation proofs are prose in comments, unverifiable from the diff.* Answered by measurement rather than by an edit: this dispatch re-ran the core mutation independently — removing the shipped branch from `TextPaint` reddens four named tests — plus the predicate and census mutations, and the Go bound deletion which reddened nothing (finding 3 above).
 
 ## Design Notes
 
@@ -523,31 +601,43 @@ Re-measure before the first edit and record any drift in `## Spec Change Log`.
 
 ## Auto Run Result
 
-Status: ready-for-dev
+Status: done
 Blocking condition: none
 
-**Dispatch:** classic-intent, plan-only (`Halt after planning.`). HEAD `f078b048dd699513d8b0bf6b9a0c5430139aa838`, tree clean apart from `epic-8-context.md`, which step-01 regenerated because `epics.md` (Sep 1 10:29) was newer than the cached context (Sep 1 08:16). No code was written and no commit was made.
+**Dispatch:** classic-intent, implement/review/commit against the existing spec (no `Halt after planning.`). `baseline_revision` `d0f183b73940b1556b058ab3cbf5caf6428407e4`, tree clean at start. **Code Map drift from the spec's measurement commit `f078b04`: none affecting any anchor** — the single intervening commit touched only this spec and `epic-8-context.md` (see `## Spec Change Log`). `<intent-contract>` never edited: 8410 bytes, md5 `17a5bd706ba1010eefaca282283f54b6`, verified after implementation, after review patching, and at finalize.
 
-**Baseline measured at `f078b04`, in place, clean tree — not assumed:**
-- `cd folio-go && go test -count=1 ./...` → **1811 pass / 2 fail / 5 skip**; the two are `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest (`got 7, need >=20`).
-- `cd folio-go && go test -count=1 -tags=matrix ./...` → **1822 pass / 3 fail / 5 skip**; the third is `TestShippedFacesReproduceFromUpstream`, a **could-not-execute, not a byte divergence** — verbatim `fontgen: fontTools is not importable by this interpreter` (DW-86). It never compared bytes.
-- **Exactly TWO standing reds. Any third is a real failure.**
-- `go vet -tags=matrix ./...` empty; `gofmt -l folio-go` (from repo root) empty; `cd lint && go test -count=1 ./...` four `ok`, no FAIL.
-- Four AD-21 legs PASS, **24 documents hashed each**; the unset control PASSES in 0.00s while asserting nothing (`matrix_test.go:2199`) — a control, not a fifth leg. `TestCrossTargetByteIdentity` PASS (~23s).
-- Designer: typecheck clean; oxlint **exactly 4** `only-export-components` (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1323,1330`); Vitest **38 files / 372 tests** all passing; `test:e2e:compile` clean (**this is `tsc --noEmit`, not a run**).
-- **23** golden digests. README md5 `078d7d80d518d54af2fc04fb270d46b8`.
+**Implemented change.** A canvas text fragment drawn with a **shipped** face now carries the engine's own `FontSet` face name on the wire, and the browser asks for that face instead of falling through to `.canvas-text-fragment`'s fixed Latin-first stylesheet constant. Story 8.4a's carried-face attribution mechanism gains a second population; nothing is mapped, renamed or registered, because Story 8.4b already declares an `@font-face` under each of the three engine names. The stylesheet rule survives as the fallback for an unattributed fragment — "replaced, not weakened" applies to the guard, not to the stylesheet.
 
-**The load-bearing premise was verified, not accepted.** Measured with the repository's own gitignored `.fontgen-venv` (fontTools 4.63.0) over `folio-go/fonts/*`: coverage 3094 / 426 / 30890 code points; pairwise cmap overlaps **339** (Sans×Thai) / **529** (Sans×SC) / **230** (Thai×SC); **all three faces map U+0041 `A` and U+0035 `5`**. Exactly the figures D-8.4.26 and DW-35 record.
+**Files changed.**
+- `folio-go/page_setup.go` — `CanvasTextFragment` gains a `Face` field carrying the JSON key `face` with `omitempty`, populated at the fragment append from `fragment.face` when the face is not carried; bounded by the existing `maxCanvasPropertyString` (512) with a stated refusal, never silently emptied. Doc comment answers the two questions the `AssetKey` comment answers, and now also records that the bound check is unreachable by construction.
+- `folio-go/canvas_projection_wire_test.go` — the accepted key record widened to `{assetKey, face, text, x}`; both emission directions pinned as exact key sets, plus an exclusivity check.
+- `folio-go/canvas_fragment_attribution_test.go` — four new tests: FontSet-name attribution, Latin through a Thai-first chain, mixed-script per-fragment naming, and the mutual-exclusivity probe. `TestAShippedFaceCarriesNoAssetKey` unmodified and still green.
+- `folio-designer/src/engine-protocol.ts` — `face` added to the fragment `hasOnly` list **and** to the `CanvasProjection` fragment type in the same edit (the type was pinned by nothing); validated non-empty and `<= MAX_CANVAS_PROPERTY_STRING`; both-identities rejected, neither-identity still legal.
+- `folio-designer/src/shipped-face-family.ts` + `.test.ts` (new) — the one named derivation seam: attributed face quoted and first, then the declared tail; declines a name not usable as a CSS family rather than interpolating it.
+- `folio-designer/src/App.tsx` — one ternary arm in `TextPaint`, so it holds at both call sites including `ComponentEcho`; carried branch untouched.
+- `folio-designer/src/canvas-font-stack.test.ts` — assertion 8 replaced by its positive twin with **both** of its bounds preserved (no `var(`, and the `>= 3` floor); 7, 13 and 14 widened; census is a closed set of exactly two, anchored to `fragment.face`; a new tie reads the fallback tail from **both** the seam and `App.css` and asserts they agree; and the shipped names read from `fonts.go` are now tied to the browser-side predicate in both directions.
+- `folio-designer/src/App.test.tsx`, `engine-protocol.test.ts` — AC2 at the rendered DOM (home **and** echo, plus the unattributed-fallback direction) and the protocol-guard cases.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — DW-35 CLOSED (both causes and the residual), its two stale passages corrected (the ownerless/"escalated to the orchestrator" claim, superseded by D-8.4.26; the void `when browser e2e arrives (D-000.4)` trigger, replaced by D-8.4.25(b)), self-contradicting headers repaired, commit `21f93b4` recorded. DW-102 re-owned to the owner with its five-selector ground; Story 8.4e removed as a candidate.
 
-**Premises that came back false or materially incomplete, recorded here so they are not carried forward:**
-1. **DW-35's register entry is stale on ownership.** Its heading, `Owner:` bullet, `Status:` bullet and 8.4b closing note all still say the attribution residual *"has no named owner … Escalated to the orchestrator."* **D-8.4.26 assigned Story 8.4e** and both `epics.md` and `sprint-status.yaml` already carry the story. Task 9 corrects it in the same edit that closes the entry.
-2. **DW-35 still cites a void trigger** — *"when browser e2e arrives (D-000.4)"* — which **D-8.4.25(b)** declared void and replaced with *"when CI executes the Playwright suite."* Corrected by Task 9; the replacement is used throughout this spec.
-3. **`engine-protocol.ts`'s `CanvasProjection` fragment type is pinned by nothing.** The Go wire tripwire regex-extracts only the `hasOnly` guard's key list, so the declared TypeScript type and the runtime guard can drift apart silently. Discovered during planning; Task 4 moves both in one edit.
-4. **The guard named in AC3 exists under exactly that title, but its executable content is thinner than its title suggests** — it forbids `var(` in the declaration and re-floors `requested.length >= 3`, nothing more. Its weight is in a prose header that pre-authorises its own retirement. Handled as a disclosure of absence (Design Note 3), with both of its bounds explicitly preserved rather than dropped.
-5. **`font-binary-identity.test.ts` exists (1144 lines, 18 tests) but is blind to this story's change surface** — it never opens `App.tsx` or `App.css`. It is read-only evidence here, not a gate on this story.
-6. **`CanvasTextFragment` is at the module root** (`folio-go/page_setup.go`, `package folio`), not under `internal/template/`. Two files share that basename.
-7. **23 golden digests but 24 AD-21 documents per leg** — different populations; do not conflate them when reporting.
+**Review findings breakdown.** 4 patches applied (2 medium, 2 low), 3 items deferred (1 medium, 2 low), 16 rejected — each with the authority it was tested against, enumerated in `## Review Triage Log`. 0 intent gaps, 0 bad-spec loopbacks; `review_loop_iteration` stayed 0.
 
-**DW-102 was decided, not deferred silently: it is NOT this story's.** Ground recorded in Design Note 5 — D-8.4.26 scopes 8.4e to the canvas fragment; DW-102's remedy is a chrome token edit that D-8.4.14 forbids on this path and that assertion 6 of `canvas-font-stack.test.ts` would redden; the two surfaces share no selector; 8.4e does not make the condition newly reachable (Story 8.4c did); and its discharge is an owner-level commitment either way. **Verdict: the owner's.** Task 9 amends DW-102's `Owner:` bullet to remove Story 8.4e and record why, so it does not sit as a candidate on a story that has ruled itself out.
+**Follow-up review recommendation: `true`.** Patched findings only: high 0, medium 2, low 2 → `3x2 + 1x2 = 8`, which is >= 5.
 
-**No intent gap.** Every fork the plan met was selected by a principle already stated in the intent, and the selecting principle is recorded beside each: the wire value by D-8.4.14's *"one rule for one question"*; the retirement of the stylesheet-constant record by 8.4a's own precedent for a disclosure of absence; the survival of the `.canvas-text-fragment` rule by three independent selectors (D-8.4.14's delivered order tie, the parser that throws at `describe` scope, and 8.4a's degrade path).
+**Verification performed — measured, in this dispatch, after the patches.**
+- `cd folio-go && go test -count=1 ./...` → **1815 pass / 2 fail / 5 skip** (baseline 1811/2/5; +4 new Go tests). The two are `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest, `P6g floor not met: got 7, need >=20` — the mandated permanent red.
+- `cd folio-go && go test -count=1 -tags=matrix ./...` → **1826 pass / 3 fail / 5 skip** (baseline 1822/3/5). The third is `TestShippedFacesReproduceFromUpstream`, a **could-not-execute, not a byte divergence** — verbatim `fontgen: fontTools is not importable by this interpreter.` It never compared bytes (DW-86). **No third distinct failure.**
+- **Both ways, as this dispatch required.** With `FOLIO_FONTGEN_PYTHON=/Users/panitw/Projects/folio/.fontgen-venv/bin/python` the same test **PASSES non-vacuously** — `fontgen: derived and compared 3 of 3 faces`, real source and produced sha256s, all three committed faces reproducing from their recorded derivation. So there is no divergence in the shipped faces. The variable was set only on the command line; it is in no committed file, and the test itself was not edited.
+- `go vet -tags=matrix ./...` empty. `gofmt -l folio-go` **run from the repo root** empty. `cd lint && go test -count=1 ./...` four `ok`, no FAIL.
+- Four AD-21 legs (`darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm`) **PASS, 24 documents hashed each**. The unset control **PASSES in 0.00s asserting nothing** (`matrix_test.go:2199`) — a control, never a fifth leg. `TestCrossTargetByteIdentity` **PASS (~23s)**.
+- Designer: `typecheck` exit 0; oxlint **exactly 4** `only-export-components` warnings (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1324,1331` — the App.tsx lines moved from 1323/1330 because `App.tsx` changed; the count and rule name are the invariant). `npm test` → **39 files / 383 tests, all passing** (baseline 38/372). `npm run test:e2e:compile` clean — **this is `tsc --noEmit`, not a run.**
+- `shasum -a 256 fixtures/*/expected.pdf` → **23 lines, byte-identical to the pre-dispatch snapshot** (diffed, not eyeballed). `md5 -q README.md` → `078d7d80d518d54af2fc04fb270d46b8`, unchanged. **23 golden digests but 24 AD-21 documents per leg — different populations, not conflated.**
+- Offline release on node **v24.16.0**: `npm run build`, `verify:offline`, `verify:offline:red`, `verify:offline:wasm` all exit 0. Measured after `cd folio-designer && npm run build`, reading `dist/offline-release-manifest.json`: `s1VisibleBytes` **12,427,899**, `s1.cachedBytes` **38,460,399** over **23** assets. Quoted with its command because the figure drifts between builds of identical source; it is **not** a metric and no threshold was set (Story 8.4d, D-8.4.24, stayed out of scope).
+
+**Matrix test audit.** All eight I/O matrix rows have a covering test that ran and passed: rows 1-4 by the four new Go attribution tests (the exclusivity probe walks a real population in 0.63s, not vacuously); row 5 by the unattributed-fallback DOM test; row 6 by `TestCanvasProjectionWireKeysAreTheOnesTheDesignerAccepts`, the cross-language gate that reads `engine-protocol.ts` from disk; row 7 by the pre-existing chain-entry bound probe the row itself names, plus the TS bound test; row 8 by the seam's undeclared-name test.
+
+**Mutation proofs run independently by this dispatch** (not merely relayed): removing the shipped branch from `TextPaint` reddens **four named tests** — AC2 at home and echo, the AC3 positive twin, the widened assertion 7, and the census. Defeating the face-name predicate reddens the `fonts.go`-derived tie. Deleting the new Go bound check reddens **nothing** — recorded as finding 3 rather than papered over.
+
+**Residual risks.**
+1. **Nothing here proves a glyph was rasterized with the attributed face.** jsdom applies no stylesheet and loads no font; `test:e2e:compile` is `tsc --noEmit`. What is proved is that the right name reaches the element and the element asks for it. The repository does contain 12 executable Playwright specs and a working config, but CI runs only the compile step (DW-101). Per D-8.4.25(b) the trigger is *"when CI executes the Playwright suite"* — the old *"when browser e2e arrives"* trigger is void. **A compile pass is not a run.**
+2. The three deferred items in frontmatter, chiefly that closing DW-35 leaves the owed executed-browser assertion recorded only in a closed entry's prose.
+3. `TestShippedFacesReproduceFromUpstream`'s disposition remains with the engineering lead. It was neither edited nor accommodated here.
