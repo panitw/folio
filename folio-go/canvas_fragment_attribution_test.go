@@ -170,3 +170,41 @@ func TestTheCarriedFaceNameAndTheAssetKeyAreOneDerivation(t *testing.T) {
 		t.Fatalf("carriedAssetKey read the prefix off a name this document's index does not hold and returned %q, %v — the index is the authority, and the prefix is only read after it answers", got, ok)
 	}
 }
+
+// TestANonMintedFaceNameYieldsNoAssetKey pins the one thing
+// strings.CutPrefix does NOT do for free: on a miss it returns the whole
+// input, not the empty string. embeddedFaceAssetKey therefore empties the
+// value itself, so a caller that reads only the first result can never put a
+// FACE NAME where an ASSET KEY belongs.
+//
+// It is a wire claim, not a style one. Story 8.4a projects this value as a
+// fragment's `assetKey`, and the browser admits that field only as 64
+// lowercase hex characters; anything else fails the whole projection's guard,
+// which raises PROTOCOL_INVALID, terminates the worker and rejects every
+// pending request — the session is dead until reload. Safe by construction
+// today only because every name reaching the accessor came from the mint;
+// this asserts the accessor is safe even when that stops being true.
+func TestANonMintedFaceNameYieldsNoAssetKey(t *testing.T) {
+	for _, name := range []string{
+		"Noto Sans",
+		"Noto Sans Thai",
+		"",
+		"asset",                     // the prefix without its colon
+		"ASSET:0123456789abcdef",    // the namespace is case-sensitive
+		" asset:0123456789abcdef",   // and is a PREFIX, not a substring
+		"family:asset:deadbeefcafe", // ditto, one level in
+	} {
+		key, ok := embeddedFaceAssetKey(name)
+		if ok {
+			t.Fatalf("embeddedFaceAssetKey(%q) reported true; %q is not in the mint's namespace", name, name)
+		}
+		if key != "" {
+			t.Fatalf("embeddedFaceAssetKey(%q) = %q on a miss; a miss must be the EMPTY string and never the name itself, which would reach the wire as a fragment's assetKey and fail the browser's 64-hex admission", name, key)
+		}
+	}
+	// And the hit is unchanged: the key comes back whole, with true.
+	const key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if got, ok := embeddedFaceAssetKey(embeddedFaceName(key)); !ok || got != key {
+		t.Fatalf("embeddedFaceAssetKey(embeddedFaceName(%q)) = %q, %v; want %q, true", key, got, ok, key)
+	}
+}

@@ -28,7 +28,29 @@
 // THE RESULT IS A CSS <custom-ident> BY CONSTRUCTION: an asset key is 64
 // lowercase hex characters, so the whole name is ASCII letters, digits and
 // hyphens beginning with a letter — nothing to escape and nothing to quote.
+//
+// "BY CONSTRUCTION" IS A CLAIM ABOUT THE INPUT, SO THE INPUT IS CHECKED.
+// The claim above is only true of a key that really is 64 lowercase hex
+// characters, and this family is written into an INLINE `font-family`
+// declaration, which makes an unchecked key a string-injection path into a
+// stylesheet. The projection guards a FRAGMENT's `assetKey` to exactly this
+// shape (engine-protocol.ts), but a CHAIN ENTRY's key — the one the
+// registration effect fetches bytes for and derives a family from — is
+// admitted on length alone, so the shape is asserted here, at the derivation,
+// for every key that reaches it in production.
+//
+// IT IS A PREDICATE AND NOT A THROW. A key that does not have the shape is a
+// carried face the browser declines to register: the fragment keeps the
+// stylesheet's declared stack and the canvas keeps painting, exactly as a
+// failed fetch does. Refusing louder would turn a document fact into a
+// session fault.
 const embeddedFaceFamilyPrefix = 'folio-carried-'
+
+const carriedFaceAssetKey = /^[a-f0-9]{64}$/
+
+export function isCarriedFaceAssetKey(assetKey: string): boolean {
+  return carriedFaceAssetKey.test(assetKey)
+}
 
 export function embeddedFaceFamily(assetKey: string): string {
   return `${embeddedFaceFamilyPrefix}${assetKey}`

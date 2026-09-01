@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { embeddedFaceFamily } from './embedded-face-family'
+import { embeddedFaceFamily, isCarriedFaceAssetKey } from './embedded-face-family'
 
 // The digests of two different faces. Written out rather than hashed here:
 // what this module promises is a function of the string it is handed, and
@@ -47,5 +47,42 @@ describe('the CSS family a carried face is asked for by', () => {
   // declaration it is placed in.
   it('is a CSS identifier that needs no quoting', () => {
     expect(embeddedFaceFamily(oneKey)).toMatch(/^[A-Za-z][A-Za-z0-9-]*$/)
+  })
+
+  // AND "BY CONSTRUCTION" IS ONLY TRUE OF A KEY THAT HAS THE SHAPE, so the
+  // shape is a predicate this module owns rather than an assumption about its
+  // callers. The family lands in an INLINE `font-family` declaration; a key
+  // carrying a quote, a semicolon or a brace would be a string injected into a
+  // stylesheet. The FRAGMENT's key is admitted as 64 lowercase hex at the
+  // protocol boundary — a chain ENTRY's key, which is the one the registration
+  // effect derives a family from, is admitted on length alone.
+  it('admits exactly the 64-lowercase-hex shape the engine mints, and nothing else', () => {
+    expect(isCarriedFaceAssetKey(oneKey)).toBe(true)
+    expect(isCarriedFaceAssetKey(otherKey)).toBe(true)
+    for (const malformed of [
+      '',
+      'a'.repeat(63),
+      'a'.repeat(65),
+      'A'.repeat(64),
+      `${'a'.repeat(63)}Z`,
+      `${'a'.repeat(60)}"; }`,
+      `${'a'.repeat(58)}, serif`,
+      `${'a'.repeat(63)} `,
+      ` ${'a'.repeat(64)}`,
+      `${'a'.repeat(64)}\n${'b'.repeat(64)}`,
+      'asset:0123456789abcdef',
+      'Inter',
+    ]) {
+      expect(isCarriedFaceAssetKey(malformed)).toBe(false)
+    }
+  })
+
+  // Every admitted key produces a name that needs no quoting — the property
+  // above, asserted over the predicate rather than over one hand-written key.
+  it('turns every admitted key, and only those, into an unquotable identifier', () => {
+    for (const key of [oneKey, otherKey, '0'.repeat(64), 'f'.repeat(64)]) {
+      expect(isCarriedFaceAssetKey(key)).toBe(true)
+      expect(embeddedFaceFamily(key)).toMatch(/^[A-Za-z][A-Za-z0-9-]*$/)
+    }
   })
 })

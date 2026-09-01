@@ -1451,6 +1451,14 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 					// which omitempty turns into the precise, self-describing
 					// absence the browser reads as "this fragment is a
 					// shipped face".
+					//
+					// The bool is discardable because the MISS IS ALREADY
+					// EMPTY: embeddedFaceAssetKey returns "" rather than the
+					// name it was handed (TestANonMintedFaceNameYieldsNoAssetKey).
+					// That matters here specifically — this value goes on the
+					// wire, and the browser admits a fragment's assetKey only
+					// as 64 lowercase hex characters, failing the whole
+					// projection otherwise.
 					carried, _ := cache.carriedAssetKey(fragment.face)
 					paintLine.Fragments = append(paintLine.Fragments, CanvasTextFragment{Text: fragment.text, X: int64(x), AssetKey: carried})
 				}

@@ -275,6 +275,29 @@ describe('canvas projection authority contract', () => {
     // OUTSIDE the approved function, inside the approved file.
     expect(violationsForFile(seam, `const stray = new FontFace(family, bytes)\n${registration}`)).not.toEqual([])
   })
+
+  // AND THE CARVE-OUT WAIVES THE TWO FONT SPELLINGS ONLY. The first form of
+  // this exception deleted the whole function body from the scanned text,
+  // which silently waived every OTHER prohibition inside the one function
+  // allowed to touch fonts at all — an AD-17 hole in exactly the place the
+  // contract is thinnest. These are the reds that prove it is not waived now,
+  // and each is the same line that is red in any ordinary module.
+  it('keeps every non-font prohibition live inside the approved seam', () => {
+    const seam = 'src/embedded-face-registry.ts'
+    const inside = (line: string) => `export function registerCarriedFaces(keys) {\n  ${line}\n}\n`
+    for (const line of [
+      'const style = getComputedStyle(node)',
+      'const w = node.offsetWidth',
+      'const observer = new ResizeObserver(() => paint())',
+      'const dpr = devicePixelRatio',
+      'const height = component.textPaint.lines.length * line.advance',
+      `const width = ${['CanvasRenderingContext2D', 'measureText'].join('.')}("x")`,
+    ]) {
+      expect(violationsForFile(seam, inside(line))).not.toEqual([])
+    }
+    // The two that ARE waived, on the same lines, in the same function.
+    expect(violationsForFile(seam, inside('document.fonts.add(new FontFace(family, bytes))'))).toEqual([])
+  })
 })
 
 function violationsForSource(source: string): RegExp[] { return violationsForFile('src/an-ordinary-module.ts', source) }
@@ -297,14 +320,27 @@ function withoutApprovedRuntimeFaceRegistration(file: string, source: string): s
   // 8.4a). A face the DOCUMENT carries exists only inside that document, so it
   // cannot be declared at build time; it is fetched over the engine's own
   // `asset` operation and added to the page's font set for as long as that
-  // document is open. The exception is the FUNCTION, not the file: everything
-  // outside it is scanned normally, and if that function is renamed or removed
-  // the exception dies with it. canvas-font-stack.test.ts separately asserts
-  // this is the only site in the whole designer.
+  // document is open.
+  //
+  // THE CARVE-OUT IS TWO SPELLINGS INSIDE ONE FUNCTION, NOT THE FUNCTION.
+  // It was written as a deletion of the whole function body, which read as
+  // "the exception is the FUNCTION, not the file" but actually waived EVERY
+  // prohibition inside it — `getComputedStyle`, `offsetWidth`,
+  // `ResizeObserver`, `devicePixelRatio` and the pagination-from-paint rules
+  // included — inside the one function in the designer that is allowed
+  // anywhere near fonts. That is an AD-17 hole, and it is the shape the
+  // sibling carve-out below already avoided. Only `new FontFace` and
+  // `document.fonts` are neutralised here; every other prohibition still
+  // applies inside `registerCarriedFaces`, proved by
+  // `keeps every non-font prohibition live inside the approved seam`. The
+  // scope is still bounded by the function: text outside it is untouched, and
+  // if the function is renamed or removed the exception dies with it.
+  // canvas-font-stack.test.ts separately asserts this is the only site in the
+  // whole designer.
   if (path.basename(file) === 'embedded-face-registry.ts') {
     const seam = /export function registerCarriedFaces\([\s\S]*?\n}\n/
     expect(readiness).toMatch(seam)
-    return readiness.replace(seam, '')
+    return readiness.replace(seam, (body) => body.replace(/new FontFace\b/g, 'approvedSeamFaceConstruction').replace(/document\.fonts\b/g, 'approvedSeamFontSet'))
   }
   // THE DETECTOR'S OWN FIXTURES. canvas-font-stack.test.ts is the test that
   // proves runtime registration happens in exactly one place, and it cannot

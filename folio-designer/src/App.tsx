@@ -26,7 +26,7 @@ import { DataPanel } from './DataPanel'
 import { acceptSampleData, type SampleData, type SampleNode } from './sample-data'
 import type { SampleFileAccess } from './sample-file'
 import { assetBytesRequest, setComponentAssetCommand } from './component-asset-command'
-import { embeddedFaceFamily } from './embedded-face-family'
+import { embeddedFaceFamily, isCarriedFaceAssetKey } from './embedded-face-family'
 import { registerCarriedFaces } from './embedded-face-registry'
 import type { ImageFileAccess } from './image-file'
 
@@ -206,7 +206,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // entry. The listing is over the carried keys only, sorted and de-duplicated
   // — precisely the input this effect reads — so a chain rename or a shipped
   // entry's edit does not needlessly re-register a face that is already good.
-  const carriedFaceKeys = [...new Set((canvas?.fontChains ?? []).flatMap((chain) => chain.entries).map((entry) => entry.assetKey).filter((key) => key.length > 0))].sort()
+  //
+  // THE KEY'S SHAPE IS ADMITTED HERE, NOT ASSUMED. `isCarriedFaceAssetKey` is
+  // the derivation module's own predicate, and this is the one production
+  // caller that hands it a key the FRAGMENT guard never saw: a fragment's
+  // `assetKey` is admitted as 64 lowercase hex at the protocol boundary, a
+  // chain ENTRY's is admitted on length alone. An entry whose key is not that
+  // shape is a carried face the browser declines: no bytes are fetched, no
+  // family is derived, nothing is registered, and every fragment keeps the
+  // stylesheet's declared stack. It is a degrade, not a refusal — the
+  // projection is already admitted and the session is untouched.
+  const carriedFaceKeys = [...new Set((canvas?.fontChains ?? []).flatMap((chain) => chain.entries).map((entry) => entry.assetKey).filter(isCarriedFaceAssetKey))].sort()
   const carriedFaceListing = carriedFaceKeys.join('\u0000')
   useEffect(() => {
     setCarriedFaces(NO_CARRIED_FACES)

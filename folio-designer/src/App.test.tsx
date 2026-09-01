@@ -23,16 +23,23 @@ const carried = (assetKey: string) => ({ face: '', assetKey, family: 'Noto Sans 
 // installStubFontSet installs the page font set jsdom does not implement and
 // returns its own removal. `Object.defineProperty` because neither the face
 // constructor nor the set exists to be assigned over.
-function installStubFontSet(): () => void {
+//
+// IT RECORDS WHAT THE SEAM DID TO IT, in order: the families added and the
+// families removed. Registration and release are otherwise invisible — nothing
+// in the DOM says a face was released — so a claim about the seam's LIFETIME
+// can only be made against this record.
+function installStubFontSet(): Readonly<{ restore: () => void; added: string[]; removed: string[] }> {
   class StubFace {
     readonly family: string
     constructor(family: string) { this.family = family }
     load(): Promise<StubFace> { return Promise.resolve(this) }
   }
-  const set = { add: () => undefined, delete: () => undefined }
+  const added: string[] = []
+  const removed: string[] = []
+  const set = { add: (face: StubFace) => { added.push(face.family); return undefined }, delete: (face: StubFace) => { removed.push(face.family); return undefined } }
   Object.defineProperty(globalThis, 'FontFace', { value: StubFace, configurable: true, writable: true })
   Object.defineProperty(document, 'fonts', { value: set, configurable: true, writable: true })
-  return () => { Reflect.deleteProperty(globalThis, 'FontFace'); Reflect.deleteProperty(document, 'fonts') }
+  return { restore: () => { Reflect.deleteProperty(globalThis, 'FontFace'); Reflect.deleteProperty(document, 'fonts') }, added, removed }
 }
 
 // TWO text components drawing through ONE carried entry, so a per-component
@@ -41,6 +48,25 @@ const carriedFaceCanvas = (key: string) => {
   const paint = { overflow: false, truncated: false, lines: [{ top: 0, baseline: 12_000, advance: 16_000, width: 24_000, fragments: [{ text: 'สัญญา', x: 0, assetKey: key }] }] }
   const component = (id: string, y: number) => ({ id, type: 'text' as const, band: 'content' as const, x: 0, y, width: 72_000, height: 24_000, resizable: true, value: 'ignored', textPaint: paint })
   return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans'), carried(key)] }], components: [component('e1', 0), component('e2', 30_000)] }
+}
+
+// TWO carried entries, ONE PER COMPONENT, so a claim about one key can be read
+// off the DOM against a SETTLED outcome for the other. The fragment order in
+// the container is the component order: `first` then `second`.
+const twoCarriedFacesCanvas = (first: string, second: string) => {
+  const paint = (key: string) => ({ overflow: false, truncated: false, lines: [{ top: 0, baseline: 12_000, advance: 16_000, width: 24_000, fragments: [{ text: 'สัญญา', x: 0, assetKey: key }] }] })
+  const component = (id: string, y: number, key: string) => ({ id, type: 'text' as const, band: 'content' as const, x: 0, y, width: 72_000, height: 24_000, resizable: true, value: 'ignored', textPaint: paint(key) })
+  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans'), carried(first), carried(second)] }], components: [component('e1', 0, first), component('e2', 30_000, second)] }
+}
+
+// ONE carried component that CROSSES A WINDOW SEAM, so the projection produces
+// a home occurrence AND an echo of it on the next sheet. Every content window
+// after the first is drawn by echoes, so a multi-sheet document is the ordinary
+// case rather than an exotic one.
+const carriedFaceEchoCanvas = (key: string) => {
+  const paint = { overflow: false, truncated: false, lines: [{ top: 650_000, baseline: 662_000, advance: 16_000, width: 24_000, fragments: [{ text: 'สัญญา', x: 0, assetKey: key }] }] }
+  const spanning = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 650_000, width: 72_000, height: 100_000, resizable: true, value: 'ignored', textPaint: paint }
+  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans'), carried(key)] }], contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], components: [spanning] }
 }
 
 vi.mock('./preview/pdf-viewer', () => ({
@@ -813,7 +839,7 @@ describe('application shell', () => {
   // every x, advance and line break in the fixture is the engine's.
   it('registers a carried face once for the whole document and paints its fragments with the family derived from its key', async () => {
     const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-    const restore = installStubFontSet()
+    const fontSet = installStubFontSet()
     try {
       const requested: string[] = []
       const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
@@ -838,7 +864,42 @@ describe('application shell', () => {
       expect(painted()[0]).toHaveStyle({ '--text-fragment-x': '0px' })
       expect(screen.getAllByLabelText(/text component e1/)[0]).toBeInTheDocument()
     } finally {
-      restore()
+      fontSet.restore()
+    }
+  })
+
+  // EVERY CONTENT WINDOW AFTER THE FIRST IS AN ECHO, so a document that runs
+  // past one sheet paints most of itself through ComponentEcho rather than
+  // through the home occurrence. A carried face that reached only the home
+  // would leave sheets 2..N rasterizing at the ENGINE'S x-positions on the
+  // fallback stack — precisely the collision this story exists to remove, on
+  // most of the pages.
+  //
+  // MUTATION PROOF, RUN AND RECORDED: replacing `carriedFaces={carriedFaces}`
+  // with `carriedFaces={NO_CARRIED_FACES}` in ComponentEcho reddens THIS test
+  // on the echoed fragment and leaves every other designer test green — which
+  // is why the assertion is written against the echoed node specifically and
+  // not against the container's fragments as a set.
+  it('paints a repeated sheet\'s echo with the carried face, not only the component\'s home', async () => {
+    const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const fontSet = installStubFontSet()
+    try {
+      const request = vi.fn(async (operation: string) => operation === 'asset'
+        ? { snapshot: snapshot(1), bytes: new Uint8Array([0, 1, 2, 3]).buffer }
+        : { snapshot: snapshot(1) })
+      const view = render(<App engine={engine(request) } initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: carriedFaceEchoCanvas(key) }} />)
+      const home = () => Array.from(view.container.querySelectorAll('.canvas-component:not(.canvas-component-echo) .canvas-text-fragment')) as HTMLElement[]
+      const echoed = () => Array.from(view.container.querySelectorAll('.canvas-component-echo .canvas-text-fragment')) as HTMLElement[]
+      // The fixture really does produce both, or the claim below is vacuous.
+      expect(home()).toHaveLength(1)
+      expect(echoed()).toHaveLength(1)
+      await waitFor(() => expect(echoed()[0]!.style.fontFamily).toBe(embeddedFaceFamily(key)))
+      expect(home()[0]!.style.fontFamily).toBe(embeddedFaceFamily(key))
+      // AD-17 on the echo too: the engine's own x is what it paints at, and
+      // the family is the only thing this story put on it.
+      expect(echoed()[0]!).toHaveStyle({ '--text-fragment-x': '0px' })
+    } finally {
+      fontSet.restore()
     }
   })
 
@@ -849,23 +910,134 @@ describe('application shell', () => {
   // therefore leave the fragment exactly as a shipped-face fragment: painted,
   // named, and on the declared stack — and it must never reach the engine's
   // failure channel.
+  //
+  // IT IS READ AFTER THE CHAIN HAS SETTLED, WHICH IS THE WHOLE DIFFICULTY.
+  // "The fragment has no family" is ALSO true of a registration that simply
+  // has not finished, so asserting it the instant the request was issued
+  // proves "not yet", not "degraded" — the identical assertion passes at that
+  // instant in the SUCCESS case. The document therefore carries TWO carried
+  // faces: one whose bytes are withheld until the other has already been
+  // REJECTED, so the first face's arrival in the font set is a positive
+  // condition that cannot hold until the failure was handled.
+  //
+  // MUTATION PROOF, RUN AND RECORDED: returning bytes for `unfetchable`
+  // instead of throwing reddens this test — the second fragment acquires its
+  // family and the font set holds two families, not one.
   it('keeps painting on the declared stack when a carried face\'s bytes cannot be fetched', async () => {
-    const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-    const restore = installStubFontSet()
+    const fetchable = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const unfetchable = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210'
+    const fontSet = installStubFontSet()
     try {
-      const request = vi.fn(async (operation: string) => {
-        if (operation === 'asset') throw Object.assign(new Error('no such asset'), { code: 'ASSET_UNAVAILABLE' })
-        return { snapshot: snapshot(1) }
+      let release: () => void = () => undefined
+      const withheld = new Promise<ArrayBuffer>((resolve) => { release = () => resolve(new Uint8Array([0, 1, 2, 3]).buffer) })
+      const requested: string[] = []
+      const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+        if (operation !== 'asset') return { snapshot: snapshot(1) }
+        const key = new TextDecoder().decode(payload)
+        requested.push(key)
+        if (key === unfetchable) throw Object.assign(new Error('no such asset'), { code: 'ASSET_UNAVAILABLE' })
+        return { snapshot: snapshot(1), bytes: await withheld }
       })
-      const view = render(<App engine={engine(request) } initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: carriedFaceCanvas(key) }} />)
-      await waitFor(() => expect(request).toHaveBeenCalledWith('asset', expect.anything()))
+      const view = render(<App engine={engine(request) } initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: twoCarriedFacesCanvas(fetchable, unfetchable) }} />)
+      // Both were asked for; the unfetchable one has already rejected, because
+      // its bytes were never withheld behind anything.
+      await waitFor(() => expect([...requested].sort()).toEqual([fetchable, unfetchable].sort()))
+      release()
+      // THE POSITIVE CONDITION. The font set cannot hold the fetchable face
+      // until its bytes were released, which happened after the other request
+      // rejected — so everything below is read on a settled chain.
+      await waitFor(() => expect(fontSet.added).toEqual([embeddedFaceFamily(fetchable)]))
       const painted = () => Array.from(view.container.querySelectorAll('.canvas-text-fragment')) as HTMLElement[]
       expect(painted().length).toBe(2)
-      expect(painted().map((node) => node.style.fontFamily)).toEqual(['', ''])
+      await waitFor(() => expect(painted()[0]!.style.fontFamily).toBe(embeddedFaceFamily(fetchable)))
+      expect(painted()[1]!.style.fontFamily).toBe('')
+      expect(painted()[1]!).toHaveStyle({ '--text-fragment-x': '0px' })
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(screen.getAllByLabelText(/text component e1/)[0]).toBeInTheDocument()
     } finally {
-      restore()
+      fontSet.restore()
+    }
+  })
+
+  // THE KEY IS A STRING FROM THE DOCUMENT, AND IT BECOMES A CSS FAMILY. The
+  // projection admits a FRAGMENT's `assetKey` only as 64 lowercase hex, but a
+  // CHAIN ENTRY's key — the one this effect fetches bytes for and derives the
+  // family from — is admitted on length alone, so the shape is asserted at the
+  // derivation. A key that is not one is a carried face the browser declines:
+  // no request, no family, no registration, and the fragment stays on the
+  // stylesheet's declared stack. It is a DEGRADE and not a refusal — nothing
+  // reaches the failure channel and the worker is untouched.
+  it('declines a chain entry whose asset key is not an asset key, rather than turning it into a family', async () => {
+    const wellFormed = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const injected = 'IBM Plex Sans, monospace'
+    const fontSet = installStubFontSet()
+    try {
+      const requested: string[] = []
+      const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+        if (operation === 'asset') { requested.push(new TextDecoder().decode(payload)); return { snapshot: snapshot(1), bytes: new Uint8Array([0, 1, 2, 3]).buffer } }
+        return { snapshot: snapshot(1) }
+      })
+      const view = render(<App engine={engine(request) } initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: twoCarriedFacesCanvas(wellFormed, injected) }} />)
+      // The well-formed sibling settles, so the claim about the malformed one
+      // is read after the effect has done everything it is going to do.
+      await waitFor(() => expect(fontSet.added).toEqual([embeddedFaceFamily(wellFormed)]))
+      expect(requested).toEqual([wellFormed])
+      const painted = () => Array.from(view.container.querySelectorAll('.canvas-text-fragment')) as HTMLElement[]
+      await waitFor(() => expect(painted()[0]!.style.fontFamily).toBe(embeddedFaceFamily(wellFormed)))
+      // Not a family, not a partial family, not the string itself.
+      expect(painted()[1]!.style.fontFamily).toBe('')
+      expect(view.container.innerHTML).not.toContain(embeddedFaceFamily(injected))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getAllByLabelText(/text component e2/)[0]).toBeInTheDocument()
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  // THE LISTING IS PART OF THE EFFECT'S KEY, AND THIS IS THE CASE THAT PROVES
+  // IT. `documentGenerationValue` advances only when the document is REPLACED
+  // — open a file, new template, undo/redo — and a font-chain command is none
+  // of those: applyFontChain commits through setCurrentSnapshot without
+  // clearing the document interaction, so the generation does not move. The
+  // author can nonetheless remove the entry that carries the face, from a
+  // control that is right there in the panel.
+  //
+  // Release is invisible in the DOM — the fragment simply stops asking for the
+  // family — so the claim is made against the font set's own record.
+  //
+  // MUTATION PROOF, RUN AND RECORDED: reducing the effect's dependency array
+  // to `[engine, documentGenerationValue]` reddens this test and leaves the
+  // rest of the designer suite green.
+  it('releases a carried face when a chain edit drops it, though the document was never replaced', async () => {
+    const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    const fontSet = installStubFontSet()
+    try {
+      const carrying = carriedFaceCanvas(key)
+      const dropped = { ...carrying, fontChains: [{ name: 'body', entries: [face('Noto Sans')] }] }
+      const loaded = (revision: number, projection: typeof carrying) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: projection })
+      const request = vi.fn(async (operation: string) => {
+        if (operation === 'asset') return { snapshot: loaded(1, carrying), bytes: new Uint8Array([0, 1, 2, 3]).buffer }
+        if (operation === 'command') return { snapshot: loaded(2, dropped) }
+        return { snapshot: loaded(1, carrying) }
+      })
+      render(<App engine={engine(request) } initialSnapshot={loaded(1, carrying)} />)
+      await waitFor(() => expect(fontSet.added).toEqual([embeddedFaceFamily(key)]))
+      expect(fontSet.removed).toEqual([])
+      fireEvent.click(screen.getAllByLabelText(/text component e1/)[0]!)
+      fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
+      // The carried entry is the second of the one chain, and this is the
+      // author-reachable control that drops it.
+      fireEvent.click(screen.getByRole('button', { name: 'Remove entry 2 of font chain 1' }))
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove entry 2 of font chain 1' })).not.toBeInTheDocument())
+      await waitFor(() => expect(fontSet.removed).toEqual([embeddedFaceFamily(key)]))
+      // And it was released rather than re-registered: the document was never
+      // replaced, so nothing asked for those bytes a second time.
+      expect(fontSet.added).toEqual([embeddedFaceFamily(key)])
+      expect(document.querySelectorAll('.canvas-text-fragment')).toHaveLength(2)
+      expect(Array.from(document.querySelectorAll('.canvas-text-fragment')).map((node) => (node as HTMLElement).style.fontFamily)).toEqual(['', ''])
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    } finally {
+      fontSet.restore()
     }
   })
 

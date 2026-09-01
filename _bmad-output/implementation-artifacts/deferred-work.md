@@ -2726,10 +2726,20 @@ unvirtualised path by the page count. The two questions are the same question an
 ### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families — **CAUSE TWO CLOSED by Story 8.4a, 2026-09-01; CAUSE ONE STILL OPEN**
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
-- **Owner:** **Story 8.4a — RULED 2026-08-31 (D-8.4.1) to Story 8.4, then SPLIT to its named
-  successor 2026-09-01 (D-8.4.6)** when 8.4's plan gate returned `multiple-goals`. The ruling
-  anticipated this: *"8.4, or the named successor story if the gate splits it."* **Severity:** MEDIUM.
-  This is a *ruling*, not a recommendation — see the standing rule below.
+- **Owner — ONE PER CAUSE, because the causes were split and only one of them is delivered.**
+  **Severity:** MEDIUM. Both assignments below are *rulings*, not recommendations — see the standing
+  rule below.
+  - **CAUSE TWO — Story 8.4a. DELIVERED AND CLOSED 2026-09-01 (`c4cd60c`); the story is finished and
+    owns nothing further here.** RULED 2026-08-31 (D-8.4.1) to Story 8.4, then SPLIT to its named
+    successor 2026-09-01 (D-8.4.6) when 8.4's plan gate returned `multiple-goals`. The ruling
+    anticipated this: *"8.4, or the named successor story if the gate splits it."*
+  - **CAUSE ONE — Story 8.4b, *the canvas can name the face the engine measured*. OPEN. RULED INTO
+    EXISTENCE 2026-09-01 (D-8.4.14)**, written into `epics.md` and sequenced after 8.4a. Cause one is
+    therefore **owned and unstarted**, not ownerless: per D-8.4.1's standing rule DW-35 survives 8.4a
+    **with** a named successor rather than without one, which is the exact state that rule exists to
+    prevent. **This bullet used to read `Owner: Story 8.4a` alone**, and 8.4a's close left it that
+    way — a finished story standing as the sole owner of a cause it explicitly did not close, which
+    is how a surviving cause loses its owner without anyone deciding it should.
 
   **The successor is sequenced IMMEDIATELY after 8.4, not "later in Epic 8"**, and Story 8.4
   discloses the canvas limitation as a **test** rather than a comment, so the gap between the two
@@ -2781,11 +2791,15 @@ unvirtualised path by the page count. The two questions are the same question an
 
 - **Status:** **HALF CLOSED, AND THE HALVES MUST NOT BE CONFLATED.** This entry has TWO causes.
   **CAUSE TWO is CLOSED** by Story 8.4a (2026-09-01) — see the closing note at the end of this entry.
-  **CAUSE ONE remains OPEN and UNRULED**, and it is the reason this entry stays open rather than being
+  **CAUSE ONE remains OPEN**, and it is the reason this entry stays open rather than being
   marked closed: reading a half-closed entry as closed is exactly how the surviving cause disappears.
-  The design decision cause two inherited was already made (D-8.4.1, quoted below): *an embedded
-  face's CSS family name is derived from its **asset key**, never from `font.family`.* **No equivalent
-  decision has ever been made for cause one.**
+  The design decision cause two inherited was made by D-8.4.1 (quoted below): *an embedded face's CSS
+  family name is derived from its **asset key**, never from `font.family`.* **Cause one's equivalent
+  is D-8.4.14 (2026-09-01)**, which ruled the register's stated blocker FALSE and gave cause one a
+  named owner, **Story 8.4b** — so cause one is open because the code is not written, **not** because
+  the decision is missing. (This bullet previously read *"OPEN and UNRULED … no equivalent decision
+  has ever been made"*; that was already untrue when it was written. See the correction in the closing
+  note.)
 
   **CAUSE TWO — a face the DOCUMENT CARRIES has no family in the browser at all.** For cause one
   there is at least a shipped file behind the chain entry, registered under *some* family the browser
@@ -2903,19 +2917,34 @@ not caught, and deleting either rule reddens a named test.
 seam: the engine measures with `Noto Sans Thai` while the browser asks for `IBM Plex Sans` first,
 because `scripts/build-wasm.mjs` registers the three shipped Noto files under IBM Plex family names while
 a chain's entries are the ENGINE's face names. `canvas-font-stack.test.ts` records those two vocabularies
-as **deliberately disjoint**. Closing it means either **renaming the generated `@font-face` families**
-(rippling into `tokens.css`, its three type tokens and `design-contract.test.ts`) or **generating a
-face-name → CSS-family map** — a design-system decision above a builder's authority, and **no ruling has
-ever made it**. D-8.4.1 settled the *embedded* derivation only. Story 8.4a's scope is the enumeration in
-"What 8.4a owns" above, adopted by D-8.4.6, and **not one item on it mentions a shipped mapping**, so
-extending the tie to the shipped half would have been a red assertion inviting a builder to weaken it
-back rather than a stronger guard. Note the aliasing trap for whoever takes it: the generator's
-`'IBM Plex Mono'` is **Noto Sans SC** (`build-wasm.mjs`), not a mono face.
+as **deliberately disjoint**. Story 8.4a's scope is the enumeration in "What 8.4a owns" above, adopted
+by D-8.4.6, and **not one item on it mentions a shipped mapping**, so extending the tie to the shipped
+half would have been a red assertion inviting a builder to weaken it back rather than a stronger guard.
+Note the aliasing trap for whoever takes it: the generator's `'IBM Plex Mono'` is **Noto Sans SC**
+(`build-wasm.mjs`), not a mono face.
 
-**What would discharge cause one.** A ruling choosing between the two options above, then one story that
-(a) applies it, (b) widens `canvas-font-stack.test.ts`'s tie from the carried case to **every** case,
-deleting the deliberate-disjointness test as the disclosure it is, and (c) proves the widened tie by
-deletion. Until that ruling exists, this entry stays OPEN.
+**CORRECTION, RECORDED RATHER THAN LEFT STANDING (2026-09-01).** This closing note as first written said
+cause one's fix is *"a design-system decision above a builder's authority, and no ruling has ever made
+it"*, and the paragraphs above still frame the choice as *rename the generated `@font-face` families* vs
+*generate a face-name → CSS-family map*. **Both statements were already stale when they were written.**
+**D-8.4.14 ruled on 2026-09-01**, before 8.4a's implementation landed, and it ruled the register's own
+blocker **FALSE**: renaming the generated families is *not* the decision and would be **wrong**, because
+IBM Plex is the design system's specified typeface, named throughout `DESIGN.md` and promised in the
+release **licence manifest** — the Noto files were the stand-in, not the label. The mapping table is
+rejected too, as a second authority maintained in lockstep with the shipped `FontSet`. **The fork
+dissolved instead of escalating:** DW-35 is about what the CANVAS paints with and says nothing about
+chrome, so the shipped faces are registered **additionally** under the engine's own face names and the
+canvas fragment rule points there — D-8.4.1 one case over, and grounded on AD-17.
+
+**What would discharge cause one, and who owns it.** **Story 8.4b — *the canvas can name the face the
+engine measured*** (`epics.md`), ruled into existence by D-8.4.14 and sequenced after 8.4a. It (a)
+registers each shipped face additionally under the engine's own `FontSet` spelling, (b) points the
+canvas fragment rule at those names, editing **no** chrome token, and (c) **replaces rather than
+weakens** `canvas-font-stack.test.ts`'s disjointness assertion — that assertion records the old state
+and *should* go red; its successor asserts the canvas fragment stack's families **contain** the engine's
+face names, and must not be softened to an `arrayContaining` to keep it passing. **No further ruling is
+outstanding.** This entry stays **OPEN** until 8.4b lands, because the defect is still live on the
+shipped path — not because the decision is still missing.
 
 **What this repository still cannot prove, stated plainly.** Nothing here can execute a real font load,
 a real `document.fonts.add`, or a rasterized glyph: jsdom applies no stylesheet and implements no font

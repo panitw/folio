@@ -2,13 +2,102 @@
 title: 'Story 8.4a — The canvas paints with the face the engine measured'
 type: 'feature'
 created: '2026-09-01'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'dfe5129ae89fcc124d96ed4047e3a7fe6db3348f'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      A carried face is registered with no weight or style descriptors, so a bold or italic
+      component gets browser-synthesized bold/italic over a 400/normal face.
+    evidence: |-
+      new FontFace(embeddedFaceFamily(assetKey), bytes) takes no descriptors, while TextPaint
+      still emits --text-font-weight (700 when component.bold) and --text-font-style. Synthesis
+      has different metrics from what the engine measured, which is the class of defect this
+      story exists to remove. The projected chain entry already carries `style` and it is unused
+      here. Pre-existing in kind for shipped faces too (build-wasm.mjs declares regular faces
+      only), which is why this is deferred rather than patched — the fix is a chain/face-variant
+      design question, not a local repair.
+    location: >-
+      folio-designer/src/embedded-face-registry.ts
+    severity: medium
+  - summary: >-
+      The inline family replaces the declared stack rather than extending it, so a registered
+      carried face missing a glyph falls to the browser default rather than App.css's stack.
+    evidence: |-
+      TextPaint emits `font-family: folio-carried-<key>` with no fallback list, and App.css:118 is
+      unchanged. The implementation gates on registration so the fetch-failure row still degrades
+      correctly, and argues the choice in a header comment — but for a face that IS registered and
+      merely lacks a glyph, CSS's own font matching would have degraded per-glyph had the declared
+      stack been appended. The intent does not settle this fork and no surface in the repo can
+      observe the difference.
+    location: >-
+      folio-designer/src/App.tsx (TextPaint)
+    severity: medium
+  - summary: >-
+      No concurrency cap on the carried-face asset fan-out, and release() does not abort
+      in-flight requests.
+    evidence: |-
+      isCanvas admits up to MAX_ENGINE_FONT_FAMILIES (256) chains x MAX_ENGINE_FONT_CHAIN_ENTRIES
+      (64) entries; registerCarriedFaces issues one engine.request('asset', ...) per distinct key
+      in a bare loop. A document with many carried faces issues many concurrent full-font-byte
+      requests down the single engine channel. release() flips `active` so nothing is added after
+      supersession, but the fetches still complete and still transfer.
+    location: >-
+      folio-designer/src/embedded-face-registry.ts
+    severity: medium
+  - summary: >-
+      The I/O matrix's "two embedded entries in one chain" row is proved at the derivation and
+      registration surfaces but not at the Go engine-attribution surface.
+    evidence: |-
+      embedded-face-family.test.ts proves distinct keys yield distinct families, and
+      embedded-face-registry.test.ts registers [oneKey, otherKey] and asserts both. But the Go
+      half — "each fragment names its OWN asset key" for a chain with two carried faces both
+      covering — has no fixture: the embedded-font fixture carries exactly one font asset, and
+      TestAMixedScriptElementIsAttributedFragmentByFragment is one carried plus one shipped.
+      NOT patched deliberately: a second carried font fixture would create a new golden digest
+      and a new human sign-off obligation, which this dispatch places above a builder's authority.
+    location: >-
+      folio-go/canvas_fragment_attribution_test.go
+    severity: medium
+  - summary: >-
+      The hand-written comment stripper does not skip regex literals, so a regex containing a
+      double slash silently truncates that line for every scan routed through it.
+    evidence: |-
+      withoutComments tracks string and template-literal state but not regex-literal state, so
+      /https:\/\// reads as a line comment. No designer source triggers it today, which is why
+      it is latent rather than a live hole — but violations(), runtimeRegistrationSites and
+      fontFamilyDeclarations all now route through it, so the first source that adds such a regex
+      silently weakens three guards at once.
+    location: >-
+      folio-designer/src/canvas-authority-contract.test.ts
+    severity: low
+  - summary: >-
+      The new test stubs install a page font set by a spelling the repaired prohibition does not
+      match, and the file scans the test corpus.
+    evidence: |-
+      canvas-authority-contract.test.ts passes production, tests and e2e to violations().
+      App.test.tsx and embedded-face-registry.test.ts both install a global face constructor and a
+      document.fonts set, yet neither matches /\bdocument\.fonts\b/ or /\bnew FontFace\b/,
+      because they write Object.defineProperty(document, 'fonts', ...) and class StubFace. A test
+      stub is not runtime registration, so this is not a violation — but the rule this story
+      revived is blind to the mechanism as this story itself writes it, and that is undisclosed.
+    location: >-
+      folio-designer/src/App.test.tsx
+    severity: low
+  - summary: >-
+      Stub teardown deletes globalThis.FontFace and document.fonts rather than restoring the
+      prior property descriptor.
+    evidence: |-
+      installStubFontSet's restore and embedded-face-registry.test.ts's afterEach both call
+      Reflect.deleteProperty. jsdom provides neither today so there is no live impact, but in any
+      environment that does (a jsdom upgrade, happy-dom) this permanently removes them for every
+      later test in the worker. Capturing and restoring the prior descriptor is the correct shape.
+    location: >-
+      folio-designer/src/App.test.tsx
+    severity: low
 ---
 
 <intent-contract>
@@ -458,6 +547,33 @@ red.** `shasum -a 256 fixtures/*/expected.pdf` → **23** lines. Root `README.md
 
 ## Review Triage Log
 
+### 2026-09-01 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 2, medium 4, low 1)
+- defer: 7: (high 0, medium 4, low 3)
+- reject: 6: (high 0, medium 1, low 5)
+- addressed_findings:
+  - `[high]` `[patch]` **The repeated-sheet echo had zero carried-face coverage.** `ComponentEcho` forwarded `carriedFaces` to `TextPaint` but nothing observed it: I independently reproduced the mutation `carriedFaces={carriedFaces}` -> `NO_CARRIED_FACES` at the echo's `TextPaint` and the whole designer suite stayed green (37 files / 344 tests). Every content window after the first is an echo, so a multi-sheet carried-face document would have painted sheets 2..N on the fallback stack at the engine's x-positions — this story's own defect — and shipped green. Fixed: new `carriedFaceEchoCanvas` fixture (3 content windows, one component spanning the seam) and test `paints a repeated sheet's echo with the carried face, not only the component's home`, asserting on `.canvas-component-echo .canvas-text-fragment`. **Re-verified by me after the patch: the same mutation now reddens exactly that one test (1 failed / 349 passed).**
+  - `[high]` `[patch]` **The seam carve-out waived every prohibition, not the two font ones.** `withoutApprovedRuntimeFaceRegistration` did `readiness.replace(seam, '')`, deleting the entire `registerCarriedFaces` body from the scanned source, so `getComputedStyle`, `offsetWidth`, `ResizeObserver`, `devicePixelRatio` and the pagination-from-paint rules were all unenforced inside the one function permitted to touch fonts — an AD-17 hole, and a weakening-by-breadth in the very file this story was repairing. Its sibling carve-out for `canvas-font-stack.test.ts` already did it correctly (narrowed to two spellings, and says so). Fixed: the replacement now rewrites only `new FontFace` and `document.fonts` **inside** the matched seam; the non-vacuity `toMatch` is kept; the comment now states what is actually waived; and a new test `keeps every non-font prohibition live inside the approved seam` proves six non-font prohibitions are still caught there. Red-proved by restoring `replace(seam, '')`.
+  - `[medium]` `[patch]` **The dependency the spec called out as load-bearing was unpinned.** The registration effect is keyed `[engine, documentGenerationValue, carriedFaceListing]` and the Code Map explicitly warned `documentGenerationValue` alone is insufficient. I reproduced: reducing the array to `[engine, documentGenerationValue]` left the suite green (344 tests). Fixed: `installStubFontSet` now records added/removed families, and a new test drives the author-reachable *Remove entry* control and asserts the face is released though the document was never replaced. Red-proved by dropping the listing from the deps.
+  - `[medium]` `[patch]` **`page_setup.go` discarded the `ok` and could put a non-key on the wire.** `embeddedFaceAssetKey` was `strings.CutPrefix(...)`, which returns **the whole input name** with `false` on a miss; the append site wrote `carried, _ := cache.carriedAssetKey(...)`. Safe by construction today, but a face name reaching the wire meets the browser's `/^[a-f0-9]{64}$/` guard as `PROTOCOL_INVALID` — worker termination, the sharpest failure mode in this story. Fixed: the accessor now returns `"", false` on a miss, with `TestANonMintedFaceNameYieldsNoAssetKey` over seven non-minted names, and the discarded bool at the call site carries its justification.
+  - `[medium]` `[patch]` **The chain-entry `assetKey` was unvalidated at the one place it becomes a CSS family.** `isFontChainEntry` only length-bounded it, while the fragment guard and the image guard both enforce 64-hex — yet the *chain-entry* key is what reaches `embeddedFaceFamily()` -> `new FontFace()` -> the inline `font-family`, so the module's "CSS `<custom-ident>` by construction" promise was unenforced at its only production caller (a string-injection path into an inline style). Fixed at the derivation rather than the protocol guard so it stays a degrade: `isCarriedFaceAssetKey` now filters `carriedFaceKeys`, with unit tests over twelve malformed shapes (including `..., serif` and `..."; }`) and an App test proving a malformed key yields no request, no family, no injected string, no alert, session alive.
+  - `[medium]` `[patch]` **The degrade test did not discriminate.** It asserted `fontFamily === ['','']` on the line after `waitFor(request called)`, before any promise could settle — the identical assertion passes in the success case at that instant, so it proved "not yet registered", not "degraded". Fixed: two carried faces, the fetchable one's bytes withheld until the unfetchable one has already rejected, so `added === [family(fetchable)]` is a positive condition that cannot hold until the failure was handled.
+  - `[low]` `[patch]` **DW-35's `Owner:` was stale.** Recorded per-cause ownership and what discharges cause one. **The finding's premise as I routed it was wrong and the implementer corrected it with evidence** — see the note below.
+
+**Rejected findings, enumerated with the ground each was refused on (DW-87).** A rejection is sound only when it refutes the specific claim at the cited location; a true fact about nearby code is not a refutation.
+
+1. *"No sprint-status, epics or Delivery Log entry accompanies the change"* (blind-hunter, on the diff as a whole). **Refused:** `bmad-build-auto` never writes `sprint-status.yaml` or a Delivery Log; those are the story-closer's step in this project's pipeline, run after this workflow halts. The absence is the workflow boundary, not an omission in this diff.
+2. *"`expect(positions).toEqual(['App.tsx: embeddedFaceFamily(fragment.assetKey)'])` is brittle — it reddens if the local is renamed or a legitimate second font-family position is added"* (blind-hunter, `canvas-font-stack.test.ts` GUARD 2). **Refused:** that exactness is the guard's designed strength, not a defect. AC4 requires the position census to permit *only* an asset-key-derived family; a legitimate second position (a font-picker preview, say) *should* force a ruling rather than pass silently. The brittleness is the mechanism by which the guard cannot be widened by accident.
+3. *"`fragment.assetKey !== undefined &&` is redundant because `carriedFaces.has(undefined as never)` is already false"* (blind-hunter, `TextPaint`). **Refused:** true as a fact about the expression, but it has no consequence for any consumer — the branch is a hot-path guard that also documents the optional field's absence as the shipped-face statement. Cosmetic; removing it trades clarity for nothing.
+4. *"`NO_CARRIED_FACES` is declared between two type declarations and belongs with the module constants"* (blind-hunter). **Refused:** cosmetic placement, no consequence for correctness or comprehension.
+5. *"`withoutComments` is duplicated into `canvas-font-stack.test.ts`; a helper module under `folio-designer/test/` satisfies both rejected alternatives"* (blind-hunter). **Refused:** the comment at the duplication site already reasons through the two alternatives that would break (importing registers the suite twice; hoisting into `src/` enters the scanned corpus). The proposed third directory is a real option but a style preference with no correctness consequence, and adding a new top-level test directory is a larger change than the duplication it removes.
+6. *"`embedded-face-family.test.ts`'s collision list is hardcoded and will not follow the generator"* (intent-alignment). **Refused at the cited location:** the anchored version of that exact claim already exists — GUARD 1 part (d) loops over `declared`, read live from `scripts/build-wasm.mjs`, and asserts the derived family equals none of them. The module test's hardcoded list is a redundant restatement, not the only cover, so the "Shared `font.family`" row does not rest on an unanchored list.
+
+**A finding I routed that was wrong on the facts, corrected by the implementer with evidence.** I routed the blind-hunter's claim that DW-35 cause one *"is left with no owner, no successor DW entry, and no recorded request for the ruling it needs."* That is **false**: `_bmad-output/planning-artifacts/epics.md:3129` carries **Story 8.4b — The canvas can name the face the engine measured**, whose Covers line names DW-35 cause one explicitly, and `epic-7-8-decision-log.md:3277` **D-8.4.14** (committed at `dfe5129`, before this story's implementation commit) rules cause one to 8.4b *and* rules the register's own stated blocker false. The implementer declined to write the invented ownerlessness and instead corrected DW-35 to the truth: per-cause owners (cause two -> 8.4a, delivered; cause one -> Story 8.4b, open and unstarted), a dated correction of the "OPEN and UNRULED" line, and what discharges cause one. **Cause one remains OPEN, as this story requires.** Consequence for the orchestrator: this spec's own Design Notes assertion that cause one's fix is *"a design-system decision no ruling has ever made"* was already stale when the spec was committed — D-8.4.14 predates it. The frozen contract was left untouched; the correction lives in the register.
+
 ## Design Notes
 
 **Why the asset key and not the minted face name (Task 2).** `embedded_face.go:84-86` states that a
@@ -639,6 +755,62 @@ feature's own red-proof.** Never clear it by weakening the detector; clear it on
   cannot be audited; that is **DW-87**.
 
 ## Auto Run Result
+
+### 2026-09-01 — Implement / review / commit dispatch (terminal)
+
+Status: done
+Blocking condition: none
+
+**Implemented change.** The canvas now paints a carried face with that face. The engine attributes each
+paint fragment to the asset it resolved that fragment to (`CanvasTextFragment.AssetKey`,
+`json:"assetKey,omitempty"`, populated at the single fragment-append site from the chain-scoped
+`fontCache`), the browser derives a CSS family from that asset key alone (`folio-carried-<key>` — a
+namespace of the browser's own, never the engine's `asset:` prefix and never `font.family`), fetches the
+bytes over the existing media-type-agnostic `asset` operation, registers one `FontFace` per key
+**document-scoped** (not the `ImagePaint` N x M per-instance lifetime), and asks for that family inline on
+that fragment only — and only once the face has actually registered, so a fetch failure degrades onto
+`App.css`'s declared stack instead of onto the browser default. The Go and TypeScript sides of the
+protocol changed in one commit, as the hard ordering constraint requires, with a new fragment-level wire
+record (`canvasTextFragmentWireKeys`) tying `hasOnly(fragment, [...])` to the Go struct so a one-sided
+edit reddens in Go rather than killing the worker in a browser nobody runs.
+
+**Files changed.**
+- `folio-go/embedded_face.go` — `embeddedFaceAssetKey`, the inverse of `embeddedFaceName`, beside it; the `asset:` prefix is read only where it is written, in Go and in no TypeScript.
+- `folio-go/render.go` — `fontCache.carriedAssetKey`: embedded index first, prefix second, so a FontSet face that merely looks minted is not reported as carried.
+- `folio-go/page_setup.go` — the optional `AssetKey` field and its population at the one append site.
+- `folio-go/canvas_fragment_attribution_test.go` (new) — carried, shipped, mixed-script, non-minted-name and name/key round-trip, with vacuity preconditions.
+- `folio-go/canvas_projection_wire_test.go` — the fragment-level wire record, both halves.
+- `folio-designer/src/engine-protocol.ts` — fragment type, `hasOnly` allow-list, 64-hex validation.
+- `folio-designer/src/embedded-face-family.ts` (new) — the one asset-key -> CSS-family derivation, plus `isCarriedFaceAssetKey`.
+- `folio-designer/src/embedded-face-registry.ts` (new) — the only runtime registration seam; document-scoped, returns its own release.
+- `folio-designer/src/App.tsx` — the document-scoped effect keyed `[engine, documentGenerationValue, carriedFaceListing]`; `carriedFaces` threaded to `CanvasComponent`, `ComponentEcho` and `TextPaint`.
+- `folio-designer/src/canvas-font-stack.test.ts` — GUARD 1 widened (stylesheet half kept, plus a rendered-DOM tie, the seam's shared derivation, and a build-family collision check), GUARD 2 inverted to permit only an asset-key-derived family, the disclosure of absence deleted under its own pre-authorisation and replaced by its positive twin; `:194-210` untouched.
+- `folio-designer/src/canvas-authority-contract.test.ts` — the dead `document.fonts` scan repaired and mutation-proved, `new FontFace` added, both carve-outs narrowed to spellings.
+- `folio-designer/src/{embedded-face-family,embedded-face-registry}.test.ts` (new), `App.test.tsx`, `engine-protocol.test.ts` — coverage including the echo path, the chain-edit release, and the degrade path.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — DW-35 cause two closed, cause one recorded OPEN and owned by Story 8.4b per D-8.4.14.
+
+**Review findings breakdown.** 7 patched (2 high, 4 medium, 1 low), 7 deferred (4 medium, 3 low), 6 rejected — each rejection enumerated with its claim, cited location and refusing ground in the Review Triage Log above (DW-87). No intent gap and no bad_spec: the spec had flagged both high findings' surfaces (the `ComponentEcho` mount, and `documentGenerationValue`'s insufficiency); the implementation honoured both in code but left neither pinned, which is a patch, not a spec defect.
+
+**Follow-up review recommendation: true.** Patched severities were high 2, medium 4, low 1; any high sets it true (the medium/low score is 3 x 4 + 1 = 13, also >= 5).
+
+**Verification performed — measured at `dfe5129` before and re-run by the parent after the patches, not taken from a subagent's report.**
+- `go test -count=1 ./...` — 16 `ok`, ONE red: `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` (got 7, need >= 20).
+- `go test -count=1 -tags=matrix ./...` — 13 `ok`, exactly TWO reds: `TestShippedFacesReproduceFromUpstream` (`fontgen: fontTools is not importable`, DW-86) and the P6g floor. **No third red.** Baseline at `dfe5129` measured independently first and was the same two.
+- `go vet -tags=matrix ./...` exit 0, no output. `gofmt -l folio-go` empty.
+- AD-21: darwin/arm64 PASS 0.70s, linux/amd64 PASS 6.36s, linux/arm64 PASS 4.93s, js/wasm PASS 11.12s; **unset control PASS 0.00s** — the deliberate no-op, and the timing contrast is the evidence the four legs asserted.
+- `TestCrossTargetByteIdentity` PASS (24.3s). `cd lint && go test -count=1 ./...` 4 x `ok` (`-count=1` mandatory: the rules package walks the tree with `ReadDir`, which the test cache does not track).
+- `GOOS=js GOARCH=wasm ... ./wasm/cmd/engine/` — `ok` 0.419s (invisible to `go test ./...`; run by hand).
+- Designer: `typecheck` exit 0; oxlint exactly 4 pre-existing `only-export-components` warnings (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1323,1330` — shifted from `1263,1270` by added comment lines, same two symbols); Vitest **37 files / 350 tests, all passing** (baseline 35/325, post-implementation 344); `test:e2e:compile` exit 0.
+- **All 23 `fixtures/*/expected.pdf` digests byte-identical** to the pre-edit capture. Root `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8` unchanged and absent from the diff. No signoff record, fixture, `expected.pdf`/`expected.json`, `App.css`, `tokens.css`, `build-wasm.mjs` or `canvas_embedded_face_test.go` in the diff. The DW-92 successor arm is absent from the diff.
+- Mutation proofs re-run by the parent: the echo mutation (`carriedFaces` -> `NO_CARRIED_FACES` at `ComponentEcho`'s `TextPaint`) left 344/344 green before the patch and now reddens exactly one named test (1 failed / 349 passed); the dep-array mutation left 344/344 green before the patch.
+
+**Residual risks.**
+- **Nothing in this repository can execute a real font load, a real `document.fonts.add`, or a rasterized glyph.** `test:e2e:compile` is `tsc --noEmit`, Playwright appears in no workflow, browser e2e is deferred by **D-000.4**, and jsdom applies no stylesheet and implements no font loading. The gates prove the derivation, the registration call, the fragment's rendered inline family, the guards and the protocol shape — **they do not prove the canvas visibly paints with the carried face.** The successor for this gap is named: when browser e2e arrives (D-000.4).
+- Registration is proved against a hand-written `FontFace`/`document.fonts` stub, and the shipped-face fallback is proved as the *absence of an inline declaration* rather than as `.canvas-text-fragment`'s rule winning a cascade jsdom never runs.
+- Seven deferred items are recorded in frontmatter, four of them medium: missing weight/style descriptors, no appended fallback list, no fan-out cap, and the Go half of the two-carried-faces matrix row (not patched deliberately — a second carried font fixture would create a new golden digest and a new human sign-off obligation).
+- **The spec's own Design Notes claim that DW-35 cause one is "a design-system decision no ruling has ever made" was already stale when the spec was committed** — D-8.4.14 at `dfe5129` rules cause one to Story 8.4b and rules the register's stated blocker false. The frozen contract was left untouched; the correction lives in `deferred-work.md`. Cause one remains OPEN, as this story requires.
+
+### 2026-09-01 — Plan-gate dispatch (superseded, kept for the record)
 
 Status: ready-for-dev
 Blocking condition: none

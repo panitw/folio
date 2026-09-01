@@ -100,8 +100,23 @@ func embeddedFaceName(assetKey string) string { return embeddedFaceNamePrefix + 
 // rule above is stated in terms of that index. fontCache.carriedAssetKey
 // (render.go) is therefore the caller-facing accessor: it asks the index
 // first and only then reads the name.
+//
+// A MISS RETURNS THE EMPTY STRING, NEVER THE NAME. strings.CutPrefix
+// hands back the WHOLE INPUT alongside false when the prefix is absent,
+// so an accessor that forwarded its two results verbatim would put a face
+// NAME wherever a caller ignored the bool. Story 8.4a's projection carries
+// this value onto the wire, where the browser admits a fragment's assetKey
+// only as 64 lowercase hex characters and rejects the whole projection
+// otherwise — which terminates the worker and kills the session. The
+// emptying is done HERE, once, rather than trusted to every call site:
+// "not in this namespace" is an ABSENCE, and the value that says so must
+// be the empty one. Pinned by TestANonMintedFaceNameYieldsNoAssetKey.
 func embeddedFaceAssetKey(name string) (string, bool) {
-	return strings.CutPrefix(name, embeddedFaceNamePrefix)
+	key, ok := strings.CutPrefix(name, embeddedFaceNamePrefix)
+	if !ok {
+		return "", false
+	}
+	return key, true
 }
 
 // embeddedFaceSource is one carried face's resolution record: the asset
