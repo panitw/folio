@@ -2723,7 +2723,7 @@ unvirtualised path by the page count. The two questions are the same question an
 
 ---
 
-### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families — **CAUSE TWO CLOSED by Story 8.4a, 2026-09-01; CAUSE ONE STILL OPEN**
+### DW-35 — the canvas hard-codes ONE font stack regardless of the document's own `fonts` map, so a template naming a different chain still paints with these three families — **CAUSE TWO CLOSED by Story 8.4a; CAUSE ONE'S VOCABULARY LAYER CLOSED by Story 8.4b, 2026-09-01. ONLY THE ATTRIBUTION RESIDUAL REMAINS OPEN, AND IT HAS NO NAMED OWNER**
 - **Deferred by:** Story 7.4's close (2026-08-30), observed while fixing the owner-reported Thai canvas
   defect at `c6e4d03` and recorded there in the commit message
 - **Owner — ONE PER CAUSE, because the causes were split and only one of them is delivered.**
@@ -2733,11 +2733,25 @@ unvirtualised path by the page count. The two questions are the same question an
     owns nothing further here.** RULED 2026-08-31 (D-8.4.1) to Story 8.4, then SPLIT to its named
     successor 2026-09-01 (D-8.4.6) when 8.4's plan gate returned `multiple-goals`. The ruling
     anticipated this: *"8.4, or the named successor story if the gate splits it."*
-  - **CAUSE ONE — Story 8.4b, *the canvas can name the face the engine measured*. OPEN. RULED INTO
-    EXISTENCE 2026-09-01 (D-8.4.14)**, written into `epics.md` and sequenced after 8.4a. Cause one is
-    therefore **owned and unstarted**, not ownerless: per D-8.4.1's standing rule DW-35 survives 8.4a
-    **with** a named successor rather than without one, which is the exact state that rule exists to
-    prevent. **This bullet used to read `Owner: Story 8.4a` alone**, and 8.4a's close left it that
+  - **CAUSE ONE — SPLIT INTO TWO LAYERS, AND ONLY ONE OF THEM IS DELIVERED (narrowed 2026-09-01 at
+    Story 8.4b's close).**
+    - **VOCABULARY LAYER — Story 8.4b. DELIVERED AND CLOSED 2026-09-01 (`90cdf8e`).** Ruled into
+      existence by D-8.4.14 and sequenced after 8.4a. The browser can now name the engine's faces at
+      all: the three shipped files are declared a second time under `fonts.Shipped()`'s own spellings
+      and the canvas fragment rule asks for those, with no chrome token edited, no binary added and
+      no mapping table built. 8.4b owns nothing further here.
+    - **ATTRIBUTION LAYER — OPEN, AND OWNERLESS. This is the whole of what survives.** The fragment
+      stack is a **fixed stylesheet constant**, not the document's chain, and a shipped-face fragment
+      carries **no face identity on the wire** — only carried faces carry an `assetKey`, so a shipped
+      fragment paints with no inline family and falls to the fixed Latin-first stack. Measured at
+      8.4b's close: the three faces' pairwise cmap overlaps are **339 / 529 / 230** codepoints and all
+      three cover `A` and `5`, so a document whose chain is `["Noto Sans Thai"]` can have the engine
+      measure a Latin run with one face while the browser rasterizes it with another. Closing it needs
+      **per-fragment shipped-face attribution on the projection** — the shape 8.4a built for carried
+      faces, extended to shipped ones. **No story owns this.** None of 8.4c, 8.4d, 8.5 or 8.6 covers
+      it, and 8.4b's closer did not assign it, because assigning it is a ruling a closer cannot make.
+      **It is escalated to the orchestrator for routing**, and per D-8.4.1's standing rule this is
+      exactly the state that rule exists to surface rather than to hide. **This bullet used to read `Owner: Story 8.4a` alone**, and 8.4a's close left it that
     way — a finished story standing as the sole owner of a cause it explicitly did not close, which
     is how a surviving cause loses its owner without anyone deciding it should.
 
@@ -2789,10 +2803,13 @@ unvirtualised path by the page count. The two questions are the same question an
   `Noto Sans Thai` / `Noto Sans SC`, so **a chain's entries cannot be used as CSS family names**.
   That is what D-8.4.1 now settles for the embedded case.
 
-- **Status:** **HALF CLOSED, AND THE HALVES MUST NOT BE CONFLATED.** This entry has TWO causes.
+- **Status:** **NARROWED TO ONE RESIDUAL, AND THE LAYERS MUST NOT BE CONFLATED.** This entry has TWO
+  causes and cause one has TWO layers; three of those four things are now closed.
   **CAUSE TWO is CLOSED** by Story 8.4a (2026-09-01) — see the closing note at the end of this entry.
-  **CAUSE ONE remains OPEN**, and it is the reason this entry stays open rather than being
-  marked closed: reading a half-closed entry as closed is exactly how the surviving cause disappears.
+  **CAUSE ONE's VOCABULARY LAYER is CLOSED** by Story 8.4b (2026-09-01, `90cdf8e`) — see 8.4b's
+  closing note at the end of this entry. **CAUSE ONE's ATTRIBUTION LAYER remains OPEN and has no
+  named owner**, and it is the only reason this entry stays open rather than being marked closed:
+  reading a narrowed entry as closed is exactly how the surviving residual disappears.
   The design decision cause two inherited was made by D-8.4.1 (quoted below): *an embedded face's CSS
   family name is derived from its **asset key**, never from `font.family`.* **Cause one's equivalent
   is D-8.4.14 (2026-09-01)**, which ruled the register's stated blocker FALSE and gave cause one a
@@ -2936,7 +2953,10 @@ dissolved instead of escalating:** DW-35 is about what the CANVAS paints with an
 chrome, so the shipped faces are registered **additionally** under the engine's own face names and the
 canvas fragment rule points there — D-8.4.1 one case over, and grounded on AD-17.
 
-**What would discharge cause one, and who owns it.** **Story 8.4b — *the canvas can name the face the
+**What would discharge cause one, and who owns it — SUPERSEDED 2026-09-01 by 8.4b's closing note at
+the end of this entry, which records what 8.4b actually delivered and what it did not. Kept because the
+prediction and the outcome differ in one load-bearing way: 8.4b closed the VOCABULARY layer only.**
+**Story 8.4b — *the canvas can name the face the
 engine measured*** (`epics.md`), ruled into existence by D-8.4.14 and sequenced after 8.4a. It (a)
 registers each shipped face additionally under the engine's own `FontSet` spelling, (b) points the
 canvas fragment rule at those names, editing **no** chrome token, and (c) **replaces rather than
@@ -2952,6 +2972,42 @@ loading, and the Playwright suite is compile-only (`test:e2e:compile` is `tsc --
 deferred by D-000.4). Story 8.4a's gates prove the derivation, the registration call, the fragment's
 rendered family, the guards and the protocol shape. The claim that the canvas **visibly** paints with the
 carried face is unverified by anything in this repository.
+
+**CLOSING NOTE — STORY 8.4b, 2026-09-01 (`90cdf8e`): CAUSE ONE'S VOCABULARY LAYER IS CLOSED, AND THE
+ENTRY IS NARROWED TO WHAT SURVIVES.** The generator now emits **six `@font-face` rules over three
+files**: the three IBM Plex chrome rules byte-identical, plus three declaring the **same files** under
+`fonts.Shipped()`'s own spellings, and `.canvas-text-fragment` asks for those three names in the
+engine's own order. The stack is order- and file-preserving, so **no rasterization changed on the day
+it landed**. No chrome token was edited, no binary added, no `assets` slot created and **no mapping
+table built in either direction** — the browser family now *is* the engine's name, so there is nothing
+to map. D-8.4.14's ruling is implemented as ruled, and the fix descriptions this entry used to carry
+(*rename the generated families* / *generate a face-name → CSS-family map*), both measured FALSE by
+D-8.4.14, are gone from the live framing above rather than left standing beside the truth.
+
+**A guard now exists where none did.** `font-binary-identity.test.ts` performs the family→file join
+this codebase never performed, pins the whole six-entry map exactly, pins the deliberate
+two-names-one-file interval with **Story 8.4c named in the assertion's own failure message**, and ties
+each engine-named family to the bytes `folio-go/fonts/fonts.go` embeds under that face name. The
+disjointness record was **replaced by its opposite, not weakened**: both intersection assertions are
+gone, the chrome floor is intact, and the engine's names are **parsed from `Shipped()`** rather than
+hardcoded — verified at close by renaming a face in `Shipped()` and watching two named tests redden,
+which the hardcoded form could not have done.
+
+**WHAT IS NOT CLOSED — THE ATTRIBUTION RESIDUAL, AND IT IS OWNERLESS.** The canvas can now *name* the
+engine's faces; it still cannot say **which** face belongs to **which fragment**. The fragment stack is
+a fixed stylesheet constant naming all three faces in one order, while a document may declare a chain
+whose covering face is not the stack's first, and a shipped-face fragment carries **no face identity on
+the wire**. Measured at 8.4b's close: pairwise cmap overlaps of **339 / 529 / 230** codepoints, all
+three faces covering `A` and `5`. So the engine can measure a Latin run with `Noto Sans Thai` while the
+browser's Latin-first stack rasterizes it with `Noto Sans` — the same shape of disagreement this entry
+was opened for, one layer in. Closing it needs **per-fragment shipped-face attribution on the
+projection**. **No story owns it**, and 8.4b's closer deliberately did not assign one: none of 8.4c,
+8.4d, 8.5 or 8.6 covers it, and creating an owner is a ruling. **Escalated to the orchestrator.**
+
+**And the limit is unchanged by 8.4b.** What is now proved is that the browser is **asked** for the
+engine's face names and that a face under each is **declared from the engine's own bytes**. That any
+glyph **rasterizes** with those faces remains unverifiable here, and becomes checkable **when browser
+e2e arrives (D-000.4)**.
 
 ---
 
@@ -4888,3 +4944,31 @@ as an unrelated test breaking, some distance away.
 and is no larger than what is there.
 
 ---
+
+### DW-100 — `s1VisibleBytes` is not yet a reproducible figure, and Story 8.4d is about to make it a gate
+
+- **Deferred by:** Story 8.4b's close (2026-09-01), found while checking the spec's stale literal.
+- **Owner:** **Story 8.4d — *the size budget is a number something checks*** (D-8.4.24 gives 8.4d the
+  job of making this figure enforceable, which is precisely what an irreproducible input breaks).
+- **Severity:** MEDIUM — it is LOW today, because no gate reads the figure; it becomes the gate's own
+  flakiness the moment 8.4d lands, and a flaky size gate is worse than prose.
+- **Status:** OPEN.
+
+**Measured at 8.4b's close.** Building both arms in one environment — the story's two production files
+reverted to `2ded2e3`, then restored — `s1VisibleBytes` read **12,423,049** at baseline and
+**12,423,049** at HEAD. Story 8.4b moves it by **exactly zero**, and structurally so: the figure sums
+the S1 **labelled rows**, and the CSS bundle is not one of them, so a story that only adds stylesheet
+text cannot move it however much text it adds. `cachedBytes`, which *does* include the bundle, moved.
+
+**The gap.** Three different figures are on record for the same quantity and none of the other two is
+right: Story 8.4b's Code Map records **12,423,974** (+925 against the baseline it claims to record) and
+its build report claims **12,426,422** both before and after (+3,373 against HEAD) — a correct
+*conclusion* resting on a wrong *number*. A third read taken in the same session from a `dist` not
+produced by a clean `npm run build` gave **12,423,167**. `verify:offline:red` was checked and does
+**not** rewrite the manifest, so that variance is unexplained. A figure that reads three ways depending
+on how `dist` got into its current state cannot be hard-gated as it stands.
+
+**What discharges it.** Pin how the figure is produced before comparing it — a clean output directory,
+a named command, and the figure read from that build alone — and state in the gate which rows the
+number sums, so a later reader cannot mistake `cachedBytes` for `s1VisibleBytes`. A regression fixture
+proving two consecutive clean builds agree would close it outright.

@@ -80,6 +80,17 @@ function declaredFamilies(generator: string): ReadonlyArray<string> {
 }
 
 /**
+ * Families declared by a rule in the WHOLE exact spelling the intent fixes —
+ * `src` an `${assets.<slot>}` interpolation included. `declaredFamilies` above
+ * matches the rule PREFIX only, so the two differ exactly by the rules that
+ * escape the family->file join in font-binary-identity.test.ts. Their equality
+ * is asserted below, and is the ceiling a `>=` floor cannot state.
+ */
+function wellFormedRuleFamilies(generator: string): ReadonlyArray<string> {
+  return [...generator.matchAll(/@font-face \{ font-family: '([^']+)'; src: url\('\.\/runtime\/\$\{assets\.\w+\}'\) format\('truetype'\); font-display: swap; \}/g)].map((m) => m[1])
+}
+
+/**
  * Every `--font-*` custom property in tokens.css, with the value it is given.
  *
  * `var(--font-sans)` inside a `--type-*` token is deliberately not matched: the
@@ -235,6 +246,47 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(declared.length).toBeGreaterThanOrEqual(6)
   })
 
+  // AND A CEILING, NOT ONLY A FLOOR — closing the route a floor cannot.
+  //
+  // MEASURED AT STORY 8.4b'S CLOSE, and it is why this is a separate test.
+  // `declaredFamilies` matches only the RULE PREFIX, so it sees any
+  // `@font-face` whatever; the strict, whole-rule parse in
+  // font-binary-identity.test.ts sees only rules whose `src` interpolates an
+  // `assets` slot, and its `toBe(6)` and exact family->file map are blind to a
+  // rule that does not. A SEVENTH rule with a LITERAL src — a family the
+  // browser can be asked for, fetched from an arbitrary URL rather than from
+  // the offline asset graph — was added to the generator and every test in
+  // both files stayed GREEN while the emitted stylesheet carried seven rules.
+  // A review finding that named this route was rejected on the ground that
+  // the bound "exists one file over"; it does not, for this shape of rule.
+  //
+  // The bound is stated as an EQUALITY between the loose parse and the strict
+  // one: every family the generator declares must come from a rule in the
+  // exact spelling the intent's Always clause fixes. That is also what makes
+  // the two files' parses answer to the same set of rules rather than to two
+  // different ones.
+  it('declares no @font-face outside the exact rule spelling the guards parse', () => {
+    const wellFormed = wellFormedRuleFamilies(withoutComments(generator))
+    expect(wellFormed.length, `read no well-formed @font-face rules out of ${generatorPath}`).toBe(6)
+    expect(
+      declared,
+      'the generator declares an @font-face whose src is not a `${assets.<slot>}` interpolation, so it is invisible to the '
+      + 'family->file join in font-binary-identity.test.ts: the browser would be offered a family backed by bytes nothing '
+      + 'in this repository can name, fingerprint or ship offline.',
+    ).toEqual(wellFormed)
+  })
+
+  it('reports a family declared by a rule outside that spelling, and accepts one inside it', () => {
+    const good = "@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }"
+    const stray = "@font-face { font-family: 'Comic Sans MS'; src: url('https://example.invalid/c.ttf') format('truetype'); font-display: swap; }"
+    expect(wellFormedRuleFamilies(good)).toEqual(['Noto Sans'])
+    expect(declaredFamilies(good)).toEqual(['Noto Sans'])
+    // The stray is SEEN by the loose parse and INVISIBLE to the strict one,
+    // which is exactly the gap; the equality above is what turns it red.
+    expect(declaredFamilies(`${good}\n${stray}`)).toEqual(['Noto Sans', 'Comic Sans MS'])
+    expect(wellFormedRuleFamilies(`${good}\n${stray}`)).toEqual(['Noto Sans'])
+  })
+
   it('reads a non-empty request list from the canvas rule', () => {
     expect(requested.length).toBeGreaterThanOrEqual(3)
   })
@@ -269,7 +321,16 @@ describe('the canvas paints with the faces the engine measured', () => {
   // two vocabularies this story deliberately keeps separate — would have passed
   // every existing test. tokens.css is READ here and never edited.
   it('keeps each design-system family named by a --font-* token in tokens.css', () => {
-    const fontTokens = fontTokenValues(fs.readFileSync(tokensPath, 'utf8'))
+    // COMMENTS STRIPPED HERE TOO, and for the measured reason the generator
+    // parse is stripped: this reads TEXT, so a token declaration that has been
+    // commented out reads exactly like a live one. Measured at Story 8.4b's
+    // close — commenting out the live `--font-sans` line and leaving it in the
+    // file as comment text, while the replacement named no IBM Plex family,
+    // left this whole file GREEN over a chrome vocabulary that had lost its
+    // primary family and every `--type-*` token that resolves through it. The
+    // containment half below is the direction that goes quiet, because the
+    // string it looks for survives in the comment. Red-proof below.
+    const fontTokens = fontTokenValues(withoutComments(fs.readFileSync(tokensPath, 'utf8')))
     // NON-VACUITY FLOOR. A reformat that stops the parse matching yields an
     // empty list over which every `not.toEqual([])` below would fail — which is
     // the point: this must redden rather than pass over an empty parse.
@@ -303,6 +364,17 @@ describe('the canvas paints with the faces the engine measured', () => {
     // engine's vocabulary no longer names the chrome family.
     expect(fontTokenValues("--font-sans: 'Noto Sans', system-ui, sans-serif;").filter(([, value]) => value.includes("'IBM Plex Sans'"))).toEqual([])
     expect(fontTokenValues("--font-sans: 'IBM Plex Sans', system-ui, sans-serif;").filter(([, value]) => value.includes("'IBM Plex Sans'")).length).toBe(1)
+
+    // AND THE COMMENT DIRECTION, which is what the strip above is for. CSS has
+    // one comment form and it is the one a token gets parked in. Unstripped,
+    // the parked declaration counts and the containment half above passes over
+    // a chrome family no live token names any more.
+    const parked = "  /* --font-sans: 'IBM Plex Sans', system-ui, sans-serif; */\n  --font-sans: system-ui, sans-serif;"
+    expect(fontTokenValues(withoutComments(parked)).filter(([, value]) => value.includes("'IBM Plex Sans'"))).toEqual([])
+    // THE DEFECT ITSELF: without the strip, the commented-out token counted.
+    expect(fontTokenValues(parked).filter(([, value]) => value.includes("'IBM Plex Sans'")).map(([name]) => name)).toEqual(['--font-sans'])
+    // And the strip leaves a live declaration alone.
+    expect(fontTokenValues(withoutComments(parked)).map(([name]) => name)).toEqual(['--font-sans'])
   })
 
   // GUARD 1, WIDENED BY STORY 8.4a. It used to say only that every family the

@@ -5,7 +5,7 @@ created: '2026-09-01'
 status: 'done'
 baseline_revision: '2ded2e3cd3d77ae94ec364731f7e150b881f7bd9'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized']
 deferred:
@@ -29,6 +29,30 @@ deferred:
       folio-designer/src/App.css:118 (fixed stack); _bmad-output/implementation-artifacts/deferred-work.md (DW-35)
     severity: medium
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — a plain-language summary of what shipped. The intent contract below governs
+implementation.*
+
+The product ships three typefaces. The engine measures printed text with them under their real
+names, but the browser knew those same files only under the design system's names, so the canvas
+could not ask for the face the engine had measured with. It got the right one anyway by coincidence of
+ordering — and the next story puts different typefaces behind those names, which would have turned
+that coincidence into a defect in every script.
+
+That is closed. The same three files are now registered a second time under the engine's own names,
+and the canvas asks for those. Nothing else in the interface changed, no typeface was added, no
+translation table invented. A new check ties each engine name to the bytes actually behind it, so a
+file swapped under an unchanged name fails loudly. Closing the story found two blind spots
+in the new checks themselves — one satisfied by text left behind in a comment, one that let an
+extra, unrelated typeface through unnoticed — and fixed both.
+
+Two things that are deliberate, not oversights. The older mismatch this belongs to is only half
+closed: the canvas still asks for one fixed order of typefaces rather than the order a document
+chose, and no story is yet named for that half. And nothing here runs a real browser — what is
+proved is that the browser is asked for the right names and handed the right bytes, not that a glyph
+rasterizes correctly. That waits on browser end-to-end testing.
 
 <intent-contract>
 
@@ -413,3 +437,129 @@ run.
    creation; its "never add a Noto engine face name to `declared`" instruction and its planned
    disclosure that `assets.sansCjk` has no `@font-face` naming it are both now stale. The
    `IBM Plex Mono`→CJK aliasing defect is untouched and remains 8.4c's.
+
+## Delivery Log
+
+### 2026-09-01 — done
+
+Baseline `2ded2e3`; the story's implementation commit is `90cdf8e`, and this record lands in its own
+following closing commit, which is how every story in this run has been closed (`a101e99` closed 8.4a).
+The story commit was left untouched so the SHA this record cites stays real. Cadence for this
+run is **every story**, so nothing below is deferred to an epic catch-up: every suite named here was
+run at the closing tree with `-count=1`.
+
+**What shipped, judged against the diff rather than the report.** Five files, and only this story's
+files. The generator emits six `@font-face` rules over three files — the three chrome rules
+byte-identical in the diff, three new ones interpolating the *same* three `assets` slots under
+`fonts.Shipped()`'s own spellings. `.canvas-text-fragment` asks for those three names in the engine's
+own order, which resolves to the same three files in the same order the IBM Plex stack resolved to,
+so no rasterization changes today. `assets` gained no key, no binary was added, and no mapping table
+exists in either direction. D-8.4.14's ruling is implemented as ruled.
+
+**`followup_review_recommended` — disposition and outcome.** I did not clear it on the build's word.
+I re-ran the HIGH's own probe: with the three engine-named rules left in the generator as comment
+text, `build:wasm` emits **3** rules while the canvas asks for three families nothing declares — the
+reported Thai-overlap defect exactly. At the closing tree that probe fails **7 named tests** across
+both guard files (4 in `font-binary-identity.test.ts`, 3 in `canvas-font-stack.test.ts`). Reproduced,
+not relayed. **The flag is cleared on my own pass**, with two defects of my own found and fixed
+below.
+
+**The three named risks, each measured.** (1) *Disjointness replaced, not weakened*: both
+intersection assertions are gone, the chrome `arrayContaining` floor is intact, and containment is
+strengthened by an order assertion. Renaming a face in `Shipped()` reddens **two** named tests — the
+counterfactual holds, because the assertion this replaced compared `declared` against a hardcoded
+three-element literal and could not have reddened. Reordering the stack CJK-first, membership
+unchanged, reddens the order assertion. The evasion route stays closed by the exact-positions census,
+which is unchanged by this commit and still an exact `toEqual` on a single position. (2) *The
+interval is asserted, not commented*: repointing a pair produces a failure whose own message names
+Story 8.4c as the successor that splits it — printed in the assertion output, not read out of a
+comment. (3) *The net opens the files*: repointing `'Noto Sans'` at the Thai file reddens the byte
+tie and prints **both digests** (`a4c81131…` expected, `c94562c1…` received). The tie is scoped to
+the engine-named half by a chrome exclusion, so it survives 8.4c.
+
+**Two defects I found myself, in the review patch's own new code, and fixed here.** Both are the
+*same class* as the HIGH the build patched, on routes the build did not probe.
+
+1. **The chrome-token guard was comment-blind.** The medium patch added a read of `tokens.css` that
+   was not routed through the file's own comment stripper. Measured: park the live `--font-sans`
+   declaration in a CSS comment and replace it with one naming no IBM Plex family — the design
+   system's primary chrome family gone from every `--type-*` token that resolves through it — and the
+   whole file stayed **green**. Fixed by stripping comments before the parse, with a red-proof
+   asserting both directions; the probe now reddens the named test.
+2. **`declared` had a floor and no ceiling, and rejected finding #1 was wrong.** That finding said a
+   seventh stray `@font-face` passes every assertion; it was rejected on the ground that the bound
+   "exists one file over". It does not, for a rule whose `src` is not an `${assets.<slot>}`
+   interpolation: such a rule is invisible to the strict parse, so the `toBe(6)` and the exact
+   family→file map never see it, while the loose parse's `>= 6` floor waves it through. Measured — a
+   seventh rule pointing at an arbitrary remote URL was emitted into the shipped stylesheet with
+   **all 19 tests green**. Fixed by asserting the loose parse equals the whole-rule parse, plus a
+   red-proof; the probe now reddens a named test. **Finding #1 is re-opened and discharged.**
+
+**Triage audit (5 patched / 1 deferred / 9 rejected).** I spot-checked all nine rejections at their
+cited locations. Seven are sound. #1 is **overturned** (above). Two carry a ground that is false
+without changing the verdict, recorded so a later reader is not misled: #4 says "Playwright is in no
+workflow" — the repository has a `test:e2e` script and **ten** Playwright spec files; what is true is
+that CI runs only `test:e2e:compile`, so the rejection stands on D-000.4 and on the intent's
+"executed layer" clause, not on absence. #8 says the comment-stripping fix "changes its input
+regardless" — it does not: `declared` is parsed from stripped text and compared against raw text, so
+that loop remains a tautology. It is pre-existing and out of scope, which is the ground that carries
+the rejection.
+
+**Gates, measured at the closing tree, `-count=1` throughout.** `go test ./...` → **1811 pass / 2
+fail / 5 skip**; `go test -tags=matrix ./...` → **1822 / 3 / 5**. Both reproduce the build's counts
+exactly and the red *identities* match exactly. Exactly two standing reds:
+`TestCorpusMeetsP6ExerciseFloors` with its `P6g_(opaque_names)` subtest, and, under `-tags=matrix`,
+`TestShippedFacesReproduceFromUpstream` — **a could-not-execute, not a byte divergence**: it reports
+`fontgen: fontTools is not importable by this interpreter` and **never compared bytes** (DW-86). No
+third red. `go vet -tags=matrix ./...` empty; `gofmt -l folio-go` empty. `lint` four `ok`. All four
+AD-21 legs pass, **24 documents** hashed each; the unset run passes in 0.00s asserting nothing and is
+a **control, not a fifth leg**. `TestCrossTargetByteIdentity` passes. Designer: typecheck clean,
+oxlint **exactly 4** `only-export-components` warnings at the baseline positions, Vitest **38 files /
+360 tests** (build's tree 38/358; my two red-proofs are the difference). `test:e2e:compile` clean —
+**this compiles, it does not run.** Offline release on node `v24.16.0`: `build`, `verify:offline:red`
+and `verify:offline:wasm` all pass, the generated stylesheet carries **6 rules over the same 3 `.ttf`
+files**, and the emitted asset set is unchanged at 20.
+
+**All 23 golden digests byte-identical**, each compared against the baseline reconstructed **out of
+git** at `2ded2e3` rather than re-recorded. No Go file was touched, so this story emits no PDF byte.
+Root `README.md` md5 still `078d7d80d518d54af2fc04fb270d46b8`; no attestation record and no file
+under `fixtures/` appears in the commit.
+
+**The limit, stated plainly so an all-clear cannot be read as a couldn't-look.** Nothing in this
+repository executes a real font load, a `document.fonts.add`, or a rasterized glyph. jsdom applies no
+stylesheet and implements no font loading, and the Playwright corpus is compile-only. **What is
+proved is that the browser is *asked* for the engine's face names and that a face under each is
+declared from the engine's own bytes — not that any glyph rasterizes correctly.** The Design Notes
+carry that disclosure with its trigger, *"when browser e2e arrives (D-000.4)"*, verified present.
+
+**Deferred, with owners.** (a) **DW-35 cause one is narrowed, not closed** — the register entry has
+been rewritten at close to the surviving residual: the fragment stack is a fixed constant rather than
+the document's chain, and a shipped-face fragment carries no face identity on the wire; the three
+faces' cmaps overlap by 339 / 529 / 230 codepoints and all three cover `A` and `5`, so an authored
+chain can have the engine measure Latin with one face while the fixed Latin-first stack rasterizes it
+with another. The fix descriptions D-8.4.14 measured FALSE are removed from the live framing.
+**The residual has NO named owner** — none of 8.4c, 8.4d, 8.5 or 8.6 covers per-fragment shipped-face
+attribution — and that is escalated rather than assigned, because assigning it is a ruling I cannot
+make. (b) **DW-100 filed**: `s1VisibleBytes` is not yet a reproducible gate input, owned by Story
+8.4d.
+
+**`s1VisibleBytes`, measured rather than relayed, because Story 8.4d (D-8.4.24) makes it
+enforceable.** I built both arms in one environment: the two production files reverted to `2ded2e3`,
+then restored. **12,423,049 at baseline and 12,423,049 at HEAD — this story moves it by exactly
+zero**, and structurally so: the figure sums the S1 *labelled rows*, which the CSS bundle is not one
+of. Both recorded figures are wrong. The spec's Code Map literal **12,423,974** is off by +925; the
+build's reported **12,426,422** is off by +3,373 — its conclusion was right and its number was not.
+A third read in this session gave 12,423,167 from a `dist` I did not produce cleanly, so the figure
+is not yet stable enough to hard-gate without pinning how it is produced. That is DW-100.
+
+**Recorded for Story 8.4c's repair, all three confirmed at its own file.** `font-binary-identity.test.ts`
+now exists, so its Task 4 is an **edit**, not a creation. Its *"Never add a Noto engine face name to
+`declared`"* constraint is **inverted** — three such names are in `declared` as of this commit. Its
+planned disclosure-of-absence that `assets.sansCjk` carries no `@font-face` naming it is **false**;
+the `Noto Sans SC` rule names it, and its I/O matrix row asserting the same is stale with it. The
+`IBM Plex Mono`→CJK aliasing defect is **untouched** and remains 8.4c's.
+
+**Commit provenance.** Audited: the reflog shows the plan commit at 08:43 and one story commit at
+09:45, in order, with no reset and no interleaved write. **The step-03 out-of-order commit breach did
+NOT recur — this is not instance three.** The message follows the run's convention and carries the
+required `Co-Authored-By` trailer. Branch `main`, never pushed, no branch created.
