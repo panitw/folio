@@ -4342,3 +4342,94 @@ ruled at D-8.4.29 (Brotli over the full first-load set) **instead of building th
 bytes" — and that is then a CLAIM THAT MUST BE ASSERTED, not a happy consequence, precisely because a
 true zero and a false zero look identical in a report.** `s1VisibleBytes` missing 174,949 bytes of IBM
 Plex is exactly that demonstration.
+
+---
+
+### D-8.5.7 — the determinism question is SETTLED BY MEASUREMENT: the build is deterministic, the variable was tree state, and the pipeline was perturbing its own specimen
+
+**Raised at D-8.4.27(c), closed benign at D-8.4.29, reopened at D-8.4.35(a), reproduced at Story
+8.4f's plan gate (2,203 bytes at one sha on a clean tree). Now settled — and settled by running the
+discriminator rather than by adopting the plausible explanation.**
+
+**`vcs.time` REFUTED ON ITS PREMISE, not merely left unconfirmed.** The orchestrator proposed it: two
+builds minutes apart at one commit would differ, and the earlier byte-identical pair was built inside
+the same second. **`vcs.time` is the timestamp of the REVISION, not of the build** — Go stamps the
+commit's own time — so two builds at one commit carry the **identical** value however far apart they
+run. **Both halves of the hypothesis are false, and the disposition that closed D-8.4.29 cannot be
+repaired by leaning on it harder.**
+
+**The discriminator, run at `92cd590` by the orchestrator:**
+
+| probe | tree state | wasm sha256 |
+|---|---|---|
+| build 1 | `git status --porcelain` **empty** | `ed260565…fb8f8` |
+| build 2 | **empty**, compared to build 1's output | **`ed260565…fb8f8` — IDENTICAL** |
+| build 3 | **one stray UNTRACKED file** | `a13ab262…3b6c1` — **DIFFERS**, `vcs.modified=true` |
+
+**Two builds at one commit with provably identical tree state produce a byte-identical wasm. One
+untracked file changes it.** So: **THE BUILD IS DETERMINISTIC. The variance was TREE STATE.**
+
+`go build` defaults to `-buildvcs`, stamping `vcs.revision` / `vcs.time` / `vcs.modified`; Go derives
+`vcs.modified` from `git status`, where **an untracked file is enough**. A ~4-byte input change
+produces an **arbitrary** Brotli delta, because compressed size is **not continuous in input size** —
+so *"2,203 bytes is too big to be a build stamp"* was never an argument, and the lead said so before
+the measurement rather than after.
+
+**THE COROLLARY IS THE SHARP PART: THIS PIPELINE WRITES UNTRACKED FILES INTO THE TREE** — halt files,
+result files, spec files. **A run that writes an artifact between two measurements changes the stamp it
+is measuring. The instrument perturbs the specimen.** That is precisely why Story 8.4c's pair at
+`4f5925a` agreed and Story 8.4f's at `548aa29` did not — **the difference between the two situations,
+which is what had to be found.**
+
+**It reopens NOTHING, and the ground matters more than the verdict.** **The wasm binary's bytes and
+the PDF's bytes are different artifacts.** AD-21 binds byte-identity of **rendered output** across four
+targets, **not** of the compiled binary. And this is **evidence, not assumption**: **every golden digest
+held across all four targets at every story this epic, and `TestCrossTargetByteIdentity` passed
+throughout** — a compiler-level nondeterminism reaching codegen **would have moved a golden.**
+**Recorded in the ruled terms: "a number was noisy", NOT "this product's premise is false."**
+
+**The fix moves to NOW, as Story 8.4g, ahead of Story 8.4f's build.** The lead's own placement as
+8.4d's task 0 *"was right while it was a question and went stale when it became a defect"* — the shape
+this run keeps finding, caught on itself. **The decisive ground is accrual, not urgency: every story
+recording a byte figure before this lands adds another figure to the pile 8.4d must dispose of, and
+there are already four.**
+
+**The unit is measure → `-buildvcs=false` → RE-MEASURE.** The re-measurement is **not optional**: *a
+fix for a determinism defect that is not shown to have closed it is the same category error as a guard
+whose red-proof was allowed to be commit ordering.* **And the provenance loss is recorded as a
+deliberate trade, not a free win** — acceptable because the release manifest already carries
+`releaseId` and `pageId` derived from asset hashes and AD-22 pins the toolchain, **but stated.**
+
+---
+
+### D-8.5.8 — Story 8.4f's three findings, ratified, and the first premise-clean dispatch of the run
+
+**(a) REMOVING A SOFT `catch` IS NOT AUTOMATICALLY A HARDENING — put this in the run's practice.** The
+gate ruled AC4 rather than halting on it, **measured from control flow rather than argued**: today an
+unparseable bootstrap still reaches `registerOfflineLifecycle`, publishes `'unavailable'`, and gives
+the user *"Offline cache unavailable"* **and a Retry button**. Remove the catch and that call is
+**never reached** — the screen sits on *"Checking cache"* forever, **no message, no retry**. **It trades
+a stated failure for an unstated hang.** The shape is: narrow to `SyntaxError`, rethrow the rest, name
+every rejection reason — **and a Design Note stating what it does and does not change FOR A USER is the
+instrument that lets a reviewer judge rather than discover.**
+
+**(b) The red-proof placement constraint is CORRECTNESS, and this is the first time this run the
+vacuous-green family was caught BEFORE close.** Any mutation adding manifest assets trips `sameSet`,
+the digest loop or the Brotli loop **first**, so a bound check placed after them **could not be
+red-proved on its own message** — it would satisfy a bare *"something failed"* harness **while proving
+nothing**. Making *"the proof keeps failing on an older guard"* a **Block If** rather than something to
+soften the assertion around is the correct instinct: **when a proof will not fail for the right reason,
+you move the proof, never weaken the claim.**
+
+**(c) The Node/TypeScript constant sharing holds because it rests on a measured fact.** The verifier is
+Node, the bound is declared in TypeScript, and the sharing is one-directional by construction. The
+tempting duplicate-plus-tie-test fails because **`npm run build` does not run Vitest** — so a drifted
+copy would **ship green through the very gate this story adds**, and the tie-test would be **a guard
+the shipping path never runs**. Deriving the number from the single declaration, failing loudly when
+exactly one live copy cannot be found, is **a guard anchored where the code cannot move it**.
+
+**(d) Story 8.4f is the FIRST dispatch of this run where every handed premise came back true, and that
+is recorded as attributable rather than assumed.** It follows the run of premise failures that produced
+the habit of measuring before asserting — and it is worth noting that the two premise errors of this
+session that recurred were both cases where **the observation was true and the QUANTIFIER attached to
+it was not**, which is harder to catch because nothing downstream contradicts it.

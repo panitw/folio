@@ -3323,6 +3323,71 @@ Noto Sans
 **When** this story is complete
 **Then** it **closes** — both causes and the residual — and the register says so
 
+### Story 8.4g: The bundle is a function of the source, not of the tree
+
+As a maintainer,
+I want two builds of one commit to produce one bundle,
+So that a byte figure means something and a stray file cannot change what ships.
+
+**Covers:** NFR1, AD-22
+
+**RULED AHEAD OF STORY 8.4f (D-8.5.7), and the diagnosis was MEASURED rather than reasoned.** The
+question — raised at D-8.4.27(c), closed benign at D-8.4.29, reopened at D-8.4.35(a) and reproduced at
+Story 8.4f's plan gate — is now **settled by a two-part discriminator run at `92cd590`:**
+
+| probe | tree state | wasm sha256 |
+|---|---|---|
+| build 1 | `git status --porcelain` **empty** | `ed260565…fb8f8` |
+| build 2 | **empty**, byte-compared to build 1's | **`ed260565…fb8f8` — IDENTICAL** |
+| build 3 | **one stray UNTRACKED file** | `a13ab262…3b6c1` — **DIFFERS**, `vcs.modified=true` |
+
+**Conclusion: the build IS deterministic. The variance was TREE STATE.** `go build` defaults to
+`-buildvcs`, stamping `vcs.revision`, `vcs.time` and `vcs.modified` into the wasm — and Go derives
+`vcs.modified` from `git status`, where **an untracked file is enough**. A ~4-byte input change
+(`true`→`false`) produces an **arbitrary** Brotli delta, because Brotli output size is not continuous
+in input size, which is why a one-word change moved a total by 2,203 bytes.
+
+**`vcs.time` was REFUTED on its premise, not merely left unconfirmed** — it is the timestamp **of the
+revision**, not of the build, so two builds at one commit carry the identical value however far apart
+they run. That hypothesis is dead and cannot be repaired by leaning on it harder.
+
+**The corollary is the sharp part: THIS PIPELINE WRITES UNTRACKED FILES INTO THE TREE** — halt files,
+result files, spec files. **A run that writes an artifact between two measurements changes the stamp it
+is measuring. The instrument perturbs the specimen.** That is why 8.4c's pair at one commit agreed and
+8.4f's did not.
+
+**NOT an AD-21 violation, and the ground matters more than the verdict.** AD-21's invariant is
+byte-identity of **rendered output** across four targets — **not** byte-identity of the compiled
+binary. **The wasm's bytes and the PDF's bytes are different artifacts.** And this is not an
+assumption: **every golden digest held across all four targets at every story this epic, and
+`TestCrossTargetByteIdentity` passed throughout** — a compiler-level nondeterminism reaching codegen
+would have moved a golden. **A number was noisy; the product's premise is intact.**
+
+**Acceptance Criteria:**
+
+**Given** the engine wasm build
+**When** it runs
+**Then** it passes **`-buildvcs=false`**, so no VCS stamp enters the binary and the bundle is a
+function of the **source**, not of the tree
+
+**Given** the fix
+**When** it is verified
+**Then** **a clean build and a build with a stray untracked file produce the SAME wasm** — the
+re-measurement is **not optional**: *a fix for a determinism defect that is not shown to have closed it
+is the same category error as a guard whose red-proof was allowed to be commit ordering*
+
+**Given** the loss of provenance from the binary
+**When** the trade is recorded
+**Then** it is recorded **as a deliberate trade, not a free win** — `-buildvcs=false` removes
+provenance from the artifact. Acceptable here because the release manifest already carries `releaseId`
+and `pageId` derived from asset hashes, and AD-22 pins the toolchain — **but stated, not assumed**
+
+**Given** every byte figure this epic records afterwards
+**When** it is quoted
+**Then** it is trustworthy — which is why this lands **before** Story 8.4f, 8.5's per-asset Brotli, and
+the metric 8.4d consumes. **Every story that records a byte figure before this lands adds another
+figure to the pile 8.4d must dispose of**, and there are already four.
+
 ### Story 8.4f: A bound nobody can cross silently
 
 As the product owner,
