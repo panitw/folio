@@ -100,12 +100,30 @@ func TestClassifyOFL(t *testing.T) {
 			FamilyUnknown, "",
 		},
 		{
-			// A dependency LICENSE that merely BUNDLES OFL text would
-			// otherwise outrank MIT/Apache/BSD purely by ordering.
-			"a bundled OFL 1.0 notice does not win over the file's own licence",
+			// ⚠ REVERSED AT STORY 8.4i (2026-09-02, D-8.4i.1), LOUDLY.
+			//
+			// OLD EXPECTATION, SHIPPED AT STORY 2.2 AND KEPT UNTIL NOW:
+			// (FamilyPermissive, "MIT") — "a dependency LICENSE that
+			// merely BUNDLES OFL text would otherwise outrank
+			// MIT/Apache/BSD purely by ordering."
+			//
+			// NEW EXPECTATION: FamilyUnknown. This file says two
+			// things — it is titled MIT and it names the SIL Open Font
+			// License — and D-8.4i.1 rules that a file saying two
+			// things is UNCLASSIFIABLE, not arbitrated by branch order.
+			// The OFL name here resolves to no known (name, version)
+			// pair, so it is an unresolved name signal on its own.
+			//
+			// THIS IS A GUARD REPLACED BY A STRICTER ONE, NOT WEAKENED:
+			// the set of texts that pass SHRINKS, and this input moves
+			// from "passes under a possibly-wrong label" to "refused".
+			// Recorded here rather than silently edited so the reversal
+			// is legible as deliberate rather than as a test edited to
+			// make a change go green (Design Note 6).
+			"a bundled OFL 1.0 notice makes the file unclassifiable",
 			"MIT License\n\nPermission is hereby granted, free of charge\n\n" +
 				"Bundled fonts are under the SIL Open Font License.\n",
-			FamilyPermissive, "MIT",
+			FamilyUnknown, "",
 		},
 	}
 	for _, c := range cases {
@@ -210,13 +228,26 @@ func TestClassifyUbuntuFontLicence(t *testing.T) {
 			FamilyUnknown, "",
 		},
 		{
-			// Bundled-notice negative: a dependency LICENSE that merely
-			// MENTIONS the Ubuntu Font Licence must still classify as
-			// its own licence, not outrank it purely by branch ordering.
-			"a bundled UFL notice does not win over the file's own licence",
+			// ⚠ REVERSED AT STORY 8.4i (2026-09-02, D-8.4i.1), LOUDLY.
+			//
+			// OLD EXPECTATION, SHIPPED AT STORY 8.4h: (FamilyPermissive,
+			// "MIT") — "a dependency LICENSE that merely MENTIONS the
+			// Ubuntu Font Licence must still classify as its own
+			// licence, not outrank it purely by branch ordering."
+			//
+			// NEW EXPECTATION: FamilyUnknown. The premise was right —
+			// branch ordering must not arbitrate — but the conclusion
+			// was wrong: the answer is that the classifier does not
+			// arbitrate at all. A file naming two licences is
+			// unclassifiable, and the UFL name here resolves to no known
+			// (name, version) pair besides.
+			//
+			// A STRICTER GUARD, NOT A WEAKER ONE: this input moves from
+			// "passes, labelled MIT" to "refused" (Design Note 6).
+			"a bundled UFL notice makes the file unclassifiable",
 			"MIT License\n\nPermission is hereby granted, free of charge\n\n" +
 				"Bundled fonts are under the Ubuntu Font Licence.\n",
-			FamilyPermissive, "MIT",
+			FamilyUnknown, "",
 		},
 	}
 	for _, c := range cases {
@@ -281,5 +312,288 @@ func TestIsPermissiveSPDXReadsTheSameList(t *testing.T) {
 		if got := IsPermissiveSPDX(id); got != want {
 			t.Errorf("IsPermissiveSPDX(%q) = %v, want %v", id, got, want)
 		}
+	}
+}
+
+// goStyleBSDText is the shape seven of the nine dependency LICENSE files
+// in this repository's Go module graphs actually have (measured by
+// TestLicenceSignalCensus): NO SPDX line, NO licence name anywhere, and
+// the redistribution clause as the only signal. It is reproduced here in
+// shape so the constraint is pinned by a unit test as well as by the
+// census.
+const goStyleBSDText = "Copyright (c) 2009 The Go Authors. All rights reserved.\n\n" +
+	"Redistribution and use in source and binary forms, with or without\n" +
+	"modification, are permitted provided that the following conditions are\n" +
+	"met:\n"
+
+// mitGrantClause is the sentence MIT, OFL 1.0, OFL 1.1 and UFL 1.0 all
+// carry VERBATIM. That sharing is the root of DW-124: as the MIT case's
+// trigger it made the MIT branch a greedy catch-all that swallowed every
+// near-miss on a licence NAME.
+const mitGrantClause = "Permission is hereby granted, free of charge, to any person obtaining a\n" +
+	"copy of the Font Software, to use, study, copy, merge, embed, modify,\n" +
+	"redistribute, and sell modified and unmodified copies of the Font\n" +
+	"Software, subject to the following conditions:\n"
+
+// TestClassifyCollectsEverySignal is Story 8.4i's arm-by-arm proof
+// (D-8.4i.1, D-8.4i.2). Every case is a row of the story's I/O &
+// Edge-Case Matrix, and every case asserts the ID as well as the family
+// — the id is what lands in lint/MANIFEST.md, a release artifact under
+// AD-26, so a right family under a wrong label is still a defect.
+//
+// RED-PROVED BY DELETION, NOT ONLY BY SUBSTITUTION (D-8.4h.4's lesson:
+// falsifying a condition proves arm ORDER; deleting it proves the arm is
+// REACHED). Each mutation was applied ALONE to licencesignals.go and
+// `cd lint && go test -count=1 ./...` was run; the red sets below are
+// MEASURED, at implementation, and are DISJOINT at subtest level:
+//
+//	M1 — delete `if len(sig.copyleftIDs) > 0 { return FamilyCopyleft, … }`
+//	  reds: TestClassifyLicenceText's 7 copyleft rows; this test's 4
+//	  copyleft rows; all 3 of TestCopyleftTieBreakIsDeterministic;
+//	  manifest's TestResolveAssetsRefusesACopyleftFontLicence and the
+//	  wordlist site's copyleft arm. Nothing else in any package.
+//
+//	M2 — delete `if sig.unresolved { return FamilyUnknown, … }`
+//	  reds: the two REVERSED bundled-notice cases (TestClassifyOFL,
+//	  TestClassifyUbuntuFontLicence); this test's unrecognised-SPDX-id
+//	  row; the wordlist site's non-permissive arm. Nothing else.
+//
+//	M3 — weaken `len(sig.permissiveIDs) != 1` to `== 0`, which deletes
+//	  the CONFLICT half of the arity arm while leaving the empty half
+//	  reds: exactly this test's three two-identifier rows. Nothing else
+//	  in any package — which is the proof that conflict detection is a
+//	  NEW refusal and not a restatement of an existing one.
+//
+//	M4 — delete the `if !namedAny` guard, so grant clauses are consulted
+//	  even when the text names a licence
+//	  reds: TestCommittedOFLTextClassifiesAsOFL11 (the real artifact),
+//	  both OFL/UFL grant-clause cases, this test's two still-resolves
+//	  rows, and five manifest/rules tests including
+//	  TestCommittedAssetPopulationClassifiesCleanly. That blast radius
+//	  IS the reason a clause is a weaker signal than a name: made a
+//	  peer, the shared grant clause turns all ten committed OFL 1.1
+//	  files into two-identifier conflicts.
+func TestClassifyCollectsEverySignal(t *testing.T) {
+	const gplBody = "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n\n" +
+		"Everyone is permitted to copy and distribute verbatim copies of this\n" +
+		"license document, but changing it is not allowed.\n"
+
+	cases := []struct {
+		name       string
+		text       string
+		wantFamily Family
+		wantID     string
+	}{
+		// --- unchanged behaviour: the single-signal cases ---
+		{
+			"a single SPDX id is unchanged",
+			"SPDX-License-Identifier: MIT\n",
+			FamilyPermissive, "MIT",
+		},
+		{
+			// AC5. The MIT fallback SURVIVES: a text with the grant
+			// clause and no licence name at all is still MIT. The
+			// anchor narrows the catch-all; it does not remove it.
+			"the bare grant clause with no name signal is still MIT",
+			"Copyright (c) 2020 Somebody\n\n" + mitGrantClause,
+			FamilyPermissive, "MIT",
+		},
+		{
+			// AC5, and the load-bearing constraint on the name anchor
+			// (Design Note 1): "REDISTRIBUTION AND USE IN SOURCE" is a
+			// CLAUSE, not a name. If the anchor ever treats it as a
+			// name, seven of the nine dependency licences become
+			// FamilyUnknown and the dependency scan reds on the Go
+			// standard library's own licence.
+			"a Go-style BSD text with no name signal is still BSD-3-Clause",
+			goStyleBSDText,
+			FamilyPermissive, "BSD-3-Clause",
+		},
+
+		// --- DW-125: the gate bypass ---
+		{
+			// AC2. The headline defect. Before this story: (permissive,
+			// "MIT") — a full GPL text PASSING the fail-closed asset
+			// gate, defeating Story 8.4h's central claim that copyleft
+			// is refused by name.
+			"a GPL text carrying a stray permissive SPDX line is refused AS COPYLEFT",
+			gplBody + "\nSPDX-License-Identifier: MIT\n",
+			FamilyCopyleft, "GPL-3.0",
+		},
+		{
+			// AC2, and the finding that was in no register until
+			// 8.4i's plan gate: the bypass worked with a copyleft SPDX
+			// LINE too, not only with copyleft marker text. The
+			// rejected alternative — "a copyleft marker in the body
+			// outranks a permissive SPDX line" — would NOT have caught
+			// this row.
+			"a permissive SPDX line followed by a copyleft one is refused as copyleft",
+			"SPDX-License-Identifier: MIT\nSPDX-License-Identifier: GPL-3.0-only\n",
+			FamilyCopyleft, "GPL-3.0-only",
+		},
+		{
+			"and in the other order, with the same verdict",
+			"SPDX-License-Identifier: GPL-3.0-only\nSPDX-License-Identifier: MIT\n",
+			FamilyCopyleft, "GPL-3.0-only",
+		},
+		{
+			// COPYLEFT OUTRANKS CONFLICT, and that order is not
+			// stylistic (D-8.4i.1): a maintainer who reads
+			// "conflicting identifiers" adds an SPDX line; one who
+			// reads "GPL detected" removes the dependency. Hazard
+			// indicators fail toward the LOUDEST, never the most
+			// precise. Three distinct ids here — two permissive, one
+			// copyleft — and the answer is still copyleft, not
+			// unknown.
+			"copyleft outranks a conflict between permissive ids",
+			"SPDX-License-Identifier: MIT\nSPDX-License-Identifier: BSD-3-Clause\n" +
+				"SPDX-License-Identifier: AGPL-3.0-only\n",
+			FamilyCopyleft, "AGPL-3.0-only",
+		},
+
+		// --- D-8.4i.1: two identifiers means we do not know ---
+		{
+			// AC3.
+			"two distinct permissive ids are unclassifiable",
+			"SPDX-License-Identifier: MIT\nSPDX-License-Identifier: BSD-3-Clause\n",
+			FamilyUnknown, "",
+		},
+		{
+			// AC3's order-independence half, stated as its own case
+			// rather than as a loop so a failure names which order
+			// broke. Before this story these two rows gave DIFFERENT
+			// answers — "MIT" and "BSD-3-Clause" respectively — which
+			// is order-dependence measured, not argued.
+			"the same two ids in the other order give the identical verdict",
+			"SPDX-License-Identifier: BSD-3-Clause\nSPDX-License-Identifier: MIT\n",
+			FamilyUnknown, "",
+		},
+		{
+			// The same rule reached through NAMES rather than SPDX
+			// lines.
+			"a text naming two different licences is unclassifiable",
+			"MIT License\n\nApache License\nVersion 2.0, January 2004\n",
+			FamilyUnknown, "",
+		},
+		{
+			// An SPDX id on neither list is not nothing: not knowing
+			// must not read as fine (D-8.5.2), even when a second,
+			// recognised id is present.
+			//
+			// THE ID IS STILL NAMED, deliberately (AD-14). A declared
+			// identifier the classifier cannot place is a located
+			// diagnostic; the wordlist gate's three refusal arms are
+			// proved disjoint on exactly that distinction
+			// (TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist).
+			// An unresolved licence NAME has no identifier to name, and
+			// the cases below assert it returns "".
+			"an unrecognised SPDX id makes the whole text unclassifiable, and is named",
+			"MIT License\n\nSPDX-License-Identifier: Proprietary-2.0\n",
+			FamilyUnknown, "Proprietary-2.0",
+		},
+
+		// --- D-8.4i.2: the name anchor ---
+		{
+			// AC4, and DW-124 itself. Before this story: (permissive,
+			// "MIT") — a UFL face PASSING the gate, published under
+			// MIT's label in lint/MANIFEST.md.
+			"the American spelling of the Ubuntu Font Licence is unclassifiable, not MIT",
+			"-------------------------------\n" +
+				"UBUNTU FONT LICENSE Version 1.0\n" +
+				"-------------------------------\n" + uflGrantClause,
+			FamilyUnknown, "",
+		},
+		{
+			// AC4, and D-8.4i.2's PREDICTED FOURTH INSTANCE, now
+			// pinned. The OFL branch's comment claimed a 1.0 file
+			// "classifies FamilyUnknown — a LOUD build failure". It
+			// did not: OFL 1.0's text carries the same grant clause
+			// OFL 1.1's does, so it fell into MIT.
+			"OFL 1.0 full text is unclassifiable, not MIT",
+			"SIL OPEN FONT LICENSE\nVersion 1.0 - 22 November 2005\n" + mitGrantClause,
+			FamilyUnknown, "",
+		},
+		{
+			// The anchor is GENERAL, not a spelling patch: a licence
+			// name nobody has thought of yet is refused by the same
+			// arm. This case is the difference between D-8.4i.2's
+			// ruling and the "accept both spellings" alternative it
+			// rejected.
+			"a future UFL 1.1 carrying the grant clause is unclassifiable",
+			"UBUNTU FONT LICENCE Version 1.1\n" + uflGrantClause,
+			FamilyUnknown, "",
+		},
+		{
+			"an unversioned OFL notice carrying the grant clause is unclassifiable",
+			"SIL OPEN FONT LICENSE\n" + mitGrantClause,
+			FamilyUnknown, "",
+		},
+
+		// --- the branches that still resolve ---
+		{
+			"OFL 1.1 with the shared grant clause still resolves to OFL-1.1",
+			"SIL OPEN FONT LICENSE\nVersion 1.1 - 26 February 2007\n" + mitGrantClause,
+			FamilyPermissive, "OFL-1.1",
+		},
+		{
+			"UFL 1.0, British spelling, with the shared grant clause still resolves",
+			uflHeader + uflGrantClause,
+			FamilyPermissive, "Ubuntu-font-1.0",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotFamily, gotID := ClassifyLicenceText(c.text)
+			if gotFamily != c.wantFamily || gotID != c.wantID {
+				t.Errorf("ClassifyLicenceText() = (%v, %q), want (%v, %q)", gotFamily, gotID, c.wantFamily, c.wantID)
+			}
+		})
+	}
+}
+
+// TestCopyleftTieBreakIsDeterministic pins D-8.4i.1's requirement that
+// multi-signal resolution be DETERMINISTIC AND DOCUMENTED: a gate whose
+// message varies by map iteration order is not a gate.
+//
+// The rule, stated in resolveLicenceSignals and asserted here: SPDX
+// lines in document order first, then licence names in licenceNames'
+// most-specific-first table order. The first copyleft candidate wins.
+//
+// This is not hypothetical. The AGPL and LGPL legal codes both refer to
+// the GNU General Public License in their own bodies, so a real AGPL
+// LICENSE file carries TWO copyleft name signals. Under the old
+// first-match switch the table order decided it; the new resolver keeps
+// the identical answer, which is what makes this a repair rather than a
+// behaviour change on the copyleft path.
+func TestCopyleftTieBreakIsDeterministic(t *testing.T) {
+	for _, c := range []struct{ name, text, wantID string }{
+		{
+			"AGPL text also naming the GNU GPL reports AGPL-3.0",
+			"GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3\n\n" +
+				"13. Remote Network Interaction; Use with the GNU GENERAL PUBLIC LICENSE.\n",
+			"AGPL-3.0",
+		},
+		{
+			"LGPL text also naming the GNU GPL reports LGPL-3.0",
+			"GNU LESSER GENERAL PUBLIC LICENSE\nVersion 3\n\n" +
+				"as published under the GNU GENERAL PUBLIC LICENSE.\n",
+			"LGPL-3.0",
+		},
+		{
+			"a declared copyleft SPDX id outranks a copyleft NAME in the body",
+			"SPDX-License-Identifier: AGPL-3.0-only\n\nGNU GENERAL PUBLIC LICENSE\nVersion 3\n",
+			"AGPL-3.0-only",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			// Run repeatedly: an answer that came from map iteration
+			// order would not survive this loop.
+			for i := 0; i < 32; i++ {
+				family, id := ClassifyLicenceText(c.text)
+				if family != FamilyCopyleft || id != c.wantID {
+					t.Fatalf("iteration %d: got (%v, %q), want (copyleft, %q)", i, family, id, c.wantID)
+				}
+			}
+		})
 	}
 }

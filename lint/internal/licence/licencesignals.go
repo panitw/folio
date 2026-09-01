@@ -150,6 +150,21 @@ type licenceSignals struct {
 	// with no known (name, version) pair, or an SPDX identifier that is
 	// on neither the permissive list nor the copyleft prefix list.
 	unresolved bool
+	// unresolvedID is the FIRST unrecognised SPDX identifier the text
+	// declared, or "" if the only unresolvable signal was a licence
+	// NAME.
+	//
+	// It exists so an unrecognised SPDX line still NAMES the identifier
+	// it could not place (AD-14: a diagnostic that locates). This is
+	// pre-existing behaviour, kept deliberately: the wordlist gate's
+	// three refusal arms are proved DISJOINT by
+	// TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist, and
+	// a declared-but-unknown id such as CC-BY-SA-4.0 must reach its own
+	// "not a permissive licence" arm rather than the neighbouring
+	// "could not be classified" one. An unresolved NAME has no
+	// identifier to name — that is exactly what makes it unresolved —
+	// so it correctly returns "".
+	unresolvedID string
 }
 
 // collectLicenceSignals gathers every licence signal in text.
@@ -171,6 +186,7 @@ func collectLicenceSignals(text string) licenceSignals {
 	var sig licenceSignals
 
 	seen := map[string]bool{}
+	fromSPDXLine := true
 	addID := func(id string) {
 		if seen[id] {
 			return
@@ -186,6 +202,9 @@ func collectLicenceSignals(text string) licenceSignals {
 			// nothing — it is a licence the build cannot show to be
 			// permitted (D-1.3.4, D-1.3.8).
 			sig.unresolved = true
+			if fromSPDXLine && sig.unresolvedID == "" {
+				sig.unresolvedID = id
+			}
 		}
 	}
 
@@ -197,6 +216,7 @@ func collectLicenceSignals(text string) licenceSignals {
 	}
 
 	// (2) Every licence name, in table order.
+	fromSPDXLine = false
 	namedAny := false
 	for _, n := range licenceNames {
 		spelled := strings.Contains(upper, n.canonical)
@@ -241,9 +261,11 @@ func collectLicenceSignals(text string) licenceSignals {
 //     an SPDX line, while one who reads "GPL detected" removes the
 //     dependency. Hazard indicators fail toward the loudest, never
 //     toward the most precise.
-//  2. Any unresolvable signal → FamilyUnknown. A half-recognised licence
-//     name, or an SPDX identifier on neither list, is not knowing — and
-//     not knowing must not read as fine (D-8.5.2, D-1.3.4).
+//  2. Any unresolvable signal → FamilyUnknown, naming the unrecognised
+//     SPDX identifier if there was one. A half-recognised licence name,
+//     or an SPDX identifier on neither list, is not knowing — and not
+//     knowing must not read as fine (D-8.5.2, D-1.3.4). An unresolved
+//     NAME yields no identifier, because there is none to give.
 //  3. Two or more DISTINCT permissive identifiers → FamilyUnknown. The
 //     file says two things; the classifier does not pick one.
 //  4. Exactly one identifier → that identifier, as before.
@@ -262,7 +284,7 @@ func resolveLicenceSignals(sig licenceSignals) (Family, string) {
 		return FamilyCopyleft, sig.copyleftIDs[0]
 	}
 	if sig.unresolved {
-		return FamilyUnknown, ""
+		return FamilyUnknown, sig.unresolvedID
 	}
 	if len(sig.permissiveIDs) != 1 {
 		// Zero, or two-or-more: either way this classifier cannot say
