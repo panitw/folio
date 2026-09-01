@@ -4,11 +4,17 @@
 
 ## Goal
 
-A template author picks a typeface inside the designer — offline, no account, nothing fetched — lays out the document, and saves. An integrating developer renders that same `.folio` on a build box with no fonts installed and no network, and gets the same PDF, hash for hash. Two halves are missing today: nothing edits the document's `fonts` map (so a designer-created document offers exactly one chain), and nothing but the three build-time faces can be named. This epic makes chains authorable, makes a face something the file itself carries and the engine renders from, and turns choosing one into a search rather than a hand-edit.
+Today a document can name only the three faces the library ships, and nothing in the designer edits
+the `fonts` map, so every new document offers exactly one family from the starter file. This epic
+makes fonts an authored choice the file carries: the author edits font chains in the designer, picks
+a family from a curated offline catalogue, and the chosen face travels inside the `.folio`. An
+integrating developer then renders that file on a build box with no fonts installed and no network
+and gets the previewed PDF hash for hash — because the `.folio` is the whole contract between the
+two of them, and a font nobody can install is not a choice the author can make.
 
 ## Stories
 
-- Story 8.0: A stacked Thai mark reaches the page (precondition of 8.4)
+- Story 8.0: A stacked Thai mark reaches the page
 - Story 8.1: The document's font chains become editable
 - Story 8.2: The chain editor sits where fonts are chosen
 - Story 8.3: A font travels inside the template
@@ -16,49 +22,104 @@ A template author picks a typeface inside the designer — offline, no account, 
 - Story 8.4a: The canvas paints with the face the engine measured
 - Story 8.4b: The canvas can name the face the engine measured
 - Story 8.4c: The designer ships the typeface it specifies
+- Story 8.4d: The size budget is a number something checks
 - Story 8.5: A curated catalogue ships with the designer
 - Story 8.6: Picking a family puts it in the file
 
 ## Requirements & Constraints
 
-- Chains are authorable from the designer: create, rename, delete a chain, and add/remove/reorder entries within one. "Reorder" has its referent in entries only — the chain map has no authored key order and must not gain one.
-- A face can be embedded in the template, keyed by content hash like every other asset, and referenced from a chain entry.
-- A template must render from its embedded faces alone: no network, no host-installed font, no install step, no path read on the rendering machine.
-- A family can be chosen from a curated, freely-licensed catalogue shipped inside the designer and working fully offline — no request leaves the machine, including at first use.
-- A chain naming a font that is neither a shipped face nor a present, decodable asset fails with a located error naming the chain, the entry index and the key — never a substituted face, never a silent drop.
-- Every field added is optional and absent-by-default, so the existing golden corpus must hash identically on all four CI targets. That is an acceptance criterion, not an aspiration. Every feature ships its own recorded-digest fixture, and a fixture must actually exercise what it claims to protect.
-- Bold and italic are out of scope — they need a face-inventory decision left open elsewhere, not a consequence of embedding.
-- CJK families are excluded from the embeddable catalogue (a full SC face is ~10.6 MB against 646 KB / 47 KB for the shipped Latin and Thai faces); the shipped SC face stays the coverage fallback. Added bytes are measured against the offline bundle budget.
-- Redistributed faces keep their own terms: OFL text, NOTICE and copyright lines ship with them, the release licence manifest must be true of what actually ships, and the CI licence check covers them.
+- **Authorable chains.** Create, rename, delete the document's font chains and reorder the entries
+  within one, so `fontFamily` names a family the author chose. "Reorder" is entry-level only — a
+  chain is an ordered list; the `fonts` map has no authored key order and must not gain one.
+- **Faces embedded in the file**, keyed by content hash like every other asset, referenced from a
+  chain entry — and rendered from those bytes alone: no network, no host-installed font, no install
+  step, in the engine or the designer.
+- **Located failure.** A chain naming a font that is neither a shipped face nor a present, decodable
+  asset errors with the chain, the entry index and the key — never a substituted face, never a
+  silent drop.
+- **Curated offline catalogue** ships with the designer; the whole search-and-pick flow completes
+  with no request leaving the machine.
+- **Byte identity is the acceptance bar.** Every field added is optional and absent-by-default, so
+  the existing golden corpus must hash identically after each story on all four CI targets. A new
+  emission path is entered only under its own trigger condition, and that is asserted, not assumed.
+- **Licence provenance.** Every redistributed font binary travels with its licence text and NOTICE,
+  is covered by the CI licence check, and the release licence manifest must be true of what ships.
+- **Size budget.** Added weight is measured against the first-load budget, and by the epic's end
+  that budget is a declared figure a gate reads and fails on.
+- **Out of scope.** Bold and italic gain no new meaning (no weighted face ships); CJK is excluded
+  from the catalogue, with the shipped SC face as coverage fallback; a container format is a
+  non-goal — `.folio` stays one JSON text file so a hand-written template still renders.
 
 ## Technical Decisions
 
-- **`.folio` stays a single JSON text file.** Font bytes ride the existing content-addressed `assets` map — the mechanism images already use — so a person or an agent can still edit and render a template without the designer. A container format is a named non-goal.
-- **Entry shapes.** A string entry is a shipped face name; a one-key object `{"asset": "<key>"}` is an embedded face; any other shape is a located load error. Chains mix both freely; first entry covering the rune wins.
-- **Asset record.** A font asset differs from an image asset only in `mediaType` and an optional `font` record (family, style, licence, source). `font.family`/`font.style` are display identity only — **resolution is by asset key alone**, even where an embedded and a shipped face share a family name. Key rule, base64 wrapping, dedup and emission order are unchanged, so adding a font never moves an image.
-- **`mediaType` is an OPEN set.** A recognised font media type whose bytes do not decode is a load error; an unrecognised one loads clean, is preserved verbatim, and errors at render only when something actually needs to draw it — with `Validate` predicting what render would do.
-- **Format version.** The embedded-face *entry shape* (not the presence of a font asset) is the MAJOR trigger, and it joins the existing `2.0` rather than opening a new rank.
-- **Canonical serialization is untouched** — same sorting, wrapping, byte-identical no-op round trip. Subsetting stays once per render inside the PDF producer; no face is subset at save time, and the subset tag stays a deterministic hash of the emitted subset program bytes, not of the glyph set.
-- **The engine owns the document.** Every font-chain change travels as one opaque command producing one history entry; the browser holds no model of the `fonts` map and re-projects from the engine's answer. A rename updates the map and every element naming the old chain inside that same command, so one undo restores both.
-- **`fontFamily` has exactly two attachment points** — an element's style and a table's header style. Both are live, so every rename walk and orphan check must read on both.
-- **Refusals the engine must make:** deleting a chain elements still name, renaming onto an existing key, leaving a chain with no entries.
-- **The browser never measures text.** The canvas gets every metric and line break from the engine's measure API through the same path the PDF render uses; this epic changes rasterization only. An embedded face's CSS family name is derived from its **asset key**, never from `font.family`, so an embedded "Inter" cannot collide with a shipped one in the browser's font registry.
-- **Catalogue faces are static, single-instance faces derived ahead of the build** by the same replayable derivation the shipped set uses, with committed outputs and per-face NOTICE — never generated at build time, which would make the PDF a function of the build environment. They ship behind the same verified asset URLs as every other release asset.
+- **Fonts are an explicit value, never a host query.** The engine takes a `FontSet`; resolution is a
+  pure lookup, and the chain is part of the render's identity. **The asset key decides** which face
+  is used, even where an embedded and a shipped face share a family name; a face record's
+  family/style are display identity only. This extends into the browser: an embedded face's CSS
+  family name derives from its asset key, never from its declared family.
+- **One canonical byte form.** Font bytes ride the existing content-addressed `assets` map — the
+  image mechanism, no second storage shape, no new serialization rule — and adding a font must not
+  move an existing asset. Edit-and-edit-back reproduces the original bytes.
+- **Media types are never a closed set.** An unrecognised media type is *preserved at load* and
+  errors at *render*; a recognised type whose bytes do not decode is a *load* error. `Validate` must
+  predict what `Render` would do — that third half is the one with no visible symptom when missing.
+- **Format version.** The new chain-entry shape (an object where a 1.x reader expects a string) is
+  MAJOR and joins the existing `2.0` rank — no new constant. Written into the format doc before code.
+- **The engine owns the document.** No TypeScript model of a `.folio`. Every chain mutation is one
+  opaque command with one history entry; the designer re-projects from the engine's answer. A rename
+  updates every element naming the old chain in that same command, so one undo restores both.
+- **`fontFamily` has exactly two attachment points** — an element's style and a table's header style
+  — and both are live. Every walk, rename, orphan count and refusal reads on both.
+- **The browser never measures text.** The canvas takes every metric and line break from the
+  engine's measure API; this epic changes rasterization only, and the shared measurement path stays
+  asserted.
+- **Subsetting** happens once per render inside the PDF producer, never at save time; the subset tag
+  hashes the emitted subset program bytes, not the glyph-id set.
+- **Numbers** reaching output bytes go through the single emission path in fixed-point millipoints,
+  no `float64` in the render path.
+- **Fixtures.** No change lands without a golden fixture carrying a recorded digest, and a fixture
+  must exercise what it claims — Latin text over a carried Thai face observes nothing.
+- **Guards are widened, never weakened.** Several existing tests were written to forbid exactly the
+  shapes this epic introduces; each is re-authored to a narrower still-meaningful rule (its scope is
+  load-bearing), never deleted or softened to pass. A deliberate intermediate state is pinned by an
+  assertion naming its successor story, not defended by a comment. A guard for a new class of
+  artifact lands in the same commit as the first artifact of that class.
+- **Name what a test asserts, never a line number** — every line anchor carried across a story
+  boundary in this run has rotted.
 
 ## UX & Interaction Patterns
 
-- The chain editor lives on the typography panel, opened from the family control — no separate mode, no dialog stack — because choosing a font and defining what a font *is* should not be two tools.
-- The family control shows declared chains and catalogue entries as two visibly distinct groups: one is in the file, the other is not yet, and picking is what moves an entry between them.
-- A catalogue pick is one command and one undo: it embeds the face, declares a chain naming it, and proposes a fallback tail of shipped faces for scripts the picked face lacks — a tail the author can edit. Picking the same family twice stores one copy. Font assets no chain names any longer are dropped on save.
-- Refusals are reported in text at the control that caused them, following existing property-panel error, focus and accessible-name conventions. Voice is terse and technical: state the fact, name the location, offer no comfort. Everything stays keyboard-reachable with visible focus and accessible names.
+- The chain editor opens from the family control on the typography panel — no separate mode, no
+  dialog stack: choosing a font and defining what a font *is* are one tool.
+- A chain entry displays as the projected entry, unmodified — never an asset key, file name, or
+  anything parsed out of one. Once the embedded shape exists it reads as family and style.
+- Refusals (orphaning delete, emptied chain, duplicate name) state the concrete reason in text at
+  the control that caused them, following existing property-panel error, focus and accessible-name
+  conventions. Voice is terse and technical: state the fact, name the location, offer no comfort.
+- In the catalogue, entries the document already declares and those it does not are visibly
+  distinct; picking is what moves an entry between the two groups.
+- A pick is one command and one undo — it embeds the face and declares the chain together. Picking
+  an already-embedded family stores no second copy and offers the existing chain.
+- Accessibility floor applies: keyboard reach, visible focus, accessible names on icon-only
+  controls, errors distinguished by shape before colour.
 
 ## Cross-Story Dependencies
 
-- **8.0 is a precondition of 8.4**, not a preface: it removes a fail-closed emission branch refusing any glyph with a non-zero vertical offset. Embedding arbitrary faces makes that branch far more reachable, so shipping 8.4 over it would newly stop documents rendering. The narrowed refusal stays pinned by a test rather than deleted.
-- **8.1 → 8.2:** the panel can only report refusals the engine actually makes, so duplicate-name, orphan and empty-chain refusals belong to the engine story.
-- **8.2 → 8.3:** 8.2 delivers only the negative half of entry display (the projected entry, unmodified — no parsing, no key detection, no extension stripping). 8.3 introduces the embedded-face entry shape and must extend display to family + style **and** move the projection's entry-shape validator in the same commit.
-- **8.3 → 8.4:** embedding must exist before the engine can render from it; 8.4's "chain entry names a non-font asset" case requires all three of load-accepts, render-errors, validate-predicts.
-- **8.4 → 8.4a:** 8.4 keeps the measurement half (asserted, not assumed); 8.4a owns rasterization — registering the carried face in the browser and re-authoring two guards written to forbid exactly this shape. Each guard is widened, never weakened, and the widened tie is scoped to the carried case, because shipped faces are deliberately disjoint.
-- **8.4a → 8.4b → 8.4c:** 8.4a closes only one cause of the canvas/engine font mismatch. 8.4b registers each shipped face additionally under the engine's own face name, so the canvas vocabulary becomes the engine's by identity rather than by a mapping table, touching no chrome token. 8.4c ships real IBM Plex binaries for chrome, leaving chrome and canvas vocabularies separate by design rather than by accident.
-- **8.5 → 8.6:** the catalogue must ship before picking from it can put a face in the file. 8.6 also makes font assets visible to the asset-reference walk so unreferenced faces are dropped. 8.5 is the story to trim rather than cut — the catalogue can ship with one family and grow by release.
-- Story 7.10 (Epic 7's over-tall-element repair) is sequenced between 8.0 and 8.1 by owner call; it does not gate Epic 7's completion but must land before the `folio-go/v0.1.0` tag.
+- **8.0 is a precondition of 8.4, not a preface.** The renderer currently refuses any glyph carrying
+  a vertical offset, so arbitrary embedded faces could newly stop documents rendering; it must land
+  before embedding ships. A characterization test already exists as its red before-state.
+- **8.1 before 8.2** — the panel reports what the engine answers, so every refusal it shows must
+  exist in the engine first.
+- **8.2 → 8.3 forward obligation.** 8.2 delivers only the negative half of entry display; 8.3
+  introduces the embedded-entry shape and must extend the display and move the projection's
+  entry-shape validator in the same commit.
+- **8.3 before 8.4** — the engine cannot render a face the format cannot carry.
+- **8.4 → 8.4a → 8.4b → 8.4c → 8.4d, in that order.** 8.4 ships the engine half and discloses the
+  canvas gap as a test naming 8.4a; 8.4a gives carried faces a browser family; 8.4b makes the canvas
+  name the engine's shipped faces; 8.4c changes which files sit behind those names and updates
+  8.4b's pin; 8.4d can only declare its figure after 8.4c's weight lands.
+- **8.5 before 8.6** — the catalogue must exist before picking from it is a command. 8.6 also owns
+  the cleanup of font assets no chain names.
+- **Story 7.10** (Epic 7's over-tall-element repair) is sequenced between 8.0 and 8.1 by owner call:
+  it does not gate Epic 7, but must land before the `folio-go/v0.1.0` tag.
+- 8.5 is the story to trim rather than cut — the catalogue may ship with one family and grow.
