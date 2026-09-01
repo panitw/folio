@@ -1981,3 +1981,83 @@ registered, and it is not this story's to decide.
 ways** (census 35/35 unmoved; `genmanifest` twice with no diff, so every published row is unchanged; and
 a probe confirming every single-identifier declaration is byte-identical in message to `dbd1699`). That
 is the measurable claim D-8.4j.9 required, discharged by measurement rather than assertion.
+
+## Story 8.4j closed at `e67f603` — one over-modest disclosure corrected (2026-09-02)
+
+### D-8.4j.18 — CORRECTION to D-8.4j.17: the RP1/RP2 isolation limit is deletion-shaped, not structural
+
+**Orchestrator decision** (correcting an entry written at this story's build gate; the original stands
+above, this appends).
+
+**Verdict.** D-8.4j.17's disclosure 1 — *"RP1 and RP2 have no guard separable from half 1"* — is
+**over-modest and is corrected**. The limit is a property of the **mutation shape**, not of the code.
+
+**How it was falsified.** Deleting the shared copyleft arm reds pre-existing single-id tests, because
+step (1) now serves single and compound SPDX lines through one arm — that much was true. But
+**conditioning** the arm instead of deleting it — `case family == FamilyCopyleft && len(terms) == 1:` —
+isolates RP1/RP2 exactly: **5 tests red** (RP1, RP2, order-independence, composition, and the gate's
+`copyleft_term_first`/`copyleft_term_second`), and **none of the five exists at `b4dabd9`** — zero
+pre-existing.
+
+**In simple terms.** We concluded the two proofs could not be tested in isolation because removing the
+shared part broke other things. The right move was not to remove it but to **narrow** it — and narrowed,
+it fails exactly the two proofs and nothing else.
+
+**Why this correction is worth its length.** The build **volunteered** a limitation it could have
+claimed away, which is the behaviour this run wants. But an honest disclosure can still be wrong, and
+**an under-claim is not automatically safe**: it would have left a red-proof permanently labelled
+"cannot be isolated" and discouraged anyone from tightening it. **Honesty about a limit and correctness
+about the limit are two different properties, and both are checkable.**
+
+**Consequence.** No code change. The disclosure is amended to say the isolation limit is
+**deletion-shaped**, with the conditioned mutation recorded as its measurement.
+
+### D-8.4j.19 — The close re-derived the central claim independently, and that is the standard this run now holds
+
+**Orchestrator record.**
+
+The claim *"no licence's admission status changed at either gate"* was the measurable commitment
+D-8.4j.9 made when it rebound the Block If from **mechanism** to **policy**. The build measured it three
+ways. **The close did not re-read those measurements — it re-derived it.**
+
+A throwaway in-package probe drove the **real** `ResolveAssets` and `resolveWordlistAssetRow` (a scratch
+git repo per input, not a replication of their arm logic) over all **26 committed population licence
+texts at both gates**, in this tree **and in a detached worktree at `b4dabd9`**. **78 output lines each,
+byte-identical, `diff` exit 0.** With a **non-vacuity control in the same harness**: the red-proof
+inputs *do* diverge — `OFL-1.1 OR GPL-3.0-only` is `ADMITTED label="OFL-1.1"` at `b4dabd9` and refused
+as copyleft here.
+
+**The control is what makes the zero worth having.** Without it, "nothing changed" is exactly what a
+probe that measures nothing also prints — which is the failure D-8.4i.11 caught in the census. A
+difference-measurement now ships with a case that must differ.
+
+**The empty-term-set case, which I asked for specifically, is closed by measurement.** `firstTermNotOn`
+fails closed on `err != nil || len(terms) == 0`, probed with a predicate that says **yes to everything**:
+`""`, `"   "`, `"(MIT)"`, `"(MIT OR Apache-2.0)"`, `"MIT AND"`, `"MIT XOR Apache-2.0"`, `"OR"` → **all
+refused**, with a disequality control proving the probe discriminates. **An empty enumeration does not
+vacuously satisfy "every term is allowlisted"** — the classic vacuous-truth fail-open, absent.
+
+### D-8.4j.20 — Two follow-ups routed, one owner question ahead of Story 8.5
+
+**DW-132 → OWNER, before Story 8.5's ~20 faces land.** The classifier refuses `<id> WITH <exception>`
+(e.g. `Apache-2.0 WITH LLVM-exception`). The operator check is **untouched by 8.4j and only newly
+reachable**. Teaching the parser SPDX exceptions is the same *class* of decision as D-8.5.3's four-id
+allowlist — **which licences are acceptable for a font this project redistributes** — and D-8.4j.2
+forbids answering it in a build.
+
+**DW-133 → ENGINEERING LEAD.** Two residues the halted pass's reviewer named that no register received:
+(a) an unsupported operator **spelling** — `MIT or Apache-2.0` (lowercase) was **ADMITTED** at `b4dabd9`
+and is **refused** now, measured; (b) `deferred[1]/[2]/[3]`'s shapes also reach
+`rules.ScanLicenceGraph`, so a future dependency with an otherwise-ordinary SPDX line could fail the
+build — **a population 8.4j never measured against.**
+
+**(a) is a genuine admission-status change and it qualifies my own D-8.4j.19 record.** The
+byte-identical 78-line comparison covers the **committed population**, which contains no lowercase
+operator. So *"no licence's admission status changed"* is exact for the population and **not** universal
+over all inputs. The change is **fail-closed** and is the story's own subject — an unsupported spelling
+is not a licence the project recognises — but the qualification belongs on the record rather than in the
+gap between two true sentences.
+
+**A pass-1 medium is CLOSED, not open:** the allowlist-containment fail-open was closed by the
+re-dispatch's `firstTermNotOn` error patch — probed with a synthetic unrecognised allowlist id, refused
+at both gates.
