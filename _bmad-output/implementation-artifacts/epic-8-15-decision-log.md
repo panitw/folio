@@ -2107,3 +2107,122 @@ census keyed only on today's population is a snapshot, not a guard.
 **How we'd know it was wrong.** A legitimate catalogue face refused because its exception is
 unapproved, arriving faster than the owner wants to rule on exceptions — which would mean the exception
 list needs seeding from the real population rather than growing case by case.
+
+## DW-133 ruled, and the lead corrects its own premise (2026-09-02)
+
+### D-8.4j.21 — CORRECTION: the claim the Block If rebind rested on was FALSE, and the lead caught it in its own ruling
+
+**Engineering lead ruling**, taken. **This is the fourth instance of the rule the lead itself wrote.**
+
+**Verdict on the behaviour: accept, no spec amendment.** SPDX operators are uppercase **by
+specification**, so `MIT or Apache-2.0` is not a valid expression and refusing it is the story's own
+subject rather than a side effect. It is loud, and the remedy for a real file is to fix an invalid SPDX
+line.
+
+**Verdict on the record: the premise is corrected in place.** D-8.4j.9 rebound the Block If from
+**mechanism** to **policy** on this claim: *"relative to `dbd1699`, the SITE B fix changes admission
+only for expressions containing a non-permissive term."* **That is false.** The exact statement is:
+
+> Admission changes only for inputs that are **not a well-formed SPDX expression**, **or** that
+> **contain a non-permissive term** — i.e. the change is confined to inputs this project does not
+> recognise as a valid permissive declaration.
+
+Still true, still narrow, and it still carries the rebind. Corrected in the spec **in place with the
+original preserved verbatim**, because **a guard resting on a premise later shown false is D-8.5.10's
+exact shape**, and the legitimacy of that rebind depends on the premise being right rather than on the
+rebind being convenient.
+
+**The self-indictment, recorded because it is the most instructive thing in this run's process
+record.** *"No licence's admission status changed"* was **true of the committed population**, and a
+**universal quantifier was attached to it silently**. That is **D-8.5.4's failure — true observation,
+silent quantifier — committed by the lead, inside a ruling that cites the rule.** The 78-line
+byte-identical comparison was evidence about 35 files and was read as evidence about all inputs.
+**Nothing downstream contradicted it, which is exactly why the rule exists.**
+
+**In simple terms.** We counted every house on the street, found none had changed, and wrote down that
+nothing had changed anywhere. The street was not the world. The person who wrote the rule against this
+made the mistake, in the paragraph that cites the rule — which is the strongest possible evidence that
+the failure is structural rather than careless.
+
+### D-8.4j.22 — DW-133(b): registered MEDIUM, not built, and the entry names the MECHANISM
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** Registered, **not built**. It sits outside D-8.4j.7's criterion — 8.4j's fix is correct
+without it — it is **fail-closed**, and nothing this run schedules reaches it.
+
+**But the price is not the failure; it is the ATTRIBUTABILITY of the failure, and the lead measured the
+reason.** `licencegraph.go:44` is `family, spdx := licence.ClassifyLicenceText(text)` — and
+`ClassifyLicenceText` returns `(Family, string)`, **discarding** `ClassifySPDXExpressionTerms`' error.
+So a future dependency carrying `<id> WITH <exception>` or a parenthesised expression produces
+`FamilyUnknown` and a *"could not be classified"* red that **cannot say it was a parse failure rather
+than an unrecognised licence**. **Those two causes want opposite responses — teach the parser, versus
+remove the dependency — and today they are indistinguishable.**
+
+**The entry carries four things:** (1) **severity MEDIUM** — a latent build break on a population that
+grows by `go get` and npm version bumps, i.e. one this project does not control; not a bypass, it fails
+closed. (2) **The mechanism at `licencegraph.go:44`** — **the discarded error is the finding, not the
+strictness.** (3) **The trigger, which is not story-shaped:** *any dependency addition or version bump*.
+No story in this run schedules one, so the owner is the **boundary-gate checklist** as a standing
+address — DW-21/DW-24's two-address precedent, used because a checklist outlives any single story.
+(4) **The discharge:** surface the expression-parse reason through to the refusal message, so the red
+says **which** of the two causes fired.
+
+**Explicitly NOT routed to Story 15.2.** 15.2's subject is whether CI's red means *the build is broken*
+— workflow structure, per-job conclusions. This is whether one error message says *what* broke.
+Adjacent, different, and folding it in would widen a story whose value is that its scope is legible.
+
+### D-8.4j.23 — Routing DW-132 straight to the owner was correct, and the lead is not a mandatory relay
+
+**Engineering lead affirmation**, recorded because it settles a question of process I had guessed at.
+
+**Verdict.** Taking DW-132 to the owner without framing it through the lead was **correct** on both
+tests: the question is **self-contained** (D-8.5.3's precedent applies cleanly — which licences are
+acceptable for a font this project redistributes is product and legal, because **fonts do not link**),
+and it is **blocking** (Story 8.5's procurement waits on it).
+
+**The principle, stated:** **D-000.8 makes the lead the authority below the direction bar; it does not
+make it a mandatory relay above it.** Over-routing costs a round trip **and trains the next
+self-contained owner question to take one too.**
+
+### D-8.4j.24 — An UNDER-claim is not automatically safe, and the pattern generalises
+
+**Orchestrator record**, from the lead's reading of D-8.4j.18.
+
+*"RP1/RP2 cannot be isolated"* was **honest, believed, and wrong** — true of *deletion*, false of
+*conditioning*. Left standing it would have permanently labelled two red-proofs unisolable, which is
+**a "couldn't look" wearing an all-clear's clothes**: the record would have said the limit was
+structural when it was mutation-shaped.
+
+**The generalisation:** **when a mutation cannot isolate a claim, the next question is whether a
+different mutation can. Deleting a shared arm tests the arm's existence; conditioning it tests the
+claim.** Five tests red, none existing at `b4dabd9`, is the proof the distinction was real.
+
+**And the empty-term-set probe is the discrimination rule landing correctly.** A predicate saying yes to
+everything, seven degenerate inputs all refused, **plus a disequality control proving the probe
+discriminates** — without that control the seven refusals would be equally consistent with a probe that
+refuses regardless, which is the vacuous-truth shape it exists to exclude. **Evidence that could have
+come out the other way is the only kind worth running.**
+
+### D-8.4j.25 — FORWARD GUARDRAIL for Epic 8's boundary gate: Playwright reports in exactly two states
+
+**Engineering lead ruling**, taken, recorded now because the gate is three stories away and this must not
+be decided under time pressure at it.
+
+**Verdict.** Epic 8's boundary gate owes the four `FOLIO_MATRIX_TARGET` legs,
+`TestCrossTargetByteIdentity`, **and Playwright — which has never executed in this repository.**
+D-8.4.35(d) recorded the browser install failing at a 428 KB stub across repeated attempts, and
+D-8.4.25(d)'s executed-browser assertion has been **owed, not attempted-and-passed**, since Epic 8's
+middle.
+
+> **When the gate runs, the Playwright leg is reported in exactly TWO states: EXECUTED AND GREEN, or
+> NOT EXECUTED AND OWED. Never "skipped", never "deferred", never "compile-verified".**
+
+**If it cannot run, the gate says so in those words and Epic 8 closes with a STATED gap rather than an
+ambiguous one. The owner accepts stated gaps; they must not be handed a silence.**
+
+**Why this is pre-committed rather than decided at the gate.** A leg that has never run is exactly the
+one a gate under time pressure reclassifies as "compiles clean" — and `test:e2e:compile` passing makes
+that reclassification feel supported. It is not: compiling proves the file parses, not that a browser
+ever opened. Deciding the reporting form now removes the judgement from the moment it would be worst
+made.

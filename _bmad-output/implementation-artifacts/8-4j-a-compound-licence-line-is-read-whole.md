@@ -227,11 +227,18 @@ is correct without it (D-8.4j.4).
   **AMENDED 2026-09-02 at the build gate (D-8.4j.9); the original said "or either asset gate's
   policy", which is too broad and halts on the fix itself.** Rebound to **policy, not mechanism**:
   this keeps every tooth the guard was given — it still stops a silent widening of D-8.5.3 — while
-  permitting a mechanism repair that provably changes no admission decision. **Relative to
-  `dbd1699`, the SITE B fix changes admission only for expressions containing a non-permissive term
-  — the bypass class, which is this story's subject. Every all-permissive expression is admitted
-  exactly as before. No licence's admission status changes.** If a build finds otherwise, that is
-  the halt.
+  permitting a mechanism repair that provably changes no admission decision. **CORRECTED 2026-09-02 at the close (D-8.4j.21). The original read: "Relative to `dbd1699`, the
+  SITE B fix changes admission only for expressions containing a non-permissive term — the bypass
+  class, which is this story's subject. Every all-permissive expression is admitted exactly as
+  before. No licence's admission status changes." THAT IS FALSE**, shown by measurement at the
+  close: `MIT or Apache-2.0` (lowercase operator) was **ADMITTED** at `b4dabd9` and is **refused**
+  now. The 78-line byte-identical comparison was evidence about the **committed population**, and a
+  universal quantifier was attached to it silently — D-8.5.4's own failure, in the ruling that cites
+  it. **The exact statement, which still carries this rebind:** admission changes only for inputs
+  that are **not a well-formed SPDX expression**, or that **contain a non-permissive term** — i.e.
+  the change is confined to inputs this project does not recognise as a valid permissive
+  declaration. Still true, still narrow, and **fail-closed in both directions**. If a build finds
+  otherwise, that is the halt.
 
 **Never:**
 - **No compound-expression BAN anywhere (D-8.4j.2).** A guard asserting "no `LICENSE*` carries a
