@@ -2226,3 +2226,111 @@ one a gate under time pressure reclassifies as "compiles clean" — and `test:e2
 that reclassification feel supported. It is not: compiling proves the file parses, not that a browser
 ever opened. Deciding the reporting form now removes the judgement from the moment it would be worst
 made.
+
+## D-8.5.14 placed — Story 8.4k, and the bound is stated in the terms it always meant (2026-09-02)
+
+### D-8.4k.1 — Story 8.4k lands before 8.5; the bound is NOT widened because it never had authority over this class
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** D-8.5.14's classifier half lands as **Story 8.4k**, immediately before Story 8.5. Epic 8's
+order: **`8.4j → 8.4k → 8.5 → 8.6 → 8.4d`**.
+
+**The bound is not widened, and the correction is to the lead's own framing rather than to mine.** It
+was written as a bound on *insertions*, which is what it counts — **but that is not what it was for. It
+was protecting against SCOPE DISCOVERY: an epic accreting work its own review layers keep finding, an
+endogenous process that can run forever.** An owner decision is not discovery. It is direction, it is
+exogenous, and **a bound set on the epic's self-generated work never had authority over what the owner
+adds** — a bound that appeared to would be a bound on the owner, which is not the lead's to set.
+
+**THE RESTATED FORM, so the next candidate is measured against a criterion and not against this
+precedent:**
+
+> **The bound governs work the epic discovers about ITSELF. It has no authority over work the OWNER
+> adds.**
+> - **Endogenous** — found by a review layer, a gate, or a close: **bounded.** One exception, unchanged
+>   and still three conjuncts: a demonstrated live bypass of a gate this epic declared fail-closed,
+>   shown by probe, reachable by the population the next story adds.
+> - **Exogenous** — an owner decision, or an amended contract: **not bounded, but PLACED.** It lands
+>   before the story that consumes it, never in the same commit as that story's population.
+
+**Refusing to read the bound my own way paid for the second time.** *"A bound erodes by interpretation,
+and the person best placed to interpret it favourably is the one who wants to keep moving."* Both times
+the authority that set it produced a better answer than the reading I would have applied — once
+sharpening it, once finding it had never covered the case.
+
+**Why (c) — defer past Epic 8 — loses decisively.** It leaves 8.5's procurement shaped by a **parser
+limitation rather than a licence policy**, inverting the owner's ruling in the same week it was made;
+and it leaves `MANIFEST.md`, an **AD-26 release artifact**, unable to express a shape the owner has
+approved, across seven epics and through the `v0.1.0` tag.
+
+**Why (a) — fold into 8.5 — loses, and my argument for it was the weaker one.** I argued ordering. The
+lead's correction: **`WITH`'s red-proofs are synthetic fixtures and do not depend on the twenty faces**,
+so they could technically be written in the same commit; the ordering residue is real but secondary.
+**The decisive argument is that Story 8.4h was split out of 8.5 precisely to resolve `multiple-goals`,
+and 8.5 still carries that warning and `oversized`. Folding a classifier change into a
+procurement-and-bundling story re-merges the exact boundary that split drew, which would make it look
+arbitrary in retrospect.**
+
+### D-8.4k.2 — 8.4k's scope, and the composition boundary is STATED rather than discovered
+
+**One capability, one fix**, on 8.4j's pattern. Nothing else rides it.
+
+**The exception list is an OWNER-DECIDED list and is guarded exactly as the four ids are** — a
+test-owned literal citing D-8.5.14, so appending an entry reds on its own message and nothing else.
+**D-8.4j's allowlist guard is the template; do not invent a second shape.**
+
+**Five red-proofs:** (1) `<allowlisted base> WITH <approved exception>` **admitted**, labelled with the
+whole expression; (2) `<allowlisted base> WITH <unapproved exception>` refused **naming the exception**;
+(3) `<non-allowlisted base> WITH <approved exception>` refused **naming the base**; (4) a mutation making
+either half **unconditionally true** reds — **this is what proves "neither half alone admits" rather
+than assuming it**; (5) the exception-list guard.
+
+**The composition boundary is stated, not left for a later probe.** `ClassifySPDXExpression` rejects
+anything containing parentheses, and `firstTermNotOn` fails closed on a zero-length term set — so
+`MIT OR (GPL-2.0 WITH Font-exception-2.0)` is refused today and **stays** refused. **`WITH` composed
+with `OR`/`AND` is out of scope and refused, named in the spec.**
+
+### D-8.4k.3 — GATING FIRST TASK: measure the domain, because the owner's rule may admit nothing real
+
+**Engineering lead ruling**, taken. **This is the most consequential thing in the ruling and it is not a
+reopening.**
+
+**Verdict.** Story 8.4k implements D-8.5.14 **exactly as ruled**. But its **first task, before the
+parser is built, enumerates from the real candidate families Story 8.5 will draw on: which `WITH`
+declarations actually occur, and what their base ids are.**
+
+**The problem, measured in prospect.** D-8.5.14 requires the base to be one of the four ids — `OFL-1.1`,
+`Apache-2.0`, `MIT`, `Ubuntu-font-1.0`. **The canonical `WITH` declaration in the font world is
+`GPL-2.0-only WITH Font-exception-2.0`, whose base is COPYLEFT and therefore refused on the base half.**
+Permissive font licences do not generally carry exceptions; the OFL has no exception convention. **So
+the rule as ruled may have an EMPTY REACHABLE DOMAIN for fonts** — a capability built, guarded and
+red-proved that admits no real face.
+
+**The asymmetry underneath it, which is the mirror of the owner's own stated reason.** They rejected
+base-alone because *"an exception can remove permissions as well as grant them."* True — **and the font
+exception is the canonical case of the opposite.** It exists to let a **copyleft** font be embedded in a
+document **without copyleft propagating to that document** — which is precisely Folio's mechanism, and
+precisely what AD-26's stated Prevents is about. **An exception can widen a copyleft base as well as
+narrow a permissive one, and the widening case is the one fonts actually use.**
+
+**In simple terms.** The owner said "the licence must be one we accept, and the carve-out must be one we
+accept." Sensible. But in fonts, the carve-out's entire job is to make a licence we would otherwise
+refuse safe to use — so requiring the licence to already be acceptable may rule out every case the
+feature exists for.
+
+**How this is handled, and it is NOT a reopening.** After the measurement:
+- **Domain non-empty** → build it, done, **no escalation**.
+- **Domain empty under D-8.5.14** → returns to the owner **with the measurement in hand**, framed as
+  *"your rule is implemented and admits nothing real; here are the declarations that exist and here is
+  why each is refused"* — **never as a reinterpretation, never resolved in the build, and never by
+  widening the four ids.**
+
+**Why the owner is shown this rather than protected from it.** **A rule is not wrong for admitting
+nothing** — it may be exactly what they want, and refusing every `WITH` font is a defensible position
+held deliberately. **But an owner who ruled on a conjunction should be shown that its left half excludes
+the population its right half was written for — and shown it BEFORE twenty faces are procured around
+it, rather than after.**
+
+**How we'd know it was wrong.** The measurement finding a permissive-base `WITH` in the real candidate
+set — then the domain is non-empty, the concern was theoretical, and the story simply completes.
