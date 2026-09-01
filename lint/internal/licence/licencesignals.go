@@ -245,7 +245,14 @@ func collectLicenceSignals(text string) licenceSignals {
 	var sig licenceSignals
 
 	seen := map[string]bool{}
-	fromSPDXLine := true
+	// addID is the NAME and CLAUSE path only (steps 2 and 3). Step 1
+	// stopped calling it at Story 8.4j, because an SPDX line no longer
+	// carries a single identifier — see below. It therefore never sets
+	// unresolvedID: an unresolved licence NAME names nothing, because
+	// there is none to give (resolveLicenceSignals arm 2), and that was
+	// already this closure's behaviour under the `fromSPDXLine` flag it
+	// used to consult, which was false for every call it ever received
+	// from steps 2 and 3.
 	addID := func(id string) {
 		if seen[id] {
 			return
@@ -261,21 +268,72 @@ func collectLicenceSignals(text string) licenceSignals {
 			// nothing — it is a licence the build cannot show to be
 			// permitted (D-1.3.4, D-1.3.8).
 			sig.unresolved = true
-			if fromSPDXLine && sig.unresolvedID == "" {
-				sig.unresolvedID = id
-			}
 		}
 	}
 
 	// (1) Every SPDX line, in document order. Collected first so that a
 	// file's own explicit declaration is the identifier named in a
 	// copyleft refusal when the text also carries a copyleft NAME.
+	//
+	// STORY 8.4j — THE COMPOSITION RULE. One SPDX line contributes
+	// exactly ONE signal, WHATEVER ITS ARITY. Resolution WITHIN a line
+	// is ClassifySPDXExpression's job; composition ACROSS lines and
+	// against name signals is resolveLicenceSignals' job. Neither
+	// reaches into the other, and this loop is the whole of the seam.
+	//
+	// Why one line is one signal: a declaration of "MIT OR Apache-2.0"
+	// is a file saying ONE thing — "either of these" — not a file saying
+	// two conflicting things. Treating its terms as two permissive
+	// identifiers would hit resolveLicenceSignals' arm 3 (two or more
+	// distinct permissive ids → unknown) and refuse a file that is
+	// perfectly clear about its own terms.
+	//
+	// The capture is normalized to single-spaced fields first, so
+	// "MIT  OR   Apache-2.0" and "MIT OR Apache-2.0" are ONE signal and
+	// dedup through the same `seen` map every other signal uses.
+	//
+	// A whole expression must NOT be routed through classifyBySPDX: that
+	// is an exact map lookup, which would call every compound expression
+	// unrecognised.
 	for _, m := range spdxLineRE.FindAllStringSubmatch(text, -1) {
-		addID(m[1])
+		fields := strings.Fields(m[1])
+		expression := strings.Join(fields, " ")
+		if seen[expression] {
+			continue
+		}
+		seen[expression] = true
+
+		family, _, err := ClassifySPDXExpressionTerms(expression)
+		switch {
+		case err != nil || family == FamilyUnknown:
+			sig.unresolved = true
+			// unresolvedID is set ONLY for a SINGLE-TERM expression —
+			// today's behaviour, unchanged. A COMPOUND expression that
+			// fails to resolve names nothing, exactly as an unresolved
+			// licence NAME names nothing. THIS DETAIL IS LOAD-BEARING:
+			// naming a malformed expression would move a font from the
+			// asset gate's "could not be classified" arm to its "not one
+			// of the permitted licences" arm, whose message would then
+			// assert that the text CLASSIFIES AS something it
+			// demonstrably does not. It would also break the
+			// arm-disjointness
+			// TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist
+			// pins, and move DW-131's requested pin for the
+			// parenthesised form "(MIT OR Apache-2.0)" away from
+			// (unknown, "").
+			if len(fields) == 1 && sig.unresolvedID == "" {
+				sig.unresolvedID = expression
+			}
+		case family == FamilyCopyleft:
+			sig.copyleftIDs = append(sig.copyleftIDs, expression)
+			markExpressionFieldsSeen(seen, fields)
+		default:
+			sig.permissiveIDs = append(sig.permissiveIDs, expression)
+			markExpressionFieldsSeen(seen, fields)
+		}
 	}
 
 	// (2) Every licence name, in table order.
-	fromSPDXLine = false
 	namedAny := false
 	for _, n := range licenceNames {
 		spelled := strings.Contains(upper, n.canonical)
@@ -309,6 +367,33 @@ func collectLicenceSignals(text string) licenceSignals {
 	}
 
 	return sig
+}
+
+// markExpressionFieldsSeen marks EVERY whitespace-separated field of a
+// RESOLVED SPDX expression as already-seen, so a later NAME or CLAUSE
+// signal for one of the expression's own terms does not count a second
+// time (Story 8.4j).
+//
+// WHY IT IS REQUIRED: a real dual-licensed font ships the full text of
+// one of its licences. Without this, "SPDX-License-Identifier: OFL-1.1
+// OR Apache-2.0" above the committed OFL 1.1 body yields the expression
+// AND the body's own OFL-1.1 name signal — two distinct permissive
+// identifiers — and resolveLicenceSignals' arm 3 refuses a file that
+// says exactly one thing. Measured: (unknown, "") without this marking,
+// (permissive, "OFL-1.1 OR Apache-2.0") with it.
+//
+// NO GRAMMAR KNOWLEDGE IS NEEDED OR WANTED. Operators are marked too and
+// are inert, because no entry of licenceNames or licenceClauses has the
+// id "OR" or "AND". Marking the fields rather than the parsed terms
+// keeps this function free of any second opinion about SPDX syntax.
+//
+// IT CANNOT MASK A DIFFERENT LICENCE'S SIGNAL, because only the terms
+// the expression ITSELF declared are marked: a "MIT OR Apache-2.0"
+// header over a GPL body still refuses as copyleft (measured).
+func markExpressionFieldsSeen(seen map[string]bool, fields []string) {
+	for _, f := range fields {
+		seen[f] = true
+	}
 }
 
 // resolveLicenceSignals turns the collected signals into one verdict,

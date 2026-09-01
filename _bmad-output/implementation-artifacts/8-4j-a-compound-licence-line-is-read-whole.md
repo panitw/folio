@@ -2,8 +2,8 @@
 title: 'Story 8.4j: A compound licence line is read whole'
 type: 'bugfix'
 created: '2026-09-02'
-status: 'ready-for-dev'
-baseline_revision: '45985ef1f0922cf5e9dbdf707f2ae51b08f7372f'
+status: 'in-progress'
+baseline_revision: 'dbd16991148d658e4bcbd65c035eb031715bc173'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
