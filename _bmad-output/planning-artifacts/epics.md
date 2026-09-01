@@ -3272,6 +3272,60 @@ choosing this option, made visible rather than absorbed
 and the two vocabularies are separate **by design rather than by accident** — which is what 8.4b was
 ruled on AD-17 grounds before this decision was known
 
+### Story 8.4d: The size budget is a number something checks
+
+As the product owner,
+I want the first-load budget enforced rather than described,
+So that the bundle cannot drift past it again without anyone noticing.
+
+**Covers:** NFR7
+
+**OWNER DECISION 2026-09-01 (D-8.4.24).** `epics.md` accepts *"~9 MB first load"* — itemised as engine
+and font stack ~1.5 MB, CJK face ~7.4 MB, Thai dictionary ~0.1 MB. The committed release manifest
+measures **12,372,693 Brotli bytes: 37% over, since before Epic 8, enforced by nothing.** No test reads
+the figure; no gate compares against it. Story 8.4c adds **+490,280 bytes (+4.34%)**.
+
+Three options were put to the owner: hold ~9 MB and get under it; **pick a figure and make that
+enforceable**; or record the overage with a trigger and no gate. **The owner chose the second**, which
+was also the engineering lead's recommendation — *"it stops the drift immediately, which is the failure
+that actually occurred here, and it does not pretend a 7.4 MB CJK face fits in 9 MB."*
+
+**THE EPIC MUST NOT BE REWRITTEN TO 12.4 MB, and that is a ruling, not a preference (D-8.4.24).**
+Rewriting *"~9 MB"* to *"~12.4 MB"* is **moving the threshold to match the measurement** — the twin of
+manufacturing sample data to meet a floor — and it **enshrines the overage as the target while looking
+like a documentation fix**. **A budget rewritten to whatever the build currently weighs is not a
+budget.** The new figure is set **deliberately**, and the epic records that it was chosen rather than
+observed.
+
+**WHY THIS IS A SUCCESSOR TO 8.4C RATHER THAN PART OF IT.** The enforceable figure is *today's
+measurement plus 8.4c's addition and nothing more* — so it **cannot be written until 8.4c has landed**.
+8.4c's own obligation stays what the lead ruled: **record the added weight, do not fix the budget.**
+
+**Acceptance Criteria:**
+
+**Given** the release manifest
+**When** the build runs
+**Then** a gate compares the measured first-load bytes against a **declared** figure and **fails** when
+it is exceeded — the number lives in one place, and that place is read by the check rather than by a
+human
+
+**Given** the declared figure
+**When** it is set
+**Then** it is **today's measurement plus Story 8.4c's addition and nothing more**, and the artifact
+that declares it records that it was **chosen deliberately after a 37% overage went unnoticed** — not
+derived from whatever the build happened to weigh
+
+**Given** a future change that grows the bundle past the figure
+**When** it is proposed
+**Then** the gate reds, and raising the figure is a **visible, deliberate edit** rather than a silent
+drift — which is the entire failure this story exists to prevent
+
+**Given** the ~9 MB itemisation in the epic
+**When** the new figure is declared
+**Then** the old one is **superseded in place with its history**, so a later reader sees that ~9 MB was
+the original commitment and what replaced it — **not a document that has always said the current
+number**
+
 ### Story 8.5: A curated catalogue ships with the designer
 
 As a template author,

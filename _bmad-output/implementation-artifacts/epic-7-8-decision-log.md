@@ -3710,3 +3710,40 @@ checker whose blind spot is a list nobody re-read as a population question.**
 licence-manifest edit must stay in the same unit as the binaries it describes, since splitting it is
 what would create a commit where **the manifest describes files that are not there**. **A story that is
 large because its parts are genuinely inseparable is not the failure those warnings exist to catch.**
+
+---
+
+### D-8.4.24 — OWNER DECISION: pick a figure and make it enforceable. Story 8.4d, and the epic is NOT rewritten to match the measurement
+
+**The escalation.** `epics.md` accepts *"~9 MB first load"*; the committed release manifest measures
+**12,372,693** Brotli bytes — **37% over, since before Epic 8, enforced by nothing.** Story 8.4c adds
+**+490,280 bytes (+4.34%)**.
+
+**The owner chose option 2 — set a chosen figure and make THAT enforceable** — which was also the
+lead's recommendation, on the ground that *"it stops the drift immediately, which is the failure that
+actually occurred here, and it does not pretend a 7.4 MB CJK face fits in 9 MB."*
+
+**The lead hedged this one explicitly, deliberately, and said why:** option 1 (hold ~9 MB and subset or
+defer the CJK face) *"is right instead if ~9 MB was a real commitment to a user or a platform
+constraint rather than an estimate written during planning — which is the fact I cannot establish and
+you can."* It named that as **the same hedge shape** that let the IBM Plex question settle in one pass.
+**Twice now a recommendation that named its own defeater has cost one round trip instead of a wrong
+build.** That is now a practice, not a coincidence.
+
+**THE RULING INSIDE THE DECISION, which the owner's answer does not by itself settle: the epic must NOT
+be rewritten to 12.4 MB.** Rewriting *"~9 MB"* to *"~12.4 MB"* is **moving the threshold to match the
+measurement** — the twin of manufacturing sample data to meet a floor — and it **enshrines the overage
+as the target while looking like a documentation fix.** **A budget rewritten to whatever the build
+currently weighs is not a budget.** So the new figure is **chosen**, the artifact declaring it records
+that it was chosen, and the old ~9 MB is **superseded in place with its history** rather than
+overwritten — a document that has always said the current number teaches a later reader nothing.
+
+**Placement: Story 8.4d, sequenced after 8.4c** — `8.4a → 8.4b → 8.4c → 8.4d → 8.5 → 8.6`.
+**Not folded into 8.4c**, and the reason is mechanical rather than stylistic: the enforceable figure is
+*today's measurement plus 8.4c's addition and nothing more*, so **it cannot be written until 8.4c has
+landed.** 8.4c's obligation stays exactly what the lead ruled — **record the added weight, do not fix
+the budget** — and a story must not silently absorb a budget breach it did not cause.
+
+**The AC that makes this more than a number in a file:** raising the figure later must be a **visible,
+deliberate edit** that reds the gate first. **The failure here was never the 12.4 MB — it was that
+nothing compared two numbers that were both written down.**

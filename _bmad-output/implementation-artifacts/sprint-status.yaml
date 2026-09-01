@@ -206,6 +206,7 @@ development_status:
   8-4a-the-canvas-paints-with-the-face-the-engine-measured: done
   8-4b-the-canvas-can-name-the-face-the-engine-measured: backlog
   8-4c-the-designer-ships-the-typeface-it-specifies: backlog
+  8-4d-the-size-budget-is-a-number-something-checks: backlog
   8-5-a-curated-catalogue-ships-with-the-designer: backlog
   8-6-picking-a-family-puts-it-in-the-file: backlog
   epic-8-retrospective: optional
