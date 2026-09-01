@@ -4145,3 +4145,200 @@ attempts, some of which were interrupted by this orchestrator's own kills and a 
 harness runs (it built, started the preview server and executed the spec bodies), and **CI runs only
 `tsc --noEmit`** — which is DW-101, unchanged. **What is NOT established is anything the browser would
 have told us.** Recorded in these words so no later reader takes "we tried" for "we looked."
+
+---
+
+### D-8.5.1 — the 64-asset ceiling splits: the SILENT-FAILURE half lands ahead of 8.5 (Story 8.4f), the design fork lives inside it — and reading the contract dissolved one option
+
+**The option set was wrong, and reading the contract rather than the summary fixed it.** The **64
+bound** and the **5-row pinning** are **two constraints on two different things**:
+
+- `release-payload.ts` bounds **`assetCount`** — `candidate.assetCount > maximumCacheAssets → return
+  undefined`, where `assetCount` must equal `release.assets.length`, i.e. **every asset in the
+  release**.
+- `verify-offline-release.mjs` pins the **rows** to exactly five ids by **ordered exact equality**,
+  `cachedRows.length === 4`, `rows[4]` positionally, and `cjk-font` as the `Math.max` of the font rows.
+
+**So "don't give catalogue faces S1 rows" is NOT an option — it is already FORCED by the row
+pinning — and it does NOTHING for the ceiling, which counts ASSETS, not rows.** Any catalogue face
+shipped as a build asset counts toward 64 whether or not it is displayed. **The third option's real
+content is therefore much larger than its label: "catalogue faces are not build assets at all."**
+
+**(a) Ahead of 8.5, and separable: crossing the ceiling must FAIL THE BUILD — Story 8.4f.**
+`parseS1Payload` returns `undefined` over the bound, and its caller wraps the read in
+`try { … } catch { return undefined }` — **soft twice over** — so the **first screen a user sees loses
+its payload with nothing said.** **No build script catches it; runtime "catches" it by being quiet.**
+`verify-offline-release.mjs` is the natural home: it already validates this payload and already carries
+red-proofs (`s1-total-mismatch`, `s1-delivery-fiction`), so **the assertion and its red-proof both have
+a pattern to follow.** **A bound whose only enforcement is a silent parse failure is not a bound.**
+
+**It outranks the catalogue's contents — but not for the reason either the orchestrator or the lead
+first gave. It outranks because its failure is SILENT**, which makes it reachable by **any** future
+asset addition, not just this story. That is why it must not be gated on the catalogue's design
+settling.
+**Carried into: Story 8.4f's own Tasks — not 8.5's.**
+
+**(b) The design fork lives INSIDE 8.5, because it IS the story's design.** Putting it ahead would
+settle the story's core shape outside the story.
+
+**The steer, and why the direction supports it:** the owner chose 20+ families **with the ceiling and
+the 37% overage stated in the question.** Reading that as *"accept a much heavier bundle"* is possible;
+reading it as ***"the catalogue should not be a bundle problem at all"*** is better supported —
+**because this epic already built the machinery for the alternative: 8.3 made a face travel inside a
+document, 8.4 made it draw, and 8.6 is "picking a family puts it in the file."** A face **fetched at
+pick time and embedded as a carried asset** costs **zero build assets, zero S1 rows, zero first-load
+bytes.**
+
+**Two things 8.5 must ESTABLISH rather than assume on that route:** what a picked family does
+**offline** — NFR7 promises the *designer* works offline, and a catalogue is a **palette, not
+coverage** (the three shipped Noto faces are the coverage), so this is likely fine **but must be stated
+and tested, not inferred**; and that a pick-time fetch **does not violate AC3**, a real tension to
+**resolve explicitly rather than discover.**
+
+**On raising `maximumCacheAssets` if the bundled route is taken:** read in context it sits beside
+`minimumCacheAssets = 10` and `assetUrl.length <= 256` inside a validator for JSON parsed out of
+`index.html` — **a defensive SHAPE bound, not a semantic capacity limit.** Raising it is **legitimate
+and not a compromise**, on two conditions: **stated headroom** rather than tuning to fit the new count,
+and **only after Story 8.4f lands**, so the bound can never again be crossed silently. **A bound tuned
+to the current population is one the code can move.**
+
+---
+
+### D-8.5.2 — the unresolvable licence case is settled by existing direction, whichever way the owner ruled
+
+`licenceLabel = "SEE NOTICE"` on a licence text the classifier cannot identify is the **asset-side form
+of the silent pass D-1.3.8 forbids on the dependency side.** `licencegraph.go` records the ground
+verbatim: *"a silent pass on an unidentifiable licence is the realistic failure mode"* — and it fails
+the build on unresolvable, with the refinement that a **commercial EULA has no marker table and
+deliberately falls through to unresolvable** rather than through an unreachable case.
+
+**That ground is licence-family-NEUTRAL.** It is not an argument about which licences are acceptable;
+it is an argument that **not knowing must not read as fine.** It transfers to assets unchanged.
+**A font asset whose `LICENSE*` text cannot be classified to an SPDX identifier FAILS THE BUILD.
+`"SEE NOTICE"` stops being a pass.** Settled before the owner answered, and pre-empting none of their
+options. **Carried into: Story 8.5's spec Tasks.**
+
+**And the extension-class guard goes REPO-WIDE before 8.5 ships a font anywhere new.** Confirmed by
+measurement: `ResolveAssets` walks the **whole repo**, while the extension-class guard walks
+**`folio-designer/public/fonts` and nothing else** — so **a `.woff2` in a new directory is invisible to
+BOTH**: the licence gate cannot see the extension, and the extension guard cannot see the directory.
+**A catalogue is the feature that introduces new directories**, so this is a **precondition, not a
+latent hazard.** Making the guard's population equal `ResolveAssets`' own walk is **repairing a guard
+whose scope was always meant to match the checker it protects** (D-8.4.30).
+
+---
+
+### D-8.5.3 — OWNER DECISION: a permissive allowlist, enforced like the dependency ban; and 20+ families
+
+**The licence gate does not check licences, and this run repeatedly overstated it.** `ResolveAssets`
+requires a `LICENSE*`, a `NOTICE*` and a `Copyright` line beside every committed font, then records the
+classified licence **as a LABEL** with `"SEE NOTICE"` as fallback **and returns nil**. **A GPL font
+gets a manifest row and a clean build.**
+
+**It is FAITHFUL TO AD-26, whose heading is not its Rule.** The heading says *"nothing copyleft
+enters"*; the Rule has **two clauses** — a family ban scoped to **"No dependency"**, enforced on the
+whole module graph and the lockfile; and for **redistributed non-code assets**, only that they *"keep
+their own terms and their notices"* and *"travel with their licence text and copyright lines."*
+**Two clauses, two obligations.** Extending the ban to assets is therefore **a decision, not a bug
+fix.**
+
+**Recorded in the orchestrator's words at the lead's request: Story 8.4c's guard and its manifest work
+were both about whether the gate can SEE a font. Neither was about whether the licence is acceptable.
+Every artifact in this run that called `ResolveAssets` "the licence boundary" — the lead's included —
+overstated it.**
+
+**Why it was the owner's and not engineering's: FONTS DO NOT LINK.** AD-26's stated Prevents is about
+**static linking attaching obligations to Folio's binary.** Folio **embeds and subsets a font program
+into the USER'S PDF**, so an asset's licence attaches to **documents the users produce**, not to Folio.
+That is a product and legal call. And `spec-fonts/SPEC.md`'s Open Questions carries the curation half
+**deliberately unmarked**, with the question directly above it **struck through as SETTLED** — the
+absence of a mark is a signal, not an oversight.
+
+**DECISION 1 — a named permissive allowlist: OFL-1.1, Apache-2.0, MIT, UFL**, enforced the way the
+dependency ban is — **fail the build, never warn** — with **unclassifiable treated as failure** per
+D-8.5.2. The lead's recommendation, taken.
+
+**DECISION 2 — the BROADER catalogue, 20+ families**, **against** the lead's recommendation of a small
+5–10 family MVP set, **with the ceiling and the 37% overage stated in the question.**
+
+**The lead's reading of that, and it sharpens the brief rather than complicating it:** *"the honest
+reading is not that they discounted the constraints but that they want the catalogue to be big and
+expect the engineering to find a shape where size is not paid for at first load. That is a better brief
+than the one I would have written."* It is also what makes D-8.5.1(b)'s fetch-at-pick steer the one to
+take.
+
+---
+
+### D-8.5.4 — AC1 claimed a derivation that does not exist; rewritten per procurement route
+
+**The orchestrator's dispatch premise — "the replayable derivation exists and WORKS" — was true of the
+existing three faces only.** `instance_faces.py` drives a **hardcoded 3-entry `UPSTREAM` list**;
+`.font-sources/` is **gitignored with zero tracked files**; **nothing in the repo fetches an upstream
+source** — no script, no CI step, no Make target; and the bootstrap **demands an `out_sha256`
+unknowable until after the first run.** **So AC1 was not executable for ANY new family, whichever
+families were chosen.**
+
+**The pattern, named by the orchestrator and sharpened by the lead: a mechanism proven over its
+existing population is not proven over an extension of it.** The lead's addition is the part worth
+keeping: **both times this recurred today the observation was TRUE** — CI does run only the compile,
+and the derivation does pass for its three faces. **The defect was never the observation; it was the
+QUANTIFIER silently attached to it.** That is harder to catch than a wrong measurement, **because
+nothing downstream contradicts it.**
+
+**Ruled: reproduction is required only of a face this project DERIVES; provenance is sufficient for a
+vendored static face** — the standard Story 8.4c already shipped IBM Plex on, so extending it is
+**consistent with what already shipped, not a new concession.** AC1 states the standard **per
+procurement route**, and 8.5 **chooses a route per face and says which.** **What must not happen is an
+acceptance criterion claiming a derivation that does not exist.**
+
+**Regardless of route: replace `"3 of 3 faces"` with `len(UPSTREAM)`**, so adding a face fails **on a
+byte divergence or not at all — never on a string.** **Third hardcoded count this epic**, after
+`declared`'s floor with no ceiling and the probe list that has missed a new site twice. **Three is a
+pattern: a count written next to the thing it counts is a literal that stops being true the moment the
+thing grows.** Do it **even if 8.5 derives nothing**, because it is what makes the **next** face's
+failure legible.
+
+---
+
+### D-8.5.5 — AC3 gets an observable layer now and does NOT block on DW-101
+
+**Measured: there is NO forbidden-host scan anywhere** — zero hits for `gstatic|googleapis|fonts.google`
+in any scanned source population. **The only literal "no request leaves the machine" proof is
+Playwright** (`e2e/engine-worker.spec.ts` calls `context.setOffline(true)`), **and CI contains zero
+occurrences of `playwright`.** So AC3's proof lived entirely in the suite CI does not run — **DW-101
+and DW-103 are not adjacent to this story, they were load-bearing for one of its acceptance
+criteria.**
+
+**But 8.5 must not be blocked on a CI policy fix.** Ruled: **8.5 builds the forbidden-host source
+scan** on the model the gate identified — `canvas-authority-contract.test.ts`'s **comment-stripping
+character scanner**, **red-proved in both directions** — cheap, in-repo, and running in CI **today**.
+
+**AC3 is phrased against what that scan can observe and must not claim more.** A source scan proves
+**no forbidden host appears in the scanned population**; it does **not** prove no request leaves.
+**Writing the stronger claim over the weaker instrument is the exact failure this run keeps finding.**
+And **the scan must strip comments** — Story 8.4b measured a chrome-token guard staying green over a
+live token parked in a CSS comment, so that is a demonstrated failure mode, not a hypothetical.
+
+**The Playwright offline proof stays at the EPIC 8 GATE**, as the executed browser assertion already
+owed under D-8.4.25(d).
+
+---
+
+### D-8.5.6 — AC4 computes per-asset Brotli and 8.4d consumes it; do not build it twice
+
+**The obvious place to record the catalogue's weight would produce a FALSE ZERO.** `s1.cacheAssets[]`
+carries `{assetUrl, bytes}` per asset — **uncompressed**. Per-asset Brotli exists **only as `.br` files
+on disk and is recorded nowhere.** And `s1VisibleBytes` sums four hardcoded needles and **already
+misses 174,949 Brotli bytes of IBM Plex** — so recording against it yields **a number that reads as
+"this cost nothing."**
+
+**8.5 computes and records per-asset Brotli** — nearly free, since `generate-offline-release.mjs`
+already writes a `.br` per **immutable** asset — **and 8.4d CONSUMES that same figure** for the metric
+ruled at D-8.4.29 (Brotli over the full first-load set) **instead of building the same thing twice.**
+**Mind the same exception:** that loop filters `asset.immutable`, so non-immutable assets have **no
+`.br`** and need an **explicit treatment rather than a silent skip.**
+
+**If 8.5 takes the fetch-at-pick route, AC4's subject becomes "the catalogue adds ZERO first-load
+bytes" — and that is then a CLAIM THAT MUST BE ASSERTED, not a happy consequence, precisely because a
+true zero and a false zero look identical in a report.** `s1VisibleBytes` missing 174,949 bytes of IBM
+Plex is exactly that demonstration.

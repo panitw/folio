@@ -3323,6 +3323,51 @@ Noto Sans
 **When** this story is complete
 **Then** it **closes** — both causes and the residual — and the register says so
 
+### Story 8.4f: A bound nobody can cross silently
+
+As the product owner,
+I want a bound that is enforced rather than merely declared,
+So that crossing it breaks a build instead of quietly emptying the first screen a user sees.
+
+**Covers:** NFR7
+
+**RULED AHEAD OF STORY 8.5 AND SEPARABLE FROM IT (D-8.5.1).** `src/release-payload.ts` declares
+**`maximumCacheAssets = 64`** against a measured `assetCount` of **23** — **41 further assets**. Past
+it, **`parseS1Payload` returns `undefined`** and the first-run load screen **silently loses its
+payload**. The read is wrapped in `try { … } catch { return undefined }`, so **the failure is soft
+twice over**. **No build script catches it; runtime "catches" it by being quiet.**
+
+**This is a defect INDEPENDENT of the catalogue** — any future asset addition crosses it the same way
+— which is exactly why it must not wait on a story about fonts. It is also **the run's signature shape
+sitting in the first thing a user sees**: an all-clear indistinguishable from a couldn't-look.
+
+**It outranked the catalogue's contents, but not for the reason either the orchestrator or the lead
+first gave — it outranks because ITS FAILURE IS SILENT, not because the count is close.**
+
+**Acceptance Criteria:**
+
+**Given** a release whose `assetCount` exceeds `maximumCacheAssets`
+**When** the offline release is verified
+**Then** **the build FAILS**, naming the count and the bound — it does not return `undefined`, and it
+does not reach a user as an empty load screen
+
+**Given** the verification job
+**When** the assertion is added
+**Then** it lands in `verify-offline-release.mjs`, which already validates this payload and already
+carries red-proofs (`s1-total-mismatch`, `s1-delivery-fiction`) — **so the assertion and its red-proof
+both have a pattern to follow**
+
+**Given** the new assertion
+**When** it is proved
+**Then** it is **red-proved**: a release manufactured over the bound must fail it. **A bound whose only
+enforcement is a silent parse failure is not a bound**, and an assertion that has never failed has not
+been shown to discriminate
+
+**Given** the soft `catch` that returns `undefined`
+**When** this story is complete
+**Then** the swallow is either removed or made to distinguish *"malformed"* from *"over the bound"* —
+**two causes must not share one silent outcome**
+
 ### Story 8.5: A curated catalogue ships with the designer
 
 As a template author,
@@ -3342,26 +3387,139 @@ batch rather than two more gate cycles.
 **Acceptance Criteria:**
 
 **Given** each catalogue face
-**When** it is prepared for the bundle
-**Then** it is a static, single-instance face derived ahead of the build by the same replayable
-derivation the shipped set uses, with its committed output, its licence text and its NOTICE
-recording the upstream release and both hashes — never generated at build time, which would make
-the PDF a function of the build environment
+**When** it is prepared
+**Then** it is a **static, single-instance** face whose assurance is stated **per procurement route** —
+**reproduction** (replayable derivation, committed output, both hashes) for a face **this project
+derives**, or **provenance** (pinned version + NOTICE) for a **vendored static** face — and **never
+generated at build time**, which would make the PDF a function of the build environment
+
+**AC1's ORIGINAL PREMISE WAS FALSE AND IS REWRITTEN (D-8.5.4).** It required *"the same replayable
+derivation the shipped set uses"* for every face. **That derivation is not executable for ANY new
+family:** `tools/fontgen/instance_faces.py` drives a **hardcoded 3-entry `UPSTREAM` list**,
+`.font-sources/` is **gitignored with zero tracked files**, **nothing in the repo fetches an upstream
+source**, and the bootstrap is **self-contradictory on first run** — `UPSTREAM` demands an
+`out_sha256` unknowable until after it has run once.
+
+**But it does not have to be, and the precedent is three stories old.** Story 8.4c shipped three IBM
+Plex faces as **pinned static files** on a **provenance** guarantee, under the owner's own decision, so
+this project already ships faces on **both** standards. **Ruled: reproduction is required only of a
+face this project DERIVES; provenance is sufficient for a vendored static face.** What must not happen
+is **an acceptance criterion claiming a derivation that does not exist** — that would be the worst
+instance yet of the failure this run keeps finding, because it would be written into the acceptance
+itself. **If 8.5 derives even one new face, the bootstrap work is IN SCOPE; if it vendors all of them,
+the bootstrap gap stays open with its own owner.**
+
+**Regardless of route:** `fontgen_matrix_test.go`'s hardcoded `"derived and compared 3 of 3 faces"`
+becomes **derived from `len(UPSTREAM)`**, so adding a face fails on a **byte divergence or not at
+all — never on a string**. **Third hardcoded count of this epic** (after `declared`'s floor with no
+ceiling, and the probe list that has missed a new site twice): **a count written next to the thing it
+counts is a literal that stops being true the moment the thing grows.**
+
+**Given** a font offered for the catalogue
+**When** its licence is evaluated
+**Then** it must be **OFL-1.1, Apache-2.0, MIT or UFL** — **and the build FAILS otherwise, never
+warns**; a licence text the classifier **cannot identify also FAILS**
+
+**OWNER DECISION, 2026-09-01 (D-8.5.3), AND IT CORRECTS A CLAIM THIS RUN REPEATEDLY OVERSTATED.**
+`ResolveAssets` requires a `LICENSE*`, a `NOTICE*` and a `Copyright` line beside every committed font,
+then records the classified licence **as a LABEL** with `"SEE NOTICE"` as fallback, **and returns
+nil**. **A GPL font gets a manifest row and a clean build.** That is **faithful to AD-26**, whose Rule
+has two clauses: a **family ban scoped to "No dependency"**, and for redistributed **assets** only that
+they *"travel with their licence text and copyright lines."*
+
+**Every artifact in this run that called `ResolveAssets` "the licence boundary" overstated it** — Story
+8.4c's guard and its manifest work were both about whether the gate can **SEE** a font; **neither was
+about whether the licence is acceptable.**
+
+**Why this was the owner's call and not engineering's: fonts do not link.** AD-26's stated Prevents is
+about **static linking attaching obligations to Folio's binary** — but Folio **embeds and subsets a
+font program into the USER'S PDF**, so an asset's licence attaches to **documents the users produce**,
+not to Folio. That is a decision about what obligations *their* users inherit.
+
+**The unresolvable case was settled separately and does not depend on the allowlist (D-8.5.2).**
+D-1.3.8's ground — *"a silent pass on an unidentifiable licence is the realistic failure mode"* — is
+**licence-family-neutral**, so it transfers to assets unchanged. **`"SEE NOTICE"` stops being a
+pass.**
 
 **Given** the offline release
 **When** it is built and verified
 **Then** the catalogue and its faces are inside the bundle behind the same verified asset URLs as
 every other release asset, and the offline verification job covers them
 
-**Given** the browser offline
-**When** the author searches and picks a family
-**Then** the flow completes with no request leaving the machine — no `fonts.google.com`, no
-`fonts.gstatic.com`, no first-use download
+**Given** the designer's own sources
+**When** they are scanned for a forbidden font host
+**Then** **no `fonts.google.com`, `fonts.gstatic.com` or `googleapis` reference appears in the scanned
+population** — proved by an in-repo scan that **strips comments** and is **red-proved in both
+directions**
 
-**Given** the bundle's size budget
-**When** the catalogue is added
-**Then** the added weight is measured and recorded against it, and each entry's own weight is
-visible to whoever curates the list
+**AC3 IS PHRASED AGAINST WHAT THE INSTRUMENT CAN OBSERVE, AND MUST NOT CLAIM MORE (D-8.5.5).** It
+previously said *"the flow completes with no request leaving the machine."* Measured: **there is no
+forbidden-host scan anywhere** — zero hits for `gstatic|googleapis|fonts.google` in any scanned source
+population. The only literal *"no request leaves"* proof is **Playwright**
+(`e2e/engine-worker.spec.ts` calls `context.setOffline(true)`), and **CI contains zero occurrences of
+`playwright`**.
+
+**A source scan proves no forbidden host APPEARS IN THE SCANNED POPULATION. It does not prove no
+request leaves.** Those are different claims and this criterion makes the **weaker** one — writing the
+stronger claim over the weaker instrument is the exact failure this run keeps finding. **The scan must
+strip comments**, or a host parked in a comment leaves it green: that is Story 8.4b's measured lesson,
+not a hypothetical. Model: `canvas-authority-contract.test.ts`'s comment-stripping character scanner.
+
+**The literal offline proof stays at the EPIC 8 GATE**, as the executed browser assertion already owed
+under D-8.4.25(d). **DW-101 and DW-103 are load-bearing for the EPIC, not blocking for this story.**
+
+**Given** the catalogue
+**When** its weight is recorded
+**Then** it is **per-asset BROTLI bytes**, computed here and **consumed by Story 8.4d** rather than
+built twice — with the exact invocation, commit and tree state recorded alongside every figure
+
+**THE OBVIOUS PLACE TO RECORD IT WOULD BE A FALSE ZERO (D-8.5.6).** `s1.cacheAssets[]` already carries
+`{assetUrl, bytes}` per asset — **uncompressed**. Per-asset Brotli exists **only as `.br` files on
+disk and is recorded nowhere**. And `s1VisibleBytes` sums **four hardcoded filename needles** and
+**already misses 174,949 Brotli bytes of IBM Plex** — so recording the catalogue's weight against it
+would produce **a number that reads as "this cost nothing."**
+
+Computing it here is **nearly free**: `generate-offline-release.mjs` already writes a `.br` per
+**immutable** asset. **Mind that exception explicitly** — non-immutable assets have no `.br` and need a
+**stated treatment rather than a silent skip.** **Do NOT set a threshold; 8.4d owns that.**
+
+**If this story takes the fetch-at-pick route, AC4's subject becomes "the catalogue adds ZERO
+first-load bytes" — and that is then a CLAIM THAT MUST BE ASSERTED, not a happy consequence, precisely
+because a true zero and a false zero look identical in a report.**
+
+**Given** the 64-asset ceiling and the first-load budget
+**When** the catalogue's delivery shape is chosen
+**Then** the story **designs** it rather than discovering it — **and the ceiling's silent-failure half
+is NOT this story's** (Story 8.4f lands it first)
+
+**THE OWNER CHOSE 20+ FAMILIES WITH BOTH CONSTRAINTS STATED IN THE QUESTION (D-8.5.3).** The honest
+reading is **not** that they discounted them, but that **they want the catalogue big and expect the
+engineering to find a shape where size is not paid for at first load.**
+
+**The fork, with its option set corrected by reading the contract rather than the summary
+(D-8.5.1):** the **64 bound** and the **5-row pinning** constrain **two different things**.
+`release-payload.ts` bounds **`assetCount`** — *every asset in the release*. `verify-offline-release.mjs`
+pins the **rows** to exactly five ids by ordered exact equality. **So "no S1 row for a catalogue face"
+is NOT an option — it is already forced** — **and it does not help with the ceiling, because the
+ceiling counts ASSETS, not rows.** Any catalogue face shipped as a build asset counts toward 64 whether
+or not it is displayed. **The real third option is therefore much larger than it looked: "catalogue
+faces are not build assets at all."**
+
+**The lead's steer:** this epic has already built the machinery for that — **8.3 made a face travel
+inside a document, 8.4 made it draw, and 8.6 is "picking a family puts it in the file."** A face
+**fetched at pick time and embedded as a carried asset** costs **zero build assets, zero S1 rows and
+zero first-load bytes**, and is the arc the epic is already on. **Two things must then be established
+rather than assumed:** what a picked family does **offline** (NFR7 promises the *designer* works
+offline; a catalogue is a **palette, not coverage** — the three shipped Noto faces are the coverage —
+**but it must be stated and tested, not inferred**); and that a pick-time fetch **does not violate
+AC3**, which is a real tension to **resolve explicitly rather than discover**.
+
+**If the bundled route is taken instead, raising `maximumCacheAssets` is legitimate and not a
+compromise** — read in context it sits beside `minimumCacheAssets = 10` and `assetUrl.length <= 256`
+inside a validator for JSON parsed out of `index.html`, so it is a **defensive shape bound, not a
+semantic capacity limit**. **Two conditions:** raise it with **stated headroom** rather than tuning it
+to fit the new count, and **only after Story 8.4f lands**, so the bound can never again be crossed
+silently. **A bound tuned to the current population is one the code can move.**
 
 **Given** a CJK family
 **When** the catalogue is assembled
