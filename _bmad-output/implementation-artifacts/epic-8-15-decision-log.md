@@ -1879,3 +1879,105 @@ the argument survives as a test instead of as a decision-log entry nobody re-rea
 bypass rather than a latent.** Seven 8.4j tests red, **zero** pre-existing, for both the enumerator and
 the single-token capture. **A defect that no existing test can even express was unobserved, not
 absent.** That is the answer to anyone who reads *"0 of 35 texts carry a compound line"* as reassurance.
+
+## Story 8.4j's close gate (2026-09-02)
+
+### D-8.4j.14 — THIRD instance: a patch instruction of mine was wrong on the facts, and the required probe caught it
+
+**Orchestrator decision** (recording a pattern about **my own** instructions, which is the entry I would
+most like a future reader to find).
+
+**Verdict.** Recorded as a pattern, not a one-off. **When I specify a patch, I specify a property and a
+falsifier — not an implementation.**
+
+**What happened.** Review found a **medium** defect, corroborated three independent ways (the builder's
+own probe, the verification-gap reviewer's mutation, and the intent-alignment auditor): step (1) decided
+whether to *name* an unresolved expression from a whitespace-**field** count, where the Design Notes
+rule says **single term**. `(MIT)` is **one field and zero terms**, so it classified `(unknown, "(MIT)")`
+— a **named** label, which sent both gates past the *"could not be classified"* arm into the
+off-allowlist arm, whose message then asserted the text *"classifies as `(MIT)`"*. **False, and exactly
+the wrong-ground refusal D-8.4j.9 ruled a defect.**
+
+**The part that is about me.** I specified the fix as `len(terms) == 1`. **That is insufficient, and the
+patch agent proved it rather than complying:** `ClassifySPDXExpressionTerms("MIT XOR Apache-2.0")`
+returns exactly one term **with an operator error**, so a bare count **newly named it** — the same
+defect one input over. The shipped predicate is `len(terms) == 1 && terms[0] == expression`.
+
+**In simple terms.** I said "check there is exactly one piece." There is an input with exactly one piece
+that is still not a plain name, so my check would have re-created the bug it was meant to remove, on a
+different input. The agent tried my instruction, measured it, found it wrong, and fixed the property
+instead of satisfying the letter.
+
+**Why this is the third instance and therefore a practice change.** It joins the run's other
+true-observation-wrong-attachment failures — quantifier (D-8.5.4), subject (D-8.4j.3), scope of
+measurement (D-8.4j.8), working directory (D-8.4j.8). **Mine is the same family: a property correctly
+identified and an implementation that does not capture it.** The control that worked was the standing
+requirement that every patch be **probed rather than assumed** — the same instrument that caught the
+self-measuring census.
+
+**Consequence.** My patch instructions state **the property to hold and the input that must falsify a
+wrong fix**, and explicitly authorise the agent to deviate from any implementation I sketch if a probe
+shows it insufficient. **An orchestrator's implementation sketch is a hypothesis, not a specification.**
+
+**How we'd know it was wrong.** An agent complying with a sketch that a probe would have refuted — the
+signal is a patch that lands with no probe reported.
+
+### D-8.4j.15 — Instance SIX of D-8.5.9, and the count is corrected
+
+**Orchestrator decision.**
+
+**Verdict.** `66d445b` was created by the **step-03 implementation subagent**. That is **instance six**,
+not five — I under-counted in the last report, because the halted dispatch's commit (`1af9854`,
+instance five) was **reverted**, and I let "reverted" read as "did not happen". **It happened; it is
+history rather than state, and the count is of occurrences, not of survivors.**
+
+**Audited and kept**, per step-04's Finalize rule: `main`, both trailers exact, author/committer
+consistent, only this story's files, nothing pushed. Six instances, **six catches** by the audit — which
+is now a **listed step** (D-8.4j.12) rather than my habit, which is the only reason that record means
+anything.
+
+**The correction matters more than the number.** A control's evidence base must count **attempts**, not
+**escapes**. Counting only the ones that survived would make the control look better the more reliably
+it works, which is exactly backwards.
+
+### D-8.4j.16 — `followup_review_recommended` discharged a third time, and the reasoning is now load-bearing enough to state as a rule
+
+**Orchestrator decision.**
+
+**Verdict.** No second review dispatch. The **closer's hard adversarial pass** carries the scrutiny.
+Score 7 (**0 high**, 1 medium, 4 low).
+
+**Why, and this is the third consecutive discharge, so it needs to be more than a habit.** The rule I am
+applying, stated: **re-dispatch the review layers when the finding profile suggests they did not do
+their job; route to the adversarial close when it suggests they did and something else is weaker.**
+Here they did: **zero high, zero `intent_gap`, zero `bad_spec`**, all 14 rejections enumerated, and the
+one medium was corroborated **three independent ways** before it was patched. That is not a review that
+needs repeating.
+
+**The evidence across three stories, which is what makes this a judgement rather than a preference.** At
+8.4h the layers produced 7 rejections, 4 unrecoverable and 1 of the 3 readable ones false, and **both**
+gating defects were found by the close. At 8.4i the layers found the compound-line defect and **triage
+discarded it** on a wrong-caller premise. At 8.4j the layers found the naming defect and triage kept it.
+**The weak link has been triage, not generation** — and D-8.4j.3 now governs triage directly.
+
+**Consequences.** The closer is directed at the two deferrals and at the honest qualification the build
+volunteered (below). If the close finds a defect the layers plausibly should have caught, that is
+evidence the layers need changing rather than re-running, and it goes to the lead as a process finding.
+
+### D-8.4j.17 — Two disclosures the build volunteered, both kept
+
+**1. RP1 and RP2 have no guard separable from half 1** — deleting the copyleft arm they share also reds
+pre-existing single-identifier copyleft tests, because that arm serves single ids too. **Half 1 is their
+isolating deletion, and it reds zero pre-existing tests.** Volunteered rather than reported as six clean
+independent proofs, which it would have been easy to claim. **A red-proof whose isolation is imperfect
+and says so is worth more than one that overstates.**
+
+**2. `Apache-2.0 WITH LLVM-exception` is deferred, not patched.** The operator check that refuses `WITH`
+is **untouched by this story and only newly reachable**, and teaching the parser SPDX exceptions is an
+owner question D-8.4j.2 forbids answering in a build. Correctly routed: it is a real limitation, it is
+registered, and it is not this story's to decide.
+
+**Also confirmed at this gate:** no licence's admission status changed at either gate — measured **three
+ways** (census 35/35 unmoved; `genmanifest` twice with no diff, so every published row is unchanged; and
+a probe confirming every single-identifier declaration is byte-identical in message to `dbd1699`). That
+is the measurable claim D-8.4j.9 required, discharged by measurement rather than assertion.
