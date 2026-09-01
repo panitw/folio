@@ -68,6 +68,7 @@ const assets = {
   sans: fingerprint(join(designerRoot, 'public', 'fonts', 'notosans', 'NotoSans-Regular.ttf'), 'noto-sans.ttf'),
   sansCjk: fingerprint(join(designerRoot, 'public', 'fonts', 'notosanssc', 'NotoSansSC-Regular.ttf'), 'noto-sans-cjk.ttf'),
   sansThai: fingerprint(join(designerRoot, 'public', 'fonts', 'notosansthai', 'NotoSansThai-Regular.ttf'), 'noto-sans-thai.ttf'),
+  mono: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexmono', 'IBMPlexMono-Regular.ttf'), 'ibm-plex-mono.ttf'),
 }
 
 rmSync(wasmPath, { force: true })
@@ -76,17 +77,24 @@ rmSync(starterPath, { force: true })
 writeFileSync(join(generatedDir, 'offline-assets.ts'), Object.entries(assets)
   .map(([key, filename]) => `import ${key}Url from './runtime/${filename}?url'`).join('\n') + `\n\nexport const runtimeAssetUrls = { ${Object.keys(assets).map((key) => `${key}: ${key}Url`).join(', ')} } as const\n`)
 writeFileSync(join(generatedDir, 'pdfjs-assets.ts'), `// Keep PDF.js CMaps and standard fonts in Vite's immutable asset graph.\nexport const pdfjsRuntimeAssets = import.meta.glob('./runtime/pdfjs-*/**/*', { eager: true, query: '?url', import: 'default' })\nexport const pdfjsViewerAssets = { cMapUrl: '/assets/${pdfjsCMapDirectory}/', standardFontDataUrl: '/assets/${pdfjsStandardFontDirectory}/', cMapPacked: true } as const\n`)
-// SIX RULES OVER THREE FILES, AND THE SECOND THREE ARE WHY (Story 8.4b).
-// The first three register the shipped faces under the DESIGN SYSTEM's family
-// names, which is what every `--type-*` token in tokens.css resolves through.
-// The second three register THE SAME FILES a second time under the ENGINE's own
-// face names — the exact spellings `fonts.Shipped()` keys its FontSet by — so the
-// canvas can ASK FOR THE FACE THE ENGINE MEASURED WITH by name (AD-17 makes the
-// browser a rasterizer only, and it cannot rasterize with the engine's face while
-// it has no way to name it). No new slot, no new binary, no copied byte: each new
-// rule interpolates the SAME `assets` slot its counterpart above already uses.
-// The two-names-one-file interval is DELIBERATE and is pinned, family by family,
-// by src/font-binary-identity.test.ts — Story 8.4c is what makes the two halves
-// diverge (real IBM Plex bytes behind the IBM Plex names), and that test is where
-// the divergence must be recorded rather than discovered.
-writeFileSync(join(generatedDir, 'runtime-fonts.css'), `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`)
+// SIX RULES, TWO VOCABULARIES (Story 8.4b), NOW OVER DIFFERENT FILES (8.4c).
+// The first three register the DESIGN SYSTEM's family names, which is what every
+// `--type-*` token in tokens.css resolves through. The second three register the
+// ENGINE's own face names — the exact spellings `fonts.Shipped()` keys its FontSet
+// by — so the canvas can ASK FOR THE FACE THE ENGINE MEASURED WITH by name (AD-17
+// makes the browser a rasterizer only, and it cannot rasterize with the engine's
+// face while it has no way to name it).
+//
+// Story 8.4b registered both halves over THE SAME THREE FILES, a deliberate
+// interval: the IBM Plex names were IBM Plex in name only. Story 8.4c ends it by
+// putting real IBM Plex bytes behind the IBM Plex names, one family per commit.
+// `IBM Plex Mono` has diverged — it names its own `mono` slot, a genuinely
+// monospaced face, where it previously named `sansCjk`, a 10.6 MB CJK sans.
+// `IBM Plex Sans` and `IBM Plex Sans Thai` still share the engine's files and are
+// converted next. The Noto slots STAY whatever the chrome points at: the engine
+// half declares them, generate-offline-release.mjs requires each by name, and the
+// release verifier requires the CJK face to remain the dominant font payload.
+// Which file is behind which family name is pinned, family by family, by
+// src/font-binary-identity.test.ts — the divergence is recorded there rather than
+// discovered by a designer squinting at glyphs.
+writeFileSync(join(generatedDir, 'runtime-fonts.css'), `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`)
