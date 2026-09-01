@@ -147,6 +147,84 @@ var fontAssetLicenceAllowed = func() map[string]bool {
 	return allowed
 }()
 
+// firstTermNotOn is the SHARED MECHANISM of both asset gates' per-term
+// admission: it reports whether EVERY term of a resolved licence label
+// is on the list the caller supplies, and names the first term that is
+// not. Story 8.4j (D-8.4j.1, D-8.4j.9).
+//
+// THE POLICY STAYS AT THE CALL SITE, AND THE TWO CALL SITES DISAGREE ON
+// PURPOSE. The list is a PARAMETER because SITE A (fonts) is governed by
+// the owner's four ids (D-8.5.3) and SITE B (the Thai wordlist) by
+// licence.permissiveSPDX, which has carried CC0-1.0 deliberately since
+// Story 2.1. D-8.5.13 separated those two POLICIES — which list governs
+// which population — and it did not separate the MECHANISM of testing a
+// label against a list. Sharing the mechanism keeps both policies and
+// stops both sites from being wrong in the same way; it is NOT the
+// "tidy the two sites onto one constant" that
+// TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist forbids,
+// and that test still reds if anyone tries it.
+//
+// THE LABEL AND THIS GATE KEY ON DIFFERENT THINGS, AND THAT IS CORRECT.
+// The label states WHAT THE FILE SAYS: since Story 8.4j a compound
+// declaration is labelled with its whole expression, because attributing
+// a dual-licensed file to one of its two licences is a partial label
+// produced by reading part of the line, and lint/MANIFEST.md is a
+// release artifact (AD-26). This gate states something else entirely:
+// WHETHER EVERY OPTION THE FILE OFFERS IS ACCEPTABLE. So a manifest row
+// reading "OFL-1.1 OR Apache-2.0" beside a four-id allowlist is NOT a
+// bug, and must not be "fixed" by either widening the list or shortening
+// the label. The same note is stated in MANIFEST.md's own assets header,
+// for the reader who has the artifact but not this file.
+//
+// ADMISSION IS NO MORE PERMISSIVE THAN THE CLASSIFICATION IT CONSUMES.
+// licence.ClassifySPDXExpressionTerms has resolved conservatively across
+// terms since Story 1.3 — copyleft if ANY term is copyleft, unknown if
+// ANY term is unrecognised — so it already declines to elect the
+// favourable term. If admission elected one (admit on the first
+// allowlisted term), the gate would re-open exactly what the classifier
+// just closed: DW-131 is first-term-wins in the classifier, and admitting
+// by first term is first-term-wins in the gate, one function along.
+//
+// NO STRING SPLITTING HAPPENS HERE. The term set comes from the single
+// existing enumerator — ONE parser, ONE term enumeration, and this is
+// the only enumeration either gate performs. A strings.Split(spdx,
+// " OR ") in this function would be a second SPDX expression parser.
+//
+// The known and accepted cost: "OFL-1.1 OR <proprietary>" is refused
+// even though the OFL term is takeable on its own. The refusal is LOUD,
+// naming the directory and the failing term, so a real case surfaces at
+// build time rather than shipping mislabelled. Whether to elect a term
+// is an OWNER question about D-8.5.3's four ids; it is not resolved in
+// the build and not resolved by widening the allowlist.
+func firstTermNotOn(spdx string, onList func(string) bool) (string, bool) {
+	_, terms, _ := licence.ClassifySPDXExpressionTerms(spdx)
+	if len(terms) == 0 {
+		// Too malformed to enumerate at all. "No terms" is "not
+		// admissible" — fail closed, and name what we were given.
+		return spdx, false
+	}
+	for _, term := range terms {
+		if !onList(term) {
+			return term, false
+		}
+	}
+	return "", true
+}
+
+// failingTermPhrase renders the clause that names WHICH term a per-term
+// refusal objected to, and renders it only when the term is not the
+// whole label. For a single-identifier declaration the two are the same
+// string, and "classifies as \"CC-BY-SA-4.0\", whose term
+// \"CC-BY-SA-4.0\" is not…" says the id twice; that shape is also
+// byte-identical to the message both gates carried before Story 8.4j,
+// so a single-identifier refusal reads exactly as it always has.
+func failingTermPhrase(label, term string) string {
+	if term == label {
+		return "which"
+	}
+	return fmt.Sprintf("whose term %q", term)
+}
+
 // assetServesLabel derives AC25's manifest "Serves" label from an
 // asset's directory, relative to repoRoot (forward-slash form). Finding
 // 9 (QA review): the previous implementation scanned only a fixed,
@@ -354,14 +432,22 @@ func ResolveAssets(repoRoot string) ([]AssetRow, error) {
 		// a copyleft text is refused BY NAME rather than merely by
 		// absence from a list, and an unclassifiable text is refused
 		// rather than labelled.
+		// Story 8.4j (D-8.4j.1): ADMISSION IS PER-TERM. The label is now
+		// the WHOLE SPDX expression a licence text declares, so a
+		// compound declaration is admitted iff EVERY term it offers is
+		// on the owner's four-id list. Computed before the switch
+		// because a Go switch case cannot bind; arm order still decides,
+		// and the first two arms are reached first for the inputs they
+		// own (firstTermNotOn on "" is harmless).
 		family, spdx := licence.ClassifyLicenceText(licenceText)
+		failingTerm, everyTermAllowed := firstTermNotOn(spdx, func(term string) bool { return fontAssetLicenceAllowed[term] })
 		switch {
 		case spdx == "":
 			return nil, fmt.Errorf("%s: licence text could not be classified, so this redistributed font cannot be shown to carry a permitted licence (AC25, AD-26, D-8.5.3)", dir)
 		case family == licence.FamilyCopyleft:
 			return nil, fmt.Errorf("%s: licence text classifies as %q, a copyleft licence AD-26 forbids for a redistributed font (AC25, AD-26, D-8.5.3)", dir, spdx)
-		case !fontAssetLicenceAllowed[spdx]:
-			return nil, fmt.Errorf("%s: licence text classifies as %q, which is not one of the licences permitted for a redistributed font: %s (AC25, AD-26, D-8.5.3)", dir, spdx, strings.Join(fontAssetLicenceAllowlist, ", "))
+		case !everyTermAllowed:
+			return nil, fmt.Errorf("%s: licence text classifies as %q, %s is not one of the licences permitted for a redistributed font: %s (AC25, AD-26, D-8.5.3)", dir, spdx, failingTermPhrase(spdx, failingTerm), strings.Join(fontAssetLicenceAllowlist, ", "))
 		}
 		licenceLabel := spdx
 
@@ -468,14 +554,33 @@ func resolveWordlistAssetRow(repoRoot string) (AssetRow, bool, error) {
 	// Closed for the same two reasons the font site was: the literal
 	// "SEE NOTICE" fall-through passed an unclassifiable licence with a
 	// clean row, and the discarded Family return passed a GPL one.
+	//
+	// STORY 8.4j (D-8.4j.9): ADMISSION HERE IS PER-TERM TOO, AGAINST
+	// THIS SITE'S OWN LIST. Arm 3 used to be a bare exact-map lookup,
+	// licence.IsPermissiveSPDX(wordlistSPDX). Once half 1 of this story
+	// made the label the WHOLE SPDX expression a text declares, no
+	// compound could ever be a member of an exact-id map, so a wordlist
+	// LICENSE declaring "CC0-1.0 OR MIT" — both terms permissive, and
+	// CC0-1.0 permissiveSPDX's deliberate member since Story 2.1 — was
+	// refused with a message asserting the project does not recognise
+	// it as permissive WHILE wordlistFamily held FamilyPermissive in
+	// scope from the same call. The refusal contradicted its own
+	// function's other return value inside one switch.
+	//
+	// This is the same MECHANISM repair as SITE A and emphatically NOT
+	// the same POLICY: the list passed to firstTermNotOn here is
+	// licence.IsPermissiveSPDX, not the font allowlist. D-8.5.13
+	// separated which list governs which population; it did not licence
+	// two different ways of testing a label against a list.
 	wordlistFamily, wordlistSPDX := licence.ClassifyLicenceText(string(licenceText))
+	failingTerm, everyTermPermissive := firstTermNotOn(wordlistSPDX, licence.IsPermissiveSPDX)
 	switch {
 	case wordlistSPDX == "":
 		return AssetRow{}, false, fmt.Errorf("%s: wordlist licence text could not be classified, so this redistributed asset cannot be shown to carry a permitted licence (AC9, AD-26)", wordlistAssetDir)
 	case wordlistFamily == licence.FamilyCopyleft:
 		return AssetRow{}, false, fmt.Errorf("%s: wordlist licence text classifies as %q, a copyleft licence AD-26 forbids for a redistributed asset (AC9, AD-26)", wordlistAssetDir, wordlistSPDX)
-	case !licence.IsPermissiveSPDX(wordlistSPDX):
-		return AssetRow{}, false, fmt.Errorf("%s: wordlist licence text classifies as %q, which this project does not recognise as a permissive licence (AC9, AD-26)", wordlistAssetDir, wordlistSPDX)
+	case !everyTermPermissive:
+		return AssetRow{}, false, fmt.Errorf("%s: wordlist licence text classifies as %q, %s this project does not recognise as a permissive licence (AC9, AD-26)", wordlistAssetDir, wordlistSPDX, failingTermPhrase(wordlistSPDX, failingTerm))
 	}
 	licenceLabel := wordlistSPDX
 
@@ -508,6 +613,14 @@ func RenderAssets(rows []AssetRow) string {
 	b.WriteString("below with the licence and copyright line its accompanying LICENSE*/NOTICE*\n")
 	b.WriteString("files carry (AC25, D-1.5.6). A font binary committed without both files is a\n")
 	b.WriteString("build failure (`ResolveAssets`), not a silent gap.\n\n")
+	b.WriteString("A Licence cell may read as a whole SPDX expression (`OFL-1.1 OR Apache-2.0`)\n")
+	b.WriteString("rather than a single identifier, because the label states **what the file\n")
+	b.WriteString("says** — a dual-licensed file is not attributable to one of its two\n")
+	b.WriteString("licences. The gate keys on something else: **whether every option the file\n")
+	b.WriteString("offers is acceptable**, term by term, against the owner's font allowlist\n")
+	b.WriteString("(D-8.5.3). So a compound label beside a four-identifier allowlist is\n")
+	b.WriteString("correct and is not a bug to be \"fixed\" by shortening the label or widening\n")
+	b.WriteString("the list (Story 8.4j).\n\n")
 	if len(rows) == 0 {
 		b.WriteString("_No redistributed non-code assets are committed at this commit._\n")
 		return b.String()

@@ -2,8 +2,9 @@
 title: 'Story 8.4j: A compound licence line is read whole'
 type: 'bugfix'
 created: '2026-09-02'
-status: 'blocked'
-baseline_revision: 'dbd16991148d658e4bcbd65c035eb031715bc173'
+status: 'done'
+baseline_revision: 'b4dabd96d7a19fe068f5272b173d0050eef2cb36'
+baseline_revision_plan_gate: 'dbd16991148d658e4bcbd65c035eb031715bc173'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -679,57 +680,73 @@ re-derived rather than after.
 
 ## Auto Run Result
 
-Status: blocked
-Blocking condition: intent gap
+Status: done
+Blocking condition: none
 
-Implementation was written, verified green and committed at `1af9854`, then **reverted** when review
-found that the story's half-1 change creates a new false refusal at SITE B (the wordlist gate) that
-the intent does not settle. The attempted change is preserved at
-`8-4j-attempted-implementation.patch` and should be re-applied, with the lead's ruling folded in,
-rather than re-written from scratch — it is verified green and its four red-proofs are
-mutation-proved.
+The reverted implementation at `1af9854` was **re-applied from
+`8-4j-attempted-implementation.patch`** — not re-written — and the two build-gate rulings were folded
+in on top of it, exactly as the previous Auto Run Result asked.
 
-**Verification performed at `1af9854` before the revert** (each command with its working directory):
+**What the rulings changed on top of the patch:**
 
-- `lint` (`/Users/panitw/Projects/folio/lint`): `go test -count=1 ./...` → 4 packages `ok`, exit 0;
-  `go vet ./...` → clean, exit 0.
-- census (`/Users/panitw/Projects/folio/lint`): `go test -count=1 -run TestLicenceSignalCensus -v
-  ./internal/licence/` → `CENSUS: 35 licence texts measured (26 committed files + 9 dependency
-  licences), all matching their pinned verdicts`, PASS. Seven of the nine dependency licences still
-  classify `(permissive, "BSD-3-Clause")` through the clause path (D-8.4i.9 intact).
-- `folio-go` (`/Users/panitw/Projects/folio/folio-go`): `go vet ./...` clean;
-  `go test ./...` → **1815 pass / 2 fail / 5 skip**, the two fails being exactly
-  `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest.
-- goldens (`/Users/panitw/Projects/folio/folio-go`): `TestGoldenDigestAgreesAtEveryDeclaredSite` →
-  *23 artifacts re-hashed; 70 declared recording sites agree*, PASS.
-- `genmanifest` (`/Users/panitw/Projects/folio/lint`, run twice), then
-  `git diff --exit-code -- lint/MANIFEST.md` and `git diff --exit-code` from
-  **`/Users/panitw/Projects/folio`** → both exit 0.
-- `gofmt -l folio-go lint` from **`/Users/panitw/Projects/folio`** → exactly
-  `lint/internal/rules/licencegraph_test.go` (DW-116, pre-existing).
-- `md5 -q README.md` from `/Users/panitw/Projects/folio` → `078d7d80d518d54af2fc04fb270d46b8`.
-- designer (`/Users/panitw/Projects/folio/folio-designer`): `npm run test` → **40 files / 411 tests**
-  passed; `npm run typecheck`, `npm run build`, `npm run test:e2e:compile` all exit 0; `npm run lint`
-  → exactly **4** `only-export-components` warnings. `maximumCacheAssets = 64`
-  (`src/release-payload.ts:33`) confirmed by `scripts/offline-release-contract.test.mjs` (12 tests)
-  inside that run.
-- Matrix test audit: all **15** I/O matrix rows covered by a test that **ran and passed**.
+- **D-8.4j.9 — SITE B is per-term too, against its OWN list.** `resolveWordlistAssetRow`'s arm 3 was a
+  bare `licence.IsPermissiveSPDX(wordlistSPDX)` lookup; it now consults the same term enumeration
+  SITE A does, with `licence.IsPermissiveSPDX` passed as the predicate. The shared piece is the
+  MECHANISM (`firstTermNotOn`, one function, list supplied by the caller); the POLICIES stay apart —
+  SITE A passes the owner's four ids, SITE B passes `permissiveSPDX` — and
+  `TestWordlistSiteEnforcesThePermissiveSetNotTheFontAllowlist` still reds if anyone collapses them.
+  `manifest.go`'s SITE A helper was renamed from `firstDisallowedFontLicenceTerm` accordingly.
+- **D-8.4j.10 — the seen-marking is scoped to the NAME/BODY signal space and marks TERMS, not
+  fields.** `markExpressionFieldsSeen(seen, fields)` became `markDeclaredTerms(declaredTerms, terms)`:
+  its own map, consulted by steps (2) and (3) only, never by step (1)'s SPDX-line dedup, and fed from
+  `ClassifySPDXExpressionTerms` so operators are never marked as ids.
+- **The two `patch` findings from the previous review.** `failingTermPhrase` names the failing term
+  only when it differs from the whole label, so a single-identifier refusal is byte-identical at both
+  gates to the message it carried before this story; and `ClassifySPDXExpressionTerms`' doc comment
+  now states its consumer count correctly (three: `collectLicenceSignals`, SITE A, SITE B) and the
+  wrapper's own caller count (two: `rules.ScanLicenceGraph`, `npm.go`).
 
-**Mutation proofs (each by DELETION, run from `/Users/panitw/Projects/folio/lint`):**
+**New red-proofs added on top of the patch's four:** `TestResolveWordlistAssetRowAdmitsACompound`
+`PermissiveDeclaration` (RP5, at SITE B) and
+`TestASecondSPDXLineIsNeverSwallowedByAnEarlierExpressionsTerms` (RP6, both orders asserted).
 
-- Restore the single-token capture → RP1, RP2, RP3 and all seven 8.4j tests red on their own
-  messages; **no pre-existing test reds**.
-- Reinstate first-term-wins inside the enumerator → RP1 (`…got family permissive`) and RP2
-  (*"swapping the two identifiers changed the FAMILY"*) red, plus the gate's `copyleft_term_second`
-  subtest; **no pre-existing test reds** — the classifier's first-term-wins was caught by nothing
-  before this story.
-- Delete `markExpressionFieldsSeen`'s call sites → **exactly one** subtest reds
-  (`…a compound line over the body of one of its own terms is not a conflict`).
-- Delete the whole per-term admission arm → RP4 reds on its own message, plus the pre-existing
-  single-id off-allowlist test that shares the arm.
-- Restore the exact-map lookup (**half 1 alone**) → RP3's gate test reds with the predicted false
-  refusal on `OFL-1.1 OR Apache-2.0` and RP4 loses its failing term; **no pre-existing test reds**.
-- Delete only the failing-term naming from the message → **exactly one** named test reds.
+**Verification performed** (each command with its working directory):
 
-**Residual risks:** the two measured defects above (SITE B, and the cross-line order dependence) are
-unfixed in the tree, because the tree is back at `dbd1699` behaviour. Nothing shipped.
+- `lint` (`/Users/panitw/Projects/folio/lint`): `go test -count=1 ./...` → 4 packages `ok`;
+  `go vet ./...` clean.
+- census (`lint`): `go test -count=1 -run TestLicenceSignalCensus -v ./internal/licence/` →
+  `CENSUS: 35 licence texts measured (26 committed files + 9 dependency licences), all matching their
+  pinned verdicts`, PASS. **0 verdicts moved**, agreeing with the spec's plan-gate record. Seven of
+  the nine dependency licences still classify `(permissive, "BSD-3-Clause")` through the clause path
+  (D-8.4i.9 intact).
+- `folio-go`: `go vet ./...` clean; `go test ./...` → **1815 pass / 2 fail / 5 skip**, the two fails
+  being exactly `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)` (the mandated standing red).
+- goldens (`folio-go`): `TestGoldenDigestAgreesAtEveryDeclaredSite` → *23 artifacts re-hashed; 70
+  declared recording sites agree*, PASS.
+- `genmanifest` (`lint`, run twice): `lint/MANIFEST.md` md5 stable at
+  `239718814444b945463ad776deba643b` across runs; the only diff against `b4dabd9` is the
+  label/gate-divergence note Tasks mandates for the header.
+- `gofmt -l folio-go lint` from the repo root → exactly `lint/internal/rules/licencegraph_test.go`
+  (DW-116, pre-existing).
+- `md5 -q README.md` from the repo root → `078d7d80d518d54af2fc04fb270d46b8`.
+- designer: `npm run test` → **40 files / 411 tests** passed; `npm run typecheck`, `npm run build`,
+  `npm run test:e2e:compile` all exit 0; `npm run lint` → exactly **4** `only-export-components`
+  warnings. `maximumCacheAssets = 64` (`src/release-payload.ts:33`) confirmed by
+  `scripts/offline-release-contract.test.mjs` (12 tests) inside that run.
+
+**Mutation proofs, each by DELETION, run as `go test -count=1 ./...` from `lint/`. No pre-existing
+test reds in ANY of them:**
+
+| mutation | reds |
+|---|---|
+| restore the single-token capture in `spdxLineRE` | all eight 8.4j tests, each on its own message |
+| delete `markDeclaredTerms`' call sites | **exactly one** subtest — *a compound line over the body of one of its own terms is not a conflict* |
+| mark terms into the SHARED `seen` map (D-8.4j.10's own defect) | **exactly one** — RP6 |
+| SITE A back to the exact-map lookup (half 1 alone) | RP3's gate test, on the predicted false refusal of `OFL-1.1 OR Apache-2.0`, and RP4 |
+| delete only the failing-term naming | **exactly one** — RP4 |
+| SITE B back to the exact-map lookup | **exactly one** — RP5 |
+| delete SITE A's per-term arm entirely | RP4 plus the pre-existing `TestResolveAssetsRefusesAPermissiveButOffAllowlistFontLicence`, which shares the arm |
+
+**Residual risks:** `deferred[1]` (trailing content after an identifier) and `deferred[2]` (an
+identifier on the following line) ship as specified — fail-closed, loud, and unreachable by the
+present population. `deferred[0]` is discharged: both sites are fixed, against different lists.

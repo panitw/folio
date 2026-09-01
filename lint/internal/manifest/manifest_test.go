@@ -860,3 +860,220 @@ func TestCommittedAssetPopulationClassifiesCleanly(t *testing.T) {
 		t.Errorf("expected a row for %s — its absence would make the two-policy assertion above vacuous", wordlistPath)
 	}
 }
+
+// ────────────────────────────────────────────────────────────────────
+// STORY 8.4j — THE COMPOUND DECLARATION, AT THE GATE (D-8.4j.1).
+//
+// These are the SURFACE proofs. The classifier tests in
+// internal/licence pin ClassifyLicenceText's return value for these
+// inputs; that is not the same claim. DW-131's finding was that a
+// licence file of this shape PASSES THE FAIL-CLOSED ASSET GATE — a
+// green build shipping a GPL-offered font under a permissive label in
+// lint/MANIFEST.md — and a tuple assertion cannot show that
+// ResolveAssets consults the family, reaches the copyleft arm, or names
+// anything.
+
+// TestResolveAssetsRefusesACompoundFontLicenceOfferingCopyleft is RP1
+// and RP2 at the gate, and the second subtest is the whole point: under
+// the single-token capture the two subtests DISAGREED, and the only
+// difference between their inputs is which identifier was written
+// first.
+//
+// IT MUST RED ON THE COPYLEFT ARM'S OWN MESSAGE, not the
+// off-allowlist one: D-8.4i.1 fixes the resolution order at
+// copyleft-before-conflict precisely so a maintainer reads "GPL
+// detected" and removes the font, rather than reading "not permitted"
+// and asking for the list to be widened.
+func TestResolveAssetsRefusesACompoundFontLicenceOfferingCopyleft(t *testing.T) {
+	for _, c := range []struct{ name, declaration string }{
+		{"copyleft term second", "OFL-1.1 OR GPL-3.0-only"},
+		{"copyleft term first", "GPL-3.0-only OR OFL-1.1"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: "+c.declaration+"\n")
+
+			rows, err := ResolveAssets(root)
+			if err == nil {
+				t.Fatalf("DW-131: a font LICENSE offering a copyleft term must not pass the fail-closed "+
+					"asset gate; got nil and %d row(s): %v", len(rows), rows)
+			}
+			if !strings.Contains(err.Error(), "a copyleft licence") {
+				t.Errorf("expected the COPYLEFT refusal — the loudest arm, D-8.4i.1's fixed order — got: %v", err)
+			}
+			if !strings.Contains(err.Error(), `"`+c.declaration+`"`) {
+				t.Errorf("expected the error to name the WHOLE declaration %q, not the term the reader "+
+					"stopped at: %v", c.declaration, err)
+			}
+			if strings.Contains(err.Error(), "could not be classified") {
+				t.Errorf("this declaration classifies perfectly well as copyleft; refusing it as "+
+					"unclassifiable would send a maintainer to edit the SPDX line rather than remove "+
+					"the font (D-8.4i.1): %v", err)
+			}
+			if !strings.Contains(err.Error(), "synthetic-fonts") {
+				t.Errorf("expected the error to LOCATE the directory (AD-14), got: %v", err)
+			}
+			if rows != nil {
+				t.Errorf("a refused directory must produce NO row, got: %v", rows)
+			}
+		})
+	}
+}
+
+// TestResolveAssetsAdmitsACompoundFontLicenceWhoseTermsAreAllAllowlisted
+// IS THE REGRESSION GUARD, and it is the reason admission lives inside
+// this story rather than after it.
+//
+// fontAssetLicenceAllowed is an EXACT-ID map of four ids, so once the
+// label becomes the whole expression, NO COMPOUND CAN EVER BE A MEMBER.
+// The label fix alone would therefore refuse a legitimately
+// dual-licensed permissive face — trading a bypass for a false refusal
+// that does not exist in the tree today. Admission is per-term for
+// exactly that reason, and this test is what reds if it stops being.
+//
+// The row must carry the WHOLE expression as its label: the manifest
+// states what the file says, and a dual-licensed file is not
+// attributable to one of its two licences.
+func TestResolveAssetsAdmitsACompoundFontLicenceWhoseTermsAreAllAllowlisted(t *testing.T) {
+	for _, declaration := range []string{"OFL-1.1 OR Apache-2.0", "Apache-2.0 OR OFL-1.1", "MIT AND Apache-2.0"} {
+		t.Run(declaration, func(t *testing.T) {
+			root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: "+declaration+"\n")
+
+			rows, err := ResolveAssets(root)
+			if err != nil {
+				t.Fatalf("a compound declaration whose every term is on the owner's four-id list must be "+
+					"ADMITTED — the fix is a classifier, not a ban on listing two names; got: %v", err)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("expected exactly one row, got %d: %v", len(rows), rows)
+			}
+			if rows[0].Licence != declaration {
+				t.Errorf("row licence = %q, want the WHOLE expression %q — labelling a dual-licensed file "+
+					"with one of its two licences is the partial label this story exists to fix", rows[0].Licence, declaration)
+			}
+		})
+	}
+}
+
+// TestResolveAssetsRefusesACompoundFontLicenceNamingTheFailingTerm is
+// what proves admission is PER-TERM rather than all-or-nothing.
+//
+// CC0-1.0 is permissive and classifiable — it is in
+// licence.permissiveSPDX, and is legitimately the Thai wordlist's
+// licence — but it is emphatically NOT one of the owner's four font
+// ids (D-8.5.3). So "OFL-1.1 OR CC0-1.0" resolves permissive, survives
+// both earlier arms, and must still be refused: an admission rule that
+// elected the first allowlisted term would be first-term-wins IN THE
+// GATE, which is DW-131's own defect one function along.
+//
+// AND IT MUST NAME CC0-1.0 SPECIFICALLY. Naming only the expression
+// would leave a maintainer to work out which half of their declaration
+// the build objected to.
+func TestResolveAssetsRefusesACompoundFontLicenceNamingTheFailingTerm(t *testing.T) {
+	root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: OFL-1.1 OR CC0-1.0\n")
+
+	rows, err := ResolveAssets(root)
+	if err == nil {
+		t.Fatalf("admission must be PER-TERM: a compound with an off-allowlist term must be refused even "+
+			"though its first term is allowlisted; got nil and %d row(s): %v", len(rows), rows)
+	}
+	if !strings.Contains(err.Error(), "not one of the licences permitted") {
+		t.Errorf("expected the OFF-ALLOWLIST refusal, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"CC0-1.0"`) {
+		t.Errorf("expected the error to name the FAILING TERM, not merely the expression: %v", err)
+	}
+	if strings.Contains(err.Error(), "could not be classified") || strings.Contains(err.Error(), "a copyleft licence") {
+		t.Errorf("this declaration classifies as permissive; it must be refused on its own arm's message, "+
+			"not a neighbouring arm's: %v", err)
+	}
+	if rows != nil {
+		t.Errorf("a refused directory must produce NO row, got: %v", rows)
+	}
+}
+
+// TestResolveWordlistAssetRowAdmitsACompoundPermissiveDeclaration is
+// RP5: the SAME mechanism defect as SITE A, at SITE B (D-8.4j.9).
+//
+// This story's half 1 makes the label the WHOLE SPDX expression a
+// licence text declares. resolveWordlistAssetRow's third arm was a bare
+// exact-id lookup — licence.IsPermissiveSPDX(wordlistSPDX) — and no
+// compound expression can ever be a member of an exact-id map. So half
+// 1 ALONE turned a wholly-permissive compound declaration into a
+// refusal that did not exist in the tree before this story, and the
+// refusal's own message asserted the project does not recognise the
+// text as permissive WHILE wordlistFamily held FamilyPermissive in
+// scope from the same ClassifyLicenceText call.
+//
+// CC0-1.0 is permissiveSPDX's deliberate member since Story 2.1
+// (D-2.1.3) because the shipped Thai dictionary is under it, and MIT is
+// permissive everywhere. "CC0-1.0 OR MIT" therefore offers nothing this
+// site objects to, and must be ADMITTED — term by term, against THIS
+// site's list and not the font allowlist.
+func TestResolveWordlistAssetRowAdmitsACompoundPermissiveDeclaration(t *testing.T) {
+	scratchWordlist := func(t *testing.T, licenceText string) string {
+		t.Helper()
+		root := t.TempDir()
+		dir := filepath.Join(root, filepath.FromSlash(wordlistAssetDir))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		for base, content := range map[string]string{
+			"words_th.txt":        "คำ\n",
+			"LICENSE-CC0-1.0.txt": licenceText,
+			"NOTICE":              "Copyright: none asserted\n",
+		} {
+			if err := os.WriteFile(filepath.Join(dir, base), []byte(content), 0o644); err != nil {
+				t.Fatalf("write %s: %v", base, err)
+			}
+		}
+		return root
+	}
+
+	for _, declaration := range []string{"CC0-1.0 OR MIT", "MIT OR CC0-1.0"} {
+		t.Run(declaration, func(t *testing.T) {
+			root := scratchWordlist(t, "SPDX-License-Identifier: "+declaration+"\n")
+
+			row, ok, err := resolveWordlistAssetRow(root)
+			if err != nil {
+				t.Fatalf("RP5: every term of %q is on THIS site's permissive set, so the wordlist must be "+
+					"ADMITTED. An exact-id lookup on a label that may now be a whole expression refuses it, "+
+					"with a message contradicting wordlistFamily in scope from the same call: %v", declaration, err)
+			}
+			if !ok {
+				t.Fatal("expected a wordlist row")
+			}
+			if row.Licence != declaration {
+				t.Errorf("wordlist row licence = %q, want the WHOLE expression %q", row.Licence, declaration)
+			}
+		})
+	}
+
+	// The gate is still a gate, and its refusal message for a SINGLE
+	// identifier is byte-identical to the one it carried before this
+	// story — that is what failingTermPhrase's same-string branch is
+	// for, and a stuttering `classifies as "X", whose term "X" is not…`
+	// would red here.
+	//
+	// A COMPOUND cannot reach this arm at SITE B, and the reason is
+	// worth stating so nobody adds a case for it: classifyBySPDX calls
+	// a term permissive iff it is in permissiveSPDX, so a compound with
+	// a term outside that set does not resolve permissive at all — it
+	// arrives as FamilyUnknown with no identifier and is caught by arm
+	// 1, or as FamilyCopyleft and is caught by arm 2. SITE A is
+	// different, and that difference is the whole point of the two
+	// policies: its list is a strict SUBSET of permissiveSPDX, so
+	// "OFL-1.1 OR CC0-1.0" resolves permissive, survives both earlier
+	// arms, and must be refused per term there.
+	t.Run("a single unrecognised identifier is refused in the message this site always used", func(t *testing.T) {
+		root := scratchWordlist(t, "SPDX-License-Identifier: CC-BY-SA-4.0\n")
+
+		_, _, err := resolveWordlistAssetRow(root)
+		if err == nil {
+			t.Fatal("expected a CC-BY-SA-4.0 wordlist licence to be refused")
+		}
+		const want = `classifies as "CC-BY-SA-4.0", which this project does not recognise as a permissive licence`
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("a single-identifier refusal must read exactly as it did before Story 8.4j.\n got: %v\nwant substring: %s", err, want)
+		}
+	})
+}
