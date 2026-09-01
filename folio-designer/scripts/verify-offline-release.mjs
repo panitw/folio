@@ -1,11 +1,13 @@
 import { brotliCompressSync, brotliDecompressSync, constants } from 'node:zlib'
-import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { serviceWorkerSource } from './offline-service-worker-template.mjs'
 import { assertPinnedRuntime, generateOfflineRelease } from './generate-offline-release.mjs'
-import { RELEASE_RUNTIME, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
+import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
+import { RELEASE_RUNTIME, declaredCacheAssetBounds, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -30,6 +32,24 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
     if (!asset || typeof asset.url !== 'string' || !asset.url.startsWith('/') || asset.url.includes('\\') || manifestUrls.has(asset.url)) fail('manifest URL is duplicate or invalid')
     manifestUrls.add(asset.url)
   }
+  // THE BOUND THE PARSER DECLARES, ENFORCED WHERE A RELEASE IS STILL REFUSABLE.
+  // src/release-payload.ts refuses a payload outside [minimum, maximum] cache
+  // assets; until this check existed nothing counted, so crossing it was a
+  // build-time silence followed by a runtime one.
+  //
+  // (a) The count is `release.assets.length`, not `s1.assetCount`: the S1 block
+  // below already ties them (`s1.assetCount !== release.assets.length` fails
+  // there), so bounding this bounds exactly the quantity parseS1Payload bounds —
+  // and it is available here, before anything that could trip first.
+  //
+  // (b) It sits BEFORE the manifest/output set comparison on the next line
+  // ON PURPOSE. A release manufactured over the bound necessarily breaks that
+  // exact-set check, and the per-asset digest and Brotli loops further down; a
+  // bound check placed after any of them could never be red-proved on its own
+  // message. Placement is what makes the proof mean something.
+  const { minimumCacheAssets, maximumCacheAssets } = declaredCacheAssetBounds()
+  if (release.assets.length > maximumCacheAssets) fail(`release carries ${release.assets.length} cache assets, over the declared maximum of ${maximumCacheAssets}`)
+  if (release.assets.length < minimumCacheAssets) fail(`release carries ${release.assets.length} cache assets, under the declared minimum of ${minimumCacheAssets}`)
   const outputUrls = runtimeOutputUrls(outputDir)
   if (!sameSet(manifestUrls, outputUrls)) fail('manifest and production runtime output are not an exact set')
   if (!manifestUrls.has('/index.html')) fail('navigation entry is absent')
@@ -102,6 +122,7 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
     if (!glue) fail('wasm runtime glue is absent from the release')
     const wasmDigest = execFileSync(process.execPath, [join(root, 'scripts', 'verify-wasm-dictionary.mjs'), join(outputDir, glue.url.slice(1)), join(outputDir, release.thaiDictionary.wasmUrl.slice(1))], { encoding: 'utf8', timeout: 30000 }).trim()
     if (wasmDigest !== release.thaiDictionary.sha256) fail('emitted wasm dictionary witness does not match the shipped dictionary')
+    assertEngineWasmIsTreeIndependent()
   }
   // The dev-server offline bypass is gated on `import.meta.env.DEV` so the
   // branch and its strings are eliminated from production bundles. Prove that
@@ -114,6 +135,64 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   if (!contract.immutableRuntime.cacheControl.includes('immutable') || contract.immutableRuntime.contentEncoding !== 'br') fail('immutable host policy is incomplete')
   if (!contract.updateableEntries.some((entry) => entry.url === '/index.html' && !entry.cacheControl.includes('immutable')) || !contract.updateableEntries.some((entry) => entry.url === '/sw.js' && !entry.cacheControl.includes('immutable'))) fail('updateable entries have immutable policy')
   return release
+}
+
+// DW-106. build-wasm.mjs guards ONE CAUSE — the absence of four VCS needles in the
+// emitted wasm. The PROPERTY that matters is that two builds of one commit agree,
+// and a guard keyed on a proxy rather than on its purpose is a defect the
+// engineering lead recorded against its own ruling (D-8.4.30). So assert the
+// property itself: build the engine twice, with the tree state DELIBERATELY
+// DIFFERENT between the two runs, and require the digests to agree — reporting
+// both, so a failure names what moved.
+//
+// ITS LIMIT, STATED RATHER THAN OVERCLAIMED: this would NOT have caught DW-105.
+// It holds the checkout PATH fixed by construction, and DW-105 is path dependence
+// — one commit built from three different paths gives three different binaries,
+// each embedding 87 occurrences of its own absolute root. The value of this check
+// is the NEXT tree-dependent input, not the one already measured.
+//
+// It runs only under --wasm-witness. `build:wasm` is a dependency of `typecheck`,
+// `test` AND `build`, so a second engine build there would tax every designer
+// gate; this is the home that runs once.
+function assertEngineWasmIsTreeIndependent() {
+  const first = join(tmpdir(), `folio-engine-tree-state-a-${process.pid}.wasm`)
+  const second = join(tmpdir(), `folio-engine-tree-state-b-${process.pid}.wasm`)
+  // An untracked file is enough: Go derives `vcs.modified` from `git status`.
+  const stray = join(root, '..', 'folio-go', `.folio-tree-state-probe-${process.pid}`)
+  try {
+    buildEngineWasm(first, { stdio: 'pipe' })
+    writeFileSync(stray, 'transient tree-state probe written by verify-offline-release.mjs\n')
+    buildEngineWasm(second, { stdio: 'pipe' })
+    const before = sha256(readFileSync(first))
+    const after = sha256(readFileSync(second))
+    if (before !== after) fail(`the engine wasm is a function of the working tree rather than of the source: two builds of this commit differing only by one stray untracked file digest ${before} and ${after}`)
+  } finally {
+    rmSync(stray, { force: true })
+    rmSync(first, { force: true })
+    rmSync(second, { force: true })
+  }
+}
+
+// DW-107. Story 8.4g red-proved its VCS-stamp guard BY HAND and recorded the
+// result in prose, so the evidence could never fail again. This is that proof,
+// executed: drop `-buildvcs=false` from the one argv that declares it, build, and
+// require the detector to report every setting Go then stamps in.
+//
+// It deliberately does NOT go through `redProof`: that harness mutates dist/ and
+// re-runs verifyOfflineRelease, and the guard under proof lives in build-wasm.mjs.
+// The shape is kept — mutate, observe a failure, hold it to the guard's OWN
+// message, restore — and the probe builds to a temp file, so src/generated/ is
+// never touched and there is nothing to restore by hand.
+function proveVCSStampGuardDiscriminates() {
+  if (!existsSync(join(root, '..', '.git'))) fail('red proof vcs-stamp-guard could not look: Go stamps VCS build info only inside a version-controlled tree, and this checkout has no .git — an all-clear here would be indistinguishable from a couldn\'t-look')
+  const probe = join(tmpdir(), `folio-engine-vcs-probe-${process.pid}.wasm`)
+  try {
+    buildEngineWasm(probe, { flags: [], stdio: 'pipe' })
+    let message
+    try { assertNoVCSStamp(readFileSync(probe), 'engine wasm built without -buildvcs=false') } catch (error) { message = error.message }
+    if (!message) fail('red proof vcs-stamp-guard escaped verification: the engine wasm built WITHOUT -buildvcs=false carries no VCS stamp, so the flag build-wasm.mjs depends on is buying nothing')
+    for (const setting of ['vcs.revision=', 'vcs.time=', 'vcs.modified=', 'vcs=']) if (!message.includes(setting)) fail(`red proof vcs-stamp-guard failed for the wrong reason: expected the detector to report ${setting}, got: ${message}`)
+  } finally { rmSync(probe, { force: true }) }
 }
 
 function rewriteRelease(outputDir, release) {
@@ -156,6 +235,35 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
   })
   redProof('s1-total-mismatch', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.cachedBytes++; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('s1-delivery-fiction', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.rows[4].delivery = 'cached-asset'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
+  // THE ENVELOPE, BOTH ENDS, PROVED BY MANUFACTURING A RELEASE OUTSIDE IT.
+  // These follow the `missing-*-row` shape rather than the `s1-*` one: the bound
+  // is a property of the asset POPULATION, so the only faithful mutation is a
+  // release that really carries the wrong number of assets. `rewriteRelease`
+  // recomputes `id` and `pageId` so the identity checks cannot trip first, and
+  // `expected` holds each proof to the bound guard's own message rather than to
+  // any failure at all.
+  redProof('asset-count-over-bound', (outputDir) => {
+    const manifest = join(outputDir, 'offline-release-manifest.json')
+    const worker = join(outputDir, 'sw.js')
+    const oldManifest = readFileSync(manifest)
+    const oldWorker = readFileSync(worker)
+    const release = readRelease(outputDir)
+    const { maximumCacheAssets } = declaredCacheAssetBounds()
+    while (release.assets.length <= maximumCacheAssets) release.assets.push({ url: `/assets/over-bound-${release.assets.length}-0123456789ab.js`, sha256: '0'.repeat(64), immutable: true })
+    rewriteRelease(outputDir, release)
+    return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
+  }, 'over the declared maximum of')
+  redProof('asset-count-under-bound', (outputDir) => {
+    const manifest = join(outputDir, 'offline-release-manifest.json')
+    const worker = join(outputDir, 'sw.js')
+    const oldManifest = readFileSync(manifest)
+    const oldWorker = readFileSync(worker)
+    const release = readRelease(outputDir)
+    const { minimumCacheAssets } = declaredCacheAssetBounds()
+    release.assets = release.assets.slice(0, minimumCacheAssets - 1)
+    rewriteRelease(outputDir, release)
+    return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
+  }, 'under the declared minimum of')
   redProof('s1-cloud-label', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.rows[0].label = 'Cloud download'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('s1-progress-denominator', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.cacheAssets.pop(); writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('s1-bootstrap-drift', (outputDir) => { const index = join(outputDir, 'index.html'); const original = readFileSync(index); writeFileSync(index, original.toString().replace('"releaseId":"', '"releaseId":"0')); return () => writeFileSync(index, original) })
@@ -170,6 +278,7 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
     generateOfflineRelease(outputDir)
     return () => { writeFileSync(file, original); generateOfflineRelease(outputDir) }
   }, 'development offline bypass shipped in')
+  proveVCSStampGuardDiscriminates()
   redProof('worker-progress-before-marker', (outputDir) => { const worker = join(outputDir, 'sw.js'); const original = readFileSync(worker, 'utf8'); const moved = original.replace("    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))\n    await progress('verified', activeAsset)", "    await progress('verified', activeAsset)\n    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))"); if (moved === original) fail('red proof could not find final marker ordering'); writeFileSync(worker, moved); return () => writeFileSync(worker, original) })
 }
 

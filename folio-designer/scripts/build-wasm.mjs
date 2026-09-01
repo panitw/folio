@@ -3,10 +3,9 @@ import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { assertNoVCSStamp } from './wasm-vcs-stamp.mjs'
+import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
 
 const designerRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const repoRoot = join(designerRoot, '..')
 const generatedDir = join(designerRoot, 'src', 'generated')
 const outputDir = join(generatedDir, 'runtime')
 const goRoot = execFileSync('go', ['env', 'GOROOT'], { encoding: 'utf8' }).trim()
@@ -36,11 +35,10 @@ const wasmPath = join(outputDir, 'folio-engine.wasm')
 // which identify the BUNDLE more precisely than a commit does, and because AD-22
 // pins an exact `toolchain` directive, making the compiler behind these bytes a
 // release event rather than an ambient fact.
-execFileSync('go', ['build', '-buildvcs=false', '-o', wasmPath, './wasm/cmd/engine'], {
-  cwd: join(repoRoot, 'folio-go'),
-  env: { ...process.env, GOOS: 'js', GOARCH: 'wasm' },
-  stdio: 'inherit',
-})
+// The flag and the argv live in wasm-vcs-stamp.mjs so the release verifier can
+// run this exact build with the flag dropped, and run it twice with the flag, as
+// executable proofs rather than as prose in a delivery log.
+buildEngineWasm(wasmPath)
 // Enforce the flag at its point of use, not only in a test: `build:wasm` is a
 // dependency of `typecheck`, `test` and `build`, so dropping the flag reddens
 // every designer gate and fails fast — and this must run here, while the raw wasm

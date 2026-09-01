@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 // Go writes its build info into the emitted binary as newline-separated
 // `build\t<key>=<value>` records. `go version -m` CANNOT read a wasm binary — it
 // answers `unrecognized file format` — so grepping its output for `vcs` prints
@@ -45,4 +49,18 @@ export function assertNoVCSStamp(source, label) {
   const found = findVCSStampSettings(source)
   if (found.length === 0) return
   throw new Error(`${label} carries a Go build-info VCS stamp, so its bytes are a function of the working tree rather than of the source: ${found.map(({ setting, value }) => `${setting}=${value}`).join(', ')}. Build it with -buildvcs=false.`)
+}
+
+// THE ENGINE'S COMPILE, SPELLED OUT ONCE. build-wasm.mjs calls this so
+// `-buildvcs=false` is declared in exactly one place; verify-offline-release.mjs
+// calls it with the flag dropped, to prove the detector above still
+// discriminates against a real stamped binary (DW-107), and twice with the flag,
+// to prove the PROPERTY the flag buys (DW-106). A second copy of this argv would
+// be precisely the drift the flag exists to close.
+export const ENGINE_BUILD_FLAGS = ['-buildvcs=false']
+const goModuleRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'folio-go')
+
+export function buildEngineWasm(outputPath, { flags = ENGINE_BUILD_FLAGS, stdio = 'inherit' } = {}) {
+  execFileSync('go', ['build', ...flags, '-o', outputPath, './wasm/cmd/engine'], { cwd: goModuleRoot, env: { ...process.env, GOOS: 'js', GOARCH: 'wasm' }, stdio })
+  return outputPath
 }

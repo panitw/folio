@@ -2,8 +2,8 @@
 title: 'Story 8.4f: A bound nobody can cross silently'
 type: 'bugfix'
 created: '2026-09-01'
-status: 'ready-for-dev'
-baseline_revision: '548aa292294ac5093c4012fadeb3f141ee1248fc'
+status: 'in-progress'
+baseline_revision: '8dd6c6e8235008fdf79abf742868885974fcc091'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -390,6 +390,92 @@ not by its line, if the two disagree (D-8.4.13).
   standing reds recorded in `## Verification` and no others.
 
 ## Spec Change Log
+
+**Re-measured at `8dd6c6e8235008fdf79abf742868885974fcc091` before the first edit, clean tree, branch
+`main`.** The spec's anchors were taken at `548aa29`; `8dd6c6e` is that commit plus this spec's own
+repair commit, and **every cited line anchor held exactly** — `release-payload.ts:7-8` (`const
+minimumCacheAssets = 10` / `const maximumCacheAssets = 64`), `:13` (the seventeen-clause condition),
+`:30-34` (`loadS1Payload`), and `verify-offline-release.mjs:12` (`fail`), `:32` (end of the manifest
+URL loop), `:33-34` (`runtimeOutputUrls` / `sameSet`), `:126-137` (`redProof`), `:139-174`
+(`runRedProofs`). **No anchor drift to record.**
+
+**Block If premise, re-measured, holds.** `cd folio-designer && npm run build` (exit 0) then reading
+`dist/offline-release-manifest.json`: **`release.assets.length` 23, `s1.assetCount` 23,
+`s1.cacheAssets` 23, `s1.cachedBytes` 38,460,370, `s1VisibleBytes` 12,425,468** — 23 against a
+declared bound of **64**, 41 to spare. (`s1VisibleBytes` is quoted with its command and is not
+reasoned from, per D-8.4.29. It differs from the figures in this spec's Read-only-evidence passage,
+which D-8.5.7 already ruled unattributed; this reading is from one build at one commit.)
+
+**1. AC3's second clause was met in substance and NOT in its literal wording — measured both ways.**
+AC3 asks that, with the new check deleted, the red proof "fails as `escaped verification`". With the
+proof shape **Task 4 prescribes** (`:142`-style: append synthetic assets, `rewriteRelease`, restore
+from buffers) that string is unreachable, and **Design Note 3 already says why**: an over-bound
+manifest necessarily also breaks `sameSet`, so `verifyOfflineRelease` still throws and `redProof`'s
+"something failed" test is still satisfied. What AC2 additionally mandates — passing `expected` —
+then catches it. Measured with the guard commented out:
+
+- `npm run verify:offline:red` reddens on the new leg with
+  `red proof asset-count-over-bound failed for the wrong reason: offline release verification failed:
+  manifest and production runtime output are not an exact set`.
+- A direct probe of `verifyOfflineRelease` over the same mutated manifest reports
+  `manifest and production runtime output are not an exact set` for **both** the over-bound and the
+  under-bound release — i.e. **nothing else in the file measures the count**.
+
+So the guard does not survive its own deletion (the gate exits non-zero on the new leg, by name), and
+nothing else in the verifier covers for it. Only the failure *string* differs from AC3's wording. The
+alternative that would produce the literal string is the `:157`/`dev-bypass-shipped` shape — write the
+synthetic asset files into `dist/assets` and call `generateOfflineRelease` so every other figure is
+regenerated and the count is the only remaining fault. It was **measured and rejected on cost**: one
+`npm run build:offline` takes **43.2s** (Brotli quality 11 over the full ~38 MB release), and that
+shape needs two of them, adding **~86s to every `verify:offline:red` run** — for a different word in
+a failure message. Recorded here rather than silently chosen.
+
+**2. Guard added that the spec did not name, to honour a Boundary it did name.** `JSON.parse('null')`
+SUCCEEDS, so once the `try` is narrowed to the parse alone, reading `.s1` off the result would throw a
+`TypeError` that the narrowed catch no longer admits — changing what a user sees on a path that is
+neither the over-the-bound path nor malformed JSON, which the Block If forbids. `loadS1Payload` now
+guards the property read so a `null` bootstrap still reaches the parser and still rejects
+(`not-an-object`), exactly as it did before. Asserted in `release-payload.test.ts`.
+
+**3. Both bound arms carry SEPARATE reasons.** Design Note 7 enforces both ends with one message
+shape; the parser goes one step further and reports `asset-count-over-maximum` and
+`asset-count-under-minimum` as **distinct** reasons, so AC4's exclusivity claim ("produced by that
+cause and by no other") is literally true of the over-the-bound reason rather than true of a shared
+"out of bounds" value.
+
+**4. T-A (DW-107) and T-B (DW-106), as routed by the orchestrator — how they landed.**
+
+- A **single authority for the engine's compile** was factored into
+  `folio-designer/scripts/wasm-vcs-stamp.mjs` (`ENGINE_BUILD_FLAGS`, `buildEngineWasm`), and
+  `build-wasm.mjs` now calls it. This is the same doctrine AC5 imposes on the bound: the verifier must
+  not re-type the argv it is proving something about. Nothing asserts over `build-wasm.mjs`'s go
+  invocation, so the move is safe (`font-binary-identity.test.ts` and `canvas-font-stack.test.ts` read
+  that file only for its `@font-face` rules).
+- **T-B** is `assertEngineWasmIsTreeIndependent()`, run inside `verifyOfflineRelease`'s existing
+  `wasmWitness` block — the expensive-witness section, reached by `npm run verify:offline:wasm` and
+  **not** by `npm run build`. It builds the engine twice, writes one stray untracked file between the
+  runs, and requires the digests to agree, reporting both. Its comment states its limit rather than
+  overclaiming it: it holds the checkout path fixed and **would not have caught DW-105**.
+- **T-A** is `proveVCSStampGuardDiscriminates()`, called from `runRedProofs`. It deliberately does
+  **not** go through `redProof`: that harness mutates `dist/` and re-runs `verifyOfflineRelease`, and
+  the guard under proof lives in `build-wasm.mjs`. The shape is kept — build with the flag dropped,
+  observe a failure, hold it to the guard's own message (all four settings named), restore — and the
+  probe builds to a temp file, so `src/generated/` is never touched and there is nothing to undo by
+  hand. It fails loudly rather than passing vacuously when the checkout has no `.git`.
+- **DW-106 and DW-107 are discharged by this story but their register entries were NOT edited** — the
+  spec forbids this story touching `deferred-work.md`, so closing them is left to the reviewer/closer.
+
+**5. Final measurement, after the change, at this dispatch's last build.** `cd folio-designer &&
+npm run build` exit 0 (it ends in `verify:offline`); `npm run verify:offline:wasm` exit 0 (it now also
+runs the DW-106 property check); `npm run verify:offline:red` exit 0 (it now also runs the two bound
+legs and the DW-107 stamp proof). Emitted release: **`release.assets.length` 23, `s1.assetCount` 23,
+`s1.cacheAssets` 23, `s1.cachedBytes` 38,460,805, `s1VisibleBytes` 12,425,468.** `cachedBytes` moved
++435 from the pre-change build in this same dispatch **because this story changed `src/main.tsx` and
+`src/release-payload.ts`, so the emitted bundle and therefore `index.html` are larger** — the figure
+is a sum that includes `index.html`'s own size. `s1VisibleBytes` (the four cached rows: engine wasm
+and three fonts) is **unchanged at 12,425,468** across both builds, which is what a source-only change
+to TypeScript should do. Neither figure is reasoned from (D-8.4.29); both are quoted with the build
+that produced them.
 
 ## Review Triage Log
 

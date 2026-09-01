@@ -38,11 +38,19 @@ async function startObservation() {
   stopObservation?.()
   lifecycle = { state: 'checking', cacheReady: false, verifiedAssetUrls: [] }; engineState = 'waiting'; render()
   try {
-    payload = loadS1Payload()
+    const result = loadS1Payload()
+    // registerOfflineLifecycle and the load screen already speak `undefined` for
+    // "no usable payload", so a rejection maps to that at exactly one place and
+    // nothing downstream changes. The REASON is not discarded on the way past: it
+    // is what the next line reads.
+    payload = result.ok ? result.payload : undefined
     const expectedPageId = document.querySelector('meta[name="folio-page-release"]')?.getAttribute('content') ?? undefined
     // The dev server emits no release bootstrap, so there is nothing to verify.
     // Start the engine straight from the module graph and let the shell say so.
-    if (import.meta.env.DEV && !payload) { lifecycle = { state: 'dev-bypass', cacheReady: false, verifiedAssetUrls: [] }; render(); void startEngine(); return }
+    // GATED ON THAT ONE REASON, not on a falsy payload: a bootstrap that is
+    // malformed, or over the release bound, is a real fault and must not be read
+    // as "the dev server did not emit one" and quietly bypassed.
+    if (import.meta.env.DEV && !result.ok && result.reason === 'no-bootstrap') { lifecycle = { state: 'dev-bypass', cacheReady: false, verifiedAssetUrls: [] }; render(); void startEngine(); return }
     stopObservation = registerOfflineLifecycle(expectedPageId, payload, (next) => { lifecycle = next; render(); void startEngine() })
     render()
   } finally { observationInFlight = false }
