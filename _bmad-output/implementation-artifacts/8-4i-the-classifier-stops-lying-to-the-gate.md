@@ -2,7 +2,7 @@
 title: 'Story 8.4i: The classifier stops lying to the gate'
 type: 'bugfix'
 created: '2026-09-02'
-status: 'done'
+status: 'in-review'
 baseline_revision: '582a01aea6bf22aef945a02a4e5d46966be1fe26'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -299,6 +299,31 @@ only then does anything become fatal.**
 
 ## Review Triage Log
 
+**Review triage, 2026-09-02. Nine findings, `patch: 9`, `defer: 0`, `reject: 0`.** Every finding is
+named with its disposition and the probe that shows the fix changed an outcome — DW-126, this story's
+own finding, is that a bare count cannot be re-checked.
+
+| # | Finding | Disposition | Probe |
+|---|---|---|---|
+| **P1** | The census was a self-comparison; its doc claimed it was a standing witness | **PATCHED** — census now pins all 35 verdicts against a test-owned table; the differential figure is attributed to `2e9365e` in all three places that cited it | `VERSION 9.9` on the OFL entry reclassifies 11 committed OFL files: census **passed** before, **reds on 11 named files** after |
+| **P2** | No gate-surface test for DW-125's reported shape | **PATCHED** — `TestResolveAssetsRefusesTheDW125BypassAtTheGate` | deleting the copyleft arm reproduces DW-125's exact symptom: a clean row `{synthetic-fonts/Synthetic.ttf MIT …}` on a green build |
+| **P3** | `readFirstBytes` failed open on a short read — DW-123's own shape in the test discharging it | **PATCHED** — `io.ReadFull` semantics; control asserts a full read | single `Read` over a one-byte-at-a-time source → 1 byte, `looksLikeSfnt=false`; `io.ReadFull` → 12 bytes, `true` |
+| **P4** | `collectLicenceSignals`' "decreasing strength" doc contradicted the resolver | **PATCHED** — doc states the real order and why unresolved-name outranks a declaration; the pairing is now tested | moving the unresolved tier below the single-id arm makes the new case return `(permissive, "MIT")` |
+| **P5** | A doc described deleted machinery, and 8.4h's AC5 two-distinct-reds bound was lost silently | **PATCHED** — comment corrected; the lost independence recorded with its measurement | deleting `permissiveSPDX["Ubuntu-font-1.0"]` reds **5** tests, not 1; deleting the `licenceNames` entry reds 2 and **not** the map-entry test — the independence is now one-way |
+| **P6** | BSD clause comment credited the Go standard library, which is in no graph | **PATCHED** — corrected to the measured seven of nine, named | the census enumerates the nine; none is the standard library |
+| **P7** | AC9 claimed "six files, all under `lint/internal/`" in a commit that also changed two records | **PATCHED** — true file set stated | `git diff --stat 582a01a..HEAD` |
+| **P8** | The commit table said `*(this commit)*` instead of a SHA | **PATCHED** — resolved to `fb92156`, with the two triage commits added | `git log` |
+| **P9** | No pointer from the surviving tables to the preserved CORRECTION blocks; the new `classifyBySPDX` coupling undocumented | **PATCHED** — both added | renaming MIT's table id to `"MIT-Expat"` makes the text classify **unknown**, exactly as the note now warns |
+
+**Two findings worth carrying forward as facts rather than as fixes.** P2's red-proof disagrees with
+itself in a useful way: narrowing SPDX collection back to the first match does **not** red the new gate
+test, because the GPL **name** signal reaches the copyleft arm on its own path — so the gate test and
+the collect-all rows measure different mechanisms and are not substitutes. And P5's bound is genuinely
+**gone**, not restored: routing name-table ids through `classifyBySPDX` is what makes every id provably
+a recognised identifier, and it costs mutation resolution. Both are written into the code rather than
+only here.
+
+
 ## Design Notes
 
 **1. THE REPORT-ONLY CENSUS WAS TAKEN AT THIS PLAN GATE, AND IT IS CLEAN. Measured at `7e4b2c4`, not
@@ -527,15 +552,33 @@ Baselines re-measured at `7e4b2c4`: `lint` four `ok` with `-count=1`; `go vet ./
 | `0c6e3b4` | Make the classifier collect every signal, and correct the comments that said it was safe (tasks 2–5) |
 | `7cb8148` | Pin the owner's four-id font allowlist to a literal the code cannot move (task 6) |
 | `90f0820` | Trip if a real font ever hides under the path the asset gate skips (task 7) |
-| *(this commit)* | Close DW-117/120/124/125, amend DW-123, register DW-126/127, and record the census (tasks 8–9) |
+| `fb92156` | Close DW-117/120/124/125, amend DW-123, register DW-126/127, and record the census (tasks 8–9) |
+| `7c6e56a` | Review triage: make the census observe something, and test the bypass where it was reported (P1–P6, P9) |
+| *(this commit)* | Review triage: correct the records that cited a differential which had stopped differing (P1b, P7, P8) |
 
 ### AC1 — the report-only census, task 1, committed at `2e9365e` before any refusal became fatal
 
-`TestLicenceSignalCensus` (`lint/internal/licence/licencecensus_test.go`) runs BOTH classifiers side by
-side. Population: **26 committed `LICENSE*`/`COPYING` files** — a deliberate superset of the 12 asset
-files and the 8 lint fixtures, since a census that enumerated only what it expected to find would not
-be a census — plus the **9 dependency licences** the three Go module graphs resolve to. **35 texts, 0
-changed verdict.**
+**AT `2e9365e`, AND ONLY THERE, THE CENSUS WAS A DIFFERENTIAL.** That commit left
+`ClassifyLicenceText` holding the old first-match switch and called the new rule only from the test, so
+the two columns were **genuinely different code**. Population: **26 committed `LICENSE*`/`COPYING`
+files** — a deliberate superset of the 12 asset files and the 8 lint fixtures, since a census that
+enumerated only what it expected to find would not be a census — plus the **9 dependency licences** the
+three Go module graphs resolve to. **35 texts, 0 changed verdict.** That measurement is what licensed
+the next commit to make refusals fatal, and it is a fact about `2e9365e`.
+
+⚠ **IT STOPPED BEING A MEASUREMENT AT `0c6e3b4`, AND THE TEST WENT ON CLAIMING OTHERWISE** — review
+finding P1, and this story's own subject arriving at instance four (D-8.0.1) inside the test written to
+catch instance three. Once `ClassifyLicenceText`'s body became `return classifyByAllSignals(text)` the
+census compared a function to **itself**: `differs` was false by construction and "0 change verdict"
+could not have printed anything else. Probed at triage: setting the OFL entry's `requiredVersion` to
+`"VERSION 9.9"` reclassifies all eleven committed OFL files to `(unknown, "")` — a total failure of the
+shipped asset gate — and the differential census still printed `0 change verdict` and **passed**.
+
+**Repaired at `7c6e56a`:** the census now **pins** every one of the 35 verdicts against a test-owned
+table (D-8.4i.3's reasoning — a derived expectation passes any edit), reds on a population member
+missing from the table and on a table entry whose file has vanished, and keeps the vacuity floors.
+Re-probed with the same `VERSION 9.9` mutation: **it now reds, on 11 named files.** The verdicts
+recorded below are the pinned table's contents.
 
 ```
    LICENSE                                                                  shipped=(permissive,"MIT") collect-all=(permissive,"MIT")
@@ -642,8 +685,11 @@ not with this story.)*
 ### AC9 — byte identity
 
 `shasum -a 256 fixtures/*/expected.pdf` from the repo root: **23** digests. `git diff --stat
-582a01a..HEAD` lists **six files, all under `lint/internal/`** — no fixture, no golden, no `.folio`, no
-engine file, nothing under `folio-go/fonts/`. `lint/MANIFEST.md` regenerated **twice** via
+582a01a..HEAD` lists **six code files, every one under `lint/internal/`**, plus the two records this
+story is obliged to keep — `_bmad-output/implementation-artifacts/deferred-work.md` and this spec.
+*(Corrected at review triage, finding P7: the original wording said "six files" full stop, in the very
+commit that also changed those two records.)* No fixture, no golden, no `.folio`, no engine file,
+nothing under `folio-go/fonts/`. `lint/MANIFEST.md` regenerated **twice** via
 `cd lint && go run ./cmd/genmanifest`, `git diff --exit-code lint/MANIFEST.md` exit 0 both times.
 `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`. `maximumCacheAssets = 64`.
 
@@ -677,6 +723,14 @@ tripwire's outcome, kept OPEN for its own unrelated `readSync` half. Two new ent
 | `shasum -a 256 fixtures/*/expected.pdf` | **23** digests |
 | `md5 -q README.md` | `078d7d80d518d54af2fc04fb270d46b8` |
 | `awk '/maximumCacheAssets/' folio-designer/src/release-payload.ts` | `= 64` |
+
+**Re-run in full after review triage (2026-09-02).** Unchanged: four `ok` in `lint` with `-count=1`;
+`go vet` clean in both modules; `lint/MANIFEST.md` regenerates with no diff, twice; **23** golden
+digests; `README.md` md5 `078d7d80d518d54af2fc04fb270d46b8`; `maximumCacheAssets = 64`; designer 40
+files / 411 tests with typecheck, build and e2e-compile at exit 0. All three standing reds reproduce
+**by identity and by figure**: `TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)` at
+`got 7, need >=20`; exactly one `gofmt -l` line, `lint/internal/rules/licencegraph_test.go`, still
+unformatted and still untouched; exactly **4** `only-export-components` warnings.
 
 **Block Ifs: none tripped.** The census reddened nothing; no golden moved; `lint/MANIFEST.md`
 regenerates with no diff; no asset directory holds more than one `LICENSE*` (DW-118 still not live); no

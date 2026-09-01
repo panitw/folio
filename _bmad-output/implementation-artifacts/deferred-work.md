@@ -5974,10 +5974,17 @@ describes are refused rather than mislabelled:
 | MIT text bundling an OFL notice | `(permissive, "MIT")` | `(unknown, "")` |
 | OFL 1.1 committed text (10 of the 11 font directories) | `(permissive, "OFL-1.1")` | **unchanged** |
 
-The blast radius this entry feared was **measured before the change, not after**: the report-only
-census (`TestLicenceSignalCensus`) ran both classifiers over 35 licence texts — 26 committed
-`LICENSE*` files plus the 9 dependency licences the three Go module graphs resolve to — and **0 of 35
-changed verdict**.
+The blast radius this entry feared was **measured before the change, not after**: at commit `2e9365e`
+— where `ClassifyLicenceText` still held the old first-match switch and the new rule was report-only,
+so the two columns were **genuinely different code** — `TestLicenceSignalCensus` ran both classifiers
+over 35 licence texts (26 committed `LICENSE*` files plus the 9 dependency licences the three Go
+module graphs resolve to) and **0 of 35 changed verdict**.
+
+**That figure belongs to `2e9365e` and is not a standing property.** From the next commit
+`ClassifyLicenceText` delegates to the new rule, so a differential would compare a function to itself
+and could report nothing else. The census was rebuilt at review triage to **pin** each of the 35
+verdicts against a test-owned table instead, which is what re-checks the population on every run
+(finding P1).
 
 Two shipped test cases DID reverse, deliberately and loudly, each recording its old expectation and
 naming D-8.4i.1: `TestClassifyOFL`'s and `TestClassifyUbuntuFontLicence`'s bundled-notice cases now
@@ -6368,8 +6375,9 @@ story whose charter is four named findings, which is how the *"the epic never en
 Behaviour is therefore **preserved exactly**, with the reason recorded at the table entry itself so the
 next reader does not take it for an oversight.
 
-**Not live today:** measured by `TestLicenceSignalCensus` over all 35 committed and dependency licence
-texts — no file in the population reaches the BSD branch by NAME. The seven Go-style BSD dependency
+**Not live today:** measured by `TestLicenceSignalCensus`, which pins the verdict of all 35 committed
+and dependency licence texts — none of them reaches the BSD branch by NAME, and the pinned table would
+red if one began to. The seven Go-style BSD dependency
 licences reach `BSD-3-Clause` through the `"REDISTRIBUTION AND USE IN SOURCE"` **clause**, correctly,
 and are genuinely 3-clause.
 
