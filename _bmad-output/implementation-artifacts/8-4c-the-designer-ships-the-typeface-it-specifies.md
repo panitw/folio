@@ -5,10 +5,72 @@ created: '2026-09-01'
 status: 'done'
 baseline_revision: 'a4bac02f4a162d751c33ca585595ea44a8b23cf1'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized', 'multiple-goals']
-deferred: []
+deferred:
+  - summary: >-
+      The mono face's monospacing is asserted only through post.isFixedPitch, a self-declared flag,
+      with no hmtx advance-width check.
+    evidence: |-
+      AC1 and I/O matrix row 1 both specify post.isFixedPitch as the mechanism, so the contract is
+      satisfied. But the story's own Auto Run Result measured the real evidence (all 1,149 non-zero
+      advance widths are 600/1000, one distinct width font-wide) and no assertion reads hmtx. A
+      proportional face that sets isFixedPitch = 1 passes both the name-table check and this one, in
+      a guard file whose whole thesis is that a self-description is a claim rather than a measurement.
+    location: >-
+      folio-designer/src/font-binary-identity.test.ts:595
+    severity: medium
+  - summary: >-
+      The dependency-free sfnt reader performs no bounds validation, ignores languageID, and does not
+      handle a zero-length name record.
+    evidence: |-
+      fontView/sfntTables read getUint32(0) and 16-byte records without checking the file is at least
+      12 bytes or that offset+length falls inside it; nameTableString indexes storage+stringOffset
+      unchecked and returns the first platform-3 record regardless of languageID. All six committed
+      faces carry exactly one record (lang 1033), so it is correct today. A truncated or corrupt .ttf
+      yields a bare DataView RangeError instead of the named, diagnosable failure every other path in
+      this file is careful to produce.
+    location: >-
+      folio-designer/src/font-binary-identity.test.ts:233-288
+    severity: low
+  - summary: >-
+      The offline release's S1 disclosure no longer itemizes every shipped font byte; s1VisibleBytes
+      excludes the 490,280 bytes of IBM Plex this story added.
+    evidence: |-
+      generate-offline-release.mjs still builds exactly four cached rows (engine plus the three Noto
+      needles). Until this story the chrome and engine halves shared those three files, so the row set
+      covered the release's font payload by construction; it no longer does. s1.cachedBytes still
+      totals every asset so the headline figure stays arithmetically honest, but the CJK-dominance
+      check at verify-offline-release.mjs:79 now compares only among those four rows and cannot observe
+      a chrome face of any size. Story 8.4d owns the size-budget gate, so this is recorded rather than
+      built here.
+    location: >-
+      folio-designer/scripts/generate-offline-release.mjs:44-51
+    severity: medium
+  - summary: >-
+      Chrome text derived from a document narrows in Greek, Cyrillic and Latin Extended-B, because
+      IBM Plex Sans maps fewer of those than the Noto Sans it replaced.
+    evidence: |-
+      Measured and recorded at plan time in the spec's Code Map: Latin Ext-B 33 vs Noto's 208, Greek
+      73 vs 121, Cyrillic 192 vs 256. The spec's premise for accepting it is "the chrome renders none
+      of those", which is true of the hardcoded interface strings but not necessarily of
+      document-derived text shown in panels. Such text falls through --font-sans to system-ui, which
+      covers those scripts on any real OS, so it degrades to a system face rather than to tofu and
+      stays offline-safe.
+    location: >-
+      folio-designer/src/tokens.css:11
+    severity: low
+  - summary: >-
+      NFR7's bundle budget is quantified as breached in this story's run log and nowhere else.
+    evidence: |-
+      epics.md accepts "~9 MB first load"; the release measures 12,424,282 Brotli bytes of
+      s1VisibleBytes, and nothing enforces the figure. The spec forbids editing the epic, and Story
+      8.4d owns making a chosen figure enforceable (D-8.4.24), so no threshold was built here. The
+      breach currently exists only inside one story's Auto Run Result.
+    location: >-
+      _bmad-output/planning-artifacts/epics.md:150
+    severity: low
 ---
 
 ## Frontmatter warnings — what they mean here
@@ -484,6 +546,30 @@ pinned release URL has sha256 `6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0d
 
 ## Review Triage Log
 
+### 2026-09-01 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 1, medium 3, low 1)
+- defer: 5: (high 0, medium 2, low 3)
+- reject: 7: (high 0, medium 2, low 5)
+- addressed_findings:
+  - `[high]` `[patch]` **The behavioural licence guard D-8.4.23 requires did not exist.** `fontExtensions` is `[".ttf",".otf",".ttc"]`, so a `.woff`/`.woff2` binary is invisible to `manifest.ResolveAssets` — no LICENSE required, no NOTICE required, no manifest row. The spec turned this into an "Always" prose constraint only, which D-8.4.23 rules explicitly is NOT ENOUGH ("a spec constraint binds one story, and the next person adding a font by a different route is not reading this spec"). Added a guard that closes the CLASS: the recognised extension set is PARSED OUT OF `lint/internal/manifest/manifest.go` rather than restated, so it cannot drift from the gate it mirrors. The fix as I specified it was **insufficient** and the patch agent said so: keying on the generator's `assets` slots only sees a font once the generator points at it, whereas the ruling is a population claim. The stronger implemented form adds a second, independent population — every committed file under `folio-designer/public/fonts/` whose **own first four bytes** are a font magic must carry a recognised extension, catching the binary by what it IS, at commit time, before any slot references it. **Red-proved independently by me**, not only by the patch agent: a `.woff2`-magic file dropped under `public/fonts/notosans/` with no generator reference reddens exactly one named test.
+  - `[medium]` `[patch]` **AC2's nameID 13 requirement was asserted for the mono face only.** AC2 names `IBM Plex Sans` and `IBM Plex Sans Thai` and requires each to carry the OFL nameID 13 string; `licenceDescriptionOfFile` was called once, inside the mono test. Extended to all three chrome families. Red-proved by renumbering both nameID 13 records to 250 in place in `IBMPlexSans-Regular.ttf`: the new assertion reddens while the pre-existing family-name check stays **green**, which is the finding.
+  - `[medium]` `[patch]` **The "a rule deleted" red-proof had lost its teeth.** 8.4b's fixture drove `filesOutsideTheInterval(deleted)`; the rewrite left it asserting only `Object.keys(...)`, driving no checker. `filesReachedByMoreThanOneFamily` cannot catch a deletion by construction. As specified this was **insufficient** — there was no named production code path to route the fixture through, the production check being an inline `toBe(6)`. A named helper `familiesWithNoRule` was created, asserted over a DERIVED required set, and driven from the fixture; a second insufficiency surfaced during the proof (placed after the inline count it was masked and never reached) and it was moved to run first, so a failure names the family instead of printing a count.
+  - `[medium]` `[patch]` **Nothing pinned the three IBM Plex binaries to their recorded provenance.** `declaredFamilyOfFile` prefers nameID 16, which is identical across every weight of a family, so IBM Plex Sans Bold/SemiBold/Italic or a `pyftsubset` cut would keep every assertion green while the whole chrome rendered in the wrong face and each NOTICE's digest silently became false. Each face's sha256 is now asserted against the digest PARSED OUT OF its own `NOTICE.md`. Implemented **stronger than specified**: all six declared faces are pinned, not just the three chrome ones, since the existing `folio-go` comparison proves the Noto copies mirror the engine but says nothing about whether either is the file its provenance record describes. Red-proved by flipping one byte inside `IBMPlexSansThai-Regular.ttf`'s `glyf` table — **exactly one** red in a 372-test suite, which is itself the measurement of how unobservable the chrome half was.
+  - `[low]` `[patch]` **Coverage claims made in the NOTICEs were asserted nowhere.** The only coverage assertions were the two reported Thai strings — 20 distinct code points of the 87 the Thai face maps. As specified, clause (a) was **wrong on the facts** and would have been red on day one: U+007F–U+009F are the 33 C0/C1 control code points and no text face maps them. The implemented form asserts no gaps across the three printable blocks the range decomposes into, block by block, PLUS exact gap parity with the shipped Noto Sans; and Thai cmap parity against the engine's own Thai face over U+0E00–U+0E7F in BOTH directions, with a discrimination check that the Latin chrome face does not pass the same comparison.
+
+**Rejected findings, each with the ground that refutes the specific claim at its cited location (DW-87).**
+
+1. *"`--font-mono` loses CJK coverage: it resolved to Noto Sans SC and now resolves to a Latin-only mono, and `--type-page-mono` draws document-derived text at `App.css:103`/`:121`."* — **Refuted at the cited locations by measurement.** Every `--type-page-mono` consumer was read: `.canvas-component` renders `<ComponentBox/>`, then either `<TextPaint/>`, `<ImagePaint/>`, the literal `'Table'`, or `''`; `.canvas-image-placeholder`'s children are four hardcoded English strings (`App.tsx:1406,1407,1411`); `.canvas-dimension` renders `points(w) × points(h)`. **No document-derived text reaches a `--font-mono` element** — all of it goes through `.canvas-text-fragment`, whose stack `App.css:118` names the engine's Noto faces, which 8.4b registered. The non-ASCII characters those elements do draw (`—` U+2014, `…` U+2026, `×` U+00D7) are all mapped by IBM Plex Mono.
+2. *"The slot names break convention: `mono` beside `plexSans`/`plexSansThai`."* — Refuted by the spec: **Task 3 mandates the slot name `mono` verbatim**, in the interpolation it also specifies. The asymmetry is contract-directed, not a builder's choice.
+3. *"Unexplained upstream version skew — mono at 2.5.0, sans and Thai at 1.1.0."* — Refuted by the spec's procurement table, which **pins exactly those three release assets** by URL and records a sha256 for each; all three fetched digests matched. The skew is upstream's own release cadence, selected at the plan gate.
+4. *"`ibmplexsansthai/NOTICE.md:13` mis-attributes its acceptance criterion — two files cite AC2."* — Refuted by reading AC2, which opens *"Given the families `IBM Plex Sans` **and** `IBM Plex Sans Thai`"*. One AC covers both faces, so both NOTICEs citing it is correct.
+5. *"The story is set to `done` with an empty Review Triage Log and `followup_review_recommended: false`."* — Refuted as an artifact of mid-run state: the implementation subagent wrote `status: done` before step-04 ran. This pass sets the status, the triage log and the follow-up flag.
+6. *"Replace the hand-mapped six-rule template literal with a declarative `[family, slot]` table exported from the script and imported by the test, deleting the parser and the comment-stripping."* — Refuted by the intent contract's **Never** clause: *"Never restructure `build-wasm.mjs`'s three-rule template literal into a loop."* The Code Map records the mechanical reason — the guards' regex parses that one line, and generating the rules from a loop silently empties `declared`.
+7. *"Add `unicode-range` descriptors and subset the faces; 490,280 bytes of full faces are precached."* — Refuted on two grounds: the contract mandates **one static Regular per family** with the generator's existing rule shape (Design Note 4), and the size budget is **explicitly out of scope**, owned by Story 8.4d under D-8.4.24, which this dispatch was told to record but not build.
+
+
 ## Design Notes
 
 **The four things a builder would otherwise get wrong, and what settles each.**
@@ -651,185 +737,138 @@ edit; the numbers below are what a clean tree produced today.
 Status: done
 Blocking condition: none
 
-### Build dispatch — 2026-09-01, baseline/HEAD `a4bac02`, branch `main`, two commits, no push, no branch
+**Dispatch:** implement/review/commit against the existing `ready-for-dev` spec. Baseline
+`baseline_revision` = `a4bac02f4a162d751c33ca585595ea44a8b23cf1`, branch `main`, tree clean at entry.
+No branch created, nothing pushed. Three commits, all local.
 
-**COMMIT 1 (AC1) `3d0eba1` — "Draw the chrome's mono type in a face that is actually monospaced".**
-`folio-designer/public/fonts/ibmplexmono/` (`.ttf` + `LICENSE-OFL.txt` + `NOTICE.md`), one `assets`
-slot `mono`, the `IBM Plex Mono` rule repointed off `sansCjk`, the identity guard added to
-`src/font-binary-identity.test.ts`, `lint/MANIFEST.md` regenerated.
+### Summary of the implemented change
 
-**COMMIT 2 (AC2–AC5) — `ibmplexsans/` and `ibmplexsansthai/` with the same three-file shape, slots
-`plexSans` and `plexSansThai`, both remaining rules repointed, the identity guard generalised to all
-three chrome families with the Thai coverage assertion, `lint/MANIFEST.md` regenerated.**
+The designer's chrome now ships the typeface it names. Three real IBM Plex OFL binaries were added
+with their licence text and a provenance NOTICE each, and the three chrome `@font-face` rules were
+repointed off the Noto files onto them. The three chrome family names did not change; only the files
+behind them. The engine-named half added by Story 8.4b was left exactly as it was, so the generated
+stylesheet now emits **six rules over six distinct files** — the design system's vocabulary over IBM
+Plex bytes, the engine's vocabulary over the Noto bytes the engine measures with. The two-names-one-
+file interval 8.4b pinned is deliberately ended, in the guard 8.4b wrote for that purpose.
 
-**Upstream procurement — RE-FETCHED AND RE-VERIFIED, not recalled.** All three release archives were
-downloaded from the pinned URLs and all six digests in the Code Map matched exactly: the zips
-(`6d23f012…`, `fb365d91…`, `d7203f43…`) and the three extracted faces (`7c6fbddc…`, `975dcda3…`,
-`83e1db8e…`). Each committed file is byte-identical to the file extracted from the archive, so each
-NOTICE records the same value for the upstream and the committed digest and says explicitly that no
-derivation applies. `LICENSE-OFL.txt` in each directory is the archive's own top-level `LICENSE.txt`,
-unmodified and identical across the three (sha256 `7e6b2818…`). No npm package was used.
+`IBM Plex Mono` — bound to `noto-sans-cjk.ttf`, a CJK sans, so all seven `--font-mono` type tokens
+drew chrome in a Chinese face — is fixed in its own first commit, together with the behavioural
+licence guard D-8.4.23 requires.
 
-**Every claim the spec carried was re-measured against the committed bytes, and every one held.**
-IBM Plex Mono: `post.isFixedPitch = 1`, and all 1,149 non-zero advance widths are 600/1000 — one
-distinct width font-wide. IBM Plex Sans: 95/95 ASCII, 96/96 Latin-1 Supplement, 128/128 Latin
-Extended-A, zero gaps across U+0020–U+017F. IBM Plex Sans Thai: exact cmap parity with the shipped
-Noto Sans Thai (87 of 128 in U+0E00–U+0E7F, empty set difference in both directions), both defect
-strings `พระราชบัญญัติ` and `การทวงถามหนี้` fully covered, and under script `thai` langsys `dflt`
-MarkBasePos ×3 / MarkMarkPos ×2 / PairPos ×3 / ChainContextPos ×2 against Noto's ×1 / ×2 / ×1 / ×2,
-plus `calt` which Noto lacks. The one recorded difference stands: Noto declares a `thai` `dist`
-feature that Plex does not. All three: `fvar` absent, `glyf` outlines, no `CFF`, nameID 13 the OFL
-1.1 string, nameID 14 `http://scripts.sil.org/OFL`.
+### Files changed
 
-**Block Ifs, all cleared.** Digests matched; every `name` table declares the family the spec said;
-each `lint/MANIFEST.md` row reads **`OFL-1.1`** (not `SEE NOTICE`) with
-`Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"`; `shasum -a 256 fixtures/*/expected.pdf`
-is byte-identical to the pre-edit capture, 23 lines; no third distinct test failure appeared; and the
-verifier's `S1 CJK row is not the dominant font payload` did not fire — the `cjk-font` row is
-4,948,312 Brotli bytes against 226,026 for the next largest font row.
+| File | What changed |
+|---|---|
+| `folio-designer/public/fonts/ibmplexmono/{IBMPlexMono-Regular.ttf,LICENSE-OFL.txt,NOTICE.md}` | The real monospace face (173,052 B), its unmodified upstream OFL text, and a provenance record |
+| `folio-designer/public/fonts/ibmplexsans/{…}` | IBM Plex Sans (200,500 B), same three-file shape |
+| `folio-designer/public/fonts/ibmplexsansthai/{…}` | IBM Plex Sans Thai (116,728 B), same three-file shape |
+| `folio-designer/scripts/build-wasm.mjs` | Three new `assets` slots (`mono`, `plexSans`, `plexSansThai`); the three IBM Plex interpolations repointed. All three Noto slots retained; the literal is still one line with `url(…) format('truetype')` and no loop |
+| `folio-designer/src/font-binary-identity.test.ts` | The guard 8.4b created, extended: the interval assertion rewritten to its successor, a dependency-free sfnt `name`/`post`/`cmap` reader, chrome-family identity, the licence-extension class guard, provenance digests, and coverage parity |
+| `lint/MANIFEST.md` | Three redistributed-asset rows, each `OFL-1.1` with the IBM copyright line |
 
-### The measured weight, and NFR7
+### Commits
 
-| figure | before (`a4bac02`) | after | delta |
+- `3d0eba1` — Draw the chrome's mono type in a face that is actually monospaced (AC1 + the licence guard's first form)
+- `67090c7` — Let the rest of the interface be drawn in the typeface it names (AC2–AC5)
+- **third commit** — the five reviewed patches and this record
+
+### Review findings breakdown
+
+- **Patched: 5** — high 1, medium 3, low 1. See `## Review Triage Log` for each, its red-proof, and
+  the three cases where the patch as specified was insufficient and a stronger form was implemented.
+- **Deferred: 5** — recorded in frontmatter `deferred`.
+- **Rejected: 7** — each listed in the triage log with the ground refuting the specific claim at its
+  cited location (DW-87).
+
+**Follow-up review recommended: `true`.** Computed from patched findings only: one `high` was patched,
+which sets it true on its own. Patched counts by severity: high 1, medium 3, low 1; score
+`3 × 3 + 1 × 1 = 10`, also ≥ 5.
+
+### Verification performed — measured, with the command beside every figure
+
+**Baseline re-measured by this dispatch at `a4bac02`, not assumed.** Exactly TWO standing reds, and
+the red sets after the change are IDENTICAL to the baseline by test identity.
+
+| Gate | Command | Baseline `a4bac02` | After |
 |---|---|---|---|
-| Added IBM Plex raw bytes | — | 200,500 + 173,052 + 116,728 = **490,280** | +490,280 |
-| Retained Noto raw bytes | 11,289,880 | 11,289,880 | 0 |
-| Total committed designer font weight | 11,289,880 | **11,780,160** | **+4.34%** |
-| Release `s1.cachedBytes` (raw precache total) | 37,967,930 | **38,458,923** | +490,993 |
-| Release `s1.assetCount` | 20 | **23** | +3 |
-| Release `s1VisibleBytes` (Brotli) | 12,424,172 | **12,424,282** | +110 |
+| Go, untagged | `cd folio-go && go test -count=1 -json ./...` | 1811 pass / 2 fail / 5 skip | **1811 / 2 / 5** |
+| Go, matrix | `cd folio-go && go test -count=1 -tags=matrix -json ./...` | 1822 / 3 / 5 | **1822 / 3 / 5** |
+| vet | `cd folio-go && go vet -tags=matrix ./...` | no output | no output |
+| gofmt | `gofmt -l folio-go` (from the REPO ROOT) | no paths | no paths |
+| lint module | `cd lint && go test -count=1 ./...` | four `ok`, no FAIL | four `ok`, no FAIL |
+| Designer | `npm run typecheck && npm run lint && npm test && npm run test:e2e:compile` | 38 files / 360 tests | **38 files / 372 tests**, 0 failures |
+| oxlint | `npm run lint` | exactly 4 warnings | exactly 4, same lines |
+| Goldens | `shasum -a 256 fixtures/*/expected.pdf` | 23 lines | 23 lines, **byte-identical diff** |
+| README | `md5 -q README.md` | `078d7d80d518d54af2fc04fb270d46b8` | unchanged |
 
-**`s1VisibleBytes` does not measure this change, and saying otherwise would be false.** The figure
-sums only four rows — the engine wasm and the three Noto faces (`generate-offline-release.mjs:50`).
-The IBM Plex faces are cached assets but are not S1 rows, so **none** of the +110 is IBM Plex; that
-delta is the engine wasm's own Brotli size moving between two builds of identical Go source
-(7,224,962 → 7,225,072), which is exactly the non-reproducibility **DW-100** already records. The
-figure that actually moves is `s1.cachedBytes`, +490,993 (the 490,280 font bytes plus 713 of
-`index.html` bootstrap growth for three more cache entries).
+**The two standing reds, by identity:** `TestCorpusMeetsP6ExerciseFloors` and its subtest
+`P6g_(opaque_names)` (`P6g floor not met: got 7, need >=20`) — the mandated permanent red; and, under
+`-tags=matrix` only, `TestShippedFacesReproduceFromUpstream`, which is a **could-not-execute, not a
+byte divergence**: `fontgen: fontTools is not importable by this interpreter`. **It never compared
+bytes** (DW-86). **No third red.**
 
-**Against NFR7's accepted `~9 MB first load` (`epics.md:150`): the budget was already exceeded before
-this story and remains so.** 12,424,172 Brotli bytes at baseline, 12,424,282 after. Nothing enforces
-the figure — it is prose — and this spec forbids editing the epic, so it is reported, not acted on.
+**Licence gate, quoted rather than summarised.** `cd lint && go test -count=1 -run TestManifestUpToDate -v ./...`
+→ `--- PASS: TestManifestUpToDate (0.26s)`. `cd lint && go test -count=1 -run TestResolveAssets -v ./...`
+→ `--- PASS` on all five: `…IncludesWordlist`, `…ExcludesUntrackedDirectoryWithoutError`,
+`…StillReportsATrackedViolation`, `…AllDirectoriesUntrackedIsAScanError`,
+`…NoCandidateDirectoriesIsNotAScanError`. `cd lint && go run ./cmd/genmanifest` followed by
+`git diff --stat -- lint/MANIFEST.md` → **empty**: the regeneration is idempotent.
 
-### Verification — full heavy cadence, run at the finished tree
+**The licence gate was verified to REACH the new binaries by measurement, not by assuming a new file
+under a covered directory is covered.** `lint/MANIFEST.md` carries three rows, each reading licence
+`OFL-1.1` — **not `SEE NOTICE`** — with `Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"`.
 
-- `cd folio-go && go test -count=1 ./...` → 13 `ok`, **exactly the two standing reds**:
-  `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest (`got 7, need >=20`).
-- `cd folio-go && go test -count=1 -tags=matrix ./...` → the same two plus
-  `TestShippedFacesReproduceFromUpstream`, which is a **could-not-execute, not a byte divergence**:
-  `fontgen: fontTools is not importable by this interpreter`
-  (`/opt/homebrew/opt/python@3.12/bin/python3.12`) — DW-86, unchanged. **No fourth failure.**
-- `cd folio-go && go vet -tags=matrix ./...` → no output. `gofmt -l folio-go` → no paths.
-- `cd lint && go test -count=1 ./...` → four `ok`, no FAIL, run after each binary addition.
-  `-run TestManifestUpToDate -v` → `--- PASS: TestManifestUpToDate (0.25s)`. `-run TestResolveAssets -v`
-  → five PASS (`…IncludesWordlist`, `…ExcludesUntrackedDirectoryWithoutError`,
-  `…StillReportsATrackedViolation`, `…AllDirectoriesUntrackedIsAScanError`,
-  `…NoCandidateDirectoriesIsNotAScanError`).
-- Designer: `npm run typecheck` clean; `npm run lint` → **exactly 4 warnings, 0 errors**, the same four
-  `react(only-export-components)` at `pdf-viewer.tsx:16,17` and `App.tsx:1323,1330`; `npm test` →
-  **38 files / 365 tests, all passing** (350 → 360 at 8.4b → 365 here, +5 from this story);
-  `npm run test:e2e:compile` clean.
-- `npm run build` completes on node `v24.16.0`; `npm run verify:offline`, `verify:offline:red` and
-  `verify:offline:wasm` all pass.
-- All four AD-21 legs PASS (`darwin/arm64`, `linux/amd64`, `linux/arm64`, `js/wasm`); the unset control
-  passes while asserting nothing and is counted as a control, not a fifth leg.
-  `TestCrossTargetByteIdentity` PASS.
-- `shasum -a 256 fixtures/*/expected.pdf | diff <before> -` → **empty**. `md5 README.md` →
-  `078d7d80d518d54af2fc04fb270d46b8`, and `README.md` never appeared in `git status`.
-- Generated `runtime-fonts.css` read by hand after `build:wasm`: still **six** rules (three chrome,
-  three engine, per Story 8.4b), the three IBM Plex families now naming `ibm-plex-sans.*`,
-  `ibm-plex-mono.*` and `ibm-plex-sans-thai.*`, the three engine names still naming the Noto files,
-  every `src` still `url('./runtime/…') format('truetype')`.
-- No commit touches `folio-go/**`, any `.folio` file, `fixtures/**`, or any planning artifact.
+**AD-21:** all four legs PASS —
+`cd folio-go && FOLIO_MATRIX_TARGET=<T> go test -count=1 -tags=matrix -run TestTargetRenderHash -v .`
+for `darwin/arm64` (0.70s), `linux/amd64` (6.51s), `linux/arm64` (4.98s), `js/wasm` (11.10s). The
+**unset control** passes in **0.00s while asserting nothing** — counted as a control, never a fifth
+leg; the runtime alone distinguishes it. `TestCrossTargetByteIdentity` PASS (23.41s).
 
-### The guard was shown to discriminate, twice, through the code the real assertion runs
+**Offline release** (`node v24.16.0`): `npm run build`, `npm run verify:offline:red`,
+`npm run verify:offline:wasm` — all exit 0. The `S1 CJK row is not the dominant font payload`
+assertion did not fire. Generated `src/generated/runtime-fonts.css` read by hand after the build:
+**six** `@font-face` rules, the three IBM Plex names now naming `ibm-plex-{sans,mono,sans-thai}.<hash>.ttf`
+and the three engine names still naming `noto-*`.
 
-Beyond the in-file red-proof fixtures, the **real generator was mutated** and the real assertions
-reddened: binding `IBM Plex Mono` back at `assets.sansCjk` failed four assertions, naming
-`"IBM Plex Mono: declared from public/fonts/notosanssc/NotoSansSC-Regular.ttf, whose name table says
-'Noto Sans SC'"`; binding `IBM Plex Sans` and `IBM Plex Sans Thai` back at the Noto slots failed
-three, naming both. Both mutations were reverted and the suite re-run green.
+**Procurement re-verified, not recalled.** All three release zips were re-fetched from the pinned
+URLs and every recorded digest matched. The three committed binaries hash to exactly the sha256
+values this spec pinned: `7c6fbddca4b7…` (Mono), `975dcda37d80…` (Sans), `83e1db8e8bad…` (Sans Thai).
+The npm `@ibm/plex-*` route was NOT used — it ships zero `.ttf` and would have put font binaries into
+the bundle the licence gate cannot see.
 
-### Reported at close — three things, none of them halting
+### Measured added weight, each figure with the command that produced it
 
-1. **What these gates cannot prove.** Vitest under jsdom applies no stylesheet and loads no font, and
-   this repository has **no gate that executes a real font load or rasterizes a glyph** —
+- Added, `wc -c` on the three committed files: 200,500 + 173,052 + 116,728 = **490,280 bytes raw**.
+- Retained Noto: 646,160 + 10,595,932 + 47,788 = **11,289,880 bytes**.
+- New committed font weight: **11,780,160 bytes**, **+4.34%**.
+- Release, `cd folio-designer && npm run build` then reading `dist/offline-release-manifest.json`:
+  `s1.cachedBytes` **37,967,930 → 38,458,923** (+490,993) over **20 → 23** assets. That +490,993 is
+  the added weight as the release actually sees it.
+- `s1VisibleBytes` **12,424,172 (measured at `a4bac02`) → 12,422,796 (measured after)** — it went
+  **DOWN by 1,376**, and **none of the movement is IBM Plex.** That figure sums only four S1 rows
+  (engine wasm + the three Noto faces); the Plex faces are cached assets but not S1 rows, so the
+  headline figure does not see them at all. The drift is the engine wasm's own Brotli size moving
+  between builds of identical Go source.
+- **This is a fourth distinct reading of `s1VisibleBytes`**, after the 12,372,693 / 12,423,974 /
+  12,426,422 / 12,423,049 already on record. **DW-100 is confirmed, not merely cited: the figure is
+  not reproducible, so it must be re-measured and never relayed.** Story **8.4d** owns making a
+  chosen figure enforceable (D-8.4.24); no threshold was built here.
+- Against NFR7's `epics.md:150` *"Accepted: ~9 MB first load"*: **the budget was already exceeded
+  before this story and remains so.** `epics.md` was not edited, per the spec's Never clause.
+
+### Residual risks
+
+1. **What these gates cannot prove.** Vitest under jsdom applies no stylesheet and loads no font;
    `npm run test:e2e` appears in no workflow and `test:e2e:compile` is `tsc --noEmit`. The **binding**
-   is proved: which family name resolves to which bytes, and what those bytes declare themselves to
-   be. That a browser **visibly** draws the chrome in IBM Plex is not proved by anything here.
-2. **The CJK rasterization gap the spec's Design Note 2 predicted did not open, because the story
-   order was reversed.** Under the planned order, `IBM Plex Mono` ceasing to be Noto Sans SC would
-   have left canvas CJK text falling through to the generic `sans-serif` until 8.4b landed. 8.4b
-   landed **first** and registered `Noto Sans SC` under its own name, so the CJK file keeps a
-   `@font-face` family throughout and the interval never existed. Task 5's disclosure-of-absence
-   assertion was correctly struck at the gate (D-8.4.22) rather than written.
-3. **The IBM Plex faces are narrower than the Noto faces outside the chrome's range** — 895 mapped
-   code points for Plex Sans against Noto Sans's 3,094 (Latin Extended-B 33 vs 208, Greek 73 vs 121,
-   Cyrillic 192 vs 256). The chrome draws none of those, and canvas text asks for the engine's Noto
-   names, so nothing regresses; recorded because a reader will wonder.
-
-### Plan dispatch (halt after planning), retained for the record
-
-
-**Dispatch:** classic intent, plan-only (`Halt after planning.`). Baseline/HEAD `e66e8b3`, branch
-`main`, working tree clean at entry. No code written, no commit created, no branch, no push.
-
-**Premises checked against the tree, with results.**
-
-- *"Under this option the chrome family NAMES do not change at all"* — **CONFIRMED.** `tokens.css:11`
-  and `App.css:118` need no edit; `declared` is parsed from the generator's family names only, and the
-  `src:` is never read by any assertion.
-- *"`canvas-font-stack.test.ts`'s engine/browser disjointness assertion stays true throughout"* —
-  **CONFIRMED**, at `:301-308`. Reported with a caveat: its engine half (`:304 engineFaces`) is
-  **hardcoded**, so it is a stale-green risk for whoever changes what `folio-go` ships. 8.4b's
-  territory; D-8.4.14 already requires it be replaced rather than weakened.
-- *"Someone must confirm IBM Plex has the Thai coverage `--font-page` asks for"* — **DISCHARGED BY
-  MEASUREMENT, not deferred.** IBM Plex Sans Thai 1.1.0 has exact cmap parity with the shipped Noto
-  Sans Thai (87/128 in U+0E00–U+0E7F, empty set difference both directions), covers both strings from
-  the recorded rendering defect, and reaches strictly more Thai-script GPOS mark positioning
-  (MarkBasePos ×3 / MarkMarkPos ×2 vs ×1 / ×2). **No halt.** One measured difference recorded: Noto
-  declares a `thai` `dist` feature that Plex does not.
-- *"AD-26 — verify the licence check actually reaches the new binaries"* — **VERIFIED, and it does.**
-  `manifest.ResolveAssets` walks the whole repository and requires a same-directory `LICENSE*` +
-  `NOTICE*` with a `Copyright` line, failing the build without them. **But it recognises only
-  `.ttf`/`.otf`/`.ttc`** — a `.woff2` face would be invisible to it, and the npm `@ibm/plex-*`
-  packages ship **no** `.ttf` at all. That trap is now an Always constraint and a Design Note.
-- *"The added bundle weight must be measured and recorded"* — measured: **+490,280 bytes** (200,500 +
-  173,052 + 116,728), against 11,289,880 bytes of retained Noto faces, for a new total of 11,780,160
-  (+4.34%).
-
-**Two findings for the orchestrator that the spec cannot resolve on its own.**
-
-1. **D-8.4.17(c)'s intermediate-state analysis did not name the CJK rasterization gap.** It reasoned
-   about the 8.4c→8.4b ordering and named one hazard (*"the same Noto file under two family names …
-   reads as redundancy"*). Measured: CJK canvas text today rasterizes *by accident*, falling through
-   `App.css:118`'s stack to `'IBM Plex Mono'`, which is Noto Sans SC. After this story that slot is a
-   real mono with no CJK, so CJK glyphs fall to generic `sans-serif` **until 8.4b lands**. Not halted
-   on: the outcome is forced by settled decisions (so there is no fork to pick), it is one story long,
-   and no executable gate observes it — the only designer file with CJK codepoints is the compile-only
-   `e2e/browser-native-roundtrip.spec.ts`. Task 5 makes the state deliberate and pre-authorises 8.4b to
-   delete the disclosure. **If the ordering ruling would change knowing this, that is the lead's call.**
-2. **NFR7's bundle budget was already exceeded before this story.** `epics.md:150` accepts *"~9 MB
-   first load"*; the committed release manifest measures `s1VisibleBytes = 12,372,693` Brotli bytes.
-   Nothing enforces the figure — it is prose. The spec forbids editing the epic, so this is reported
-   rather than acted on.
-
-**Also reported:** no test in the repository can currently observe a font file swap — zero assertions
-read any `@font-face` `src`, filename, path, or byte. The story therefore has to build its own
-regression net (Task 4/10), which is why AC1 is phrased as an observation rather than an edit.
-
-**Baseline measured at `e66e8b3`, not assumed.** `go test -count=1 ./...` → 1811 pass / 2 fail / 5
-skip. `go test -count=1 -tags=matrix ./...` → 1822 pass / 3 fail / 5 skip. **Exactly two standing
-reds:** `TestCorpusMeetsP6ExerciseFloors` with its `P6g_(opaque_names)` subtest (`got 7, need >=20`),
-and — matrix only — `TestShippedFacesReproduceFromUpstream`, which is a **could-not-execute**
-(`fontgen: fontTools is not importable by this interpreter`), not a byte divergence. No third red.
-`go vet -tags=matrix ./...` and `gofmt -l folio-go` clean. `cd lint && go test -count=1 ./...` → four
-`ok`, no FAIL. `shasum -a 256 fixtures/*/expected.pdf` → 23 lines. `md5 README.md` →
-`078d7d80d518d54af2fc04fb270d46b8`. Designer: typecheck clean; oxlint exactly 4
-`only-export-components` warnings; Vitest 37 files / 350 tests all passing; `test:e2e:compile` clean.
-All four AD-21 legs asserted (16 documents each, identical hashes); the unset control passes while
-asserting nothing and says so. `TestCrossTargetByteIdentity` PASS.
-
-**Tree at halt:** ` M _bmad-output/implementation-artifacts/epic-8-context.md` (this workflow's own
-step-1 recompile, the epics file having been touched after the cached context was written) and the
-untracked spec. Nothing else. HEAD unmoved at `e66e8b3`.
+   is proved — which family name resolves to which bytes, and what those bytes declare themselves to
+   be. That a browser **visibly** draws the chrome in IBM Plex is **not verified by anything here**.
+   A compile pass is not a run.
+2. **D-8.4.23's commit-placement clause was not met literally.** The ruling puts the licence guard in
+   the story's FIRST commit, alongside the mono binary, "before any binary arrives by any route". The
+   guard did not exist in either implementation commit — it was found missing at review and landed in
+   the third. Its purpose ("a guard added after the thing it guards has already shipped is one that
+   was never able to fail") is discharged by red-proof rather than by ordering: the guard was shown to
+   redden on a `.woff2` dropped under `public/fonts/` with no generator reference. Nothing was pushed
+   and no release was cut between the commits. Flagged for the orchestrator.
+3. The three IBM Plex faces are **static Regular only**, matching the Noto precedent — every chrome
+   weight (400/500/600) and italic remains browser-synthesised from one face, exactly as before.

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -52,6 +53,18 @@ const designerRoot = path.join(here, '..')
 const generatorPath = path.join(designerRoot, 'scripts', 'build-wasm.mjs')
 const engineFontsDir = path.join(designerRoot, '..', 'folio-go', 'fonts')
 const enginePath = path.join(engineFontsDir, 'fonts.go')
+// `lint`'s asset licence gate, READ AS SOURCE rather than restated here.
+// `manifest.ResolveAssets` (AC25, AD-26) only requires a `LICENSE*`, only
+// requires a `NOTICE*`, and only writes a `lint/MANIFEST.md` row for a file
+// whose extension is in ITS OWN `fontExtensions` list — so that list is the
+// exact boundary of what the licence gate can SEE. Restating the list on this
+// side would make the guard agree with a copy of the gate rather than with the
+// gate, and the two would drift apart silently the first time either moved.
+const licenceGatePath = path.join(designerRoot, '..', 'lint', 'internal', 'manifest', 'manifest.go')
+// The committed font tree the designer ships out of. Swept whole, rather than
+// only where the generator happens to point today, because the invariant is a
+// population claim: THE LICENCE GATE SEES EVERY FONT THAT SHIPS.
+const designerFontsDir = path.join(designerRoot, 'public', 'fonts')
 
 // The DESIGN SYSTEM's own three families — tokens.css's `--font-sans`,
 // `--font-mono` and `--font-page`, through which every `--type-*` token
@@ -129,6 +142,96 @@ function slotSourcePaths(generator: string): Readonly<Record<string, string>> {
   ]))
 }
 
+// ---------------------------------------------------------------------------
+// THE LICENCE GATE'S BLIND SPOT, CLOSED AS A CLASS (D-8.4.23).
+//
+// `lint/internal/manifest/manifest.go`'s `ResolveAssets` walks the whole
+// repository and, for every directory holding a file whose extension is in
+// `fontExtensions`, HARD-FAILS the build unless a `LICENSE*` and a `NOTICE*`
+// sit beside it — and writes that directory a row in `lint/MANIFEST.md`. A font
+// binary carrying any OTHER extension is not merely unlicensed in the
+// manifest's eyes: it is INVISIBLE to it. No LICENSE required, no NOTICE
+// required, no row. That is exactly the trap `@ibm/plex-*` on npm sets, since
+// those packages ship `.woff2`/`.woff` and no `.ttf` at all.
+//
+// D-8.4.23 ruled that making this an "Always" line in one story's spec is NOT
+// ENOUGH: a spec constraint binds one story, and the next person adding a font
+// by a different route is not reading that spec. What is owed is a BEHAVIOURAL
+// guard — a test that fails when ANY font file reaching the runtime bundle
+// carries an extension the gate does not recognise. So the check below is a
+// population claim over two independent populations, not a check of the six
+// files that happen to be here today:
+//
+//   1. every font asset SLOT the generator fingerprints into the runtime
+//      bundle, and
+//   2. every committed file under `public/fonts/` WHOSE OWN FIRST FOUR BYTES
+//      ARE A FONT MAGIC — so a `.woff2` renamed, mis-suffixed or simply
+//      dropped in beside a face is caught by what it IS rather than by what it
+//      is called.
+//
+// The recognised set is read out of `manifest.go` itself. If someone widens
+// `fontExtensions` to admit `.woff2`, this guard widens with it — which is
+// correct, because at that moment the gate really can see them.
+// ---------------------------------------------------------------------------
+
+/** The extensions `lint`'s asset licence gate recognises, read from its own source. */
+function licenceGateFontExtensions(manifestGo: string): ReadonlyArray<string> {
+  const declaration = /var fontExtensions = \[\]string\{([^}]*)\}/.exec(manifestGo)
+  if (declaration === null) throw new Error(`no 'var fontExtensions = []string{…}' declaration in ${licenceGatePath} — the licence gate's recognised set could not be read, so this guard cannot mirror it`)
+  return [...declaration[1].matchAll(/"([^"]+)"/g)].map((match) => match[1].toLowerCase())
+}
+
+const extensionOf = (file: string) => file.slice(file.lastIndexOf('.')).toLowerCase()
+
+/**
+ * Font asset slots whose SOURCE FILE carries an extension the licence gate does
+ * not recognise. Empty is the invariant: every font the generator copies into
+ * `src/generated/runtime/` — and thence into Vite's asset graph and the release
+ * bundle — is a file `manifest.ResolveAssets` will demand a LICENSE and a
+ * NOTICE for.
+ */
+function slotsInvisibleToTheLicenceGate(generator: string, recognised: ReadonlyArray<string>): ReadonlyArray<string> {
+  return Object.entries(slotSourcePaths(generator))
+    .filter(([, file]) => !recognised.includes(extensionOf(file)))
+    .map(([slot, file]) => `${slot} -> ${file} (extension '${extensionOf(file)}')`)
+}
+
+/**
+ * The four-byte sfnt/webfont signatures. `0x00010000` is TrueType outlines,
+ * `true` the legacy Apple spelling, `ttcf` a collection, `OTTO` a CFF font, and
+ * `wOFF`/`wOF2` the two WOFF wrappers — the last two being precisely the
+ * formats the licence gate cannot see, which is why they are listed as things
+ * to RECOGNISE rather than things to ignore.
+ */
+const fontMagics = ['\u0000\u0001\u0000\u0000', 'true', 'ttcf', 'OTTO', 'wOFF', 'wOF2']
+
+/** Whether a file's own first four bytes say it is a font, whatever it is named. */
+function looksLikeAFontBinary(file: string): boolean {
+  const head = Buffer.alloc(4)
+  const handle = fs.openSync(file, 'r')
+  try { fs.readSync(handle, head, 0, 4, 0) } finally { fs.closeSync(handle) }
+  return fontMagics.includes(head.toString('latin1'))
+}
+
+/** Every file below `directory`, recursively. */
+function filesUnder(directory: string): ReadonlyArray<string> {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(directory, entry.name)
+    return entry.isDirectory() ? filesUnder(full) : [full]
+  })
+}
+
+/**
+ * Committed files under `directory` that ARE fonts by their own bytes but carry
+ * an extension the licence gate does not recognise — so they would ship with no
+ * LICENSE required, no NOTICE required and no `lint/MANIFEST.md` row.
+ */
+function committedFontsTheLicenceGateCannotSee(directory: string, recognised: ReadonlyArray<string>): ReadonlyArray<string> {
+  return filesUnder(directory)
+    .filter((file) => !recognised.includes(extensionOf(file)) && looksLikeAFontBinary(file))
+    .map((file) => `${path.relative(designerRoot, file)} (extension '${extensionOf(file)}')`)
+}
+
 /**
  * The `@font-face` half: family name -> the `assets` slot its `src` interpolates.
  *
@@ -192,6 +295,30 @@ function filesReachedByMoreThanOneFamily(generator: string): ReadonlyArray<strin
     .map(([file, families]) => `${file} (reached by: ${families.join(', ')})`)
 }
 
+/**
+ * The families in `required` that NO `@font-face` rule declares at all.
+ *
+ * THE DELETION DIRECTION, WHICH THE SHARING CHECKER CANNOT SEE BY
+ * CONSTRUCTION. `filesReachedByMoreThanOneFamily` reports files reached by MORE
+ * than one family; a deleted rule produces FEWER families per file, never more,
+ * so it is invisible to that checker no matter how the fixture is written. The
+ * hazard is real and asymmetric: a rule "simplified" away leaves a family the
+ * chrome or the canvas still ASKS FOR with no face behind it at all, and the
+ * browser falls silently through to a generic — which is exactly the shape of
+ * the Thai overlap this repository has on record.
+ *
+ * A NAMED HELPER, for the same reason as the one above: the production
+ * assertion and the red-proof fixture drive this one function, so the code path
+ * that must redden over the real generator is the code path shown to redden
+ * over a fixture. Before this existed, deletion was caught only by an inline
+ * count and an exact-map `toEqual` that no fixture exercised — the one guard
+ * here never shown to discriminate.
+ */
+function familiesWithNoRule(generator: string, required: ReadonlyArray<string>): ReadonlyArray<string> {
+  const declared = familySourcePaths(generator)
+  return required.filter((family) => declared[family] === undefined)
+}
+
 /** The face names `fonts.Shipped()` keys its FontSet by, in the order it writes them. */
 function shippedFaceNames(fontsGo: string): ReadonlyArray<string> {
   const body = /func Shipped\(\) folio\.FontSet \{[\s\S]*?\n\}/.exec(fontsGo)?.[0]
@@ -207,6 +334,35 @@ function shippedFacePaths(fontsGo: string): Readonly<Record<string, string>> {
 }
 
 const digest = (file: string) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+
+/**
+ * The sha256 a face's OWN `NOTICE.md` records for the file it ships — parsed
+ * out of the provenance record rather than restated here.
+ *
+ * WHY THIS TIE AND NOT A LITERAL. Every committed face sits beside a NOTICE
+ * that names its upstream release, the path inside that release, the fetch
+ * date, and the digest of the artifact — the same `NOTICE*` file
+ * `manifest.ResolveAssets` already requires to exist, which is why the record
+ * is guaranteed to be there to read. Nothing asserted that the record was TRUE
+ * of the bytes beside it. That gap is not theoretical: `declaredFamilyOfFile`
+ * prefers nameID 16, which is IDENTICAL across every weight and style of a
+ * family, so IBM Plex Sans **Bold**, SemiBold, Italic, or a `pyftsubset`
+ * Latin-only cut all satisfy the name check while the whole chrome renders in
+ * the wrong face — and each NOTICE's digest quietly becomes a false statement
+ * about the file it sits next to. Hardcoding the digest on this side would
+ * instead let a swap be laundered by editing one number in a test.
+ *
+ * Deliberately strict, and deliberately throwing rather than defaulting:
+ * exactly one row must carry the digest. A NOTICE that stopped recording one —
+ * or recorded two — is a provenance record this guard can no longer read, and
+ * that must be loud rather than vacuous.
+ */
+function recordedShippedDigest(noticeFile: string): string {
+  const notice = fs.readFileSync(noticeFile, 'utf8')
+  const rows = [...notice.matchAll(/^\|[^|\n]*sha256 of the SHIPPED[^|\n]*\|\s*`([0-9a-f]{64})`\s*\|/gm)]
+  if (rows.length !== 1) throw new Error(`${noticeFile} must record exactly one 'sha256 of the SHIPPED …' table row carrying a 64-hex digest, and records ${rows.length} — the provenance record for the binary beside it cannot be read`)
+  return rows[0][1]
+}
 
 // ---------------------------------------------------------------------------
 // THE SMALLEST sfnt READ THAT ANSWERS "WHAT DOES THIS FILE SAY IT IS".
@@ -368,6 +524,17 @@ function codePointsNotCovered(file: string, text: string): ReadonlyArray<string>
 }
 
 /**
+ * Every code point in `[from, to]`, as one string — so a whole RANGE can be put
+ * through `codePointsNotCovered` and the answer is about the range rather than
+ * about a sample somebody chose.
+ */
+function codePointRange(from: number, to: number): string {
+  let text = ''
+  for (let codePoint = from; codePoint <= to; codePoint++) text += String.fromCodePoint(codePoint)
+  return text
+}
+
+/**
  * THE CHECKER THE WHOLE STORY IS ABOUT: the families whose declared source file
  * does not, in its own `name` table, call itself by the name the stylesheet
  * declares it under. Empty means every checked family name is an assertion the
@@ -429,6 +596,91 @@ describe('the family names the browser is given are the files the engine measure
     expect(familySlots(`// ${emitted}`).length).toBe(1)
   })
 
+  // THE LICENCE GATE SEES EVERY FONT THAT SHIPS (D-8.4.23).
+  //
+  // Not "these six files are .ttf" — that is the instance, and the instance was
+  // never the risk. The risk is the next font added by a different route: the
+  // obvious procurement path for IBM Plex is `@ibm/plex-*` on npm, which ships
+  // `.woff2`/`.woff` and no `.ttf` at all, and a `.woff2` reaching the bundle
+  // would ship with NO LICENSE REQUIRED, NO NOTICE REQUIRED AND NO
+  // `lint/MANIFEST.md` ROW — AD-26's asset half silently not applying to the
+  // very binaries it exists to account for. A prose constraint in one story's
+  // spec cannot catch that, because the person taking the other route is not
+  // reading that spec. This is the behavioural form.
+  //
+  // TWO POPULATIONS, BOTH DERIVED. Every font asset slot the generator
+  // fingerprints into the runtime bundle, and — independently — every committed
+  // file under `public/fonts/` whose OWN FIRST FOUR BYTES are a font magic, so
+  // a webfont dropped in beside a face is caught by what it is rather than by
+  // what it is called or by whether anything points at it yet.
+  it('lets the asset licence gate see every font that reaches the runtime bundle', () => {
+    const recognised = licenceGateFontExtensions(fs.readFileSync(licenceGatePath, 'utf8'))
+
+    // THE MIRROR IS NON-VACUOUS FIRST. The recognised set is read out of
+    // `manifest.go` by regex, and a regex that stopped matching would yield an
+    // empty set over which EVERY extension is unrecognised — loud rather than
+    // silent, but the helper throws on that, so this states what was read.
+    expect(recognised, `read no font extensions out of ${licenceGatePath}`).toEqual(['.ttf', '.otf', '.ttc'])
+
+    expect(
+      slotsInvisibleToTheLicenceGate(generator, recognised),
+      'A font asset slot listed here is fingerprinted into `src/generated/runtime/` and thence into the release bundle, '
+      + 'but carries an extension `lint/internal/manifest/manifest.go`\'s `fontExtensions` does not recognise. '
+      + '`manifest.ResolveAssets` would not require a LICENSE* beside it, would not require a NOTICE* beside it, and '
+      + 'would give it no row in `lint/MANIFEST.md`: the binary ships and AD-26\'s asset half does not apply to it. '
+      + 'Ship the `.ttf` from the upstream release archive, not the `.woff2` from the npm package.',
+    ).toEqual([])
+
+    expect(
+      committedFontsTheLicenceGateCannotSee(designerFontsDir, recognised),
+      'A file listed here IS a font by its own first four bytes and carries an extension the asset licence gate does not '
+      + 'recognise, so it is invisible to `manifest.ResolveAssets` however it came to be committed. The generator does '
+      + 'not have to point at it yet for that to be true.',
+    ).toEqual([])
+  })
+
+  // AND THE SWEEP IS SHOWN TO DISCRIMINATE, both halves of it, so an empty
+  // list above means "no unrecognised font" rather than "the reader stopped
+  // reading". The fixture slot and the fixture bytes are the two shapes the
+  // real thing would take.
+  it('reports a font the licence gate cannot see, by extension and by magic bytes', () => {
+    const recognised = ['.ttf', '.otf', '.ttc']
+    const woff2Slot = "  plexSans: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexsans', 'IBMPlexSans-Regular.woff2'), 'ibm-plex-sans.woff2'),\n"
+    const ttfSlot = "  sans: fingerprint(join(designerRoot, 'public', 'fonts', 'notosans', 'NotoSans-Regular.ttf'), 'noto-sans.ttf'),\n"
+
+    // The healthy direction, through the same function.
+    expect(slotsInvisibleToTheLicenceGate(ttfSlot, recognised)).toEqual([])
+    // And the npm route, verbatim.
+    expect(slotsInvisibleToTheLicenceGate(`${ttfSlot}${woff2Slot}`, recognised)).toEqual([
+      "plexSans -> public/fonts/ibmplexsans/IBMPlexSans-Regular.woff2 (extension '.woff2')",
+    ])
+
+    // THE BYTE READER. `wOF2` is a WOFF2 wrapper's own signature; `\0\0\0`
+    // is a static TrueType's. A reader that answered `false` to everything
+    // would make the tree sweep above pass over any tree at all.
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-font-magic-'))
+    try {
+      const webfont = path.join(scratch, 'IBMPlexSans-Regular.woff2')
+      fs.writeFileSync(webfont, Buffer.concat([Buffer.from('wOF2', 'latin1'), Buffer.alloc(16)]))
+      fs.writeFileSync(path.join(scratch, 'NOTICE.md'), 'not a font\n')
+      expect(looksLikeAFontBinary(webfont)).toBe(true)
+      expect(looksLikeAFontBinary(path.join(scratch, 'NOTICE.md'))).toBe(false)
+      expect(committedFontsTheLicenceGateCannotSee(scratch, recognised).map((entry) => entry.replace(/^.*IBMPlex/, 'IBMPlex'))).toEqual([
+        "IBMPlexSans-Regular.woff2 (extension '.woff2')",
+      ])
+      // And a recognised extension is not reported even though it is a font.
+      fs.renameSync(webfont, path.join(scratch, 'IBMPlexSans-Regular.ttf'))
+      expect(committedFontsTheLicenceGateCannotSee(scratch, recognised)).toEqual([])
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true })
+    }
+
+    // AND THE MIRROR ITSELF, shown to read a real declaration and to refuse a
+    // file that carries none rather than defaulting to a permissive set.
+    expect(licenceGateFontExtensions('var fontExtensions = []string{".ttf", ".otf", ".ttc"}')).toEqual(['.ttf', '.otf', '.ttc'])
+    expect(() => licenceGateFontExtensions('package manifest')).toThrow(/no 'var fontExtensions/)
+  })
+
   // THE WHOLE MAP, EXACTLY. Not a containment and not a count: an exact
   // `toEqual` over the composed join, so an added rule, a removed rule or a
   // rule repointed at another slot all redden here, and the failure prints the
@@ -452,6 +704,19 @@ describe('the family names the browser is given are the files the engine measure
   // defect rather than the expected state.
   it('gives every declared family a source file of its own, the interval Story 8.4b pinned now ended', () => {
     const perFile = familiesPerSourceFile(generator)
+    // EVERY FAMILY THAT MUST BE DECLARED IS DECLARED. The sharing checker
+    // below cannot see a DELETION by construction — a deleted rule produces
+    // fewer families per file, never more — so the opposite direction is
+    // asserted here, through a helper the red-proof fixture drives too. The
+    // required set is not a list: three design-system families fixed by
+    // DESIGN.md, and the engine's own face names read out of `fonts.Shipped()`.
+    expect(
+      familiesWithNoRule(generator, [...chromeFamilies, ...shippedFaceNames(fontsGo)]),
+      'A family listed here is one the chrome or the canvas ASKS FOR and no @font-face rule declares. The browser falls '
+      + 'silently through to a generic face — which is the shape of the Thai rendering defect on this repository\'s '
+      + 'record, where "letters rendered on top of each other". A rule "simplified" away is the way this happens.',
+    ).toEqual([])
+
     expect(Object.keys(perFile).length, 'the six @font-face rules must reach six distinct source files').toBe(6)
 
     // EVERY GROUPING KEY IS A REAL FILE. `familySourcePaths` falls back to a
@@ -501,9 +766,20 @@ describe('the family names the browser is given are the files the engine measure
     expect(familySourcePaths(repointed)['Noto Sans']).toBe('public/fonts/notosansthai/NotoSansThai-Regular.ttf')
 
     // A RULE DELETED — the "simplification" that would leave a family the
-    // canvas asks for with no face behind it at all.
+    // canvas asks for with no face behind it at all. IT DRIVES `familiesWithNoRule`,
+    // the same function the production assertion above drives, because the
+    // SHARING checker cannot catch a deletion however this fixture is written:
+    // a deletion yields FEWER families per file, never more. Asserting only the
+    // key list here — as this fixture once did — exercised no checker at all
+    // and left deletion the one direction never shown to discriminate.
     const deleted = fixture(rule('Noto Sans Thai', 'sansThai'))
     expect(Object.keys(familySourcePaths(deleted))).toEqual(['Noto Sans Thai'])
+    expect(filesReachedByMoreThanOneFamily(deleted), 'the sharing checker cannot see a deletion, which is why the one below exists').toEqual([])
+    expect(familiesWithNoRule(deleted, ['IBM Plex Sans', 'Noto Sans', 'Noto Sans Thai'])).toEqual(['IBM Plex Sans', 'Noto Sans'])
+    // And the passing direction through the same function, so an empty list
+    // from the production assertion means "all declared" rather than "the
+    // helper stopped looking".
+    expect(familiesWithNoRule(diverged, ['Noto Sans', 'Noto Sans Thai'])).toEqual([])
 
     // AND A RULE OVER A SLOT THAT DOES NOT RESOLVE. It reaches no bytes, and
     // without the sentinel check it would group like a perfectly good file.
@@ -584,7 +860,7 @@ describe('the bytes behind a chrome family name are the face that name claims', 
     ).toEqual([])
   })
 
-  it('gives the mono family a genuinely monospaced face, and one that carries the OFL in its own bytes', () => {
+  it('gives the mono family a genuinely monospaced face', () => {
     const file = path.join(designerRoot, familySourcePaths(generator)['IBM Plex Mono'])
 
     // THE DEFECT'S OWN SHAPE. `--font-mono` — and through it `--type-mono`,
@@ -593,10 +869,83 @@ describe('the bytes behind a chrome family name are the face that name claims', 
     // through this family. A face that is not fixed-pitch satisfies the name
     // check above and still draws every column of digits ragged.
     expect(isFixedPitch(file), `${file} is declared as 'IBM Plex Mono' but its post table does not claim fixed pitch`).not.toBe(0)
+  })
 
-    // AD-26: the redistributed asset carries its own terms, in the bytes as
-    // well as in the LICENSE*/NOTICE* beside them.
-    expect(licenceDescriptionOfFile(file)).toContain('SIL Open Font License, Version 1.1')
+  // AD-26 IN THE BYTES, FOR EVERY REDISTRIBUTED CHROME FACE — not for one of
+  // three. AC2 says each chrome family names "a committed IBM Plex OFL binary
+  // CARRYING THE OFL nameID 13 STRING", and a redistributed asset's own terms
+  // travel in its `name` table as well as in the LICENSE*/NOTICE* beside it.
+  // Asserting it for the mono face alone left two thirds of the claim
+  // unchecked, and the two unchecked ones are the faces AC2 actually names.
+  it('carries the SIL OFL in the bytes of every chrome face, not only in the LICENSE beside it', () => {
+    const declared = familySourcePaths(generator)
+    for (const family of chromeFamilies) {
+      const file = path.join(designerRoot, declared[family])
+      expect(
+        licenceDescriptionOfFile(file),
+        `${declared[family]} is declared as '${family}', so AD-26 requires it to be a redistributed asset carrying its `
+        + 'own terms — and nameID 13 is where a font states them in its own bytes. A face whose licence description is '
+        + 'absent, or is not the OFL, is not the OFL binary the licence manifest claims this row ships.',
+      ).toContain('SIL Open Font License, Version 1.1')
+    }
+  })
+
+  // THE PROVENANCE RECORD, MADE TRUE OF THE BYTES BESIDE IT.
+  //
+  // Every committed face sits next to a NOTICE.md recording the sha256 of the
+  // file shipped — and nothing asserted that record was true. The engine-named
+  // half was already digest-pinned (against `folio-go/fonts`, above); the
+  // chrome half had no pin at all, which made it the weaker one. The gap is
+  // concrete rather than theoretical: `declaredFamilyOfFile` prefers nameID 16,
+  // identical across every weight and style of a family, so IBM Plex Sans
+  // Bold, SemiBold, Italic or a `pyftsubset` Latin-only cut would keep every
+  // other assertion in this file green while the whole chrome rendered in the
+  // wrong face — and each NOTICE's digest silently became a false statement.
+  //
+  // ALL SIX DECLARED FACES, not just the three chrome ones. The Noto pin above
+  // proves the designer's copy MIRRORS the engine's; it says nothing about
+  // whether either is the file its provenance record describes. This is the
+  // other question, and it costs the same to ask of all six.
+  it('ships every declared face at the exact bytes its own NOTICE.md records', () => {
+    const declared = familySourcePaths(generator)
+    expect(Object.keys(declared).length, 'nothing to pin means the generator parse went blind').toBe(6)
+    for (const [family, relative] of Object.entries(declared)) {
+      const file = path.join(designerRoot, relative)
+      const notice = path.join(path.dirname(file), 'NOTICE.md')
+      expect(fs.existsSync(notice), `${relative} is declared for '${family}' but has no NOTICE.md beside it — which manifest.ResolveAssets (AC25, AD-26) already requires`).toBe(true)
+      expect(
+        digest(file),
+        `${relative} is declared for '${family}', and its own NOTICE.md records a different sha256 for the file it ships. `
+        + 'Either the binary was swapped without amending its provenance record — a different weight, a different style, '
+        + 'a subset cut, all of which keep this file\'s name-table checks green — or the record was amended without the '
+        + 'binary. Both make the NOTICE a false statement about the bytes beside it.',
+      ).toBe(recordedShippedDigest(notice))
+    }
+  })
+
+  // AND THE RECORD READER IS SHOWN TO READ, AND TO REFUSE. A parser that
+  // returned the file's own digest, or that quietly defaulted when it found no
+  // row, would satisfy the assertion above over any bytes at all.
+  it('reads a recorded digest out of a NOTICE, and refuses a NOTICE that records none', () => {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-notice-'))
+    try {
+      const notice = path.join(scratch, 'NOTICE.md')
+      const recorded = 'a'.repeat(64)
+      fs.writeFileSync(notice, `# a face\n\n| item | value |\n|---|---|\n| **sha256 of the SHIPPED file** | \`${recorded}\` |\n`)
+      expect(recordedShippedDigest(notice)).toBe(recorded)
+      // The engine faces' NOTICEs spell the same row "SHIPPED (produced)".
+      fs.writeFileSync(notice, `| **sha256 of the SHIPPED (produced) file** | \`${recorded}\` |\n`)
+      expect(recordedShippedDigest(notice)).toBe(recorded)
+      // A record with no digest row, and one with two, are both unreadable
+      // rather than absent — loud, because a provenance record that cannot be
+      // read is a pin that is not pinning.
+      fs.writeFileSync(notice, '# a face\n\nno digest recorded here at all\n')
+      expect(() => recordedShippedDigest(notice)).toThrow(/exactly one 'sha256 of the SHIPPED …' table row/)
+      fs.writeFileSync(notice, `| **sha256 of the SHIPPED file** | \`${recorded}\` |\n| **sha256 of the SHIPPED file** | \`${'b'.repeat(64)}\` |\n`)
+      expect(() => recordedShippedDigest(notice)).toThrow(/and records 2/)
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true })
+    }
   })
 
   // THE THAI FACE, AGAINST THE FAILURE THAT ACTUALLY HAPPENED. These two
@@ -630,6 +979,108 @@ describe('the bytes behind a chrome family name are the face that name claims', 
     // App.css's stack load-bearing rather than decorative.
     expect(codePointsNotCovered(path.join(designerRoot, 'public/fonts/ibmplexsans/IBMPlexSans-Regular.ttf'), 'พ')).toEqual(['U+0E1E'])
     expect(codePointsNotCovered(file, 'Folio')).toEqual([])
+  })
+
+  // THE LATIN RANGE THE CHROME ACTUALLY DRAWS, AS A RANGE.
+  //
+  // `ibmplexsans/NOTICE.md` records zero gaps across U+0020–U+017F, measured
+  // once by hand on the day the binary landed. Nothing asserted it, so it was a
+  // claim about a file rather than a property of the file — and a swapped or
+  // subset binary would have left the claim standing while making it false.
+  // This is that claim as an executable one.
+  //
+  // AS SPECIFIED, "U+0020–U+017F WITH NO GAPS" IS NOT LITERALLY TRUE OF ANY
+  // TEXT FACE, and asserting it verbatim would have been red on day one:
+  // U+007F–U+009F are the C0/C1 CONTROL code points, and neither this face nor
+  // the shipped Noto Sans maps them (measured: 33 unmapped, the same 33 in
+  // both). So the no-gaps claim is asserted over the three PRINTABLE blocks the
+  // range decomposes into — which is exactly what the NOTICE's own table
+  // measured — and the controls are pinned separately, by PARITY with the face
+  // the chrome used to be drawn in, so "unmapped" is a fact about the code
+  // points rather than a hole this face happens to have.
+  it('covers the whole printable Latin range the chrome draws, and differs from the shipped Noto Sans only where Unicode has no character', () => {
+    const declared = familySourcePaths(generator)
+    const plexSans = path.join(designerRoot, declared['IBM Plex Sans'])
+    const notoSans = path.join(designerRoot, declared['Noto Sans'])
+
+    // ASCII, Latin-1 Supplement, Latin Extended-A — the whole of what the
+    // chrome draws, asserted block by block so a failure names the block.
+    for (const [from, to] of [[0x0020, 0x007e], [0x00a0, 0x00ff], [0x0100, 0x017f]] as const) {
+      expect(
+        codePointsNotCovered(plexSans, codePointRange(from, to)),
+        `${declared['IBM Plex Sans']} is declared as 'IBM Plex Sans' — the family every --type-* token in tokens.css `
+        + `resolves through — and does not map every code point of U+${from.toString(16).toUpperCase().padStart(4, '0')}`
+        + `–U+${to.toString(16).toUpperCase().padStart(4, '0')}. An uncovered code point in the chrome's own range falls `
+        + 'through to system-ui, which is the same silent-fallback failure the Thai defect was.',
+      ).toEqual([])
+    }
+
+    // AND THE REST OF THE RANGE, BY PARITY. The only code points either face
+    // leaves unmapped across U+0020–U+017F are the ones the other leaves
+    // unmapped too — so the swap of the chrome's Latin face away from Noto Sans
+    // lost nothing in the range, and the gaps that remain are Unicode's rather
+    // than this face's.
+    const wholeRange = codePointRange(0x0020, 0x017f)
+    const plexGaps = codePointsNotCovered(plexSans, wholeRange)
+    const notoGaps = codePointsNotCovered(notoSans, wholeRange)
+    expect(plexGaps).toEqual(notoGaps)
+
+    // NON-VACUITY, BOTH WAYS. The reader must be finding coverage (an empty
+    // list above would otherwise be indistinguishable from a cmap walk that
+    // stopped working) and must be finding absence (or parity would be the
+    // parity of two empty answers).
+    expect(plexGaps.length, 'the two faces agree on nothing at all, so the cmap walk is not reading').toBeLessThan(0x0180 - 0x0020)
+    expect(plexGaps.length, 'the C0/C1 controls in this range are mapped by neither face and must be found').toBeGreaterThan(0)
+    expect(plexGaps).toContain('U+007F')
+  })
+
+  // THAI cmap PARITY WITH THE FACE THE ENGINE MEASURES WITH, IN BOTH
+  // DIRECTIONS.
+  //
+  // `ibmplexsansthai/NOTICE.md` records exact parity with the shipped Noto Sans
+  // Thai over U+0E00–U+0E7F, set difference empty in both directions. That was
+  // the acceptance risk of this whole substitution — the one change in Story
+  // 8.4c that could regress something visible — and it was discharged by a
+  // measurement nothing re-ran. The two defect strings above are 20 distinct
+  // code points of the 87 this face maps; this is the other 67.
+  //
+  // BOTH FILES ARE READ FROM THE GENERATOR'S OWN DECLARATIONS rather than named
+  // as literals, so the comparison is between the face the chrome is given and
+  // the face the canvas is given, whatever the generator points either at.
+  it('maps exactly the Thai code points the shipped Noto Sans Thai maps, in both directions', () => {
+    const declared = familySourcePaths(generator)
+    const plexThai = path.join(designerRoot, declared['IBM Plex Sans Thai'])
+    const notoThai = path.join(designerRoot, declared['Noto Sans Thai'])
+    const thai = codePointRange(0x0e00, 0x0e7f)
+
+    const covered = (file: string) => {
+      const gaps = new Set(codePointsNotCovered(file, thai))
+      return [...thai].map((character) => `U+${(character.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, '0')}`).filter((label) => !gaps.has(label))
+    }
+    const inPlex = new Set(covered(plexThai))
+    const inNoto = new Set(covered(notoThai))
+
+    expect(
+      covered(notoThai).filter((label) => !inPlex.has(label)),
+      `${declared['IBM Plex Sans Thai']} is declared as 'IBM Plex Sans Thai' and does NOT map Thai code points the `
+      + 'engine\'s own Thai face does. The canvas measures with the engine face and the chrome draws with this one, so a '
+      + 'code point the chrome cannot draw falls through to a generic — which is exactly how "letters rendered on top of '
+      + 'each other" was reported.',
+    ).toEqual([])
+
+    expect(
+      covered(plexThai).filter((label) => !inNoto.has(label)),
+      'the chrome face maps Thai code points the engine face does not — recorded as a difference rather than assumed '
+      + 'away, because the two faces were measured to agree exactly and a divergence either way means one of them moved.',
+    ).toEqual([])
+
+    // NON-VACUITY AND DISCRIMINATION. Parity between two empty sets is not
+    // parity, and the same comparison against a face with no Thai must come
+    // out loudly unequal.
+    expect(inPlex.size, 'neither Thai face maps anything, so the cmap walk is not reading').toBeGreaterThan(80)
+    expect(inPlex.size).toBe(inNoto.size)
+    const latinOnly = new Set(covered(path.join(designerRoot, declared['IBM Plex Sans'])))
+    expect(covered(notoThai).filter((label) => !latinOnly.has(label)).length, 'the Latin chrome face must NOT pass the Thai parity comparison').toBeGreaterThan(80)
   })
 
   // THE RED-PROOF. The corpus cannot exercise the failing direction — the
