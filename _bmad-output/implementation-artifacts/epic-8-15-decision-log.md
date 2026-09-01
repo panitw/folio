@@ -1459,3 +1459,149 @@ what is true instead of what was true.
 the substitutability, or restore the old bound. Recording the disagreement costs two comments and
 saves the next reader from a confident false belief — which is the same failure this whole story
 exists to repair, one level up.
+
+## DW-131 ruled — Story 8.4j, and a standing rule on triage verification (2026-09-02)
+
+### D-8.4j.1 — DW-131 meets the exception and is built as Story 8.4j; the bound is restated so it cannot erode again
+
+**Engineering lead ruling**, taken. Measured at `119c6df` before ruling.
+
+**Verdict.** DW-131 is built as **Story 8.4j**, sequenced immediately before Story 8.5. Epic 8's order
+becomes **`8.4i → 8.4j → 8.5 → 8.6 → 8.4d`**.
+
+**The defect.** `spdxLineRE` at `classify.go:157` captures `([A-Za-z0-9.\-+]+)` — a **single token** —
+and `licencesignals.go:273` calls `FindAllStringSubmatch`, so collect-all works **across lines and not
+within one**. `ClassifySPDXExpression` at `:14`, which already resolves `MIT OR GPL-3.0-only` to
+copyleft, **has no caller in `ClassifyLicenceText`.** So a font `LICENSE` carrying
+`OFL-1.1 OR GPL-3.0-only` classifies `(permissive, "OFL-1.1")`, sits on the owner's four-id allowlist,
+**passes the fail-closed gate and publishes under a permissive label**. Reversed order refuses
+correctly — order-dependent, DW-125's own shape, in the one place collect-all does not reach.
+
+**On "live" versus "latent" — the question I put, answered against my hesitation.** *"No file in the
+population carries one today"* is **not** the defeater, and the precedent is one the lead set on this
+exact class four rulings earlier: **DW-125 was also not live in the committed tree** — I said so at the
+time — and it was ruled to precede 8.5 because 8.5 introduces twenty new `LICENSE*` files. DW-131 is
+the **same defect class**, in the **same function**, facing the **same arriving population**. Ruling it
+latent now would make the earlier ruling arbitrary in retrospect.
+
+**The stronger ground.** D-8.4i.1's entire basis was that the repair is *"not new policy — you are
+making `ClassifyLicenceText` agree with the function it sits beside."* **The two functions still
+disagree, on exactly the input the ruling was about.** Deferring would record a ruling as applied when
+it is half-applied — D-8.4.31's shape, and this time it would be the lead's own ruling.
+
+**In simple terms.** We fixed the lock so it reads every label on the box instead of the first one.
+But if a single label lists two licences, it still reads only the first word of it — and there is a
+tool already in the building that reads such labels correctly and is simply never called.
+
+**Cost asymmetry settles the rest.** The fix is not new machinery: widen the capture to the rest of the
+line and route it through `ClassifySPDXExpression`, which exists, is tested and already has the right
+semantics. Against that, ~20 font `LICENSE*` files land next, and dual-licensed faces are a real shape.
+
+**THE BOUND, RESTATED SO IT IS NOT INTERPRETABLE AGAIN.** D-8.4i.6's exception is not "a bypass". It is
+a bypass meeting **all three** conjuncts: (1) of a gate **this epic declared fail-closed**; (2)
+**demonstrated by probe**, never argued from code-reading; and (3) **reachable by the population the
+next story adds.** All three hold here. What would **not** meet it, stated now rather than negotiated
+later: a bypass reachable only by a file shape no story in this epic produces; anything found after
+8.6, when no new `LICENSE*` files remain to land; and any attribution, coverage or record defect,
+however sound.
+
+**`8.4j` is one defect, one fix, one red-proof — not a general licence-gate story. Nothing else rides
+it.**
+
+**Why it cannot fold into 8.5 instead** (which would have avoided a fifth insertion): the standing
+condition is that the gate be **red-proved before the faces arrive**, because a gate proven over a
+population it will never resemble is D-8.5.4's quantifier trap. Folding lands the fix in the same
+commit as the twenty faces — precisely the ordering that condition forbids.
+
+**Red-proof shape:** an `OFL-1.1 OR GPL-3.0-only` fixture that reds **as copyleft**, plus the reversed
+order, plus a **permissive-OR-permissive** case that **resolves rather than refusing**. The third is
+the one that proves the fix is a classifier and not a ban.
+
+### D-8.4j.2 — Story 8.5 gets NO compound-expression guard, and the reason outlives the verdict
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** The cheap guard I proposed — *"assert no catalogue `LICENSE*` carries a compound
+expression"* — is **not built**. It is moot once 8.4j lands, and it would have been **worse than the
+fix even if DW-131 had been deferred**.
+
+**Why, recorded so it is not re-proposed.** It is a **proxy guard**: it bans the shape instead of
+classifying it. A legitimately dual-licensed permissive face would be **refused** — a false positive on
+a legitimate asset, which is an attack on the guard rather than a defence of it. And it would leave
+Story 15.3 to fix the classifier anyway in order to publish a correct `MANIFEST.md`. **Never build both
+a fix and a proxy for the same property** — that is two authorities for one fact.
+
+**What Story 8.5 does need instead, and this must not be dropped.** Its licence census must carry **at
+least one compound-expression case** among the pinned population, so the fix stays fixed when twenty
+files arrive. The reason is my own note: *the census pin would not catch one arriving, because it pins
+verdicts for the files that exist.* **A census keyed only on today's population is a snapshot, not a
+guard.** `Carried into:` Story 8.5's Tasks.
+
+### D-8.4j.3 — STANDING RULE: a rejection resting on a true fact must name which caller, path or population it verified
+
+**Engineering lead ruling**, taken. **Adopted now and applied by every plan gate and close for the rest
+of this run.**
+
+> **A rejection whose ground is a true fact about code must name WHICH CALLER, PATH OR POPULATION it
+> verified — and that must be the one the finding is about. When a rejection's ground is a true
+> statement, the question is not "is it true?" but "true of WHICH caller?"**
+
+**Three instances, one mechanism.** D-8.0.1 — a comment asserted a branch unreachable, so nobody
+looked. Story 8.4h — the American-spelling finding rejected by quoting a comment that was false for the
+path under test. Story 8.4i's R4 — the compound expression rejected on a premise true for the **npm**
+path and false for the path under test. **In all three the cited fact was true. The subject attached to
+it was not.**
+
+**Why it is a rule and not a fourth register entry.** It unifies with something this run already
+learned: D-8.5.4 recorded that *"the observation was TRUE and the QUANTIFIER silently attached to it was
+not."* This is the same failure in the **adjacent slot** — the observation is true and the **SUBJECT**
+attached to it is not. Both are hard to catch for the same reason: **nothing downstream contradicts
+them.** Under the standing rule that an Nth instance re-prices rather than renews, three instances of
+one mechanism buys a practice change — and a practice change is free to adopt, whereas **a register
+entry is where you park what you are not fixing.**
+
+**THE CORRECTION TO D-8.4i.12, and it is the more valuable half.** My prediction was that the close
+would find what the review layers missed. It was **wrong in an instructive way: the layer did not miss
+it. Triage dropped it.** That moves the improvement target, and it moves it away from the intuitive
+response. **The wrong lesson from a defect reaching close is "add another review layer."** The right one
+is that a finding was already surfaced, correctly, and then discarded by unverified reasoning — so the
+marginal value is in **verifying rejections**, not in generating more findings. Recorded explicitly,
+because the next person to read *"a defect reached close"* will reach for the layer count.
+
+**Operational form, so it is checkable rather than aspirational:** a rejection resting on *"X is safe
+because Y"* cites **the call site the finding names**, never a sibling. DW-87 stays open and this rule
+does not discharge it — but it is the thing DW-87 was missing, since an enumerated rejection you cannot
+audit and an unverified one you can read are the same defect at different depths.
+
+### D-8.4j.4 — DW-128's entry is corrected in place; the wOFF/wOF2 gap does NOT ride 8.4j
+
+**Engineering lead ruling**, taken.
+
+**Verdict.** The confirmation that a planted `wOF2`/`wOFF` under an excluded path leaves the tripwire
+saying `ok` means the tripwire's **stated purpose and its implementation disagree**: it exists to assert
+*no real font program* sits under an excluded path, and wOFF/wOF2 **are** real font programs carrying
+non-sfnt magic. **DW-128's entry is corrected to state what it actually covers — sfnt magic only — with
+the two additional four-byte magics named as its discharge.** It stays deferred.
+
+**Why corrected rather than left.** **A deferral whose scope is known wrong is worse than one merely
+open** (D-7.1.4's precedent): the first is read as coverage, the second as a gap. **It does not ride
+`8.4j`** — that story is one defect, one fix (D-8.4j.1), and this is a different file region on a LOW
+path.
+
+### D-8.4j.5 — The same error in a third slot, and the first datum on the other side of a three-instance pattern
+
+**Orchestrator record** (no ruling sought; both are worth keeping).
+
+**1. The corrected figures — 7 and 3, not 5 and 2 — are the same error a third time, in a third slot.**
+Measured over one package, written as suite-wide. Quantifier (D-8.5.4), subject (D-8.4j.3), now **scope
+of measurement**. That the conclusion survived re-verification is exactly why it is worth naming: **the
+number was wrong and the finding was right, so nothing downstream contradicted it.** Corrected in place
+with the original preserved, which is the handling this run requires and which held.
+
+**2. The provenance audit is the first datum on the other side of D-8.5.9.** Nine commits
+provenance-clean, both trailers exact, one author, **no instance five**, and `2e9365e` confirmed
+additive-only by inspection (458 insertions, 0 deletions, `classify.go` untouched) — so the
+measure-before-fatal ordering that was made a `Block If` was **verified rather than reported**. **One
+clean run does not discharge a three-instance pattern** — D-8.5.9 stands, and a recovery holding is
+still not a defence — but it is the first datum on the other side and it belongs in the record with its
+count.

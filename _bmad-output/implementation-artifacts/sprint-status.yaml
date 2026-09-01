@@ -236,9 +236,26 @@ development_status:
   # found here routes to Epic 15's release gate (Story 15.3 already owns AD-26's manifest), NOT to
   # an 8.4j -- unless it is a demonstrated live bypass of a gate declared fail-closed.
   8-4i-the-classifier-stops-lying-to-the-gate: done
+  # 8.4j added 2026-09-02 at Story 8.4i's CLOSE (D-8.4j.1). DW-131: spdxLineRE captures a SINGLE
+  # TOKEN and ClassifyLicenceText never routes to ClassifySPDXExpression, so collect-all works
+  # ACROSS lines and not WITHIN one. A font LICENSE carrying "OFL-1.1 OR GPL-3.0-only" classifies
+  # (permissive, "OFL-1.1"), sits on the owner's four-id allowlist and PASSES the fail-closed gate;
+  # reversed it refuses. Order-dependent -- DW-125's own shape where collect-all does not reach.
+  # The sibling ClassifySPDXExpression already resolves that input to copyleft, so D-8.4i.1's
+  # stated basis ("make the two functions agree") is only HALF-APPLIED until this lands.
+  # It meets D-8.4i.6's exception on all THREE restated conjuncts: a gate this epic declared
+  # fail-closed, demonstrated BY PROBE, and reachable by the population the next story adds.
+  # ONE defect, ONE fix, ONE red-proof -- nothing else rides it. Red-proof must include a
+  # permissive-OR-permissive case that RESOLVES, proving the fix is a classifier and not a ban.
+  8-4j-a-compound-licence-line-is-read-whole: backlog
   # 8.5's spec exists at ready-for-dev but is SUPERSEDED pending re-plan after 8.4h (D-8.5.13):
   # AC2 and AC7 moved out. AC4 stays HERE deliberately -- the forbidden-host scan asserts that
   # D-8.5.12's decline was honoured, so it belongs with the thing it constrains.
+  # CARRIED IN (D-8.4j.2): 8.5's licence census must pin at least ONE COMPOUND-EXPRESSION case, so
+  # 8.4j's fix stays fixed when 20 files arrive -- a census keyed only on today's population is a
+  # snapshot, not a guard. 8.5 gets NO compound-expression BAN: that is a proxy guard, it would
+  # refuse a legitimately dual-licensed permissive face, and it would be a second authority for a
+  # property 8.4j's fix already owns.
   8-5-a-curated-catalogue-ships-with-the-designer: backlog
   8-6-picking-a-family-puts-it-in-the-file: backlog
   8-4d-the-size-budget-is-a-number-something-checks: backlog
