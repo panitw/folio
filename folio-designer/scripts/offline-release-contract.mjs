@@ -48,12 +48,25 @@ const releasePayloadSource = join(dirname(fileURLToPath(import.meta.url)), '..',
 //     other, so two is a failure rather than a preference.
 //   - zero means the constant was renamed, deleted or reformatted, and a reader
 //     that answered "no bound" there would disable the guard in silence.
-function readDeclaredConstant(source, name) {
+//
+// The message names the source it actually read. It used to hardcode
+// `src/release-payload.ts` even when a caller injected a fixture string — which
+// is how every failure case is driven — so a failure report could name a file
+// that was never opened.
+function readDeclaredConstant(source, name, label) {
   const matches = [...source.matchAll(new RegExp(String.raw`^const ${name} = (\d+)$`, 'gm'))]
-  if (matches.length !== 1) throw new Error(`src/release-payload.ts does not declare \`${name}\` as a single live constant: found ${matches.length} line-anchored \`const ${name} = <digits>\` declarations, expected exactly 1${matches.length === 0 ? ' (a renamed, deleted, reformatted or commented-out constant reads as none)' : ' (a second live declaration makes the authority ambiguous)'}`)
+  if (matches.length !== 1) throw new Error(`${label} does not declare \`${name}\` as a single live constant: found ${matches.length} line-anchored \`const ${name} = <digits>\` declarations, expected exactly 1${matches.length === 0 ? ' (a renamed, deleted, reformatted or commented-out constant reads as none)' : ' (a second live declaration makes the authority ambiguous)'}`)
   return Number(matches[0][1])
 }
 
-export function declaredCacheAssetBounds(source = readFileSync(releasePayloadSource, 'utf8')) {
-  return { minimumCacheAssets: readDeclaredConstant(source, 'minimumCacheAssets'), maximumCacheAssets: readDeclaredConstant(source, 'maximumCacheAssets') }
+export function declaredCacheAssetBounds(source, label = source === undefined ? 'src/release-payload.ts' : 'the injected release-payload source') {
+  const text = source === undefined ? readFileSync(releasePayloadSource, 'utf8') : source
+  const minimumCacheAssets = readDeclaredConstant(text, 'minimumCacheAssets', label)
+  const maximumCacheAssets = readDeclaredConstant(text, 'maximumCacheAssets', label)
+  // BOTH NUMBERS CAN BE READABLE AND THE ENVELOPE STILL IMPOSSIBLE. An edit that
+  // left the floor above the ceiling would make every release fail verification
+  // with a message blaming the RELEASE for carrying the wrong number of assets,
+  // when the fault is in this declaration. Say which it is, here, once.
+  if (minimumCacheAssets > maximumCacheAssets) throw new Error(`${label} declares an inverted cache-asset envelope: \`minimumCacheAssets\` is ${minimumCacheAssets} and \`maximumCacheAssets\` is ${maximumCacheAssets}, so no release can satisfy both and the fault is in the declaration rather than in any release`)
+  return { minimumCacheAssets, maximumCacheAssets }
 }

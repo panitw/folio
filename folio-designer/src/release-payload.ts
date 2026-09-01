@@ -85,4 +85,27 @@ export function loadS1Payload(): S1PayloadResult {
   return parseS1Payload(bootstrap && typeof bootstrap === 'object' ? (bootstrap as { s1?: unknown }).s1 : undefined)
 }
 
+// THE TWO DECISIONS main.tsx MAKES ABOUT A RESULT, WHERE A TEST CAN EXECUTE THEM.
+// Nothing in this repo imports main.tsx, and Vitest collects only
+// `src/**/*.test.{ts,tsx}` and `scripts/**/*.test.mjs`, so a decision left inline
+// there is run by NO gate: `payloadForLifecycle` collapsed to a bare `undefined`
+// would type-check, pass every suite, and ship an app permanently reporting
+// "Offline cache unavailable". Both decisions are pure functions of the result,
+// so they live here and are asserted in release-payload.test.ts.
+export function payloadForLifecycle(result: S1PayloadResult): S1Payload | undefined {
+  // registerOfflineLifecycle and the load screen already speak `undefined` for
+  // "no usable payload", so a rejection maps to that at exactly one place and
+  // nothing downstream changes. The reason is not discarded on the way past — it
+  // is what the predicate below reads.
+  return result.ok ? result.payload : undefined
+}
+
+// The dev-server bypass covers ONE cause: the dev server emits no bootstrap node
+// at all. A bootstrap that is malformed, or over the release bound, is a real
+// fault and must never be read as "the dev server did not emit one" and quietly
+// bypassed — so this is true for `no-bootstrap` and for no other reason.
+export function isDevBypassReason(result: S1PayloadResult): boolean {
+  return !result.ok && result.reason === 'no-bootstrap'
+}
+
 export function formatMiB(bytes: number, decimals = 2): string { return `${(bytes / (1024 * 1024)).toFixed(decimals)} MiB` }

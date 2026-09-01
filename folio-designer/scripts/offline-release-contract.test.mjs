@@ -39,6 +39,9 @@ describe('declared cache-asset bounds', () => {
 
   it('throws when the only occurrence is commented out', () => {
     expect(() => declaredCacheAssetBounds('const minimumCacheAssets = 10\n// const maximumCacheAssets = 64\n')).toThrow(/`maximumCacheAssets` as a single live constant: found 0 /)
+  })
+
+  it('throws when the only occurrence is indented rather than line-anchored', () => {
     expect(() => declaredCacheAssetBounds('const minimumCacheAssets = 10\n  const maximumCacheAssets = 64\n')).toThrow(/`maximumCacheAssets` as a single live constant: found 0 /)
   })
 
@@ -48,5 +51,30 @@ describe('declared cache-asset bounds', () => {
 
   it('reports the minimum by its own name rather than by the maximum', () => {
     expect(() => declaredCacheAssetBounds('const maximumCacheAssets = 64\n')).toThrow(/`minimumCacheAssets` as a single live constant: found 0 /)
+  })
+
+  // Every failure case above injects a fixture string. A message that named
+  // src/release-payload.ts anyway would be naming a file it never opened, and
+  // would send a reader to edit the one source that is not at fault.
+  it('names the source it actually read rather than the file it did not', () => {
+    expect(() => declaredCacheAssetBounds('const minimumCacheAssets = 10\n')).toThrow(/^the injected release-payload source does not declare `maximumCacheAssets`/)
+    expect(() => declaredCacheAssetBounds('const minimumCacheAssets = 10\n')).not.toThrow(/release-payload\.ts/)
+  })
+
+  it('carries a caller-supplied source label into the message', () => {
+    expect(() => declaredCacheAssetBounds('const minimumCacheAssets = 10\n', 'a fixture named by its caller')).toThrow(/^a fixture named by its caller does not declare `maximumCacheAssets`/)
+  })
+
+  // BOTH NUMBERS READABLE IS NOT THE SAME AS AN ENVELOPE THAT EXISTS. Left
+  // unchecked, an inverted declaration makes verifyOfflineRelease fail every
+  // release with a message blaming the release for a fault in the declaration.
+  it('throws when the declared envelope is inverted, naming the declaration rather than a release', () => {
+    expect(() => declaredCacheAssetBounds('const minimumCacheAssets = 64\nconst maximumCacheAssets = 10\n')).toThrow(/inverted cache-asset envelope: `minimumCacheAssets` is 64 and `maximumCacheAssets` is 10, so no release can satisfy both and the fault is in the declaration/)
+  })
+
+  // The coherence check is `>` and not `>=`: an envelope of exactly one legal
+  // count is coherent, and refusing it would be a second bound nobody declared.
+  it('accepts an envelope whose two ends are equal', () => {
+    expect(declaredCacheAssetBounds('const minimumCacheAssets = 23\nconst maximumCacheAssets = 23\n')).toEqual({ minimumCacheAssets: 23, maximumCacheAssets: 23 })
   })
 })

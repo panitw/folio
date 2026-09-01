@@ -2,13 +2,36 @@
 title: 'Story 8.4f: A bound nobody can cross silently'
 type: 'bugfix'
 created: '2026-09-01'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '8dd6c6e8235008fdf79abf742868885974fcc091'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      declaredCacheAssetBounds() reads src/release-payload.ts at verify time, so verifying a dist/
+      detached from its source tree throws an unframed Node ENOENT instead of a stated verification
+      failure, and an old dist/ verified against a newer src/ is silently checked against the new bounds.
+    evidence: |-
+      The manifest carries no record of the bound the release was built under; the bound is resolved
+      from the working tree at the moment of verification, not from the artifact. Reachable by an
+      extracted release or a deploy-stage-only CI job. Not reachable in this repo's current cadence,
+      where verify:offline always runs beside its own source tree.
+    location: >-
+      folio-designer/scripts/offline-release-contract.mjs
+    severity: low
+  - summary: >-
+      The DW-106 tree-state probe file survives a SIGINT/SIGKILL landing between the two ~40s engine
+      builds, leaving an untracked file in folio-go/ that trips the pipeline's own clean-tree gates.
+    evidence: |-
+      Cleanup is a finally block, which a signal does not run. The obvious remedy - a .gitignore entry -
+      is specifically WRONG here and is now warned against in the code: the probe's visibility to git IS
+      the perturbation being measured, so ignoring it would make the check vacuous. The correct remedy is
+      a signal handler, which was out of proportion to this story.
+    location: >-
+      folio-designer/scripts/verify-offline-release.mjs
+    severity: low
 ---
 
 ## Frontmatter warnings — what they mean here
@@ -479,6 +502,109 @@ that produced them.
 
 ## Review Triage Log
 
+### 2026-09-01 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 0, medium 2, low 3)
+- defer: 2: (high 0, medium 0, low 2)
+- reject: 24: (high 0, medium 0, low 24)
+- addressed_findings:
+  - `[medium]` `[patch]` **`main.tsx`'s two new decisions were executed by no test.** Nothing in the
+    repo imports `main.tsx`; Vitest collects only `src/**/*.test.{ts,tsx}` and `scripts/**/*.test.mjs`,
+    and the Playwright suite is compile-only. Demonstrated: replacing `payload = result.ok ? … :
+    undefined` with `payload = undefined` type-checks and leaves every gate green while shipping an app
+    permanently stuck on "Offline cache unavailable". This was also the one I/O-matrix row (row 8, the
+    dev bypass) the step-03 matrix audit could not tie to an executed test. Fixed by extracting
+    `payloadForLifecycle` and `isDevBypassReason` as pure exported functions and driving the bypass
+    predicate over the rejection table, with the reason union held to a
+    `Readonly<Record<S1PayloadRejection, true>>` so a future unnamed reason is a typecheck failure.
+    Mutation-proved both ways.
+  - `[medium]` `[patch]` **The DW-106 tree-independence check could not tell "tree-independent" from
+    "my probe perturbed nothing".** Both arms build with `-buildvcs=false`, which closes the only
+    measured tree→binary channel, so the stray file had no route into the output — an all-clear
+    indistinguishable from a couldn't-look, inside this story's own fix for that defect. Fixed by
+    asserting the probe is visible to `git status --porcelain` before relying on the second build, and
+    by stating in place what the check does and does not establish, including that the probe's
+    binary-moving capability was measured at Story 8.4g's close and is not re-measured here.
+    Mutation-proved by hiding the probe via `.git/info/exclude` (never `.gitignore`).
+  - `[low]` `[patch]` `readDeclaredConstant`'s failure message hardcoded `src/release-payload.ts` even
+    when a source string was injected — which is how every failure test drives it — so failures
+    misattributed themselves to the real file. Now takes a source label.
+  - `[low]` `[patch]` Nothing checked that `minimumCacheAssets <= maximumCacheAssets`; an inverted pair
+    would have blamed the release for an incoherent declaration. Now fails naming both numbers and the
+    declaration as the fault.
+  - `[low]` `[patch]` One test asserted two mutations (commented-out and indented) under a name
+    describing one, contradicting that file's own "one mutation at a time" principle stated two tests
+    above. Split.
+
+**Rejected findings, enumerated with the ground that refuted each (DW-87).** Two were refuted by
+direct measurement rather than by argument:
+
+1. **CRLF fragility of the derived-constant reader** (`offline-release-contract.mjs`) — claim: `$`
+   under `/m` will not match before `\r`, so a CRLF checkout reads zero matches and fails the build.
+   **Refuted by measurement:** JS `$` in multiline mode matches before `\r` as well as `\n`; a CRLF
+   source yields exactly 1 match, identical to LF.
+2. **`rewriteRelease` may leave `index.html` drifted for proofs that run after the two bound legs**
+   (`verify-offline-release.mjs`) — **refuted by reading the function**: it writes only
+   `offline-release-manifest.json` and `sw.js`, which are exactly the two files both new proofs
+   snapshot and restore.
+3. **The production path drops the named reason (no log, telemetry or distinct message)** — raised
+   independently by three layers. Rejected on the authority of **Design Note 5**, which rules this
+   explicitly and invites the disagreement in writing, plus the intent's **Block If** forbidding any
+   user-visible change outside the over-the-bound path. There is also no diagnostic channel to write
+   to: `src/` and `scripts/` contain zero `console.*` calls (DW-93).
+4. **`release-payload.test.ts` re-types `65`/`9`, a second authority** — rejected because that drift
+   fails **loud**, not green: a fixture that stopped being over-bound reports `accepted` and the
+   assertion reddens. The doctrine this story enforces is against drift that ships green.
+5. **An empty bootstrap node reads as `no-bootstrap`** — pre-existing and unchanged; the prior code was
+   `if (!node?.textContent) return undefined` and the prior bypass fired on any falsy payload. No
+   regression caused by this change. (Same ground rejects the whitespace-only `trim()` variant.)
+6. **`JSON.parse` `RangeError` should also map to `malformed-json`** — the spec instructs verbatim that
+   a `SyntaxError` becomes the malformed reason and **anything else is rethrown**; widening contradicts
+   an explicit instruction, and the bootstrap is build-emitted rather than user input.
+7. **`GOFLAGS` could re-add `-buildvcs=false` to the flag-dropped probe** — fails **safe**: the probe
+   would report `escaped verification` and fail the build loudly. Never a false pass.
+8. **Split `S1PayloadRejection` into parse/load unions** — type-modelling preference; the contract asks
+   for a named reason per rejection, which is satisfied.
+9. **`goModuleRoot` / `.git` path arithmetic re-derived in the caller** — cosmetic; the no-re-typing
+   doctrine applies to the value being proved, not to path joins.
+10. **Three vocabularies (`over-bound` / `over-maximum` / `declared maximum`)** — cosmetic; each name
+    is apt at its own layer.
+11. **`proveVCSStampGuardDiscriminates()`'s position between two `redProof` calls** — no defect; it
+    mutates nothing in `dist/` and restores nothing, so ordering is immaterial.
+12. **The change log quantifies the rejected option's cost but not the accepted one's** — documentation
+    completeness, not a defect in the artifact.
+13. **The unreadable-declaration guard is only asserted in Vitest, which `npm run build` never runs** —
+    the **guard itself** is on the build path (the throw propagates through `declaredCacheAssetBounds()`
+    during `verify:offline`); only its failure-mode tests live in Vitest. The drift argument the intent
+    makes is about a duplicated **value**, and there is no duplicate.
+14. **Exclusivity is proved over a fixture table, not the input space** — the test names itself
+    honestly and AC4 asks verbatim for "no other input asserted in `release-payload.test.ts`".
+15. **The baseline moved from `548aa29` to `8dd6c6e`** — the dispatch directed re-measurement at HEAD;
+    the premise (23 assets against a bound of 64) was re-verified and recorded.
+16. **`minimumCacheAssets < 3` would break the under-bound proof's slice** — hypothetical on a constant
+    no one is changing, and the failure would be a loud build failure. Partly covered by the new
+    coherence check.
+17. **A missing `git` binary, or a missing Go toolchain, escapes the `fail()` contract** — `go` is
+    already a hard prerequisite of the whole gate (`npm run build` begins with `build:wasm`), and the
+    new probe-visibility check now fails in the file's own voice when git cannot be run.
+18. **AC3 is unmet literally and nothing records it** — moot; it is recorded here and in
+    `## Auto Run Result`, and reported to the orchestrator.
+19. **DW-106 / DW-107 are discharged in code but left open in the register** — correct by the spec's
+    own prohibition on this story touching `deferred-work.md`; the closer owns it, and it is surfaced
+    in the dispatch report.
+20. **The DW-106/DW-107 scope is invisible in the `<intent-contract>`** — accurate as an observation,
+    but the orchestrator routed T-A and T-B into `## Tasks` as settled decisions and the contract is
+    frozen. Surfaced upward rather than actioned.
+21-24. Four further cosmetic or restated observations from the blind and edge-case layers (comment
+    wording, naming, ordering, and a restatement of the production-reason finding) carrying no distinct
+    required action.
+
+**Population check.** The four layers returned **38** raw findings (blind hunter 18, edge-case hunter
+10, verification-gap 3, intent-alignment 7 divergence observations). Deduplication merged **7** into
+other claims, leaving **31** distinct claims. Routes: 5 patch + 2 defer + 24 reject = **31**. The
+routes sum to the declared population.
+
 ## Design Notes
 
 **1. Why the verifier reads the constant instead of re-typing it — and why a tie test is not
@@ -747,3 +873,118 @@ regress; these establish the floor the implementer measures against.
 
 **Exactly the two standing red identities, no third.** 23 golden digests, 24 AD-21 documents per
 leg, and the manifest's 23 assets are three different populations and are not conflated here.
+
+
+---
+
+## Auto Run Result — build dispatch, 2026-09-01
+
+Status: **done**
+Blocking condition: **none**
+
+Dispatch: existing spec at `status: ready-for-dev`, so step-01 routed straight to step-03 and nothing
+was re-derived. Baseline `8dd6c6e8235008fdf79abf742868885974fcc091`, tree clean, branch `main`.
+Commits `7a18079` (implementation) and the review-patch commit that follows it. Nothing pushed, no
+branch created, no `git add -A`.
+
+### Summary of the implemented change
+
+The offline release verification job now counts the emitted release's assets against the bound the
+TypeScript parser declares and fails the build naming both the measured count and the bound crossed,
+at both ends of the envelope. The number is **derived** from the `const` lines in
+`src/release-payload.ts` rather than re-typed, because `npm run build` never runs Vitest and a
+duplicate-plus-tie-test would ship green through the very gate this story adds; the reader is
+line-anchored, requires exactly one live match, and fails loudly on a renamed, reformatted,
+commented-out, duplicated or inverted declaration. The check sits immediately after the manifest URL
+loop and **before** the manifest/output set comparison, because an over-bound manifest breaks that set
+too and a proof failing there would prove nothing about the bound. Both arms are red-proved with
+`redProof`'s `expected` argument.
+
+`parseS1Payload` now returns a discriminated result in which every rejection carries its own name, with
+the bound moved out of the seventeen-clause shape condition into its own checks so
+`asset-count-over-maximum` is reachable by that cause and no other. `loadS1Payload`'s blanket catch is
+narrowed to the `JSON.parse` `SyntaxError` it existed for and rethrows everything else; it is narrowed
+rather than removed because removal is measurably worse for a user, and the dev-server bypass is gated
+on the absent-bootstrap reason alone.
+
+T-A (DW-107) and T-B (DW-106), routed here from Story 8.4g's close, are both discharged in
+`verify-offline-release.mjs`: the flag-dropped stamp red-proof is now executable rather than prose, and
+the determinism guard now asserts the **property** (two builds of one commit agree) alongside the
+cause, with its limit stated in place.
+
+### Files changed
+
+- `folio-designer/scripts/offline-release-contract.mjs` — new `declaredCacheAssetBounds()`; derives both
+  bounds from the declaration, exactly-one-live-match, labelled messages, envelope-coherence check.
+- `folio-designer/scripts/offline-release-contract.test.mjs` — the derived reader's failure modes, one
+  mutation per case, asserted against an independent re-read rather than re-typed literals.
+- `folio-designer/scripts/verify-offline-release.mjs` — the envelope guard at its pinned insertion
+  point; two red proofs; `proveVCSStampGuardDiscriminates` (T-A) and
+  `assertEngineWasmIsTreeIndependent` (T-B) with its probe-visibility control.
+- `folio-designer/scripts/wasm-vcs-stamp.mjs` — `ENGINE_BUILD_FLAGS` / `buildEngineWasm`, one authority
+  for the engine's compile argv so neither new proof re-types it.
+- `folio-designer/scripts/build-wasm.mjs` — calls that single authority.
+- `folio-designer/src/release-payload.ts` — discriminated result, eleven named reasons, narrowed catch,
+  null-bootstrap guard, and the two extracted pure helpers.
+- `folio-designer/src/release-payload.test.ts` — reasons, exclusivity over the whole rejection table,
+  the rethrow, and the previously untested startup decisions.
+- `folio-designer/src/main.tsx` — maps a rejection to `undefined` at one place; dev bypass narrowed.
+
+### Review findings breakdown
+
+5 patched (2 medium, 3 low), 2 deferred, 24 rejected, 0 intent_gap, 0 bad_spec. The four layers
+returned 38 raw findings; dedup merged 7, leaving 31 distinct claims, and 5 + 2 + 24 = 31.
+Every rejected finding is enumerated with its refuting ground in `## Review Triage Log`; two of them
+were refuted by direct measurement rather than argument.
+
+**Follow-up review recommended: true.** Patched findings only: medium 2, low 3 → 3x2 + 1x3 = **9**,
+which is >= 5.
+
+### Verification performed
+
+Measured at `8dd6c6e` before the first edit and again after the patches; exit codes read from the
+command itself, never through a pipe.
+
+- `go test -count=1 ./...` **1815 pass / 2 fail / 5 skip**, unchanged from baseline.
+  `-tags=matrix` **1826 / 3 / 5**. Reds by identity: `TestCorpusMeetsP6ExerciseFloors` +
+  `P6g_(opaque_names)`, and matrix-only `TestShippedFacesReproduceFromUpstream`, a could-not-execute
+  which **passes non-vacuously** with `FOLIO_FONTGEN_PYTHON` set (`derived and compared 3 of 3 faces`).
+  Exactly the two standing red identities, no third.
+- `go vet -tags=matrix ./...` no output. `gofmt -l folio-go` **from the repo root** no output.
+  `cd lint && go test -count=1 ./...` four `ok`, uncached.
+- Four AD-21 legs PASS, **24 documents hashed per leg**; the unset control passes in 0.00s asserting
+  nothing at `matrix_test.go:2199` — a control, never a fifth leg. `TestCrossTargetByteIdentity` PASS.
+- Designer: `typecheck` exit 0; `lint` exit 0 with **exactly 4** `only-export-components` warnings and
+  no other rule; `npm test` **40 files / 409 tests all passing** (baseline 40 / 387);
+  `test:e2e:compile` exit 0 — a **compile**, not a run.
+- This story's own subject: `npm run build` **exit 0** (ends in `verify:offline`),
+  `verify:offline:red` **exit 0**, `verify:offline:wasm` **exit 0**, on node `v24.16.0`.
+  Emitted release: **`release.assets.length` 23, `s1.assetCount` 23, `s1.cacheAssets` 23,
+  `s1.cachedBytes` 38,460,833**; `s1VisibleBytes` (a **top-level** manifest key —
+  `release.s1.s1VisibleBytes` is `undefined` and looks like absence) reads **12,425,468**, quoted with
+  its command and never reasoned from (D-8.4.29).
+- `shasum -a 256 fixtures/*/expected.pdf` from the repo root: **23** lines, **byte-identical** to the
+  baseline capture. `md5 -q README.md` `078d7d80d518d54af2fc04fb270d46b8`, unchanged.
+- **Independent mutation proofs run by the dispatch itself, not taken on report:** replacing the
+  over-bound proof's `expected` with an impossible needle showed the mutation trips the **new guard**
+  (`release carries 65 cache assets, over the declared maximum of 64`), not `sameSet` — clearing the
+  Block If. Commenting the guard out showed the proof still reddens, on `sameSet`'s message. The
+  derived reader was driven against fixture sources for the absent, commented-out, duplicated and
+  reformatted cases, each throwing with its own named case.
+
+### Residual risks
+
+1. **AC3's second clause is met in substance but NOT in its literal wording.** With the proof shape
+   Task 4 prescribes, deleting the guard reddens as `failed for the wrong reason` rather than
+   `escaped verification`, because an over-bound manifest also breaks `sameSet` — which Design Note 3
+   itself predicts — and AC2's mandated `expected` then catches it. The guard demonstrably does not
+   survive its own deletion, and nothing else in the verifier measures the count. The shape that would
+   produce the literal string was measured and rejected at ~86s added to every `verify:offline:red`.
+   **The AC text was deliberately NOT amended to match the code.**
+2. **DW-106 and DW-107 are discharged in code but their `deferred-work.md` entries are untouched**, as
+   this spec's Boundaries require. Closing them belongs to the closer.
+3. `verify:offline:red` and `verify:offline:wasm` now shell out to `go build` (once and twice
+   respectively). `go` was already a hard prerequisite of `npm run build`, but these two commands now
+   carry that dependency as well, and are correspondingly slower.
+4. No claim here is phrased at the browser layer. The 12 Playwright specs still never execute on this
+   machine and CI runs only `tsc --noEmit` (DW-101).

@@ -1,6 +1,6 @@
 import { brotliCompressSync, brotliDecompressSync, constants } from 'node:zlib'
 import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -151,6 +151,22 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
 // each embedding 87 occurrences of its own absolute root. The value of this check
 // is the NEXT tree-dependent input, not the one already measured.
 //
+// AND A SECOND LIMIT, BECAUSE SILENCE ABOUT IT WOULD REBUILD THIS RUN'S SIGNATURE
+// DEFECT INSIDE THE FIX FOR IT: both arms build with -buildvcs=false, which closes
+// THE ONLY tree→binary channel ever measured here, so the stray file has no known
+// route into the output and this check is expected to be quiet. It watches for a
+// FUTURE tree-dependent input, not for the closed one. The probe's capability to
+// move a binary was measured at Story 8.4g's close (with the flag absent, a stray
+// untracked file changed the digest) and is deliberately NOT re-measured here —
+// re-measuring it would mean building without the flag, which is DW-107's job
+// below. What IS re-measured every run is that the probe is still VISIBLE to git,
+// because a probe git cannot see perturbs nothing and would turn this into an
+// all-clear indistinguishable from a couldn't-look.
+//
+// ⚠ THE PROBE FILENAME MUST NEVER BE ADDED TO .gitignore. Its visibility to git
+// IS the perturbation: Go derives `vcs.modified` from `git status`, so an ignored
+// probe makes both builds see an identical tree and this check assert nothing.
+//
 // It runs only under --wasm-witness. `build:wasm` is a dependency of `typecheck`,
 // `test` AND `build`, so a second engine build there would tax every designer
 // gate; this is the home that runs once.
@@ -162,6 +178,14 @@ function assertEngineWasmIsTreeIndependent() {
   try {
     buildEngineWasm(first, { stdio: 'pipe' })
     writeFileSync(stray, 'transient tree-state probe written by verify-offline-release.mjs\n')
+    // THE PERTURBATION IS MEASURED BEFORE ANYTHING IS CONCLUDED FROM IT. Go reads
+    // the tree through git, so a probe git does not report is not a probe: the two
+    // builds would then differ in nothing at all and their agreement would be a
+    // couldn't-look wearing an all-clear.
+    const strayPath = `folio-go/${basename(stray)}`
+    let porcelain
+    try { porcelain = execFileSync('git', ['status', '--porcelain'], { cwd: join(root, '..'), encoding: 'utf8', timeout: 30000 }) } catch (error) { fail(`the tree-state probe could not be shown to git: \`git status --porcelain\` in the repository root failed (${error.message}), so whether the second build saw a different tree is unmeasured`) }
+    if (!porcelain.includes(strayPath)) fail(`the tree-state probe ${strayPath} is invisible to git, so both builds below see the same tree and their agreement would assert nothing: \`git status --porcelain\` in the repository root does not list it — it must never be added to .gitignore`)
     buildEngineWasm(second, { stdio: 'pipe' })
     const before = sha256(readFileSync(first))
     const after = sha256(readFileSync(second))

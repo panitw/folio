@@ -4,7 +4,7 @@ import App from './App.tsx'
 import { getEngineClient, type EngineClient } from './engine-client.ts'
 import type { EngineSnapshot } from './engine-protocol.ts'
 import { engineMayStart, registerOfflineLifecycle, type OfflineLifecycle } from './offline-lifecycle.ts'
-import { loadS1Payload, type S1Payload } from './release-payload.ts'
+import { isDevBypassReason, loadS1Payload, payloadForLifecycle, type S1Payload } from './release-payload.ts'
 import { runtimeAssetUrls } from './generated/offline-assets.ts'
 import { loadStarterAfterEngineReady } from './startup-sequence.ts'
 import { selectFileAccess, selectImageFileAccess, selectSampleFileAccess } from './file/capability.ts'
@@ -39,18 +39,18 @@ async function startObservation() {
   lifecycle = { state: 'checking', cacheReady: false, verifiedAssetUrls: [] }; engineState = 'waiting'; render()
   try {
     const result = loadS1Payload()
-    // registerOfflineLifecycle and the load screen already speak `undefined` for
-    // "no usable payload", so a rejection maps to that at exactly one place and
-    // nothing downstream changes. The REASON is not discarded on the way past: it
-    // is what the next line reads.
-    payload = result.ok ? result.payload : undefined
+    // Both decisions this block makes about the result are DELEGATED to pure
+    // functions in release-payload.ts, because nothing imports this module and
+    // Vitest collects no test that could execute an expression written here.
+    // Inline, either could be mutated with every gate staying green.
+    payload = payloadForLifecycle(result)
     const expectedPageId = document.querySelector('meta[name="folio-page-release"]')?.getAttribute('content') ?? undefined
     // The dev server emits no release bootstrap, so there is nothing to verify.
     // Start the engine straight from the module graph and let the shell say so.
     // GATED ON THAT ONE REASON, not on a falsy payload: a bootstrap that is
     // malformed, or over the release bound, is a real fault and must not be read
     // as "the dev server did not emit one" and quietly bypassed.
-    if (import.meta.env.DEV && !result.ok && result.reason === 'no-bootstrap') { lifecycle = { state: 'dev-bypass', cacheReady: false, verifiedAssetUrls: [] }; render(); void startEngine(); return }
+    if (import.meta.env.DEV && isDevBypassReason(result)) { lifecycle = { state: 'dev-bypass', cacheReady: false, verifiedAssetUrls: [] }; render(); void startEngine(); return }
     stopObservation = registerOfflineLifecycle(expectedPageId, payload, (next) => { lifecycle = next; render(); void startEngine() })
     render()
   } finally { observationInFlight = false }

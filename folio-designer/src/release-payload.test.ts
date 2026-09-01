@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadS1Payload, parseS1Payload, type S1PayloadRejection } from './release-payload'
+import { isDevBypassReason, loadS1Payload, parseS1Payload, payloadForLifecycle, type S1PayloadRejection, type S1PayloadResult } from './release-payload'
 
 const hash = 'a'.repeat(64)
 const cacheAssets = ['/index.html', '/engine', '/latin', '/thai', '/cjk', ...Array.from({ length: 15 }, (_, index) => `/asset-${index}`)]
@@ -109,5 +109,59 @@ describe('S1 bootstrap reader', () => {
   it('keeps a null bootstrap a rejection rather than a propagating TypeError', () => {
     bootstrapNode('null')
     expect(loadS1Payload()).toEqual({ ok: false, reason: 'not-an-object' })
+  })
+})
+
+// THE TWO DECISIONS main.tsx MAKES ABOUT A RESULT, EXECUTED.
+// Nothing in this repo imports main.tsx, and Vitest collects only
+// `src/**/*.test.{ts,tsx}` and `scripts/**/*.test.mjs` (the Playwright suite is
+// compile-only and never runs), so while both decisions were expressions inside
+// that module they were executed by NO test: replacing the payload mapping with
+// a bare `undefined` type-checked and shipped an app permanently reporting
+// "Offline cache unavailable", and the dev bypass could be re-widened to any
+// falsy payload with every gate green. They are pure, so they are asserted here.
+//
+// The bypass predicate is driven over the SAME rejection table this file already
+// builds, plus the two reader-level reasons that table cannot reach, and the
+// union is held to the declared reason set below — so "fires on `no-bootstrap`
+// and on NO other reason" is a claim over every reason that exists.
+const readerRejections: readonly (readonly [string, () => S1PayloadResult, S1PayloadRejection])[] = [
+  ['an absent bootstrap node', () => { document.getElementById('folio-release-bootstrap')?.remove(); return loadS1Payload() }, 'no-bootstrap'],
+  ['a bootstrap that is not JSON', () => { document.getElementById('folio-release-bootstrap')?.remove(); bootstrapNode('{"s1": {"version": 1, "cache'); return loadS1Payload() }, 'malformed-json'],
+]
+
+// Exhaustive BY TYPE: a new member of S1PayloadRejection that no table above
+// drives is a typecheck failure here, not a silently uncovered reason.
+const declaredReasons: Readonly<Record<S1PayloadRejection, true>> = { 'not-an-object': true, 'payload-shape': true, 'asset-count-over-maximum': true, 'asset-count-under-minimum': true, 'cache-assets-invalid': true, 'cached-bytes-mismatch': true, 'row-not-an-object': true, 'row-shape': true, 'row-delivery-composition': true, 'no-bootstrap': true, 'malformed-json': true }
+
+describe("the decisions main.tsx makes about a result", () => {
+  it('names the cause of every reader-level rejection too', () => {
+    expect(readerRejections.map(([name, read]) => { const result = read(); return [name, result.ok ? 'accepted' : result.reason] })).toEqual(readerRejections.map(([name, , reason]) => [name, reason]))
+  })
+
+  it('drives every declared rejection reason through these tables', () => {
+    expect([...new Set([...rejections.map(([, , reason]) => reason), ...readerRejections.map(([, , reason]) => reason)])].sort()).toEqual(Object.keys(declaredReasons).sort())
+  })
+
+  it('hands the lifecycle the parsed payload itself when the result is ok', () => {
+    const accepted = parseS1Payload(payload())
+    if (!accepted.ok) throw new Error(`the bounded generated shape must parse; got ${accepted.reason}`)
+    expect(payloadForLifecycle(accepted)).toBe(accepted.payload)
+    expect(payloadForLifecycle(accepted)?.assetCount).toBe(20)
+  })
+
+  it('hands the lifecycle undefined for every rejection, so the load screen still says so', () => {
+    expect([...rejections.map(([name, input]) => [name, payloadForLifecycle(parseS1Payload(input()))]), ...readerRejections.map(([name, read]) => [name, payloadForLifecycle(read())])])
+      .toEqual([...rejections.map(([name]) => [name, undefined]), ...readerRejections.map(([name]) => [name, undefined])])
+  })
+
+  // THE NARROWING, HELD TO THE WHOLE REASON SET. A bypass that also fired on a
+  // malformed or over-bound bootstrap would be the same "two causes, one
+  // outcome" defect this story removed one line away.
+  it('fires the dev bypass on the absent-bootstrap reason and on no other reason that exists', () => {
+    const fired = [...rejections.map(([name, input]) => [name, isDevBypassReason(parseS1Payload(input()))] as const), ...readerRejections.map(([name, read]) => [name, isDevBypassReason(read())] as const)]
+    expect(fired.filter(([, bypass]) => bypass).map(([name]) => name)).toEqual(['an absent bootstrap node'])
+    expect(fired).toHaveLength(rejections.length + readerRejections.length)
+    expect(isDevBypassReason(parseS1Payload(payload()))).toBe(false)
   })
 })
