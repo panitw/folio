@@ -4768,3 +4768,123 @@ who exports is told. The codebase's own metrics path already treats this conditi
 is **precedent**, not an argument against.
 
 ---
+
+### DW-94 — a carried face is registered with no weight or style descriptors, so bold and italic components get browser-synthesized faces over a 400/normal one
+
+- **Deferred by:** Story 8.4a (2026-09-01), recorded at close. Raised in review and deliberately not
+  patched; filed here because the story's frontmatter is not the register.
+- **Owner:** **Story 8.4b or the first story that gives a chain per-variant entries** — whichever
+  reaches a face-variant decision first. This is a chain/face-variant **design** question, not a local
+  repair.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+**The gap.** The registration seam constructs the face from bytes alone and passes no descriptors, while
+the canvas still emits a 700 weight for a bold component and an italic style for an italic one. The
+browser therefore **synthesizes** bold and italic over a regular face — different metrics from the ones
+the engine measured with, which is precisely the class of defect Story 8.4a exists to remove. The
+projected chain entry already carries a `style` and it is unused here. **Pre-existing in kind for shipped
+faces too** (the build-time generator declares regular instances only), which is why this is a deferral
+rather than a regression.
+
+**What discharges it.** A ruling on how a chain expresses face variants, then descriptors on both the
+build-time and the runtime registration paths.
+
+---
+
+### DW-95 — the canvas's inline carried-face family REPLACES the declared stack rather than extending it, so a registered face missing a glyph falls to the browser default
+
+- **Deferred by:** Story 8.4a (2026-09-01), recorded at close.
+- **Owner:** **Story 8.4b.** It is the story that re-points the canvas fragment stack, so it is the one
+  place where "what the fragment falls back to" is already being decided.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+**The gap.** The fragment's inline `font-family` names one family and nothing after it. Story 8.4a gates
+the inline declaration on the face having actually registered, so the **fetch-failure** row degrades
+correctly — that path is closed. What is open is the face that IS registered and merely **lacks a
+glyph**: CSS's own per-glyph font matching would have degraded onto the stylesheet's declared stack had
+that stack been appended, and instead the glyph falls to the browser default. The intent contract does
+not settle this fork and **no surface in this repository can observe the difference** (jsdom applies no
+stylesheet and runs no font matching), which is the second reason it was not patched blind.
+
+**What discharges it.** A decision on whether an inline carried family appends the declared stack, and —
+because no unit surface can see it — a browser end-to-end check under **D-000.4**.
+
+---
+
+### DW-96 — no concurrency cap on the carried-face asset fan-out, and release does not abort requests already in flight
+
+- **Deferred by:** Story 8.4a (2026-09-01), recorded at close.
+- **Owner:** **Engineering lead** to price it against the real ceiling; due at **Epic 8 close**.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+**The gap.** The projection admits up to 256 chains of up to 64 entries, and the registration seam issues
+one `asset` request per distinct carried key in a bare loop down the single engine channel. A document
+with many carried faces therefore issues many concurrent full-font-byte transfers. Release flips the
+seam's `active` flag so nothing is **added** after supersession — the correctness half is closed — but the
+fetches still complete and still transfer their bytes.
+
+**What discharges it.** Either a measured argument that the real ceiling is small enough to ignore, or a
+bounded fan-out plus an abort signal threaded into the asset request.
+
+---
+
+### DW-97 — the hand-written comment stripper does not skip regex literals, so one regex containing a double slash silently truncates its line for every scan routed through it
+
+- **Deferred by:** Story 8.4a (2026-09-01), recorded at close.
+- **Owner:** **The first story that adds a regex literal containing `//` to designer source** — that is
+  the trigger, and it is checkable by grep. Otherwise **Epic 8 close.**
+- **Severity:** LOW while latent; **re-price to MEDIUM the moment the trigger fires**, because it weakens
+  three guards at once and does so silently.
+- **Status:** OPEN.
+
+**The gap.** The stripper tracks string and template-literal state but not regex-literal state, so a
+pattern such as `/https:\/\//` reads as the start of a line comment and the rest of that line is dropped
+before any prohibition sees it. No designer source triggers it today. But the violation scan, the
+runtime-registration site scan and the font-family position census **all** now route through it, so the
+first source that adds such a regex quietly weakens all three.
+
+**What discharges it.** Regex-literal state in the stripper, with a fixture proving a `//`-bearing regex
+survives it — or the AST approach the repo's ownership contract test already demonstrates.
+
+---
+
+### DW-98 — the new test stubs install a page font set by a spelling the repaired prohibition does not match, and the prohibition file scans the test corpus
+
+- **Deferred by:** Story 8.4a (2026-09-01), recorded at close.
+- **Owner:** **Epic 8 close.**
+- **Severity:** LOW. Not a live hole — a test stub is not runtime registration — but an **undisclosed
+  blindness** in a rule this very story revived.
+- **Status:** OPEN.
+
+**The gap.** The authority contract scans production, tests **and** e2e. Story 8.4a's own new tests
+install a global face constructor and a document font set, yet neither matches `\bdocument\.fonts\b` nor
+`\bnew FontFace\b`, because they are written as a property definition and a locally declared stub class.
+So the revived rule is blind to the mechanism **as this story itself writes it**. That is defensible —
+stubbing is not registering — but it was undisclosed, and a real registration written in the same shape
+would also pass.
+
+**What discharges it.** Either a stated, tested exemption for the stub spelling, or a detector that
+answers to the mechanism rather than to two literal spellings.
+
+---
+
+### DW-99 — stub teardown deletes the font-set globals rather than restoring the prior property descriptor
+
+- **Deferred by:** Story 8.4a (2026-09-01), recorded at close.
+- **Owner:** **The next test-environment upgrade** (a jsdom major, or a move to happy-dom) — that is the
+  trigger. Otherwise **Epic 8 close.**
+- **Severity:** LOW. No live impact: the current test environment provides neither global.
+- **Status:** OPEN.
+
+**The gap.** Both teardowns call a delete on the global face constructor and on the document's font set
+rather than capturing and restoring the descriptor they replaced. In any environment that **does** provide
+them, that permanently removes both for every later test in the same worker — a failure that would appear
+as an unrelated test breaking, some distance away.
+
+**What discharges it.** Capture the prior property descriptor and restore it, which is the correct shape
+and is no larger than what is there.
+
+---

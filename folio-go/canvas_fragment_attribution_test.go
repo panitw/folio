@@ -1,6 +1,8 @@
 package folio
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -206,5 +208,87 @@ func TestANonMintedFaceNameYieldsNoAssetKey(t *testing.T) {
 	const key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	if got, ok := embeddedFaceAssetKey(embeddedFaceName(key)); !ok || got != key {
 		t.Fatalf("embeddedFaceAssetKey(embeddedFaceName(%q)) = %q, %v; want %q, true", key, got, ok, key)
+	}
+}
+
+// twoCarriedFacesTemplateJSON is the I/O matrix's "two embedded entries in one
+// chain" row, built rather than shipped.
+//
+// NO NEW FIXTURE, NO NEW GOLDEN, NO NEW SIGN-OFF. A `fixtures/` directory
+// would need an `expected.pdf`, which is a human-attested artifact under
+// AD-21/D-4.7.1 and is above a builder's authority to mint. This document is
+// never rendered: TestTwoCarriedFacesInOneChainAreAttributedToTheirOwnKeys
+// projects it with CanvasWithTextPaint and reads the projection, so no page,
+// no digest and nothing to attest are produced. And no binary enters the
+// repository — the second face is the SHIPPED NotoSans-Regular the module
+// already commits, embedded as an asset the same way the Thai one already is.
+//
+// THE CHAIN NAMES NO SHIPPED FACE AT ALL, which is the point: with
+// ["Noto Sans", <carried Thai>] the Latin half is drawn by the FontSet and
+// carries no key, so the two-carried case is never exercised. Here BOTH
+// entries are assets the document carries, the Latin face covers the Latin
+// run and covers none of the Thai, and each fragment must name its OWN key.
+func twoCarriedFacesTemplateJSON(t *testing.T) (string, string, string) {
+	t.Helper()
+	source := embeddedFontTemplateJSON()
+	thaiKey := embeddedFontAssetKey()
+	latinRaw := testShippedNotoSans
+	latinSum := sha256.Sum256(latinRaw)
+	latinKey := fmt.Sprintf("%x", latinSum)
+	if latinKey == thaiKey {
+		t.Fatal("the two faces hash to one key, so the document carries one asset and the distinctness below is asserted over nothing")
+	}
+	var data strings.Builder
+	for i, line := range base64Wrapped76(latinRaw) {
+		if i > 0 {
+			data.WriteString(",\n")
+		}
+		data.WriteString("        \"" + line + "\"")
+	}
+	const assetTail = "      \"mediaType\": \"font/ttf\"\n    }\n  },"
+	if strings.Count(source, assetTail) != 1 {
+		t.Fatalf("fixture precondition: the carried-face document no longer ends its one asset with %q, so a second asset cannot be spliced in beside it", assetTail)
+	}
+	source = strings.Replace(source, assetTail, "      \"mediaType\": \"font/ttf\"\n    },\n    \""+latinKey+"\": {\n      \"data\": [\n"+data.String()+"\n      ],\n      \"font\": {\n        \"family\": \"Noto Sans\",\n        \"licence\": \"SIL Open Font License 1.1\",\n        \"source\": \"folio-go/fonts/notosans/NotoSans-Regular.ttf — the shipped static Regular instance\",\n        \"style\": \"Regular\"\n      },\n      \"mediaType\": \"font/ttf\"\n    }\n  },", 1)
+	const shippedHead = "    \"body\": [\n      \"Noto Sans\",\n      {"
+	if strings.Count(source, shippedHead) != 1 {
+		t.Fatalf("fixture precondition: the carried-face document no longer opens its chain with %q, so the shipped entry cannot be replaced by a carried one", shippedHead)
+	}
+	source = strings.Replace(source, shippedHead, "    \"body\": [\n      {\n        \"asset\": \""+latinKey+"\"\n      },\n      {", 1)
+	const thai = "\"value\": \"สัญญา\""
+	if strings.Count(source, thai) != 1 {
+		t.Fatalf("fixture precondition: the carried-face document no longer spells %s, so the mixed-script variant cannot be built from it", thai)
+	}
+	source = strings.Replace(source, thai, "\"value\": \"Deed สัญญา\"", 1)
+	return source, latinKey, thaiKey
+}
+
+// TestTwoCarriedFacesInOneChainAreAttributedToTheirOwnKeys closes the last
+// unproved row of this story's I/O matrix at the GO ATTRIBUTION surface. The
+// browser half was already proved twice — embedded-face-family.test.ts shows
+// two distinct keys derive two distinct families, and
+// embedded-face-registry.test.ts registers both — but the engine half, "each
+// fragment names its OWN asset key", rested on a document that carries exactly
+// one font. A projection that attributed every carried fragment to whichever
+// key it found first would have passed every existing test in this file.
+func TestTwoCarriedFacesInOneChainAreAttributedToTheirOwnKeys(t *testing.T) {
+	source, latinKey, thaiKey := twoCarriedFacesTemplateJSON(t)
+	fragments := projectedFragments(carriedFaceProjection(t, source))
+	if len(fragments) < 2 {
+		t.Fatalf("presence precondition: the mixed-script element projected %d fragments, and the claim is about more than one", len(fragments))
+	}
+	seen := map[string]string{}
+	for _, fragment := range fragments {
+		switch fragment.AssetKey {
+		case latinKey, thaiKey:
+			seen[fragment.AssetKey] = fragment.Text
+		case "":
+			t.Fatalf("fragment %q carries no asset key, but this chain names NO shipped face — every fragment can only have been drawn by a face the document carries", fragment.Text)
+		default:
+			t.Fatalf("fragment %q is attributed to asset key %q, which this document does not carry", fragment.Text, fragment.AssetKey)
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("the two carried entries produced %d distinct asset keys (%v); each fragment must name its OWN, or the browser paints one script with the other's face", len(seen), seen)
 	}
 }

@@ -5,7 +5,7 @@ created: '2026-09-01'
 status: 'done'
 baseline_revision: 'dfe5129ae89fcc124d96ed4047e3a7fe6db3348f'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized']
 deferred:
@@ -49,20 +49,6 @@ deferred:
       folio-designer/src/embedded-face-registry.ts
     severity: medium
   - summary: >-
-      The I/O matrix's "two embedded entries in one chain" row is proved at the derivation and
-      registration surfaces but not at the Go engine-attribution surface.
-    evidence: |-
-      embedded-face-family.test.ts proves distinct keys yield distinct families, and
-      embedded-face-registry.test.ts registers [oneKey, otherKey] and asserts both. But the Go
-      half — "each fragment names its OWN asset key" for a chain with two carried faces both
-      covering — has no fixture: the embedded-font fixture carries exactly one font asset, and
-      TestAMixedScriptElementIsAttributedFragmentByFragment is one carried plus one shipped.
-      NOT patched deliberately: a second carried font fixture would create a new golden digest
-      and a new human sign-off obligation, which this dispatch places above a builder's authority.
-    location: >-
-      folio-go/canvas_fragment_attribution_test.go
-    severity: medium
-  - summary: >-
       The hand-written comment stripper does not skip regex literals, so a regex containing a
       double slash silently truncates that line for every scan routed through it.
     evidence: |-
@@ -99,6 +85,28 @@ deferred:
       folio-designer/src/App.test.tsx
     severity: low
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — a plain-language summary of what shipped. The intent contract below governs
+implementation.*
+
+A document can carry its own typeface inside it. The engine already drew printed pages with such a
+typeface, but the design canvas in the browser had no name for it at all, so the canvas placed every run
+of text at the engine's own positions while drawing it in a substitute face. The letters collided. Thai
+is where a person first noticed it.
+
+That is fixed. The engine now tells the canvas which of the document's carried assets it drew each run of
+text with; the browser fetches those bytes over the channel images already travel on, registers the
+typeface once for the whole document, and asks for it on exactly the runs it belongs to. If the bytes
+never arrive, the canvas quietly keeps the stack it always used and carries on painting. Repeated sheets
+get it too — the first attempt reached only the first sheet's copy, and review caught that.
+
+Two things a later reader should not mistake for oversights. A document using only the typefaces the
+product ships still has an older, separate mismatch; that one is a design-system decision, already ruled
+and owned by a named follow-up story, and is deliberately left open. And nothing here can run a real
+browser, so the tests prove the typeface is chosen, fetched, registered and asked for — not that a page
+visibly renders with it. That check waits on browser end-to-end testing.
 
 <intent-contract>
 
@@ -830,3 +838,131 @@ Gate notes carried up to the orchestrator:
   `1446b87`). Corrected anchors are in the Code Map.
 - **DW-35 cause one is left OPEN by design**, ruled at this gate on the register's own "What 8.4a owns"
   enumeration. This is the single judgement call the gate made.
+
+## Delivery Log
+
+### 2026-09-01 — done
+
+Baseline `dfe5129`. Shipped in `c4cd60c` (implementation) and `51e38ac` (review patches); this closing
+commit carries the record. **Every gate below was re-run by the closer at `9f04732` with `-count=1`;
+none of it is the build's report relayed.**
+
+**What shipped.** The engine attributes each canvas paint fragment to the document asset it resolved that
+fragment's face to; the browser derives its own CSS family from that key alone, fetches the bytes over
+the existing `asset` operation, registers one `FontFace` per key document-scoped, and sets that family
+inline on exactly those fragments — and only once the face has actually registered, so a failed fetch
+degrades onto the stylesheet's declared stack rather than off it. DW-35 **cause two closed**; **cause one
+stays OPEN**, owned by Story 8.4b per **D-8.4.14**.
+
+**Heavy-test cadence: every-story, and this project has no integration or e2e suite that executes.**
+Measured and green: `go test -count=1 ./...` — 13 `ok`, one red; `-tags=matrix ./...` — 12 `ok`, exactly
+two reds; `go vet -tags=matrix ./...` exit 0; `gofmt -l folio-go` empty; `lint` 4 × `ok`;
+`GOOS=js GOARCH=wasm ./wasm/cmd/engine/` `ok` 0.475s (invisible to `go test ./...`, run by hand); AD-21
+four legs PASS (darwin/arm64 0.74s, linux/amd64 6.98s, linux/arm64 6.30s, js/wasm 11.60s) plus the unset
+control PASS 0.00s — the deliberate no-op, and the timing contrast is what shows the four legs asserted;
+`TestCrossTargetByteIdentity` PASS 27.76s, all four targets on one hash; designer `typecheck` exit 0,
+oxlint exactly 4 pre-existing `only-export-components` warnings, Vitest **37 files / 350 tests** all
+passing, `test:e2e:compile` exit 0. **All 23 `expected.pdf` digests byte-identical** to a baseline
+reconstructed **out of git** at `dfe5129`, not from any file this run wrote.
+
+**Exactly two standing reds, no third.** `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` (got 7,
+need ≥ 20) and, under `-tags=matrix` only, `TestShippedFacesReproduceFromUpstream` (`fontgen: fontTools
+is not importable`, **DW-86**, which fails rather than skips deliberately). Both suites were re-run after
+the closer's own Go addition below and the red set was unchanged.
+
+**The `followup_review_recommended` flag is cleared, on the closer's own measurements.** Both HIGH
+patches were re-proved here rather than accepted:
+
+- *The repeated-sheet echo.* Re-ran the build's mutation (`carriedFaces` → `NO_CARRIED_FACES` at the
+  echo's `TextPaint`): **1 failed / 349 passed**, and the one red is
+  `paints a repeated sheet's echo with the carried face, not only the component's home`. Read the test
+  rather than counting it: it renders the real `App` over a three-content-window projection with a
+  component spanning the seam, asserts non-vacuity (one home fragment, one echoed fragment), and asserts
+  the **echoed node's own rendered `fontFamily`** equals the derived family. It is a rendered fact, not a
+  proxy.
+- *The authority-contract carve-out.* Verified the narrowing two ways. Restoring the broad
+  `replace(seam, '')` reddens exactly `keeps every non-font prohibition live inside the approved seam`.
+  And independently of that test, the seam replacement was reconstructed byte-wise: over the real seam
+  body it produces **four changed regions, all inside `new FontFace` and `document.fonts`** — no other
+  prohibition is silenced anywhere in the file. The readiness rewrite is scoped to
+  `document.fonts.ready`, which can only ever shadow the `document.fonts` rule.
+
+**Guard audit, all nine assertions against their stated fate (AC4).** The two that must not move —
+the detector's own proof and *keeps the generic fallback last* — were checked **byte-identical** to
+`dfe5129`, not merely present. `canvas_embedded_face_test.go` is absent from the diff entirely (AC5).
+Teeth measured by mutating production, including the **weakening-by-evasion** case the AC exists for:
+
+- Replacing the inline derived family with a bare `'IBM Plex Sans'` — a family `App.css` *does* declare,
+  so the pre-8.4a stylesheet-only tie would have stayed green — reddens **both** widened guards.
+- Deleting the inline family altogether reddens both widened guards and four App tests.
+- Adding a second registration site to a production module reddens the Task 10 replacement **and** the
+  repaired `document.fonts` prohibition **on the real corpus**. The build had only proved that rule
+  against synthetic fixtures; this closes it against the files it actually scans.
+- Go: dropping the asset key at the fragment append reddens three named tests
+  (`TestACarriedFragmentIsAttributedToItsAssetKey`,
+  `TestAMixedScriptElementIsAttributedFragmentByFragment`,
+  `TestCanvasProjectionWireKeysAreTheRecordedSet`).
+
+**A deferral disagreed with, and closed here.** The build deferred the I/O matrix row *"two embedded
+entries in one chain"* at the Go attribution surface on the ground that a second carried font fixture
+*"would create a new golden digest and a new human sign-off obligation"*. **Measured, that ground is
+false for the surface the deferral names.** The carried-face document is *built in Go from bytes the
+module already commits*, not read from `fixtures/`, and the attribution tests project it with
+`CanvasWithTextPaint` — no page is rendered, so no digest and nothing to attest is produced. The closer
+added `TestTwoCarriedFacesInOneChainAreAttributedToTheirOwnKeys`, which splices the shipped Latin face in
+as a **second carried asset**, points the chain at two carried entries and no shipped one, and asserts
+each fragment names its **own** key. **No new binary, no new fixture directory, no golden, no sign-off.**
+Red-proved against the exact defect it names: attributing every carried fragment to the document's
+first-indexed carried key leaves **every pre-existing test in the file green** and reddens only this one.
+The row is now proved on all three surfaces and the deferral is struck from the frontmatter.
+
+**Rejection audit (DW-87), all six spot-checked at their cited locations.** Five refusals are sound as
+written (the workflow-boundary one, the GUARD 2 exactness one, the constant-placement one, the
+`withoutComments` duplication one, and the collision-list one — GUARD 1 part (d) really does loop over
+the families read live from the generator, so the module test's hardcoded list is redundant rather than
+load-bearing). **One was refused on weaker ground than was available:** the claim that
+`fragment.assetKey !== undefined &&` is redundant was refused as *cosmetic*. It is not cosmetic — the
+set's `has` takes `string`, the field is `string | undefined`, and the project compiles `strict`.
+Removing the clause was tried: **two `TS2345` errors**. The rejection reached the right outcome; its
+stated ground understates why.
+
+**Process record — commit provenance, instance two.** `c4cd60c` was created by the step-03 implementation
+subagent, which step-03 does not authorize. The builder kept it (correctly scoped) and added `51e38ac`.
+This is the **second occurrence in this run**; the first is at **D-8.4.9(c)**, recorded as a process
+breach with the note that *re-measurement is a recovery, not a repeatable guarantee*. Audited here:
+both commits contain **only this story's paths**, carry the required trailer, and neither touches root
+`README.md` (md5 unchanged, `078d7d80d518d54af2fc04fb270d46b8`), any `signoff.json`, any fixture, any
+`expected.pdf`/`expected.json`, `App.css`, `tokens.css`, `build-wasm.mjs` or `canvas_embedded_face_test.go`.
+The recovery held again — and it is still a recovery.
+
+**Frozen contract, verified rather than assumed.** The `<intent-contract>` slab is **byte-identical at
+every revision of this spec** (`e25381a`, `c4cd60c`, `51e38ac`, worktree): 6004 bytes, md5
+`e318a67c23df3e4cbb454c71144740c0`. Its Design Notes still claim cause one's fix is *"a design-system
+decision no ruling has ever made"*, which **D-8.4.14 at `dfe5129` had already falsified before this spec
+was committed**. That stale claim is **deliberately left standing** — a contract edited after the fact to
+look correct is worth less than one showing what was believed when. The correction lives in
+`deferred-work.md` under DW-35 and is restated here. Cause one remains **OPEN, owned by Story 8.4b**.
+
+**The limit this story closes under, stated plainly.** Nothing in this repository can execute a real font
+load, a real `document.fonts.add`, or a rasterized glyph. `test:e2e:compile` is `tsc --noEmit`; Playwright
+appears in **no** workflow (confirmed — the string does not occur in `ci.yml`); browser e2e is deferred by
+**D-000.4**; jsdom applies no stylesheet and implements no font loading. The gates above prove the
+derivation, the registration **call**, the fragment's rendered inline family, the guards and the protocol
+shape. **They do not prove the canvas visibly paints with the carried face.** This is a couldn't-look on
+that one claim, not an all-clear, and the Design Notes carry the same disclosure with its named successor.
+
+**Deferred work, now filed in the register rather than only in this file's frontmatter.** The build wrote
+no `deferred-work.md` entry for any of its seven deferrals. Six survive and are registered as
+**DW-94 … DW-99** (four medium: no weight/style descriptors on a registered carried face; the inline
+family replacing rather than extending the declared stack; no concurrency cap or abort on the carried-face
+fan-out; and — the two low ones — the comment stripper's blindness to regex literals and the test stubs
+that install a font set by a spelling the repaired prohibition does not match, plus the stub teardown that
+deletes rather than restores). Owners are named on each entry. The seventh is closed above.
+
+**Two counts in the build's own report did not reproduce**, both benign and both recorded so the next
+reader does not chase them: it reported `./...` as *16 ok* and `-tags=matrix ./...` as *13 ok*; measured
+here they are **13** and **12** packages `ok` (the red sets and the red identities match exactly).
+
+**Tracker.** `8-4a-the-canvas-paints-with-the-face-the-engine-measured: done`. `epic-8` deliberately left
+`backlog` — the epic's heavy-test catch-up and its close are the orchestrator's. Remaining sequence
+**8.4c → 8.4b → 8.5 → 8.6**, resequenced at `9f04732` per **D-8.4.17c**.
