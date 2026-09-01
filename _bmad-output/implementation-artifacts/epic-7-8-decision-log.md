@@ -3400,3 +3400,97 @@ was red. And the **first mutation harness silently let a non-compiling mutation 
 `pass: 753` for a package that never ran**; it was rebuilt to fail loudly and everything re-run. Both
 are this run's recurring family: **a green that measured nothing** — here caught by the builder on
 itself.
+
+---
+
+### D-8.4.17 — the placement was never a deviation; DW-20 re-priced on a FIRED trigger; and the epic resequences to 8.4a → 8.4c → 8.4b
+
+**(a) D-8.4.16's "deviation" is ratified, and the lead reclassified it rather than forgiving it.** Read
+against the guard itself rather than taken from the report: the verdict constrained **where the type is
+MINTED** — *"one type minted at the single door that owns the attribution"* — and `CarriedFaceError` is
+still stamped at exactly one site, `fontCache.get`'s embedded arm, on **every** error out of that arm.
+**Declaration site is package organisation; minting site is the invariant.** By the standing rule that a
+ruling's verdict line outranks its bindings, **the verdict holds exactly**, and what failed was an
+incidental locational assumption the lead's own prose invited. **The lead recorded that as its own
+error, not the builder's.**
+
+**The builder's ground is better than "tolerable" — it is right.** Attribution is a format fact, so it
+belongs beside `UnsupportedFontMediaTypeError`, which it generalises and wraps. **Two properties in
+the shipped comment are stronger than anything the ruling asked for**: the stamp **adds no text**, so
+every located string the render path prints stays **byte-identical**; and `Unwrap` keeps every existing
+`errors.As`/`errors.Is` target reachable **including the media-type error the old allowlist named**.
+The lead states it would have missed both.
+
+**Reporting it rather than working around it is the behaviour to keep**, and the reason is worth
+holding: **a builder that silently relocates a ruled mechanism leaves a log entry describing code that
+does not exist.**
+
+**(b) DW-20 re-priced, not taken — because its trigger FIRED rather than failed.** The guard did
+exactly what its own comment predicted: *"the failure mode is a LEGITIMATE commit blocked by an edge
+that is not really there, followed by somebody 'fixing' it by loosening
+`TestValidateNeverReachesRenderOrInternalPDF`. The safe direction is the dangerous one."* It announced,
+and the change **routed around it into a better shape**. **Re-deferring on a fired trigger is
+legitimate where renewing one that never fired would not be.**
+
+- **Not inside Epic 8** — four stories outstanding, and the owner has just said "now" about different
+  work.
+- **New, sharper trigger:** the next change needing a second same-named method on a **root-file receiver
+  in package `folio` that CANNOT be relocated** — an error type that must be part of `folio`'s own
+  **exported** API has no route around the guard, and `*RenderError` is already exported, so a second
+  exported error type is the realistic instance.
+- **This occurrence is instance ONE. On instance two, DW-20 is taken BEFORE that change lands, with no
+  further deferral.**
+- **STANDING PROHIBITION, recorded now rather than discovered later: loosening
+  `TestValidateNeverReachesRenderOrInternalPDF` — or any sibling reachability guard — to clear an
+  injectivity red is FORBIDDEN. If it appears in a diff it is a STOP, not a finding.** A future builder
+  under schedule pressure will find it the obvious repair.
+- **The replacement is cheap, not greenfield** — `lint` already reaches across the module boundary with
+  `packages.Load` — recorded so *"expensive"* cannot become the third deferral's reason. **A criterion
+  erodes from both sides.**
+
+**(c) Sequencing: `8.4a → 8.4c (chrome typeface) → 8.4b → 8.5 → 8.6`.** `sprint-status.yaml` reordered
+accordingly.
+
+**The ground is NOT file collision** — checked, and smaller than it looks: **under option 1 the chrome
+family NAMES do not change at all**, only the files behind them plus the mono binary, so `declared`
+stays `['IBM Plex Sans','IBM Plex Mono','IBM Plex Sans Thai']` and the disjointness assertion stays
+true throughout. **Only 8.4b changes `declared`.**
+
+**The ground is the INTERMEDIATE STATE.** If 8.4b landed first it would register **the same Noto file
+under two family names** — `IBM Plex Sans` and `Noto Sans` — which reads as redundancy and invites a
+future reader to "simplify" it by deleting one. After the IBM Plex work the two registrations point at
+**genuinely different files** and the separation is self-evident from the code. **Do not create a state
+whose only defence is a comment.**
+
+8.4a goes first rather than having a gated spec wait. **If the owner meant "now" literally — ahead of
+8.4a — that is a one-line correction**, and the cost is a gated spec sitting one story longer.
+
+**The "own commit, landing first, same story" reading is confirmed, with two grounds beyond the
+owner's words.** The mono binary is **the cheapest end-to-end proof the IBM Plex pipeline works** — one
+binary, one generated rule, one licence entry — so it is the right first slice on engineering grounds
+independent of the instruction. And splitting it into its own story would put the **licence-manifest
+edit in a different unit from the binaries it describes**; the manifest update belongs in that story's
+**final** commit, and until then it is *already* false, so incremental truth introduces no new
+falsehood.
+
+**(d) The lead's own lesson from being overruled, recorded because it is the more useful half.** Its
+recommendation rested on *"the product has rendered in Noto for its entire life."* That was **true and
+was not evidence for the conclusion drawn from it**: the current state of an artifact **cannot
+distinguish "this is what we chose" from "this is what nobody replaced."** Both hypotheses predict the
+identical observation, so **the observation discriminated nothing** — the test the lead applies to
+others' evidence and did not apply to its own. **The hedge is the only reason it cost one pass instead
+of a wrong build, and the hedge should not have been carrying that much weight.**
+
+**(e) Two builder self-catches promoted to the run's process record, because both generalise.**
+
+1. **A targeted run cannot see an architectural guard.** The third red was real, caused by the
+   implementation itself, and the **targeted package run was GREEN while the arch guard was RED** —
+   because arch guards live **outside** the package under change. **Any story touching type or method
+   structure in `folio`'s root runs the full suite before reporting green.** This is a **scoping**
+   lesson, not a mutation-testing one.
+2. **A non-compiling mutation reported `pass: 753` for a package that never ran.** This run's recurring
+   failure in another costume: **an all-clear indistinguishable from a couldn't-look.** General rule:
+   **any harness reporting a count owes a distinct, noisy state for "could not execute" — a compile
+   failure must never be able to arrive as a pass.**
+
+**Both were caught by the builder on itself, after a green.**
