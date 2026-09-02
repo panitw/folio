@@ -82,6 +82,52 @@ describe('the WASM boundary reports what threw', () => {
     expect(answer.error?.message).not.toBe('The engine returned an invalid response')
   })
 
+  // THE REQUEST SIDE, PINNED. Mutation-proved at review: flipping `execute`'s
+  // initial `let stage: BoundaryStage = 'request'` to `'reply'` left the other
+  // four cases green, because every one of them reassigns `stage` before it
+  // throws. The request-encoding arm is the ONLY one that reads the initial
+  // value, so without this case it could silently regress to the pre-story
+  // generic sentence — which is precisely the erased-evidence behaviour this
+  // story exists to remove.
+  //
+  // btoa is what bytesToBase64 ends on, and it is the boundary's one genuinely
+  // throwable request-side step (it raises InvalidCharacterError on a code
+  // point over 255). Forcing it here forces the stage, not a rewritten
+  // encoder.
+  it('names a failure encoding the request, distinctly from anything the host did', async () => {
+    const realBtoa = globalThis.btoa
+    // The stub throws a plain Error carrying btoa's real name and words
+    // rather than a DOMException. In a browser they are the same thing to
+    // describeThrow — DOMException.prototype inherits from Error.prototype —
+    // but under vitest the two live in different realms, so `instanceof Error`
+    // is false and the assertion would be measuring the test harness's realms
+    // instead of the boundary's reporting.
+    vi.stubGlobal('btoa', () => {
+      const failure = new Error('the string to be encoded contains invalid characters')
+      failure.name = 'InvalidCharacterError'
+      throw failure
+    })
+    // THE PAYLOAD IS BUILT WITH THIS FILE'S OWN `ArrayBuffer`, not through
+    // TextEncoder. `execute` gates the encoder on `payload instanceof
+    // ArrayBuffer`, and under vitest TextEncoder hands back a Node-realm
+    // buffer that fails that check while still passing parseRequest's
+    // realm-agnostic Object.prototype.toString guard — so the request would be
+    // admitted, skip the encoder entirely, and this case would pass for the
+    // wrong reason.
+    // If the request never encoded, the host must never have been asked.
+    let asked = false
+    hostStub.handle = () => { asked = true; return JSON.stringify({ ok: true, snapshot: snapshotStub() }) }
+    try {
+      const answer = await roundTrip('command', new ArrayBuffer(16))
+      expect(answer.error?.code).toBe('WASM_REQUEST_ENCODING_FAILED')
+      expect(answer.error?.message).toBe('The engine request could not be encoded: InvalidCharacterError: the string to be encoded contains invalid characters')
+      expect(answer.error?.message).not.toBe('The engine returned an invalid response')
+      expect(asked).toBe(false)
+    } finally {
+      vi.stubGlobal('btoa', realBtoa)
+    }
+  })
+
   it('names a host that threw, and distinguishes it from a response that would not parse', async () => {
     hostStub.handle = () => { throw new TypeError('Go program has already exited') }
     const answer = await roundTrip('snapshot')
@@ -106,7 +152,7 @@ describe('the WASM boundary reports what threw', () => {
   // story must not have swept one into the other.
   it('leaves a located engine refusal exactly as it was', async () => {
     hostStub.handle = () => JSON.stringify({ ok: false, diagnosticCode: 'COMPONENT_INVALID', message: 'face exceeds the 6288384-byte supported size', dataPath: 'fonts.Noto Sans SC' })
-    const answer = await roundTrip('command', new TextEncoder().encode('{}').buffer as ArrayBuffer)
+    const answer = await roundTrip('command', new ArrayBuffer(2))
     expect(answer.error?.code).toBe('COMPONENT_INVALID')
     expect(answer.error?.message).toBe('face exceeds the 6288384-byte supported size')
   })

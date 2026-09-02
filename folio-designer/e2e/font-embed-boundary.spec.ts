@@ -14,9 +14,17 @@ import { expect, test } from '@playwright/test'
 // the bug. Run it with:
 //
 //   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$HOME/Library/Caches/ms-playwright/\
-//   chromium-1208/chrome-mac-arm64/Google Chrome for Testing.app/Contents/\
+//   chromium-1217/chrome-mac-arm64/Google Chrome for Testing.app/Contents/\
 //   MacOS/Google Chrome for Testing" \
 //     npx playwright test e2e/font-embed-boundary.spec.ts --reporter=list
+//
+// THE PINNED REVISION 1208 IS NOT USABLE ON THIS MACHINE and must not be named
+// here: that directory is a 428 KB truncated download with no
+// `Contents/Frameworks/...framework`, and launching it aborts in `dlopen`
+// (1217 is 336 MB and complete). Do NOT run `npx playwright install chromium`
+// to repair it — that archive has previously returned HTTP 400 from the
+// download host. PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH stays the mechanism;
+// only the revision it points at changed.
 //
 // THE CATALOGUE IS NEVER HARDCODED HERE, in either of the two places it could
 // have been. The family list is read from `font-catalogue.json` — the build's
@@ -31,14 +39,41 @@ const cataloguePath = fileURLToPath(new URL('../font-catalogue.json', import.met
 const catalogue = JSON.parse(readFileSync(cataloguePath, 'utf8')) as ReadonlyArray<CatalogueRow>
 const families = catalogue.map((row) => row.family)
 
+// AND THE BOUNDARY'S SENTENCES ARE NOT HARDCODED EITHER — for the same reason,
+// and it is the sharper of the two.
+//
+// The first version of this harness rejected exactly one string, "The engine
+// returned an invalid response". That was already stale when it was written:
+// this story's own change RENAMES the production fault, so a recurrence of the
+// wasm out-of-memory now reaches the panel as "The engine's response could not
+// be parsed: SyntaxError …". The harness would have recorded that as an
+// ordinary located refusal and passed green over the exact defect it exists
+// for. Four of the five stages evaded it.
+//
+// So the set is READ OUT OF engine.worker.ts's own `boundarySentences` table.
+// A sixth stage added there enters this rejection set in the same commit that
+// adds it, with nobody having to remember. If that table is renamed or
+// restructured this throws rather than silently matching nothing — an empty
+// rejection set is the failure mode being designed against, not an outcome.
+const workerSource = readFileSync(fileURLToPath(new URL('../src/engine.worker.ts', import.meta.url)), 'utf8')
+const boundarySentences = readBoundarySentences(workerSource)
+
+function readBoundarySentences(source: string): ReadonlyArray<string> {
+  const table = /const boundarySentences[^=]*=\s*\{([\s\S]*?)\n\}/.exec(source)
+  if (!table) throw new Error('engine.worker.ts no longer declares a `boundarySentences` table this harness can read; re-derive the rejection set rather than deleting the check')
+  const found = [...table[1].matchAll(/:\s*(['"])((?:\\.|(?!\1).)*)\1/g)].map((match) => match[2].replace(/\\(['"])/g, '$1'))
+  if (found.length < 5) throw new Error(`read ${found.length} boundary sentences from engine.worker.ts, expected at least the five stages; the extraction has gone stale`)
+  return found
+}
+
 // One row per family, in the shape the story asks to be reported: embedded, or
-// refused with its located text, or the bare protocol failure that is the
-// defect. `outcome` is deliberately the engine's own sentence and not a
-// classification of it — a diagnosis cannot be read out of a label this
-// harness invented.
+// refused with its located text, or a boundary sentence — which is the defect.
+// `outcome` is deliberately the engine's own words and not a classification of
+// them: a diagnosis cannot be read out of a label this harness invented.
 type Row = { family: string; outcome: string }
 
-const PROTOCOL_FAILURE = 'The engine returned an invalid response'
+const boundaryAnswers = (rows: ReadonlyArray<Row>): ReadonlyArray<Row> =>
+  rows.filter((row) => boundarySentences.some((sentence) => row.outcome.includes(sentence)))
 
 async function placeAndSelectText(page: import('@playwright/test').Page) {
   await page.goto('/')
@@ -64,7 +99,7 @@ test('the designer offers exactly the families the catalogue declares', async ({
   expect([...offered].sort()).toEqual([...families].sort())
 })
 
-test('every catalogue family is embedded or located-refused, and none returns the bare protocol failure', async ({ page }) => {
+test('every catalogue family embeds, and no pick is answered by a boundary sentence', async ({ page }) => {
   // 21 families, each on its OWN blank document: a shared document would let
   // one pick's document state (twenty-one embedded assets, twenty-one chains)
   // confound the next pick's result, and the report would no longer be one
@@ -99,11 +134,24 @@ test('every catalogue family is embedded or located-refused, and none returns th
   console.log('\nPER-FAMILY TABLE')
   for (const row of rows) console.log(`| ${row.family} | ${row.outcome} |`)
 
-  // THE ACCEPTANCE. Each family is embedded or refused with a located reason,
-  // and none produces the boundary's own least-useful sentence.
-  const swallowed = rows.filter((row) => row.outcome.includes(PROTOCOL_FAILURE))
-  expect(swallowed.map((row) => `${row.family}: ${row.outcome}`)).toEqual([])
+  // THE ACCEPTANCE, IN TWO HALVES, AND BOTH ARE LOAD-BEARING.
+  //
+  // First: NO pick may be answered by ANY boundary sentence. A boundary
+  // sentence is never an engine refusal — the engine's refusals carry a
+  // diagnosticCode and a located message through a different arm entirely —
+  // so one appearing here is always this story's defect wearing a new stage
+  // name, and must never be counted as a located refusal.
+  expect(boundaryAnswers(rows).map((row) => `${row.family}: ${row.outcome}`)).toEqual([])
   const silent = rows.filter((row) => row.outcome.startsWith('TIMED OUT'))
   expect(silent.map((row) => row.family)).toEqual([])
+
+  // Second: THE OVER-BROADNESS CONTROL. Everything above is satisfied by a
+  // regression that refuses all 21 families with tidy located reasons — the
+  // browser half had no answer to that, while the Go half has had one since
+  // TestStaticFaceIsStillEmbeddedAtBothDoors. Every catalogue face is static
+  // by construction (each public/fonts/*/NOTICE.md asserts no `fvar`, and
+  // scripts/build-wasm.mjs validates it at build time), so the measured
+  // after-state of this story is 21 of 21 EMBEDDED and nothing less will do.
+  expect(rows.filter((row) => row.outcome !== 'EMBEDDED').map((row) => `${row.family}: ${row.outcome}`)).toEqual([])
   expect(rows).toHaveLength(families.length)
 })

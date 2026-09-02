@@ -2,16 +2,73 @@
 title: 'Story 16.0: The embed boundary stops throwing, and refuses what render will refuse'
 type: 'bug'
 created: '2026-09-02'
-status: 'ready-for-review'
+status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 baseline_commit: '09ab97d4ee04c1cfeededc567a8761d4014d63d4'
 baseline_revision: '3c28c400c755941ece36740ee88b984559c746ba'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/implementation-artifacts/8-6-picking-a-family-puts-it-in-the-file.md'
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The worker's boot path still reports WASM_INITIALIZATION_FAILED for every boot throw and
+      discards the cause — the same erased-evidence defect this story fixed one screen below it.
+    evidence: |-
+      engine.worker.ts's boot catch reports a fixed sentence and keeps nothing of the thrown value,
+      which is exactly the shape `execute`'s catch had before this story split it into five named
+      stages. It is untouched here because the I/O matrix pins the boot row as "unchanged", so
+      changing it would have been out of contract.
+    location: >-
+      folio-designer/src/engine.worker.ts (boot path, above execute)
+    severity: medium
+  - summary: >-
+      A face that checkSfnt accepts but ot.ParseFont cannot read still saves cleanly and fails at
+      render — the same save-then-fail class as the fvar defect, for a different cause.
+    evidence: |-
+      RefuseVariableFace returns nil when ot.ParseFont fails, deliberately and with a documented
+      reason: it answers only "is this a variable face?". embedFontFamily therefore depends on
+      DecodeFontForRender to catch unparsable bytes, and DecodeFontForRender's own doc fences it at
+      "can this build read these bytes as a single face, and nothing more". The residual class is
+      pre-existing and outside this story's contract, which is specifically the fvar class.
+    location: >-
+      folio-go/internal/fontset/variableface.go:69
+    severity: medium
+  - summary: >-
+      No automatic path executes the Playwright suite, so this story's browser acceptance is a
+      hand-run witness that CI will never reproduce.
+    evidence: |-
+      Neither ci.yml nor matrix.yml invokes `playwright test`; CI runs `npm run test` (vitest, whose
+      include is src/**/*.test.{ts,tsx} and scripts/**/*.test.mjs) and `npm run test:e2e:compile`
+      (tsc --noEmit). playwright.config.ts also requires a human-supplied
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH. This is D-000.4 project-wide and pre-existing; the new
+      spec is genuinely executed, but only by hand. It is the standing condition that let this
+      defect reach the owner.
+    location: >-
+      .github/workflows/ci.yml:200,218
+    severity: medium
+  - summary: >-
+      bytesToBase64 still concatenates one byte at a time in the worker, and a second copy of the
+      same shape lives in component-asset-command.ts with nothing keeping the two in step.
+    evidence: |-
+      The story measured this as slow rather than throwing and refuted it as the cause, so it was
+      correctly left alone. It remains the untreated sibling of the chunked encoder at
+      font-chain-command.ts:93-99, whose own comment explains why that one was chunked.
+    location: >-
+      folio-designer/src/engine.worker.ts (bytesToBase64); folio-designer/src/component-asset-command.ts:12
+    severity: low
+  - summary: >-
+      canvas-authority-contract.test.ts is red at baseline over a getComputedStyle call in
+      e2e/e9-5-border-no-ink.spec.ts, and is not this story's to close.
+    evidence: |-
+      Verified at the dispatch baseline rather than assumed: a detached worktree at 3c28c400 fails
+      byte-identically (expected [ Array(1) ] to deeply equal [], the array being
+      "e2e/e9-5-border-no-ink.spec.ts: /\\bgetComputedStyle\\s*\\(/"). Neither the scanner nor
+      the flagged file is touched by this story's diff.
+    location: >-
+      folio-designer/src/canvas-authority-contract.test.ts:190
+    severity: medium
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -364,6 +421,16 @@ amendment in item 1; the slab was diffed against the committed version to prove 
    threshold. It is not clearable at this size and the flag is a project-wide convention gap, not a
    defect here: siblings `8-4`, `8-4c` and `15-1` all carry it.
 
+**2026-09-03 — implementation dispatch, at HEAD `3c28c400c755941ece36740ee88b984559c746ba`.** One
+recorded deviation from the Tasks section, made by the implementation and confirmed at review. Tasks
+required the probe harness to drive "all 21 entries of `src/generated/font-catalogue.ts` — importing the
+catalogue rather than hardcoding a list". The harness reads **`folio-designer/font-catalogue.json`**
+instead: the generated module imports `.ttf?url` specifiers that only Vite resolves, so it cannot be
+imported from a Playwright spec running under Node. The requirement's *purpose* — that a twenty-second
+family cannot silently escape the harness — is preserved and in fact strengthened: the JSON file is the
+build's own input to that generated module, and a second test independently enumerates the running
+application's listbox and asserts it equals that file exactly. No list is hardcoded in either place.
+
 ## Design Notes
 
 **Why this is Story 16.0 and not a defect ticket.** Every acceptance in Epic 16 ends in "the font is
@@ -377,6 +444,12 @@ this path that this repository has already fixed **somewhere else for a document
 worker's copy predates that fix. That makes it the first place to look. It does not make it the
 answer: a byte-at-a-time concatenation is slow rather than throwing, so if it is the cause, the
 mechanism has to be shown, not assumed.
+
+> **REFUTED AT IMPLEMENTATION — read `## The Diagnosis` below before acting on the paragraph above.**
+> `bytesToBase64` is slow, not throwing, and was never reached with a bad value. The measured cause is
+> `decodeBase64Asset`'s `joined += part` in `internal/template/base64.go`, fatal only under js/wasm's
+> 32-bit linear memory. The hypothesis is left standing above, unedited, because the reasoning that
+> produced it was sound and a later reader is owed the chance to see why a sound guess was wrong.
 
 **D-16.R.2 does NOT make the second defect redundant, and a later reader will be tempted to think it
 does.** That owner decision changes 16.1 and 16.3 from *show-and-refuse* to *filter-out*: a
@@ -440,6 +513,7 @@ this order, and report what each command printed rather than that it was green.
 8. **The D-16.6 disagreement, re-measured at implementation HEAD**, using the committed fixture rather
    than the unobtainable `Anuphan[wght].ttf`: `testNotoSansThaiVariableFontBytes` must be refused at
    the command **and** still refused at ingestion, both from the one shared helper.
+
 ## The Diagnosis (D-8.4j.8 form: command, commit, tree state, working directory)
 
 **The hypothesis in Design Notes is REFUTED, and the cause is elsewhere.** `bytesToBase64`'s
@@ -499,30 +573,188 @@ the path `component_commands.go:2015` reaches, without landing *in* `component_c
 **No bound was loosened.** `MAX_ENGINE_PAYLOAD_BYTES`, the derived 6,288,384-byte face cap and
 `base64ToBytesBounded`'s guard are all untouched; the fix removes an allocation, not a limit.
 
+## Review Triage Log
+
+### 2026-09-03 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 2, medium 2, low 3)
+- defer: 5: (high 0, medium 4, low 1)
+- reject: 21: (high 0, medium 6, low 15)
+- addressed_findings:
+  - `[high]` `[patch]` The browser acceptance was vacuous against the very defect it exists for: it
+    rejected only the literal legacy sentence, so a recurrence of the wasm OOM — which this story's own
+    change renames to "The engine's response could not be parsed: SyntaxError …" — was recorded as a
+    located refusal and passed green. Four of the five stages evaded it. **Fixed:** the rejection set is
+    now read out of `engine.worker.ts`'s own `boundarySentences` table at module load, so a sixth stage
+    joins it in the same commit that adds it; the extractor throws if the table is renamed or yields
+    fewer than five sentences, because an empty rejection set is the failure mode being designed
+    against. Probed: over a synthetic row carrying the new sentence, the old acceptance rejected `[]`
+    and the new one rejected `["Cascadia Code"]`.
+  - `[high]` `[patch]` The same acceptance passed if nothing embedded at all — `rows` was checked only
+    for the legacy sentence, timeouts and length, so a regression refusing all 21 families was green.
+    The Go half had an over-broadness control since `TestStaticFaceIsStillEmbeddedAtBothDoors`; the
+    browser half had none. **Fixed:** a positive assertion that all 21 report `EMBEDDED`. Probed over
+    21 tidy-refusal rows: all three prior assertions stayed green, the new one failed.
+  - `[medium]` `[patch]` The `request` boundary stage was unpinned. Mutation-proved at triage:
+    changing `let stage: BoundaryStage = 'request'` to `'reply'` left all four boundary tests green, so
+    the request-side arm could silently regress to the pre-story generic sentence. **Fixed:** a case
+    forcing a throw during request encoding, asserting `WASM_REQUEST_ENCODING_FAILED`, the thrown
+    value's own words, and that the host was never asked. Re-running the same mutation now reds it.
+  - `[medium]` `[patch]` The harness's own run banner hardcoded `chromium-1208` — measured here as a
+    428 KB truncated install against 336 MB for 1217 — so the only in-repo instruction for reproducing
+    this story's witness pointed at a browser that aborts in `dlopen`. **Fixed:** the documented
+    invocation names 1217, says why 1208 is unusable, and warns against `npx playwright install
+    chromium` (HTTP 400 from the host). `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` remains the mechanism.
+  - `[low]` `[patch]` Design Notes still stated the `bytesToBase64` hypothesis in its original
+    confident form, with the refutation 70 lines later. **Fixed:** an in-place pointer to
+    `## The Diagnosis`, with the hypothesis left unedited so a reader can see why a sound guess was
+    wrong.
+  - `[low]` `[patch]` The Spec Change Log carried no entry for the harness reading
+    `font-catalogue.json` where Tasks named `src/generated/font-catalogue.ts`. **Fixed:** entry added
+    recording the deviation, its cause (the generated module imports `.ttf?url`, resolvable only by
+    Vite) and why the requirement's purpose is preserved.
+  - `[low]` `[patch]` `## The Diagnosis` followed a numbered list with no blank line, so strict
+    CommonMark read it as list continuation rather than a heading. **Fixed.**
+
+**Rejected findings of note, and why** — each was checked rather than waved away:
+- *"A `-1` baseline revision makes any revision beat it, so a family reports EMBEDDED without
+  embedding."* Unreachable: `placeAndSelectText` asserts the snapshot label matches
+  `/GO SNAPSHOT · REVISION 1/` immediately before every `currentRevision` call.
+- *"An empty or non-array `font-catalogue.json` makes both tests vacuous."* The first test compares the
+  offered listbox against `families` and reds on an empty list.
+- *"The 512-byte protocol bound truncates the instancer remedy out of the refusal."* Measured: the
+  message is 686 bytes for a 17-character chain name and 755 for a 40-character one, with the remedy at
+  offset 354 and 377 respectively — it survives truncation in both.
+- *"`TestDecodeBase64AssetJoinsInLinearSpace` reads a process-global `TotalAlloc`."* True but immaterial
+  at this margin: the mutation measures 4,226,613,000 bytes against a 6,379,744-byte budget.
+
 ## Auto Run Result
 
-Status: implemented, awaiting review
+Status: done
+Blocking condition: none
 
-**Browser run, after the fix (the acceptance):** all 21 catalogue families EMBEDDED, none producing
-`The engine returned an invalid response`; both specs pass in 2.2 minutes. The per-family table is
-in the run output and in the section above for the "before" state.
+Implementation dispatch. Dispatch HEAD `3c28c400c755941ece36740ee88b984559c746ba`, recorded as
+`baseline_revision`; `baseline_commit` `09ab97d4` is the plan gate. The two commits between them touch
+only `_bmad-output/`, so every Code Map anchor measured at the plan gate was still valid at
+implementation — no code file moved.
 
-**One plan-gate precondition was WRONG and is corrected here.** The gate recorded Chromium revision
-**1208 as installed** at `~/Library/Caches/ms-playwright/chromium-1208/...`. The path exists; **the
-browser does not.** That directory is **428 KB** and contains only `Contents/MacOS` and
-`Contents/Resources` — the `Contents/Frameworks/Google Chrome for Testing Framework.framework` is
-absent, and launching it aborts with a `dlopen` failure. It is a truncated download, consistent with
-the HTTP 400 the gate noted. `npx playwright install chromium` was **not** run, as directed.
-**Revision 1217 was used instead** (336 MB, complete, present on disk), passed through the same
-`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` the config already exposes. A future run of this spec should
-use 1217, 1223 or 1228 — not 1208 — until 1208 is re-downloaded.
+### What was implemented
 
-**Standing reds, by identity.** `go test ./...`: exactly one, `TestCorpusMeetsP6ExerciseFloors/P6g`
-(`got 7, need >=20`), the mandated P6g red. `npm run test`: one,
-`canvas-authority-contract.test.ts` flagging `getComputedStyle` in `e2e/e9-5-border-no-ink.spec.ts`
-— **verified pre-existing** by stashing every change in this story (including the new e2e spec) and
-re-running against the clean tree at `3c28c400`, where it fails identically. Not a regression, and
-not this story's file.
+**Goal 1 — the throw, diagnosed before anything was changed.** The spec's own leading hypothesis is
+**refuted**: `bytesToBase64` is slow, not throwing, and was never reached with a bad value. The measured
+cause is `decodeBase64Asset`, which joined an asset's canonical 76-column split with `joined += part`.
+For a 598,060-byte face that split is 10,493 elements, so the total allocated is
+sum(76, 152, …, 797,416) ≈ 4.18 GB. Natively the GC absorbs it — which is exactly why the plan gate's
+`go test ./wasm` accepted all 21 catalogue faces and why the diagnosis **explains rather than
+contradicts** that measurement. Under js/wasm the heap is a 32-bit linear memory with a 4 GiB ceiling,
+so `SerializeTemplate` reached `runtime: out of memory: cannot allocate 524288-byte block (4234510336
+in use)`, the Go program exited, `FolioWasmHost.handle` returned `undefined`, and the worker's
+`JSON.parse` threw into the bare catch. A `strings.Builder` with one `Grow` makes the join one
+allocation. No bound was loosened.
 
-**Golden digests unmoved:** 23 files, rolled digest
-`892a1505e5e7fff0184310d5f70eb7bfcfa10d18cda9af4e2aecf262a0630ce9`.
+**Goal 1b — the boundary stops erasing the cause.** `execute`'s bare catch is split into five named
+stages (`request`/`host`/`response`/`bytes`/`reply`), each carrying the thrown value's own message
+bounded to 512 like every other string on this protocol. A response-side transport breach is now
+distinguishable from a request-side fault, which it was not.
+
+**Goal 2 — the `fvar` refusal, one predicate and two doors.** The inline `if
+parsed.HasTable(ot.TagFvar)` and its message are extracted into `internal/fontset/variableface.go`.
+`New` calls `variableFaceError` and holds no copy; `embedFontFamily` calls the exported byte-taking
+`RefuseVariableFace`, beside `DecodeFontForRender` and before anything reaches `t.doc.Assets`. The
+renderer's guard is **kept, not moved**, and `TestNewRejectsVariableFace` passes unchanged.
+
+### Files changed
+
+- `folio-go/internal/template/base64.go` — the diagnosed fix: `strings.Builder` with one `Grow` in
+  place of the quadratic join. Output byte-identical.
+- `folio-go/internal/template/base64_test.go` — the linear-space allocation guard.
+- `folio-go/internal/fontset/variableface.go` (new) — the single `fvar` predicate and its message,
+  plus the exported byte-taking wrapper.
+- `folio-go/internal/fontset/fontset.go` — `New` now calls that helper instead of owning the test.
+- `folio-go/component_commands.go` — `embedFontFamily` calls the same helper; no new error type in
+  package `folio` root, per `render_arch_test.go:461`.
+- `folio-go/component_commands_test.go` — the same-bytes test over one slice through both doors, the
+  static-face over-broadness control, and the derived size-cap refusal.
+- `folio-designer/src/engine.worker.ts` — the five-stage boundary.
+- `folio-designer/src/engine-worker-boundary.test.ts` — behavioural tests over the real worker,
+  including the request-stage case added at review.
+- `folio-designer/e2e/font-embed-boundary.spec.ts` (new) — the executed probe harness over all 21
+  catalogue families.
+
+### Review findings breakdown
+
+7 patched (2 high, 2 medium, 3 low), 5 deferred, 21 rejected, 0 intent_gap, 0 bad_spec. See
+`## Review Triage Log`.
+
+**Follow-up review recommended: true** — a patched finding was `high` severity (two were), which sets
+the flag regardless of the score. Patched counts by severity: high 2, medium 2, low 3; score
+`3 × 2 + 1 × 3 = 9`, itself ≥ 5.
+
+### Verification performed
+
+Every command below was run by this dispatch and its output read; none is relayed.
+
+1. **The browser run — it really executed.** `npx playwright test e2e/font-embed-boundary.spec.ts
+   --reporter=list`, with the Go toolchain on `PATH`. **2 passed (2.2 min)**, and the per-family table
+   is **21 of 21 EMBEDDED**: Cascadia Code, Cascadia Mono, Cousine, Fira Code, Geist, Geist Mono, Intel
+   One Mono, Inter, Inter Display, JetBrains Mono, Literata, Noto Sans Thai Looped, Noto Serif, Noto
+   Serif Thai, Roboto, Source Code Pro, Source Sans 3, Source Serif 4 Display, Space Grotesk, Ubuntu
+   Sans, Ubuntu Sans Mono. **Before the fix the same harness recorded Cascadia Code and Cascadia Mono
+   as `The engine returned an invalid response`, with 19 embedded.** Run twice — once before the review
+   patches and once after — with identical results.
+   **A plan-gate precondition was wrong and is corrected here:** chromium **1208 is not usable**. That
+   directory is **428 KB** with no `Frameworks` bundle and aborts in `dlopen`; 1217 is 336 MB and
+   complete. `npx playwright install chromium` was **not** run, as directed; the run used 1217 through
+   `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
+2. **The same-bytes guard, red-proved by DELETION in both directions at both sites** — done by this
+   dispatch, not taken on report:
+   - Delete `embedFontFamily`'s call → `TestVariableFaceIsRefusedAtTheCommandAndAtIngestionOverTheSameBytes`
+     fails with *"command unexpectedly succeeded"*. Restored, green.
+   - Delete `New`'s call → the same test fails with *"fontset.New accepted a variable face; the
+     renderer's own guard has been moved or removed"*, **and** `TestNewRejectsVariableFace` fails.
+     Restored, green.
+   - Restore the quadratic join → `TestDecodeBase64AssetJoinsInLinearSpace` fails at **4,226,613,000
+     bytes** against a 6,379,744-byte budget — matching the wasm runtime's reported `4234510336 in
+     use`. Restored, green.
+   - Revert the worker's catch to the bare string → **3 of 4** boundary tests fail. Restored, green.
+   - Targeted run green: `go test -run 'VariableFace|Fvar|EmbedFontFamily|Base64' ./... -v`, including
+     `TestEmbedFontFamilyStillRefusesAFaceOverTheSupportedSizeWithALocatedMessage`.
+3. `cd folio-go && go test -count=1 ./...` → **1896 pass / 2 fail / 5 skip**. The two failures are the
+   mandated P6g red (`TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest) — one
+   distinct red, as expected. This run executes `TestGoldenDigestAgreesAtEveryDeclaredSite`.
+4. `go vet ./...` exit 0. `gofmt -l folio-go` **from the repo root** — empty. `cd lint && go test
+   -count=1 ./...` — four `ok`, run with `-count=1` because a cached `ok` there is no measurement.
+5. Designer: `npm run typecheck` exit 0; `npm run lint` exit 0 with **exactly 4** pre-existing
+   `only-export-components` warnings; `npm test` → **436 passed / 1 failed** (43 files, 42 passed);
+   `npm run test:e2e:compile` exit 0. **The one failure is pre-existing and was verified at baseline
+   rather than assumed**: a detached worktree at `3c28c400` fails byte-identically —
+   `canvas-authority-contract.test.ts` flagging `getComputedStyle` in `e2e/e9-5-border-no-ink.spec.ts`,
+   a file this story does not touch. Deferred, not closed.
+6. **The 23 golden digests, unmoved.** From the repo root: **23 files**, rolled digest
+   `892a1505e5e7fff0184310d5f70eb7bfcfa10d18cda9af4e2aecf262a0630ce9` — identical to the plan gate.
+   Measured before and after the review patches. (The roll is `shasum -a 256 fixtures/*/expected.pdf |
+   shasum -a 256`, over the full output lines.)
+7. `notosanssc`'s located size refusal still arrives located, asserted Go-side over the **derived**
+   `maxComponentAssetBytes`; `6288384` is not hardcoded in the new assertion.
+8. The D-16.6 disagreement re-measured at implementation HEAD over `testNotoSansThaiVariableFontBytes`:
+   refused at the command **and** still refused at ingestion, both from the one shared helper, with the
+   test asserting the two messages are equal.
+
+**Matrix audit:** all nine I/O matrix rows have a covering test that ran and passed. Rows 4 (payload
+over the protocol bound) and 6 (boot failure) are "unchanged" expectations covered by the pre-existing
+`engine-protocol.test.ts:627` and `engine-client.test.ts:168`, both in passing files.
+
+### Residual risks
+
+- **The browser acceptance is a hand-run witness.** Nothing in CI executes Playwright (D-000.4), so the
+  strongest evidence this story has is reproducible only by hand, with a human-supplied browser path.
+  Deferred, and it is the standing condition that let this defect reach the owner.
+- **The allocation guard is a proxy.** It measures allocation *shape* on darwin/arm64; the fault it
+  guards is a 32-bit linear-memory ceiling that cannot occur where the test runs. A superlinear
+  allocation introduced at a *different* step of the same serialize path would not red it.
+- **`RefuseVariableFace` returns `nil` on unparsable bytes** by design, so `embedFontFamily` depends on
+  `DecodeFontForRender` running first for that class. Deferred.
+- **D-16.R.5 is not implemented here and is not this story's.** It sites the nameID 13 licence tie
+  *beside* this story's `fvar` check and owes its falsifier to Story 16.1. It remains in the
+  before-the-tag set.
