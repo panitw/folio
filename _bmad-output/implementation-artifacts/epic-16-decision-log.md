@@ -1123,3 +1123,33 @@ general form governs; the specific forms are what anyone can actually check.
 **And the confirming coincidence stays on the record** as the sharpest available illustration: 5 of 20
 twice, over disjoint sets. Verifying the recomputation by its cardinality would have confirmed the wrong
 answer with the right number.
+
+### D-16.R.28 — 16.2's plan gate: the contract passes, the Code Map had rotted
+
+**Gate outcome: 16.2 passes.** `warnings: []` (no `multiple-goals`, not `oversized`), the
+`<intent-contract>` matches D-16.2 and D-16.R.14 as written, the plain-terms opener is present and
+honest about what *"on this machine"* means, and `## Verification` carries the right commands for the
+run's end-of-run heavy cadence. **Per D-16.R.26's standing consequence, the governing criterion was read
+at lines 15–180 — the whole file, contract through Verification — not sampled.** The contract is
+unedited: 5,567 bytes, md5 `18028ef0e2d186459cb474ed3c125ac8`.
+
+**What the gate caught.** Every line-anchored Code Map reference was stale except one. 16.2 was planned
+at `baseline_commit: a40c34d`; 16.0, 16.1, 16.1b and 16.1a have landed since.
+
+| cited | actually | now |
+|---|---|---|
+| `src/App.tsx:186-224` carried-face registration | a block of `useRef` declarations | `216-243` |
+| `src/App.tsx:608-627` `pickCatalogueFamily` | `applyFontChain` | `660` |
+| `internal/template/component_commands.go:2359-2410` | **path does not exist** | `folio-go/component_commands.go:2360-2410` |
+| `src/release-payload.ts:33` `maximumCacheAssets = 64` | correct | unchanged |
+
+Corrected in place, all four **outside** `</intent-contract>`, with a note in the spec telling the
+implementer to re-verify before relying on them.
+
+**Why this is worth a decision entry rather than a silent fix.** A Code Map is the part of a spec that
+**rots silently**, because a wrong line number still reads as a right one — nothing in a stale anchor
+announces itself, and an implementer who follows `608-627` lands in real code that is simply the wrong
+real code. This is the same shape as the four instances in D-16.R.27: a reference true in the scope where
+it was written (`a40c34d`) and applied in a scope where it is not (`HEAD`). **`baseline_commit` is stale
+by construction for any story planned before its predecessors landed**, so every later story in this epic
+gets its anchors re-verified at its plan gate, not trusted.

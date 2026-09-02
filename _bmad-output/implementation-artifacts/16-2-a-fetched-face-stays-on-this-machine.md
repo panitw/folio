@@ -107,12 +107,12 @@ break a document that already embeds the face.
 ## Code Map
 
 **Designer (`folio-designer/`)**
-- `src/App.tsx:186-224` — the document-scoped carried-face registration, and its comment on why the
+- `src/App.tsx:216-243` — the document-scoped carried-face registration, and its comment on why the
   lifetime is document-scoped rather than per-component. **The precedent for lifetime reasoning**, and
   the machine store is a third lifetime that must be argued the same way.
 - `src/embedded-face-registry.ts`, `src/embedded-face-family.ts` — how a face's asset key becomes a CSS
   family, and `isCarriedFaceAssetKey`, the key-shape predicate. **The store's keys must satisfy it.**
-- `src/App.tsx:608-627` — `pickCatalogueFamily`, which Story 16.1 widens; the store's read goes in
+- `src/App.tsx:660` — `pickCatalogueFamily`, which Story 16.1 widens; the store's read goes in
   front of its fetch.
 - `src/offline-lifecycle.ts` — the service worker's lifetime, and the origin whose storage this is.
 - `src/image-file.ts`, `src/component-asset-command.ts` — the other place bytes cross from the browser
@@ -120,8 +120,16 @@ break a document that already embeds the face.
 - `src/release-payload.ts:33` — `maximumCacheAssets = 64`. Untouched; assert it.
 
 **Go (`folio-go/`)**
-- `component_commands.go:2359-2410` — `embedFontFamily`. **The store feeds it exactly what a fetch
+- `folio-go/component_commands.go:2360-2410` — `embedFontFamily` (the file is at the module root, NOT under `internal/template/`). **The store feeds it exactly what a fetch
   feeds it**; Go cannot tell the difference and must not be able to.
+
+**Anchors re-verified at the plan gate against `HEAD`, not against `baseline_commit`.** This spec was
+planned at `a40c34d`; Stories 16.0, 16.1, 16.1b and 16.1a have landed since and moved every line-anchored
+reference above except `release-payload.ts:33`. The originals pointed at unrelated code
+(`186-224` at a ref block, `608-627` at `applyFontChain`) and at a path that does not exist
+(`internal/template/component_commands.go`). **Re-verify these anchors again before relying on them** —
+`baseline_commit` is stale by construction, and a Code Map is the one part of a spec that rots silently
+because a wrong line number still reads as a right one.
 
 ## Tasks & Acceptance
 
