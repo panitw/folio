@@ -948,6 +948,35 @@ func canvasContentBandHasConditionalVisibility(t *Template) bool {
 	return false
 }
 
+// canvasContentBandHasStyledTextBox is the FIFTH cause that clears
+// ContentWindowCountIsExact, and it names the divergence
+// addCanvasWindowCount's own comment already described: a content-band
+// TEXT element that also declares a box (element_box.go's
+// elementDeclaresBox, the single predicate) contributes a
+// full-declared-box column item on the RENDER path and only its shaped
+// lines on the canvas.
+//
+// Measured before this cause existed: a styled text element at y 700
+// with a declared height of 200 and a one-line value gave
+// `RENDER pages=2 | CANVAS windows=1 exact=true`. The code disclosed the
+// divergence in a comment and claimed the opposite in the value; a
+// hazard indicator must fail toward the loudest answer, never the
+// quietest.
+//
+// Like its three siblings it is a PURE PROPERTY OF THE TEMPLATE — no
+// data, no bindings — so it can be answered before Paginate runs.
+func canvasContentBandHasStyledTextBox(t *Template) bool {
+	for _, element := range t.doc.Bands.Content.Elements {
+		if element.Type != template.ElementText {
+			continue
+		}
+		if elementDeclaresBox(element) {
+			return true
+		}
+	}
+	return false
+}
+
 // addCanvasWindowCount is the THIRD paint producer, beside addCanvasTextPaint
 // and addCanvasImagePaint: it reports how many page-height windows the
 // content column occupies, WHERE EACH ONE BEGINS, and whether that number can
@@ -987,32 +1016,38 @@ func canvasContentBandHasConditionalVisibility(t *Template) bool {
 // Measured: a styled text element at y 700 with a declared height of 200 and
 // a one-line value gives a canvas count of 1 against a real render of 2.
 //
-// That divergence is LEFT AS IT IS, deliberately and out of this arm's
-// subject: closing it means adding a second canvas item source for a text
-// element — its box, beside its lines — which is new placement rather than
-// the removal of placement this arm performs, and it is not what RULING B
-// asked for. It is recorded here so the invariant above is never read wider
-// than it holds.
+// That divergence is not closed here — closing it means adding a second
+// canvas item source for a text element (its box, beside its lines), which
+// is new placement rather than the removal of placement this arm performs.
+// What it does instead is DISCLOSE ITSELF IN THE VALUE rather than only in
+// this comment: canvasContentBandHasStyledTextBox is the fifth cause that
+// clears ContentWindowCountIsExact, so the count still diverges but no
+// longer claims not to. It is recorded here so the invariant above is never
+// read wider than it holds.
 func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canvasColumnExtents) error {
 	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return err
 	}
-	// THREE of the flag's causes are known before Paginate runs — a bound
-	// table, a degraded font chain, and an element whose visibility depends
-	// on data; the fourth is the degradation branch below. They are OR-ed
+	// FOUR of the flag's causes are known before Paginate runs — a bound
+	// table, a degraded font chain, an element whose visibility depends
+	// on data, and a content-band text element that also declares a box
+	// (whose render-path column item is its whole box and whose canvas
+	// contribution is only its shaped lines); the fifth is the
+	// degradation branch below. They are OR-ed
 	// rather than ranked because the flag reports that the count cannot be
 	// trusted, not which cause made it so. ⚠ The SENSE is inverted from the
 	// field this replaced: `exact` is true only when NONE of them applies.
 	exact := !(column.FontChainDegraded ||
 		canvasContentBandHasBoundTable(t) ||
-		canvasContentBandHasConditionalVisibility(t))
+		canvasContentBandHasConditionalVisibility(t) ||
+		canvasContentBandHasStyledTextBox(t))
 	// Story 7.9 (FR51): the same index addCanvasTextPaint tagged its line
 	// items with, from the same one authority. Grouping is a pure property
 	// of the Template — keepTogetherTags takes nothing else — so the canvas
 	// already holds every input it needs to be RIGHT about it, and being
 	// wrong about it is a defect rather than a cause to register beside the
-	// four above.
+	// causes above.
 	keepTogether := keepTogetherTags(t)
 	items := make([]layout.ColumnItem, 0, len(column.Items)+len(t.doc.Bands.Content.Elements))
 	items = append(items, column.Items...)
@@ -1021,9 +1056,17 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 			// Text contributes one item PER SHAPED LINE, never its box: a
 			// paragraph splits between windows at a line, which is what
 			// makes the count a slide rather than a division.
-			continue
-		}
-		if !canvasElementIsPlaced(element) {
+			//
+			// EXCEPT when it also declares a box, which the render path
+			// places as its OWN full-height column item beside the line
+			// items (element_box.go accepts text among its four eligible
+			// kinds). Mirroring that item here is not a second reading of
+			// anything: it is elementDeclaresBox, the same single
+			// predicate, feeding the same one Paginate.
+			if !elementDeclaresBox(element) {
+				continue
+			}
+		} else if !canvasElementIsPlaced(element) {
 			continue
 		}
 		_, height := projectedSize(element)
@@ -1747,7 +1790,24 @@ func applyCanvasStyle(component *CanvasComponent, elementType template.ElementTy
 		}
 		component.Background = stringPointer(style.Background.Value)
 	}
-	if style.Border.Set && !style.Border.Null {
+	// A BORDER THAT PAINTS NO INK PROJECTS NO BORDER FIELDS AT ALL —
+	// element_box.go's borderPaints, its second call site, so the placer
+	// and the projection cannot disagree about what a border is.
+	//
+	// `style.border: {"edges": []}` used to project BorderWidth and
+	// BorderColor while BorderEdges — an EMPTY slice under
+	// `json:",omitempty"` — was dropped from the wire entirely, so
+	// App.tsx's `component.borderEdges ?? boxEdges` fell back to all four
+	// and the canvas painted a full border for a document the PDF prints
+	// none of. Emitting no border field at all makes App.tsx's `bordered`
+	// evaluate false, which is the same answer the printed page gives.
+	//
+	// ⚠ THE OBVIOUS FIX — dropping `omitempty` — IS WRONG IN BOTH
+	// DIRECTIONS and must not be applied: a nil slice would then marshal
+	// to JSON `null` on EVERY component, `null ?? boxEdges` re-fires the
+	// full border for every one of them, and the protocol note says the
+	// validator may reject the null outright.
+	if borderPaints(style.Border) {
 		border := style.Border.Value
 		if border.Width.Set && !border.Width.Null {
 			value, err := canvasPropertyLength("borderWidth", border.Width.Value)

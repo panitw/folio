@@ -700,3 +700,34 @@ const canvasWindowCountOneColumnTableTemplateJSON = `{
   "version": "1.0"
 }
 `
+
+// canvasWindowCountStyledTextBoxTemplateJSON is E9-3's fixture: ONE
+// content-band text element at y 700 with a declared height of 200 and a
+// one-line value, carrying a background so it declares a box.
+//
+// It is the measured divergence in its smallest form. The render path
+// places TWO column items for this element — its shaped line, and the
+// declared box element_box.go builds for it — so it spans two windows;
+// the canvas placed only the line, counted ONE window, and set
+// ContentWindowCountIsExact to true over it. The comment in
+// addCanvasWindowCount described that divergence while the value denied
+// it.
+const canvasWindowCountStyledTextBoxTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 700, "width": 200, "height": 200, "value": "One line", "style": {"fontFamily": "body", "fontSize": 12, "background": "#eeeeee"}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 24},
+    "pageHeader": {"elements": [], "height": 18}
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 42, "left": 36, "right": 54, "top": 30}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`

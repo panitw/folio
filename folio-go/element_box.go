@@ -113,9 +113,10 @@ func collectElementBoxRects(bands []bandWithOrigin, visible visibilityVerdicts) 
 
 // elementBoxDeclaration is THE ONE READING of "this element declares a
 // box", and the only place in the module that spells it. A box exists
-// where a PRESENT, non-null `style.background` or `style.border` does —
-// nothing else, and in particular nothing about the element's kind, its
-// size or whether the canvas can see it.
+// where a PRESENT, non-null `style.background` does, or where a
+// `style.border` that PAINTS INK does (borderPaints below) — nothing
+// else, and in particular nothing about the element's kind, its size or
+// whether the canvas can see it.
 //
 // It returns the style beside the two flags because the builder needs
 // all three, and splitting them would put the same two Presence tests in
@@ -125,14 +126,41 @@ func elementBoxDeclaration(el template.Element) (style template.Style, hasBackgr
 	if !ok {
 		return template.Style{}, false, false
 	}
-	return s, s.Background.Set && !s.Background.Null, s.Border.Set && !s.Border.Null
+	return s, s.Background.Set && !s.Background.Null, borderPaints(s.Border)
+}
+
+// borderPaints is THE ONE READING of "this border puts ink on the page":
+// present, non-null AND not an explicitly empty edge set.
+//
+// It is NOT a new policy — it is an existing condition lifted one layer.
+// internal/pdf/rectdoc.go:57 emits a stroke group only under
+// `HasStroke && (Top||Right||Bottom||Left)`, so the emitter has always
+// known that a border declaring no edges draws nothing; the placer above
+// it simply never asked. A `"border": {"edges": []}` therefore declared a
+// box, painted nothing, and still cost a page, because elementDeclaresBox
+// treated presence alone as a declaration.
+//
+// `"border": {}` is UNAFFECTED and must stay so: an absent Edges means all
+// four edges (buildCellRectWithBackgroundField's default), which is one
+// stroke group of ink. Only an edges array that is present, non-null and
+// EMPTY paints nothing — the same three-part test every other Presence
+// reader in this file applies, with the emptiness clause added.
+//
+// page_setup.go's applyCanvasStyle is its second caller, so the projection
+// and the placer answer this question identically by construction.
+func borderPaints(border template.Presence[template.Border]) bool {
+	if !border.Set || border.Null {
+		return false
+	}
+	edges := border.Value.Edges
+	return !(edges.Set && !edges.Null && len(edges.Value) == 0)
 }
 
 // elementDeclaresBox is THE WHOLE PLACEMENT RULE for an element box, as a
-// predicate: a present, non-null background or border AND a declared
-// rectangle with area. collectElementBoxRects above gates on exactly this
-// call, so the two cannot drift; page_setup.go's window count is its
-// second caller.
+// predicate: a present, non-null background or a border that paints ink
+// (borderPaints), AND a declared rectangle with area.
+// collectElementBoxRects above gates on exactly this call, so the two
+// cannot drift; page_setup.go's window count is its second caller.
 //
 // BOTH CLAUSES ARE LOAD-BEARING, and the second one is why this predicate
 // is not just elementBoxDeclaration's verdict. A styled element whose

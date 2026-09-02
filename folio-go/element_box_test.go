@@ -4,7 +4,9 @@
 package folio
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -369,4 +371,213 @@ func derefLength(p *int64) int64 {
 		return 0
 	}
 	return *p
+}
+
+// TestABorderDeclaringNoEdgesIsNotABox is E9-1's proof, and it is asserted
+// AGAINST LITERALS rather than against the canvas.
+//
+// `style.border: {"edges": []}` declared a box, painted nothing and still
+// cost a page: /Count went 1 → 2 with zero fills and zero strokes, because
+// elementDeclaresBox read presence alone while internal/pdf/rectdoc.go's
+// emitter already refused to stroke an empty edge set. The predicate now
+// carries the emitter's own condition.
+//
+// ⚠ WHY NOT "the canvas agrees with the render". Both sides call
+// borderPaints, so that assertion would hold however wrong the predicate
+// was — a self-measuring instrument. The claims here are the printed page
+// count, the absence of ink operators, and byte-identity with the document
+// that declares no box at all.
+func TestABorderDeclaringNoEdgesIsNotABox(t *testing.T) {
+	empty := boxTemplateJSON(`"border": {"edges": [], "color": "#000000"}, `)
+	pages := boxPages(t, empty)
+	if len(pages) != 1 {
+		t.Fatalf("pages = %d, want 1 — a border that paints no ink must not cost a page", len(pages))
+	}
+	if len(pages[0].Rects) != 0 {
+		t.Fatalf("page rects = %d, want 0 — the element declares no box the printed page has anything in", len(pages[0].Rects))
+	}
+
+	bytesOf := func(source string) []byte {
+		t.Helper()
+		tpl, err := ParseTemplate([]byte(source))
+		if err != nil {
+			t.Fatalf("ParseTemplate: %v", err)
+		}
+		res, err := Render(tpl, Data(`{}`), nil, testFontSet())
+		if err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		return res.Bytes
+	}
+
+	got := bytesOf(empty)
+	if n := bytes.Count(got, []byte(" re f\n")); n != 0 {
+		t.Errorf("rendered %d fill operators, want 0", n)
+	}
+	if n := bytes.Count(got, []byte("\nS\n")); n != 0 {
+		t.Errorf("rendered %d stroke operators, want 0", n)
+	}
+	if n := bytes.Count(got, []byte("/Count 1")); n != 1 {
+		t.Errorf("/Count 1 appears %d times, want exactly 1 — the document is one page", n)
+	}
+	if n := bytes.Count(got, []byte("/Count 2")); n != 0 {
+		t.Errorf("/Count 2 appears %d times, want 0", n)
+	}
+
+	// The document with no box declaration at all. Byte-identity is the
+	// whole claim: an edges-empty border is not merely cheap, it is inert.
+	if want := bytesOf(boxTemplateJSON("")); !bytes.Equal(got, want) {
+		t.Errorf("an edges-empty border changed the rendered bytes (%d vs %d) — it must be byte-identical to the same document declaring no box", len(got), len(want))
+	}
+}
+
+// TestAnEmptyBorderObjectStillPaintsAllFourEdges is E9-1's guardrail in the
+// other direction: `"border": {}` means ABSENT edges, which
+// buildCellRectWithBackgroundField defaults to all four, so it is one
+// stroke group of real ink and must keep costing what it costs. Only an
+// edges array that is present, non-null and empty is inert.
+func TestAnEmptyBorderObjectStillPaintsAllFourEdges(t *testing.T) {
+	pages := boxPages(t, boxTemplateJSON(`"border": {}, `))
+	if len(pages[0].Rects) != 1 {
+		t.Fatalf("page rects = %d, want 1 — an empty border OBJECT declares all four edges", len(pages[0].Rects))
+	}
+	rect := pages[0].Rects[0]
+	if !rect.HasStroke || (rect.Edges != pagemodel.RectEdges{Top: true, Right: true, Bottom: true, Left: true}) {
+		t.Errorf("border:{} = {stroke:%v edges:%+v}, want a stroke on all four edges", rect.HasStroke, rect.Edges)
+	}
+}
+
+// TestANegativeBorderWidthIsRefusedAtLoad is E9-2's proof. `-5 w` is not a
+// valid PDF line width (ISO 32000-1 §8.4.3.2), and this document RENDERED
+// before the repair, emitting exactly that operator.
+//
+// The refusal is at LOAD because border.width flows into
+// buildCellRectWithBackgroundField, which table cell chrome has shared
+// since Epic 4 — one authority closes both paths — and it is layering-legal
+// because border.width is a geom.Length and internal/template already
+// imports internal/geom.
+//
+// ZERO IS NOT REFUSED: it is the thinnest line PDF can draw, and the second
+// half of this test is the guardrail that keeps the check from widening
+// into a general geometry audit.
+func TestANegativeBorderWidthIsRefusedAtLoad(t *testing.T) {
+	_, err := ParseTemplate([]byte(boxTemplateJSON(`"border": {"width": -5}, `)))
+	if err == nil {
+		t.Fatal("a negative style.border.width loaded — it would render `-5 w`, which is not a valid PDF line width")
+	}
+	var renderErr *RenderError
+	if !errors.As(err, &renderErr) {
+		t.Fatalf("the refusal must reach the caller as a *RenderError: %T %v", err, err)
+	}
+	if renderErr.Diagnostic.Code != DiagCodeTemplateFieldInvalid {
+		t.Errorf("Code = %q, want %q", renderErr.Diagnostic.Code, DiagCodeTemplateFieldInvalid)
+	}
+	if renderErr.Diagnostic.ElementID != "e1" {
+		t.Errorf("ElementID = %q, want e1 — the refusal must name the element", renderErr.Diagnostic.ElementID)
+	}
+	if msg := err.Error(); !strings.Contains(msg, "style.border.width") {
+		t.Errorf("the refusal must name the field style.border.width, got: %s", msg)
+	}
+
+	// The same check on a table's OWN cell chrome, which is the path this
+	// value has been reachable through since Epic 4 rather than Epic 9.
+	if _, err := ParseTemplate([]byte(negativeBorderTableTemplateJSON)); err == nil {
+		t.Fatal("a negative headerStyle.border.width loaded — the table cell chrome path is the one this has been reachable through since Epic 4")
+	}
+
+	// Zero stays valid: the thinnest line, not an absent border.
+	rect := boxPages(t, boxTemplateJSON(`"border": {"width": 0}, `))[0].Rects[0]
+	if !rect.HasStroke || rect.StrokeWidth != 0 {
+		t.Errorf("border width 0 = {stroke:%v width:%d}, want {true 0} — zero is a valid PDF line width", rect.HasStroke, rect.StrokeWidth)
+	}
+}
+
+const negativeBorderTableTemplateJSON = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "t1", "type": "table", "x": 0, "y": 0, "width": 300, "height": 100,
+         "table": {"columns": [{"id": "c1", "label": "A", "width": 100}],
+                   "headerStyle": {"border": {"width": -2}}},
+         "style": {"fontFamily": "body", "fontSize": 12}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
+// canvasComponentOf projects doc and returns the content-band component
+// named id. It reads the CanvasComponent itself rather than the wire test's
+// key census, because DW-74 is live: the Go/TS wire test records the
+// projection's top-level and CanvasFontChain key lists and NOT
+// CanvasComponent's, so a change to WHICH per-component fields are emitted
+// is exactly its blind spot. A green wire test proves nothing about the two
+// tests below; the fields are therefore asserted explicitly.
+func canvasComponentOf(t *testing.T, doc, id string) CanvasComponent {
+	t.Helper()
+	tpl, err := ParseTemplate([]byte(doc))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	projection, err := Canvas(tpl)
+	if err != nil {
+		t.Fatalf("Canvas: %v", err)
+	}
+	for _, component := range projection.Components {
+		if component.ID == id {
+			return component
+		}
+	}
+	t.Fatalf("component %q is absent from the projection", id)
+	return CanvasComponent{}
+}
+
+// TestABorderPaintingNoInkProjectsNoBorderFields is E9-5's proof.
+//
+// BorderEdges carries `json:",omitempty"`, which drops an EMPTY slice — so
+// `style.border: {"edges": [], "color": "#ff0000"}` projected borderWidth
+// and borderColor while borderEdges vanished from the wire, and App.tsx's
+// `component.borderEdges ?? boxEdges` fell back to all four. The canvas
+// painted a full red border for a document that prints none.
+//
+// ⚠ THE FIX IS NOT REMOVING omitempty. A nil slice would then marshal to
+// JSON `null` on EVERY component, `null ?? boxEdges` re-fires the full
+// border for all of them, and the protocol note says the validator may
+// reject the null outright — wrong in both directions. What changes is
+// WHICH FIELDS ARE EMITTED: a border that paints no ink projects none of
+// the three, so App.tsx's `bordered` evaluates false.
+func TestABorderPaintingNoInkProjectsNoBorderFields(t *testing.T) {
+	inert := canvasComponentOf(t, boxTemplateJSON(`"border": {"edges": [], "color": "#ff0000"}, `), "e1")
+	if inert.BorderWidth != nil {
+		t.Errorf("borderWidth = %d, want absent", *inert.BorderWidth)
+	}
+	if inert.BorderColor != nil {
+		t.Errorf("borderColor = %q, want absent", *inert.BorderColor)
+	}
+	if inert.BorderEdges != nil {
+		t.Errorf("borderEdges = %v, want absent", inert.BorderEdges)
+	}
+
+	// The control on the same field: a border that DOES paint still projects
+	// everything it declared, so "absent" above is evidence about the ink
+	// and not about the projection having stopped carrying borders.
+	painting := canvasComponentOf(t, boxTemplateJSON(`"border": {"edges": ["bottom"], "color": "#ff0000", "width": 2}, `), "e1")
+	if painting.BorderColor == nil || *painting.BorderColor != "#ff0000" {
+		t.Errorf("borderColor = %v, want #ff0000", painting.BorderColor)
+	}
+	if painting.BorderWidth == nil || *painting.BorderWidth != 2000 {
+		t.Errorf("borderWidth = %v, want 2000", painting.BorderWidth)
+	}
+	if len(painting.BorderEdges) != 1 || painting.BorderEdges[0] != "bottom" {
+		t.Errorf("borderEdges = %v, want [bottom]", painting.BorderEdges)
+	}
 }

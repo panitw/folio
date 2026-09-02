@@ -898,3 +898,52 @@ func TestAComponentAuthoredWindowsDownTheColumnLandsOnItsOwnSheet(t *testing.T) 
 		t.Fatalf("the canonical bytes did not carry the column coordinate %d", deeper)
 	}
 }
+
+// TestAStyledTextBoxCountsTheSameWindowsAsTheRenderPath is E9-3(b): the
+// canvas gives a content-band text element its DECLARED BOX as a second
+// column item, beside its shaped lines, exactly as the render path does.
+//
+// Measured before the repair: RENDER pages=2 | CANVAS windows=1. The
+// oracle here is renderPathWindows — documentBands, collectElementBoxRects,
+// contentColumnItems, layout.Paginate — a genuinely different route to the
+// number, and it checks the ORIGINS too, so a count that agreed by
+// coincidence over a different partition would still fail.
+func TestAStyledTextBoxCountsTheSameWindowsAsTheRenderPath(t *testing.T) {
+	tpl := parseWindowCountTemplate(t, canvasWindowCountStyledTextBoxTemplateJSON)
+	projection := projectWithPaint(t, tpl)
+	want, wantOrigins := renderPathWindows(t, tpl, testFontSet())
+	if want != 2 {
+		t.Fatalf("the fixture no longer spans two windows on the render path (got %d) — it proves nothing in this shape", want)
+	}
+	if projection.ContentWindowCount != int64(want) || !reflect.DeepEqual(projection.ContentWindowOrigins, wantOrigins) {
+		t.Fatalf("canvas counts %d at %v, render path counts %d at %v — a styled text element's declared box must occupy the canvas column exactly where it occupies the printed one",
+			projection.ContentWindowCount, projection.ContentWindowOrigins, want, wantOrigins)
+	}
+}
+
+// TestAStyledTextBoxClearsTheExactnessFlag is E9-3(a), and it is the
+// MANDATORY half: a content-band text element that also declares a box is
+// the fifth cause that clears ContentWindowCountIsExact.
+//
+// ⚠ IT STAYS EVEN THOUGH (b) SHIPPED AND THE COUNTS NOW AGREE. The flag
+// says "this number cannot be trusted", and a hazard indicator fails toward
+// the loudest answer, never the quietest: a false alarm costs a designer a
+// caveat, while a silent one is what shipped and is the defect being
+// repaired. If (b) is ever reverted or narrowed, this cause is what keeps
+// the projection from claiming a count it does not have.
+func TestAStyledTextBoxClearsTheExactnessFlag(t *testing.T) {
+	styled := parseWindowCountTemplate(t, canvasWindowCountStyledTextBoxTemplateJSON)
+	if projectWithPaint(t, styled).ContentWindowCountIsExact {
+		t.Error("a content-band text element declaring a box left ContentWindowCountIsExact true")
+	}
+	// The control: the same template with the box declaration removed. It
+	// differs in exactly the thing under test, so "the flag is false" is
+	// evidence about the box and not about the fixture.
+	unstyled := strings.Replace(canvasWindowCountStyledTextBoxTemplateJSON, `, "background": "#eeeeee"`, "", 1)
+	if unstyled == canvasWindowCountStyledTextBoxTemplateJSON {
+		t.Fatal("the fixture moved; this test's edit no longer applies to it")
+	}
+	if !projectWithPaint(t, parseWindowCountTemplate(t, unstyled)).ContentWindowCountIsExact {
+		t.Error("the unstyled control cleared the flag too — the cause under test is not what cleared it")
+	}
+}

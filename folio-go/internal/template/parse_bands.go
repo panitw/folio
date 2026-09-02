@@ -789,6 +789,36 @@ func decodeBorder(elementID string, raw json.RawMessage, fieldPrefix string) (Bo
 		if err != nil {
 			return Border{}, err
 		}
+		// ISO 32000-1 §8.4.3.2: a line width is a NON-NEGATIVE number.
+		// A negative one reached the emitter verbatim and produced
+		// `-5 w` in a content stream, which is not a valid PDF — and
+		// the product of this module is a byte-identical PDF, of which
+		// a byte-identical non-PDF is not an instance.
+		//
+		// REFUSED AT LOAD, not at render, and that is a layering
+		// decision rather than a preference. The value flows into
+		// buildCellRectWithBackgroundField, which is SHARED with table
+		// cell chrome, so `-5 w` has been reachable since Epic 4 and
+		// Epic 9 only widened its reach to four more element kinds; one
+		// load-time refusal closes both paths at one authority instead
+		// of two render-time checks that can drift. It is legal here
+		// only because `border.width` is a geom.Length and this package
+		// already imports internal/geom — the same check on a COLOUR is
+		// structurally unavailable at load (parseHexColor lives in the
+		// module root, which AD-1 forbids this package to import; see
+		// linespacing.go's note).
+		//
+		// ZERO IS VALID and stays accepted: it is the thinnest device
+		// line PDF can draw, not an absent border. Only a NEGATIVE
+		// width is refused.
+		//
+		// The code is the general load code newLoadError supplies
+		// (TEMPLATE_FIELD_INVALID, D-7.8.1) — no consumer branches on
+		// this condition, so it discriminates on Field like every other
+		// located field refusal.
+		if v < 0 {
+			return Border{}, newLoadError(fieldPrefix+".width", elementID, string(r), "must not be negative: a PDF line width is non-negative (ISO 32000-1 8.4.3.2); use 0 for the thinnest line")
+		}
 		b.Width = present(v)
 	}
 	if r, ok := obj["edges"]; ok {
