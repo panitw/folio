@@ -2,7 +2,7 @@
 title: 'Story 16.1: A font arrives from the web with its terms attached'
 type: 'feature'
 created: '2026-09-02'
-status: 'blocked'
+status: 'ready-for-dev'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
@@ -396,6 +396,12 @@ edited and are corrected here instead.
   and on absent/unparseable, distinguishing the two (D-16.R.5). Red-prove by deleting the guard, and
   assert a face with a correct nameID 13 still embeds so the guard cannot be over-broad.
 - **The ≥50-family sample**, run and reported before the guard is proposed for merge.
+- `folio-go/internal/template/parse.go` — **a comment naming the one-door asymmetry deliberately**
+  (D-16.R.11's guardrail). This story is what manufactures the condition — a fetched face is the first
+  face whose label nobody reviewed — so it is the story that documents it. The comment must say the
+  second door is **deferred past the tag with no migration owed**, and name the trigger: adding a
+  refuse-signature after the tag is itself the narrowing. Without it the next reader closes the gap as a
+  tidy-up and ships an unpriced narrowing.
 - `deferred-work.md` — register the local-tier divergence (no staleness check in this epic, with its
   trigger), and **DW-150** (the unparsable-face residual, assigned to this story by Story 16.0's close,
   which is where faces stop being catalogue-built).

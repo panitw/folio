@@ -500,3 +500,103 @@ row is minted. That is a known, bounded gap rather than a surprise, and minting 
 **How we'd know it was wrong.** A token mapping to an SPDX id whose faces then travel with no tie at
 all — visible the moment the table gains a fifth admitted value without a matching signature row, which
 the mirror-contract test should be extended to catch.
+
+### D-16.R.11 — RULING: the licence tie's second door is DEFERRED PAST THE TAG, and no migration is owed
+
+**Engineering lead ruling**, applied. Confidence: high on the deferral, **medium on "no migration
+owed"**. Routed as a possible before-the-tag item and returned as a deferral **with a condition**, which
+is the shape D-000.15 asks a deferral to carry.
+
+**Verdict.** Do not add the licence tie to the load or ingestion path in Epic 16. Defer it explicitly
+past `folio-go/v0.1.0`, and record that **no migration is owed**.
+
+**Why this is not the `fvar` case, despite looking exactly like it.** D-16.6 ruled *"both, or halt"* for
+`fvar` because that guard already **had** two doors, and its defect was a document that **saves cleanly
+and fails at render** — a correctness break, where the bytes cannot be honoured at all. The licence tie
+is a different class: the bytes **can** be honoured, the render is **correct**, and what is wrong is a
+**label the hand-author wrote themselves**. And the asymmetry is not a door being removed — it is a
+second door never having existed. *"Both, or halt" governs removing a guard, not declining to duplicate
+a new one.*
+
+**Why it is off-goal, on a test this run has already paid to learn.** D-000.15's operative rule is
+*"already-touching, not going-looking."* Epic 16 has not touched `internal/template/parse.go`'s licence
+rule — Story 8.6 did. The counter-argument, that Epic 16 **manufactured** the one-door condition, is
+real; it is also **exactly the 8.4x shape**, a licence-gate finding surfaced inside a licence-gate story
+and argued in on *"we are already here"*, which cost this programme 34 commits and 3,567 lines with zero
+lines advancing the epic's stated goal. Epic 16's goal is *"a font arrives from the web, and stays on
+this machine."* A guard on hand-authored files advances none of it, and the epic is already at seven
+stories.
+
+**And here is what actually decides it: the deadline does not bite.** The whole force of "land it now"
+is D-000.14's asymmetry — free before the tag, needs a migration after. **Price that migration
+honestly.** Under the three-valued contract (D-16.R.7), the only documents this narrowing could ever
+break are documents whose font bytes **contradict** their declared licence. **Measured: 1.0%** — and the
+product's own writer can no longer produce one. So the break-population is **definitionally the
+mislabelled set**, and the "migration" is a located diagnostic saying *"this document declares terms its
+own font bytes contradict."* That is **a refusal telling the truth, not a compatibility break.**
+D-000.15's membership test exists because *"after the tag a narrowing needs a migration this project has
+never written — that is a CATEGORY change."* **No category change happens here.**
+
+**In simple terms.** The rule we would add later only ever rejects files that are already lying about
+themselves. Rejecting a lie is not breaking someone's document; it is the document being caught. There
+is nothing to migrate.
+
+**The lead's own correction is what bought the deferral.** D-16.R.5's original *absent-or-unparseable
+refuses* contract would have made this genuinely expensive — the break-population would have been every
+silent face, ~17% of the library. Correcting the guard to admit silence is what made deferring it cheap.
+
+**The trigger, and it is a CONDITION rather than a date.** Widening the table on the **admit** side stays
+free forever. **Adding a refuse-signature after the tag is itself the narrowing**, because a face that
+admits today as NO EVIDENCE becomes a CONTRADICTION tomorrow. The register entry therefore reads: *close
+the second door before any refuse-signature is added after the tag, or accept that the addition is
+itself the narrowing and price it then.*
+
+**Guardrails.**
+- Registered as **deferred past `folio-go/v0.1.0` with its trigger stated** — not ordinary backlog, and
+  not "the next story touching the load path". Owner: whoever adds a refuse-signature, or Story 15.3 if
+  it elects to close it inside the tag.
+- **`internal/template/parse.go` carries a comment naming the asymmetry deliberately**, so the next
+  reader does not close it casually as a tidy-up and thereby ship the narrowing unpriced.
+- **The one door must be provably present.** Story 16.1b's test that a contradiction is refused at the
+  command may not be deleted on the reasoning that the load path covers it — it does not.
+- If Story 15.3 elects to close it inside the tag, that is a **scope decision for the owner**, not a
+  lead ruling: it adds a story to the release gate.
+
+**How we'd know it was wrong.** The refuse-signature set growing after the tag — which is precisely why
+that is the registered trigger rather than a footnote.
+
+### D-16.R.12 — Two standing rules the 16.1b build earned, and one declined regex widening
+
+**Engineering lead**, unprompted, at the close of 16.1b. Recorded because both outlive the story.
+
+**Standing rule 1 — every admit-signature row owes a CONTRADICTION control, and the row carrying the
+largest population owes it most.** The 16.1b review found that the **OFL** row — the row 19 of 21
+catalogue faces and the upstream OFL majority travel under — had no test that could distinguish *"admits
+because it matched"* from *"admits because nothing matched"*. **Those two states are indistinguishable
+at the return value**, which is the same both-sides-move-together vacuity the lead aimed at one level up
+in the token table and missed one level down. The largest row is the one a narrowing breaks most
+silently. **The anchored-prefix mutation — which left the whole `internal/fontset` suite green while
+breaking real faces like `cascadiacode`, whose record 13 opens *"Microsoft supplied font…"* — is
+retained as the red-proof rather than described.**
+
+**Standing rule 2 — the copyleft floor is proven to fire, but NOT proven to fire on the right strings.**
+No face in the 99-face sample hit a refuse-signature, so the refuse half's sole evidence is the
+synthesised control D-16.R.9 required — which is exactly why it was required, and it did its job. But
+the refuse-signatures' **wording** has never met a real copyleft font name table. Not a defect; a stated
+limit. **Standing instruction: the first real copyleft-declaring face encountered anywhere has its
+record 13 captured as a fixture.**
+
+**Declined — do not widen the Apache regex for `apache/yellowtail`.** It states Apache terms in record 0
+in wording the minted regex misses, so it **admits** (NO EVIDENCE) and costs nothing; the ship criterion
+is unaffected. Two reasons to leave it: a regex fitted to one face's wording is fitted to a sample of
+one; and **widening an admit-signature is not risk-free** — a *different* face declaring `OFL-1.1` whose
+record 13 matches a widened Apache pattern becomes a **CONTRADICTION**, so widening the admit side can
+create refusals elsewhere, over a population nobody has measured. **Recorded as observation one.
+Trigger for revisiting: the same wording seen a third time, or a table-gap REFUSAL (not an admit)
+tracing to it.**
+
+**Guardrail carried to Story 16.1a**, unprompted and adopted: every face the batch adds owes the **full
+committed regime** — its own `LICENSE*`, a `NOTICE.md` recording upstream release, archive digest,
+committed digest, byte size and fetch date, and the digest tie — and **`font-catalogue.test.ts`'s
+population floor must rise with the batch.** *"A floor left at 21 while the tier grows to 30 is a floor
+that stops measuring the thing it was built to measure."*

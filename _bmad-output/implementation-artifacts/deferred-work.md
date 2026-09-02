@@ -7142,11 +7142,32 @@ compatibility promise covers.
 
 - **Deferred by:** Story 16.1b (2026-09-03), whose intent contract names `embedFontFamily` as the
   siting; widening to the load path is a decision, not a patch.
-- **Owner:** **THE ENGINEERING LEAD** — routed at the close as a possible **before-the-tag** item,
-  alongside DW-153's narrowing record. **This entry is OPEN and AWAITING THAT RULING**, not settled
-  backlog: nobody has yet decided whether it ships before `folio-go/v0.1.0` or after.
+- **Owner:** **whoever adds a refuse-signature**, or Story 15.3 if it elects to close it inside the tag
+  (which would be a **scope decision for the owner**, not a lead ruling — it adds a story to the release
+  gate).
 - **Severity:** MEDIUM.
-- **Status:** **OPEN — awaiting the engineering lead's ruling.**
+- **Status:** **DEFERRED PAST `folio-go/v0.1.0` (D-16.R.11, 2026-09-03) — with NO MIGRATION OWED.** This
+  is not ordinary backlog and must not be re-read as such.
+- **TRIGGER — a condition, not a date:** widening the table on the **admit** side stays free forever.
+  **Adding a refuse-signature after the tag is itself the narrowing**, because a face that admits today
+  as NO EVIDENCE becomes a CONTRADICTION tomorrow. So: **close the second door before any
+  refuse-signature is added after the tag, or accept that the addition is itself the narrowing and price
+  it then.**
+
+**Why no migration is owed, since that is the surprising half.** Under D-16.R.7's three-valued contract
+the only documents this narrowing could ever break are documents whose font bytes **contradict** their
+declared licence — **measured at 1.0%**, and the product's own writer can no longer produce one. The
+break-population is definitionally the mislabelled set, so the "migration" is a located diagnostic
+saying *"this document declares terms its own font bytes contradict"*: a refusal telling the truth, not
+a compatibility break. D-000.15's category-change test is not met. **The lead's own correction to
+D-16.R.5 is what made this cheap** — the original absent-or-unparseable-refuses contract would have put
+every silent face (~17% of the library) in the break-population.
+
+**Two guardrails this deferral carries.** `internal/template/parse.go` must carry a comment naming the
+asymmetry **deliberately**, so a later reader does not close it casually as a tidy-up and thereby ship
+the narrowing unpriced. And Story 16.1b's test that a contradiction is refused **at the command** may
+not be deleted on the reasoning that the load path covers it — **it does not**, and that test is what
+keeps the door count at one rather than zero.
 
 **Re-measured at the close, not taken on the build's report.** `variableFaceError` has **two** callers
 (`folio-go/internal/fontset/fontset.go:230`, reached from `fontset.New` at render, and
