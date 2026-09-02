@@ -311,3 +311,128 @@ on D-000.15's running list of what the format freedom was spent on, for Story 15
   **path** (a path is not a claim about terms), re-confirmed by the `name`-equality check at pick time —
   and the snapshot **must not** carry the licence token, which would be a second licence authority
   ageing on its own schedule.
+
+### D-16.R.7 — RULING (replaces part of D-16.R.5): the nameID 13 tie becomes three-valued and two-sided. Silence admits; contradiction refuses
+
+**Engineering lead ruling**, applied. Confidence: high on the shape, **medium on the Apache regex
+specifically**. **This replaces D-16.R.5's "absent or unparseable ⇒ REFUSE" clause**, which the lead
+identified as its own error — a guard that conflates *"caught a lie"* with *"could not look"*, which is
+the exact failure it had ruled against one level up in the token table (D-16.R.4's three states).
+
+**How it was caught, and this is the process working rather than a mishap.** D-16.R.5 required a
+≥50-family sample **before** the guard ships. Story 16.1's plan dispatch ran it at the gate — 100
+upstream faces, name tables parsed in pure Python, nothing written to the repository — and measured
+**50 of 100 refused**, 41 of them from a single gap. The falsifier fired exactly where it was aimed.
+
+**The two measurements that forced the change.**
+
+1. **`Apache-2.0` was admitted by the token table and structurally refused by the tie.** D-16.R.4 admits
+   `APACHE2` → `Apache-2.0`; the build-time signature table the tie was told to mirror
+   (`font-catalogue.test.ts:197-200`) has **exactly two rows**, `OFL-1.1` and `Ubuntu-font-1.0`. Every
+   Apache family passed the licence gate and was refused one step later.
+2. **All three static `ufl/` families carry no nameID 13 at all** — their terms live in **nameID 0**.
+   Invisible to the build-time tie because the two Ubuntu faces committed here are not the upstream
+   files. Under D-16.R.5 as written, every genuine UFL family would have been refused.
+
+**Verdict — three outcomes, mirroring D-16.R.4's own three states one level up.**
+
+| Outcome | Condition | Result |
+|---|---|---|
+| **CONTRADICTION** | nameID 13 matches a **refuse-signature**, or matches a **different admitted licence's** signature than the one declared | **REFUSE**, located, naming both what was declared and what the bytes say |
+| **CONFIRMATION** | matches the declared licence's signature | Admit |
+| **NO EVIDENCE** | no signature matches, or the name table is absent or unparseable | **Admit** |
+
+**In simple terms.** The tie exists to catch a face travelling under **another project's** terms —
+D-8.6.5, where 17 of 21 faces carried a licence that was not theirs. That is a **contradiction** between
+the label and the bytes. Refusing a face whose bytes say nothing we can read catches none of that and
+costs 17% of the library: it is noise, not safety. *"The bytes made no claim; they did not make a false
+one."*
+
+**The table is now two-sided, and that is a net strengthening.** Admit-signatures keyed by SPDX id:
+`OFL-1.1` → `/SIL Open Font License/i`; `Ubuntu-font-1.0` → `/Ubuntu Font Licence/i`; **`Apache-2.0` →
+`/Apache License,?\s+Version 2\.0/i`** (minted here; 33/33 exact on the sample, and owed because
+D-16.R.4 admits the token). **Refuse-signatures, checked against every face regardless of what it
+declares:** GPL / LGPL / AGPL / SSPL, and CC BY-SA / ShareAlike. Ground: **AD-26 Binds: all**, and its
+Prevents is *copyleft arriving through a plausible-looking package*. **A face whose own bytes name a
+copyleft licence is now refused even when `METADATA.pb` says `OFL`** — a hole the guard does not have
+today and did not have under the original contract either.
+
+**nameID 0 is a widening of where the binary speaks, not a fallback that weakens the tie.** The property
+worth anything is *"the one statement of a face's licence that cannot be edited from outside the
+binary"*, and that belongs to the **name table**, not to record 13 specifically. **Consulted ONLY when
+nameID 13 is ABSENT. If 13 is present it alone decides** — otherwise a face whose 13 says GPL could be
+laundered by a permissive-sounding 0, defeating the contradiction check with the very thing it exists to
+catch.
+
+**The ship criterion is semantic, not a number, because a number here is a licence to tune.** The guard
+may ship when, on the sample, **every refusal is a CONTRADICTION and no refusal is a silence.** A
+refusal traceable to *"no signature matched"* is a table gap and returns as a finding; one traceable to
+*"the bytes say something else"* is the guard working.
+
+**And it must be proved to fire, or it ships vacuous.** If the sample yields zero contradictions the
+guard has never been observed to work. It therefore requires a **positive control** — a fixture face
+under `folio-go/testdata/` whose nameID 13 contradicts its declared id, asserted refused — plus the
+disequality control the build-time tie already uses. Red-prove by deleting the guard, never by
+falsifying a condition.
+
+**Guardrails.**
+- **Go must re-read the bytes, and may never compare the wire `copyright` against the wire `licence`.**
+  Both arrive from the browser, so a check over them proves nothing — both sides move together.
+- **Signature matching must be order-deterministic** — an ordered slice, never a map range (AD-1).
+- **Two tables in two languages is a mirror contract.** The Go table is the authority for documents and
+  strictly subsumes the TS build-time table's population; **a test, not a comment**, enforces that the
+  TS table admits no id the Go table refuses.
+- Untyped `fmt.Errorf` per `variableface.go`; no new error type in package `folio` root.
+- The build-time tie is not deleted or weakened. **Both, or halt.**
+
+**What can and cannot be filtered before a pick**, stated so nobody builds a filter that cannot be fed:
+**(a) variable-only — yes**, from the snapshot's `axes`; **(b) licence-token refusals (`cc-by-sa`,
+unmapped) — no**, the index carries no licence field, so it is unknowable until `METADATA.pb` is
+fetched; **(c) contradictions — no**, by construction. The browser filters (a) and states (b) and (c)
+at pick time with their reasons.
+
+**DW-150 dissolves, and the lead's own contract was the thing out of step.** `RefuseVariableFace`
+returning `nil` for an unparsable face is **correct**: it asks *"does this have `fvar`"*, an unparsable
+face is not proven variable, and `DecodeFontForRender`/`checkSfnt` refuses genuinely bad bytes one step
+later. Under the corrected contract the nameID guard does the same thing for the same reason. **Close
+DW-150 as reconciled**, with that as the recorded reason.
+
+**How we'd know it was wrong.** An Apache family stating its terms in wording the minted regex misses —
+which now lands in NO EVIDENCE and **admits**, so the cost of being wrong is a check quieter than
+intended, never a document publishing false terms.
+
+**FOR THE OWNER, flagged by the lead itself under D-000.6's backstop, as applied-and-reversible rather
+than a blocking question.** This ruling **loosens a guard the lead had said must not be softened**, on
+the axis the owner personally owns (D-8.5.3). What is untouched: the owner's policy on *which* licences
+are acceptable, and the primary provenance guard (licence text fetched from the same family directory as
+the bytes). What changed is the mechanism of a cross-check invented three messages earlier, and the net
+**adds** a copyleft refusal that does not exist today. **If the owner wants silence to refuse, it is a
+one-line change.**
+
+### D-16.R.8 — RULING: the split is confirmed. The Go guard is Story 16.1b, and it lands FIRST
+
+**Engineering lead ruling**, applied. Confidence: high.
+
+**Verdict.** Story 16.1 carried `multiple-goals` **and** `oversized` (~14,500 tokens against a 1,600
+threshold). The seam is the **Go guard**, which becomes **Story 16.1b**; the browser half keeps `16.1`.
+Three-part test met: separably shippable, the only part in the **before-the-tag set**, and it carries a
+decision reserved to the lead. The lead adds a fourth reason: it is the only half whose correctness is
+**Go-testable against committed bytes**, so it is provable without a browser, which the other half is
+not.
+
+**16.1b runs BEFORE 16.1, and that ordering is the point.** It has no dependency on 16.1 — it tests
+against the 21 committed faces and its own fixtures — while **16.1 is the first story that puts a
+fetched face into a document**. *Building the gate after the population it polices arrives is how
+D-8.6.5 shipped green.* Numeric order is not build order here (D-000.3; Story 16.0 is already the
+precedent), so the position is stated explicitly rather than inferred.
+
+**Pre-authorised second seam, so a further round trip is not needed:** if 16.1 is still `oversized`
+after the cut, the **D-16.4 forbidden-host-scan amendment** becomes its own story — a guard rather than
+a feature, separably shippable, its acceptance entirely *"the new half reds when the declaring module is
+removed"*, sharing no state with the fetch path. **Do NOT cut the licence-token mapping out of 16.1**:
+that is the fetch path's own admission decision, and separating it would put the fetch and its gate in
+two stories — the split D-16.6 refused, for the same reason.
+
+**Guardrails.** 16.1b carries the before-the-tag record for Story 15.3 (D-000.15's running list); its
+`## Verification` includes the goldens unmoved **and** the positive control; and 16.1's `multiple-goals`
+warning is **re-evaluated after the cut rather than carried forward unread**.

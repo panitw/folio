@@ -7030,7 +7030,7 @@ have been out of contract, not out of scope. **Closing this is a small edit** �
 - **Trigger:** the first face admitted from the web, or any hand-built `.folio` reaching the command
   path.
 - **Severity:** MEDIUM.
-- **Status:** OPEN.
+- **Status:** CLOSED 2026-09-03 — reconciled, not fixed (D-16.R.7).
 
 `RefuseVariableFace` returns `nil` when the face cannot be parsed, by design and with the reason
 written next to it: it answers exactly one question — *"is this a variable face?"* — and an
@@ -7043,6 +7043,18 @@ shape D-8.4d.1 and D-16.1 promise cannot happen** — a `.folio` that saves and 
 for a different cause than `fvar`. It was pre-existing before Story 16.0 and is unchanged by it.
 
 ---
+
+**CLOSED 2026-09-03 as RECONCILED, and the engineering lead's own contract was what was out of step.**
+Story 16.0's close registered this because `RefuseVariableFace` returns `nil` for an unparsable face
+while D-16.R.5 required the neighbouring nameID 13 guard to REFUSE one — an asymmetry between two
+guards meant to sit side by side. D-16.R.7 resolved it by **moving the guard, not the neighbour**:
+`RefuseVariableFace` asks *"does this have `fvar`"*, an unparsable face is **not proven variable**, and
+`DecodeFontForRender`/`checkSfnt` refuses genuinely unreadable bytes one step later. The corrected
+nameID guard now does the same thing for the same reason — no evidence admits, and the decode path
+catches bytes that are actually bad. There was never a defect in `RefuseVariableFace`; there was a
+defect in the contract written beside it. Recorded rather than deleted, because the asymmetry the close
+spotted was real and spotting it is what produced the correction.
+
 ### DW-151 — the worker encodes base64 one byte at a time, in TWO copies, with nothing keeping them in step
 
 - **Deferred by:** Story 16.0 (2026-09-03), which **measured** this as slow rather than throwing and

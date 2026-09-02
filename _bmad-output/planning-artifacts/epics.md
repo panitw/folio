@@ -5411,6 +5411,65 @@ downloads are variable builds today, so a caller hitting this needs an action, n
 **Then** the renderer keeps its guard — a `.folio` can be hand-written and the loader is not the only
 door. Both, or halt; this is `setComponentAsset`'s existing shape applied to the class it misses
 
+### Story 16.1b: The binary is asked what it says about itself
+
+*Sequenced **before** Story 16.1 despite its number (D-16.R.8). Numeric order is not build order here —
+Story 16.0 is already the precedent.*
+
+As the person who receives a template,
+I want a typeface in it to be unable to lie about whose it is,
+So that what the file says it may redistribute is what it actually may.
+
+**Covers:** AD-26 · D-16.R.5 as replaced by D-16.R.7, D-16.R.8
+**Design:** none — this is an engine guard
+
+**Acceptance Criteria:**
+
+**Given** Epic 16 moves the licence admission from a build gate to a runtime decision over unreviewed
+bytes
+**When** a face is embedded
+**Then** the engine **re-reads the name table from the bytes in hand** and compares what the binary says
+about its own licence with what is declared for it — the tie that gives the build gate its teeth
+(`font-catalogue.test.ts:355-366`), which nothing else carries to runtime
+
+**Given** that comparison
+**When** it resolves
+**Then** it has **three outcomes, not two**: a **contradiction** refuses, located, naming both what was
+declared and what the bytes say; a **confirmation** admits; and **no evidence** — no signature matched,
+or the name table is absent or unparseable — **admits**
+
+**Given** a reader who will think admitting silence is a hole
+**When** the code is written
+**Then** the reasoning is stated in it: the threat is a face travelling under **another project's**
+terms, which is a *false* statement and not a missing one. Measured, refusing silence rejected **50 of
+100** sampled upstream faces — including **all three static UFL families, which carry no nameID 13 at
+all** — while catching none of the threat
+
+**Given** any face at all
+**When** its own bytes name a **GPL-family or ShareAlike** licence
+**Then** it is refused **whatever** licence is declared for it — AD-26 Binds *all*, and its Prevents is
+copyleft arriving through a plausible-looking package. This half is new; the build gate never had it
+
+**Given** a face with no nameID 13
+**When** the guard runs
+**Then** nameID 0 is consulted — and **only** on absence, never when nameID 13 is present and
+disagreeing, or a face whose 13 says GPL could be laundered by a permissive-sounding 0
+
+**Given** the guard
+**When** it is proposed for merge
+**Then** a **positive-control fixture** proves it fires — a guard never observed to refuse anything has
+shipped vacuous — and the re-run sample shows **every refusal is a contradiction and none is a silence**
+
+**Given** the Go table and the TS build-time table
+**When** they diverge
+**Then** a **test** fails, not a comment: the Go table is the authority for documents and strictly
+subsumes the TS one
+
+**Given** this narrows `embedFontFamily`, which is reachable through the exported API
+**When** it is planned
+**Then** it is recorded on D-000.15's running list for Story 15.3 — it is in the **before-the-tag set**
+and lands in this epic or it does not land
+
 ### Story 16.1: A font arrives from the web with its terms attached
 
 As a template author,

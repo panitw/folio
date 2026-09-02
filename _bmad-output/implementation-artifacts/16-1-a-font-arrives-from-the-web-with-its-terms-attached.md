@@ -2,7 +2,7 @@
 title: 'Story 16.1: A font arrives from the web with its terms attached'
 type: 'feature'
 created: '2026-09-02'
-status: 'ready-for-dev'
+status: 'blocked'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
@@ -11,7 +11,7 @@ context:
   - '{project-root}/_bmad-output/specs/spec-fonts/font-catalogue.md'
   - '{project-root}/_bmad-output/specs/spec-folio/folio-format.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-8-15-decision-log.md'
-warnings: ['multiple-goals']
+warnings: ['multiple-goals', 'oversized']
 deferred: []
 ---
 
@@ -19,30 +19,41 @@ deferred: []
 
 *This section is background, not a requirement; the contract below governs.*
 
-The designer has shipped with twenty-one typefaces, chosen when it was built. From here it reaches the
-library the web publishes — around two thousand families, thirty-four of them Thai — and fetches the
-one the author picks, at the moment they pick it.
+The designer has shipped with twenty-one typefaces, chosen when it was built. From here it **also**
+reaches the library the web publishes — around two thousand families, thirty-four of them Thai — and
+fetches the one the author picks, at the moment they pick it. The twenty-one do not go away. They stay
+as the faces this machine already holds, and when the author picks one of those, nothing is downloaded
+at all.
 
-Two things about that are less simple than they sound, and the story is built around both.
+Three things about that are less simple than they sound.
 
 The first is that the **list** cannot be fetched. Google publishes it, but not in a way a browser is
 allowed to read, so the list ships with the designer and ages between releases exactly as the old
 catalogue did. What is genuinely live is the typeface itself. Anyone describing this as a live font
 browser without that qualification is saying something untrue.
 
-The second is the paperwork, and it matters more than it sounds. A typeface put into a document
-carries terms — whose it is, and what the person receiving the file may do with it. Until now those
-terms were checked when the designer was built, by a gate that failed the build. Fetching at the
-moment of choosing moves that check to the author's machine, in the middle of a click. This story
-gives that check a home and a test, because the last time this went wrong seventeen of twenty-one
-typefaces travelled under another project's licence, and nobody noticed until review.
+The second is the paperwork, and it matters more than it sounds. A typeface put into a document carries
+terms — whose it is, and what the person receiving the file may do with it. Until now those terms were
+checked when the designer was built, by a gate that failed the build. Fetching at the moment of choosing
+moves that check to the author's machine, in the middle of a click. This story gives that check a home
+and a test, because the last time this went wrong seventeen of twenty-one typefaces travelled under
+another project's licence, and nobody noticed until review.
 
-One limit is deliberate and worth knowing up front. Around a quarter of the library ships as a single
-file holding every weight at once, which this product does not accept, because accepting it would mean
-guessing which weight you meant and would make the same template print differently on different
-machines. Those families are refused, and said to be refused. The ones worth having are converted
-ahead of time by the tool that already produced the three typefaces Folio ships — which is how the two
-Thai families in that group are already available.
+The third is that about a quarter of the library ships as a single file holding every weight at once,
+which this product does not accept — accepting it would mean guessing which weight you meant, and would
+make the same template print differently on different machines. Those families are **not shown**. They
+are not listed and then refused: a row the author cannot act on is a row that should not be there, and
+the number the browser reports is the number of families that can actually be added, and says so. The
+engine still refuses such a face if one ever reaches it — hiding a row is a presentation choice, never
+a guard.
+
+One thing worth knowing, because an earlier draft of this page got it wrong. "Ships as one variable
+file" is a fact about *the shelf we are looking at*, not about the typeface. Roboto and Inter are both
+on that list, and Folio already carries both — as ordinary single-weight files, taken from those
+projects' own releases rather than from Google's mirror. So they are offered from the twenty-one, and
+the web list's opinion about them is never consulted. Nor is this repository in the business of
+converting variable fonts: of the faces it ships, exactly one was produced that way, and every other
+one is an upstream file copied byte for byte.
 
 <intent-contract>
 
@@ -107,32 +118,28 @@ deleting it (**D-16.4**).
     identifiers are owner policy and are not amended here; `google/fonts` publishes no MIT token, so
     MIT has nothing to map. **Absence, not narrowing.**
   - A test asserts the table's admitted value set is a **subset** of D-8.5.3's four.
-- **The nameID 13 tie transfers to runtime, and it lives in GO** (**D-16.R.5**). Without it this story
-  replaces a build gate with something **strictly weaker** — exactly D-8.6.5's defect class. The
-  build-time tie at `font-catalogue.test.ts:355-366` ties the declared SPDX id to the binary's own
-  licence description, *"the one statement of a face's licence that cannot be edited from outside the
-  binary"*; `licenceText` from `OFL.txt` and `licence` from `METADATA.pb` are **neither of them in the
-  bytes**, so two of the three values this story carries are unearned without it.
-  - Sited **inside `embedFontFamily`, beside the `fvar` check Story 16.0 added** — the browser is not
-    the only door, and one implementation covers the local tier and the machine store too.
-  - Compares the payload's SPDX `licence` against **nameID 13**, **substring, not prefix or equality**:
-    measured at build time, `cascadiacode`'s description opens *"Microsoft supplied font…"* and carries
-    the OFL sentence further in. An SPDX id with **no signature entry is a refusal**, not a skip.
-  - **Absent or unparseable nameID 13: REFUSE, and say which of the two.**
-  - **Both guards kept.** The build-time tie is not deleted or weakened because Go now checks it.
-- **The engine command does not change.** `embedFontFamily` already requires family, style, licence,
-  licenceText, copyright, source and refuses without them (`component_commands.go:2359-2410`). This
-  story changes where those values come from and nothing about what the document must contain.
-- **The forbidden-host scan is amended and grows, never deleted** (D-16.4). `fonts.googleapis.com` and
-  `fonts.gstatic.com` stay **forbidden** — D-16.3 proved them unusable, so forbidding them is free and
-  keeps the `woff2`/subset trap shut. Allowed hosts are declared in **one** module; an occurrence
-  elsewhere still fails the build. The population floor and positive control extend to the new half.
+- **The nameID 13 tie is STORY 16.1b's, and it lands BEFORE this story** (D-16.R.7, D-16.R.8). Do not
+  implement it here and do not grow a browser-side substitute for it: the guard is one byte-taking door
+  in `internal/fontset` called from `embedFontFamily`, because the browser is not the only door. **This
+  story must not be the thing that puts a fetched face into a document before that gate exists** —
+  building the gate after the population it polices arrives is how D-8.6.5 shipped green.
+- **The nameID 0 READER lives in the browser, and that is forced rather than chosen.** `copyright` is
+  one of `embedFontFamily`'s twelve wire fields under `componentFields(raw, 12)`, and this story may not
+  change that arity — so Go cannot supply an input to itself. Go reads the name table **again**, from
+  the bytes, for its own different question (16.1b). Two readers answering two questions is correct
+  here; one reader would be a check over its own input.
 - **A family that cannot be added is FILTERED OUT, not listed and refused** (**D-16.R.2**, owner). The
   refusal was priced as 28.7% of a long tail; measured, **37 of the 50 most popular families are
   variable-only** — Roboto, Open Sans, Inter, Montserrat, Raleway, Nunito, Oswald, Playfair Display.
   Listing them and refusing means the most common first action in the product fails. **A hidden row is
   a presentation choice, never a guard:** the engine's refusal stays, for anything that reaches it.
 - **The browser's family count is the ADDABLE count**, and it says which it is. Not 1,946.
+- **Only ONE class of refusal is filterable before a pick, and the spec says so** (D-16.R.7), so nobody
+  builds a filter that cannot be fed: **(a) variable-only — YES**, from the snapshot's `axes`;
+  **(b) licence-token refusals (`cc-by-sa`, unmapped) — NO**, the index carries no licence field so it
+  is unknowable until `METADATA.pb` is fetched, i.e. after the pick; **(c) contradictions between a
+  face's declared licence and its own bytes — NO**, by construction. The browser **filters (a)** and
+  **states (b) and (c) at pick time with their reasons**.
 - **The bundled catalogue SURVIVES as the LOCAL FACE TIER** (**D-16.R.3**). `pickCatalogueFamily`
   **gains a source; it does not swap one.** The 21 committed faces and their whole provenance regime —
   `font-catalogue.json`, `build-wasm.mjs`'s generated module, per-face `LICENSE*` and `NOTICE.md`, and
@@ -298,6 +305,76 @@ save-time subsetting · bold, italic or variable axes.
 - `_bmad-output/specs/spec-folio/folio-format.md` — the font-asset section: the record is unchanged,
   its **source** is not.
 
+### Anchor corrections — every anchor above re-measured at `384c8ac` (2026-09-03, clean tree, wd `/Users/panitw/Projects/folio`)
+
+The Code Map above was measured at `a40c34d`. Story 16.0's code had already landed by then, so most of
+it held; these are the ones that did not, plus what the re-measurement added. **Where this section
+disagrees with the list above, this section is correct.** Anchors inside `<intent-contract>` cannot be
+edited and are corrected here instead.
+
+| Anchor as written | Measured at `384c8ac` |
+|---|---|
+| `src/App.tsx:608-627` (`pickCatalogueFamily`) | **Correct.** Note `mediaType: 'font/ttf'` is **hardcoded at the call site** (`:626`), not read from the face; the fetch is `:612-614`, the fallback tail `:625`. A second reference wires `onPickFamily` at `:903`. |
+| `src/font-chain-command.ts:69-98` | **`69-87`.** `89-99` is a separate `base64` helper. The *"THE FIELD COUNT IS PART OF THE CONTRACT"* comment is at **`:15-18`**. |
+| the 12 fields | The **wire** keys are `kind`, `version`, `name`, `family`, `style`, `licence`, `licenceText`, `copyright`, `source`, `mediaType`, `data`, `tail`. The TS parameter object spells two of them differently (`chain` → `name`, `bytes` → `data`). An implementer reading only the TS signature will miscount. |
+| `src/font-catalogue.test.ts:355-366` (the nameID 13 tie) | **`355-367`.** More importantly, **the signature table is somewhere else: `:197-200`.** |
+| `src/release-payload.ts:33` (`maximumCacheAssets = 64`) | **Correct.** `minimumCacheAssets = 10` sits at `:32` and `scripts/offline-release-contract.mjs` reads both **by line anchor**, so reformatting those two lines breaks the release build. |
+| `component_commands.go:2359-2410` (`embedFontFamily`) | **`2360-2466`** (doc comment from `2331`). The function is ~107 lines, not ~50. `componentFields(raw, 12)` at `2361`; `embeddedFontRecord` `2368`; `embeddedFaceBytes` `2376`; `DecodeFontForRender` `2392`; dedupe `assetKeyReferenced` `2423`; `maxCanvasFontFamilies` `2429`. |
+| `internal/template/fontasset.go:178-206` | `decodeRecognisedFont` at **`:178`**, `DecodeFontForRender` at **`:197`**. |
+| "the face-size cap" in `fontasset.go` | **Not there.** `maxComponentAssetBytes` is at **`component_commands.go:668`** and is *computed*, not literal: `(engineProtocolMaxPayloadBytes − maxComponentAssetPayloadOverheadBytes) × 3 / 4` = `(8388608 − 4096) × 3/4` = **6,288,384**. Enforced in `embeddedFaceBytes` at **`:2537`**. The value in the I/O matrix is right; its address was not. |
+| `internal/template/parse.go` (the Story 8.6 rule) | `requireEmbeddedFaceLicence` at **`:471`** (doc `435-470`), called from `decodeFontChainEntry`. Scoped to *referenced* assets only. |
+| `scripts/forbidden-font-hosts.mjs` | `FORBIDDEN_FONT_HOSTS` `:41` (exactly two: `fonts.googleapis.com`, `fonts.gstatic.com`), `DECLARATION_MARKER` `:47`, `SCANNED_ROOTS` `:74` (`folio-designer`, `folio-go`, `lint`, `hashmatrix`, `tools`, `.github`), **`POPULATION_FLOOR = 400` `:233`**. |
+| `src/forbidden-font-hosts.test.ts` | **Eight** tests, not three. Population floor **400**; measured population **584** files at `384c8ac`. |
+
+**What the re-measurement added, and what it changes for the implementer:**
+
+- **Story 16.0's `fvar` check is NOT inside `embedFontFamily`.** The predicate is
+  `fontset.RefuseVariableFace(name string, data []byte) error` at
+  **`internal/fontset/variableface.go:69`**; the *call site* is **`component_commands.go:2414`**, right
+  after `DecodeFontForRender` and before anything touches `t.doc.Assets`, wrapped as
+  `componentFailure("", fontChainPath(name), verr.Error())`. **"Beside the `fvar` check" therefore means
+  a `fontset`-owned, byte-taking exported door called at `:2414`** — not a check written inline. The
+  file's own header states why: one function is the single authority for both doors (command and
+  renderer, `internal/fontset/fontset.go:230`), and a command-side copy would be a second authority by
+  construction. `component_commands_test.go` feeds one byte slice to both doors and asserts both refuse.
+- **`*ot.Font` may not cross the `fontset` package seam** (D-1.5.10 / AC17a). That is why
+  `RefuseVariableFace` takes bytes and pays a second parse. The nameID 13 tie must have the same shape.
+- ⚠ **`RefuseVariableFace` returns `nil` for an unparsable face — deliberately.** The nameID 13 tie
+  **must not copy that convention**: the contract requires *"absent or unparseable nameID 13: REFUSE,
+  and say which of the two."* This is the single easiest way to implement the guard wrongly, because
+  the neighbouring function it is modelled on does the opposite. It is also the seam DW-150 names.
+- **A name-table reader already exists; no new parser is needed.** `readPostScriptName` at
+  `internal/fontset/fontset.go:503` is the precedent, and the vendored
+  `textshape/ot` exposes `func (n *Name) Get(nameID uint16) string`, so nameID 0 and nameID 13 are
+  reachable today as `ot.ParseName(data).Get(0)` / `.Get(13)`. What is missing is only a folio-side
+  byte-taking wrapper.
+- ⚠ **A new error *type* may not be declared in the module-root package `folio`.**
+  `TestFolioMethodNamesAreInjective` (`render_arch_test.go:461`) forbids two receiver types sharing a
+  method name, and the root package already has exactly one `Error() string` (`render_error.go:63`).
+  New error types belong in `internal/fontset` or `internal/template`. `variableface.go` sidesteps this
+  entirely by using a plain `fmt.Errorf` with no type at all — copy that.
+- **`font-catalogue.json` licences: `OFL-1.1` × 19, `Ubuntu-font-1.0` × 2.** The field is spelled
+  `licence` (British); there is no `license` key. **The whole local tier is inside the existing
+  two-entry signature table**, which is why the build-time tie is green and tells you nothing about the
+  wider population.
+- **There is no literal "21-face population floor".** The executable floor is
+  `expect(catalogue.length).toBeGreaterThanOrEqual(20)` at `src/font-catalogue.test.ts:302-303`; "21" appears
+  only in prose comments. D-16.R.3's guardrail is satisfied by that assertion, but an implementer told
+  to "keep the 21-face floor green" will look for an assertion that does not exist.
+- **Golden digests: exactly 23**, `goldenDigestRecord` at `folio-go/byte_neutrality_test.go:100`
+  (record runs to ~`:589`). `fixtures/` holds 29 directories, so 23 is the *digest-record* count, not a
+  directory count. `SupportedMajor = 2` at `internal/template/version.go:77`.
+- **`src/font-licence.ts` does not exist**, and neither does any snapshot or index module. Both are new
+  files. Nearest neighbours for style: `src/embedded-face-family.ts`, `src/embedded-face-registry.ts`,
+  `src/shipped-face-family.ts`.
+- **The forbidden-host scan's marker direction, precisely:** the scan runs over **raw** source, so a
+  host inside a comment still fails; the *exemption* is computed over comment-blanked source, so a line
+  is exempt only if it carries both the host and the marker **as real code, on the same line**. A marker
+  written in a comment declares nothing. The new half must preserve this, and `:164` already tests it.
+- `maxCanvasFontFamilies = 256` at `page_setup.go:513` — **correct**; enforced at `page_setup.go:609`
+  and `component_commands.go:2140`/`2429`.
+
+
 ## Tasks & Acceptance
 
 **Execution:**
@@ -375,6 +452,25 @@ save-time subsetting · bold, italic or variable axes.
 - Given a family directory, when it is resolved, then the slug rule produced it and `METADATA.pb`'s
   own `name` confirmed it, and the directory the probe found is never used as evidence of the licence.
 
+### Plan-gate rulings on questions this list delegated
+
+**The nameID 0 reader lives in the BROWSER, not in Go.** The task list offered the plan gate a choice
+(*"a nameID 0 reader over the fetched face, or an engine-side derivation if the plan gate prefers Go to
+own it"*). **The choice is already closed by two other constraints in this spec, and the gate is
+recording that rather than exercising a preference.** `embedFontFamily` takes `copyright` as one of its
+**twelve** wire fields under an exact-arity check (`componentFields(raw, 12)`,
+`component_commands.go:2361`), and the contract forbids changing the command and forbids changing the
+field count. A value the command *requires as input* cannot be derived by the command's own
+implementation: Go has no way to supply it to itself without either dropping the field (11, a refusal)
+or making it optional (a contract change). **So the browser reads nameID 0 and puts it in the payload.**
+
+Go may still *verify* it — comparing the payload's `copyright` to the binary's nameID 0 in the same
+pass that reads nameID 13 costs one extra map lookup, since the `name` table is parsed either way. That
+is **additive and is not required by any AC**; it is offered to the implementer as a cheap
+strengthening, not mandated. If it is added, note the measurement below: **nameID 0 was present and
+non-empty on 100 of 100 sampled faces**, so unlike nameID 13 it has no observed absent population.
+
+
 ## Design Notes
 
 **Why the index is snapshotted and that is not a compromise being hidden.** The alternative that would
@@ -400,12 +496,224 @@ refuses without it, so the writer still cannot produce a document its own parser
 source of those values while leaving that guard in place is what keeps this story from reaching the
 format at all.
 
+**The signature table is the story's load-bearing unknown, and the plan gate measured it.** See the
+Spec Change Log entry *"The nameID 13 falsifier was taken at the plan gate and it came back red"*. The
+short version: under the two-entry table this spec instructs Go to mirror, **half the sampled upstream
+population would be refused**, and the largest single cause is that `Apache-2.0` — a licence this
+story's own token table *admits* — has no signature entry at all. Nothing below should be implemented
+until that is ruled, because it decides the guard's shape, not just its contents.
+
+**Why the UFL leg is worse than the Apache leg, even though it is smaller.** Apache needs a table
+*entry*. UFL needs a different *mechanism*: all three static UFL families upstream carry no nameID 13
+whatsoever, and state their terms in **nameID 0** instead. A story that adds an Apache row and stops
+will still refuse every Ubuntu family it fetches, while its build-time sibling stays green — because
+the two Ubuntu faces already committed to this repository are not the same files as upstream `ufl/`.
+That is precisely the shape of D-8.6.5's defect: a guard that passes on the population it was written
+against and fails on the population it will actually meet.
+
+**The localisation blind spot is real and is not fixable by widening the regex.**
+`ofl/wdxllubrifonttc` carries a correct, complete OFL 1.1 statement **in Traditional Chinese**. Any
+ASCII substring signature refuses it. This is worth stating because the obvious reading of "the table
+is too narrow" is "add more English phrasings", and that reading has a floor it cannot get under.
+
+
 ## Verification
 
-- `cd folio-designer && npm run scan:font-hosts && npm run test && npm run build`
-- `cd folio-go && go test ./...`
-- The 23 golden digests, unmoved; `SupportedMajor` still 2.
-- A browser run: pick a static family with the network up; with it down; and one whose licence is
-  outside the allowlist.
-- The measured endpoint table in D-16.3 re-taken at implementation HEAD, since it is an external
-  dependency and this story's whole mechanism rests on it.
+**Cadence: end-of-run (D-16.R.1).** This story is **not** one of the named overrides — 16.0 and 16.3
+are, and 16.2 was added to that carve-out — so it gets **no in-story browser run**. Unit, lint and
+build run in-story, plus a **compile-only** check of the e2e specs so a spec that fails to compile
+under its build tag cannot silently skip. The unrun suites are named as debt in the Delivery Log and
+are never reported as green.
+
+**In-story:**
+- `cd folio-designer && npm run scan:font-hosts` — **this story amends the scan and must keep it
+  green.** Expect exit 0 and `0 occurrence(s)` over a population **above the floor of 400** (584 files
+  at `384c8ac`). A population that *falls* is a finding, not a pass.
+- `cd folio-designer && npm run typecheck`
+- `cd folio-designer && npm run lint` — expect **exactly 4** `react(only-export-components)` warnings
+  (`preview/pdf-viewer.tsx:16,17`; `App.tsx:1403,1410`) and 0 errors. Pre-existing, not a regression.
+- `cd folio-designer && npm test` — **against the baseline below, not against "green".**
+- `cd folio-designer && npm run test:e2e:compile` — must stay clean.
+- `cd folio-designer && npm run build` (node **exactly `v24.16.0`**), then `npm run verify:offline:red`
+  and `npm run verify:offline:wasm`. The snapshot module is **source, not a cache asset**: assert
+  `maximumCacheAssets` is still 64 and that the snapshot consumes no slot.
+- `cd folio-go && go test -count=1 ./...`
+- `cd folio-go && go vet ./...`; `gofmt -l folio-go` **from the repo root** — run inside `folio-go/` it
+  prints an `lstat` error that reads like a pass.
+- `cd lint && go test -count=1 ./...` — **`-count=1` is mandatory.** The rules package walks the
+  `folio-go` directory tree and Go's test cache does not track `ReadDir`, so a new file never
+  invalidates it. A cached `ok` here is not a measurement.
+- The **23** golden digests (`folio-go/byte_neutrality_test.go:100`) unmoved, and `SupportedMajor`
+  still 2 (`internal/template/version.go:77`).
+
+**Baseline measured at `384c8ac`** — clean tree, wd `/Users/panitw/Projects/folio`, 2026-09-03, node
+`v24.16.0`. Report against these numbers:
+
+| Suite | Measured |
+|---|---|
+| `folio-go` `go test -count=1 ./...` | **1896 pass / 2 fail / 5 skip** |
+| `lint` `go test -count=1 ./...` | four `ok`, no FAIL |
+| designer `npm run typecheck` | clean |
+| designer `npm run lint` | 4 warnings / 0 errors |
+| designer `npm test` | **43 files / 437 tests — 1 file / 1 test FAILING** |
+| designer `npm run test:e2e:compile` | clean |
+| designer `npm run scan:font-hosts` | exit 0, 0 occurrences over 584 files |
+| `gofmt -l folio-go` (repo root) | empty |
+
+**The two baseline reds, and neither is this story's:**
+1. `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest — `got 7, need >=20`
+   (`internal/text/corpus_test.go:196`). The **mandated permanent red**. Never "fix" it, never report
+   it as a regression.
+2. ⚠ **`src/canvas-authority-contract.test.ts:190`** — *"scans a non-vacuous production, unit-test, and
+   e2e corpus for browser measurement authority"*. It expects `[]` and receives
+   `["e2e/e9-5-border-no-ink.spec.ts: /\\bgetComputedStyle\\s*\\(/"]`. **This red is new, it is
+   undeclared, and it arrived with `a40c34d`** — the Epic 9/10 boundary gate, which added that e2e spec
+   as a "stated deviation" and recorded a verdict of *"designer typecheck/lint/test/build/offline all
+   at their expected identities"* without re-running `npm test` after adding it. **It is not Story
+   16.1's to fix** and must not be swept into this story's commit. If it is still red at the build
+   dispatch the count to hold is **436 pass / 1 fail**; if someone has resolved it, 437 / 0.
+
+**Deferred to the end-of-run catch-up, and named as debt in the Delivery Log:** the browser run (a pick
+with the network up, with it down, and one whose licence is outside the allowlist); `-tags=matrix` and
+the four AD-21 legs; `TestCrossTargetByteIdentity`. Note `TestShippedFacesReproduceFromUpstream` fails
+under `-tags=matrix` as a **could-not-execute** (`fontgen: fontTools is not importable by this
+interpreter`) — never report that as a byte divergence.
+
+**Re-take at implementation HEAD:** the measured endpoint table in the Code Map is an external
+dependency and this story's whole mechanism rests on it. The plan gate re-took it on 2026-09-03 and it
+held; it may not hold at build time.
+
+## Spec Change Log
+
+### 2026-09-03 — plan-gate re-dispatch at `384c8ac` (halt after planning)
+
+Dispatched as a re-plan on the contract the orchestrator amended at `384c8ac` under D-16.R.2,
+D-16.R.2a, D-16.R.3, D-16.R.4, D-16.R.5 and D-16.R.6.
+
+- **`status` was set to `draft` for the dispatch and is restored below.** Step-01 routes a
+  `ready-for-dev` spec straight to step-03 IMPLEMENT; `draft` is the workflow's own re-plan route. A
+  spec being re-planned is not ready for dev, so this is a factual correction, not an improvisation.
+- **`<intent-contract>` was preserved VERBATIM** (step-02 item 1, `preserved_intent_contract`) and is
+  byte-identical to `384c8ac`: md5 `554cc9140f311a087061c1cc336d5163`, 17,923 bytes, verified before
+  and after every edit in this dispatch. Unlike the Story 8.5 re-plan, the orchestrator supplied **no
+  replacement scope** — it supplied rulings it had *already applied to the contract itself* — so
+  preservation is the correct handling and declining it would have been the builder editing a block it
+  may not edit.
+- **The plain-terms opener was rewritten.** It was written before D-16.R.2 and D-16.R.2a and had gone
+  false in two places: it said variable-only families are *"refused, and said to be refused"* (now
+  filtered out), and it said the ones worth having are *"converted ahead of time by the tool that
+  already produced the three typefaces Folio ships — which is how the two Thai families in that group
+  are already available"*. Measured: `tools/fontgen/instance_faces.py` drives a hardcoded three-entry
+  list of **engine** faces, **none of the 21 designer catalogue faces is derived**, and of the two Thai
+  families only `Noto Sans Thai` is a derivation. It also never mentioned the local face tier, which
+  D-16.R.3 makes central. It now describes the story being built.
+- **Every Code Map anchor was re-measured at `384c8ac`** and the corrections recorded in a new
+  subsection rather than by rewriting the originals, because two of the rotted anchors are also quoted
+  inside `<intent-contract>`, which cannot be edited. Six anchors were wrong; the most consequential is
+  that **Story 16.0's `fvar` check is not inside `embedFontFamily` at all**.
+- **`## Verification` was rewritten to the run's end-of-run cadence** (D-16.R.1). The previous version
+  called for *"a browser run"*, which contradicts the cadence: 16.1 is not one of the two named
+  overrides. It also omitted lint, the e2e compile check, `-count=1` on the `lint` module, and
+  `npm run scan:font-hosts`'s population floor.
+- **A second, undeclared baseline red was found** — `canvas-authority-contract.test.ts`, introduced by
+  `a40c34d`. Recorded under Verification. It is not this story's and must not be fixed here.
+
+### The nameID 13 falsifier was taken at the plan gate and it came back RED
+
+The contract's Block If — *"the nameID 13 guard would ship without its falsifier … sample ≥50 families
+across `ofl`/`apache`/`ufl` and report the rate at which the guard would refuse them **before** it
+ships"* — was **taken at the plan gate rather than deferred to the build's first task**, so that a red
+halts before a design is committed to. The build must still run it; a disagreement between the build's
+run and this record is itself a halt.
+
+**Method.** 133 families attempted across all 44 `apache/` directories, 86 `ofl/` families spread A–Z,
+and all 5 `ufl/` families; `METADATA.pb` parsed for its `license:` token and its
+`style:"normal" weight:400` filename; that TTF fetched from `raw.githubusercontent.com/google/fonts/main`
+and its sfnt `name` table parsed in pure Python (no `fontTools`) for nameID 13 and nameID 0. **100 faces
+had a usable static Regular and parsed; 33 were variable-only and skipped; 4 could not be fetched; zero
+sfnt parse errors.** Run 2026-09-03 from the session scratchpad; nothing was written to the repository.
+
+**Result: 50 of 100 sampled faces (50.0%) would be REFUSED by the guard as this spec specifies it.**
+
+| Cause | n |
+|---|---|
+| No signature entry for its SPDX id — **all 41 are `Apache-2.0`** | 41 |
+| nameID 13 **absent** (4 `ofl`, 3 `ufl`) | 7 |
+| Signature entry exists but nameID 13 does not match | 2 |
+| **Pass** | **50** |
+
+**The four findings, in the order they matter:**
+
+1. **`Apache-2.0` is admitted by D-16.R.4's token table and has no entry in D-16.R.5's signature
+   table.** Measured: the build-time table (`src/font-catalogue.test.ts:197-200`) has **exactly two**
+   entries, `OFL-1.1` and `Ubuntu-font-1.0`, and this spec instructs Go to mirror it. So every
+   `APACHE2` family passes the licence gate and is then unconditionally refused one step later — 41% of
+   the sample. A signature **is** cleanly derivable: 33 of 33 non-empty apache nameID 13 values are the
+   byte-identical string `Licensed under the Apache License, Version 2.0`, so
+   `/Apache License,?\s+Version 2\.0/i` matches with zero variance. Adding it drops refusals from 50%
+   to **17%**. But minting it is the decision D-16.R.5 explicitly reserves — *"comes back to the
+   engineering lead as a finding, never fixed by softening the guard"* — and this gate will not mint it.
+2. **The `Ubuntu-font-1.0` signature entry never fires positively on the upstream corpus.** All three
+   static `ufl/` families (`ubuntu`, `ubuntucondensed`, `ubuntumono`) carry **no nameID 13 at all**;
+   their licence sentence is in **nameID 0** (`Copyright 2011 Canonical Ltd.  Licensed under the Ubuntu
+   Font Licence 1.0`). The regex's British spelling is right and it is pointed at the wrong record.
+   **This is a mechanism problem, not a table problem** — no added row fixes it — and it is invisible to
+   the build-time tie because the two Ubuntu faces committed here are not the upstream `ufl/` files.
+3. **14% of faces have no nameID 13.** The contract says absent → refuse, which is coherent; the
+   measurement is that this rejects roughly one face in seven for a reason the author cannot act on.
+   Families: `apache/` — `jsmathcmbx10`, `jsmathcmex10`, `jsmathcmmi10`, `jsmathcmr10`, `jsmathcmsy10`,
+   `jsmathcmti10`, `yellowtail`; `ofl/` — `candal`, `gfsneohellenic`, `tangerine`, `monoton`; `ufl/` —
+   all three. **nameID 0 was present and non-empty on 100 of 100**, which is what makes a nameID 0
+   fallback viable at all.
+4. **Two faces where the binary contradicts its own metadata — which is the guard working.**
+   `apache/mountainsofchristmas` declares `APACHE2` in `METADATA.pb` while its nameID 13 states the
+   **SIL OFL 1.1**; `ofl/nanumbrushscript` has `NHN Corporation` in the licence-description slot, naming
+   no licence. Note the first would be caught only *incidentally*, as a signature miss, not diagnosed as
+   a contradiction. Separately, `ofl/wdxllubrifonttc` carries a correct OFL 1.1 statement **in
+   Traditional Chinese** — semantically compliant, invisible to any ASCII substring signature, and a
+   floor that widening the regex cannot get under.
+
+**Why this halts rather than being ruled here.** The `ofl` leg alone would be a tuning question. The
+`apache` and `ufl` legs are not: one requires minting a signature that D-16.R.5 reserves to the lead,
+and the other requires changing the guard's **shape** (a nameID 0 fallback), which no ruling
+contemplates and which the contract's *"absent or unparseable nameID 13: REFUSE"* currently forbids.
+Two settled rulings point at observably different outcomes for an entire upstream directory, and
+nothing in the intent selects between them. That is an intent gap by the workflow's definition, and it
+is the escalation this story's own Block If names.
+
+## Auto Run Result
+
+Status: blocked
+Blocking condition: intent gap
+
+**Dispatch:** re-plan of Story 16.1 at HEAD `384c8ac`, `Halt after planning.`, 2026-09-03. Tree clean
+at dispatch; the only modification this dispatch makes is to this file.
+
+**Planning completed and recorded above** — opener rewritten, all Code Map anchors re-measured and
+corrected, Verification rewritten to the D-16.R.1 end-of-run cadence, the delegated nameID 0 fork
+ruled, and the Block If falsifier measured. `<intent-contract>` preserved verbatim
+(md5 `554cc9140f311a087061c1cc336d5163`).
+
+**The gap, for the engineering lead.** D-16.R.4 admits `APACHE2` → `Apache-2.0`; D-16.R.5 refuses any
+SPDX id with no signature entry and specifies the table by mirroring a build-time table that has none
+for `Apache-2.0`. Measured refusal rate against a 100-face upstream sample: **50%**. Three questions,
+which want ruling together because the second changes the guard's shape:
+
+1. **Does `Apache-2.0` get a signature entry, and is it `/Apache License,?\s+Version 2\.0/i`?**
+   (33/33 exact, drops the rate 50% → 17%.) Or is `APACHE2` instead dropped from the admitted token
+   table — which would narrow D-8.5.3's owner allowlist, and D-16.R.4 says that is not amended here.
+2. **May the tie fall back to nameID 0 when nameID 13 is absent?** Without it, every fetched Ubuntu
+   family is refused and the `Ubuntu-font-1.0` row is dead against the real corpus. With it, the
+   contract's *"absent or unparseable nameID 13: REFUSE, and say which of the two"* needs amending.
+3. **Is a ~14%-of-faces refusal rate for absent nameID 13 the accepted price**, given that a hidden-row
+   filter (D-16.R.2's mechanism) cannot pre-empt it — the absence is only knowable after the fetch, so
+   these families are listed, picked, and then refused?
+
+**Recommendation, offered but not applied:** rule (1) yes with that regex, and (2) yes but narrowly —
+a nameID 0 fallback consulted **only** when nameID 13 is absent, never when it is present and
+mismatched, so the guard cannot be weakened by a face that states the wrong terms twice. That keeps
+both refusal categories distinguishable, which the contract requires. (3) is an owner-facing product
+question, not a technical one.
+
+**Not attempted:** no code was written, no commit was made, no branch, no push. Two baseline reds
+exist at `384c8ac` and neither is this story's — see Verification.
