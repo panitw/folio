@@ -1,5 +1,5 @@
 ---
-title: 'Story 16.0: The embed boundary stops throwing'
+title: 'Story 16.0: The embed boundary stops throwing, and refuses what render will refuse'
 type: 'bug'
 created: '2026-09-02'
 status: 'ready-for-dev'
@@ -9,7 +9,7 @@ baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/implementation-artifacts/8-6-picking-a-family-puts-it-in-the-file.md'
-warnings: []
+warnings: ['multiple-goals']
 deferred: []
 ---
 
@@ -27,6 +27,14 @@ every one was accepted, so the fault is in the crossing, not the cargo. This sto
 actually breaks there, fixes it, and — separately and just as importantly — stops that crossing from
 swallowing the reason. A failure an author can photograph but nobody can diagnose is two defects.
 
+There is a second, quieter fault at the same place, found while planning this epic. Some typefaces —
+about a quarter of what Google publishes — come as a single file holding every weight at once, and
+Folio deliberately does not accept those. But the check that rejects them happens when the document is
+printed, not when the typeface is added. So it is currently possible to add one, save the file, and
+discover only at print time that the document cannot be printed. The refusal is right; it simply
+arrives far too late. This story moves it to the moment of the click, where the engine's own message
+already tells the author exactly what to do.
+
 <intent-contract>
 
 ## Intent
@@ -37,9 +45,21 @@ swallowing the reason. A failure an author can photograph but nobody can diagnos
 control. **Every acceptance in Epic 16 runs through this exact path**, so the epic cannot be verified
 over it.
 
-**Approach:** Diagnose at the boundary with the Go layer already excluded by measurement, fix the
-cause, and remove the boundary's ability to erase a cause — `execute`'s bare `catch` reports
-`WASM_PROTOCOL_FAILURE` for every throw it sees and keeps none of them.
+**Second problem, found at plan time and measured (D-16.6):** the **embed command accepts a variable
+face that the renderer refuses.** `embedFontFamily`'s only structural check is `checkSfnt`, which does
+not look at `fvar`; `fontset.New` refuses `fvar` at `internal/fontset/fontset.go:228`. **A pick can
+therefore write a `.folio` that saves cleanly and fails at render** — the one outcome D-8.4d.1 and
+D-16.1 both promise cannot happen. Reachable today, without any of Epic 16.
+
+**Approach:** Diagnose the throw at the boundary with the Go layer already excluded by measurement, fix
+the cause, and remove the boundary's ability to erase a cause — `execute`'s bare `catch` reports
+`WASM_PROTOCOL_FAILURE` for every throw it sees and keeps none of them. Separately, add the missing
+`fvar` refusal to `embedFontFamily`, so the engine's existing, already-actionable message reaches the
+author at the pick instead of at the render.
+
+**`multiple-goals` ACCEPTED, and the reason is recorded (D-16.6), not waived.** Both defects are the
+same boundary admitting or erasing what it should have refused or reported; both are verified by the
+same probe harness; and a split would put two halves of one guard in two stories.
 
 ## Boundaries & Constraints
 
@@ -60,11 +80,22 @@ cause, and remove the boundary's ability to erase a cause — `execute`'s bare `
   boundary gaining the ability to say what happened, the second defect is still shipped.
 - **A refusal must stay a refusal.** `notosanssc`'s located size error is correct behaviour and must
   still arrive as a located message, not be swept into whatever this story changes.
+- **The `fvar` refusal is ADDED at the command, and the renderer's is KEPT.** `fontset.go:228` stays:
+  a `.folio` can be hand-written and the loader is not the only door. This is the shape
+  `component_commands.go` already states for `setComponentAsset` — *"bytes this build cannot read are
+  refused before anything is written to `t.doc.Assets`"* — applied to the one class it currently
+  misses.
+- **The command's refusal reuses the engine's existing message.** `fontset.go:228` already ends with
+  the `fonttools varLib.instancer` remedy and states why it names one: *"most Google Fonts downloads
+  are variable builds today, so a caller hitting this needs an action, not a refusal."* Do not write a
+  second, worse sentence for the same fault.
 - Commit only on `main`. Never push, never branch, never `git add -A`.
 
 **Block If:**
 - **The diagnosis cannot be evidenced.** A plausible story about why it throws is not a diagnosis. If
   the cause cannot be observed, say so and report what was excluded rather than fixing a guess.
+- **The `fvar` check would be moved rather than added.** Removing the renderer's guard because the
+  command now has one leaves a hand-written `.folio` unguarded. Both, or halt.
 - **The fix would loosen a bound.** `MAX_ENGINE_PAYLOAD_BYTES` (8 MiB), the 6,288,384-byte face cap and
   `base64ToBytesBounded`'s guard are limits, not obstacles. Raising one to make a symptom go away is a
   halt.
@@ -84,6 +115,9 @@ deterministic fault.
 | Payload over the protocol bound | > `MAX_ENGINE_PAYLOAD_BYTES` | Admission refusal, unchanged | Refusal, not a throw |
 | Genuine WASM fault | `host.handle` throws | A message that names what threw | Reported, not erased |
 | Boot failure | wasm never registered | `WASM_INITIALIZATION_FAILED`, unchanged | Lifecycle failure path |
+| Embed a variable face | `Anuphan[wght].ttf`, 231,712 bytes, carries `fvar` | **Refused at the command**, located, with the instancer remedy named | Refusal anchored at the control, not a render-time surprise |
+| Load a hand-written `.folio` embedding a VF face | Command bypassed entirely | Renderer still refuses at `fontset.go:228` | Unchanged; the guard is not moved |
+| Embed a static face | `Kanit-Regular.ttf`, no `fvar` | Accepted, unchanged | No error |
 
 </intent-contract>
 
@@ -114,6 +148,13 @@ deterministic fault.
 - `component_commands.go:2359-2410` — `embedFontFamily`. Cleared by measurement; read for context only.
 - `internal/template/fontasset.go:197-206` — `DecodeFontForRender`; `:178-184` `decodeRecognisedFont`
   (`font/ttf`, `font/otf` only); `checkSfnt` below it. The face-size cap lives on this path.
+  **`checkSfnt` is the gap:** its own comment bounds it — *"it establishes that the file is not lying
+  about what it is, and nothing more"* — so it reads the version tag and the table directory and never
+  asks whether `fvar` is present.
+- `internal/fontset/fontset.go:226-239` — the `fvar` refusal and its message. **Read it before writing
+  the command's.** `:785` carries the design note for why ingestion is where it lived until now.
+- `tools/fontgen/instance_faces.py` — the derivation D-16.5(d) uses, and the header explaining why its
+  output is committed rather than generated.
 
 ## Tasks & Acceptance
 
@@ -137,6 +178,14 @@ deterministic fault.
   must produce a message naming it, and the test must fail if the message is reverted to the bare
   string.
 - Keep `notosanssc`'s located size refusal arriving as a located refusal; assert it.
+- `folio-go/component_commands.go` — **add the `fvar` refusal to `embedFontFamily`** (D-16.6), beside
+  the existing `DecodeFontForRender` call, refusing before anything is written to `t.doc.Assets`, and
+  carrying the engine's existing remedy message rather than a new one.
+- `folio-go/component_commands_test.go` — a variable face refused at the command, **red-proved by
+  deleting the new guard**, not by falsifying a condition; and a static face still accepted, so the
+  guard cannot be over-broad.
+- `folio-go/internal/fontset/fontset_test.go` — assert the renderer's guard **still** fires, so a later
+  reader cannot conclude the command's check made it redundant.
 
 **Acceptance Criteria:**
 - Given every catalogue family, when each is picked in a real browser, then each is embedded or
@@ -147,6 +196,11 @@ deterministic fault.
   refusal still arrives unchanged.
 - Given the diagnosis, when it is recorded, then it carries command, commit, tree state and working
   directory, and it either explains the Go-layer measurement or is consistent with it.
+- Given a variable face, when it is embedded, then the **command** refuses it with the located message
+  that names the instancer remedy — and no byte reaches `t.doc.Assets`.
+- Given a hand-written `.folio` that embeds a variable face without passing through the command, when
+  it is rendered, then the renderer's own guard still refuses it.
+- Given a static face, when it is embedded, then nothing about today's behaviour changes.
 
 ## Design Notes
 
@@ -162,6 +216,11 @@ worker's copy predates that fix. That makes it the first place to look. It does 
 answer: a byte-at-a-time concatenation is slow rather than throwing, so if it is the cause, the
 mechanism has to be shown, not assumed.
 
+**Why the second defect belongs here and not in 16.1.** 16.1 is about where a font comes from. This
+is about what the boundary will accept once it has one — the same boundary, the same probe harness, and
+a guard whose absence is a defect whether or not Epic 16 is ever built. Placing it in 16.1 would make
+a shipped bug look like a consequence of the new feature, which is the opposite of true.
+
 **What "some fonts" is worth as a signal.** The owner reported failure on *some* picks. The catalogue
 spans 26 KB to 646 KB, so a size-dependent boundary fault is consistent with that report and a
 content-dependent one is not — the Go layer accepted all 21 sets of bytes.
@@ -172,3 +231,5 @@ content-dependent one is not — the Go layer accepted all 21 sets of bytes.
 - `cd folio-go && go test ./...`
 - `cd folio-designer && npm run test && npm run build`
 - The 23 golden digests, unmoved.
+- The D-16.6 probe re-run at implementation HEAD: `Anuphan[wght].ttf` refused at the command, and still
+  refused at ingestion.

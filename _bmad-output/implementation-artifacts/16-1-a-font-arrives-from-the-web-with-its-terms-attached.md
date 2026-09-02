@@ -2,7 +2,7 @@
 title: 'Story 16.1: A font arrives from the web with its terms attached'
 type: 'feature'
 created: '2026-09-02'
-status: 'blocked'
+status: 'ready-for-dev'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
@@ -37,9 +37,12 @@ moment of choosing moves that check to the author's machine, in the middle of a 
 gives that check a home and a test, because the last time this went wrong seventeen of twenty-one
 typefaces travelled under another project's licence, and nobody noticed until review.
 
-One question is genuinely unresolved and is why this story is not ready to build: more than a quarter
-of the library ships in a form this product deliberately does not accept, and two of the affected
-families are ones it already includes.
+One limit is deliberate and worth knowing up front. Around a quarter of the library ships as a single
+file holding every weight at once, which this product does not accept, because accepting it would mean
+guessing which weight you meant and would make the same template print differently on different
+machines. Those families are refused, and said to be refused. The ones worth having are converted
+ahead of time by the tool that already produced the three typefaces Folio ships — which is how the two
+Thai families in that group are already available.
 
 <intent-contract>
 
@@ -90,6 +93,17 @@ deleting it (**D-16.4**).
   `fonts.gstatic.com` stay **forbidden** — D-16.3 proved them unusable, so forbidding them is free and
   keeps the `woff2`/subset trap shut. Allowed hosts are declared in **one** module; an occurrence
   elsewhere still fails the build. The population floor and positive control extend to the new half.
+- **Variable-only families are REFUSED, per D-16.5** — and the refusal is *stated*, not a family
+  silently missing from a search. 558 of 1,946 (28.7%). `SPEC-fonts`' *"no variable-font axes. A weight
+  is a face or it does not exist"* is **not** amended by D-16.1 and is upheld here.
+- **The refusal is the ENGINE's, surfaced early.** Story 16.0 adds the `fvar` check to
+  `embedFontFamily` (D-16.6); this story must not grow a second, cosmetic one that could disagree with
+  it. The browser may *predict* the refusal from the snapshot's `axes` field to grey the row out; the
+  authority stays in Go.
+- **A family the derive-ahead path has already produced is offered normally.** `Noto Sans Thai` and
+  `Noto Serif Thai` are variable upstream and static here; the browser must offer the shipped static
+  rather than refuse the family on the snapshot's `axes` field alone. **A row is refused because no
+  static face is obtainable, never because upstream happens to be variable.**
 - **Offline degrades, never breaks.** No network means no new family. It never means a document that
   will not render: the three shipped Noto faces are the coverage, and an embedded face travels inside
   the `.folio`.
@@ -97,10 +111,12 @@ deleting it (**D-16.4**).
 - Commit only on `main`. Never push, never branch, never `git add -A`.
 
 **Block If:**
-- **D-16.5 is unresolved.** 558 of 1,946 families (28.7%) ship variable-only with no static Regular,
-  against a Non-goal that says a weight is a face or it does not exist. Six of 34 Thai families are
-  affected and **two of them — `Noto Sans Thai`, `Noto Serif Thai` — are faces this product already
-  ships** as `tools/fontgen` static instances. **This story does not start until the owner rules.**
+- **A variable face would reach the embed command.** D-16.6 measured that the command currently accepts
+  one and the renderer refuses it, i.e. a pick can write an unrenderable document. Story 16.0 closes
+  that; if this story is somehow built first, it must not be the thing that makes the gap reachable.
+- **Browser-side instancing would be introduced.** D-16.5 refused option (c) explicitly: it makes the
+  embedded face a function of the author's runtime, which is AD-22's drift class at the asset layer.
+  Any library that instances a variable font client-side is out of scope by ruling, not by omission.
 - **The runtime licence check would be best-effort.** If the four-identifier allowlist cannot be
   applied to a fetched family with certainty, the family is refused, not admitted with a caveat.
 - **A face would reach `Assets` before its licence and copyright are in hand.** The order is
@@ -119,7 +135,8 @@ save-time subsetting · bold, italic or variable axes.
 | Pick a static family | `Kanit`, index snapshot present, network up | `METADATA.pb` → `Kanit-Regular.ttf` + `OFL.txt` fetched; licence classified; one embed command | No error |
 | Pick a family already in the machine store | Store holds the key | **No fetch**; embed from stored bytes (Story 16.2) | No error |
 | Pick a family already in this document | Asset key present | Dedupe by content hash; no second asset, no second history entry | No error |
-| VF-only family | `Anuphan[wght].ttf` is the only file | **Governed by D-16.5 — unresolved.** No implementation until ruled | — |
+| VF-only family, not derived | `Anuphan[wght].ttf` is the only file upstream | **Refused, and stated** (D-16.5). Row is visibly unavailable with its reason, never silently missing | Refusal; the engine's message is the authority |
+| VF upstream, static shipped here | `Noto Sans Thai` | **Offered normally** — the derived static face is what is used | No error |
 | Unclassifiable licence | `METADATA.pb` names something outside the four | **Refused**, named, before any byte is embedded | Refusal at the control |
 | `OFL.txt` missing or empty | Licence file absent upstream | **Refused** — the document may not carry a face without its terms | Refusal, stating why |
 | `name` table has no nameID 0 | Face carries no copyright | **Refused** — `copyright` is required of an embedded face | Refusal, stating why |
@@ -186,8 +203,12 @@ save-time subsetting · bold, italic or variable axes.
 ## Tasks & Acceptance
 
 **Execution:**
-- **Gate D-16.5 with the owner before anything else.** Nothing in this story is safe to build over an
-  unresolved answer, because it decides which families the browser may even list.
+- **D-16.5 is RULED** (owner, 2026-09-02): refuse variable-only, derive the ones worth having, move the
+  refusal to the pick. Implement to the ruling; do not re-open it. The derive-ahead batch is
+  `tools/fontgen`'s work and is **not** this story's — this story must simply not refuse a family whose
+  static face this repository already carries.
+- `src/` — mark rows the snapshot's `axes` field says are variable-only **and** for which no derived
+  static face exists, as unavailable-with-a-reason. Predictive only; Go still decides.
 - `scripts/` — a build step that snapshots `fonts.google.com/metadata/fonts`, trims it to the rendered
   fields, and emits a typed module beside the existing generated catalogue. **Record the snapshot's
   date and family count in the module** so the UI can state its own staleness.
@@ -223,6 +244,11 @@ save-time subsetting · bold, italic or variable axes.
   build fails; and when the declaring module is deleted, the new half's control reds.
 - Given no network, when the author opens the browser, then it states that a family cannot be added
   right now and offers what the machine already holds.
+- Given a variable-only family with no derived static face, when it is shown, then it is visibly
+  unavailable with its reason stated, and picking it is refused by the engine's own message rather than
+  by a second sentence this story invents.
+- Given a family that is variable upstream but ships here as a derived static face, when it is shown,
+  then it is offered normally.
 
 ## Design Notes
 
@@ -236,6 +262,13 @@ here is that an admission decision which used to fail a build now happens on an 
 bytes nobody reviewed. D-8.6.5 is the precedent and it is not reassuring: 17 of 21 catalogue faces
 shipped under another project's licence, green, until a review caught it. That defect was possible
 with a build gate watching. This story removes the gate and must replace it with something testable.
+
+**Why 28.7% of the library is refused on purpose.** D-16.5(c) — instancing in the browser — would buy
+those families by making the embedded face a function of the author's browser and library version: a
+different runtime, different bytes, a different PDF from the same template. `instance_faces.py`'s
+header states the same hazard for the build environment and is why its output is committed. Folio has
+no backend, so there is no third place to do it. The 28.7% is the price of *"the same template renders
+the same PDF everywhere"*, paid deliberately.
 
 **Why `embedFontFamily` is untouched.** It already demands exactly what a `.folio` requires and
 refuses without it, so the writer still cannot produce a document its own parser rejects. Changing the

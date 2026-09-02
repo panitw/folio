@@ -561,16 +561,25 @@ development_status:
   # at 10,595,932 bytes, refused correctly and located, and it is not in the catalogue. Every
   # acceptance in this epic ends in an embed through that boundary, so the epic is unevaluable while
   # it throws -- placed first for the same reason 15.1 was pulled forward as story zero of the 7-8 run.
+  # 16.0 also carries a SECOND goal and therefore warnings: ['multiple-goals'], accepted with its
+  # reason recorded in D-16.6 rather than waived. MEASURED at a9ec59c: embedFontFamily ACCEPTS a
+  # variable face (Anuphan[wght].ttf, 231,712 bytes) because its only structural check is checkSfnt,
+  # which does not look at fvar -- while fontset.New REFUSES it at internal/fontset/fontset.go:228. So
+  # a pick can today write a .folio that saves cleanly and fails at render, the one outcome D-8.4d.1
+  # and D-16.1 both promise cannot happen, reachable without any of Epic 16. The command gains the
+  # check; the renderer KEEPS its own, because a .folio can be hand-written and the loader is not the
+  # only door. Same boundary, same probe harness, one guard -- which is why it is not a separate story.
   16-0-the-embed-boundary-stops-throwing: backlog
-  # 16.1 is BLOCKED, deliberately, on D-16.5 -- an owner question raised at plan time rather than
-  # discovered at implementation. MEASURED: 558 of 1,946 families (28.7%) ship variable-only with no
-  # static Regular, against a Non-goal that says a weight is a face or it does not exist. Six of the
-  # 34 Thai families are affected, and TWO OF THOSE SIX -- Noto Sans Thai and Noto Serif Thai -- are
-  # faces this product ALREADY SHIPS as tools/fontgen static instances. Listing and refusing a family
-  # the author can already use reads as a bug however carefully it is worded. Engineering recommends
-  # refusing VF-only by default WITH a stated exception, and notes a fourth option the existing
-  # ahead-of-build derivation opens. Do not start 16.1 until this is ruled.
-  16-1-a-font-arrives-from-the-web-with-its-terms-attached: blocked
+  # 16.1 was blocked on D-16.5; RULED 2026-09-02 by the owner and now unblocked. The ruling: refuse
+  # variable-only families (558 of 1,946, 28.7%) and SAY they are refused; DERIVE the ones worth having
+  # ahead of the build with tools/fontgen, which is how two of the six affected Thai families -- Noto
+  # Sans Thai and Noto Serif Thai -- are already available, so the browser never refuses a family
+  # already in the author's font menu; and NEVER instance in the browser, which would make the embedded
+  # face a function of the author's runtime (AD-22's drift class at the asset layer, and folio has no
+  # backend to do it anywhere else). The 28.7% is the priced cost of "the same template renders the
+  # same PDF everywhere". Option (b) -- admit the variable file as-is -- was not weighed; it was
+  # REMOVED by measurement (D-16.6): it produces a document that will not render.
+  16-1-a-font-arrives-from-the-web-with-its-terms-attached: backlog
   16-2-a-fetched-face-stays-on-this-machine: backlog
   # 16.2: the owner said "local storage"; the mechanism is IndexedDB and the refusal is arithmetic,
   # not taste (D-16.2) -- ~5 MB string quota, base64 at +33%, one measured face at 90,220 bytes, and

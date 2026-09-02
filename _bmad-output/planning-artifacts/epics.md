@@ -5328,15 +5328,23 @@ either coherent or not: *in this template*, *added from web fonts*, and *availab
 different relationships to a font, and an author who cannot tell them apart cannot reason about what
 their file will contain.
 
-**One question is open and gates the first story** (**D-16.5**): **558 of 1,946 families — 28.7% —
-ship variable-only**, with no static Regular to fetch, against a Non-goal that says a weight is a face
-or it does not exist. Six of the 34 Thai families are among them, and **two of those six are faces this
-product already ships** as `tools/fontgen` instances. Refusing them plainly reads as a bug.
+**One question was open at planning and is now ruled** (**D-16.5**, owner, 2026-09-02): **558 of 1,946
+families — 28.7% — ship variable-only**, with no static Regular to fetch, against a Non-goal that says
+a weight is a face or it does not exist. They are **refused, and said to be refused**; the ones worth
+having are **derived ahead of the build** by `tools/fontgen`, which is how two of the six affected Thai
+families are already available. **Instancing in the browser was refused explicitly** — it would make
+the embedded face a function of the author's runtime, and the 28.7% is the price of *"the same template
+renders the same PDF everywhere"*.
+
+Planning that question turned up a defect in shipped code (**D-16.6**, measured): **the embed command
+accepts a variable face the renderer refuses**, so a pick can write a `.folio` that saves cleanly and
+fails at render — reachable today, without any of this epic. It is Story 16.0's second goal, because it
+is the same boundary being wrong in the same way.
 
 **FRs covered:** none new — FR33's boundary is re-drawn, not crossed: nothing is fetched at RENDER time
 **Also lands:** D-16.1, D-16.2, D-16.3, D-16.4 · UX-DR24, UX-DR25
 
-### Story 16.0: The embed boundary stops throwing
+### Story 16.0: The embed boundary stops throwing, and refuses what render will refuse
 
 As a template author,
 I want picking a typeface to work,
@@ -5383,6 +5391,25 @@ cannot be debugged from a user's screenshot — which is exactly how this defect
 never executed (D-000.4), and that is precisely why a browser-boundary defect reached the owner; this
 story's own claim is unprovable without a real browser run, so it either runs one or states plainly
 that it did not
+
+**Given** the story's SECOND goal, found at plan time and measured (D-16.6)
+**When** a variable face reaches `embedFontFamily`
+**Then** it is **refused at the command**, because today it is **accepted** — measured against
+`Anuphan[wght].ttf` (231,712 bytes): the command's only structural check is `checkSfnt`, which does not
+look at `fvar`, while `fontset.New` refuses it at `internal/fontset/fontset.go:228`. **A pick can
+currently write a `.folio` that saves cleanly and fails at render**, which is the one outcome D-8.4d.1
+and D-16.1 both promise cannot happen, and it is reachable today without any of Epic 16
+
+**Given** that refusal
+**When** its message is written
+**Then** it is the engine's existing one, not a second worse sentence: `fontset.go:228` already ends
+with the `fonttools varLib.instancer` remedy and states why it names one — *"most Google Fonts
+downloads are variable builds today, so a caller hitting this needs an action, not a refusal"*
+
+**Given** the renderer's own `fvar` guard
+**When** the command gains one
+**Then** the renderer keeps its guard — a `.folio` can be hand-written and the loader is not the only
+door. Both, or halt; this is `setComponentAsset`'s existing shape applied to the class it misses
 
 ### Story 16.1: A font arrives from the web with its terms attached
 
@@ -5431,11 +5458,19 @@ the build, and the population floor and positive control that keep the scan from
 extended to the new half
 
 **Given** a family that ships variable-only, with no static Regular
-**When** this story is planned
-**Then** D-16.5 is **ruled by the owner before code is derived from it** — 558 of 1,946 families are
-affected, including `Noto Sans Thai` and `Noto Serif Thai`, which this product already ships as static
-instances, so "refuse it" and "admit the variable file" are both visibly wrong answers in at least one
-case each
+**When** it is shown in the browser
+**Then** it is **refused, and visibly so with its reason** — D-16.5 ruled (owner, 2026-09-02): refuse
+variable-only, derive the ones worth having ahead of the build with `tools/fontgen`, and never instance
+in the browser, which would make the embedded face a function of the author's runtime. 558 of 1,946
+families (28.7%) are refused, and that is the price of *"the same template renders the same PDF
+everywhere"*
+
+**Given** a family that is variable upstream but already ships here as a derived static face —
+`Noto Sans Thai`, `Noto Serif Thai`
+**When** it is shown
+**Then** it is **offered normally**. A row is refused because no static face is obtainable, never
+because upstream happens to be variable, so the browser never refuses a family already in the author's
+font menu
 
 **Given** no network
 **When** the author opens the browser

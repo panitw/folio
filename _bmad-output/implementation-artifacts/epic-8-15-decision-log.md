@@ -3688,3 +3688,76 @@ exists in this repository and runs **ahead of the build**, not in the client —
 is open that (c) is not: **grow the shipped/derived set** for families worth instancing, and leave the
 live path to static-only families. That keeps "a weight is a face" true and keeps the PDF a function
 of the source rather than of the runtime. **Still the owner's call.**
+
+### D-16.5 — RULED (owner, 2026-09-02): refuse variable-only families, derive the ones worth having, and move the refusal to the pick
+
+**Owner decision**, taken on the elaboration and on a measurement that **removed one of the three
+options from the table rather than weighing it.** Option **(b) — admit the variable file at its
+default instance — is not a policy trade-off. It produces a document that will not render**, and is
+refused on that ground alone (D-16.6).
+
+**The ruling has three parts, and the third is the one that makes the first two safe.**
+
+**(a) A variable-only family is REFUSED, and the refusal is stated.** 558 of 1,946 families (28.7%)
+are affected. The browser does not pretend they are addable. This upholds `SPEC-fonts`' *"no
+variable-font axes. A weight is a face or it does not exist"*, which is **not** amended by D-16.1 and
+is not in question.
+
+**(d) The families worth having are DERIVED AHEAD OF THE BUILD, not refused forever.**
+`tools/fontgen/instance_faces.py` already does this correctly — it pins **every** axis (not just
+`wght`), lets `fontTools` write the correct `usWeightClass`, and its **output is committed** precisely
+so the shipped font is not a function of the build environment (AD-22's drift class at the asset
+layer). The three shipped Noto faces exist this way. **The six affected Thai families are the obvious
+first batch, and two of them — `Noto Sans Thai` and `Noto Serif Thai` — are already done.** That
+dissolves the sharp edge that made plain (a) read as a bug: the browser will not refuse a family that
+is already in the author's font menu.
+
+**(c) — instancing in the browser — is REFUSED, and this is the load-bearing half of the ruling.**
+It would buy all 1,946 families by making the embedded face a function of **the author's browser and
+library version**: a different runtime produces different bytes, which produce a different PDF, from
+the same template. That is the exact property the product is built on and the exact drift
+`instance_faces.py`'s own header exists to prevent. **Folio has no backend**, so runtime instancing
+has nowhere else to happen. The 28.7% is the price of *"the same template renders the same PDF
+everywhere"*, and it is paid deliberately.
+
+**How we'd know it was wrong.** Authors repeatedly wanting a specific VF-only family, often enough
+that the derive-ahead-of-build batch becomes a queue nobody services. That would mean the curation
+effort D-16.1 was trying to escape has simply moved, and (c)'s determinism cost deserves re-pricing
+against a measured demand rather than against a hypothetical one.
+
+### D-16.6 — MEASURED: the embed command accepts a variable face the renderer refuses. A pick can currently write an unrenderable document
+
+**Engineering finding, measured 2026-09-02** (tree clean at `a9ec59c`, wd `folio-go`, probe test files
+written, run and removed). It is recorded because it is **a defect in shipped code, independent of
+Epic 16**, and because it is what killed D-16.5's option (b).
+
+**The two halves, and they disagree.** Subject: `Anuphan[wght].ttf`, 231,712 bytes, fetched from
+`raw.githubusercontent.com/google/fonts`.
+
+| Path | Result |
+|---|---|
+| `wasm.Engine.Apply` → `embedFontFamily` | **ACCEPTED.** The command's only structural check is `template.DecodeFontForRender` → `checkSfnt`, which verifies the sfnt version tag and the table directory and **does not look at `fvar`.** |
+| `fontset.New` (render ingestion) | **REFUSED**, at `internal/fontset/fontset.go:228`: *"this is a VARIABLE font (it has an `fvar` table) and cannot be embedded"*, with the remedy named. |
+
+**So today, picking a variable family would embed it, save cleanly, and fail at render.** That is
+exactly the outcome D-8.4d.1 and D-16.1 both promise cannot happen — *"never to a document that will
+not render"* — and it is reachable now, without any of Epic 16, by hand-authoring a `.folio` or by any
+future path that hands the command a VF face.
+
+**The fix is where the check is missing, not where it fires.** `embedFontFamily` refuses `fvar`, so
+the author is told at the moment of the pick. **The message already exists and is already written for
+this exact person:** `fontset.go:228` ends with the `fonttools varLib.instancer` command and states
+its own reason for naming the remedy — *"most Google Fonts downloads are variable builds today, so a
+caller hitting this needs an action, not a refusal."* The engine has been anticipating this case since
+Story 2.2.
+
+**PLACED IN STORY 16.0**, which is already the story about this boundary being wrong, and which is
+already the epic's precondition. It is a **second goal** in that story, so 16.0 carries
+`warnings: ['multiple-goals']` and this entry is the recorded reason for not splitting it: both
+defects are one boundary admitting or erasing what it should have refused or reported, both are
+verified by the same probe harness, and a split would put two halves of one guard in two stories.
+
+**What it does NOT do.** It does not make the renderer's check redundant — `fontset.go:228` stays,
+because a `.folio` can be hand-written and the loader is not the only door. It is the same
+belt-and-braces shape as every other command-layer check in `component_commands.go`: *"bytes this
+build cannot read are refused before anything is written to `t.doc.Assets`"*.
