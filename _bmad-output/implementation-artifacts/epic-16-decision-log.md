@@ -1049,3 +1049,46 @@ comment above `build-font-index.mjs:73` states its heuristic *with its own sampl
 others), and the authority stays Go."* A shipped artifact carrying its confidence level and naming where
 final authority lives is the correct treatment of precisely the kind of claim these four rules exist to
 discipline. Prefer that form.
+
+### D-16.R.26 — CORRECTION to D-16.R.23: I gated a superseded table, and the churn figure was measured on the wrong cut
+
+**What went wrong.** I read `16-1a-batch-proposal.md` as far as its candidate table, ruled the twenty
+families in it agreed, pinned them, and logged the ruling as D-16.R.23. I did not read as far as the
+document's own heading **"Consequences for the table above, stated so this document is not read as still
+governing"**, which records D-16.R.16 replacing the sizing criterion. The governing criterion is *the
+refused families within the **top 20 by `popularity`***, not the top-20-admissible-of-the-top-50 the table
+enumerates. Under it the goal-set is twelve, `Google Sans` is out on evidence, `Jost` dropped for cause at
+TASK 2, and **ten landed**. The implementation was right; my gate was against a question that had already
+been retired.
+
+**Withdrawn from D-16.R.23:** the twenty-family membership, the `Instrument Sans`/`Rubik` tie-break at
+N = 20 (that cut does not arise, so no tie decides membership), the "32 candidates want 20 slots" framing,
+and the 5-of-20 churn figure as stated — it was computed over the superseded cut.
+
+**Retained and re-derived.** The 946-of-1,811 `popularity` drift is criterion-independent and stands.
+Recomputing membership churn over the cut that governs — index positions 1–20, snapshot vs. a live fetch:
+
+| | families |
+|---|---|
+| Leave the cut under live ordering | `Jost`, `Plus Jakarta Sans`, `Roboto Slab`, `Archivo Black`, `Black Ops One` |
+| Enter it | `Raleway`, `Nunito`, `Fraunces`, `Nunito Sans`, `Bebas Neue` |
+
+**This is a much stronger argument for the pin than the one I withdrew, because of *which* families move.**
+`Jost`, `Plus Jakarta Sans` and `Roboto Slab` are exactly the three D-16.R.19 *added* when it recomputed
+from the committed snapshot; `Raleway`, `Nunito` and `Fraunces` are exactly the three it *removed*. The
+entire D-16.R.19 correction is the snapshot-vs-live difference and nothing else. Choose the live index and
+the batch inverts on precisely the axis this epic already litigated once. `d6d51f1` is a reproduction
+contract, not provenance decoration.
+
+**And the coincidence is itself an instance of D-16.R.24 rule 2.** Both the withdrawn measurement and the
+correct one came out at **5 of 20**. The count agreed; the sets are disjoint. Had I checked the recomputation
+against the old figure by its cardinality — the natural move — the wrong number would have confirmed itself.
+*Agreement on a count is not agreement on a set*, demonstrated in the same run that adopted the rule.
+
+**The failure mode was mine and it is the one this log has been cataloguing.** D-16.R.25 names reasoning
+about a mechanism without reading the code that implements it. This is its sibling: **ruling on an artifact
+without reading to the end of it**, where the part left unread was the part that said the part I read no
+longer applied. Four instances now share the shape — a claim true in the scope where it was produced,
+applied in a wider or later scope where it is not. **Standing consequence: a gate ruling states where in the
+artifact the governing criterion was found, so that "I read enough of it" becomes a checkable claim rather
+than an assumed one.**
