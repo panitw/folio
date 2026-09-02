@@ -324,9 +324,9 @@ development_status:
   # Corrected 2026-09-02 during the Epic 9 reconstruction; the line above had outlived its defect.
   # Story files reconstructed 2026-09-02 from the shipped diff, and reviewed for the first time:
   # nine findings, four repaired (D-9.R), four registered as DW-143..145.
-  epic-9: in-progress
-  9-1-the-engine-paints-a-component-s-background-and-border: review
-  9-2-line-and-rectangle-draw-in-the-designer-and-in-the-pdf: review
+  epic-9: done
+  9-1-the-engine-paints-a-component-s-background-and-border: done
+  9-2-line-and-rectangle-draw-in-the-designer-and-in-the-pdf: done
   epic-9-retrospective: optional
 
   # Epic 10 added 2026-08-30 (post-MVP). Reported from the designer: there is no way to set
@@ -341,8 +341,8 @@ development_status:
   # coverage is unowned, which is DW-147 and a gating input to Story 15.3.
   # Story file reconstructed 2026-09-02 from the shipped diff, and reviewed for the first time:
   # nine findings, four repaired (D-10.R), four registered as DW-146..148.
-  epic-10: in-progress
-  10-1-text-prints-in-a-declared-colour: review
+  epic-10: done
+  10-1-text-prints-in-a-declared-colour: done
   epic-10-retrospective: optional
 
   # ---------------------------------------------------------------------------
