@@ -7137,3 +7137,106 @@ is a narrowing of an exported behaviour, so under D-7.8.3/D-8.2.2 it had to land
 compatibility promise covers.
 
 ---
+
+### DW-154 — the licence tie has ONE door where its `fvar` sibling has TWO, so a hand-authored `.folio` is unchecked
+
+- **Deferred by:** Story 16.1b (2026-09-03), whose intent contract names `embedFontFamily` as the
+  siting; widening to the load path is a decision, not a patch.
+- **Owner:** **THE ENGINEERING LEAD** — routed at the close as a possible **before-the-tag** item,
+  alongside DW-153's narrowing record. **This entry is OPEN and AWAITING THAT RULING**, not settled
+  backlog: nobody has yet decided whether it ships before `folio-go/v0.1.0` or after.
+- **Severity:** MEDIUM.
+- **Status:** **OPEN — awaiting the engineering lead's ruling.**
+
+**Re-measured at the close, not taken on the build's report.** `variableFaceError` has **two** callers
+(`folio-go/internal/fontset/fontset.go:230`, reached from `fontset.New` at render, and
+`RefuseVariableFace` at `variableface.go:74`, reached from `embedFontFamily`), expressly because "a
+hand-written `.folio` bypasses this command entirely". `RefuseContradictedLicence` has **exactly one**
+non-test caller: `folio-go/component_commands.go:2443`. And the load path's own licence check,
+`requireEmbeddedFaceLicence` (`folio-go/internal/template/parse.go:471`), asserts only that `licence`,
+`licenceText` and `copyright` are set, non-null and not whitespace — it never reads the face's bytes.
+
+So a `.folio` authored by hand, carrying a face whose own `name` table names a contradicted or
+copyleft licence, **loads, renders and exports unchecked**. The runtime tie covers the designer's door
+and only the designer's door.
+
+**What discharges it:** the lead ruling either (a) that the tie is called from the load path too —
+the shape `variableFaceError` already has — before the tag, or (b) that one door is the accepted scope
+for `v0.1.0`, recorded with its reason.
+
+---
+
+### DW-155 — the Go/TS mirror contract compares IDS and never PATTERNS, so the two tables can drift on what a licence sentence looks like
+
+- **Deferred by:** Story 16.1b (2026-09-03). In contract as written — the intent asks only that the Go
+  table subsume the TS table's **population** — so recorded rather than patched.
+- **Owner:** unassigned; the next story to touch either licence table.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+`TestGoLicenceTableSubsumesTheDesignerTable`
+(`folio-go/internal/fontset/licencesignature_test.go:711`) extracts the TS table's keys with
+`(?m)^\s*'([^']+)'\s*:` and asserts each appears in the Go id set. **It never reads the TS `RegExp`
+values at all.** Narrowing the TS row to `/Open Font License/i` while Go keeps
+`/SIL Open Font License/i` — or the reverse — leaves the test green, and a face whose record 13 omits
+"SIL" would pass the build gate and be NO EVIDENCE at runtime. The test's own comment names this as
+the failure it means to prevent, which is why it is registered rather than left in a spec frontmatter.
+
+**Verified at the close by mutation.** Adding a `'BSD-3-Clause'` row to the TS table reds the test at
+`:757` (population drift is caught); renaming the TS `const` so the anchor no longer matches reds it
+at `:721` with `t.Fatal` and not a skip (extraction rot is caught). Neither probe touches patterns,
+because nothing does.
+
+**What discharges it:** extending the extraction to compare the pattern source text as well as the
+keys, or a recorded ruling that population parity is the whole of the contract.
+
+---
+
+### DW-156 — the refuse-signature rows fire on ANY mention of a copyleft licence, including a bare URL, a compatibility note and a negation
+
+- **Deferred by:** Story 16.1b (2026-09-03). Narrowing the table is a decision about policy reserved
+  to the engineering lead, not a fix made in the story that minted it.
+- **Owner:** the engineering lead, whenever the refuse half is next revisited.
+- **Severity:** LOW — **latent, not observed**: zero refuse-signature hits across the 99 upstream
+  faces the story sampled.
+- **Status:** OPEN.
+
+`folio-go/internal/fontset/licencesignature.go:118` is
+``(?i)\b(?:A|L)?GPL(?:[-\s]?v?\d[.\d]*)?\b``. **Measured at the close** against that exact pattern:
+it matches `"See http://www.gnu.org/licenses/gpl.html for details"`, `"This font is compatible with
+the GPL"` and — the sharpest of the three — `"This font is NOT licensed under the GPL"`. Each would be
+a **refusal**, and the record-0 widening (consulted whenever record 13 is absent) makes copyright
+prose, which is where licence URLs and compatibility notes actually live, their likely home.
+
+The floor fails **closed**, so this costs an author a false refusal rather than admitting a copyleft
+face; that is why it is LOW and why it was not narrowed under time pressure. But a guard that refuses
+a face for saying it is *not* GPL is one somebody eventually turns off.
+
+**What discharges it:** a ruling on whether the refuse rows should require a licensing verb near the
+token, with the cost of the narrower pattern measured against a corpus first.
+
+---
+
+### DW-157 — `apache/yellowtail` states Apache terms in wording the minted regex cannot reach, and is admitted as NO EVIDENCE
+
+- **Deferred by:** Story 16.1b (2026-09-03). It **admits**, so it is not a refusal and not a blocking
+  finding under D-16.R.7's ship criterion; widening the regex is a change to the table.
+- **Owner:** the engineering lead, with DW-156 — both are the same table.
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+The nearest thing to a table gap on the 99-face sample. Its record 0 reads
+*"…Available under the Apache 2.0 licence. http://www.apache.org/licenses/L…"*, which is semantically
+Apache. **Measured at the close:** that string matches neither the Apache admit row
+`(?i)Apache License,?\s+Version 2\.0` nor any refuse row, so it is NO EVIDENCE and **admits** under
+any declared id — including one it plainly is not.
+
+That is D-16.R.7's accepted cost stated exactly ("a check quieter than intended, never a document
+publishing false terms"), and it is recorded so the lead sees the shape rather than the count: the
+sample's 8 NO EVIDENCE faces are not all alike, and this is the one where the bytes did make a
+statement the table failed to read.
+
+**What discharges it:** widening the Apache row to reach the short form, or a ruling that the quiet
+failure is the intended floor.
+
+---

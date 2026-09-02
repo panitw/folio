@@ -70,27 +70,25 @@ deferred:
 
 *Owner summary; the intent contract below governs implementation.*
 
-A typeface put into a document carries a statement about whose it is and on what terms it may be passed
-on. Until now that statement was checked when the product was built, against twenty-one typefaces
-somebody had looked at. Once typefaces start arriving from the web, the same statement has to be checked
-on the author's machine, against files nobody has reviewed.
+A typeface in a document carries a statement about whose it is and on what terms it may be
+passed on. That statement used to be checked only when the product was built, against twenty-one
+typefaces somebody had looked at. Now that typefaces can arrive from the web, it is checked on the
+author's machine too, on the file's own bytes, as it goes into a document.
 
-This story adds that check where it cannot be bypassed: in the engine, on the bytes themselves, at the
-moment a typeface is put into a document. It asks the file what *it* says about its own licence, and
-compares that with the licence being claimed on its behalf.
+The check asks the file what it says about its own licence and compares that with the licence claimed
+for it. A file that contradicts the claim is refused and told why. One that agrees, or says nothing
+readable, is accepted. Admitting silence is deliberate: the danger is a typeface travelling under
+someone else's terms — a false statement, not a missing one — and refusing silence would have blocked
+about a sixth of the library while catching none of it.
 
-The important part is what it does when the file says nothing. It admits it. The problem this guards
-against is a typeface travelling under **someone else's** terms — a false statement, not a missing one —
-and that really happened here once, to seventeen of twenty-one typefaces, unnoticed until review.
-Refusing files that are merely silent would have blocked about a sixth of the library while catching
-none of that. So: if the file contradicts the claim, it is refused and told why. If it agrees, or says
-nothing readable, it is accepted.
+It also gained something the old check never had: a file whose own bytes name a share-alike or
+GPL-family licence is refused outright, whatever is claimed for it.
 
-It also gains something the old check never had: a file whose own bytes name a share-alike or GPL-family
-licence is refused outright, whatever anyone claims on its behalf.
-
-Done looks like: no document can be written carrying a typeface whose own bytes contradict the terms
-recorded beside it.
+Measured against ninety-nine typefaces from the public library, it refuses **one** — a real
+contradiction, where the records and the bytes name different licences. That is
+**one per cent**, against half under the contract this replaced. Before that number is read as proof:
+the sample exercised only the accepting half. None of them named a share-alike licence, so the
+copyleft refusal's only evidence is a file built for the purpose in testing, not a real one.
 
 <intent-contract>
 
@@ -710,3 +708,119 @@ the "100-face" sample the earlier draft of this section called it.
 **Not attempted, deliberately:** no `.folio` format change, no new committed font binary, no row added
 to `vendor-boundary.md` (`Get` substitutes nothing — it returns the zero value, which is observably
 absent), no change to the build-time tie, and no softening of any refusal to a warning.
+
+## Delivery Log
+
+### 2026-09-03 — done
+
+Baseline `e250dc7`. Shipped in two local commits — `f6ed914` (implementation) and `22f7861` (review
+patches) — plus this file's own closing commit. Nothing pushed; `origin/main` is still `c985b9c`.
+Branch `main` throughout, no branch created.
+
+**The recovery was checked, not taken on report.** Mid-review the build used `git checkout --` to undo
+a probe mutation and destroyed the patch agent's unstaged edits to the guard file, then restored it
+from that agent's own `/tmp` snapshot and claimed the result byte-identical. Nobody had re-read it.
+It reconciles arithmetically and behaviourally: `265 + 103 − 9 = 359` lines for the guard and
+`476 + 311 − 6 = 781` for its test, both matching the files on disk; the three arms are present; the
+bounded statement excerpt is applied to **both** refusal arms, not just the contradiction one; both
+tables are ordered slices; the error is an untyped `fmt.Errorf`; and the package is green. The file
+survived intact.
+
+**`followup_review_recommended: true` is discharged here, and the demonstration was re-run rather than
+relayed.** The medium that earned the flag is the one worth the pass: the OFL admit row — the row 19
+of 21 catalogue faces travel under — had no contradiction control, so every "a refusal happens"
+assertion was carried by the Apache or Ubuntu row, and *admits* is also what a row matching nothing
+returns. The build says narrowing the OFL pattern to an anchored prefix now reds. **Measured both
+arms of that claim at the close, which the build did not:** at `f6ed914` in a detached worktree the
+same narrowing leaves `internal/fontset` **green** (`ok`, 0.609s) — the gap was real — and at HEAD it
+**reds** `TestRefuseContradictedLicenceRefusesWhatTheOFLRowContradicts` on the substring arm, plus
+`TestContradictionRefusalNamesEveryMatchedLicence`. A before/after contrast, not a bare red.
+
+**Six independent mutation probes, all at HEAD, each restored and the tree re-verified clean.**
+
+| Mutation | Reds |
+|---|---|
+| OFL row narrowed to an anchored prefix | the OFL contradiction control (green at `f6ed914` under the same mutation) |
+| guard body deleted (`return nil` first) | 7 tests, including **both** D-16.R.9 positive controls |
+| the call in `embedFontFamily` deleted | `TestEmbedFontFamilyRefusesAFaceWhoseOwnBytesContradictTheDeclaredLicence` |
+| `'BSD-3-Clause'` added to the TS table | `TestGoLicenceTableSubsumesTheDesignerTable` at `:757` |
+| TS `const licenceSignatures` renamed so the anchor misses | the same test at `:721`, by `t.Fatal` and not a skip, plus `TestTheBuildTimeTieIsStillInPlace` |
+| silence made to REFUSE | `TestRefuseContradictedLicenceAdmitsSilence` |
+| record 0 made to outrank record 13 | `TestNameID0IsConsultedOnlyWhenNameID13IsAbsent` on the laundering arm, by its own message |
+
+The last two matter most for the long run: they are the two clauses a later reader is likeliest to
+"correct". Both have teeth. One probe **failed to reproduce as the build described it** and is
+recorded rather than smoothed over: renaming the TS const by *appending* to it (`licenceSignatures`
+→ `licenceSignaturesRenamed`) does **not** red the mirror test, because the extraction anchors on
+`const licenceSignatures` as a **prefix** with `[^=]*` after it. A rename that genuinely breaks the
+anchor does red it. The build's claim is true of the mutation it meant and false of the cheaper one;
+the guard is sound either way, since under the appending rename the tie is still readable and still
+enforced.
+
+**Both D-16.R.9 controls confirmed, and no new binary entered the tree.** Neither commit touches a
+`.ttf` — the contradiction control is the already-committed Apache-licensed Roboto declared `OFL-1.1`,
+and the copyleft control is a name table synthesised in-process across ten GPL/LGPL/AGPL/SSPL/
+ShareAlike statements. That avoids the manifest sweep, the binary-identity guard and a licence-census
+row, for a fixture whose whole purpose would have been to lie about itself.
+
+**Gates measured at the close, in this working directory, on a clean tree at `22f7861`.**
+
+- `cd folio-go && go test -count=1 ./...` → **1910 pass / 2 fail / 5 skip**, counted from a `-json`
+  run rather than read off the build's report.
+- `go vet ./...` clean · `gofmt -l .` empty · `go vet -tags=matrix ./...` clean — the last is a real
+  gate here, not a formality: sixteen `//go:build matrix` files would silently skip rather than fail
+  if they stopped compiling.
+- `cd lint && go test -count=1 ./...` → four `ok`.
+- `cd folio-designer && npm run test` → **1 failed | 436 passed (437)**, files 1 failed | 42 passed;
+  `npm run typecheck` clean; `npm run lint` the four pre-existing `only-export-components` warnings;
+  `npm run build` (with `build:offline`, `verify:offline`) exit 0.
+- 23 golden digests unmoved, `SupportedMajor` still `2`, and `git diff e250dc7..HEAD -- folio-designer/`
+  is **empty** — so both halves of "both, or halt" are untouched by construction.
+
+**Both pre-declared reds reproduce, and neither is this story's.** The P6g floor fails **identically**
+at `e250dc7` in a detached worktree and at HEAD: same subtest, same `corpus_test.go:196`, same
+`got 7, need >=20`, same `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`. DW-152 is proved
+pre-existing more strongly than a worktree run could: `folio-designer/` has **zero diff** against
+baseline, its authority scanner reads only `src/` and `e2e/`, and the flagged file is unchanged — the
+red cannot be this story's.
+
+**Triage: 11 patched (3 medium, 8 low) / 4 deferred / 12 rejected**, no `intent_gap`, no `bad_spec`,
+so `review_loop_iteration` stays 0. Two rejections spot-checked on the security axis, both sound.
+Refusing to case-normalise `declared` is strictly the **conservative** direction — the refuse half
+never reads `declared` at all, so normalisation could only ever turn a refusal into an admission —
+and its "empty `declared` is unreachable" premise holds, though by a different authority than the one
+cited: the reachable guard on the command path is `embeddedFontRecord`, which refuses whitespace-only
+licence fields before the record is used, not the load path's `requireEmbeddedFaceLicence`. Right
+conclusion, wrong citation. `ot.ParseFont(data, 0)` ignoring later faces of a collection is also
+sound: **every** parse in this package uses index 0, the renderer's included, so the tie reads the
+same face that will actually be drawn.
+
+**The sample stands, and its limit is stated in the opener rather than left in a residual-risks
+list.** 135 families attempted, 99 parsed, 90 confirmations, 8 NO EVIDENCE (all admitted), **1
+contradiction refused** — `apache/mountainsofchristmas`, which declares `APACHE2` while its own record
+13 states the SIL OFL. **1.0%, against 50.0% under the contract D-16.R.7 replaced**, and every refusal
+a contradiction rather than a silence, which is the ship criterion. The corpus exercised the **admit
+half only**: nothing in it hit a refuse-signature, so the copyleft floor's sole evidence is the
+synthesised control — which is exactly why D-16.R.9 ordered a control for that half specifically.
+
+**Heavy suites deferred to the end-of-run catch-up (D-16.R.1), named so the debt is legible.** The
+sixteen `//go:build matrix` corpora in `folio-go` were **not run** — they were compile-checked under
+their tag and nothing more. The 14 Playwright specs in `folio-designer/e2e/` were **not run**; this
+story has no browser surface (D-16.R.8) and its e2e obligation is compile-only. Both come due at the
+Epic 16 catch-up, before `epic-16` may be marked done.
+
+**Deferrals registered in the standing register at the close — the build had filed all four only in
+this file's frontmatter, where nothing reads them.** `DW-154` (the guard has ONE door where its
+`fvar` sibling has two: `variableFaceError` has two callers, `RefuseContradictedLicence` exactly one,
+and the load path's licence check never reads the bytes — **OPEN and awaiting the engineering lead's
+before-the-tag ruling**, routed at this close, not settled backlog); `DW-155` (the mirror contract
+compares ids, never patterns, so the tables can drift on what a licence sentence looks like with
+nothing red); `DW-156` (the GPL row fires on a bare URL, on "compatible with the GPL" and — measured
+here — on "NOT licensed under the GPL"; latent, zero instances across 99 faces, and it fails closed);
+`DW-157` (`apache/yellowtail` states Apache terms in record 0 in wording the minted regex cannot
+reach, so it admits as NO EVIDENCE). `DW-153`, the D-000.15 before-the-tag narrowing record for Story
+15.3, the build had already written and it is correct as it stands; `DW-150` is confirmed reconciled.
+
+**Not done, said plainly.** The 99-face sample was not re-fetched — it is taken on the build's report,
+with its provenance, and only its single refusal was re-derived by hand upstream. The twelve
+rejections were spot-checked at two, not audited exhaustively.
