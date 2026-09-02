@@ -238,13 +238,24 @@ Oswald · Plus Jakarta Sans · Jost`. Nine of the ten survivors are unchanged; *
 at TASK 2**, by the criterion's own *"no obtainable static from its own project upstream"* clause and
 recorded with its evidence rather than derived silently:
 
-> `indestructible-type/Jost` publishes `fonts/ttf/Jost-400-Book.ttf` at every release and at HEAD. Its
-> own `name` table calls the family **`Jost*`** (nameID 1), with nameID 2 `Regular`. The asterisk is
+> `indestructible-type/Jost` publishes `fonts/ttf/Jost-400-Book.ttf` at release `3.5` and at HEAD;
+> both call the family **`Jost*`** in nameID 1, with nameID 2 `Regular`. The asterisk is
 > outside `build-wasm.mjs`'s `familyShape`, because that string is interpolated unescaped into
 > `font-family: '<name>'`; and `src/font-catalogue.test.ts` ties the manifest's `family` to nameID 1
 > byte-for-byte, on the stated ground that *"a family name is an assertion about bytes"*. Declaring it
 > as `Jost` — the spelling the index uses and the only one that would join — would publish a family name
 > the face's own bytes contradict. **There is no admissible static, so the family is out.**
+
+**THE "MINUS CJK" CLAUSE FIRED ZERO TIMES, and that is recorded rather than left to be inferred.** The
+rule subtracts CJK families as a standing Non-goal, and a reader who sees no CJK family in the batch
+cannot otherwise tell whether one was dropped by that clause or whether none was ever a candidate —
+exactly the ambiguity D-16.R.16's *"exclusions itemised"* guardrail closes. **Measured on the committed
+snapshot: it removed nobody, because there is no CJK family in the snapshot at all.** The index build
+excludes them upstream — `publishedFamilies` **1,946**, `excludedCjkFamilies` **135**, and
+`1,946 − 135 = 1,811`, the family count exactly. Probed directly: `Noto Sans JP`, `Noto Sans SC`,
+`Noto Sans TC`, `Noto Serif SC` and `Noto Sans KR` are **absent**, and **zero** of the 1,811 rows
+declares a Chinese, Japanese or Korean subset. **The clause is kept anyway**, because it states the
+Non-goal at the place membership is decided; it is simply not what made this batch ten.
 
 **The boundary of the cut, itemised — because a set is only checkable against what sits just outside
 it.** Positions are the index snapshot's own order (`popularity` ascending, family name ascending as the

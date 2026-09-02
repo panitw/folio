@@ -119,19 +119,24 @@ describe('the build-time index snapshot', () => {
 })
 
 describe('the local face tier', () => {
-  // THE 21 COMMITTED FACES SURVIVE EPIC 16 UNCHANGED. `pickCatalogueFamily`
-  // gained a source; it did not swap one.
+  // THE COMMITTED FACES SURVIVE EPIC 16 UNCHANGED. `pickCatalogueFamily`
+  // gained a source; it did not swap one. It was 21 when Story 16.1 wrote this;
+  // Story 16.1a's batch made it 31, and the count is deliberately not restated
+  // here — the floor below is where the population is asserted, and a second
+  // number in prose is a second authority that ages.
   it('is the whole bundled catalogue, unchanged', () => {
-    // THE POPULATION FLOOR — ONE OF THREE, AND ALL THREE MOVE TOGETHER.
-    // The other two are `src/font-catalogue.test.ts` ("declares at least
-    // twenty NEW families") and `src/font-name-table.test.ts` ("reads a
-    // copyright out of every committed catalogue face"). Raised 20 -> 31 by
-    // Story 16.1a, which added ten families to the local face tier.
-    // D-16.R.12: "a floor left at 21 while the tier grows to 30 is a floor
-    // that stops measuring the thing it was built to measure" — and
-    // D-16.R.18's correction to it: a floor that exists in three files is
-    // three floors, so a batch that raises one and leaves two behind is
-    // silently unmeasured at the two it left.
+    // THE POPULATION FLOOR — ONE OF FOUR, AND ALL FOUR MOVE TOGETHER.
+    // The other three are `src/font-catalogue.test.ts` ("declares at least twenty NEW families"),
+    // `src/font-name-table.test.ts` ("reads a copyright out of every committed
+    // catalogue face") and
+    // `src/font-provenance.test.ts` ("is asserted over the whole committed tier").
+    // Raised 20 -> 31 by Story 16.1a, which added ten families to the local
+    // face tier. D-16.R.12: "a floor left at 21 while the tier grows to 30 is
+    // a floor that stops measuring the thing it was built to measure" — and
+    // D-16.R.18's correction to it: a floor that exists in N files is N
+    // floors, so a batch that raises one and leaves the rest behind is
+    // silently unmeasured at the ones it left.
+
     expect(catalogueFaces.length, 'the local face tier population floor; Story 16.1a raised it 20 -> 31').toBeGreaterThanOrEqual(31)
     expect(catalogueFaces.length).toBe(manifest.length)
     for (const face of catalogueFaces) expect(localTierHolds(face.family)).toBe(true)

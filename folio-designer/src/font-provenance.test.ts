@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { catalogueFaces } from './generated/font-catalogue'
 import { fontHostDeclarations, webFaceSource } from './font-source'
+import { assertProvenanceShape } from './test/provenance-shape'
 
 // STORY 16.1a — THE TRIPWIRE UNDER `source`, ON BOTH TIERS (D-16.R.13, DW-160).
 //
@@ -36,42 +37,33 @@ import { fontHostDeclarations, webFaceSource } from './font-source'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-/**
- * A HOST, RECOGNISED BY ITS TLD RATHER THAN BY A LIST OF KNOWN FONT HOSTS.
- *
- * A list of the hosts this product does reach would pass the moment somebody
- * reached for a new one, which is the whole failure shape. The TLD set is
- * deliberately narrow so that a FILENAME does not read as a host: `.ttf`,
- * `.pb`, `.md` and a version like `4.005_Desktop` are not in it.
- */
-const hostShaped = /\b[a-z0-9][a-z0-9-]*\.(?:com|org|net|io|dev|co|app|sh|xyz)\b/i
-const schemeShaped = /[a-z][a-z0-9+.-]*:\/\//i
-const digestShaped = /\b[0-9a-f]{64}\b/i
-const branchShaped = /(?:^|[/@])(?:main|master|HEAD)(?:[/\s]|$)/
-
-function assertProvenanceShape(tier: string, subject: string, value: string): void {
-  expect(value, `${tier}: ${subject} publishes an empty source`).not.toBe('')
-  expect(value, `${tier}: ${subject} carries a URL scheme in \`source\`. A resolvable-looking string is a promise of fetchability, and a promise that decays reads as broken provenance (D-16.R.13).`).not.toMatch(schemeShaped)
-  expect(value, `${tier}: ${subject} carries a HOST in \`source\`. \`source\` names provenance, not a retrieval path (D-16.R.13).`).not.toMatch(hostShaped)
-  expect(value, `${tier}: ${subject} carries a branch name in \`source\`. A branch does not identify the bytes the field claims to describe — that was the defect (D-16.R.13).`).not.toMatch(branchShaped)
-  expect(value, `${tier}: ${subject} restates a SHA-256 in \`source\`. The digest is already the asset key, and duplicating it puts two authorities on one fact (D-16.R.13).`).not.toMatch(digestShaped)
-  // AND IT IS STILL PROVENANCE, not merely a string that avoids three
-  // prohibitions: a project, a path within it, and a fetch date.
-  expect(value, `${tier}: ${subject} does not name a fetch date`).toMatch(/, fetched \d{4}-\d{2}-\d{2}$/)
-  expect(value.split(' — ')[0], `${tier}: ${subject} does not name an upstream project`).not.toBe('')
-}
+// THE PREDICATE ITSELF LIVES IN `src/test/provenance-shape.ts`, shared with
+// `font-source.test.ts`, which asserts the same shape over the FETCHED tier's
+// real write path. Shared rather than copied on purpose: the defect this
+// tripwire guards is the two tiers drifting apart, and two copies of the rule
+// can drift exactly as the two writers did.
 
 describe('`source` names provenance and never a retrieval path', () => {
   // NON-VACUITY FIRST. Every assertion below is inside a loop over the
   // generated catalogue, and a module that emitted nothing would satisfy them
   // all in silence — the exact shape this suite's other guards are written
   // against.
+  //
+  // AND IT IS THE POPULATION FLOOR — ONE OF FOUR, AND ALL FOUR MOVE TOGETHER.
+  // The other three are `src/font-catalogue.test.ts` ("declares at least twenty
+  // NEW families"), `src/font-index.test.ts` ("is the whole bundled catalogue,
+  // unchanged") and `src/font-name-table.test.ts` ("reads a copyright out of
+  // every committed catalogue face"). Raised 20 -> 31 by Story 16.1a.
+  // D-16.R.18: "a floor that exists in three files is three floors, and a
+  // ruling that says *the floor* has already lost track of one of them" — this
+  // site is the fourth, added by the same story, and is named at the other
+  // three so the count cannot quietly go stale again.
   it('is asserted over the whole committed tier, not over a sample of it', () => {
-    expect(catalogueFaces.length, 'the generated catalogue is empty, so every committed-tier assertion below is vacuous').toBeGreaterThanOrEqual(31)
+    expect(catalogueFaces.length, 'the generated catalogue is empty, so every committed-tier assertion below is vacuous; this is one of FOUR population floors and all four move together').toBeGreaterThanOrEqual(31)
   })
 
   it('carries no scheme and no host on the committed tier', () => {
-    for (const face of catalogueFaces) assertProvenanceShape('committed tier', face.family, face.source)
+    for (const face of catalogueFaces) assertProvenanceShape(expect, 'committed tier', face.family, face.source)
   })
 
   // AND IT NO LONGER POINTS AT A FILE THAT DOES NOT TRAVEL. The old string named
@@ -85,11 +77,19 @@ describe('`source` names provenance and never a retrieval path', () => {
   })
 
   it('carries no scheme and no host on the fetched tier', () => {
-    assertProvenanceShape('fetched tier', 'a fetched face', webFaceSource('ofl/kanit/Kanit-Regular.ttf', '2026-09-03'))
+    assertProvenanceShape(expect, 'fetched tier', 'webFaceSource, called directly', webFaceSource('ofl/kanit/Kanit-Regular.ttf', '2026-09-03'))
     // The path within the project survives, because it is the half of the
     // record that says WHICH face — dropping it would make the field name a
     // project and nothing else.
     expect(webFaceSource('ofl/kanit/Kanit-Regular.ttf', '2026-09-03')).toContain('ofl/kanit/Kanit-Regular.ttf')
+    // AND THE REAL WRITE PATH IS ASSERTED ELSEWHERE, deliberately. This case
+    // calls `webFaceSource` with an EXPLICIT date, so it cannot observe
+    // `fetchWebFamily`'s default `today` expression — measured: deleting the
+    // `.slice(0, 10)` from that default publishes a full ISO timestamp on every
+    // fetched pick and leaves this file entirely green. `font-source.test.ts`
+    // drives `fetchWebFamily` with NO `today` argument against the kanit stub
+    // and applies this same predicate to the outcome, which is the case that
+    // reds under that mutation.
   })
 
   // THE HOST CONSTANTS ARE THE THING THE FETCHED TIER USED TO INTERPOLATE, so

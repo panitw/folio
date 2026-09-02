@@ -7547,7 +7547,8 @@ becomes the same stated, located refusal that offline already produces.
 stated rule: *the refused families within the top 20 by `popularity` on the committed index snapshot,
 minus CJK, minus the families the tier already held, minus the `shippedFamilies` collisions, minus
 anything with no obtainable static from its own project upstream.* Recorded in full, with its exclusions
-itemised, in `_bmad-output/specs/spec-fonts/font-catalogue.md` under *"The Story 16.1a batch"*.
+itemised, in `_bmad-output/specs/spec-fonts/font-catalogue.md` under the heading
+*"The Story 16.1a batch — the tier grows to 31, by rule, with an owner and a re-run trigger"*.
 
 **Why it cannot be a one-off.** `popularity` is a distribution and it moves; the snapshot it was computed
 against carries a `snapshotDate`, and *"the list changes only when the designer is released"* is as true

@@ -22,16 +22,17 @@ describe('the shared sfnt name-table reader', () => {
   // NON-VACUITY: the loop below is over the manifest, and an empty one passes
   // every assertion in it.
   it('reads a copyright out of every committed catalogue face', () => {
-    // THE POPULATION FLOOR — ONE OF THREE, AND ALL THREE MOVE TOGETHER.
-    // The other two are `src/font-index.test.ts` ("is the whole bundled
-    // catalogue, unchanged") and `src/font-catalogue.test.ts` ("declares at
-    // least twenty NEW families"). Raised 20 -> 31 by
-    // Story 16.1a, which added ten families to the local face tier.
-    // D-16.R.12: "a floor left at 21 while the tier grows to 30 is a floor
-    // that stops measuring the thing it was built to measure" — and
-    // D-16.R.18's correction to it: a floor that exists in three files is
-    // three floors, so a batch that raises one and leaves two behind is
-    // silently unmeasured at the two it left.
+    // THE POPULATION FLOOR — ONE OF FOUR, AND ALL FOUR MOVE TOGETHER.
+    // The other three are `src/font-catalogue.test.ts` ("declares at least twenty NEW families"),
+    // `src/font-index.test.ts` ("is the whole bundled catalogue, unchanged") and
+    // `src/font-provenance.test.ts` ("is asserted over the whole committed tier").
+    // Raised 20 -> 31 by Story 16.1a, which added ten families to the local
+    // face tier. D-16.R.12: "a floor left at 21 while the tier grows to 30 is
+    // a floor that stops measuring the thing it was built to measure" — and
+    // D-16.R.18's correction to it: a floor that exists in N files is N
+    // floors, so a batch that raises one and leaves the rest behind is
+    // silently unmeasured at the ones it left.
+
     expect(manifest.length, 'the local face tier population floor; Story 16.1a raised it 20 -> 31').toBeGreaterThanOrEqual(31)
     for (const face of manifest) {
       const bytes = fs.readFileSync(path.join(fontsRoot, face.directory, face.file))

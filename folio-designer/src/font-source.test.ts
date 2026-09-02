@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { familyDirectorySlug, fetchWebFamily, fontHostDeclarations, parseFamilyMetadata, probeDirectories, regularFilename } from './font-source'
 import { admittedByTheTokenTable } from './font-licence'
 import { sfntWithNames } from './test/sfnt-fixture'
+import { assertProvenanceShape } from './test/provenance-shape'
 import { blankComments } from '../scripts/forbidden-font-hosts.mjs'
 
 // STORY 16.1 — THE FETCH PATH AND ITS ADMISSION DECISION.
@@ -192,6 +193,33 @@ describe('fetching a family from the web tier', () => {
     // PROBING IS ONCE PER PICK: one metadata read, one licence file, one face.
     expect(asked).toHaveLength(3)
     expect(asked[0]).toContain('/ofl/kanit/METADATA.pb')
+  })
+
+  // THE PROVENANCE SHAPE, ON THE REAL WRITE PATH AND WITH NO DATE SUPPLIED
+  // (D-16.R.13, DW-160).
+  //
+  // `font-provenance.test.ts` asserts the same predicate over `webFaceSource`
+  // called DIRECTLY, with an explicit date — which cannot observe the default
+  // `today` expression at `fetchWebFamily`'s signature, the only place a fetched
+  // pick's date actually comes from. MEASURED, and this case exists because of
+  // it: deleting the `.slice(0, 10)` from that default makes every fetched pick
+  // publish `…, fetched 2026-09-03T…Z`, and the whole suite stayed green.
+  //
+  // So this one calls `fetchWebFamily` with NO `today` argument, takes the
+  // source off the OUTCOME rather than off the helper, and applies the shared
+  // predicate — which requires the field to END in `, fetched YYYY-MM-DD`. A
+  // timestamp fails that, and so would a scheme, a host, a moving ref or a
+  // duplicated digest reaching the field by any future route.
+  it('writes a scheme-free, host-free provenance string on the path a real pick takes', async () => {
+    const { fetcher } = stub(kanitUpstream())
+    const outcome = await fetchWebFamily('Kanit', fetcher)
+    expect(outcome.ok, 'the fixture must resolve, or the assertions below run on nothing').toBe(true)
+    if (!outcome.ok) return
+    assertProvenanceShape(expect, 'fetched tier', 'a face fetched with no `today` argument', outcome.face.source)
+    // AND IT IS TODAY'S DATE, not a stale constant: the default is evaluated at
+    // the call, so the recorded date must be the one this machine is running on.
+    expect(outcome.face.source).toContain(`, fetched ${new Date().toISOString().slice(0, 10)}`)
+    expect(outcome.face.source).toContain('ofl/kanit/Kanit-Regular.ttf')
   })
 
   it('walks the probe order and stops at the directory that answers', async () => {

@@ -194,7 +194,13 @@ const licenceSignatures: Readonly<Record<string, RegExp>> = {
   // `Apache-2.0` is the second of the owner's four ids (D-8.5.3), already on
   // `lint`'s `fontAssetLicenceAllowlist`, so admission is unchanged; what is
   // new is only that a catalogue face now exercises it.
-  'Apache-2.0': /Apache License/i,
+  // VERSION-PINNED, matching `folio-go/internal/fontset/licencesignature_test.go`'s
+  // own Apache pattern. `/Apache License/i` alone would be satisfied by an
+  // Apache 1.1 name table while the manifest declared `Apache-2.0` — the
+  // admitted id, carrying terms the bytes do not state. The optional comma is
+  // there because the wording varies ("Apache License, Version 2.0" and
+  // "Apache License Version 2.0" both occur upstream); the VERSION does not.
+  'Apache-2.0': /Apache License,?\s+Version 2\.0/i,
 }
 
 /**
@@ -298,16 +304,18 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
   // truncated manifest would satisfy all of them silently — the exact shape of
   // vacuous green this story's design notes are written against.
   it('declares at least twenty NEW families, none of them a family the six shipped rules already declare', () => {
-    // THE POPULATION FLOOR — ONE OF THREE, AND ALL THREE MOVE TOGETHER.
-    // The other two are `src/font-index.test.ts` ("is the whole bundled
-    // catalogue, unchanged") and `src/font-name-table.test.ts` ("reads a
-    // copyright out of every committed catalogue face"). Raised 20 -> 31 by
-    // Story 16.1a, which added ten families to the local face tier.
-    // D-16.R.12: "a floor left at 21 while the tier grows to 30 is a floor
-    // that stops measuring the thing it was built to measure" — and
-    // D-16.R.18's correction to it: a floor that exists in three files is
-    // three floors, so a batch that raises one and leaves two behind is
-    // silently unmeasured at the two it left.
+    // THE POPULATION FLOOR — ONE OF FOUR, AND ALL FOUR MOVE TOGETHER.
+    // The other three are `src/font-index.test.ts` ("is the whole bundled catalogue, unchanged"),
+    // `src/font-name-table.test.ts` ("reads a copyright out of every committed
+    // catalogue face") and
+    // `src/font-provenance.test.ts` ("is asserted over the whole committed tier").
+    // Raised 20 -> 31 by Story 16.1a, which added ten families to the local
+    // face tier. D-16.R.12: "a floor left at 21 while the tier grows to 30 is
+    // a floor that stops measuring the thing it was built to measure" — and
+    // D-16.R.18's correction to it: a floor that exists in N files is N
+    // floors, so a batch that raises one and leaves the rest behind is
+    // silently unmeasured at the ones it left.
+
     expect(catalogue.length, 'AC3 requires at least 20 new families beyond the 6 already shipped; Story 16.1a raised the floor to 31').toBeGreaterThanOrEqual(31)
     const families = catalogue.map((face) => face.family)
     expect(new Set(families).size, 'two catalogue entries declare the same family').toBe(families.length)

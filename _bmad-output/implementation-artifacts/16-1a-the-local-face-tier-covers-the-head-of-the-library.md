@@ -2,7 +2,7 @@
 title: 'Story 16.1a: The local face tier covers the head of the library'
 type: 'feature'
 created: '2026-09-03'
-status: 'done'
+status: 'in-review'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: 'efd79bfc41cfb9ed45dd4a6223da38e83c00797b'
@@ -378,7 +378,54 @@ Spec Change Log.
 
 ## Review Triage Log
 
-*Empty — no review pass has run. This dispatch halted after planning.*
+**2026-09-03 — review pass over the implemented story. Twelve findings, all triaged `patch`; no
+`intent_gap` and no `bad_spec`, so the code stood and these landed on top. Two further findings were
+REJECTED on inspection and are recorded here so they are not re-litigated.**
+
+*(The line this section carried until now — "Empty — no review pass has run. This dispatch halted after
+planning." — was true of the planning dispatch and is preserved in that sentence rather than deleted.)*
+
+**The two medium findings that were real defects rather than tidying.**
+
+- **The fetched tier's REAL write path had no provenance assertion, and a mutation proved it.**
+  `font-provenance.test.ts` called `webFaceSource` with an **explicit** date, so nothing ever observed
+  `fetchWebFamily`'s default `today` expression — the only place a fetched pick's date actually comes
+  from. Deleting the `.slice(0, 10)` from that default makes every fetched pick publish
+  `…, fetched 2026-09-03T…Z`, and the suite stayed **green**. A new case in `font-source.test.ts` now
+  drives `fetchWebFamily` with **no `today` argument** against the kanit stub and applies the shared
+  predicate to the outcome. **Red-proved with that exact mutation**, then restored from a `cp` snapshot.
+- **The census gap's twin, one level up: I added a FOURTH population floor while the other three
+  comments still said "ONE OF THREE".** D-16.R.18's own rule — *a floor that exists in N files is N
+  floors* — broken in the act of citing it. All four now say four and enumerate the other three.
+
+**The rest, in one line each.** The `source` predicate moved to `src/test/provenance-shape.ts`, shared
+by both suites rather than copied, because the defect it guards *is* two copies of a rule drifting ·
+its project-half check asserted only non-emptiness, which `split(' — ')` makes nearly vacuous when the
+separator is absent — the separator is now required and the half is shaped · `branchShaped` knew only
+`main|master|HEAD` with no `i` flag, so `develop`, `trunk` and `Main` passed; widened, because a guard
+fitted to the instance rather than the class lets the identical defect back in under another spelling ·
+`licenceSignatures`' `Apache-2.0` pattern did not pin the **version**, so an Apache 1.1 name table would
+have satisfied the admitted id — tightened to `folio-go`'s own `Apache License,?\s+Version 2\.0`, and
+`RobotoSlab-Regular.ttf`'s nameID 13 re-checked against it · two stale slot counts in `build-wasm.mjs`
+and one stale "THE 21 COMMITTED FACES" comment corrected · the Delivery Log's blanket *"exactly one
+unmodified `LICENSE*` from the same pinned artifact"* now names the **two** faces for which the text is
+a second asset of the same release rather than a file inside the archive · three different names for one
+heading reconciled · `Jost`'s upstream stated **identically** in all three records, since it is the sole
+evidence for a member's removal · the exclusion list now carries **both** units, position and
+popularity, on every entry · and the *"minus CJK"* clause is recorded as having fired **zero** times,
+measured.
+
+**REJECTED, with the reason, so they are not raised again.**
+
+- *"The delta test reads `row.variable`, which the story forbids."* The prohibition is on the raw
+  `font-index.json` **snapshot**, which stores `axes` and no `variable` key. `familyIndex` rows are the
+  emitted module's rows and genuinely carry `variable` — asserted at `font-index.test.ts`, and
+  production's own `addableFromTheWeb` is literally `!row.variable`. Reading it there is correct.
+- *"`Arimo` and `Lora` cover Cyrillic and Greek, so `scripts: ["latin"]` is under-inclusive."*
+  `scriptFallbacks` is a **closed** `{latin, thai, cjk}` vocabulary and `build-wasm.mjs` throws on
+  anything outside it, so `["latin"]` is the only legal declaration these faces can carry. The
+  vocabulary's coarseness is a real observation and was deferred as such; the rows are correct as
+  written.
 
 ## Design Notes
 
@@ -490,6 +537,17 @@ failures with one appearance. Re-measured at implementation time rather than tak
 `git log -1 -- folio-designer/font-index.json` is exactly that commit, and this story's whole diff
 against its baseline touches the file **not at all**.
 
+**THE "MINUS CJK" CLAUSE FIRED ZERO TIMES, and that is recorded rather than left to be inferred.** A
+reader who sees no CJK family in the batch cannot otherwise tell whether one was dropped by that clause
+or whether none was ever a candidate — the ambiguity D-16.R.16's *"exclusions itemised"* guardrail
+closes. **Measured on the committed snapshot: it removed nobody, because there is no CJK family in the
+snapshot at all.** The index build excludes them upstream — `publishedFamilies` **1,946**,
+`excludedCjkFamilies` **135**, and `1,946 − 135 = 1,811`, the family count exactly. Probed directly:
+`Noto Sans JP`, `Noto Sans SC`, `Noto Sans TC`, `Noto Serif SC` and `Noto Sans KR` are **absent**, and
+**zero** of the 1,811 rows declares a Chinese, Japanese or Korean subset. D-16.R.19 already caught this
+as an exclusion with no referent; it is now measured and stated at the batch itself rather than only in
+the correction that noticed it.
+
 **The boundary of the cut, itemised.** Positions are the committed snapshot's own order (`popularity`
 ascending, family name ascending as the tie-break), computed from `folio-designer/font-index.json` at
 `d6d51f1` and from nothing live: **Jost 20** (pop 16) is the last family *inside* the cut; immediately outside sit
@@ -513,7 +571,13 @@ member fails, and backfilling would have re-introduced the margin-bounded criter
 
 **TASK 2 — ten faces, each with the full committed regime.** Every binary is byte-for-byte its own
 project's upstream static; **not one byte came from the `google/fonts` mirror**. Every directory carries
-the binary, exactly one unmodified `LICENSE*` from the same pinned artifact, and a `NOTICE.md` written
+the binary, exactly one unmodified `LICENSE*` — **from the same pinned release, though for two of the
+ten not from the same FILE, and both say so in their own NOTICE**: `Lora`'s zip carries no licence file,
+so its `OFL.txt` is a **second asset of the same release `v3.021`**, and `roboto-3-classic`'s archive
+carries none either, so `Roboto Condensed`'s is **`OFL.txt` at tag `v3.016`** — the same exception, and
+the same wording, `roboto/NOTICE.md` has recorded since Story 8.5. Neither text is hand-copied and
+neither comes from a different release. The other eight are inside the pinned artifact itself. Plus a
+`NOTICE.md` written
 against `roboto/NOTICE.md`'s shape — upstream project, pinned release, download URL, path inside the
 archive, fetch date, archive digest with byte size, source digest, shipped digest, size, declared family,
 `NO DERIVATION APPLIES`, and the licence file's own digest.
@@ -576,8 +640,10 @@ than compared against a number typed in from a previous run. **Red-proof, run:**
 from `font-catalogue.json` and rebuilding reds **four** assertions — the floor, the variable-upstream
 membership, the offered-once loop, and the delta — each with its own sentence.
 
-**TASK 7 — the batch recorded in `_bmad-output/specs/spec-fonts/font-catalogue.md`** under *"The local
-face tier, and the tier beside it"*: the membership rule as a **ranking** rule with its halt-on-overflow
+**TASK 7 — the batch recorded in `_bmad-output/specs/spec-fonts/font-catalogue.md`** under the heading
+*"The Story 16.1a batch — the tier grows to 31, by rule, with an owner and a re-run trigger"*, which
+sits inside the section the task names (*"The local face tier, and the tier beside it"*): the membership
+rule as a **ranking** rule with its halt-on-overflow
 clause, the itemised exclusions, the measured size, the **owner** and the **re-run trigger**.
 
 **The owner was APPOINTED BY THIS STORY rather than received from the gate, and that is flagged.** The

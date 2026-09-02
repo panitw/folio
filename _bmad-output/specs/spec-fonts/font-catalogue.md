@@ -108,14 +108,31 @@ goal-set ever **overflows** the slot budget, the batch **halts and returns the o
 truncated to fit, because truncation-by-resource silently converts a goal-bounded set back into a
 margin-bounded one.
 
-**The exclusions, itemised, because a set is only checkable against the things it left out.** Within the
-top 20: `Roboto` (popularity 2) and `Inter` (4) the tier already held · `Lato` (6), `Black Ops One` (7),
-`Poppins` (7) and `Archivo Black` (12) publish statics on the mirror and were never refused ·
-`Noto Sans` (8) and `IBM Plex Sans` (15) are `shippedFamilies` collisions that throw at
+**The exclusions, itemised, because a set is only checkable against the things it left out.** **Two
+different numbers are carried for every family below, because this data has two and they are not the
+same one:** *position* is the rank in the snapshot's ascending sort, *popularity* is the field's own
+value — 1,811 families carry only 1,100 distinct values, so ties are common and the two readings
+diverge. Within the top 20 by position: `Roboto` (position 2, popularity 2) and `Inter` (position 5,
+popularity 4) the tier already held · `Lato` (position 7, popularity 6), `Black Ops One` (position 10,
+popularity 7), `Poppins` (position 11, popularity 7) and `Archivo Black` (position 14, popularity 12)
+publish statics on the mirror and were never refused · `Noto Sans` (position 12, popularity 8) and
+`IBM Plex Sans` (position 19, popularity 15) are `shippedFamilies` collisions that throw at
 `build-wasm.mjs`'s family guard (D-16.R.17: two different problems sharing a symptom, both registered
-rather than solved here) · **`Google Sans` (3) has no obtainable static** — `isBrandFont`, and absent
-from all four licence directories · **`Jost` (position 20) has no obtainable static under an
-admissible name** — set out in full below. **Twelve candidates, minus those two, is ten.**
+rather than solved here) · **`Google Sans` (position 3, popularity 3) has no obtainable static** — `isBrandFont`, and absent
+from all four licence directories · **`Jost` (position 20, popularity 16) has no obtainable
+static under an admissible name** — set out in full below. **Twelve candidates, minus those two, is
+ten.**
+
+**THE "MINUS CJK" CLAUSE FIRED ZERO TIMES, and that is recorded rather than left to be inferred.** The
+rule subtracts CJK families as a standing Non-goal, and a reader who sees no CJK family in the batch
+cannot otherwise tell whether one was dropped by that clause or whether none was ever a candidate —
+exactly the ambiguity D-16.R.16's *"exclusions itemised"* guardrail closes. **Measured on the committed
+snapshot: it removed nobody, because there is no CJK family in the snapshot at all.** The index build
+excludes them upstream — `publishedFamilies` **1,946**, `excludedCjkFamilies` **135**, and
+`1,946 − 135 = 1,811`, the family count exactly. Probed directly: `Noto Sans JP`, `Noto Sans SC`,
+`Noto Sans TC`, `Noto Serif SC` and `Noto Sans KR` are **absent**, and **zero** of the 1,811 rows
+declares a Chinese, Japanese or Korean subset. **The clause is kept anyway**, because it states the
+Non-goal at the place membership is decided; it is simply not what made this batch ten.
 
 **The boundary of the cut, itemised — because a set is only checkable against what sits just outside
 it.** Positions are the index snapshot's own order (`popularity` ascending, family name ascending as the
