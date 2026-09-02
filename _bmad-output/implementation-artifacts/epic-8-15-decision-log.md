@@ -3097,3 +3097,47 @@ behind.**
 — both **written and compiling** (`go vet -tags=matrix` clean) — and **Playwright**, written and
 compiling (`test:e2e:compile` 0). **Per D-8.4j.25 the Playwright leg reports in exactly two states:
 EXECUTED AND GREEN, or NOT EXECUTED AND OWED. Never skipped, never compile-verified.**
+
+## D-8.4d.1 — OWNER DECISION: reverse D-8.5.12. Catalogue faces are fetched on first pick, not bundled (2026-09-02)
+
+**Owner decision**, taken at the terminal on Story 8.4d's escalation, **with the measurement in hand.**
+This **reverses D-8.5.12**, which declined the same shape on contract grounds. D-8.5.12 stands above as
+written; this appends. **Under D-000.8, one reversal is the system working.**
+
+**The measurement that prompted it**, re-taken at HEAD (`6f94972`, wd `folio-designer`, `npm run build`,
+`dist/offline-release-manifest.json`, node v24.16.0, tree clean): **`brotli.totalBytes` = 15,729,262**
+— **1.75× the `~9 MB`** `epics.md` records. Story 8.6 moved it +10,038 from D-8.5.20's figure, explained
+rather than merely reproducible: 8.6 is the only work between, and it changed engine and app sources.
+**The catalogue subtotal is byte-identical at 2,227,609** — no font bytes moved.
+
+**THE FACT THAT REFRAMED THE DECISION, and it is why "trim the catalogue" was never the answer.**
+The 21 faces are **14.16%** of the payload. **Deleting ALL of them still leaves 13,501,653 bytes —
+1.5× the `~9 MB`** — because **the engine wasm and the CJK face are 77.4% on their own.** The `~9 MB`
+was an estimate made **before any of this existed**; it was never a target that was missed.
+
+**Verdict.** Catalogue faces are **fetched on first pick**, not bundled and precached. This requires
+amending **`SPEC.md` `## Non-goals` AND `font-catalogue.md` TOGETHER** — the Non-goals clause names
+*"download on first use"* literally, and `font-catalogue.md` says *"Nothing is fetched. The bytes come
+from the bundle already on the machine."* **Both, or the record contradicts itself.**
+
+**The accepted cost, stated with its mitigant because it reads worse without it.** A family **not yet
+fetched cannot be picked while offline**. But **the catalogue is a PALETTE, not coverage** — the three
+shipped Noto faces are the coverage (D-8.5.1) — so an unfetched family degrades to *"you cannot pick
+that family right now"*, **never to a document that will not render**. And a face already embedded in a
+`.folio` travels **inside the file** (Story 8.6), so **no existing document regresses.**
+
+**What this does NOT achieve, and the owner chose it knowing so.** Removing 2,227,609 bytes lands at
+**~13.5 MB — still 1.5× the `~9 MB`.** **A threshold still has to be set, and the `~9 MB` figure still
+has to be superseded.** This decision reduces the payload; it does not dissolve the escalation that
+produced it.
+
+**Consequences, and the sequencing question this raises is the lead's.** This **re-opens the delivery
+shape Story 8.5 shipped** — D-8.5.12's bundled-and-precached route, which 8.5 built. The plan gate
+warned explicitly that option (c) *"re-opens the epic's shipped shape … that belongs in a
+release-scoped conversation, not as a threshold's side effect."* **The owner has now had that
+conversation and made the call**, so the question is no longer *whether* but *where and in what order*
+— routed to the lead, not decided here.
+
+**How we'd know it was wrong.** Authors hitting "cannot pick that family right now" often enough to be
+a complaint rather than an edge case — which would mean the offline case is the common one and the
+palette should have been bundled after all.
