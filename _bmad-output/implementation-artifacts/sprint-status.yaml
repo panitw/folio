@@ -551,7 +551,7 @@ development_status:
   # to RUNTIME, in the browser, over bytes nobody reviewed -- and D-8.6.5 is the precedent: 17 of 21
   # catalogue faces shipped under another project's licence, green, until review caught it. Story
   # 16.1 owes that check a named home and a test.
-  epic-16: backlog
+  epic-16: in-progress
   # 16.0 is the epic's PRECONDITION, not a nicety. Owner reported 2026-09-02 at a40c34d, with a
   # screenshot: "The engine returned an invalid response" under the family control after a pick.
   # That string exists ONCE, at engine.worker.ts:82, reached only from execute's bare catch -- so it
@@ -569,7 +569,7 @@ development_status:
   # and D-16.1 both promise cannot happen, reachable without any of Epic 16. The command gains the
   # check; the renderer KEEPS its own, because a .folio can be hand-written and the loader is not the
   # only door. Same boundary, same probe harness, one guard -- which is why it is not a separate story.
-  16-0-the-embed-boundary-stops-throwing: backlog
+  16-0-the-embed-boundary-stops-throwing: in-progress
   # 16.1 was blocked on D-16.5; RULED 2026-09-02 by the owner and now unblocked. The ruling: refuse
   # variable-only families (558 of 1,946, 28.7%) and SAY they are refused; DERIVE the ones worth having
   # ahead of the build with tools/fontgen, which is how two of the six affected Thai families -- Noto
