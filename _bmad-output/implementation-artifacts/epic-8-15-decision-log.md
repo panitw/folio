@@ -3027,3 +3027,73 @@ control** and asserted in a test. Silence was not accepted as a decline.
 `copyright` **required** on a font asset a chain names; a `.folio` embedding a face without them is
 **invalid at load**. Chosen over an optional absent-by-default field **purely because there are no
 documents to protect**. No new version trigger; `SupportedMajor` stays 2.
+
+## Story 8.6 closed at `d8afd65` — Epic 8's feature work is complete (2026-09-02)
+
+### D-8.6.10 — Close-gate results, and three corrections to the build's own report
+
+**The high, verified independently: 0 mismatches of 21, both fields.** The closer parsed the emitted
+catalogue module itself and compared each face's `licenceText` to the `LICENSE*` beside **its own
+binary**, and each `copyright` to **nameID 0 read by its own sfnt walk** — with a **disequality control**
+confirming the checker reddens when a value is altered. The module emits **17 distinct texts for 21
+faces**, which is **four same-project sibling pairs** (Cascadia Code/Mono, Geist/GeistMono,
+Inter/InterDisplay, Ubuntu Sans/Mono) whose committed `LICENSE` files are **genuinely identical**, each
+read from its own directory — **not the SPDX cache returning.** *(A first run reported 5 false
+mismatches; that was the reader normalising CRLF, and the length gap was exactly the line count.)*
+
+**The required-licence rule has real teeth, driven through the real CLI rather than a test helper.**
+`licence`, `licenceText` and `copyright`, each in **absent / explicit `null` / whitespace-blank** —
+**all nine refuse at load**, each located at **both** `assets.<key>.font.<field>` and `fonts.body[1]`.
+The unmodified document exits 0, and a **termless UNREFERENCED** font asset still loads clean.
+Neutering the guard to `return nil` reds **16 subtests plus the non-font arm**.
+
+**Three corrections to the build's report, all in the direction of the build having under-claimed:**
+1. **DW-80's deletion mutation reds FIVE tests, not four** — the four named plus
+   `TestEngineApplyEmbedFontFamilyRePickPushesNoSecondEntry` in `folio-go/wasm`. **The build's count was
+   scoped to the root package.** Worth knowing whenever a redden count is quoted from an Auto Run
+   Result.
+2. **AD-9's P1 confirmed by round-trip, not by inspection** — a document carrying an orphaned font asset
+   round-trips with the orphan **surviving**, canonical bytes stable across two passes (74,981 bytes).
+   `serialize.go`'s whole diff is six lines in `writeFontRecord`; `writeAssets` untouched.
+3. **`internal/fontset/` and `lint/` carry NO DIFF AT ALL** against `b4885b2` — measured with
+   `--numstat`, not assumed.
+
+**A NEW ENVIRONMENT TRAP, and it is the same family as D-8.4j.8.** **Plain `git diff <a> <b> -- <path>`
+returns empty patch text in this environment** — the RTK hook swallows it. `--stat`, `--numstat` and
+`--no-pager diff` all work. **A closer reading a bare `git diff` as "no diff" gets a FALSE CLEAN.** The
+closer caught it by proving the pathspec resolves (`git ls-files --error-unmatch`) rather than accepting
+a bare exit 0. **Third command in this run that fails in a way that reads as clean.**
+
+### D-8.6.11 — DW-140 registered, not built, and the test is applied rather than felt
+
+**The defect.** A `.folio` may legally carry an **unreferenced** font asset with no terms (the story's
+own I/O matrix, D-1.4.13). If the author then picks **that same catalogue family**, `embedFontFamily`
+inserts the asset **only if absent** — correct for content-hash dedupe — so the termless record
+survives and the chain it declares makes it an embedded face. Measured: the pick **refuses safely**
+(document untouched, no history entry, no invalid file written) but with the **unlocated** message that
+patch P5 was written to prevent on the command-string path and did not reach on the asset-reuse path.
+
+**Registered, not built**, applying the lead's story-proposal test rather than the instinct to fix a
+thing while it is in view: **what breaks if it never lands** — a confusing error message on a rare path,
+with the transaction already safe; **who notices** — an author who picks a family over a termless
+orphan, which requires a hand-edited document; **what the register entry costs** — low, and the fix is
+one change plus a test whenever that command is next touched. **Diagnostic quality, not correctness.**
+Owner: the next story touching the embed command.
+
+**Also registered:** DW-141 (the family control's non-option children) and **DW-142** — D-8.6.7's
+renamed-chain silent no-op, three reviewers, **owner: whichever story next touches the canvas
+projection**, since the fix needs asset keys in `CanvasProjection` which carries names only.
+
+### D-8.6.12 — Epic 8's feature work is complete; what the boundary gate now owes
+
+**Provenance:** `49eb7d7` — 32 files, all this story's, **nothing under `lint/` or `internal/fontset/`**,
+both trailers exact, author = committer, branch `main`. **No step-03 subagent commit — instance seven
+did not recur; the count stays at seven.** **Nothing pushed — `origin/main` still `c985b9c`, 54 commits
+behind.**
+
+**Epic 8 remaining: Story 8.4d (the size budget) and the boundary gate.**
+
+**The gate owes, for 8.5 AND 8.6 both:** the four `FOLIO_MATRIX_TARGET` legs, `TestCrossTargetByteIdentity`
+— both **written and compiling** (`go vet -tags=matrix` clean) — and **Playwright**, written and
+compiling (`test:e2e:compile` 0). **Per D-8.4j.25 the Playwright leg reports in exactly two states:
+EXECUTED AND GREEN, or NOT EXECUTED AND OWED. Never skipped, never compile-verified.**
