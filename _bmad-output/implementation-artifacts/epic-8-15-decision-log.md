@@ -2756,3 +2756,53 @@ commits `main`, both trailers exact, no forbidden paths, **no licence-gate sourc
 `origin/main` still `c985b9c`, 48 commits behind.**
 
 **Carried into Story 8.6:** AC3's margin of one, and **44 of 64 cache slots now used**.
+
+## D-000.14 — OWNER: the `.folio` format may be broken freely until the tag (2026-09-02)
+
+**Owner decision**, taken at the terminal, mid-dispatch of Story 8.6's plan gate.
+
+> **Folio has not been released. Nobody is using the `.folio` format. It may be broken.**
+
+**Verdict.** There is **no back-compatibility obligation** on the `.folio` format for the rest of this
+run. A format change does not need a migration, a compatibility shim, or an owner escalation about
+breaking existing documents — **there are no existing documents to protect.**
+
+**What it settles immediately.** Story 8.6 was about to escalate *"making licence text required on an
+embedded font asset is a format change; every earlier `.folio` becomes non-conforming"* as an owner
+question. **That question is now answered before it was asked.** The requirement is specified as
+**required** — a `.folio` carrying a font **must** carry that font's licence text and copyright, and a
+document embedding a face without them is **invalid at load**, not merely untidy.
+
+**It also generalises: stop softening rules to protect hypothetical documents.** Several decisions this
+epic were shaped by the instinct to make a new field optional and absent-by-default. That instinct was
+right for a released format and is **wrong for this one**, until the tag.
+
+**THREE THINGS THIS DOES NOT LICENSE — recorded because they are the ways this decision would be
+misread.**
+
+1. **A golden digest moving is still a HALT.** The 23-fixture corpus is **not** a back-compatibility
+   obligation — it is the **byte-identity witness**, and C6 makes an unexplained moved hash a defect
+   until proven intended. A format change that moves a golden does so **deliberately, attributed, and
+   re-recorded with a stated reason** (Story 15.1's precedent, D-R7.6), **never silently**. A document
+   declaring **no** font choice must still hash identically.
+2. **The version machinery must stay coherent.** A MAJOR bump is now cheap; it still has to be
+   **correct**. `folio-format.md:47` — a document declares the **lowest version its own content
+   requires**, and the trigger is **derived, not asserted** (DW-81). `SupportedMajor` moves only on a
+   demonstrated need.
+3. **The freedom has a deadline: `folio-go/v0.1.0`, Story 15.3.** Breaking is free **now** and
+   expensive **after**. **That is an argument for getting the format right in the story that touches
+   it, rather than deferring format work to a later one** — the opposite of the instinct that has
+   governed this epic so far.
+
+**In simple terms.** The building is not open to the public yet, so we can move the walls. We still
+cannot move one without telling the person holding the floor plan, and we still have to be finished
+before the doors open.
+
+**Consequences.** Any remaining format-shaped work in Epics 8–14 should land **before** 15.3 rather
+than be registered past it. Where a prior decision made a field optional purely to avoid breaking
+documents, that reasoning is void — though a field optional for a **design** reason stays optional.
+**This decision does not reopen anything already shipped**; it changes what the remaining stories may
+choose.
+
+**How we'd know it was wrong.** Someone outside this repository turning out to hold a `.folio` file —
+which would mean the format was distributed before the tag, and the freedom was never real.
