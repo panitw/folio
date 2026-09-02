@@ -3442,3 +3442,86 @@ re-counted**. Two things stand for the owner's eye, neither an escalation: **two
 landed the same guard on exactly one side, on opposite sides, with nothing that would have told either
 author — a property of the codebase, not of two authors**; and **no fixture declares a colour**, so two
 epics of rendering work sit outside the byte-identity witness.
+
+## D-9.R.3-rev / D-10.R.12 — three follow-up rulings after the repair pass (2026-09-02)
+
+All eight repairs closed at `e4a26ff` / `5bb5343` / `75defaa`; the `lint` gate fix landed separately at
+`664a822`, as required, so **the run's one off-goal approval stays visible as one**. Three follow-ups then
+came back from the lead, and the first is a correction to itself.
+
+**D-9.R.3-rev(0) — the ruling contradicted itself, and the builder is the reason we know.** D-9.R.3 marked
+part (a) **MANDATORY** and separately stated part (b)'s proof as `exact=true`. **Those clauses cannot both
+hold**: if (a) ships and (b) succeeds, the flag reads `false` by construction. The builder shipped what the
+code does and **flagged the divergence from the stated value instead of reconciling the measurement to it.**
+
+**Logged as the lead's self-collision, not as a builder deviation** — at the lead's own instruction. The
+principle it asked to be carried forward: **a stated expectation is a prediction, not an acceptance
+criterion.** This run has repeatedly caught measurements bent to match a claim; this is the first time the
+claim was bent to match the measurement, which is the correct direction.
+
+**D-9.R.3-rev — DELETE the fifth exactness cause; INVERT its test rather than delete it.** With (b)
+shipped, the canvas count is correct, so the cause makes the flag read `false` over a provably right count.
+
+**The verdict is a correctness argument, not a cost-benefit one.** The flag's semantic is **"can the canvas
+know"**, not "is the canvas being careful". Each of the four surviving causes denotes something the canvas
+**genuinely cannot** know — no data for a bound table, an unresolvable chain, a data-dependent visibility
+verdict, a degraded pagination. A declared box is **fully knowable with no data**, so a cause there is a
+false statement with a conservative sign — and this finding existed *because the flag made a false
+statement*. **Fixing a false `true` by installing a false `false` is a polarity swap, not a repair.**
+
+Option (iii), narrowing the cause, **has no subject, and the lead checked rather than assumed**: the one
+data-dependent input `collectElementBoxRects` consults is `isVisible`, and conditional visibility is
+**already** cause three. It would have been a cause with an empty domain.
+
+**The oracle was verified by reading it, not by accepting the report** — the standard this run now expects.
+`renderPathWindows` calls the **shipping** functions rather than reimplementing them; the test asserts count
+**and origins** via `DeepEqual`, so a coincidental agreement over a different partition still fails; and it
+**pins one side to a literal** with a *"it proves nothing in this shape"* fatal — the vacuity guard that
+stops it degrading into "both sides moved together". **The builder then confirmed its teeth empirically**:
+reverting the mirrored box item turns it red (`canvas counts 1 at [0], render path counts 2 at [0 700000]`),
+file restored from a byte copy and the tree verified clean. **The test was inverted, not deleted** — the
+invariant it now asserts is *declaring a box must not change what the canvas can know, and therefore must
+not change the flag* — because deleting cause and test together would have removed the only thing watching
+the property.
+
+**D-10.R.12a — the literal `"value": ""` skip is CONFIRMED CORRECT, and folds into DW-146 as a third
+instance rather than a new entry.** The filter at `render.go:733-735` keys on **`el.Value.Value`, the
+template literal**, not on bound data. **The discriminator is the whole answer: the defect the hoist fixed
+was DATA-DEPENDENCE, not non-validation** — *"the SAME broken template passing or failing depending on which
+report it was handed."* A literal `""` yields the same verdict on every dataset, forever. The confirming
+evidence is symmetry, and **the builder verified it empirically rather than by argument**: an empty literal
+with a malformed colour, an unresolvable family, and both together all render clean, while the same
+malformed colour on a non-empty literal errors. **`fontFamily` is equally unvalidated there** — which is the
+invariant the original Story 1.5 hoist was protecting, so hoisting colour further would make it **stricter
+than the sibling it was modelled on** and would validate the ink of an element that draws no glyphs.
+**The builder's substituted test was the better test, not a weakening** — recorded because substituting a
+better test for a stated one is a judgement worth repeating.
+
+**D-10.R.12b — `resolveBodyStyle`'s identical spelling: OVERRULED, make the edit, and price it honestly.**
+**There is no defect today** and the ruling does not pretend otherwise: `styleInk` opens by checking null
+itself, and the cascade is single-arm with nothing to fall through to. It is made because **its correctness
+is accidental and non-local** — it holds because a *different function* re-checks, in a file that has just
+demonstrated what happens when someone writes that spelling.
+
+**Recorded as a consistency edit whose red-proof is IMPOSSIBLE, not unmet**, with the reason in the commit,
+so a reader does not mistake a missing proof for a skipped obligation — and **no test was manufactured
+around a no-op to satisfy the form.** The lead explicitly declined to dress it as a defect or to claim it
+was the same case as D-10.R.3's three arms, where all three genuinely were.
+
+**Its named assumption was verified rather than assumed.** The ruling held only if `styleInk` is the sole
+consumer of the resolved body style's `Color`; the builder traced it — written only to `r.inkStyle.Color`,
+read at exactly one site, the struct never passed wholesale — and confirmed **no second consumer exists**.
+Had one been found that did not re-check null, this would have become a live defect.
+
+**D-10.R.12c — a fourth touched thought, named rather than buried.** `addCanvasWindowCount`'s doc comment
+still asserted the **live** divergence that the repair pass had already falsified when it shipped. The
+builder rewrote it, judging it in scope as the comment attached to the thing being removed rather than as
+tidying the four survivors — **and said so explicitly instead of letting it pass as part of the diff.**
+**This is DW-148's mechanism one more time**, from this run's own work: *the repair pass shipped a behaviour
+change without sweeping the comments describing the old behaviour.* Added to that entry.
+
+**D-10.R.12d — an unchanged number, flagged because of what it can look like.** The pass count stayed at
+**1892**, though a change was predicted. The reason is structural: Edit 1 **renamed and inverted** a test
+(−1/+1, net zero) and Edit 2 correctly added none. **A stale pass count is exactly what a silently-dropped
+test looks like**, so the builder reported the non-event with its cause rather than letting a matching
+number pass as agreement.
