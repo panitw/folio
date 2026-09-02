@@ -3190,3 +3190,115 @@ six faces small enough to clear a 0.45%-headroom gate are exactly the population
 **silently, one at a time**. So: **a threshold's headroom defines a population that can be added
 without tripping it, and that population must be NAMED when the figure is chosen** — or the gate's real
 tolerance is discovered by the sixth face rather than declared with the number.
+
+## D-9.R — the engineering lead's nine rulings on Epic 9's first review (2026-09-02)
+
+Epic 9 shipped in one commit with no story file and no review. The reconstruction wrote the record and
+read the code for the first time, and returned nine findings. A **new lead** was spawned for this session
+— the previous one is unreachable — and **re-grounded from `## Lead Grounding` and D-000.1…15 rather than
+re-deriving the program from the ADRs**, verifying only what had changed.
+
+**Outcome: four repair on-goal (1, 2, 3, 5), one repairs off-goal by explicit exception (8), four register
+(4, 6, 7, 9). No owner escalation** — the lead checked finding 2 against the escalation bar and judged the
+direction settled it, and stated its reasoning so the ruling can be overruled rather than merely trusted.
+
+**D-9.R.0 — the discriminator, because it decides four of the nine.** D-000.11 stopped Story 8.4 with
+**zero lines advancing the epic's stated goal**. Findings 1, 3 and 5 are not findings *along the way* —
+**they are Epic 9's stated goal, wrong**: a declared box that paints nothing still costs a page; the canvas
+claims a page count it does not have; the canvas paints a border the PDF will not print. Repairing them is
+100% on-goal, and that is the **only** discriminator used. Findings 4, 6, 7 and 9 are along-the-way and
+register, as the flat prohibition requires.
+
+**D-9.R.0b — the budget term, stated BEFORE the work, because D-000.13 says a criterion without one always
+says yes.** Findings 1+2+3+5 are **ONE repair pass — one story, one dispatch**: one new predicate with two
+call sites, one validation clause, one `||` clause, and their tests. **If that pass does not close all
+four, the remainder registers and Epic 9 closes with the disclosure. There is no Story 9.1a.** This was
+written into the spec the builder reads, not applied afterwards — the 8.4x series is what happens when a
+bound is discovered after the fact.
+
+**D-9.R.1 — `border:{"edges":[]}` (REPAIR).** A border *paints* iff present, non-null and NOT (`Edges` set,
+non-null, len 0). **The fix lifts an existing condition one layer rather than inventing policy:**
+`rectdoc.go:57` already carries exactly `HasStroke && (Top||Right||Bottom||Left)`, so the emitter already
+knows the box has no ink — only the placer never asked. `elementDeclaresBox` stays the **single** predicate
+so the window count inherits the fix; a second reading was explicitly forbidden. Proof is against
+**literals** — `/Count` 1 and byte-identity with the unstyled document — because asserting "canvas agrees
+with render" is **vacuous when both call the same predicate**, the self-measuring-instrument trap this run
+has now hit three times.
+
+**D-9.R.2 — a negative border width emits `-5 w` (REPAIR, AT LOAD).** Grounded on three things, the third
+of which decides it: ISO 32000-1 §8.4.3.2 (the product is a *byte-identical PDF*, and a byte-identical
+non-PDF is not the product); **the bound already exists on the sibling path**, so the designer refuses to
+open what the engine renders and nobody ever decided the engine accepts it; and the owner's settled split —
+**strict on templates, lenient on data** (Stories 3.2/3.3). A hand-authored negative width is a template
+defect, so it is a **located load error**.
+
+**Load, not render, and this was MEASURED rather than reasoned: it is not Epic 9's defect.**
+`buildCellRectWithBackgroundField` is shared with **table cell chrome**, so `-5 w` has been reachable since
+**Epic 4**; Epic 9 merely widened its reach to four more kinds. A load-time refusal closes both paths at one
+authority. **Deadline, not preference:** this is an unshipped narrowing of the exported surface (D-8.2.2(b))
+— free now, and after the tag a breaking change needing a migration this project has never written.
+**Named defeater:** if the refusal rejects any corpus fixture or any designer-produced file, stop — that
+would mean the value is reachable in normal authoring, and clamp-vs-refuse becomes an owner question.
+
+**D-9.R.3 — `ContentWindowCountIsExact: true` over a wrong count (REPAIR, two parts, with an abort).**
+(a) **mandatory**: a content-band text element with a declared box becomes a fifth cause that clears the
+flag. (b) **bounded attempt, same pass**: give that element its declared box as a second canvas column item
+so the counts actually agree — **aborting the moment the 23 goldens or any canvas-count test moves, with no
+debugging past that line.** The flag's entire purpose is to say *this count cannot be trusted*; **the code
+discloses the divergence in a comment and claims the opposite in the value**, and a hazard indicator fails
+toward the loudest, never the quietest. (a) ships even if (b) aborts.
+
+**D-9.R.4 / D-9.R.7 / D-9.R.9 — register.** Filed as **DW-143** (off-page geometry, carrying finding 9's
+remainder), **DW-144** (the widened text-paint guard, with the class it now admits named), and **DW-145**
+(the disclosed `border:{}` divergence, held out of finding 5's repair because closing it means *widening*
+the projection while that repair narrows it).
+
+**D-9.R.5 — `omitempty` drops empty `borderEdges` (REPAIR, same predicate, second call site).** When a
+border paints no ink the projection emits **no border fields at all**. **The obvious fix — removing
+`omitempty` — is wrong in both directions** and was explicitly forbidden: a nil slice would then marshal to
+`null` on every component, `null ?? boxEdges` re-fires the full border, and the protocol's own note says the
+validator may reject it. **DW-74 is live and this walks into it**: the Go/TS wire test records the
+projection's top-level keys but **not `CanvasComponent`'s**, so a green wire test proves nothing here and
+the projected component's fields must be asserted explicitly.
+
+**D-9.R.6 — unattributed `FontFamilies`/`DefaultFontSize` (REGISTER; the record suffices).** D-000.5 already
+ruled the remedy for unstoried shipped code, and **the code is exercised** — consumed at three `App.tsx`
+sites and asserted in two designer test files, because Epic 8's chain-editor stories built on it. So the gap
+is **attribution, not coverage**. The spec's "owned by neither story" section gains a third group naming the
+fields **and the consumer or test that exercises each** — the treatment `text_alignment.go` got from Story
+15.1. **An attribution with no exercise named is the finding restated, not closed.**
+
+**D-9.R.8 — the `lint` gate's cross-package test race (REPAIR, as a standalone gate commit; OFF-GOAL, and
+approved anyway).** The lead ruled **against its own default** and refused the easy out: D-000.11's
+prohibition is textually scoped to Epic 8 licence-gate work, but **leaning on scope wording is how the 8.4x
+series survived four times**, so it ran the story-proposal test properly instead. What breaks: `go test ./...`
+in `lint/` is non-deterministic at a **measured 2-of-5** — not annoying, **masking**, because once a red is
+known to be sometimes-spurious every real red gets re-run until green. Who notices: **every story from here
+to the tag**, and whoever reads a green gate at Story 15.3. What the register entry costs: it compounds
+across ~20 runs and would be **picked up by the very release gate it corrupts** — plus a destructive half,
+since an interrupted run leaves a **committed licence file deleted** in a pipeline whose closers commit.
+**The gate built to enforce AD-26 can delete an AD-26 artifact.** That is a categorical difference from the
+findings the prohibition governs, not a severity difference: those all had bounded, Epic-15-dischargeable
+answers to *what breaks*, and this one's answer is **the run's own instrument**.
+
+Smallest change: the mutating red-proofs **stop mutating the real tree**, using the synthetic-root pattern
+`manifest_test.go` already has. **Explicitly NOT `-p 1`** — that holds only under one invocation, and a bare
+`go test ./...`, which is what a person types, still races; **a fix that works only under the tool's
+dressed-up invocation relocates the blind spot instead of closing it.** Scope is **measured and wider than
+the finding said**: seven sites across two test files, not one. **Guardrail — preserve the reach property:**
+these red-proofs were deliberately written against the real committed tree, and part of what they prove is
+that `folio-go/fonts/` is inside the walk; moving them to a temp root drops that, so the census test must
+assert that row exists **in the same commit, or the repair silently kills a detector.**
+
+**D-9.R.10 — Epic 9 cannot close, and exactly one finding reaches the tag.** Findings 1, 3 and 5 **block
+closing Epic 9 — not on severity, on subject**: they are its own acceptance sentence being false in three
+measured ways. Findings 4, 6, 7, 9 block nothing. **Finding 2, and only finding 2, bears on Story 15.3's
+tag**, and if the repair pass blows its budget it **does not simply register — it joins D-7.8.3's
+before-the-tag set with the owner named, alongside DW-68.** That is the one carry-over that **changes kind**
+at the tag rather than merely persisting.
+
+**D-9.R.11 — the aggregate, handed up unrequested.** Of nine findings, four repairs are on-goal, **one is
+off-goal and was approved anyway**, four register. The lead surfaced that one number **with its reason
+beside it** rather than letting a green report bury it — and noted that this is the run's **third**
+self-measuring-instrument catch, which under D-000.13's second adopted instrument is **a finding in its own
+right, not a request**: three consecutive rulings pointing one direction go up as a pattern.

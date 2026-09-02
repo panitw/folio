@@ -6795,3 +6795,66 @@ refusal and no explanation, until they notice the same face under a different ch
 **What discharges it:** asset keys reaching `CanvasProjection` so the catalogue can be filtered by what
 the document actually carries rather than by what its chains are called — a projection change, which is
 why it is not Story 8.6's.
+
+### DW-143 — an element's geometry is unvalidated, so a box may be drawn entirely off the page
+
+- **Deferred by:** the **Epic 9 reconstruction** (finding 4, ruled REGISTER by the engineering lead at
+  D-9.R.4, 2026-09-02).
+- **Owner:** **the first Epic 12–14 designer story that can commit a component position outside the page
+  region.** Story 12.5's drag is the live candidate. This is a **trigger, not a date**: at that point the
+  value stops being hand-authored-only and is re-priced against the instance count, not met fresh.
+- **Severity:** LOW while templates are hand-authored; re-priced at the trigger.
+- **Status:** OPEN.
+
+Element boxes carry the author's raw x/y/w/h into the PDF content stream, and only the positivity of
+width and height is checked. Measured at `6e06cc7`: `x=-500` emits `-464 … re f`, `w=100000` emits
+`100000 … re f`, and `y=-9000` emits `48 9755.89 … re f`. No diagonals; the geometry is faithful.
+
+**The discriminator this entry exists to preserve — do not read it as "validate all geometry".** The
+output here is **valid PDF that faithfully draws what the author declared**, merely off the page. That is
+the whole distinction from the negative border width (finding 2), which was repaired: *the engine may
+emit a document nobody wants; it may not emit a document that is not a PDF.* Nothing in the project's
+direction says an element must lie inside the page region, and **FR44 does not cover this** — it governs
+content exceeding its declared box, which is neither this nor an item taller than its window.
+
+**This entry also carries the remainder of finding 9.** Rulings 1, 2, 3 and 5 each shipped a red-proof, so
+`edges: []`, a negative border width, and canvas-versus-PDF for an edge set are now covered. A zero border
+width needs nothing — `0 w` is valid PDF, the thinnest line. What is left uncovered is **off-page
+geometry, and it is this entry's test, not a separate coverage story.**
+
+### DW-144 — a text-paint guard was widened, and nothing records what it now admits
+
+- **Deferred by:** the **Epic 9 reconstruction** (finding 7, ruled REGISTER at D-9.R.7, 2026-09-02).
+- **Owner:** **the next story that touches text paint.**
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+`isTextPaint`'s fragment bound widened from `component.x + paint.width` to
+`component.x + Math.max(paint.width, component.width)` in `791ed00`, with no story, no acceptance
+criterion and no FR.
+
+**A widened guard is a weakened guard, and the register entry has to say what it stopped catching** — "it
+was widened" is a note, not a finding. The new bound catches **strictly less**: it now admits a fragment
+extending to the component's **full declared width**, which is reachable precisely because Epic 9 gave the
+component a box.
+
+**Do not re-narrow it speculatively.** The widening is plausibly *required* by that box, and re-narrowing
+it untested would red the canvas. **One measurement discharges this entry cheaply:** if
+`paint.width >= component.width` always holds, the widening is dead code and this entry says so instead of
+being met as work.
+
+### DW-145 — an all-edges border declared as `{}` prints, but the canvas shows nothing
+
+- **Deferred by:** the **Epic 9 reconstruction** (raised beside finding 5, held out of that repair's scope
+  at D-9.R.5, 2026-09-02).
+- **Owner:** **whichever story next widens the canvas projection.**
+- **Severity:** MEDIUM as a user-visible divergence; **not a correctness defect**.
+- **Status:** OPEN.
+
+`"border": {}` means all four edges, and the PDF strokes them. The canvas paints nothing.
+
+**This one is DISCLOSED** — `App.tsx:1623-1625` states it in a comment — which is exactly why it was
+separated from finding 5, whose otherwise identical divergence was **undisclosed** and was repaired. It is
+held out because closing it means **widening what the projection emits**, and the finding-5 repair
+deliberately did the opposite: it made the projection emit *less* when a border carries no ink. Doing both
+in one pass would have had the same code path both narrowing and widening for two neighbouring inputs.
