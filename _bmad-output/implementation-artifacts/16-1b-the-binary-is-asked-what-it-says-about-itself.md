@@ -2,10 +2,11 @@
 title: 'Story 16.1b: The binary is asked what it says about itself'
 type: 'feature'
 created: '2026-09-03'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: '384c8ac'
+baseline_revision: 'e250dc78c779d4a725c5584ec0bc898967ef8146'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-16-decision-log.md'
@@ -414,12 +415,110 @@ Run from the repository root unless stated.
   three evidence subsections — the controls table, the mirror-contract mechanism, and the read-only
   counts — into a companion artifact cited from `context:`.
 
+## The falsifier, re-run
+
+**D-16.R.7's ship criterion is semantic, not a number: every refusal must be a CONTRADICTION and no
+refusal a silence.** It is met.
+
+**Measurement provenance (D-8.4j.8).** Command: a pure-Python script in the session scratchpad
+(`sample.py`), no `fontTools`, fetching `METADATA.pb` and each family's `style:"normal" weight:400`
+TTF from `raw.githubusercontent.com/google/fonts/main` into memory and parsing the sfnt `name` table
+by hand; family directory listings taken with `gh api repos/google/fonts/contents/{apache,ofl,ufl}`
+because the unauthenticated contents API rate-limits immediately. Its classifier is a line-for-line
+transcription of `licencesignature.go`'s two tables and its three-outcome order. Run 2026-09-03 at
+commit `e250dc7` with the working tree carrying this story's changes only, working directory
+`/Users/panitw/Projects/folio`. **Nothing was written to the repository**; the corpus lives in the
+scratchpad and is not committed.
+
+**Population.** 135 families attempted — all 44 `apache/`, all 5 `ufl/`, and an A–Z spread of 86
+`ofl/` families taken evenly across the 1,000 the contents API will enumerate. **99 had a usable
+static Regular and parsed**; 33 were variable-only and skipped; 3 could not be fetched; **zero sfnt
+parse errors**. Declared ids: `OFL-1.1` 55, `Apache-2.0` 41, `Ubuntu-font-1.0` 3.
+
+| Outcome | n | |
+|---|---|---|
+| **CONFIRMATION** — admitted | 90 | |
+| **NO EVIDENCE** — admitted | 8 | all "no signature matched"; none a refusal |
+| **CONTRADICTION** — REFUSED | **1** | `apache/mountainsofchristmas` |
+
+**The one refusal is the guard working, and it is the same face Story 16.1's gate found.**
+`apache/mountainsofchristmas` declares `APACHE2` in `METADATA.pb` while its own record 13 states *"This
+Font Software is licensed under the SIL Open Font License, Version 1.1"*. Under the original contract
+this face was caught only **incidentally**, as a signature miss lost among 49 others; under D-16.R.7 it
+is **diagnosed** — the bytes match a different admitted licence's signature than the one declared — and
+the refusal names both sides. **Refusal rate 1.0%, against 50.0% under the contract D-16.R.7 replaced.**
+
+**No refusal is a silence.** All 8 NO EVIDENCE faces are ADMITTED, so none of them is a table gap
+reportable as a refusal; they are reported here as observations rather than findings:
+
+- Six `apache/jsmath*` faces and `apache/yellowtail` carry **no record 13**, so record 0 was consulted
+  and matched nothing: the jsMath faces' copyright reads *"Generated from MetaFont bitmap by
+  mftrace…"*, which names no licence at all. `ofl/arvo`'s record 0 is a bare copyright line.
+- **`apache/yellowtail` is the nearest thing to a table gap and it is worth naming**: its record 0
+  reads *"…Available under the Apache 2.0 licence. http://www.apache.org/licenses/L…"* — semantically
+  Apache, and invisible to `/Apache License,?\s+Version 2\.0/i`. It **admits**, which is D-16.R.7's
+  accepted cost ("a check quieter than intended, never a document publishing false terms"), and
+  widening the regex to reach it is a change to the table, i.e. a decision, not a fix made here.
+
+**Two rows that were dead against the real corpus are now alive.**
+
+- **`Apache-2.0`**: 41 of 99 faces declare it and 40 of them CONFIRM against the minted signature.
+  Under the pre-D-16.R.7 table — which had no Apache row — every one of them was refused.
+- **`Ubuntu-font-1.0` through record 0**: all three static `ufl/` families (`ubuntu`,
+  `ubuntucondensed`, `ubuntumono`) carry **no record 13** and state their terms in record 0, and all
+  three CONFIRM. The record-0 widening is what makes that row fire positively at all; without it every
+  genuine Ubuntu family was refused, and the row had never once been observed to confirm anything.
+  `ofl/lohittamil` also confirms through record 0.
+
 ## Auto Run Result
 
-Status: ready-for-dev
+Status: done
 Blocking condition: none
 
-Plan-only dispatch at `ceb5213` (`Halt after planning.`). Spec re-planned; no code written, no commit
-created. The intent-contract block is byte-identical to the version at dispatch (7,019 bytes, md5
-`f1be40fb96e326f3c567909f1f66def6`). Warnings: `oversized` (~7.6k tokens against a 1,600 threshold).
-Verification commands were NOT run this dispatch — they are the build dispatch's cadence.
+**Dispatch:** build of Story 16.1b at HEAD `e250dc7`, 2026-09-03, working directory
+`/Users/panitw/Projects/folio`. Branch `main`; no branch created, nothing pushed, no `git add -A`.
+
+**What landed.**
+
+- `folio-go/internal/fontset/licencesignature.go` (new) — `ReadLicenceStatement` and
+  `RefuseContradictedLicence`, the byte-taking door beside `RefuseVariableFace`: two ORDERED slices
+  (AD-1, never a map range), refuse-signatures applied to every face first, then the declared id's
+  admit-signature, then the three outcomes. Untyped `fmt.Errorf`, `nil` on every parse failure.
+  Record 0 consulted **only** when record 13 is absent; "present" defined in code as a non-empty
+  parsed string, with the vendor reader's fidelity limit recorded rather than left to be discovered.
+- `folio-go/component_commands.go` — one call from `embedFontFamily`, beside the `fvar` refusal at
+  `:2414` and before anything reaches `t.doc.Assets`. The file stays a caller, not a checker.
+- `folio-go/internal/fontset/licencesignature_test.go` (new) — the two positive controls D-16.R.9
+  requires (contradiction over committed Roboto declared `OFL-1.1`; copyleft over a name table
+  synthesised in-process, 10 statements across GPL/LGPL/AGPL/SSPL/ShareAlike), both over-broadness
+  controls, the silence arms, both halves of the record-0 rule, the AD-1 ordering guard, the
+  **mirror-contract** test reading `font-catalogue.test.ts` as source text, and a test asserting the
+  build-time tie is still present ("both, or halt").
+- `folio-go/component_commands_test.go` — `embedCommandDeclaring` (the declared id is now
+  load-bearing), the reachability-and-writes-nothing test at the command, and
+  `TestStaticFaceIsStillEmbeddedAtBothDoors` corrected to declare Roboto's actual `Apache-2.0`.
+- `deferred-work.md` — **DW-150 confirmed reconciled at landing**; **DW-153** added as the
+  before-the-tag ledger entry for Story 15.3 (D-000.15).
+
+**Red-proved by DELETION, never by falsifying a condition** (all 2026-09-03, wd `folio-go`):
+
+| Deletion | Reds |
+|---|---|
+| the `RefuseContradictedLicence` call in `embedFontFamily` | `TestEmbedFontFamilyRefusesAFaceWhoseOwnBytesContradictTheDeclaredLicence` |
+| the guard's body (`return nil` before the tables) | the contradiction, copyleft and record-0 tests |
+| adding a `'BSD-3-Clause'` row to the TS table with no Go counterpart | `TestGoLicenceTableSubsumesTheDesignerTable` |
+
+**Verification.** `go test ./...` — green but for the pre-declared `internal/text` P6g exercise-floor
+red (`got 7, need >=20`), byte-identical to the baseline measured before any change. `go vet ./...`
+clean; `gofmt -l .` empty. `npm run test` — `1 failed | 436 passed`, the single failure being the
+pre-declared DW-152 red at `canvas-authority-contract.test.ts:190`. `npm run build` (including
+`build:offline` and `verify:offline`) exit 0. **23 golden digests unmoved** (`byte_neutrality_test.go`
+green). `SupportedMajor` still `2`. `font-catalogue.test.ts:197-200` and `:355-366` unchanged, and now
+guarded by a Go test. The 100-face falsifier re-run is recorded in full above: **1 refusal, a genuine
+contradiction; zero refusals traceable to silence.**
+
+**No browser run**, per D-16.R.8: this story has no browser surface. e2e specs are compile-only.
+
+**Not attempted:** no `.folio` format change, no new committed font binary, no row added to
+`vendor-boundary.md` (`Get` substitutes nothing — it returns the zero value, which is observably
+absent), no change to the build-time tie.

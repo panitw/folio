@@ -2414,6 +2414,35 @@ func embedFontFamily(t *Template, raw map[string]json.RawMessage) error {
 	if verr := fontset.RefuseVariableFace(name, decoded); verr != nil {
 		return componentFailure("", fontChainPath(name), verr.Error())
 	}
+	// AND THE CLASS NEITHER OF THOSE TWO CAN SEE: bytes that CONTRADICT the
+	// licence being claimed for them (Story 16.1b, D-16.R.5/D-16.R.7).
+	//
+	// Until Epic 16 the tie between a face's declared SPDX id and its own
+	// `name` table was a BUILD-TIME test over the 21 reviewed catalogue faces
+	// (font-catalogue.test.ts:355-366). Epic 16 lets a face arrive from the
+	// published library at the moment of a pick, so that gate stops covering
+	// the population — and a runtime check that did not carry the tie would
+	// make Epic 16 STRICTLY WEAKER than what it replaces, on the exact axis
+	// D-8.6.5 already cost this project once (17 of 21 faces under another
+	// project's terms, green until review).
+	//
+	// IT IS SITED HERE AND NOT IN THE BROWSER because the browser is not the
+	// only door: embedFontFamily is reachable from wasm.Engine.Apply and from
+	// a hand-authored command, which is the same gap fontset.go's `fvar`
+	// refusal exists to cover. One implementation also covers the local tier.
+	//
+	// AND IT IS THE `fontset` PACKAGE'S OWN JUDGEMENT, not a second one
+	// written here — this file stays a CALLER, never a checker, for the same
+	// single-authority reason the `fvar` refusal above is one function. The
+	// declared id comes from the record about to be written beside these
+	// bytes, and the guard re-reads the bytes rather than trusting any other
+	// field of the same payload (D-16.R.7: both wire fields move together, so
+	// a check over them proves nothing).
+	//
+	// Beside the two gates above and BEFORE anything reaches t.doc.Assets.
+	if lerr := fontset.RefuseContradictedLicence(name, record.Licence.Value, decoded); lerr != nil {
+		return componentFailure("", fontChainPath(name), lerr.Error())
+	}
 
 	// DEDUPE BY CONTENT HASH (AC2). If ANY chain already names this key the
 	// pick is already in the document: no second asset, no second chain, and

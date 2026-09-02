@@ -7055,6 +7055,12 @@ catches bytes that are actually bad. There was never a defect in `RefuseVariable
 defect in the contract written beside it. Recorded rather than deleted, because the asymmetry the close
 spotted was real and spotting it is what produced the correction.
 
+**CONFIRMED AT LANDING, 2026-09-03, by Story 16.1b.** The corrected guard shipped as
+`fontset.RefuseContradictedLicence`, and it returns `nil` for an unparsable face by the same rule and
+with the reason written beside it — `TestRefuseContradictedLicenceAdmitsSilence` asserts exactly that,
+including for bytes that are not a font at all. The two neighbours now agree by construction rather
+than by coincidence, which is what "reconciled" was claiming in advance.
+
 ### DW-151 — the worker encodes base64 one byte at a time, in TWO copies, with nothing keeping them in step
 
 - **Deferred by:** Story 16.0 (2026-09-03), which **measured** this as slow rather than throwing and
@@ -7093,5 +7099,41 @@ same array** — neither the scanner nor the flagged file is in Story 16.0's dif
 this story's regression, and it is recorded rather than inherited silently: `npm test` reads
 `1 failed | 436 passed` on a clean tree, and **every story from here on has to know which one red is
 allowed** or it will wave through a second.
+
+---
+
+### DW-153 — the exported-API narrowing Story 16.1b spent, for Story 15.3's hand-over
+
+- **Deferred by:** **Story 16.1b** (registered at the close, 2026-09-03, per D-000.15's obligation to
+  record what the freedom was spent on rather than reconstruct it later, and per D-16.R.5's guardrail
+  putting the nameID 13 tie in the **before-the-tag set**).
+- **Owner:** **STORY 15.3** (`folio-go/v0.1.0`). Not a defect and nothing to fix — a LEDGER ENTRY, so
+  the tag story is handed the list instead of rediscovering it from a diff.
+- **Severity:** N/A. It is a record.
+- **Status:** OPEN until Story 15.3 reads it.
+
+**What was narrowed.** `embedFontFamily` — reachable through the exported API via `wasm.Engine.Apply`
+and from a hand-authored command — now REFUSES a class of command it previously accepted. A pick whose
+face bytes name a licence contradicting the `licence` field beside them, or whose bytes name a
+copyleft/share-alike licence at all, is a located `componentFailure` instead of an embedded asset. This
+is a narrowing of an exported behaviour, so under D-7.8.3/D-8.2.2 it had to land before the tag; it did.
+
+- **The refusing surface**, exactly: `fontset.RefuseContradictedLicence` (new, exported from
+  `folio-go/internal/fontset` — an *internal* package, so it is not itself part of the public API),
+  called from `embedFontFamily` beside the existing `fvar` refusal.
+- **The three outcomes** (D-16.R.7): a contradicted declaration refuses; a confirmed one admits; a face
+  with no readable licence statement **admits**. Silence is not a refusal, deliberately and measurably.
+- **The refuse half is unconditional**: GPL/LGPL/AGPL/SSPL and CC BY-SA/ShareAlike are refused whatever
+  SPDX id is declared. This half did not exist before this story in any form.
+- **What did NOT move, deliberately:** no `.folio` format change of any kind, `SupportedMajor` stays
+  `2`, `componentFields(raw, 12)`'s arity is unchanged, no new error type in package `folio` root, the
+  build-time tie at `font-catalogue.test.ts:355-366` is untouched, and all 23 golden digests hold.
+- **The one behaviour change visible to an existing caller**: a caller that embedded
+  `testdata/fonts/Roboto-Regular.ttf` while declaring `OFL-1.1` used to succeed and now fails. There
+  are no `.folio` documents and no released library, so nothing is stranded — this is the freedom being
+  spent, recorded rather than assumed.
+
+**What discharges it:** Story 15.3 reading this entry when it decides what `folio-go/v0.1.0`'s
+compatibility promise covers.
 
 ---

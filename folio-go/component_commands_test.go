@@ -1777,8 +1777,19 @@ func TestComponentFailureBoundsMatchTheHostsOwnLiterals(t *testing.T) {
 // quietly omitted a key would move the refusal this file is measuring.
 func embedCommand(t *testing.T, chain string, face []byte, tail string) string {
 	t.Helper()
+	return embedCommandDeclaring(t, chain, face, tail, "OFL-1.1")
+}
+
+// embedCommandDeclaring is the same pick with the declared SPDX id under the
+// caller's control. Story 16.1b needs it: the licence field stopped being
+// inert the moment fontset.RefuseContradictedLicence began reading the bytes
+// beside it, so a test embedding Roboto — whose own name table names the
+// Apache License — must say Apache-2.0 or be measuring a refusal it did not
+// mean to provoke.
+func embedCommandDeclaring(t *testing.T, chain string, face []byte, tail string, licence string) string {
+	t.Helper()
 	return `{"kind":"embedFontFamily","version":1,"name":` + quoteForCommand(t, chain) +
-		`,"family":"Noto Sans Thai","style":"Regular","licence":"OFL-1.1"` +
+		`,"family":"Noto Sans Thai","style":"Regular","licence":` + quoteForCommand(t, licence) +
 		`,"licenceText":"This Font Software is licensed under the SIL Open Font License, Version 1.1."` +
 		`,"copyright":"Copyright 2022 The Noto Project Authors","source":"catalogue"` +
 		`,"mediaType":"font/ttf","data":"` + base64.StdEncoding.EncodeToString(face) + `","tail":` + tail + `}`
@@ -2184,7 +2195,14 @@ func TestStaticFaceIsStillEmbeddedAtBothDoors(t *testing.T) {
 	const chain = "Roboto"
 
 	tpl := fontChainTemplate(t)
-	fontChainAccepted(t, tpl, embedCommand(t, chain, face, `["Noto Sans"]`))
+	// DECLARED Apache-2.0, and that is Story 16.1b's doing rather than a
+	// detail: Roboto's own name table reads "Licensed under the Apache
+	// License, Version 2.0", so the OFL-1.1 this pick used to declare is now
+	// a CONTRADICTION and would be refused by the licence door two lines
+	// below the `fvar` one. Declaring the licence the bytes actually name
+	// keeps this test measuring what it is named for — that a STATIC face
+	// still gets through — rather than a refusal from a different guard.
+	fontChainAccepted(t, tpl, embedCommandDeclaring(t, chain, face, `["Noto Sans"]`, "Apache-2.0"))
 	if _, exists := tpl.doc.Assets[embeddedKeyOf(face)]; !exists {
 		t.Fatal("a static face was not stored under its content hash")
 	}
@@ -2193,6 +2211,57 @@ func TestStaticFaceIsStillEmbeddedAtBothDoors(t *testing.T) {
 	}
 	if _, err := fontset.New(chain, face); err != nil {
 		t.Fatalf("fontset.New refused a static face: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STORY 16.1b: THE LICENCE TIE IS REACHABLE FROM THE COMMAND.
+//
+// The three outcomes are asserted against the door itself in
+// internal/fontset/licencesignature_test.go — over a variable face, among
+// others, which routed through here would be masked by the `fvar` refusal
+// firing first. What THIS test proves is the one thing that file cannot: that
+// embedFontFamily actually calls it, and that a refusal at this site writes
+// NOTHING.
+//
+// The subject is a STATIC face for exactly that reason (D-16.R.9's call-site
+// note). Roboto is recorded Apache-2.0 and its own record 13 says so, so
+// declaring it OFL-1.1 is a true contradiction over real committed bytes and
+// needs no mislabelled binary in the tree.
+//
+// RED-PROVED BY DELETING THE GUARD, not by falsifying a condition (recorded
+// 2026-09-03, wd folio-go, `go test -run 'ContradictedLicence|StaticFace' ./...`):
+// removing the fontset.RefuseContradictedLicence call from embedFontFamily
+// reds this test. A falsified condition would only have proved arm order.
+func TestEmbedFontFamilyRefusesAFaceWhoseOwnBytesContradictTheDeclaredLicence(t *testing.T) {
+	face := testRobotoFontBytes
+	const chain = "Roboto"
+
+	tpl := fontChainTemplate(t)
+	assetsBefore := len(tpl.doc.Assets)
+	failure := fontChainRefusal(t, tpl, embedCommandDeclaring(t, chain, face, `["Noto Sans"]`, "OFL-1.1"))
+
+	// BOTH SIDES NAMED, or the author cannot tell whether the catalogue row
+	// is wrong or the binary is the wrong binary.
+	for _, want := range []string{chain, "OFL-1.1", "Apache License"} {
+		if !strings.Contains(failure.Message, want) {
+			t.Errorf("the command's refusal does not name %s: %s", want, failure.Message)
+		}
+	}
+	if failure.DataPath != fontChainPath(chain) {
+		t.Errorf("the refusal is not located at the chain: dataPath = %q, want %q", failure.DataPath, fontChainPath(chain))
+	}
+
+	// "RETURNED AN ERROR" IS A WEAKER CLAIM THAN "WROTE NOTHING", and the
+	// whole point of siting this before t.doc.Assets is the second one.
+	if _, exists := tpl.doc.Assets[embeddedKeyOf(face)]; exists {
+		t.Error("the refused face was written to t.doc.Assets anyway")
+	}
+	if len(tpl.doc.Assets) != assetsBefore {
+		t.Errorf("the asset map moved from %d to %d entries on a refused pick", assetsBefore, len(tpl.doc.Assets))
+	}
+	if _, exists := tpl.doc.Fonts[chain]; exists {
+		t.Error("the refused face declared its chain anyway")
 	}
 }
 
