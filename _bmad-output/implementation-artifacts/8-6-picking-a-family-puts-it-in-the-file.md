@@ -2,7 +2,7 @@
 title: 'Story 8.6: Picking a family puts it in the file'
 type: 'feature'
 created: '2026-09-02'
-status: 'draft'
+status: 'ready-for-dev'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: '8d5059f8859ccb2b7c99d3fb4b16451d1793ddc9'
@@ -76,6 +76,12 @@ Fix DW-80 so the asset-reference walk can see font chains, then drop an unnamed 
   keeps D-1.4.13's "a font asset no chain references must not raise the document" intact.
 - **Do not soften a rule to spare an existing document.** There are none. Where the old spec would
   have made something optional for compatibility, make it right instead.
+- **"Already-touching, not going-looking" (D-000.15).** The freedom licenses this story to choose the
+  *correct* shape over the *compatible* shape **in the format area it already touches** — the font
+  asset record. It does **not** license opening any other format area. Make no `.folio` change outside
+  the embedded-face record, however cheap breaking currently is.
+- **Record what the freedom was spent on.** D-000.15 obliges Story 15.3 to be handed that list, so
+  this story's narrowing must be registered when it lands, not reconstructed later.
 - **23 golden digests byte-identical.** `maximumCacheAssets` stays `64`; 44 of 64 slots are used and
   this story adds **no** build asset.
 - Every recorded measurement carries **command, commit, tree state and working directory** (D-8.4j.8).
@@ -107,14 +113,14 @@ subsetting or any change to how the PDF producer subsets · a container format �
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |---|---|---|---|
-| First pick of a family | Document declares no chain for it | One command: asset inserted under its SHA-256, `font` record written with family/style/licence/licenceText/source, chain declared with `{"asset":"<key>"}` head; document declares `2.0`; one undo entry | No error expected |
+| First pick of a family | Document declares no chain for it | One command: asset inserted under its SHA-256, `font` record written with family/style/licence/licenceText/copyright/source, chain declared with `{"asset":"<key>"}` head; document declares `2.0`; one undo entry | No error expected |
 | Re-pick, same family | Asset key already in `Assets`, chain already names it | No second asset, no second chain; the existing chain is offered; canonical bytes unchanged so **no** history entry is pushed | No error expected |
 | Re-pick after the chain was deleted | Asset key present, no chain names it | Chain re-declared naming the existing key; asset not duplicated | No error expected |
 | Proposed fallback tail | Picked face covers Latin only | Tail is the shipped faces for the uncovered scripts; author may edit it in the chain editor | No error expected |
 | Last chain entry naming a face removed | Asset becomes unnamed by any chain | Command drops that asset, scoped to the key just un-named — never a document-wide sweep | No error expected |
 | Font asset still named by another chain | Two chains name one key; one removed | Asset **retained** — this is the arm DW-80 would have got wrong | No error expected |
 | Chain names an asset with no licence text | Hand-written `.folio`; `font.licenceText` or `font.copyright` absent or explicitly `null` | **Load error**, located — naming the asset key and the chain entry that makes it an embedded face | Refused at load; never a warning, never a best-effort render |
-| Font asset present but no chain names it | Orphan font asset, no `font` record | **Loads clean** — not an embedded face, so the requirement does not apply and the document is not raised to `2.0` | No error expected |
+| Font asset present but no chain names it | Orphan font asset, `font` record absent or partial | **Loads clean** — not an embedded face, so the requirement does not apply and the document is not raised to `2.0` | No error expected |
 | Author asks to embed a disk font | — | Declined explicitly with a stated reason: the catalogue is the source | Refusal, located at the originating control |
 | Catalogue list rendered | Document declares 3 of 21 families | Declared and not-yet-declared entries visibly distinct; picking moves an entry from the second group to the first | No error expected |
 
@@ -205,7 +211,9 @@ subsetting or any change to how the PDF producer subsets · a container format �
 - `folio-go/component_commands.go` — add ONE new command kind that embeds the face and declares the
   chain in a single `applyFontChainCommand`-style transaction: decode + bound the bytes, hash to the
   asset key, **insert only if absent**, attach the `FontRecord` (family, style, licence, licenceText,
-  source), and insert an `AssetEntry` into the chain. Shape it on `setComponentAsset` (`:667-770`).
+  copyright, source — the command must refuse to embed a face whose catalogue row cannot supply them,
+  so the writer can never produce a document its own parser would reject), and insert an `AssetEntry`
+  into the chain. Shape it on `setComponentAsset` (`:667-770`).
 - `folio-go/component_commands.go` — the font orphan drop: on removal of the last chain entry naming
   a key, `delete(t.doc.Assets, key)` **scoped to that key**, guarded by the now-correct
   `assetKeyReferenced`. Never a document-wide sweep. `serialize.go` is not touched.
@@ -233,8 +241,17 @@ subsetting or any change to how the PDF producer subsets · a container format �
   stated as a **command**, not a save-time side effect; pin `## Picking a family` step 2's chain
   naming and step 3's tail; correct the OFL-only Licence row to D-8.5.3's four identifiers; fix the
   stale line-26 pointer.
-- `_bmad-output/specs/spec-folio/folio-format.md` — document `font.licenceText` as optional, and
-  record that the version trigger is unchanged.
+- `_bmad-output/specs/spec-folio/folio-format.md` — the font-asset section (~`:509-555`). Amend the
+  sentence "`font` is **optional**, and every key inside it is optional": it stays true for an
+  **unreferenced** font asset, and is now **false** for an asset a chain names — there,
+  `licence`, `licenceText` and `copyright` are required and their absence is a load error. Document
+  the two new keys, and record explicitly that **the version trigger and `SupportedMajor` do not
+  move**, with the derivation.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — register two things: (1) **what the
+  format freedom was spent on here** (the embedded-face record narrowing), for Story 15.3 per
+  D-000.15; (2) **the subsetting attribution gap** — the produced PDF's subset carries no `name`
+  table, so nameIDs 0/7/13/14 do not reach the reader's font program. Out of scope by a shipped
+  Non-goal; register it, do not fix it.
 
 **Acceptance Criteria:**
 - Given a catalogue pick, when it is committed, then one command embeds the face and declares a chain
@@ -262,6 +279,13 @@ subsetting or any change to how the PDF producer subsets · a container format �
 ## Review Triage Log
 
 ## Design Notes
+
+**Where the measurements were taken.** Every code, digest and line-number measurement in this spec was
+taken at `8d5059f` (branch `main`, tree clean). HEAD advanced to `133f14a` mid-plan-gate when the owner
+ruling and D-000.14/D-000.15 were recorded; `git diff --stat 8d5059f..133f14a` touches only
+`epic-8-15-decision-log.md` and this spec, so **no code moved** and every anchor below still holds. The
+implementer should still re-check the Code Map anchors against the dispatch's own HEAD before relying
+on a line number.
 
 **The version trigger, derived from the pre-reader test — not asserted.** `folio-format.md:47`: a
 document declares the **lowest version its own content requires**. D-7.3.1's test is *would a
@@ -309,9 +333,11 @@ description) and 14 (licence URL) are all dropped; confirmed on a second face, R
 Two consequences, and they point in opposite directions:
 1. **Inside the `.folio`, attribution is intact.** Subsetting is render-time only — a non-goal
    forbids save-time subsetting — so the document carries the **unsubsetted** face, name table and
-   all. This is why one new key (`licenceText`) is sufficient and no separate `copyright` field is
-   needed: the copyright, trademark and licence-description strings already travel inside the carried
-   binary. That is a measurement, not an assumption.
+   all: nameIDs 0, 7, 13 and 14 travel with the bytes. The explicit `copyright` and `licenceText`
+   keys are therefore *redundancy with a purpose* rather than the only carrier — they put the terms
+   where a person reading the JSON can see them, and where a check can require them, without
+   depending on a reader that can parse a font binary. That the binary also carries them is a
+   measurement, not an assumption.
 2. **Inside the produced PDF, they are gone.** This is a real, previously-unmeasured gap against
    D-8.6.1's "including the strings inside the font binary". It is **out of this story's scope by a
    shipped Non-goal** ("no change to how the PDF producer subsets"), and acting on it would move
@@ -322,10 +348,21 @@ Two consequences, and they point in opposite directions:
 exactly as `runtimeAssetUrls` assets are read — which is what `font-catalogue.md` step 4 already
 says. No new build asset, no new cache slot, 44 of 64 unchanged, and no middle tier is invented.
 
-**Licence text: writer obligation, not format requirement.** The format stays permissive because
-hand-written templates are first-class (FR12/S9); the *writer* always populates the record. This is
-the half of D-8.6.1 the story can land without the owner. Making it **required** is the format change
-that is the owner's alone — framed, not decided (see Block If).
+**Licence text and copyright: required, by owner ruling.** D-8.6.1 left this as a format-change
+question because making it mandatory would strand earlier documents. The owner settled it on
+2026-09-02: **Folio is unreleased, no `.folio` documents exist, and the format may be broken.** So it
+is specified as required rather than framed as a question — a chain that names an asset lacking
+licence text or copyright is refused at load. Hand-written templates remain first-class (FR12/S9);
+they are simply held to the same rule, and the rule is stated in the format document rather than
+enforced only by the designer's writer. Note the requirement is **conditional on reference**, which is
+what stops it colliding with D-1.4.13.
+
+Inline-with-the-text is not this story's invention either: D-8.6.1 answers the `spec-fonts` open
+question *"inline on each font asset, or one document-level notice block?"* with **inline, with the
+actual text**, and `font-catalogue.md` already promised "identifier plus the text that travels into
+the document". The cost is duplication — a document embedding three OFL families carries three copies
+of ~4 KB of near-identical text. That is accepted deliberately: an asset that is passed on alone must
+carry its own terms, which a document-level block would not survive.
 
 ## Verification
 

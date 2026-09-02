@@ -2869,3 +2869,71 @@ the area, and not before.
 - **Story 8.6** — licence text and copyright **required** on an embedded font asset; a `.folio`
   embedding a face without them is **invalid at load**. Chosen over an optional field purely because
   there are no documents to protect.
+
+## Story 8.6's plan gate — the subsetting measurement, and it splits (2026-09-02)
+
+### D-8.6.2 — MEASURED: the produced PDF drops the font's entire `name` table. The `.folio` keeps it.
+
+**The measurement D-8.6.1 called for**, taken at `8d5059f` against the **real shipped catalogue face**
+`catalogue-inter.<hash>.ttf` and confirmed on Roboto. Library `github.com/boxesandglue/textshape
+v0.0.15`, single subsetting site `folio-go/internal/fontset/fontset.go:730`.
+
+**Result: the entire `name` table is ABSENT from the subset.** nameID 0 (copyright), 1 (family),
+6 (PostScript name), 7 (trademark), **13 (licence description)**, **14 (licence URL)** — all dropped.
+Cause: `handleOptionalTables` (`subset/execute.go:531-546`) copies `name`/`post`/`gasp` only under
+`PassThroughTable(ot.TagName)` or `FlagPassUnrecognized`; **folio sets neither.** Retention is
+available but **all-or-nothing**, and a copied table would keep unsubsetted names that **disagree with
+the `/BaseFont` subset tag.**
+
+**The split is the useful part:**
+- **Inside the `.folio`: INTACT.** Subsetting is **render-time only**, so the document carries the
+  **unsubsetted** face — nameIDs 0/7/13/14 travel with the bytes. **D-8.6.1's "strings inside the font
+  binary" requirement is satisfied for the artifact this story is about.**
+- **Inside the produced PDF: GONE.** A real, previously-unmeasured gap, and it is **exactly what the
+  owner's research says not to do**: *"Do not strip out the internal copyright and metadata strings…
+  PDF rendering engines read this data, and it serves as the required copyright preservation."*
+
+**Registered, NOT fixed.** It is outside 8.6 by a **shipped Non-goal** (*"no change to how the PDF
+producer subsets"*), and acting on it would **move every subset tag and all 23 goldens**. **This is an
+owner question — the same class as the allowlist and the `WITH` decision — and it is reported without
+blocking 8.6.**
+
+### D-8.6.3 — `multiple-goals` ACCEPTED. No split, and the reason is the course correction.
+
+**Orchestrator decision.** 8.6 carries `multiple-goals` and `oversized`. **The coupling is accepted and
+the story is not split.**
+
+Applying the lead's story-proposal test to the candidate splits (the orphan-drop command, DW-80's fix,
+the `scripts` field, the TypeScript export): each is **required for 8.6's own fix to be correct** — a
+pick that cannot drop the face it replaced leaks assets; a drop built on `assetKeyReferenced` deletes
+live faces. **By D-8.4j.7's criterion they are inside.**
+
+**And the standing prohibition is the stronger reason.** This epic split six times, each defensibly.
+**A seventh split, in the last feature story, in a run already course-corrected for exactly this, is
+not a judgement call — it is the failure recurring.** `oversized` resolves by moving content if it
+resolves at all; **acceptance criteria are not thinned.**
+
+### D-8.6.4 — Four plan-gate judgement calls, endorsed
+
+1. **`font-catalogue.json` has no `scripts` field** though `font-catalogue.md`'s record specifies one,
+   and AC3's fallback tail cannot be computed without it. Declared in JSON and **verified against each
+   face's own `cmap`** — 8.5's nameID-13 precedent, a declaration with a consumer rather than dead data.
+2. **`licenceText` + `copyright` only.** The carried binary already holds the trademark and
+   licence-description strings (measured above), so the explicit keys are **redundancy with a purpose,
+   not the sole carrier.**
+3. **Catalogue faces have no TypeScript export at all** (`offline-assets.ts` exports only the 9 named
+   slots), so `src` cannot enumerate the catalogue. A typed module is emitted from the generator —
+   **no new build asset, 44/64 slots unchanged.**
+4. **The pick is not a fetch.** 8.5 took the bundled route, so the bytes are already precached. **No
+   middle tier invented** (D-8.5.12).
+
+**Version: derived, not asserted.** The `{"asset":…}` entry shape **already forces 2.0** (shipped at
+8.3), so there is **no new trigger**, and **`SupportedMajor` must NOT move** — a bump would raise the
+twenty-two font-free fixtures and move goldens **for a reason unrelated to this story**.
+
+**One golden fixture must be edited, and the gate measured whether that moves a digest.**
+`fixtures/embedded-font/input.folio` is the only fixture with an embedded-face entry and is **invalid
+under the new rule**. The recorded digest in `expected.json` and `signoff.json` is SHA-256 of
+**`expected.pdf`**, not of the input — so amending the input **moves no recorded digest**, provided the
+`font` record reaches no output byte, which the format doc asserts and the subsetting measurement
+corroborates. **Stated as an expectation with a basis, not a guarantee. A move is still the Block If.**
