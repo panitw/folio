@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Space+Grotesk:wght@400;600&family=Lora:wght@400;600&family=Manrope:wght@400;600&family=Sora:wght@400;600&family=DM+Serif+Display&family=Bebas+Neue&family=Cormorant+Garamond:wght@400;600&family=Work+Sans:wght@400;600&family=Noto+Sans+Thai:wght@400;600&family=JetBrains+Mono:wght@400&family=Libre+Baskerville&family=Sarabun:wght@400;600&family=Chonburi&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; background: #0d0f12; }
+    a { color: #58a6c4; } a:hover { color: #7cc0da; }
+    * { box-sizing: border-box; }
+    input { font-family: inherit; }
+    input::placeholder { color: #4e565f; }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-thumb { background: #333a42; }
+    ::-webkit-scrollbar-track { background: #1a1e23; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #15181c; color: #aab2bb; font-size: 11px; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="height: 40px; flex-shrink: 0; background: #1a1e23; border-bottom: 1px solid #272c33; display: flex; align-items: center; gap: 16px; padding: 0 12px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 18px; height: 18px; border: 1.5px solid #58a6c4; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 6px; height: 8px; background: #58a6c4;"></div>
+      </div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; color: #e6e9ec; letter-spacing: 0.04em;">FOLIO</span>
+    </div>
+    <div style="width: 1px; height: 18px; background: #272c33;"></div>
+    <div style="display: flex; align-items: center; gap: 7px;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">customer-statement.folio</span>
+      <div style="width: 5px; height: 5px; border-radius: 50%; background: #c9a758;"></div>
+      <span style="font-size: 10px; color: #737c86;">unsaved</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">
+      <span style="color: #aab2bb;">A4</span><span>·</span><span style="color: #aab2bb;">Portrait</span><span>·</span><span>210 × 297 mm</span>
+    </div>
+    <div style="width: 1px; height: 18px; background: #272c33;"></div>
+    <div style="display: flex; border: 1px solid #3a4048; background: #15181c;">
+      <div style="padding: 4px 14px; background: #2a3037; color: #e6e9ec; font-weight: 500; font-size: 10px; letter-spacing: 0.04em;">DESIGN</div>
+      <div style="padding: 4px 14px; color: #737c86; font-size: 10px; letter-spacing: 0.04em;">PREVIEW</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+    <div style="width: 180px; flex-shrink: 0; background: #1a1e23; border-right: 1px solid #272c33; display: flex; flex-direction: column;">
+      <div style="padding: 10px 12px 8px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600;">COMPONENTS</div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 12px; background: #22272d; border-left: 2px solid #58a6c4;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#e6e9ec" stroke-width="1.25"><path d="M3 4V3h10v1M8 3v10M6 13h4"></path></svg>
+        <span style="color: #e6e9ec; flex-grow: 1;">Text</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">T</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-left: 2px solid transparent;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#aab2bb" stroke-width="1.25"><rect x="2.5" y="3.5" width="11" height="9"></rect><path d="M2.5 10l3-2.5 2.5 2 3-3 2.5 2.5"></path></svg>
+        <span style="flex-grow: 1;">Image</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">I</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-left: 2px solid transparent;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#aab2bb" stroke-width="1.25"><rect x="2.5" y="3.5" width="11" height="9"></rect><path d="M2.5 6.5h11M6.5 6.5v6M10 6.5v6"></path></svg>
+        <span style="flex-grow: 1;">Table</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">B</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-left: 2px solid transparent;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#aab2bb" stroke-width="1.25"><path d="M3 12.5L13 3.5"></path></svg>
+        <span style="flex-grow: 1;">Line</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">L</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-left: 2px solid transparent;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#aab2bb" stroke-width="1.25"><rect x="2.5" y="4" width="11" height="8"></rect></svg>
+        <span style="flex-grow: 1;">Rectangle</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">R</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="border-top: 1px solid #272c33;">
+        <div style="padding: 10px 12px 6px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600;">TEMPLATE FONTS</div>
+        <div style="padding: 0 12px 12px; display: flex; flex-direction: column; gap: 5px;">
+          <sc-for list="{{ templateFontRows }}" as="tf" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 7px; font-size: 10px;">
+              <div style="width: 3px; height: 11px; background: #3a4048;"></div>
+              <span style="flex-grow: 1; color: #aab2bb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ tf.name }}</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #4e565f;">{{ tf.tag }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; background: #0d0f12; position: relative; display: flex; align-items: center; justify-content: center; min-width: 0;">
+      <div style="width: 452px; height: 640px; background: #ffffff; position: relative; box-shadow: 0 2px 24px rgba(0,0,0,0.55); background-image: radial-gradient(#dfe3e8 0.6px, transparent 0.6px); background-size: 12px 12px;">
+        <div style="position: absolute; left: 0; right: 0; top: 0; height: 108px; background: rgba(88,166,196,0.035);"></div>
+        <div style="position: absolute; left: 28px; right: 28px; top: 0; bottom: 0; border-left: 1px solid #eef1f4; border-right: 1px solid #eef1f4;"></div>
+        <div style="position: absolute; left: 28px; top: 20px; width: 72px; height: 32px; border: 1px dashed #b6bec7; display: flex; align-items: center; justify-content: center;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 7px; color: #98a2ad;">logo.png</span>
+        </div>
+        <div style="position: absolute; left: 110px; top: 22px; font-family: 'IBM Plex Sans Thai', sans-serif; font-size: 13px; font-weight: 600; color: #1c2530;">ธนาคารกรุงศรีอยุธยา</div>
+        <div style="position: absolute; left: 110px; top: 41px; font-size: 8px; letter-spacing: 0.14em; color: #6b7480;">STATEMENT OF ACCOUNT</div>
+        <div style="position: absolute; left: 28px; right: 28px; top: 80px; border-top: 1.5px solid #1c2530;"></div>
+
+        <div style="position: absolute; left: 28px; top: 128px; width: 190px; height: 22px;">
+          <div style="width: 100%; height: 100%; border: 1px solid #58a6c4; background: rgba(88,166,196,0.07); display: flex; align-items: center; padding: 0 4px;">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #a8801f;">{{ tokName }}</span>
+          </div>
+          <div style="position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; background: #58a6c4; border: 1px solid #0d0f12;"></div>
+          <div style="position: absolute; right: -3px; top: -3px; width: 6px; height: 6px; background: #58a6c4; border: 1px solid #0d0f12;"></div>
+          <div style="position: absolute; left: -3px; bottom: -3px; width: 6px; height: 6px; background: #58a6c4; border: 1px solid #0d0f12;"></div>
+          <div style="position: absolute; right: -3px; bottom: -3px; width: 6px; height: 6px; background: #58a6c4; border: 1px solid #0d0f12;"></div>
+          <div style="position: absolute; right: 0; top: -17px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #58a6c4;">Text · selected</div>
+        </div>
+
+        <div style="position: absolute; left: 28px; top: 158px; width: 190px; height: 16px; border: 1px dotted #cdd4db; display: flex; align-items: center; padding: 0 4px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #a8801f;">{{ tokAccount }}</span>
+        </div>
+        <div style="position: absolute; right: 28px; top: 128px; width: 160px; height: 16px; border: 1px dotted #cdd4db; display: flex; align-items: center; justify-content: flex-end; padding: 0 4px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #a8801f;">{{ tokPeriod }}</span>
+        </div>
+        <div style="position: absolute; left: 28px; right: 28px; top: 196px; border: 1px dotted #cdd4db; padding: 6px;">
+          <div style="display: grid; grid-template-columns: 54px 1fr 60px 68px; gap: 0 6px; font-size: 8px; color: #1c2530;">
+            <div style="font-weight: 600; border-bottom: 1px solid #1c2530; padding-bottom: 3px;">Date</div>
+            <div style="font-weight: 600; border-bottom: 1px solid #1c2530; padding-bottom: 3px;">Description</div>
+            <div style="font-weight: 600; border-bottom: 1px solid #1c2530; padding-bottom: 3px; text-align: right;">Debit</div>
+            <div style="font-weight: 600; border-bottom: 1px solid #1c2530; padding-bottom: 3px; text-align: right;">Balance</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; color: #a8801f; padding-top: 4px;">{{ tokDate }}</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; color: #a8801f; padding-top: 4px;">{{ tokDescription }}</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; color: #a8801f; padding-top: 4px; text-align: right;">{{ tokDebit }}</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; color: #a8801f; padding-top: 4px; text-align: right;">{{ tokBalance }}</div>
+          </div>
+        </div>
+      </div>
+      <div style="position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 1px; background: #1a1e23; border: 1px solid #272c33;">
+        <div style="padding: 4px 8px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">−</div>
+        <div style="padding: 4px 8px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e6e9ec;">62%</div>
+        <div style="padding: 4px 8px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">+</div>
+      </div>
+    </div>
+
+    <div style="width: 300px; flex-shrink: 0; background: #1a1e23; border-left: 1px solid #272c33; display: flex; flex-direction: column; position: relative;">
+      <div style="display: flex; border-bottom: 1px solid #272c33; flex-shrink: 0;">
+        <div style="padding: 9px 12px; font-size: 10px; letter-spacing: 0.06em; color: #e6e9ec; border-bottom: 1.5px solid #58a6c4; font-weight: 500;">PROPERTIES</div>
+        <div style="padding: 9px 12px; font-size: 10px; letter-spacing: 0.06em; color: #737c86;">DATA</div>
+      </div>
+      <div style="padding: 10px 12px; border-bottom: 1px solid #272c33; display: flex; align-items: center; gap: 8px;">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#58a6c4" stroke-width="1.25"><path d="M3 4V3h10v1M8 3v10M6 13h4"></path></svg>
+        <span style="color: #e6e9ec; font-weight: 500;">Text</span>
+        <span style="flex-grow: 1;"></span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #4e565f;">band: content</span>
+      </div>
+
+      <div style="padding: 10px 12px 4px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600;">POSITION</div>
+      <div style="padding: 0 12px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+        <div style="display: flex; align-items: center; background: #22272d; border: 1px solid #2f353d;">
+          <span style="padding: 0 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">X</span>
+          <span style="flex-grow: 1; padding: 4px 0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">18.0</span>
+          <span style="padding: 0 6px; font-size: 9px; color: #4e565f;">mm</span>
+        </div>
+        <div style="display: flex; align-items: center; background: #22272d; border: 1px solid #2f353d;">
+          <span style="padding: 0 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">Y</span>
+          <span style="flex-grow: 1; padding: 4px 0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">59.3</span>
+          <span style="padding: 0 6px; font-size: 9px; color: #4e565f;">mm</span>
+        </div>
+        <div style="display: flex; align-items: center; background: #22272d; border: 1px solid #2f353d;">
+          <span style="padding: 0 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">W</span>
+          <span style="flex-grow: 1; padding: 4px 0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">83.0</span>
+          <span style="padding: 0 6px; font-size: 9px; color: #4e565f;">mm</span>
+        </div>
+        <div style="display: flex; align-items: center; background: #22272d; border: 1px solid #2f353d;">
+          <span style="padding: 0 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4e565f;">H</span>
+          <span style="flex-grow: 1; padding: 4px 0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">8.5</span>
+          <span style="padding: 0 6px; font-size: 9px; color: #4e565f;">mm</span>
+        </div>
+      </div>
+
+      <div style="padding: 8px 12px 4px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600; border-top: 1px solid #272c33; display: flex; align-items: center; gap: 6px;">
+        <span style="flex-grow: 1;">TYPOGRAPHY</span>
+      </div>
+      <div style="padding: 0 12px 10px; display: flex; flex-direction: column; gap: 6px; position: relative; z-index: 5;">
+        <div onClick="{{ toggleDropdown }}" style="display: flex; align-items: center; justify-content: space-between; background: #22272d; border: 1px solid #58a6c4; padding: 4px 8px; cursor: pointer;" style-hover="background: #262c33;">
+          <span style="font-size: 11px; color: #e6e9ec; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ selectedFont }}</span>
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#aab2bb" stroke-width="1.2"><path d="M1.5 3l2.5 2.5L6.5 3"></path></svg>
+        </div>
+
+        <sc-if value="{{ dropdownOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="position: absolute; left: 12px; right: 12px; top: 30px; background: #1c2126; border: 1px solid #454d57; box-shadow: 0 12px 32px rgba(0,0,0,0.55); display: flex; flex-direction: column; max-height: 452px;">
+            <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #272c33; background: #191d22;">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#4e565f" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+              <input value="{{ dropdownQuery }}" onChange="{{ onDropdownQuery }}" placeholder="Filter fonts" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #e6e9ec; font-size: 10px;">
+            </div>
+            <div style="overflow-y: auto; flex-grow: 1;">
+              <div style="padding: 7px 8px 3px; font-size: 8px; letter-spacing: 0.1em; color: #737c86; font-weight: 600;">IN THIS TEMPLATE</div>
+              <sc-for list="{{ dropdownTemplateFonts }}" as="f" hint-placeholder-count="3">
+                <div onClick="{{ f.pick }}" style="{{ f.rowStyle }}" style-hover="background: #262c33;">
+                  <div style="width: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                    <span style="{{ f.checkStyle }}">✓</span>
+                  </div>
+                  <span style="flex-grow: 1; font-size: 11px; color: #e6e9ec; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ f.name }}</span>
+                  <span style="{{ f.sampleStyle }}">{{ f.sample }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ hasAddedFonts }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <div style="padding: 9px 8px 3px; font-size: 8px; letter-spacing: 0.1em; color: #c9a758; font-weight: 600; border-top: 1px solid #272c33;">ADDED FROM WEB FONTS</div>
+                  <sc-for list="{{ dropdownAddedFonts }}" as="f" hint-placeholder-count="2">
+                    <div onClick="{{ f.pick }}" style="{{ f.rowStyle }}" style-hover="background: #262c33;">
+                      <div style="width: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                        <span style="{{ f.checkStyle }}">✓</span>
+                      </div>
+                      <span style="flex-grow: 1; font-size: 11px; color: #e6e9ec; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ f.name }}</span>
+                      <span style="{{ f.sampleStyle }}">{{ f.sample }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <div style="padding: 9px 8px 3px; font-size: 8px; letter-spacing: 0.1em; color: #737c86; font-weight: 600; border-top: 1px solid #272c33;">AVAILABLE LOCALLY</div>
+              <sc-for list="{{ dropdownSystemFonts }}" as="f" hint-placeholder-count="5">
+                <div onClick="{{ f.pick }}" style="{{ f.rowStyle }}" style-hover="background: #262c33;">
+                  <div style="width: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                    <span style="{{ f.checkStyle }}">✓</span>
+                  </div>
+                  <span style="flex-grow: 1; font-size: 11px; color: #aab2bb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ f.name }}</span>
+                  <span style="{{ f.sampleStyle }}">{{ f.sample }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div onClick="{{ openBrowser }}" style="display: flex; align-items: center; gap: 8px; padding: 8px; border-top: 1px solid #454d57; background: #202a30; cursor: pointer; flex-shrink: 0;" style-hover="background: #26343b;">
+              <div style="width: 16px; height: 16px; border: 1px solid #58a6c4; color: #58a6c4; display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; flex-shrink: 0;">+</div>
+              <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+                <span style="font-size: 11px; color: #8fd0e6; font-weight: 500;">Add fonts…</span>
+                <span style="font-size: 9px; color: #6b7d86;">Browse and embed web fonts</span>
+              </div>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #4e565f;">⌘G</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="display: grid; grid-template-columns: 74px 1fr; gap: 6px;">
+          <div style="display: flex; align-items: center; background: #22272d; border: 1px solid #2f353d; padding: 4px 8px;">
+            <span style="flex-grow: 1; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ec;">10.5</span>
+            <span style="font-size: 9px; color: #4e565f;">pt</span>
+          </div>
+          <div style="display: flex; gap: 4px;">
+            <div style="width: 28px; display: flex; align-items: center; justify-content: center; background: #2a3037; border: 1px solid #454d57; font-weight: 600; color: #e6e9ec; font-size: 11px;">B</div>
+            <div style="width: 28px; display: flex; align-items: center; justify-content: center; background: #22272d; border: 1px solid #2f353d; font-style: italic; color: #737c86; font-size: 11px;">I</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; background: #22272d; border: 1px solid #2f353d; padding: 4px 8px;">
+          <span style="font-size: 10px; color: #737c86;">Embed in PDF</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e6e9ec;">subset</span>
+        </div>
+      </div>
+
+      <div style="padding: 8px 12px 4px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600; border-top: 1px solid #272c33;">BOX</div>
+      <div style="padding: 0 12px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; background: #22272d; border: 1px solid #2f353d; padding: 4px 8px;">
+          <span style="font-size: 10px; color: #737c86;">Border</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">none</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; background: #22272d; border: 1px solid #2f353d; padding: 4px 8px;">
+          <span style="font-size: 10px; color: #737c86;">Padding</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e6e9ec;">0</span>
+        </div>
+      </div>
+
+      <div style="padding: 8px 12px 4px; font-size: 9px; letter-spacing: 0.1em; color: #c9a758; font-weight: 600; border-top: 1px solid #272c33;">BINDING</div>
+      <div style="padding: 0 12px 12px;">
+        <div style="display: flex; align-items: center; gap: 7px; background: #241f14; border: 1px solid #4a3d1e; padding: 6px 8px;">
+          <div style="width: 5px; height: 5px; border-radius: 50%; background: #c9a758; flex-shrink: 0;"></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e0c07a; flex-grow: 1;">customer.name</span>
+          <span style="font-size: 9px; color: #8a7440;">string</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 24px; flex-shrink: 0; background: #1a1e23; border-top: 1px solid #272c33; display: flex; align-items: center; gap: 14px; padding: 0 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">
+    <span>grid 2mm</span>
+    <span style="color: #58a6c4;">snap on</span>
+    <span>selection 1</span>
+    <span style="flex-grow: 1;"></span>
+    <span>{{ statusFontLine }}</span>
+    <span>·</span>
+    <span>folio-go v0.1 wasm ready</span>
+  </div>
+
+  <sc-if value="{{ browserOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(8,10,12,0.68); display: flex; align-items: center; justify-content: center; z-index: 40;">
+      <div style="width: 1180px; height: 748px; background: #1a1e23; border: 1px solid #3a4048; box-shadow: 0 24px 70px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden;">
+
+        <div style="height: 46px; flex-shrink: 0; border-bottom: 1px solid #272c33; display: flex; align-items: center; gap: 14px; padding: 0 14px; background: #1c2126;">
+          <span style="font-size: 12px; font-weight: 600; color: #e6e9ec; letter-spacing: 0.01em;">Font browser</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #737c86;">web font library · 1,946 families</span>
+          <div style="width: 1px; height: 18px; background: #2f353d;"></div>
+          <div style="flex-grow: 1; max-width: 460px; display: flex; align-items: center; gap: 8px; background: #22272d; border: 1px solid #2f353d; padding: 5px 9px;">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#737c86" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+            <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search fonts" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #e6e9ec; font-size: 11px;">
+            <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}">
+              <span onClick="{{ clearQuery }}" style="font-size: 12px; color: #737c86; cursor: pointer; line-height: 1;">×</span>
+            </sc-if>
+          </div>
+          <div style="flex-grow: 1;"></div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 10px; color: #737c86;">Sort</span>
+            <sc-for list="{{ sortOptions }}" as="s" hint-placeholder-count="3">
+              <div onClick="{{ s.pick }}" style="{{ s.style }}" style-hover="color: #e6e9ec;">{{ s.label }}</div>
+            </sc-for>
+          </div>
+          <div style="display: flex; border: 1px solid #2f353d;">
+            <sc-for list="{{ viewOptions }}" as="v" hint-placeholder-count="2">
+              <div onClick="{{ v.pick }}" style="{{ v.style }}">{{ v.label }}</div>
+            </sc-for>
+          </div>
+          <div onClick="{{ closeBrowser }}" style="width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: #aab2bb; cursor: pointer; font-size: 15px; line-height: 1;" style-hover="color: #e6e9ec;">×</div>
+        </div>
+
+        <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+          <div style="width: 236px; flex-shrink: 0; border-right: 1px solid #272c33; background: #1c2126; overflow-y: auto; padding-bottom: 14px;">
+            <div style="padding: 12px 12px 4px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600;">PREVIEW</div>
+            <div style="padding: 0 12px 12px; display: flex; flex-direction: column; gap: 7px;">
+              <input value="{{ previewText }}" onChange="{{ onPreviewText }}" placeholder="Type something" style="background: #22272d; border: 1px solid #2f353d; padding: 6px 8px; color: #e6e9ec; font-size: 11px; outline: none;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e6e9ec; width: 34px;">{{ sizeLabel }}</span>
+                <input type="range" min="14" max="56" value="{{ size }}" onChange="{{ onSize }}" style="flex-grow: 1; accent-color: #58a6c4;">
+              </div>
+              <div onClick="{{ toggleThaiSample }}" style="{{ thaiToggleStyle }}" style-hover="background: #262c33;">
+                <span style="flex-grow: 1;">Thai sample text</span>
+                <span style="{{ thaiToggleDotStyle }}"></span>
+              </div>
+            </div>
+
+            <div style="padding: 8px 12px 4px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600; border-top: 1px solid #272c33;">WRITING SYSTEM</div>
+            <div style="padding: 0 12px 12px; display: flex; flex-wrap: wrap; gap: 5px;">
+              <sc-for list="{{ scriptChips }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.pick }}" style="{{ c.style }}" style-hover="border-color: #58a6c4;">{{ c.label }}</div>
+              </sc-for>
+            </div>
+
+            <div style="padding: 8px 12px 4px; font-size: 9px; letter-spacing: 0.1em; color: #737c86; font-weight: 600; border-top: 1px solid #272c33;">CATEGORY</div>
+            <div style="padding: 0 12px 12px; display: flex; flex-wrap: wrap; gap: 5px;">
+              <sc-for list="{{ categoryChips }}" as="c" hint-placeholder-count="5">
+                <div onClick="{{ c.pick }}" style="{{ c.style }}" style-hover="border-color: #58a6c4;">{{ c.label }}</div>
+              </sc-for>
+            </div>
+
+          </div>
+
+          <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+            <div style="height: 32px; flex-shrink: 0; border-bottom: 1px solid #272c33; display: flex; align-items: center; gap: 10px; padding: 0 16px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #737c86;">
+              <span>{{ resultLine }}</span>
+              <sc-if value="{{ filtersActive }}" hint-placeholder-val="{{ false }}">
+                <span onClick="{{ resetFilters }}" style="color: #58a6c4; cursor: pointer;">reset filters</span>
+              </sc-if>
+            </div>
+
+            <div style="flex-grow: 1; overflow-y: auto; min-height: 0;">
+              <sc-if value="{{ isRowView }}" hint-placeholder-val="{{ true }}">
+                <div>
+                  <sc-for list="{{ results }}" as="f" hint-placeholder-count="6">
+                    <div style="padding: 14px 16px; border-bottom: 1px solid #22272d;" style-hover="background: #1d2227;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 12px; color: #e6e9ec; font-weight: 500;">{{ f.name }}</span>
+                        <span style="font-size: 10px; color: #737c86;">{{ f.stylesLabel }}</span>
+                        <span style="font-size: 10px; color: #4e565f;">·</span>
+                        <span style="font-size: 10px; color: #737c86;">{{ f.designer }}</span>
+                        <span style="{{ f.scriptBadgeStyle }}">{{ f.scriptBadge }}</span>
+                        <span style="flex-grow: 1;"></span>
+                        <div onClick="{{ f.toggle }}" style="{{ f.buttonStyle }}" style-hover="border-color: #58a6c4;">{{ f.buttonLabel }}</div>
+                      </div>
+                      <div style="{{ f.specimenStyle }}">{{ f.specimen }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ isGridView }}" hint-placeholder-val="{{ false }}">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px;">
+                  <sc-for list="{{ results }}" as="f" hint-placeholder-count="6">
+                    <div style="border: 1px solid #272c33; background: #1c2126; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 150px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 11px; color: #e6e9ec; font-weight: 500; flex-grow: 1;">{{ f.name }}</span>
+                        <div onClick="{{ f.toggle }}" style="{{ f.buttonStyle }}" style-hover="border-color: #58a6c4;">{{ f.buttonLabel }}</div>
+                      </div>
+                      <div style="{{ f.cardSpecimenStyle }}">{{ f.specimen }}</div>
+                      <div style="flex-grow: 1;"></div>
+                      <div style="display: flex; align-items: center; gap: 6px; font-size: 9px; color: #737c86;">
+                        <span>{{ f.stylesLabel }}</span><span style="color: #4e565f;">·</span><span>{{ f.category }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+                <div style="padding: 60px 16px; text-align: center; display: flex; flex-direction: column; gap: 6px;">
+                  <span style="font-size: 12px; color: #e6e9ec;">No families match “{{ query }}”</span>
+                  <span style="font-size: 10px; color: #737c86;">Try a different spelling, or clear the category filters.</span>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+
+        <div style="height: 50px; flex-shrink: 0; border-top: 1px solid #272c33; background: #1c2126; display: flex; align-items: center; gap: 12px; padding: 0 14px;">
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <div style="{{ pendingDotStyle }}"></div>
+            <span style="font-size: 11px; color: #aab2bb;">{{ pendingLine }}</span>
+          </div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #4e565f;">{{ weightLine }}</span>
+          <div style="flex-grow: 1;"></div>
+          <div onClick="{{ closeBrowser }}" style="padding: 6px 14px; border: 1px solid #3a4048; color: #aab2bb; font-size: 11px; cursor: pointer;" style-hover="color: #e6e9ec; border-color: #4e565f;">Cancel</div>
+          <div onClick="{{ confirmAdd }}" style="{{ confirmStyle }}" style-hover="background: #6bb4d0;">{{ confirmLabel }}</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;openState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dropdown&quot;,&quot;browser&quot;,&quot;closed&quot;],&quot;default&quot;:&quot;dropdown&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;State&quot;},&quot;resultsView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Row&quot;,&quot;Grid&quot;],&quot;default&quot;:&quot;Row&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;State&quot;}}">
+const LATIN = "Everyone has the right to freedom of thought";
+const THAI = "ทุกคนมีสิทธิในเสรีภาพแห่งความคิด";
+
+const FAMILIES = [
+  { name: "Sarabun", category: "Sans Serif", styles: 16, designer: "Cadson Demak", scripts: ["Latin", "Thai"], stack: "sans-serif", trend: 1 },
+  { name: "Noto Sans Thai", category: "Sans Serif", styles: 9, designer: "Noto Project", scripts: ["Latin", "Thai"], stack: "sans-serif", trend: 2 },
+  { name: "Space Grotesk", category: "Sans Serif", styles: 5, designer: "Florian Karsten", scripts: ["Latin"], stack: "sans-serif", trend: 3 },
+  { name: "Playfair Display", category: "Serif", styles: 12, designer: "Claus Eggers Sørensen", scripts: ["Latin", "Cyrillic"], stack: "serif", trend: 4 },
+  { name: "Manrope", category: "Sans Serif", styles: 7, designer: "Mikhail Sharanda", scripts: ["Latin", "Greek"], stack: "sans-serif", trend: 5 },
+  { name: "Lora", category: "Serif", styles: 8, designer: "Cyreal", scripts: ["Latin", "Cyrillic"], stack: "serif", trend: 6 },
+  { name: "Chonburi", category: "Display", styles: 1, designer: "Cadson Demak", scripts: ["Latin", "Thai"], stack: "cursive", trend: 7 },
+  { name: "Sora", category: "Sans Serif", styles: 8, designer: "Jonny Pinhorn", scripts: ["Latin"], stack: "sans-serif", trend: 8 },
+  { name: "DM Serif Display", category: "Display", styles: 2, designer: "Colophon Foundry", scripts: ["Latin"], stack: "serif", trend: 9 },
+  { name: "Cormorant Garamond", category: "Serif", styles: 10, designer: "Christian Thalmann", scripts: ["Latin", "Cyrillic"], stack: "serif", trend: 10 },
+  { name: "Work Sans", category: "Sans Serif", styles: 18, designer: "Wei Huang", scripts: ["Latin"], stack: "sans-serif", trend: 11 },
+  { name: "JetBrains Mono", category: "Monospace", styles: 8, designer: "JetBrains", scripts: ["Latin", "Cyrillic"], stack: "monospace", trend: 12 },
+  { name: "Libre Baskerville", category: "Serif", styles: 3, designer: "Impallari Type", scripts: ["Latin"], stack: "serif", trend: 13 },
+  { name: "Bebas Neue", category: "Display", styles: 1, designer: "Ryoichi Tsunekawa", scripts: ["Latin"], stack: "sans-serif", trend: 14 }
+];
+
+const TEMPLATE_FONTS = [
+  { name: "IBM Plex Sans Thai", tag: "TH" },
+  { name: "IBM Plex Sans", tag: "LT" },
+  { name: "IBM Plex Mono", tag: "MO" }
+];
+const SYSTEM_FONTS = ["Helvetica", "Times New Roman", "Courier", "DejaVu Sans", "Liberation Serif", "Tahoma"];
+
+class Component extends DCLogic {
+  state = {
+    dropdownOpen: true,
+    browserOpen: false,
+    dropdownQuery: "",
+    query: "",
+    sort: "Trending",
+    view: "Row",
+    previewText: "",
+    size: 34,
+    thaiSample: true,
+    script: "All",
+    categories: [],
+    added: [],
+    pending: [],
+    selectedFont: "IBM Plex Sans Thai"
+  };
+
+  componentDidMount() {
+    this.setState({
+      dropdownOpen: (this.props.openState ?? "dropdown") !== "closed",
+      browserOpen: (this.props.openState ?? "dropdown") === "browser",
+      view: this.props.resultsView ?? "Row"
+    });
+  }
+
+  set(patch) { this.setState(patch); }
+
+  chip(label, active, extra) {
+    return Object.assign({
+      padding: "3px 8px",
+      border: "1px solid " + (active ? "#58a6c4" : "#2f353d"),
+      background: active ? "rgba(88,166,196,0.13)" : "#22272d",
+      color: active ? "#8fd0e6" : "#aab2bb",
+      fontSize: "10px",
+      cursor: "pointer"
+    }, extra || {});
+  }
+
+  fontRow(name, selected, sampleFamily) {
+    return {
+      name,
+      sample: this.state.thaiSample && /Thai|Sarabun|Chonburi/.test(name) ? "กขค Aa" : "Aa Bb 123",
+      pick: () => this.setState({ selectedFont: name, dropdownOpen: false }),
+      rowStyle: {
+        display: "flex", alignItems: "center", gap: "7px", padding: "5px 8px",
+        cursor: "pointer", background: selected ? "#232d33" : "transparent"
+      },
+      checkStyle: { fontSize: "9px", color: selected ? "#58a6c4" : "transparent" },
+      sampleStyle: {
+        fontFamily: "'" + name + "', " + (sampleFamily || "sans-serif"),
+        fontSize: "12px", color: "#737c86", flexShrink: 0
+      }
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const preview = s.previewText.trim();
+    const specimenFor = f => preview || (s.thaiSample && f.scripts.includes("Thai") ? THAI : LATIN);
+
+    const q = s.query.trim().toLowerCase();
+    let list = FAMILIES.filter(f => {
+      if (q && !f.name.toLowerCase().includes(q) && !f.designer.toLowerCase().includes(q)) return false;
+      if (s.script !== "All" && !f.scripts.includes(s.script)) return false;
+      if (s.categories.length && !s.categories.includes(f.category)) return false;
+      return true;
+    });
+    if (s.sort === "A – Z") list = list.slice().sort((a, b) => a.name.localeCompare(b.name));
+    else if (s.sort === "Most styles") list = list.slice().sort((a, b) => b.styles - a.styles);
+    else list = list.slice().sort((a, b) => a.trend - b.trend);
+
+    const results = list.map(f => {
+      const staged = s.pending.includes(f.name) || s.added.includes(f.name);
+      const inTemplate = s.added.includes(f.name);
+      return {
+        name: f.name,
+        category: f.category,
+        designer: f.designer,
+        stylesLabel: f.styles > 1 ? f.styles + " styles" : "1 style",
+        specimen: specimenFor(f),
+        scriptBadge: f.scripts.includes("Thai") ? "Thai + Latin" : f.scripts.join(" + "),
+        scriptBadgeStyle: {
+          fontSize: "9px", padding: "1px 6px",
+          border: "1px solid " + (f.scripts.includes("Thai") ? "#4a3d1e" : "#2f353d"),
+          color: f.scripts.includes("Thai") ? "#c9a758" : "#737c86"
+        },
+        specimenStyle: {
+          fontFamily: "'" + f.name + "', " + f.stack,
+          fontSize: s.size + "px",
+          color: "#e6e9ec",
+          marginTop: "10px",
+          lineHeight: 1.25,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis"
+        },
+        cardSpecimenStyle: {
+          fontFamily: "'" + f.name + "', " + f.stack,
+          fontSize: Math.min(s.size, 26) + "px",
+          color: "#e6e9ec",
+          lineHeight: 1.2,
+          maxHeight: "76px",
+          overflow: "hidden"
+        },
+        buttonLabel: inTemplate ? "In template" : staged ? "✓ Added" : "+ Add",
+        buttonStyle: {
+          padding: "3px 9px", fontSize: "10px", cursor: inTemplate ? "default" : "pointer",
+          border: "1px solid " + (staged ? "#58a6c4" : "#3a4048"),
+          background: staged ? "rgba(88,166,196,0.14)" : "transparent",
+          color: inTemplate ? "#6b7d86" : staged ? "#8fd0e6" : "#aab2bb",
+          flexShrink: 0
+        },
+        toggle: () => {
+          if (inTemplate) return;
+          this.setState(st => ({
+            pending: st.pending.includes(f.name)
+              ? st.pending.filter(n => n !== f.name)
+              : st.pending.concat(f.name)
+          }));
+        }
+      };
+    });
+
+    const dq = s.dropdownQuery.trim().toLowerCase();
+    const match = n => !dq || n.toLowerCase().includes(dq);
+    const pendingCount = s.pending.length;
+    const pendingWeights = s.pending.reduce((sum, n) => {
+      const f = FAMILIES.find(x => x.name === n);
+      return sum + (f ? Math.min(f.styles, 4) : 0);
+    }, 0);
+
+    return {
+      tokName: "{{customer.name}}",
+      tokAccount: "{{customer.account}}",
+      tokPeriod: "{{statement.period}}",
+      tokDate: "{{date}}",
+      tokDescription: "{{description}}",
+      tokDebit: "{{debit}}",
+      tokBalance: "{{balance}}",
+      selectedFont: s.selectedFont,
+      dropdownOpen: s.dropdownOpen,
+      browserOpen: s.browserOpen,
+      dropdownQuery: s.dropdownQuery,
+      onDropdownQuery: e => this.set({ dropdownQuery: e.target.value }),
+      toggleDropdown: () => this.set({ dropdownOpen: !s.dropdownOpen }),
+      openBrowser: () => this.set({ browserOpen: true, pending: [] }),
+      closeBrowser: () => this.set({ browserOpen: false, pending: [] }),
+
+      templateFontRows: TEMPLATE_FONTS.concat(s.added.map(n => ({
+        name: n, tag: FAMILIES.find(f => f.name === n) && FAMILIES.find(f => f.name === n).scripts.includes("Thai") ? "TH" : "LT"
+      }))),
+      dropdownTemplateFonts: TEMPLATE_FONTS.filter(f => match(f.name))
+        .map(f => this.fontRow(f.name, s.selectedFont === f.name, "sans-serif")),
+      dropdownAddedFonts: s.added.filter(match).map(n => {
+        const f = FAMILIES.find(x => x.name === n);
+        return this.fontRow(n, s.selectedFont === n, f ? f.stack : "sans-serif");
+      }),
+      dropdownSystemFonts: SYSTEM_FONTS.filter(match)
+        .map(n => this.fontRow(n, s.selectedFont === n, "sans-serif")),
+      hasAddedFonts: s.added.length > 0,
+
+      query: s.query,
+      hasQuery: q.length > 0,
+      onQuery: e => this.set({ query: e.target.value }),
+      clearQuery: () => this.set({ query: "" }),
+      previewText: s.previewText,
+      onPreviewText: e => this.set({ previewText: e.target.value }),
+      size: s.size,
+      sizeLabel: s.size + "px",
+      onSize: e => this.set({ size: Number(e.target.value) }),
+      toggleThaiSample: () => this.set({ thaiSample: !s.thaiSample }),
+      thaiToggleStyle: {
+        display: "flex", alignItems: "center", gap: "8px", padding: "5px 8px",
+        background: "#22272d", border: "1px solid #2f353d", fontSize: "10px",
+        color: s.thaiSample ? "#e6e9ec" : "#aab2bb", cursor: "pointer"
+      },
+      thaiToggleDotStyle: {
+        width: "22px", height: "12px", flexShrink: 0,
+        background: s.thaiSample ? "#58a6c4" : "#3a4048",
+        boxShadow: s.thaiSample ? "inset -10px 0 0 #1a1e23" : "inset 10px 0 0 #1a1e23"
+      },
+
+      sortOptions: ["Trending", "A – Z", "Most styles"].map(label => ({
+        label,
+        pick: () => this.set({ sort: label }),
+        style: {
+          fontSize: "10px", cursor: "pointer",
+          color: s.sort === label ? "#e6e9ec" : "#737c86",
+          borderBottom: "1px solid " + (s.sort === label ? "#58a6c4" : "transparent"),
+          paddingBottom: "2px"
+        }
+      })),
+      viewOptions: ["Row", "Grid"].map(label => ({
+        label,
+        pick: () => this.set({ view: label }),
+        style: {
+          padding: "4px 10px", fontSize: "10px", letterSpacing: "0.04em", cursor: "pointer",
+          background: s.view === label ? "#2a3037" : "transparent",
+          color: s.view === label ? "#e6e9ec" : "#737c86"
+        }
+      })),
+      isRowView: s.view === "Row" && results.length > 0,
+      isGridView: s.view === "Grid" && results.length > 0,
+      noResults: results.length === 0,
+
+      scriptChips: ["All", "Latin", "Thai", "Cyrillic", "Greek"].map(label => ({
+        label, pick: () => this.set({ script: label }), style: this.chip(label, s.script === label)
+      })),
+      categoryChips: ["Sans Serif", "Serif", "Display", "Monospace"].map(label => ({
+        label,
+        pick: () => this.setState(st => ({
+          categories: st.categories.includes(label)
+            ? st.categories.filter(c => c !== label)
+            : st.categories.concat(label)
+        })),
+        style: this.chip(label, s.categories.includes(label))
+      })),
+      filtersActive: s.script !== "All" || s.categories.length > 0 || q.length > 0,
+      resetFilters: () => this.set({ script: "All", categories: [], query: "" }),
+
+      results,
+      resultLine: results.length + " of " + FAMILIES.length + " families",
+      pendingLine: pendingCount === 0
+        ? "Select families to add to this template"
+        : pendingCount + (pendingCount === 1 ? " family" : " families") + " ready to embed",
+      pendingDotStyle: {
+        width: "6px", height: "6px", borderRadius: "50%",
+        background: pendingCount ? "#58a6c4" : "#3a4048"
+      },
+      weightLine: pendingCount ? "≈ " + pendingWeights + " weights · subset latin+thai" : "",
+      confirmLabel: pendingCount ? "Add " + pendingCount + " to template" : "Add to template",
+      confirmStyle: {
+        padding: "6px 14px", fontSize: "11px", fontWeight: 500,
+        background: pendingCount ? "#58a6c4" : "#22272d",
+        color: pendingCount ? "#0d0f12" : "#4e565f",
+        border: "1px solid " + (pendingCount ? "#58a6c4" : "#2f353d"),
+        cursor: pendingCount ? "pointer" : "default"
+      },
+      confirmAdd: () => {
+        if (!s.pending.length) return;
+        this.setState(st => ({
+          added: st.added.concat(st.pending.filter(n => !st.added.includes(n))),
+          selectedFont: st.pending[0],
+          pending: [],
+          browserOpen: false,
+          dropdownOpen: true
+        }));
+      },
+
+      statusFontLine: s.added.length
+        ? s.added.length + " web font" + (s.added.length === 1 ? "" : "s") + " embedded · " + s.selectedFont
+        : "3 fonts in template · " + s.selectedFont
+    };
+  }
+}
+
+</script>
+</body>
+</html>

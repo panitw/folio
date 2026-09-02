@@ -3525,3 +3525,166 @@ change without sweeping the comments describing the old behaviour.* Added to tha
 (−1/+1, net zero) and Edit 2 correctly added none. **A stale pass count is exactly what a silently-dropped
 test looks like**, so the builder reported the non-event with its cause rather than letting a matching
 number pass as agreement.
+
+## D-16.1 — OWNER DECISION: the catalogue stops being the only source. A font arrives from the web (2026-09-02)
+
+**Owner decision**, taken at the terminal against a design — `Font Browser.dc.html`, imported from the
+owner's Claude Design project `8a9e2266` on 2026-09-02 and filed beside the other five mockups at
+`_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/`. The question was put with
+the collision stated: **the design cannot be built without reversing a shipped Non-goal.** The owner
+was offered a bundled-catalogue reading that would have satisfied the design's UX, the machine-local
+requirement and the invariant together, and **declined it in favour of the live source.**
+
+**What this reverses.** `SPEC-fonts` `## Non-goals` reads *"**No live font service.** No Google Fonts
+API, no arbitrary URL, no 'download on first use'."* D-8.4d.1 already struck the third clause on
+2026-09-02; **this strikes the first two.** The surviving sentence of D-8.4d.1 — *"no Google Fonts API
+and no arbitrary URL — the catalogue remains the only source, and nothing is fetched from a third
+party"* — **does not survive this decision** and must be amended in the same edit, or the record
+contradicts itself twice in one day. **Both clauses, in `SPEC.md` AND `font-catalogue.md`, or neither**
+— D-8.4d.1's own rule about paired amendments applies unchanged.
+
+**Under D-000.8, this is the SECOND reversal of the same Non-goal in one day.** That is worth naming
+rather than absorbing quietly. D-8.4d.1 moved *when* a face is fetched; this moves *what may be
+fetched and from whom*. The first was taken on a measurement; **this one is taken on a product
+judgement and has no measurement behind it** — the owner wants the author to reach the families the
+design draws, and 21 curated faces is not that. Recorded as judgement, not dressed as evidence.
+
+**The bounded thing that is still true**, and it is the only clause of the original Non-goal left
+standing: **no host fonts.** Faces installed on the authoring machine are still never enumerated or
+read. The design's `AVAILABLE LOCALLY` group **is not the operating system's font list** (D-16.2).
+
+**What is now allowed, named exactly, because "the web" is not a specification.** Three hosts, and no
+others: `fonts.google.com` for the family index, `raw.githubusercontent.com` for the face bytes and
+their licence text, and `fonts.gstatic.com` only if a later story proves it necessary. Each becomes a
+declared entry in `FORBIDDEN_FONT_HOSTS`' successor structure rather than an undeclared hole in it —
+**the scan is amended to keep meaning something, never deleted** (D-16.4).
+
+**The cost, stated with its mitigant.** An author with no network **cannot add a new family** — the
+browser is a live surface and says so. It degrades exactly as D-8.4d.1's fetch tier degrades: to
+*"you cannot add that family right now"*, **never to a document that will not render**, because the
+three shipped Noto faces remain the coverage and a face already embedded travels inside the `.folio`.
+**What is genuinely new and worse than D-8.4d.1:** the failure is now a THIRD PARTY's uptime, not the
+release's own origin. GitHub being down is a font browser that does not work.
+
+**How we'd know it was wrong.** A licence complaint. This is the risk that is not the network's: the
+catalogue existed because a redistributed face must arrive with its terms (D-8.6.1), and admission
+was a **build-time** check against a named allowlist (D-8.5.2/D-8.5.3). Fetching at authoring time
+moves that check to **runtime, in the browser, over bytes nobody has reviewed.** If a face reaches a
+`.folio` with the wrong licence text — the exact defect D-8.6.5 caught across 17 of 21 faces — this
+decision is the reason it could.
+
+### D-16.2 — The design's `AVAILABLE LOCALLY` is a machine-local STORE, not the operating system
+
+**Owner decision**, taken with the contradiction shown. `Font Browser.dc.html`'s dropdown draws a
+third group, `AVAILABLE LOCALLY`, over `SYSTEM_FONTS = ["Helvetica", "Times New Roman", "Courier",
+"DejaVu Sans", "Liberation Serif", "Tahoma"]` — **six operating-system faces.** Read literally that is
+the Local Font Access API and it contradicts the one Non-goal clause D-16.1 leaves standing.
+
+**Ruled: the group means faces this machine has already FETCHED**, held in a store the designer owns.
+The mockup's array is placeholder data, not a requirement — the same status as its 14-family
+`FAMILIES` constant standing in for 1,946. **No host font is ever enumerated or read.**
+
+**The store is IndexedDB, and `localStorage` was refused on arithmetic, not taste.** The owner's words
+were "local storage"; the mechanism is the engineer's. `localStorage` is a ~5 MB per-origin string
+quota. A face is 26 KB to 646 KB in this repository's own shipped set, and storing bytes there means
+base64 — **+33%**. Sarabun-Regular, measured today at `raw.githubusercontent.com`, is **90,220 bytes →
+~120 KB stored.** Forty families is past the quota; ten of the larger ones is past it. `localStorage`
+also throws `QuotaExceededError` synchronously with no partial-write path. IndexedDB stores the
+`ArrayBuffer` unencoded, under the same origin-scoped, service-worker-friendly lifetime the offline
+release already relies on.
+
+**Keyed by SHA-256 of the bytes**, not by family name — the same content address the `.folio`'s
+`assets` map uses (AD-8), so the store and the document agree on what a face IS by construction, and
+a family that changes upstream is a different key rather than a silent substitution.
+
+### D-16.3 — MEASURED: the index cannot be fetched from the browser, so it is a build-time snapshot
+
+**Engineering finding, measured 2026-09-02** (wd `/Users/panitw/Projects/folio`, `curl` with
+`Origin: http://localhost:5173`, tree clean at `a40c34d`). Recorded because it makes the word "live"
+in D-16.1 **partly false**, and a decision record that lets that stand is worse than no record.
+
+| Endpoint | Result | Consequence |
+|---|---|---|
+| `https://fonts.google.com/metadata/fonts` | **200**, 2,699,611 bytes, `application/json`, **1,946 families**, **34 with `thai` in `subsets`**, and **no `access-control-allow-origin` header** | The browser **cannot read it.** The index must be snapshotted at build time. |
+| `https://fonts.googleapis.com/metadata/fonts` | **404** | Not the endpoint. Recorded so the next person does not re-derive it. |
+| `https://fonts.googleapis.com/css2?family=Sarabun` (modern Chrome UA) | 200, **`woff2`**, and **split by `unicode-range` into per-script slices** | **Unusable twice over.** `decodeRecognisedFont` recognises `font/ttf` and `font/otf` ONLY, and `font/woff2` is deliberately outside that set; and a `unicode-range` slice is a SUBSET, which would embed partial coverage into a `.folio` that claims the family. |
+| same URL, `curl` default UA | 200, **`truetype`** | The TTF exists but is **UA-negotiated**, and a browser cannot set `User-Agent`. Not reachable from the product. |
+| `https://raw.githubusercontent.com/google/fonts/main/ofl/sarabun/Sarabun-Regular.ttf` | **200**, 90,220 bytes, **`access-control-allow-origin: *`** | **This is the byte source.** Full static face, not a subset, not `woff2`. |
+| `.../ofl/sarabun/OFL.txt` | **200**, 4,387 bytes, ACAO `*`, opens `Copyright 2018 The Sarabun Project Authors` | **This is `licenceText`**, and it is the upstream file rather than a hand-copy — D-8.6.1's requirement is met by the same rule the catalogue met it by. |
+| `.../ofl/sarabun/METADATA.pb` | **200**, 4,702 bytes, ACAO `*`, carries `designer`, `license`, `category` and a `fonts { filename }` list | **This is the style→file map**, so "which file is Regular" is read rather than guessed. |
+
+**So the shape is a hybrid, and it must be described as one:** the **index is a build-time snapshot**
+(CORS forbids anything else), the **bytes, licence text and per-family metadata are fetched live**.
+Anyone writing "live font browser" in a story or a UI string without that qualification is writing
+something false. The index therefore ages between releases exactly as `font-catalogue.json` did —
+`font-catalogue.md`'s sentence *"The cost is honest and stated: the list changes only when the
+designer is released"* **survives this epic unchanged**, and is now the only sentence in that document
+that does.
+
+**The Developer API was considered and refused.** `https://www.googleapis.com/webfonts/v1/webfonts`
+does send CORS and does return direct `.ttf` URLs, which would make the index genuinely live. It
+requires an **API key in the client bundle** — a secret nobody can keep, on a quota belonging to
+whoever registered it — and it returns **no licence text**, so D-8.6.1's mandatory record would still
+have to come from `raw.githubusercontent.com`. It buys one property and costs two.
+
+### D-16.4 — The forbidden-host scan is AMENDED, never deleted, and it grows a second half
+
+**Engineering ruling.** `scripts/forbidden-font-hosts.mjs` exists because *"the moment someone reaches
+for the cheap shape, the first thing they type is one of these two hosts"*. D-16.1 makes reaching for
+that shape the intended behaviour, which is exactly the condition under which a guard gets deleted and
+the property it held silently lapses.
+
+**It is not deleted.** `FORBIDDEN_FONT_HOSTS` keeps `fonts.googleapis.com` and `fonts.gstatic.com`
+**forbidden** — D-16.3 measured that both are unusable from the browser anyway, so forbidding them
+costs nothing and keeps the `woff2`/subset trap from being re-entered by someone who has not read this
+log. The hosts D-16.1 admits are added to a **separate, named ALLOWED list**, and the scan gains its
+second half: **a source occurrence of an allowed host outside the module that declares it is still a
+failure.** A host reaches the product through one declared module or it does not reach it.
+
+**The population floor and the positive control transfer unchanged.** Story 8.5's Design Note 2 trap —
+a scan that is green before it is correct — applies with more force here, not less: the allowed-host
+half starts with one legitimate occurrence and would pass vacuously if the fetch module were deleted.
+
+### D-16.5 — OPEN, routed to the owner: a variable-font-only family has no Regular to embed
+
+**Not decided.** Raised at plan time rather than discovered at implementation, and recorded here so it
+is gated before code is derived from it.
+
+`SPEC-fonts` `## Non-goals` says **"no variable-font axes. A weight is a face or it does not exist"**,
+and the repository's shipped faces are static instances derived ahead of the build by `tools/fontgen`
+precisely so that *"a face generated at build time makes the PDF a function of the build environment"*
+is avoided. **Measured today:** `google/fonts` ships some families static (`Kanit`, `Prompt`,
+`Chakra Petch`, `Bebas Neue` — every weight as its own `.ttf`) and others **variable only** (`Anuphan`
+is `Anuphan[wght].ttf` and nothing else). A VF-only family has **no `-Regular.ttf` to fetch.**
+
+**Three answers, and the owner picks one.** (a) **Refuse VF-only families**, listing them with a stated
+reason — consistent with the Non-goal and with this repository's habit of stating declines rather than
+hiding them, at the cost of silently shrinking "1,946 families" by an unmeasured fraction. (b) **Admit
+the VF file at its default instance**, which renders and which the engine will decode, but which makes
+the document carry axes the format says do not exist. (c) **Instance in the browser**, which is
+`tools/fontgen`'s job moved to the client and makes the embedded face a function of the runtime — the
+exact thing the static-instance rule exists to prevent.
+
+**MEASURED, same session, so the choice is not made blind** (`fonts.google.com/metadata/fonts`, and
+`api.github.com/repos/google/fonts/contents/ofl/<family>` for the four spot checks; 2026-09-02):
+
+- **558 of 1,946 families — 28.7% — declare axes.** Under (a) more than a quarter of the library the
+  design promises is listed and unusable.
+- **6 of 34 Thai families — 17.6%:** `Anuphan`, `Google Sans`, `Noto Sans Thai`,
+  `Noto Sans Thai Looped`, `Noto Serif Thai`, `Playpen Sans Thai`.
+- **"Declares axes" and "VF-only" are the same set, not an upper bound on it.** Spot-checked four:
+  `Anuphan[wght].ttf`, `NotoSansThai[wdth,wght].ttf`, `NotoSerifThai[wdth,wght].ttf` and
+  `PlaypenSansThai[wght].ttf` are each the ONLY `.ttf` in their directory. Upstream ships no statics
+  beside them. Meanwhile `Kanit`, `Prompt` and `Chakra Petch` ship every weight as its own file and
+  declare no axes.
+- **The fact that should decide it:** two of those six — **`Noto Sans Thai` and `Noto Serif Thai` —
+  are faces THIS PRODUCT ALREADY SHIPS**, as static instances derived by `tools/fontgen` from
+  `.font-sources/NotoSansThai-VF.ttf`. Option (a) would list, and refuse, a family the author can
+  already use. That reads as a bug however carefully it is worded.
+
+**Engineering now recommends (a) with a stated exception rather than (a) plain:** refuse VF-only
+families **by default**, and note that the derivation which makes `Noto Sans Thai` static already
+exists in this repository and runs **ahead of the build**, not in the client — so a fourth option (d)
+is open that (c) is not: **grow the shipped/derived set** for families worth instancing, and leave the
+live path to static-only families. That keeps "a weight is a face" true and keeps the PDF a function
+of the source rather than of the runtime. **Still the owner's call.**

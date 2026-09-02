@@ -1,0 +1,253 @@
+---
+title: 'Story 16.1: A font arrives from the web with its terms attached'
+type: 'feature'
+created: '2026-09-02'
+status: 'blocked'
+review_loop_iteration: 0
+followup_review_recommended: true
+baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
+context:
+  - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
+  - '{project-root}/_bmad-output/specs/spec-fonts/font-catalogue.md'
+  - '{project-root}/_bmad-output/specs/spec-folio/folio-format.md'
+  - '{project-root}/_bmad-output/implementation-artifacts/epic-8-15-decision-log.md'
+warnings: ['multiple-goals']
+deferred: []
+---
+
+## In plain terms (read this first if you just want the gist)
+
+*This section is background, not a requirement; the contract below governs.*
+
+The designer has shipped with twenty-one typefaces, chosen when it was built. From here it reaches the
+library the web publishes — around two thousand families, thirty-four of them Thai — and fetches the
+one the author picks, at the moment they pick it.
+
+Two things about that are less simple than they sound, and the story is built around both.
+
+The first is that the **list** cannot be fetched. Google publishes it, but not in a way a browser is
+allowed to read, so the list ships with the designer and ages between releases exactly as the old
+catalogue did. What is genuinely live is the typeface itself. Anyone describing this as a live font
+browser without that qualification is saying something untrue.
+
+The second is the paperwork, and it matters more than it sounds. A typeface put into a document
+carries terms — whose it is, and what the person receiving the file may do with it. Until now those
+terms were checked when the designer was built, by a gate that failed the build. Fetching at the
+moment of choosing moves that check to the author's machine, in the middle of a click. This story
+gives that check a home and a test, because the last time this went wrong seventeen of twenty-one
+typefaces travelled under another project's licence, and nobody noticed until review.
+
+One question is genuinely unresolved and is why this story is not ready to build: more than a quarter
+of the library ships in a form this product deliberately does not accept, and two of the affected
+families are ones it already includes.
+
+<intent-contract>
+
+## Intent
+
+**Problem:** `SPEC-fonts` CAP-3 is a **bundled catalogue of 21 families**, curated by a build-time
+licence gate. The owner has ruled (**D-16.1**) that the shortlist is not the product: the author
+reaches the published library. That reverses the `## Non-goals` clause *"No live font service. No
+Google Fonts API, no arbitrary URL"* — the second reversal of that clause on 2026-09-02, after
+D-8.4d.1 struck its third phrase — and it moves the licence admission that D-8.5.2/D-8.5.3 made a
+**build gate** into the **runtime**, which is where D-8.6.5's defect (17 of 21 faces carrying another
+project's licence) would now be reachable with nothing watching.
+
+**Approach:** A **snapshotted index** and a **live face fetch**, because CORS leaves no other shape
+(D-16.3). Snapshot `fonts.google.com/metadata/fonts` at build time into a trimmed typed module; fetch
+bytes, `OFL.txt` and `METADATA.pb` from `raw.githubusercontent.com/google/fonts` on pick; apply the
+four-identifier allowlist to the fetched licence **before any byte is embedded**; hand the existing
+`embedFontFamily` command exactly what it already requires. Amend the forbidden-host scan rather than
+deleting it (**D-16.4**).
+
+## Boundaries & Constraints
+
+**Always:**
+- **The word "live" is qualified everywhere it appears, in UI strings and in prose.** D-16.3 measured
+  that `fonts.google.com/metadata/fonts` returns **no `access-control-allow-origin`**; the browser
+  cannot read it. The index is a build-time snapshot and the product says so.
+- **Bytes come from `raw.githubusercontent.com/google/fonts`, never from `fonts.googleapis.com/css2`.**
+  Measured 2026-09-02: `css2` under a modern browser UA returns **`woff2`**, which
+  `decodeRecognisedFont` refuses by design (`font/ttf` and `font/otf` only, `font/woff2` deliberately
+  outside the set), **split by `unicode-range` into per-script subsets**, which would embed partial
+  coverage into a document naming the whole family. The TTF that endpoint serves to a legacy UA is
+  unreachable: a browser cannot set `User-Agent`.
+- **Which file is Regular is READ, not constructed.** Take it from that family's `METADATA.pb`
+  `fonts { filename, style: "normal", weight: 400 }` entry. A filename assembled from the family name
+  is a guess that will be wrong.
+- **`licenceText` is the upstream file, never a hand-copy.** `font-catalogue.md`'s existing rule — a
+  hand-copy "would be a second authority on the terms" — transfers verbatim: fetch that family's
+  `OFL.txt` (or the licence file `METADATA.pb` names) and carry its bytes.
+- **`copyright` comes from the face's own `name` table, nameID 0**, "the one statement of provenance
+  that cannot be edited from outside the binary". It is not taken from `METADATA.pb`.
+- **The licence allowlist is applied at runtime, in one named place, with a test.** OFL-1.1,
+  Apache-2.0, MIT, UFL. Unclassifiable is **refusal**, never a warning (D-8.5.2). This is the story's
+  highest-risk clause; treat it as such.
+- **The engine command does not change.** `embedFontFamily` already requires family, style, licence,
+  licenceText, copyright, source and refuses without them (`component_commands.go:2359-2410`). This
+  story changes where those values come from and nothing about what the document must contain.
+- **The forbidden-host scan is amended and grows, never deleted** (D-16.4). `fonts.googleapis.com` and
+  `fonts.gstatic.com` stay **forbidden** — D-16.3 proved them unusable, so forbidding them is free and
+  keeps the `woff2`/subset trap shut. Allowed hosts are declared in **one** module; an occurrence
+  elsewhere still fails the build. The population floor and positive control extend to the new half.
+- **Offline degrades, never breaks.** No network means no new family. It never means a document that
+  will not render: the three shipped Noto faces are the coverage, and an embedded face travels inside
+  the `.folio`.
+- Every recorded measurement carries **command, commit, tree state and working directory** (D-8.4j.8).
+- Commit only on `main`. Never push, never branch, never `git add -A`.
+
+**Block If:**
+- **D-16.5 is unresolved.** 558 of 1,946 families (28.7%) ship variable-only with no static Regular,
+  against a Non-goal that says a weight is a face or it does not exist. Six of 34 Thai families are
+  affected and **two of them — `Noto Sans Thai`, `Noto Serif Thai` — are faces this product already
+  ships** as `tools/fontgen` static instances. **This story does not start until the owner rules.**
+- **The runtime licence check would be best-effort.** If the four-identifier allowlist cannot be
+  applied to a fetched family with certainty, the family is refused, not admitted with a caveat.
+- **A face would reach `Assets` before its licence and copyright are in hand.** The order is
+  non-negotiable: classify, then embed.
+- **Any of the 23 golden digests moves**, or `SupportedMajor` would move.
+- **Story 16.0 is not closed.** Every acceptance here ends in an embed through the boundary 16.0 fixes.
+
+**Never:** host fonts (the one Non-goal clause D-16.1 leaves standing) · `woff2` · a `unicode-range`
+subset · an API key in the client bundle (D-16.3's refused alternative) · CJK families ·
+save-time subsetting · bold, italic or variable axes.
+
+## I/O & Edge-Case Matrix
+
+| Scenario | Input / State | Expected Output / Behavior | Error Handling |
+|---|---|---|---|
+| Pick a static family | `Kanit`, index snapshot present, network up | `METADATA.pb` → `Kanit-Regular.ttf` + `OFL.txt` fetched; licence classified; one embed command | No error |
+| Pick a family already in the machine store | Store holds the key | **No fetch**; embed from stored bytes (Story 16.2) | No error |
+| Pick a family already in this document | Asset key present | Dedupe by content hash; no second asset, no second history entry | No error |
+| VF-only family | `Anuphan[wght].ttf` is the only file | **Governed by D-16.5 — unresolved.** No implementation until ruled | — |
+| Unclassifiable licence | `METADATA.pb` names something outside the four | **Refused**, named, before any byte is embedded | Refusal at the control |
+| `OFL.txt` missing or empty | Licence file absent upstream | **Refused** — the document may not carry a face without its terms | Refusal, stating why |
+| `name` table has no nameID 0 | Face carries no copyright | **Refused** — `copyright` is required of an embedded face | Refusal, stating why |
+| Network down | Fetch rejects | *"You cannot add a family right now"*, stated; machine store still offered | Degradation, not an error state |
+| Upstream 404 | Family in a stale snapshot, gone upstream | Named refusal that says the snapshot is stale | Refusal, actionable |
+| Face over the engine's cap | > 6,288,384 bytes | The engine's existing located refusal | Refusal, anchored |
+
+</intent-contract>
+
+## Code Map
+
+**Measured endpoints (2026-09-02, wd `/Users/panitw/Projects/folio`, `curl` with `Origin: http://localhost:5173`, tree clean at `a40c34d`)**
+- `https://fonts.google.com/metadata/fonts` — 200, 2,699,611 bytes, **1,946 families**, **34 Thai**,
+  **no ACAO**. Fields present and usable: `family`, `category`, `subsets`, `designers`, `fonts` (style
+  keys), `axes`, `popularity`, `trending`, `size`, `isOpenSource`.
+- `https://fonts.googleapis.com/metadata/fonts` — **404**. Not the endpoint.
+- `https://raw.githubusercontent.com/google/fonts/main/ofl/<dir>/<Family>-Regular.ttf` — 200, **ACAO
+  `*`**, full static TTF (`Sarabun-Regular.ttf` = 90,220 bytes).
+- `.../ofl/<dir>/OFL.txt` — 200, ACAO `*`, 4,387 bytes for Sarabun, opening with its copyright line.
+- `.../ofl/<dir>/METADATA.pb` — 200, ACAO `*`, carries `designer`, `license`, `category`,
+  `fonts { name, style, weight, filename }`.
+
+**Designer (`folio-designer/`)**
+- `scripts/build-wasm.mjs` — validates and fingerprints `font-catalogue.json` into
+  `src/generated/runtime/catalogue-<id>.<hash>.ttf` and emits `src/generated/font-catalogue.ts` and
+  `runtime-fonts.css`. **The index snapshot is generated here**, beside them.
+- `font-catalogue.json` + `src/generated/font-catalogue.ts` — the 21-entry catalogue and its typed
+  projection (`catalogueFaces`, `scriptFallbackFaces`, `CatalogueFace`). **The shape the snapshot's
+  module should echo**, so `App.tsx` reads one kind of thing.
+- `src/App.tsx:608-627` — `pickCatalogueFamily`: fetch bytes from a precached URL, compute the
+  fallback tail from `scriptFallbackFaces`, send `embedFontFamilyCommand`. **The seam this story
+  widens**: same shape, different source, plus the licence and metadata fetches.
+- `src/font-chain-command.ts:69-98` — `embedFontFamilyCommand`. Its comment: *"THE FIELD COUNT IS PART
+  OF THE CONTRACT"* — 12 fields, matching `componentFields(raw, 12)` in Go. **Do not change it.**
+- `scripts/forbidden-font-hosts.mjs` — `FORBIDDEN_FONT_HOSTS`, `DECLARATION_MARKER`
+  (`folio:font-host-declaration`), `SCANNED_ROOTS`. Its header states what the scan may and may not be
+  used to claim; **the amendment must keep that discipline**.
+- `src/forbidden-font-hosts.test.ts` — positive control, population floor, comment-direction test. The
+  three tests that keep the scan from being green before it is correct.
+- `src/offline-lifecycle.ts`, `src/release-payload.ts:33` (`maximumCacheAssets = 64`) — the offline
+  release contract. A snapshot module is source, not a cache asset; **assert that it does not consume
+  a slot.**
+- `src/font-catalogue.test.ts` — reads assertions out of each binary's own tables (nameID 13 vs the
+  declared SPDX id). **The precedent for the runtime licence and `cmap` checks.**
+
+**Go (`folio-go/`)**
+- `component_commands.go:2359-2410` — `embedFontFamily`: `componentFields(raw, 12)`,
+  `embeddedFontRecord`, `embeddedFaceBytes`, `DecodeFontForRender`, hash, dedupe via
+  `assetKeyReferenced`, `maxCanvasFontFamilies` (256, `page_setup.go:513`). **Unchanged by this story.**
+- `internal/template/fontasset.go:178-206` — `decodeRecognisedFont` / `DecodeFontForRender` and the
+  face-size cap. **The reason `woff2` is not an option.**
+- `internal/template/parse.go` — the Story 8.6 rule refusing a chain-named asset without
+  `licence`/`licenceText`/`copyright`. **The parser this story must never be able to feed.**
+
+**Docs to amend**
+- `_bmad-output/specs/spec-fonts/SPEC.md` `## Non-goals` — strike the *"No live font service"* clause
+  in place, in the existing `~~…~~` + **AMENDED** form D-8.4d.1 used, preserving the original wording
+  verbatim; and amend D-8.4d.1's own surviving sentence, which this contradicts.
+- `_bmad-output/specs/spec-fonts/font-catalogue.md` — `## Why bundled rather than fetched` is now
+  false about the bytes and **still true about the list**; say exactly that.
+- `_bmad-output/specs/spec-folio/folio-format.md` — the font-asset section: the record is unchanged,
+  its **source** is not.
+
+## Tasks & Acceptance
+
+**Execution:**
+- **Gate D-16.5 with the owner before anything else.** Nothing in this story is safe to build over an
+  unresolved answer, because it decides which families the browser may even list.
+- `scripts/` — a build step that snapshots `fonts.google.com/metadata/fonts`, trims it to the rendered
+  fields, and emits a typed module beside the existing generated catalogue. **Record the snapshot's
+  date and family count in the module** so the UI can state its own staleness.
+- `src/` — one **font-source module**, the single declared home of every allowed host (D-16.4). It
+  resolves a family to its `METADATA.pb`, its Regular filename, its face bytes and its licence text,
+  and it is the only file in the repository allowed to name those hosts.
+- `src/` — the **runtime licence admission**: the four-identifier allowlist applied to the fetched
+  licence before any embed, refusal on anything else, with the refusal's text written for an author.
+- `src/` — a **nameID 0 reader** over the fetched face, or an engine-side derivation if the plan gate
+  prefers Go to own it; either way `copyright` comes from the binary.
+- `src/App.tsx` — widen `pickCatalogueFamily` to take a family from the snapshot rather than a bundled
+  `CatalogueFace`, keeping the fallback-tail proposal and the existing command untouched.
+- `scripts/forbidden-font-hosts.mjs` + `src/forbidden-font-hosts.test.ts` — the amendment and its
+  second half, with the positive control and population floor extended. **The new half must red when
+  the font-source module's declaration is removed.**
+- Tests: a family resolving end to end from snapshot row to command payload; an unclassifiable licence
+  refused; a missing `OFL.txt` refused; a missing nameID 0 refused; offline degrading to the stated
+  message; the `woff2` route asserted **absent** from source.
+- Docs: the three amendments above, and register in `deferred-work.md` what moving the licence gate to
+  runtime now leaves unwatched at build time.
+
+**Acceptance Criteria:**
+- Given the family index, when the designer is built, then a trimmed snapshot ships with it carrying
+  its own date and count, and the browser never fetches the index at runtime.
+- Given a picked family, when its bytes are fetched, then they are a full static TTF from the declared
+  host, chosen from `METADATA.pb`, and never a `woff2` or a `unicode-range` subset.
+- Given any face that reaches a document, when it is embedded, then `licenceText` is the upstream
+  licence file fetched with it, `copyright` is the face's own nameID 0, and `licence` is one of the
+  four admitted identifiers — or the pick is refused before any byte is written.
+- Given a licence outside the allowlist, when it is classified, then the pick is refused and named,
+  never warned about.
+- Given the forbidden-host scan, when an allowed host appears outside the declaring module, then the
+  build fails; and when the declaring module is deleted, the new half's control reds.
+- Given no network, when the author opens the browser, then it states that a family cannot be added
+  right now and offers what the machine already holds.
+
+## Design Notes
+
+**Why the index is snapshotted and that is not a compromise being hidden.** The alternative that would
+make it genuinely live is the Developer API, and D-16.3 refused it on arithmetic: it needs an API key
+in the client bundle — a secret nobody can keep, on someone else's quota — and it returns no licence
+text, so `raw.githubusercontent.com` would still be required. It buys one property and costs two.
+
+**The licence check is the real subject of this story.** The UI work is Story 16.3. What changes
+here is that an admission decision which used to fail a build now happens on an author's machine over
+bytes nobody reviewed. D-8.6.5 is the precedent and it is not reassuring: 17 of 21 catalogue faces
+shipped under another project's licence, green, until a review caught it. That defect was possible
+with a build gate watching. This story removes the gate and must replace it with something testable.
+
+**Why `embedFontFamily` is untouched.** It already demands exactly what a `.folio` requires and
+refuses without it, so the writer still cannot produce a document its own parser rejects. Changing the
+source of those values while leaving that guard in place is what keeps this story from reaching the
+format at all.
+
+## Verification
+
+- `cd folio-designer && npm run scan:font-hosts && npm run test && npm run build`
+- `cd folio-go && go test ./...`
+- The 23 golden digests, unmoved; `SupportedMajor` still 2.
+- A browser run: pick a static family with the network up; with it down; and one whose licence is
+  outside the allowlist.
+- The measured endpoint table in D-16.3 re-taken at implementation HEAD, since it is an external
+  dependency and this story's whole mechanism rests on it.

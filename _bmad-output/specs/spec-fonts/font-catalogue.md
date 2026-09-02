@@ -14,6 +14,19 @@ known size, verified like every other release asset.
 
 The cost is honest and stated: the list changes only when the designer is released.
 
+**AMENDED 2026-09-02 by OWNER DECISION (D-16.1), and this section is now half true.** The paragraph
+above is preserved verbatim because its reasoning is what the decision was taken against. **What
+changed:** the catalogue is no longer the only source. A family's **face bytes, its upstream licence
+text and its per-family metadata are fetched from a third party at the moment the author picks it** —
+`raw.githubusercontent.com/google/fonts`, which serves a full static TTF with `access-control-allow-
+origin: *`, never `fonts.googleapis.com/css2`, which serves `woff2` this engine refuses by design and
+`unicode-range` subsets that would embed partial coverage. **What did NOT change, and it is the
+sentence above that survives:** the **list** still ships with the app. `fonts.google.com/metadata/fonts`
+sends no CORS header, so a browser cannot read it; the index is snapshotted at build time and *"the
+list changes only when the designer is released"* remains exactly as true, and exactly as costly, as
+it was for the 21 bundled families. Anyone describing the result as a live font browser without that
+qualification is describing something this product does not do. See D-16.1, D-16.3 and Epic 16.
+
 ## Selection criteria
 
 | Criterion | Rule |

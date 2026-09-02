@@ -5285,3 +5285,299 @@ stamp cannot ship
 **When** they follow it after the tag
 **Then** they produce a PDF in minutes against the released version — C5 re-verified against the
 thing that actually ships, not against the working tree
+
+## Epic 16: A font arrives from the web, and stays on this machine
+
+Epic 8 ended with a font list an author can finally use and a file that carries what it names. It also
+ended with **21 families**, chosen by a build-time licence check, changing only when the designer is
+released. The owner has looked at that list beside the 1,946 families Google Fonts publishes — 34 of
+them Thai, against this catalogue's three — and ruled that the curated set is not the product
+(**D-16.1**). The author reaches the library, not the shortlist.
+
+This epic is therefore **the second reversal of the same Non-goal in one day**, and the record says so
+plainly. D-8.4d.1 moved *when* a face is fetched, on a measurement. D-16.1 moves *what may be fetched,
+and from whom*, on a product judgement with no measurement behind it. Under D-000.8 one reversal is
+the system working; two in a day is worth naming rather than absorbing.
+
+**What is actually being built is narrower than "live", and the epic is honest about it from its first
+line.** CORS decides the shape, not preference (**D-16.3**, measured): `fonts.google.com/metadata/fonts`
+returns all 1,946 families and **no `access-control-allow-origin`**, so a browser cannot read it and the
+**index is a build-time snapshot** that ages between releases exactly as `font-catalogue.json` did.
+What *is* live is the part that matters — **the bytes, the licence text and the per-family metadata**,
+fetched from `raw.githubusercontent.com/google/fonts` on the author's pick, where the face is a **full
+static TTF** and `OFL.txt` is the upstream licence text D-8.6.1 made mandatory. The obvious route,
+`fonts.googleapis.com/css2`, is **unusable twice over** from a browser: it serves `woff2`, which
+`decodeRecognisedFont` refuses by design, and it splits the family by `unicode-range` into subsets,
+which would embed partial coverage into a document claiming the whole family.
+
+Three things follow that are not UI work. **The licence check moves from build time to run time** —
+the defect D-8.6.5 caught across 17 of 21 faces is now reachable in a place no build gate watches, and
+16.1 owes that check its own home. **The forbidden-host scan is amended and grows a second half rather
+than being deleted** (D-16.4): the two hosts it already forbids stay forbidden, because D-16.3 proved
+them unusable anyway, and the newly-allowed hosts are policed by a rule that a source occurrence
+outside the one module that declares them is still a failure. And **a face fetched once is kept**
+(D-16.2) — in IndexedDB, keyed by the same SHA-256 content address the `.folio` uses, because the
+owner's "local storage" is a ~5 MB string quota and one measured face is 90,220 bytes before base64's
++33%.
+
+16.3 and 16.4 are the design. `Font Browser.dc.html` draws a browser this product has no equivalent of
+— specimens at an author-set size in the author's own text, a Thai sample toggle, script and category
+chips, staged multi-select, and a footer that counts what is about to be embedded — and a family
+dropdown that names **three sources** where today's names one. The dropdown is where the epic is
+either coherent or not: *in this template*, *added from web fonts*, and *available locally* are three
+different relationships to a font, and an author who cannot tell them apart cannot reason about what
+their file will contain.
+
+**One question is open and gates the first story** (**D-16.5**): **558 of 1,946 families — 28.7% —
+ship variable-only**, with no static Regular to fetch, against a Non-goal that says a weight is a face
+or it does not exist. Six of the 34 Thai families are among them, and **two of those six are faces this
+product already ships** as `tools/fontgen` instances. Refusing them plainly reads as a bug.
+
+**FRs covered:** none new — FR33's boundary is re-drawn, not crossed: nothing is fetched at RENDER time
+**Also lands:** D-16.1, D-16.2, D-16.3, D-16.4 · UX-DR24, UX-DR25
+
+### Story 16.0: The embed boundary stops throwing
+
+As a template author,
+I want picking a typeface to work,
+So that the rest of this epic has something to build on.
+
+**Covers:** the epic's precondition · no FR
+**Reported:** by the owner, 2026-09-02, against `main` at `a40c34d`, with a screenshot: the typography
+panel shows `The engine returned an invalid response` under the family control after a pick
+
+**Acceptance Criteria:**
+
+**Given** the reported failure
+**When** it is diagnosed
+**Then** the cause is **named and evidenced**, not guessed at. What is already known bounds the search
+and is recorded here so it is not re-derived: the string appears in exactly ONE place,
+`folio-designer/src/engine.worker.ts:82`, reached only from `execute`'s bare `catch` — so it means
+`host.handle(...)` threw or its output would not parse, i.e. a WASM-side fault, and **never** an engine
+refusal, which travels the located-diagnostic path with a message of its own
+
+**Given** the suspicion that some catalogue faces are simply bad input
+**When** it is tested at the Go layer
+**Then** it is **already refuted**, measured 2026-09-02 (wd `folio-go`, `go test ./wasm`, tree clean at
+`a40c34d`): all 21 catalogue faces pass `embedFontFamily` natively through `wasm.Engine.Apply`. The
+only failure in the whole shipped font tree was `notosanssc` at 10,595,932 bytes, refused **correctly**
+and **located** — `folio: face exceeds the 6288384-byte supported size` — and that face is not in the
+catalogue. **The fault is at the WASM/worker boundary, not in the command**
+
+**Given** the boundary
+**When** it is examined
+**Then** the payload path is measured rather than reasoned about: a 598,060-byte face becomes ~800 KB
+of base64 inside the command JSON, which `execute` base64-encodes **a second time** — byte by byte,
+with string concatenation, at `engine.worker.ts:99` — into a ~1.06 MB string handed to Go. Whether the
+throw is that path, wasm memory, or something else is what this story establishes
+
+**Given** the diagnosis
+**When** the fix lands
+**Then** the bare `catch` at `engine.worker.ts:80-82` **stops erasing the cause**: whatever threw is
+reported in terms someone can act on, because a boundary whose only vocabulary is *"invalid response"*
+cannot be debugged from a user's screenshot — which is exactly how this defect arrived
+
+**Given** a browser
+**When** the fix is verified
+**Then** it is verified **in one**, not only in Go. This repository's e2e specs are compile-checked and
+never executed (D-000.4), and that is precisely why a browser-boundary defect reached the owner; this
+story's own claim is unprovable without a real browser run, so it either runs one or states plainly
+that it did not
+
+### Story 16.1: A font arrives from the web with its terms attached
+
+As a template author,
+I want the fonts I can choose from to be the ones the web publishes, not a shortlist of twenty-one,
+So that our brand's typeface is a search rather than a request to whoever builds the designer.
+
+**Covers:** CAP-3 (re-drawn) · D-16.1, D-16.3, D-16.4, D-16.5
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html`
+  — the browser's header count, and the `+ Add` / `In template` button states that a fetch drives
+
+**Acceptance Criteria:**
+
+**Given** the family index
+**When** the designer is built
+**Then** a snapshot of `fonts.google.com/metadata/fonts` is taken at build time and trimmed to the
+fields the browser renders — family, category, subsets, designers, style count, popularity, trending,
+and whether the family declares axes — because **the browser cannot fetch it** (D-16.3: no
+`access-control-allow-origin`), and the snapshot's staleness is stated in the UI rather than implied
+
+**Given** an author picking a family
+**When** its bytes are fetched
+**Then** they come from `raw.githubusercontent.com/google/fonts` as a **full static TTF**, never from
+`fonts.googleapis.com/css2` — which serves `woff2` the engine refuses by design and `unicode-range`
+subsets that would embed partial coverage — and the file is chosen from that family's `METADATA.pb`
+`fonts { filename }` entry for weight 400, normal, rather than by constructing a filename
+
+**Given** every face that reaches a document this way
+**When** it is embedded
+**Then** its `licenceText` is the family's **upstream `OFL.txt` fetched with it**, its `copyright` is
+read from the face's own `name` table nameID 0, and its `licence` identifier is `METADATA.pb`'s —
+so D-8.6.1's mandatory record is satisfied from sources that cannot disagree with the bytes, and the
+command still refuses to embed a face missing any of the three
+
+**Given** the licence admission that used to be a build gate (D-8.5.2/D-8.5.3)
+**When** it now happens at authoring time
+**Then** it happens **somewhere named, in code, with a test** — the four-identifier allowlist is
+applied to the fetched `METADATA.pb` licence before any byte is embedded, and an unclassifiable
+licence is a refusal, never a warning, exactly as the build gate treated it
+
+**Given** `scripts/forbidden-font-hosts.mjs`
+**When** the newly-allowed hosts appear in source
+**Then** the scan is **amended, not deleted** (D-16.4): `fonts.googleapis.com` and `fonts.gstatic.com`
+stay forbidden, the allowed hosts are declared in one module, an occurrence anywhere else still fails
+the build, and the population floor and positive control that keep the scan from passing vacuously are
+extended to the new half
+
+**Given** a family that ships variable-only, with no static Regular
+**When** this story is planned
+**Then** D-16.5 is **ruled by the owner before code is derived from it** — 558 of 1,946 families are
+affected, including `Noto Sans Thai` and `Noto Serif Thai`, which this product already ships as static
+instances, so "refuse it" and "admit the variable file" are both visibly wrong answers in at least one
+case each
+
+**Given** no network
+**When** the author opens the browser
+**Then** it says so in its own terms and offers what the machine already holds, degrading to *"you
+cannot add a family right now"* — never to a document that will not render, because the shipped Noto
+faces remain the coverage and an embedded face travels inside the `.folio`
+
+### Story 16.2: A fetched face stays on this machine
+
+As a template author,
+I want a typeface I have already fetched to be there next time,
+So that adding our brand font to the next statement is not another download and another wait.
+
+**Covers:** D-16.2
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html`
+  — the dropdown's `AVAILABLE LOCALLY` group
+
+**Acceptance Criteria:**
+
+**Given** a face fetched by a pick
+**When** the fetch succeeds
+**Then** its bytes, its licence text, its copyright and its family metadata are written to an
+**IndexedDB** store keyed by the **SHA-256 of the bytes** — the same content address the `.folio`'s
+`assets` map uses — so the store and the document agree on what a face is by construction
+
+**Given** the owner's words were "local storage"
+**When** the store is built
+**Then** it is **not** `localStorage`, and the reason is recorded in code: a ~5 MB per-origin string
+quota against a measured 90,220-byte face that base64 inflates by 33%, with a synchronous
+`QuotaExceededError` and no partial-write path
+
+**Given** a face already in the store
+**When** the author picks that family again, in this or any later document on this machine
+**Then** **nothing is fetched** — the store answers — and the existing embed path runs over the stored
+bytes exactly as it runs over a fetched face today
+
+**Given** the store
+**When** it is read at startup
+**Then** its contents populate the dropdown's `AVAILABLE LOCALLY` group, which is **faces this machine
+has fetched** and never the operating system's font list (D-16.2) — no host font is enumerated or read
+
+**Given** a browser that clears site data, a private window, or a storage failure
+**When** the store cannot be read or written
+**Then** the designer works without it — the group is empty, picks still fetch, and the failure is a
+stated degradation rather than an error the author cannot act on
+
+**Given** a face in the store that no document on this machine uses
+**When** the author wants the space back
+**Then** there is a way to remove it that says what it is removing, because a store that only ever
+grows is a store nobody can reason about
+
+### Story 16.3: The font browser is the dialog the design drew
+
+As a template author,
+I want to see a typeface set in my own words at the size I will print it,
+So that choosing a font is looking at it rather than reading its name.
+
+**Covers:** FR33's authoring side · UX-DR24, UX-DR25
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html`
+  — the whole modal: header, PREVIEW / WRITING SYSTEM / CATEGORY rail, Row and Grid results, footer
+
+**Acceptance Criteria:**
+
+**Given** the browser is opened from the dropdown's `Add fonts…` row
+**When** it appears
+**Then** it is the design's modal — header with the family count and a search field, a left rail
+carrying PREVIEW, WRITING SYSTEM and CATEGORY, a results area, and a footer that counts what is staged
+— and the count it prints is the **snapshot's** count, said in words that do not claim to be live
+
+**Given** each result
+**When** it is rendered
+**Then** it carries a **specimen set in that family**, at the author's chosen size, in the author's
+preview text or the design's default — which means the family's face must be registered for preview
+independently of any document embedding it, since the canvas registers only faces the document already
+carries
+
+**Given** the Thai sample toggle
+**When** it is on and the family covers Thai
+**Then** the specimen is the design's Thai sentence rather than the Latin one, and the family carries
+the design's `Thai + Latin` badge
+
+**Given** the WRITING SYSTEM and CATEGORY chips and the sort control
+**When** they are used
+**Then** they filter and order the snapshot's own fields, `reset filters` appears exactly when a filter
+is active, and an empty result says which query produced it
+
+**Given** several families staged with `+ Add`
+**When** the footer's confirm is pressed
+**Then** each is fetched and embedded, the footer states progress rather than freezing, a family that
+fails to fetch is reported by name without abandoning the others, and the successful ones are in the
+document
+
+**Given** the design draws `Row` and `Grid` views and a `⌘G` shortcut on the opening row
+**When** the browser is built
+**Then** both views ship and the shortcut opens the browser, or the omission is ruled and recorded
+rather than left as a silent gap between the design and the product
+
+**Given** the modal
+**When** it is operated by keyboard or read by assistive technology
+**Then** focus is trapped inside it, Escape closes it, every chip and toggle is a real control with a
+name, and a staged family reports that it is staged (UX-DR25)
+
+### Story 16.4: The family control names three sources
+
+As a template author,
+I want the font list to tell me where each font comes from,
+So that I know what my file will contain before I save it.
+
+**Covers:** UX-DR24
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html`
+  — the TYPOGRAPHY dropdown, its three groups and its `Add fonts…` footer
+
+**Acceptance Criteria:**
+
+**Given** the family control
+**When** it is opened
+**Then** it draws the design's three groups — `IN THIS TEMPLATE`, `ADDED FROM WEB FONTS` and
+`AVAILABLE LOCALLY` — replacing today's two, with the filter field the design puts at the top, and the
+`Add fonts…` row pinned at the bottom
+
+**Given** the three groups
+**When** an author reads them
+**Then** they name three different relationships to a font and the difference is legible without
+explanation: *in the file*, *fetched and now in the file*, *on this machine but not in this file* —
+and a font's group changes because the author did something, never on its own
+
+**Given** the disk-font decline Story 8.6 stated at this control
+**When** the control is rebuilt
+**Then** the decline is **re-examined against D-16.1, not carried forward unread** — it was derived
+from the catalogue being the only source of licence terms, and that premise has changed; it is either
+re-derived and restated, or lifted deliberately
+
+**Given** the listbox's `role="presentation"` children, registered as deferred at Story 8.6
+**When** the control is rebuilt
+**Then** that defect is fixed here rather than multiplied — three groups is three more headings inside
+a listbox that already breaks its required-owned-elements rule four times
+
+**Given** a font in `AVAILABLE LOCALLY`
+**When** it is picked
+**Then** it is embedded into the document from the machine-local store with no fetch, and it moves to
+`IN THIS TEMPLATE` — the same one-command, one-undo transaction Story 8.6 built
+
+**Given** the status bar
+**When** fonts have been added
+**Then** it states how many and which is selected, as the design's own status line does

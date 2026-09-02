@@ -101,6 +101,27 @@ the faces a document uses are declared in it, chosen in the designer, and carrie
   render** — and a face already embedded travels **inside the `.folio`** (Story 8.6), so no existing
   document regresses. **This clause records the POLICY only.** The fetch mechanism, its caching
   behaviour and the offline degradation path are the implementing story's design, not this record's.
+  **AMENDED AGAIN, SAME DAY, 2026-09-02 by OWNER DECISION (D-16.1), which reverses what D-8.4d.1 left
+  standing.** D-8.4d.1's sentence *"no Google Fonts API and no arbitrary URL — the catalogue remains
+  the only source, and nothing is fetched from a third party"* is preserved above verbatim and **is no
+  longer this project's policy.** **What changed:** the curated catalogue stops being the only source.
+  The author reaches the published library — ~1,946 families, 34 of them Thai — and a family's face is
+  fetched from a third party at the moment it is picked. Taken as a **product judgement, with no
+  measurement behind it**, and recorded as such: 21 curated families is not the product the owner
+  wants. **This is the SECOND reversal of this clause on one day** (D-000.8: one reversal is the system
+  working; two is worth naming). **What still holds, and it is now the only surviving clause of the
+  original:** **no host fonts** — see the separate Non-goal below, which is untouched. **What is NOT
+  live, and the record refuses to imply otherwise (D-16.3, measured):** the family **index** cannot be
+  fetched by a browser — `fonts.google.com/metadata/fonts` sends no `access-control-allow-origin` — so
+  it ships as a **build-time snapshot** and ages between releases exactly as this catalogue did. Only
+  the **face, its licence text and its per-family metadata** are live. **The accepted cost, with its
+  mitigant:** no network means no new family, degrading to *"you cannot add that family right now"*,
+  never to a document that will not render — but the failure is now a **third party's uptime** rather
+  than the release's own origin. **The risk that is not the network's:** the licence admission this
+  project made a **build gate** (D-8.5.2/D-8.5.3) becomes a **runtime check in the browser**, and
+  D-8.6.5 — 17 of 21 faces carrying another project's licence, undetected until review — is the
+  precedent for what that costs when it is not watched. **This clause records the POLICY only**; the
+  mechanism is Epic 16's.
 - **No host fonts.** Faces installed on the authoring or rendering machine are never enumerated or
   read.
 - **No synthetic bold or oblique**, and no variable-font axes. A weight is a face or it does not
