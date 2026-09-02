@@ -7634,3 +7634,67 @@ repository root and matched `goldenDigestRecord` one for one.
 compatibility promise covers.
 
 ---
+
+### DW-168 — a test whose verdict depends on filesystem state can be served a stale PASS by a build cache keyed on code, so its green is not evidence
+
+- **Deferred by:** **Story 16.1a** (2026-09-03). Not a defect in any one test — a **class of false
+  green** that this repository's own tooling produces by design, found the expensive way and registered
+  so the next occurrence is cheap.
+- **Owner:** **whoever next adds a test that reads the tree at runtime**, or the first story that adds a
+  CI invocation for the Go modules — whichever comes first. Naturally discharged by whoever makes the
+  invocation authoritative.
+- **Severity:** **MEDIUM, and higher than it looks.** The failure mode is a **passing report**, so
+  nothing surfaces it; the loss is not a broken build but a gate that stopped gating while continuing to
+  say it had.
+- **Status:** OPEN.
+
+**THE GENERAL SHAPE, stated first because the instance is not the point.** A build cache decides whether
+to re-run a test by hashing **the inputs it knows about** — for Go, the compiled package and its
+declared dependencies. A test that walks the **filesystem at runtime** has an input the cache cannot
+see. Change that input without changing a line of code, and the cache correctly concludes nothing it
+tracks has moved, and replays a verdict recorded against a **different tree**.
+
+> **A green from a filesystem-walking test is not evidence unless the cache was bypassed.** It is a
+> statement about the tree as it stood the last time the test actually ran, which may be any earlier
+> tree.
+
+**What makes it worse than an ordinary stale result:** the two states are **indistinguishable at the
+report**. `ok  <pkg>  (cached)` and `ok  <pkg>  0.65s` both read as green to a human skimming, and to
+every automated reader that greps for `FAIL`. It is the same both-sides-move-together vacuity D-16.R.12
+named one level up, arriving through the toolchain rather than through the test's own logic.
+
+**THE WORKED INSTANCE — `lint/internal/licence`'s `TestLicenceSignalCensus`.** It enumerates every
+`LICENSE*`/`COPYING` file in the repository and requires each to have a **recorded verdict** in
+`pinnedCensus` (AD-26: a redistributed licence must not land unrecorded). Story 16.1a committed **ten new
+licence texts** and **no change to any Go file in that package**. `cd lint && go test ./...` reported
+**every package `ok`, including that one, from cache** — a verdict recorded against a tree that did not
+yet contain the ten. The story's first verification pass read that green and reported the module clean.
+Re-run with `-count=1`, the test **fails**, naming each of the ten. Nothing about the test was wrong; the
+only thing wrong was the evidence taken from it.
+
+**Why the header comment is not the fix.** A note in `licencecensus_test.go` warns whoever opens that
+file. **The people who need the warning are the ones who never open it** — anyone running the module's
+suite from a story that touched only assets. The comment is kept; this entry is the durable home.
+
+**Other members of the class in this repository, not audited but named so the next reader starts with a
+list rather than a blank page:** anything under `lint/internal/manifest` that walks the tree
+(`TestManifestUpToDate` compares committed `MANIFEST.md` against a live walk), anything reading
+`testdata/` it does not import, and the `folio-go` tests that open fixture files by path. **The
+designer's Vitest suite is NOT in the class** — it has no result cache of this kind, and its
+filesystem-reading tests re-run every invocation.
+
+**The trigger:** a story that changes files without changing code in the module whose tests read those
+files — an asset batch, a fixture addition, a licence text, a regenerated snapshot. Story 16.1a is
+instance one.
+
+**What discharges it:** any one of these, and the cheapest that actually holds is enough —
+(a) the Go suites invoked with `-count=1` wherever a story's verification is recorded, so the flag is
+not a thing to remember; (b) the filesystem-walking tests declaring their inputs to the cache (Go 1.24's
+`testing/synctest` does not help here; `os.ReadFile` of a declared input does, but the census walks a
+directory tree, which does not have a declaration form); or (c) those tests moved behind a build tag run
+by an invocation that never caches. **Option (a) is the one this story used and the one worth pinning
+first** — it costs a flag and removes the whole class from the reporting path, whereas (b) and (c) each
+change how the tests are written for a benefit only the invocation can guarantee.
+
+---
+

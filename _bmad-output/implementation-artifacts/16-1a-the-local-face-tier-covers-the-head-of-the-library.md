@@ -635,7 +635,9 @@ because Go caches on the package's own inputs and `TestLicenceSignalCensus` walk
 `LICENSE*` texts. Ten new licence texts landed, the test's verdict changed, and the cache served a PASS
 recorded before they existed. **A batch that adds redistributed licences and reads a cached green has
 measured nothing.** The stale report is corrected here rather than quietly overwritten, and the reason is
-written into the census table's own header comment so the next batch meets it before the trap does.
+written into the census table's own header comment so the next batch meets it before the trap does —
+**and registered as DW-168**, stated as the general shape rather than as a Go anecdote, because the
+people who need the warning are precisely the ones who never open that file.
 
 **What the census actually required (AD-26).** All ten texts classify correctly and none was
 unclassifiable — the failure was that their verdicts were **not RECORDED**. Ten rows were added to
