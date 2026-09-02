@@ -318,9 +318,11 @@ development_status:
   # and the order is now pinned by TestAppendRectContentStreamEdgeOperandsArePostfix.
   # 9.1 ALSO shipped folio-go/text_alignment.go with no story file, no AC and no FR, and that
   # is what moved the corpus (D-15.1.1). Its two ROUNDED branches -- align:"center" and
-  # valign:"middle", the file's only geom.ScaleRound site -- are declared by NO fixture and so
-  # have zero golden coverage: DW-24.
-  # NOT yet reviewed or retrospected; story files are not written.
+  # valign:"middle", the file's only geom.ScaleRound site -- were declared by NO fixture and so
+  # had zero golden coverage. That was DW-24, and it is CLOSED: Story 7.3 (2026-08-30) re-derived
+  # the enumeration, gave each site a falsifier, and registered fixtures/alignment-rounding/.
+  # Corrected 2026-09-02 during the Epic 9 reconstruction; the line above had outlived its defect.
+  # Story files reconstructed 2026-09-02 from the shipped diff, and reviewed for the first time.
   epic-9: in-progress
   9-1-the-engine-paints-a-component-s-background-and-border: review
   9-2-line-and-rectangle-draw-in-the-designer-and-in-the-pdf: review
