@@ -805,3 +805,104 @@ unnecessary. Written into Story 16.1a's Design Notes.
 faces"*. Under D-16.R.2a the batch takes upstream statics rather than deriving, so it **should not**
 bite — noted in the story anyway, because *"should not bite"* is how tripwires get discovered the
 expensive way.
+
+### D-16.R.19 — CORRECTION (orchestrator error): the batch was computed from the LIVE index, not the committed snapshot
+
+**Orchestrator error, caught by the build dispatch, which refused to build on it.** Recorded in full
+because the refusal was correct and the mistake is instructive.
+
+**What happened.** D-16.R.16 recorded an eleven-family goal-set — *Open Sans, Montserrat, Lora, Roboto
+Condensed, Arimo, Roboto Mono, Oswald, DM Sans, Nunito, Raleway, Fraunces*. I computed it by fetching
+`fonts.google.com/metadata/fonts` **live**. Story 16.1a's TASK 1 requires the survey to be
+**reproducible offline from committed artifacts**, and the committed snapshot is
+`folio-designer/font-index.json` — 1,811 families, `snapshotDate` 2026-09-03. **The two orderings
+differ**, so my set could not be reproduced, and the dispatch **halted rather than reconciling it**.
+
+**The dispatch's refusal was exactly right, and its reasoning was sharper than a mismatch report.** It
+observed that `popularity` is monotone, so any cut admitting **Raleway (17)**, **Nunito (18)** and
+**Fraunces (19)** must also admit three strictly more popular refused families that survive every stated
+exclusion — **Roboto Slab (11), Plus Jakarta Sans (14), Jost (16)** — which appeared **neither in the
+set nor in the itemised exclusions**. It also noted the nearest rule producing exactly eleven
+(`popularity <= 20`) yields a *different* membership, so **the count matching was a coincidence, not a
+confirmation**.
+
+**Two of my stated exclusions had no referent in the committed data**, which the dispatch also caught:
+- **`Noto Sans JP` / CJK.** The snapshot **already excludes CJK at build time** — `excludedCjkFamilies:
+  135`, and `1946 − 135 = 1811`. The CJK subtraction removes nothing and cannot be why a slot came free.
+- Four never-refused statics (`Black Ops One`, `Archivo Black`, `Share Tech`, `Barlow`) were unitemised.
+
+**THE CORRECTED SET, reproducible from the committed snapshot.** Top-20 positions by `popularity`
+(name-ascending tie-break), refused = `axes` non-empty, minus already-local, minus `shippedFamilies`:
+
+> **Open Sans · Roboto Mono · DM Sans · Montserrat · Arimo · Roboto Slab · Lora · Roboto Condensed ·
+> Oswald · Plus Jakarta Sans · Jost**
+
+That is **twelve candidates, minus `Google Sans` on evidence, leaving ELEVEN.** Coincidentally the same
+count as the wrong set and a **different membership**: `Raleway`, `Nunito` and `Fraunces` are out;
+`Roboto Slab`, `Plus Jakarta Sans` and `Jost` are in. **11 into 20 free slots — the goal-set still fits,
+so D-16.R.16's verdict and criterion are unaffected. Only its membership list was wrong.**
+
+**Exclusions within the top 20, itemised against the committed data:** `Roboto` (pop 2) and `Inter` (4)
+already local · `Lato` (6), `Black Ops One` (7), `Poppins` (7), `Archivo Black` (12) static upstream and
+never refused · `Noto Sans` (8) and `IBM Plex Sans` (15) `shippedFamilies` collisions · `Google Sans`
+(3) unobtainable.
+
+**The lesson, and it is the one this run keeps re-learning.** A measurement taken against a live source
+cannot gate a story whose acceptance requires offline reproducibility. The two agreed closely enough to
+look right — the same count, most of the same names — which is precisely why it survived my own review.
+**A build dispatch that halts rather than reconciling a mismatch it did not create is the control that
+caught it.**
+
+### D-16.R.20 — MEASURED (per the lead's ruling): the index-vs-repository gap is 0.4%, so 16.3's header keeps the snapshot count
+
+**Engineering lead ruling** — measure the gap **inside this epic**, because it has a consumer three
+stories away: Story 16.3's header prints *"the snapshot's count"*, and D-16.3 already put this epic on
+record that describing the product in untrue terms is a defect rather than a wording preference. If a
+material share of the families cannot be obtained, that header overclaims a second time.
+
+**Bounded to a measurement**, at the lead's cheap shape: enumerate the four licence directories **once**
+each via the git-trees API and intersect slug sets — ~5 requests, not the ~7,800 a per-family probe
+would cost. The lead explicitly reopened a door it had shut: **refusing `api.github.com` at D-16.R.13
+was about a PRODUCT RUNTIME DEPENDENCY, not about what an engineer may measure** — and
+`forbidden-font-hosts.mjs`'s own header already draws that line, bounding the *scanned source
+population* rather than anyone's measurements.
+
+**Result** (wd `/Users/panitw/Projects/folio`, tree clean at `d86d547`, 2026-09-03): repository slug
+population **2,049** across `ofl` 1,999, `apache` 44, `ufl` 5, `cc-by-sa` 1. Index families **1,811**.
+**Not present in `google/fonts`: 8 — 0.4%.** Within the top 50 by popularity: **one**, `Google Sans`.
+
+**And the eight are two different things, which matters more than the number.** Six are `Edu …`
+families — and they are **not a slug-rule hole**. Checked directly: upstream **renamed** them
+(`Edu QLD Hand` → `eduqldbeginner`, `Edu SA Hand` → `edusabeginner`, `Edu NSW ACT Cursive` →
+`edunswactfoundation`), while the index still carries the older display names. **D-16.R.6's slug rule is
+sound**; what drifted is the index against the repository. The other two are Google brand fonts
+(`Google Sans`, `Google Sans Flex`) genuinely absent from the repo.
+
+**Consequence, per the ruling's own disposition: the number is SMALL, so 16.3's header keeps the
+snapshot count and nothing is built.** No build-time pre-flight probing, no snapshot enrichment with an
+obtainability flag, no new filter. The residual post-pick failure class stays registered as deferred
+work, with `Google Sans` named as instance one so the count starts rather than being re-derived. **A
+mechanism would come back to the lead as its own decision; the measurement says none is warranted.**
+
+### D-16.R.21 — Story 16.1a records its payload delta and hands it to the budget gate
+
+**Engineering lead guardrail**, applied — surfaced by the measurement in D-16.R.16 rather than
+anticipated.
+
+**The fact.** Story 15.0 is `backlog` and unstarted, so **D-8.4d.1 is a policy with no implementation**.
+16.1a therefore adds 11 faces to a tier **whose precaching is scheduled for removal but has not been
+removed** — a live **first-load payload increase**, and payload is owned by Story 8.4d/15.2's budget
+gate, not by 16.1a.
+
+**So 16.1a measures its payload delta and hands it to that gate rather than adding it silently.** This
+is D-000.15's obligation shape: the story that spends records what it spent, and the story that owns the
+total collects it. Without it, **15.2 meets a budget that moved for reasons its own record does not
+contain** — the same defect as a golden re-recorded without a reason.
+
+**Two consequences noted rather than acted on.** If 15.0 lands after 16.1a the margin grows and the
+batch could have been larger — **which is the criterion working**: a goal-bounded batch is insulated
+from a constraint scheduled to disappear, while the margin-bounded one the lead declined to supply would
+have sized itself to a ceiling with a removal date on it. **That is the cheapest available evidence that
+replacing the criterion was right rather than merely fussy.** And sequencing 15.0 before 16.1a would
+make the payload question vanish entirely — the orchestrator's call, raised because the dependency now
+runs both ways and nothing in the sequence records it.

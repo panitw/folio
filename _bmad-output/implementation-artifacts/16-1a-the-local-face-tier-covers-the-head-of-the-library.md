@@ -268,6 +268,18 @@ Spec Change Log.
 - Record on **D-000.15's running list** for Story 15.3: format freedom spent on correcting `source`'s
   shape.
 
+- **THE BATCH, fixed and reproducible from the COMMITTED snapshot** (`folio-designer/font-index.json`,
+  1,811 families, `snapshotDate` 2026-09-03) — **not** from the live index, which is a different
+  ordering and produced a wrong set once already (D-16.R.19). Top-20 positions by `popularity`
+  (name-ascending tie-break), refused = `axes` non-empty, minus already-local, minus `shippedFamilies`,
+  minus unobtainable: **Open Sans · Roboto Mono · DM Sans · Montserrat · Arimo · Roboto Slab · Lora ·
+  Roboto Condensed · Oswald · Plus Jakarta Sans · Jost.** Eleven, into twenty free slots.
+  **Reproduce it offline; if your reproduction differs, halt.**
+- **Measure and record this story's first-load payload delta, and hand it to Story 15.2's budget gate**
+  (D-16.R.21). Story 15.0 is `backlog`, so D-8.4d.1's fetch-on-first-pick is **policy with no
+  implementation** and these 11 faces are **precached today**. The story that spends records what it
+  spent; without it 15.2 meets a budget that moved for reasons its own record does not contain.
+
 **Acceptance Criteria:**
 - Given the committed index and catalogue, when the batch survey runs, then it completes with no
   network request, derives variable-only as `axes.length > 0`, excludes the six shipped families by
