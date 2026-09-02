@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 09-02-2026
+last_updated: 09-03-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -569,7 +569,7 @@ development_status:
   # and D-16.1 both promise cannot happen, reachable without any of Epic 16. The command gains the
   # check; the renderer KEEPS its own, because a .folio can be hand-written and the loader is not the
   # only door. Same boundary, same probe harness, one guard -- which is why it is not a separate story.
-  16-0-the-embed-boundary-stops-throwing: in-progress
+  16-0-the-embed-boundary-stops-throwing: done
   # 16.1 was blocked on D-16.5; RULED 2026-09-02 by the owner and now unblocked. The ruling: refuse
   # variable-only families (558 of 1,946, 28.7%) and SAY they are refused; DERIVE the ones worth having
   # ahead of the build with tools/fontgen, which is how two of the six affected Thai families -- Noto

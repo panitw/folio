@@ -5266,6 +5266,27 @@ suite CI does not run **would execute once, locally, and never again** — **rep
 category error being corrected, one layer up.** Do not add the observer before arranging for anyone to
 watch it.
 
+**STORY 16.0 (2026-09-03) IS THIS ENTRY'S PREDICTION COMING TRUE, AND IT RAISES THE ENTRY'S PRIORITY
+RATHER THAN DISCHARGING IT.** Re-measured at that story's close: `.github/workflows/ci.yml` still runs
+`test:e2e:compile` (`tsc --noEmit`) and nothing invokes `playwright test`; `playwright.config.ts` still
+requires a human-supplied `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Three things happened at once:
+
+- **A shipped defect reached the owner through exactly this gap.** The embed boundary threw on the two
+  largest catalogue faces, and no gate in the repository could see it — the story's own opener says so.
+  It arrived as a screenshot.
+- **A thirteenth executable spec now exists and IS this story's acceptance criterion**
+  (`e2e/font-embed-boundary.spec.ts`). It was run four times by hand — pre-fix, twice post-fix, and
+  twice more at close, including one deliberate mutant run that reddened it. **Nothing replays any of
+  that.** This is no longer "coverage exists and nobody runs it"; it is **the strongest evidence a
+  shipped bug fix in this repository has, and it is hand-run only.**
+- **The browser path itself is not free of obstacles.** The pinned `chromium-1208` in the local cache is
+  a 428 KB truncated directory that aborts in `dlopen`, and an `npx playwright install chromium` started
+  during the story hung for over two hours. Wiring CI has to provision a browser, not assume one.
+
+**The ordering constraint above now binds a second obligation:** Story 16.0's browser acceptance is
+subject to it for the same reason Epic 8's was. Until CI runs this suite, every browser assertion this
+project adds executes once, locally, and never again.
+
 ---
 ### DW-102 — the chrome's monospace slot lost its CJK coverage, and the finding that said so was rejected on a location that was not where it was true
 
@@ -6975,3 +6996,90 @@ ever reverted along with the reasoning around it.
 **Explicitly NOT to be built: do not write a comment checker.** That is the 8.4x shape exactly — a gate
 created to enforce a lesson, which then generates its own follow-on work. This registers as guidance a
 reviewer reads, nothing more.
+
+---
+### DW-149 — the worker's BOOT catch still reports one sentence for every boot throw and keeps none of them
+
+- **Deferred by:** Story 16.0 (2026-09-03), which fixed exactly this defect one screen below it and
+  left the boot path untouched because the story's own I/O matrix pins the boot row as "unchanged".
+- **Owner:** **Epic 16 close** — every story in this epic boots this worker, and the next one to
+  change the boot path should take it sooner rather than schedule a separate visit.
+- **Trigger:** any boot-time failure reported by an author. `WASM_INITIALIZATION_FAILED` /
+  *"The Folio engine could not start"* will be the whole of the evidence, and the cause will have to
+  be re-obtained by a browser run, exactly as this story's cause had to be.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+Story 16.0 split `execute`'s bare catch into five named stages, each carrying the thrown value's own
+message bounded to 512. The boot catch above it did not change: it still discards the thrown value
+and reports a fixed sentence. **This is the same erased-evidence defect, in the same file, at the
+same boundary** — and the story's own argument for fixing it applies verbatim: a failure an author
+can photograph but nobody can diagnose is two defects. The reason it was not fixed here is a good
+one and is not a reason to leave it: the contract's matrix pinned that row, so changing it would
+have been out of contract, not out of scope. **Closing this is a small edit** — the machinery
+(`describeThrow`, the bound, the stage vocabulary) already exists one function away.
+
+---
+### DW-150 — a face `checkSfnt` accepts but the parser cannot read still saves cleanly and fails at render
+
+- **Deferred by:** Story 16.0 (2026-09-03). That story closed the `fvar` arm of this class and
+  deliberately did not widen its helper to cover the rest of it.
+- **Owner:** **Story 16.1** — it is the story that first admits a face from **outside** the curated
+  catalogue, which is where malformed bytes actually come from. Every face reaching the command today
+  is one of 21 built and validated at build time; 16.1 removes that property.
+- **Trigger:** the first face admitted from the web, or any hand-built `.folio` reaching the command
+  path.
+- **Severity:** MEDIUM.
+- **Status:** OPEN.
+
+`RefuseVariableFace` returns `nil` when the face cannot be parsed, by design and with the reason
+written next to it: it answers exactly one question — *"is this a variable face?"* — and an
+unparsable face is not one. Widening it would make it a second, partial copy of `New`'s admission
+rules, which is precisely the shape Story 16.0's one-predicate guardrail exists to prevent. So the
+residual class is real and correctly sited elsewhere: `embedFontFamily` depends on
+`DecodeFontForRender` catching unparsable bytes, and that function's own doc fences it at *"can this
+build read these bytes as a single face, and nothing more"*. **The class is the same save-then-fail
+shape D-8.4d.1 and D-16.1 promise cannot happen** — a `.folio` that saves and then will not render —
+for a different cause than `fvar`. It was pre-existing before Story 16.0 and is unchanged by it.
+
+---
+### DW-151 — the worker encodes base64 one byte at a time, in TWO copies, with nothing keeping them in step
+
+- **Deferred by:** Story 16.0 (2026-09-03), which **measured** this as slow rather than throwing and
+  refuted it as the cause of the defect it was chasing. Left alone on purpose: it was not the bug.
+- **Owner:** the next story that changes either encoder. **No story owes it today.**
+- **Trigger:** a face materially larger than the catalogue's current 646 KB ceiling reaching the
+  boundary, or a report of the designer hanging rather than refusing on a pick.
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+`bytesToBase64` in `engine.worker.ts` accumulates `text += String.fromCharCode(byte)` across the whole
+payload, and a second copy of the same shape lives in `component-asset-command.ts`. The repository has
+already fixed this **somewhere else for a documented reason** — the chunked encoder in
+`font-chain-command.ts`, whose comment explains that `String.fromCharCode(...bytes)` over a 480 KB face
+"spreads half a million arguments across the call stack and throws". **Two of the three encoders never
+got that treatment, and nothing in any gate compares them.** Story 16.0's own diagnosis is the evidence
+this is worth a note and not a fix: the encoder was the plan's leading hypothesis, it is slow, and it
+was never reached with a bad value.
+
+---
+### DW-152 — the designer suite carries a STANDING red, so a new violation of the same rule cannot be seen
+
+- **Deferred by:** Story 16.0 (2026-09-03), which verified it at baseline rather than assuming it and
+  declined to close something outside its contract.
+- **Owner:** whoever owns `e2e/e9-5-border-no-ink.spec.ts` — the Epic 9/10 lane that wrote it.
+- **Trigger:** it is already firing, so **it cannot fire again**. That is the whole risk: a second
+  file adopting `getComputedStyle` would change the failure's *contents* and not its *status*, and no
+  gate reads contents.
+- **Severity:** MEDIUM — not for the violation, for the masking.
+- **Status:** OPEN.
+
+`canvas-authority-contract.test.ts` fails at `:190` with `expected [ Array(1) ] to deeply equal []`,
+the array being `"e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"`. **Re-measured at close
+against the dispatch baseline `09ab97d` in a detached worktree: byte-identical failure, same line,
+same array** — neither the scanner nor the flagged file is in Story 16.0's diff. It is therefore not
+this story's regression, and it is recorded rather than inherited silently: `npm test` reads
+`1 failed | 436 passed` on a clean tree, and **every story from here on has to know which one red is
+allowed** or it will wave through a second.
+
+---

@@ -75,23 +75,25 @@ deferred:
 
 *This section is background, not a requirement; the contract below governs.*
 
-Picking some typefaces fails. The panel says *"The engine returned an invalid response"* and the font
-is not added. That message is not the engine refusing — the engine refusing says what is wrong and
-where. It is the one thing the designer says when the part of it that talks to the engine breaks in a
-way nobody anticipated, and it is deliberately the least useful sentence in the product.
+Picking a typeface sometimes failed: the panel said *"The engine returned an invalid response"* and
+nothing was added. That is what the designer says when its link to the engine breaks in a way nobody
+anticipated — the least useful message in the product.
 
-The typefaces themselves are fine. Every one of the twenty-one was fed through the engine directly and
-every one was accepted, so the fault is in the crossing, not the cargo. This story finds out what
-actually breaks there, fixes it, and — separately and just as importantly — stops that crossing from
-swallowing the reason. A failure an author can photograph but nobody can diagnose is two defects.
+The plan's leading suspicion was wrong: the encoder it blamed is slow, not broken. The real fault was
+in the engine's save path, which rebuilt a typeface's encoded text one piece at a time,
+recopying everything gathered so far at each step. For a 600 KB typeface that asks for four gigabytes
+of scratch memory — merely slow on a desktop machine, which is why an earlier measurement found
+nothing, but fatal in a browser, where the engine has a hard four-gigabyte ceiling. It ran out of
+memory mid-request, leaving the designer nothing to read. Building the text in one pass fixes it, and
+all twenty-one families now embed in a real browser. The crossing also stopped swallowing the reason:
+it names which step failed and repeats what the failure said.
 
-There is a second, quieter fault at the same place, found while planning this epic. Some typefaces —
-about a quarter of what Google publishes — come as a single file holding every weight at once, and
-Folio deliberately does not accept those. But the check that rejects them happens when the document is
-printed, not when the typeface is added. So it is currently possible to add one, save the file, and
-discover only at print time that the document cannot be printed. The refusal is right; it simply
-arrives far too late. This story moves it to the moment of the click, where the engine's own message
-already tells the author exactly what to do.
+The second fault is fixed too: a typeface holding every weight in one file is now refused when it
+is picked rather than when the document is printed, so a file can no longer be saved and only then
+turn out unprintable.
+
+Two things will look wrong later and are not: the strongest evidence here is a browser run nothing
+replays automatically, and two unrelated test failures were red before this work and still are.
 
 <intent-contract>
 
@@ -308,6 +310,13 @@ off by one or more; the corrections are recorded in the Spec Change Log. Trust t
     prior epic boundary gates used it. Note `chromium_headless_shell-1208` is **absent** (only
     1217/1223/1228 are present), so pass the headed executable explicitly rather than letting
     Playwright resolve a headless shell.
+    - **FALSE, AND CORRECTED AT IMPLEMENTATION AND AGAIN AT CLOSE — USE 1217.** The paragraph above
+      is left standing because a later reader is owed the wrong precondition that cost this story a
+      run, but nothing in it may be acted on: `chromium-1208` is a **428 KB** truncated directory
+      with no `Contents/Frameworks` bundle and it aborts in `dlopen` (`chromium-1217` is 336 MB and
+      complete). Only the *prohibition* survives — do NOT run `npx playwright install chromium` to
+      repair it. Point `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` at **1217**, as the Verification
+      section now does and as every run of this story's harness actually did.
   - `playwright.config.ts`'s `webServer` runs a full `npm run build` — which includes `build:wasm`, so
     the **Go toolchain must be on `PATH`** — with `reuseExistingServer: false` and a 180 s timeout. A
     prior single-spec gate run took ~1.9 minutes end to end. Budget for it; do not mistake it for a
@@ -483,14 +492,24 @@ this order, and report what each command printed rather than that it was green.
 1. **The browser run — required, not optional.** From `folio-designer/`, with the Go toolchain on
    `PATH`:
    ```
-   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$HOME/Library/Caches/ms-playwright/chromium-1208/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
-     npx playwright test e2e/<new-spec>.spec.ts --reporter=list
+   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$HOME/Library/Caches/ms-playwright/chromium-1217/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+     npx playwright test e2e/font-embed-boundary.spec.ts --reporter=list
    ```
+   **THE REVISION IS 1217, NOT 1208, AND THE PLAN GATE'S PRECONDITION WAS WRONG.** That precondition
+   asserted revision 1208 "is already installed"; it is on disk but it is **not an install**.
+   Re-measured at close (2026-09-03): `chromium-1208` is **428 KB** with no `Contents/Frameworks`
+   bundle and aborts in `dlopen`, against **336 MB** for a complete `chromium-1217`. Every run that
+   produced this story's evidence — the pre-fix reproduction, both post-fix runs and the closer's two
+   — used 1217 through `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. The prohibition on
+   `npx playwright install chromium` still stands and is now doubly evidenced: an
+   `npx playwright install chromium` started during this story was still hung, mid-download, **two and
+   a half hours later**, and had to be left running. Point at 1217; do not try to repair 1208.
    Report the **per-family table across all 21 catalogue families**, before and after the fix, plus the
    pass/fail line. If the run cannot be made to happen, **say so explicitly and name the obstacle** — do
    not substitute `npm run test:e2e:compile`, which is only `tsc --noEmit`, and never report a compiled
-   spec as a verified one. **Do not run `npx playwright install chromium`**: revision 1208 was measured
-   present on disk at this gate, and that archive has previously returned HTTP 400 from the host.
+   spec as a verified one. **Do not run `npx playwright install chromium`**: that archive has
+   previously returned HTTP 400 from the host, and the plan gate's "1208 is already installed" was a
+   measurement of a truncated directory rather than of a usable browser — see the correction above.
 2. **The same-bytes guard, red-proved by deletion.**
    `cd folio-go && go test -run 'VariableFace|Fvar|EmbedFontFamily' ./... -v`. Then delete the call site
    in `embedFontFamily`, re-run, confirm it **fails**, restore. Repeat for `fontset.New`'s call site.
@@ -628,6 +647,100 @@ the path `component_commands.go:2015` reaches, without landing *in* `component_c
   offset 354 and 377 respectively — it survives truncation in both.
 - *"`TestDecodeBase64AssetJoinsInLinearSpace` reads a process-global `TotalAlloc`."* True but immaterial
   at this margin: the mutation measures 4,226,613,000 bytes against a 6,379,744-byte budget.
+
+## Delivery Log
+
+### 2026-09-03 — done
+
+Baseline `09ab97d` (plan gate), dispatch revision `3c28c40`. Shipped in two local commits — `11a2d3d`
+(implementation) and `3941b74` (review patches) — plus this file's own closing commit. Nothing pushed;
+`origin/main` is still `c985b9c`, seventeen commits behind.
+
+**What this story actually turned out to be.** It was dispatched as "find out why the boundary throws".
+It came back with the spec's own leading hypothesis **refuted** — the byte-at-a-time encoder is slow,
+not throwing — and the cause one layer down, in the engine's serializer rather than in the designer at
+all: a quadratic string join in `decodeBase64Asset` that allocates ≈4.18 GB for a 598 KB face and
+therefore hits js/wasm's 4 GiB linear-memory ceiling while a native run of the same bytes merely takes
+longer. **That is why the plan gate's Go probe passed 21/21 and the browser failed 2/21**, and it is
+worth carrying forward as a run-level lesson: on this project a native Go measurement does not
+generalise to the wasm target when the quantity being measured is *allocation*. D-16.6's second defect
+(the `fvar` refusal missing at the pick) shipped alongside it, one predicate serving both doors.
+
+**Decisions applied.** D-16.6 (the command must refuse `fvar`), D-16.R.1 (this story overrides the
+run's `end-of-run` heavy-test cadence — see the gates below), D-16.R.2 (hiding a variable-only family
+is presentation; the guard underneath it is this story), D-8.4j.8 (the diagnosis is recorded with
+command, commit, tree state and working directory), and the engineering lead's plan-gate guardrail that
+the two refusals be **one function**, not two that agree today.
+
+**Triage: 7 patched (2 high, 2 medium, 3 low) / 5 deferred / 21 rejected**, 0 intent_gap, 0 bad_spec.
+**What the review caught is the thing worth reading here.** Both `high` findings were the same shape
+and it is the most dangerous shape a story like this can have: **the new browser harness could not fail
+in the way that mattered.** Its acceptance rejected one literal sentence, which this story's own change
+had already made stale — a recurrence of the wasm out-of-memory now reaches the panel under a *new*
+name — and it also passed if nothing embedded at all. A story whose entire value is a browser witness
+had shipped a witness that could not testify. Both were patched before this close.
+
+**The gates, measured at close and not relayed.**
+
+- **The browser run RAN, in-story, as a deliberate override of the run's `end-of-run` cadence
+  (D-16.R.1, which names this story as one of exactly two overrides).** Re-run at close on a clean tree:
+  **2 passed (2.2 min), 21 of 21 EMBEDDED**, no family answered by a boundary sentence, none silent.
+  Chromium **1217** through `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; **1208, which the plan gate asserted
+  was installed, is a 428 KB truncated directory that aborts in `dlopen`** — corrected in the Tasks and
+  Verification sections above so the next person does not repeat it.
+- **The harness was proved able to fail, by reinstating the defect rather than by editing the test.**
+  With the quadratic join restored and the wasm rebuilt from it, the harness **failed** — Cascadia Code
+  and Cascadia Mono both reporting `The engine's response could not be parsed: SyntaxError: "undefined"
+  is not valid JSON`, caught by the `boundaryAnswers` assertion the review added. That is the *new*
+  sentence, i.e. precisely the recurrence the pre-patch acceptance would have passed green over. The
+  patch is load-bearing, measured, and this is why no further review pass is asked for below.
+- **The `fvar` guardrail, red-proved by deletion at both doors, independently at close.** Deleting
+  `embedFontFamily`'s call (and its now-unused import, or the mutant does not compile — a build error is
+  not a red test) reds the same-bytes test with *"command unexpectedly succeeded"* while the ingestion
+  half stays green; deleting `New`'s call reds the same-bytes test with *"fontset.New accepted a
+  variable face"* **and** `TestNewRejectsVariableFace`, while the command half still refuses. Neither
+  door holds a copy of the other's check, which is the property the lead asked for.
+- **The allocation guard has teeth:** reinstating the quadratic join reds
+  `TestDecodeBase64AssetJoinsInLinearSpace` at **4,226,612,256 bytes** against a 6,379,744-byte budget,
+  against the wasm runtime's own reported `4234510336 in use`.
+- `cd folio-go && go test -count=1 ./...` — every package `ok` except `internal/text`, whose single
+  distinct failure is the **mandated P6g floor red** (`got 7, need >=20`, stats
+  `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`). This run executes the golden guard.
+- `go vet ./...` exit 0; `gofmt -l folio-go` empty; `cd lint && go test -count=1 ./...` — four `ok`.
+- Designer: `npm run typecheck` exit 0; `npm run lint` 4 pre-existing `only-export-components` warnings;
+  `npm run test` **436 passed / 1 failed (43 files, 42 passed)**; `npm run test:e2e:compile` exit 0.
+- **23 golden fixtures, rolled digest `892a1505e5e7fff0184310d5f70eb7bfcfa10d18cda9af4e2aecf262a0630ce9`
+  — file count and digest both unmoved** from the Epic 9/10 boundary gate.
+- **Both "pre-existing" reds were verified at the baseline by this close, not taken on the build's
+  word.** A detached worktree at `09ab97d`: `canvas-authority-contract.test.ts` fails byte-identically
+  (`expected [ Array(1) ] to deeply equal []`, the array being
+  `e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/`, same line `:190`), and the P6g floor
+  fails with the identical stats line. Neither is this story's regression.
+
+**What is NOT measured here, and when it comes due.** The `//go:build matrix` suites — the render
+matrix, the four signoff corpora, `fontgen` and the matrix registration checks — are deferred to the
+**end-of-run catch-up after 16.4** under D-16.R.1's `end-of-run` cadence. They were **not** run in this
+story. They were confirmed to *compile* under their tag (`go vet -tags=matrix ./...`, exit 0), so the
+catch-up cannot open with a compile error carried from here. The other twelve Playwright specs remain
+compile-only (D-000.4).
+
+**Deferred, with owners, all five registered rather than left in this file's frontmatter:** DW-149 the
+worker's boot catch still erases its cause (Epic 16 close); DW-150 an unparsable-but-`checkSfnt`-clean
+face still saves and fails at render (Story 16.1, which is where faces stop being catalogue-built);
+DW-151 `bytesToBase64` accumulates per byte in two copies (no owner today; next story touching either
+encoder); DW-152 the designer suite's standing `canvas-authority-contract` red, which cannot fire twice
+and will mask the next violation (Epic 9/10 lane). **And the one that matters most is not new:** the CI
+gap is **DW-101**, already open and already carrying the ordering constraint — a browser gate nothing
+runs will rot — so this story's evidence was appended there rather than filed as a sixth entry. It now
+records that DW-101's prediction has come true once, expensively: this defect reached the owner as a
+screenshot because the e2e suite is compiled and never executed, and the fix's proof is *still*
+hand-run only.
+
+**Follow-up review: NOT required.** `followup_review_recommended: true` fired because two `high`
+findings were patched. Both were the same defect in the same test file, and the patch was verified at
+this close by the only method that settles it — reinstating the production defect and watching the
+patched harness go red on it, then restoring and watching it go green. The Go half was re-proved by
+deletion at both call sites. No further adversarial pass is warranted on this change.
 
 ## Auto Run Result
 
