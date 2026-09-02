@@ -580,6 +580,12 @@ development_status:
   # same PDF everywhere". Option (b) -- admit the variable file as-is -- was not weighed; it was
   # REMOVED by measurement (D-16.6): it produces a document that will not render.
   16-1-a-font-arrives-from-the-web-with-its-terms-attached: backlog
+  # 16.1a added 2026-09-03 by OWNER DECISION D-16.R.2, corrected by D-16.R.2a. The batch is NOT a
+  # tools/fontgen derivation queue -- instance_faces.py drives three ENGINE faces and none of the 21
+  # catalogue faces is derived. It is "add an upstream static to the local face tier", the mechanism
+  # already executed 21 times. Roboto and Inter are already in the tier and appear refused only because
+  # the google/fonts MIRROR carries VF-only builds of them.
+  16-1a-the-local-face-tier-covers-the-head-of-the-library: backlog
   16-2-a-fetched-face-stays-on-this-machine: backlog
   # 16.2: the owner said "local storage"; the mechanism is IndexedDB and the refusal is arithmetic,
   # not taste (D-16.2) -- ~5 MB string quota, base64 at +33%, one measured face at 90,220 bytes, and

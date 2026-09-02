@@ -83,9 +83,43 @@ deleting it (**D-16.4**).
   `OFL.txt` (or the licence file `METADATA.pb` names) and carry its bytes.
 - **`copyright` comes from the face's own `name` table, nameID 0**, "the one statement of provenance
   that cannot be edited from outside the binary". It is not taken from `METADATA.pb`.
-- **The licence allowlist is applied at runtime, in one named place, with a test.** OFL-1.1,
-  Apache-2.0, MIT, UFL. Unclassifiable is **refusal**, never a warning (D-8.5.2). This is the story's
-  highest-risk clause; treat it as such.
+- **The licence vocabulary is a CLOSED TOKEN TABLE, and the upstream token is not an SPDX id**
+  (**D-16.R.4** — the ruling that stops this story shipping broken). Measured: `METADATA.pb` carries
+  `license: "OFL"` / `"UFL"` / `"APACHE2"`, **not** `OFL-1.1` / `Ubuntu-font-1.0` / `Apache-2.0`.
+  Applied literally as this spec first worded it, every family would be refused except by the accident
+  that `UFL` matches — a partial pass that looks like it works. A new module
+  `folio-designer/src/font-licence.ts` owns the mapping and **names no host**, so D-16.4's declared-host
+  module stays a small subject for the scan's second half.
+  - `OFL` → `OFL-1.1`; `APACHE2` → `Apache-2.0`; `UFL` → `Ubuntu-font-1.0`;
+    `CC-BY-SA` → **present in the table and refused**, with its reason stated.
+  - **THREE STATES, NEVER TWO:** *mapped-and-admitted*; *mapped-and-refused* (a named token, a stated
+    reason); *unmapped* (refused, and the message says **the token was not recognised**, not that it is
+    forbidden). `cc-by-sa` is a real top-level directory in `google/fonts`, and it is in the table
+    precisely so **absent** and **refused** stop looking the same. A fifth upstream directory must read
+    as "we have not classified this", never as a policy decision nobody made.
+  - **An unmapped token is a refusal and never a default.** No fall-through, no permissive default, no
+    warn-and-continue (D-8.5.2).
+  - **`font.licence` in the `.folio` carries the SPDX id, never the upstream token.** Precedent, not
+    preference: `font-catalogue.json` already writes `Ubuntu-font-1.0` rather than `UFL`, and
+    `licenceSignatures` is keyed on SPDX. Two vocabularies in one field make a document unsortable by
+    its own terms.
+  - **MIT stays admissible and gets no table entry**, and the module says why: D-8.5.3's four
+    identifiers are owner policy and are not amended here; `google/fonts` publishes no MIT token, so
+    MIT has nothing to map. **Absence, not narrowing.**
+  - A test asserts the table's admitted value set is a **subset** of D-8.5.3's four.
+- **The nameID 13 tie transfers to runtime, and it lives in GO** (**D-16.R.5**). Without it this story
+  replaces a build gate with something **strictly weaker** — exactly D-8.6.5's defect class. The
+  build-time tie at `font-catalogue.test.ts:355-366` ties the declared SPDX id to the binary's own
+  licence description, *"the one statement of a face's licence that cannot be edited from outside the
+  binary"*; `licenceText` from `OFL.txt` and `licence` from `METADATA.pb` are **neither of them in the
+  bytes**, so two of the three values this story carries are unearned without it.
+  - Sited **inside `embedFontFamily`, beside the `fvar` check Story 16.0 added** — the browser is not
+    the only door, and one implementation covers the local tier and the machine store too.
+  - Compares the payload's SPDX `licence` against **nameID 13**, **substring, not prefix or equality**:
+    measured at build time, `cascadiacode`'s description opens *"Microsoft supplied font…"* and carries
+    the OFL sentence further in. An SPDX id with **no signature entry is a refusal**, not a skip.
+  - **Absent or unparseable nameID 13: REFUSE, and say which of the two.**
+  - **Both guards kept.** The build-time tie is not deleted or weakened because Go now checks it.
 - **The engine command does not change.** `embedFontFamily` already requires family, style, licence,
   licenceText, copyright, source and refuses without them (`component_commands.go:2359-2410`). This
   story changes where those values come from and nothing about what the document must contain.
@@ -93,17 +127,63 @@ deleting it (**D-16.4**).
   `fonts.gstatic.com` stay **forbidden** — D-16.3 proved them unusable, so forbidding them is free and
   keeps the `woff2`/subset trap shut. Allowed hosts are declared in **one** module; an occurrence
   elsewhere still fails the build. The population floor and positive control extend to the new half.
-- **Variable-only families are REFUSED, per D-16.5** — and the refusal is *stated*, not a family
-  silently missing from a search. 558 of 1,946 (28.7%). `SPEC-fonts`' *"no variable-font axes. A weight
-  is a face or it does not exist"* is **not** amended by D-16.1 and is upheld here.
-- **The refusal is the ENGINE's, surfaced early.** Story 16.0 adds the `fvar` check to
-  `embedFontFamily` (D-16.6); this story must not grow a second, cosmetic one that could disagree with
-  it. The browser may *predict* the refusal from the snapshot's `axes` field to grey the row out; the
-  authority stays in Go.
-- **A family the derive-ahead path has already produced is offered normally.** `Noto Sans Thai` and
-  `Noto Serif Thai` are variable upstream and static here; the browser must offer the shipped static
-  rather than refuse the family on the snapshot's `axes` field alone. **A row is refused because no
-  static face is obtainable, never because upstream happens to be variable.**
+- **A family that cannot be added is FILTERED OUT, not listed and refused** (**D-16.R.2**, owner). The
+  refusal was priced as 28.7% of a long tail; measured, **37 of the 50 most popular families are
+  variable-only** — Roboto, Open Sans, Inter, Montserrat, Raleway, Nunito, Oswald, Playfair Display.
+  Listing them and refusing means the most common first action in the product fails. **A hidden row is
+  a presentation choice, never a guard:** the engine's refusal stays, for anything that reaches it.
+- **The browser's family count is the ADDABLE count**, and it says which it is. Not 1,946.
+- **The bundled catalogue SURVIVES as the LOCAL FACE TIER** (**D-16.R.3**). `pickCatalogueFamily`
+  **gains a source; it does not swap one.** The 21 committed faces and their whole provenance regime —
+  `font-catalogue.json`, `build-wasm.mjs`'s generated module, per-face `LICENSE*` and `NOTICE.md`, and
+  `font-catalogue.test.ts` — are untouched. **Do not call it the "derived-static tier":** measured,
+  `instance_faces.py` drives a hardcoded three-entry `UPSTREAM` list of ENGINE faces and **none of the
+  21 is derived** (every `NOTICE.md`: *"NO DERIVATION APPLIES"*).
+  - **Join key: exact `family` string equality.** No case-folding, no whitespace normalisation, no
+    fuzzy match. `Inter Display` and `Source Serif 4 Display` have **no index row at all**, so 2 of 21
+    are unjoinable under any normalisation, while `Geist` / `Geist Mono` / `Geist Pixel` is exactly the
+    neighbourhood a loose matcher gets wrong. **A local face with no index row is local-tier-only, and
+    that is correct behaviour, not a defect.**
+  - **Local wins, with NO fetch at all** — no `METADATA.pb`, no `OFL.txt`. The committed bytes carry a
+    **stronger** record than any fetch can produce; preferring a fetch would replace a verified record
+    with an unverified one.
+  - **Divergence is deliberately NOT reconciled.** Under AD-8 and D-16.2 a face is identified by the
+    SHA-256 of its bytes, so "upstream released a newer version" is a **different face**, not a newer
+    one. **No staleness check, no update prompt, no version compare in this epic** — register it in
+    `deferred-work.md` with its trigger.
+- **`Roboto` and `Inter` are already in the local tier**, as byte-for-byte upstream statics from
+  `github.com/googlefonts/roboto-classic` and `github.com/rsms/inter` v4.1. They appear among the 37
+  only because the **`google/fonts` mirror** carries VF-only builds of them. **"Variable-only" is a
+  property of the byte source, not of the family** (D-16.R.2a) — so a family present in the local tier
+  is offered from it and never judged by the index's `axes` field.
+- **`axes` is a PREDICTION, and the spec says so where it would otherwise read as fact.** Measured:
+  **all 558 axes-declaring families still list a `400` key** in `fonts`, so that map is an
+  offered-weights list, not a static inventory, and `axes != []` is the only signal available. It is a
+  good heuristic — verified on Roboto and six others — and it is a heuristic. The authority stays Go.
+- **The family DIRECTORY is derived, then CONFIRMED — never trusted, and never read as a licence**
+  (**D-16.R.6**). The index carries **no path and no licence field**, so the directory must be resolved.
+  - **Slug rule, exact: lowercase the family name, then delete every character outside `[a-z0-9]`.**
+    Verified 8 of 8 on deliberately awkward families (`Press Start 2P` → `pressstart2p`,
+    `Baloo Bhai 2` → `baloobhai2`, `Source Serif 4` → `sourceserif4`, `Noto Sans Thai Looped` →
+    `notosansthailooped`).
+  - **Closed by verification**, which is why it is not the guess this story forbids one level down: the
+    resolved directory is accepted **only if `METADATA.pb`'s `name` string-equals the index family the
+    author picked.** A mismatch is a **refusal**, never a fallback to the next directory.
+  - **`METADATA.pb` always wins on licence; the probe result is NEVER evidence of terms.** Probe order
+    `ofl`, `apache`, `ufl`, `cc-by-sa`. Measured: **upstream moves families between directories —
+    `apache/roboto` now 404s and Roboto lives in `ofl/`** — so reading layout as a licence assertion
+    would let a family that moved silently change the terms a document publishes. That is AD-26's
+    Prevents exactly.
+  - **Layout disagreement is an observation, not a refusal.** Resolved at `ofl/x` while the token says
+    `APACHE2` → `METADATA.pb` wins and `Apache-2.0` is admitted; the divergence is recorded.
+  - **Probing is once per pick**, never at index render and never on a keystroke. The build step **may**
+    carry the resolved directory in the snapshot as a **path** (a path is not a claim about terms),
+    re-confirmed by the `name`-equality check at pick time; the snapshot **must not** carry the licence
+    token, which would be a second licence authority ageing on its own schedule.
+- **No licence is knowable before a pick**, and the UI must not pretend otherwise. It follows from the
+  index having no licence field: every licence refusal is necessarily post-pick, after network
+  round-trips. A `cc-by-sa` family cannot be pre-filtered, so the browser will show families it later
+  refuses — say what that looks like rather than leaving it to the implementer.
 - **Offline degrades, never breaks.** No network means no new family. It never means a document that
   will not render: the three shipped Noto faces are the coverage, and an embedded face travels inside
   the `.folio`.
@@ -123,6 +203,17 @@ deleting it (**D-16.4**).
   non-negotiable: classify, then embed.
 - **Any of the 23 golden digests moves**, or `SupportedMajor` would move.
 - **Story 16.0 is not closed.** Every acceptance here ends in an embed through the boundary 16.0 fixes.
+  *(Closed 2026-09-03 at `4aa610a`.)*
+- **The nameID 13 guard would ship without its falsifier.** The build-time tie is measured over **21**
+  faces, not 1,946, so there is no false-positive population for the open library. This story must
+  sample **≥50 families across `ofl`/`apache`/`ufl`** and report the rate at which the guard would
+  refuse them **before** it ships. A rate materially above zero means the signature table is too narrow
+  and comes back to the engineering lead as a finding — **never fixed by softening the guard to a
+  warning.**
+- **The nameID 13 narrowing would slip past the tag.** It narrows `embedFontFamily`, which is reachable
+  through the exported API, so under D-7.8.3/D-8.2.2 it joins the **before-the-tag set**.
+  `folio-go/v0.1.0` is verified not cut. **It lands in this epic or it does not land**, and it goes on
+  D-000.15's running list of what the format freedom was spent on, for Story 15.3.
 
 **Never:** host fonts (the one Non-goal clause D-16.1 leaves standing) · `woff2` · a `unicode-range`
 subset · an API key in the client bundle (D-16.3's refused alternative) · CJK families ·
@@ -135,8 +226,15 @@ save-time subsetting · bold, italic or variable axes.
 | Pick a static family | `Kanit`, index snapshot present, network up | `METADATA.pb` → `Kanit-Regular.ttf` + `OFL.txt` fetched; licence classified; one embed command | No error |
 | Pick a family already in the machine store | Store holds the key | **No fetch**; embed from stored bytes (Story 16.2) | No error |
 | Pick a family already in this document | Asset key present | Dedupe by content hash; no second asset, no second history entry | No error |
-| VF-only family, not derived | `Anuphan[wght].ttf` is the only file upstream | **Refused, and stated** (D-16.5). Row is visibly unavailable with its reason, never silently missing | Refusal; the engine's message is the authority |
-| VF upstream, static shipped here | `Noto Sans Thai` | **Offered normally** — the derived static face is what is used | No error |
+| VF-only family, not in the local tier | `Anuphan[wght].ttf` is the only file upstream | **Filtered out of results** (D-16.R.2). Not listed, not refused in the UI | The engine's refusal remains for anything that reaches it |
+| VF upstream, present in the local tier | `Roboto`, `Inter`, `Noto Sans Thai`, `Noto Serif Thai` | **Offered normally, from the local tier, with no fetch** — `axes` is not consulted for a family the local tier holds | No error |
+| Local face with no index row | `Inter Display`, `Source Serif 4 Display` | Local-tier-only; offered from the family control, absent from the web browser's results | Correct behaviour, not a defect |
+| Token maps to a refused licence | `METADATA.pb` says `CC-BY-SA` | **Refused, named token, stated reason** — post-pick, because no licence is knowable before one | Refusal at the control |
+| Token not in the table | a fifth upstream directory appears | **Refused**, and the message says the token was **not recognised** — never that it is forbidden | Refusal, distinguishable from a policy decision |
+| nameID 13 disagrees with the token | `METADATA.pb` says `OFL`, the binary's description does not carry the SIL sentence | **Refused** before any byte reaches `Assets` | Located refusal naming the family |
+| nameID 13 absent or unparseable | face carries no licence description | **Refused, saying which of the two** | Located refusal |
+| `METADATA.pb` name mismatch | slug resolves a directory whose `name` is not the picked family | **Refused** — never a fallback to the next directory | Refusal |
+| Directory layout disagrees with the token | resolved at `ofl/x`, token says `APACHE2` | `METADATA.pb` wins; `Apache-2.0` admitted; divergence **recorded** | Not a refusal |
 | Unclassifiable licence | `METADATA.pb` names something outside the four | **Refused**, named, before any byte is embedded | Refusal at the control |
 | `OFL.txt` missing or empty | Licence file absent upstream | **Refused** — the document may not carry a face without its terms | Refusal, stating why |
 | `name` table has no nameID 0 | Face carries no copyright | **Refused** — `copyright` is required of an embedded face | Refusal, stating why |
@@ -207,8 +305,23 @@ save-time subsetting · bold, italic or variable axes.
   refusal to the pick. Implement to the ruling; do not re-open it. The derive-ahead batch is
   `tools/fontgen`'s work and is **not** this story's — this story must simply not refuse a family whose
   static face this repository already carries.
-- `src/` — mark rows the snapshot's `axes` field says are variable-only **and** for which no derived
-  static face exists, as unavailable-with-a-reason. Predictive only; Go still decides.
+- `src/` — **filter out** rows the snapshot's `axes` field marks variable-only **and** which the local
+  face tier does not hold (D-16.R.2). Predictive only; Go still decides, and the engine's refusal stays
+  reachable.
+- `src/font-licence.ts` — the closed token→SPDX table, three states, no host named, plus the test
+  asserting its admitted set is a subset of D-8.5.3's four (D-16.R.4).
+- `src/` — the local-tier join: exact `family` equality against `font-catalogue.json`, local wins with
+  no fetch, and a test that a local-tier pick issues **no** third-party request (D-16.R.3).
+- `src/` — the slug rule and the `METADATA.pb` `name`-equality confirmation, with the probe order and a
+  test that the probe never sets `font.licence` (D-16.R.6).
+- `folio-go/component_commands.go` — the **nameID 13 tie inside `embedFontFamily`**, beside Story
+  16.0's `fvar` check: substring match against a closed signature table, refusal on no-signature-entry
+  and on absent/unparseable, distinguishing the two (D-16.R.5). Red-prove by deleting the guard, and
+  assert a face with a correct nameID 13 still embeds so the guard cannot be over-broad.
+- **The ≥50-family sample**, run and reported before the guard is proposed for merge.
+- `deferred-work.md` — register the local-tier divergence (no staleness check in this epic, with its
+  trigger), and **DW-150** (the unparsable-face residual, assigned to this story by Story 16.0's close,
+  which is where faces stop being catalogue-built).
 - `scripts/` — a build step that snapshots `fonts.google.com/metadata/fonts`, trims it to the rendered
   fields, and emits a typed module beside the existing generated catalogue. **Record the snapshot's
   date and family count in the module** so the UI can state its own staleness.
@@ -244,11 +357,23 @@ save-time subsetting · bold, italic or variable axes.
   build fails; and when the declaring module is deleted, the new half's control reds.
 - Given no network, when the author opens the browser, then it states that a family cannot be added
   right now and offers what the machine already holds.
-- Given a variable-only family with no derived static face, when it is shown, then it is visibly
-  unavailable with its reason stated, and picking it is refused by the engine's own message rather than
-  by a second sentence this story invents.
-- Given a family that is variable upstream but ships here as a derived static face, when it is shown,
-  then it is offered normally.
+- Given a family that cannot be added, when results are rendered, then it is **filtered out** rather
+  than listed and refused, and the browser's count is the addable count and says so.
+- Given a family present in the local face tier, when it is picked, then it is embedded from the
+  committed bytes with **no fetch at all**, and the index's `axes` field is not consulted for it.
+- Given a local face with no index row, when the family control is opened, then it is still offered
+  from the local tier, and it does not appear among the web browser's results.
+- Given a fetched family, when its licence token is classified, then an admitted token maps to an SPDX
+  id that the `.folio` carries, a refused token is named with its reason, and an unrecognised token
+  says it was **not recognised** rather than that it is forbidden.
+- Given any face about to be embedded, when the command runs, then its SPDX licence is tied to the
+  binary's own nameID 13 by substring, and an absent or unparseable description is refused with which
+  of the two it was.
+- Given the nameID 13 guard, when it is proposed for merge, then a **≥50-family sample across
+  `ofl`/`apache`/`ufl`** has been run and its refusal rate reported — and a rate materially above zero
+  is a finding for the engineering lead, never a reason to soften the guard.
+- Given a family directory, when it is resolved, then the slug rule produced it and `METADATA.pb`'s
+  own `name` confirmed it, and the directory the probe found is never used as evidence of the licence.
 
 ## Design Notes
 

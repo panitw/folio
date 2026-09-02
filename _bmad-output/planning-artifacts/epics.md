@@ -5478,6 +5478,50 @@ font menu
 cannot add a family right now"* — never to a document that will not render, because the shipped Noto
 faces remain the coverage and an embedded face travels inside the `.folio`
 
+### Story 16.1a: The local face tier covers the head of the library
+
+As a template author,
+I want the typefaces I am most likely to reach for to be there,
+So that the browser's promise survives contact with the first family I type.
+
+**Covers:** D-16.R.2 (owner), corrected by D-16.R.2a
+**Design:** none — this story adds assets and changes no screen
+
+**Acceptance Criteria:**
+
+**Given** the measured refusal — **37 of the 50 most popular families are variable-only** on the
+`google/fonts` mirror, Roboto, Open Sans, Inter and Montserrat among them
+**When** the batch is assembled
+**Then** each admitted family's static Regular comes from **that family's own upstream release**, not
+from the mirror — because measured, the mirror is the only shelf that lacks them, and this repository
+already ships `Roboto` and `Inter` exactly that way
+
+**Given** D-16.5's claim that the remedy is `tools/fontgen` derivation
+**When** this story is planned
+**Then** that premise is treated as **corrected, not inherited** (D-16.R.2a): `instance_faces.py` drives
+a hardcoded three-entry `UPSTREAM` list of ENGINE faces, **none of the 21 catalogue faces is derived**,
+and derivation is the exception for a family that genuinely publishes no static
+
+**Given** each added family
+**When** it is committed
+**Then** it carries the unmodified upstream `LICENSE*`, a `NOTICE.md` recording **both** the upstream
+archive digest and the committed digest, a `font-catalogue.json` row, and a copyright read from its own
+binary — the regime the existing 21 already satisfy, copied exactly rather than approximated
+
+**Given** each added face
+**When** the build runs
+**Then** its declared `scripts` agree with its own `cmap` in both directions, and its declared SPDX id
+agrees with its nameID 13 — the gates that exist, applied to the new population
+
+**Given** the batch is a snapshot of a popularity ranking that moves
+**When** it lands
+**Then** its **membership rule, its size, its owner and its re-run trigger are written down** — D-16.5
+left the batch unbounded and unowned, and that is the defect this story exists to close
+
+**Given** an author after this story
+**When** they type `Roboto`, `Open Sans` or `Inter`
+**Then** the family is offered and embeds with **no download at all**
+
 ### Story 16.2: A fetched face stays on this machine
 
 As a template author,
