@@ -191,7 +191,15 @@ development_status:
   # content-addressed assets map. Bold/italic are NOT in scope — they need a face
   # inventory decision SPEC-fonts leaves open. Every field is optional and
   # absent-by-default, so the existing corpus must hash identically.
-  epic-8: in-progress
+  # Boundary gate run 2026-09-02 at f2db371, PASSED -- see epic-8-boundary-gate.md. All three owed
+  # suites RAN: the four matrix legs, TestCrossTargetByteIdentity, and PLAYWRIGHT, which executed for
+  # the FIRST TIME IN THIS REPOSITORY'S HISTORY (24 tests, 12 spec files, real browser). Two caveats
+  # stated rather than smoothed: it ran against Chrome 149 because the pinned revision 1208 is
+  # UNDOWNLOADABLE (the host returns HTTP 400), so the pinned-revision leg is undischarged; and the
+  # run exposed evidence/story-6.7-roundtrip-manifest.json as stale -- commit 6c79d29 calls itself
+  # "the re-run 6.7 manifest" but Playwright had never run, so it cannot have come from a real run.
+  # Zero new failures; three standing reds by identity. 8.4d and the fetch tier moved to Epic 15.
+  epic-8: done
   # 8.0 added 2026-08-31: DW-28, ruled HIGH after the owner hit it on a real Thai contract
   # clause. It OPENS the epic and is a PRECONDITION of 8.4 -- embedding arbitrary faces widens
   # the fail-closed branch it removes. Numbered 8.0 so 8.1..8.6 keep the keys they already have.
