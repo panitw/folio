@@ -2806,3 +2806,66 @@ choose.
 
 **How we'd know it was wrong.** Someone outside this repository turning out to hold a `.folio` file —
 which would mean the format was distributed before the tag, and the freedom was never real.
+
+### D-000.15 — D-000.14's scope: "already-touching, not going-looking"
+
+**Engineering lead ruling**, taken. Read beside **D-7.8.3's before-the-tag set**, whose deadline it
+shares.
+
+**The deadline is not a fourth question in the story-proposal test — it is already inside the third.**
+*"What does the register entry alone cost"* must be priced **at the moment the entry would actually be
+discharged**, not at today's prices. So a deadline enters as an **input to Q3**, not as a new term.
+**Nothing about the test changes.**
+
+**And it only BITES where the tag changes the KIND of the fix, not its price.** The project already has
+the membership rule: **D-7.8.3's set, tested by D-8.2.2(b) — unshipped NARROWINGS and REMOVALS.
+Widenings are safe on both sides.** After the tag a narrowing needs a migration this project has never
+written; that is a **category** change. A widening costs the same either side, so *"breaking is free
+now"* buys it nothing.
+
+> **THE OPERATIVE RULE. D-000.14 licenses a story ALREADY TOUCHING a format area to choose the CORRECT
+> shape over the COMPATIBLE shape. It does not license opening an area the story would not otherwise
+> touch. Already-touching, not going-looking.**
+
+**Story 8.6 is the model case:** already inside the format, making licence text required is a
+**narrowing**, and narrowings are free exactly now.
+
+**"Pull format work forward" is REJECTED, on the ground that matters: it has no discriminating power.**
+*"Breaking is free now"* is true of **every** candidate in the class equally, so it selects nothing —
+**and a criterion that says yes to everything is not a criterion.** That is the **second argument in
+two days with this shape**, after *"the failure mode is real"*, which said yes six times. **When a
+proposed criterion would admit every member of its class, it is not a bound, it is a licence.**
+
+**The discipline checked against the two cases I named — D-000.14 moves NEITHER, which is the evidence
+the line is right.** The `WITH` capability **admits more** licences, so it is a **widening**, free on
+both sides — **and it is not a `.folio` format change at all**, it is a build-time lint gate, so
+D-000.14 does not reach it. DW-133(b) is a **message improvement**, neither narrowing nor removal, not
+format. **Both stay registered.**
+
+**The three guards, confirmed with one addition each.**
+1. **Back-compat is about what OTHER PEOPLE'S documents do. The golden corpus is about what OUR CODE
+   does.** D-000.14 discharges the first entirely and has **no bearing on the second** — C6 is a
+   counter-metric about investigation discipline, not compatibility. *"A document declaring no font
+   choice must still hash identically"* **survives untouched**: it is not a compatibility promise, it
+   is the absent-by-default invariant that makes the corpus a witness at all.
+2. **A MAJOR bump being cheap is exactly when the version stops being checked**, because nobody pays
+   for getting it wrong — **but documents outlive the freedom**, and a version stamped carelessly this
+   week ships in the first release as a permanent false statement about a file. **D-000.14 makes
+   breaking free. It does not make lying free.**
+3. **OBLIGATION, recorded now because it is cheap now and impossible later: Story 15.3 must be handed
+   the list of what the freedom was spent on.** Every story choosing correct-over-compatible under
+   D-000.14 **records that it did so**, and 15.3 collects them into `RELEASING.md` and the release
+   notes. Otherwise the first integrator meets a format that changed shape several times with no
+   account of it — **the same defect as a golden re-recorded without a reason.**
+
+**Bookkeeping: do NOT go looking.** Optionality existing **purely** to avoid breaking documents is
+void; optionality existing for a **design** reason stays (Story 8.6's orphan preservation is the
+latter — AD-9's P1 **forces** it, which is design, not compatibility). **An audit of shipped decisions
+under a fresh justification is scope discovery wearing a new hat**, and is exactly what the course
+correction stopped. **No shipped decision is reopened.** The rule applies when a story is already in
+the area, and not before.
+
+**RUNNING LIST — what D-000.14's freedom was spent on** (handed to Story 15.3):
+- **Story 8.6** — licence text and copyright **required** on an embedded font asset; a `.folio`
+  embedding a face without them is **invalid at load**. Chosen over an optional field purely because
+  there are no documents to protect.
