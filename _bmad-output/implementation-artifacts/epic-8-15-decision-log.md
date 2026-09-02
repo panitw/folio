@@ -2937,3 +2937,93 @@ under the new rule**. The recorded digest in `expected.json` and `signoff.json` 
 **`expected.pdf`**, not of the input — so amending the input **moves no recorded digest**, provided the
 `font` record reaches no output byte, which the format doc asserts and the subsetting measurement
 corroborates. **Stated as an expectation with a basis, not a guarantee. A move is still the Block If.**
+
+## Story 8.6 built at `49eb7d7` — Epic 8's last feature story (2026-09-02)
+
+### D-8.6.5 — A HIGH the implementation shipped green: 17 of 21 faces carried another project's licence
+
+**The defect.** The generated catalogue module keyed licence text by **SPDX identifier**, filling each
+from whichever face reached that id first. **17 of 21 faces emitted Cascadia Code's LICENSE** —
+*Reserved Font Name Cascadia Code* clause included. **A document embedding Inter would have travelled
+stating Microsoft's terms.**
+
+**That is materially worse than carrying no licence at all**: it is a **false statement about the
+terms**, and the reserved-name clause names a typeface the document is not carrying. It inverts the
+whole point of D-8.6.1.
+
+**The root error, and it is instructive: "the OFL is the OFL" is FALSE.** The SIL Open Font License
+carries a **per-project preamble and reserved font names**, so two faces under the same identifier
+genuinely ship **different texts**. Now read **per face from that face's own directory** — re-measured
+**0 mismatches of 21**. The bundle carries **21 texts instead of 2**, stated in the generator as a
+deliberate trade: **a smaller bundle is not a reason to publish the wrong terms.**
+
+**Why it shipped green is the more useful half.** **Nothing observed the generated module.** The
+manifest was right, every binary was right — and **the artifact between them, the only thing the pick
+actually reads, was checked by nothing** (`App.test.tsx` asserted `toBeTruthy()`). Closed with a
+per-face tie to each binary's **own LICENSE and name table**, red-proved by reinstating the cache.
+
+**Two further patches came from mutations the builder ran itself:** deleting `embedFontFamily`'s
+chain-name collision refusal left **the entire `folio-go` suite green** while a pick **silently
+overwrote a declared chain and leaked its face as an orphan**; and the chain-entry rule's reach to a
+non-font asset had been amended *into* existing tests **without a single positive assertion**.
+
+### D-8.6.6 — The load rule reaches beyond font assets, deliberately
+
+**Orchestrator decision**, endorsing the plan gate's judgement call — **the widest consequence of
+D-000.14's freedom.**
+
+Keyed off the **chain entry** (as the I/O matrix specifies, with no media-type carve-out), **a chain
+entry naming a NON-font asset must also state terms.** Chosen over a carve-out **because
+`font/woff2` would evade it** — the media type is an open set (D-1.8.1), so a carve-out keyed on
+"is it a font?" is a hole by construction.
+
+**Fail-closed, and consistent with the epic:** the same shape as refusing an unclassifiable licence
+rather than labelling it. Registered in DW-138 and now **tested with a positive assertion**, which is
+what it lacked when the review found it.
+
+### D-8.6.7 — A finding rejected against the contract, and recorded rather than buried
+
+**Three reviewers raised it:** a family whose chain was **renamed** reappears in the catalogue group,
+and picking it is a **silent accepted no-op**. **Rejected** — every matrix row-2 expectation holds
+(including *"No error expected"*), and the fix needs **asset keys in `CanvasProjection`, which carries
+names only**. That is a projection change, not this story's.
+
+**Recorded as a residual risk rather than dropped**, which is the correct handling of a rejection three
+independent reviewers agreed on. It is a **user-visible oddity, not a correctness defect.**
+
+### D-8.6.8 — The working-directory trap fired TWICE, live, and both times produced FALSE CLEAN output
+
+D-8.4j.8 exists because two commands **fail in a way that reads as clean**. Both fired in this
+dispatch: `gofmt` run from `folio-go/` printed `lstat folio-go: no such file or directory`, and
+`git diff -- lint/MANIFEST.md` run from inside `lint/` **matched nothing and exited 0 vacuously**.
+Both re-run from the repo root.
+
+**Third and fourth instances. The rule is now paying for itself rather than being a lesson from
+history** — and the builder caught them by following it rather than by noticing something looked odd.
+
+### D-8.6.9 — Story 8.6's result
+
+**Gates, re-run after the patches:** `folio-go` **1877 pass / 2 fail / 5 skip** (baseline 1815 — **+62
+tests**; the 2 are standing red 1 by identity); `lint` four packages ok; designer **42 files / 432
+tests** (baseline 424); `genmanifest` a no-op; **all 23 goldens byte-identical**, taken before the first
+edit and again after the patch round. `SupportedMajor = 2` unmoved, `internal/fontset/` untouched,
+`lint/` untouched, `<intent-contract>` byte-identical.
+
+**DW-80 red-proved by DELETION, not falsification** — removing the whole `t.doc.Fonts` arm from
+`assetKeyReferenced` reds **four** named tests; restored byte-identically (sha256 match).
+
+**The orphan drop routes through the command layer:** `dropUnnamedFontAssets` called from
+`removeFontChainEntry` and `deleteFontChain`; `serialize.go`'s diff is **six lines in
+`writeFontRecord`** and nothing else — **`writeAssets` and its orphan loop untouched**, so AD-9's P1
+stands.
+
+**Both `spec-fonts` Open Questions are CLOSED** — inline-with-the-text struck through in place; the
+disk-font question struck through and **explicitly declined**, with the decline **rendered at the
+control** and asserted in a test. Silence was not accepted as a decline.
+
+**No step-03 subagent commit — instance seven did not recur.** One commit, `49eb7d7`, made at Finalize.
+
+**RUNNING LIST — format freedom spent (for Story 15.3), entry 1 confirmed:** `licenceText` and
+`copyright` **required** on a font asset a chain names; a `.folio` embedding a face without them is
+**invalid at load**. Chosen over an optional absent-by-default field **purely because there are no
+documents to protect**. No new version trigger; `SupportedMajor` stays 2.
