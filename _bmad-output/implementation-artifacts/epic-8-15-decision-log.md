@@ -3141,3 +3141,52 @@ conversation and made the call**, so the question is no longer *whether* but *wh
 **How we'd know it was wrong.** Authors hitting "cannot pick that family right now" often enough to be
 a complaint rather than an edge case — which would mean the offline case is the common one and the
 palette should have been bundled after all.
+
+### D-8.4d.2 — Story 8.4d and the fetch tier BOTH move to Epic 15. Epic 8 closes at 8.6 plus its gate.
+
+**Engineering lead ruling**, taken. **Q1 and Q2 are one ruling, because the measurement refutes the
+premise that put 8.4d in Epic 8 at all.**
+
+**D-8.4.24 placed 8.4d in Epic 8 because *"the enforceable figure is today's measurement plus 8.4c's
+addition and nothing more"* — i.e. because Epic 8 was adding the weight. That is now MEASURED FALSE.**
+The 21 faces are **14.16%**, and deleting every one leaves **13,501,653 bytes — still 1.5×** — because
+the wasm and the CJK face are **77.4%** on their own **and both predate Epic 8**. **The budget overage
+is a PROGRAM-level fact, not an Epic 8 fact.** 8.4d was placed on evidence that has since been taken
+and come back the other way.
+
+**So this is not an eighth insertion. It is a placement correction that makes Epic 8 SMALLER** — the
+opposite of the pattern the course correction stopped — **and it lets the run finally leave Epic 8**,
+which is worth something on its own.
+
+**Epic 15 is where both belong by subject.** The fetch tier changes **offline behaviour** (NFR7,
+AD-19), a release-facing property; 8.4d is **release readiness by its own title**; and D-000.14's
+freedom expires at 15.3, so a delivery-shape change is naturally before-the-tag work living in the epic
+that owns the tag. **Sequence: fetch tier (15.0) → 8.4d → 15.3**, with 15.2/15.2a where D-000.3 puts
+them.
+
+**Q2 answered: 8.4d goes AFTER, and the cost is not softened.** Setting a threshold you intend to move
+next story is **tuning-to-fit**, and 8.4d was sequenced last precisely so the number is chosen **once**
+against **finished** weight. **The fetch tier means the weight is not finished.**
+
+**An interim ratchet was CONSIDERED AND REJECTED, recorded because it is the kind of thing that would
+previously have been created.** A ratchet must be bumped by **every byte-moving story** — across Epics
+9–14 that is ~20 opportunities to bump it thoughtlessly, which **trains exactly the reflex D-8.4.24
+exists to prevent. A gate that gets routinely bumped is not a gate; it is a chore that teaches people
+to bump gates.**
+
+**And the ungated window is PRICED, not shrugged at.** Story 8.6 moved the payload **+10,038 bytes —
+0.06%**. **77.4% is fixed** and predates all of this; **Epics 9 and 10 add ZERO bytes** (shipped code,
+retroactively closed); Epics 12–14 are designer TypeScript. Expected drift: **low single-digit
+percent** — and attribution stays cheap because **Story 8.5's per-asset Brotli record already runs
+every build**, so **8.4d inherits a series, not an archaeology problem.** A stated gap with a number.
+
+**No new owner escalation.** D-8.4.24 already ruled that a chosen figure supersedes `~9 MB`; the
+reversal changes **the number 8.4d will bring, not whether it brings one.**
+
+**CARRIED INTO 8.4d as a stated input — the quantifier lesson, caught by its own author.** The plan
+gate wrote *"18 of 21 faces"* reasoning **from the mean**, then measured **15**, and flagged that as
+the most decision-relevant fact in its own proposal. **A mean-derived count is not a measurement.** The
+six faces small enough to clear a 0.45%-headroom gate are exactly the population that would slip it
+**silently, one at a time**. So: **a threshold's headroom defines a population that can be added
+without tripping it, and that population must be NAMED when the figure is chosen** — or the gate's real
+tolerance is discovered by the sixth face rather than declared with the number.

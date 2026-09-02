@@ -280,7 +280,12 @@ development_status:
   # property 8.4j's fix already owns.
   8-5-a-curated-catalogue-ships-with-the-designer: done
   8-6-picking-a-family-puts-it-in-the-file: done
-  8-4d-the-size-budget-is-a-number-something-checks: backlog
+  # 8.4d MOVED TO EPIC 15 on 2026-09-02 (D-8.4d.2). The premise that placed it in Epic 8 (D-8.4.24 --
+  # "Epic 8 is adding the weight") is MEASURED FALSE: the 21 catalogue faces are 14.16% of the
+  # payload, and deleting every one still leaves 13,501,653 bytes -- 1.5x the ~9 MB -- because the
+  # engine wasm and the CJK face are 77.4% on their own and both PREDATE Epic 8. The budget overage
+  # is a PROGRAM-level fact, not an Epic 8 fact. Not an eighth insertion: it makes Epic 8 SMALLER.
+  8-4d-the-size-budget-is-a-number-something-checks: moved-to-epic-15
   epic-8-retrospective: optional
 
   # Epic 9 added 2026-08-30 (post-MVP). Reported from the designer: BOX properties set on a
@@ -479,6 +484,24 @@ development_status:
   # measured gates and deferrals in the story's ## Delivery Log; DW-24 was open here, owner Story 7.3; it CLOSED 2026-08-30 in that story (see
   # deferred-work.md). This line is kept as written and corrected rather than edited.
   15-1-the-golden-report-s-moved-hash-is-explained: done
+  # 15.0 added 2026-09-02 by OWNER DECISION D-8.4d.1, which REVERSES D-8.5.12: catalogue faces are
+  # FETCHED FROM THE RELEASE'S OWN ORIGIN ON FIRST PICK, not precached at first load. Placed here
+  # (D-8.4d.2) because it changes OFFLINE BEHAVIOUR -- NFR7/AD-19, a release-facing property -- and
+  # because D-000.14's format/shape freedom expires at 15.3. Exogenous work: unbounded but PLACED.
+  # Cost, always quoted WITH its mitigant: a family not yet fetched cannot be picked while offline,
+  # but the catalogue is a PALETTE not coverage (the three Noto faces are the coverage), so it
+  # degrades to "you cannot pick that family right now", never to a document that will not render --
+  # and a face already embedded travels inside the .folio (Story 8.6), so nothing regresses.
+  # SPEC.md Non-goals and font-catalogue.md were corrected AHEAD of it at 3a40c38 (D-000.10's
+  # precedent), policy only, mechanism left to the story.
+  15-0-a-catalogue-face-arrives-when-it-is-picked: backlog
+  # 8.4d lands HERE, AFTER 15.0 -- the fetch tier means the weight is not finished, and setting a
+  # threshold you intend to move next story is the tuning-to-fit D-8.4.24 forbade. An interim
+  # ratchet was CONSIDERED AND REJECTED: it must be bumped by every byte-moving story, so across
+  # Epics 9-14 it is ~20 chances to bump it thoughtlessly. A gate that gets routinely bumped is not
+  # a gate; it is a chore that teaches people to bump gates. The ungated window is PRICED: 8.6 moved
+  # the payload 0.06%, Epics 9/10 add zero bytes, 77.4% is fixed, and 8.5's per-asset Brotli record
+  # runs every build -- so 8.4d inherits a series, not an archaeology problem.
   15-2-ci-s-red-means-something: backlog
   # 15.2a added 2026-08-31: DW-32, raised to HIGH at Story 8.2's plan gate when the mechanism
   # was re-measured as command-shape INJECTION rather than a bad value. Its Go half narrows the
