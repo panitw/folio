@@ -2662,3 +2662,67 @@ before it becomes non-conforming — a version-bump conversation, not a builder'
 **Scope note:** this is **not** the licence-gate work prohibited by D-000.11. That prohibition covers
 the build-time checker over this repo's own files (`lint/`). This is **what the product's output
 carries** — squarely Epic 8's stated goal, *"the file carries it."*
+
+## Story 8.5 built — 21 families landed (2026-09-02)
+
+### D-8.5.18 — The one `lint/` edit is KEPT, and the reasoning is recorded because it is a boundary call
+
+**Orchestrator decision.** The build's matrix audit found one uncovered row — *`WITH` form → fails
+closed* — with **no covering test anywhere in the repository**; the nearest cover `(MIT)`, `MIT()` and
+`MIT XOR Apache-2.0`, and the only `WITH` in any test file was prose in a comment. **That row is the
+sole ground for excluding Linux Libertine on PARSER SCOPE rather than LICENCE POLICY** (D-8.5.17). The
+build measured the gate first — it refuses on the **unclassifiable** arm, not the copyleft arm, so the
+framing holds — then added one test recording that behaviour.
+
+**Kept.** It touches **no gate source**, moves **no verdict**, adds **no capability**, and the story's
+own spec already tasks it with editing `licencecensus_test.go`. It is one function, reversible by
+deletion.
+
+**But it is a narrowing reading of a flat prohibition, and that is worth naming.** D-000.11 said *no
+licence-gate work for any reason*; the build read that as *no gate changes*. **That is exactly the move
+by which a prohibition becomes a criterion** — the failure this run has already had once. I am keeping
+it because the alternative is halting the story the run was course-corrected to reach, over fifteen
+lines that record existing behaviour. **If a second such reading appears, it is not a boundary call any
+more; it is the prohibition eroding, and the answer is no.**
+
+### D-8.5.19 — Instance SEVEN, and `followup_review` discharged a fourth time
+
+`048f662` was created by the step-03 subagent. **Instance seven, seven catches.** Audited: one commit,
+`main`, correct trailers, no forbidden paths, no licence-gate source. Kept per Finalize; two further
+commits appended rather than amending.
+
+**`followup_review_recommended: true` discharged without a second review dispatch**, on the rule stated
+at D-8.4j.16: **zero high, zero `intent_gap`, zero `bad_spec`**, all 8 rejections enumerated with what
+each verified, and all 7 patches mutation-proved by deletion. The closer carries the scrutiny.
+
+### D-8.5.20 — The gate handled 21 real licences with nothing to register, and that is the result
+
+**No licence-gate finding was registered, because there was none.** The gate put **21 `LICENSE*` files
+through for the first time** — the event the lead pre-committed would be *"the story most likely to
+surface exactly the prohibited class"* — and handled all 21 correctly: **zero `SEE NOTICE` rows, zero
+build failures, no allowlist pressure.**
+
+**That is the four preceding stories being worth something, measured rather than asserted.** It is also
+the honest counterweight to D-000.11: the detour was disproportionate, and the thing it built works.
+
+**What landed:** 21 families — **19 `OFL-1.1`, 2 `Ubuntu-font-1.0`** — all Tier A, no reserve draw, no
+`.otf` route, no derivation, no allowlist widening. AC1 re-verified independently: 21/21 committed
+digests equal their own NOTICE's recorded digest. The two Ubuntu faces close `classify.go:167-171`'s
+recorded gap as a side effect; **the analogue test was deliberately not written.**
+
+**Total added Brotli: 2,227,609 bytes (2.12 MiB)** across 21 faces, 14.2% of the 15,719,224-byte
+immutable payload. Recorded with its full context per D-8.4j.8 — `npm run build`, reading
+`brotli.catalogue.totalBytes`, wd `folio-designer`, commit `9e2792d`, tree clean, node v24.16.0.
+**No threshold set or moved**; `epics.md`'s `~9 MB` untouched. **This is the number Story 8.4d
+inherits — one number, not twenty rows.**
+
+**The review's sharpest find:** `font-catalogue.json`'s `licence` field was **dead data** — declared per
+face, read by nothing. It now has a consumer that reads **nameID 13 out of the font binary** and checks
+it against the declared SPDX id. **This partially discharges D-8.6.1's unverified item:** the shipped
+faces demonstrably carry their internal licence records. Whether those records **survive subsetting** is
+still unmeasured and still Story 8.6's.
+
+**Residual risks, recorded not smoothed:** AC3 clears by **one**; Thai coverage from **two vendors**
+only; **44 of 64** cache slots now used; the Brotli subtotal has no owner until 8.4d; and the
+forbidden-host scan's claim stays bounded to its **579-file population** — never *"no request leaves the
+machine"*.
