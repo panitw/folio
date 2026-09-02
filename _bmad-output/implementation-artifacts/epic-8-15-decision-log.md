@@ -2334,3 +2334,88 @@ it, rather than after.**
 
 **How we'd know it was wrong.** The measurement finding a permissive-base `WITH` in the real candidate
 set — then the domain is non-empty, the concern was theoretical, and the story simply completes.
+
+### D-8.4k.4 — THE DOMAIN MEASUREMENT IS EMPTY. D-8.5.14 is implementable exactly as ruled and admits nothing real
+
+**Measured at the plan gate**, `771d82f`, tree clean, probes run from `/Users/panitw/Projects/folio/lint`
+and deleted after use. This discharges D-8.4k.3's gating first task **before** any parser was built.
+
+**Verdict of the measurement:** the reachable domain of D-8.5.14 **for fonts is EMPTY**.
+
+**A finding about the population itself, which had to be settled first.** **There is no recorded
+candidate-family list anywhere in the repository.** Story 8.5's AC1 is *route*-shaped, not
+family-shaped; its twenty-row per-face procurement table is named only as hypothetical future work in
+its own Spec Change Log, and no companion artifact exists. So *"the real candidate families 8.5 will
+draw on"* has **no inventory to enumerate**, and the population could only be characterised by 8.5's own
+recorded filters: 20+ families, four-id allowlist, vendored static `.ttf`/`.otf` from upstream release
+archives, Regular upright only, Latin and Thai, no CJK — i.e. **the libre text-face population** (SIL,
+Google Fonts, IBM, Adobe and equivalents).
+
+**Declarations in the committed tree: ZERO.** No file under `folio-designer/public/fonts/`,
+`folio-go/fonts/`, `folio-go/testdata/`, `folio-designer/third-party-notices/` or `lint/testdata/`
+contains a `WITH` expression. The eleven committed font directories classify by **prose marker** (ten
+OFL-1.1, one Apache-2.0), and the repo's only eight `SPDX-License-Identifier:` lines are bare single ids.
+
+**The `WITH` declarations that occur in the font world, each with its D-8.5.14 verdict:**
+
+| Declaration | Base | Base ∈ four ids | D-8.5.14 |
+|---|---|---|---|
+| `GPL-2.0-only WITH Font-exception-2.0` | `GPL-2.0-only` | No — copyleft | **REFUSED** |
+| `GPL-2.0-or-later WITH Font-exception-2.0` | `GPL-2.0-or-later` | No — copyleft | **REFUSED** |
+| `GPL-3.0-or-later WITH Font-exception-2.0` | `GPL-3.0-or-later` | No — copyleft | **REFUSED** |
+| `OFL-1.1 OR GPL-2.0-or-later WITH Font-exception-2.0` (Libertine dual form) | — | — | **REFUSED** — composed with `OR`, out of scope |
+| `GPL-2.0-only WITH Liberation-font-exception` (not a registered SPDX id) | `GPL-2.0-only` | No — copyleft | **REFUSED** |
+| `Apache-2.0 WITH LLVM-exception` | `Apache-2.0` | **Yes** | **REFUSED** — exception not on the (empty) list; and an LLVM-project shape, not a typeface shape |
+
+**THE DECISIVE FACT.** **SPDX registers exactly one font-related exception — `Font-exception-2.0` — and
+it is by construction an exception to the GNU GPL v2.** Its base can therefore **never** be one of the
+owner's four ids. Permissive font licences carry **no exception convention at all**: OFL 1.1's Reserved
+Font Name mechanism is in-licence, and neither Apache-2.0, MIT nor Ubuntu-font-1.0 has one in font use.
+
+**In simple terms.** The owner's rule says *"the licence must be one we accept, and the carve-out must be
+one we accept."* But in typefaces there is essentially **one** carve-out in circulation, and its entire
+purpose is to attach to a licence we do **not** accept — it exists to make a copyleft font safe to embed.
+So requiring the licence to already be acceptable rules out every case the feature exists for. The rule
+is coherent; the population it addresses is empty.
+
+**This is NOT a reinterpretation and nothing was widened.** The rule is implementable exactly as ruled.
+It is reported to the owner **with the measurement in hand**, per D-8.4k.3.
+
+### D-8.4k.5 — A second escalation travels with the first: the exception list has no owner-named seed
+
+**Verdict.** D-8.5.14 says the exception list *"starts empty or near-empty and grows by owner
+decision"*, and **nothing in the record names an entry**. So it starts **empty**, and seeding it in the
+build would be **taking an owner decision**.
+
+**The non-obvious consequence.** With an **empty right half, the base half is unobservable end-to-end** —
+every `WITH` at SITE A fails on the exception first, so red-proof 1 (admit) and red-proof 3 (base fails)
+**cannot be end-to-end proofs**. They are specified as **mechanism-level** proofs against an *injected*
+exception list, on the existing `manifest_test.go:646` precedent, **with the limitation stated in each
+test's own doc comment rather than claimed away.**
+
+### D-8.4k.6 — Four judgement calls at the plan gate, all endorsed
+
+**1. The family-only wrapper `ClassifySPDXExpression` REFUSES `WITH`.** Its two callers
+(`rules/licencegraph.go:78`, `licence/npm.go:64`) **do not gate per term**, so teaching the enumerator
+`WITH` without this would make `MIT WITH <unevaluated carve-out>` **newly pass** the dependency and npm
+paths — **exactly the carve-outs-nobody-evaluated the owner rejected**, on a population that grows by
+`go get`. Refusing at the wrapper keeps those paths byte-identical to `771d82f`. Selected by the owner's
+own stated reason plus D-8.4j.6's *"admission must be no more permissive than the classification it
+consumes"*. **This is the single best call at this gate** — it caught a widening that the owner's rule
+would have produced as a side effect at a site nobody was looking at.
+
+**2. SITE B's exception list is empty by policy**, so a `WITH` term is refused there and SITE B's
+admitted set is byte-identical to `771d82f`. Preserves D-8.5.13's two-lists/one-mechanism separation
+without inventing a wordlist exception policy.
+
+**3. The exception-seed question is a designed HALT in `Block If`, not an `intent gap`.** It is a
+decision the intent **deliberately reserves to a named authority** — the folio precedent is the
+human-sign-off stories, where a spec's `Block If` is normative. Halting `intent gap` would have been
+wrong: the spec is writable and determinate.
+
+**4. `WITH` is admitted only as the whole expression** (exactly one base, one exception, no other
+operator), so **the composition boundary is stated rather than discovered** (D-8.4k.2).
+
+**Census:** cannot witness this change — no population text carries a `WITH` declaration, so corrupting
+the new branch leaves it green. **0-of-35 is evidence the story breaks nothing, never that it does
+anything.** The witnesses are the five red-proofs.
