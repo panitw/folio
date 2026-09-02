@@ -61,27 +61,25 @@ deferred:
 
 *Non-normative — owner summary; the intent contract below governs implementation.*
 
-Today an author can only use the handful of typefaces the designer was built with. Choosing anything
-else means finding a font, working out whether its licence permits redistributing it inside the
-documents you produce, and getting the file onto the machine — a research errand, not a design choice.
+Twenty-one typefaces now ship inside the designer itself. They are not fetched, not downloaded on
+first use, and not looked up anywhere: they travel in the release, and a machine with no network at
+all can open the designer and find every one of them present and intact. Each face carries its own
+licence text and its own copyright line, and the record beside it — where it came from, which
+version, and a fingerprint of the exact bytes — is checked against the bytes rather than trusted.
+Each face also states its licence inside the font file, and that statement is now read and matched
+against what we claim about it.
 
-The work that made the build refuse an unacceptable licence is finished and shipped. What is left is
-the part you can actually see: this story puts the typefaces themselves into the designer, so choosing
-a font becomes a search through a list somebody has already cleared. Every face travels with its own
-licence text and copyright line.
+The release is about two megabytes heavier compressed, and that is the expected price. The size
+limit is still deliberately unset: it is fixed once at the end of this run against the finished
+weight, never nudged along the way to whatever the build happens to weigh, so nothing here sets or
+moves a threshold.
 
-It deliberately does not add bold or italic — those belong to later work that has not been decided, so
-every face here is a single upright weight. And picking a family still does nothing to the document;
-that is the next story's job.
+A family or two are absent, and the reason is narrower than it looks. Their licences are perfectly
+acceptable and the fonts are genuinely free to use — the checker simply cannot yet read that
+particular *wording*. Widening it later brings them straight back.
 
-A family or two are left out, and the reason is narrower than it looks: the checker cannot yet read
-their particular licence *wording*. Not that the licence is unacceptable — the wording is fine and the
-font is genuinely free to use. It is a known gap with a known price, and widening the checker later
-brings them straight back.
-
-The release gets noticeably heavier, and that is expected. The size limit is set deliberately at the
-end of this run against the finished weight, never nudged along the way to whatever the build happens
-to weigh.
+Picking one of these families still does nothing to a document. That is the next story's job; this
+one only puts the faces there and proves they are there.
 
 <intent-contract>
 
@@ -770,3 +768,116 @@ bounded to the scanned population and is never "no request leaves the machine".
 **No licence-gate change of any kind.** `classify.go`, `licencesignals.go`, `manifest.go`, the
 allowlists and the classifier tables are untouched; `git diff` over `lint/internal/` shows only
 `licencecensus_test.go`. No licence-gate defect was found to register.
+
+## Delivery Log
+
+### 2026-09-02 — planned
+
+Planned twice. The first plan gate split the story: `multiple-goals` was a real signal, the licence
+gate was live-broken at HEAD, and AC2/AC7 left for Story 8.4h (D-8.5.13). The 8.4h line then ran to
+8.4i and 8.4j, and the owner stopped it (**D-000.11**) — four stories of licence-checker work, zero
+lines advancing the epic's stated goal. The story was **re-planned to six ACs at `19959fa`** under a
+flat prohibition on any licence-gate change. `oversized` did not clear and was **left set** rather
+than cleared by thinning acceptance criteria; the named lever moved the twenty-one-row procurement
+table into `8-5-catalogue-procurement.md`, which is normative for procurement.
+
+### 2026-09-02 — built
+
+Dispatched at baseline `1a4ccea` (code tree byte-identical to the plan baseline `19959fa`).
+Three commits: **`048f662`** — the 21 faces, `font-catalogue.json`, the manifest-driven generator,
+the per-asset Brotli record, the forbidden-host scan and the census pins; **`9e2792d`** — the
+`WITH`-clause refusal pinned to its arm, and the scanner's recorded population corrected to what it
+actually reads; **`efa32f7`** — the review's seven patches.
+
+Triage: **7 patched / 4 deferred / 8 rejected**, 0 intent gaps, 0 bad-spec loopbacks.
+**Patched (5 medium, 2 low):** the collision guard's shipped-family half seeded from slot keys rather
+than family names, so it could never fire; `font-catalogue.json`'s `licence` field was dead data;
+no catalogue face was checked for the licence in its own bytes; `SCANNED_EXTENSIONS` omitted `.mts`
+and this change added the repo's only `.mts` file; `directory`/`file`/`family` unvalidated where they
+become a path or CSS syntax; the scan's reach assertion covered three of six roots; the mutable-entry
+Brotli branch was never red-proved.
+**Deferred (2 medium, 2 low)** — now **DW-134** (scan reads only tracked files), **DW-135** (only the
+two Google hosts forbidden), **DW-136** (`blankComments` approximates comment syntax), **DW-137**
+(`npm run build` needs a git checkout), all owned by the **engineering lead**.
+**Rejected (2 medium, 6 low)**, each enumerated with what it verified: (1) the 44 ≤ 64 count is
+enforced, not merely unwritten; (2) a failing threshold placeholder is 8.4d's job, not this story's;
+(3) warn-and-skip outside a checkout inverts the guard — the observation was deferred as DW-137
+instead; (4) "~16 families under a distinct-design reading" re-litigates a settled count; (5) the
+"21 catalogue faces" sentence in each NOTICE is a historical record, parsed by nothing; (6) cousine's
+"Copyright 2026" is what the binary says; (7) geist/geistmono record identical archive URLs; (8)
+symlink/truncated-sfnt/name-format-1 hardening guards inputs that cannot reach the site.
+
+One boundary call: the matrix audit found the `WITH` row uncovered and the build added **one test**
+recording existing gate behaviour. Kept under **D-8.5.18**, and named there as a narrowing reading of
+a flat prohibition — *if a second such reading appears, the answer is no.*
+
+### 2026-09-02 — done
+
+Baseline `1a4ccea`. Closed at `main`, nothing pushed (`origin/main` still `c985b9c`).
+
+**Gates re-measured at HEAD, not relayed** — every invocation with its working directory (D-8.4j.8).
+`[folio-go]` `go test -count=1 ./...` → **1815 pass / 2 fail / 5 skip**, the two failures
+`TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)` by identity; `go vet ./...` exit 0, silent.
+`[repo root]` `gofmt -l folio-go lint` → `lint/internal/rules/licencegraph_test.go` and nothing else.
+`[lint]` `go test -count=1 ./...` → all four packages ok, 0 FAIL; `TestLicenceSignalCensus` prints
+*"CENSUS: 57 licence texts measured (48 committed files + 9 dependency licences), all matching their
+pinned verdicts"* and pins the compound case `MIT OR Apache-2.0`. `[lint]` `go run ./cmd/genmanifest`
+exit 0, then `[repo root]` `git diff --exit-code -- lint/MANIFEST.md` exit 0 — regeneration is a no-op.
+`[folio-designer]` (node v24.16.0) `npm run typecheck` exit 0; `npm run lint` exit 0 with **exactly 4**
+`only-export-components`; `npm test` **42 files / 424 tests, 0 failures** (baseline 40/411);
+`npm run test:e2e:compile` exit 0 — compile only, DW-101; `npm run build` exit 0 with
+`release.assets.length` **44**, `s1.assetCount` **44**, `s1.cachedBytes` **44,693,796**, and the scan
+reporting *0 occurrences in 579 tracked source files (floor 400)* — 579 re-derived independently from
+`git ls-files` over the six roots. `npm run verify:offline` exit 0, `verify:offline:red` exit 0 with
+neither `S1 CJK row is not the dominant font payload` nor `over the declared maximum of` firing,
+`verify:offline:wasm` exit 0. `[repo root]` `grep -c 'maximumCacheAssets = 64'` → `1`. Golden digests
+diffed against a **worktree at `1a4ccea`**: **23/23 byte-identical**, empty diff.
+
+**THE ONE NUMBER (AC5).** The catalogue adds **2,227,609 Brotli bytes** — 2.12 MiB — across its 21
+faces, against an immutable payload of **15,719,224** bytes across 43 assets, i.e. **14.17%**.
+Command `npm run build` then `node -e` over `dist/offline-release-manifest.json`; working directory
+`/Users/panitw/Projects/folio/folio-designer` (main checkout, never a linked worktree — DW-105);
+commit `c63fb29`; tree clean at measurement; node v24.16.0. Derived **three independent ways** at the
+close and equal in all three: the recorded `brotli.catalogue.totalBytes`; the sum of the 21 assets'
+own `brotliBytes`; and `stat` over the 21 emitted `.br` sidecars on disk. **This is the number Story
+8.4d inherits. No threshold was set or moved** — `epics.md`'s `~9 MB` is untouched by all three
+commits, and the only threshold-shaped lines the diff adds are comments disclaiming one.
+
+**Teeth, proved at the close rather than accepted.** Deleting a catalogue face from the built bundle
+makes `verify:offline` **fail, exit 1** — the offline claim is not decoration. Two directions name the
+face by URL (`missing Brotli sidecar /assets/catalogue-literata…`, and a swapped binary reds
+`/assets/catalogue-literata…`); the *whole face removed* direction reds on the earlier generic
+`manifest and production runtime output are not an exact set`, because `sameSet` shadows the
+`missing manifest asset <url>` guard that would have named it. Loud in every direction, specific in
+two of three. Separately, declaring an unrecognised SPDX id for a face **fails rather than skips** —
+mutating one face to `MIT` reds on *"which no entry in licenceSignatures recognises"*, and nameID 13
+was read out of two binaries by hand and matched (`Ubuntu Font Licence 1.0` / `SIL Open Font
+License`). Procurement sampled on **3 faces drawn at random** (notoserifthai, ubuntusansmono,
+literata): committed sha256 equals the digest its own NOTICE records, byte size matches, `LICENSE*`
+and a `Copyright` line present — 3/3.
+
+**`followup_review_recommended: true` discharged per D-8.5.19**, without a second review dispatch:
+zero high, zero intent gaps, zero bad-spec loopbacks, all 8 rejections enumerated with what each
+verified, all 7 patches mutation-proved by deletion. The closer carried the scrutiny — rejections
+(1), (4), (6) and (7) were re-checked against the bytes and the built manifest and all four hold.
+**No licence-gate defect was found, so none was registered to Epic 15** (D-8.5.20): 21 `LICENSE*`
+files went through the gate for the first time and it handled all 21 — zero `SEE NOTICE` rows, zero
+build failures, no allowlist pressure.
+
+**Heavy tests: written and compiling, NOT RUN.** Under the per-epic cadence (D-000.4) the four
+`FOLIO_MATRIX_TARGET` legs, `TestCrossTargetByteIdentity` and the Playwright suite were **not run
+here**; `npm run test:e2e:compile` proves the e2e specs still typecheck, and nothing engine-side, no
+`.folio` field and no golden moved. **They come due at Epic 8's boundary gate**, which owns them.
+
+**Residual risks, carried forward.** AC3 clears **by one** — 21 new families against a bar of 20, so
+losing any single face puts the catalogue under it; Thai coverage comes from **two vendors** only
+(Noto and IBM Plex), the Cadson Demak families being tagless and therefore procurement-blocked, not
+licence-blocked; **44 of 64** cache slots are now used, and Story 8.6 plus any further catalogue
+growth spend the remaining 20; and the forbidden-host scan's claim is bounded to its **579-file
+population** — never *"no request leaves the machine"* (D-8.5.5). One pre-existing fact reported
+rather than swept up: `docs/expression-reference.html` really does link a Google Fonts stylesheet.
+It sits outside the scanned roots, predates this story, and is out of scope here.
+
+**Epic scope check (D-000.11).** This is the **first story of the run to ship something a user would
+notice** — 21 typefaces, in the bundle, reachable offline. Epic 8 stays `in-progress`: 8.6 and 8.4d
+remain, and 8.4k is `deferred-to-epic-15`.

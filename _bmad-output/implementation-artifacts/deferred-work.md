@@ -6608,3 +6608,60 @@ refusal is confirmed as intended at all three gates and the dependency gate's ex
 the entries that price it.
 
 ---
+
+### DW-134 — the forbidden-host scan reads only git-TRACKED files, so the moment it describes is the one it cannot see
+
+- **Deferred by:** **Story 8.5** (`deferred[0]`, registered at the build gate 2026-09-02; re-verified at
+  the close by running the scan's own population query from the repo root — `git ls-files` over the six
+  `SCANNED_ROOTS` filtered to `SCANNED_EXTENSIONS` returns **579**, exactly the number the scan reports).
+- **Owner:** **ENGINEERING LEAD.** The remedy is one flag (`--others --exclude-standard`), but it would
+  also fail the build over a developer's un-ignored scratch file. Noise-versus-coverage on a build-failing
+  gate is a policy trade, not a drive-by patch.
+- **Severity:** MEDIUM. Fail-open in exactly one direction: a new **untracked** source file carrying a
+  forbidden host passes `npm run build` clean.
+- **Status:** OPEN.
+
+The guard's own framing — *"the moment someone reaches for the cheap shape, the first thing they type is
+one of these two hosts"* — describes the pre-`git add` moment, and `scannedPopulation` shells out to
+`git ls-files`, which reads the index. The gap closes the instant the file is staged, so the exposure is
+a working-copy window rather than a shipped one. **What discharges it:** a lead ruling on whether the
+scan walks untracked files too, and what it does with an un-ignored scratch file if it does.
+
+### DW-135 — only the two Google Fonts hosts are forbidden; every other live font service passes
+
+- **Deferred by:** **Story 8.5** (`deferred[1]`, registered at the build gate 2026-09-02).
+- **Owner:** **ENGINEERING LEAD.** Widening `FORBIDDEN_FONT_HOSTS` is a decision about what the gate is
+  *for* — whether it names the two hosts D-8.5.12 declined by name, or the whole class of live font
+  services — and that is a scope question about the Non-goals clause, not a defect in this change.
+- **Severity:** MEDIUM, latent: zero occurrences of any font-service host in the 579-file population today.
+- **Status:** OPEN.
+
+`use.typekit.net`, `fonts.bunny.net`, `fonts.cdnfonts.com` and the jsDelivr/unpkg Fontsource paths are all
+"reach for the live font service" shapes, and the scan waves them through. **What discharges it:** a ruling
+on the list's intended breadth, folded into whichever story next touches the scan.
+
+### DW-136 — `blankComments` approximates comment syntax for several languages it is applied to, while the file's prose claims precision
+
+- **Deferred by:** **Story 8.5** (`deferred[2]`, registered at the build gate 2026-09-02).
+- **Owner:** **ENGINEERING LEAD.**
+- **Severity:** LOW, and **fails SAFE**: the scan reads raw text, so only the EXEMPTION path is affected
+  and the worst case is a declaration that stops exempting — a false build failure, never a false pass.
+- **Status:** OPEN.
+
+It treats `//` as a comment opener in `.css` and `.json`, where it is not, so an unquoted CSS
+`url(https://...)` blanks the rest of the line; Python triple-quoted strings and Go raw strings are
+likewise approximate. **What discharges it:** either a per-language comment table, or the comment block's
+prose corrected to claim only the fidelity the scanner has.
+
+### DW-137 — `npm run build` now fails outright outside a git checkout
+
+- **Deferred by:** **Story 8.5** (`deferred[3]`, registered at the build gate 2026-09-02).
+- **Owner:** **ENGINEERING LEAD**, with `RELEASING.md` as the likely landing place.
+- **Severity:** LOW. Loud and fail-closed.
+- **Status:** OPEN.
+
+The host scan is the first step of `npm run build` and cannot obtain a population without `.git`, so
+building from a source tarball, an export, or a Docker `COPY` that omits `.git` fails at step one for a
+reason unrelated to the build. **The fail-closed throw is CORRECT and must not become a warn-and-skip** —
+that is the vacuous green Design Note 2 names, and the story's review rejected exactly that remedy.
+**What discharges it:** a documented build requirement, or a non-git walk that preserves fail-closed.

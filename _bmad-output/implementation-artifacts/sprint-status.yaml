@@ -278,7 +278,7 @@ development_status:
   # snapshot, not a guard. 8.5 gets NO compound-expression BAN: that is a proxy guard, it would
   # refuse a legitimately dual-licensed permissive face, and it would be a second authority for a
   # property 8.4j's fix already owns.
-  8-5-a-curated-catalogue-ships-with-the-designer: backlog
+  8-5-a-curated-catalogue-ships-with-the-designer: done
   8-6-picking-a-family-puts-it-in-the-file: backlog
   8-4d-the-size-budget-is-a-number-something-checks: backlog
   epic-8-retrospective: optional
