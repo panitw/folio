@@ -57,7 +57,25 @@ neither):
   `canvasFontFamilies`, `maxCanvasFontFamilies`, and the matching `engine-protocol.ts` validator
   additions. **These have no story, no acceptance criterion and no FR in `791ed00`** and are not
   mentioned in its commit message, which accounts for `page_setup.go` as text-alignment callers only.
-  See Finding 6.
+  See Finding 6, and the attribution group below.
+
+*Owned by neither story, and EXERCISED — the third group (D-9.R.6):*
+
+The gap on these five is **attribution, not coverage**: D-000.5 already ruled the remedy for unstoried
+shipped code, and each of them has a live consumer or a test that would fail if it were removed. They
+are named here with that exercise beside them, the treatment `text_alignment.go` got from Story 15.1 —
+**an attribution with no exercise named is the finding restated, not closed.** Epic 8's chain-editor
+stories built on all five, which is why they were already exercised before anyone noticed they were
+unstoried.
+
+| Field / symbol | Where it is defined | What exercises it |
+|---|---|---|
+| `CanvasProjection.FontFamilies` | `folio-go/page_setup.go` | `folio-designer/src/App.tsx:903` passes `canvas.fontFamilies` into `ComponentProperties`; `:1112` is that component's own parameter; `:1145` hands it to `FontFamilyProperty`, the family picker in the TYPOGRAPHY section. Asserted on the wire in `folio-designer/src/engine-protocol.test.ts:9` (the validator's canonical projection fixture) and `folio-designer/src/sheet-stack.test.ts:16`. |
+| `CanvasProjection.DefaultFontSize` | `folio-go/page_setup.go` | `App.tsx:903` passes `canvas.defaultFontSize`; `:1112` receives it; `:1145` uses it as the font-size field's `empty` placeholder, so an element with no declared size shows the engine's default rather than a blank. Same two test fixtures: `engine-protocol.test.ts:9`, `sheet-stack.test.ts:16`. |
+| `canvasFontFamilies` | `folio-go/page_setup.go` | The producer of the field above — exercised through every `Canvas`/`CanvasWithTextPaint` assertion that reads `FontFamilies`, and on the TS side by `engine-protocol.test.ts:146` ("accepts the projected font chains only when they agree with fontFamilies"). |
+| `maxCanvasFontFamilies` | `folio-go/page_setup.go` | Mirrored and pinned across the boundary by `folio-designer/src/engine-bounds-mirror.test.ts:80`, which asserts the Go constant and TS's `MAX_ENGINE_FONT_FAMILIES` name the same bound at the same site. |
+| `engine-protocol.ts`'s `fontFamilies` / `defaultFontSize` validator arms | `folio-designer/src/engine-protocol.ts` | `engine-protocol.test.ts:146-190` and `:260` — agreement with `fontChains` in each of its three disagreement shapes, the bound at its edge, and order. |
+
 - `_bmad-output/implementation-artifacts/evidence/story-6.7-roundtrip-manifest.json` (204 lines).
   Epic 8's boundary gate proved that manifest is stale and cannot have come from a real Playwright
   run — Playwright had **never executed** in this repository until 2026-09-02. **Noted, not fixed
@@ -221,6 +239,14 @@ content item and is clipped and shifted by the rules that already govern a table
 **AC9 — The corpus is byte-identical under the box paint.** *Shipped and verified: no golden digest
 is attributable to the box paint. The four statement goldens that moved in `791ed00` moved by +4
 bytes per page from `text_alignment.go`'s `Tm` x-operand (D-15.1.1), which this story does not own.*
+
+> ⚠ **THIS CRITERION PASSES VACUOUSLY, in that word.** **No fixture in the 23-golden corpus declares a
+> `style.background`, a `style.border` or a `style.color`** — that is DW-147, and it is a gating input
+> to Story 15.3 with the owner named. The corpus is therefore byte-identical under the box paint
+> because *its subject is absent from the corpus*, not because the box paint was measured to be
+> byte-neutral over documents that use it. **An AC that passes because its subject is absent must never
+> be filed as evidence that the subject is byte-identical.** What AC9 does establish is the narrower
+> and still-useful claim it was written for: this story did not disturb documents that declare no box.
 
 **AC10 — Fixed-point discipline.** No `float64`/`float32` reaches `internal/`. *Verified at the
 audit revision: all 15 textual matches under `folio-go/internal/**/*.go` (non-test) are comments;

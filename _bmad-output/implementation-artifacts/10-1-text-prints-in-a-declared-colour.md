@@ -230,9 +230,15 @@ colour, 8028 with; zero `rg` and zero `q` in the uncoloured stream.
 latter by asserting the coloured stream **minus the bracket and operator** is byte-equal to the
 plain one.*
 
-**AC3 — The existing corpus is byte-identical.** *Shipped; **23/23 goldens hold** at `74f10bc`.
-⚠ This is satisfied trivially: `grep -rln '"color"' fixtures/ folio-go/testdata/` returns **nothing**,
-so no fixture declares the field and no golden exercises the new path. See Finding 7.*
+**AC3 — The existing corpus is byte-identical.** *Shipped; **23/23 goldens hold** at `74f10bc`.*
+
+> ⚠ **THIS CRITERION PASSES VACUOUSLY, in that word** — and "trivially", the earlier wording, was too
+> soft for what it names. `grep -rln '"color"' fixtures/ folio-go/testdata/` returns **nothing**: no
+> fixture declares the field, so no golden exercises the coloured path at all. That is **DW-147**, and
+> it is a **gating input to Story 15.3 with the owner named**. **An AC that passes because its subject
+> is absent from the corpus must never be filed as evidence that the subject is byte-identical.** What
+> AC3 establishes is only the narrower claim it was written for: a document that declares no colour was
+> undisturbed. Two epics of rendering work sit outside the byte-identity witness. See Finding 7.
 
 **AC4 — A coloured run's fill is `q`/`Q`-bracketed.** *Shipped; `textdoc.go:826-838` and `:848-850`.
 `TestColouredRunBracketsItsInk` asserts the prefix `q\n1 0 0 rg\nBT\n` and the suffix `ET\nQ\n`. The
@@ -270,6 +276,15 @@ there; that is Epic 14.9's gap, not this story's regression.*
 minimum format version.** ***Not shipped by this commit.** `304442f` added an optional field and
 bumped nothing; documents using `style.color` continued to serialize `"version": "1.0"` while
 requiring `1.1`. Retrofitted later under D-7.2.1 and pinned at HEAD. See Finding 6.*
+
+> **This is THE INSTANCE DW-81's RULE EXISTS TO PREVENT**, cited here rather than left as a closed
+> ticket. DW-81 says a new format field must raise the document's minimum version in the same change
+> that introduces it; Story 10.1 introduced `style.color` and did not, so for three epics a document
+> could declare a 1.1 field and claim to be 1.0 — a file an older reader would accept and mis-render
+> rather than refuse. **No action is owed on the code**: it was closed under D-7.2.1 and is **pinned by
+> a test whose case label says so verbatim** (`folio-go/line_spacing_test.go:717`), which is a guard
+> with an anchor rather than a claim. What is owed is the citation, because a rule whose only named
+> instance is the one that was caught by accident has no evidence it works.
 
 ## Review Triage Log
 

@@ -185,6 +185,15 @@ the same `documentGeneration` / `onCommit` refusal-anchoring path as every other
 This shipped in the same commit and is **covered by no acceptance criterion in either story's epic
 text**. It is recorded here so it is not lost, and flagged as scope that arrived without a contract.
 
+> ⚠ **THE INHERITED BYTE-IDENTITY CRITERION PASSES VACUOUSLY, in that word.** This story's paint
+> reaches the page through Story 9.1's collector, so it inherits AC9 there — "the corpus is
+> byte-identical under the box paint" — and **no fixture in the 23-golden corpus declares a
+> `style.background`, a `style.border` or a `style.color`** (DW-147, a gating input to Story 15.3 with
+> the owner named). No golden exercises a rect's box, a line's bar or a stroked edge at all. **An AC
+> that passes because its subject is absent from the corpus must never be filed as evidence that the
+> subject is byte-identical**; what holds is only the narrower claim that documents declaring no box
+> were undisturbed.
+
 ## Review Triage Log
 
 ### 2026-09-02 — First review, at audit revision `6e06cc7`
