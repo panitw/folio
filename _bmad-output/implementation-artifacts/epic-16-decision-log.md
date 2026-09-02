@@ -906,3 +906,57 @@ have sized itself to a ceiling with a removal date on it. **That is the cheapest
 replacing the criterion was right rather than merely fussy.** And sequencing 15.0 before 16.1a would
 make the payload question vanish entirely — the orchestrator's call, raised because the dependency now
 runs both ways and nothing in the sequence records it.
+
+### D-16.R.22 — Two number corrections, and the pattern they share
+
+**Recorded together because they are the same failure at two removes: a figure quoted forward without
+being re-derived, surviving because it looked plausible.**
+
+**Correction 1 — "37 of the top 50" was 38, and it reached the owner.** The engineering lead's grounding
+report gave **37 of the top 50 families are variable-only**, and that figure went into the escalation the
+orchestrator put to the owner for D-16.R.2. Re-derived on the same file the lead measured from (1,946
+families), the answer is **38**. **Story 16.1a's plan-gate table said 38** and sat in front of the
+orchestrator for two dispatches without being reconciled. The lead self-reported it.
+
+**The substance is unchanged and marginally stronger** — the refusal is concentrated at the head of the
+distribution, and it is 38 of the top 50 rather than 37. **D-16.R.2 does not move.** The record carries
+38, and it records that the correction came from the gate table rather than from anyone re-deriving it.
+
+**Correction 2 — the corrected eleven were queried, and the query came from the live index again.** The
+lead computed the top 20 from the **live** `fonts.google.com` index and found `Raleway` (17) and
+`Nunito` (18) inside it while `Jost` sat at `popularity` 42 — concluding the batch should be twelve and
+that the monotonicity argument that killed the first list applied to the second. **It flagged its own
+caveat: it was reading live, not committed.** That caveat was the whole answer.
+
+**Measured against `folio-designer/font-index.json`:**
+
+| family | `popularity` | sort position |
+|---|---|---|
+| **Jost** | **16** | **20 — the last family inside the cut** |
+| Raleway | 17 | 21 |
+| Share Tech | 17 | 22 |
+| Bebas Neue | 18 | 23 |
+| Nunito | 18 | 24 |
+
+**The eleven reproduce exactly from the committed file.** The two sources disagree materially — the live
+index puts `Jost` at 42 where the committed snapshot has 16 — consistent with the snapshot being
+regenerated on 2026-09-03 with 135 CJK families removed. Nothing more popular than `Jost` is silently
+admitted, so the monotonicity objection does not bite.
+
+**The guardrail objection stood even though the membership did not**, and it is being acted on.
+D-16.R.16 requires the goal-set stated *"with its exclusions itemised, so a later reader can see what was
+left out and why"*. `Raleway` and `Nunito` appeared in **neither the batch nor the exclusions** — they
+vanished silently, which is exactly what that guardrail exists to prevent. The build dispatch is
+itemising **Raleway (21), Share Tech (22), Bebas Neue (23), Nunito (24)** as *"outside the top-20 cut, at
+position N"*, and **stating Jost's position beside its inclusion** so the boundary is visible rather than
+implied. The spec was not edited by the orchestrator while the dispatch held the file — editing
+underneath a running dispatch is how this run lost unstaged work once already.
+
+**The pattern, stated because it has now produced three instances in one epic.** A number is derived
+once, quoted forward, and survives review because it is plausible and roughly right: **37 vs 38** in an
+owner escalation; **the eleven computed from the live index** when the story required offline
+reproducibility; and **the count coincidence** — the wrong list and the right list both containing
+eleven — which nearly confirmed the wrong one. In each case the correction came from something
+**re-deriving the number against the committed artifact**, never from anyone re-reading the prose.
+**Standing consequence: a figure that gates a decision is re-derived at the gate, from the artifact the
+story's acceptance names, not carried from the message that first reported it.**

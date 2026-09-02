@@ -2,11 +2,11 @@
 title: 'Story 16.1a: The local face tier covers the head of the library'
 type: 'feature'
 created: '2026-09-03'
-status: 'blocked'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: 'efd79bfc41cfb9ed45dd4a6223da38e83c00797b'
-baseline_revision: '1632bbbb624050b4b115e614944ccddf2e5ed221'
+baseline_revision: '38005cdd89cb6adbbee0c089121810b3c401a331'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/specs/spec-fonts/font-catalogue.md'
