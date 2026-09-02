@@ -248,6 +248,46 @@ should know that going in rather than discover it at Epic 13's gate.
 
 ---
 
+### Refresh — 2026-09-02, a successor lead at HEAD `74f10bc`
+
+The lead that grounded this section is unreachable; subagents do not survive their session. **This is a
+refresh, not a re-derivation:** re-grounded from this log's grounding section, D-000.1…D-000.15 and the
+ruling headings — **not** from the spine, the ADRs or the epics. Per-decision reading was confined to Epic
+9's nine findings.
+
+**Read at HEAD rather than recalled:** `element_box.go:112-172`; `page_setup.go:690-1010`, `:269`,
+`:1698-1770`; `internal/pdf/rectdoc.go:30-107`; `table_render.go:525-575`; `App.tsx:1616-1641`,
+`:903/1112/1145`; `sheet-stack.ts:137`; `engine-protocol.ts:148-303`; and a mutating-test census across
+`lint/internal/rules` and `lint/internal/manifest`.
+
+**Four measured facts that contradict or extend a document — each corrected a premise in the finding as
+reported to it:**
+
+1. **`rectdoc.go:57` already carries the "does this border paint ink" condition that `elementDeclaresBox`
+   never asks.** The emitter knows; the placer does not. So `element_box.go`'s "THE WHOLE PLACEMENT RULE"
+   is overstated by exactly one clause, and findings 1 and 5 are **one defect on two paths**.
+2. **`-5 w` predates Epic 9.** `buildCellRectWithBackgroundField` is shared with **table cell chrome**, so a
+   negative `style.border.width` has reached the content stream since **Epic 4**. Epic 9 widened its reach;
+   it did not create it. **Any record attributing the invalid emission to Epic 9 is wrong** — and this is
+   what moved the fix site to load-time.
+3. **`CanvasProjection.FontFamilies` / `DefaultFontSize` are unstoried but exercised** — two designer test
+   files and three `App.tsx` consumers; Epic 8's chain-editor stories were built on them. **Unstoried is not
+   uncovered.** The gap is attribution only.
+4. **The `lint` test race spans seven mutating call sites across two test files**, not the one named. A fix
+   scoped to the named test **lowers the rate without closing it — which is worse**, because a rare red is a
+   red nobody investigates.
+
+**Open questions carried forward, unchanged:** DW-68's ruling owed before 15.3; 15.3's "which epics are
+inside v0.1.0"; 12.4's padding fork; 14.7's units; Epic 11's realize-vs-retire. The browser-execution
+question is **partly discharged** — Epic 8's gate ran Playwright for the first time at `6e06cc7`.
+
+**One practice rule earned at this gate, added to the section's list.** After a flat scope prohibition,
+repair-versus-register is decided on **on-goal versus along-the-way** — *is the finding the epic's own
+stated goal being wrong* — and **never on severity, cheapness, or whether the prohibition's wording reaches
+the case**. The prohibition's subject is distance from the goal; its wording is only a proxy for that. And
+every such ruling carries a **budget term stated in the spec the builder reads**, because **a prohibition
+removes the criterion but not the appetite.**
+
 ## Standing decisions (settled at setup, 2026-09-02)
 
 These shape the whole run and were answered by the owner at the terminal before any story was
