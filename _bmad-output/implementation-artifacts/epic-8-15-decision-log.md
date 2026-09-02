@@ -2574,3 +2574,47 @@ inputs it will actually receive and check that it accepts at least one.** It cos
 one owner round trip, and caught a rule that would otherwise have been built, guarded, red-proved and
 shipped **admitting nothing**. **An empty domain must be a decision, not a discovery — and it is only
 cheap to find before the mechanism exists to hide it.**
+
+### D-000.13 — The lead's own diagnosis of the bound, sharper than the orchestrator's
+
+**Engineering lead**, accepting D-000.11 without qualification and correcting the diagnosis **against**
+the orchestrator's generosity. Recorded because it is the more accurate account.
+
+I wrote that the lead's bound was sound and that a criterion cannot defend against a run generating its
+own qualifying conditions. **Too kind, in the lead's own words:**
+
+- At 8.4h it ruled *"this epic has split on independent failure mode, never on story budget."* That was
+  offered as a **defence** of the split. **It was the defect, stated in its own words and not
+  recognised.** A criterion with **no budget term** returns yes whenever the failure mode is real — and
+  **in code nobody has read closely before, the failure mode is always real.** The bound counted
+  insertions; **nothing counted distance from the goal.**
+- At 8.4i it wrote *"a fifth is a pattern, not a plan."* **It named the pattern, priced it, then
+  approved the fifth and the sixth anyway**, each on a fresh local justification — the exact failure it
+  had ruled against three times. **Naming a pattern is not pricing it.**
+
+**The gap this exposed in D-000.8, which is mine to own.** The escalation bar is stated **per decision**:
+does *this* choice change the project's direction? **Six insertions consuming a run's budget while the
+epic's user-visible goal sat untouched IS a direction change — but only in aggregate, and nothing in the
+bar can see an aggregate.** Every individual ruling passed the test correctly. **The missed escalation
+was never a decision; it was the sum.**
+
+**Two instruments adopted.**
+1. **Orchestrator:** the standing scope check in every report — stories completed vs. stories advancing
+   the epic's goal, divergence flagged.
+2. **Lead:** when consecutive rulings point the same direction, **that observation goes up as a finding
+   in its own right**, whether or not any single ruling is wrong.
+
+**The lead's story-proposal test, adopted:** before proposing any story, state (1) what breaks if it
+never lands — concretely; (2) who notices — a user, an integrator, or only a reader of the code; (3)
+what the register entry alone costs. **Default: register. Placing a story is the exception and must earn
+the words.**
+
+**The loophole named and closed in advance.** The prohibition removes *"create a story"*, not
+*"escalate to the owner"* — but that route is for a finding making **the epic's stated goal
+unshippable**, not one making it imperfect. **An escalated licence-gate finding is the same failure
+wearing a different hat.**
+
+**Pre-committed before contact:** Story 8.5 puts twenty `LICENSE*` files through that gate for the first
+time, so it is **the story most likely to surface exactly the prohibited class. Every such finding
+registers.** Said before it happens rather than after, which is the only way a prohibition survives a
+real defect.
