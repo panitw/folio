@@ -2,9 +2,9 @@
 title: 'Story 16.1a: The local face tier covers the head of the library'
 type: 'feature'
 created: '2026-09-03'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 baseline_commit: 'efd79bfc41cfb9ed45dd4a6223da38e83c00797b'
 baseline_revision: '38005cdd89cb6adbbee0c089121810b3c401a331'
 context:
@@ -12,7 +12,103 @@ context:
   - '{project-root}/_bmad-output/specs/spec-fonts/font-catalogue.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-16-decision-log.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The catalogue's script vocabulary is closed at latin/thai/cjk, so faces covering Greek or
+      Cyrillic cannot declare it and the cmap cross-check probes neither script.
+    evidence: |-
+      scriptFallbacks at build-wasm.mjs:177 is exactly {latin, thai, cjk} and :202 throws on any
+      other value, so ["latin"] is the only legal declaration for Arimo (Liberation Sans metric
+      compatible) and Lora (sourced from cyrealtype/Lora-Cyrillic). The unclaimed-direction half of
+      the cmap check therefore probes only thai and cjk, and Greek/Cyrillic coverage is neither
+      declared nor refuted.
+    location: >-
+      folio-designer/scripts/build-wasm.mjs:177
+    severity: medium
+  - summary: >-
+      The source tripwire's host check recognises a host by an allowlist of nine TLDs, so a ccTLD
+      host such as rsms.me would pass.
+    evidence: |-
+      hostShaped at font-provenance.test.ts:47 lists com|org|net|io|dev|co|app|sh|xyz. The narrowness
+      is deliberate and documented (a broad TLD match reads .ttf and .md as hosts), so widening it
+      naively regresses the guard; the gap is real but needs a positive shape assertion rather than a
+      longer blocklist.
+    location: >-
+      folio-designer/src/font-provenance.test.ts:47
+    severity: low
+  - summary: >-
+      The "exactly one writer per tier" check reads two named files, so a third module assigning
+      source anywhere else is invisible to it.
+    evidence: |-
+      font-provenance.test.ts:110 scrapes font-source.ts and build-wasm.mjs by text. A new module in
+      src/ writing its own source string satisfies the stated property's wording while defeating its
+      purpose, and a trailing-comma or line-wrap reformat breaks the regex.
+    location: >-
+      folio-designer/src/font-provenance.test.ts:110
+    severity: medium
+  - summary: >-
+      committedFaceSource is defined inline in build-wasm.mjs and is not importable, so its
+      documented throw path has no test.
+    evidence: |-
+      The helper parses all 31 NOTICE.md files and its comment states that an unparseable NOTICE
+      throws rather than emitting a vaguer string, but nothing red-proves that. Sibling script
+      helpers were extracted for exactly this reason (scripts/offline-release-contract.mjs has
+      scripts/offline-release-contract.test.mjs, and vitest already collects scripts/**/*.test.mjs).
+      A whitespace edit to any NOTICE table breaks the build with no test naming why.
+    location: >-
+      folio-designer/scripts/build-wasm.mjs:312
+    severity: medium
+  - summary: >-
+      Existing .folio documents keep the old source shape forever; no reader changed, no migration
+      exists, and the tripwire only ever sees freshly generated values.
+    evidence: |-
+      The story changes what is written while SupportedMajor stays 2, so a document saved before this
+      change retains a repository path or a .../main/... branch URL. Nothing asserts an old-shape
+      source still loads, and DW-167 records the format spend without noting the installed base.
+    location: >-
+      folio-designer/src/font-source.ts
+    severity: medium
+  - summary: >-
+      DW-168's preferred discharge (-count=1 wherever a story's verification is recorded) was applied
+      by hand this run and is written into no script, Makefile target or CI config.
+    evidence: |-
+      The stale-cache class that produced a false green for TestLicenceSignalCensus in this very
+      dispatch is therefore fully live for the next story. DW-168's owner field reads "whoever next
+      adds a test that reads the tree at runtime", which is not an assignable owner.
+    location: >-
+      _bmad-output/implementation-artifacts/deferred-work.md
+    severity: medium
+  - summary: >-
+      DW-166's first re-run trigger relies entirely on a human noticing that the index snapshot was
+      regenerated.
+    evidence: |-
+      A cheap tripwire exists and was not added - assert that the committed font-index.json's last
+      commit still equals the pinned d6d51f16988cddf20d1a28697cd556b3d0a63f62, or that the ten batch
+      families are still the top-20 refused set. Conspicuous in a story that added a tripwire for
+      source.
+    location: >-
+      _bmad-output/implementation-artifacts/deferred-work.md
+    severity: medium
+  - summary: >-
+      The release build still reports no cache-slot margin, and this story halved it from 20 to 10.
+    evidence: |-
+      DW-162's stated discharge is the release build printing the margin and failing, or at minimum
+      warning, at a declared threshold. The hard bound at release-payload.ts:43 and
+      verify-offline-release.mjs:51 still fails only on exceeding 64, so the first signal remains a
+      release that fails outright - now half as far away.
+    location: >-
+      folio-designer/src/release-payload.ts:33
+    severity: medium
+  - summary: >-
+      licenceSignatures now holds three patterns matched against licence text with no assertion that
+      a text matches exactly one.
+    evidence: |-
+      Adding Apache-2.0 alongside the OFL and Ubuntu patterns makes overlap newly possible; a
+      dual-licensed or quoting text could satisfy two signatures, weakening the closed table's
+      guarantee that admission is a decision somebody makes rather than a first match.
+    location: >-
+      folio-designer/src/font-catalogue.test.ts:197
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -427,6 +523,33 @@ measured.
   vocabulary's coarseness is a real observation and was deferred as such; the rows are correct as
   written.
 
+### 2026-09-03 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 12: (high 0, medium 4, low 8)
+- defer: 9: (high 0, medium 7, low 2)
+- reject: 6: (high 0, medium 0, low 6)
+- addressed_findings:
+  - `[medium]` `[patch]` The fetched tier's real write path had no provenance assertion — `fetchWebFamily`'s default `today` was never observed; mutation-proven green. A case now drives `fetchWebFamily` with no `today` and asserts the shared shape predicate over the produced `source`; red-proved with that mutation.
+  - `[medium]` `[patch]` A fourth population floor was added at `font-provenance.test.ts` while the other three comments still said "ONE OF THREE" — D-16.R.18's own rule broken in the act of citing it. All four now say four and enumerate the other three.
+  - `[medium]` `[patch]` `licenceSignatures`' `Apache-2.0` pattern did not pin the version, so an Apache 1.1 name table satisfied the admitted id. Tightened to `folio-go`'s `Apache License,?\s+Version 2\.0` and re-checked against `RobotoSlab-Regular.ttf`'s nameID 13.
+  - `[medium]` `[patch]` The Delivery Log's blanket "exactly one unmodified `LICENSE*` from the same pinned artifact" was contradicted by two NOTICEs; `Lora` and `Roboto Condensed` are now named as the faces whose licence text is a second asset of the same release.
+  - `[low]` `[patch]` The project-half assertion was near-vacuous — `split(' — ')` returns the whole string when the separator is absent. The separator is now required and the half is shaped.
+  - `[low]` `[patch]` `branchShaped` knew only `main|master|HEAD` with no `i` flag; widened so `develop`, `trunk` and `Main` cannot pass.
+  - `[low]` `[patch]` Two stale slot counts in `build-wasm.mjs` (":272" and ":340") still said the release cache stays at 44; it is 54.
+  - `[low]` `[patch]` `font-index.test.ts` still said "THE 21 COMMITTED FACES SURVIVE EPIC 16 UNCHANGED" above an assertion requiring 31.
+  - `[low]` `[patch]` Three different names were given for one heading across the Delivery Log, DW-166 and `font-catalogue.md`; reconciled to the real heading.
+  - `[low]` `[patch]` `Jost`'s upstream was stated two ways; now stated identically in all three records, since it is the sole evidence for a member's removal.
+  - `[low]` `[patch]` The exclusion list mixed `popularity` values with sort positions in one sentence; every entry now carries both units, labelled.
+  - `[low]` `[patch]` The "minus CJK" clause was unmarked despite excluding nobody; recorded as firing zero times, measured (`publishedFamilies` 1,946 − `excludedCjkFamilies` 135 = 1,811; no CJK family present, and no row declares a Chinese, Japanese or Korean subset).
+  - `[low]` `[reject]` "The delta test uses `row.variable`, which the story forbids" — the prohibition is on the raw `font-index.json` snapshot; `familyIndex` rows genuinely carry `variable` (asserted at `font-index.test.ts:117`) and production `addableFromTheWeb` is literally `!row.variable`.
+  - `[low]` `[reject]` "`scripts: [\"latin\"]` is under-inclusive for Arimo and Lora" — `scriptFallbacks` is a closed `{latin, thai, cjk}` and `build-wasm.mjs:202` throws on anything else, so `["latin"]` is the only legal declaration. Deferred as a vocabulary limitation instead.
+  - `[low]` `[reject]` "37 of the top 50 versus the measured 38" — already recorded as Spec Change Log entry 8.
+  - `[low]` `[reject]` Line-wrap drift and a stray blank line after a `---`; cosmetic.
+  - `[low]` `[reject]` The gate artifact's `status: settled` is not in the spec-status vocabulary; it is a gate artifact, not a spec.
+  - `[low]` `[reject]` The "PINNED TO THE SNAPSHOT COMMIT" paragraph appears in three documents; the duplication is deliberate so each record stands alone.
+
 ## Design Notes
 
 **The arithmetic, measured this dispatch at `efd79bf` (working directory `folio-designer`, tree
@@ -514,6 +637,61 @@ settled by D-16.R.16 (criterion) and D-16.R.19 (membership) before this dispatch
 Baseline: `efd79bfc41cfb9ed45dd4a6223da38e83c00797b`; run at `38005cdd89cb6adbbee0c089121810b3c401a331`
 Gate artifact: `_bmad-output/implementation-artifacts/16-1a-batch-proposal.md` — status `settled`
 Intent contract: unchanged, byte-identical (md5 `8d6506096ad83b790779322b902b939b`, 4,978 bytes)
+
+**Review findings breakdown.** 12 patched (0 high, 4 medium, 8 low), 9 deferred (frontmatter
+`deferred:`), 6 rejected. Follow-up review **recommended**: `3 x 4 medium + 1 x 8 low = 20`, at or
+above the threshold of 5. No `intent_gap` and no `bad_spec`, so no loopback ran and
+`review_loop_iteration` stays 0.
+
+**Verification measured by the driving workflow at `84507cf`, not taken from the implementation
+subagent's report.** Every Go command was re-run with `-count=1` after a cached `ok` was found to be
+hiding a real failure earlier in this dispatch.
+
+- `npm run test` — **515 passed, 1 failed** of 516; 47 of 48 files. The single failure is
+  `canvas-authority-contract.test.ts:190` (DW-152). Both files behind it — `e2e/e9-5-border-no-ink.spec.ts`
+  and the test itself — are untouched since `baseline_commit` `efd79bf`, verified by
+  `git diff --name-only`.
+- `npm run build` — exit 0 through `verify:offline`. **`s1.assetCount` 54** (44 + 10), **31**
+  `catalogue-*.ttf` among the cache assets, **margin 10** against `maximumCacheAssets` 64, which
+  `src/release-payload.ts:33` still declares unchanged.
+- `npm run lint` — exit 0 (4 pre-existing `react(only-export-components)` warnings).
+- `npm run scan:font-hosts` — exit 0, **0 occurrences in 600 tracked source files** (floor 400).
+- `npm run test:e2e:compile` — exit 0.
+- `cd lint && go test -count=1 ./...` — exit 0, all 4 packages `ok`, including `TestManifestUpToDate`
+  and `TestLicenceSignalCensus`.
+- `cd folio-go && go test -count=1 ./...` — **13 packages `ok`, 1 failed**:
+  `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`, "floor not met: got 7, need >=20". No
+  `folio-go/` file changed since `efd79bf`, verified by `git diff --name-only`.
+- `shasum -a 256 fixtures/*/expected.pdf` **from the repository root** — **23 lines**, 23 pinned in
+  `goldenDigestRecord`, **0 mismatches, 0 unpinned**. Run from `folio-go` it errors on the glob rather
+  than printing zero lines, which is the trap Spec Change Log entry 9 exists for; it was hit once
+  during this dispatch and re-run from the root.
+
+**Matrix Test Audit.** 5 of 7 rows COVERED by tests that ran and passed, with no vacuous or uncollected
+covering test found. Rows 2 (*"publishes VF only, everywhere"* -> out of the batch, recorded with the
+evidence) and 7 (*"the batch is sized to fit"* / halt rather than raise the cap) are **process
+obligations rather than code behaviours** and have no covering test. Both have partial mechanical
+backing: `familyShape` at `build-wasm.mjs:162` is what actually threw on `Jost*` and forced row 2's
+drop, and `scripts/verify-offline-release.mjs:51` fails the build above 64 and ran green at 54. Row 7's
+absence is DW-162 restated, and is deferred above.
+
+**Residual risks.**
+- The batch is **ten, not the eleven the Tasks section names**: `Jost` was admitted by the rule at
+  position 20 and dropped at TASK 2 because its own binary's nameID 1 is `Jost*`, which
+  `familyShape` refuses. Per D-16.R.16 a goal-bounded set shrinks rather than backfilling, so no
+  reserve family was promoted.
+- The **`source` workstream reaches further than the intent contract does.** The contract says nothing
+  about `source`, the `.folio` wire field, or the fetched tier; that work is sourced from D-16.R.13.
+  It changes the `source` string of the 21 pre-existing committed faces as well as the 10 new ones.
+  The 23 goldens were re-measured rather than reasoned about, and none moved.
+- **D-16.R.13 contradicts itself** on the committed tier: it asks for the committed digest inline and
+  forbids restating the SHA-256, which for a committed face is one value. The prohibition was taken as
+  governing and the conflict is registered as DW-167.
+- The batch's **owner was appointed by the story** ("the engineering lead", flagged overridable), which
+  the gate artifact had said the build could not do.
+- **Five of the ten upstreams publish no tagged release**, so their pin is a commit; their NOTICEs say
+  so and record that the generated-archive digest is a fetch-time measurement while the file digests
+  bind.
 
 ## Delivery Log
 
