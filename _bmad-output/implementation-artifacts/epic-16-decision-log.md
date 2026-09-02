@@ -1092,3 +1092,34 @@ longer applied. Four instances now share the shape — a claim true in the scope
 applied in a wider or later scope where it is not. **Standing consequence: a gate ruling states where in the
 artifact the governing criterion was found, so that "I read enough of it" becomes a checkable claim rather
 than an assumed one.**
+
+### D-16.R.27 — The four rules are one rule: scope travels with the claim
+
+The lead confirmed the landed batch against the tree rather than the report (`font-catalogue.json` is
+**31 entries — 21 + 10** at `4aca77f`/`efd0ed1`) and noted that `Jost` falling out at TASK 2 was
+incidental to its earlier objection about `Jost`'s rank, not a vindication of it: it fell for an unrelated
+cause.
+
+**The generalisation, adopted.** D-16.R.24's two rules, D-16.R.25's third and D-16.R.26's standing
+consequence are not four rules. Every instance in this epic was **a claim true in the scope where it was
+produced and applied in a scope where it was not**:
+
+| instance | true of | applied to |
+|---|---|---|
+| "37 of the top 50" | an earlier session's measurement | an owner escalation |
+| "only three families moved" | nine families chosen for sitting near the boundary | two 1,811-family files |
+| the first eleven | the live index | a contract requiring offline reproducibility |
+| the twenty-family gate ruling | a candidate table | a document whose later heading retired that table |
+
+So the rule is **scope travels with the claim**, and *carry a pointer to the measurement*, *state your
+denominator*, and *name where you found the governing criterion* are three instances of it. Logged this
+way deliberately: the next occurrence will be a fifth artifact type, and a list of four would not cover it.
+
+**The specific consequences are kept, not replaced.** A rule naming a checkable artifact location is worth
+more than a general exhortation, so D-16.R.26's standing consequence — *a gate ruling states where in the
+artifact it found the governing criterion* — stays scoped to gate rulings and is not broadened. The
+general form governs; the specific forms are what anyone can actually check.
+
+**And the confirming coincidence stays on the record** as the sharpest available illustration: 5 of 20
+twice, over disjoint sets. Verifying the recomputation by its cardinality would have confirmed the wrong
+answer with the right number.
