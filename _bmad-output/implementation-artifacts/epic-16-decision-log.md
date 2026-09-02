@@ -1153,3 +1153,34 @@ real code. This is the same shape as the four instances in D-16.R.27: a referenc
 it was written (`a40c34d`) and applied in a scope where it is not (`HEAD`). **`baseline_commit` is stale
 by construction for any story planned before its predecessors landed**, so every later story in this epic
 gets its anchors re-verified at its plan gate, not trusted.
+
+### D-16.R.29 — The orchestrator staged a running dispatch's working tree into its own commit
+
+**Reported by the implementation agent, against me, and confirmed.** Commit `0e3b576` —
+*"Re-verify 16.2's anchors at its plan gate"* — carries five files. Two are mine (the 16.2 spec, this
+log). **Three are Story 16.1a's snapshot-pin records**, which the agent had in its working tree,
+unfinished-from-my-point-of-view, when I committed. Its own commit `0bc36b1` was left holding 2 of the
+4 files it changed.
+
+**Cause: `git add -A _bmad-output`.** Path-scoped is not scope. `-A` under a path stages *everything
+dirty under that path*, including edits another agent is mid-way through writing, and the pipeline's own
+instruction — *never `git add -A` your way out of this* — exists for exactly this. I had already
+recorded, in this run, that editing a spec underneath a running dispatch is how unstaged work was lost
+once; I then did the commit-side version of the same thing.
+
+**Outcome: nothing lost, record misattributed.** The pin text is present in `HEAD` in all three records
+(8 occurrences), and the tree is clean. What is wrong is the *history*: 16.1a's pin is attributed to a
+16.2 commit. **Not rewriting it** — the branch is local and nothing is missing, the implementation agent
+declined to amend across `757a4f0` for the same reason, and a rewrite to fix a message risks real work to
+repair a bookkeeping fault. This entry is the correction: **`0e3b576` contains Story 16.1a's snapshot-pin
+records, and `0bc36b1` is the other half of that same change.**
+
+**Standing consequence, effective now: stage explicit paths, never `-A`, not even under a path.** A
+commit names the files it means. This is the same rule as D-16.R.27's in a different medium — a staging
+command written for the scope *"my edits"* and executed in the scope *"everything dirty"*.
+
+**And the near-miss is the part that matters.** The agent's edits happened to be complete when I swept
+them, so the commit is merely mislabelled. Had I committed ninety seconds earlier I would have captured a
+half-written spec and the story's records would have been internally inconsistent with nothing announcing
+it — which is precisely how commit `b8d286d` earlier in this run came to describe edits that never
+applied.
