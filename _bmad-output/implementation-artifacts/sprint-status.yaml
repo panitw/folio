@@ -585,7 +585,7 @@ development_status:
   # and building the gate after its population arrives is how D-8.6.5 shipped green. In the
   # before-the-tag set -- lands in this epic or not at all.
   16-1b-the-binary-is-asked-what-it-says-about-itself: done
-  16-1-a-font-arrives-from-the-web-with-its-terms-attached: backlog
+  16-1-a-font-arrives-from-the-web-with-its-terms-attached: in-progress
   # 16.1a added 2026-09-03 by OWNER DECISION D-16.R.2, corrected by D-16.R.2a. The batch is NOT a
   # tools/fontgen derivation queue -- instance_faces.py drives three ENGINE faces and none of the 21
   # catalogue faces is derived. It is "add an upstream static to the local face tier", the mechanism
