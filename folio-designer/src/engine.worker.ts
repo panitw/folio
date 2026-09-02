@@ -55,13 +55,62 @@ worker.onmessage = (event: MessageEvent<unknown>) => {
   respondFailure(result.requestId!, result.error)
 }
 
+// THE BOUNDARY'S STAGES, named so a throw can say WHERE it happened.
+//
+// Story 16.0. This `catch` used to be bare, and reported one sentence — "The
+// engine returned an invalid response" — for every throw it saw, keeping
+// none of them. That sentence is the least useful in the product: it is
+// never an engine refusal (those carry a diagnosticCode and a located
+// message through the arm below), so it fires exactly when nobody
+// anticipated the failure, and it is exactly then that it erases the only
+// evidence there is. A failure an author can photograph but nobody can
+// diagnose is two defects, and this is the second one.
+//
+// The stage is set immediately BEFORE the step it names, so the value the
+// catch reads is the step that was running. Four are distinguishable and
+// were not: encoding the request, the host throwing, the response not
+// parsing, and a response-side transport-bound breach — which, before this,
+// was indistinguishable from a request-side fault even though
+// `base64ToBytesBounded` throws its own perfectly clear sentence.
+type BoundaryStage = 'request' | 'host' | 'response' | 'bytes' | 'reply'
+const boundaryCodes: Readonly<Record<BoundaryStage, string>> = {
+  request: 'WASM_REQUEST_ENCODING_FAILED',
+  host: 'WASM_HOST_FAILED',
+  response: 'WASM_RESPONSE_UNPARSABLE',
+  bytes: 'WASM_RESPONSE_BYTES_REFUSED',
+  reply: 'WASM_PROTOCOL_FAILURE',
+}
+const boundarySentences: Readonly<Record<BoundaryStage, string>> = {
+  request: 'The engine request could not be encoded',
+  host: 'The engine threw while handling the request',
+  response: "The engine's response could not be parsed",
+  bytes: "The engine's byte response was refused",
+  reply: 'The engine returned an invalid response',
+}
+
+// What threw, in one bounded phrase. `message` is a string this worker did
+// not author — a DOM exception's, V8's, or Go's — so it is bounded like
+// every other string on this protocol rather than trusted. The whole error
+// stays under the 512 the protocol admits (engine-protocol.ts's `isError`),
+// which is why the cause is cut at 320 and not at 512.
+function describeThrow(thrown: unknown): string {
+  if (thrown instanceof Error) return `${thrown.name || 'Error'}: ${thrown.message}`.slice(0, 320)
+  if (typeof thrown === 'string') return thrown.slice(0, 320)
+  return Object.prototype.toString.call(thrown).slice(0, 320)
+}
+
 async function execute(request: EngineRequest): Promise<void> {
+  let stage: BoundaryStage = 'request'
   try {
     const render = request.operation === 'render' ? request.payload as RenderPayload : undefined
     const identity = request.operation === 'identity' ? request.payload as IdentityPayload : undefined
     const payloadBase64 = request.payload instanceof ArrayBuffer ? bytesToBase64(request.payload) : undefined
-    const raw = host!.handle(JSON.stringify({ operation: request.operation, ...(payloadBase64 ? { payloadBase64 } : {}), ...(render ? { templateBase64: bytesToBase64(render.template), dataBase64: bytesToBase64(render.data), paramsBase64: bytesToBase64(render.params) } : {}), ...(identity ? { dataBase64: bytesToBase64(identity.data), paramsBase64: bytesToBase64(identity.params) } : {}) }))
+    const envelope = JSON.stringify({ operation: request.operation, ...(payloadBase64 ? { payloadBase64 } : {}), ...(render ? { templateBase64: bytesToBase64(render.template), dataBase64: bytesToBase64(render.data), paramsBase64: bytesToBase64(render.params) } : {}), ...(identity ? { dataBase64: bytesToBase64(identity.data), paramsBase64: bytesToBase64(identity.params) } : {}) })
+    stage = 'host'
+    const raw = host!.handle(envelope)
+    stage = 'response'
     const result = JSON.parse(raw) as WasmResponse
+    stage = 'reply'
     if (!result.ok || !result.snapshot) {
       respondFailure(request.requestId, {
         code: result.diagnosticCode ?? 'ENGINE_REJECTED',
@@ -73,13 +122,18 @@ async function execute(request: EngineRequest): Promise<void> {
     }
     // Reject a hostile/buggy producer before atob allocates its decoded
     // buffer. The protocol repeats this guard on the main-thread boundary.
+    stage = 'bytes'
     const bytes = result.bytesBase64 ? base64ToBytesBounded(result.bytesBase64, request.operation === 'render' ? MAX_ENGINE_RENDER_PDF_BYTES : undefined) : undefined
+    stage = 'reply'
     const preview = request.operation === 'render' ? { revision: result.renderRevision, identity: result.previewIdentity, pdfSha256: result.pdfSha256, diagnostics: result.diagnostics } : request.operation === 'identity' ? { revision: result.renderRevision, identity: result.previewIdentity } : undefined
     const parameterReferences = request.operation === 'parameter-references' ? { revision: result.parameterReferenceRevision, names: result.parameterReferences } : undefined
     const tableColumns = request.operation === 'table-columns' ? { revision: result.tableColumnsRevision, table: result.tableColumns } : undefined
     worker.postMessage({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: request.requestId, ok: true, snapshot: result.snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}) }, bytes ? [bytes] : [])
-  } catch {
-    respondFailure(request.requestId, { code: 'WASM_PROTOCOL_FAILURE', message: 'The engine returned an invalid response' })
+  } catch (thrown) {
+    // REPORT THE CAUSE, DO NOT MERELY NAME THE STAGE. The sentence says what
+    // this boundary was doing; the phrase after it is the thrown value's own,
+    // which is the half that was being thrown away.
+    respondFailure(request.requestId, { code: boundaryCodes[stage], message: `${boundarySentences[stage]}: ${describeThrow(thrown)}`.slice(0, 512) })
   }
 }
 

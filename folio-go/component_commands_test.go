@@ -17,6 +17,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
@@ -2098,5 +2099,125 @@ func TestEmbedFontFamilyRefusesAChainNameTheDocumentAlreadyTakes(t *testing.T) {
 	}
 	if _, exists := tpl.doc.Assets[key]; exists {
 		t.Error("a refused pick stored the face anyway")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STORY 16.0: THE SAME BYTES, THE TWO DOORS, THE ONE PREDICATE.
+
+// TestVariableFaceIsRefusedAtTheCommandAndAtIngestionOverTheSameBytes is the
+// engineering lead's guardrail from this story's plan gate, written as a test
+// rather than as a note.
+//
+// D-16.6 measured the disagreement: embedFontFamily's only structural gate was
+// checkSfnt, which does not look at `fvar`, while fontset.New refuses `fvar`
+// outright. A pick of a variable face therefore wrote a `.folio` that saved
+// cleanly and failed at RENDER — the one outcome D-8.4d.1 and D-16.1 both
+// promise cannot happen, and reachable today with none of Epic 16 built.
+//
+// ONE BYTE SLICE, BOTH DOORS, IN ONE TEST. Two tests over two fixtures in two
+// packages would re-create exactly the disjointness this guard exists to
+// close: they could both pass while the two sites had drifted to disagreeing
+// about which bytes are variable. Feeding `face` to both is the whole point.
+//
+// RED-PROVED BY DELETION, not by falsifying a condition (recorded 2026-09-03,
+// wd folio-go, `go test -run 'VariableFace|Fvar|EmbedFontFamily' ./...`):
+// deleting the fontset.RefuseVariableFace call in embedFontFamily reds the
+// command half; deleting the variableFaceError call in fontset.New reds the
+// ingestion half. Inverting a predicate would only have proved arm order.
+func TestVariableFaceIsRefusedAtTheCommandAndAtIngestionOverTheSameBytes(t *testing.T) {
+	// THE SAME SLICE reaches both doors. It is not re-read, re-decoded or
+	// copied between them.
+	face := testNotoSansThaiVariableFontBytes
+	const chain = "Noto Sans Thai VF"
+
+	// Door one: the command. fontChainRefusal also asserts the document is
+	// byte-identical afterwards.
+	tpl := fontChainTemplate(t)
+	assetsBefore := len(tpl.doc.Assets)
+	failure := fontChainRefusal(t, tpl, embedCommand(t, chain, face, `["Noto Sans"]`))
+
+	// Door two: the renderer, over those same bytes.
+	_, ingestErr := fontset.New(chain, face)
+	if ingestErr == nil {
+		t.Fatal("fontset.New accepted a variable face; the renderer's own guard has been moved or removed, and a hand-written .folio is now unguarded")
+	}
+
+	// ONE PREDICATE, NOT TWO AUTHORITIES. componentFailure carries the
+	// helper's sentence through unaltered, so the command's message is the
+	// renderer's message. A second implementation that merely agreed today
+	// would not survive this equality.
+	if failure.Message != ingestErr.Error() {
+		t.Errorf("the two refusals are not the same sentence, so they are not the same code:\n command: %s\n  render: %s", failure.Message, ingestErr.Error())
+	}
+	// And it is the message that carries the author's next action (D-2.2.4:
+	// "a caller hitting this needs an action, not a refusal").
+	for _, want := range []string{"`fvar`", "fonttools varLib.instancer"} {
+		if !strings.Contains(failure.Message, want) {
+			t.Errorf("the command's refusal does not mention %s: %s", want, failure.Message)
+		}
+	}
+	if failure.DataPath != fontChainPath(chain) {
+		t.Errorf("the refusal is not located at the chain: dataPath = %q, want %q", failure.DataPath, fontChainPath(chain))
+	}
+
+	// "RETURNED AN ERROR" IS A WEAKER CLAIM THAN "WROTE NOTHING". The asset is
+	// content-addressed, so the key the pick would have used is derivable
+	// without the pick having happened.
+	if _, exists := tpl.doc.Assets[embeddedKeyOf(face)]; exists {
+		t.Error("the refused variable face was written to t.doc.Assets anyway")
+	}
+	if len(tpl.doc.Assets) != assetsBefore {
+		t.Errorf("the asset map moved from %d to %d entries on a refused pick", assetsBefore, len(tpl.doc.Assets))
+	}
+	if _, exists := tpl.doc.Fonts[chain]; exists {
+		t.Error("the refused variable face declared its chain anyway")
+	}
+}
+
+// TestStaticFaceIsStillEmbeddedAtBothDoors is the over-broadness control. A
+// guard that refused every face would pass every assertion above, so the same
+// two doors are asked about a face that carries no `fvar` at all and both must
+// still admit it. Nothing about today's behaviour for a static face changes.
+func TestStaticFaceIsStillEmbeddedAtBothDoors(t *testing.T) {
+	face := testRobotoFontBytes
+	const chain = "Roboto"
+
+	tpl := fontChainTemplate(t)
+	fontChainAccepted(t, tpl, embedCommand(t, chain, face, `["Noto Sans"]`))
+	if _, exists := tpl.doc.Assets[embeddedKeyOf(face)]; !exists {
+		t.Fatal("a static face was not stored under its content hash")
+	}
+	if _, exists := tpl.doc.Fonts[chain]; !exists {
+		t.Fatal("a static face did not declare its chain")
+	}
+	if _, err := fontset.New(chain, face); err != nil {
+		t.Fatalf("fontset.New refused a static face: %v", err)
+	}
+}
+
+// TestEmbedFontFamilyStillRefusesAFaceOverTheSupportedSizeWithALocatedMessage
+// keeps a REFUSAL A REFUSAL. notosanssc (10,595,932 bytes) is the one face the
+// D-16.6 probe rejected, correctly, at this bound — it is not in the pickable
+// catalogue, so the browser run cannot reach it, and nothing in Story 16.0 may
+// sweep it into the boundary reporting it changed.
+//
+// The bound is DERIVED at component_commands.go's maxComponentAssetBytes
+// ((engineProtocolMaxPayloadBytes - maxComponentAssetPayloadOverheadBytes) *
+// 3 / 4) and the literal 6288384 appears nowhere in code. This test reads the
+// derivation rather than restating its arithmetic.
+func TestEmbedFontFamilyStillRefusesAFaceOverTheSupportedSizeWithALocatedMessage(t *testing.T) {
+	const chain = "Oversize"
+	oversize := make([]byte, maxComponentAssetBytes+1)
+	copy(oversize, testRobotoFontBytes)
+
+	tpl := fontChainTemplate(t)
+	failure := fontChainRefusal(t, tpl, embedCommand(t, chain, oversize, `["Noto Sans"]`))
+	want := fmt.Sprintf("face exceeds the %d-byte supported size", maxComponentAssetBytes)
+	if failure.Message != want {
+		t.Errorf("the size refusal reads %q, want %q", failure.Message, want)
+	}
+	if failure.DataPath != fontChainPath(chain) {
+		t.Errorf("the size refusal is not located at the chain: dataPath = %q", failure.DataPath)
 	}
 }

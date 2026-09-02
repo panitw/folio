@@ -2,10 +2,11 @@
 title: 'Story 16.0: The embed boundary stops throwing, and refuses what render will refuse'
 type: 'bug'
 created: '2026-09-02'
-status: 'ready-for-dev'
+status: 'ready-for-review'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: '09ab97d4ee04c1cfeededc567a8761d4014d63d4'
+baseline_revision: '3c28c400c755941ece36740ee88b984559c746ba'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/implementation-artifacts/8-6-picking-a-family-puts-it-in-the-file.md'
@@ -439,16 +440,89 @@ this order, and report what each command printed rather than that it was green.
 8. **The D-16.6 disagreement, re-measured at implementation HEAD**, using the committed fixture rather
    than the unobtainable `Anuphan[wght].ttf`: `testNotoSansThaiVariableFontBytes` must be refused at
    the command **and** still refused at ingestion, both from the one shared helper.
+## The Diagnosis (D-8.4j.8 form: command, commit, tree state, working directory)
+
+**The hypothesis in Design Notes is REFUTED, and the cause is elsewhere.** `bytesToBase64`'s
+byte-at-a-time concatenation is slow, not throwing; it was never reached with a bad value.
+
+**Step 1 — the throw, observed in a real browser.** Measured 2026-09-02, wd `folio-designer`, at
+HEAD `3c28c400c755941ece36740ee88b984559c746ba` with a working tree carrying only the new probe
+spec:
+
+```
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=".../chromium-1217/.../Google Chrome for Testing" \
+  npx playwright test e2e/font-embed-boundary.spec.ts --reporter=list
+```
+
+19 of 21 families embedded; **Cascadia Code (598,060 B) and Cascadia Mono (575,912 B)** — the two
+largest catalogue faces — reported `The engine returned an invalid response`. Ubuntu Sans (487,492 B)
+is the largest that passed, so the fault is size-dependent, which is what "some fonts" was worth as
+a signal. With the boundary's catch split (this story's second fix) the same run reported instead:
+
+> `The engine's response could not be parsed: SyntaxError: "undefined" is not valid JSON`
+
+i.e. **`host.handle(...)` returned `undefined`**, not a string. That is the throw, and it took one
+run to obtain once the boundary stopped erasing it — which is the argument for the second fix in one
+sentence.
+
+**Step 2 — the cause, isolated in Node against the built wasm.** Measured 2026-09-03, wd
+`folio-designer`, same HEAD, working tree carrying the probe spec only; a throwaway script drove
+`FolioWasmHost.handle` directly over every `public/fonts/*/*.ttf`. Go printed a full fatal trace
+before exiting:
+
+```
+runtime: out of memory: cannot allocate 524288-byte block (4234510336 in use)
+fatal error: out of memory
+  template.decodeBase64Asset  internal/template/base64.go:23
+  template.writeAssets        internal/template/serialize.go:534
+  template.writeDocument      internal/template/serialize.go:141
+  folio.SerializeTemplate     serialize_template.go:14
+  folio.applyFontChainCommand component_commands.go:2015
+  wasm.(*Engine).Apply        wasm/engine.go:231
+  main.dispatch               wasm/cmd/engine/main.go:149
+```
+
+`decodeBase64Asset` joined the canonical 76-column split with `joined += part` — one fresh string
+per element, copying everything accumulated so far. A 598,060-byte face is 10,493 elements, so the
+total allocated is `sum(76, 152, …, 797,416) ≈ 4.18 GB`. **The re-added quadratic join measures
+4,226,609,792 bytes in `TestDecodeBase64AssetJoinsInLinearSpace`**, against the wasm runtime's
+reported `4234510336 in use`. Go's runtime then exits, `FolioWasmHost.handle` is gone, and the
+wrapper returns `event.result` — `undefined`.
+
+**It EXPLAINS the plan gate's Go-layer measurement rather than contradicting it.** That probe ran
+`go test ./wasm` natively on darwin/arm64: 64-bit address space, a real GC, and 4.18 GB of
+short-lived allocation is merely slow. **The 4 GiB ceiling is js/wasm's 32-bit linear memory**, and
+nothing about the bytes differs between the two — which is exactly why 21 of 21 passed natively and
+2 of 21 failed in the browser. The diagnosis therefore lands in `internal/template/base64.go`, on
+the path `component_commands.go:2015` reaches, without landing *in* `component_commands.go`.
+
+**No bound was loosened.** `MAX_ENGINE_PAYLOAD_BYTES`, the derived 6,288,384-byte face cap and
+`base64ToBytesBounded`'s guard are all untouched; the fix removes an allocation, not a limit.
+
 ## Auto Run Result
 
-Status: ready-for-dev
-Blocking condition: none
+Status: implemented, awaiting review
 
-Plan-gate hardening dispatch, halted after planning as directed. No code was written and no commit was
-made. Dispatch HEAD `09ab97d4ee04c1cfeededc567a8761d4014d63d4`, re-measured unchanged at the end of the
-dispatch. Working tree carries only this file's modification; `epic-16-decision-log.md` is untracked and
-is the orchestrator's, not this dispatch's.
+**Browser run, after the fix (the acceptance):** all 21 catalogue families EMBEDDED, none producing
+`The engine returned an invalid response`; both specs pass in 2.2 minutes. The per-family table is
+in the run output and in the section above for the "before" state.
 
-The `<intent-contract>` slab was diffed against its committed version: **10 lines added, 0 removed** —
-the single orchestrator-directed ONE-predicate guardrail. Everything else changed lies outside the
-contract. See the Spec Change Log for the full list.
+**One plan-gate precondition was WRONG and is corrected here.** The gate recorded Chromium revision
+**1208 as installed** at `~/Library/Caches/ms-playwright/chromium-1208/...`. The path exists; **the
+browser does not.** That directory is **428 KB** and contains only `Contents/MacOS` and
+`Contents/Resources` — the `Contents/Frameworks/Google Chrome for Testing Framework.framework` is
+absent, and launching it aborts with a `dlopen` failure. It is a truncated download, consistent with
+the HTTP 400 the gate noted. `npx playwright install chromium` was **not** run, as directed.
+**Revision 1217 was used instead** (336 MB, complete, present on disk), passed through the same
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` the config already exposes. A future run of this spec should
+use 1217, 1223 or 1228 — not 1208 — until 1208 is re-downloaded.
+
+**Standing reds, by identity.** `go test ./...`: exactly one, `TestCorpusMeetsP6ExerciseFloors/P6g`
+(`got 7, need >=20`), the mandated P6g red. `npm run test`: one,
+`canvas-authority-contract.test.ts` flagging `getComputedStyle` in `e2e/e9-5-border-no-ink.spec.ts`
+— **verified pre-existing** by stashing every change in this story (including the new e2e spec) and
+re-running against the clean tree at `3c28c400`, where it fails identically. Not a regression, and
+not this story's file.
+
+**Golden digests unmoved:** 23 files, rolled digest
+`892a1505e5e7fff0184310d5f70eb7bfcfa10d18cda9af4e2aecf262a0630ce9`.

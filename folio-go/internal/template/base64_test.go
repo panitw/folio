@@ -2,6 +2,7 @@ package template
 
 import (
 	"encoding/base64"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -186,5 +187,58 @@ func TestIsSHA256HexKeyShapeCheck(t *testing.T) {
 		if got := isSHA256HexKey(key); got != want {
 			t.Errorf("isSHA256HexKey(%q) = %v, want %v", key, got, want)
 		}
+	}
+}
+
+// TestDecodeBase64AssetJoinsInLinearSpace is Story 16.0's regression guard,
+// and the defect it guards is not a slow test — it is a CRASH the designer's
+// author saw as "The engine returned an invalid response".
+//
+// decodeBase64Asset used to join the canonical 76-column split with
+// `joined += part`, which allocates a fresh string per element and copies
+// everything accumulated so far. For a 598,060-byte face that is 10,493
+// elements and sum(76, 152, …, 797,416) ≈ 4.18 GB of allocation. Natively
+// that is merely slow and the GC absorbs it, which is exactly why
+// `go test ./wasm` accepted all 21 catalogue faces at the plan gate and the
+// fault stayed invisible to Go. Under js/wasm the heap is a 32-bit linear
+// memory capped at 4 GiB, so the same call reached `fatal error: out of
+// memory` inside SerializeTemplate — reached from applyFontChainCommand on
+// every pick — and the Go program EXITED, taking FolioWasmHost.handle with
+// it. `handle` then returned undefined and the worker's JSON.parse threw.
+//
+// MEASURING ALLOCATION IS THE ONLY HONEST WITNESS HERE. Asserting on wall
+// time would be flaky and would not name the fault; asserting the OUTPUT
+// would pass on both implementations, because the quadratic one produced the
+// right string. The gap being guarded is three orders of magnitude wide, so
+// the generous multiple below is not a fudge — it is far below any plausible
+// linear implementation's cost and far above nothing.
+func TestDecodeBase64AssetJoinsInLinearSpace(t *testing.T) {
+	// A face-sized payload at the canonical 76-column split.
+	const width = 76
+	const elements = 10493
+	wrapped := make([]string, elements)
+	for i := range wrapped {
+		wrapped[i] = strings.Repeat("A", width)
+	}
+	joined := width * elements
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	decoded, err := decodeBase64Asset(wrapped)
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatalf("decodeBase64Asset: %v", err)
+	}
+	if len(decoded) != joined/4*3 {
+		t.Fatalf("decoded %d bytes, want %d", len(decoded), joined/4*3)
+	}
+
+	allocated := after.TotalAlloc - before.TotalAlloc
+	// The quadratic join allocated ≈ joined*elements/2 — about 4.18 GB here.
+	// A linear one allocates the joined string plus the decoded bytes plus
+	// builder slack.
+	if limit := uint64(joined) * 8; allocated > limit {
+		t.Errorf("joining %d elements allocated %d bytes, over the %d-byte linear budget — the accumulate-into-a-string shape is back, and under js/wasm's 4 GiB linear memory it is a fatal out-of-memory, not a slow path", elements, allocated, limit)
 	}
 }

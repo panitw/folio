@@ -223,18 +223,12 @@ func New(name string, data []byte) (*Font, error) {
 	// The message NAMES THE REMEDY on purpose: most Google Fonts
 	// downloads are variable builds today, so a caller hitting this
 	// needs an action, not a refusal.
-	if parsed.HasTable(ot.TagFvar) {
-		return nil, fmt.Errorf(
-			"fontset: font %q: this is a VARIABLE font (it has an `fvar` table) and cannot be embedded: "+
-				"PDF 1.7 cannot express a variable font, and folio will not silently pick an instance for you "+
-				"(the default instance is not always Regular — Noto Sans SC's `wght` axis defaults to 100, i.e. Thin). "+
-				"Instance it to a single static weight first, e.g. "+
-				"`fonttools varLib.instancer --update-name-table %s.ttf wght=400 -o %s-Regular.ttf`, "+
-				"pinning EVERY axis the face declares rather than just `wght` "+
-				"(see tools/fontgen/instance_faces.py for the full recipe folio uses for its own shipped faces, "+
-				"including the reproducibility pin the bare command above omits)",
-			name, name, name,
-		)
+	//
+	// STORY 16.0: THE TEST AND ITS MESSAGE NOW LIVE IN ONE PLACE, and `New`
+	// is one of its two callers rather than its owner. See variableFaceError
+	// below for why there must be exactly one of it.
+	if verr := variableFaceError(name, parsed); verr != nil {
+		return nil, verr
 	}
 
 	psName, perr := readPostScriptName(parsed)

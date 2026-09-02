@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
+	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
@@ -2390,6 +2391,28 @@ func embedFontFamily(t *Template, raw map[string]json.RawMessage) error {
 	// pick the designer makes must never produce one.
 	if ferr := template.DecodeFontForRender(mediaType, decoded, template.FontChainSite{AssetKey: key, ChainName: name}); ferr != nil {
 		return componentFailure("", fontChainPath(name), ferr.Error())
+	}
+	// AND THE ONE CLASS THAT GATE STRUCTURALLY CANNOT SEE (Story 16.0,
+	// D-16.6). DecodeFontForRender's fence is "can this build read these bytes
+	// as a single face, and nothing more", and checkSfnt beneath it never
+	// inspects a table TAG — so a VARIABLE face is readable as a single face
+	// and sailed straight through, into a `.folio` that saved cleanly and then
+	// failed at render, where fontset.New refuses it. About a quarter of what
+	// Google publishes is a variable build, so this was reachable by an
+	// ordinary pick.
+	//
+	// The refusal is THE RENDERER'S OWN, not a second sentence written here:
+	// fontset.RefuseVariableFace is the single function fontset.New also calls,
+	// and its message already names the fonttools varLib.instancer remedy the
+	// author needs. The renderer's guard is KEPT — a hand-written `.folio`
+	// bypasses this command entirely — so this is an addition, never a move.
+	//
+	// It sits beside DecodeFontForRender and BEFORE anything reaches
+	// t.doc.Assets, which is setComponentAsset's stated rule applied to the one
+	// class it currently misses: "bytes this build cannot read are refused
+	// before anything is written to t.doc.Assets."
+	if verr := fontset.RefuseVariableFace(name, decoded); verr != nil {
+		return componentFailure("", fontChainPath(name), verr.Error())
 	}
 
 	// DEDUPE BY CONTENT HASH (AC2). If ANY chain already names this key the

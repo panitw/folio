@@ -3,6 +3,7 @@ package template
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 )
 
 // This file is the base64 canonicalisation D-1.8.2 requires (AC1–AC4):
@@ -17,11 +18,31 @@ import (
 // empty decoded result is also an error here (AC4: "it cannot render,
 // and its key would be the SHA-256 of nothing") — checked by the caller,
 // which is why this function itself does not special-case it.
+//
+// THE JOIN IS BUILT, NOT ACCUMULATED (Story 16.0), and the reason is a
+// measured fatal fault rather than a tidiness preference. This loop used to
+// be `joined += part`, which allocates a fresh string per element and copies
+// everything accumulated so far into it: for a 598,060-byte face the canonical
+// 76-column split is 10,493 elements, and the total allocated is
+// sum(76, 152, …, 797,416) ≈ 4.18 GB. On a 64-bit host that is merely slow and
+// the GC reclaims it, which is why `go test ./wasm` accepted all 21 catalogue
+// faces natively. Under js/wasm the heap is a 32-bit linear memory with a
+// 4 GiB ceiling, so the same call reached
+// `runtime: out of memory: cannot allocate 524288-byte block (4234510336 in
+// use)` and the Go program EXITED — taking `FolioWasmHost.handle` with it, so
+// the designer's worker received `undefined` where a JSON response belongs.
+// strings.Builder with one Grow makes it a single allocation and one pass.
 func decodeBase64Asset(wrapped []string) ([]byte, error) {
-	joined := ""
+	size := 0
 	for _, part := range wrapped {
-		joined += part
+		size += len(part)
 	}
+	var builder strings.Builder
+	builder.Grow(size)
+	for _, part := range wrapped {
+		builder.WriteString(part)
+	}
+	joined := builder.String()
 	decoded, err := base64.StdEncoding.Strict().DecodeString(joined)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base64: %w", err)
