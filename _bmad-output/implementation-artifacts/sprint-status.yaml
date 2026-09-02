@@ -259,7 +259,17 @@ development_status:
   # base half -- and permissive font licences do not generally carry exceptions. So the rule may
   # have an EMPTY reachable domain for fonts. If it does, that returns to the OWNER with the
   # measurement in hand, never resolved in the build and never by widening the four ids.
-  8-4k-a-licence-exception-is-read-and-checked: backlog
+  # 8.4k ABANDONED 2026-09-02 by owner course correction D-000.11: seven hours and 3,567 lines of
+  # code, all in lint/, with zero lines advancing Epic 8's stated goal. The WITH capability and both
+  # owner rulings (D-8.5.14, D-8.5.15) are registered to EPIC 15's release gate with the lead's full
+  # specification intact (D-8.5.16), so it is rebuilt from that rather than re-derived.
+  # FLAT PROHIBITION, not a criterion: NO further licence-gate work in Epic 8 for any reason. The
+  # previous bound was a criterion, and criteria get satisfied -- its exception fired four times
+  # because 8.4h created the very gate the exception was keyed on.
+  # PROCUREMENT CONSTRAINT for 8.5 (D-8.5.17): no WITH form is admitted, so procure only faces whose
+  # licences carry no WITH expression. Reason is PARSER SCOPE, NOT LICENCE POLICY -- if someone asks
+  # for Linux Libertine the answer is "widen the parser", never "that licence is unacceptable".
+  8-4k-a-licence-exception-is-read-and-checked: deferred-to-epic-15
   # 8.5's spec exists at ready-for-dev but is SUPERSEDED pending re-plan after 8.4h (D-8.5.13):
   # AC2 and AC7 moved out. AC4 stays HERE deliberately -- the forbidden-host scan asserts that
   # D-8.5.12's decline was honoured, so it belongs with the thing it constrains.

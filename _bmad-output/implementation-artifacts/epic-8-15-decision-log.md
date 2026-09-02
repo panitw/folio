@@ -2473,3 +2473,104 @@ since it is a family this decision might be expected to open and does not.
 **How we'd know it was wrong.** A copyleft **dependency** passing the graph scan because it carries an
 exception — that would mean the asset clause's amendment leaked into the family ban, which is the one
 outcome this entry exists to prevent.
+
+## D-000.11 — OWNER COURSE CORRECTION: stop the 8.4x series, go to Story 8.5 (2026-09-02)
+
+**Owner decision**, taken at the terminal after the owner asked *"do you think we're spending too long
+on story 8.4? There are so many sub-stories. What happened?"*
+
+**Verdict.** **Story 8.4k is abandoned.** The `WITH` work and both owner rulings (D-8.5.14, D-8.5.15)
+are registered to **Epic 15's release gate**. The run goes **straight to Story 8.5**. **No further
+licence-gate work in Epic 8 — a flat prohibition, not a criterion.**
+
+**The measurement that prompted it.** Seven hours, 34 commits, **3,567 lines of code, every line in
+`lint/`** — the licence checker. **8,285 lines of decision log.** **Zero lines advancing Epic 8's stated
+goal** ("a template author can choose a font, and the file carries it"). Stories 8.5 and 8.6 — the only
+two a user would notice — had not started.
+
+**What happened, mechanically.** 8.5's plan gate flagged `multiple-goals`; the licence gate was
+genuinely broken (a GPL font shipped on a clean build), so it split out as 8.4h. 8.4h's close found a
+bypass → 8.4i. 8.4i's close found another → 8.4j. 8.4j's build found a third, plus an owner decision →
+8.4k. **The run never returned to 8.5.**
+
+**The structural mistake, which is the orchestrator's.** The lead's bound had one exception: *a
+demonstrated live bypass of a gate this epic declared fail-closed*. **There was no such gate until
+8.4h — a story I created.** I manufactured the condition that made the exception keep firing, then
+applied it four times in good faith. Each application was individually defensible and measured. **That
+is exactly how scope discovery works, and "every step was justified" is the sound it makes.**
+
+**The reporting failure, which is worse than the scope one.** Each story was reported as *"found a real
+defect"* — true every time — and **the aggregate was never surfaced.** The owner had to ask. A run that
+reports honestly per story and never reports the sum is not reporting honestly.
+
+**Consequences.**
+1. **No licence-gate work in Epic 8 for any reason.** Everything registers to Epic 15, where Story 15.3
+   already owns AD-26's manifest obligations. The bound is replaced by a prohibition because **the
+   bound was a criterion, and criteria get satisfied.**
+2. **A STANDING SCOPE CHECK is added to every story report** (owner's instruction): stories completed
+   vs. stories advancing the **epic's stated goal**, with divergence flagged explicitly. Under this
+   check the divergence would have been visible at 8.4i rather than at 8.4k.
+3. **The decision log gets shorter.** 8,285 lines for 3,567 lines of code is its own symptom. Entries
+   from here are proportionate to the decision, not to the reasoning available.
+
+**In fairness to the work, stated because a correction that erases real value is its own distortion.**
+The defects were real and compliance-shaped: the gate labelled licences instead of checking them, and a
+GPL font would have shipped clean. That was worth fixing. **It was worth roughly one story, not four,
+and not before the feature work.**
+
+### D-8.5.16 — The `WITH` capability is registered to Epic 15 with its specification INTACT
+
+Abandoning 8.4k discards the story, **not the thinking**. The lead's full specification arrived after
+the owner's call and is preserved here so Epic 15 rebuilds from it rather than re-deriving it:
+
+- **`Family` stays `FamilyCopyleft`.** Rehabilitation is a **gate property at SITE A, never a classifier
+  property**. `GPL-2.0-only WITH Font-exception-2.0` **is** copyleft; returning `FamilyPermissive` would
+  put a false statement into `MANIFEST.md`, an AD-26 release artifact. The leak then closes **by
+  construction** — every consumer refusing copyleft keeps refusing it, zero changes outside SITE A. **A
+  third `Family` member is the trap**: a new enum value fails open at every consumer with a
+  `case FamilyCopyleft:` and no default-deny.
+- **An UNRECOGNISED exception returns `FamilyUnknown`, never a bare permissive** — otherwise
+  `Apache-2.0 WITH LLVM-exception` becomes newly admissible on the dependency path, which the owner did
+  not amend.
+- **Two lists, two guards.** The classifier's *recognised*-exception set: miss is **loud**, so ordinary
+  maintenance. SITE A's *owner-approved* list (seeded `Font-exception-2.0`): an **owner decision**,
+  guarded by a test-owned literal citing D-8.5.15, on 8.4j's template.
+- **SITE A's copyleft arm gains a carve-out, and it must derive from ONE predicate shared with the
+  admission check** — else a declaration passes arm 2 and is refused by arm 3 with a contradicting
+  message, which is the SITE B defect reintroduced.
+- **The rehabilitated base list is an enumerated literal seeded from the measured population** (the five
+  forms found), **not** a GPL-family predicate — a predicate is what someone widens later and cannot be
+  guarded by a literal.
+- **Two mandatory leak red-proofs**, asserted **at the layer that could break**, never by reasoning from
+  construction: the rehabilitated declaration handed to the **Go dependency path**, and to **SITE B**,
+  each asserted **refused**.
+- **A measured correction to the orchestrator's consumer list:** `npm.go:64` and `licencegraph.go:78`
+  call `ClassifySPDXExpression` **directly**, not `ClassifyLicenceText`. So teaching that function
+  `WITH` **does** affect the npm path — today a `WITH`-carrying package makes the **whole graph**
+  unresolvable; after, it resolves and is flagged **by name**. Still refused (polarity is already
+  `family != FamilyPermissive`), but the failure mode moves from whole-graph to per-package. **A
+  behaviour change to be asserted, not discovered.**
+
+### D-8.5.17 — PROCUREMENT CONSTRAINT for Story 8.5: parser scope, not licence policy
+
+D-8.5.15 made `OFL-1.1 OR GPL-2.0-or-later WITH Font-exception-2.0` — **Linux Libertine's actual
+form** — *policy*-acceptable while it remains *parser*-refused, since `WITH` composed with `OR` is out
+of scope. Before the amendment it was refused on both grounds; now on one, **and the consequence is
+perverse: the bare GPL-with-exception form would be admitted while the dual form that ALSO offers OFL —
+the strictly safer variant — is refused.**
+
+With 8.4k abandoned, **no `WITH` form of any kind is admitted**, so Story 8.5 procures **only faces
+whose licences carry no `WITH` expression.**
+
+**The reason is recorded as PARSER SCOPE, NOT LICENCE POLICY.** When someone asks for Libertine, the
+answer is **"widen the parser"** — never *"that licence is unacceptable."* A 20-family catalogue has
+hundreds of pure-OFL candidates, so this costs **one family, priced, rather than a capability**. It is a
+trade only because it is written down **before** procurement starts.
+
+### D-000.12 — Practice kept: measure the domain before building the mechanism
+
+The one thing from the 8.4x series worth carrying forward. **Before implementing a rule, enumerate the
+inputs it will actually receive and check that it accepts at least one.** It cost one plan dispatch and
+one owner round trip, and caught a rule that would otherwise have been built, guarded, red-proved and
+shipped **admitting nothing**. **An empty domain must be a decision, not a discovery — and it is only
+cheap to find before the mechanism exists to hide it.**
