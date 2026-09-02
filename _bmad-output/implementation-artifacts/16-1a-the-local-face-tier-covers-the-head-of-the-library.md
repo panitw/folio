@@ -314,6 +314,14 @@ Spec Change Log.
    against the committed snapshot at HEAD it is **38**. Immaterial to the verdict, recorded so the
    difference is not later read as drift in the code.
 
+9. **The golden-digest manual check has no working directory, and every command beside it does.**
+   Verification's six commands each begin `cd folio-designer`, `cd lint` or `cd folio-go`, but the
+   manual check reads `shasum -a 256 fixtures/*/expected.pdf`. The 23 goldens live at the **repository
+   root** `fixtures/`, not `folio-go/fixtures/`. Run from `folio-go` — the natural reading, since the
+   digest record it ties to is `folio-go/byte_neutrality_test.go:100` — the glob matches nothing and
+   the check reports zero lines while exiting cleanly, which reads as "no golden moved". Run it from
+   the repository root, and confirm it prints **23** lines before comparing any digest.
+
 ## Review Triage Log
 
 *Empty — no review pass has run. This dispatch halted after planning.*
