@@ -1089,6 +1089,56 @@ func TestResolveAssetsRefusesACompoundFontLicenceOfferingCopyleft(t *testing.T) 
 // The row must carry the WHOLE expression as its label: the manifest
 // states what the file says, and a dual-licensed file is not
 // attributable to one of its two licences.
+// Story 8.5 (D-8.5.17, matrix row "`WITH` form"): A `WITH` EXPRESSION FAILS
+// CLOSED, AND IT FAILS ON THE UNCLASSIFIABLE ARM.
+//
+// WHY THIS TEST EXISTS AT ALL. Story 8.5's procurement record excludes exactly
+// one otherwise-qualifying family — Linux Libertine, whose real expression is
+// `OFL-1.1 OR GPL-2.0-or-later WITH Font-exception-2.0` — and it excludes it on
+// PARSER SCOPE, NOT LICENCE POLICY. That distinction is load-bearing: the
+// answer when someone asks for the family is "widen the parser", never "that
+// licence is unacceptable". Nothing in the repository pinned the behaviour that
+// sentence rests on, so the claim was prose. This makes it a measurement.
+//
+// IT ASSERTS THE ARM, NOT MERELY THE FAILURE. "It failed" would be satisfied by
+// the copyleft arm firing on the `GPL-2.0-or-later` term, which would mean the
+// family is refused as COPYLEFT — a different fact, carrying a different remedy,
+// and one that would make the procurement record's wording wrong. The second
+// case therefore carries NO copyleft term at all: `MIT WITH
+// Font-exception-2.0` is refused for the operator alone.
+//
+// THIS TEST ADDS NO GATE BEHAVIOUR AND CHANGES NONE. `classify.go` already
+// returns FamilyUnknown for an unsupported operator at either position; Story
+// 8.5 is forbidden from touching the gate (D-000.11) and does not. It only
+// writes down what the gate already does.
+func TestResolveAssetsRefusesAWITHExpressionAsUnclassifiableNotAsCopyleft(t *testing.T) {
+	for _, c := range []struct{ name, declaration string }{
+		{"the Linux Libertine expression", "OFL-1.1 OR GPL-2.0-or-later WITH Font-exception-2.0"},
+		{"a WITH clause with no copyleft term", "MIT WITH Font-exception-2.0"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := scratchRepoWithFontDirectory(t, "SPDX-License-Identifier: "+c.declaration+"\n")
+
+			rows, err := ResolveAssets(root)
+			if err == nil {
+				t.Fatalf("a font LICENSE carrying a WITH expression must fail the gate CLOSED; "+
+					"got nil and %d row(s): %v", len(rows), rows)
+			}
+			if !strings.Contains(err.Error(), "could not be classified") {
+				t.Errorf("expected the UNCLASSIFIABLE arm — the exclusion is parser scope, pending a "+
+					"parser widening, and the remedy is to widen the parser; got: %v", err)
+			}
+			if strings.Contains(err.Error(), "a copyleft licence") {
+				t.Errorf("must NOT reach the copyleft arm: that would say the family is refused because "+
+					"its licence is unacceptable, which is the one thing D-8.5.17 says it is not; got: %v", err)
+			}
+			if rows != nil {
+				t.Errorf("a refused directory must produce NO row, got: %v", rows)
+			}
+		})
+	}
+}
+
 func TestResolveAssetsAdmitsACompoundFontLicenceWhoseTermsAreAllAllowlisted(t *testing.T) {
 	for _, declaration := range []string{"OFL-1.1 OR Apache-2.0", "Apache-2.0 OR OFL-1.1", "MIT AND Apache-2.0"} {
 		t.Run(declaration, func(t *testing.T) {

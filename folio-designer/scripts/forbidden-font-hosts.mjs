@@ -211,8 +211,17 @@ export function scannedPopulation(root) {
 /**
  * THE POPULATION FLOOR. A count written next to the thing it counts stops being
  * true the moment the thing grows, so this is a FLOOR rather than an equality —
- * but a floor is what turns "the scan found nothing" into a claim. Measured at
- * Story 8.5: 1,058 tracked files carry a scanned extension.
+ * but a floor is what turns "the scan found nothing" into a claim.
+ *
+ * MEASURED AT STORY 8.5: 578 tracked files under `SCANNED_ROOTS` carry a
+ * scanned extension — the number `npm run scan:font-hosts` prints, re-measured
+ * on the committed catalogue at the build gate rather than estimated. (An
+ * earlier draft of this comment recorded 1,058; that figure matches neither the
+ * scanned population nor the repository-wide extension count of 704, so it was
+ * corrected to the measurement rather than carried forward. A count written
+ * beside the thing it counts is a claim, and this one was checked.) The floor
+ * sits well under the measurement on purpose: it must catch a walk that
+ * collapsed, not fence in normal growth.
  */
 export const POPULATION_FLOOR = 400
 
