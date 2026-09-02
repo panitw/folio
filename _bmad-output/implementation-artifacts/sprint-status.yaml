@@ -591,7 +591,12 @@ development_status:
   # catalogue faces is derived. It is "add an upstream static to the local face tier", the mechanism
   # already executed 21 times. Roboto and Inter are already in the tier and appear refused only because
   # the google/fonts MIRROR carries VF-only builds of them.
-  16-1a-the-local-face-tier-covers-the-head-of-the-library: done
+  # 16.1a was set `done` when its first build pass reported done, then REOPENED for a review pass
+  # that landed twelve patches (`5d5409f`). Its spec file says `in-review`; this file said `done`.
+  # Reconciled DOWNWARD 2026-09-03 (D-16.R.30): sprint-status is the orchestrator's record and it
+  # must never claim more than the spec does. Restored to `done` only by the closer, after it
+  # verifies the gates itself rather than reading them off a report.
+  16-1a-the-local-face-tier-covers-the-head-of-the-library: in-progress
   16-2-a-fetched-face-stays-on-this-machine: backlog
   # 16.2: the owner said "local storage"; the mechanism is IndexedDB and the refusal is arithmetic,
   # not taste (D-16.2) -- ~5 MB string quota, base64 at +33%, one measured face at 90,220 bytes, and

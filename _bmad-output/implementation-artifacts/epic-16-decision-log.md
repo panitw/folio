@@ -1184,3 +1184,35 @@ them, so the commit is merely mislabelled. Had I committed ninety seconds earlie
 half-written spec and the story's records would have been internally inconsistent with nothing announcing
 it — which is precisely how commit `b8d286d` earlier in this run came to describe edits that never
 applied.
+
+### D-16.R.30 — Two records disagreed about 16.1a, and the one claiming more was mine
+
+**Reported by the implementation agent, which correctly refused to decide it.** After the review pass, the
+story file read `status: 'in-review'` while `sprint-status.yaml` read `done`. The agent left both alone —
+it had been told not to touch sprint-status, and it declined to settle the story's own state by fiat.
+That is the right instinct: a disagreement between two records is not resolved by whichever agent notices
+it first.
+
+**How it arose.** 16.1a's first build pass reported `done`, and sprint-status was set accordingly. The
+story was then **reopened for a review pass**, which landed twelve patches (`5d5409f`). The spec tracked
+the reopening; sprint-status did not, because nothing updates it on a reopen — it is written on the way
+in and never on the way back.
+
+**Reconciled downward, not upward.** `sprint-status.yaml` is the orchestrator's file and the spec is
+build-auto's, so this was mine to fix, and the direction is not arbitrary: **a status record must never
+claim more than the artifact it summarises.** `done` beside an `in-review` spec asserts verified gates
+that no one has verified since the patches landed. Set to `in-progress`, with the reason in the file
+rather than only here. It returns to `done` when the closer verifies the gates **itself**, which is the
+one thing the closer exists for.
+
+**The general fault, since this epic is now keeping a list.** A derived record was updated on the
+transition it was designed for and not on the transition that reverses it. Same family as D-16.R.27 —
+a claim (`done`) true in the scope where it was written (after the first pass) and left standing in a
+scope where it is not (after the reopen). **Consequence: a reopened story's sprint-status entry moves
+with it, and the closer is the only writer of `done`.**
+
+**Also worth recording from the same pass, because the agent volunteered it against itself:** patch P2
+was the same defect as P1, and the agent's words were *"I broke D-16.R.18's rule in the act of citing
+it."* Four sites now say four. And P3 was worse than its brief described — `split(' — ')` returns the
+**whole string** when the separator is absent, so a separator-free `source` passed a non-empty check
+while naming neither project nor path.
