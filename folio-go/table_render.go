@@ -287,6 +287,18 @@ type resolvedHeaderStyle struct {
 	// background is — headerStyle.color wins over style.color.
 	inkStyle template.Style
 
+	// inkField is WHICH of the two the cascade actually took, carried
+	// beside the value so a malformed colour can be located. The error
+	// site used to emit the literal "headerStyle.color/style.color",
+	// which names both fields and identifies neither: AD-14's contract is
+	// that callers match on the CODE — so nothing broke — but AD-14's
+	// other half is that a diagnostic LOCATES, and a person handed both
+	// names has to guess which file line to edit. The switch below
+	// already knows the answer; it simply threw it away. Empty only when
+	// no arm was taken, in which case styleInk produces no ink and never
+	// reads it.
+	inkField string
+
 	padding template.Padding
 
 	valign string // "top", "middle" or "bottom" — never empty
@@ -348,11 +360,20 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 		r.hasBackground, r.background = true, base.Background.Value
 	}
 
+	// `&& !header.Color.Null` is what makes this arm match its EIGHT
+	// siblings above and below. Without it, `headerStyle: {"color": null}`
+	// WON the cascade with a null and stopped the fall-through to
+	// style.color, so a table declaring `style.color: #c81e1e` printed its
+	// header in black — measured at 2 ink operations against 3 for the
+	// same table with headerStyle absent or `{}`. The background and
+	// border arms on the same table already fall through on an explicit
+	// null; folio-format.md already states that rule; the code was the
+	// outlier, so the fix is here and neither document changes.
 	switch {
-	case hasHeader && header.Color.Set:
-		r.inkStyle.Color = header.Color
+	case hasHeader && header.Color.Set && !header.Color.Null:
+		r.inkStyle.Color, r.inkField = header.Color, "headerStyle.color"
 	case base.Color.Set:
-		r.inkStyle.Color = base.Color
+		r.inkStyle.Color, r.inkField = base.Color, "style.color"
 	}
 
 	switch {
@@ -763,7 +784,7 @@ func collectBandTableRuns(
 			}
 
 			overflows := measured > contentW
-			headerInk, hasHeaderInk, inkErr := styleInk(hs.inkStyle, string(el.ID), "headerStyle.color/style.color")
+			headerInk, hasHeaderInk, inkErr := styleInk(hs.inkStyle, string(el.ID), hs.inkField)
 			if inkErr != nil {
 				return nil, nil, nil, inkErr
 			}

@@ -787,6 +787,30 @@ func collectBandTextRuns(
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
 		}
+		// Story 10.1: the element's ink, resolved ONCE per element and
+		// validated at render, through the module's one hex parser, so a
+		// malformed value is a located render error naming the element and
+		// the field.
+		//
+		// HOISTED HERE, beside fontChain, for fontChain's OWN reason and
+		// not by analogy to it: this validation used to sit ~120 lines
+		// below, under four `continue`s — the AC9 empty-text
+		// short-circuit, the hidden-element skip, and the two before them
+		// — so `style.color: "red"` was a located error when the element
+		// had a visible value and NO diagnostic at all when the value was
+		// "", when it bound to null, or when the element was hidden. That
+		// is precisely the defect the comment above this call was written
+		// to describe: the SAME broken template passing or failing
+		// depending on which report it was handed. Nothing may go below
+		// that line, and this had.
+		//
+		// The move is a MOVE: elementInk takes el.Style and el.ID only, so
+		// it depends on nothing computed in between and there is exactly
+		// one call, here.
+		ink, hasInk, inkErr := elementInk(el.Style, string(el.ID), "style.color")
+		if inkErr != nil {
+			return nil, nil, nil, inkErr
+		}
 		// SCOPED TO THIS ELEMENT'S CHAIN, shadowing the parameter for the
 		// rest of the iteration so nothing below can consult the unscoped
 		// one by accident. It is the same cache — same maps, same parsed
@@ -900,15 +924,6 @@ func collectBandTextRuns(
 		// alignment, and one that overflows all draw exactly where they drew
 		// before this rule existed.
 		align, valign := elementAlignment(el)
-		// Story 10.1: the element's ink, resolved ONCE per element and
-		// validated here rather than at load — the same place and the
-		// same way style.background's colour is validated, through the
-		// module's one hex parser, so a malformed value is a located
-		// render error naming the element and the field.
-		ink, hasInk, inkErr := elementInk(el.Style, string(el.ID), "style.color")
-		if inkErr != nil {
-			return nil, nil, nil, inkErr
-		}
 		boxHeight := geom.Length(0)
 		if el.Height.Set && !el.Height.Null {
 			boxHeight = el.Height.Value

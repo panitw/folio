@@ -5,6 +5,7 @@ package folio
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -580,4 +581,58 @@ func TestABorderPaintingNoInkProjectsNoBorderFields(t *testing.T) {
 	if len(painting.BorderEdges) != 1 || painting.BorderEdges[0] != "bottom" {
 		t.Errorf("borderEdges = %v, want [bottom]", painting.BorderEdges)
 	}
+}
+
+// TestTheProjectionRefusesEveryColourRenderRefuses is E10-3's proof, and it
+// covers ALL THREE colour arms.
+//
+// applyCanvasStyle bounded each colour string's LENGTH and never its SHAPE,
+// so "red", "", "rgba(1,2,3,.5)" and "var(--x)" projected verbatim and
+// reached the canvas's --text-ink while Render produced a located
+// STYLE_COLOR_INVALID for the same document: the designer painted what the
+// engine refuses to print.
+//
+// style.background's arm has the IDENTICAL hole and PREDATES Epic 10, which
+// copied the pattern faithfully — fixing the copy and leaving the original
+// is how a codebase acquires a fourth one-side-only guard, so all three
+// arms take the one helper.
+//
+// It REFUSES rather than dropping the field: a silent drop trades a loud
+// divergence for a quiet one.
+func TestTheProjectionRefusesEveryColourRenderRefuses(t *testing.T) {
+	for _, bad := range []string{"red", "", "rgba(1,2,3,.5)", "var(--x)"} {
+		for _, arm := range []struct{ name, styleFields string }{
+			{"color", `"color": ` + quoteJSON(bad) + `, `},
+			{"background", `"background": ` + quoteJSON(bad) + `, `},
+			{"border.color", `"border": {"color": ` + quoteJSON(bad) + `}, `},
+		} {
+			doc := boxTemplateJSON(arm.styleFields)
+			tpl, err := ParseTemplate([]byte(doc))
+			if err != nil {
+				t.Fatalf("%s %q: ParseTemplate: %v", arm.name, bad, err)
+			}
+			if _, err := Canvas(tpl); err == nil {
+				t.Errorf("%s = %q projected without error — the designer would paint what Render refuses", arm.name, bad)
+			}
+			// Render's own answer on the SAME document, so "both sides
+			// agree" is measured rather than assumed.
+			if _, _, _, _, err := buildPageModel(tpl, mustDecodeData(t, `{}`), mustDecodeParams(t), testFontSet()); err == nil {
+				t.Errorf("%s = %q rendered without error — this test's premise (Render refuses it) no longer holds", arm.name, bad)
+			}
+		}
+	}
+
+	// The control: a well-formed colour still projects on all three arms.
+	ok := canvasComponentOf(t, boxTemplateJSON(`"color": "#123456", "background": "#abcdef", "border": {"color": "#000000"}, `), "e1")
+	if ok.Color == nil || *ok.Color != "#123456" || ok.Background == nil || *ok.Background != "#abcdef" || ok.BorderColor == nil || *ok.BorderColor != "#000000" {
+		t.Errorf("a valid colour failed to project: color=%v background=%v borderColor=%v", ok.Color, ok.Background, ok.BorderColor)
+	}
+}
+
+func quoteJSON(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

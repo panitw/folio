@@ -1745,6 +1745,37 @@ func canvasPropertyLength(name string, value geom.Length) (*int64, error) {
 	return lengthPointer(value), nil
 }
 
+// canvasPropertyColor is the projection's ONE reading of "this is a
+// colour the designer may paint": the existing length bound, plus the
+// module's one hex parser — the SAME parseHexColor that
+// buildCellRectWithBackgroundField and elementInk call on the render
+// path.
+//
+// It exists because the projection admitted what Render refuses. The
+// three colour arms below bounded the string's LENGTH and never its
+// SHAPE, so `"red"`, `""`, `"rgba(1,2,3,.5)"` and `"var(--x)"` all
+// projected verbatim and reached the canvas's `--text-ink`, while the
+// same document's Render produced a located STYLE_COLOR_INVALID. The
+// designer painted what the engine would not print.
+//
+// It REFUSES rather than silently dropping the field: dropping would
+// trade a loud divergence for a quiet one, and the refusal keeps the
+// existing `exceeds the projection bound` shape's contract — the
+// projection either carries a value both sides agree on, or it fails.
+//
+// The command path already refuses to SET a malformed colour
+// (component_commands.go), so this closes the last door into the
+// projection rather than inventing a policy.
+func canvasPropertyColor(name, value string) (*string, error) {
+	if len(value) > maxCanvasPropertyString {
+		return nil, fmt.Errorf("folio: component %s exceeds the projection bound", name)
+	}
+	if _, ok := parseHexColor(value); !ok {
+		return nil, fmt.Errorf("folio: component %s %q is not a #RRGGBB colour", name, value)
+	}
+	return stringPointer(value), nil
+}
+
 func applyCanvasStyle(component *CanvasComponent, elementType template.ElementType, style template.Style) error {
 	if (elementType == template.ElementText || elementType == template.ElementTable) && style.FontFamily.Set && !style.FontFamily.Null {
 		if len(style.FontFamily.Value) > maxCanvasPropertyString {
@@ -1779,16 +1810,18 @@ func applyCanvasStyle(component *CanvasComponent, elementType template.ElementTy
 		component.Valign = stringPointer(style.Valign.Value)
 	}
 	if (elementType == template.ElementText || elementType == template.ElementTable) && style.Color.Set && !style.Color.Null {
-		if len(style.Color.Value) > maxCanvasPropertyString {
-			return fmt.Errorf("folio: component color exceeds the projection bound")
+		value, err := canvasPropertyColor("color", style.Color.Value)
+		if err != nil {
+			return err
 		}
-		component.Color = stringPointer(style.Color.Value)
+		component.Color = value
 	}
 	if style.Background.Set && !style.Background.Null {
-		if len(style.Background.Value) > maxCanvasPropertyString {
-			return fmt.Errorf("folio: component background exceeds the projection bound")
+		value, err := canvasPropertyColor("background", style.Background.Value)
+		if err != nil {
+			return err
 		}
-		component.Background = stringPointer(style.Background.Value)
+		component.Background = value
 	}
 	// A BORDER THAT PAINTS NO INK PROJECTS NO BORDER FIELDS AT ALL —
 	// element_box.go's borderPaints, its second call site, so the placer
@@ -1817,10 +1850,11 @@ func applyCanvasStyle(component *CanvasComponent, elementType template.ElementTy
 			component.BorderWidth = value
 		}
 		if border.Color.Set && !border.Color.Null {
-			if len(border.Color.Value) > maxCanvasPropertyString {
-				return fmt.Errorf("folio: component borderColor exceeds the projection bound")
+			value, err := canvasPropertyColor("borderColor", border.Color.Value)
+			if err != nil {
+				return err
 			}
-			component.BorderColor = stringPointer(border.Color.Value)
+			component.BorderColor = value
 		}
 		if border.Edges.Set && !border.Edges.Null {
 			component.BorderEdges = append([]string(nil), border.Edges.Value...)
