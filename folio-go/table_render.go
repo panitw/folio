@@ -449,7 +449,17 @@ func resolveBodyStyle(el template.Element) resolvedBodyStyle {
 	if base.Background.Set && !base.Background.Null {
 		r.hasBackground, r.background = true, base.Background.Value
 	}
-	if base.Color.Set {
+	// `.Null` beside `.Set`, matching every other arm in this function and
+	// the header cascade above. ⚠ THIS CHANGES NOTHING OBSERVABLE TODAY:
+	// styleInk opens with `!st.Color.Set || st.Color.Null`, so a null
+	// yielded no ink anyway, and this arm is single — there is no second
+	// arm to fall through to. It is spelled correctly here because the
+	// correctness was ACCIDENTAL AND NON-LOCAL, holding only because a
+	// different function re-checks null. resolveHeaderStyle, same file and
+	// same property, just demonstrated what this spelling costs when a
+	// second arm exists; the next arm or the next copy would inherit a live
+	// defect with nothing to announce it.
+	if base.Color.Set && !base.Color.Null {
 		r.inkStyle.Color = base.Color
 	}
 	if base.Padding.Set && !base.Padding.Null {

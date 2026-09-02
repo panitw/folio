@@ -6862,7 +6862,9 @@ in one pass would have had the same code path both narrowing and widening for tw
 ### DW-146 — `style.color` is inert on a shape element, and unvalidated where `background` is validated
 
 - **Deferred by:** the **Epic 10 reconstruction** (findings 4 and 5a, ruled at D-10.R.4 / D-10.R.5a,
-  2026-09-02). **Two findings, one entry, deliberately** — they are the same class.
+  2026-09-02). **Two findings, one entry, deliberately** — they are the same class. A **third instance**
+  was added by the Epic 9 + 10 follow-up pass (2026-09-02) and is **confirmed correct**, not open; it is
+  recorded here because it is where the entry's discriminator gets stated.
 - **Owner:** **the first story that makes a shape element carry text**, or Epic 12's padding work if it
   generalises the shape/text element split. A **trigger, not a date**.
 - **Severity:** LOW.
@@ -6881,6 +6883,24 @@ where its sibling is validated. **It cannot corrupt anything: the value never re
 **The documentation half did NOT defer** — `folio-format.md` never stated the shape-element restriction,
 and under D-8.4.31 an undocumented restriction is a rule that did not happen where it gets read. That line
 was written at the ruling. **This entry is the validation half only; do not re-open the doc half.**
+
+**Third instance — a literal `"value": ""` skips colour validation entirely, and that is CORRECT.**
+`render.go:733-735`'s entry filter (`if !el.Value.Set || el.Value.Null || el.Value.Value == "" { continue }`)
+is keyed on the **template literal**, not on bound data, and it sits **above** both `fontChain` and the
+hoisted colour validation. So a literal-empty text element reaches neither. **Recorded as confirmed-correct,
+not as an open defect.**
+
+**The discriminator, which is the point of this entry.** The defect the colour hoist fixed was
+**data-dependence** — *"the SAME broken template passing or failing depending on which report it was
+handed"* — and **not** non-validation as such. A literal `""` yields the same verdict on every dataset,
+forever; there is no report that makes it pass and no report that makes it fail. **Confirming evidence,
+measured:** with `"value": ""`, a malformed `style.color` **and** an unresolvable `style.fontFamily` both
+render clean (`render error = <nil>` for each, and for both together), while the same malformed colour on a
+non-empty literal is a located `style.color "red" is not a #RRGGBB colour`. `fontFamily` is **equally**
+unvalidated here, and that parity is the invariant the original hoist was protecting.
+
+**So do not hoist above line 733.** Doing so would make colour **stricter than the sibling it was modelled
+on**, and would validate the ink of an element that draws no glyphs.
 
 ### DW-147 — no fixture in the repository declares a colour, so two epics of rendering sit outside the byte-identity witness
 
@@ -6933,6 +6953,24 @@ it**, and a pattern being named is exactly when its evidence has to survive chec
 **The counter-instance matters and is recorded with it:** `render.go:777-785`'s comment states its **own**
 reason and was still correct years later. That is the evidence the mechanism is real rather than an artifact
 of two unlucky epics.
+
+**The instance list names BOTH cascade sites, and the Epic 9 + 10 follow-up pass (2026-09-02) completed it.**
+The pattern's `style.color` instance has **two** arms in `table_render.go`, not one:
+
+- **`resolveHeaderStyle`** (the repaired arm) — read `.Set` without `.Null`, and because it is a **two-arm**
+  cascade the missing check was a **live defect**: a null `headerStyle.color` took the header arm and
+  suppressed the `style.color` fall-through. Repaired.
+- **`resolveBodyStyle`** (`table_render.go`, the body arm) — the **identical spelling**, corrected in the
+  same pass as a **CONSISTENCY edit with no defect behind it**. It is single-arm, and `styleInk`
+  (`element_box.go:250`) opens with `if !st.Color.Set || st.Color.Null`, so a null yielded no ink anyway.
+  **Verified in that pass:** `styleInk` is the **sole** consumer of the resolved body style's `Color` —
+  `resolvedBodyStyle.inkStyle` is read at exactly one site and the struct is never passed wholesale
+  elsewhere — which is what made it a consistency edit rather than a repair. Its correctness was
+  **accidental and non-local**: it held only because a *different function* re-checked null.
+
+**The fix does not retire this entry.** Both arms are now spelled the same, but the entry is what makes a
+**ninth arm** findable if someone adds one — or if the fifth exactness cause, removed in the same pass, is
+ever reverted along with the reasoning around it.
 
 **Explicitly NOT to be built: do not write a comment checker.** That is the 8.4x shape exactly — a gate
 created to enforce a lesson, which then generates its own follow-on work. This registers as guidance a

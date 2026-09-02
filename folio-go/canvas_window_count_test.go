@@ -921,29 +921,41 @@ func TestAStyledTextBoxCountsTheSameWindowsAsTheRenderPath(t *testing.T) {
 	}
 }
 
-// TestAStyledTextBoxClearsTheExactnessFlag is E9-3(a), and it is the
-// MANDATORY half: a content-band text element that also declares a box is
-// the fifth cause that clears ContentWindowCountIsExact.
+// TestAStyledTextBoxDoesNotChangeTheExactnessFlag is the INVERSE of the
+// assertion this test once made, and it is the invariant that survived
+// E9-3: declaring a box must not change WHAT THE CANVAS CAN KNOW, and
+// therefore must not change the flag. Both fixtures report exact = true.
 //
-// ⚠ IT STAYS EVEN THOUGH (b) SHIPPED AND THE COUNTS NOW AGREE. The flag
-// says "this number cannot be trusted", and a hazard indicator fails toward
-// the loudest answer, never the quietest: a false alarm costs a designer a
-// caveat, while a silent one is what shipped and is the defect being
-// repaired. If (b) is ever reverted or narrowed, this cause is what keeps
-// the projection from claiming a count it does not have.
-func TestAStyledTextBoxClearsTheExactnessFlag(t *testing.T) {
+// A fifth cause did once clear the flag here. It was removed with (b) in
+// place, and the argument is a correctness one rather than a tidiness one.
+// The flag's semantic is "can the canvas know", not "is the canvas being
+// careful": its four remaining causes are each a case of genuine
+// unknowability — no data for a bound table, an unresolvable chain, a
+// data-dependent visibility verdict, a degraded pagination. Once the canvas
+// mirrors the render path's box item, a styled text box is not such a case;
+// a declared box is declared geometry, fully knowable with no data. Clearing
+// the flag over a count that is provably right is a false statement with a
+// conservative sign, and this finding existed because the flag made a false
+// statement. Fixing a false `true` by installing a false `false` is a
+// polarity swap, not a repair.
+//
+// What guards the COUNT is
+// TestAStyledTextBoxCountsTheSameWindowsAsTheRenderPath, which reds if the
+// mirrored box item is reverted. What this test guards is the flag's
+// meaning: nothing may clear it for a knowable box.
+func TestAStyledTextBoxDoesNotChangeTheExactnessFlag(t *testing.T) {
 	styled := parseWindowCountTemplate(t, canvasWindowCountStyledTextBoxTemplateJSON)
-	if projectWithPaint(t, styled).ContentWindowCountIsExact {
-		t.Error("a content-band text element declaring a box left ContentWindowCountIsExact true")
+	if !projectWithPaint(t, styled).ContentWindowCountIsExact {
+		t.Error("a content-band text element declaring a box cleared ContentWindowCountIsExact — a declared box is knowable with no data, so it cannot be a cause of inexactness")
 	}
 	// The control: the same template with the box declaration removed. It
-	// differs in exactly the thing under test, so "the flag is false" is
-	// evidence about the box and not about the fixture.
+	// differs in exactly the thing under test, so "the flag is unchanged"
+	// is evidence about the box and not about the fixture.
 	unstyled := strings.Replace(canvasWindowCountStyledTextBoxTemplateJSON, `, "background": "#eeeeee"`, "", 1)
 	if unstyled == canvasWindowCountStyledTextBoxTemplateJSON {
 		t.Fatal("the fixture moved; this test's edit no longer applies to it")
 	}
 	if !projectWithPaint(t, parseWindowCountTemplate(t, unstyled)).ContentWindowCountIsExact {
-		t.Error("the unstyled control cleared the flag too — the cause under test is not what cleared it")
+		t.Error("the unstyled control did not report exact either — the fixture proves nothing about the box")
 	}
 }

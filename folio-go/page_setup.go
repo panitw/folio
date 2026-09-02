@@ -948,35 +948,6 @@ func canvasContentBandHasConditionalVisibility(t *Template) bool {
 	return false
 }
 
-// canvasContentBandHasStyledTextBox is the FIFTH cause that clears
-// ContentWindowCountIsExact, and it names the divergence
-// addCanvasWindowCount's own comment already described: a content-band
-// TEXT element that also declares a box (element_box.go's
-// elementDeclaresBox, the single predicate) contributes a
-// full-declared-box column item on the RENDER path and only its shaped
-// lines on the canvas.
-//
-// Measured before this cause existed: a styled text element at y 700
-// with a declared height of 200 and a one-line value gave
-// `RENDER pages=2 | CANVAS windows=1 exact=true`. The code disclosed the
-// divergence in a comment and claimed the opposite in the value; a
-// hazard indicator must fail toward the loudest answer, never the
-// quietest.
-//
-// Like its three siblings it is a PURE PROPERTY OF THE TEMPLATE — no
-// data, no bindings — so it can be answered before Paginate runs.
-func canvasContentBandHasStyledTextBox(t *Template) bool {
-	for _, element := range t.doc.Bands.Content.Elements {
-		if element.Type != template.ElementText {
-			continue
-		}
-		if elementDeclaresBox(element) {
-			return true
-		}
-	}
-	return false
-}
-
 // addCanvasWindowCount is the THIRD paint producer, beside addCanvasTextPaint
 // and addCanvasImagePaint: it reports how many page-height windows the
 // content column occupies, WHERE EACH ONE BEGINS, and whether that number can
@@ -1010,38 +981,42 @@ func canvasContentBandHasStyledTextBox(t *Template) bool {
 // value that binds to empty. But collectElementBoxRects accepts TEXT as well
 // (element_box.go's four eligible kinds are text, image, rect and line), so a
 // content-band text element declaring a background or a border ALSO
-// contributes a full-declared-box column item on the render path, and the
-// canvas contributes only its shaped lines. A short value in a tall styled
-// box therefore occupies more column on the render path than on the canvas.
-// Measured: a styled text element at y 700 with a declared height of 200 and
-// a one-line value gives a canvas count of 1 against a real render of 2.
+// contributes a full-declared-box column item on the render path — and the
+// canvas MIRRORS that item below, from elementDeclaresBox, the same single
+// predicate the render path uses. Before it did, a styled text element at y
+// 700 with a declared height of 200 and a one-line value gave
+// `RENDER pages=2 | CANVAS windows=1 exact=true`: a count that was wrong and
+// a flag that denied it.
 //
-// That divergence is not closed here — closing it means adding a second
-// canvas item source for a text element (its box, beside its lines), which
-// is new placement rather than the removal of placement this arm performs.
-// What it does instead is DISCLOSE ITSELF IN THE VALUE rather than only in
-// this comment: canvasContentBandHasStyledTextBox is the fifth cause that
-// clears ContentWindowCountIsExact, so the count still diverges but no
-// longer claims not to. It is recorded here so the invariant above is never
-// read wider than it holds.
+// THAT DIVERGENCE IS CLOSED, and closing it is why this arm carries NO
+// exactness cause for a styled text box. A cause clears the flag to say the
+// canvas CANNOT KNOW; each of the four below is exactly that — no data for a
+// bound table, an unresolvable font chain, a data-dependent visibility
+// verdict, a pagination that degraded. A declared box is none of them: it is
+// declared geometry, fully knowable with no data at all. A fifth cause once
+// stood here, and clearing the flag over a count that is now provably right
+// made it a false statement with a conservative sign — the same defect as the
+// false `true` it replaced, in the other polarity, rather than a repair of
+// it. What guards the count instead is
+// TestAStyledTextBoxCountsTheSameWindowsAsTheRenderPath, which reaches the
+// number by the render path's own route and reds if the mirrored item below
+// is reverted.
 func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canvasColumnExtents) error {
 	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return err
 	}
-	// FOUR of the flag's causes are known before Paginate runs — a bound
-	// table, a degraded font chain, an element whose visibility depends
-	// on data, and a content-band text element that also declares a box
-	// (whose render-path column item is its whole box and whose canvas
-	// contribution is only its shaped lines); the fifth is the
-	// degradation branch below. They are OR-ed
+	// THREE of the flag's causes are known before Paginate runs — a bound
+	// table, a degraded font chain, and an element whose visibility
+	// depends on data; the fourth is the degradation branch below. Each
+	// is a case where the canvas genuinely cannot know, which is the
+	// admission bar for a cause here. They are OR-ed
 	// rather than ranked because the flag reports that the count cannot be
 	// trusted, not which cause made it so. ⚠ The SENSE is inverted from the
 	// field this replaced: `exact` is true only when NONE of them applies.
 	exact := !(column.FontChainDegraded ||
 		canvasContentBandHasBoundTable(t) ||
-		canvasContentBandHasConditionalVisibility(t) ||
-		canvasContentBandHasStyledTextBox(t))
+		canvasContentBandHasConditionalVisibility(t))
 	// Story 7.9 (FR51): the same index addCanvasTextPaint tagged its line
 	// items with, from the same one authority. Grouping is a pure property
 	// of the Template — keepTogetherTags takes nothing else — so the canvas
