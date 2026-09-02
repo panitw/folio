@@ -460,7 +460,7 @@ Every field optional; omitted fields inherit the documented default.
 | `border.color` | `"#000000"` |
 | `border.edges` | all four; a subset draws only those edges |
 | `background` | absent — transparent |
-| `color` | absent — the PDF's own initial fill, black. The INK the element's text prints in, as against `background`, the box behind it. A table cascades it to its cells like every other cell property, and `headerStyle.color` wins for the header row. Declaring none emits no colour operator at all, so a document written before this field renders byte-identically. |
+| `color` | absent — the PDF's own initial fill, black. The INK the element's text prints in, as against `background`, the box behind it. A table cascades it to its cells like every other cell property, and `headerStyle.color` wins for the header row. Declaring none emits no colour operator at all, so a document written before this field renders byte-identically. It is the ink of **text**, and only of text: on a `rect`, `line` or `image` a declared `color` is **accepted and inert** — it loads, it round-trips, and nothing ever paints it. That restriction shipped with the field and was documented here retroactively at the Epic 10 reconstruction (2026-09-02); the field is unchanged. |
 
 There is no font default. An element with text and no `style.fontFamily` is a located error naming the element. A default was documented here from the format's first draft and never implemented; `fonts` is a mapping with no authored key order, so "the first key" was never well-defined. If a default is added later it will name its rule explicitly.
 

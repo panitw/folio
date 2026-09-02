@@ -3342,3 +3342,103 @@ off-goal and was approved anyway**, four register. The lead surfaced that one nu
 beside it** rather than letting a green report bury it — and noted that this is the run's **third**
 self-measuring-instrument catch, which under D-000.13's second adopted instrument is **a finding in its own
 right, not a request**: three consecutive rulings pointing one direction go up as a pattern.
+
+## D-10.R — the direction question, and nine rulings on Epic 10's first review (2026-09-02)
+
+Epic 10's audit asked whether **D-9.R.2's load-time ruling was story-local or project-wide** — applying it
+to `style.color` would have closed four findings at once. The lead was told not to stretch the narrow
+reading into the broad one just because it made four findings vanish, and to escalate if the direction did
+not settle it.
+
+**D-10.R.0 — the answer is STORY-LOCAL, and it is not a matter of taste: the broad reading is structurally
+unavailable.** `internal/template/linespacing.go:10-20` says so **in the code, verbatim**: *"the module root
+imports this package, so this package may never import the module root (AD-1). A load-time-validated key
+therefore cannot copy `style.color`'s precedent, whose predicate is a RENDER-time, root-package one."*
+`parseHexColor` lives in the **root package**; the load path lives in `internal/template`, which may never
+import it. So a load-time colour check would need either **relocating a shipped authority with three call
+sites** or **writing a second colour predicate** — which is the very "one authority" principle the broad
+reading claimed to serve. **D-7.2.3 already looked at this exact axis for `lineSpacing` and recorded
+colour's render-time placement as the precedent it had to depart from — not as a defect.**
+
+**And the same fact does not weaken D-9.R.2**, which is what makes this a discriminator rather than a
+rationalisation: `border.width` is a `geom.Length`, an int64, and `internal/template` **already imports
+`internal/geom`**. **A load-time negative-width check is layering-clean; a load-time colour check is not.**
+
+**D-10.R.0b — the cross-epic rule that does exist**, since the question was right even though its proposed
+answer was wrong:
+
+> **A value validated on one path must be validated on both. The fix goes to whichever path LACKS the
+> check — never to a new third site.**
+
+Epic 9's guard was on the projection and missing at render, so it went to render. Epic 10's is at render and
+missing on the projection, so it goes to the projection. **Same rule, opposite direction, because the
+missing side is the opposite side.** `folio-format.md` stays correct as written.
+
+**A correction to the escalation as I framed it.** *"Validated at RENDER exactly as `style.background` is"*
+is **not in `folio-format.md`** — `grep` returns nothing; it is the code comment at `render.go:903-906`. The
+format spec's `color` row says nothing about where validation happens, **so no spec amendment was needed on
+that axis at all.** I had reported a code comment as a specification claim.
+
+**D-10.R.0c — the budget term, stated before the work.** Epic 9's four repairs and Epic 10's four are **ONE
+dispatch, eight small edits, each with a red-proof.** If the pass does not close all eight, the remainder
+registers, and **the drop order is fixed in advance and may not be improvised**: (1) the ambiguous field
+path, (2) the bounded canvas-count attempt, (3) the cascade Null guard. Everything else is either a HIGH on
+the epic's own goal or an unshipped narrowing whose window closes at the tag. **There is no 9.1a and no
+10.1a.** The `lint` gate fix stays a **separate commit** — *bundling an off-goal repair inside an on-goal
+pass is precisely how it stops being visible as one.*
+
+**D-10.R.1 — the colour check sits below four short-circuits (REPAIR).** Hoist `elementInk` to sit beside
+`fontChain`; it takes `el.Style` and `el.ID` only, so the hoist is a move, not a rewrite. **The control is
+not an analogy — it is the same defect, in the same function, with the fix already written and commented**:
+*"the SAME broken template passing or failing depending on which report it was handed."* Story 10.1 added a
+validation **below a line whose comment exists to say nothing may go below it.**
+
+**D-10.R.2 — the cascade arm missing `!Null` (REPAIR).** The Color arm is the only one of nine reading
+`.Set` without `.Null`. **`folio-format.md` already states the correct rule, so the code is the outlier, not
+the document — and the spec needs NO amendment.** Editing either document to describe the defect would be
+**moving the AC to match the measurement** (D-8.5.10).
+
+**D-10.R.3 — the projection admits what `Render` refuses (REPAIR, on the projection, ALL THREE arms).** One
+helper — length bound **plus** `parseHexColor` — replacing the length-only checks on `color`, `background`
+and `border.color`. **Extending to the other two arms is not scope creep, and the reason is on the record:**
+`style.Background`'s arm has the **identical** hole and **predates Epic 10 — Epic 10 copied the defective
+pattern faithfully.** Fixing the copy and leaving the original is how a fourth instance of one-side-only
+guarding gets created. **This is a narrowing of the exported surface** (D-8.2.2(b)) — free now, a migration
+after the tag. Refuse, do **not** silently drop: that trades a loud divergence for a quiet one.
+
+**D-10.R.4 / .5a / .7 / .8 — register**, as **DW-146** (inert-on-shapes and the zero-column table — one
+entry, one class; **the documentation half rode immediately** and is the only format amendment in these nine
+rulings), **DW-147** (no fixture declares a colour), and **DW-148** (sibling-referencing comments).
+
+**D-10.R.5b — the field path names both and identifies neither (REPAIR, inside D-10.R.2's edit).** AD-14's
+contract is that callers match on the **code**, so `"headerStyle.color/style.color"` breaks no contract —
+but AD-14's other half is that a diagnostic **locates**. The switch already knows which arm it took. **First
+to drop if the budget binds**, and the test asserts the located path, never the message text.
+
+**D-10.R.6 — the missed version bump (NO ACTION).** Closed in code under D-7.2.1 and **pinned by a test
+whose case label says so verbatim** — a guard with an anchor, not a claim. Epic 10's spec cites it as the
+instance DW-81's rule exists to prevent.
+
+**D-10.R.8's count was corrected downward, and that is part of the ruling.** Four sibling-referencing
+comments, not five: one candidate was withdrawn on checking. **Inflating a pattern's count is the same error
+as missing it** — and a pattern is named at exactly the moment its evidence must survive being checked. The
+entry also records the **counter-instance**, a comment that stated its own reason and stayed true, because
+that is what shows the mechanism is real rather than two unlucky epics.
+
+**D-10.R.9 — Playwright's first real cycle is re-pointed.** After D-10.R.3 the projection refuses
+`rgba(…)` and `var(--x)`, so browser-painting them **proves a dead path**. The boundary gate instead asserts
+**E9-5's DOM-observable claim** — a component projecting no border fields paints no border — which is
+**exactly DW-74's stated blind spot** and has no other witness. One assertion, not a suite; and if the
+browser cannot be made to run, it is recorded as **owed, not attempted-and-passed** (D-8.4.25(d)).
+
+**D-10.R.10 — what blocks what.** Findings 1, 2 and 3 block closing Epic 10, **on subject, not severity**.
+**10-1 and 10-3 are unshipped narrowings**: if the pass drops either it does not register — it joins
+**D-7.8.3's before-the-tag set** beside DW-68 and E9-2. **DW-147 is a gating input to 15.3 with the owner
+named**, flagged now rather than discovered at the tag.
+
+**D-10.R.11 — the aggregate.** Nine findings: **four repairs, all on Epic 10's stated goal; five register;
+ZERO off-goal approvals.** The Epic 9 `lint`-gate approval remains the run's only one and is **not
+re-counted**. Two things stand for the owner's eye, neither an escalation: **two independent stories each
+landed the same guard on exactly one side, on opposite sides, with nothing that would have told either
+author — a property of the codebase, not of two authors**; and **no fixture declares a colour**, so two
+epics of rendering work sit outside the byte-identity witness.

@@ -6858,3 +6858,82 @@ separated from finding 5, whose otherwise identical divergence was **undisclosed
 held out because closing it means **widening what the projection emits**, and the finding-5 repair
 deliberately did the opposite: it made the projection emit *less* when a border carries no ink. Doing both
 in one pass would have had the same code path both narrowing and widening for two neighbouring inputs.
+
+### DW-146 — `style.color` is inert on a shape element, and unvalidated where `background` is validated
+
+- **Deferred by:** the **Epic 10 reconstruction** (findings 4 and 5a, ruled at D-10.R.4 / D-10.R.5a,
+  2026-09-02). **Two findings, one entry, deliberately** — they are the same class.
+- **Owner:** **the first story that makes a shape element carry text**, or Epic 12's padding work if it
+  generalises the shape/text element split. A **trigger, not a date**.
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+`style.color` on a rect, line or image loads, serializes and round-trips, and is never painted, never
+validated and never projected. Measured: `color:"red"` on a rect renders clean, while `background:"red"`
+on the same element is a located error. A table with **zero columns** fails open the same way, because the
+colour validation lives inside the per-column loop — and `canvasElementIsPlaced` already says why that is
+harmless: *"a table with no columns has nothing to lay out or draw."*
+
+**Being inert is CORRECT here and is not the finding** — a rect has no text, and the projection already
+scopes colour to text and table elements by kind. What is deferred is only that the value is unvalidated
+where its sibling is validated. **It cannot corrupt anything: the value never reaches the content stream.**
+
+**The documentation half did NOT defer** — `folio-format.md` never stated the shape-element restriction,
+and under D-8.4.31 an undocumented restriction is a rule that did not happen where it gets read. That line
+was written at the ruling. **This entry is the validation half only; do not re-open the doc half.**
+
+### DW-147 — no fixture in the repository declares a colour, so two epics of rendering sit outside the byte-identity witness
+
+- **Deferred by:** the **Epic 10 reconstruction** (finding 7, ruled at D-10.R.7, 2026-09-02).
+- **Owner:** **Story 15.3, at the release gate, with the OWNER named.** This is the **DW-68 shape**: it does
+  not block the tag — **it blocks the tag being cut without the owner having seen the coverage statement.**
+- **Severity:** MEDIUM, and it is a **gating input to v0.1.0**.
+- **Status:** OPEN.
+
+**Re-measured, because this one reaches the tag:** `grep` over `fixtures/` and `folio-go/testdata/` returns
+**zero files declaring any colour at all** — not merely `style.color`, but `border.color` and Epic 9's
+stroked edges equally. **So Epic 10's AC3 byte-identity criterion holds vacuously**, and the 23 goldens and
+the four-target cross-check have never rendered a coloured document.
+
+**Why a fixture was not simply added.** A new fixture is not a cheap artifact: it needs a recorded digest
+**and a human semantic acceptance step** — the `statement-signoff.json` precedent — because the first
+artifact of a new shape is validated by nothing, and a golden that inherits a default proves only that the
+default is stable. **An unsigned golden is a worse artifact than a stated gap.** Do not quietly add one
+inside a repair pass to make this entry disappear.
+
+**The framing Story 15.3 must put to the owner, written now while it is cheap:** *v0.1.0's byte-identity
+claim is proved across four targets by 23 fixtures. `style.color` and element box strokes are declared by
+none of them. Add a fixture with a sign-off cycle before the tag, or ship with the claim's coverage
+stated?*
+
+**What is genuinely satisfied, so the entry is not overstated:** the epics' own clause — *"a document
+declaring none of this hashes identically"* — is the **negative** invariant, and it holds. It is the
+**positive** coverage that is unowned, which is exactly why nothing caught this for two epics.
+
+### DW-148 — comments that describe a sibling's behaviour go stale silently; four instances this run
+
+- **Deferred by:** the **Epic 10 reconstruction** (finding 8, ruled at D-10.R.8, 2026-09-02) — raised under
+  D-000.13's second instrument, which sends a repeated pattern up as **a finding in its own right**.
+- **Owner:** **guidance, not work.** It has no discharging story and needs none.
+- **Severity:** LOW individually; the pattern is the point.
+- **Status:** OPEN as guidance.
+
+**The mechanism:** a comment that describes a **sibling's** behaviour — *"cascaded exactly as its background
+is"*, *"validated at render exactly as `style.background` is"*, *"like every other cell property"* — is a
+claim about code **its author did not write and did not change**, and nothing re-checks it when either side
+drifts. All four instances found this run have that shape, and **every one would have stayed true had it
+stated the local invariant instead of the cross-reference.**
+
+**The count is four, not five, and the correction is part of the entry.** One candidate was withdrawn on
+checking: *"validated at RENDER exactly as `style.background` is"* is not in the format spec as first
+reported — it is a code comment — and after the Epic 10 repairs it is true of the cascade and of both guard
+sites, leaving only its element-kind half wrong. **Inflating a pattern's count is the same error as missing
+it**, and a pattern being named is exactly when its evidence has to survive checking.
+
+**The counter-instance matters and is recorded with it:** `render.go:777-785`'s comment states its **own**
+reason and was still correct years later. That is the evidence the mechanism is real rather than an artifact
+of two unlucky epics.
+
+**Explicitly NOT to be built: do not write a comment checker.** That is the 8.4x shape exactly — a gate
+created to enforce a lesson, which then generates its own follow-on work. This registers as guidance a
+reviewer reads, nothing more.
