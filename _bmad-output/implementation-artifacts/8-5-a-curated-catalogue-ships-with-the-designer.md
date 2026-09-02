@@ -2,13 +2,59 @@
 title: 'Story 8.5: A curated catalogue ships with the designer'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '1a4cceaa81f65cd9899eb13efd2ef207d2394c3f'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: ['{project-root}/_bmad-output/implementation-artifacts/8-5-catalogue-procurement.md']
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The forbidden-host scan reads only git-TRACKED files, so a new untracked source
+      file containing a forbidden host passes `npm run build` clean.
+    evidence: |-
+      `scannedPopulation` shells out to `git ls-files`, which reads the index. The guard's own
+      framing — "the moment someone reaches for the cheap shape, the first thing they type is one
+      of these two hosts" — describes exactly the pre-`git add` moment it cannot see. The remedy
+      (`--others --exclude-standard`) is one flag, but it would also fail the build over a
+      developer's un-ignored scratch file, so the noise/coverage trade is a decision rather than
+      a drive-by patch.
+    location: >-
+      folio-designer/scripts/forbidden-font-hosts.mjs:197
+    severity: medium
+  - summary: >-
+      Only the two Google Fonts hosts are forbidden; every other live font service would pass.
+    evidence: |-
+      `FORBIDDEN_FONT_HOSTS` lists `fonts.googleapis.com` and `fonts.gstatic.com`. `use.typekit.net`,
+      `fonts.bunny.net`, `fonts.cdnfonts.com` and jsDelivr/unpkg Fontsource paths are all
+      "reach for the live font service" shapes D-8.5.12 declined, and the scan waves them through.
+      Widening the list is a policy call about what the gate is for, not a defect in this change.
+    location: >-
+      folio-designer/scripts/forbidden-font-hosts.mjs:41
+    severity: medium
+  - summary: >-
+      `blankComments` approximates comment syntax for several languages it is applied to, while
+      the file's prose claims precision.
+    evidence: |-
+      It treats `//` as a comment opener in `.css` and `.json`, where it is not, so an unquoted
+      CSS `url(https://...)` blanks the rest of the line; Python triple-quoted strings and Go raw
+      strings are likewise approximate. It fails SAFE — the scan reads raw text and only the
+      EXEMPTION path is affected, so the worst case is a declaration that stops exempting — but
+      the comment block asserts a fidelity the scanner does not have.
+    location: >-
+      folio-designer/scripts/forbidden-font-hosts.mjs:106
+    severity: low
+  - summary: >-
+      `npm run build` now fails outright outside a git checkout, because the host scan is its
+      first step and cannot obtain a population.
+    evidence: |-
+      Building from a source tarball, an export, or a Docker `COPY` without `.git` now fails at
+      step one for a reason unrelated to the build. The fail-closed throw is CORRECT and must not
+      become a warn-and-skip (that is the vacuous green Design Note 2 names), so the resolution is
+      a documented build requirement or a non-git walk that preserves fail-closed — not a bypass.
+    location: >-
+      folio-designer/package.json:18
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -305,6 +351,33 @@ request leaves the machine".
 
 ## Review Triage Log
 
+### 2026-09-02 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 0, medium 5, low 2)
+- defer: 4: (high 0, medium 2, low 2)
+- reject: 8: (high 0, medium 2, low 6)
+- addressed_findings:
+  - `[medium]` `[patch]` **The collision guard's shipped-family half could never fire.** `build-wasm.mjs` seeded `catalogueFamilies` from `Object.keys(assets)` — measured as the SLOT keys `wasmExec, wasm, starter, sans, sansCjk, sansThai, mono, plexSans, plexSansThai`, not family names — so its error message promising "or over a family the six shipped rules already declare" was half false, and an entry declaring `Noto Sans` would have emitted a duplicate `@font-face`. Reseeded from a `shippedFamilies` literal of the six real family names, plus two new throws tying that literal to the hand-written stylesheet it describes. Proved independently: an entry with family `Noto Sans` now throws; before the fix it did not.
+  - `[medium]` `[patch]` **`font-catalogue.json`'s `licence` field was dead data.** Nothing under `folio-designer` read `.licence` or `"licence"`; it duplicated a fact held in the NOTICE, `lint/MANIFEST.md` and `pinnedCensus` and could silently disagree with all three. It now has a consumer (below) and is in the required-field validation.
+  - `[medium]` `[patch]` **No catalogue face was checked for its licence in its own bytes, though the three chrome faces are.** `font-binary-identity.test.ts` holds each chrome face's nameID 13 to the SIL OFL; `font-catalogue.test.ts` had adopted that file's digest check but not this one, so swapping a binary and its NOTICE together — same family, different terms — passed every check while `lint/MANIFEST.md` published a licence the bytes contradicted. Added a per-face nameID-13 assertion keyed off the `licence` field via a closed `licenceSignatures` table (an unrecognised id fails rather than skipping). Premise measured first: all 21 faces carry nameID 13; the 19 OFL faces match `/SIL Open Font License/i`, both Ubuntu faces match `/Ubuntu Font Licence/i`. Proved: flipping `ubuntusans` to `OFL-1.1` reds that face by name.
+  - `[medium]` `[patch]` **`SCANNED_EXTENSIONS` omitted `.mts`/`.cts`, and this change added the repository's only `.mts` file.** `git ls-files` returns exactly one: `folio-designer/scripts/forbidden-font-hosts.d.mts` — the scanner's own sidecar sat outside the population it claims covers the product source. Both added; the reported population moved 578 → 579.
+  - `[medium]` `[patch]` **`directory`, `file` and `family` were unvalidated where they become syntax.** `directory`/`file` are `join`ed into a filesystem path with no rejection of separators or `..`; `family` is interpolated unescaped into `font-family: '<name>'`. The `id` field was already held to `/^[a-z0-9]+$/` with a comment explaining why; the same reasoning now covers all three. Each rejection mutation-proved.
+  - `[low]` `[patch]` **The scan's reach assertion covered three of six `SCANNED_ROOTS`.** `hashmatrix`, `tools` and `.github` could have dropped out of the walk with every test green, and `[...reached].sort()` fed to `expect.arrayContaining` made the sort a no-op. Now derived from `SCANNED_ROOTS` and exact.
+  - `[low]` `[patch]` **One Brotli branch was not red-proved.** The mutable-entry arm (`asset.brotliBytes !== undefined`, reachable only for `/index.html`) was never exercised: the `brotli-record-drift` proof mutates an IMMUTABLE asset, so deleting that branch left every red proof green. Added `brotli-record-on-mutable-entry`, held to that branch's own message.
+
+**Rejections, enumerated individually (D-8.4j.3 — each names the caller, path or population verified).**
+
+1. *"The 44 ≤ 64 asset count is not written down anywhere."* — Rejected: it is **enforced**, which the finding treats as merely unwritten. `asset-count-over-bound` and `asset-count-under-bound` are registered red proofs (`verify-offline-release.mjs:303`, `:314`) and fired inside an exit-0 `verify:offline:red`; the bound is read from `src/release-payload.ts:33` by `readDeclaredConstant`. Population verified: the built `dist/offline-release-manifest.json`, 44 assets.
+2. *"The Brotli record is a measurement with no owner; add a marker that reds if 8.4d never lands."* — Rejected against the intent contract, whose `Never` list reads "A byte threshold or first-load budget gate — **Story 8.4d owns it** ... This story **records** weight and **must not** set or move a threshold." A failing placeholder is setting one.
+3. *"Make the scan warn-and-skip (`process.exit(0)`) outside a git checkout."* — Rejected: the proposed remedy inverts the guard. `forbidden-font-hosts.mjs:198-201` throws "could not look ... must never read as all-clear" deliberately, and an exit-0 warn is precisely the vacuous green Design Note 2 names as the trap. The underlying observation (the build now needs a checkout) is **deferred**, not rejected.
+4. *"Under a 'distinct upstream design' reading, the catalogue is ~16 families and AC3's Block If would fire."* — Rejected as re-litigating a settled decision. AC3's text is "at least 20 **new families**"; the dispatch settles the count at 21 clearing by one. Population verified by reading the `name` table of each committed binary, not filenames: **21 distinct family strings across 21 `.ttf` files in 21 directories**.
+5. *"'21 catalogue faces' is hardcoded in 21 NOTICEs and will drift."* — Rejected: verified no code path parses that sentence (`grep` across `folio-designer` and `lint` for the phrase finds only the NOTICE prose). The NOTICEs are provenance records of a fixed procurement event, and a count inside a historical record is not a live claim.
+6. *"`cousine`'s 'Copyright 2026' is the shape of a transcription slip."* — Rejected on measurement: the binary's own nameID 0 reads `Copyright 2026 The Cousine Project Authors (https://github.com/googlefonts/cousine)`. The NOTICE and the `MANIFEST.md` row transcribe it verbatim. Upstream really says 2026.
+7. *"`geistmono` records its upstream URL with a `.git` suffix while `geist`, from the same archive, does not."* — Rejected as factually wrong. Both NOTICEs record the identical `Download URL` (`.../v1.7.2/geist-font-v1.7.2.zip`) and the identical archive digest `7fc800d2...` at 8,207,303 bytes. There is no `.git` suffix in either file.
+8. *Hardening for symlinked paths, truncated sfnt tables, and `name` table format 1.* — Rejected: the population is 21 committed binaries that I parsed successfully for nameIDs 0/1/2/13/16/17, `OS/2`, `head` and `post`; none is a symlink, truncated, or format 1. These guard inputs that cannot reach the site without a separate commit that would fail AC1's digest check first.
+
+
 ## Design Notes
 
 **1 — The decline is policy, not physics, and stays recorded.** A same-origin, cached-on-first-pick
@@ -421,6 +494,163 @@ per-story set would not see it.
   `git add` — never `-A`, never `.`; never push; never branch.
 
 ## Auto Run Result
+### Dispatch 3 — 2026-09-02, implement + review + commit
+
+Status: **done**. Blocking condition: none.
+Baseline: `1a4cceaa81f65cd9899eb13efd2ef207d2394c3f` (the spec's planning baseline `19959fa` differs
+only under `_bmad-output/`; `git diff 19959fa..1a4ccea -- . ':(exclude)_bmad-output'` is **empty**,
+so every Code Map figure was measured against this code tree).
+
+**Implemented change.** Twenty-one permissively-licensed static Regular faces now ship inside the
+designer's offline release, each behind a content-addressed, digest-verified asset URL, with its own
+upstream `LICENSE*`, a `NOTICE.md` recording full provenance, a row in `lint/MANIFEST.md`, and a
+recorded per-asset Brotli weight. All Tier A rows procured — no reserve draw, no `.otf` route, no
+derivation, no allowlist widening.
+
+**Files changed (one line each).**
+- `folio-designer/public/fonts/<family>/` ×21 — the `.ttf`, the unmodified upstream `LICENSE*`, and a
+  `NOTICE.md` on the IBM Plex Sans shape (pinned tag, download URL, in-archive path, archive digest
+  and size, committed digest, byte size, fetch date, "copied unmodified, no derivation").
+- `folio-designer/font-catalogue.json` — **new**; the single declaration of the catalogue.
+- `folio-designer/scripts/build-wasm.mjs` — the six hardcoded asset slots keep their named consumers;
+  the catalogue is a manifest-driven loop emitting one `@font-face` per face, no weight/style
+  descriptor. Now validates `id`, `directory`, `file`, `family`, `licence`, and refuses a family the
+  six shipped rules already declare.
+- `folio-designer/scripts/generate-offline-release.mjs` — writes `brotliBytes` per immutable asset and
+  a `release.brotli` summary carrying the catalogue subtotal.
+- `folio-designer/scripts/verify-offline-release.mjs` — holds every recorded Brotli figure to its
+  emitted sidecar and to the rows' own arithmetic; two red proofs (`brotli-record-drift`,
+  `brotli-record-on-mutable-entry`).
+- `folio-designer/scripts/forbidden-font-hosts.mjs` (+ `.d.mts`) — **new**; the AC4 source scan, wired
+  as the first step of `npm run build`.
+- `folio-designer/src/font-catalogue.test.ts` — **new**; AC1 and AC6 read out of each committed
+  binary's own tables, including the licence the bytes declare (nameID 13).
+- `folio-designer/src/forbidden-font-hosts.test.ts` — **new**; positive control, population floor,
+  comment direction, exact root reach.
+- `folio-designer/src/canvas-font-stack.test.ts` — widened, not weakened: admits the catalogue rule
+  shape and adds a discrimination case proving a catalogue-shaped rule pointed at a font service reds.
+- `lint/internal/licence/licencecensus_test.go` — 21 new pins plus the compound-expression case.
+- `lint/testdata/licence/permissive/example.test/compound-lib/` — **new**; the `MIT OR Apache-2.0`
+  fixture (Design Note 3 — no procurable font carries an admissible compound expression).
+- `lint/internal/manifest/manifest_test.go` — the matrix audit's missing `WITH` row (see below).
+- `lint/MANIFEST.md` — regenerated from inside `lint/`.
+
+**Review findings breakdown.** 7 patches applied (5 medium, 2 low), 4 items deferred, 8 items
+rejected — every rejection enumerated individually in the Review Triage Log above with the caller,
+path or population verified. 0 intent gaps, 0 bad-spec loopbacks.
+
+**Follow-up review recommendation: `true`.** Patched this pass: high 0, medium 5, low 2 →
+`3 x 5 + 1 x 2 = 17`, which is ≥ 5. No patched finding was high severity; the score is driven by
+breadth, not by any single intolerable defect.
+
+**Verification performed** — every invocation with its working directory (D-8.4j.8).
+- `[repo root]` `shasum -a 256 fixtures/*/expected.pdf | diff digests.before -` → **empty. 23/23
+  golden digests byte-identical** to the pre-dispatch snapshot, re-checked after the patch pass.
+- `[repo root]` `gofmt -l folio-go lint` → `lint/internal/rules/licencegraph_test.go` only (standing
+  red 2, DW-116, not reformatted).
+- `[repo root]` `grep -c 'maximumCacheAssets = 64' folio-designer/src/release-payload.ts` → `1`.
+- `[folio-go]` `go test -count=1 ./...` → **1815 pass / 2 fail / 5 skip**; the two failures are
+  `TestCorpusMeetsP6ExerciseFloors` and `P6g_(opaque_names)` by identity (standing red 1). No fourth red.
+- `[folio-go]` `go vet ./...` → exit 0, no output.
+- `[lint]` `go test -count=1 ./...` → exit 0, **0 FAIL**, all four packages ok.
+- `[lint]` `go test -run TestLicenceSignalCensus -v` → PASS, printing *"CENSUS: 57 licence texts
+  measured (48 committed files + 9 dependency licences), all matching their pinned verdicts"*, and
+  pinning `.../compound-lib/LICENSE (permissive, "MIT OR Apache-2.0")` — D-8.4j.2's compound case.
+- `[lint]` `go run ./cmd/genmanifest` → exit 0; then `[repo root]` `git diff --exit-code --
+  lint/MANIFEST.md` → exit 0 (regeneration is a no-op against the committed output).
+- `[folio-designer]` `npm run typecheck` → exit 0. `npm run lint` → exit 0 with **exactly 4**
+  `only-export-components` warnings (standing red 3). `npm test` → **42 files / 424 tests, 0
+  failures** (baseline 40 / 411). `npm run test:e2e:compile` → exit 0 (compile only; CI executes no
+  Playwright, DW-101).
+- `[folio-designer]` `npm run build` (node **v24.16.0**) → exit 0. `release.assets.length` **44**,
+  `s1.assetCount` **44**, `s1.cachedBytes` **44,693,796**. The scan reports *"0 occurrence(s) in 579
+  tracked source files ... (floor 400). This bounds the SCANNED POPULATION only; it is not a claim
+  that no request leaves the machine."*
+- `[folio-designer]` `npm run verify:offline:red` → exit 0; `S1 CJK row is not the dominant font
+  payload` did **not** fire and `over the declared maximum of` did **not** fire.
+  `npm run verify:offline:wasm` → exit 0.
+
+**Per-asset Brotli, and the ONE number Story 8.4d inherits (AC5, D-8.4j.8).**
+`brotli.immutableAssetCount` 43, `brotli.totalBytes` 15,719,224.
+**The catalogue's total added Brotli weight is 2,227,609 bytes (2.12 MiB) across its 21 faces** —
+14.2% of the immutable payload. Command `npm run build`, reading `brotli.catalogue.totalBytes` from
+`dist/offline-release-manifest.json`; working directory `/Users/panitw/Projects/folio/folio-designer`;
+commit `9e2792d`; tree clean at measurement; node v24.16.0. **No threshold was set or moved**;
+`epics.md`'s superseded `~9 MB` figure is untouched.
+
+**Manual checks.**
+- `lint/MANIFEST.md` asset table read by eye: every catalogue row carries a real SPDX id and a real
+  copyright line. **Zero `SEE NOTICE` rows.** 19 rows `OFL-1.1`, 2 rows `Ubuntu-font-1.0`.
+- AC1 re-verified independently across all 21 faces: `shasum -a 256` of each committed binary equals
+  the digest its own `NOTICE.md` records, the byte size matches, and a `LICENSE*` and a `Copyright`
+  line are present. **21/21, zero problems.**
+- AC6: `src/generated/runtime-fonts.css` carries **27** `@font-face` rules, **27** `format('truetype')`,
+  and **zero** `font-weight`/`font-style` descriptors.
+- Guards mutation-proved **by deletion**, each on its own message: comment-stripping → the
+  comment-direction test reds alone (1 failed / 8 passed); population floor → the vacuity test reds
+  alone (1 failed / 8 passed); the per-asset Brotli assertion → `red proof brotli-record-drift
+  escaped verification`, exit 1; the mutable-entry branch → `red proof
+  brotli-record-on-mutable-entry escaped verification`; the shipped-family collision guard → an entry
+  declaring `Noto Sans` throws (before the fix it did not); the nameID-13 licence check → flipping
+  `ubuntusans` to `OFL-1.1` reds that face by name.
+- `git diff` touches **no** `folio-go/fonts/`, **no** `fixtures/**`, **no** `.folio`, **no**
+  `_bmad-output/planning-artifacts/`, and **no licence-gate source** (`classify.go`, `manifest.go`,
+  the allowlists and the classifier tables are untouched; the lint-side diff is `MANIFEST.md`, two
+  `_test.go` files and testdata).
+
+**Matrix Test Audit.** Seven of the eight I/O matrix rows had a covering test that ran and passed.
+One did not: *`WITH` form → build fails closed* had **no covering test anywhere in the repository** —
+`TestResolveAssetsRefusesAnUnenumerableSPDXExpressionAsUnclassifiable` covers `(MIT)`, `MIT()` and
+`MIT XOR Apache-2.0`, and the only `WITH` in any test file was prose in a comment. That row is
+load-bearing: it is the sole ground for excluding Linux Libertine, and for excluding it on **parser
+scope, pending a parser widening**, rather than on licence policy. Measured first — the gate refuses
+the Linux Libertine expression on the *unclassifiable* arm, not the copyleft arm — then pinned by
+`TestResolveAssetsRefusesAWITHExpressionAsUnclassifiableNotAsCopyleft`, which asserts the **arm**
+rather than merely the failure and carries a second case with no copyleft term at all. Proved
+falsifiable both ways. **No gate behaviour was added or changed**; the test records what
+`classify.go` already does, and no licence test's verdict moved.
+
+**Residual risks.**
+1. **AC3 clears by a margin of one** — 21 new families against ≥20. Losing any single face for any
+   reason puts the catalogue under the bar; the reserve list and the `.otf` route in
+   `8-5-catalogue-procurement.md` are the named remedies, and neither was needed here.
+2. **Thai coverage is adequate but not diverse** — it comes from two vendors only (Noto and IBM Plex),
+   because the Cadson Demak families are tagless and therefore procurement-blocked. Not a licence problem.
+3. **The cache-asset ceiling is now materially consumed**: 44 of 64 slots used, 20 free. Story 8.6 and
+   any further catalogue growth spend them.
+4. **The Brotli subtotal has no owner until Story 8.4d lands.** The catalogue adds ~2.1 MiB compressed
+   to a precached first load and nothing in the repository compares it to a threshold — deliberately
+   (8.4d owns the budget), but the number can grow with every gate green until 8.4d sets one.
+5. **The scan's claim is bounded and must stay bounded (D-8.5.5).** It proves no forbidden host appears
+   in the 579-file scanned population — never that no request leaves the machine. Four scan-scope
+   limitations are recorded in `deferred`.
+
+**Licence-gate findings registered rather than fixed (D-000.11).** This story put 21 `LICENSE*` files
+through the gate for the first time and the gate handled all of them correctly: 21/21 classified,
+zero `SEE NOTICE`, zero build failures, no allowlist pressure. **No licence-gate defect was found, so
+none was registered to Epic 15.** One licence-gate *coverage* gap was found and closed additively
+without touching gate code — the `WITH` row above. The pre-existing `WITH` parser limitation is not a
+new finding: it is already registered as D-8.5.16 / Epic 15 and is the reason Linux Libertine is out.
+
+**Resolved by judgement rather than a recorded ruling.**
+1. **Adding `TestResolveAssetsRefusesAWITHExpressionAsUnclassifiableNotAsCopyleft`.** The workflow's
+   Matrix Test Audit mandates a covering test per matrix row and halts otherwise; D-000.11 prohibits
+   licence-gate *changes*. I read a test that records existing behaviour as outside that prohibition —
+   the spec itself tasks this story with editing `licencecensus_test.go`, a licence-side test file —
+   and chose it over halting the story the run was course-corrected to reach. **No gate source was
+   touched and no licence test's verdict moved.** Reversible by deleting one test function.
+2. **Correcting the scanner's recorded population figure.** The comment claimed 1,058 files; the scan
+   reads 578 (579 after `.mts`/`.cts`), and the repository-wide extension count is 704, so the figure
+   described nothing. Corrected to the measurement with the correction stated rather than silently
+   overwritten. The floor of 400 was never wrong.
+3. **`baseline_revision` was advanced** from the spec's planning value `19959fa` to the dispatch HEAD
+   `1a4ccea`, per step-03. Safe because the two code trees are byte-identical (verified above); the
+   spec's `## Verification` note anticipated exactly this and asked for HEAD to be re-measured at the
+   build gate rather than trusted.
+4. **The six hardcoded asset slots were kept** rather than folded into the catalogue loop. Three
+   separate consumers name them (`runtimeAssetUrls` imports, the release generator's URL-substring
+   finds, and the family→file identity join), so the loop covers the catalogue only.
+
 
 ### Dispatch 2 — 2026-09-02, re-plan (halt after planning)
 

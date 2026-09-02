@@ -356,6 +356,28 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
     rewriteRelease(outputDir, release)
     return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
   }, 'brotli-record-drift')
+  // AND THE THIRD BRANCH, WHICH THE PROOF ABOVE CANNOT REACH.
+  // `brotli-record-drift` mutates the first IMMUTABLE asset, so it exercises the
+  // two assertions inside the immutable arm and never the MUTABLE one — delete
+  // that arm and every red proof stayed green. /index.html is the only asset
+  // that reaches it: it carries no Brotli sidecar, so a recorded Brotli weight
+  // for it is a number describing a file nothing compressed, and a number like
+  // that sums into the total somebody quotes. `expected` holds this to the
+  // branch's own clause rather than to the shared `brotli-record-drift` prefix,
+  // so it cannot pass by tripping the immutable arm instead.
+  redProof('brotli-record-on-mutable-entry', (outputDir) => {
+    const manifest = join(outputDir, 'offline-release-manifest.json')
+    const worker = join(outputDir, 'sw.js')
+    const oldManifest = readFileSync(manifest)
+    const oldWorker = readFileSync(worker)
+    const release = readRelease(outputDir)
+    const navigation = release.assets.find((asset) => asset.url === '/index.html')
+    if (!navigation) fail('red proof brotli-record-on-mutable-entry has no navigation entry')
+    if (navigation.immutable) fail('red proof brotli-record-on-mutable-entry: /index.html is marked immutable, so this proof would exercise the wrong branch')
+    navigation.brotliBytes = 1
+    rewriteRelease(outputDir, release)
+    return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
+  }, 'is not immutable, carries no Brotli sidecar')
   proveVCSStampGuardDiscriminates()
   redProof('worker-progress-before-marker', (outputDir) => { const worker = join(outputDir, 'sw.js'); const original = readFileSync(worker, 'utf8'); const moved = original.replace("    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))\n    await progress('verified', activeAsset)", "    await progress('verified', activeAsset)\n    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))"); if (moved === original) fail('red proof could not find final marker ordering'); writeFileSync(worker, moved); return () => writeFileSync(worker, original) })
 }

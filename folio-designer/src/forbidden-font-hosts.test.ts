@@ -60,12 +60,18 @@ describe('no forbidden font host reaches the scanned source', () => {
     const result = scanForbiddenFontHosts(repoRoot)
     expect(result.files, `the scan read only ${result.files} files, which cannot support a claim about this repository`).toBeGreaterThan(POPULATION_FLOOR)
     expect(result.findings, 'a forbidden font host appears in the product source. The catalogue is bundled and precached (D-8.5.12).').toEqual([])
-    // AND IT SPANS THE TREES IT CLAIMS TO. A population that had collapsed onto
-    // one directory would still clear the floor if that directory were big
-    // enough, so the reach is asserted rather than inferred from the count.
-    const reached = new Set(scannedPopulation(repoRoot).map((file) => file.split('/')[0]))
-    expect([...reached].sort()).toEqual(expect.arrayContaining(['folio-designer', 'folio-go', 'lint']))
-    expect(SCANNED_ROOTS).toContain('folio-designer')
+    // AND IT SPANS EVERY TREE IT CLAIMS TO, EXACTLY.
+    //
+    // THE EXPECTATION IS DERIVED FROM `SCANNED_ROOTS`, not a subset written out
+    // here. It used to name three of the six by hand and pipe them through
+    // `expect.arrayContaining`, which made the `.sort()` beside it a no-op and
+    // read as an exact-set check while being a containment one: `hashmatrix`,
+    // `tools` and `.github` could have dropped out of the walk entirely and
+    // this stayed green. Now adding a root the walk cannot reach reds, and so
+    // does reaching a directory no root declares.
+    const reached = [...new Set(scannedPopulation(repoRoot).map((file) => file.split('/')[0]))].sort()
+    expect(reached, 'every declared scan root must contribute at least one file, and nothing outside them may').toEqual([...SCANNED_ROOTS].sort())
+    expect(SCANNED_ROOTS.length, 'the scan roots must not have collapsed to a single tree').toBeGreaterThanOrEqual(3)
     // And what it deliberately does NOT read, so the bound is a decision on the
     // record rather than an accident of a filter (D-8.5.5).
     expect([...reached]).not.toContain('_bmad-output')

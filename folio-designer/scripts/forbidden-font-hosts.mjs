@@ -78,7 +78,12 @@ export const SCANNED_ROOTS = ['folio-designer', 'folio-go', 'lint', 'hashmatrix'
  * this repository writes, plus the manifests and stylesheets a font host would
  * realistically be typed into.
  */
-export const SCANNED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.go', '.css', '.html', '.json', '.yml', '.yaml', '.sh', '.py', '.mod', '.sum']
+// `.mts`/`.cts` ARE HERE BECAUSE THE FIRST ONE ARRIVED WITH THIS SCAN.
+// `scripts/forbidden-font-hosts.d.mts` — this module's own type sidecar — is
+// the repository's only `.mts` file, and it sat OUTSIDE the population this
+// scanner's comment claims covers "the source that builds the product". A
+// blind spot the guard's own change created is the cheapest kind to leave in.
+export const SCANNED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.go', '.css', '.html', '.json', '.yml', '.yaml', '.sh', '.py', '.mod', '.sum']
 
 /** Extensions whose language comments a line out with `#` rather than `//`. */
 const HASH_COMMENT_EXTENSIONS = ['.yml', '.yaml', '.sh', '.py']
@@ -213,8 +218,10 @@ export function scannedPopulation(root) {
  * true the moment the thing grows, so this is a FLOOR rather than an equality —
  * but a floor is what turns "the scan found nothing" into a claim.
  *
- * MEASURED AT STORY 8.5: 578 tracked files under `SCANNED_ROOTS` carry a
- * scanned extension — the number `npm run scan:font-hosts` prints, re-measured
+ * MEASURED AT STORY 8.5: 579 tracked files under `SCANNED_ROOTS` carry a
+ * scanned extension — 578 before `.mts`/`.cts` joined `SCANNED_EXTENSIONS`,
+ * plus the one `.mts` file in the repository, which is this module's own type
+ * sidecar. The number `npm run scan:font-hosts` prints, re-measured
  * on the committed catalogue at the build gate rather than estimated. (An
  * earlier draft of this comment recorded 1,058; that figure matches neither the
  * scanned population nor the repository-wide extension count of 704, so it was

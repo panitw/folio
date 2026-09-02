@@ -124,10 +124,45 @@ const assets = {
 // which exists for the assets application code names in an import.
 const catalogue = JSON.parse(readFileSync(join(designerRoot, 'font-catalogue.json'), 'utf8'))
 if (!Array.isArray(catalogue) || catalogue.length === 0) throw new Error('font-catalogue.json declares no catalogue faces')
+
+// THE SIX FAMILY NAMES THE HAND-WRITTEN RULES BELOW DECLARE.
+//
+// ⚠ THIS USED TO READ `new Set(Object.keys(assets))`, AND THAT WAS A GUARD THAT
+// COULD NOT FIRE. `assets`' keys are SLOT names — `wasmExec`, `wasm`, `starter`,
+// `sans`, `sansCjk`, `sansThai`, `mono`, `plexSans`, `plexSansThai` — and not one
+// of them is a family name, so the half of the message promising "or over a
+// family the six shipped rules already declare" was false: a catalogue entry
+// declaring `Noto Sans` passed, and the browser was handed TWO `@font-face`
+// rules for one family, the second silently winning. The intra-catalogue
+// duplicate half worked; this half asserted nothing.
+//
+// IT IS A LITERAL LIST AND IT IS CHECKED AGAINST THE RULES, which is the only
+// honest shape available here: the six rules must spell their families as
+// literals (`src/font-binary-identity.test.ts` and `src/canvas-font-stack.test.ts`
+// both parse them out of this file's TEXT, and an interpolated name is invisible
+// to both). So the list cannot be derived from the template — instead the
+// template is checked against the list, at the point of emission below, and a
+// name that falls out of either side reds there rather than here.
+const shippedFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai', 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC']
+
+// A family name is interpolated UNESCAPED into a single-quoted CSS string
+// (`font-family: '${face.family}'`). A quote closes it, a backslash escapes the
+// closing quote, and a semicolon, brace or newline ends the declaration or the
+// rule — so an unchecked name is not a typo, it is a way to write arbitrary CSS
+// into `runtime-fonts.css`. Held to the printable, punctuation-free shape every
+// real family name has, on the same reasoning the `id` field is held to
+// `/^[a-z0-9]+$/`: a field that becomes syntax must be checked where it is read.
+const familyShape = /^[A-Za-z0-9][A-Za-z0-9 .+-]*$/
+// `directory` and `file` are `join()`ed into a filesystem path. A separator or a
+// `..` segment reads a file from outside `public/fonts/`, which would ship bytes
+// no NOTICE sits beside and no licence gate ever saw. One path segment, no dots
+// leading, is the whole permitted vocabulary.
+const segmentShape = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
 const catalogueIds = new Set()
-const catalogueFamilies = new Set(Object.keys(assets))
+const catalogueFamilies = new Set(shippedFamilies)
 const catalogueFaces = catalogue.map((entry) => {
-  for (const field of ['id', 'directory', 'file', 'family']) {
+  for (const field of ['id', 'directory', 'file', 'family', 'licence']) {
     if (typeof entry?.[field] !== 'string' || entry[field] === '') throw new Error(`font-catalogue.json entry is missing a ${field}: ${JSON.stringify(entry)}`)
   }
   // The id becomes a runtime filename stem AND the token the release manifest
@@ -135,6 +170,10 @@ const catalogueFaces = catalogue.map((entry) => {
   // than trusted to stay one.
   if (!/^[a-z0-9]+$/.test(entry.id)) throw new Error(`font-catalogue.json id ${JSON.stringify(entry.id)} is not lower-case alphanumeric`)
   if (catalogueIds.has(entry.id)) throw new Error(`font-catalogue.json declares the id ${JSON.stringify(entry.id)} twice`)
+  for (const [field, value] of [['directory', entry.directory], ['file', entry.file]]) {
+    if (!segmentShape.test(value) || value.includes('..')) throw new Error(`font-catalogue.json face ${entry.id} declares a ${field} ${JSON.stringify(value)} that is not a single plain path segment; it is joined into a filesystem path, so a separator or a '..' would read bytes from outside public/fonts/`)
+  }
+  if (!familyShape.test(entry.family)) throw new Error(`font-catalogue.json face ${entry.id} declares a family ${JSON.stringify(entry.family)} carrying a character that is CSS syntax; it is interpolated unescaped into font-family: '<name>' in the emitted stylesheet`)
   if (catalogueFamilies.has(entry.family)) throw new Error(`font-catalogue.json declares the family ${JSON.stringify(entry.family)} twice, or over a family the six shipped rules already declare`)
   catalogueIds.add(entry.id)
   catalogueFamilies.add(entry.family)
@@ -176,7 +215,15 @@ writeFileSync(join(generatedDir, 'pdfjs-assets.ts'), `// Keep PDF.js CMaps and s
 // src/font-binary-identity.test.ts, which opens each file and reads its own
 // `name` table: a family name is an assertion about bytes, and that is where it
 // is checked rather than discovered by a designer squinting at glyphs.
-writeFileSync(join(generatedDir, 'runtime-fonts.css'), `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.plexSans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.plexSansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`
+// THE COLLISION GUARD'S LIST IS HELD TO THE RULES IT CLAIMS TO DESCRIBE.
+// `shippedFamilies` above is what stops a catalogue entry redeclaring one of
+// these six; a name that drifts out of either side would make that guard silent
+// again, in exactly the way `Object.keys(assets)` did. Checked here, where both
+// the list and the template are in scope.
+const shippedRules = `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.plexSans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.plexSansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`
+for (const family of shippedFamilies) if (!shippedRules.includes(`font-family: '${family}'`)) throw new Error(`shippedFamilies names ${JSON.stringify(family)} and no hand-written @font-face rule declares it, so the catalogue's collision guard is describing a family that is not there`)
+if (shippedRules.split('@font-face').length - 1 !== shippedFamilies.length) throw new Error(`the hand-written stylesheet emits ${shippedRules.split('@font-face').length - 1} rules and shippedFamilies names ${shippedFamilies.length}, so a rule exists that the catalogue's collision guard does not know about`)
+writeFileSync(join(generatedDir, 'runtime-fonts.css'), shippedRules
   // AND THE CATALOGUE, one rule per declared face, emitted from the manifest
   // rather than written out. Same shape as the six above, deliberately: no
   // `font-weight`, no `font-style`, one static Regular per family (AC6).

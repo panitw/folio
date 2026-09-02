@@ -110,6 +110,8 @@ function instanceOfFile(file: string) {
   return {
     family: nameTableString(view, tables, 16) ?? nameTableString(view, tables, 1) ?? '<the file declares no family name>',
     subfamily: nameTableString(view, tables, 17) ?? nameTableString(view, tables, 2) ?? '<the file declares no subfamily name>',
+    // nameID 13 is the LICENCE DESCRIPTION the face carries in its own bytes.
+    licenceDescription: nameTableString(view, tables, 13) ?? '<the file declares no licence description>',
     usWeightClass: view.getUint16(os2.offset + 4),
     // fsSelection bit 0 ITALIC, bit 5 BOLD, bit 6 REGULAR, bit 9 OBLIQUE.
     fsSelection: view.getUint16(os2.offset + 62),
@@ -141,6 +143,43 @@ function recordedShippedSize(noticeFile: string): number {
   const rows = [...notice.matchAll(/^\| Size \| ([0-9,]+) bytes \|$/gm)]
   if (rows.length !== 1) throw new Error(`${noticeFile} must record exactly one '| Size | <n> bytes |' row, and records ${rows.length}`)
   return Number(rows[0][1].replaceAll(',', ''))
+}
+
+/**
+ * THE LICENCE A FACE DECLARES IN ITS OWN `name` TABLE, per SPDX identifier.
+ *
+ * WHY THIS EXISTS, AND WHY IT IS THE `licence` FIELD'S FIRST CONSUMER.
+ * `src/font-binary-identity.test.ts` already holds each chrome face's nameID 13
+ * to the SIL OFL, on the stated ground that a redistributed asset's terms
+ * travel in its `name` table as well as in the `LICENSE*`/`NOTICE*` beside it.
+ * This file adopted that suite's DIGEST tie and not its LICENCE tie, and the
+ * gap is not theoretical: swap a face's binary and its NOTICE together — same
+ * family, different terms — and the digest check, the name check and the
+ * instance checks all stay green while `lint/MANIFEST.md` publishes a licence
+ * the binary itself contradicts.
+ *
+ * AND IT IS WHAT MAKES `font-catalogue.json`'s `licence` FIELD LOAD-BEARING.
+ * Until this table existed nothing in the designer read that field at all: it
+ * restated a fact already held in three other places (the NOTICE, the manifest
+ * row, `pinnedCensus`) and could disagree with all three in silence. Keyed off
+ * it, the field now has exactly one job and reds when it is wrong.
+ *
+ * MEASURED over all 21 committed faces before being written, not assumed: the
+ * 19 OFL-1.1 faces all carry the SIL sentence in nameID 13 — including
+ * `cascadiacode` and `cascadiamono`, whose description OPENS "Microsoft
+ * supplied font..." and carries the OFL sentence further in, which is why this
+ * is a substring match rather than a prefix or an equality — and both
+ * Ubuntu-font-1.0 faces read "Licensed under the Ubuntu Font Licence 1.0."
+ *
+ * A CLOSED TABLE, DELIBERATELY: an id with no entry here fails rather than
+ * skipping, so admitting a new licence to the catalogue is a decision somebody
+ * makes here rather than a silent hole. It is NOT the licence gate's allowlist
+ * and must not be treated as one — `lint` owns admission (D-000.11); this only
+ * asks whether the bytes agree with the label already admitted.
+ */
+const licenceSignatures: Readonly<Record<string, RegExp>> = {
+  'OFL-1.1': /SIL Open Font License/i,
+  'Ubuntu-font-1.0': /Ubuntu Font Licence/i,
 }
 
 describe('the Story 8.5 catalogue ships the faces its manifest declares', () => {
@@ -199,6 +238,24 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
         + 'without the binary. Both make the NOTICE a false statement about the bytes beside it.',
       ).toBe(recordedShippedDigest(notice))
       expect(recordedShippedSize(notice), `${face.id}: the recorded byte size is not the committed file's size`).toBe(fs.statSync(file).size)
+
+      // AND THE TERMS THE BINARY ITSELF DECLARES (nameID 13), which is the one
+      // statement of a face's licence that cannot be edited from outside the
+      // binary. `font-catalogue.json`'s `licence` field is the key, so the
+      // field is load-bearing rather than decorative.
+      const signature = licenceSignatures[face.licence]
+      expect(signature, `${face.id}: font-catalogue.json declares the licence '${face.licence}', which no entry in licenceSignatures recognises. Admitting a licence to the catalogue is a decision to record here, not a hole to fall through.`).toBeDefined()
+      expect(
+        instanceOfFile(file).licenceDescription,
+        `${face.id}: font-catalogue.json declares '${face.licence}' and the binary's own name table (nameID 13) does not say so. `
+        + 'A redistributed asset carries its terms in its name table as well as in the LICENSE*/NOTICE* beside it, and swapping '
+        + 'a binary and its NOTICE together — same family, different terms — passes every other check in this file while '
+        + 'lint/MANIFEST.md publishes a licence the bytes contradict.',
+      ).toMatch(signature as RegExp)
+
+      // The three records must also agree with each other: the NOTICE names the
+      // same identifier the manifest declares.
+      expect(text, `${face.id}: NOTICE.md does not name the SPDX identifier font-catalogue.json declares`).toContain(`\`${face.licence}\``)
     }
   })
 
