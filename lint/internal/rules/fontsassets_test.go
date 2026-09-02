@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -31,36 +32,35 @@ func TestFontsAssetsProductionScan(t *testing.T) {
 	}
 }
 
-// TestFontsAssetsRedProofByInjectionAtRealLocation red-proves AC5's
-// fail-closed property AT THE REAL declared location (RP-10 precedent,
-// same shape as TestWordlistAssetsRedProofByInjectionAtRealLocation): a
-// stray file placed anywhere under folio-go/fonts/ must be reported,
-// by rule id and message, and the tree is restored via t.Cleanup
-// (runs even on assertion failure) so no other test observes it.
-func TestFontsAssetsRedProofByInjectionAtRealLocation(t *testing.T) {
-	root := repoRootFromTest(t)
-	dir := filepath.Join(root, filepath.FromSlash(fontsAssetLocation))
-
-	strayPath := filepath.Join(dir, "notosans", "temp-red-proof-stray.txt")
-
-	if _, err := os.Stat(strayPath); err == nil {
-		t.Fatalf("test hazard: %s already exists before this test runs", strayPath)
-	}
-	if err := os.WriteFile(strayPath, []byte("this file must not be accounted for\n"), 0o644); err != nil {
-		t.Fatalf("write stray file: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Remove(strayPath); err != nil {
-			t.Errorf("cleanup: failed to remove injected file %s: %v (tree may be left mutated)", strayPath, err)
-		}
-	})
+// TestFontsAssetsRedProofByInjectionAtTheDeclaredLocation red-proves
+// AC5's fail-closed property at the DECLARED location — fontsAssetLocation
+// itself, the constant production reads — rather than at the real
+// working tree: a non-font stray file placed under folio-go/fonts/ must
+// be reported, by rule id and message.
+//
+// It used to inject that file into the real committed tree and remove it
+// in t.Cleanup. That mutated shared state a CONCURRENTLY-RUNNING package
+// reads (lint/internal/manifest's ResolveAssets tests walk the same
+// paths, and `go test ./...` runs packages in parallel), and an
+// interrupted run left the injected file behind. The synthetic root
+// keeps the claim — the scanner's own declared location, a real stray
+// file, an assertion by rule id and message — and drops only the
+// coupling to this machine's working tree.
+//
+// This is the non-font polarity; TestFontsAssetsRejectsUndeclaredFace is
+// the font-extensioned one, and the two are not the same branch.
+func TestFontsAssetsRedProofByInjectionAtTheDeclaredLocation(t *testing.T) {
+	root := scratchFontsRoot(t,
+		map[string][]byte{"notosans/NotoSans-Regular.ttf": minimalSfnt()},
+		map[string][]byte{"notosans/temp-red-proof-stray.txt": []byte("this file must not be accounted for\n")},
+	)
 
 	findings, stats, err := ScanFontsAssets(root)
 	if err != nil {
 		t.Fatalf("scan with injected stray file: %v", err)
 	}
 	if !stats.LocationExists {
-		t.Fatal("LocationExists should be true — the real fonts directory exists")
+		t.Fatal("LocationExists should be true — the synthetic root carries fontsAssetLocation")
 	}
 
 	wantRel := fontsAssetLocation + "/notosans/temp-red-proof-stray.txt"
@@ -275,30 +275,28 @@ func TestFontsAssetsFailsWhenExpectedSetCannotBeDerived(t *testing.T) {
 // (see its doc comment) — that property is
 // lint/internal/manifest.ResolveAssets' job (AC25), which already walks
 // the whole repo, folio-go/fonts/ included, for exactly this. This test
-// proves that enforcement actually fires at the real location, by the
-// production error message, not by exit status — removing NOTICE.md
-// from folio-go/fonts/notosans/ and asserting ResolveAssets errors with
-// the "no NOTICE* file" message, then restoring the original bytes via
-// t.Cleanup (never git checkout, per the story's instruction).
+// proves that enforcement actually fires, by the production error
+// message, not by exit status — removing NOTICE.md from
+// folio-go/fonts/notosans/ and asserting ResolveAssets errors with the
+// "no NOTICE* file" message.
+//
+// The removal happens in a throwaway repository built by
+// scratchRepoFromCommittedFace, NOT in the real working tree. It used to
+// delete the committed NOTICE.md and restore it in t.Cleanup, which
+// raced lint/internal/manifest's own ResolveAssets tests under a bare
+// `go test ./...` and left a committed licence artifact deleted if the
+// run was interrupted. What the proof binds to — the real committed
+// licence bytes, the real repo-relative path, the production error
+// message — is unchanged; the copy is what moved.
 func TestFontsAssetsNoticeRemovalRedProof(t *testing.T) {
-	root := repoRootFromTest(t)
-	noticePath := filepath.Join(root, filepath.FromSlash(fontsAssetLocation), "notosans", "NOTICE.md")
-
-	original, err := os.ReadFile(noticePath)
-	if err != nil {
-		t.Fatalf("read NOTICE.md before mutating: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.WriteFile(noticePath, original, 0o644); err != nil {
-			t.Errorf("cleanup: failed to restore %s: %v", noticePath, err)
-		}
-	})
+	root, faceDir := scratchRepoFromCommittedFace(t, "notosans")
+	noticePath := filepath.Join(faceDir, "NOTICE.md")
 
 	if err := os.Remove(noticePath); err != nil {
 		t.Fatalf("remove NOTICE.md: %v", err)
 	}
 
-	_, err = manifest.ResolveAssets(root)
+	_, err := manifest.ResolveAssets(root)
 	if err == nil {
 		t.Fatal("expected manifest.ResolveAssets to fail with NOTICE.md removed from folio-go/fonts/notosans/, got nil error")
 	}
@@ -319,22 +317,20 @@ func TestFontsAssetsNoticeRemovalRedProof(t *testing.T) {
 // (AD-26) — was executed by nothing. The mechanism does work; what was
 // missing was the proof, and a test that only ever drives one branch has
 // shown the other is PRESENT, not that it WORKS.
+//
+// Like its sibling above, the deletion happens in a throwaway repository
+// holding a copy of the real committed face, never in the working tree.
 func TestFontsAssetsLicenceRemovalRedProof(t *testing.T) {
-	root := repoRootFromTest(t)
-	licencePath := filepath.Join(root, filepath.FromSlash(fontsAssetLocation), "notosansthai", "LICENSE-OFL.txt")
+	root, faceDir := scratchRepoFromCommittedFace(t, "notosansthai")
+	licencePath := filepath.Join(faceDir, "LICENSE-OFL.txt")
 
-	original, err := os.ReadFile(licencePath)
+	info, err := os.Stat(licencePath)
 	if err != nil {
-		t.Fatalf("read LICENSE-OFL.txt before mutating: %v", err)
+		t.Fatalf("stat LICENSE-OFL.txt before mutating: %v", err)
 	}
-	if len(original) == 0 {
+	if info.Size() == 0 {
 		t.Fatalf("%s is empty — this red-proof would prove nothing", licencePath)
 	}
-	t.Cleanup(func() {
-		if err := os.WriteFile(licencePath, original, 0o644); err != nil {
-			t.Errorf("cleanup: failed to restore %s: %v", licencePath, err)
-		}
-	})
 
 	if err := os.Remove(licencePath); err != nil {
 		t.Fatalf("remove LICENSE-OFL.txt: %v", err)
@@ -348,4 +344,80 @@ func TestFontsAssetsLicenceRemovalRedProof(t *testing.T) {
 	if !strings.Contains(err.Error(), wantSubstr) {
 		t.Fatalf("expected error to mention %q, got: %v", wantSubstr, err)
 	}
+}
+
+// scratchRepoFromCommittedFace copies the REAL committed
+// folio-go/fonts/<face>/ directory into a fresh git repository under
+// t.TempDir(), at the same repository-relative path, git-adds it, and
+// returns (synthetic root, copied face directory).
+//
+// It exists so the two licence/notice removal red-proofs can delete a
+// licence artifact without deleting a licence artifact THIS repository
+// ships. manifest.ResolveAssets consults git's own index before it
+// assesses a directory (DW-19), so the synthetic root has to be a real
+// repository with the face's files tracked, not a bare directory tree —
+// the same recipe lint/internal/manifest's own synthetic-root tests use.
+//
+// The bytes are the committed ones, deliberately: a red-proof that the
+// real OFL text is what classification accepts, and that the real
+// NOTICE.md is what satisfies the notice branch, is a stronger claim
+// than one made against fabricated placeholder text.
+func scratchRepoFromCommittedFace(t *testing.T, face string) (root, faceDir string) {
+	t.Helper()
+
+	src := filepath.Join(repoRootFromTest(t), filepath.FromSlash(fontsAssetLocation), face)
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatalf("read committed face directory %s: %v", src, err)
+	}
+
+	root = t.TempDir()
+	faceDir = filepath.Join(root, filepath.FromSlash(fontsAssetLocation), face)
+	if err := os.MkdirAll(faceDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", faceDir, err)
+	}
+
+	var sawFont, sawLicence, sawNotice bool
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		data, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", filepath.Join(src, name), err)
+		}
+		if err := os.WriteFile(filepath.Join(faceDir, name), data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", filepath.Join(faceDir, name), err)
+		}
+		switch {
+		case strings.EqualFold(filepath.Ext(name), ".ttf"), strings.EqualFold(filepath.Ext(name), ".otf"):
+			sawFont = true
+		case strings.HasPrefix(name, "LICENSE"):
+			sawLicence = true
+		case strings.HasPrefix(name, "NOTICE"):
+			sawNotice = true
+		}
+	}
+	// Vacuity guard: if the copy did not reproduce the shape the removal
+	// red-proofs mutate, they would "prove" the gate fires for the wrong
+	// reason — an absent font binary, not an absent licence file.
+	if !sawFont || !sawLicence || !sawNotice {
+		t.Fatalf("copy of %s is not a redistributable face directory (font=%v licence=%v notice=%v)",
+			src, sawFont, sawLicence, sawNotice)
+	}
+
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "test"},
+		{"add", "-A"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v in %s: %v\n%s", args, root, err, out)
+		}
+	}
+	return root, faceDir
 }

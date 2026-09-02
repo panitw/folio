@@ -994,8 +994,28 @@ func TestCommittedAssetPopulationClassifiesCleanly(t *testing.T) {
 	}
 
 	const wordlistPath = wordlistAssetDir + "/words_th.txt"
+	// shippedFontsPrefix is the REACH assertion, and it is here because
+	// lint/internal/rules' licence/notice red-proofs no longer carry it.
+	// Those proofs used to delete a LICENSE/NOTICE file from the real
+	// folio-go/fonts/<face>/ and assert ResolveAssets went red — which,
+	// incidentally, also proved that folio-go/fonts/ is INSIDE this
+	// resolver's walk. They now run against a throwaway copy (they raced
+	// this package's own tests, and an interrupted run left a committed
+	// licence artifact deleted), and a throwaway copy cannot prove
+	// anything about where the real walk goes.
+	//
+	// So the reach claim is stated here, directly, against the real tree:
+	// if a future exclusion, skip-rule or path change quietly removed the
+	// shipped fonts from the walk, every assertion below would still pass
+	// on the wordlist row alone, and the gate would be enforcing licence
+	// policy over a population that no longer contains the fonts.
+	const shippedFontsPrefix = "folio-go/fonts/"
 	sawWordlist := false
+	sawShippedFont := false
 	for _, row := range rows {
+		if strings.HasPrefix(row.Path, shippedFontsPrefix) {
+			sawShippedFont = true
+		}
 		if row.Licence == "SEE NOTICE" {
 			t.Errorf("%s: no generated manifest row may read %q after Story 8.4h (AC4)", row.Path, "SEE NOTICE")
 		}
@@ -1014,6 +1034,11 @@ func TestCommittedAssetPopulationClassifiesCleanly(t *testing.T) {
 	}
 	if !sawWordlist {
 		t.Errorf("expected a row for %s — its absence would make the two-policy assertion above vacuous", wordlistPath)
+	}
+	if !sawShippedFont {
+		t.Errorf("expected at least one row under %s — ResolveAssets' walk must REACH the shipped faces, "+
+			"or this test asserts a licence policy over a population the fonts are not in (AC25, AD-26)",
+			shippedFontsPrefix)
 	}
 }
 

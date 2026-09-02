@@ -94,8 +94,9 @@ func TestWordlistAssetsFixtureScan(t *testing.T) {
 	})
 }
 
-// TestWordlistAssetsRedProofByInjectionAtRealLocation is AC9's binding
-// red-proof, performed AT THE REAL declared location, in TWO
+// TestWordlistAssetsRedProofByInjectionAtTheDeclaredLocation is AC9's
+// binding red-proof, performed at the DECLARED location —
+// wordlistAssetLocation itself, the constant production reads — in TWO
 // independent directions per the reopening (D-2.1.2 unchanged — either
 // direction passing silently means it is still fail-open):
 //
@@ -104,37 +105,33 @@ func TestWordlistAssetsFixtureScan(t *testing.T) {
 //  2. Deleting BOTH required licence files fails, by rule id and
 //     message, for each missing file.
 //
-// Both directions restore the tree via t.Cleanup (runs even on
-// assertion failure), never leaving the real location mutated.
-func TestWordlistAssetsRedProofByInjectionAtRealLocation(t *testing.T) {
-	root := repoRootFromTest(t)
-	dir := filepath.Join(root, filepath.FromSlash(wordlistAssetLocation))
-
+// Both directions used to mutate the REAL committed tree and restore it
+// in t.Cleanup. That raced lint/internal/manifest's ResolveAssets tests,
+// which read the same working tree while `go test ./...` runs the two
+// packages concurrently, and an interrupted run left committed files
+// deleted. Each direction now gets its own synthetic root under
+// t.TempDir(), carrying exactly wordlistExpectedFiles at the declared
+// location — the same claim, made where no other package can observe it.
+func TestWordlistAssetsRedProofByInjectionAtTheDeclaredLocation(t *testing.T) {
 	t.Run("stray file in a subdirectory", func(t *testing.T) {
+		root := scratchWordlistRoot(t)
+		dir := filepath.Join(root, filepath.FromSlash(wordlistAssetLocation))
 		subdir := filepath.Join(dir, "temp-red-proof-subdir")
 		strayPath := filepath.Join(subdir, "nested-stray.txt")
 
-		if _, err := os.Stat(subdir); err == nil {
-			t.Fatalf("test hazard: %s already exists before this test runs", subdir)
-		}
 		if err := os.MkdirAll(subdir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 		if err := os.WriteFile(strayPath, []byte("this file must not be accounted for\n"), 0o644); err != nil {
 			t.Fatalf("write stray file: %v", err)
 		}
-		t.Cleanup(func() {
-			if err := os.RemoveAll(subdir); err != nil {
-				t.Errorf("cleanup: failed to remove injected subdirectory %s: %v (tree may be left mutated)", subdir, err)
-			}
-		})
 
 		findings, stats, err := ScanWordlistAssets(root)
 		if err != nil {
 			t.Fatalf("scan with injected subdirectory stray file: %v", err)
 		}
 		if !stats.LocationExists {
-			t.Fatal("LocationExists should be true — the real wordlist directory exists")
+			t.Fatal("LocationExists should be true — the synthetic root carries wordlistAssetLocation")
 		}
 
 		wantRel := wordlistAssetLocation + "/temp-red-proof-subdir/nested-stray.txt"
@@ -153,25 +150,10 @@ func TestWordlistAssetsRedProofByInjectionAtRealLocation(t *testing.T) {
 	})
 
 	t.Run("deleting both required licence files", func(t *testing.T) {
+		root := scratchWordlistRoot(t)
+		dir := filepath.Join(root, filepath.FromSlash(wordlistAssetLocation))
 		licencePath := filepath.Join(dir, "LICENSE-CC0-1.0.txt")
 		noticePath := filepath.Join(dir, "NOTICE")
-
-		licenceBytes, err := os.ReadFile(licencePath)
-		if err != nil {
-			t.Fatalf("read licence file before mutating: %v", err)
-		}
-		noticeBytes, err := os.ReadFile(noticePath)
-		if err != nil {
-			t.Fatalf("read notice file before mutating: %v", err)
-		}
-		t.Cleanup(func() {
-			if err := os.WriteFile(licencePath, licenceBytes, 0o644); err != nil {
-				t.Errorf("cleanup: failed to restore %s: %v", licencePath, err)
-			}
-			if err := os.WriteFile(noticePath, noticeBytes, 0o644); err != nil {
-				t.Errorf("cleanup: failed to restore %s: %v", noticePath, err)
-			}
-		})
 
 		if err := os.Remove(licencePath); err != nil {
 			t.Fatalf("remove licence file: %v", err)
@@ -185,7 +167,7 @@ func TestWordlistAssetsRedProofByInjectionAtRealLocation(t *testing.T) {
 			t.Fatalf("scan with both licence files deleted: %v", err)
 		}
 		if !stats.LocationExists {
-			t.Fatal("LocationExists should be true — the real wordlist directory still exists")
+			t.Fatal("LocationExists should be true — the synthetic wordlist directory still exists")
 		}
 
 		wantMissing := map[string]bool{
@@ -209,4 +191,44 @@ func TestWordlistAssetsRedProofByInjectionAtRealLocation(t *testing.T) {
 			}
 		}
 	})
+}
+
+// scratchWordlistRoot builds a synthetic repo root under t.TempDir()
+// carrying wordlistAssetLocation populated with exactly
+// wordlistExpectedFiles — a clean, compliant starting point each
+// red-proof direction then mutates in its own throwaway tree, so the
+// real committed wordlist assets are never touched.
+//
+// It reads the expected set from wordlistExpectedFiles rather than
+// listing the three names again: a fourth required file added to
+// production must not leave this fixture silently one file short, which
+// would turn the missing-file direction green for the wrong reason.
+func scratchWordlistRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, filepath.FromSlash(wordlistAssetLocation))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	if len(wordlistExpectedFiles) == 0 {
+		t.Fatal("vacuity guard: wordlistExpectedFiles is empty, so this fixture would assert nothing")
+	}
+	for name := range wordlistExpectedFiles {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("synthetic\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	// The fixture must itself be clean, or a red-proof below could pass
+	// on a finding it did not inject.
+	findings, stats, err := ScanWordlistAssets(root)
+	if err != nil {
+		t.Fatalf("scan synthetic root: %v", err)
+	}
+	if !stats.LocationExists {
+		t.Fatal("synthetic root does not carry wordlistAssetLocation")
+	}
+	if len(findings) > 0 {
+		t.Fatalf("synthetic root must start clean, got %v", findings)
+	}
+	return root
 }
