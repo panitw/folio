@@ -147,7 +147,35 @@ installed a font, and nobody had to be told which one to install.
 - Do bold and italic get realized in this scope? They are stored and projected today but consumed
   by no producer, and no bold or italic face ships — this is the work that could give them
   meaning, or they stay explicitly out and the panel says so.
-- May an author embed a font file from their own disk, the way an image is imported, or is the
-  catalogue the only source?
-- Does the licence record live inline on each font asset, or in one document-level notice block?
+- ~~May an author embed a font file from their own disk, the way an image is imported, or is the
+  catalogue the only source?~~ **SETTLED (Story 8.6, D-8.6.1): declined — the catalogue is the
+  source, and the decline is STATED at the family control rather than left to be inferred from a
+  missing button.** Derived rather than chosen. The catalogue exists because a redistributed face
+  must arrive with its terms: `font-catalogue.json` names each face's licence, the committed
+  `LICENSE*` beside it is the text, and the binary's own `name` table carries the copyright, so the
+  designer can fill the `licence`/`licenceText`/`copyright` a `2.0` document now REQUIRES of an
+  embedded face (below, and `folio-format.md`). **A file off the author's disk supplies none of
+  that** — the designer would have to either invent the terms, ask the author to type them, or
+  write a document its own engine refuses to load. The first two are worse answers than declining;
+  the third is not available. AD-26's reasoning points the same way: fonts do not link, so an
+  embedded face's licence attaches to the documents users produce, and admission is a build-time
+  check against a named allowlist (D-8.5.2/D-8.5.3) rather than a judgement made at authoring time
+  about a file nobody has seen. The decline is explicit because a control that is simply absent
+  reads as an omission; this one is a decision.
+- ~~Does the licence record live inline on each font asset, or in one document-level notice
+  block?~~ **SETTLED (Story 8.6, D-8.6.1): INLINE, on each font asset, and with the ACTUAL TEXT —
+  and, on an asset a chain names, REQUIRED rather than optional.** Derived from what a `.folio` is
+  for. The format's whole premise is that the file travels alone (CAP-2: "a `.folio` carries the
+  faces its chains name"), and an asset lifted out of one document and put into another must still
+  say on what terms it may be passed on — a document-level notice block would not survive that
+  move, and a block naming three families would have to be re-partitioned by hand the moment one of
+  them is removed. Inline costs duplication (three OFL families in one document carry three
+  near-identical copies of ~4 KB), and that is accepted deliberately as the price of the asset
+  being self-describing. `licenceText` carries the text and not merely the identifier because
+  "OFL-1.1" is a name, and a name is not a grant. **Required, by owner ruling of 2026-09-02:**
+  making it mandatory would normally strand earlier documents, and there are none — Folio is
+  unreleased, breaking is free now and expensive after `folio-go/v0.1.0` (Story 15.3), so the
+  format is made right here. The requirement is scoped to an asset a chain actually NAMES, which is
+  what keeps D-1.4.13 intact: an unreferenced font asset is not an embedded face, still loads clean
+  with no record at all, and still leaves the document at `1.x`.
 - Is an embedded CJK face refused, warned about, or simply allowed at its full weight?

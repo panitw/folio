@@ -92,6 +92,12 @@ vi.mock('./preview/pdf-viewer', () => ({
 }))
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
+// The family combobox lists TWO groups since Story 8.6 — the chains the
+// document declares, and the bundled catalogue it does not. Only a catalogue
+// entry carries the "add to document" note, so that is what separates them
+// here: the note is what the entry DOES, not how it looks, and a control that
+// stopped distinguishing the two would fail this rather than restyle past it.
+const declaredOptions = () => within(screen.getByRole('listbox', { name: 'Fonts' })).queryAllByRole('option').filter((option) => !(option.textContent ?? '').includes('add to document'))
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
@@ -1283,23 +1289,103 @@ describe('typography controls over the engine-projected closed sets', () => {
     const request = select()
     const combobox = screen.getByRole('combobox', { name: 'Font family' })
     fireEvent.focus(combobox)
-    const listed = () => within(screen.getByRole('listbox', { name: 'Declared fonts' })).queryAllByRole('option').map((option) => option.textContent)
+    // SCOPED TO THE DECLARED GROUP. Since Story 8.6 the listbox carries a
+    // second group — the bundled catalogue — and this test is about the first:
+    // a catalogue entry is not a chain the document declares, and folding the
+    // two together would make "the document's declared chains" mean "every
+    // family that exists".
+    const listed = () => declaredOptions().map((option) => option.textContent)
     expect(listed()).toEqual(['body', 'heading'])
     fireEvent.change(combobox, { target: { value: 'head' } })
     expect(listed()).toEqual(['heading'])
     fireEvent.click(screen.getByRole('option', { name: 'heading' }))
     await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
     // The typed search text is never a value: only a listed family is sent.
-    expect(screen.queryByRole('listbox', { name: 'Declared fonts' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('listbox', { name: 'Fonts' })).not.toBeInTheDocument()
   })
 
-  it('states a search that matches no declared chain instead of offering to invent one', () => {
+  it('states a search that matches neither a declared chain nor the catalogue instead of offering to invent one', () => {
     select()
     const combobox = screen.getByRole('combobox', { name: 'Font family' })
     fireEvent.focus(combobox)
     fireEvent.change(combobox, { target: { value: 'Helvetica' } })
     expect(screen.queryByRole('option')).not.toBeInTheDocument()
-    expect(screen.getByText('No declared font matches "Helvetica".')).toBeInTheDocument()
+    expect(screen.getByText('Nothing in this document or the catalogue matches "Helvetica".')).toBeInTheDocument()
+  })
+
+  // STORY 8.6, AC4. THE TWO GROUPS ARE DIFFERENT KINDS OF THING, and the
+  // difference is asserted by what each does when it is picked — not by a
+  // class name, which would pass on a control where both options committed the
+  // same property.
+  it('offers the bundled catalogue as a second, visibly distinct group whose entries the document does not declare', () => {
+    select()
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    fireEvent.focus(combobox)
+    // A family the document declares no chain for. It is offered, it is marked
+    // as an addition rather than a selection, and the headings say which group
+    // is which.
+    // The accessible name collapses the note's leading space, so the pattern is
+    // whitespace-tolerant rather than pinned to one spelling of the gap.
+    const inter = screen.getByRole('option', { name: /^Inter\s*—\s*add to document$/ })
+    expect(inter).toBeInTheDocument()
+    expect(screen.getByText('In this document')).toBeInTheDocument()
+    expect(screen.getByText('Catalogue — not yet in this document')).toBeInTheDocument()
+    // AND THE DECLINE IS STATED. There is no import control to be found
+    // missing, so the answer to "where do I add my own font file?" is written
+    // where the question is asked, rather than left to be inferred from its
+    // absence.
+    expect(screen.getByText('Fonts come from this catalogue. A typeface on your own disk cannot be embedded.')).toBeInTheDocument()
+    // The declared group never carries the addition note: picking one of those
+    // sets a property, and it is already in the file.
+    expect(declaredOptions().map((option) => option.textContent)).toEqual(['body', 'heading'])
+  })
+
+  // STORY 8.6, AC1/AC3 AT THE BROWSER BOUNDARY. Picking a catalogue entry
+  // sends the embed command — with the face's bytes and its terms — rather
+  // than committing `fontFamily`. That fork is the whole difference between
+  // the two groups, and asserting it on the WIRE is what makes it a claim
+  // about behaviour rather than about a class name.
+  it('sends the embed command, with the face and its terms, when a catalogue entry is picked', async () => {
+    const face = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f]).buffer
+    const fetchStub = vi.fn(async (_url: string) => ({ ok: true, arrayBuffer: async () => face }))
+    const restore = globalThis.fetch
+    globalThis.fetch = fetchStub as never
+    try {
+      // `select`'s mock is declared with no parameters, so its recorded calls
+      // are an empty tuple to TypeScript. The arguments are read back through
+      // a widened view rather than by changing that shared signature, which
+      // every other test in this describe block is written against.
+      const request = select()
+      const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      fireEvent.click(screen.getByRole('option', { name: /^Inter\s*—\s*add to document$/ }))
+      await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
+      // THE BYTES CAME FROM THE BUNDLE, not from a host. The URL is one of the
+      // release's own content-addressed assets, which is what makes the pick
+      // work offline — SPEC-fonts requires no call to either Google Fonts host
+      // at any point, and `forbidden-font-hosts.test.ts` is what names them.
+      expect(fetchStub).toHaveBeenCalledTimes(1)
+      expect(String(fetchStub.mock.calls[0][0])).not.toMatch(/^https?:/)
+      expect(sent).toHaveLength(1)
+      expect(sent[0][0]).toBe('command')
+      const payload = JSON.parse(new TextDecoder().decode(sent[0][1])) as Record<string, unknown>
+      expect(payload['kind']).toBe('embedFontFamily')
+      expect(payload['name']).toBe('Inter')
+      expect(payload['family']).toBe('Inter')
+      // The three keys the ENGINE REFUSES TO LOAD A DOCUMENT WITHOUT. A pick
+      // that omitted any of them would produce a document the engine's own
+      // parser rejects, so their presence is the browser's half of that
+      // contract and not a detail.
+      expect(payload['licence']).toBeTruthy()
+      expect(payload['licenceText']).toBeTruthy()
+      expect(payload['copyright']).toBeTruthy()
+      expect(payload['data']).toBe('AAEAAH8=')
+      // AC3: Inter covers Latin and nothing else, so the proposed tail is the
+      // shipped faces for the scripts it does NOT cover, in order.
+      expect(payload['tail']).toEqual(['Noto Sans Thai', 'Noto Sans SC'])
+    } finally {
+      globalThis.fetch = restore
+    }
   })
 
   it('shows the engine\'s own default size for an element that commits none, as a placeholder and not a value', () => {
@@ -2260,7 +2346,7 @@ describe('the font chain editor, where fonts are chosen', () => {
     expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem')).toHaveLength(1)
     expect(within(screen.getByRole('list', { name: 'Entries of font chain 2' })).getAllByRole('listitem')).toHaveLength(2)
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-    expect(within(screen.getByRole('listbox', { name: 'Declared fonts' })).getAllByRole('option').map((option) => option.textContent)).toEqual(['body', 'heading'])
+    expect(declaredOptions().map((option) => option.textContent)).toEqual(['body', 'heading'])
   })
 
   // The reorder row's ERROR cell. `fontChainIndex` refuses an out-of-range

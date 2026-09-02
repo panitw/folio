@@ -518,8 +518,10 @@ optional record:
   "9ab1e6c2f0d34b7a5c8e1f20d4b6a839c7e5024f1b8d63a09e4c7512fb3d8a6e": {
     "data": ["AAEAAAAP…"],
     "font": {
+      "copyright": "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai)",
       "family": "Noto Sans Thai",
       "licence": "SIL Open Font License 1.1",
+      "licenceText": "Copyright 2022 The Noto Project Authors…\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\n…the whole text, verbatim…",
       "source": "https://github.com/notofonts/thai",
       "style": "Regular"
     },
@@ -528,10 +530,53 @@ optional record:
 }
 ```
 
-`font` is **optional**, and every key inside it is optional. It is a record *about* the face for
-the people reading and reusing the document — the `family` and `style` a designer shows in a chain
-editor, and the `licence` and `source` that say where the bytes came from and on what terms. The
-engine derives none of it from the bytes and none of it is required to render.
+It is a record *about* the face for the people reading and reusing the document — the `family` and
+`style` a designer shows in a chain editor, the `licence`, `licenceText` and `copyright` that state
+on what terms and by whose grant the bytes may be passed on, and the `source` that says where they
+came from. The engine derives none of it from the bytes and none of it is required to **render**.
+
+**Whether `font` is optional depends on whether a chain names the asset, and that is the whole
+rule.**
+
+- **No chain names this asset.** `font` is **optional**, and every key inside it is optional. Such
+  an asset is not an embedded face — nothing draws with it and no face is redistributed on its
+  account — so the document carries it verbatim and loads clean with the record absent, partial, or
+  explicitly `null`. This is also why such an asset does not raise the document's `version` (see
+  *`version`* above): it is legible to a `1.x` reader exactly as it is.
+- **A chain names this asset** by `{"asset": "<key>"}`. Then it **is** an embedded face, and
+  `licence`, `licenceText` and `copyright` are **REQUIRED**: each must be present, non-`null` and
+  non-empty. A document that fails this is a **load error**, located at
+  `assets.<key>.font.<the first missing key>` and naming the chain entry — `fonts.<chain>[<i>]` —
+  that made the asset an embedded face. It is never a warning and never a best-effort render.
+
+  A font that travels without its terms is not a font that may be passed on, and a `.folio` is a
+  single file that travels alone: there is nowhere else for the terms to be. `licenceText` is the
+  **actual text** of the licence, not its name — `licence` already carries the name. The
+  duplication that costs (a document embedding three OFL families carries three near-identical
+  copies of ~4 KB) is accepted deliberately, because an asset extracted from the document and
+  passed on by itself must still carry its own terms, which a single document-level notice block
+  would not survive.
+
+> **THE VERSION TRIGGER AND `SupportedMajor` DO NOT MOVE, and the derivation is here rather than
+> asserted.** `version` describes the document (D-1.4.13) and a file declares the lowest version its
+> own content requires (above). D-7.3.1's test is: *would a pre-`2.0` reader refuse this file, or
+> render it wrong?*
+>
+> **No new trigger.** The three required keys can only appear on an asset a chain names by
+> `{"asset": key}` — and that entry shape **already** forces `2.0`, settled at Story 8.3, because a
+> `1.x` reader decodes a chain entry as a string and refuses an object outright. So every document
+> carrying them is a `2.0` document for a reason that already shipped. They are a record *about* the
+> asset and reach no output byte, so no pre-`2.0` reader could render such a file wrong — it refuses
+> it first, on the entry shape.
+>
+> **`SupportedMajor` stays `2`.** Making the reader stricter about `2.0` documents is not a version
+> trigger: a document has no way to declare "I am missing licence text", so this is reader
+> strictness, and version describes the document, never the writer. Normally that tension would
+> force a MAJOR bump so older files kept loading — here there are no older files. Folio is
+> unreleased; the format may be broken (owner ruling, 2026-09-02), and breaking is free now and
+> expensive after `folio-go/v0.1.0`. A bump would also make every document declare `3.0`, including
+> the twenty-two fixtures that make no font choice at all, moving their bytes and their goldens for
+> a reason unrelated to fonts.
 
 **`mediaType` remains an OPEN set for fonts exactly as it is for images.** It is not one of the
 closed sets listed above and it never will be: under D-1.4.12 a closed set can only be extended by

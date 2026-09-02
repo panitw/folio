@@ -230,13 +230,18 @@ func writeFontChain(dst []byte, depth int, chain []FontChainEntry) []byte {
 // explicit null round-trips as null, rather than the two collapsing into
 // one spelling on the way out.
 func writeFontRecord(dst []byte, depth int, r FontRecord) []byte {
-	fields := make([]kv, 0, 4+len(r.Extra))
+	fields := make([]kv, 0, 6+len(r.Extra))
 	for _, f := range []struct {
 		key string
 		val Presence[string]
 	}{
+		// Listed alphabetically for a reader; writeObject sorts anyway,
+		// so `licenceText` lands after `licence` and `copyright` ahead of
+		// `family` whatever order this literal is written in.
+		{"copyright", r.Copyright},
 		{"family", r.Family},
 		{"licence", r.Licence},
+		{"licenceText", r.LicenceText},
 		{"source", r.Source},
 		{"style", r.Style},
 	} {

@@ -252,7 +252,7 @@ func twoCarriedFacesTemplateJSON(t *testing.T) (string, string, string) {
 	if strings.Count(source, assetTail) != 1 {
 		t.Fatalf("fixture precondition: the carried-face document no longer ends its one asset with %q, so a second asset cannot be spliced in beside it", assetTail)
 	}
-	source = strings.Replace(source, assetTail, "      \"mediaType\": \"font/ttf\"\n    },\n    \""+latinKey+"\": {\n      \"data\": [\n"+data.String()+"\n      ],\n      \"font\": {\n        \"family\": \"Noto Sans\",\n        \"licence\": \"SIL Open Font License 1.1\",\n        \"source\": \"folio-go/fonts/notosans/NotoSans-Regular.ttf — the shipped static Regular instance\",\n        \"style\": \"Regular\"\n      },\n      \"mediaType\": \"font/ttf\"\n    }\n  },", 1)
+	source = strings.Replace(source, assetTail, "      \"mediaType\": \"font/ttf\"\n    },\n    \""+latinKey+"\": {\n      \"data\": [\n"+data.String()+"\n      ],\n      \"font\": {\n        \"copyright\": \"Copyright 2022 The Noto Project Authors\",\n        \"family\": \"Noto Sans\",\n        \"licence\": \"SIL Open Font License 1.1\",\n        \"licenceText\": \"This Font Software is licensed under the SIL Open Font License, Version 1.1.\",\n        \"source\": \"folio-go/fonts/notosans/NotoSans-Regular.ttf — the shipped static Regular instance\",\n        \"style\": \"Regular\"\n      },\n      \"mediaType\": \"font/ttf\"\n    }\n  },", 1)
 	const shippedHead = "    \"body\": [\n      \"Noto Sans\",\n      {"
 	if strings.Count(source, shippedHead) != 1 {
 		t.Fatalf("fixture precondition: the carried-face document no longer opens its chain with %q, so the shipped entry cannot be replaced by a carried one", shippedHead)

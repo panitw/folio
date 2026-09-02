@@ -20,6 +20,28 @@ mechanism images have always used: the key is the lowercase hex SHA-256 of the d
 `data` is base64 hard-wrapped at 76 columns, and the asset carries a `font` record naming the
 family, style, licence and source.
 
+## Why its `font` record changed at Story 8.6
+
+The record used to carry four keys — `family`, `licence`, `source`, `style` — and **no licence text
+and no copyright**. Story 8.6 made those two REQUIRED of an asset a chain names by
+`{"asset": key}`: a font that travels without its terms is not a font that may be passed on, so a
+`.folio` carrying one is refused at load, located at the asset record and naming the chain entry
+that makes it an embedded face. This document's chain names its asset, so under the new rule the
+old file was **invalid** and had to be amended. (An UNREFERENCED font asset is untouched by the
+rule and still loads with no record at all.)
+
+Neither new value is written down. `licenceText` is
+`folio-go/fonts/notosansthai/LICENSE-OFL.txt` verbatim, embedded into the test binary beside the
+face itself, and `copyright` is that file's own first line — so the document's terms and the terms
+committed beside the bytes cannot disagree. A hand-copied licence would be a second authority on
+what the terms are, which is the exact failure this rule exists to prevent.
+
+**`expected.pdf` did not move, and that was the expectation rather than the discovery.** The
+recorded digest in `expected.json` and `signoff.json` is the SHA-256 of `expected.pdf`, not of
+`input.folio`, and the `font` record reaches no output byte: `folio-format.md` states the engine
+derives none of it from the bytes and none of it is required to render, and Story 8.6's subsetting
+measurement found the produced PDF carries no `name` table at all. All 23 golden digests hold.
+
 The bytes are the **shipped** Noto Sans Thai
 (`folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf`), embedded here as an asset rather than
 supplied through the `FontSet`. **No new binary entered the repository for this fixture**, and
@@ -60,8 +82,14 @@ its glyphs carries a vertical offset, so its run emits no ` Ts` operator and thi
 - A document declaring an embedded-face entry declares **format version `2.0`**, and
   `TestEmbeddedFontFixtureIsCanonicalAndDeclaresTwoPointZero` asserts the declared version and the
   canonical fixed point together.
-- The `font` record's four keys (`family`, `licence`, `source`, `style`) survive a round trip in
-  sorted key order, and `font` sorts between `data` and `mediaType` without moving either.
+- The `font` record's six keys (`copyright`, `family`, `licence`, `licenceText`, `source`, `style`)
+  survive a round trip in sorted key order, and `font` sorts between `data` and `mediaType` without
+  moving either. `licenceText` sorting immediately after `licence` is the one adjacency worth
+  reading twice: they are a prefix pair, and a sort that put them the other way round would still
+  look alphabetical at a glance.
+- **An embedded face states its terms.** Story 8.6 made `licence`, `licenceText` and `copyright`
+  required of an asset a chain names, and this is the repository's one document that carries a real
+  licence rather than a fixture placeholder.
 
 ## Asserted by identity, never by a count
 

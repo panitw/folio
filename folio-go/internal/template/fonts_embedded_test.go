@@ -73,19 +73,44 @@ func embeddedFontDoc(assetBody, chainBody string) string {
 const fontAssetBody = `
       "data": ` + embeddedFontData + `,
       "font": {
+        "copyright": "Copyright 2026 The Folio Fixture Authors",
         "family": "Maximal Sans",
         "licence": "SIL Open Font License 1.1",
+        "licenceText": "This fixture face is licensed under the SIL Open Font License, Version 1.1. (The whole text travels here in a real document; a fixture states enough to be non-empty.)",
         "source": "hand-built 156-byte sfnt — a fixture, not a face",
         "style": "Regular"
       },
       "mediaType": "font/ttf"`
 
 // plainFontAssetBody carries no `font` record at all.
+//
+// SINCE STORY 8.6 IT IS ONLY LEGAL UNREFERENCED. An asset a chain names by
+// {"asset": key} must state its terms — licence, licenceText and copyright —
+// so this body is paired with unreferencedChain below, never with
+// embeddedChain. The referenced arm of exactly this body is the REFUSAL that
+// TestAReferencedFaceMustStateItsTerms asserts.
 const plainFontAssetBody = `
       "data": ` + embeddedFontData + `,
       "mediaType": "font/ttf"`
 
+// fontAssetBodyOfType is fontAssetBody with the media type varied and the
+// licence record kept whole. A row that varies the media type is asking about
+// RECOGNITION, so it must not accidentally also be asking about the licence
+// rule — before Story 8.6 those rows carried no `font` record at all and
+// passed for a reason that no longer exists.
+func fontAssetBodyOfType(mediaType string) string {
+	return strings.Replace(fontAssetBody, `"mediaType": "font/ttf"`, `"mediaType": "`+mediaType+`"`, 1)
+}
+
 const embeddedChain = `["Noto Sans", {"asset": "` + embeddedFontKey + `"}]`
+
+// unreferencedChain names no asset at all, so the document's font asset is an
+// ORPHAN — present, preserved, and outside Story 8.6's licence requirement,
+// which is scoped to an asset a chain actually names. Every row below whose
+// subject is the RECORD's presence semantics rather than the reference rule
+// uses this chain, so a partial or absent record is still a legal document to
+// round-trip.
+const unreferencedChain = `["Noto Sans"]`
 
 // requireLoadError asserts a document is refused with a *LoadError at exactly
 // field — INCLUDING the entry index — and with the general code. The exact
@@ -196,12 +221,17 @@ func TestEmbeddedEntryRoundTripsBothDirections(t *testing.T) {
 	if !strings.Contains(canonical, wantEntry) {
 		t.Errorf("the embedded entry is not emitted as a one-key object through writeObject:\n%s", canonical)
 	}
-	// `font` sorts between `data` and `mediaType`, and its own four keys come
+	// `font` sorts between `data` and `mediaType`, and its own six keys come
 	// back sorted — the whole record, spelled out, so a key order that drifted
-	// would be visible here rather than merely stable.
+	// would be visible here rather than merely stable. `licenceText` sorting
+	// immediately after `licence` is the one adjacency worth reading twice:
+	// they are a prefix pair, and a sort that put them the other way round
+	// would still look alphabetical at a glance.
 	wantRecord := `"font": {
+        "copyright": "Copyright 2026 The Folio Fixture Authors",
         "family": "Maximal Sans",
         "licence": "SIL Open Font License 1.1",
+        "licenceText": "This fixture face is licensed under the SIL Open Font License, Version 1.1. (The whole text travels here in a real document; a fixture states enough to be non-empty.)",
         "source": "hand-built 156-byte sfnt — a fixture, not a face",
         "style": "Regular"
       },
@@ -215,17 +245,17 @@ func TestEmbeddedEntryRoundTripsBothDirections(t *testing.T) {
 // time, in all three presence states, because the whole-record test above
 // cannot distinguish "absent" from "explicitly null" — and a refusal written
 // only in the non-null branch lets `"family": null` past every guard.
-// fontRecordKeys is the record's four keys, named once. Every per-key test
+// fontRecordKeys is the record's six keys, named once. Every per-key test
 // below is driven off THIS list rather than off `family` alone, because the
 // argument for the three-way presence handling is a PER-KEY argument — "a
 // refusal written only in the non-null branch lets `null` past every guard" is
 // as true of `licence` as of `family`, and a test that only ever nulls
-// `family` proves it for one quarter of the record.
+// `family` proves it for one sixth of the record.
 //
-// It is also the guard against the record growing a fifth key with no
+// It is also the guard against the record growing a seventh key with no
 // coverage: TestFontRecordKeyListIsTheWholeRecord below reflects over
 // FontRecord and fails if this list and the struct disagree.
-var fontRecordKeys = []string{"family", "licence", "source", "style"}
+var fontRecordKeys = []string{"copyright", "family", "licence", "licenceText", "source", "style"}
 
 // fontAssetWithRecord builds an asset body carrying `record` verbatim as its
 // `font` value, so a case can put any JSON there — legal or not.
@@ -234,8 +264,16 @@ func fontAssetWithRecord(record string) string {
 }
 
 // TestFontRecordKeyListIsTheWholeRecord binds fontRecordKeys to FontRecord
-// itself, so a fifth key added to the model without a line here is caught
+// itself, so a seventh key added to the model without a line here is caught
 // rather than silently uncovered by every test below.
+//
+// THE COMPARISON IS CASE-FOLDED, and that is a concession worth naming: the
+// model has no struct tags (the writer and the decoder spell the JSON keys),
+// so reflection can only offer the Go field name. `LicenceText` and
+// `licenceText` are the same key under a fold and nothing else here collides,
+// so folding is exact for this struct — but it is the reason a field named
+// `Licence_Text` would slip past, and if the record ever grows one, this
+// binding needs a real name map rather than a fold.
 func TestFontRecordKeyListIsTheWholeRecord(t *testing.T) {
 	typ := reflect.TypeOf(FontRecord{})
 	var presenceFields []string
@@ -246,7 +284,10 @@ func TestFontRecordKeyListIsTheWholeRecord(t *testing.T) {
 		}
 	}
 	sort.Strings(presenceFields)
-	want := append([]string(nil), fontRecordKeys...)
+	want := make([]string, 0, len(fontRecordKeys))
+	for _, key := range fontRecordKeys {
+		want = append(want, strings.ToLower(key))
+	}
 	sort.Strings(want)
 	if !reflect.DeepEqual(presenceFields, want) {
 		t.Fatalf("FontRecord's optional string keys are %v and fontRecordKeys names %v — every key the record carries must be driven through the presence tests below", presenceFields, want)
@@ -273,7 +314,7 @@ func TestFontRecordKeysRoundTripIndividually(t *testing.T) {
 			if tc.record != "" {
 				body = fontAssetWithRecord(tc.record)
 			}
-			canonicalFixedPoint(t, embeddedFontDoc(body, embeddedChain))
+			canonicalFixedPoint(t, embeddedFontDoc(body, unreferencedChain))
 		})
 	}
 
@@ -289,7 +330,7 @@ func TestFontRecordKeysRoundTripIndividually(t *testing.T) {
 			{"empty string", `""`},
 		} {
 			t.Run(key+"/"+tc.state, func(t *testing.T) {
-				d, err := ParseDocument([]byte(embeddedFontDoc(fontAssetWithRecord(`{"`+key+`": `+tc.value+`}`), embeddedChain)))
+				d, err := ParseDocument([]byte(embeddedFontDoc(fontAssetWithRecord(`{"`+key+`": `+tc.value+`}`), unreferencedChain)))
 				if err != nil {
 					t.Fatalf("parse: %v", err)
 				}
@@ -300,7 +341,7 @@ func TestFontRecordKeysRoundTripIndividually(t *testing.T) {
 				if wantNull := tc.value == "null"; got.Null != wantNull {
 					t.Errorf("%s: Null = %v, want %v — absence, an explicit null and a value are three states, not two", key, got.Null, wantNull)
 				}
-				canonicalFixedPoint(t, embeddedFontDoc(fontAssetWithRecord(`{"`+key+`": `+tc.value+`}`), embeddedChain))
+				canonicalFixedPoint(t, embeddedFontDoc(fontAssetWithRecord(`{"`+key+`": `+tc.value+`}`), unreferencedChain))
 			})
 		}
 
@@ -313,7 +354,7 @@ func TestFontRecordKeysRoundTripIndividually(t *testing.T) {
 					pairs = append(pairs, `"`+other+`": "a value"`)
 				}
 			}
-			source := embeddedFontDoc(fontAssetWithRecord(`{`+strings.Join(pairs, ", ")+`}`), embeddedChain)
+			source := embeddedFontDoc(fontAssetWithRecord(`{`+strings.Join(pairs, ", ")+`}`), unreferencedChain)
 			d, err := ParseDocument([]byte(source))
 			if err != nil {
 				t.Fatalf("parse: %v", err)
@@ -343,7 +384,7 @@ func TestFontRecordKeysRoundTripIndividually(t *testing.T) {
 	// unlike an unknown key in a chain ENTRY, where the object IS the
 	// discriminant and an unknown key is a load error.
 	t.Run("an unknown key rides through", func(t *testing.T) {
-		canonicalFixedPoint(t, embeddedFontDoc(fontAssetWithRecord(`{"family": "Maximal Sans", "weight": 700}`), embeddedChain))
+		canonicalFixedPoint(t, embeddedFontDoc(fontAssetWithRecord(`{"family": "Maximal Sans", "weight": 700}`), unreferencedChain))
 	})
 }
 
@@ -782,7 +823,7 @@ func TestUnrecognisedFontMediaTypeLoadsClean(t *testing.T) {
 			// The bytes are the same sfnt, so the ONLY thing this row varies
 			// is recognition — a row whose bytes were also wrong could pass
 			// for the wrong reason.
-			source := embeddedFontDoc("\n      \"data\": "+embeddedFontData+",\n      \"mediaType\": \""+mediaType+"\"", embeddedChain)
+			source := embeddedFontDoc(fontAssetBodyOfType(mediaType), embeddedChain)
 			d, err := ParseDocument([]byte(source))
 			if err != nil {
 				t.Fatalf("an unrecognised font media type must LOAD CLEAN (D-1.8.1 amended), got: %v", err)
@@ -923,7 +964,7 @@ func TestEmbeddedEntryRaisesTheVersionAndAFontAssetAloneDoesNot(t *testing.T) {
 // asset level: a font asset with no `font` record round-trips without the key
 // appearing at all.
 func TestPlainFontAssetNeedsNoRecord(t *testing.T) {
-	source := embeddedFontDoc(plainFontAssetBody, embeddedChain)
+	source := embeddedFontDoc(plainFontAssetBody, unreferencedChain)
 	d, err := ParseDocument([]byte(source))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -973,5 +1014,129 @@ func TestLoadNeitherResolvesNorRefusesAnEmbeddedEntry(t *testing.T) {
 	// and never writes one back into the parsed document.
 	if chain[0].Face != "" {
 		t.Errorf("an embedded entry must not acquire a face name at load, got %q — resolution is the render path's, from the asset key", chain[0].Face)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STORY 8.6 — AN ASSET A CHAIN NAMES MUST STATE ITS TERMS.
+//
+// The rule and its scope are one thing, not two: it is REQUIRED of an asset a
+// chain names, and it does not exist for one nothing names. So the two arms
+// are tested together, off ONE asset body, with only the chain varying —
+// otherwise a passing pair could be passing because two different documents
+// happened to differ somewhere else.
+
+// TestAReferencedFaceMustStateItsTerms is the refusal, per missing key and per
+// way of missing it.
+//
+// EACH KEY IS TESTED THROUGH BOTH ITS ABSENT AND ITS EXPLICITLY-NULL ARM, and
+// through the empty string. Presence has three states (presence.go), and a
+// guard written only for the absent case would admit `"licenceText": null` — a
+// document stating in as many words that it carries no terms. `""` is refused
+// for the same reason: a key that is present and says nothing.
+func TestAReferencedFaceMustStateItsTerms(t *testing.T) {
+	const (
+		copyrightKey   = `"copyright": "Copyright 2026 The Folio Fixture Authors"`
+		licenceKey     = `"licence": "SIL Open Font License 1.1"`
+		licenceTextKey = `"licenceText": "the whole text, verbatim"`
+	)
+	whole := []string{copyrightKey, licenceKey, licenceTextKey}
+
+	// The control comes FIRST and is not a formality: every row below is a
+	// mutation of this document, so a row that reddened for an unrelated
+	// reason would be indistinguishable from the rule working.
+	if _, err := ParseDocument([]byte(embeddedFontDoc(fontAssetWithRecord(`{`+strings.Join(whole, ", ")+`}`), embeddedChain))); err != nil {
+		t.Fatalf("control: a referenced face carrying all three required keys must LOAD, got: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		record string
+		field  string
+	}{
+		{"no font record at all", "", "assets." + embeddedFontKey + ".font.licence"},
+		{"an explicitly null font record", "null", "assets." + embeddedFontKey + ".font.licence"},
+		{"an empty font record", "{}", "assets." + embeddedFontKey + ".font.licence"},
+
+		{"licence absent", `{` + copyrightKey + `, ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.licence"},
+		{"licence null", `{` + copyrightKey + `, "licence": null, ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.licence"},
+		{"licence empty", `{` + copyrightKey + `, "licence": "", ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.licence"},
+		// BLANK IS EMPTY. A space and a newline state exactly what "" states,
+		// and a guard written as `== ""` admits both — a face travelling with
+		// terms that say nothing, which is the condition the rule exists to
+		// prevent.
+		{"licence blank", `{` + copyrightKey + `, "licence": " ", ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.licence"},
+
+		{"licenceText absent", `{` + copyrightKey + `, ` + licenceKey + `}`, "assets." + embeddedFontKey + ".font.licenceText"},
+		{"licenceText null", `{` + copyrightKey + `, ` + licenceKey + `, "licenceText": null}`, "assets." + embeddedFontKey + ".font.licenceText"},
+		{"licenceText empty", `{` + copyrightKey + `, ` + licenceKey + `, "licenceText": ""}`, "assets." + embeddedFontKey + ".font.licenceText"},
+		{"licenceText blank", `{` + copyrightKey + `, ` + licenceKey + `, "licenceText": "  \n\t "}`, "assets." + embeddedFontKey + ".font.licenceText"},
+
+		{"copyright absent", `{` + licenceKey + `, ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.copyright"},
+		{"copyright null", `{"copyright": null, ` + licenceKey + `, ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.copyright"},
+		{"copyright empty", `{"copyright": "", ` + licenceKey + `, ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.copyright"},
+		{"copyright blank", `{"copyright": "\n", ` + licenceKey + `, ` + licenceTextKey + `}`, "assets." + embeddedFontKey + ".font.copyright"},
+
+		// A record that names the terms of a DIFFERENT face — family and
+		// source present, terms absent — is the shape a writer that forgot
+		// this rule would emit, so it is a row rather than an assumption.
+		{"display identity only", `{"family": "Maximal Sans", "source": "somewhere", "style": "Regular"}`, "assets." + embeddedFontKey + ".font.licence"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := "\n      \"data\": " + embeddedFontData + ",\n      \"mediaType\": \"font/ttf\""
+			if tc.record != "" {
+				body = fontAssetWithRecord(tc.record)
+			}
+			le := requireLoadError(t, embeddedFontDoc(body, embeddedChain), tc.field)
+			// THE ERROR LOCATES BOTH HALVES. The Field is the asset record —
+			// where the fix goes — and the message names the chain entry that
+			// made this asset an embedded face. Either coordinate alone sends
+			// the reader to a place that cannot be acted on.
+			if !strings.Contains(le.Reason, "fonts.body[1]") {
+				t.Errorf("the refusal does not name the chain entry that makes the asset an embedded face: %s", le.Reason)
+			}
+		})
+	}
+}
+
+// TestAnUnreferencedFontAssetIsNotAnEmbeddedFace is the rule's OTHER half, and
+// it is the half that keeps D-1.4.13 intact.
+//
+// The identical asset — same bytes, same key, same absent or partial record —
+// is legal when no chain names it, because then no face is being redistributed
+// on its account. It loads clean, it round-trips, and it does NOT raise the
+// document's version. A rule scoped to the asset rather than to the reference
+// would have broken all three.
+func TestAnUnreferencedFontAssetIsNotAnEmbeddedFace(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		record string
+	}{
+		{"no font record at all", ""},
+		{"an explicitly null record", "null"},
+		{"an empty record", "{}"},
+		{"display identity and no terms", `{"family": "Maximal Sans", "style": "Regular"}`},
+		{"an explicitly null licenceText", `{"licence": "SIL Open Font License 1.1", "licenceText": null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := "\n      \"data\": " + embeddedFontData + ",\n      \"mediaType\": \"font/ttf\""
+			if tc.record != "" {
+				body = fontAssetWithRecord(tc.record)
+			}
+			source := embeddedFontDoc(body, unreferencedChain)
+			d, err := ParseDocument([]byte(source))
+			if err != nil {
+				t.Fatalf("a font asset NO chain names must load clean — it is not an embedded face: %v", err)
+			}
+			if _, ok := d.Assets[embeddedFontKey]; !ok {
+				t.Fatal("the unreferenced asset was dropped at load; the loader preserves, it does not collect")
+			}
+			canonicalFixedPoint(t, source)
+			// D-1.4.13: version describes the DOCUMENT, and this one is
+			// legible to a 1.x reader exactly as it stands.
+			if got := versionRequiredByContent(d); got != "1.0" {
+				t.Errorf("an unreferenced font asset requires version %q, want 1.0 — the trigger is the ENTRY, and this rule must not have become a second one", got)
+			}
+		})
 	}
 }

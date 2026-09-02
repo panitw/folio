@@ -68,6 +68,7 @@ wasm_exec.js
 folio-designer/src/generated/runtime/
 folio-designer/src/generated/offline-assets.ts
 folio-designer/src/generated/runtime-fonts.css
+folio-designer/src/generated/font-catalogue.ts
 
 # ── Rendering / test output ───────────────────────────────────────
 tmp/

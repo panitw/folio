@@ -115,7 +115,16 @@ func withNonFontAsset(t *testing.T, source string) string {
 	}
 	// Inserted FIRST because "5a05…" sorts before the font asset's "c945…",
 	// keeping the document in the canonical key order AD-9 guarantees.
-	png := "    \"" + nonFontAssetKey + "\": {\n      \"data\": [" + nonFontAssetData + "],\n      \"mediaType\": \"image/png\"\n    },\n"
+	// A `font` record ON A PNG reads like a contradiction, and it is exactly
+	// what the format now requires — which is worth stating rather than
+	// leaving as a puzzle. Story 8.6's rule keys off the CHAIN ENTRY, not off
+	// the bytes: an asset a chain names by {"asset": key} is a declared
+	// embedded face and must state its terms, and the loader asks that
+	// BEFORE anything asks what the bytes are. D-1.8.1's promise is intact
+	// downstream of it — a document that states its terms and then names a
+	// PNG still LOADS and still fails at RENDER, which is the property every
+	// test below measures.
+	png := "    \"" + nonFontAssetKey + "\": {\n      \"data\": [" + nonFontAssetData + "],\n      \"font\": {" + requiredLicenceKeys + "},\n      \"mediaType\": \"image/png\"\n    },\n"
 	return source[:at+len(anchor)] + png + source[at+len(anchor):]
 }
 
@@ -333,6 +342,65 @@ func TestChainResolvesInTheDeclaredOrder(t *testing.T) {
 // font: the loader checks that the key is present in the assets map and
 // nothing more, because D-1.8.1 as amended preserves an unrecognised or
 // wrong-kind media type at load and errors at render.
+// TestANonFontAssetNAMEDBYACHAINMustAlsoStateItsTerms pins the CONSEQUENCE
+// Story 8.6 registered in DW-138 and its Spec Change Log — the one place the
+// embedded-face record's new rule reaches past the record itself.
+//
+// requireEmbeddedFaceLicence (internal/template/parse.go) keys off THE CHAIN
+// ENTRY, not off the bytes: `{"asset": key}` is the document DECLARING an
+// embedded face, and the loader asks whether that face states its terms before
+// anything asks what the bytes are. So a chain entry naming an `image/png`
+// asset with no `font` record is now refused AT LOAD — where before Story 8.6
+// it loaded clean and failed only at render.
+//
+// THIS TEST EXISTS BECAUSE THE CHANGE WAS OTHERWISE ONLY VISIBLE AS A FIXTURE
+// EDIT. `withNonFontAsset` gained a `font` record so the D-1.8.1 tests below
+// could still reach their own subjects; that made the new rule a PRECONDITION
+// of those tests and asserted it nowhere. The widest consequence of the story
+// was the one arm nothing measured.
+//
+// D-1.8.1 IS NOT WEAKENED, and the pair below is what says so: this document
+// is refused for having no terms, and the one directly beneath it — identical
+// but for the record — still LOADS and still fails at RENDER. The new rule is
+// a gate in front of D-1.8.1's path, never a replacement for it.
+func TestANonFontAssetNamedByAChainMustAlsoStateItsTerms(t *testing.T) {
+	const anchor = "  \"assets\": {\n"
+	source := embeddedChainDocText(t, `["Noto Sans", {"asset": "`+nonFontAssetKey+`"}]`, "สัญญา")
+	at := strings.Index(source, anchor)
+	if at < 0 {
+		t.Fatal("fixture assumption violated: the generated document has no assets block")
+	}
+	// The SAME PNG withNonFontAsset splices, minus the `font` record — so the
+	// two documents differ in exactly the thing under test.
+	png := "    \"" + nonFontAssetKey + "\": {\n      \"data\": [" + nonFontAssetData + "],\n      \"mediaType\": \"image/png\"\n    },\n"
+	source = source[:at+len(anchor)] + png + source[at+len(anchor):]
+
+	_, err := ParseTemplate([]byte(source))
+	if err == nil {
+		t.Fatal("a chain entry naming an asset that states no terms must be REFUSED at load, whatever the asset's media type — the entry is what declares an embedded face")
+	}
+	// LOCATED AT BOTH HALVES. The field is the asset record, which is where the
+	// fix goes; the message names the chain entry, which is what made this
+	// asset an embedded face. Either coordinate alone sends the reader
+	// somewhere they cannot act.
+	if want := "assets." + nonFontAssetKey + ".font.licence"; !strings.Contains(err.Error(), want) {
+		t.Errorf("the refusal does not locate the asset record %s: %v", want, err)
+	}
+	if !strings.Contains(err.Error(), "fonts.body[1]") {
+		t.Errorf("the refusal does not name the chain entry that makes the asset an embedded face: %v", err)
+	}
+
+	// AND THE CONTROL, in the same test so the pair cannot drift apart: add the
+	// terms and nothing else, and the document is back on D-1.8.1's path.
+	withTerms := strings.Replace(source, "\"data\": ["+nonFontAssetData+"],\n      \"mediaType\": \"image/png\"", "\"data\": ["+nonFontAssetData+"],\n      \"font\": {"+requiredLicenceKeys+"},\n      \"mediaType\": \"image/png\"", 1)
+	if withTerms == source {
+		t.Fatal("fixture assumption violated: the control's font record was not spliced in")
+	}
+	if _, cerr := ParseTemplate([]byte(withTerms)); cerr != nil {
+		t.Fatalf("D-1.8.1 as amended: an asset that STATES its terms and is not a font must still LOAD and fail only at render, got a load error: %v", cerr)
+	}
+}
+
 func TestNonFontAssetIsAcceptedAtLoad(t *testing.T) {
 	if _, err := ParseTemplate([]byte(nonFontChainDoc(t, `["Noto Sans", {"asset": "`+nonFontAssetKey+`"}]`, "สัญญา"))); err != nil {
 		t.Fatalf("a chain entry naming a non-font asset must LOAD (D-1.8.1 as amended): %v", err)

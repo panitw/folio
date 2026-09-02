@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addFontChainCommand, addFontChainEntryCommand, deleteFontChainCommand, moveFontChainEntryCommand, removeFontChainEntryCommand, renameFontChainCommand } from './font-chain-command'
+import { addFontChainCommand, addFontChainEntryCommand, deleteFontChainCommand, embedFontFamilyCommand, moveFontChainEntryCommand, removeFontChainEntryCommand, renameFontChainCommand } from './font-chain-command'
 
 const text = (payload: ArrayBuffer): string => new TextDecoder().decode(payload)
 const parsed = (payload: ArrayBuffer): Record<string, unknown> => JSON.parse(text(payload)) as Record<string, unknown>
@@ -76,5 +76,85 @@ describe('the six font chain commands are exactly the payloads the engine reads'
     // raw. JSON.stringify escapes it into a well-formed document instead.
     expect(text(deleteFontChainCommand('a\uD800b'))).toContain('\\ud800')
     expect(() => JSON.parse(text(deleteFontChainCommand('a\uD800b')))).not.toThrow()
+  })
+})
+
+// STORY 8.6 — THE PICK, ON THE WIRE.
+//
+// THE FIELD COUNT IS THE CONTRACT and it is asserted as a count, not just as a
+// set of present keys: Go's componentFields(raw, 12) refuses a payload with an
+// extra field outright, so a builder that grew a thirteenth would be refused
+// in full rather than have the surplus ignored — and the refusal would arrive
+// as an unlocated arity error that says nothing about which key was new.
+describe('the embed command carries everything the document must record', () => {
+  const face = {
+    chain: 'Inter',
+    family: 'Inter',
+    style: 'Regular',
+    licence: 'OFL-1.1',
+    licenceText: 'Copyright (c) 2020 The Inter Project Authors\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.',
+    copyright: 'Copyright (c) 2020 The Inter Project Authors',
+    source: 'folio-designer/public/fonts/inter/Inter-Regular.ttf',
+    mediaType: 'font/ttf',
+    bytes: new Uint8Array([0x00, 0x01, 0x00, 0x00, 0xff]).buffer,
+    tail: ['Noto Sans Thai', 'Noto Sans SC'],
+  }
+
+  it('sends twelve fields, the face as base64, and the proposed tail verbatim', () => {
+    const command = parsed(embedFontFamilyCommand(face))
+    expect(Object.keys(command)).toHaveLength(12)
+    expect(command).toEqual({
+      kind: 'embedFontFamily',
+      version: 1,
+      name: 'Inter',
+      family: 'Inter',
+      style: 'Regular',
+      licence: 'OFL-1.1',
+      licenceText: face.licenceText,
+      copyright: face.copyright,
+      source: face.source,
+      mediaType: 'font/ttf',
+      data: 'AAEAAP8=',
+      tail: ['Noto Sans Thai', 'Noto Sans SC'],
+    })
+    // THE BYTES SURVIVE THE ROUND TRIP, including the high byte. A base64
+    // encoder built on String.fromCharCode over a Uint8Array is correct here
+    // and silently wrong over a Uint16 view, and 0xff is where that shows.
+    expect([...new Uint8Array([...atob(command['data'] as string)].map((character) => character.charCodeAt(0)))]).toEqual([0x00, 0x01, 0x00, 0x00, 0xff])
+  })
+
+  it('encodes a face far larger than one call stack, which is the size every real face has', () => {
+    // 480 KB is about the largest committed catalogue face. The naive
+    // `String.fromCharCode(...bytes)` throws at this size — the spread puts
+    // half a million arguments on the stack — so this is the case the chunked
+    // encoder exists for, and it is measured rather than reasoned about.
+    const large = new Uint8Array(480_000)
+    for (let at = 0; at < large.length; at++) large[at] = at % 256
+    const command = parsed(embedFontFamilyCommand({ ...face, bytes: large.buffer }))
+    const decoded = atob(command['data'] as string)
+    expect(decoded.length).toBe(large.length)
+    expect(decoded.charCodeAt(0)).toBe(0)
+    expect(decoded.charCodeAt(255)).toBe(255)
+    expect(decoded.charCodeAt(large.length - 1)).toBe((large.length - 1) % 256)
+  })
+
+  it('escapes a licence text through the same encoder every other field uses', () => {
+    // A licence is the longest and most punctuated value on this wire — real
+    // ones carry newlines, quotes and backslashes — and it is exactly the
+    // field where a hand-rolled escape would produce bytes Go cannot parse,
+    // losing the located refusal the panel exists to display.
+    const awkward = 'Terms "as is",\nwith a \\ and a \u0001 control'
+    const command = parsed(embedFontFamilyCommand({ ...face, licenceText: awkward }))
+    expect(command['licenceText']).toBe(awkward)
+    expect(text(embedFontFamilyCommand({ ...face, licenceText: awkward }))).toContain('\\u0001')
+  })
+
+  it('sends an empty tail as an empty array rather than omitting the field', () => {
+    // A face that covers every script the document renders needs no fallback
+    // behind it — but the field is still counted by componentFields, so
+    // omitting it would be an arity refusal rather than an empty chain tail.
+    const command = parsed(embedFontFamilyCommand({ ...face, tail: [] }))
+    expect(command['tail']).toEqual([])
+    expect(Object.keys(command)).toHaveLength(12)
   })
 })

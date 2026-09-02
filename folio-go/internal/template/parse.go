@@ -416,9 +416,13 @@ func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]A
 		if key == "" {
 			return FontChainEntry{}, newLoadError(field+".asset", "", string(assetRaw), "must name an assets key — an empty string names none")
 		}
-		if _, present := assets[key]; !present {
+		asset, present := assets[key]
+		if !present {
 			return FontChainEntry{}, newLoadError(field+".asset", "", key,
 				"names no entry in the document's assets map — an embedded face must be carried by the document that references it")
+		}
+		if err := requireEmbeddedFaceLicence(asset, key, field); err != nil {
+			return FontChainEntry{}, err
 		}
 		return AssetEntry(key), nil
 
@@ -426,6 +430,66 @@ func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]A
 		return FontChainEntry{}, newLoadError(field, "", trimmed,
 			"a font chain entry is either a face name (a string) or an embedded face (the object {\"asset\": \"<assets key>\"})")
 	}
+}
+
+// requireEmbeddedFaceLicence is Story 8.6's load refusal: AN ASSET A CHAIN
+// NAMES MUST STATE ITS TERMS.
+//
+// A font that travels without its terms is not a font that may be passed on,
+// so a `.folio` carrying an embedded face with no licence identifier, no
+// licence text or no copyright is refused when it is opened — never warned
+// about, never rendered best-effort. The owner settled this on 2026-09-02:
+// Folio is unreleased and no `.folio` documents exist, so the format is made
+// right here rather than softened to spare files that do not exist.
+//
+// THE RULE IS SCOPED TO REFERENCE, AND THAT SCOPE IS LOAD-BEARING. It is not
+// "a font asset must carry a licence"; it is "an asset a chain names by
+// {"asset": key} must". An UNREFERENCED font asset is not an embedded face —
+// nothing draws with it, nothing redistributes a face on its account — and it
+// stays legal, `font` record absent or partial, which is what keeps D-1.4.13
+// intact: such an asset must not raise the document to 2.0 and must not raise
+// an error either. Hence this is called from decodeFontChainEntry, at the one
+// point where an asset and the entry naming it are both in hand.
+//
+// THE ERROR LOCATES BOTH HALVES because either one alone sends the reader to
+// the wrong place. `assets.<key>.font.licenceText` says which record is short
+// but not why that matters; `fonts.<chain>[<i>]` says which entry made it
+// matter but not what to write. The Field is the asset's record — that is
+// where the fix goes — and the message names the chain entry that makes the
+// asset an embedded face.
+//
+// EVERY GUARD IS WRITTEN FOR THREE STATES, not two. Presence distinguishes
+// absent, explicit null and set (presence.go), and a check written only for
+// the absent case would admit `"licenceText": null` — a document that says,
+// in as many words, that it has no terms. Empty is refused for the same
+// reason: `""` is a key that is present and states nothing.
+//
+// AND BLANK IS EMPTY. The test is TrimSpace, not `== ""`, because `" "` and
+// `"\n"` are keys that state exactly as much as `""` does — nothing — while
+// passing a length check. A rule that can be satisfied by a space is a rule
+// about typing rather than about terms.
+func requireEmbeddedFaceLicence(asset Asset, key, entryField string) error {
+	missing := func(name string) error {
+		return newLoadError("assets."+key+".font."+name, "", "",
+			"an embedded face must state its terms: the chain entry "+entryField+
+				" names this asset, so its font record requires a non-empty licence, licenceText and copyright — a font that travels without its terms is not a font that may be passed on")
+	}
+	if !asset.Font.Set || asset.Font.Null {
+		return missing("licence")
+	}
+	for _, required := range []struct {
+		name  string
+		value Presence[string]
+	}{
+		{"licence", asset.Font.Value.Licence},
+		{"licenceText", asset.Font.Value.LicenceText},
+		{"copyright", asset.Font.Value.Copyright},
+	} {
+		if !required.value.Set || required.value.Null || strings.TrimSpace(required.value.Value) == "" {
+			return missing(required.name)
+		}
+	}
+	return nil
 }
 
 func decodeAssets(raw json.RawMessage) (map[string]Asset, error) {
@@ -562,8 +626,18 @@ func decodePointsRaw(field, elementID string, raw json.RawMessage) (geom.Length,
 //     it, which is what keeps every existing image asset byte-identical;
 //   - the key is present and NULL — a legal spelling that round-trips as
 //     `"font": null` rather than vanishing;
-//   - the key is present with an object, whose four keys are each
-//     optional in the same three-way manner.
+//   - the key is present with an object, whose six keys are each
+//     optional in the same three-way manner AT THIS LEVEL.
+//
+// "Optional at this level" is exact, and since Story 8.6 it is no longer
+// the whole story. Three of the six — licence, licenceText, copyright —
+// are REQUIRED of an asset a font chain names by {"asset": key}. That is
+// a rule about the pair (asset, chain entry), not about the asset alone,
+// so it cannot be decided here: this function does not know whether
+// anything references the asset it is decoding, and `fonts` is decoded
+// AFTER `assets` precisely because the reference direction runs that
+// way. The refusal therefore lives in decodeFontChainEntry, where both
+// halves are in hand — see requireEmbeddedFaceLicence.
 //
 // AN EXPLICIT NULL IS NOT ABSENCE. Every refusal below is written so it
 // fires on `null` as well as on a wrong type where a wrong type is what
@@ -589,8 +663,10 @@ func decodeAssetFont(aObj map[string]json.RawMessage, consumed map[string]bool, 
 		key string
 		dst *Presence[string]
 	}{
+		{"copyright", &rec.Copyright},
 		{"family", &rec.Family},
 		{"licence", &rec.Licence},
+		{"licenceText", &rec.LicenceText},
 		{"source", &rec.Source},
 		{"style", &rec.Style},
 	} {

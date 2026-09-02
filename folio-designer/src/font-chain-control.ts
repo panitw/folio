@@ -23,7 +23,11 @@ export type FontChainControl = Readonly<{
   // A move has TWO controls per entry — earlier and later — and a refusal
   // must light the one that was actually pressed, so the direction is part of
   // the control's identity rather than a detail the anchor loses.
-  action: 'add' | 'rename' | 'delete' | 'addEntry' | 'moveEntryEarlier' | 'moveEntryLater' | 'removeEntry'
+  // `embed` is Story 8.6's pick, and it anchors at the FAMILY CONTROL rather
+  // than in the chain editor — that is where the author pressed, and it is
+  // also where the disk-font decline is stated, so a refusal and a decline
+  // appear in the same place for the same reason.
+  action: 'add' | 'rename' | 'delete' | 'addEntry' | 'moveEntryEarlier' | 'moveEntryLater' | 'removeEntry' | 'embed'
 }>
 
 // selectionKey mirrors PropertyCommitError's: a refusal that resolves after

@@ -353,7 +353,12 @@ func unreadableCarriedFaceDoc(t *testing.T) (source, assetKey string) {
 	if at < 0 {
 		t.Fatal("fixture assumption violated: the generated document has no assets block")
 	}
-	blob := "    \"" + key + "\": {\n      \"data\": [\"" + base64.StdEncoding.EncodeToString(raw) + "\"],\n      \"mediaType\": \"font/ttf\"\n    },\n"
+	// The `font` record is not decoration here: the chain NAMES this asset, so
+	// since Story 8.6 it is an embedded face and the document does not LOAD
+	// without its terms. This population's whole point is a document that
+	// loads and fails later, so the licence half has to be satisfied for the
+	// later failure to be reachable at all.
+	blob := "    \"" + key + "\": {\n      \"data\": [\"" + base64.StdEncoding.EncodeToString(raw) + "\"],\n      \"font\": {" + requiredLicenceKeys + "},\n      \"mediaType\": \"font/ttf\"\n    },\n"
 	return src[:at+len(anchor)] + blob + src[at+len(anchor):], key
 }
 

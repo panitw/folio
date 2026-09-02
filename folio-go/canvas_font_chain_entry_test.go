@@ -25,10 +25,27 @@ import (
 // well-formed entry, not that the engine emits one. This file is that half.
 
 // canvasChainDoc is a one-text-element document carrying one font asset whose
-// `font` record is `record` verbatim (or absent when empty), and whose `body`
-// chain names the shipped face and then the asset.
-func canvasChainDoc(t *testing.T, record string) string {
+// `font` record carries `displayKeys` — the record's DISPLAY half, written as
+// the inner text of a JSON object with no braces — and whose `body` chain names
+// the shipped face and then the asset.
+//
+// THE REQUIRED LICENCE KEYS ARE ALWAYS SPLICED IN, and the signature changed
+// from "the whole record verbatim" to "the display half" for that reason
+// (Story 8.6). The chain here NAMES the asset, so the document is an embedded
+// face and its record must state its terms or the document does not load at
+// all. Every case below is about what the PROJECTION does with a missing,
+// null or empty family — a question that is only reachable on a document that
+// loads, so the licence half is supplied rather than left to each case to
+// remember. Passing an empty displayKeys is the "no display identity at all"
+// case, which is as close to the old "no font record at all" row as a
+// referenced asset can now come.
+func canvasChainDoc(t *testing.T, displayKeys string) string {
 	t.Helper()
+	record := "{" + requiredLicenceKeys
+	if displayKeys != "" {
+		record += ", " + displayKeys
+	}
+	record += "}"
 	source := embeddedFontTemplateJSON()
 	// Replace the generated document's own `font` record, which is bracketed
 	// in canonical (sorted) key order by `data` before it and `mediaType`
@@ -40,11 +57,7 @@ func canvasChainDoc(t *testing.T, record string) string {
 	if start < 0 || end < 0 || end < start {
 		t.Fatalf("fixture assumption violated: the generated document's font record is not bracketed by %q and %q", open, next)
 	}
-	replacement := ""
-	if record != "" {
-		replacement = "      \"font\": " + record + ",\n"
-	}
-	return source[:start] + replacement + source[end:]
+	return source[:start] + "      \"font\": " + record + ",\n" + source[end:]
 }
 
 // projectedChainEntries runs a document through the REAL projection entry
@@ -83,14 +96,14 @@ func TestProjectedEmbeddedEntryCarriesTheDiscriminantAndTheRecord(t *testing.T) 
 	}{
 		{
 			name:   "family and style from the record",
-			record: `{"family": "Noto Sans Thai", "style": "Regular"}`,
+			record: `"family": "Noto Sans Thai", "style": "Regular"`,
 			want:   CanvasFontChainEntry{AssetKey: key, Family: "Noto Sans Thai", Style: "Regular"},
 		},
 		{
 			// The style is genuinely optional, and an absent one projects
 			// empty — which the browser accepts, unlike an empty family.
 			name:   "family only",
-			record: `{"family": "Noto Sans Thai"}`,
+			record: `"family": "Noto Sans Thai"`,
 			want:   CanvasFontChainEntry{AssetKey: key, Family: "Noto Sans Thai"},
 		},
 		{
@@ -99,17 +112,22 @@ func TestProjectedEmbeddedEntryCarriesTheDiscriminantAndTheRecord(t *testing.T) 
 			// engine decides what the panel shows; the browser is never handed
 			// an empty name it would have to invent a rule for.
 			name:   "no family — the asset key is the fallback",
-			record: `{"style": "Regular"}`,
+			record: `"style": "Regular"`,
 			want:   CanvasFontChainEntry{AssetKey: key, Family: key, Style: "Regular"},
 		},
 		{
-			name:   "no font record at all",
+			// STORY 8.6 REPLACED TWO ROWS WITH THIS ONE, and the reason is
+			// the rule and not the tidying. "No font record at all" and "an
+			// empty record" were both legal documents when the record was
+			// wholly optional; on a chain-NAMED asset neither is a document
+			// any more — it is refused at load — so keeping them would have
+			// been keeping two rows that assert what the projection does with
+			// a document the loader never yields. What survives of them is
+			// the reachable case: a record that carries its TERMS and no
+			// display identity whatever, which is where the asset-key
+			// fallback still has to hold.
+			name:   "the required terms and no display identity at all",
 			record: "",
-			want:   CanvasFontChainEntry{AssetKey: key, Family: key},
-		},
-		{
-			name:   "an empty record",
-			record: `{}`,
 			want:   CanvasFontChainEntry{AssetKey: key, Family: key},
 		},
 		{
@@ -118,7 +136,7 @@ func TestProjectedEmbeddedEntryCarriesTheDiscriminantAndTheRecord(t *testing.T) 
 			// same way absence does. The distinction survives in the document
 			// (Presence round-trips it); it simply does not reach the panel.
 			name:   "an explicitly null family",
-			record: `{"family": null, "style": "Regular"}`,
+			record: `"family": null, "style": "Regular"`,
 			want:   CanvasFontChainEntry{AssetKey: key, Family: key, Style: "Regular"},
 		},
 		{
@@ -126,12 +144,12 @@ func TestProjectedEmbeddedEntryCarriesTheDiscriminantAndTheRecord(t *testing.T) 
 			// falls back too. Without this the browser's `family.length > 0`
 			// rejects the snapshot.
 			name:   "an empty-string family",
-			record: `{"family": "", "style": "Regular"}`,
+			record: `"family": "", "style": "Regular"`,
 			want:   CanvasFontChainEntry{AssetKey: key, Family: key, Style: "Regular"},
 		},
 		{
 			name:   "an explicitly null style",
-			record: `{"family": "Noto Sans Thai", "style": null}`,
+			record: `"family": "Noto Sans Thai", "style": null`,
 			want:   CanvasFontChainEntry{AssetKey: key, Family: "Noto Sans Thai"},
 		},
 	} {
@@ -180,10 +198,10 @@ func TestProjectedEntryStringsAreBounded(t *testing.T) {
 		record  string
 		refused bool
 	}{
-		{"family at the limit", `{"family": "` + atLimit + `"}`, false},
-		{"family over the limit", `{"family": "` + long + `"}`, true},
-		{"style at the limit", `{"family": "Noto Sans Thai", "style": "` + atLimit + `"}`, false},
-		{"style over the limit", `{"family": "Noto Sans Thai", "style": "` + long + `"}`, true},
+		{"family at the limit", `"family": "` + atLimit + `"`, false},
+		{"family over the limit", `"family": "` + long + `"`, true},
+		{"style at the limit", `"family": "Noto Sans Thai", "style": "` + atLimit + `"`, false},
+		{"style over the limit", `"family": "Noto Sans Thai", "style": "` + long + `"`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tpl, err := ParseTemplate([]byte(canvasChainDoc(t, tc.record)))

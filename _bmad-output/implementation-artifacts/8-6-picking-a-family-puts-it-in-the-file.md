@@ -2,16 +2,31 @@
 title: 'Story 8.6: Picking a family puts it in the file'
 type: 'feature'
 created: '2026-09-02'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 baseline_commit: '8d5059f8859ccb2b7c99d3fb4b16451d1793ddc9'
+baseline_revision: 'b4885b2365235520ae650c278f017497b823ceeb'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/specs/spec-fonts/font-catalogue.md'
   - '{project-root}/_bmad-output/specs/spec-folio/folio-format.md'
 warnings: [multiple-goals, oversized]
-deferred: []
+deferred:
+  - summary: >-
+      The font-family listbox owns non-option children (`role="presentation"` list items) for its
+      group headings, its empty state and the disk-font decline, which breaks the listbox's
+      required-owned-elements rule for assistive technology.
+    evidence: |-
+      Pre-existing, not caused by this story: `git show b4885b2:folio-designer/src/App.tsx` already
+      carried one such child at :1288 (the "This document declares no font chains." empty state).
+      Story 8.6 added three more instances of the same pattern (two group headings and the
+      permanently-rendered disk-font decline), taking the count from 1 to 4. The standard shape is
+      `role="group"` with an `aria-label`, or moving the notes outside the `<ul>` and referencing
+      them with `aria-describedby`.
+    location: >-
+      folio-designer/src/App.tsx (4 occurrences of role="presentation" inside the role="listbox")
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -276,7 +291,138 @@ subsetting or any change to how the PDF producer subsets · a container format �
 
 ## Spec Change Log
 
+**1. `serialize.go` DOES have a diff, and the spec asked for both.** The `## Verification` manual
+check says "`folio-go/internal/template/serialize.go` shows **no diff**", while `## Tasks &
+Acceptance` says to "Emit/decode them in the hand-written writer and decoder". Those cannot both
+hold: `writeFontRecord` lives in `serialize.go`, and two keys that are not emitted do not round-trip,
+which breaks D-1.4.3's P1 immediately. Resolved in favour of Tasks & Acceptance, which is the
+executable contract. **The constraint that actually mattered is honoured exactly:** `writeAssets`
+(`:503-528`) and its orphan-preservation loop are untouched — the whole diff to that file is six
+lines inside `writeFontRecord` adding `copyright` and `licenceText` to its key list, plus a comment.
+Verified by reading the diff, not asserted.
+
+**2. The licence requirement reaches one rule beyond the font-asset record, and it is registered
+rather than silently absorbed.** The rule as written in Tasks & Acceptance is "for every asset a
+chain names by `{"asset": key}`" — no media-type carve-out — so it also applies to a chain entry
+naming a **non-font** asset, which D-1.8.1 (as amended) says loads clean and errors at render. Such
+a document is now refused at LOAD if it does not state terms; a document that does state them still
+loads and still fails at render, so D-1.8.1's promise is intact downstream of the new check. The
+alternative — scoping the rule to recognised font media types — was rejected because it is evadable:
+declaring `font/woff2` would let a face travel with no terms at all, which is the exact thing the
+rule exists to stop. Registered in `deferred-work.md` DW-138 as part of what the format freedom was
+spent on.
+
+**3. The proposed fallback tail is computed in the DESIGNER and sent as a `[]string`.** The spec
+does not say which side derives it. It is the browser's, on the precedent `addFontChain` already
+sets (`entries` arrives as a `[]string`): the tail is a list of SHIPPED FACE NAMES, and the engine
+gains no knowledge of script coverage it did not have before. The one entry that names an asset is
+the one the command builds itself from the bytes it just hashed, so no caller can put a second
+embedded entry into a chain by writing one down.
+
+**4. The pick does not also set `fontFamily` on the selection.** Not stated either way by the spec.
+They are two decisions — "carry this typeface" and "draw this box with it" — and fusing them would
+make one undo ambiguous, against AC1's "one undo removes both" being about the asset and the chain.
+
+**5. `deleteFontChain` drops orphaned faces too, not only `removeFontChainEntry`.** Tasks name "the
+last chain entry naming a key"; deleting a whole chain un-names every entry in it at once, which is
+the same event. AC5 is written about "the author's action un-names it", so both actions collect,
+each scoped to exactly the entries it removed.
+
+**6. `scripts` is a closed three-value vocabulary (`latin`, `thai`, `cjk`).** `font-catalogue.md`
+asks for the field without fixing its values. Closed because an unrecognised script proposes no
+fallback for itself and the chain silently draws tofu. Measured against all 21 committed faces: 19
+Latin-only, 2 Thai-only, none CJK — which agrees with the catalogue's own CJK exclusion.
+
+**7. The catalogue's licence text and copyright are DERIVED, not declared.** `font-catalogue.json`
+gained only `scripts`. `licenceText` is read at build time from the unmodified upstream `LICENSE*`
+committed beside each binary, and `copyright` from the face's own `name` table (nameID 0) — so
+neither is a hand-copy that could contradict the bytes it describes.
+
+**Corrected at review (P1).** The emitted module first keyed licence texts by SPDX identifier, on the
+assumption that "the OFL is the OFL". That is FALSE OF THE FILES: the SIL OFL carries a per-project
+preamble — a copyright line and a Reserved Font Name — so two OFL-1.1 faces ship two different texts.
+The cache was filled from whichever face reached each identifier first, which gave **17 of 21 faces
+another project's licence text** (every OFL-1.1 face emitted cascadiacode's LICENSE, "with Reserved
+Font Name Cascadia Code" and all), inverting the story's central promise. It is now read per face
+from that face's own directory; the bundle carries 21 texts instead of 2, which is the correct trade
+and is stated in the generator rather than left to be rediscovered. No build asset is added and the
+release cache stays at 44.
+
+**It shipped green because nothing observed the generated module.** `font-catalogue.test.ts` read the
+manifest and the binaries; `App.test.tsx` asserted only `toBeTruthy()`. The artifact BETWEEN them —
+the only thing the pick actually reads — was checked by nothing, and that gap is now closed per face
+(P2).
+
 ## Review Triage Log
+
+### 2026-09-02 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 1, medium 3, low 3)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 10: (high 0, medium 1, low 9)
+- addressed_findings:
+  - `[high]` `[patch]` `build-wasm.mjs` keyed `licenceTexts` by SPDX identifier, so 17 of 21 faces emitted another project's licence text (every OFL-1.1 face carried cascadiacode's, Reserved Font Name clause included). Fixed to read each face's own `LICENSE*`; re-measured independently at 0 mismatches of 21.
+  - `[medium]` `[patch]` Nothing observed the generated catalogue module — only `toBeTruthy()`. Added per-face assertions tying emitted `licenceText` to that face's own `LICENSE*` and emitted `copyright` to nameID 0 read by a second, independent sfnt reader.
+  - `[medium]` `[patch]` `embedFontFamily`'s chain-name collision refusal was exercised by nothing — deleting the branch left the whole `folio-go` suite green while a pick silently overwrote a declared chain. Added `TestEmbedFontFamilyRefusesAChainNameTheDocumentAlreadyTakes`, mutation-proved by deletion.
+  - `[medium]` `[patch]` The chain-entry-scoped rule's reach to a non-font asset — the story's widest registered consequence — had no positive test. Added `TestANonFontAssetNamedByAChainMustAlsoStateItsTerms` with the with-terms control in the same test.
+  - `[low]` `[patch]` `requireEmbeddedFaceLicence` accepted whitespace-only terms (`Value == ""`). Now `strings.TrimSpace`, with blank rows for all three keys, and the same trim on the command side.
+  - `[low]` `[patch]` `scriptFallbacks`' three face names were tied to nothing; a rename would propose a fallback the engine skips. Added a guard against `shippedFamilies`.
+  - `[low]` `[patch]` `TestEmbedFontFamilyRefusesAFaceThatCannotStateItsTerms` asserted a substring matching every row. Now asserts the exact per-field message and the located `DataPath`.
+
+**Deferred (1).** `role="presentation"` non-option children inside `role="listbox"` — the pattern pre-existed at `App.tsx:1288` at `b4885b2`; this story added three more instances. Pre-existing, surfaced incidentally.
+
+**Rejected (10), each with the population or path verified.**
+1. *Catalogue re-shows a family after its chain is renamed; the pick then silently no-ops.* Verified against matrix row 2 ("chain already names it"): every expected output holds — no second asset, no second chain, "No error expected", and the existing chain is offered in the declared group under its current name. `App.tsx:1030` filters on `CanvasProjection.fontFamilies`, which carries names only and cannot reconstruct asset keys, so a hash-keyed filter needs a projection change the contract does not authorise. Severity medium; recorded as a residual risk.
+2. *Concurrent picks race / no fetch timeout.* Both paths verified: two picks of DIFFERENT families produce two independently legal commands; two picks of the SAME family both reach `assetKeyReferenced` (`component_commands.go:2400`) and the second returns `nil`. Neither path yields a duplicate chain or asset.
+3. *`cmapCoverage`'s 70000 format-12 bound and last-record-wins subtable choice.* Population verified: all 21 catalogue rows declare only `latin` (19) or `thai` (2); every probe in those scripts is BMP and reachable in a format-4 subtable, so the bound is never approached. The test also asserts `covered.size > 0` and passed both directions for all 21.
+4. *Tail could name the picked family itself or repeat a name.* Population verified: the three fallback families (`Noto Sans`, `Noto Sans Thai`, `Noto Sans SC`) are disjoint from all 21 catalogue family names (nearest: `Noto Sans Thai Looped`, `Noto Serif`, `Noto Serif Thai`), and `scriptFallbacks` holds one entry per script so the tail cannot repeat.
+5. *`style: "Regular"` hardcoded in the generator.* Population verified: all 21 rows are Regular instances; weighted and italic faces are excluded by a shipped ruling the contract restates under **Never**.
+6. *Designer imports a gitignored generated module.* Verified: `.gitignore:68-70` already ignores `src/generated/runtime/`, `offline-assets.ts` and `runtime-fonts.css`, all imported by `src`; `npm run typecheck` is literally `npm run build:wasm && tsc -b`, so generation precedes every typecheck. Pre-existing pattern.
+7. *`font-catalogue.md`'s CJK-exclusion criterion vs a vocabulary admitting `cjk`.* Population verified: no catalogue row declares `cjk`; the key exists only so a Latin face receives a CJK *fallback*, which is the exclusion working rather than contradicting itself.
+8. *Two normalisations of "verbatim" (`TrimRight("\n")` vs `.trimEnd()`).* Path verified: `embeddedFontLicenceText()` is read only by the fixture generator and `.trimEnd()` only by the designer generator; no value crosses between them.
+9. *DW-138/DW-139 lack an assigned action; `SPEC.md` reads as if attribution is solved.* Verified: the settled text at `SPEC.md:165-166` answers where the record *lives* (inline, with the text), not the PDF question, which DW-139 records separately as owner-owned.
+10. *Frontmatter carries both `baseline_commit` and `baseline_revision`, and the triage log was empty.* Verified: both are this workflow's own bookkeeping (`baseline_commit` = the plan gate's measurement commit, `baseline_revision` = this dispatch's HEAD), and the log is written by this step.
+
+**Detail of the seven patches, as applied.**
+
+- **P1 [HIGH] — the generated catalogue gave 17 of 21 faces another project's licence text.**
+  `build-wasm.mjs`'s `licenceTexts` was keyed by SPDX identifier. Fixed: read per face from that
+  face's own directory (`licenceTextOf`), the SPDX cache and its `continue` skip deleted — which
+  also restores the "exactly one `LICENSE*` beside it" check for every face rather than for the
+  first face of each identifier. Re-measured after the fix: **0 mismatches of 21**.
+- **P2 [MEDIUM] — nothing observed the generated module, which is why P1 shipped green.**
+  `src/font-catalogue.test.ts` now imports `src/generated/font-catalogue.ts` and asserts, per face,
+  that the emitted `licenceText` equals that face's own `LICENSE*` and that the emitted `copyright`
+  equals nameID 0 read by the test file's OWN sfnt walk (`instanceOfFile` gained it). Plus a
+  top-level population check, so a truncated or stale module reds in one sentence instead of face by
+  face.
+- **P3 [MEDIUM] — `embedFontFamily`'s chain-name collision refusal was exercised by nothing.**
+  Every existing embed test either deduped first or picked a free name. Added
+  `TestEmbedFontFamilyRefusesAChainNameTheDocumentAlreadyTakes`, which picks a NEW face (Noto Sans,
+  so the dedupe short-circuit cannot answer first) into the declared `body` chain and asserts the
+  located refusal, the untouched chain and the unstored asset.
+- **P4 [MEDIUM] — the rule's reach past font assets had no positive test.**
+  `chain_face_names_test.go` had been amended only to SATISFY the new rule, making the story's widest
+  registered consequence a precondition asserted nowhere. Added
+  `TestANonFontAssetNamedByAChainMustAlsoStateItsTerms`: an `image/png` named by a chain with no
+  terms is refused at load, located at both `assets.<key>.font.licence` and `fonts.body[1]` — with
+  the control in the same test showing that the identical document WITH terms still loads and still
+  fails at render, so D-1.8.1 is gated rather than replaced.
+- **P5 [LOW] — whitespace-only terms passed.** `requireEmbeddedFaceLicence` now tests
+  `strings.TrimSpace(...) == ""`; blank rows added for all three keys. The **command** got the same
+  trim: `commandString` refuses `""` and stops there, so without it a pick could hand the
+  transaction's reparse a document its own parser rejects, arriving as the unlocated "font chains did
+  not pass format validation".
+- **P6 [LOW] — `scriptFallbacks`' three face names were tied to nothing.** One guard now asserts
+  every value is in `shippedFamilies` (itself checked against the hand-written `@font-face` rules),
+  with the reason in the message: the engine SKIPS a chain entry naming a face it was not given, so a
+  rename here would silently propose a fallback that draws nothing.
+- **P7 [LOW] — a substring assertion that matched every row.** The refusal sentence for a missing
+  `licence` contains "licence" and so does the one for `licenceText`, so the rows did not distinguish
+  between themselves. Now asserts the exact per-field message plus the DataPath, and each key is
+  driven through both the empty and the blank spelling.
+
 
 ## Design Notes
 
@@ -408,3 +554,129 @@ Record every invocation with command, commit, tree state **and working directory
 - The declared `scripts` value for each catalogue face agrees with that face's own `cmap`.
 - `folio-go/internal/template/serialize.go` shows **no diff**.
 - The disk-font decline is present as stated text at the control, not merely absent behaviour.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary of implemented change
+
+Picking a catalogue family now writes it into the document. One new engine command, `embedFontFamily`,
+decodes and bounds the bytes, hashes them to a content-addressed asset key, inserts the asset only if
+that key is absent, attaches a six-key `FontRecord` (family, style, licence, **licenceText**,
+**copyright**, source) and declares a chain whose head is an `AssetEntry` naming the key — one
+`applyFontChainCommand` transaction, so `wasm.Engine.Apply` gives it one history entry and one undo for
+free, and a re-pick short-circuits to byte-identical canonical output and pushes nothing.
+
+The record is now **mandatory for an embedded face**: for every asset a chain names by
+`{"asset": key}`, `licence`, `licenceText` and `copyright` must each be present, non-null and
+non-blank, or the document is refused at load with an error located at both `assets.<key>.font.<field>`
+and the chain entry `fonts.<chain>[<i>]`. An **unreferenced** font asset is untouched by the rule and
+still leaves the document at `1.x`, which is what keeps D-1.4.13 intact.
+
+DW-80 is fixed first: `assetKeyReferenced` now walks `t.doc.Fonts` over sorted keys, so the new
+command-layer orphan drop (`dropUnnamedFontAssets`, called from `removeFontChainEntry` and
+`deleteFontChain`) removes only a face nothing names. `serialize.go`'s `writeAssets` is untouched.
+
+### Files changed
+
+- `folio-go/internal/template/model.go` — `FontRecord` gains `LicenceText` and `Copyright`.
+- `folio-go/internal/template/serialize.go` — six lines in `writeFontRecord` only; `writeAssets` and its
+  orphan loop untouched.
+- `folio-go/internal/template/parse.go` — decodes the two keys; `requireEmbeddedFaceLicence` is the new
+  located, reference-scoped load refusal.
+- `folio-go/component_commands.go` — DW-80's font arm; the `embedFontFamily` command; the orphan drop.
+- `folio-go/internal/template/*_test.go`, `folio-go/*_test.go`, `folio-go/wasm/embed_font_test.go` — the
+  refusal table, the DW-80 and retention cases, the collision refusal, the non-font-asset arm, and the
+  one-history-entry/undo/redo and no-second-entry assertions.
+- `fixtures/embedded-font/input.folio`, `README.md` — the one fixture invalid under the new rule,
+  regenerated with terms derived from the committed `LICENSE-OFL.txt`.
+- `folio-designer/font-catalogue.json` — the `scripts` field the record already specified.
+- `folio-designer/scripts/build-wasm.mjs` — validates `scripts` against a closed vocabulary, ties the
+  fallback faces to `shippedFamilies`, and emits a typed catalogue module carrying each face's own
+  licence text and nameID-0 copyright. No new build asset.
+- `folio-designer/src/App.tsx`, `App.css`, `font-chain-command.ts`, `font-chain-control.ts` — the split
+  family control, `pickCatalogueFamily`, the new opaque builder and the `'embed'` refusal anchor.
+- `folio-designer/src/font-catalogue.test.ts`, `App.test.tsx`, `font-chain-command.test.ts` — coverage
+  against each binary's own `cmap` and `name` table, and the payload on the wire.
+- `_bmad-output/specs/spec-fonts/SPEC.md`, `font-catalogue.md`, `spec-folio/folio-format.md`,
+  `deferred-work.md` — the two closed questions, the amended sections, and DW-138 / DW-139.
+- `.gitignore` — the generated catalogue module, beside the three generated modules already ignored.
+
+### Review findings breakdown
+
+Patches applied: 7 (high 1, medium 3, low 3). Deferred: 1 (low). Rejected: 10, each enumerated in the
+Review Triage Log with the caller, path or population verified. No intent_gap, no bad_spec, no loopback.
+
+Follow-up review recommendation: **true** — a `high`-severity finding was patched (the generated
+catalogue was stating the wrong project's licence terms for 17 of 21 faces). Score by the formula:
+3 × 3 medium + 1 × 3 low = 12, which also clears 5 on its own.
+
+### Verification performed
+
+All commands re-run by the workflow after the patches, at `b4885b2` with the story's edits in the tree.
+Working directory recorded per D-8.4j.8.
+
+- `folio-go/` — `go test -count=1 ./...`: **1877 pass / 2 fail / 5 skip**; the two fails are standing red
+  1 by identity (`TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest, got 7 need 20).
+- `folio-go/` — `go test -count=1 -run 'Serialize|Parse|RoundTrip|Asset|Font' ./internal/template/ -v`: ok.
+- `folio-go/` — `go vet ./...` and `go vet -tags=matrix ./...`: both exit 0, no output.
+- **repo root** — `gofmt -l folio-go lint`: `lint/internal/rules/licencegraph_test.go` and nothing else
+  (standing red 2, not reformatted). Run once from `folio-go/` first, where it printed the two `lstat`
+  lines that read as clean; re-run from the root, which is the measurement that counts.
+- `lint/` — `go test -count=1 ./...`: 4 packages ok, uncached.
+- `lint/` — `go run ./cmd/genmanifest`, then **repo root** `git diff --exit-code -- lint/MANIFEST.md`:
+  exit 0. Run once from `lint/` first, where that pathspec matches nothing and exits 0 vacuously.
+- `folio-designer/` — `npm run typecheck` 0; `npm run lint` 0 with **exactly 4** `only-export-components`
+  (standing red 3); `npm test` **42 files / 432 tests passed** (baseline 42 / 424); `npm run build` 0 on
+  node v24.16.0; `verify:offline`, `:red`, `:wasm` and `test:e2e:compile` all 0 (the last compile-only,
+  DW-101).
+- **repo root** — `shasum -a 256 fixtures/*/expected.pdf | diff digests.before -`: **empty. All 23 golden
+  digests byte-identical**, taken before the first edit and again after the patches.
+- **repo root** — `grep -c 'maximumCacheAssets = 64' …/release-payload.ts`: 1. Release manifest
+  `assetCount`: 44, unchanged.
+- Block-If probes: `SupportedMajor = 2` unmoved; `folio-go/internal/fontset/` untouched (no subsetting
+  change); `lint/` untouched; the spec's `<intent-contract>` byte-identical to `b4885b2`.
+
+**Mutation proofs taken by the workflow, not accepted from the report.**
+- DW-80: deleting the font arm of `assetKeyReferenced` outright (not falsifying the image condition)
+  reds four tests — `TestAssetKeyReferencedSeesAFontChain`, `TestAFaceASecondChainStillNamesIsRetained`,
+  `TestEmbedFontFamilyRePickStoresNoSecondCopy`, `TestEmbedFontFamilyRePicksAfterTheChainWasDeleted`.
+  Restored byte-identically and re-run green.
+- The collision refusal: deleting the whole `if _, exists := t.doc.Fonts[name]` branch left the entire
+  `folio-go` suite green — which is what routed it to patch. It now reds one named test.
+- P1: the emitted catalogue module was parsed and each row compared to the `LICENSE*` in that face's own
+  directory — **17 mismatches of 21 before the patch, 0 of 21 after**.
+
+**Manual checks.** The declared `scripts` value agrees with each face's own `cmap` in both directions,
+asserted per face with a non-vacuity guard. The disk-font decline is stated text at the control
+(`App.tsx:1366`) and asserted by string in `App.test.tsx`. `serialize.go` does **not** show "no diff" —
+see the residual risk below.
+
+### Residual risks
+
+1. **The `## Verification` manual check "`serialize.go` shows no diff" contradicts the Tasks**, which
+   require the two new keys emitted by the hand-written writer — and that writer lives in
+   `serialize.go`. Resolved by judgement in favour of Tasks, because unemitted keys break P1
+   (`Parse(Serialize(d)) == d`). The constraint that actually carries the intent — *`writeAssets` is not
+   touched, the orphan drop is not a serializer side effect* — holds exactly: the diff is six lines in
+   `writeFontRecord`'s field list.
+2. **The new load rule reaches one rule outside the font-asset record.** Because it keys off the chain
+   entry, as the matrix specifies with no media-type carve-out, a chain entry naming a *non-font* asset
+   must also state terms. Chosen over a carve-out, which `font/woff2` would evade. Registered in DW-138
+   and now pinned by its own test — but it is the widest consequence of the format freedom and deserves
+   an owner glance.
+3. **A family whose chain was renamed reappears in the catalogue group, and picking it is a silent
+   accepted no-op.** Rejected against matrix row 2 (every expected output holds, including "No error
+   expected"), but the fix would need asset keys in `CanvasProjection`, which carries names only.
+4. **DW-139 is live and owner-owned**: the produced PDF's subset carries no `name` table, so nameIDs
+   0/7/13/14 do not reach the reader. Out of scope by a shipped Non-goal; the `.folio` itself carries the
+   unsubsetted face, so attribution is intact in the document but not in the PDF.
+
+### What the format freedom was spent on (for Story 15.3, per D-000.15)
+
+`licenceText` and `copyright` are **required** on a font asset a chain names; a `.folio` embedding a
+face without them is invalid at load. Chosen over an optional, absent-by-default field purely because
+there are no documents to protect. Registered as **DW-138**. `SupportedMajor` stays `2` and no new
+version trigger was introduced — the `{"asset": …}` entry shape already forces `2.0`.

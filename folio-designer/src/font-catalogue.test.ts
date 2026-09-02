@@ -3,6 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+// THE GENERATED MODULE IS A SUBJECT HERE, not a convenience. Nothing observed
+// it before, which is exactly how a build that gave 17 of 21 faces another
+// project's licence text shipped green: `font-catalogue.json` was right, every
+// binary was right, and the artifact BETWEEN them — the only thing the pick
+// actually reads — was checked by nothing.
+import { catalogueFaces as generatedFaces } from './generated/font-catalogue'
 
 // STORY 8.5 — THE CATALOGUE, HELD TO ITS OWN RECORD.
 //
@@ -33,8 +39,14 @@ import { describe, expect, it } from 'vitest'
 //   AC3 — at least twenty NEW families beyond the six already shipped, each
 //   with bytes of its own.
 //
-// WHAT IS DELIBERATELY NOT HERE: anything about picking a family. Nothing in
-// this story makes a catalogue face selectable — that is Story 8.6.
+//   STORY 8.6 ADDED A FOURTH: `scripts` — what each face covers, which the
+//   designer proposes a fallback tail from. It is checked against that face's
+//   OWN `cmap`, in BOTH directions: a script the manifest claims and the
+//   binary cannot draw would give a document a chain with no fallback for
+//   runes nothing in it covers, and a script the binary DOES cover that the
+//   manifest omits would staple a redundant shipped face onto every chain
+//   picking it. Both are silent; neither is visible in a rendered page until
+//   somebody types in that script.
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const designerRoot = path.join(here, '..')
@@ -45,7 +57,7 @@ const fontsRoot = path.join(designerRoot, 'public', 'fonts')
 /** The six families the generator declares by hand, which the catalogue must not collide with. */
 const shippedFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai', 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC']
 
-interface CatalogueFace { id: string; directory: string; file: string; family: string; licence: string }
+interface CatalogueFace { id: string; directory: string; file: string; family: string; licence: string; scripts: ReadonlyArray<string> }
 
 const catalogue: ReadonlyArray<CatalogueFace> = JSON.parse(fs.readFileSync(cataloguePath, 'utf8'))
 const faceDirectory = (face: CatalogueFace) => path.join(fontsRoot, face.directory)
@@ -112,6 +124,11 @@ function instanceOfFile(file: string) {
     subfamily: nameTableString(view, tables, 17) ?? nameTableString(view, tables, 2) ?? '<the file declares no subfamily name>',
     // nameID 13 is the LICENCE DESCRIPTION the face carries in its own bytes.
     licenceDescription: nameTableString(view, tables, 13) ?? '<the file declares no licence description>',
+    // nameID 0 is the COPYRIGHT, and it is the value the generated catalogue
+    // publishes as `copyright`. Read here by this file's OWN sfnt walk so the
+    // comparison is between two independent readers rather than one reader
+    // agreeing with itself.
+    copyright: nameTableString(view, tables, 0)?.trim(),
     usWeightClass: view.getUint16(os2.offset + 4),
     // fsSelection bit 0 ITALIC, bit 5 BOLD, bit 6 REGULAR, bit 9 OBLIQUE.
     fsSelection: view.getUint16(os2.offset + 62),
@@ -180,6 +197,102 @@ function recordedShippedSize(noticeFile: string): number {
 const licenceSignatures: Readonly<Record<string, RegExp>> = {
   'OFL-1.1': /SIL Open Font License/i,
   'Ubuntu-font-1.0': /Ubuntu Font Licence/i,
+}
+
+/**
+ * THE UNICODE `cmap`, AS A SET OF THE CODEPOINTS THE FACE ACTUALLY MAPS.
+ *
+ * Formats 4 and 12 only, and that is measured rather than assumed: all 21
+ * committed faces carry one or the other under a (3,1), (3,10) or (0,x)
+ * subtable. A face carrying neither throws here instead of being scored zero —
+ * a coverage check that silently reads no subtable would report every script
+ * uncovered and pass nothing, which is the vacuous-green shape this file's
+ * other guards are written against.
+ *
+ * Format 12 groups are bounded per group, because a CJK face's cmap is
+ * hundreds of thousands of codepoints and this test only ever asks about a
+ * handful of them; no committed catalogue face is CJK today, and the bound is
+ * what keeps that from becoming a minutes-long test if one ever is.
+ */
+function cmapCoverage(file: string): ReadonlySet<number> {
+  const view = fontView(file)
+  const tables = sfntTables(view)
+  const cmap = tables['cmap']
+  if (cmap === undefined) throw new Error(`${file} has no cmap table`)
+  const subtables = view.getUint16(cmap.offset + 2)
+  let chosen = -1
+  for (let index = 0; index < subtables; index++) {
+    const record = cmap.offset + 4 + index * 8
+    const platform = view.getUint16(record)
+    const encoding = view.getUint16(record + 2)
+    if (!((platform === 3 && (encoding === 1 || encoding === 10)) || platform === 0)) continue
+    const subtable = cmap.offset + view.getUint32(record + 4)
+    const format = view.getUint16(subtable)
+    if (format === 4 || format === 12) chosen = subtable
+  }
+  if (chosen < 0) throw new Error(`${file} carries no Unicode cmap subtable in format 4 or 12`)
+  const covered = new Set<number>()
+  if (view.getUint16(chosen) === 4) {
+    const segmentBytes = view.getUint16(chosen + 6)
+    const endOffset = chosen + 14
+    const startOffset = endOffset + segmentBytes + 2
+    const deltaOffset = startOffset + segmentBytes
+    const rangeOffset = deltaOffset + segmentBytes
+    for (let segment = 0; segment < segmentBytes / 2; segment++) {
+      const start = view.getUint16(startOffset + segment * 2)
+      const end = view.getUint16(endOffset + segment * 2)
+      if (start === 0xffff) continue
+      const delta = view.getInt16(deltaOffset + segment * 2)
+      const range = view.getUint16(rangeOffset + segment * 2)
+      for (let codepoint = start; codepoint <= end; codepoint++) {
+        let glyph: number
+        if (range === 0) glyph = (codepoint + delta) & 0xffff
+        else {
+          const at = rangeOffset + segment * 2 + range + (codepoint - start) * 2
+          if (at + 1 >= view.byteLength) continue
+          glyph = view.getUint16(at)
+          if (glyph !== 0) glyph = (glyph + delta) & 0xffff
+        }
+        // GLYPH 0 IS .notdef — a mapping to it is the absence of a mapping,
+        // and counting it would score every face as covering everything.
+        if (glyph !== 0) covered.add(codepoint)
+      }
+    }
+  } else {
+    const groups = view.getUint32(chosen + 12)
+    for (let group = 0; group < groups; group++) {
+      const record = chosen + 16 + group * 12
+      const start = view.getUint32(record)
+      const end = view.getUint32(record + 4)
+      for (let codepoint = start; codepoint <= end && codepoint - start < 70000; codepoint++) covered.add(codepoint)
+    }
+  }
+  return covered
+}
+
+/**
+ * THE PROBE PER SCRIPT: codepoints a face claiming that script must ALL map,
+ * and a face not claiming it must map NONE of.
+ *
+ * They are ordinary letters rather than rarities on purpose. The question is
+ * "can this face draw text in this script at all", not "is its coverage
+ * complete" — a partial Latin face is still the right first entry in a chain,
+ * whereas one that maps no Latin letter at all must not be. Each probe spans
+ * more than one block of its script so a face carrying, say, only ASCII digits
+ * does not pass as Latin.
+ *
+ * MEASURED over all 21 committed faces before being written: 19 map every
+ * Latin probe and no Thai one; notosansthailooped and notoserifthai map every
+ * Thai probe and no Latin one. No committed face is ambiguous under it, and no
+ * committed face is CJK.
+ */
+const scriptProbes: Readonly<Record<string, ReadonlyArray<number>>> = {
+  // A, Z, a, z, 0, 9 — Basic Latin letters and digits.
+  latin: [0x41, 0x5a, 0x61, 0x7a, 0x30, 0x39],
+  // ko kai, so suea, a vowel sign and a tone mark: consonants, vowel and tone.
+  thai: [0x0e01, 0x0e2a, 0x0e30, 0x0e48],
+  // Four common Han ideographs.
+  cjk: [0x4e00, 0x4e8c, 0x6c34, 0x9fa5],
 }
 
 describe('the Story 8.5 catalogue ships the faces its manifest declares', () => {
@@ -256,7 +369,54 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
       // The three records must also agree with each other: the NOTICE names the
       // same identifier the manifest declares.
       expect(text, `${face.id}: NOTICE.md does not name the SPDX identifier font-catalogue.json declares`).toContain(`\`${face.licence}\``)
+
+      // STORY 8.6 — AND THE GENERATED MODULE PUBLISHES THIS FACE'S OWN TERMS.
+      //
+      // The designer sends `licenceText` and `copyright` with every pick, and
+      // the engine refuses to load a document that embeds a face without them,
+      // so these two strings ARE the terms a `.folio` travels under. They are
+      // asserted per face, against this face's own directory and this face's
+      // own bytes, because the failure they exist to catch is not "the field
+      // is empty" — it is "the field is FULL, and it belongs to another
+      // project".
+      const generated = generatedFaces.find((emitted) => emitted.id === face.id)
+      expect(generated, `${face.id}: font-catalogue.json declares it and src/generated/font-catalogue.ts emits no row for it, so the pick could not embed it`).toBeDefined()
+
+      // (a) THE LICENCE TEXT IS THE ONE COMMITTED BESIDE THIS BINARY.
+      // NOT keyed by SPDX identifier: the SIL OFL carries a per-project
+      // preamble — a copyright line and a Reserved Font Name — so two OFL-1.1
+      // faces ship two DIFFERENT texts, and an identifier classifies terms
+      // rather than standing in for them.
+      const licenceFile = path.join(directory, licences[0])
+      expect(
+        generated?.licenceText,
+        `${face.id}: the generated catalogue publishes a licence text that is not the one committed beside this binary (${path.relative(designerRoot, licenceFile)}). Every document embedding this face would travel stating another project's terms.`,
+      ).toBe(fs.readFileSync(licenceFile, 'utf8').trimEnd())
+      expect(generated?.licence, `${face.id}: the generated catalogue and the manifest disagree on the SPDX identifier`).toBe(face.licence)
+
+      // (b) THE COPYRIGHT IS THIS BINARY'S OWN nameID 0.
+      const declaredCopyright = instanceOfFile(file).copyright
+      expect(declaredCopyright, `${face.id}: the binary declares no copyright in its own name table (nameID 0), so there is nothing for the document to record`).toBeTruthy()
+      expect(
+        generated?.copyright,
+        `${face.id}: the generated catalogue publishes a copyright that is not the one this face's own name table declares. nameID 0 is the one statement of provenance that cannot be edited from outside the binary.`,
+      ).toBe(declaredCopyright)
     }
+  })
+
+  // NON-VACUITY FOR THE TWO ASSERTIONS ABOVE. Both are inside a loop over
+  // `catalogue` and both reach the generated module through `.find()`, so a
+  // module that emitted nothing at all would make them assert on `undefined`
+  // rows — caught by the `toBeDefined()` above, but only face by face. This
+  // states the population once, at the top level, so a truncated or stale
+  // generated module reds here with one clear sentence.
+  it('emits exactly one generated row per declared catalogue face', () => {
+    expect(generatedFaces).toHaveLength(catalogue.length)
+    expect(generatedFaces.map((face) => face.id).sort()).toEqual(catalogue.map((face) => face.id).sort())
+    // And every row carries a URL into the fingerprinted runtime directory —
+    // the bytes the pick reads. A row with no URL is a family the author can
+    // see and cannot embed.
+    expect(generatedFaces.filter((face) => typeof face.url !== 'string' || face.url === '')).toEqual([])
   })
 
   // AC6. ONE UPRIGHT STATIC REGULAR PER FAMILY, READ FROM THE BYTES.
@@ -279,6 +439,41 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
       // NFR7's operative choice: the glyf/TrueType static build, not CFF.
       expect(instance.outlineTables, `${where}: is not a glyf/TrueType static build`).toEqual(['glyf'])
       expect(path.extname(face.file), `${where}: the engine decodes only font/ttf and font/otf, and the emitted rule declares format('truetype')`).toBe('.ttf')
+    }
+  })
+
+  // STORY 8.6. THE DECLARED COVERAGE AGREES WITH THE BINARY'S OWN cmap.
+  it('declares, for every catalogue face, exactly the scripts its own cmap can draw', () => {
+    // NON-VACUITY: the probe table is what every assertion below reads, and a
+    // manifest declaring a script it does not name would be scored against
+    // nothing at all.
+    const vocabulary = Object.keys(scriptProbes)
+    expect(vocabulary.length, 'the probe table is empty, so every assertion below is vacuous').toBeGreaterThan(0)
+
+    for (const face of catalogue) {
+      const where = `${face.id} (${path.relative(designerRoot, faceFile(face))})`
+      expect(Array.isArray(face.scripts) && face.scripts.length > 0, `${where}: font-catalogue.json declares no scripts; the designer proposes a fallback tail from this list, and a face claiming nothing would be given a fallback for every script including its own`).toBe(true)
+      expect(face.scripts.filter((script) => !vocabulary.includes(script)), `${where}: declares a script outside the closed vocabulary ${vocabulary.join(', ')}. An unrecognised script proposes no fallback for itself and the chain draws tofu.`).toEqual([])
+
+      const covered = cmapCoverage(faceFile(face))
+      expect(covered.size, `${where}: its cmap maps no codepoint at all, so the coverage comparison below would assert nothing`).toBeGreaterThan(0)
+
+      for (const script of vocabulary) {
+        const probes = scriptProbes[script] as ReadonlyArray<number>
+        const mapped = probes.filter((codepoint) => covered.has(codepoint))
+        const hex = (list: ReadonlyArray<number>) => list.map((codepoint) => `U+${codepoint.toString(16).toUpperCase().padStart(4, '0')}`).join(', ')
+        if (face.scripts.includes(script)) {
+          // CLAIMED: the binary must draw all of them. A face claiming a
+          // script it cannot draw gets NO shipped fallback for that script,
+          // so the document renders tofu where it promised coverage.
+          expect(mapped, `${where}: font-catalogue.json claims the script '${script}' and the face's own cmap maps only ${hex(mapped)} of ${hex(probes)}. A claimed script gets no fallback entry, so the chain would draw tofu.`).toEqual(probes)
+        } else {
+          // NOT CLAIMED: the binary must draw none of them. A face that does
+          // cover a script it does not claim gets a redundant shipped face
+          // stapled behind it in every chain that picks it.
+          expect(mapped, `${where}: font-catalogue.json does not claim the script '${script}' and the face's own cmap maps ${hex(mapped)}. Every chain picking this family would carry a redundant shipped fallback for a script it already covers.`).toEqual([])
+        }
+      }
     }
   })
 

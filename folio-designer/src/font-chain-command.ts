@@ -14,8 +14,8 @@
 //
 // THE FIELD COUNT IS PART OF THE CONTRACT. componentFields(raw, N) counts
 // every top-level key, `kind` and `version` included, and refuses anything
-// else: add 4, rename 4, delete 3, addEntry 5, moveEntry 5, removeEntry 4.
-// An extra field is not ignored, it is a refusal.
+// else: add 4, rename 4, delete 3, addEntry 5, moveEntry 5, removeEntry 4,
+// embedFontFamily 12. An extra field is not ignored, it is a refusal.
 const encode = (value: string): ArrayBuffer => new TextEncoder().encode(value).buffer
 const quote = (value: string): string => JSON.stringify(value)
 // Go reads these with commandInt, which requires an integer literal. They are
@@ -45,4 +45,55 @@ export function moveFontChainEntryCommand(name: string, from: number, to: number
 
 export function removeFontChainEntryCommand(name: string, at: number): ArrayBuffer {
   return encode(`{"kind":"removeFontChainEntry","version":1,"name":${quote(name)},"index":${index(at)}}`)
+}
+
+// STORY 8.6 — THE PICK.
+//
+// The SEVENTH builder, and the first that carries BYTES. It is still opaque
+// engine intent and the rule is unchanged: this module knows nothing about
+// what a duplicate face is, what the content hash of these bytes is, whether
+// the document already carries them, or whether the licence text is adequate.
+// Go hashes, dedupes, decodes, bounds and refuses; the browser reads the face
+// out of the precached content-addressed URL and puts the ask on the wire.
+//
+// `licenceText` and `copyright` are on the wire because the ENGINE REFUSES TO
+// LOAD A DOCUMENT THAT EMBEDS A FACE WITHOUT THEM. They are not decoration the
+// designer chose to send — a pick that omitted them would produce a document
+// the engine's own parser rejects, so the command carries them and Go refuses
+// the pick if any is empty.
+//
+// The bytes are base64-encoded HERE rather than sent as a binary payload for
+// the same reason setComponentAssetCommand does it: the command is one opaque
+// JSON document on one protocol, and a second framing for one command kind
+// would be a second protocol.
+export function embedFontFamilyCommand(face: {
+  chain: string
+  family: string
+  style: string
+  licence: string
+  licenceText: string
+  copyright: string
+  source: string
+  mediaType: string
+  bytes: ArrayBuffer
+  tail: ReadonlyArray<string>
+}): ArrayBuffer {
+  return encode(`{"kind":"embedFontFamily","version":1,"name":${quote(face.chain)}`
+    + `,"family":${quote(face.family)},"style":${quote(face.style)}`
+    + `,"licence":${quote(face.licence)},"licenceText":${quote(face.licenceText)}`
+    + `,"copyright":${quote(face.copyright)},"source":${quote(face.source)}`
+    + `,"mediaType":${quote(face.mediaType)},"data":${quote(base64(face.bytes))}`
+    + `,"tail":[${face.tail.map(quote).join(',')}]}`)
+}
+
+// base64 over an ArrayBuffer, in chunks. `String.fromCharCode(...bytes)` on a
+// 480 KB face spreads half a million arguments across the call stack and
+// throws; the chunk size is small enough that it cannot, and large enough that
+// the loop is not the cost.
+const base64 = (bytes: ArrayBuffer): string => {
+  const view = new Uint8Array(bytes)
+  const chunk = 0x8000
+  let binary = ''
+  for (let at = 0; at < view.length; at += chunk) binary += String.fromCharCode(...view.subarray(at, at + chunk))
+  return btoa(binary)
 }

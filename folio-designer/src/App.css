@@ -212,6 +212,15 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
 .property-option-active { background: var(--color-active); color: var(--color-ink-high); }
 .property-option[aria-selected="true"] { color: var(--color-select); }
 .property-option-empty { color: var(--color-ink-low); font: var(--type-body); cursor: default; }
+/* THE SECOND GROUP IS VISIBLY A DIFFERENT KIND OF THING (Story 8.6, AC4). A
+   declared chain is in the document; a catalogue entry is not yet, and picking
+   one CHANGES the document rather than setting a property. The distinction is
+   carried twice on purpose — by the group heading above the run, and by the
+   entry's own weight and its "add to document" note — so it survives a reader
+   who scrolled past the heading. */
+.property-option-catalogue { color: var(--color-ink-low); font: var(--type-body); }
+.property-option-catalogue.property-option-active { color: var(--color-ink-high); }
+.property-option-note { color: var(--color-ink-low); font: var(--type-body); }
 /* THE CHAIN EDITOR, revealed inline under the family row it edits. It is a
    disclosed section of the TYPOGRAPHY panel and not a dialog (AC1), so it
    takes the panel's own vocabulary — the property row's field chrome, the

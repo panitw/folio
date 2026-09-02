@@ -2,12 +2,16 @@ package folio
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1760,5 +1764,339 @@ func TestComponentFailureBoundsMatchTheHostsOwnLiterals(t *testing.T) {
 		if width != pair.here {
 			t.Errorf("the host cuts componentErr.%s at %d and this module trims to %d — one side of the seam moved and the other did not", pair.field, width, pair.here)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STORY 8.6: THE PICK, THE DEDUPE, THE DROP — AND DW-80.
+
+// embedCommand builds the pick the designer sends. Written out here rather
+// than assembled from a helper because THE FIELD COUNT IS PART OF THE CONTRACT
+// (componentFields(raw, 12) counts kind and version too), and a builder that
+// quietly omitted a key would move the refusal this file is measuring.
+func embedCommand(t *testing.T, chain string, face []byte, tail string) string {
+	t.Helper()
+	return `{"kind":"embedFontFamily","version":1,"name":` + quoteForCommand(t, chain) +
+		`,"family":"Noto Sans Thai","style":"Regular","licence":"OFL-1.1"` +
+		`,"licenceText":"This Font Software is licensed under the SIL Open Font License, Version 1.1."` +
+		`,"copyright":"Copyright 2022 The Noto Project Authors","source":"catalogue"` +
+		`,"mediaType":"font/ttf","data":"` + base64.StdEncoding.EncodeToString(face) + `","tail":` + tail + `}`
+}
+
+func quoteForCommand(t *testing.T, value string) string {
+	t.Helper()
+	out, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+// embeddedKeyOf is the format's own rule for the key, derived rather than
+// written down — the same reason embeddedFontAssetKey() derives the fixture's.
+func embeddedKeyOf(face []byte) string { return fmt.Sprintf("%x", sha256.Sum256(face)) }
+
+// TestEmbedFontFamilyWritesTheAssetAndDeclaresTheChain is AC1 and AC6 at the
+// command surface: ONE command puts the bytes in the document, writes the
+// whole record — licence text and copyright included — and declares a chain
+// naming the asset by key with the proposed tail behind it.
+func TestEmbedFontFamilyWritesTheAssetAndDeclaresTheChain(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSansThai
+	key := embeddedKeyOf(face)
+
+	fontChainAccepted(t, tpl, embedCommand(t, "Noto Sans Thai", face, `["Noto Sans","Noto Sans SC"]`))
+
+	asset, ok := tpl.doc.Assets[key]
+	if !ok {
+		t.Fatalf("the picked face was not stored under its own content hash %s", key)
+	}
+	if asset.MediaType != "font/ttf" {
+		t.Errorf("mediaType = %q, want font/ttf", asset.MediaType)
+	}
+	if !asset.Font.Set || asset.Font.Null {
+		t.Fatal("the asset carries no font record at all")
+	}
+	// AC6 SPELLED OUT, KEY BY KEY. A record that carried the display half and
+	// dropped the terms is the failure this asserts against, and it is the one
+	// a writer would produce by re-using Story 8.3's four-key record.
+	for _, want := range []struct {
+		name  string
+		value template.Presence[string]
+	}{
+		{"family", asset.Font.Value.Family},
+		{"style", asset.Font.Value.Style},
+		{"licence", asset.Font.Value.Licence},
+		{"licenceText", asset.Font.Value.LicenceText},
+		{"copyright", asset.Font.Value.Copyright},
+		{"source", asset.Font.Value.Source},
+	} {
+		if !want.value.Set || want.value.Null || want.value.Value == "" {
+			t.Errorf("the recorded font carries no %s (%#v)", want.name, want.value)
+		}
+	}
+
+	chain, ok := tpl.doc.Fonts["Noto Sans Thai"]
+	if !ok {
+		t.Fatal("the pick declared no chain")
+	}
+	if len(chain) != 3 || !chain[0].Embedded() || chain[0].AssetKey != key {
+		t.Fatalf("chain = %#v — want the picked face first, named by asset key", chain)
+	}
+	if chain[1].Face != "Noto Sans" || chain[2].Face != "Noto Sans SC" {
+		t.Errorf("the proposed tail did not survive: %#v", chain[1:])
+	}
+	// AND THE DOCUMENT IS STILL A DOCUMENT. applyFontChainCommand reparses its
+	// own canonical bytes, so this also proves the writer cannot emit a record
+	// its own parser rejects — the whole reason the command validates the
+	// three required keys up front.
+	if _, err := ParseTemplate(mustSerialize(t, tpl)); err != nil {
+		t.Fatalf("the document the pick produced does not load: %v", err)
+	}
+}
+
+// TestEmbedFontFamilyRefusesAFaceThatCannotStateItsTerms is the guard that
+// keeps the writer and the parser from disagreeing. Each row empties ONE
+// required key, so a guard written for only some of them is visible.
+//
+// WHAT IT ASSERTS, AND WHY IT IS NOT A MESSAGE SUBSTRING. It used to check
+// `strings.Contains(failure.Message, missing)`, which was a check that could
+// not fail: the refusal sentence for a missing `licence` contains the word
+// "licence", and so does the one for `licenceText` — so the licenceText row
+// passed whether the licenceText guard fired or the licence guard did, and the
+// six rows did not distinguish between themselves at all. It now asserts the
+// exact message the field's own guard emits, which no other field's guard can
+// produce.
+//
+// The DataPath is asserted too, but separately and for a different reason: a
+// chain command is not addressed to an element, so `fonts.<name>` is the only
+// location it carries, and it is the same for every row. It says the refusal
+// is located; the message says WHICH key.
+func TestEmbedFontFamilyRefusesAFaceThatCannotStateItsTerms(t *testing.T) {
+	face := testShippedNotoSansThai
+	for _, missing := range []string{"family", "style", "licence", "licenceText", "copyright", "source"} {
+		for _, spelling := range []struct {
+			name  string
+			value string
+		}{
+			// Emptied rather than deleted: componentFields counts the keys, so
+			// deleting one would be refused on ARITY and the row would pass
+			// without ever reaching the rule it is about.
+			{"empty", `""`},
+			// And BLANK, because the parser refuses whitespace-only terms and
+			// a command that admitted them would produce a document its own
+			// reparse rejects — unlocated, as "font chains did not pass format
+			// validation", which tells the author nothing.
+			{"blank", `" \n "`},
+		} {
+			t.Run(missing+"/"+spelling.name, func(t *testing.T) {
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal([]byte(embedCommand(t, "Noto Sans Thai", face, `[]`)), &fields); err != nil {
+					t.Fatal(err)
+				}
+				fields[missing] = json.RawMessage(spelling.value)
+				rebuilt, err := json.Marshal(fields)
+				if err != nil {
+					t.Fatal(err)
+				}
+				failure := fontChainRefusal(t, fontChainTemplate(t), string(rebuilt))
+				if want := "folio: " + missing + " must be a non-empty string"; failure.Message != want {
+					t.Errorf("refusal message = %q, want %q — the message has to identify WHICH key was short, and a substring check cannot: every one of these sentences contains the word \"licence\"", failure.Message, want)
+				}
+				if failure.DataPath != "fonts.Noto Sans Thai" {
+					t.Errorf("the refusal is located at %q, want the chain the pick names", failure.DataPath)
+				}
+			})
+		}
+	}
+}
+
+// TestEmbedFontFamilyRePickStoresNoSecondCopy is AC2: the content hash
+// decides. A second pick of a family already embedded declares no second
+// asset, no second chain, and leaves the canonical bytes untouched — which is
+// what makes it push no undo entry (asserted end-to-end in wasm/).
+func TestEmbedFontFamilyRePickStoresNoSecondCopy(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSansThai
+	command := embedCommand(t, "Noto Sans Thai", face, `["Noto Sans"]`)
+
+	fontChainAccepted(t, tpl, command)
+	first := mustSerialize(t, tpl)
+
+	fontChainAccepted(t, tpl, command)
+	second := mustSerialize(t, tpl)
+
+	if !bytes.Equal(first, second) {
+		t.Fatal("a re-pick of an already-embedded family moved the document's canonical bytes")
+	}
+	if len(tpl.doc.Assets) != 1 {
+		t.Errorf("the document carries %d assets, want 1 — the same bytes must store once", len(tpl.doc.Assets))
+	}
+	// A re-pick under a DIFFERENT chain name is still the same face, so it is
+	// still the same no-op: the key is what the document is asked about, never
+	// the name the author happened to type.
+	fontChainAccepted(t, tpl, embedCommand(t, "Brand", face, `["Noto Sans"]`))
+	if _, exists := tpl.doc.Fonts["Brand"]; exists {
+		t.Error("a re-pick of an already-embedded face declared a SECOND chain; the existing one is what the author is offered")
+	}
+}
+
+// TestEmbedFontFamilyRePicksAfterTheChainWasDeleted is the third row of the
+// matrix, and it is the one that separates "dedupe on the ASSET" from "dedupe
+// on the CHAIN": the asset is still in the document, nothing names it, and the
+// pick must re-declare the chain WITHOUT storing the bytes again.
+func TestEmbedFontFamilyRePicksAfterTheChainWasDeleted(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSansThai
+	key := embeddedKeyOf(face)
+	command := embedCommand(t, "Noto Sans Thai", face, `["Noto Sans"]`)
+	fontChainAccepted(t, tpl, command)
+
+	// Un-name it WITHOUT letting the drop collect it: a second chain holds the
+	// key while the first is deleted, so the asset survives to be re-found.
+	tpl.doc.Fonts["keeper"] = []template.FontChainEntry{template.AssetEntry(key)}
+	fontChainAccepted(t, tpl, `{"kind":"deleteFontChain","version":1,"name":"Noto Sans Thai"}`)
+	if _, ok := tpl.doc.Assets[key]; !ok {
+		t.Fatal("precondition: the asset a second chain still names must not have been collected")
+	}
+	delete(tpl.doc.Fonts, "keeper")
+
+	fontChainAccepted(t, tpl, command)
+	if len(tpl.doc.Assets) != 1 {
+		t.Errorf("the re-pick stored %d assets, want 1 — the bytes were already carried", len(tpl.doc.Assets))
+	}
+	chain, ok := tpl.doc.Fonts["Noto Sans Thai"]
+	if !ok || len(chain) == 0 || chain[0].AssetKey != key {
+		t.Fatalf("the re-pick did not re-declare a chain naming the existing key: %#v", chain)
+	}
+}
+
+// TestAssetKeyReferencedSeesAFontChain IS DW-80, STATED AS A TEST.
+//
+// RED-PROVED BY DELETING THE FONT ARM of assetKeyReferenced, not by
+// falsifying the image condition: the defect was that the walk never read
+// t.doc.Fonts at all and answered false for every font asset, so the mutation
+// that must red is the one that restores that state. Falsifying the IMAGE
+// condition would red this too, and would prove nothing about the font arm.
+func TestAssetKeyReferencedSeesAFontChain(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSansThai
+	key := embeddedKeyOf(face)
+	fontChainAccepted(t, tpl, embedCommand(t, "Noto Sans Thai", face, `[]`))
+
+	if !assetKeyReferenced(tpl, key) {
+		t.Fatal("assetKeyReferenced answered FALSE for an asset a live font chain names (DW-80) — the orphan drop built on this answer deletes a face the document is still drawing with")
+	}
+	// The negative arm, so the positive one is not vacuous: an unrelated key
+	// is still unreferenced.
+	if assetKeyReferenced(tpl, strings.Repeat("0", 64)) {
+		t.Error("assetKeyReferenced answered TRUE for a key nothing names")
+	}
+}
+
+// TestRemovingTheLastNamingEntryDropsTheFace is AC5, and
+// TestAFaceASecondChainStillNamesIsRetained below is the arm DW-80 would have
+// got wrong. They are written as a pair because either alone is satisfied by
+// an implementation that is wrong in the other direction — "always delete"
+// passes the first, "never delete" passes the second.
+func TestRemovingTheLastNamingEntryDropsTheFace(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSansThai
+	key := embeddedKeyOf(face)
+	fontChainAccepted(t, tpl, embedCommand(t, "Noto Sans Thai", face, `["Noto Sans"]`))
+	if _, ok := tpl.doc.Assets[key]; !ok {
+		t.Fatal("precondition: the pick stored no asset")
+	}
+
+	fontChainAccepted(t, tpl, `{"kind":"removeFontChainEntry","version":1,"name":"Noto Sans Thai","index":0}`)
+
+	if _, ok := tpl.doc.Assets[key]; ok {
+		t.Error("the face nothing names any longer was left in the document — a file must not accumulate megabytes of faces nothing draws with")
+	}
+	// SCOPED, NEVER A SWEEP. The document's other assets are untouched, which
+	// is what distinguishes this from a garbage collection pass.
+	if len(tpl.doc.Fonts["Noto Sans Thai"]) != 1 {
+		t.Errorf("the chain itself was disturbed beyond the removed entry: %#v", tpl.doc.Fonts["Noto Sans Thai"])
+	}
+}
+
+func TestAFaceASecondChainStillNamesIsRetained(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSansThai
+	key := embeddedKeyOf(face)
+	fontChainAccepted(t, tpl, embedCommand(t, "Noto Sans Thai", face, `["Noto Sans"]`))
+
+	// A SECOND chain over the same key. Declared directly because no command
+	// authors a second embedded entry over an existing key — embedFontFamily
+	// deliberately no-ops when one already names it (AC2).
+	tpl.doc.Fonts["alsoThai"] = []template.FontChainEntry{template.AssetEntry(key), template.FaceEntry("Noto Sans")}
+
+	fontChainAccepted(t, tpl, `{"kind":"removeFontChainEntry","version":1,"name":"Noto Sans Thai","index":0}`)
+
+	if _, ok := tpl.doc.Assets[key]; !ok {
+		t.Fatal("a face a SECOND chain still names was deleted — this is the arm DW-80's broken walk would have got wrong, and the deletion direction is the dangerous one")
+	}
+}
+
+// TestDeletingAChainDropsTheFacesOnlyItNamed applies AC5 to the other action
+// that un-names an entry. Deleting a chain un-names every entry in it at once;
+// the collection is the same, scoped to exactly those entries.
+func TestDeletingAChainDropsTheFacesOnlyItNamed(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSansThai
+	key := embeddedKeyOf(face)
+	fontChainAccepted(t, tpl, embedCommand(t, "Noto Sans Thai", face, `["Noto Sans"]`))
+
+	fontChainAccepted(t, tpl, `{"kind":"deleteFontChain","version":1,"name":"Noto Sans Thai"}`)
+	if _, ok := tpl.doc.Assets[key]; ok {
+		t.Error("deleting the only chain naming a face left the face behind")
+	}
+}
+
+// TestEmbedFontFamilyRefusesAChainNameTheDocumentAlreadyTakes is the branch
+// that stops a pick from SILENTLY REPLACING a chain the author already has.
+//
+// WHY IT NEEDS ITS OWN TEST, MEASURED: deleting the collision branch left the
+// whole folio-go suite green. Every other embed test either dedupes first
+// (the key is already named, so the command no-ops before it ever looks at the
+// name) or picks a free name — so the one path that reaches
+// `t.doc.Fonts[name] = entries` over an EXISTING chain was reachable by no
+// test at all. Without the branch that assignment discards the old chain's
+// entries, and because embedFontFamily never calls dropUnnamedFontAssets, a
+// face the discarded chain named is left behind as an orphan nothing can
+// reach: the document silently loses a chain and silently keeps the bytes.
+//
+// A NEW FACE, DELIBERATELY. The bytes are Noto Sans rather than the Thai face
+// the other embed tests use, so the document does not already carry this key
+// and the dedupe short-circuit cannot answer first — the command must reach
+// the name question for this test to be about the name question.
+func TestEmbedFontFamilyRefusesAChainNameTheDocumentAlreadyTakes(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	face := testShippedNotoSans
+	key := embeddedKeyOf(face)
+	if _, exists := tpl.doc.Assets[key]; exists {
+		t.Fatal("precondition: the document already carries this face, so the dedupe short-circuit would answer before the name is ever considered")
+	}
+	before := append([]template.FontChainEntry(nil), tpl.doc.Fonts["body"]...)
+
+	// fontChainRefusal also asserts the document is byte-identical afterwards,
+	// which is the strongest statement of "the existing chain is unchanged" —
+	// a partially applied pick is exactly what the one-transaction shape
+	// exists to prevent.
+	failure := fontChainRefusal(t, tpl, embedCommand(t, "body", face, `["Noto Sans SC"]`))
+	if !strings.Contains(failure.Message, `a font chain named "body" already exists`) {
+		t.Errorf("the refusal does not say the name is taken: %s", failure.Message)
+	}
+	if failure.DataPath != "fonts.body" {
+		t.Errorf("the refusal is located at %q, want fonts.body — the author has to be told WHICH name is taken", failure.DataPath)
+	}
+	// Stated directly as well, because the byte comparison above would also be
+	// satisfied by a command that refused for some unrelated reason before
+	// touching anything.
+	if !slices.Equal(tpl.doc.Fonts["body"], before) {
+		t.Errorf("the existing chain was disturbed by a refused pick: %#v, want %#v", tpl.doc.Fonts["body"], before)
+	}
+	if _, exists := tpl.doc.Assets[key]; exists {
+		t.Error("a refused pick stored the face anyway")
 	}
 }

@@ -56,6 +56,23 @@ var testShippedNotoSansThai []byte
 //go:embed fonts/notosanssc/NotoSansSC-Regular.ttf
 var testShippedNotoSansSC []byte
 
+// testShippedNotoSansThaiLicence is Story 8.6's addition, and it is here
+// for the SAME reason the three faces above are: fixtures/embedded-font/
+// now has to state the face's terms, embeddedFontTemplateJSON() builds
+// that document rather than transcribing it, and the cross-target matrix
+// runs a prebuilt binary with no filesystem under it. A licence read
+// from disk at runtime would be unreachable on js/wasm — and a licence
+// hand-copied into a Go string constant would be a SECOND authority on
+// what the terms are, which is precisely the thing this story exists to
+// stop happening inside a `.folio`.
+//
+// Its FIRST LINE is also where the fixture's `copyright` comes from
+// (embeddedFontCopyright), so the record and the terms it belongs to
+// have one source between them.
+//
+//go:embed fonts/notosansthai/LICENSE-OFL.txt
+var testShippedNotoSansThaiLicence string
+
 // testShippedFontSet returns the same (name -> bytes) pairs
 // `fonts.Shipped()` returns, built from the test-local embeds above so
 // this package's own white-box test files never import `fonts` (see

@@ -6665,3 +6665,64 @@ building from a source tarball, an export, or a Docker `COPY` that omits `.git` 
 reason unrelated to the build. **The fail-closed throw is CORRECT and must not become a warn-and-skip** —
 that is the vacuous green Design Note 2 names, and the story's review rejected exactly that remedy.
 **What discharges it:** a documented build requirement, or a non-git walk that preserves fail-closed.
+
+### DW-138 — the format freedom Story 8.6 spent, for Story 15.3's hand-over
+
+- **Deferred by:** **Story 8.6** (registered at the close, 2026-09-02, per D-000.15's obligation to
+  record what the freedom was spent on rather than reconstruct it later).
+- **Owner:** **STORY 15.3** (`folio-go/v0.1.0`). Not a defect and nothing to fix — a LEDGER ENTRY, so
+  the tag story is handed the list instead of rediscovering it from a diff.
+- **Severity:** N/A. It is a record.
+- **Status:** OPEN until Story 15.3 reads it.
+
+D-000.15 ("already-touching, not going-looking") licensed Story 8.6 to choose the *correct* shape over
+the *compatible* one **in the format area it was already touching** — the embedded-face record — on the
+owner's 2026-09-02 ruling that Folio is unreleased, no `.folio` documents exist, and breaking is free
+until the tag. Exactly one thing was spent, and this is it:
+
+- **`assets.<key>.font` gained two keys and, on a REFERENCED asset, stopped being optional.**
+  `licenceText` (the actual text, not the identifier) and `copyright` are now REQUIRED, alongside
+  `licence`, of any asset a chain names by `{"asset": key}`; absence, an explicit `null` or an empty
+  string is a located load error. Before this the whole record and every key in it was optional, so a
+  `.folio` could carry and redistribute a typeface while stating nothing about its terms.
+- **The scope of the requirement is REFERENCE, not media type.** An unreferenced font asset is
+  untouched — record absent or partial, loads clean, does not raise the document's version (D-1.4.13).
+- **One consequence reaches a rule outside the record, and it is named here rather than left to be
+  found:** a chain entry naming a **non-font** asset (D-1.8.1 as amended — an `image/png` named where a
+  face belongs is a valid `.folio` that fails at RENDER) now must also carry the three keys, because the
+  requirement keys off the chain entry and is asked before anything asks what the bytes are. D-1.8.1's
+  own promise is intact downstream of it: such a document still loads and still fails at render.
+- **What did NOT move, deliberately:** `SupportedMajor` stays `2`, the version trigger stays the chain
+  entry's shape, `serialize.go`'s unconditional orphan preservation is untouched, and no other format
+  area was opened. All 23 golden digests hold.
+
+**What discharges it:** Story 15.3 reading this entry when it decides what `folio-go/v0.1.0`'s
+compatibility promise covers.
+
+### DW-139 — the produced PDF's font subset carries no `name` table, so attribution does not reach the reader
+
+- **Deferred by:** **Story 8.6** (measured at its plan gate, 2026-09-02; registered at the close).
+- **Owner:** **ENGINEERING LEAD.** Fixing it changes how the PDF producer subsets, which is a **shipped
+  Non-goal** of SPEC-fonts ("No save-time subsetting, and no change to how the PDF producer subsets") —
+  so lifting it is a scope decision, not a patch. It would also move every subset tag and therefore
+  every one of the 23 goldens.
+- **Severity:** MEDIUM, and it is an ATTRIBUTION gap rather than a licensing failure: the `.folio`
+  itself is intact.
+- **Status:** OPEN.
+
+Measured at `8d5059f`: folio subsets through `github.com/boxesandglue/textshape v0.0.15`
+(`internal/fontset/fontset.go:730`), whose `handleOptionalTables` (`subset/execute.go:531-546`) copies
+`name`/`post`/`gasp` **only** when `PassThroughTable(ot.TagName)` or `FlagPassUnrecognized` is set —
+and folio sets neither. Against the real shipped `catalogue-inter.<hash>.ttf` the **entire `name` table
+is absent from the subset**: nameIDs 0 (copyright), 1 (family), 6 (PostScript name), 7 (trademark), 13
+(licence description) and 14 (licence URL) are all dropped. Confirmed on a second face, Roboto.
+
+**The two directions point opposite ways, and both are true.** Inside the `.folio`, attribution is
+intact and now redundant on purpose: subsetting is render-time only, so the document carries the
+UNSUBSETTED face, name table and all — and Story 8.6's explicit `copyright` and `licenceText` keys put
+the terms where a person reading the JSON can see them and a check can require them, without depending
+on a reader that can parse a font binary. Inside the produced PDF they are gone, which is a real gap
+against D-8.6.1's "including the strings inside the font binary".
+
+**What discharges it:** a ruling on whether the PDF producer passes `name` through (and a deliberate,
+attributed re-record of the 23 goldens if it does).

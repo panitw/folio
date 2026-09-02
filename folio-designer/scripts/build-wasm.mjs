@@ -159,12 +159,42 @@ const familyShape = /^[A-Za-z0-9][A-Za-z0-9 .+-]*$/
 // leading, is the whole permitted vocabulary.
 const segmentShape = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
+// THE SCRIPT VOCABULARY (Story 8.6), CLOSED AND SMALL. A face's declared
+// coverage is what the designer proposes a fallback TAIL from: the shipped
+// faces for the scripts the picked face does NOT cover, in this order. It is
+// closed because an unrecognised script would silently propose no fallback for
+// itself — the failure mode is a chain that draws tofu, and it would look like
+// a correct pick. `font-catalogue.json`'s declaration is held to each binary's
+// own `cmap` by `src/font-catalogue.test.ts`; here it is only held to the
+// vocabulary.
+const scriptFallbacks = { latin: 'Noto Sans', thai: 'Noto Sans Thai', cjk: 'Noto Sans SC' }
+// AND THE THREE FALLBACK NAMES ARE HELD TO THE FAMILIES THAT ACTUALLY EXIST.
+// These strings become CHAIN ENTRIES in the author's document — the engine
+// resolves them against `fonts.Shipped()`'s own keys, and an entry naming a
+// face nobody supplies is SKIPPED IN SILENCE (render.go's resolveRuneFace), so
+// a typo or a rename here does not error anywhere: the proposed tail simply
+// stops covering the script it was proposed for, and the chain draws tofu.
+// That is the exact failure the closed `scripts` vocabulary above was justified
+// by, reached from the other side.
+//
+// `shippedFamilies` is the right anchor because it is itself checked against
+// the hand-written @font-face rules at the point of emission below, so this
+// guard sits on a list that cannot quietly drift out of the stylesheet.
+for (const [script, family] of Object.entries(scriptFallbacks)) {
+  if (!shippedFamilies.includes(family)) throw new Error(`scriptFallbacks maps the script '${script}' to the face ${JSON.stringify(family)}, which shippedFamilies does not name. That string becomes a chain entry in the author's document, and the engine SKIPS an entry naming a face it was not given rather than failing — so a renamed face here would silently propose a fallback that draws nothing, and the chain would render tofu for exactly the script the fallback exists to cover.`)
+}
+
 const catalogueIds = new Set()
 const catalogueFamilies = new Set(shippedFamilies)
 const catalogueFaces = catalogue.map((entry) => {
   for (const field of ['id', 'directory', 'file', 'family', 'licence']) {
     if (typeof entry?.[field] !== 'string' || entry[field] === '') throw new Error(`font-catalogue.json entry is missing a ${field}: ${JSON.stringify(entry)}`)
   }
+  if (!Array.isArray(entry.scripts) || entry.scripts.length === 0) throw new Error(`font-catalogue.json face ${entry.id} declares no scripts; the designer proposes a fallback tail from this list, and a face that claims nothing would be given a fallback for every script including its own`)
+  for (const script of entry.scripts) {
+    if (!Object.hasOwn(scriptFallbacks, script)) throw new Error(`font-catalogue.json face ${entry.id} declares the script ${JSON.stringify(script)}, which is not one of ${Object.keys(scriptFallbacks).join(', ')}; an unrecognised script proposes no fallback for itself and the chain draws tofu`)
+  }
+  if (new Set(entry.scripts).size !== entry.scripts.length) throw new Error(`font-catalogue.json face ${entry.id} declares a script twice`)
   // The id becomes a runtime filename stem AND the token the release manifest
   // recognises a catalogue asset by, so it is held to one shape here rather
   // than trusted to stay one.
@@ -180,6 +210,112 @@ const catalogueFaces = catalogue.map((entry) => {
   if (!entry.file.endsWith('.ttf')) throw new Error(`font-catalogue.json face ${entry.id} is ${entry.file}; the emitted @font-face rule declares format('truetype') and the engine decodes only font/ttf and font/otf`)
   return { ...entry, filename: fingerprint(join(designerRoot, 'public', 'fonts', entry.directory, entry.file), `${CATALOGUE_ASSET_PREFIX}${entry.id}.ttf`) }
 })
+
+// THE COPYRIGHT LINE AND THE LICENCE TEXT, READ OFF COMMITTED BYTES (Story 8.6).
+//
+// A `.folio` that carries a face must state its terms — the engine refuses to
+// load one that does not — so the designer has to be able to supply them at the
+// moment of the pick. Neither is hand-copied into `font-catalogue.json`, and
+// that is the whole point: a hand-copied licence is a SECOND authority on what
+// the terms are, and the first time a binary is swapped the document would
+// publish terms its own bytes contradict.
+//
+//   licenceText — the unmodified upstream `LICENSE*` file committed beside the
+//   binary. It is the same file `manifest.ResolveAssets` (AD-26) already
+//   requires and `src/font-catalogue.test.ts` already counts.
+//
+//   copyright — nameID 0 of the face's OWN `name` table, which is the one
+//   statement of a face's provenance that cannot be edited from outside the
+//   binary. Measured, not assumed: all 21 committed faces carry it.
+//
+// This is ~4 KB of licence text per DISTINCT LICENCE, not per face: the texts
+// are keyed by SPDX identifier and the faces reference them, so 21 faces over
+// two licences emit two copies here. (The DOCUMENT still carries one copy per
+// embedded face — deliberately, because an asset passed on alone must carry its
+// own terms — but there is no reason for the BUNDLE to pay for that.)
+const sfntTableDirectory = (view) => {
+  const tables = {}
+  const count = view.getUint16(4)
+  for (let index = 0; index < count; index++) {
+    const record = 12 + index * 16
+    let tag = ''
+    for (let byte = 0; byte < 4; byte++) tag += String.fromCharCode(view.getUint8(record + byte))
+    tables[tag] = { offset: view.getUint32(record + 8), length: view.getUint32(record + 12) }
+  }
+  return tables
+}
+const nameTableString = (view, tables, nameID) => {
+  const name = tables['name']
+  if (name === undefined) return undefined
+  const count = view.getUint16(name.offset + 2)
+  const storage = name.offset + view.getUint16(name.offset + 4)
+  let singleByte
+  for (let index = 0; index < count; index++) {
+    const record = name.offset + 6 + index * 12
+    if (view.getUint16(record + 6) !== nameID) continue
+    const platform = view.getUint16(record)
+    const length = view.getUint16(record + 8)
+    const offset = view.getUint16(record + 10)
+    const bytes = Buffer.from(view.buffer.slice(view.byteOffset + storage + offset, view.byteOffset + storage + offset + length))
+    if ((platform === 3 || platform === 0) && length % 2 === 0) return bytes.swap16().toString('utf16le')
+    singleByte ??= bytes.toString('latin1')
+  }
+  return singleByte
+}
+const faceCopyright = (file) => {
+  const bytes = readFileSync(file)
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const copyright = nameTableString(view, sfntTableDirectory(view), 0)?.trim()
+  if (!copyright) throw new Error(`${file} declares no copyright in its own name table (nameID 0); a face embedded into a document must state whose it is, and the engine refuses to load a document that does not`)
+  return copyright
+}
+// PER FACE, NEVER PER IDENTIFIER. This was keyed by SPDX id and filled from
+// whichever face reached that id first, which gave 17 of 21 faces ANOTHER
+// PROJECT'S licence text — every OFL-1.1 face emitted cascadiacode's LICENSE,
+// "with Reserved Font Name Cascadia Code" and all. That inverts the whole point
+// of the story: a document embedding Inter would have travelled stating terms
+// naming Microsoft's font.
+//
+// "The OFL is the OFL" is FALSE OF THE FILES, and that is the trap. The SIL OFL
+// carries a per-project preamble — a copyright line and a Reserved Font Name —
+// so two OFL-1.1 faces ship two DIFFERENT texts, and the identifier is a
+// classification of the terms, never a substitute for them.
+//
+// It costs bundle bytes: 21 texts of ~4 KB rather than 2. That is the correct
+// trade and it is stated rather than left to be rediscovered — a smaller bundle
+// is not a reason to publish the wrong terms. The `?url` imports below are
+// unaffected, so no build ASSET is added and the release cache stays at 44.
+const licenceTextOf = (face) => {
+  const directory = join(designerRoot, 'public', 'fonts', face.directory)
+  const licences = readdirSync(directory).filter((name) => name.startsWith('LICENSE'))
+  // Now runs for EVERY face rather than for the first face of each identifier,
+  // which is the second thing the cache was quietly costing.
+  if (licences.length !== 1) throw new Error(`font-catalogue.json face ${face.id} has ${licences.length} LICENSE* files beside it (${JSON.stringify(licences)}); exactly one is the text that travels into every document embedding this face`)
+  return readFileSync(join(directory, licences[0]), 'utf8').trimEnd()
+}
+
+// THE TYPED CATALOGUE MODULE. `src` could not enumerate the catalogue at all
+// before this: `offline-assets.ts` exports the nine named slots and nothing
+// else, and the catalogue faces reached Vite only through the `url()` in the
+// emitted stylesheet. They still do for the CSS; this module adds the second
+// thing the pick needs — the URL to READ THE BYTES FROM, content-addressed and
+// precached exactly as `runtimeAssetUrls` assets are, so the pick reads bytes
+// already on the machine and fetches nothing.
+//
+// NO NEW BUILD ASSET. Every `?url` import below names a file the catalogue loop
+// above already fingerprinted into `src/generated/runtime/`; this module names
+// them, it does not create them. 44 of the 64 release-cache slots stay 44.
+writeFileSync(join(generatedDir, 'font-catalogue.ts'),
+  `// GENERATED by scripts/build-wasm.mjs from font-catalogue.json. Do not edit.\n`
+  + catalogueFaces.map((face, index) => `import catalogueUrl${index} from './runtime/${face.filename}?url'`).join('\n')
+  + `\n\nexport type CatalogueScript = ${Object.keys(scriptFallbacks).map((script) => JSON.stringify(script)).join(' | ')}\n\n`
+  + `export type CatalogueFace = Readonly<{ id: string; family: string; style: string; licence: string; licenceText: string; copyright: string; source: string; scripts: ReadonlyArray<CatalogueScript>; url: string }>\n\n`
+  + `// The shipped face that covers each script, in the order a proposed tail\n`
+  + `// names them. A face's tail is the entries for the scripts it does NOT cover.\n`
+  + `export const scriptFallbackFaces: ReadonlyArray<readonly [CatalogueScript, string]> = [${Object.entries(scriptFallbacks).map(([script, face]) => `[${JSON.stringify(script)}, ${JSON.stringify(face)}]`).join(', ')}]\n\n`
+  + `export const catalogueFaces: ReadonlyArray<CatalogueFace> = [\n`
+  + catalogueFaces.map((face, index) => `  { id: ${JSON.stringify(face.id)}, family: ${JSON.stringify(face.family)}, style: "Regular", licence: ${JSON.stringify(face.licence)}, licenceText: ${JSON.stringify(licenceTextOf(face))}, copyright: ${JSON.stringify(faceCopyright(join(designerRoot, 'public', 'fonts', face.directory, face.file)))}, source: ${JSON.stringify(`folio-designer/public/fonts/${face.directory}/${face.file} — see that directory's NOTICE.md for the pinned upstream release and digest`)}, scripts: [${face.scripts.map((script) => JSON.stringify(script)).join(', ')}], url: catalogueUrl${index} },`).join('\n')
+  + `\n]\n`)
 
 rmSync(wasmPath, { force: true })
 rmSync(gluePath, { force: true })

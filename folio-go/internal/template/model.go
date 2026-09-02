@@ -400,11 +400,35 @@ type Border struct {
 // are different things in this format (presence.go), and a refusal
 // written only in the non-null branch would let `"family": null` past
 // every guard.
+// STORY 8.6 ADDED LicenceText AND Copyright, AND THEY ARE THE FIRST KEYS
+// HERE THAT ARE NOT ALWAYS OPTIONAL. The struct still models them as
+// Presence, because absence and an explicit null must still round-trip
+// distinctly and because an UNREFERENCED font asset may legally carry
+// neither — but for an asset a chain names by {"asset": key}, parse.go's
+// requireEmbeddedFaceLicence refuses the document unless licence,
+// licenceText and copyright are all present, non-null and non-empty. A
+// font that travels without its terms is not a font that may be passed
+// on, so the format does not accept one.
 type FontRecord struct {
 	Family  Presence[string]
 	Style   Presence[string]
 	Licence Presence[string]
-	Source  Presence[string]
+	// LicenceText is the ACTUAL TEXT of the licence, not its name.
+	// D-8.6.1 settled the "inline on each asset, or one document-level
+	// notice block?" question as inline-with-the-text: an asset that is
+	// passed on alone must carry its own terms, which a document-level
+	// block would not survive. The duplication that costs — three OFL
+	// families carrying three copies of ~4 KB of near-identical text —
+	// is accepted deliberately for that reason.
+	LicenceText Presence[string]
+	// Copyright is the copyright line the face's own NOTICE publishes.
+	// The unsubsetted face carried in the document also states it in its
+	// `name` table (nameID 0), which is a MEASUREMENT and not an
+	// assumption — but a reader of the JSON should not have to parse a
+	// font binary to find out whose bytes these are, and a check should
+	// not have to either.
+	Copyright Presence[string]
+	Source    Presence[string]
 
 	// Extra carries unknown keys on assets[k].font opaquely (AC8,
 	// D-1.4.9 OWNER) — the same passthrough every other object level in

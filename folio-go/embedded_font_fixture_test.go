@@ -86,6 +86,37 @@ func embeddedFontAssetKey() string {
 // reversed (the constant is derived, the file is checked), and that is
 // strictly stronger, because the derivation is the format's rule rather than a
 // human's copy of its output.
+// embeddedFontLicenceText and embeddedFontCopyright are the two keys Story
+// 8.6 made REQUIRED of an asset a chain names, and neither is written down
+// here: the text is the committed `LICENSE-OFL.txt` beside the face, and the
+// copyright is that file's own first line. Copying either into a Go literal
+// would create the second authority the whole rule exists to prevent — a
+// document could then state terms the bytes beside it contradict, and nothing
+// would red.
+func embeddedFontLicenceText() string { return strings.TrimRight(testShippedNotoSansThaiLicence, "\n") }
+
+func embeddedFontCopyright() string {
+	line, _, _ := strings.Cut(testShippedNotoSansThaiLicence, "\n")
+	return strings.TrimSpace(line)
+}
+
+// jsonStringLiteral quotes a value the way the serializer's own
+// appendJSONString does — MINIMAL escaping, so `&`, `<`, `>` and `/` travel
+// literally. encoding/json's default HTML escaping would spell the OFL's
+// "PERMISSION & CONDITIONS" as `&`, the serializer would rewrite it back
+// on save, and the fixture would stop being a fixed point. SetEscapeHTML(false)
+// is what makes the two agree, and TestEmbeddedFontFixtureIsCanonical… is what
+// proves they do rather than assuming it.
+func jsonStringLiteral(value string) string {
+	var out strings.Builder
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		panic("embedded-font fixture: " + err.Error())
+	}
+	return strings.TrimRight(out.String(), "\n")
+}
+
 func embeddedFontTemplateJSON() string {
 	encoded := base64Wrapped76(embeddedFontAssetBytes())
 	var data strings.Builder
@@ -102,8 +133,10 @@ func embeddedFontTemplateJSON() string {
 ` + data.String() + `
       ],
       "font": {
+        "copyright": ` + jsonStringLiteral(embeddedFontCopyright()) + `,
         "family": "Noto Sans Thai",
         "licence": "SIL Open Font License 1.1",
+        "licenceText": ` + jsonStringLiteral(embeddedFontLicenceText()) + `,
         "source": "folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf — the shipped static Regular instance; see that directory's NOTICE.md for the derivation",
         "style": "Regular"
       },
@@ -162,6 +195,22 @@ func embeddedFontTemplateJSON() string {
 }
 `
 }
+
+// requiredLicenceKeys is the three keys Story 8.6 made REQUIRED of any asset a
+// font chain names by {"asset": key}, as the inner text of a `font` record.
+//
+// It is a TEST-FIXTURE spelling and not a licence: the values are short
+// placeholders, because the load rule this package's tests are downstream of
+// asks only that each key is present, non-null and non-empty. The one document
+// in this repository that carries REAL terms is fixtures/embedded-font/, and it
+// gets them from the committed LICENSE file rather than from a literal.
+//
+// It is here, beside the fixture, rather than in each test file, because four
+// of them splice it into a document for the same reason — a test whose subject
+// is the projection, the render path or a non-font asset must satisfy the
+// licence rule to reach its own subject at all, and four copies of these three
+// keys would be four chances to spell one of them wrong and never find out.
+const requiredLicenceKeys = `"copyright": "Copyright 2026 The Folio Fixture Authors", "licence": "SIL Open Font License 1.1", "licenceText": "This fixture face is licensed under the SIL Open Font License, Version 1.1."`
 
 // base64Wrapped76 reproduces the format's canonical `data` wrapping. It is a
 // SECOND site for that rule, and the only reason it is tolerable is that

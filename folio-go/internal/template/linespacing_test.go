@@ -370,6 +370,13 @@ func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 	// references requires nothing — such a document loads and renders
 	// correctly on a 1.x reader, so raising it would orphan a document
 	// from readers that can in fact read it.
+	//
+	// STORY 8.6: BOTH ASSET-BEARING ARMS CARRY THE FULL LICENCE RECORD, and
+	// carrying it in the UNREFERENCED arm is deliberate rather than tidy. It
+	// makes the two arms differ in exactly ONE thing — the chain entry — so
+	// what the pair measures is still the entry and not the record. The
+	// record's own keys reach no version rule at all: they can only appear on
+	// an asset, and an asset alone raises nothing.
 	for _, tc := range []struct {
 		name string
 		doc  string
@@ -414,6 +421,13 @@ func embeddedFontVersionDoc(asset, referenced bool) string {
         "AAAgQ01BUERBVEFDTUFQREFUQUNNQVBEQVRBQ01BUERBVEFHTFlGREFUQUdMWUZEQVRBR0xZRkRB",
         "VEFHTFlGREFUQUhFQUREQVRBSEVBRERBVEFIRUFEREFUQUhFQUREQVRB"
       ],
+      "font": {
+        "copyright": "Copyright 2026 The Folio Fixture Authors",
+        "family": "Maximal Sans",
+        "licence": "SIL Open Font License 1.1",
+        "licenceText": "This fixture face is licensed under the SIL Open Font License, Version 1.1.",
+        "style": "Regular"
+      },
       "mediaType": "font/ttf"
     }
   }`

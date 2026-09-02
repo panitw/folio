@@ -272,8 +272,10 @@ var maximalFixture = []byte(`{
         "VEFHTFlGREFUQUhFQUREQVRBSEVBRERBVEFIRUFEREFUQUhFQUREQVRB"
       ],
       "font": {
+        "copyright": "Copyright 2026 The Folio Fixture Authors",
         "family": "Maximal Sans",
         "licence": "SIL Open Font License 1.1",
+        "licenceText": "This fixture face is licensed under the SIL Open Font License, Version 1.1.",
         "source": "hand-built 156-byte sfnt, tools/none — a fixture, not a face",
         "style": "Regular"
       },

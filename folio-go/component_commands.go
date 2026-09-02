@@ -102,6 +102,8 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return applyFontChainCommand(t, raw, moveFontChainEntry)
 	case "removeFontChainEntry":
 		return applyFontChainCommand(t, raw, removeFontChainEntry)
+	case "embedFontFamily":
+		return applyFontChainCommand(t, raw, embedFontFamily)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
@@ -769,8 +771,9 @@ func setComponentAssetInPlace(t *Template, raw map[string]json.RawMessage) (Canv
 	return Canvas(t)
 }
 
-// assetKeyReferenced reports whether any image element, across every band,
-// still names key. D-5.13.3: orphan collection is scoped to exactly the one
+// assetKeyReferenced reports whether anything in the document still names key —
+// an image ELEMENT, across every band, or a FONT CHAIN entry. D-5.13.3: orphan
+// collection is scoped to exactly the one
 // key this command just repointed away from, never a document-wide sweep —
 // a document may legally carry an asset no element references (RP-11's
 // positive control, render_image_test.go), and this command must never
@@ -787,10 +790,44 @@ func setComponentAssetInPlace(t *Template, raw map[string]json.RawMessage) (Canv
 // addCanvasImagePaint's ALL need the new location added together — there
 // is no single shared element-enumeration helper today, so update all
 // three by hand rather than assuming one covers the others.
+//
+// DW-80 IS FIXED HERE (Story 8.6), AND IT WAS A REAL HOLE, NOT A LATENT ONE.
+// Until this story the only `true` arm required `el.Type == ElementImage`, and
+// the walk never read `t.doc.Fonts` at all — so this function answered FALSE
+// for every font asset in every document, however many chains named it. Nothing
+// called it for a font, which is why it was survivable; this story's orphan
+// drop is the first caller that does, and shipping that drop over the old walk
+// would have deleted a face a live chain was still drawing with. The DELETE is
+// the dangerous direction: under-reporting a reference here removes a live
+// asset, and no compile error announces it.
+//
+// THE THREE-WALK WARNING ABOVE DOES NOT EXTEND TO THIS ARM, and that is a
+// measurement rather than an omission. `findComponent` and `addCanvasImagePaint`
+// enumerate ELEMENTS, because an image is placed by one; a font asset is named
+// by an entry of a document-level map that holds no elements at all, so there
+// is no third location for those two to gain. What DOES pair with this arm is
+// fontChainReferences, which walks the same map for the same safety reason from
+// the other direction (which elements name a chain).
 func assetKeyReferenced(t *Template, key string) bool {
 	for _, elements := range [][]template.Element{t.doc.Bands.PageHeader.Elements, t.doc.Bands.Content.Elements, t.doc.Bands.PageFooter.Elements} {
 		for _, el := range elements {
 			if el.Type == template.ElementImage && el.Asset.Set && !el.Asset.Null && el.Asset.Value == key {
+				return true
+			}
+		}
+	}
+	// SORTED KEYS, not a bare map range (AD-1, NFR1.d). The ANSWER here does
+	// not depend on the order — it is an existence question — but the rule is
+	// module-wide and absolute for a reason: an iteration order that happens
+	// not to matter today is the one that quietly starts mattering when
+	// somebody returns the first match instead of a bool.
+	for _, name := range slices.Sorted(maps.Keys(t.doc.Fonts)) {
+		for _, entry := range t.doc.Fonts[name] {
+			// Embedded() is THE discriminant (template.FontChainEntry); a
+			// bare `entry.AssetKey == key` would be the same test written a
+			// second time, and a face entry can never carry an asset key
+			// anyway — the partition is the type's own invariant.
+			if entry.Embedded() && entry.AssetKey == key {
 				return true
 			}
 		}
@@ -2165,7 +2202,7 @@ func deleteFontChain(t *Template, raw map[string]json.RawMessage) error {
 	if err := componentFields(raw, 3); err != nil {
 		return err
 	}
-	name, _, err := declaredFontChain(t, raw)
+	name, chain, err := declaredFontChain(t, raw)
 	if err != nil {
 		return err
 	}
@@ -2173,6 +2210,10 @@ func deleteFontChain(t *Template, raw map[string]json.RawMessage) error {
 		return componentFailure("", fontChainPath(name), fontChainOrphanMessage(name, referees))
 	}
 	delete(t.doc.Fonts, name)
+	// Deleting a chain un-names every entry in it at once, which is the same
+	// event removeFontChainEntry produces one at a time — so it collects the
+	// same way, scoped to exactly those entries (AC5).
+	dropUnnamedFontAssets(t, chain...)
 	return nil
 }
 
@@ -2242,8 +2283,266 @@ func removeFontChainEntry(t *Template, raw map[string]json.RawMessage) error {
 	if len(chain) == 1 {
 		return componentFailure("", fontChainPath(name), fmt.Sprintf("removing that entry would leave font chain %q with no entries", name))
 	}
+	removed := chain[index]
 	t.doc.Fonts[name] = slices.Delete(slices.Clone(chain), index, index+1)
+	dropUnnamedFontAssets(t, removed)
 	return nil
+}
+
+// dropUnnamedFontAssets is AC5: A FACE NOTHING NAMES ANY LONGER IS DROPPED BY
+// THE COMMAND THAT UN-NAMED IT.
+//
+// WHY IT IS HERE AND NOT IN THE SERIALIZER. writeAssets (serialize.go) says so
+// itself, and it is not a preference: AD-9 / D-1.4.3's P1 is
+// `Parse(Serialize(d)) == d`, which FORCES the serializer to preserve an
+// orphan unconditionally — a save that collected one would not be a fixed
+// point, and a document may legally carry an asset nothing references
+// (D-1.4.13, RP-11's positive control). Collecting orphans is a DESIGNER
+// FEATURE: the author's own action removes the face, so the author's own
+// command removes the bytes, and nothing happens behind their back on save.
+// serialize.go is not touched by this story.
+//
+// SCOPED TO THE KEYS JUST UN-NAMED, NEVER A DOCUMENT-WIDE SWEEP. This is
+// setComponentAsset's rule (D-5.13.3) applied to the other asset kind: the
+// candidates are exactly the entries this command removed, and each is dropped
+// only if assetKeyReferenced now answers false for it. An asset a SECOND chain
+// still names is retained — that is the arm DW-80 would have got wrong, since
+// the old walk answered false for every font asset in every document.
+//
+// It takes the removed ENTRIES rather than keys so a caller cannot pass a key
+// it derived some other way; a face entry contributes no candidate at all,
+// which Embedded() decides rather than the caller.
+func dropUnnamedFontAssets(t *Template, removed ...template.FontChainEntry) {
+	for _, entry := range removed {
+		if !entry.Embedded() {
+			continue
+		}
+		if assetKeyReferenced(t, entry.AssetKey) {
+			continue
+		}
+		delete(t.doc.Assets, entry.AssetKey)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STORY 8.6: PICKING A FAMILY PUTS IT IN THE FILE.
+//
+// embedFontFamily is the command Story 8.5 left missing. Twenty-one catalogue
+// typefaces reached the designer and NOTHING could author an embedded-face
+// chain entry or write a font asset, so picking a family changed nothing about
+// the document. addFontChainEntry only ever builds a FaceEntry, and `entries`
+// arrives at addFontChain as a []string; there was no spelling in the command
+// vocabulary that produced an AssetEntry.
+//
+// ONE COMMAND, ONE HISTORY ENTRY, ONE UNDO (AC1). Embedding the face and
+// declaring the chain are one applyFontChainCommand transaction, which is what
+// makes wasm.Engine.Apply's single pushUndo cover both: one undo takes the
+// asset and the chain away together, and there is never a document that
+// carries the bytes with nothing naming them or names a key the document does
+// not carry.
+//
+// IT IS SHAPED ON setComponentAsset (D-5.13.1/D-5.13.3), the module's other
+// asset-authoring command: a CLOSED payload the {op,value} property grammar
+// cannot express, whose bytes GO alone decodes, bounds, hashes and admits —
+// the browser hashes nothing and decides no legality. The one shape it adds is
+// that this command also writes the RECORD, and refuses to embed a face whose
+// caller cannot supply one.
+//
+// THE WRITER CAN NEVER PRODUCE A DOCUMENT ITS OWN PARSER WOULD REJECT. Story
+// 8.6 made licence, licenceText and copyright REQUIRED of an asset a chain
+// names (parse.go's requireEmbeddedFaceLicence). This command declares exactly
+// such a chain, so it refuses the pick up front when any of the three is
+// missing — with a located reason naming the field. Without that guard the
+// refusal would still fire, but at the transaction's reparse, as the
+// unlocated "font chains did not pass format validation": correct, and useless
+// to whoever has to fix it.
+func embedFontFamily(t *Template, raw map[string]json.RawMessage) error {
+	if err := componentFields(raw, 12); err != nil {
+		return err
+	}
+	name, err := fontChainName(raw, "name")
+	if err != nil {
+		return err
+	}
+	record, err := embeddedFontRecord(raw, name)
+	if err != nil {
+		return err
+	}
+	mediaType, err := commandString(raw, "mediaType")
+	if err != nil {
+		return componentFailure("", fontChainPath(name), err.Error())
+	}
+	decoded, err := embeddedFaceBytes(raw, name)
+	if err != nil {
+		return err
+	}
+	tail, err := embeddedFontTail(raw, name)
+	if err != nil {
+		return err
+	}
+	key := fmt.Sprintf("%x", sha256.Sum256(decoded))
+	// RECOGNITION AND STRUCTURE AT THE COMMAND, never relying on the loader as
+	// the catcher — setComponentAsset's rule (AC1 there) and the same reason:
+	// bytes this build cannot read are refused before anything is written to
+	// t.doc.Assets. An unrecognised container is refused HERE even though the
+	// FORMAT accepts one (D-1.8.1 as amended, mediaType is an open set): a
+	// hand-written `.folio` may carry a face this build cannot draw, but a
+	// pick the designer makes must never produce one.
+	if ferr := template.DecodeFontForRender(mediaType, decoded, template.FontChainSite{AssetKey: key, ChainName: name}); ferr != nil {
+		return componentFailure("", fontChainPath(name), ferr.Error())
+	}
+
+	// DEDUPE BY CONTENT HASH (AC2). If ANY chain already names this key the
+	// pick is already in the document: no second asset, no second chain, and
+	// — because the canonical bytes then do not move — no second history
+	// entry either (wasm.Engine.Apply's no-op short-circuit). The existing
+	// chain is what the author is offered.
+	if assetKeyReferenced(t, key) {
+		return nil
+	}
+	if _, exists := t.doc.Fonts[name]; exists {
+		return componentFailure("", fontChainPath(name), fmt.Sprintf("a font chain named %q already exists", name))
+	}
+	if len(t.doc.Fonts)+1 > maxCanvasFontFamilies {
+		return componentFailure("", fontChainPath(name), "document declares more font chains than the projection bound")
+	}
+	if len(tail)+1 > maxCanvasFontChainEntries {
+		return componentFailure("", fontChainPath(name), "a font chain declares more entries than the projection bound")
+	}
+
+	if t.doc.Assets == nil {
+		t.doc.Assets = map[string]template.Asset{}
+	}
+	// INSERTED ONLY IF ABSENT. Re-picking a family whose chain was deleted
+	// re-declares the chain over the asset the document already carries
+	// rather than storing a second copy of it — the key IS the content, so
+	// "already there" and "identical bytes" are the same question.
+	if _, exists := t.doc.Assets[key]; !exists {
+		// Re-wrapped canonically at 76 columns (AD-9) by writeAssets on the
+		// way out, whatever shape it is held in here.
+		t.doc.Assets[key] = template.Asset{
+			MediaType: mediaType,
+			Data:      []string{base64.StdEncoding.EncodeToString(decoded)},
+			Font:      template.Presence[template.FontRecord]{Set: true, Value: record},
+		}
+	}
+	if t.doc.Fonts == nil {
+		t.doc.Fonts = template.Fonts{}
+	}
+	// THE PICKED FACE FIRST, THE PROPOSED TAIL BEHIND IT (AC3). The tail is
+	// the shipped faces for the scripts the picked face does not cover; the
+	// author edits it with the chain commands 8.1 already shipped, which is
+	// why nothing here is privileged or locked.
+	entries := make([]template.FontChainEntry, 0, len(tail)+1)
+	entries = append(entries, template.AssetEntry(key))
+	for _, face := range tail {
+		entries = append(entries, template.FaceEntry(face))
+	}
+	t.doc.Fonts[name] = entries
+	return nil
+}
+
+// embeddedFontRecord reads the six keys the document will record about the
+// face. Three of them — licence, licenceText, copyright — are what parse.go
+// REQUIRES of an asset a chain names; family, style and source are display and
+// provenance and are required HERE for a different reason: this command is the
+// designer's only door into the assets map, and a catalogue row that cannot
+// say what the face is or where it came from is a row that should not ship a
+// face into anybody's document.
+func embeddedFontRecord(raw map[string]json.RawMessage, name string) (template.FontRecord, error) {
+	var record template.FontRecord
+	for _, field := range []struct {
+		key string
+		dst *template.Presence[string]
+	}{
+		{"family", &record.Family},
+		{"style", &record.Style},
+		{"licence", &record.Licence},
+		{"licenceText", &record.LicenceText},
+		{"copyright", &record.Copyright},
+		{"source", &record.Source},
+	} {
+		value, err := commandString(raw, field.key)
+		if err != nil {
+			return template.FontRecord{}, componentFailure("", fontChainPath(name), err.Error())
+		}
+		// BLANK IS EMPTY HERE TOO, and it has to be: parse.go's
+		// requireEmbeddedFaceLicence refuses whitespace-only terms, and a
+		// command that admitted them would hand the transaction's reparse a
+		// document its own parser rejects — a correct refusal, arriving as the
+		// unlocated "font chains did not pass format validation". commandString
+		// refuses "" and stops there, so the trim is this function's.
+		if strings.TrimSpace(value) == "" {
+			return template.FontRecord{}, componentFailure("", fontChainPath(name), "folio: "+field.key+" must be a non-empty string")
+		}
+		// The licence TEXT is the one field with no small legal value, so it
+		// is bounded by the payload rather than by the projection string
+		// bound the others share — a real OFL is ~4 KB and the projection
+		// bound is 512.
+		if field.key != "licenceText" && len(value) > maxCanvasPropertyString {
+			return template.FontRecord{}, componentFailure("", fontChainPath(name), "embedded face "+field.key+" exceeds the projection bound")
+		}
+		*field.dst = template.Presence[string]{Set: true, Value: value}
+	}
+	return record, nil
+}
+
+// embeddedFaceBytes decodes and bounds the face, exactly as setComponentAsset
+// does for a picture and against the same host-memory bound (D-5.13.4): the
+// payload arrives through one engine protocol and one 8 MiB ceiling, so one
+// derived byte bound covers both asset kinds. The largest catalogue face is
+// under half a megabyte, so the bound is nowhere near the pick; it is here
+// because a command that writes arbitrary bytes into a document needs one.
+func embeddedFaceBytes(raw map[string]json.RawMessage, name string) ([]byte, error) {
+	dataRaw, ok := raw["data"]
+	if !ok {
+		return nil, componentFailure("", fontChainPath(name), "face data is required")
+	}
+	var dataB64 string
+	if json.Unmarshal(dataRaw, &dataB64) != nil || dataB64 == "" {
+		return nil, componentFailure("", fontChainPath(name), "face data must be a non-empty base64 string")
+	}
+	decoded, err := base64.StdEncoding.Strict().DecodeString(dataB64)
+	if err != nil {
+		return nil, componentFailure("", fontChainPath(name), "face data must be valid base64")
+	}
+	if len(decoded) == 0 {
+		return nil, componentFailure("", fontChainPath(name), "face data cannot be empty")
+	}
+	if len(decoded) > maxComponentAssetBytes {
+		return nil, componentFailure("", fontChainPath(name), fmt.Sprintf("face exceeds the %d-byte supported size", maxComponentAssetBytes))
+	}
+	return decoded, nil
+}
+
+// embeddedFontTail reads the proposed fallback tail: the shipped face names
+// that follow the picked face in the chain. It is a []string on the wire for
+// the same reason addFontChain's `entries` is — every entry it can express is
+// a FACE NAME, and the ONE entry that names an asset is the one this command
+// builds itself from the bytes it just hashed. A caller cannot put a second
+// asset entry in a chain by writing one down.
+//
+// AN EMPTY TAIL IS LEGAL: a face that covers every script the document renders
+// needs no fallback behind it, and a chain of one embedded entry is a chain
+// (TestLoadNeitherResolvesNorRefusesAnEmbeddedEntry).
+func embeddedFontTail(raw map[string]json.RawMessage, name string) ([]string, error) {
+	tailRaw, ok := raw["tail"]
+	if !ok {
+		return nil, componentFailure("", fontChainPath(name), "the proposed fallback tail is required — write [] for a face that needs none")
+	}
+	var tail []string
+	if json.Unmarshal(tailRaw, &tail) != nil {
+		return nil, componentFailure("", fontChainPath(name), "the fallback tail must be a string array")
+	}
+	for _, face := range tail {
+		if face == "" {
+			return nil, componentFailure("", fontChainPath(name), "a font chain entry must be a non-empty string")
+		}
+		if len(face) > maxCanvasPropertyString {
+			return nil, componentFailure("", fontChainPath(name), "font chain entry exceeds the projection bound")
+		}
+	}
+	return tail, nil
 }
 
 // fontChainBands is the three top-level band element lists in DOCUMENT ORDER
