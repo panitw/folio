@@ -33,25 +33,25 @@ deferred:
 
 *This section is background, not a requirement; the contract below governs.*
 
-The designer now offers twenty-one typefaces, but choosing one is currently a gesture that changes
-nothing — the document comes out the same either way. This story makes the choice stick. When an
-author picks a family, the typeface itself is copied into the document, and the document records
-that it wants to be drawn with it. From then on the file carries the face: send it to a colleague,
-open it on a machine that has never had that typeface installed, and the pages come out identical,
-because the file is no longer asking the machine for anything.
+Choosing a typeface used to be a gesture that changed nothing. It now changes the file. When an
+author picks a family, the typeface itself is copied into the document. Send that file to a
+colleague, open it on a machine that has never had the typeface installed, and the pages come out
+identical — the file is no longer asking the machine for anything. Picking the same family twice
+stores it once, and a face nothing draws with any more is removed by the author's own action rather
+than quietly at save time.
 
-Picking the same family twice does not store it twice. If a face ends up named by nothing, it is
-removed rather than left to swell the file with typefaces nothing draws with — and that removal is
-something the author's action does, not something the saving quietly does behind their back.
+The file also carries whose the typeface is and on what terms: the copyright, and the full text of
+the licence rather than merely its name. That is now a requirement rather than a courtesy — a
+document that embeds a typeface without them is refused when it is opened, and told why.
 
-The file also records what the typeface is and whose it is: the family and style, where the bytes
-came from, who holds the copyright, and the full terms under which they may be passed on — not
-merely the name of a licence but its actual text. A font that travels without its terms is not a
-font you may pass on, so a file that carries a typeface without them is not accepted at all; it is
-refused when it is opened, and told why.
+One thing should be said plainly. For a while the catalogue was handing most of its typefaces the
+wrong licence: seventeen of twenty-one travelled under another project's terms, reserving a name for
+a typeface the document was not carrying. That is worse than saying nothing — it is a false
+statement about what an author may pass on. Review caught it before release, and every face now
+carries the text filed beside it.
 
-This story does not add bold, italic, or any weight axis; it does not let an author bring a typeface
-in from their own disk; and it fetches nothing from the network.
+Still absent, deliberately: bold and italic, a typeface from the author's own disk, and anything
+fetched over the network.
 
 <intent-contract>
 
@@ -680,3 +680,155 @@ see the residual risk below.
 face without them is invalid at load. Chosen over an optional, absent-by-default field purely because
 there are no documents to protect. Registered as **DW-138**. `SupportedMajor` stays `2` and no new
 version trigger was introduced — the `{"asset": …}` entry shape already forces `2.0`.
+
+## Delivery Log
+
+### 2026-09-02 — planned
+
+Planned against `8d5059f`, with HEAD advancing to `133f14a` mid-gate as the owner's ruling and
+D-000.14/D-000.15 were recorded; that advance touched only the decision log and this spec, so no code
+moved under the Code Map. **D-8.6.1** was the gate: the owner's own research on redistributing Google
+Fonts, registered a story earlier, said a `.folio` must carry the licence *text* and the copyright —
+and the format let a face travel with neither. **D-8.6.2** discharged the measurement that entry made
+a precondition: the produced PDF's subset drops the font's entire `name` table, while the `.folio`
+carries the unsubsetted face and keeps it. That split the obligation cleanly — this story can make the
+document right and cannot make the PDF right, so the PDF half was registered rather than attempted.
+
+**D-8.6.3 — `multiple-goals` accepted, no split.** Each candidate split (the orphan drop, DW-80's fix,
+the `scripts` field, the TypeScript export) is required for the pick's own correctness. The stronger
+reason was standing: this epic had already split six times, and a seventh split in the last feature
+story of a run course-corrected for exactly that is not a judgement call. `oversized` was left set.
+**D-8.6.4** endorsed four plan-gate calls (declare `scripts` and verify it against each face's own
+`cmap`; the two explicit keys as redundancy with a purpose rather than the sole carrier; a typed
+catalogue module so `src` can enumerate the faces at all; the pick reads precached bytes and is not a
+fetch), and derived the version answer rather than asserting it: the `{"asset": …}` entry shape
+already forces `2.0`, so there is no new trigger and `SupportedMajor` must not move.
+
+**D-000.15's freedom was spent here on purpose.** Making licence text required is a narrowing, and
+narrowings are free exactly now — already-touching, not going-looking.
+
+### 2026-09-02 — built
+
+Baseline `b4885b2`. **One commit, `49eb7d7`, made at Finalize — no step-03 subagent commit; instance
+seven did not recur, and the count stays at seven.** Review triage: **7 patched (1 high, 3 medium,
+3 low) / 1 deferred (low) / 10 rejected**, 0 `intent_gap`, 0 `bad_spec`, no loopback.
+
+**The high is the story, and it is recorded at D-8.6.5.** The generated catalogue module keyed licence
+text by SPDX identifier, so **17 of 21 faces emitted Cascadia Code's LICENSE** — reserved-name clause
+included. A document embedding Inter would have travelled stating Microsoft's terms, which is worse
+than carrying none: it is a false statement about the terms, naming a typeface the document is not
+carrying. The root error is that *"the OFL is the OFL"* is false of the files — the SIL licence carries
+a per-project preamble and reserved names. Read per face now; the bundle carries 21 texts instead of 2,
+and no build asset was added. **Why it shipped green is the transferable half:** nothing observed the
+generated module. The manifest was right, every binary was right, and the artifact between them — the
+only thing the pick reads — was asserted `toBeTruthy()`.
+
+The other six patches: the per-face tie of emitted text and copyright to each binary's own `LICENSE`
+and name table (the gap that let the high through); the chain-name collision refusal, whose deletion
+left the whole engine suite green while a pick silently overwrote a declared chain; a positive test for
+the rule's reach past font assets, which had been amended *into* existing tests without one; whitespace-
+only terms accepted as stated terms, on both the load and the command side; three fallback face names
+tied to nothing, so a rename would have proposed a face the engine skips; and a refusal assertion whose
+substring matched every row it was meant to distinguish.
+
+**Deferred (1, low):** the family listbox owns `role="presentation"` children for its group headings,
+its empty state and the disk-font decline — pre-existing at one instance, taken to four here.
+**Rejected (10), enumerated with the population or path each verified:** (1) a renamed chain's family
+reappears in the catalogue group and re-picking is a silent no-op — every I/O-matrix row-2 expectation
+holds, and the fix needs asset keys in a projection that carries names only (**D-8.6.7**, and it is
+registered rather than buried); (2) concurrent picks — both paths traced, neither yields a duplicate;
+(3) the coverage reader's format-12 bound — no catalogue row reaches it, all 21 are BMP; (4) the
+proposed tail naming the picked family — the three fallback families are disjoint from all 21;
+(5) `style: "Regular"` hardcoded — all 21 rows are Regular by a shipped exclusion; (6) the designer
+importing a gitignored generated module — the pre-existing pattern, and generation precedes every
+typecheck; (7) a `cjk` value in the vocabulary against the catalogue's CJK exclusion — the key exists so
+a Latin face receives a CJK *fallback*; (8) two spellings of "verbatim" — no value crosses between the
+two generators; (9) DW-138/DW-139 lacking an action — one is a ledger entry, the other owner-owned;
+(10) the frontmatter carrying two baselines — both are this workflow's own bookkeeping.
+
+**D-8.6.6** endorsed the widest consequence deliberately: the rule keys off the chain entry with no
+media-type carve-out, so a chain entry naming a *non-font* asset must also state terms. A carve-out
+keyed on "is it a font?" would be evaded by `font/woff2` on an open media-type set. **D-8.6.8** records
+the working-directory trap firing twice more in this dispatch, both times producing false clean output.
+
+### 2026-09-02 — done
+
+Baseline `b4885b2`, story commit `49eb7d7`, closed at `main` with nothing pushed — `origin/main` is
+still `c985b9c`. **Epic 8's last feature story.**
+
+**Gates re-measured at HEAD by the close, not relayed** — every invocation with its working directory
+(D-8.4j.8). `[folio-go]` `go test -count=1 ./...` → **1877 pass / 2 fail / 5 skip** (baseline 1815;
+**+62 tests**), the two failures `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest
+by identity, *got 7 need >=20*; `go vet ./...` and `go vet -tags=matrix ./...` both exit 0 and silent.
+**`[repo root]`** `gofmt -l folio-go lint` → `lint/internal/rules/licencegraph_test.go` and nothing
+else, not reformatted. `[lint]` `go test -count=1 ./...` → *227 passed in 4 packages*, uncached.
+`[lint]` `go run ./cmd/genmanifest` → rewrote `MANIFEST.md`, then **`[repo root]`**
+`git diff --exit-code -- lint/MANIFEST.md` exit 0 — a no-op, and the pathspec was proved to resolve
+rather than accepted as a bare exit 0. `[folio-designer]` (node v24.16.0) `npm run typecheck` 0;
+`npm run lint` 0 with **exactly 4** `only-export-components`; `npm test` **42 files / 432 tests**
+(baseline 42/424); `npm run build` 0 with the offline manifest at **44 assets** of 64;
+`verify:offline`, `:red` and `:wasm` all 0; `test:e2e:compile` 0 — compile only, DW-101.
+**`[repo root]`** the 23 golden `expected.pdf` digests hashed against a **worktree checked out at
+`b4885b2`**: **byte-identical, all 23**. `maximumCacheAssets = 64` present once; `SupportedMajor`
+unmoved at 2; `internal/fontset/` and `lint/` carry no diff against `b4885b2` at all.
+
+**Heavy suites, per D-000.4's per-epic cadence: written and compiling, NOT RUN.** The four
+`FOLIO_MATRIX_TARGET` legs and `TestCrossTargetByteIdentity` compile — `go vet -tags=matrix ./...` is
+clean — and the Playwright suite compiles under `test:e2e:compile`. **All of them come due at Epic 8's
+boundary gate**, after Story 8.4d. The D-000.4 override this story invoked for its own format- and
+round-trip-shaped correctness was honoured separately and independently: the load rule was exercised
+end to end through the real CLI, and a document carrying an unreferenced font asset was proved a fixed
+point of parse-then-serialize.
+
+**The close's own measurements, taken rather than accepted.** The emitted catalogue module was parsed
+independently and each face's `licenceText` compared to the `LICENSE*` beside its own binary and each
+`copyright` to nameID 0 read by an independent sfnt walk: **0 mismatches of 21, both fields**, with a
+disequality control confirming the checker reddens when a value is altered. The 17 distinct texts
+across 21 faces are four same-project sibling pairs sharing an identical upstream file, not the cache
+returning. The load-bearing refusal was driven end to end: all three keys × absent / explicit `null` /
+whitespace-blank are refused at load, each located at both the asset key and `fonts.body[1]`, while the
+unmodified document loads clean and an unreferenced termless font asset still loads clean.
+`serialize.go`'s whole diff against `b4885b2` is six lines inside `writeFontRecord`'s field list —
+`writeAssets` and its orphan loop are untouched, and an orphaned font asset was round-tripped twice to
+canonical byte-stability, so AD-9's P1 holds. **DW-80's deletion mutation reds FIVE tests, not four:**
+the build's count was scoped to the root package and missed
+`TestEngineApplyEmbedFontFamilyRePickPushesNoSecondEntry` in `wasm`. Neutering the load rule reds 16
+subtests plus the non-font arm. Both mutants were restored and verified byte-identical by digest.
+Both `spec-fonts` Open Questions are closed in the file: struck through with the answer, and the
+disk-font one declined explicitly, rendered as stated text at the control and asserted by string.
+
+**`followup_review_recommended: true` is discharged without a second review dispatch**, on D-8.4j.16's
+rule. The profile says the layers did their job: 0 `intent_gap`, 0 `bad_spec`, no loopback, the high
+found *by* the review and mutation-proved, and all 10 rejections enumerated with what each verified.
+**The closer carried the scrutiny instead** — the independent per-face re-measurement, the end-to-end
+refusal drive, both mutation re-runs at module scope, and the audit below.
+
+**One defect found by the close and NOT patched, registered as DW-140.** A `.folio` may legally carry
+an unreferenced font asset with no terms — the I/O matrix says so and D-1.4.13 requires it. If the
+author then picks that same catalogue family, the command inserts the asset **only if absent** — correct
+for dedupe by content hash — so the termless record survives, and the chain the command declares makes
+it an embedded face. The transaction wrapper catches the result and refuses safely, leaving the document
+untouched, but the message is the unlocated *"font chains did not pass format validation"* — the exact
+failure mode patch P5 was written to prevent on the command-string path and did not reach on the
+asset-reuse path. Reproduced at `456ee84`. Diagnostic quality, not correctness: no corruption, no
+history entry, no bad document written.
+
+**Registered at this close with owners:** **DW-140** the pick over an existing termless orphan (owner:
+the next story touching the embed command); **DW-141** the listbox's non-option children (owner: the next
+story touching the family control); **DW-142** the renamed-chain silent no-op of D-8.6.7, three reviewers
+raised and rejected against the contract (owner: **whichever story next touches the canvas projection**,
+since the fix needs asset keys there). **DW-138** already records what the format freedom was spent on
+and the non-font-asset reach; **DW-139** the PDF attribution gap.
+
+**What the format freedom was spent on, for Story 15.3's list (D-000.15):** exactly one thing —
+`licenceText` and `copyright` are **required** on a font asset a chain names, and a `.folio` embedding a
+face without them is invalid at load. Chosen over an optional absent-by-default field purely because
+there are no documents to protect. Its one consequence outside the record is the non-font-asset reach.
+`SupportedMajor` stays 2, no new version trigger, no other format area opened, all 23 goldens hold.
+
+**Provenance audit (D-8.4j.12's standing step), reported by SHA.** `49eb7d7`: 32 files, all this
+story's — engine, designer, the one fixture, the three spec documents, the deferred-work register and
+one `.gitignore` line; nothing under `lint/` or `internal/fontset/`. Author and committer both
+`Panit Wechasil <panitw@hotmail.com>`; branch `main`; both required trailers present and exact.
+`456ee84` is the decision-log record commit. **No step-03 subagent commit occurred — instance seven did
+not recur, and the count stays at seven.** Nothing pushed.

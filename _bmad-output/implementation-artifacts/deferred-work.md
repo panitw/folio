@@ -6726,3 +6726,72 @@ against D-8.6.1's "including the strings inside the font binary".
 
 **What discharges it:** a ruling on whether the PDF producer passes `name` through (and a deliberate,
 attributed re-record of the 23 goldens if it does).
+
+### DW-140 — a pick over a font asset the document already carries WITHOUT terms is refused with an unlocated error
+
+- **Deferred by:** **Story 8.6** (found by the close, 2026-09-02, not by the review layers; reproduced
+  at `456ee84`).
+- **Owner:** **the next story that touches the embed-a-family command.** Named as a code site rather
+  than an event, per D-000.73 — an owner that is an event stops existing when the event passes.
+- **Severity:** LOW. It is DIAGNOSTIC QUALITY, not correctness: the transaction refuses, the document is
+  not mutated, no history entry is pushed and no invalid `.folio` is ever written.
+- **Status:** OPEN.
+
+**The reachable sequence.** A `.folio` may legally carry an **unreferenced** font asset whose `font`
+record is absent or partial — Story 8.6's own I/O matrix says so ("Font asset present but no chain names
+it → loads clean"), and D-1.4.13 requires it. If the author then picks **that same catalogue family**,
+`embedFontFamily` hashes the bytes, finds the key already present, and — correctly, for dedupe by
+content hash — **inserts the asset only if absent**. The termless record therefore survives, and the
+chain the command goes on to declare is exactly what turns that asset into an embedded face. The
+candidate document then fails its own reparse inside `applyFontChainCommand`, which refuses with the
+**unlocated** `"font chains did not pass format validation"` at `fonts`.
+
+**Measured, not reasoned:** a `fontChainTemplate` carrying the shipped Thai face as a termless orphan
+parses clean, and the pick of that face is refused with exactly that message. **This is the same failure
+mode patch P5 was written to prevent** — P5 closed it on the command-string path (a blank field handed
+to the reparse) and did not reach the asset-reuse path.
+
+**What discharges it:** either writing the validated record over an existing font asset whose record does
+not satisfy the requirement (the pick has just proved it can state the terms), or locating the refusal at
+the asset key so the author is told the document already carries that face without terms. Both need a
+test on the orphan-precondition arm, which nothing currently covers.
+
+### DW-141 — the family listbox owns non-option children, which breaks its required-owned-elements rule
+
+- **Deferred by:** **Story 8.6** (routed to `defer` by the review, 2026-09-02; registered at the close).
+- **Owner:** **the next story that touches the font-family control.**
+- **Severity:** LOW. Assistive technology only; no rendering or format consequence.
+- **Status:** OPEN.
+
+The font-family listbox carries `role="presentation"` list items for its group headings, its empty state
+and the permanently-rendered disk-font decline, which a `role="listbox"` may not own. **Pre-existing, not
+caused by this story:** the empty-state child was already there at `b4885b2`. Story 8.6 added three more
+instances of the same pattern, taking the count from 1 to 4, which is why it surfaced now.
+
+**What discharges it:** `role="group"` with an `aria-label` for the headings, or moving the notes outside
+the list and referencing them with `aria-describedby`.
+
+### DW-142 — a family whose chain was renamed reappears in the catalogue group, and picking it is a silent accepted no-op
+
+- **Deferred by:** **Story 8.6** (raised by **three independent reviewers**, rejected against the
+  contract at **D-8.6.7**, and registered at the close rather than buried — the correct handling of a
+  rejection three reviewers agreed on).
+- **Owner:** **whichever story next touches the canvas projection.** The fix is not available anywhere
+  else: it needs asset keys in `CanvasProjection`, which today carries family NAMES only.
+- **Severity:** MEDIUM as a user-visible oddity; **not a correctness defect**.
+- **Status:** OPEN.
+
+**Why it was rejected, and the rejection is sound.** The catalogue group is filtered against the
+projection's declared family names. Rename an embedded family's chain and its catalogue name no longer
+matches, so the family shows as not-yet-declared. Picking it then dedupes on the content hash, finds the
+key already named by the renamed chain, and returns without doing anything. **Every I/O-matrix row-2
+expectation holds** — no second asset, no second chain, no second history entry, and "No error expected"
+— so the behaviour is what the contract specifies. What the contract did not anticipate is that the
+entry would still be *offered*.
+
+**What the author sees:** an entry in the not-yet-declared group that does nothing when clicked, with no
+refusal and no explanation, until they notice the same face under a different chain name.
+
+**What discharges it:** asset keys reaching `CanvasProjection` so the catalogue can be filtered by what
+the document actually carries rather than by what its chains are called — a projection change, which is
+why it is not Story 8.6's.
