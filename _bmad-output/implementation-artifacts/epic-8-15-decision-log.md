@@ -2726,3 +2726,33 @@ still unmeasured and still Story 8.6's.
 only; **44 of 64** cache slots now used; the Brotli subtotal has no owner until 8.4d; and the
 forbidden-host scan's claim stays bounded to its **579-file population** — never *"no request leaves the
 machine"*.
+
+### D-8.5.21 — Story 8.5 closed at `3ffe902`; two findings carried, one of them awkward
+
+**Gates, measured at HEAD:** `folio-go` 1815/2/5 (the two standing by identity, no fourth red); `lint`
+four packages ok; designer 42 files / 424 tests; 23 goldens **byte-identical against a worktree at
+`1a4ccea`**; `maximumCacheAssets` 64; `genmanifest` a no-op. Integration/e2e **written and compiling,
+not run — due at Epic 8's boundary gate.**
+
+**The Brotli figure is confirmed three independent ways** — the recorded `brotli.catalogue.totalBytes`,
+a summation of the 21 assets' own values, and a `stat` over the emitted `.br` sidecars: **all equal
+2,227,609**, 14.17% of a 15,719,224-byte immutable payload. **Story 8.4d inherits a correct number.**
+
+**The offline proof has teeth, with a nuance reported rather than rounded up.** Deleting a catalogue
+face makes `verify:offline` fail in **every** direction, but **names the face in only two of three**:
+sidecar-only deletion and byte-swap name it; a wholly-deleted face reds on an earlier exact-set
+comparison that **shadows** the `missing manifest asset` guard which would have named it. **The closer
+declined to report "reds naming the face" for three cases when it is true of two.** The ordering is
+deliberate and documented; registered for whichever story next touches that verifier.
+
+**An awkward pre-existing finding, recorded because it is exactly what this story's AC4 is about.**
+`docs/expression-reference.html` **really links a Google Fonts stylesheet** — a live font-service
+reference, which `spec-fonts` `## Non-goals` forbids. It sits **outside the scanned roots**, so AC4's
+scan does not see it and the story's claim stays bounded to its 579-file population, honestly. **Nothing
+currently sees this file.** Out of scope here; registered.
+
+**Provenance audit:** `048f662` is **instance seven** (step-03 subagent), seven catches. All three
+commits `main`, both trailers exact, no forbidden paths, **no licence-gate source**. **Nothing pushed —
+`origin/main` still `c985b9c`, 48 commits behind.**
+
+**Carried into Story 8.6:** AC3's margin of one, and **44 of 64 cache slots now used**.
