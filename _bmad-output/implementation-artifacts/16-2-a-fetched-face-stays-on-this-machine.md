@@ -60,6 +60,19 @@ faces.
 - **Everything the embed command requires is stored with the bytes.** Licence identifier, licence text
   and copyright travel into the store, because a face offered from the store must be embeddable
   without a network — and `embedFontFamily` refuses without all three.
+- **A STALLED fetch is a first-class degradation, not an unhandled case** (D-16.R.14, pulled in from
+  DW-165). 16.2's subject is what happens when a fetch does not give you bytes, and its matrix already
+  carries network-down and store-failure; **a stall is the one member of that class it did not cover,
+  and it is the worst** — a rejection degrades with a message, a stall leaves the font control **dead
+  for the session with no message at all**. Story 16.1's pick hold now spans the whole fetch chain with
+  no timeout, so this is reachable today.
+  - **A timeout is a number, and a number needs a basis** — derived from a measured fetch time against
+    the real host, or an explicit "chosen because", never a magic constant. The measurement carries
+    command, commit, tree state and working directory (D-8.4j.8).
+  - **The hold must be PROVEN to release**, by a test that reds when the release is removed. This is the
+    **third** instance of the state-lifetime class in two stories (D-16.R.15); assume a fourth.
+  - **It must not silently retry.** A retry over a deterministic stall hides it — Story 16.0's `Never:`
+    clause, same reasoning.
 - **Storage failure is a degradation, stated.** A private window, cleared site data or a quota refusal
   leaves a working designer with an empty group, not an error the author cannot act on.
 - Commit only on `main`. Never push, never branch, never `git add -A`.
@@ -83,6 +96,7 @@ break a document that already embeds the face.
 | Re-pick, later document | Key present | **No fetch**; embed from stored bytes | No error |
 | Re-pick, network down | Key present | Works; this is the store's whole point | No error |
 | Family not stored, network down | Key absent | Stated: cannot add right now | Degradation |
+| **Fetch STALLS rather than rejecting** | request never settles | **The timeout releases the hold and states the degradation** — the control must not be left dead for the session (D-16.R.14) | Degradation, stated; **never a silent retry** |
 | Private window / storage blocked | IndexedDB throws on open | Group empty; picks still fetch; message states it | Degradation, once, not per pick |
 | Quota exceeded on write | Large face, full origin | Fetch and embed still succeed; the caching is what failed | Degradation, named |
 | Author removes an entry | Entry present | Removed, with what is being removed named; documents unaffected | No error |
@@ -137,6 +151,8 @@ break a document that already embeds the face.
   operating-system font.
 - Given storage that cannot be opened or written, when the designer runs, then it still works and says
   what is degraded.
+- Given a fetch that stalls rather than rejecting, when the timeout fires, then the hold is released,
+  the degradation is stated, nothing is silently retried — and a test reds if the release is removed.
 - Given a stored face the author removes, when it is removed, then documents that already embed it are
   unchanged.
 

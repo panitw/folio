@@ -600,3 +600,93 @@ committed regime** — its own `LICENSE*`, a `NOTICE.md` recording upstream rele
 committed digest, byte size and fetch date, and the digest tie — and **`font-catalogue.test.ts`'s
 population floor must rise with the batch.** *"A floor left at 21 while the tier grows to 30 is a floor
 that stops measuring the thing it was built to measure."*
+
+### D-16.R.13 — RULING (DW-160): `source` stops being a URL, on both tiers
+
+**Engineering lead ruling**, applied. Confidence: high. **Not a new provenance requirement — one tier
+failing a contract the other tier already honours.**
+
+**The measurement that decides it.** Both tiers write `source`, and they disagree:
+
+| Tier | Writes | Shape |
+|---|---|---|
+| Committed (`build-wasm.mjs:302`) | `folio-designer/public/fonts/<dir>/<file> — see that directory's NOTICE.md for the pinned upstream release and digest` | a path plus a pointer to a fixed-point record |
+| Fetched (`font-source.ts:338`) | `<host>/google/fonts/main/<dir>/<slug>/<file>` | **a bare mutable branch URL** |
+
+And `font-catalogue.md` already defines the field as *"upstream release and the derivation that produced
+the shipped instance"* — **a release, not an address.** The fetched tier does not meet its own field's
+definition.
+
+**Verdict.** `source` carries the **upstream project**, the **path within it**, and the **fetch date**.
+Three things it must not carry:
+- **Not a resolvable-looking URL.** A string shaped like an address is a promise of fetchability, and a
+  promise that decays is worse than none — a dead link in a year reads as *"this provenance is broken"*
+  when the provenance is in fact intact.
+- **Not the SHA-256.** It is already the asset key, and the key travels with the record when an asset is
+  lifted into another document (D-8.6.1's own scenario). Duplicating it creates **two authorities on one
+  fact that can disagree**.
+- **Not `main`, or any branch name.** That is the defect.
+
+**Option 1 (pin the commit SHA) is REFUSED, on a measurement.** `raw.githubusercontent.com` returns **no
+commit ref** — its `etag` is a content SHA-256, not a commit. Obtaining one requires `api.github.com`, a
+**fourth host**, against D-16.1's *"three hosts, and no others"* — and **the lead will not amend an
+owner's host allowlist by ruling.** The trade is poor regardless: a pinned commit still decays (history
+rewrite, repo removal) and buys no licence audit unless `OFL.txt` and `METADATA.pb` are pinned at the
+same commit too, which one string cannot express. Recorded as considered-and-rejected so it is not
+re-derived.
+
+**The cost, stated rather than hidden.** A recipient cannot refetch the exact bytes. Acceptable because
+**they do not need to**: CAP-2 puts the face inside the file, the asset key pins its identity, and
+`licenceText` and `copyright` travel with it. **`source` names provenance, not a retrieval path**, and
+should read as one.
+
+**Story 16.1a carries both halves, because it is already touching the field.** The committed tier's
+current string points at a `NOTICE.md` **the recipient of a `.folio` does not have** — honest but
+incomplete — and a reader cannot tell which tier a face came from, so if the two conventions differ in
+*kind* the field is uninterpretable. 16.1a **inlines the pinned upstream release and the committed
+digest** instead of pointing at a file that does not travel.
+
+**Guardrails.** `source` stays a `string` in the twelve wire fields — **no arity change**. **Verify, do
+not assume, that no golden moves**: check whether any `.folio` fixture feeding a golden embeds a face
+rather than reasoning it through. **A test asserts `source` contains no scheme and no host on either
+tier** — that is the tripwire, and the convention alone will not hold. Record on D-000.15's running list
+for Story 15.3.
+
+### D-16.R.14 — RULING (DW-165): the fetch timeout is pulled into Story 16.2, and the contrast with D-16.R.11 is deliberate
+
+**Engineering lead ruling**, applied. Confidence: high.
+
+**Verdict.** Pull it in. **And the contrast with the immediately preceding deferral is put on the record
+so the line reads as principled rather than convenient.** D-16.R.11 deferred the load-path licence tie
+because it guards **hand-authored files, which Epic 16 does not create** — off-goal. This is the
+opposite: **16.2's stated subject is what happens when a fetch does not give you bytes**, and its own
+I/O matrix already carries **network-down** and **store-failure** rows. **A stall is the one member of
+that class it does not cover, and it is the worst** — a rejection degrades with a stated message; a
+stall leaves the control **dead for the session with no message at all**. A degradation matrix missing
+its silent arm is not a scope addition to fix; it is **the matrix being incomplete**.
+
+**Guardrails.**
+- **A timeout is a number, and a number needs a basis.** Derived from something stated — a measured
+  fetch time against the real host, or an explicit *"chosen because"* — never a magic constant, and the
+  measurement carries command, commit, tree state and working directory (D-8.4j.8).
+- **The hold must be proven to release**, by a test that reds when the release is removed.
+- The timeout releases the hold and states the degradation. **It must not silently retry** — a retry
+  over a deterministic stall hides it (Story 16.0's `Never:` clause, same reasoning).
+
+### D-16.R.15 — PATTERN, named because it has now fired three times in two stories: a fix for a state-lifetime bug is the likeliest site of the next one
+
+**Engineering lead**, unprompted, recorded as a standing expectation rather than a finding.
+
+Story 16.1's review patched a state-lifetime defect — the pick's re-entry guard released **before** the
+new work rather than around it, so two overlapping picks could both commit an embed. **The patch then
+introduced the same class of defect**: the guard was backed by a ref, but `setCurrentSnapshot`'s
+document-reset path cleared only the **state** copy, so replacing the document mid-pick left the hold
+stuck `true` for the session — the control looking enabled while **every later pick silently did
+nothing**. The story's closer caught it and fixed it in one line with a test that reds without it.
+
+**Why it recurs:** *"the author is holding exactly one lifetime in mind while adding a second carrier
+for the same state."* Third instance in two stories.
+
+**Standing consequence.** Wherever a hold, a busy flag or a generation guard is added or repaired, its
+**release path is red-proved rather than asserted** — a test that fails when the release is removed. That
+is the reason D-16.R.14's guardrail demands it explicitly rather than trusting the implementation.
