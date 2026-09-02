@@ -2419,3 +2419,57 @@ operator), so **the composition boundary is stated rather than discovered** (D-8
 **Census:** cannot witness this change — no population text carries a `WITH` declaration, so corrupting
 the new branch leaves it green. **0-of-35 is evidence the story breaks nothing, never that it does
 anything.** The witnesses are the five red-proofs.
+
+### D-8.5.15 — OWNER DECISION amending D-8.5.14: an approved exception can REHABILITATE an otherwise-refused base, seeded with `Font-exception-2.0` only
+
+**Owner decision**, taken at the terminal 2026-09-02, **on the empty-domain measurement in hand**
+(D-8.4k.4). This **amends** D-8.5.14. That entry stands above as written; this appends.
+
+**Verdict.** A named, owner-approved exception can make an **otherwise-refused base acceptable for a
+font asset**. The exception list is seeded with **`Font-exception-2.0` and nothing else**.
+
+**Situation.** D-8.5.14 required base ∈ four ids **AND** exception approved. Measured, that admits
+nothing real: SPDX registers exactly one font-related exception, and it exists **only** as a carve-out
+to the GNU GPL v2, so its base can never be one of the four. The rule was coherent and its population
+was empty.
+
+**In simple terms.** The one carve-out that exists in typefaces has exactly one job: to make a licence
+we would otherwise refuse safe to use. Requiring the licence to already be acceptable ruled out every
+case the feature exists for. The owner has inverted the conjunction for that one carve-out: the
+exception is now what *earns* the base its acceptance, rather than a bonus on top of an already-accepted
+one.
+
+**Why this is the right shape and not a loosening.** `Font-exception-2.0` exists precisely to stop
+copyleft propagating into documents produced with the font — **which is exactly Folio's mechanism and
+exactly what AD-26's stated Prevents is about** (D-8.5.3: fonts do not link; an asset's licence attaches
+to the documents users produce). The exception is not a technicality being waved through; it is the
+instrument that makes the licence safe for the one use Folio makes of it.
+
+**Options considered.** (a) *Keep D-8.5.14 unchanged and refuse every `WITH` font* — defensible and
+held deliberately, rejected because it costs the GPL-plus-font-exception families (Liberation,
+Libertine and equivalents) for no risk actually being avoided. (b) *Drop the `WITH` work entirely* —
+rejected: it leaves the checker unable to name **why** it refused, and leaves procurement shaped by a
+parser limitation rather than by policy. (c) *Seed the exception list so an approved exception
+rehabilitates its base* — chosen.
+
+**⚠ THE EDGE THAT MUST NOT BE GOT WRONG, and it is why this goes to the lead before it is built.**
+This decision **must be scoped to FONT ASSETS ONLY**. `ClassifyLicenceText` is shared with the
+**dependency** path (`rules/licencegraph.go`) and the **npm** path (`licence/npm.go`), and **neither
+gates per term** (D-8.4k.6.1). A naive implementation would make a **copyleft Go or npm dependency
+carrying a font exception newly pass AD-26's dependency ban** — a ban whose Rule is a *family* ban on
+the whole module graph, and which this owner decision does not touch and must not touch. **AD-26 has
+two clauses; this amends the ASSET clause only.** Rehabilitation is a property of a redistributed font
+asset, never of a linked dependency.
+
+**Consequences.** The exception list is an **owner-decided list**, guarded like the four ids — a
+test-owned literal citing this entry, so appending an entry reds on its own message. Seeded with
+**`Font-exception-2.0` only**; `LLVM-exception` is **not** admitted (an LLVM-project shape, not a
+typeface shape) and its absence is deliberate rather than an oversight. The rehabilitated bases are the
+GPL family that the exception is defined against — the exact set is the lead's to specify. `WITH`
+composed with `OR`/`AND` remains **out of scope and refused** (D-8.4k.2), which means the Libertine dual
+form `OFL-1.1 OR GPL-2.0-or-later WITH Font-exception-2.0` is **still refused** — worth stating plainly,
+since it is a family this decision might be expected to open and does not.
+
+**How we'd know it was wrong.** A copyleft **dependency** passing the graph scan because it carries an
+exception — that would mean the asset clause's amendment leaked into the family ban, which is the one
+outcome this entry exists to prevent.
