@@ -3,11 +3,11 @@ title: 'Story 8.5: A curated catalogue ships with the designer'
 type: 'feature'
 created: '2026-09-02'
 status: 'ready-for-dev'
-baseline_revision: 'b0fae960cc0ace9f1a243aee0170e99e67ef2fb1'
+baseline_revision: '19959fa9d9188e9732e658c4e26f825f44ecdd24'
 review_loop_iteration: 0
 followup_review_recommended: false
-context: []
-warnings: ['oversized', 'multiple-goals']
+context: ['{project-root}/_bmad-output/implementation-artifacts/8-5-catalogue-procurement.md']
+warnings: ['oversized']
 deferred: []
 ---
 
@@ -19,303 +19,226 @@ Today an author can only use the handful of typefaces the designer was built wit
 else means finding a font, working out whether its licence permits redistributing it inside the
 documents you produce, and getting the file onto the machine — a research errand, not a design choice.
 
-This story ships a curated list of freely-licensed typefaces with the designer itself, so choosing a
-font becomes a search through a list somebody has already cleared. Every face travels with its own
-licence text and copyright line, and the build now refuses to finish if any face carries a licence
-outside a short permitted set — or one the tool cannot identify at all. Not knowing stops counting
-as fine.
+The work that made the build refuse an unacceptable licence is finished and shipped. What is left is
+the part you can actually see: this story puts the typefaces themselves into the designer, so choosing
+a font becomes a search through a list somebody has already cleared. Every face travels with its own
+licence text and copyright line.
 
-It deliberately does not add bold or italic. Those belong to later work that has not been decided,
-so every face here is a single upright weight; a list that offers no way to embolden is intended,
-not an oversight.
+It deliberately does not add bold or italic — those belong to later work that has not been decided, so
+every face here is a single upright weight. And picking a family still does nothing to the document;
+that is the next story's job.
 
-Done looks like this: at least twenty families ship inside the offline release, verified like every
-other file the designer carries and reachable with no network; the build fails on an unacceptable or
-unreadable licence; and the weight each face adds is measured, not estimated.
+A family or two are left out, and the reason is narrower than it looks: the checker cannot yet read
+their particular licence *wording*. Not that the licence is unacceptable — the wording is fine and the
+font is genuinely free to use. It is a known gap with a known price, and widening the checker later
+brings them straight back.
 
-Two things will look wrong and are not. Picking a family still does nothing to the document — that
-is the next story's job. And the release gets noticeably heavier, which is expected: the size limit
-is set deliberately at the end of this run against the finished weight, never adjusted along the way
-to whatever the build happens to weigh.
+The release gets noticeably heavier, and that is expected. The size limit is set deliberately at the
+end of this run against the finished weight, never nudged along the way to whatever the build happens
+to weigh.
 
 <intent-contract>
 
 ## Intent
 
-**Problem:** The designer offers only the six faces it was built with, and nothing in the repository
-checks whether a redistributed font's licence is *acceptable* — the asset gate checks only that a
-`LICENSE*` and `NOTICE*` sit beside the binary, then records the classification as a label with
-`"SEE NOTICE"` as fallback and returns nil. A GPL font would get a manifest row and a clean build.
-There is also no scan anywhere for a forbidden font host, and per-asset compressed weight is
-recorded nowhere.
+**Problem:** The designer offers only the six faces it was built with. An author who wants any other
+typeface has no route to one, and nothing records what each face costs the offline release.
 
-**Approach:** Ship a curated catalogue of at least twenty permissively-licensed static faces inside
-the designer's offline release, behind the same verified asset URLs as every other release asset;
-make an unacceptable *or unclassifiable* asset licence fail the build the way the dependency ban
-already does; widen the extension-class guard's population to match the checker it protects; add a
-comment-stripping forbidden-host source scan; and record per-asset Brotli bytes for Story 8.4d to
-consume. The catalogue is data plus binaries plus gates — no picking behaviour (Story 8.6).
+**Approach:** Ship a curated catalogue of at least twenty additional permissively-licensed static
+faces inside the designer's offline release, behind the same verified asset URLs as every other
+release asset; record each face's provenance and its per-asset Brotli weight; and add a source scan
+that fails the build if a forbidden font host appears in the scanned source. The catalogue is
+binaries plus provenance plus a weight record — no picking behaviour (Story 8.6), and **no licence-gate
+change of any kind**.
 
 ## Boundaries & Constraints
 
 **Always:**
-- **Bundled and precached, not fetched.** `spec-fonts/SPEC.md` `## Non-goals` — *"No live font
-  service. No Google Fonts API, no arbitrary URL, no 'download on first use'"* — plus
-  `font-catalogue.md` §"Why bundled rather than fetched" (*"Nothing is fetched. The bytes come from
-  the bundle already on the machine"*) and the story's own AC (*"inside the bundle behind the same
-  verified asset URLs … and the offline verification job covers them"*). See Design Note 1 for why
-  the fetch-at-pick steer (D-8.5.1b) is not taken, why a lazily-cached second tier is foreclosed by
-  the same clause, and the residual tension the plan gate should rule on.
-- **Provenance per procurement route (D-8.5.4).** Reproduction (replayable derivation, committed
-  output, both digests) only for a face **this project derives**; **provenance** (pinned upstream
-  version + NOTICE recording upstream digest, committed digest, byte size, fetch date, path inside
-  the archive) is sufficient for a **vendored static** face — the standard Story 8.4c already
-  shipped IBM Plex on. Each face states which route it took. Never write an AC claiming a
-  derivation that does not exist.
-- **Licence: allowlist, fail-closed.** `OFL-1.1`, `Apache-2.0`, `MIT`, `UFL` only. Anything else,
-  **and any licence text the classifier cannot identify**, fails the build (D-8.5.2, D-8.5.3).
-  `"SEE NOTICE"` stops being a pass. `UFL` does not exist in `classify.go` today and must be added
-  with a marker branch, an SPDX entry and a fixture — never by widening a list silently.
-- **Byte identity.** No `.folio` format change, no engine change, no `folio-go/fonts/` change. The
-  23 golden digests must be **byte-identical** to the pre-dispatch snapshot; a moved golden is a
-  HALT, not a re-record. `maximumCacheAssets` stays **64** (measured headroom: 23 assets in use, 41
-  free — a 20–40 family catalogue fits without raising it; see Design Note 2).
-- **Guards are widened or replaced, never weakened**, and every guard added is mutation-proved:
-  delete it and a **named** test or red proof reddens on **its own message**.
+- **Bundled and precached, not fetched (D-8.5.12).** `SPEC.md` `## Non-goals` forbids a live font
+  service, an arbitrary URL and "download on first use". The owner-brief clause asking for *"a shape
+  where size is not paid for at first load"* is **declined on the contract** — recorded, priced
+  (~15–18 MB against a `~9 MB` commitment) with its reversal named. **This story invents no middle
+  tier.**
+- **Vendored static route per face (D-8.5.4).** Provenance — pinned upstream version, NOTICE recording
+  the upstream digest, the committed digest, byte size, fetch date, and the path inside the archive.
+  Reproduction/derivation is **not** required and **not available**. Every face and its pinned tag
+  comes from `8-5-catalogue-procurement.md`, which is normative for procurement.
+- **Licences: the owner's four ids only** — `OFL-1.1`, `Apache-2.0`, `MIT`, `Ubuntu-font-1.0`
+  (D-8.5.3). Admission is per-term; unclassifiable fails the build. **The gate already does this
+  correctly — satisfy it, never touch it.**
+- **No `WITH` expression in any procured licence (D-8.5.17).** Where a family is excluded for this,
+  the record says **"pending a parser widening"** and never *"that licence is unacceptable"*.
+- **The census pin stays a hand-written literal** derived from nothing under test (D-8.4j.2).
+- **Byte identity.** No `.folio` change, no engine change, no `folio-go/fonts/` change. The 23 golden
+  digests must be **byte-identical** to the pre-dispatch snapshot. `maximumCacheAssets` stays **64**.
+- **Every guard added is mutation-proved**: delete it and a *named* test reddens on *its own* message.
 - Commit only on `main`. Never push, never branch, never `git add -A`.
 
 **Block If:**
-- The catalogue cannot reach ≥20 families without a face whose licence is outside the allowlist, or
-  whose licence text `ClassifyLicenceText` cannot identify. (Do not widen the allowlist to fit the
-  population — that is the defect this story exists to close.)
-- Any face requires **derivation** (a new `UPSTREAM` entry) — the bootstrap gap is real
-  (gitignored `.font-sources/`, nothing fetches upstream, `out_sha256` unknowable before the first
-  run) and pulling it in-scope is a materially different story. Prefer vendored static faces.
-- `maximumCacheAssets` would have to be raised, or a golden digest moves, or
+- The catalogue cannot reach **≥20 new families** from `8-5-catalogue-procurement.md`'s pool and its
+  reserve. **Do not widen the allowlist to fit the population** — that is the defect the gate exists
+  to prevent.
+- Any face requires **derivation** (a new `UPSTREAM` entry). The bootstrap gap is real.
+- `maximumCacheAssets` would have to be raised, a golden digest moves, or
   `S1 CJK row is not the dominant font payload` fires.
-- A catalogue face's row in `lint/MANIFEST.md` reads `SEE NOTICE`.
-- Widening the extension-class guard to the repo-wide population cannot be made green without
-  excluding something `ResolveAssets` itself includes.
+- A catalogue face's row in `lint/MANIFEST.md` reads `SEE NOTICE`, or the build fails on a licence.
+- **Seeding the compound-expression census case reddens any licence test other than the census
+  itself.** Repairing that would be licence-gate work, which this story may not do — halt instead.
+- *(Deliberately **not** a Block If: a licence-gate defect. See the `Never` list — it registers to
+  Epic 15 and the story continues. This story is the one **most likely** to surface that class, and
+  D-000.13 pre-committed the response before contact.)*
 
 **Never:**
-- Bold, italic, oblique, synthetic emboldening, variable-font axes, or any weighted/sloped face.
-  **Epic 11 (FR57) owns realize-vs-retire in full and the owner ruling has not been made (D-000.7;
-  `epics.md` Epic 8 header, amended 2026-09-02).** A weighted catalogue face is a collision with
-  Epic 11, not a convenience.
-- CJK families in the catalogue (a full SC face is 10.6 MB against 646 KB / 47 KB); the shipped SC
-  face remains the coverage fallback.
-- **A live font service, an arbitrary URL, or a "download on first use"** — `SPEC.md` `## Non-goals`.
-- **Enumerating or reading host-installed fonts** on the authoring or rendering machine (`## Non-goals`,
-  AD-8: fonts arrive as an explicit value and are never queried from the host).
-- Save-time subsetting, or any change to how the PDF producer subsets (`## Non-goals`).
-- A container format — the catalogue is committed files plus a data record, never a zip-of-folders.
-  *(These five, with bold/italic/axes and CJK above, are the six constraints DW-108 dropped from the
-  regenerated epic context; carried here sourced from `spec-fonts/SPEC.md` `## Non-goals` per the
-  lead's plan-gate discharge.)*
-- Picking behaviour, chain proposal, embedding on pick, or any family-control interaction — Story 8.6.
-- A byte threshold or first-load budget gate — **Story 8.4d owns it**, set last against finished weight.
+- **Any licence-gate change** — no edit to `classify.go`, `manifest.go`, the allowlists, the
+  classifier tables, or any gate rule. **Flat prohibition (D-000.11), not a criterion.** A licence-gate
+  defect registers to Epic 15's Story 15.3; it is never fixed, split out, or given an AC here.
+  **Nor escalated** — D-000.13 closes that loophole in advance: escalation is for a finding that makes
+  the epic's *stated goal unshippable*, not one that makes it imperfect, and *"an escalated
+  licence-gate finding is the same failure wearing a different hat."* This story puts twenty `LICENSE*`
+  files through the gate for the first time and is **the story most likely to surface this class**;
+  **every such finding registers.** If a specific face is refused, **drop that face and take one from
+  the reserve** — the remedy is procurement, never the gate.
+- Bold, italic, oblique, synthetic emboldening, or variable-font axes. **Epic 11 (FR57) owns
+  realize-vs-retire and the owner ruling has not been made (D-000.7).**
+- CJK families in the catalogue; the shipped SC face remains the coverage fallback.
+- A live font service, an arbitrary URL, or a "download on first use" (`SPEC.md` `## Non-goals`).
+- Enumerating or reading host-installed fonts (`## Non-goals`, AD-8).
+- Save-time subsetting, or any change to how the PDF producer subsets.
+- A container format — the catalogue is committed files, never a zip-of-folders.
+- Picking behaviour, chain proposal, or embedding on pick — **Story 8.6**.
+- A byte threshold or first-load budget gate — **Story 8.4d owns it**, set last against finished
+  weight. This story **records** weight and **must not** set or move a threshold. `epics.md`'s
+  superseded `~9 MB` figure stays as-is.
+- `.woff2`/`.woff`/`.ttc` faces: the engine decodes only `font/ttf` and `font/otf`.
 - Editing `epics.md`, `ARCHITECTURE-SPINE.md`, or `<intent-contract>` to match what was built.
-- `.woff2`/`.woff`/`.ttc` catalogue faces: the engine decodes only `font/ttf` and `font/otf`, the
-  licence gate is blind to those extensions, and the generator hardcodes `format('truetype')`.
-- Claiming "no request leaves the machine". A source scan proves **no forbidden host appears in the
-  scanned population** and nothing more (D-8.5.5). The literal offline proof stays at the epic gate.
+- **Claiming "no request leaves the machine."** A source scan proves no forbidden host appears in the
+  **scanned population**, and nothing more (D-8.5.5).
 
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |---|---|---|---|
-| Permissive catalogue face | Face dir with `LICENSE-OFL.txt` classifying `OFL-1.1` + `NOTICE.md` with a `Copyright` line | Manifest row labelled `OFL-1.1`; build green | No error expected |
-| Copyleft asset licence | Face dir whose LICENSE text classifies GPL/AGPL/LGPL/SSPL | `ResolveAssets` returns a located error naming the directory and the classified id | Build fails, never warns |
-| Unclassifiable asset licence | LICENSE text no marker matches (incl. a commercial EULA) | Located error: licence unresolvable, naming the directory | Build fails; `SEE NOTICE` never emitted |
-| Permitted-but-new id | `Apache-2.0` / `MIT` / `UFL` font licence text | Classified to its SPDX id and accepted | No error expected |
-| Font invisible to the gate | A `.woff2` (or any font-magic file) committed in a *new* directory outside `public/fonts` | Widened extension-class guard reports it by extension **and** by magic bytes | Test red, named |
-| Forbidden host in source | `fonts.gstatic.com` in a scanned `.ts`/`.tsx`/`.css`/`.mjs` **string** | Scan reports the file and the pattern | Test red |
-| Forbidden host in a comment | Same host inside `//` or `/* */` | **Not** reported — comments are stripped before matching | No error expected |
-| Non-immutable asset, Brotli | `/index.html` (the only mutable asset; no `.br` sidecar) | Recorded with an explicit stated treatment, not silently skipped | Explicit, named |
+| Face admitted | Face dir with `LICENSE*` (`OFL-1.1`) + `NOTICE*` with a Copyright line | `ResolveAssets` returns a row; `MANIFEST.md` carries a real SPDX id | No error expected |
+| Compound admitted | Licence line `MIT OR Apache-2.0` | Every term on the four-id allowlist → admitted | No error expected |
+| Off-allowlist term | Licence line `OFL-1.1 OR CC0-1.0` | Build **fails**, naming the failing term | Build failure is correct |
+| `WITH` form | `OFL-1.1 OR GPL-2.0-or-later WITH Font-exception-2.0` | Build **fails** closed | Correct; family is excluded pending a parser widening |
+| Missing provenance | Face committed with no `NOTICE*` | Build **fails** | Correct |
+| Forbidden host in source | `fonts.googleapis.com` in a `.ts` file | Scan **fails**, naming file and line | Build failure |
+| Forbidden host in a comment | Same host inside a `//` comment | Scan **fails** — comments are stripped *from the exemption*, not from the scan | Build failure |
+| Asset count | 23 existing + ~21 new faces | Under `maximumCacheAssets` (64) | Over → Block If |
 
 </intent-contract>
 
 ## Code Map
 
-**Licence gate (the allowlist lands here)**
-- `lint/internal/manifest/manifest.go:298-301` — `licenceLabel := "SEE NOTICE"`, SPDX id substituted
-  only when classification succeeds, `Family` discarded with `_`. **This is the site.** Duplicate
-  fall-through for the wordlist at `:384-387`. `:110` `fontExtensions = []string{".ttf",".otf",".ttc"}`.
-  `:165` `ResolveAssets(repoRoot)` walks the whole repo minus `.git` and `*/testdata/lint/**`, then
-  intersects with `git ls-files` per directory (`:243-249`). `:287/:290/:295` are the existing
-  located-error shapes to copy.
-- `lint/internal/rules/licencegraph.go:28-62` — **the model.** `FamilyCopyleft` → forbidden-licence
-  finding; `FamilyUnknown` → `"licence unresolvable — could not classify licence text"` (D-1.3.8);
-  commercial EULA falls through to `FamilyUnknown` by design (`:51-55`).
-- `lint/internal/licence/classify.go:96-106` `permissiveSPDX` (no `UFL`); `:121-187`
-  `ClassifyLicenceText` marker chain (OFL branch `:137-162` requires the "VERSION 1.1" conjunct);
-  `:85-95` the governing "loud miss vs rotting list" comment.
-- Fixtures to copy: `lint/testdata/licence/{copyleft,permissive,unknown}/`.
-- `lint/MANIFEST.md:280-301` asset table (12 rows today); regenerate with
-  `cd lint && go run ./cmd/genmanifest`; `TestManifestUpToDate` (`manifest_test.go:41`) byte-compares.
-- Red-proof precedent for asset licences: `lint/internal/rules/fontsassets_test.go:283,:322`.
+**Designer bundle (all npm commands from `folio-designer/`):**
+- `folio-designer/public/fonts/<family>/` -- where the 6 shipped faces live (`.ttf` + `LICENSE-OFL.txt`
+  + `NOTICE.md`). New catalogue faces follow this exact shape. `vite.config.ts:32` sets
+  `publicDir: false`, so `public/` is **never** published directly — fonts enter the bundle only via
+  the generator below.
+- `folio-designer/scripts/build-wasm.mjs:88-98` -- the `assets` map: **six hardcoded slots**, no
+  manifest loop. `fingerprint()` at `:69-77` content-addresses each `.ttf` into `src/generated/runtime/`.
+  Emits `src/generated/offline-assets.ts` (`:103-104`) and `src/generated/runtime-fonts.css` (`:134`).
+  **This literal is the main structural change**: ~21 faces means a manifest-driven loop, not 21 more keys.
+- `folio-designer/scripts/build-wasm.mjs:134` -- `@font-face` emitter, **hardcodes `format('truetype')`**
+  and `font-display: swap`, with no `font-weight`/`font-style` descriptors. `.ttf` only avoids a branch here.
+- `folio-designer/scripts/generate-offline-release.mjs:13-18` -- `assetsFromDist()` builds the precache
+  list. `:35-39` writes a Brotli `.br` sidecar per immutable asset (quality 11, LGWIN 22). `:40-53`
+  builds the S1 payload; `cachedRow()` at `:45` stats the `.br`.
+- `folio-designer/src/release-payload.ts:32-33` -- `minimumCacheAssets = 10`, `maximumCacheAssets = 64`.
+  **Single authority.** Must keep the exact `^const <name> = <digits>$` single-line form — the reader
+  (`scripts/offline-release-contract.mjs`, `readDeclaredConstant()`) regex-matches it and throws on
+  zero or two matches.
+- `folio-designer/scripts/verify-offline-release.mjs:50-52` -- the count bound
+  (`over the declared maximum of`). `:99` -- `S1 CJK row is not the dominant font payload`; it compares
+  **only** the 3 S1 rows whose id ends `font`, so plain cache assets never enter it. `:107-117` --
+  every immutable asset's sidecar must decompress to the original and **re-compress byte-identically**.
+- `folio-designer/src/font-binary-identity.test.ts` -- opens each file's `name` table, ties each
+  `@font-face` family to its own source, asserts one file per family and the NOTICE-recorded digests;
+  repo-wide magic-byte sweep at `:764-769` with a >500-file floor at `:751`.
+- **Measured headroom:** built manifest has **23** assets, `s1.cachedBytes` 38,460,833. 64 − 23 = **41
+  free**; ~21 new faces fit. Brotli today: engine 7,226,258 / latin 226,026 / thai 24,872 / cjk 4,948,312.
 
-**Extension-class guard (widen its population)**
-- `folio-designer/src/font-binary-identity.test.ts:67` `designerFontsDir` — the single-directory
-  population; call site `:635`; `:178-182` `licenceGateFontExtensions` parses `manifest.go`;
-  `:217-222` `filesUnder`; `:206` `fontMagics`; `:616` the assertion, `:646` its discrimination proof.
-  Widening needs: repo-root sweep + `ResolveAssets`' two exclusions + a `git ls-files` intersection
-  (otherwise `dist/`, `src/generated/runtime/`, `.font-sources/`, `node_modules` turn it red).
-- Exact-cardinality assertions that must **not** break: `:688`/`:705`/`:720`/`:577`/`:909` (six
-  generator slots), `:806`/`:814` (three engine faces), `:880` (chrome faces carry OFL 1.1 in
-  nameID 13), and `canvas-font-stack.test.ts:312` (`toBe(6)` `@font-face` rules). **Keep catalogue
-  faces out of the `assets` map in `build-wasm.mjs` and out of `runtime-fonts.css`** — a catalogue
-  face needs no `@font-face` rule; it reaches the browser as a carried face via
-  `embedded-face-registry.ts:54` once Story 8.6 embeds it.
+**Licence side — READ-ONLY except the census pin (commands from `lint/`):**
+- `lint/internal/manifest/manifest.go:299-518` -- `ResolveAssets`. Groups fonts by **directory**; a
+  directory with 0 git-tracked files is silently skipped (`:381-383`). Requires `LICENSE*` (`:420-422`),
+  `NOTICE*` (`:423-425`) and a Copyright line (`:427-430`). The gate is `:460-469`. **Do not edit.**
+- `lint/internal/manifest/manifest.go:140` -- `fontAssetLicenceAllowlist` = the four ids. **Do not edit.**
+- `lint/internal/manifest/manifest.go:109-110` -- `fontExtensions` = `.ttf .otf .ttc`, keyed on
+  **extension**. D-1.8.11 forbids widening it; its miss is silent.
+- `lint/internal/manifest/manifest.go:257-266` -- `assetServesLabel`. New designer fonts land in the
+  `committed asset (<dir>)` bucket **automatically — no code change needed.**
+- `lint/internal/licence/classify.go:51-79` -- `ClassifySPDXExpressionTerms`. Parenthesis or empty →
+  error; even field count → error; odd indices must be `AND`/`OR`. **`WITH` is unsupported at either
+  position** → `FamilyUnknown` → refused.
+- `lint/internal/licence/classify.go:235` -- the SPDX line regex captures **the rest of the line**. A
+  new face's LICENSE must not carry a comment terminator or parenthetical on its SPDX line
+  (`SPDX-License-Identifier: MIT */` classifies unknown → build failure).
+- `lint/internal/licence/classify.go:167-171` -- records that **nothing in this repo is
+  Ubuntu-licensed today**, and that the analogue test cannot be written *"until Story 8.5 lands a face
+  under it"*. Procuring Ubuntu Sans / Ubuntu Sans Mono is that face.
+- `lint/internal/licence/licencecensus_test.go:46-82` -- `pinnedCensus`, **35 hand-written rows**,
+  keyed on repo-relative path. Population A is *discovered* via `git ls-files`; an unpinned discovery
+  errors at `:130-133`, an unfound pin at `:198-201`. **Contains no compound expression today.**
+- `lint/cmd/genmanifest/main.go` -- regenerates `lint/MANIFEST.md`. **Runs from inside `lint/`**
+  (`RELEASING.md:36-37`); from the repo root it fails with "cannot find main module".
+- `lint/MANIFEST.md:299-310` -- existing asset rows. `SEE NOTICE` is now **unreachable** and two tests
+  forbid its return.
 
-**Bundling the catalogue**
-- `folio-designer/scripts/build-wasm.mjs:69-77` `fingerprint()`, `:88-98` the hand-written 9-slot
-  `assets` map, `:103-104` `offline-assets.ts`, `:105` the `import.meta.glob('./runtime/pdfjs-*/**/*')`
-  pattern — **the precedent for a many-file collection that is not a hand-listed slot**, and the
-  shape a catalogue directory should follow. `:134` `runtime-fonts.css` (six rules, one line —
-  do not restructure into a loop; `canvas-font-stack.test.ts:43-45`'s regex would silently empty).
-- `folio-designer/vite.config.ts:32` `publicDir: false` — a file under `public/` is not an asset
-  until something imports it. `:16` `assetsInlineLimit: 0`.
-- `folio-designer/scripts/generate-offline-release.mjs:13-18` asset set (`immutable` = everything
-  except `/index.html`); `:35-39` the `.br` loop over immutable assets only; `:40-49` `find(needle)`
-  and the four hardcoded needles (`'.wasm'`, `'/noto-sans.'`, `'/noto-sans-thai.'`, `'/noto-sans-cjk.'`)
-  — **a `/assets/noto-*` catalogue filename could shadow these**; `:53` `cacheAssets[]` records
-  **uncompressed** bytes; `:79-83` the manifest write (`release.assets[]` carries no byte counts).
-- `folio-designer/scripts/verify-offline-release.mjs:35-52` the 8.4f bound guard (`declaredCacheAssetBounds()`,
-  message `over the declared maximum of`); `:78-99` the S1 block — **row pinning is READ-ONLY**;
-  `:98-99` the CJK-dominance `Math.max` over ids ending `font`; `:107-119` immutable/Brotli sidecar
-  determinism; `:222-227` `rewriteRelease`; `:229-240` `redProof(name, mutate, expected)`;
-  `:242-307` `runRedProofs` (follow `asset-count-over-bound` `:269-279` for a population mutation).
-- `folio-designer/src/release-payload.ts:32-33` `minimumCacheAssets = 10` / `maximumCacheAssets = 64`
-  — **the sole authority; do not re-type, do not raise.** `scripts/offline-release-contract.mjs:56-71`
-  derives them (exactly one live `^const <name> = <digits>$` match or it throws).
+**Provenance template:** `folio-designer/public/fonts/ibmplexsans/NOTICE.md` -- the
+no-derivation shape every new face copies. (`folio-go/fonts/notosans/NOTICE.md` is the *derived*
+variant with a toolchain table — **not** the template here.)
 
-**Forbidden-host scan (new)**
-- `folio-designer/src/canvas-authority-contract.test.ts:131-152` `withoutComments` — the character
-  scanner to reuse (quotes checked before comment openers, so a `//` inside a URL string survives).
-  `:6-16` the three corpora; `:173` `scanned`; `:186-191` non-vacuity floors; `:198-216` red
-  direction; `:218-227` the green-on-prose direction using real comments from this repo.
-- **Measured population risk:** `docs/expression-reference.html:2-4` carries live
-  `fonts.googleapis.com` / `fonts.gstatic.com` `<link>` tags. Zero hits exist in
-  `folio-designer/src`, `scripts`, `e2e`, `public`, `folio-go`, `lint`, `tools`. Define the scanned
-  population explicitly and say what it excludes — do not silently exclude `docs/` and call it clean.
-
-**`len(UPSTREAM)` de-hardcoding**
-- `tools/fontgen/instance_faces.py:117-168` `UPSTREAM` (3 entries), `:366-367` prints
-  `derived and compared {compared} of {total}` where `total = len(UPSTREAM)` — **already computed**.
-- `folio-go/fontgen_matrix_test.go:117` `const wantWitness = "derived and compared 3 of 3 faces"`
-  (`//go:build matrix`) — **the literal.** `:75-77` re-hardcodes the three source filenames and
-  digests a second time. `UPSTREAM` is not readable from Go (no JSON/manifest intermediate,
-  no `go:generate`) — so derive the count from the Python side's own output, not from a second literal.
-
-**Continuity**
-- `_bmad-output/implementation-artifacts/8-4c-…md` (font procurement: npm packages ship woff2 only —
-  use GitHub release zips with `fonts/complete/ttf/`; NOTICE schema; a `SEE NOTICE` row is a Block If).
-- `8-4f-…md` (the bound and its red proofs), `8-4g-…md` (build determinism; the wasm is still a
-  function of the checkout path — DW-105 — so measure baselines in the **main checkout**).
+**Absent today:** there is **no forbidden-host source scan** anywhere, and **no per-asset Brotli
+reporting** — both are net-new. `fonts.googleapis.com`/`fonts.gstatic.com` appear **zero times** in any
+source file, so a naive scan passes vacuously on introduction. See Design Note 2.
 
 ## Tasks & Acceptance
 
 **Execution:**
-
-1. `lint/internal/licence/classify.go` — add `UFL` (SPDX entry + marker branch + `Family` mapping)
-   so the allowlist's fourth member exists rather than being assumed. Add fixtures under
-   `lint/testdata/licence/` for a UFL text and a non-classifiable font licence.
-2. `lint/internal/licence/classify_test.go` — cover UFL positive, UFL-lookalike negative, and the
-   unclassifiable case. Red-prove: removing the marker branch reddens a named test.
-3. `lint/internal/manifest/manifest.go:298-301` — replace the `"SEE NOTICE"` fall-through with a
-   hard, located error: an asset licence outside `{OFL-1.1, Apache-2.0, MIT, UFL}` **or**
-   unclassifiable fails, naming the directory and the reason, in the `:287`/`:290`/`:295` voice.
-   Apply the same at `:384-387`. Rationale: D-8.5.2/D-8.5.3 — enforce like the dependency ban.
-4. `lint/internal/manifest/manifest_test.go` — add red proofs mirroring
-   `fontsassets_test.go:283,:322`: a scratch dir with a copyleft LICENSE errors; one with an
-   unreadable-by-classifier LICENSE errors; a permitted one does not. Assert **no** row anywhere in
-   the generated manifest reads `SEE NOTICE`.
-5. `folio-designer/public/font-catalogue/<family-slug>/` — commit ≥20 permissively-licensed static
-   single-instance Latin (and where available Thai) faces, each with its unmodified upstream
-   `LICENSE*` and a `NOTICE.md` recording upstream project, pinned version/tag, asset URL, path
-   inside the archive, fetch date, upstream sha256, committed sha256 and byte size. **Vendored
-   static route** per face (D-8.5.4); if any face would need derivation, HALT per Block If.
-   A new directory — not `public/fonts` — so the six-slot chrome assertions stay exact.
-6. `folio-designer/scripts/build-wasm.mjs` — fingerprint-copy every committed catalogue face into
-   `src/generated/runtime/font-catalogue/` (the `fingerprint()` helper at `:69-77`), **iterating the
-   directory rather than adding hand-written slots to the `assets` map at `:88-98`** — that map's
-   nine entries are asserted by exact cardinality in five places (see Code Map). This step is
-   required: `vite.config.ts:32` sets `publicDir: false`, so a file under `public/` is **not** in
-   Vite's graph and an `import.meta.glob` over `public/` would emit nothing and silently ship an
-   empty catalogue. Emit **no** `@font-face` rule for a catalogue face.
-7. `folio-designer/src/catalogue/font-catalogue.ts` (new) — the catalogue record as data:
-   `family`, `style` (always `Regular`), `licence` (SPDX id), `source` (upstream + version),
-   `scripts` (declared coverage), and the asset URL — built from an
-   `import.meta.glob('../generated/runtime/font-catalogue/**/*', { query: '?url' })`, the
-   `build-wasm.mjs:105` pdfjs precedent, so a face becomes a release asset by being committed
-   rather than by being hand-listed. **No UI consumer in this story.**
-8. `folio-designer/src/catalogue/font-catalogue.test.ts` (new) — assert the catalogue has ≥20
-   families, every entry's `style` is `Regular`, no entry declares a CJK script, every entry's
-   declared family matches the `name` table read from its own bytes (reuse the sfnt reader in
-   `font-binary-identity.test.ts:233-288`), and every entry's file is `.ttf`/`.otf` with an sfnt magic.
-9. `folio-designer/src/font-binary-identity.test.ts:67,:217-222,:635` — widen the extension-class
-   guard's population from `public/fonts` to `ResolveAssets`' own walk (repo root, minus `.git` and
-   `*/testdata/lint/**`, intersected with `git ls-files`). Keep `:623`'s exact `['.ttf','.otf','.ttc']`
-   mirror and `:646`'s discrimination proof; extend the latter to prove the *new* directory is now visible.
-10. `folio-designer/src/forbidden-host.test.ts` (new) — comment-stripping scan for
-   `fonts.google`, `fonts.gstatic.com`, `googleapis` over an explicitly declared population, using
-   `withoutComments` from `canvas-authority-contract.test.ts:131-152`. Non-vacuity floors on each
-   corpus; red-proved **both** directions (a host in a string is caught; the same host in a `//`
-   and a `/* */` comment is not). State the excluded population in a comment, naming
-   `docs/expression-reference.html` as a known live reference outside the scanned set.
-11. `folio-designer/scripts/generate-offline-release.mjs` — record **per-asset Brotli bytes** for
-    every asset in the manifest (a new field beside the existing uncompressed `cacheAssets[].bytes`,
-    or a sibling collection), with an **explicit stated treatment** for the one non-immutable asset
-    (`/index.html`, which has no `.br`) rather than a silent skip. Do **not** add a threshold.
-12. `folio-designer/scripts/verify-offline-release.mjs` — assert every recorded Brotli figure equals
-    its emitted `.br` sidecar (the `:93` pattern), and add a red proof (`brotli-record-drift`) with
-    an `expected` message. Confirm `find(needle)` still resolves the four S1 needles unambiguously
-    against the new filenames; if a catalogue filename could shadow one, tighten the needle and
-    red-prove the tightening.
-13. `folio-go/fontgen_matrix_test.go:117` — derive the expected witness count from the generator's
-    own `len(UPSTREAM)` output instead of the literal `"3 of 3"`, so a new face fails on a byte
-    divergence or not at all — never on a string (D-8.5.4). Also de-duplicate `:75-77`'s second copy
-    of the source digests, or state why it must stay.
-14. `lint/MANIFEST.md` — regenerate (`cd lint && go run ./cmd/genmanifest`); a second run must leave
-    no diff. Every catalogue row must carry a real SPDX id and a real copyright line.
-15. `_bmad-output/specs/spec-fonts/font-catalogue.md` — amend "Which families, and how many, is an
-    open question" to record what shipped and the rule that admits a face; amend the Selection
-    criteria table's Instance row to state **both** procurement routes (D-8.5.4). Mark the families
-    half of `SPEC.md`'s Open Question settled, citing D-8.5.3. Do not touch the bold/italic entry.
+- `_bmad-output/implementation-artifacts/8-5-catalogue-procurement.md` -- procure each Tier A face at
+  its pinned tag; record the actual fetched digests and dates back into this table -- the table is
+  normative, and a placeholder digest is not provenance.
+- `folio-designer/public/fonts/<family>/` -- one directory per face: the `.ttf`, the unmodified
+  upstream `LICENSE*`, and a `NOTICE.md` on the IBM Plex Sans shape -- this is what the licence gate
+  reads; a missing Copyright line fails the build.
+- `folio-designer/scripts/build-wasm.mjs` -- replace the 6-key `assets` literal with a
+  manifest-driven loop over the catalogue directories -- 27 hardcoded keys is not maintainable and
+  each new face would otherwise be a hand edit in three places.
+- `folio-designer/scripts/generate-offline-release.mjs` -- emit a **per-asset Brotli record** into the
+  release manifest -- AC5; nothing records this today.
+- `folio-designer/scripts/verify-offline-release.mjs` -- assert the Brotli record matches the emitted
+  sidecars, with a `brotli-record-drift` red proof -- an unasserted record drifts silently.
+- `lint/internal/licence/licencecensus_test.go` -- add one `pinnedCensus` row per new `LICENSE*`
+  **and** seed the single compound-expression case (Design Note 3) -- D-8.4j.2; keep the literal
+  hand-written.
+- `lint/MANIFEST.md` -- regenerate via `cd lint && go run ./cmd/genmanifest` and commit -- the
+  committed output is pinned by `TestManifestUpToDate`.
+- **new** forbidden-host source scan + its tests -- AC4; must strip comments and carry a population
+  floor and a positive control (Design Note 2).
 
 **Acceptance Criteria:**
-
-- **AC1 (procurement).** Given each catalogue face, when it is prepared, then it is a static
-  single-instance face, never generated at build time, whose assurance is stated **per route** —
-  reproduction for a face this project derives, provenance (pinned version + NOTICE with both
-  digests and a byte size) for a vendored static face — and its `NOTICE.md` records which route applies.
-- **AC2 (licence, fail-closed).** Given a committed font whose licence classifies outside
-  `{OFL-1.1, Apache-2.0, MIT, UFL}`, or whose licence text cannot be classified at all, when the
-  `lint` suite runs, then it **fails** with a located error naming the directory and the reason,
-  and no manifest row anywhere reads `SEE NOTICE`. Red-proved in both directions from a scratch fixture.
-- **AC3 (in the bundle, verified).** Given the offline release, when it is built and verified, then
-  every catalogue face is present behind a content-addressed, immutable, `.br`-backed asset URL,
-  is covered by `verify:offline`, and `release.assets.length` remains at or below the **unchanged**
-  declared maximum of 64.
-- **AC4 (forbidden-host scan).** Given the designer's declared source population, when it is
-  scanned with comments stripped, then no `fonts.google`, `fonts.gstatic.com` or `googleapis`
-  reference appears in it — proved red when such a host is placed in a string, and proved green
-  when the same host sits in a comment. The criterion claims nothing about requests actually leaving
-  the machine.
-- **AC5 (weight, recorded not thresholded).** Given the built release, when its weight is recorded,
-  then every asset carries a **per-asset Brotli** figure equal to its emitted sidecar, the one
-  non-immutable asset's treatment is stated explicitly, and the figures are recorded with the exact
-  invocation, commit and tree state — with **no threshold set** (Story 8.4d owns that).
-- **AC6 (scope fence).** Given the catalogue, when it is assembled, then no entry is bold, italic,
-  oblique, variable or CJK; every entry's `style` is `Regular`; and no family-control or
-  pick behaviour is added (Story 8.6).
-- **AC7 (gate visibility).** Given a font-magic file committed in **any** tracked directory the
-  licence gate walks, when the extension-class guard runs, then it is reported if the gate cannot
-  see it — proved by a fixture in a directory outside `folio-designer/public/fonts`.
-- **AC8 (no drift elsewhere).** Given the whole change, when the gates run, then the 23 golden PDF
-  digests are byte-identical to the pre-dispatch snapshot, `README.md`'s md5 is unchanged, and the
-  fontgen witness count is derived rather than a literal.
+- **AC1 —** Given a procured catalogue face, when its directory is inspected, then it carries the
+  unmodified upstream `LICENSE*`, and a `NOTICE.md` recording the pinned upstream version, the upstream
+  archive digest, the committed digest, the byte size, the fetch date and the path inside the archive;
+  and `shasum -a 256` of the committed binary **equals** the digest its own NOTICE records.
+- **AC3 —** Given the built offline release, when the release manifest is read, then it carries **at
+  least 20 new families** beyond the 6 already shipped, each behind a verified content-addressed asset
+  URL covered by the offline verification job, and the asset count remains **at or under 64**.
+- **AC4 —** Given a source file containing a forbidden font host, when the scan runs, then the build
+  fails naming the file and line; and given the same host appearing **inside a comment**, then the
+  build still fails — the scan strips comments so a commented-out host cannot exempt itself. The scan
+  reports the size of the population it scanned, and fails if that population is implausibly small.
+- **AC5 —** Given the built release, when the release manifest is read, then **every** immutable asset
+  carries its own recorded Brotli byte count, each equal to its emitted `.br` sidecar; and the
+  catalogue's **total added Brotli bytes** is reported as **one number**, with its command, commit,
+  tree state and working directory (D-8.4j.8). **No threshold is set or moved.**
+- **AC6 —** Given every catalogue face, when its `name` table and `OS/2` fields are read, then each is
+  a single upright static Regular instance — no bold, italic, oblique or variable axes — and the
+  generated `@font-face` rules declare no `font-weight` or `font-style` variants.
+- **AC8 —** Given the completed story, when the goldens and bounds are checked, then all **23** golden
+  digests are byte-identical to the pre-dispatch snapshot, `maximumCacheAssets` is still **64**,
+  and `git diff` touches no `folio-go/fonts/`, no `fixtures/**`, and no `.folio`.
 
 ## Spec Change Log
 
@@ -346,185 +269,182 @@ build proposing one is a halt.
 AC1's twenty-row per-face procurement table into a companion artifact this spec cites — **never**
 thinning acceptance criteria, which would be moving the bar to fit the instrument.
 
+### 2026-09-02 — RE-PLANNED to reduced scope after D-000.11 (owner course correction)
+
+Rewritten at `19959fa`. Predecessors 8.4h/8.4i/8.4j are `done`: the licence gate now fails closed,
+reads a whole SPDX line, and admits **per-term** against the owner's four ids. **AC2 and AC7 are gone
+— they shipped in 8.4h.** Six ACs remain, unchanged in substance from the split.
+
+**D-000.11 binds this spec.** No licence-gate work, for any reason — a flat prohibition, not a
+criterion. A licence-gate defect found here registers to **Epic 15 (Story 15.3)** and the story
+continues. The `## Code Map`'s licence-side anchors are therefore marked **read-only**: they are
+present so the implementer can satisfy the gate without searching for it, never so it can be edited.
+
+**`multiple-goals` cleared; `oversized` did NOT, and the honest figure is recorded rather than the
+flattering one.** `multiple-goals` went with the split. The named lever *was* applied — the per-face
+procurement table moved out to `8-5-catalogue-procurement.md`, exactly as the previous entry
+predicted, and **no acceptance criterion was thinned** (AC4 and AC5 gained detail rather than losing
+it). The spec fell from 40,568 to 29,546 characters, ~10,100 to ~7,400 estimated tokens — **27%
+smaller**, and less than half the size of the next-smallest spec in this epic (8.3, ~16,300). **But
+the flag's threshold is 1,600 tokens, and it still fires.** Every spec in Epic 8 trips it (8.4f is
+~25,900), so `oversized` here marks a project-wide convention gap, not a defect in this spec.
+Clearing it at six ACs would require thinning them, which the previous entry expressly forbade as
+"moving the bar to fit the instrument". **The flag stays set.**
+
+**The `<intent-contract>` was rewritten rather than preserved.** Step-02's draft-resume rule preserves
+the contract verbatim; that was **not** applied, because the preserved contract carried the superseded
+scope — AC2, AC7, the `UFL` addition to `classify.go` and the widened extension-class guard, all now
+either shipped or prohibited. The replacement scope was supplied by the orchestrator in the dispatch,
+which is the orchestrator amending its own contract. Recorded because a silent contract rewrite is
+exactly what this log exists to catch.
+
+**KEEP on re-derivation:** the plain-terms opener's four-part shape (what it does / what it
+deliberately does not / the Libertine-shaped exclusion / the deliberate late budget); the Block If
+against widening the allowlist to fit the population; and the D-8.5.5 prohibition on claiming "no
+request leaves the machine".
 
 ## Review Triage Log
 
 ## Design Notes
 
-**1. The delivery fork, resolved — and the one residual the plan gate should rule on.** D-8.5.1(b)
-steers toward faces fetched at pick time ("zero build assets, zero S1 rows, zero first-load bytes")
-and D-8.5.1 assigns the fork to this story because *"it IS the story's design"*. Resolved as
-**bundled and precached**, on four pieces of contract text, three of which are decisive:
+**1 — The decline is policy, not physics, and stays recorded.** A same-origin, cached-on-first-pick
+tier is buildable today: `immutable` and the S1 row set are separate mechanisms, and 41 of 64 slots
+are free. It is foreclosed by *"no download on first use"*, which names it literally. The price is
+recorded (~15–18 MB against `~9 MB`) so the owner can reverse it cheaply — the precache set is a
+**designer** artifact, so moving catalogue faces to a deferred tier later breaks no integrator. **This
+story invents no middle tier; a build proposing one is a halt.**
 
-- `spec-fonts/SPEC.md` `## Non-goals`: *"**No live font service.** No Google Fonts API, no arbitrary
-  URL, no 'download on first use'."* This forecloses **both** fetch-at-pick **and** the softer shape
-  of shipping the faces in the release but caching them lazily — "download on first use" is named.
-- `font-catalogue.md`: *"Nothing is fetched. The bytes come from the bundle already on the machine."*
-- The story's own AC: *"inside the bundle behind the same verified asset URLs as every other release
-  asset, and the offline verification job covers them."* Fetch-at-pick satisfies neither clause.
-- Measured, there is nowhere to fetch **from**: AC4 bans the Google hosts, the product ships no
-  server, and NFR7 promises the designer works offline. A face reachable only over a network is a
-  palette that stops working on a plane — the exact failure `font-catalogue.md` was written against.
+**2 — AC4's scan would pass vacuously, and that is the trap.** The forbidden hosts appear **zero
+times** in source today, so a scan introduced now is green before it is correct and would stay green
+if it scanned nothing at all. Three things are therefore required, not optional: a **positive control**
+(a fixture that *does* contain the host, asserted to fail), a **population floor** (the scan reports
+how many files it examined and fails if that number is implausibly small — the pattern
+`font-binary-identity.test.ts:751` already uses), and a **comment-direction test** (the host inside a
+comment must still fail; deleting the comment-stripping step must red that test on its own message).
+A scan whose only evidence is "it passed" is decoration. And per D-8.5.5, what it proves is bounded:
+no forbidden host appears in the **scanned population** — never that no request leaves the machine.
 
-D-8.5.1 itself calls the bundled route *"legitimate and not a compromise"*, and — measured — it does
-not even need the concession that ruling offered: at 23 of 64 assets, no bound is raised.
+**3 — The compound-expression census case cannot come from a font, and the domain says so.** D-8.4j.2
+requires the census to pin at least one compound case so the compound-line fix stays fixed. Measuring
+the domain first (D-000.12): **no procurable family carries a compound expression admissible under the
+four-id allowlist.** The two compound font licences found — Hack (MIT + Bitstream Vera) and Public Sans
+(OFL-1.1 + CC0-1.0) — must both *fail* the gate, correctly. So the case must be seeded as a fixture,
+following the pattern already in the census: `lint/testdata/licence/permissive/example.test/<name>-lib/LICENSE`
+carrying `SPDX-License-Identifier: MIT OR Apache-2.0`, plus its one pinned row. **This is the only
+route consistent with all three constraints** (census must pin a compound case; pins must correspond
+to real committed files; the literal stays hand-written), which is why it is not an intent gap. It is
+also the boundary of what this story may touch on the licence side: **if seeding it reddens any licence
+test other than the census, halt** — repairing that would be licence-gate work.
 
-**The residual, stated rather than smoothed over.** `SPEC.md`'s newly-settled catalogue entry closes
-with the owner's brief as the lead recorded it: *"the catalogue should be big and the engineering
-should find a shape where size is not paid for at first load."* Under the Non-goals clause above,
-**no such shape exists** for a catalogue that must also be available offline: precached costs
-first-load bytes, and anything cheaper is a download on first use. This spec pays the bytes and
-makes them **visible** (AC5's per-asset Brotli record is the instrument), rather than inventing a
-tier the Non-goals forbid or quietly reporting a zero. That is a real, priced trade — the owner was
-given the ceiling and the 37% overage when they chose 20+ families — but it is the one clause of the
-brief this story cannot honour, so it is surfaced here for the gate rather than buried. **What would
-reverse it:** a ruling that amends `SPEC.md` `## Non-goals` and `font-catalogue.md` together to
-permit a deferred tier, with the offline consequence stated. Do not reverse it in the build.
+**4 — `build-wasm.mjs` is the real structural change, not the fonts.** The `assets` map is six
+hardcoded keys emitting a fixed six-rule CSS string. Twenty-one more faces by hand would mean 27 keys
+maintained in three places. A manifest-driven loop over the catalogue directories is the change; keep
+the emitted CSS shape identical (one static Regular per family, `format('truetype')`, no weight or
+style descriptors) so AC6 stays observable from the generated file.
 
-**2. The ceiling is not the binding constraint; weight is.** Measured at `1f8e52b`:
-`release.assets.length` = **23** against `maximumCacheAssets` = **64**, so **41 slots are free** — a
-20–40 face catalogue fits with the bound untouched, which is what keeps 8.4f's *"confirm
-`maximumCacheAssets` is still 64"* satisfiable. What the catalogue does cost is first-load Brotli
-weight: the release currently emits **13,490,909** Brotli bytes across 22 sidecars, and ~20 Latin
-faces at 45–226 KB Brotli each adds roughly 1.5–4.5 MB. That is a real, owner-priced cost
-(D-8.5.3 put the 37% overage in the question) and **this story must not respond to it by setting or
-moving a threshold** — 8.4d sets the figure last, against finished weight (D-8.4.24).
-
-**3. Why the weight cannot be recorded where it looks like it belongs.** `s1.cacheAssets[].bytes` is
-**uncompressed** (`generate-offline-release.mjs:53` stats the raw file), and `s1VisibleBytes` sums
-four hardcoded filename needles and already misses **174,949** Brotli bytes of IBM Plex — so
-recording the catalogue against either would produce a number reading *"this cost nothing"*. Brotli
-bytes exist today only in `s1.rows[0..3].bytes` and only for four assets. Hence AC5's new per-asset
-record. The `.br` loop filters `asset.immutable`, and `/index.html` is the sole non-immutable
-asset — its treatment is stated, never skipped silently (D-8.5.6).
-
-**4. Catalogue faces are deliberately not generator slots.** `build-wasm.mjs`'s `assets` map has
-exactly nine hand-written slots, and five separate tests assert **six** font slots / six
-`@font-face` rules / six declared families by exact equality. A catalogue face needs no
-`@font-face` rule at all — it reaches the browser only after Story 8.6 embeds it, as a carried face
-through `embedded-face-registry.ts`. Routing the catalogue through an `import.meta.glob`
-(the pdfjs-cmaps precedent at `build-wasm.mjs:105`) keeps those six-way assertions exactly true
-while still putting each face into Vite's graph and therefore into the release manifest.
-
-**5. A source scan proves a weaker claim than "offline", and must say so.** Model:
-`canvas-authority-contract.test.ts`'s character scanner, which checks quotes **before** comment
-openers so a `//` inside a URL string is not mistaken for a comment. Story 8.4b measured a
-chrome-token guard staying green over a live token parked in a CSS comment — comment-stripping is a
-demonstrated failure mode, not a hypothesis. Equally: the scan's population is a choice, and
-`docs/expression-reference.html` really does pull Google-hosted webfonts today. Declaring the
-population and naming that exclusion is honest; quietly excluding it and reporting "clean" is the
-overstatement this run keeps catching.
-
-**6. UFL does not exist yet.** `permissiveSPDX` carries MIT, Apache-2.0, OFL-1.1, CC0-1.0, BSD, ISC,
-0BSD, Unlicense, MIT-0, BlueOak, CC-BY-4.0 — and **no UFL**, no marker branch, no fixture. The
-allowlist's fourth member has to be built before it can be enforced. Per `classify.go:85-95`, add it
-loudly (entry + marker + fixture + test), never by widening a list to make a population pass.
+**5 — `.ttf` only, and the margin is one family.** The Tier A pool yields **21 new `.ttf` families**
+against AC3's ≥20. That is thin, and stated rather than smoothed: the reserve list and the `.otf`
+route (which needs only a `format()` branch) exist for procurement failures. `.otf` is *permitted* by
+the engine — it is held back to avoid the branch, not because it is unsafe.
 
 ## Verification
 
-**Baseline: MEASURE at `b0fae960cc0ace9f1a243aee0170e99e67ef2fb1` in the MAIN CHECKOUT (never a
-linked worktree — DW-105: the wasm is a function of the checkout path), clean tree, before the first
-edit.** Record every figure with its command; do not carry any figure forward from a prior spec.
-HEAD moved twice while this spec was being planned (`1f8e52b` → `f2d108c` → `b0fae96`); both
-commits touch `_bmad-output/` only, so the **code tree is identical to `1f8e52b`**, where the
-figures quoted in the Code Map and Design Notes were measured. Re-verify them at the gate that
-consumes them (D-7.8.4: an anchor written at a plan gate is a claim with an expiry date).
+**Baseline: MEASURE at `19959fa9d9188e9732e658c4e26f825f44ecdd24` in the MAIN CHECKOUT** (never a
+linked worktree — DW-105: the wasm is a function of the checkout path), clean tree, **before the first
+edit**. Record every figure with its command, commit, tree state **and working directory** (D-8.4j.8).
+Do not carry any figure forward from a prior spec. An anchor written at a plan gate is a claim with an
+expiry date (D-7.8.4) — re-verify at the gate that consumes it.
+
+**HEAD moved once while this spec was being planned** (`19959fa` → `20002e4`, adding D-000.13). That
+commit touches `_bmad-output/` only, so the **code tree is identical to `19959fa`**, where every
+figure in the Code Map was measured. The baseline stays `19959fa` as dispatched. **Re-measure HEAD at
+the build gate rather than trusting this line** — it is a claim about a moment that has passed.
 
 **Cadence.** Per-epic (D-000.4): the four `FOLIO_MATRIX_TARGET` legs, `TestCrossTargetByteIdentity`
-and the Playwright suite are **not** in this list — nothing engine-side changes, no `.folio` field is
-added, and no golden can move. **The D-000.4 exception IS invoked** for the designer's release
-integration commands (`npm run build`, `verify:offline{,:red,:wasm}`) and for the `lint` module
-suite: this story puts new binaries into the offline bundle and changes the licence gate's verdict,
-so its own correctness is bundle-shaped. The golden-digest diff is kept as the cheap byte-identity
-witness that nothing leaked engine-side.
+and the Playwright suite are **excluded** — Epic 8's boundary gate owns them, nothing engine-side
+changes, no `.folio` field is added, and no golden can move. **The D-000.4 exception IS explicitly
+invoked** for the designer's release integration set (`npm run build`, `verify:offline`,
+`verify:offline:red`, `verify:offline:wasm`) and for the **whole `lint` module suite**, because this
+story puts new binaries into the offline bundle — its correctness is bundle-shaped, and the cheap
+per-story set would not see it.
+
+**Three standing reds, by identity. Any fourth is a real failure.**
+1. `folio-go`: `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)` — expect **1815 pass / 2 fail /
+   5 skip**. Two standing decisions forbid filling it. **Never "fix" it.**
+2. `gofmt -l folio-go lint` → `lint/internal/rules/licencegraph_test.go` (DW-116). **Do not reformat.**
+3. `folio-designer` `npm run lint` → **exactly 4** `only-export-components` warnings.
 
 **Commands:**
-- `shasum -a 256 fixtures/*/expected.pdf > <scratch>/digests.before` — from REPO ROOT, **before the
-  first edit**; expect **23** lines.
-- `cd folio-go && go test -count=1 ./...` — expect the **one standing red only**:
-  `TestCorpusMeetsP6ExerciseFloors` + its `P6g_(opaque_names)` subtest printing
-  `P6g (opaque names) floor not met: got 7, need >=20` (two FAIL lines, one defect). Its drift twin
-  `TestCorpusP6StatsMatchDeclaredBaseline` must stay green. **Never "fix" it.**
-- `cd folio-go && go test -count=1 -tags=matrix ./...` — the same red plus the could-not-execute
-  `TestShippedFacesReproduceFromUpstream` (`fontgen: fontTools is not importable by this interpreter`).
-  **Exactly TWO standing reds by identity. Any third is a real failure.**
-- `cd folio-go && FOLIO_FONTGEN_PYTHON=/Users/panitw/Projects/folio/.fontgen-venv/bin/python go test -count=1 -tags=matrix -run TestShippedFacesReproduceFromUpstream ./...`
-  — sweep both ways; expect PASS non-vacuously, printing three `matches the recorded derivation`
-  lines and the witness. **If it fails WITH the variable set, HALT.** Never commit the variable.
-- `cd folio-go && go vet -tags=matrix ./...` — no output.
-- `gofmt -l folio-go` — **from REPO ROOT**; no output. (An `lstat` line is a non-measurement.)
-- `cd lint && go test -count=1 ./...` — four `ok`, no FAIL; `-count=1` always (rules walk dirs and
-  Go's cache does not track `ReadDir`). **This story's licence gate lives here.** Additionally run
-  `-run TestManifestUpToDate -v`, `-run TestResolveAssets -v` and `-run TestClassify -v` explicitly
-  and **quote what they print**.
-- `cd lint && go run ./cmd/genmanifest && git diff --stat -- lint/MANIFEST.md` — after the
-  regeneration is committed, a second run leaves no diff.
+- `shasum -a 256 fixtures/*/expected.pdf > <scratch>/digests.before` — **REPO ROOT**, before the first
+  edit; expect **23** lines.
+- `cd folio-go && go test -count=1 ./...` — standing red 1 only.
+- `cd folio-go && go vet ./...` — no output.
+- `gofmt -l folio-go lint` — **REPO ROOT** (from `lint/` it prints `lstat` errors that read as clean —
+  a non-measurement). Expect standing red 2 and nothing else.
+- `cd lint && go test -count=1 ./...` — no FAIL. `-count=1` always (rules walk dirs; Go's cache does
+  not track `ReadDir`). Run `-run TestLicenceSignalCensus -v` explicitly and **quote what it prints**.
+- `cd lint && go run ./cmd/genmanifest` — **from inside `lint/`**; then, from the **REPO ROOT**,
+  `git diff --exit-code -- lint/MANIFEST.md` after the regeneration is committed.
 - `cd folio-designer && npm run typecheck` — exit 0.
-- `cd folio-designer && npm run lint` — exit 0 with **exactly 4** `react(only-export-components)`
-  warnings. The count and rule name are the invariant; line numbers drift.
-- `cd folio-designer && npm test` — project script only (`npx vitest run` from the repo root picks
-  up the Playwright specs and gives a false mass failure). Baseline **40 files / 409 tests**; expect
-  a higher count and **zero failures**.
+- `cd folio-designer && npm run lint` — exit 0 with standing red 3.
+- `cd folio-designer && npm test` — project script only (`npx vitest run` from the repo root picks up
+  the Playwright specs and gives a false mass failure). Baseline **40 files / 411 tests**; expect a
+  higher count and **zero failures**.
 - `cd folio-designer && npm run test:e2e:compile` — exit 0. This is `tsc -p tsconfig.e2e.json
   --noEmit`. **Do not report it as a run** (DW-101: CI executes no Playwright).
-- `cd folio-designer && npm run build` — node **v24.16.0** exactly; runs `build:wasm`, `tsc -b`,
-  `vite build`, `build:offline`, `verify:offline`. Record `release.assets.length`,
+- `cd folio-designer && npm run build` — node **v24.16.0** exactly. Record `release.assets.length`,
   `s1.assetCount`, `s1.cachedBytes`, and the **per-asset Brotli** figures with this exact command.
-- `cd folio-designer && npm run verify:offline:red` — exit 0; all red proofs fire on their own
-  messages, including the new `brotli-record-drift`. In particular
-  `S1 CJK row is not the dominant font payload` must **NOT** fire, and
-  `over the declared maximum of` must not fire.
+- `cd folio-designer && npm run verify:offline:red` — exit 0; every red proof fires on **its own**
+  message, including the new `brotli-record-drift`. `S1 CJK row is not the dominant font payload` must
+  **NOT** fire, and `over the declared maximum of` must not fire.
 - `cd folio-designer && npm run verify:offline:wasm` — exit 0.
 - `shasum -a 256 fixtures/*/expected.pdf | diff <scratch>/digests.before -` — **empty diff**. A moved
   golden is a **HALT**, not a re-record.
-- `md5 -q README.md` — `078d7d80d518d54af2fc04fb270d46b8`, unchanged.
 - `grep -c 'maximumCacheAssets = 64' folio-designer/src/release-payload.ts` — expect `1`.
 
 **Manual checks:**
-- **Mutation-prove every guard added.** Delete the allowlist branch in `manifest.go` → a *named*
-  `lint` test reddens on its own message. Delete the widened population in the extension-class
-  guard → its discrimination proof reddens. Delete `withoutComments` from the forbidden-host scan →
-  the comment-direction test reddens. Delete the Brotli-record assertion → `brotli-record-drift`
-  reports `escaped verification`. A guard that survives its own deletion is decoration.
-- **Prove each red proof fails for the right reason** by temporarily dropping its `expected`
-  argument and confirming the message it actually carries; beware over-determination (a population
-  mutation can trip `sameSet` first — assert *"fails on a message that is not the new guard's"* if so).
-- **Read `lint/MANIFEST.md`'s `## Redistributed non-code assets` table by eye:** every catalogue row
-  carries a real SPDX id and a real copyright line. **A `SEE NOTICE` label is a Block If.**
-- **Verify each committed catalogue face against its own NOTICE:** `shasum -a 256` the binary equals
-  the committed digest recorded there, and the byte size matches.
-- Confirm the generated `src/generated/runtime-fonts.css` still has **exactly six** `@font-face`
-  rules with the same six family names after `npm run build:wasm`.
-- `git diff --stat` per commit must touch **no** `folio-go/fonts/`, no `fixtures/**`, no `.folio`,
-  and no `_bmad-output/planning-artifacts/`. Explicit paths on every `git add` — never `-A`, never
-  `.`; never push; never branch.
+- **Mutation-prove every guard added, by deletion.** Delete the comment-stripping step in the
+  forbidden-host scan → the comment-direction test reddens on its own message. Delete the population
+  floor → the vacuity test reddens. Delete the Brotli-record assertion → `brotli-record-drift` reports
+  `escaped verification`. **A guard that survives its own deletion is decoration.** Prove each red
+  proof fails for the *right reason*, and beware over-determination — if a population mutation trips
+  an earlier check first, assert *"fails on a message that is not this guard's"*.
+- **Read `lint/MANIFEST.md`'s asset table by eye:** every catalogue row carries a real SPDX id and a
+  real copyright line. A `SEE NOTICE` row is a Block If.
+- **Verify each committed face against its own NOTICE:** `shasum -a 256` equals the recorded digest,
+  and the byte size matches. This is AC1's observable.
+- **Confirm the total added Brotli bytes is stated as ONE number** in the Delivery Log with its
+  command, commit, tree state and working directory — so Story 8.4d does not inherit twenty rows
+  nobody added up.
+- `git diff --stat` per commit must touch **no** `folio-go/fonts/`, no `fixtures/**`, no `.folio`, no
+  `_bmad-output/planning-artifacts/`, and **no licence-gate source**. Explicit paths on every
+  `git add` — never `-A`, never `.`; never push; never branch.
 
 ## Auto Run Result
 
+### Dispatch 2 — 2026-09-02, re-plan (halt after planning)
+
 Status: ready-for-dev
 Blocking condition: none
+Baseline: `19959fa9d9188e9732e658c4e26f825f44ecdd24` (HEAD moved to `20002e4` mid-dispatch;
+`_bmad-output/` only, code tree identical).
 
-Dispatch: classic intent, plan-only (`Halt after planning.`). Started at
-`1f8e52bdd85235a5f5fb32c86837ed2407ed76b9`; HEAD advanced to
-`b0fae960cc0ace9f1a243aee0170e99e67ef2fb1` mid-dispatch via `f2d108c` and `b0fae96`, both of which
-touch `_bmad-output/` only — verified with `git diff --name-only 1f8e52b..b0fae96`, which returns no
-path outside `_bmad-output/`. Working tree clean of tracked modifications throughout; branch `main`;
-no code written, no commit created, nothing pushed, no branch created.
+**No code written. No commit made.** Working tree carries this spec (modified) and
+`8-5-catalogue-procurement.md` (new) — nothing else.
 
-**The prior halt is discharged, in the document that gets read.** A previous 8.5 dispatch halted
-`blocked` / `intent gap` on `spec-fonts/SPEC.md`'s open question *"Which families make the shipped
-catalogue, how many, and who curates the list as it changes?"* That entry is now struck through and
-answered in place (D-8.5.3, owner decision; propagated by D-000.10 in commit `f2d108c`): 20+
-families, admitted by a named permissive allowlist, enforced fail-the-build. Planning therefore
-resumed rather than re-blocking. The stale
-`bmad-build-auto-result-8-5-a-curated-catalogue-ships-with-the-designer.md` is superseded by this
-spec and should be removed or marked at close.
+**Warnings:** `multiple-goals` cleared via the 8.4h split. **`oversized` remains** — 31,230 chars
+(~7,800 est. tokens) against the flag's 1,600-token threshold. Reduced 27% from the superseded
+version by the named lever (procurement table moved to the companion); no AC thinned. Every spec in
+Epic 8 trips this flag (8.4f ~25,900 tokens), so it marks a convention gap, not a defect here.
 
-**DW-108 discharged at the plan gate:** the six scope constraints the regenerated `epic-8-context.md`
-dropped are carried in `Never`, sourced from `spec-fonts/SPEC.md` `## Non-goals` rather than from the
-cache.
+**Domain measured before planning (D-000.12):** 21 new `.ttf` families verified procurable under the
+four-id allowlist with no `WITH` form — licence read from each project's own text, tag pinned,
+in-archive path confirmed against a real archive listing. **AC3 clears by a margin of one**; the
+reserve and the `.otf` route exist for procurement failures.
 
-**Note for the gate — `epic-8-context.md` is now a stale cache by its own rule.** `f2d108c` touched
-`planning-artifacts/epics.md`, which is now newer than the cached context. It was NOT recompiled:
-this is a plan-only dispatch, recompiling would leave a tracked modification with nothing to commit
-it, and the constraints the cache is lossy about have been sourced from the SPEC kernel instead.
+**Resolved by judgement, not by a recorded ruling** — flagged for the plan gate:
+1. The `<intent-contract>` was rewritten rather than preserved verbatim (see Spec Change Log).
+2. The compound-expression census case is seeded as a fixture, because no procurable font carries an
+   admissible compound expression (Design Note 3). Bounded by its own Block If.
+3. AC3 read as **≥20 *new*** families (the stronger reading), which satisfies the literal text under
+   either interpretation.

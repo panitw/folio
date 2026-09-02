@@ -2618,3 +2618,47 @@ wearing a different hat.**
 time, so it is **the story most likely to surface exactly the prohibited class. Every such finding
 registers.** Said before it happens rather than after, which is the only way a prohibition survives a
 real defect.
+
+### D-8.6.1 — REGISTERED for Story 8.6: what a `.folio` must carry with an embedded font, from the owner's own research
+
+**Owner input**, 2026-09-02, with the orchestrator's measurements against it. **Not acted on now — this
+is Story 8.6's gate**, and one part of it is an owner format decision.
+
+**The requirements** (owner's research on redistributing Google Fonts, which are overwhelmingly OFL-1.1
+and Apache-2.0): distribute the original **licence text** alongside the font; preserve copyright,
+legal notices and author credits **including the strings inside the font binary**; do not use the
+original name for a modified version; no standalone sale.
+
+**Measured at `20002e4` — two are already satisfied, and one of them is not luck.**
+- **"Do not rename modified versions" — SATISFIED, and it matters more than it looks.** **Subsetting IS
+  modification**, and Folio subsets every embedded face. `internal/pdf/textdoc.go:20` carries
+  `Tag string // AC6's six-letter subset tag` and `:288` cites §9.6.4 — so an embedded face is emitted
+  as `ABCDEF+Name`, the PDF-standard declaration that this is a modified subset rather than the
+  original font.
+- **The bundled-catalogue side — SATISFIED** by the build gate: a committed face must sit beside its
+  `LICENSE`/`NOTICE` with a copyright line, enforced fail-closed.
+
+**THE GAP — what travels inside the `.folio`.** `FontRecord` (`internal/template/model.go:403`) has
+`Licence` and `Source`, but:
+- **`font` is optional and every key inside it is optional** (`folio-format.md:531`) — so a `.folio` can
+  carry a face today with **no licence information at all**;
+- **`licence` holds a short LABEL, not the text** — the format's own example is
+  `"licence": "SIL Open Font License 1.1"` (`folio-format.md:522`). **A name is not the licence text.**
+- The format doc frames the record as *"for the people reading and reusing the document"* — descriptive
+  metadata, **not a compliance obligation**.
+
+**This answers a question `spec-fonts` has carried as OPEN** — *does the licence record live inline on
+each font asset, or in one document-level notice block?* **Inline, with the actual text.**
+
+**UNVERIFIED and must be measured before 8.6 ships:** whether subsetting preserves the font binary's
+internal copyright / trademark / licence-description name records. The owner's research calls this out
+explicitly. The subset plan is driven by an external library whose retention defaults are unconfirmed
+— **if those records are dropped, attribution fails inside the font file itself, invisibly.**
+
+**The owner decision this implies, to be put at 8.6's gate with the subsetter measurement in hand:**
+making licence text **required** for an embedded font is a **format change**, and every `.folio` written
+before it becomes non-conforming — a version-bump conversation, not a builder's call.
+
+**Scope note:** this is **not** the licence-gate work prohibited by D-000.11. That prohibition covers
+the build-time checker over this repo's own files (`lint/`). This is **what the product's output
+carries** — squarely Epic 8's stated goal, *"the file carries it."*
