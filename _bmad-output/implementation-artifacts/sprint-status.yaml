@@ -322,7 +322,8 @@ development_status:
   # had zero golden coverage. That was DW-24, and it is CLOSED: Story 7.3 (2026-08-30) re-derived
   # the enumeration, gave each site a falsifier, and registered fixtures/alignment-rounding/.
   # Corrected 2026-09-02 during the Epic 9 reconstruction; the line above had outlived its defect.
-  # Story files reconstructed 2026-09-02 from the shipped diff, and reviewed for the first time.
+  # Story files reconstructed 2026-09-02 from the shipped diff, and reviewed for the first time:
+  # nine findings, four repaired (D-9.R), four registered as DW-143..145.
   epic-9: in-progress
   9-1-the-engine-paints-a-component-s-background-and-border: review
   9-2-line-and-rectangle-draw-in-the-designer-and-in-the-pdf: review
@@ -335,8 +336,11 @@ development_status:
   # carried end to end (model, parse, serialize, the schema-derived placeholder fence, the
   # page model, the PDF text emitter, the table cascade, the property command, the projection,
   # the TYPOGRAPHY control and the canvas paint). Absent-by-default and emitting nothing when
-  # absent, so the existing corpus hashes identically.
-  # NOT yet reviewed or retrospected; the story file is not written.
+  # absent, so the existing corpus hashes identically -- though that clause is the NEGATIVE invariant,
+  # and it holds. NO fixture declares a colour at all, so the corpus never renders one: the positive
+  # coverage is unowned, which is DW-147 and a gating input to Story 15.3.
+  # Story file reconstructed 2026-09-02 from the shipped diff, and reviewed for the first time:
+  # nine findings, four repaired (D-10.R), four registered as DW-146..148.
   epic-10: in-progress
   10-1-text-prints-in-a-declared-colour: review
   epic-10-retrospective: optional
